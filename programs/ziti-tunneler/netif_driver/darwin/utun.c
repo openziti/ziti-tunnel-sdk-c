@@ -1,5 +1,3 @@
-// original code: https://gist.github.com/wxdao/8a0c83ed6cb2a141d1176499e3f6fc48
-
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
