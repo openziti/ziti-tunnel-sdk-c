@@ -1,5 +1,5 @@
 /*
-Copyright 2019-2020 NetFoundry, Inc.
+Copyright NetFoundry, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,32 +23,46 @@ limitations under the License.
 #ifndef NF_ZITI_TUNNELER_SDK_ZITI_TUNNELER_H
 #define NF_ZITI_TUNNELER_SDK_ZITI_TUNNELER_H
 
-#include "nf/ziti.h"
-
-/**
- * @brief Initializes a Ziti Edge identity.
- *
- * This function is used to initialize a Ziti Edge identity. The Ziti C SDK is based around the [libuv](http://libuv.org/)
- * library and is maintains similar semantics.  This function is used to setup the chain of callbacks
- * needed once the loop begins to execute.
- *
- * This function will initialize the Ziti C SDK using the default TLS engine [mbed](https://tls.mbed.org/). If a
- * different TLS engine is desired use NF_init_with_tls().
- *
- * @param config location of identity configuration
- * @param loop libuv event loop
- * @param init_cb callback to be called when initialization is complete
- * @param init_ctx additional context to be passed into #nf_init_cb callback
- *
- * @return #ZITI_OK or corresponding #ZITI_ERRORS
- *
- * @see NF_init_with_tls()
- */
-extern int NF_tunneler_init(const char* config, uv_loop_t* loop, nf_init_cb init_cb, void* init_ctx);
+#include <sys/socket.h>
+#include "uv.h"
+#include "nf/netif_driver.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+typedef struct tunneler_ctx_s *tunneler_context;
+typedef struct tunneler_io_ctx_s *tunneler_io_context;
+
+/**
+ * called when a client connection is intercepted.
+ * implementations are expected to dial the service and return
+ * context that will be passed to ziti_read/ziti_write */
+typedef void * (*ziti_dial_cb)(const char *service_name, const void *ziti_dial_ctx, tunneler_io_context tnlr_io_ctx);
+
+/** */
+typedef enum {
+    ZITI_CONNECTED,
+    ZITI_CONNECTING,
+    ZITI_FAILED
+} ziti_conn_state;
+
+/** */
+typedef ziti_conn_state (*ziti_write_cb)(const void *ziti_io_ctx, const void *data, int len);
+
+typedef struct tunneler_sdk_options_s {
+    netif_driver   netif;
+    ziti_dial_cb   ziti_dial;
+    ziti_write_cb  ziti_write;
+} tunneler_sdk_options;
+
+extern tunneler_context NF_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop);
+
+extern int NF_tunneler_intercept(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service, const struct sockaddr *addr);
+
+extern int NF_tunneler_write(tunneler_io_context tnlr_io_ctx, const void *data, int len);
+
+extern int NF_tunneler_close(tunneler_io_context tnlr_io_ctx);
 
 #ifdef __cplusplus
 }
