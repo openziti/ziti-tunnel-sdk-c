@@ -29,6 +29,7 @@ void on_ziti_connect(nf_connection conn, int status) {
         ziti_io_ctx->state = ZITI_CONNECTED;
     } else {
         ziti_io_ctx->state = ZITI_FAILED;
+        free(ziti_io_ctx);
     }
 }
 
@@ -39,12 +40,20 @@ void on_ziti_data(nf_connection conn, uint8_t *data, int len) {
         NF_tunneler_write(ziti_io_ctx->tnlr_io_ctx, data, len);
     } else {
         NF_tunneler_close(ziti_io_ctx->tnlr_io_ctx);
+        free(ziti_io_ctx);
     }
+}
+
+/** called by tunneler SDK after a client connection is closed */
+void my_ziti_close(const void *ziti_io_ctx) {
+    ziti_io_context *_ziti_io_ctx = ziti_io_ctx;
+    NF_close(&_ziti_io_ctx->nf_conn);
+    free(ziti_io_ctx);
 }
 
 /** called by tunneler SDK after a client connection is intercepted */
 void * my_ziti_dial(const char *service_name, const void *ziti_ctx, tunneler_io_context tnlr_io_ctx) {
-    fprintf(stderr, "ziti_dial(%s)\n", service_name);
+    fprintf(stderr, "my_ziti_dial(%s)\n", service_name);
     ziti_context *zctx = (ziti_context *)ziti_ctx;
 
     ziti_io_context *ziti_io_ctx = malloc(sizeof(struct ziti_io_ctx_s));
@@ -73,12 +82,13 @@ void * my_ziti_dial(const char *service_name, const void *ziti_ctx, tunneler_io_
 /** called from tunneler SDK when intercepted client sends data */
 ziti_conn_state my_ziti_write(const void *ziti_io_ctx, const void *data, int len) {
     struct ziti_io_ctx_s *_ziti_io_ctx = (struct ziti_io_ctx_s *)ziti_io_ctx;
+//    fprintf(stderr, "my_ziti_write: state %d, %d bytes\n", _ziti_io_ctx->state, len);
 
     if (_ziti_io_ctx->state != ZITI_CONNECTED) {
         return _ziti_io_ctx->state;
     }
 
-    if (NF_write(_ziti_io_ctx->nf_conn, (void *)data, len, NULL, NULL) == ZITI_OK) { // TODO write_cb?
+    if (NF_write(_ziti_io_ctx->nf_conn, (void *)data, len, NULL, NULL) == ZITI_OK) {
         return ZITI_CONNECTED;
     }
 
@@ -89,18 +99,6 @@ ziti_conn_state my_ziti_write(const void *ziti_io_ctx, const void *data, int len
 void on_service(nf_context nf_ctx, ziti_service *service, int status, void *tnlr_ctx) {
     printf("service_available: %s\n", service->name);
 
-    if (status == ZITI_OK && (service->perm_flags & ZITI_CAN_DIAL)) {
-        ziti_intercept intercept;
-        int rc = ziti_service_get_config(service, "ziti-tunneler-client.v1", &intercept, parse_ziti_intercept);
-        printf("ziti_service_get_config rc: %d\n", rc);
-    }
-
-    struct sockaddr_in intercept_addr = {
-            .sin_family = AF_INET,
-            .sin_addr.s_addr = inet_addr("1.1.1.1"),
-            .sin_port = 8080,
-    };
-
     ziti_context *ziti_ctx = malloc(sizeof(ziti_context));
     if (ziti_ctx == NULL) {
         fprintf(stderr, "failed to allocate dial context\n");
@@ -108,7 +106,15 @@ void on_service(nf_context nf_ctx, ziti_service *service, int status, void *tnlr
     }
     ziti_ctx->nf_ctx = nf_ctx;
 
-    NF_tunneler_intercept(tnlr_ctx, ziti_ctx, service->name, (struct sockaddr *)&intercept_addr);
+    ziti_intercept intercept;
+    if (status == ZITI_OK && (service->perm_flags & ZITI_CAN_DIAL)) {
+        int rc = ziti_service_get_config(service, "ziti-tunneler-client.v1", &intercept, parse_ziti_intercept);
+        if (rc == 0) {
+            NF_tunneler_intercept_v1(tnlr_ctx, ziti_ctx, service->name, intercept.hostname, intercept.port);
+            free(intercept.hostname);
+        }
+        printf("ziti_service_get_config rc: %d\n", rc);
+    }
 }
 
 const char *cfg_types[] = { "ziti-tunneler-client.v1", "ziti-tunneler-server.v1", NULL };
@@ -132,8 +138,9 @@ int main(int argc, char *argv[]) {
     }
 
     tunneler_sdk_options tunneler_opts = {
-            .netif = tun,
+            .netif_driver = tun,
             .ziti_dial = my_ziti_dial,
+            .ziti_close = my_ziti_close,
             .ziti_write = my_ziti_write
     };
     tunneler_context tnlr_ctx = NF_tunneler_init(&tunneler_opts, nf_loop);
@@ -156,5 +163,6 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
+    free(tnlr_ctx);
     return 0;
 }

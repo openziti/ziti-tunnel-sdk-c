@@ -10,8 +10,7 @@ typedef struct netif_handle_s *netif_handle;
 typedef int (*netif_close_cb)(netif_handle dev);
 typedef ssize_t (*netif_read_cb)(netif_handle dev, void *buf, size_t buf_len);
 typedef ssize_t (*netif_write_cb)(netif_handle dev, const void *buf, size_t len);
-
-typedef uv_poll_t * (*uv_poll_req_fn)(netif_handle dev, uv_loop_t *loop);
+typedef int (*uv_poll_req_fn)(netif_handle dev, uv_loop_t *loop, uv_poll_t *tun_poll_req);
 
 typedef struct netif_driver_s {
     netif_handle   handle;

@@ -68,12 +68,8 @@ ssize_t utun_write(netif_handle tun, const void *buf, size_t len) {
     return utun_data_len(writev(tun->fd, iv, 2));
 }
 
-uv_poll_t *utun_uv_poll_init(netif_handle tun, uv_loop_t *loop) {
-    uv_poll_t *tun_poll_req = malloc(sizeof(uv_poll_t));
-    if (uv_poll_init(loop, tun_poll_req, tun->fd) != 0) {
-        return NULL;
-    }
-    return tun_poll_req;
+int utun_uv_poll_init(netif_handle tun, uv_loop_t *loop, uv_poll_t *tun_poll_req) {
+     return uv_poll_init(loop, tun_poll_req, tun->fd);
 }
 
 /**
@@ -145,8 +141,8 @@ netif_driver utun_open(char *error, size_t error_len) {
     }
     strncpy(tun->name, ifname_req.ifr_name, sizeof(tun->name));
 
-    struct netif_driver_s *dev = malloc(sizeof(struct netif_driver_s));
-    if (dev == NULL) {
+    struct netif_driver_s *driver = malloc(sizeof(struct netif_driver_s));
+    if (driver == NULL) {
         if (error != NULL) {
             snprintf(error, error_len, "failed to allocate netif_device_s");
             utun_close(tun);
@@ -154,11 +150,11 @@ netif_driver utun_open(char *error, size_t error_len) {
         return NULL;
     }
 
-    dev->handle       = tun;
-    dev->read         = utun_read;
-    dev->write        = utun_write;
-    dev->uv_poll_init = utun_uv_poll_init;
-    dev->close        = utun_close;
+    driver->handle       = tun;
+    driver->read         = utun_read;
+    driver->write        = utun_write;
+    driver->uv_poll_init = utun_uv_poll_init;
+    driver->close        = utun_close;
 
-    return dev;
+    return driver;
 }

@@ -31,5 +31,7 @@
 
 #define LWIP_HOOK_FILENAME "lwiphooks.h"
 #define LWIP_HOOK_IP4_INPUT(pbuf, input_netif) ip4_input_hook((pbuf),(input_netif))
-
+#if 0
+#define LWIP_HOOK_TCP_INPACKET_PCB(pcb, hdr, optlen, opt1len, opt2, p) tcp_inpkt_hook((pcb),(hdr),(optlen),(opt1len),(opt2),(p))
+#endif
 #endif // _lwipopts_h_

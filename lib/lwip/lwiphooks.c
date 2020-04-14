@@ -218,3 +218,10 @@ int ip4_input_hook(struct pbuf *p, struct netif *inp)
 
     return 1;
 }
+
+#if 0
+err_t tcp_inpkt_hook(struct tcp_pcb *pcb, struct tcp_hdr *hdr, u16_t optlen, u16_t opt1len, u8_t *opt2, struct pbuf *p) {
+      printf("packet to %d:%d\n", pcb->local_ip, hdr->dest);
+      return ERR_OK;
+}
+#endif
