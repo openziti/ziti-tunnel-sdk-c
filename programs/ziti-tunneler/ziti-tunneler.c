@@ -6,6 +6,8 @@
 #include "nf/ziti_tunneler.h"
 #if __APPLE__ && __MACH__
 #include "netif_driver/darwin/utun.h"
+#elif __linux__
+#include "netif_driver/linux/tun.h"
 #else
 #error "please port this file to your operating system"
 #endif
@@ -130,6 +132,8 @@ int main(int argc, char *argv[]) {
     char tun_error[64];
 #if __APPLE__ && __MACH__
     tun = utun_open(tun_error, sizeof(tun_error));
+#elif __linux__
+    tun = tun_open(tun_error, sizeof(tun_error));
 #endif
 
     if (tun == NULL) {
@@ -146,7 +150,7 @@ int main(int argc, char *argv[]) {
     tunneler_context tnlr_ctx = NF_tunneler_init(&tunneler_opts, nf_loop);
 
     nf_options opts = {
-            .config = "/Users/scarey/Downloads/localdev-0.13.json",
+            .config = "/media/psf/Home/Downloads/localdev-0.13.json",
             .service_cb = on_service,
             .ctx = tnlr_ctx, /* this is passed to the service_cb */
             .refresh_interval = 10,
