@@ -90,7 +90,7 @@ netif_driver utun_open(char *error, size_t error_len) {
     struct netif_handle_s *tun = malloc(sizeof(struct netif_handle_s));
     if (tun == NULL) {
         if (error != NULL) {
-            snprintf(error, error_len, "failed to allocate utun_ctx_s");
+            snprintf(error, error_len, "failed to allocate utun");
         }
         return NULL;
     }

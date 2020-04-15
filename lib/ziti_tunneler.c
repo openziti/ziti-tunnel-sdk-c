@@ -290,7 +290,7 @@ int NF_tunneler_close(tunneler_io_context tnlr_io_ctx) {
     return 0;
 }
 
-void on_tun_data(__unused uv_poll_t * req, int status, int events) {
+void on_tun_data(uv_poll_t * req, int status, int events) {
     if (status != 0) {
         ZITI_LOG(WARN, "on_tun_data: not sure why status is %d", status);
         return;
@@ -301,7 +301,7 @@ void on_tun_data(__unused uv_poll_t * req, int status, int events) {
     }
 }
 
-static void check_lwip_timeouts(__unused uv_timer_t * handle) {
+static void check_lwip_timeouts(uv_timer_t * handle) {
     sys_check_timeouts();
 }
 
