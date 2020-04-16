@@ -125,6 +125,13 @@ void on_service(nf_context nf_ctx, ziti_service *service, int status, void *tnlr
 
 const char *cfg_types[] = { "ziti-tunneler-client.v1", "ziti-tunneler-server.v1", NULL };
 
+static void on_nf_init(nf_context nf_ctx, int status, void *init_ctx) {
+    if (status != ZITI_OK) {
+        fprintf(stderr, "failed to initialize ziti\n");
+        exit(1);
+    }
+}
+
 int main(int argc, char *argv[]) {
     uv_loop_t *nf_loop = uv_default_loop();
     if (nf_loop == NULL) {
@@ -154,8 +161,7 @@ int main(int argc, char *argv[]) {
     tunneler_context tnlr_ctx = NF_tunneler_init(&tunneler_opts, nf_loop);
 
     nf_options opts = {
-            // TODO use init_cb to verify ziti startup successful.
-            .init_cb = NULL,
+            .init_cb = on_nf_init,
             .config = "/Users/scarey/Downloads/localdev-0.13.json",
             .service_cb = on_service,
             .ctx = tnlr_ctx, /* this is passed to the service_cb */
