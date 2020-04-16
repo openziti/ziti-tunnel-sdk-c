@@ -1,6 +1,6 @@
 
 add_library(ziti_tunneler STATIC
-        ziti_tunneler.c dns-server.c
+        ziti_tunneler.c
         lwip/netif_shim.c lwip/lwiphooks.c)
 
 
