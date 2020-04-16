@@ -38,7 +38,7 @@ void on_ziti_connect(nf_connection conn, int status) {
 void on_ziti_data(nf_connection conn, uint8_t *data, int len) {
     fprintf(stderr, "on_ziti_data: %x %d bytes!\n", data, len);
     ziti_io_context *ziti_io_ctx = NF_conn_data(conn);
-    if (data > 0) {
+    if (len > 0) {
         NF_tunneler_write(ziti_io_ctx->tnlr_io_ctx, data, len);
     } else {
         NF_tunneler_close(ziti_io_ctx->tnlr_io_ctx);
@@ -81,6 +81,10 @@ void * my_ziti_dial(const char *service_name, const void *ziti_ctx, tunneler_io_
     return ziti_io_ctx;
 }
 
+static void on_ziti_write(nf_connection nf_conn, ssize_t len, void *ctx) {
+// ctx wants to be... tunneler_io_context?
+}
+
 /** called from tunneler SDK when intercepted client sends data */
 ziti_conn_state my_ziti_write(const void *ziti_io_ctx, const void *data, int len) {
     struct ziti_io_ctx_s *_ziti_io_ctx = (struct ziti_io_ctx_s *)ziti_io_ctx;
@@ -90,7 +94,7 @@ ziti_conn_state my_ziti_write(const void *ziti_io_ctx, const void *data, int len
         return _ziti_io_ctx->state;
     }
 
-    if (NF_write(_ziti_io_ctx->nf_conn, (void *)data, len, NULL, NULL) == ZITI_OK) {
+    if (NF_write(_ziti_io_ctx->nf_conn, (void *)data, len, on_ziti_write, NULL) == ZITI_OK) {
         return ZITI_CONNECTED;
     }
 
@@ -150,7 +154,9 @@ int main(int argc, char *argv[]) {
     tunneler_context tnlr_ctx = NF_tunneler_init(&tunneler_opts, nf_loop);
 
     nf_options opts = {
-            .config = "/media/psf/Home/Downloads/localdev-0.13.json",
+            // TODO use init_cb to verify ziti startup successful.
+            .init_cb = NULL,
+            .config = "/Users/scarey/Downloads/localdev-0.13.json",
             .service_cb = on_service,
             .ctx = tnlr_ctx, /* this is passed to the service_cb */
             .refresh_interval = 10,
