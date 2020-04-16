@@ -14,7 +14,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-#include <netdb.h>
+// something wrong with lwip_xxxx byteorder functions
+#ifdef _WIN32
+#define LWIP_DONT_PROVIDE_BYTEORDER_FUNCTIONS 1
+#endif
+
 #include "lwip/init.h"
 #include "lwip/tcp.h"
 #include "lwip/timeouts.h"
@@ -290,6 +294,10 @@ int NF_tunneler_close(tunneler_io_context tnlr_io_ctx) {
     return 0;
 }
 
+#ifndef __unused
+#define __unused
+#endif
+
 void on_tun_data(__unused uv_poll_t * req, int status, int events) {
     if (status != 0) {
         ZITI_LOG(WARN, "on_tun_data: not sure why status is %d", status);
@@ -318,10 +326,16 @@ static void run_packet_loop(uv_loop_t *loop, tunneler_context tnlr_ctx) {
     netif_set_link_up(&tnlr_ctx->netif);
     netif_set_up(&tnlr_ctx->netif);
 
-    netif_driver->uv_poll_init(netif_driver->handle, loop, &tnlr_ctx->netif_poll_req);
-    if (uv_poll_start(&tnlr_ctx->netif_poll_req, UV_READABLE, on_tun_data) != 0) {
-        ZITI_LOG(ERROR, "failed to start tun poll handle");
-        exit(1);
+    if (netif_driver->setup) {
+        netif_driver->setup(netif_driver->handle, loop, on_packet, netif_default);
+    } else if (netif_driver->uv_poll_init) {
+        netif_driver->uv_poll_init(netif_driver->handle, loop, &tnlr_ctx->netif_poll_req);
+        if (uv_poll_start(&tnlr_ctx->netif_poll_req, UV_READABLE, on_tun_data) != 0) {
+            ZITI_LOG(ERROR, "failed to start tun poll handle");
+            exit(1);
+        }
+    } else {
+        ZITI_LOG(WARN, "no method to initiate tunnel reader, maybe it's ok");
     }
 
     uv_timer_init(loop, &tnlr_ctx->lwip_timer_req);
