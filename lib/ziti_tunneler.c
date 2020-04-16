@@ -202,7 +202,7 @@ static err_t on_accept(void *intercept_ctx, struct tcp_pcb *pcb, err_t err) {
     return ERR_OK;
 }
 
-/** arrange to intercept traffic defined by a vi client tunneler config */
+/** arrange to intercept traffic defined by a v1 client tunneler config */
 int NF_tunneler_intercept_v1(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_name, const char *hostname, int port) {
     struct tcp_pcb *pcb;
     if ((pcb = tcp_new()) == NULL) {
