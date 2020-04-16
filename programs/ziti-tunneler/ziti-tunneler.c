@@ -6,6 +6,8 @@
 #include "nf/ziti_tunneler.h"
 #if __APPLE__ && __MACH__
 #include "netif_driver/darwin/utun.h"
+#elif __linux__
+#include "netif_driver/linux/tun.h"
 #else
 #error "please port this file to your operating system"
 #endif
@@ -36,7 +38,7 @@ void on_ziti_connect(nf_connection conn, int status) {
 void on_ziti_data(nf_connection conn, uint8_t *data, int len) {
     fprintf(stderr, "on_ziti_data: %x %d bytes!\n", data, len);
     ziti_io_context *ziti_io_ctx = NF_conn_data(conn);
-    if (data > 0) {
+    if (len > 0) {
         NF_tunneler_write(ziti_io_ctx->tnlr_io_ctx, data, len);
     } else {
         NF_tunneler_close(ziti_io_ctx->tnlr_io_ctx);
@@ -79,6 +81,10 @@ void * my_ziti_dial(const char *service_name, const void *ziti_ctx, tunneler_io_
     return ziti_io_ctx;
 }
 
+static void on_ziti_write(nf_connection nf_conn, ssize_t len, void *ctx) {
+// ctx wants to be... tunneler_io_context?
+}
+
 /** called from tunneler SDK when intercepted client sends data */
 ziti_conn_state my_ziti_write(const void *ziti_io_ctx, const void *data, int len) {
     struct ziti_io_ctx_s *_ziti_io_ctx = (struct ziti_io_ctx_s *)ziti_io_ctx;
@@ -88,7 +94,7 @@ ziti_conn_state my_ziti_write(const void *ziti_io_ctx, const void *data, int len
         return _ziti_io_ctx->state;
     }
 
-    if (NF_write(_ziti_io_ctx->nf_conn, (void *)data, len, NULL, NULL) == ZITI_OK) {
+    if (NF_write(_ziti_io_ctx->nf_conn, (void *)data, len, on_ziti_write, NULL) == ZITI_OK) {
         return ZITI_CONNECTED;
     }
 
@@ -119,6 +125,13 @@ void on_service(nf_context nf_ctx, ziti_service *service, int status, void *tnlr
 
 const char *cfg_types[] = { "ziti-tunneler-client.v1", "ziti-tunneler-server.v1", NULL };
 
+static void on_nf_init(nf_context nf_ctx, int status, void *init_ctx) {
+    if (status != ZITI_OK) {
+        fprintf(stderr, "failed to initialize ziti\n");
+        exit(1);
+    }
+}
+
 int main(int argc, char *argv[]) {
     uv_loop_t *nf_loop = uv_default_loop();
     if (nf_loop == NULL) {
@@ -130,6 +143,8 @@ int main(int argc, char *argv[]) {
     char tun_error[64];
 #if __APPLE__ && __MACH__
     tun = utun_open(tun_error, sizeof(tun_error));
+#elif __linux__
+    tun = tun_open(tun_error, sizeof(tun_error));
 #endif
 
     if (tun == NULL) {
@@ -146,6 +161,7 @@ int main(int argc, char *argv[]) {
     tunneler_context tnlr_ctx = NF_tunneler_init(&tunneler_opts, nf_loop);
 
     nf_options opts = {
+            .init_cb = on_nf_init,
             .config = "/Users/scarey/Downloads/localdev-0.13.json",
             .service_cb = on_service,
             .ctx = tnlr_ctx, /* this is passed to the service_cb */

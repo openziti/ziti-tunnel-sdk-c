@@ -1,7 +1,6 @@
 
 add_library(ziti_tunneler STATIC
-        ziti_tunneler.c
-        ${PROJECT_SOURCE_DIR}/include/nf/ziti_tunneler.h
+        ziti_tunneler.c dns-server.c
         lwip/netif_shim.c lwip/lwiphooks.c)
 
 
