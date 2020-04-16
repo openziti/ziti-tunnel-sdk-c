@@ -55,7 +55,7 @@ netif_driver tun_open(char *error, size_t error_len) {
         memset(error, 0, error_len * sizeof(char));
     }
 
-    struct netif_handle_s *tun = malloc(sizeof(struct netif_handle_s));
+    struct netif_handle_s *tun = calloc(1, sizeof(struct netif_handle_s));
     if (tun == NULL) {
         if (error != NULL) {
             snprintf(error, error_len, "failed to allocate tun");
@@ -85,7 +85,7 @@ netif_driver tun_open(char *error, size_t error_len) {
 
     strncpy(tun->name, ifr.ifr_name, sizeof(tun->name));
 
-    struct netif_driver_s *driver = malloc(sizeof(struct netif_driver_s));
+    struct netif_driver_s *driver = calloc(1, sizeof(struct netif_driver_s));
     if (driver == NULL) {
         if (error != NULL) {
             snprintf(error, error_len, "failed to allocate netif_device_s");
