@@ -64,7 +64,7 @@ extern int NF_tunneler_intercept_v1(tunneler_context tnlr_ctx, const void *ziti_
 
 extern int NF_tunneler_write(tunneler_io_context tnlr_io_ctx, const void *data, int len);
 
-extern int NF_tunneler_close(tunneler_io_context tnlr_io_ctx);
+extern int NF_tunneler_close(tunneler_io_context *tnlr_io_ctx);
 
 #ifdef __cplusplus
 }

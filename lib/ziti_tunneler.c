@@ -102,17 +102,17 @@ err_t on_client_data(void *io_ctx, struct tcp_pcb *pcb, struct pbuf *p, err_t er
         return err;
     }
 
-    ziti_write_cb zwrite;
-    if ((zwrite = _io_ctx->tnlr_io_ctx->tnlr_ctx->opts.ziti_write) == NULL) {
-        ZITI_LOG(ERROR, "ziti_write_cb is invalid");
-        return ERR_ARG;
-    }
+    ziti_write_cb zwrite = _io_ctx->tnlr_io_ctx->tnlr_ctx->opts.ziti_write;
     u16_t len = p->len;
     ziti_conn_state s = zwrite(_io_ctx->ziti_io_ctx, p->payload, len);
     switch (s) {
         case ZITI_CONNECTED:
+#if 1
+            // TODO this should happen in ziti's write_cb. which means tunneler SDK needs
+            // another function that can be called from write_cb. NF_tunneler_blah(tcp_pcb, pbuf)
             tcp_recved(pcb, len);
             pbuf_free(p);
+#endif
             return ERR_OK;
         case ZITI_CONNECTING:
             return ERR_CONN;
@@ -125,7 +125,8 @@ err_t on_client_data(void *io_ctx, struct tcp_pcb *pcb, struct pbuf *p, err_t er
     }
 }
 
-err_t on_client_ack(void *io_ctx, struct tcp_pcb *pcb, u16_t len) {
+/** called by lwip when client sends a TCP ack */
+static err_t on_client_ack(void *io_ctx, struct tcp_pcb *pcb, u16_t len) {
     ZITI_LOG(INFO, "on_client_ack %d bytes", len);
     return ERR_OK;
 }
@@ -180,13 +181,7 @@ static err_t on_accept(void *intercept_ctx, struct tcp_pcb *pcb, err_t err) {
         return err;
     }
 
-    ziti_dial_cb zdial;
-    if ((zdial = intercept->tnlr_ctx->opts.ziti_dial) == NULL) {
-        ZITI_LOG(ERROR, "ziti_dial_cb is invalid");
-        free_intercept_ctx(intercept);
-        return ERR_ARG;
-    }
-
+    ziti_dial_cb zdial = intercept->tnlr_ctx->opts.ziti_dial;
     // set up lwip to call on_client_data with this client's pcb and ziti_io_ctx;
     tunneler_io_context tnlr_io_ctx = new_tunneler_io_context(intercept->tnlr_ctx, pcb);
     void *ziti_io_ctx = zdial(intercept->service_name, intercept->ziti_ctx, tnlr_io_ctx);
@@ -260,6 +255,7 @@ int NF_tunneler_intercept_v1(tunneler_context tnlr_ctx, const void *ziti_ctx, co
 int NF_tunneler_write(tunneler_io_context tnlr_io_ctx, const void *data, int len) {
     struct tcp_pcb *pcb = tnlr_io_ctx->pcb;
 
+    // TODO deal with ERR_MEM.
     err_t w_err = tcp_write(pcb, data, len, 0);
     if (w_err != ERR_OK) {
         ZITI_LOG(ERROR, "failed to tcp_write %d", w_err);
@@ -276,17 +272,20 @@ int NF_tunneler_write(tunneler_io_context tnlr_io_ctx, const void *data, int len
 }
 
 /** called by tunneler application when a ziti connection closes */
-int NF_tunneler_close(tunneler_io_context tnlr_io_ctx) {
+int NF_tunneler_close(tunneler_io_context *tnlr_io_ctx) {
     if (tnlr_io_ctx == NULL) {
         ZITI_LOG(ERROR, "invalid tnlr_io_ctx");
         return -1;
     }
 
-    if (tcp_close(tnlr_io_ctx->pcb) != ERR_OK) {
-        ZITI_LOG(ERROR, "failed to tcp_close");
+    if (*tnlr_io_ctx != NULL) {
+        if (tcp_close((*tnlr_io_ctx)->pcb) != ERR_OK) {
+            ZITI_LOG(ERROR, "failed to tcp_close");
+            return -1;
+        }
+        free(*tnlr_io_ctx);
     }
 
-    //free(tnlr_io_ctx); // TODO tnlr_io_ctx may have been freed if client closed. pass io_ctx here so we can check for NULL?
     return 0;
 }
 
@@ -306,9 +305,14 @@ static void check_lwip_timeouts(uv_timer_t * handle) {
 }
 
 static void run_packet_loop(uv_loop_t *loop, tunneler_context tnlr_ctx) {
-    netif_driver netif_driver = tnlr_ctx->opts.netif_driver;
+    if (tnlr_ctx->opts.ziti_close == NULL || tnlr_ctx->opts.ziti_dial == NULL || tnlr_ctx->opts.ziti_write == NULL) {
+        ZITI_LOG(ERROR, "ziti_* callback options cannot be null");
+        exit(1);
+    }
+
     lwip_init();
 
+    netif_driver netif_driver = tnlr_ctx->opts.netif_driver;
     if (netif_add_noaddr(&tnlr_ctx->netif, netif_driver, netif_shim_init, ip_input) == NULL) {
         ZITI_LOG(ERROR, "netif_add failed");
         exit(1);
