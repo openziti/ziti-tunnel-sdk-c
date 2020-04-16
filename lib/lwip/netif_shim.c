@@ -1,10 +1,13 @@
-#include <sys/uio.h>
+//#include <sys/uio.h>
+
+#define LWIP_DONT_PROVIDE_BYTEORDER_FUNCTIONS 1
 
 #include "lwip/err.h"
 #include "lwip/pbuf.h"
 #include "lwip/ip_addr.h"
 #include "lwip/netif.h"
 #include "nf/netif_driver.h"
+#include "netif_shim.h"
 
 #define IFNAME0 't'
 #define IFNAME1 'n'
@@ -32,7 +35,6 @@ static err_t netif_shim_output(struct netif *netif, struct pbuf *p, const ip4_ad
  */
 void netif_shim_input(struct netif *netif) {
     netif_driver dev = netif->state;
-    struct pbuf *p;
     char buf[BUFFER_SIZE];
 
     ssize_t nr = dev->read(dev->handle, buf, sizeof(buf));
@@ -41,6 +43,12 @@ void netif_shim_input(struct netif *netif) {
         return;
     }
 
+    on_packet(buf, nr, netif);
+}
+
+void on_packet(const char *buf, ssize_t nr, void *ctx) {
+    struct netif *netif = ctx;
+    struct pbuf *p;
     /* We allocate a pbuf chain of pbufs from the pool. */
     p = pbuf_alloc(PBUF_LINK, (u16_t) nr, PBUF_POOL);
 

@@ -27,6 +27,9 @@
 #define LWIP_NETCONN 0
 #define LWIP_SOCKET 0
 
+#ifdef _WIN32
+#define LWIP_NORAND 1
+#endif
 // hooks
 
 #define LWIP_HOOK_FILENAME "lwiphooks.h"
