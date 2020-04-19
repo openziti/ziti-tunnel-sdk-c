@@ -3,11 +3,6 @@ add_library(ziti_tunneler STATIC
         ziti_tunneler.c
         lwip/netif_shim.c lwip/lwiphooks.c)
 
-
-
-string(LENGTH "${CMAKE_SOURCE_DIR}/" SOURCE_PATH_SIZE)
-add_definitions("-DSOURCE_PATH_SIZE=${SOURCE_PATH_SIZE}")
-
 if(WIN32)
     set(lwip_sys "win32")
     set(lwip_sys_lib "lwipwin32arch")

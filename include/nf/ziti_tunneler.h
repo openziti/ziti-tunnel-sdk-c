@@ -66,6 +66,19 @@ extern int NF_tunneler_write(tunneler_io_context tnlr_io_ctx, const void *data, 
 
 extern int NF_tunneler_close(tunneler_io_context *tnlr_io_ctx);
 
+
+/**************** UDP support **************/
+/**
+ * @experimental
+ */
+
+typedef void *addr_t; // anonymize ip_addr_t for now
+typedef void (*ziti_udp_cb)(tunneler_io_context tio, void *ctx,
+        addr_t src, uint16_t src_port,
+        const void* data, ssize_t len);
+extern int NF_udp_handler(tunneler_context tnlr_ctx, const char *hostname, int port, ziti_udp_cb cb, void *ctx);
+extern int NF_udp_send(tunneler_io_context tio, addr_t dest, uint16_t dest_port, const void* data, ssize_t len);
+
 #ifdef __cplusplus
 }
 #endif
