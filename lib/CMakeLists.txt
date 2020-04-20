@@ -42,10 +42,9 @@ target_include_directories(ziti_tunneler
         PRIVATE ../include/priv
         )
 
-add_library(lwipwin32arch STATIC
-        ${LWIP_CONTRIB_DIR}/ports/win32/sys_arch.c)
-
 if(WIN32)
+    add_library(lwipwin32arch STATIC
+            ${LWIP_CONTRIB_DIR}/ports/win32/sys_arch.c)
 target_include_directories(lwipwin32arch
         PUBLIC "${LWIP_DIR}/src/include"
         PUBLIC "${LWIP_CONTRIB_INCLUDE}"
