@@ -36,28 +36,28 @@ void on_ziti_connect(nf_connection conn, int status) {
 }
 
 /** called by tunneler SDK after a client connection is closed */
-void my_ziti_close(void *ziti_io_ctx) {
+static void my_ziti_close(void *ziti_io_ctx) {
     ziti_io_context *_ziti_io_ctx = ziti_io_ctx;
     if (_ziti_io_ctx->nf_conn != NULL) {
         NF_close(&_ziti_io_ctx->nf_conn);
     }
-    free(ziti_io_ctx);
+    //free(_ziti_io_ctx); // TODO don't know when it's OK to free this
 }
 
+/** called by ziti SDK when data arrives or the service app closes */
 void on_ziti_data(nf_connection conn, uint8_t *data, ssize_t len) {
     fprintf(stderr, "on_ziti_data: %ld bytes!\n", len);
     ziti_io_context *ziti_io_ctx = NF_conn_data(conn);
-    if (ziti_io_ctx->tnlr_io_ctx == NULL) { //TODO remove this when NF_close prevents more data from arriving on the connection
+    if (ziti_io_ctx->tnlr_io_ctx == NULL) {
+        fprintf(stderr, "bad ziti_io_context\n");
         return;
     }
     if (len > 0) {
          if (NF_tunneler_write(&ziti_io_ctx->tnlr_io_ctx, data, len) < 0) {
-             ziti_io_ctx->tnlr_io_ctx = NULL;
              my_ziti_close(ziti_io_ctx);
          }
     } else {
         NF_tunneler_close(&ziti_io_ctx->tnlr_io_ctx);
-        ziti_io_ctx->tnlr_io_ctx = NULL;
     }
 }
 
