@@ -3,6 +3,16 @@ add_library(ziti_tunneler STATIC
         ziti_tunneler.c
         lwip/netif_shim.c lwip/lwiphooks.c)
 
+add_library(ziti_tunneler_cbs STATIC ziti_tunneler_cbs.c)
+
+target_include_directories(ziti_tunneler_cbs
+        PUBLIC ../include
+        )
+
+target_link_libraries(ziti_tunneler_cbs
+        PUBLIC ziti
+        )
+
 if(WIN32)
     set(lwip_sys "win32")
     set(lwip_sys_lib "lwipwin32arch")
@@ -37,10 +47,9 @@ target_include_directories(ziti_tunneler
         PRIVATE ../include/priv
         )
 
+if(WIN32)
 add_library(lwipwin32arch STATIC
         ${LWIP_CONTRIB_DIR}/ports/win32/sys_arch.c)
-
-if(WIN32)
 target_include_directories(lwipwin32arch
         PUBLIC "${LWIP_DIR}/src/include"
         PUBLIC "${LWIP_CONTRIB_INCLUDE}"
