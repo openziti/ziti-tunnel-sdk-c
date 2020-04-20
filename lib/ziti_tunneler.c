@@ -89,51 +89,10 @@ tunneler_context NF_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop) {
     return ctx;
 }
 
-/**
- * called by lwip when a client writes to an intercepted connection.
- * pbuf will be null if client has closed the connection.
- */
-err_t on_client_data(void *io_ctx, struct tcp_pcb *pcb, struct pbuf *p, err_t err) {
-    ZITI_LOG(DEBUG, "on_client_data status %d", err);
-    struct io_ctx_s *_io_ctx = (struct io_ctx_s *)io_ctx;
-    if (err == ERR_OK && p == NULL) {
-        tcp_close(pcb);
-        _io_ctx->tnlr_io_ctx->tnlr_ctx->opts.ziti_close(_io_ctx->ziti_io_ctx);
-        free(_io_ctx->tnlr_io_ctx);
-        _io_ctx->ziti_io_ctx = NULL;
-        _io_ctx->tnlr_io_ctx = NULL;
-        free(_io_ctx);
-        return err;
-    }
-
-    ziti_write_cb zwrite = _io_ctx->tnlr_io_ctx->tnlr_ctx->opts.ziti_write;
-    u16_t len = p->len;
-    ziti_conn_state s = zwrite(_io_ctx->ziti_io_ctx, p->payload, len);
-    switch (s) {
-        case ZITI_CONNECTED:
-#if 1
-            // TODO this should happen in ziti's write_cb. which means tunneler SDK needs
-            // another function that can be called from write_cb. NF_tunneler_blah(tcp_pcb, pbuf)
-            tcp_recved(pcb, len);
-            pbuf_free(p);
-#endif
-            return ERR_OK;
-        case ZITI_CONNECTING:
-            return ERR_CONN;
-        case ZITI_FAILED:
-        default:
-
-            free(_io_ctx);
-            pbuf_free(p);
-            return ERR_ABRT;
-    }
-}
-
-/** called by lwip when client sends a TCP ack */
-static err_t on_client_ack(void *io_ctx, struct tcp_pcb *pcb, u16_t len) {
-    ZITI_LOG(INFO, "on_client_ack %d bytes", len);
-    return ERR_OK;
-}
+struct write_ctx_s {
+    struct pbuf * pbuf;
+    struct tcp_pcb *pcb;
+};
 
 static tunneler_io_context new_tunneler_io_context(tunneler_context tnlr_ctx, struct tcp_pcb *pcb) {
     struct tunneler_io_ctx_s *ctx = malloc(sizeof(struct tunneler_io_ctx_s));
@@ -144,6 +103,69 @@ static tunneler_io_context new_tunneler_io_context(tunneler_context tnlr_ctx, st
     ctx->tnlr_ctx = tnlr_ctx;
     ctx->pcb = pcb;
     return ctx;
+}
+
+static void free_tunneler_io_context(tunneler_io_context *tnlr_io_ctx) {
+    if (tnlr_io_ctx == NULL) {
+        return;
+    }
+
+    if (*tnlr_io_ctx != NULL) {
+        free(*tnlr_io_ctx);
+        *tnlr_io_ctx = NULL;
+    }
+}
+
+/**
+ * called by lwip when a client writes to an intercepted connection.
+ * pbuf will be null if client has closed the connection.
+ */
+static err_t on_client_data(void *io_ctx, struct tcp_pcb *pcb, struct pbuf *p, err_t err) {
+    ZITI_LOG(DEBUG, "on_client_data status %d", err);
+    struct io_ctx_s *_io_ctx = (struct io_ctx_s *)io_ctx;
+    if (err == ERR_OK && p == NULL) {
+        tcp_close(pcb);
+        _io_ctx->tnlr_io_ctx->tnlr_ctx->opts.ziti_close(_io_ctx->ziti_io_ctx);
+        _io_ctx->ziti_io_ctx = NULL;
+        free_tunneler_io_context(&(_io_ctx->tnlr_io_ctx));
+        free(_io_ctx);
+        return err;
+    }
+
+    ziti_write_cb zwrite = _io_ctx->tnlr_io_ctx->tnlr_ctx->opts.ziti_write;
+    u16_t len = p->len;
+    struct write_ctx_s *wr_ctx = calloc(1, sizeof(struct write_ctx_s));
+    wr_ctx->pbuf = p;
+    wr_ctx->pcb = pcb;
+    ziti_conn_state s = zwrite(_io_ctx->ziti_io_ctx, wr_ctx, p->payload, len);
+    switch (s) {
+        case ZITI_CONNECTED:
+            return ERR_OK;
+        case ZITI_CONNECTING:
+            free(wr_ctx);
+            return ERR_CONN;
+        case ZITI_FAILED:
+        default:
+            free(wr_ctx);
+            free(_io_ctx);
+            pbuf_free(p);
+            return ERR_ABRT;
+    }
+}
+
+/** called by tunneler application when data has been successfully written to ziti */
+int NF_tunneler_ack(void *write_ctx) {
+    struct write_ctx_s * ctx = write_ctx;
+    tcp_recved(ctx->pcb, ctx->pbuf->len);
+    pbuf_free(ctx->pbuf);
+    free(ctx);
+    return 0;
+}
+
+/** called by lwip when client sends a TCP ack */
+static err_t on_client_ack(void *io_ctx, struct tcp_pcb *pcb, u16_t len) {
+    ZITI_LOG(INFO, "on_client_ack %d bytes", len);
+    return ERR_OK;
 }
 
 static intercept_context new_intercept_ctx(tunneler_context tnlr_ctx, const char *service_name, const void *ziti_dial_ctx) {
@@ -167,21 +189,26 @@ static intercept_context new_intercept_ctx(tunneler_context tnlr_ctx, const char
 }
 
 /** TODO: call this when we deal with services going away */
-static void free_intercept_ctx(intercept_context ctx) {
-    if (ctx != NULL) {
-        if (ctx->service_name != NULL) free((char *)ctx->service_name);
-        free(ctx);
+static void free_intercept_ctx(intercept_context *ctx) {
+    if (ctx == NULL) {
+        return;
+    }
+
+    if (*ctx != NULL) {
+        if ((*ctx)->service_name != NULL) free((char *)(*ctx)->service_name);
+        free(*ctx);
+        *ctx = NULL;
     }
 }
 
 /** called by lwip when a connection is intercepted */
 static err_t on_accept(void *intercept_ctx, struct tcp_pcb *pcb, err_t err) {
     intercept_context intercept = (intercept_context)intercept_ctx;
-    ZITI_LOG(INFO, "on_accept(%s, %x)", intercept->service_name, pcb);
+    ZITI_LOG(INFO, "on_accept(%s, %p)", intercept->service_name, pcb);
 
     if (err != ERR_OK) {
         ZITI_LOG(ERROR, "on_accept error %d", err);
-        free_intercept_ctx(intercept);
+        free_intercept_ctx(&intercept);
         return err;
     }
 
@@ -191,7 +218,7 @@ static err_t on_accept(void *intercept_ctx, struct tcp_pcb *pcb, err_t err) {
     void *ziti_io_ctx = zdial(intercept->service_name, intercept->ziti_ctx, tnlr_io_ctx);
     if (ziti_io_ctx == NULL) {
         ZITI_LOG(ERROR, "ziti_dial(%s) failed", intercept->service_name);
-        free_intercept_ctx(intercept);
+        free_intercept_ctx(&intercept);
         return ERR_CONN;
     }
 
@@ -256,14 +283,28 @@ int NF_tunneler_intercept_v1(tunneler_context tnlr_ctx, const void *ziti_ctx, co
 }
 
 /** called by tunneler application when data is read from a ziti connection */
-int NF_tunneler_write(tunneler_io_context tnlr_io_ctx, const void *data, int len) {
-    struct tcp_pcb *pcb = tnlr_io_ctx->pcb;
+int NF_tunneler_write(tunneler_io_context *tnlr_io_ctx, const void *data, size_t len) {
+    if (tnlr_io_ctx == NULL || *tnlr_io_ctx == NULL) {
+        ZITI_LOG(WARN, "null tunneler io context");
+        return -1;
+    }
+
+    struct tcp_pcb *pcb = (*tnlr_io_ctx)->pcb;
+    if (pcb == NULL) {
+        ZITI_LOG(WARN, "null pcb");
+        NF_tunneler_close(tnlr_io_ctx);
+        return -1;
+    }
 
     // TODO deal with ERR_MEM.
-    err_t w_err = tcp_write(pcb, data, len, 0);
+    int maxlen = tcp_sndbuf(pcb);
+    if (maxlen < len) {
+        ZITI_LOG(INFO, "we are in for it now %d < %ld", maxlen, len);
+    }
+    err_t w_err = tcp_write(pcb, data, len, TCP_WRITE_FLAG_COPY); // TODO hold data until client acks... via on_client_ack maybe? then we wouldn't need to copy here.
     if (w_err != ERR_OK) {
-        ZITI_LOG(ERROR, "failed to tcp_write %d", w_err);
-        tcp_close(pcb);
+        ZITI_LOG(ERROR, "failed to tcp_write %d (%d, %ld)", w_err, maxlen, len);
+        NF_tunneler_close(tnlr_io_ctx);
         return -1;
     }
 
@@ -277,23 +318,24 @@ int NF_tunneler_write(tunneler_io_context tnlr_io_ctx, const void *data, int len
 
 /** called by tunneler application when a ziti connection closes */
 int NF_tunneler_close(tunneler_io_context *tnlr_io_ctx) {
-    if (tnlr_io_ctx == NULL) {
-        ZITI_LOG(ERROR, "invalid tnlr_io_ctx");
-        return -1;
-    }
-
-    if (*tnlr_io_ctx != NULL) {
-        if (tcp_close((*tnlr_io_ctx)->pcb) != ERR_OK) {
-            ZITI_LOG(ERROR, "failed to tcp_close");
-            return -1;
+    if (tnlr_io_ctx != NULL && *tnlr_io_ctx != NULL) {
+        if ((*tnlr_io_ctx)->pcb != NULL) {
+            tcp_arg((*tnlr_io_ctx)->pcb, NULL);
+            tcp_recv((*tnlr_io_ctx)->pcb, NULL);
+            if (tcp_close((*tnlr_io_ctx)->pcb) != ERR_OK) {
+                ZITI_LOG(ERROR, "failed to tcp_close");
+                return -1;
+            }
+            (*tnlr_io_ctx)->pcb = NULL;
         }
         free(*tnlr_io_ctx);
+        *tnlr_io_ctx = NULL;
     }
 
     return 0;
 }
 
-void on_tun_data(uv_poll_t * req, int status, int events) {
+static void on_tun_data(uv_poll_t * req, int status, int events) {
     if (status != 0) {
         ZITI_LOG(WARN, "on_tun_data: not sure why status is %d", status);
         return;
