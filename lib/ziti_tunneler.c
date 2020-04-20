@@ -362,8 +362,8 @@ static void run_packet_loop(uv_loop_t *loop, tunneler_context tnlr_ctx) {
 
 static void on_udp_packet(void *arg, struct udp_pcb *pcb, struct pbuf *p, const ip_addr_t *addr, u16_t port) {
     tunneler_io_context ctx = arg;
-
     ctx->udp.cb(ctx, ctx->udp.ctx, (addr_t)addr, port, p->payload, p->len);
+    pbuf_free(p);
 }
 
 extern int NF_udp_handler(tunneler_context tnlr_ctx, const char *hostname, int port, ziti_udp_cb cb, void *data) {
