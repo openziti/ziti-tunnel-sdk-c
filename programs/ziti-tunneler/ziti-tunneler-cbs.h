@@ -1,12 +1,12 @@
 #ifndef ZITI_TUNNELER_SDK_ZITI_TUNNELER_CBS_H
 #define ZITI_TUNNELER_SDK_ZITI_TUNNELER_CBS_H
 
+#include "nf/ziti_tunneler.h"
+#include "nf/ziti.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-#include "nf/ziti_tunneler.h"
-#include "nf/ziti.h"
 
 /** context passed through the tunneler SDK */
 typedef struct ziti_ctx_s {
