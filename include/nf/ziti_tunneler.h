@@ -38,7 +38,7 @@ typedef struct tunneler_io_ctx_s *tunneler_io_context;
  * implementations are expected to dial the service and return
  * context that will be passed to ziti_read/ziti_write */
 typedef void * (*ziti_dial_cb)(const char *service_name, const void *ziti_dial_ctx, tunneler_io_context tnlr_io_ctx);
-typedef void (*ziti_close_cb)(const void *ziti_dial_ctx);
+typedef void (*ziti_close_cb)(void *ziti_dial_ctx);
 
 /** */
 typedef enum {

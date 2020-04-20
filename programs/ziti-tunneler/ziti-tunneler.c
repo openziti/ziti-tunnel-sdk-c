@@ -67,9 +67,9 @@ int main(int argc, char *argv[]) {
 
     tunneler_sdk_options tunneler_opts = {
             .netif_driver = tun,
-            .ziti_dial = my_ziti_dial,
-            .ziti_close = my_ziti_close,
-            .ziti_write = my_ziti_write
+            .ziti_dial = ziti_sdk_c_dial,
+            .ziti_close = ziti_sdk_c_close,
+            .ziti_write = ziti_sdk_c_write
     };
     tunneler_context tnlr_ctx = NF_tunneler_init(&tunneler_opts, nf_loop);
 
