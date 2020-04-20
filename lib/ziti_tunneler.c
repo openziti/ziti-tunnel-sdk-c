@@ -20,12 +20,15 @@ limitations under the License.
 #endif
 
 #include "lwip/init.h"
+#include "lwip/ip_addr.h"
 #include "lwip/tcp.h"
 #include "lwip/timeouts.h"
 #include "netif_shim.h"
 #include "nf/ziti_tunneler.h"
 #include "uv.h"
-#include "priv/ziti_utils.h"
+#include <nf/ziti_log.h>
+#include <lwip/udp.h>
+#include <assert.h>
 
 // TODO this should be defined in liblwipcore.a (ip.o), but link fails unless we define it here (or link in lwip's ip.o)
 struct ip_globals ip_data;
@@ -45,6 +48,11 @@ struct intercept_s {
 };
 #endif
 
+typedef enum  {
+    tun_tcp,
+    tun_udp
+} tunneler_proto_type;
+
 struct tunneler_ctx_s {
     tunneler_sdk_options opts;
     struct netif netif;
@@ -62,7 +70,15 @@ typedef struct intercept_ctx_s {
 
 struct tunneler_io_ctx_s {
     tunneler_context   tnlr_ctx;
-    struct tcp_pcb *   pcb;
+    tunneler_proto_type proto;
+    union {
+        struct tcp_pcb *tcp;
+        struct {
+            struct udp_pcb *pcb;
+            ziti_udp_cb cb;
+            void *ctx;
+        } udp;
+    };
 };
 
 struct io_ctx_s {
@@ -142,7 +158,8 @@ static tunneler_io_context new_tunneler_io_context(tunneler_context tnlr_ctx, st
         return NULL;
     }
     ctx->tnlr_ctx = tnlr_ctx;
-    ctx->pcb = pcb;
+    ctx->proto = tun_tcp;
+    ctx->tcp = pcb;
     return ctx;
 }
 
@@ -257,7 +274,8 @@ int NF_tunneler_intercept_v1(tunneler_context tnlr_ctx, const void *ziti_ctx, co
 
 /** called by tunneler application when data is read from a ziti connection */
 int NF_tunneler_write(tunneler_io_context tnlr_io_ctx, const void *data, int len) {
-    struct tcp_pcb *pcb = tnlr_io_ctx->pcb;
+    assert(tnlr_io_ctx->proto == tun_tcp);
+    struct tcp_pcb *pcb = tnlr_io_ctx->tcp;
 
     // TODO deal with ERR_MEM.
     err_t w_err = tcp_write(pcb, data, len, 0);
@@ -283,7 +301,7 @@ int NF_tunneler_close(tunneler_io_context *tnlr_io_ctx) {
     }
 
     if (*tnlr_io_ctx != NULL) {
-        if (tcp_close((*tnlr_io_ctx)->pcb) != ERR_OK) {
+        if (tcp_close((*tnlr_io_ctx)->tcp) != ERR_OK) {
             ZITI_LOG(ERROR, "failed to tcp_close");
             return -1;
         }
@@ -340,4 +358,53 @@ static void run_packet_loop(uv_loop_t *loop, tunneler_context tnlr_ctx) {
 
     uv_timer_init(loop, &tnlr_ctx->lwip_timer_req);
     uv_timer_start(&tnlr_ctx->lwip_timer_req, check_lwip_timeouts, 0, 100);
+}
+
+static void on_udp_packet(void *arg, struct udp_pcb *pcb, struct pbuf *p, const ip_addr_t *addr, u16_t port) {
+    tunneler_io_context ctx = arg;
+
+    ctx->udp.cb(ctx, ctx->udp.ctx, (addr_t)addr, port, p->payload, p->len);
+}
+
+extern int NF_udp_handler(tunneler_context tnlr_ctx, const char *hostname, int port, ziti_udp_cb cb, void *data) {
+    struct udp_pcb *pcb;
+
+    if ((pcb = udp_new()) == NULL) {
+        ZITI_LOG(ERROR, "failed to allocate pcb for %s", hostname);
+        return -1;
+    }
+
+    ip_addr_t a;
+    if (ipaddr_aton(hostname, &a) == 0) {
+        ZITI_LOG(ERROR, "invalid intercept ip %s", hostname);
+        free(pcb);
+        return -1;
+    }
+
+    err_t err;
+    if ((err = udp_bind(pcb, &a, port)) != ERR_OK) {
+        fprintf(stderr, "failed to bind address: error %d\n", err);
+        free(pcb);
+        return -1;
+    }
+
+    udp_bind_netif(pcb, netif_default);
+    tunneler_io_context ctx = (tunneler_io_context)calloc(1, sizeof(struct tunneler_io_ctx_s));
+    ctx->tnlr_ctx = tnlr_ctx;
+    ctx->proto = tun_udp;
+    ctx->udp.pcb = pcb;
+    ctx->udp.cb = cb;
+    ctx->udp.ctx = data;
+    udp_recv(pcb, on_udp_packet, ctx);
+
+    return 0;
+}
+
+extern int NF_udp_send(tunneler_io_context tio, addr_t dest, u16_t dport, const void* data, ssize_t len) {
+    assert(tio->proto == tun_udp);
+    struct pbuf *p = pbuf_alloc(PBUF_TRANSPORT, len, PBUF_RAM);
+    memcpy(p->payload, data, len);
+    err_t rc = udp_sendto_if_src(tio->udp.pcb, p, dest, dport, netif_default, &tio->udp.pcb->local_ip);
+    pbuf_free(p);
+    return rc;
 }
