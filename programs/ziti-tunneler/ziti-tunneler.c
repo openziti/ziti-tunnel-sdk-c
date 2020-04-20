@@ -4,7 +4,8 @@
 #include "uv.h"
 #include "nf/ziti.h"
 #include "nf/ziti_tunneler.h"
-#include "ziti-tunneler-cbs.h"
+#include "nf/ziti_tunneler_cbs.h"
+
 #if __APPLE__ && __MACH__
 #include "netif_driver/darwin/utun.h"
 #elif __linux__
