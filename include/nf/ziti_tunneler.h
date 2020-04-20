@@ -23,7 +23,6 @@ limitations under the License.
 #ifndef NF_ZITI_TUNNELER_SDK_ZITI_TUNNELER_H
 #define NF_ZITI_TUNNELER_SDK_ZITI_TUNNELER_H
 
-// #include <sys/socket.h>
 #include "uv.h"
 #include "nf/netif_driver.h"
 
