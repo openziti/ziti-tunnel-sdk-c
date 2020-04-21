@@ -4,6 +4,8 @@
 #include "uv.h"
 #include "nf/ziti.h"
 #include "nf/ziti_tunneler.h"
+#include "nf/ziti_tunneler_cbs.h"
+
 #if __APPLE__ && __MACH__
 #include "netif_driver/darwin/utun.h"
 #elif __linux__
@@ -11,102 +13,6 @@
 #else
 #error "please port this file to your operating system"
 #endif
-
-/** context passed through the tunneler SDK */
-typedef struct ziti_ctx_s {
-    void *  nf_ctx;
-} ziti_context;
-
-/** context passed through the tunneler SDK for network i/o */
-typedef struct ziti_io_ctx_s {
-    ziti_conn_state      state;
-    nf_connection        nf_conn;
-    tunneler_io_context  tnlr_io_ctx;
-} ziti_io_context;
-
-void on_ziti_connect(nf_connection conn, int status) {
-    fprintf(stderr, "on_ziti_connect status: %d\n", status);
-    ziti_io_context *ziti_io_ctx = NF_conn_data(conn);
-    if (status == ZITI_OK) {
-        ziti_io_ctx->state = ZITI_CONNECTED;
-    } else {
-        ziti_io_ctx->state = ZITI_FAILED;
-        free(ziti_io_ctx);
-    }
-}
-
-/** called by tunneler SDK after a client connection is closed */
-static void my_ziti_close(void *ziti_io_ctx) {
-    ziti_io_context *_ziti_io_ctx = ziti_io_ctx;
-    if (_ziti_io_ctx->nf_conn != NULL) {
-        NF_close(&_ziti_io_ctx->nf_conn);
-    }
-    //free(_ziti_io_ctx); // TODO don't know when it's OK to free this
-}
-
-/** called by ziti SDK when data arrives or the service app closes */
-void on_ziti_data(nf_connection conn, uint8_t *data, ssize_t len) {
-    fprintf(stderr, "on_ziti_data: %ld bytes!\n", len);
-    ziti_io_context *ziti_io_ctx = NF_conn_data(conn);
-    if (ziti_io_ctx->tnlr_io_ctx == NULL) {
-        fprintf(stderr, "bad ziti_io_context\n");
-        return;
-    }
-    if (len > 0) {
-         if (NF_tunneler_write(&ziti_io_ctx->tnlr_io_ctx, data, len) < 0) {
-             my_ziti_close(ziti_io_ctx);
-         }
-    } else {
-        NF_tunneler_close(&ziti_io_ctx->tnlr_io_ctx);
-    }
-}
-
-/** called by tunneler SDK after a client connection is intercepted */
-void * my_ziti_dial(const char *service_name, const void *ziti_ctx, tunneler_io_context tnlr_io_ctx) {
-    fprintf(stderr, "my_ziti_dial(%s)\n", service_name);
-    ziti_context *zctx = (ziti_context *)ziti_ctx;
-
-    ziti_io_context *ziti_io_ctx = malloc(sizeof(struct ziti_io_ctx_s));
-    if (ziti_io_ctx == NULL) {
-        fprintf(stderr, "failed to allocate io context\n");
-        return NULL;
-    }
-    ziti_io_ctx->state = ZITI_CONNECTING;
-    ziti_io_ctx->tnlr_io_ctx = tnlr_io_ctx;
-
-    if (NF_conn_init(zctx->nf_ctx, &ziti_io_ctx->nf_conn, ziti_io_ctx) != ZITI_OK) {
-        fprintf(stderr, "NF_conn_init failed\n");
-        free(ziti_io_ctx);
-        return NULL;
-    }
-
-    if (NF_dial(ziti_io_ctx->nf_conn, service_name, on_ziti_connect, on_ziti_data) != ZITI_OK) {
-        fprintf(stderr, "NF_dial failed\n");
-        free(ziti_io_ctx);
-        return NULL;
-    }
-
-    return ziti_io_ctx;
-}
-
-static void on_ziti_write(nf_connection nf_conn, ssize_t len, void *ctx) {
-    NF_tunneler_ack(ctx);
-}
-
-/** called from tunneler SDK when intercepted client sends data */
-ziti_conn_state my_ziti_write(const void *ziti_io_ctx, void *write_ctx, const void *data, int len) {
-    struct ziti_io_ctx_s *_ziti_io_ctx = (struct ziti_io_ctx_s *)ziti_io_ctx;
-
-    if (_ziti_io_ctx->state != ZITI_CONNECTED) {
-        return _ziti_io_ctx->state;
-    }
-
-    if (NF_write(_ziti_io_ctx->nf_conn, (void *)data, len, on_ziti_write, write_ctx) == ZITI_OK) {
-        return ZITI_CONNECTED;
-    }
-
-    return ZITI_FAILED;
-}
 
 /** callback from ziti SDK when a new service becomes available to our identity */
 void on_service(nf_context nf_ctx, ziti_service *service, int status, void *tnlr_ctx) {
@@ -161,9 +67,9 @@ int main(int argc, char *argv[]) {
 
     tunneler_sdk_options tunneler_opts = {
             .netif_driver = tun,
-            .ziti_dial = my_ziti_dial,
-            .ziti_close = my_ziti_close,
-            .ziti_write = my_ziti_write
+            .ziti_dial = ziti_sdk_c_dial,
+            .ziti_close = ziti_sdk_c_close,
+            .ziti_write = ziti_sdk_c_write
     };
     tunneler_context tnlr_ctx = NF_tunneler_init(&tunneler_opts, nf_loop);
 
