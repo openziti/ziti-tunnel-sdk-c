@@ -1,7 +1,7 @@
 #ifndef _lwipopts_h_
 #define _lwipopts_h_ 1
 
-#define NO_SYS 0
+#define NO_SYS 1
 
 #define MEM_SIZE              524288      /* the size of the heap memory (1600) */
 
@@ -24,8 +24,8 @@
 #define LWIP_SINGLE_NETIF 1
 
 // APIs
-#define LWIP_RAW 0
-#define LWIP_NETCONN 1
+#define LWIP_RAW 1
+#define LWIP_NETCONN 0
 #define LWIP_SOCKET 0
 
 #ifdef _WIN32
