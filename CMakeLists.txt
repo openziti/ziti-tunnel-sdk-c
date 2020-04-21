@@ -22,6 +22,13 @@ endif()
 
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
-install(TARGETS lwipcore lwipwin32arch ziti_tunneler
+
+install(TARGETS lwipcore ziti_tunneler ziti_tunneler_cbs
         DESTINATION ${CMAKE_INSTALL_LIBDIR}
         )
+
+if (WIN32)
+install(TARGETS lwipwin32arch
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        )
+endif()

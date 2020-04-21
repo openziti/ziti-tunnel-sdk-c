@@ -37,8 +37,8 @@ typedef struct tunneler_io_ctx_s *tunneler_io_context;
  * called when a client connection is intercepted.
  * implementations are expected to dial the service and return
  * context that will be passed to ziti_read/ziti_write */
-typedef void * (*ziti_dial_cb)(const char *service_name, const void *ziti_dial_ctx, tunneler_io_context tnlr_io_ctx);
-typedef void (*ziti_close_cb)(void *ziti_dial_ctx);
+typedef void * (*ziti_dial_cb)(const char *service_name, const void *ziti_ctx, tunneler_io_context tnlr_io_ctx);
+typedef void (*ziti_close_cb)(void *ziti_io_ctx);
 
 /** */
 typedef enum {
@@ -48,7 +48,7 @@ typedef enum {
 } ziti_conn_state;
 
 /** */
-typedef ziti_conn_state (*ziti_write_cb)(const void *ziti_io_ctx, const void *data, int len);
+typedef ziti_conn_state (*ziti_write_cb)(const void *ziti_io_ctx, void *write_ctx, const void *data, int len);
 
 typedef struct tunneler_sdk_options_s {
     netif_driver   netif_driver;
@@ -61,8 +61,9 @@ extern tunneler_context NF_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *
 
 extern int NF_tunneler_intercept_v1(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_name, const char *hostname, int port);
 
-extern int NF_tunneler_write(tunneler_io_context tnlr_io_ctx, const void *data, int len);
+extern int NF_tunneler_write(tunneler_io_context *tnlr_io_ctx, const void *data, size_t len);
 
+extern int NF_tunneler_ack(void *write_ctx);
 extern int NF_tunneler_close(tunneler_io_context *tnlr_io_ctx);
 
 

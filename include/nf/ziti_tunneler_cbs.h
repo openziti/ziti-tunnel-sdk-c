@@ -24,7 +24,7 @@ typedef struct ziti_io_ctx_s {
 void *ziti_sdk_c_dial(const char *service_name, const void *ziti_ctx, tunneler_io_context tnlr_io_ctx);
 
 /** called from tunneler SDK when intercepted client sends data */
-ziti_conn_state ziti_sdk_c_write(const void *ziti_io_ctx, const void *data, int len);
+ziti_conn_state ziti_sdk_c_write(const void *ziti_io_ctx, void *write_ctx, const void *data, int len);
 
 /** called by tunneler SDK after a client connection is closed */
 void ziti_sdk_c_close(void *ziti_io_ctx);

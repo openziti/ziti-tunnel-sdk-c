@@ -48,13 +48,14 @@ target_include_directories(ziti_tunneler
         )
 
 if(WIN32)
-add_library(lwipwin32arch STATIC
-        ${LWIP_CONTRIB_DIR}/ports/win32/sys_arch.c)
-target_include_directories(lwipwin32arch
-        PUBLIC "${LWIP_DIR}/src/include"
-        PUBLIC "${LWIP_CONTRIB_INCLUDE}"
-        PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/lwip"
-)
+    add_library(lwipwin32arch STATIC
+            ${LWIP_CONTRIB_DIR}/ports/win32/sys_arch.c)
+
+    target_include_directories(lwipwin32arch
+            PUBLIC "${LWIP_DIR}/src/include"
+            PUBLIC "${LWIP_CONTRIB_INCLUDE}"
+            PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/lwip"
+            )
 endif()
 
 target_link_libraries(ziti_tunneler

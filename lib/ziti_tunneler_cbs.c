@@ -14,19 +14,26 @@ void on_ziti_connect(nf_connection conn, int status) {
 void on_ziti_data(nf_connection conn, uint8_t *data, ssize_t len) {
     fprintf(stderr, "on_ziti_data: %p %ld bytes!\n", data, len);
     ziti_io_context *ziti_io_ctx = NF_conn_data(conn);
+    if (ziti_io_ctx->tnlr_io_ctx == NULL) {
+        fprintf(stderr, "bad ziti_io_context\n");
+        return;
+    }
     if (len > 0) {
-        NF_tunneler_write(ziti_io_ctx->tnlr_io_ctx, data, len);
+        if (NF_tunneler_write(&ziti_io_ctx->tnlr_io_ctx, data, len) < 0) {
+            ziti_sdk_c_close(ziti_io_ctx);
+        }
     } else {
         NF_tunneler_close(&ziti_io_ctx->tnlr_io_ctx);
-        free(ziti_io_ctx);
     }
 }
 
 /** called by tunneler SDK after a client connection is closed */
 void ziti_sdk_c_close(void *ziti_io_ctx) {
     ziti_io_context *_ziti_io_ctx = ziti_io_ctx;
-    NF_close(&_ziti_io_ctx->nf_conn);
-    free(ziti_io_ctx);
+    if (_ziti_io_ctx->nf_conn != NULL) {
+        NF_close(&_ziti_io_ctx->nf_conn);
+    }
+    //free(_ziti_io_ctx); // TODO don't know when it's OK to free this
 }
 
 /** called by tunneler SDK after a client connection is intercepted */
@@ -57,12 +64,13 @@ void * ziti_sdk_c_dial(const char *service_name, const void *ziti_ctx, tunneler_
     return ziti_io_ctx;
 }
 
+/** called by ziti SDK when data transfer initiated by NF_write completes */
 static void on_ziti_write(nf_connection nf_conn, ssize_t len, void *ctx) {
-    // TODO the implementation for this will be merged in from branch mem-fixes.
+    NF_tunneler_ack(ctx);
 }
 
 /** called from tunneler SDK when intercepted client sends data */
-ziti_conn_state ziti_sdk_c_write(const void *ziti_io_ctx, const void *data, int len) {
+ziti_conn_state ziti_sdk_c_write(const void *ziti_io_ctx, void *write_ctx, const void *data, int len) {
     struct ziti_io_ctx_s *_ziti_io_ctx = (struct ziti_io_ctx_s *)ziti_io_ctx;
 //    fprintf(stderr, "ziti_write: state %d, %d bytes\n", _ziti_io_ctx->state, len);
 
@@ -70,7 +78,7 @@ ziti_conn_state ziti_sdk_c_write(const void *ziti_io_ctx, const void *data, int 
         return _ziti_io_ctx->state;
     }
 
-    if (NF_write(_ziti_io_ctx->nf_conn, (void *)data, len, on_ziti_write, NULL) == ZITI_OK) {
+    if (NF_write(_ziti_io_ctx->nf_conn, (void *)data, len, on_ziti_write, write_ctx) == ZITI_OK) {
         return ZITI_CONNECTED;
     }
 
