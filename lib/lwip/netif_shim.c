@@ -2,7 +2,6 @@
 
 #define LWIP_DONT_PROVIDE_BYTEORDER_FUNCTIONS 1
 
-#include <nf/ziti_log.h>
 #include "lwip/err.h"
 #include "lwip/pbuf.h"
 #include "lwip/ip_addr.h"
@@ -25,7 +24,7 @@ static err_t netif_shim_output(struct netif *netif, struct pbuf *p, const ip4_ad
 
     u16_t copied = pbuf_copy_partial(p, shim_buffer, p->tot_len, 0);
     if (copied != p->tot_len) {
-        ZITI_LOG(ERROR, "pbuf_copy_partial() failed %d/%d", copied, p->tot_len);
+        fprintf(stderr, "pbuf_copy_partial() failed %d/%d", copied, p->tot_len);
         return ERR_BUF; // ?
     }
     dev->write(dev->handle, shim_buffer, p->tot_len);
