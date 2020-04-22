@@ -126,6 +126,10 @@ static void free_tunneler_io_context(tunneler_io_context *tnlr_io_ctx) {
  * pbuf will be null if client has closed the connection.
  */
 static err_t on_client_data(void *io_ctx, struct tcp_pcb *pcb, struct pbuf *p, err_t err) {
+    if (io_ctx == NULL) {
+        ZITI_LOG(INFO, "conn was closed err=%d", err);
+        return ERR_OK;
+    }
     ZITI_LOG(DEBUG, "on_client_data status %d", err);
     struct io_ctx_s *_io_ctx = (struct io_ctx_s *)io_ctx;
     if (err == ERR_OK && p == NULL) {
@@ -168,8 +172,14 @@ int NF_tunneler_ack(void *write_ctx) {
 }
 
 void  on_client_err(void *io_ctx, err_t err) {
-    struct io_ctx_s *_io_ctx = (struct io_ctx_s *)io_ctx;
-    ZITI_LOG(ERROR, "on_client_err %p err=%d", _io_ctx->ziti_io_ctx, err);
+    // we initiated close and cleared arg err should be ERR_ABRT
+    if (io_ctx == NULL) {
+        ZITI_LOG(TRACE, "client finished err=%d", err);
+    }
+    else {
+        // TODO handle better?
+        ZITI_LOG(ERROR, "unhandled client err=%d", err);
+    }
 }
 
 /** called by lwip when client sends a TCP ack */
@@ -363,7 +373,7 @@ int NF_tunneler_close(tunneler_io_context *tnlr_io_ctx) {
 
 static void on_tun_data(uv_poll_t * req, int status, int events) {
     if (status != 0) {
-        ZITI_LOG(WARN, "on_tun_data: not sure why status is %d", status);
+        ZITI_LOG(WARN, "not sure why status is %d", status);
         return;
     }
 
