@@ -30,6 +30,11 @@ limitations under the License.
 #include <lwip/udp.h>
 #include <assert.h>
 
+#ifndef _WIN32
+#include <sys/param.h>
+#define min(x,y) MIN((x),(y))
+#endif
+
 // TODO this should be defined in liblwipcore.a (ip.o), but link fails unless we define it here (or link in lwip's ip.o)
 struct ip_globals ip_data;
 
