@@ -30,6 +30,11 @@ limitations under the License.
 #include <lwip/udp.h>
 #include <assert.h>
 
+#ifndef _WIN32
+#include <sys/param.h>
+#define min(x,y) MIN((x),(y))
+#endif
+
 // TODO this should be defined in liblwipcore.a (ip.o), but link fails unless we define it here (or link in lwip's ip.o)
 struct ip_globals ip_data;
 
@@ -126,6 +131,10 @@ static void free_tunneler_io_context(tunneler_io_context *tnlr_io_ctx) {
  * pbuf will be null if client has closed the connection.
  */
 static err_t on_client_data(void *io_ctx, struct tcp_pcb *pcb, struct pbuf *p, err_t err) {
+    if (io_ctx == NULL) {
+        ZITI_LOG(INFO, "conn was closed err=%d", err);
+        return ERR_OK;
+    }
     ZITI_LOG(DEBUG, "on_client_data status %d", err);
     struct io_ctx_s *_io_ctx = (struct io_ctx_s *)io_ctx;
     if (err == ERR_OK && p == NULL) {
@@ -167,9 +176,20 @@ int NF_tunneler_ack(void *write_ctx) {
     return 0;
 }
 
+void  on_client_err(void *io_ctx, err_t err) {
+    // we initiated close and cleared arg err should be ERR_ABRT
+    if (io_ctx == NULL) {
+        ZITI_LOG(TRACE, "client finished err=%d", err);
+    }
+    else {
+        // TODO handle better?
+        ZITI_LOG(ERROR, "unhandled client err=%d", err);
+    }
+}
+
 /** called by lwip when client sends a TCP ack */
 static err_t on_client_ack(void *io_ctx, struct tcp_pcb *pcb, u16_t len) {
-    ZITI_LOG(INFO, "on_client_ack %d bytes", len);
+    ZITI_LOG(VERBOSE, "on_client_ack %d bytes", len);
     return ERR_OK;
 }
 
@@ -246,6 +266,7 @@ static err_t on_accept(void *intercept_ctx, struct tcp_pcb *pcb, err_t err) {
     tcp_arg(pcb, io_ctx);
     tcp_recv(pcb, on_client_data);
     tcp_sent(pcb, on_client_ack);
+    tcp_err(pcb, on_client_err);
 
     return ERR_OK;
 }
@@ -273,13 +294,13 @@ int NF_tunneler_intercept_v1(tunneler_context tnlr_ctx, const void *ziti_ctx, co
      */
     err_t err;
     if ((err = tcp_bind(pcb, &a, port)) != ERR_OK) {
-        fprintf(stderr, "failed to bind address: error %d\n", err);
+        ZITI_LOG(ERROR, "failed to bind address: error %d", err);
         tcp_close(pcb);
         return -1;
     }
 
     if ((pcb = tcp_listen_with_backlog(pcb, TCP_DEFAULT_LISTEN_BACKLOG)) == NULL) {
-        fprintf(stderr, "tcp_listen failed\n");
+        ZITI_LOG(ERROR, "tcp_listen failed");
         return -1;
     }
     tcp_bind_netif(pcb, netif_default);
@@ -314,14 +335,16 @@ int NF_tunneler_write(tunneler_io_context *tnlr_io_ctx, const void *data, size_t
         return -1;
     }
 
-    // TODO deal with ERR_MEM.
-    int maxlen = tcp_sndbuf(pcb);
-    if (maxlen < len) {
-        ZITI_LOG(INFO, "we are in for it now %d < %ld", maxlen, len);
+    int qlen = tcp_sndqueuelen(pcb);
+    if (qlen > TCP_SND_QUEUELEN) {
+        ZITI_LOG(INFO, "we are in for it now sndqueuelen %d, %d", qlen, TCP_SND_QUEUELEN);
     }
-    err_t w_err = tcp_write(pcb, data, len, TCP_WRITE_FLAG_COPY); // TODO hold data until client acks... via on_client_ack maybe? then we wouldn't need to copy here.
+    // avoid ERR_MEM.
+    int sendlen = min(len, tcp_sndbuf(pcb));
+
+    err_t w_err = tcp_write(pcb, data, (u16_t)sendlen, TCP_WRITE_FLAG_COPY); // TODO hold data until client acks... via on_client_ack maybe? then we wouldn't need to copy here.
     if (w_err != ERR_OK) {
-        ZITI_LOG(ERROR, "failed to tcp_write %d (%d, %ld)", w_err, maxlen, len);
+        ZITI_LOG(ERROR, "failed to tcp_write %d (%d, %zd)", w_err, sendlen, len);
         NF_tunneler_close(tnlr_io_ctx);
         return -1;
     }
@@ -331,7 +354,7 @@ int NF_tunneler_write(tunneler_io_context *tnlr_io_ctx, const void *data, size_t
         return -1;
     }
 
-    return 0;
+    return sendlen;
 }
 
 /** called by tunneler application when a ziti connection closes */
@@ -355,7 +378,7 @@ int NF_tunneler_close(tunneler_io_context *tnlr_io_ctx) {
 
 static void on_tun_data(uv_poll_t * req, int status, int events) {
     if (status != 0) {
-        ZITI_LOG(WARN, "on_tun_data: not sure why status is %d", status);
+        ZITI_LOG(WARN, "not sure why status is %d", status);
         return;
     }
 
@@ -425,7 +448,7 @@ extern int NF_udp_handler(tunneler_context tnlr_ctx, const char *hostname, int p
 
     err_t err;
     if ((err = udp_bind(pcb, &a, port)) != ERR_OK) {
-        fprintf(stderr, "failed to bind address: error %d\n", err);
+        ZITI_LOG(ERROR, "failed to bind address: error %d", err);
         free(pcb);
         return -1;
     }
