@@ -20,9 +20,6 @@ limitations under the License.
 #endif
 
 #include "lwip/init.h"
-#include "lwip/ip_addr.h"
-#include "lwip/tcp.h"
-#include "lwip/prot/tcp.h"
 #include "lwip/priv/tcp_priv.h"
 #include "lwip/raw.h"
 #include "lwip/timeouts.h"
@@ -395,8 +392,8 @@ static struct raw_pcb *setup_handler(u8_t proto, raw_recv_fn recv_fn, void *arg)
         return NULL;
     }
 
-    if ((err = raw_bind(pcb, IP_ANY_TYPE/*IP_ADDR_ANY*/)) != ERR_OK) {
-        ZITI_LOG(ERROR, "failed to bind IP_ADDR_ANY for protocol %d: error %d", proto, err);
+    if ((err = raw_bind(pcb, IP_ANY_TYPE)) != ERR_OK) {
+        ZITI_LOG(ERROR, "failed to bind for protocol %d: error %d", proto, err);
         raw_remove(pcb);
         return NULL;
     }
@@ -409,34 +406,64 @@ static struct raw_pcb *setup_handler(u8_t proto, raw_recv_fn recv_fn, void *arg)
 
 static u8_t active_phony = 0;
 
-static boolean_t is_active(const struct tcp_hdr *tcphdr) {
-    if (active_phony == 0) {
-        active_phony = 1;
-        return 0;
-    }
-    return 1;
+static u8_t is_active(const char *session_key) {
+    return active_phony;
 }
 
 static boolean_t is_intercepted() {
     return 1;
 }
 
+static ip_addr_t *resolve_intercepted_hostname(const char *hostname) {
+
+
+}
+
+/** return service name for a packet/segment based on destination address/port */
+static char *v1_service(const char *hostname, u16_t port) {
+    char *service = NULL;
+}
+
 /** called by lwip when a tcp segment arrives. return 1 to indicate that the IP packet was consumed. */
 static u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_addr_t *addr) {
     tunneler_context tnlr_ctx = tnlr_ctx_arg;
+    u16_t iphdr_hlen;
+    ip_addr_t src, dst;
+    char ip_version = IPH_V((struct ip_hdr *)(p->payload));
 
-    struct ip_hdr *iphdr = (struct ip_hdr *)p->payload;
-    char ip_version = IPH_V(iphdr);
-    if (ip_version != 4) {
-        ZITI_LOG(INFO, "unsupported IP protocol version: %d", ip_version);
-        return 0;
+    switch (ip_version) {
+        case 4: {
+            struct ip_hdr *iphdr = p->payload;
+            iphdr_hlen = IPH_HL_BYTES(iphdr);
+            ip_addr_copy_from_ip4(src, iphdr->src);
+            ip_addr_copy_from_ip4(dst, iphdr->dest);
+        }
+        break;
+        case 6: {
+            struct ip6_hdr *iphdr = p->payload;
+            iphdr_hlen = IP6_HLEN;
+            ip_addr_copy_from_ip6_packed(src, iphdr->src);
+            ip_addr_copy_from_ip6_packed(dst, iphdr->dest);
+        }
+        break;
+        default:
+            ZITI_LOG(INFO, "unsupported IP protocol version: %d", ip_version);
+            return 0;
     }
 
     /* reach into the pbuf to get to the TCP header */
-    u16_t iphdr_hlen = IPH_HL_BYTES(iphdr);
     struct tcp_hdr *tcphdr = (struct tcp_hdr *)(p->payload + iphdr_hlen);
-return 0;
-    if (is_active(tcphdr)) {
+    u16_t src_p = lwip_ntohs(tcphdr->src);
+    u16_t dst_p = lwip_ntohs(tcphdr->dest);
+
+    char session_key[64];
+
+    snprintf(session_key, sizeof(session_key), "TCP[%s:%d->%s:%d]",
+            ipaddr_ntoa(&src), src_p, ipaddr_ntoa(&dst), dst_p);
+
+    ZITI_LOG(INFO, "hello %s", session_key);
+
+    if (is_active(session_key)) {
         /* this segment belongs to an active connection; let lwip handle it. */
         return 0;
     }
@@ -471,8 +498,6 @@ return 0;
 
         return 1;
     }
-    u16_t src = lwip_ntohs(tcphdr->src);
-    u16_t dst = lwip_ntohs(tcphdr->dest);
 
     return 0;
 }
