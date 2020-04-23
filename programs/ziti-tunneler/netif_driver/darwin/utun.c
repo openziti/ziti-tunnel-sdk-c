@@ -120,6 +120,9 @@ int utun_setup(netif_handle dev, uv_loop_t *loop, packet_cb cb, void* netif) {
  * - ifconfig utun2 169.254.1.2/32 169.254.1.2
  * - route add -host 2.2.2.2 -interface utun2
  * - route add -host 1.2.3.4 -interface utun2
+ *
+ * - ifconfig utun4 inet6 2001:DB8:2:2::2/128
+ * - ifconfig utun4 inet6 2001:DB8:2:2::3/128 2001:DB8:2:2::3
  */
 netif_driver utun_open(char *error, size_t error_len) {
     if (error != NULL) {
