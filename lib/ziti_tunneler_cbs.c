@@ -15,8 +15,8 @@ void on_ziti_connect(nf_connection conn, int status) {
 
 ssize_t on_ziti_data(nf_connection conn, uint8_t *data, ssize_t len) {
     ziti_io_context *ziti_io_ctx = NF_conn_data(conn);
-    ZITI_LOG(TRACE, "on_ziti_data: %p %zd bytes!", ziti_io_ctx, len);
-    if (ziti_io_ctx->tnlr_io_ctx == NULL) {
+    ZITI_LOG(TRACE, "got %zd bytes from ziti", len);
+    if (ziti_io_ctx == NULL || ziti_io_ctx->tnlr_io_ctx == NULL) {
         ZITI_LOG(ERROR, "bad ziti_io_context");
         return len;
     }
