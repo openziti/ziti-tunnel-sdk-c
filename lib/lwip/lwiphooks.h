@@ -6,15 +6,15 @@
 #define ZITI_TUNNELER_SDK_LWIPHOOKS_H
 
 #include "lwip/pbuf.h"
-#if 0
-#include "lwip/tcp.h"
-#include "lwip/prot/tcp.h"
-#endif
 #include "netif_shim.h"
 
+/* enable the changes in our hook functions to accept all packets. */
+#define ZITI_TUNNELER_SDK_TAKE_ALL_PACKETS 1
+
 extern int ip4_input_hook(struct pbuf *pbuf, struct netif *input_netif);
-#if 0
-extern err_t tcp_inpkt_hook(struct tcp_pcb *pcb, struct tcp_hdr *hdr, u16_t optlen, u16_t opt1len, u8_t *opt2, struct pbuf *p);
+
+#if LWIP_IPV6
+extern int ip6_input_hook(struct pbuf *pbuf, struct netif *input_netif);
 #endif
 
 #endif //ZITI_TUNNELER_SDK_LWIPHOOKS_H

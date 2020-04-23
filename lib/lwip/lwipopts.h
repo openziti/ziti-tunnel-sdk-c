@@ -28,14 +28,17 @@
 #define LWIP_NETCONN 0
 #define LWIP_SOCKET 0
 
+// protocols
+#define LWIP_IPV6 1                      /* enable ipv6 */
+#define IPV6_FRAG_COPYHEADER 1           /* avoid assert in lwip code when ipv6 is enabled */
+
 #ifdef _WIN32
 #define LWIP_NORAND 1
 #endif
-// hooks
 
+// hooks
 #define LWIP_HOOK_FILENAME "lwiphooks.h"
 #define LWIP_HOOK_IP4_INPUT(pbuf, input_netif) ip4_input_hook((pbuf),(input_netif))
-#if 0
-#define LWIP_HOOK_TCP_INPACKET_PCB(pcb, hdr, optlen, opt1len, opt2, p) tcp_inpkt_hook((pcb),(hdr),(optlen),(opt1len),(opt2),(p))
-#endif
+#define LWIP_HOOK_IP6_INPUT(pbuf, input_netif) ip6_input_hook((pbuf),(input_netif))
+
 #endif // _lwipopts_h_

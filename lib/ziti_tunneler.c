@@ -22,6 +22,9 @@ limitations under the License.
 #include "lwip/init.h"
 #include "lwip/ip_addr.h"
 #include "lwip/tcp.h"
+#include "lwip/prot/tcp.h"
+#include "lwip/priv/tcp_priv.h"
+#include "lwip/raw.h"
 #include "lwip/timeouts.h"
 #include "netif_shim.h"
 #include "nf/ziti_tunneler.h"
@@ -61,6 +64,8 @@ typedef enum  {
 struct tunneler_ctx_s {
     tunneler_sdk_options opts;
     struct netif netif;
+    struct raw_pcb *tcp;
+    struct raw_pcb *udp;
     uv_poll_t    netif_poll_req;
     uv_timer_t   lwip_timer_req;
     struct intercept_s **intercepts;
@@ -381,6 +386,103 @@ static void check_lwip_timeouts(uv_timer_t * handle) {
     sys_check_timeouts();
 }
 
+static struct raw_pcb *setup_handler(u8_t proto, raw_recv_fn recv_fn, void *arg) {
+    err_t err;
+    struct raw_pcb *pcb;
+
+    if ((pcb = raw_new_ip_type(IPADDR_TYPE_ANY, proto)) == NULL) {
+        ZITI_LOG(ERROR, "failed to allocate raw pcb for protocol %d", proto);
+        return NULL;
+    }
+
+    if ((err = raw_bind(pcb, IP_ANY_TYPE/*IP_ADDR_ANY*/)) != ERR_OK) {
+        ZITI_LOG(ERROR, "failed to bind IP_ADDR_ANY for protocol %d: error %d", proto, err);
+        raw_remove(pcb);
+        return NULL;
+    }
+
+    raw_bind_netif(pcb, netif_default);
+    raw_recv(pcb, recv_fn, arg);
+
+    return pcb;
+}
+
+static u8_t active_phony = 0;
+
+static boolean_t is_active(const struct tcp_hdr *tcphdr) {
+    if (active_phony == 0) {
+        active_phony = 1;
+        return 0;
+    }
+    return 1;
+}
+
+static boolean_t is_intercepted() {
+    return 1;
+}
+
+/** called by lwip when a tcp segment arrives. return 1 to indicate that the IP packet was consumed. */
+static u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_addr_t *addr) {
+    tunneler_context tnlr_ctx = tnlr_ctx_arg;
+
+    struct ip_hdr *iphdr = (struct ip_hdr *)p->payload;
+    char ip_version = IPH_V(iphdr);
+    if (ip_version != 4) {
+        ZITI_LOG(INFO, "unsupported IP protocol version: %d", ip_version);
+        return 0;
+    }
+
+    /* reach into the pbuf to get to the TCP header */
+    u16_t iphdr_hlen = IPH_HL_BYTES(iphdr);
+    struct tcp_hdr *tcphdr = (struct tcp_hdr *)(p->payload + iphdr_hlen);
+return 0;
+    if (is_active(tcphdr)) {
+        /* this segment belongs to an active connection; let lwip handle it. */
+        return 0;
+    }
+
+    u8_t flags = TCPH_FLAGS(tcphdr);
+    if (is_intercepted() && flags & TCP_SYN) {
+        char *service_name = NULL; // TODO: get this
+        void *ziti_ctx = NULL; // TODO: get this
+        struct tcp_pcb *npcb = tcp_alloc(0); // TODO prio?
+
+        ziti_dial_cb zdial = tnlr_ctx->opts.ziti_dial;
+        // set up lwip to call on_client_data with this client's pcb and ziti_io_ctx;
+        tunneler_io_context tnlr_io_ctx = new_tunneler_io_context(tnlr_ctx, npcb);
+        void *ziti_io_ctx = zdial(service_name, ziti_ctx, tnlr_io_ctx);
+        if (ziti_io_ctx == NULL) {
+            ZITI_LOG(ERROR, "ziti_dial(%s) failed", service_name);
+            // abort connection -- SYN/NACK?
+            return 1;
+        }
+
+        struct io_ctx_s *io_ctx = malloc(sizeof(struct io_ctx_s));
+        io_ctx->tnlr_io_ctx = tnlr_io_ctx;
+        io_ctx->ziti_io_ctx = ziti_io_ctx;
+
+        tcp_arg(pcb, io_ctx);
+        tcp_recv(pcb, on_client_data);
+        tcp_sent(pcb, on_client_ack);
+        tcp_err(pcb, on_client_err);
+
+        /*  create a tcp_pcb that looks like tcp_listen_input() created it. */
+        /* OR create a listener pcb and let lwip handle it? */
+
+        return 1;
+    }
+    u16_t src = lwip_ntohs(tcphdr->src);
+    u16_t dst = lwip_ntohs(tcphdr->dest);
+
+    return 0;
+}
+
+/** called by lwip when a udp datagram arrives. return 1 to indicate that the IP packet was consumed. */
+static u8_t recv_udp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_addr_t *addr) {
+    tunneler_context tnlr_ctx = tnlr_ctx_arg;
+    return 0;
+}
+
 static void run_packet_loop(uv_loop_t *loop, tunneler_context tnlr_ctx) {
     if (tnlr_ctx->opts.ziti_close == NULL || tnlr_ctx->opts.ziti_dial == NULL || tnlr_ctx->opts.ziti_write == NULL) {
         ZITI_LOG(ERROR, "ziti_* callback options cannot be null");
@@ -409,6 +511,15 @@ static void run_packet_loop(uv_loop_t *loop, tunneler_context tnlr_ctx) {
         }
     } else {
         ZITI_LOG(WARN, "no method to initiate tunnel reader, maybe it's ok");
+    }
+
+    if ((tnlr_ctx->tcp = setup_handler(IP_PROTO_TCP, recv_tcp, tnlr_ctx)) == NULL) {
+        ZITI_LOG(ERROR, "tcp setup failed");
+        exit(1);
+    }
+    if ((tnlr_ctx->udp = setup_handler(IP_PROTO_UDP, recv_udp, tnlr_ctx)) == NULL) {
+        ZITI_LOG(ERROR, "udp setup failed");
+        exit(1);
     }
 
     uv_timer_init(loop, &tnlr_ctx->lwip_timer_req);
