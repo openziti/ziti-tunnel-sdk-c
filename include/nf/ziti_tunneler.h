@@ -33,6 +33,11 @@ extern "C" {
 typedef struct tunneler_ctx_s *tunneler_context;
 typedef struct tunneler_io_ctx_s *tunneler_io_context;
 
+struct io_ctx_s {
+    tunneler_io_context  tnlr_io_ctx;
+    void *               ziti_io_ctx; // context specific to ziti SDK being used by the app.
+};
+
 /**
  * called when a client connection is intercepted.
  * implementations are expected to dial the service and return
@@ -61,11 +66,14 @@ extern tunneler_context NF_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *
 
 extern int NF_tunneler_intercept_v1(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_name, const char *hostname, int port);
 
+extern void NF_tunneler_dial_completed(tunneler_io_context *tnlr_io_ctx, void *ziti_io_ctx);
+
 extern int NF_tunneler_write(tunneler_io_context *tnlr_io_ctx, const void *data, size_t len);
 
-extern int NF_tunneler_ack(void *write_ctx);
+extern void NF_tunneler_ack(void *write_ctx);
 extern int NF_tunneler_close(tunneler_io_context *tnlr_io_ctx);
 
+extern void free_tunneler_io_context(tunneler_io_context *tnlr_io_ctx);
 
 /**************** UDP support **************/
 /**
@@ -78,6 +86,34 @@ typedef void (*ziti_udp_cb)(tunneler_io_context tio, void *ctx,
         const void* data, ssize_t len);
 extern int NF_udp_handler(tunneler_context tnlr_ctx, const char *hostname, int port, ziti_udp_cb cb, void *ctx);
 extern int NF_udp_send(tunneler_io_context tio, addr_t dest, uint16_t dest_port, const void* data, ssize_t len);
+
+
+
+typedef enum  {
+    tun_tcp,
+    tun_udp
+} tunneler_proto_type;
+
+struct tunneler_io_ctx_s {
+    tunneler_context   tnlr_ctx;
+    tunneler_proto_type proto;
+    union {
+        struct tcp_pcb *tcp;
+        struct {
+            struct udp_pcb *pcb;
+            ziti_udp_cb cb;
+            void *ctx;
+        } udp;
+    };
+};
+
+extern uint8_t is_active(const char *session_key);
+
+struct write_ctx_s {
+    struct pbuf * pbuf;
+    struct tcp_pcb *pcb;
+};
+
 
 #ifdef __cplusplus
 }

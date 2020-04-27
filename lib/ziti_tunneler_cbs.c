@@ -6,6 +6,7 @@ void on_ziti_connect(nf_connection conn, int status) {
     ZITI_LOG(VERBOSE, "on_ziti_connect status: %d", status);
     ziti_io_context *ziti_io_ctx = NF_conn_data(conn);
     if (status == ZITI_OK) {
+        NF_tunneler_dial_completed(&ziti_io_ctx->tnlr_io_ctx, ziti_io_ctx);
         ziti_io_ctx->state = ZITI_CONNECTED;
     } else {
         ziti_io_ctx->state = ZITI_FAILED;

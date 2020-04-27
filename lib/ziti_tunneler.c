@@ -20,11 +20,13 @@ limitations under the License.
 #endif
 
 #include "lwip/init.h"
-#include "lwip/priv/tcp_priv.h"
 #include "lwip/raw.h"
 #include "lwip/timeouts.h"
 #include "netif_shim.h"
 #include "nf/ziti_tunneler.h"
+#include "ziti_tunneler_priv.h"
+#include "intercept.h"
+#include "tunneler_tcp.h"
 #include "uv.h"
 #include <nf/ziti_log.h>
 #include <lwip/udp.h>
@@ -38,61 +40,6 @@ limitations under the License.
 // TODO this should be defined in liblwipcore.a (ip.o), but link fails unless we define it here (or link in lwip's ip.o)
 struct ip_globals ip_data;
 
-#if 0
-struct intercept_v1_s {
-    char *  hostname;
-    int     port;
-};
-
-struct intercept_s {
-    uint8_t v;
-    char *  service_name;
-    union {
-        struct intercept_v1_s;
-    } intercept;
-};
-#endif
-
-typedef enum  {
-    tun_tcp,
-    tun_udp
-} tunneler_proto_type;
-
-struct tunneler_ctx_s {
-    tunneler_sdk_options opts;
-    struct netif netif;
-    struct raw_pcb *tcp;
-    struct raw_pcb *udp;
-    uv_poll_t    netif_poll_req;
-    uv_timer_t   lwip_timer_req;
-    struct intercept_s **intercepts;
-};
-
-/** context passed to on_accept when a connection is intercepted */
-typedef struct intercept_ctx_s {
-    tunneler_context  tnlr_ctx;
-    const char *      service_name;
-    const void *      ziti_ctx;
-} *intercept_context;
-
-struct tunneler_io_ctx_s {
-    tunneler_context   tnlr_ctx;
-    tunneler_proto_type proto;
-    union {
-        struct tcp_pcb *tcp;
-        struct {
-            struct udp_pcb *pcb;
-            ziti_udp_cb cb;
-            void *ctx;
-        } udp;
-    };
-};
-
-struct io_ctx_s {
-    tunneler_io_context  tnlr_io_ctx;
-    void *               ziti_io_ctx; // context specific to ziti SDK being used by the app.
-};
-
 static void run_packet_loop(uv_loop_t *loop, tunneler_context tnlr_ctx);
 
 tunneler_context NF_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop) {
@@ -101,7 +48,7 @@ tunneler_context NF_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop) {
         return NULL;
     }
 
-    struct tunneler_ctx_s *ctx = malloc(sizeof(struct tunneler_ctx_s));
+    struct tunneler_ctx_s *ctx = calloc(1, sizeof(struct tunneler_ctx_s));
     if (ctx == NULL) {
         ZITI_LOG(ERROR, "failed to allocate tunneler context");
         return NULL;
@@ -112,12 +59,7 @@ tunneler_context NF_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop) {
     return ctx;
 }
 
-struct write_ctx_s {
-    struct pbuf * pbuf;
-    struct tcp_pcb *pcb;
-};
-
-static void free_tunneler_io_context(tunneler_io_context *tnlr_io_ctx) {
+void free_tunneler_io_context(tunneler_io_context *tnlr_io_ctx) {
     if (tnlr_io_ctx == NULL) {
         return;
     }
@@ -128,71 +70,11 @@ static void free_tunneler_io_context(tunneler_io_context *tnlr_io_ctx) {
     }
 }
 
-/**
- * called by lwip when a client writes to an intercepted connection.
- * pbuf will be null if client has closed the connection.
- */
-static err_t on_client_data(void *io_ctx, struct tcp_pcb *pcb, struct pbuf *p, err_t err) {
-    if (io_ctx == NULL) {
-        ZITI_LOG(INFO, "conn was closed err=%d", err);
-        return ERR_OK;
-    }
-    ZITI_LOG(DEBUG, "on_client_data status %d", err);
-    struct io_ctx_s *_io_ctx = (struct io_ctx_s *)io_ctx;
-    if (err == ERR_OK && p == NULL) {
-        tcp_close(pcb);
-        _io_ctx->tnlr_io_ctx->tnlr_ctx->opts.ziti_close(_io_ctx->ziti_io_ctx);
-        _io_ctx->ziti_io_ctx = NULL;
-        free_tunneler_io_context(&(_io_ctx->tnlr_io_ctx));
-        free(_io_ctx);
-        return err;
-    }
-
-    ziti_write_cb zwrite = _io_ctx->tnlr_io_ctx->tnlr_ctx->opts.ziti_write;
-    u16_t len = p->len;
-    struct write_ctx_s *wr_ctx = calloc(1, sizeof(struct write_ctx_s));
-    wr_ctx->pbuf = p;
-    wr_ctx->pcb = pcb;
-    ziti_conn_state s = zwrite(_io_ctx->ziti_io_ctx, wr_ctx, p->payload, len);
-    switch (s) {
-        case ZITI_CONNECTED:
-            return ERR_OK;
-        case ZITI_CONNECTING:
-            free(wr_ctx);
-            return ERR_CONN;
-        case ZITI_FAILED:
-        default:
-            free(wr_ctx);
-            free(_io_ctx);
-            pbuf_free(p);
-            return ERR_ABRT;
-    }
-}
-
 /** called by tunneler application when data has been successfully written to ziti */
-int NF_tunneler_ack(void *write_ctx) {
+void NF_tunneler_ack(void *write_ctx) {
     struct write_ctx_s * ctx = write_ctx;
-    tcp_recved(ctx->pcb, ctx->pbuf->len);
-    pbuf_free(ctx->pbuf);
+    tunneler_tcp_ack(ctx->pcb, ctx->pbuf);
     free(ctx);
-    return 0;
-}
-
-void  on_client_err(void *io_ctx, err_t err) {
-    // we initiated close and cleared arg err should be ERR_ABRT
-    if (io_ctx == NULL) {
-        ZITI_LOG(TRACE, "client finished err=%d", err);
-    }
-    else {
-        // TODO handle better?
-        ZITI_LOG(ERROR, "unhandled client err=%d", err);
-    }
-}
-
-/** called by lwip when client sends a TCP ack */
-static err_t on_client_ack(void *io_ctx, struct tcp_pcb *pcb, u16_t len) {
-    ZITI_LOG(VERBOSE, "on_client_ack %d bytes", len);
-    return ERR_OK;
 }
 
 static tunneler_io_context new_tunneler_io_context(tunneler_context tnlr_ctx, struct tcp_pcb *pcb) {
@@ -207,117 +89,39 @@ static tunneler_io_context new_tunneler_io_context(tunneler_context tnlr_ctx, st
     return ctx;
 }
 
-static intercept_context new_intercept_ctx(tunneler_context tnlr_ctx, const char *service_name, const void *ziti_dial_ctx) {
-    struct intercept_ctx_s *ctx = malloc(sizeof(struct intercept_ctx_s));
-    if (ctx == NULL) {
-        ZITI_LOG(ERROR, "failed to allocate intercept context for %s", service_name);
-        return NULL;
-    }
-
-    ctx->service_name = strdup(service_name);
-    if (ctx->service_name == NULL) {
-        ZITI_LOG(ERROR, "failed to allocate intercept context service name %s", service_name);
-        free(ctx);
-        return NULL;
-    }
-
-    ctx->tnlr_ctx = tnlr_ctx;
-    ctx->ziti_ctx = ziti_dial_ctx;
-
-    return ctx;
-}
-
-/** TODO: call this when we deal with services going away */
-static void free_intercept_ctx(intercept_context *ctx) {
-    if (ctx == NULL) {
-        return;
-    }
-
-    if (*ctx != NULL) {
-        if ((*ctx)->service_name != NULL) free((char *)(*ctx)->service_name);
-        free(*ctx);
-        *ctx = NULL;
-    }
-}
-
-/** called by lwip when a connection is intercepted */
-static err_t on_accept(void *intercept_ctx, struct tcp_pcb *pcb, err_t err) {
-    intercept_context intercept = (intercept_context)intercept_ctx;
-    ZITI_LOG(INFO, "on_accept(%s, %p)", intercept->service_name, pcb);
-
-    if (err != ERR_OK) {
-        ZITI_LOG(ERROR, "on_accept error %d", err);
-        free_intercept_ctx(&intercept);
-        return err;
-    }
-
-    ziti_dial_cb zdial = intercept->tnlr_ctx->opts.ziti_dial;
-    // set up lwip to call on_client_data with this client's pcb and ziti_io_ctx;
-    tunneler_io_context tnlr_io_ctx = new_tunneler_io_context(intercept->tnlr_ctx, pcb);
-    void *ziti_io_ctx = zdial(intercept->service_name, intercept->ziti_ctx, tnlr_io_ctx);
-    if (ziti_io_ctx == NULL) {
-        ZITI_LOG(ERROR, "ziti_dial(%s) failed", intercept->service_name);
-        free_intercept_ctx(&intercept);
-        return ERR_CONN;
-    }
-
+/**
+ * called by tunneler application when a service dial has completed
+ * - let the client know that we have a connection (e.g. send SYN/ACK)
+ */
+void NF_tunneler_dial_completed(tunneler_io_context *tnlr_io_ctx, void *ziti_io_ctx) {
     struct io_ctx_s *io_ctx = malloc(sizeof(struct io_ctx_s));
-    io_ctx->tnlr_io_ctx = tnlr_io_ctx;
+    io_ctx->tnlr_io_ctx = *tnlr_io_ctx;
     io_ctx->ziti_io_ctx = ziti_io_ctx;
 
-    tcp_arg(pcb, io_ctx);
-    tcp_recv(pcb, on_client_data);
-    tcp_sent(pcb, on_client_ack);
-    tcp_err(pcb, on_client_err);
-
-    return ERR_OK;
+    switch ((*tnlr_io_ctx)->proto) {
+        case tun_tcp:
+            tunneler_tcp_dial_completed((*tnlr_io_ctx)->tcp, io_ctx);
+            break;
+        case tun_udp:
+            // TODO
+            break;
+        default:
+            // TODO
+            break;
+    }
 }
 
 /** arrange to intercept traffic defined by a v1 client tunneler config */
 int NF_tunneler_intercept_v1(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_name, const char *hostname, int port) {
-    struct tcp_pcb *pcb;
-    if ((pcb = tcp_new()) == NULL) {
-        ZITI_LOG(ERROR, "failed to allocate pcb for %s", service_name);
+    ip_addr_t intercept_ip;
+
+    if (ipaddr_aton(hostname, &intercept_ip) == 0) {
+        ZITI_LOG(DEBUG, "v1 intercept hostname %s for service %s is not an ip", hostname, service_name);
+        /* TODO: handle hostnames */
         return -1;
     }
 
-    // TODO: handle hostnames
-    ip_addr_t a;
-    if (ipaddr_aton(hostname, &a) == 0) {
-        ZITI_LOG(ERROR, "invalid intercept ip %s", hostname);
-        tcp_close(pcb);
-        return -1;
-    }
-
-#if 1
-    /* TODO: using the lwip raw api for expediency.
-     * Eventually we will want to inspect headers (via lwip hooks) and create listener PCBs
-     * for matching SYN segments as packets arrive, then pass to tcp_listen_input()
-     */
-    err_t err;
-    if ((err = tcp_bind(pcb, &a, port)) != ERR_OK) {
-        ZITI_LOG(ERROR, "failed to bind address: error %d", err);
-        tcp_close(pcb);
-        return -1;
-    }
-
-    if ((pcb = tcp_listen_with_backlog(pcb, TCP_DEFAULT_LISTEN_BACKLOG)) == NULL) {
-        ZITI_LOG(ERROR, "tcp_listen failed");
-        return -1;
-    }
-    tcp_bind_netif(pcb, netif_default);
-#endif
-
-    // pass enough context to on_accept (via the pcb) so ziti SDK can be used to dial/read/write the service
-    intercept_context intercept_ctx = new_intercept_ctx(tnlr_ctx, service_name, ziti_ctx);
-    if (intercept_ctx == NULL) {
-        ZITI_LOG(ERROR, "failed to allocate intercept context for %s", service_name);
-        tcp_close(pcb);
-        return -1;
-    }
-
-    tcp_arg(pcb, intercept_ctx);
-    tcp_accept(pcb, on_accept);
+    add_v1_intercept(tnlr_ctx, ziti_ctx, service_name, hostname, port);
 
     return 0;
 }
@@ -329,48 +133,31 @@ int NF_tunneler_write(tunneler_io_context *tnlr_io_ctx, const void *data, size_t
         return -1;
     }
 
-    assert((*tnlr_io_ctx)->proto == tun_tcp);
+    int r;
+    switch ((*tnlr_io_ctx)->proto) {
+        case tun_tcp:
+            r = tunneler_tcp_write((*tnlr_io_ctx)->tcp, data, len);
+            break;
+        case tun_udp:
+            ZITI_LOG(ERROR, "no udp yet"); // TODO handle UDP write
+            r = -1;
+            break;
+    }
+
+    if (r < 0) {
+        ZITI_LOG(ERROR, "failed to write to client");
+        NF_tunneler_close(tnlr_io_ctx);
+        return -1;
+    }
     struct tcp_pcb *pcb = (*tnlr_io_ctx)->tcp;
-    if (pcb == NULL) {
-        ZITI_LOG(WARN, "null pcb");
-        NF_tunneler_close(tnlr_io_ctx);
-        return -1;
-    }
 
-    int qlen = tcp_sndqueuelen(pcb);
-    if (qlen > TCP_SND_QUEUELEN) {
-        ZITI_LOG(INFO, "we are in for it now sndqueuelen %d, %d", qlen, TCP_SND_QUEUELEN);
-    }
-    // avoid ERR_MEM.
-    int sendlen = min(len, tcp_sndbuf(pcb));
-
-    err_t w_err = tcp_write(pcb, data, (u16_t)sendlen, TCP_WRITE_FLAG_COPY); // TODO hold data until client acks... via on_client_ack maybe? then we wouldn't need to copy here.
-    if (w_err != ERR_OK) {
-        ZITI_LOG(ERROR, "failed to tcp_write %d (%d, %zd)", w_err, sendlen, len);
-        NF_tunneler_close(tnlr_io_ctx);
-        return -1;
-    }
-
-    if (tcp_output(pcb) != ERR_OK) {
-        ZITI_LOG(ERROR, "failed to tcp_output");
-        return -1;
-    }
-
-    return sendlen;
+    return r;
 }
 
 /** called by tunneler application when a ziti connection closes */
 int NF_tunneler_close(tunneler_io_context *tnlr_io_ctx) {
     if (tnlr_io_ctx != NULL && *tnlr_io_ctx != NULL) {
-        if ((*tnlr_io_ctx)->tcp != NULL) {
-            tcp_arg((*tnlr_io_ctx)->tcp, NULL);
-            tcp_recv((*tnlr_io_ctx)->tcp, NULL);
-            if (tcp_close((*tnlr_io_ctx)->tcp) != ERR_OK) {
-                ZITI_LOG(ERROR, "failed to tcp_close");
-                return -1;
-            }
-            (*tnlr_io_ctx)->tcp = NULL;
-        }
+        tunneler_tcp_close((*tnlr_io_ctx)->tcp);
         free(*tnlr_io_ctx);
         *tnlr_io_ctx = NULL;
     }
@@ -393,6 +180,10 @@ static void check_lwip_timeouts(uv_timer_t * handle) {
     sys_check_timeouts();
 }
 
+/**
+ * set up a protocol handler. lwip will call recv_fn with arg for each
+ * packet that matches the protocol.
+ */
 static struct raw_pcb *setup_handler(u8_t proto, raw_recv_fn recv_fn, void *arg) {
     err_t err;
     struct raw_pcb *pcb;
@@ -414,102 +205,14 @@ static struct raw_pcb *setup_handler(u8_t proto, raw_recv_fn recv_fn, void *arg)
     return pcb;
 }
 
-static u8_t active_phony = 0;
-
-static u8_t is_active(const char *session_key) {
-    return active_phony;
-}
-
-static boolean_t is_intercepted() {
-    return 1;
-}
-
-static ip_addr_t *resolve_intercepted_hostname(const char *hostname) {
-
-
-}
-
-/** return service name for a packet/segment based on destination address/port */
-static char *v1_service(const char *hostname, u16_t port) {
-    char *service = NULL;
-}
-
-/** called by lwip when a tcp segment arrives. return 1 to indicate that the IP packet was consumed. */
-static u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_addr_t *addr) {
-    tunneler_context tnlr_ctx = tnlr_ctx_arg;
-    u16_t iphdr_hlen;
-    ip_addr_t src, dst;
-    char ip_version = IPH_V((struct ip_hdr *)(p->payload));
-
-    switch (ip_version) {
-        case 4: {
-            struct ip_hdr *iphdr = p->payload;
-            iphdr_hlen = IPH_HL_BYTES(iphdr);
-            ip_addr_copy_from_ip4(src, iphdr->src);
-            ip_addr_copy_from_ip4(dst, iphdr->dest);
-        }
-        break;
-        case 6: {
-            struct ip6_hdr *iphdr = p->payload;
-            iphdr_hlen = IP6_HLEN;
-            ip_addr_copy_from_ip6_packed(src, iphdr->src);
-            ip_addr_copy_from_ip6_packed(dst, iphdr->dest);
-        }
-        break;
-        default:
-            ZITI_LOG(INFO, "unsupported IP protocol version: %d", ip_version);
-            return 0;
-    }
-
-    /* reach into the pbuf to get to the TCP header */
-    struct tcp_hdr *tcphdr = (struct tcp_hdr *)(p->payload + iphdr_hlen);
-    u16_t src_p = lwip_ntohs(tcphdr->src);
-    u16_t dst_p = lwip_ntohs(tcphdr->dest);
-
-    char session_key[64];
-
-    snprintf(session_key, sizeof(session_key), "TCP[%s:%d->%s:%d]",
-            ipaddr_ntoa(&src), src_p, ipaddr_ntoa(&dst), dst_p);
-
-    ZITI_LOG(INFO, "hello %s", session_key);
-
-    if (is_active(session_key)) {
-        /* this segment belongs to an active connection; let lwip handle it. */
+/* TODO this is a hack to test packet filtering. do this for real soon */
+static uint8_t active_phony = 0;
+uint8_t is_active(const char *session_key) {
+    if (active_phony == 0) {
+        active_phony = 1;
         return 0;
     }
-return 0;
-    u8_t flags = TCPH_FLAGS(tcphdr);
-    if (is_intercepted() && flags & TCP_SYN) {
-        char *service_name = NULL; // TODO: get this
-        void *ziti_ctx = NULL; // TODO: get this
-        struct tcp_pcb *npcb = tcp_alloc(0); // TODO prio?
-
-        ziti_dial_cb zdial = tnlr_ctx->opts.ziti_dial;
-        // set up lwip to call on_client_data with this client's pcb and ziti_io_ctx;
-        tunneler_io_context tnlr_io_ctx = new_tunneler_io_context(tnlr_ctx, npcb);
-        void *ziti_io_ctx = zdial(service_name, ziti_ctx, tnlr_io_ctx);
-        if (ziti_io_ctx == NULL) {
-            ZITI_LOG(ERROR, "ziti_dial(%s) failed", service_name);
-            // abort connection -- SYN/NACK?
-            return 1;
-        }
-
-        struct io_ctx_s *io_ctx = malloc(sizeof(struct io_ctx_s));
-        io_ctx->tnlr_io_ctx = tnlr_io_ctx;
-        io_ctx->ziti_io_ctx = ziti_io_ctx;
-
-        tcp_arg(pcb, io_ctx);
-        tcp_recv(pcb, on_client_data);
-        tcp_sent(pcb, on_client_ack);
-        tcp_err(pcb, on_client_err);
-
-        /*  create a tcp_pcb that looks like tcp_listen_input() created it. */
-        /* OR create a listener pcb and let lwip handle it? */
-
-        return 1;
-    }
-
-    return 0;
+    return 1;
 }
 
 /** called by lwip when a udp datagram arrives. return 1 to indicate that the IP packet was consumed. */

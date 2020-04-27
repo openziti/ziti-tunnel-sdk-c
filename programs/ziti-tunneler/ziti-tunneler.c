@@ -43,6 +43,7 @@ static void on_nf_init(nf_context nf_ctx, int status, void *init_ctx) {
         fprintf(stderr, "failed to initialize ziti\n");
         exit(1);
     }
+    /* TODO how to get nf_ctx into tunneler opts? */
 }
 
 int main(int argc, char *argv[]) {
