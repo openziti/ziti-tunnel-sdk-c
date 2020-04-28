@@ -4,7 +4,8 @@
 #include "intercept.h"
 #include "nf/ziti_log.h"
 
-/** called by lwip when an inbound connection is established */
+/** called by lwip when a client sends a SYN segment to an intercepted address.
+ * this only exists to appease lwip */
 static err_t on_accept(void *arg, struct tcp_pcb *pcb, err_t err) {
     ZITI_LOG(DEBUG, "on_accept: %d", err);
     return ERR_OK;

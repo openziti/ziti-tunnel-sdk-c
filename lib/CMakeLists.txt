@@ -1,6 +1,6 @@
 
 add_library(ziti_tunneler STATIC
-        ziti_tunneler.c tunneler_tcp.c intercept.c
+        ziti_tunneler.c tunneler_tcp.c tunneler_udp.c intercept.c
         lwip/netif_shim.c lwip/lwiphooks_ip6.c lwip/lwiphooks_ip4.c)
 
 add_library(ziti_tunneler_cbs STATIC ziti_tunneler_cbs.c)

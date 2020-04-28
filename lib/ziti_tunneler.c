@@ -27,15 +27,9 @@ limitations under the License.
 #include "ziti_tunneler_priv.h"
 #include "intercept.h"
 #include "tunneler_tcp.h"
+#include "tunneler_udp.h"
 #include "uv.h"
-#include <nf/ziti_log.h>
-#include <lwip/udp.h>
-#include <assert.h>
-
-#ifndef _WIN32
-#include <sys/param.h>
-#define min(x,y) MIN((x),(y))
-#endif
+#include "nf/ziti_log.h"
 
 // TODO this should be defined in liblwipcore.a (ip.o), but link fails unless we define it here (or link in lwip's ip.o)
 struct ip_globals ip_data;
@@ -215,12 +209,6 @@ uint8_t is_active(const char *session_key) {
     return 1;
 }
 
-/** called by lwip when a udp datagram arrives. return 1 to indicate that the IP packet was consumed. */
-static u8_t recv_udp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_addr_t *addr) {
-    tunneler_context tnlr_ctx = tnlr_ctx_arg;
-    return 0;
-}
-
 static void run_packet_loop(uv_loop_t *loop, tunneler_context tnlr_ctx) {
     if (tnlr_ctx->opts.ziti_close == NULL || tnlr_ctx->opts.ziti_dial == NULL || tnlr_ctx->opts.ziti_write == NULL) {
         ZITI_LOG(ERROR, "ziti_* callback options cannot be null");
@@ -262,53 +250,4 @@ static void run_packet_loop(uv_loop_t *loop, tunneler_context tnlr_ctx) {
 
     uv_timer_init(loop, &tnlr_ctx->lwip_timer_req);
     uv_timer_start(&tnlr_ctx->lwip_timer_req, check_lwip_timeouts, 0, 100);
-}
-
-static void on_udp_packet(void *arg, struct udp_pcb *pcb, struct pbuf *p, const ip_addr_t *addr, u16_t port) {
-    tunneler_io_context ctx = arg;
-    ctx->udp.cb(ctx, ctx->udp.ctx, (addr_t)addr, port, p->payload, p->len);
-    pbuf_free(p);
-}
-
-extern int NF_udp_handler(tunneler_context tnlr_ctx, const char *hostname, int port, ziti_udp_cb cb, void *data) {
-    struct udp_pcb *pcb;
-
-    if ((pcb = udp_new()) == NULL) {
-        ZITI_LOG(ERROR, "failed to allocate pcb for %s", hostname);
-        return -1;
-    }
-
-    ip_addr_t a;
-    if (ipaddr_aton(hostname, &a) == 0) {
-        ZITI_LOG(ERROR, "invalid intercept ip %s", hostname);
-        free(pcb);
-        return -1;
-    }
-
-    err_t err;
-    if ((err = udp_bind(pcb, &a, port)) != ERR_OK) {
-        ZITI_LOG(ERROR, "failed to bind address: error %d", err);
-        free(pcb);
-        return -1;
-    }
-
-    udp_bind_netif(pcb, netif_default);
-    tunneler_io_context ctx = (tunneler_io_context)calloc(1, sizeof(struct tunneler_io_ctx_s));
-    ctx->tnlr_ctx = tnlr_ctx;
-    ctx->proto = tun_udp;
-    ctx->udp.pcb = pcb;
-    ctx->udp.cb = cb;
-    ctx->udp.ctx = data;
-    udp_recv(pcb, on_udp_packet, ctx);
-
-    return 0;
-}
-
-extern int NF_udp_send(tunneler_io_context tio, addr_t dest, u16_t dport, const void* data, ssize_t len) {
-    assert(tio->proto == tun_udp);
-    struct pbuf *p = pbuf_alloc(PBUF_TRANSPORT, len, PBUF_RAM);
-    memcpy(p->payload, data, len);
-    err_t rc = udp_sendto_if_src(tio->udp.pcb, p, dest, dport, netif_default, &tio->udp.pcb->local_ip);
-    pbuf_free(p);
-    return rc;
 }
