@@ -16,6 +16,7 @@ add_subdirectory(lib)
 add_subdirectory(programs)
 
 if (WIN32)
+set(CMAKE_C_FLAGS "-std=c99")
 set(CMAKE_INSTALL_LIBDIR lib)
 set(CMAKE_INSTALL_INCLUDEDIR include)
 endif()
