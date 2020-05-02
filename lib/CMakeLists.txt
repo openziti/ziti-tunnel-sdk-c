@@ -1,7 +1,7 @@
 
 add_library(ziti_tunneler STATIC
         ziti_tunneler.c tunneler_tcp.c tunneler_udp.c intercept.c
-        lwip/netif_shim.c lwip/lwiphooks_ip6.c lwip/lwiphooks_ip4.c)
+        lwip/netif_shim.c lwip/lwiphooks_ip6.c lwip/lwiphooks_ip4.c lwip/lwip_cloned_fns.c)
 
 add_library(ziti_tunneler_cbs STATIC ziti_tunneler_cbs.c)
 
@@ -45,6 +45,7 @@ target_include_directories(ziti_tunneler
         PUBLIC ${LWIP_INCLUDE_DIRS}
         PUBLIC ../include
         PRIVATE ../include/priv
+        PRIVATE ${ziti-tunneler-sdk-deps_SOURCE_DIR}
         )
 
 if(WIN32)

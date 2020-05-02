@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include "tunneler_tcp.h"
+//#include "lwip_cloned_fns.h"
 #include "ziti_tunneler_priv.h"
 #include "intercept.h"
 #include "nf/ziti_log.h"
@@ -12,7 +13,7 @@ static err_t on_accept(void *arg, struct tcp_pcb *pcb, err_t err) {
 }
 
 /** create a tcp connection to be managed by lwip */
-struct tcp_pcb *new_tcp_pcb(ip_addr_t src, ip_addr_t dest, struct tcp_hdr *tcphdr) {
+static struct tcp_pcb *new_tcp_pcb(ip_addr_t src, ip_addr_t dest, struct tcp_hdr *tcphdr/*, struct pbuf *p*/) {
     struct tcp_pcb *npcb = tcp_new();
     if (npcb == NULL) {
         ZITI_LOG(ERROR, "tcp_new failed");
@@ -33,7 +34,7 @@ struct tcp_pcb *new_tcp_pcb(ip_addr_t src, ip_addr_t dest, struct tcp_hdr *tcphd
     npcb->snd_lbb = iss;
     npcb->snd_wl1 = lwip_ntohl(tcphdr->seqno) - 1;/* initialise to seqno-1 to force window update */
     /* allocate a listener and set accept fn to appease lwip */
-    npcb->listener = (struct tcp_pcb_listen *)memp_malloc(MEMP_TCP_PCB_LISTEN);
+    npcb->listener = (struct tcp_pcb_listen *)memp_malloc(MEMP_TCP_PCB_LISTEN); // TODO common listener
     if (npcb->listener == NULL) {
         ZITI_LOG(ERROR, "memp_malloc failed");
         tcp_free(npcb);
@@ -46,7 +47,7 @@ struct tcp_pcb *new_tcp_pcb(ip_addr_t src, ip_addr_t dest, struct tcp_hdr *tcphd
     TCP_REG_ACTIVE(npcb);
 
     /* Parse any options in the SYN. */
-//    tcp_parseopt(npcb);
+    //tunneler_tcp_parseopt(npcb);
     npcb->snd_wnd = lwip_ntohs(tcphdr->wnd);
     npcb->snd_wnd_max = npcb->snd_wnd;
 
@@ -90,20 +91,14 @@ static err_t on_tcp_client_data(void *io_ctx, struct tcp_pcb *pcb, struct pbuf *
     struct write_ctx_s *wr_ctx = calloc(1, sizeof(struct write_ctx_s));
     wr_ctx->pbuf = p;
     wr_ctx->pcb = pcb;
-    ziti_conn_state s = zwrite(_io_ctx->ziti_io_ctx, wr_ctx, p->payload, len);
-    switch (s) {
-        case ZITI_CONNECTED:
-            return ERR_OK;
-        case ZITI_CONNECTING:
-            free(wr_ctx);
-            return ERR_CONN;
-        case ZITI_FAILED:
-        default:
-            free(wr_ctx);
-            free(_io_ctx);
-            pbuf_free(p);
-            return ERR_ABRT;
+    ssize_t s = zwrite(_io_ctx->ziti_io_ctx, wr_ctx, p->payload, len);
+    if (s < 0) {
+        free(wr_ctx);
+        free(_io_ctx);
+        pbuf_free(p);
+        return ERR_ABRT;
     }
+    return ERR_OK;
 }
 
 void  on_tcp_client_err(void *io_ctx, err_t err) {
@@ -161,7 +156,7 @@ int tunneler_tcp_close(struct tcp_pcb *pcb) {
     return 0;
 }
 
-void tunneler_tcp_dial_completed(struct tcp_pcb *pcb, struct io_ctx_s *io_ctx) {
+void tunneler_tcp_dial_completed(struct tcp_pcb *pcb, struct io_ctx_s *io_ctx, bool ok) {
     tcp_arg(pcb, io_ctx);
     tcp_recv(pcb, on_tcp_client_data);
     tcp_err(pcb, on_tcp_client_err);
@@ -192,10 +187,14 @@ static tunneler_io_context new_tunneler_io_context(tunneler_context tnlr_ctx, st
 /** called by lwip when a tcp segment arrives. return 1 to indicate that the IP packet was consumed. */
 u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_addr_t *addr) {
     tunneler_context tnlr_ctx = tnlr_ctx_arg;
+
     u16_t iphdr_hlen;
     ip_addr_t src, dst;
     char ip_version = IPH_V((struct ip_hdr *)(p->payload));
 
+    /* figure out where the tcp header is in the pbuf. don't modify
+     * the pbuf until we know that this segment should be intercepted.
+     */
     switch (ip_version) {
         case 4: {
             struct ip_hdr *iphdr = p->payload;
@@ -221,39 +220,41 @@ u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     u16_t src_p = lwip_ntohs(tcphdr->src);
     u16_t dst_p = lwip_ntohs(tcphdr->dest);
 
-    char session_key[64];
-    snprintf(session_key, sizeof(session_key), "TCP[%s:%d->%s:%d]",
+    ZITI_LOG(DEBUG, "received segment %s:%d->%s:%d",
              ipaddr_ntoa(&src), src_p, ipaddr_ntoa(&dst), dst_p);
 
-    ZITI_LOG(DEBUG, "received segment %s", session_key);
-
-    if (is_active(session_key)) {
-        /* this segment belongs to an active connection; let lwip handle it. */
-        ZITI_LOG(DEBUG, "active session exists for %s", session_key);
+    u8_t flags = TCPH_FLAGS(tcphdr);
+    if (!(flags & TCP_SYN)) {
+        /* this isn't a SYN segment, so let lwip process it */
         return 0;
     }
 
-    u8_t flags = TCPH_FLAGS(tcphdr);
-    if (flags & TCP_SYN) {
-        intercept_ctx_t *intercept_ctx = lookup_v1_intercept(tnlr_ctx, dst, dst_p);
-        if (intercept_ctx == NULL) {
-            ZITI_LOG(DEBUG, "no v1 intercepts match %s:%d", ipaddr_ntoa(&dst), dst_p);
-            return 0;
-        }
-        ZITI_LOG(INFO, "intercepting packet with dst %s:%d for service %s", ipaddr_ntoa(&dst), dst_p, intercept_ctx->service_name);
-        ziti_dial_cb zdial = tnlr_ctx->opts.ziti_dial;
-        struct tcp_pcb *npcb = new_tcp_pcb(src, dst, tcphdr);
-        tunneler_io_context tnlr_io_ctx = new_tunneler_io_context(tnlr_ctx, npcb);
-        /* TODO surface intercept_ctx to public SDK? */
-        void *ziti_io_ctx = zdial(intercept_ctx->service_name, intercept_ctx->ziti_ctx, tnlr_io_ctx);
-        if (ziti_io_ctx == NULL) {
-            ZITI_LOG(ERROR, "ziti_dial(%s) failed", intercept_ctx->service_name);
-            free_tunneler_io_context(&tnlr_io_ctx);
-            // TODO abort connection -- FIN?
-            return 1;
-        }
-        /* now we wait for the tunneler app to call NF_tunneler_dial_complete() */
+    intercept_ctx_t *intercept_ctx = lookup_l4_intercept(tnlr_ctx, dst, dst_p);
+    if (intercept_ctx == NULL) {
+        /* dst address is not being intercepted. don't consume */
+        ZITI_LOG(DEBUG, "no v1 intercepts match %s:%d", ipaddr_ntoa(&dst), dst_p);
+        return 0;
     }
 
-    return 0;
+    /* we know this is a SYN segment for an intercepted address, and we will process it */
+    ZITI_LOG(INFO, "intercepting packet with dst %s:%d for service %s", ipaddr_ntoa(&dst), dst_p, intercept_ctx->service_name);
+    ziti_dial_cb zdial = tnlr_ctx->opts.ziti_dial;
+
+    struct tcp_pcb *npcb = new_tcp_pcb(src, dst, tcphdr);
+    tunneler_io_context tnlr_io_ctx = new_tunneler_io_context(tnlr_ctx, npcb);
+    void *ziti_io_ctx = zdial(intercept_ctx, tnlr_io_ctx);
+    if (ziti_io_ctx == NULL) {
+        ZITI_LOG(ERROR, "ziti_dial(%s) failed", intercept_ctx->service_name);
+        free_tunneler_io_context(&tnlr_io_ctx);
+        err_t rc = tcp_enqueue_flags(npcb, TCP_FIN);
+        if (rc != ERR_OK) {
+            tcp_abandon(npcb, 0);
+            return 0;
+        }
+        tcp_output(npcb);
+    }
+    /* now we wait for the tunneler app to call NF_tunneler_dial_complete() */
+
+    //pbuf_free(p);
+    return 0; // TODO we should return 1, but that seems to cause the client to stall irrecoverably.
 }

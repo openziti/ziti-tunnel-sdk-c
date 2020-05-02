@@ -42,9 +42,41 @@ extern int add_v1_intercept(tunneler_context tnlr_ctx, const void *ziti_ctx, con
     return 0;
 }
 
-/** return the intercept context for a packet based on its destination address/port */
-intercept_ctx_t *lookup_v1_intercept(tunneler_context tnlr_ctx, ip_addr_t dst_addr, int dst_port) {
+void remove_intercept(tunneler_context tnlr_ctx, const char *service_name) {
+    struct intercept_s *intercept, *prev = NULL;
+
+    if (tnlr_ctx == NULL) {
+        ZITI_LOG(DEBUG, "null tnlr_ctx");
+        return;
+    }
+
+    for (intercept = tnlr_ctx->intercepts; intercept != NULL; intercept = intercept->next) {
+        if (strcmp(intercept->ctx.service_name, service_name) == 0) {
+            if (prev != NULL) {
+                prev->next = intercept->next;
+            } else {
+                tnlr_ctx->intercepts = intercept->next;
+            }
+            // TODO close active connections
+            free((char *)intercept->ctx.service_name);
+            switch (intercept->cfg_version) {
+                case 1:
+                    free(intercept->cfg.v1.hostname);
+                    break;
+            }
+        }
+        prev = intercept;
+    }
+}
+
+/** return the intercept context for a packet based on its destination ip:port */
+intercept_ctx_t *lookup_l4_intercept(tunneler_context tnlr_ctx, ip_addr_t dst_addr, int dst_port) {
     struct intercept_s *intercept;
+
+    if (tnlr_ctx == NULL) {
+        ZITI_LOG(DEBUG, "null tnlr_ctx");
+        return NULL;
+    }
 
     for (intercept = tnlr_ctx->intercepts; intercept != NULL; intercept = intercept->next) {
         if (intercept->cfg_version == 1) {
@@ -54,5 +86,6 @@ intercept_ctx_t *lookup_v1_intercept(tunneler_context tnlr_ctx, ip_addr_t dst_ad
             }
         }
     }
+
     return NULL;
 }

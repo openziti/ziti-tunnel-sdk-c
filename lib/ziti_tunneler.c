@@ -53,17 +53,6 @@ tunneler_context NF_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop) {
     return ctx;
 }
 
-void free_tunneler_io_context(tunneler_io_context *tnlr_io_ctx) {
-    if (tnlr_io_ctx == NULL) {
-        return;
-    }
-
-    if (*tnlr_io_ctx != NULL) {
-        free(*tnlr_io_ctx);
-        *tnlr_io_ctx = NULL;
-    }
-}
-
 /** called by tunneler application when data has been successfully written to ziti */
 void NF_tunneler_ack(void *write_ctx) {
     struct write_ctx_s * ctx = write_ctx;
@@ -83,18 +72,29 @@ static tunneler_io_context new_tunneler_io_context(tunneler_context tnlr_ctx, st
     return ctx;
 }
 
+void free_tunneler_io_context(tunneler_io_context *tnlr_io_ctx) {
+    if (tnlr_io_ctx == NULL) {
+        return;
+    }
+
+    if (*tnlr_io_ctx != NULL) {
+        free(*tnlr_io_ctx);
+        *tnlr_io_ctx = NULL;
+    }
+}
+
 /**
  * called by tunneler application when a service dial has completed
  * - let the client know that we have a connection (e.g. send SYN/ACK)
  */
-void NF_tunneler_dial_completed(tunneler_io_context *tnlr_io_ctx, void *ziti_io_ctx) {
+void NF_tunneler_dial_completed(tunneler_io_context *tnlr_io_ctx, void *ziti_io_ctx, bool ok) {
     struct io_ctx_s *io_ctx = malloc(sizeof(struct io_ctx_s));
     io_ctx->tnlr_io_ctx = *tnlr_io_ctx;
     io_ctx->ziti_io_ctx = ziti_io_ctx;
 
     switch ((*tnlr_io_ctx)->proto) {
         case tun_tcp:
-            tunneler_tcp_dial_completed((*tnlr_io_ctx)->tcp, io_ctx);
+            tunneler_tcp_dial_completed((*tnlr_io_ctx)->tcp, io_ctx, ok);
             break;
         case tun_udp:
             // TODO
@@ -118,6 +118,10 @@ int NF_tunneler_intercept_v1(tunneler_context tnlr_ctx, const void *ziti_ctx, co
     add_v1_intercept(tnlr_ctx, ziti_ctx, service_name, hostname, port);
 
     return 0;
+}
+
+int NF_tunneler_stop_intercepting(tunneler_context tnlr_ctx, const char *service_name) {
+    remove_intercept(tnlr_ctx, service_name);
 }
 
 /** called by tunneler application when data is read from a ziti connection */
@@ -178,9 +182,9 @@ static void check_lwip_timeouts(uv_timer_t * handle) {
  * set up a protocol handler. lwip will call recv_fn with arg for each
  * packet that matches the protocol.
  */
-static struct raw_pcb *setup_handler(u8_t proto, raw_recv_fn recv_fn, void *arg) {
-    err_t err;
+static struct raw_pcb * init_protocol_handler(u8_t proto, raw_recv_fn recv_fn, void *arg) {
     struct raw_pcb *pcb;
+    err_t err;
 
     if ((pcb = raw_new_ip_type(IPADDR_TYPE_ANY, proto)) == NULL) {
         ZITI_LOG(ERROR, "failed to allocate raw pcb for protocol %d", proto);
@@ -197,16 +201,6 @@ static struct raw_pcb *setup_handler(u8_t proto, raw_recv_fn recv_fn, void *arg)
     raw_recv(pcb, recv_fn, arg);
 
     return pcb;
-}
-
-/* TODO this is a hack to test packet filtering. do this for real soon */
-static uint8_t active_phony = 0;
-uint8_t is_active(const char *session_key) {
-    if (active_phony == 0) {
-        active_phony = 1;
-        return 0;
-    }
-    return 1;
 }
 
 static void run_packet_loop(uv_loop_t *loop, tunneler_context tnlr_ctx) {
@@ -239,11 +233,11 @@ static void run_packet_loop(uv_loop_t *loop, tunneler_context tnlr_ctx) {
         ZITI_LOG(WARN, "no method to initiate tunnel reader, maybe it's ok");
     }
 
-    if ((tnlr_ctx->tcp = setup_handler(IP_PROTO_TCP, recv_tcp, tnlr_ctx)) == NULL) {
+    if ((tnlr_ctx->tcp = init_protocol_handler(IP_PROTO_TCP, recv_tcp, tnlr_ctx)) == NULL) {
         ZITI_LOG(ERROR, "tcp setup failed");
         exit(1);
     }
-    if ((tnlr_ctx->udp = setup_handler(IP_PROTO_UDP, recv_udp, tnlr_ctx)) == NULL) {
+    if ((tnlr_ctx->udp = init_protocol_handler(IP_PROTO_UDP, recv_udp, tnlr_ctx)) == NULL) {
         ZITI_LOG(ERROR, "udp setup failed");
         exit(1);
     }

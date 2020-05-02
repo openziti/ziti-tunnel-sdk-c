@@ -15,11 +15,6 @@ typedef struct intercept_cfg_v1_s {
     int       port;
 } *intercept_v1_t;
 
-typedef struct intercept_ctx_s{
-    const char *      service_name;
-    const void *      ziti_ctx;
-} intercept_ctx_t;
-
 struct intercept_s {
     uint8_t cfg_version;
     struct intercept_ctx_s ctx;
@@ -30,8 +25,9 @@ struct intercept_s {
 };
 
 extern int add_v1_intercept(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_name, const char *hostname, int port);
+extern void remove_intercept(tunneler_context tnlr_ctx, const char *serivce_name);
 
-/** returns name of service with intercept address that matches cfg */
-extern intercept_ctx_t *lookup_v1_intercept(tunneler_context tnlr_ctx, ip_addr_t dst_addr, int dst_port);
+/** return the intercept context for a packet based on its destination ip:port */
+extern intercept_ctx_t *lookup_l4_intercept(tunneler_context tnlr_ctx, ip_addr_t dst_addr, int dst_port);
 
 #endif //ZITI_TUNNELER_SDK_INTERCEPT_H

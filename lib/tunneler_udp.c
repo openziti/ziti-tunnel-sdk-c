@@ -2,7 +2,7 @@
 #include <assert.h>
 
 #include "tunneler_udp.h"
-#include "lwip/udp.h"
+#include "ziti_tunneler_priv.h"
 #include "nf/ziti_log.h"
 
 void on_udp_packet(void *arg, struct udp_pcb *pcb, struct pbuf *p, const ip_addr_t *addr, u16_t port) {
