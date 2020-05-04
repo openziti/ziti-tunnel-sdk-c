@@ -13,7 +13,7 @@ static err_t on_accept(void *arg, struct tcp_pcb *pcb, err_t err) {
 }
 
 /** create a tcp connection to be managed by lwip */
-static struct tcp_pcb *new_tcp_pcb(ip_addr_t src, ip_addr_t dest, struct tcp_hdr *tcphdr/*, struct pbuf *p*/) {
+static struct tcp_pcb *new_tcp_pcb(ip_addr_t src, ip_addr_t dest, struct tcp_hdr *tcphdr) {
     struct tcp_pcb *npcb = tcp_new();
     if (npcb == NULL) {
         ZITI_LOG(ERROR, "tcp_new failed");
@@ -75,7 +75,7 @@ static err_t on_tcp_client_data(void *io_ctx, struct tcp_pcb *pcb, struct pbuf *
         ZITI_LOG(INFO, "conn was closed err=%d", err);
         return ERR_OK;
     }
-    ZITI_LOG(DEBUG, "on_client_data status %d", err);
+    ZITI_LOG(DEBUG, "on_tcp_client_data status %d", err);
     struct io_ctx_s *_io_ctx = (struct io_ctx_s *)io_ctx;
     if (err == ERR_OK && p == NULL) {
         tcp_close(pcb);
@@ -101,7 +101,7 @@ static err_t on_tcp_client_data(void *io_ctx, struct tcp_pcb *pcb, struct pbuf *
     return ERR_OK;
 }
 
-void  on_tcp_client_err(void *io_ctx, err_t err) {
+static void  on_tcp_client_err(void *io_ctx, err_t err) {
     // we initiated close and cleared arg err should be ERR_ABRT
     if (io_ctx == NULL) {
         ZITI_LOG(TRACE, "client finished err=%d", err);
@@ -112,7 +112,7 @@ void  on_tcp_client_err(void *io_ctx, err_t err) {
     }
 }
 
-int tunneler_tcp_write(struct tcp_pcb *pcb, void *data, size_t len) {
+ssize_t tunneler_tcp_write(struct tcp_pcb *pcb, const void *data, size_t len) {
     if (pcb == NULL) {
         ZITI_LOG(WARN, "null pcb");
         return -1;
@@ -123,11 +123,11 @@ int tunneler_tcp_write(struct tcp_pcb *pcb, void *data, size_t len) {
         ZITI_LOG(INFO, "we are in for it now sndqueuelen %d, %d", qlen, TCP_SND_QUEUELEN);
     }
     // avoid ERR_MEM.
-    int sendlen = MIN(len, tcp_sndbuf(pcb));
+    size_t sendlen = MIN(len, tcp_sndbuf(pcb));
 
     err_t w_err = tcp_write(pcb, data, (u16_t)sendlen, TCP_WRITE_FLAG_COPY); // TODO hold data until client acks... via on_client_ack maybe? then we wouldn't need to copy here.
     if (w_err != ERR_OK) {
-        ZITI_LOG(ERROR, "failed to tcp_write %d (%d, %zd)", w_err, sendlen, len);
+        ZITI_LOG(ERROR, "failed to tcp_write %d (%ld, %zd)", w_err, sendlen, len);
         return -1;
     }
 
@@ -229,7 +229,7 @@ u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
         return 0;
     }
 
-    intercept_ctx_t *intercept_ctx = lookup_l4_intercept(tnlr_ctx, dst, dst_p);
+    intercept_ctx_t *intercept_ctx = lookup_l4_intercept(tnlr_ctx, &dst, dst_p);
     if (intercept_ctx == NULL) {
         /* dst address is not being intercepted. don't consume */
         ZITI_LOG(DEBUG, "no v1 intercepts match %s:%d", ipaddr_ntoa(&dst), dst_p);

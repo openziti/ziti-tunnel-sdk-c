@@ -64,26 +64,15 @@ extern tunneler_context NF_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *
 
 extern int NF_tunneler_intercept_v1(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_name, const char *hostname, int port);
 
-extern int NF_tunneler_stop_intercepting(tunneler_context tnlr_ctx, const char *service_name);
+extern void NF_tunneler_stop_intercepting(tunneler_context tnlr_ctx, const char *service_name);
 
 extern void NF_tunneler_dial_completed(tunneler_io_context *tnlr_io_ctx, void *ziti_io_ctx, bool ok);
 
 extern int NF_tunneler_write(tunneler_io_context *tnlr_io_ctx, const void *data, size_t len);
 
 extern void NF_tunneler_ack(void *write_ctx);
+
 extern int NF_tunneler_close(tunneler_io_context *tnlr_io_ctx);
-
-/**************** UDP support **************/
-/**
- * @experimental
- */
-
-typedef void *addr_t; // anonymize ip_addr_t for now
-typedef void (*ziti_udp_cb)(tunneler_io_context tio, void *ctx,
-        addr_t src, uint16_t src_port,
-        const void* data, ssize_t len);
-extern int NF_udp_handler(tunneler_context tnlr_ctx, const char *hostname, int port, ziti_udp_cb cb, void *ctx);
-extern int NF_udp_send(tunneler_io_context tio, addr_t dest, uint16_t dest_port, const void* data, ssize_t len);
 
 #ifdef __cplusplus
 }

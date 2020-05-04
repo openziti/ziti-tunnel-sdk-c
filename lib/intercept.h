@@ -28,6 +28,6 @@ extern int add_v1_intercept(tunneler_context tnlr_ctx, const void *ziti_ctx, con
 extern void remove_intercept(tunneler_context tnlr_ctx, const char *serivce_name);
 
 /** return the intercept context for a packet based on its destination ip:port */
-extern intercept_ctx_t *lookup_l4_intercept(tunneler_context tnlr_ctx, ip_addr_t dst_addr, int dst_port);
+extern intercept_ctx_t *lookup_l4_intercept(tunneler_context tnlr_ctx, ip_addr_t *dst_addr, int dst_port);
 
 #endif //ZITI_TUNNELER_SDK_INTERCEPT_H

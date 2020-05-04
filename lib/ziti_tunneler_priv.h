@@ -25,7 +25,7 @@ struct tunneler_io_ctx_s {
         struct tcp_pcb *tcp;
         struct {
             struct udp_pcb *pcb;
-            ziti_udp_cb cb;
+            //ziti_udp_cb cb;
             void *ctx;
         } udp;
     };

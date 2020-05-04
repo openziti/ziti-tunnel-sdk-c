@@ -56,6 +56,7 @@ tunneler_context NF_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop) {
 /** called by tunneler application when data has been successfully written to ziti */
 void NF_tunneler_ack(void *write_ctx) {
     struct write_ctx_s * ctx = write_ctx;
+    // TODO deal with udp
     tunneler_tcp_ack(ctx->pcb, ctx->pbuf);
     free(ctx);
 }
@@ -97,10 +98,10 @@ void NF_tunneler_dial_completed(tunneler_io_context *tnlr_io_ctx, void *ziti_io_
             tunneler_tcp_dial_completed((*tnlr_io_ctx)->tcp, io_ctx, ok);
             break;
         case tun_udp:
-            // TODO
+            tunneler_udp_dial_completed((*tnlr_io_ctx)->udp.pcb, io_ctx, ok);
             break;
         default:
-            // TODO
+            ZITI_LOG(ERROR, "unknown proto %d", (*tnlr_io_ctx)->proto);
             break;
     }
 }
@@ -120,7 +121,7 @@ int NF_tunneler_intercept_v1(tunneler_context tnlr_ctx, const void *ziti_ctx, co
     return 0;
 }
 
-int NF_tunneler_stop_intercepting(tunneler_context tnlr_ctx, const char *service_name) {
+void NF_tunneler_stop_intercepting(tunneler_context tnlr_ctx, const char *service_name) {
     remove_intercept(tnlr_ctx, service_name);
 }
 
@@ -137,8 +138,7 @@ int NF_tunneler_write(tunneler_io_context *tnlr_io_ctx, const void *data, size_t
             r = tunneler_tcp_write((*tnlr_io_ctx)->tcp, data, len);
             break;
         case tun_udp:
-            ZITI_LOG(ERROR, "no udp yet"); // TODO handle UDP write
-            r = -1;
+            r = tunneler_udp_write((*tnlr_io_ctx)->udp.pcb, data, len);
             break;
     }
 

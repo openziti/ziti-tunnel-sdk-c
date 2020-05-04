@@ -70,7 +70,7 @@ void remove_intercept(tunneler_context tnlr_ctx, const char *service_name) {
 }
 
 /** return the intercept context for a packet based on its destination ip:port */
-intercept_ctx_t *lookup_l4_intercept(tunneler_context tnlr_ctx, ip_addr_t dst_addr, int dst_port) {
+intercept_ctx_t *lookup_l4_intercept(tunneler_context tnlr_ctx, ip_addr_t *dst_addr, int dst_port) {
     struct intercept_s *intercept;
 
     if (tnlr_ctx == NULL) {
@@ -80,7 +80,7 @@ intercept_ctx_t *lookup_l4_intercept(tunneler_context tnlr_ctx, ip_addr_t dst_ad
 
     for (intercept = tnlr_ctx->intercepts; intercept != NULL; intercept = intercept->next) {
         if (intercept->cfg_version == 1) {
-            if (ip_addr_cmp(&intercept->cfg.v1.resolved_hostname, &dst_addr) &&
+            if (ip_addr_cmp(&intercept->cfg.v1.resolved_hostname, dst_addr) &&
                 intercept->cfg.v1.port == dst_port) {
                 return &intercept->ctx;
             }

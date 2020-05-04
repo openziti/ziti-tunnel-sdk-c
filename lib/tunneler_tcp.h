@@ -7,7 +7,7 @@
 #include "lwip/raw.h"
 #include "lwip/priv/tcp_priv.h"
 
-extern int tunneler_tcp_write(struct tcp_pcb *pcb, void *data, size_t len);
+extern ssize_t tunneler_tcp_write(struct tcp_pcb *pcb, const void *data, size_t len);
 
 extern void tunneler_tcp_dial_completed(struct tcp_pcb *pcb, struct io_ctx_s *io_ctx, bool ok);
 
