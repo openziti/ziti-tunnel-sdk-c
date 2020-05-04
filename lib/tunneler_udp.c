@@ -1,6 +1,3 @@
-
-#include <assert.h>
-
 #include "tunneler_udp.h"
 #include "ziti_tunneler_priv.h"
 #include "intercept.h"
@@ -17,9 +14,9 @@ void on_udp_client_data(void *io_ctx, struct udp_pcb *pcb, struct pbuf *p, const
     ziti_write_cb zwrite = _io_ctx->tnlr_io_ctx->tnlr_ctx->opts.ziti_write;
 
     struct write_ctx_s *wr_ctx = calloc(1, sizeof(struct write_ctx_s));
-    // TODO udp types
     wr_ctx->pbuf = p;
-    wr_ctx->pcb = pcb;
+    wr_ctx->udp = pcb;
+    wr_ctx->ack = tunneler_udp_ack;
     ssize_t s = zwrite(_io_ctx->ziti_io_ctx, wr_ctx, p->payload, p->len);
     if (s < 0) {
         free(wr_ctx);
@@ -28,8 +25,8 @@ void on_udp_client_data(void *io_ctx, struct udp_pcb *pcb, struct pbuf *p, const
     }
 }
 
-void tunneler_udp_ack(struct udp_pcb *pcb, struct pbuf *p) {
-    pbuf_free(p);
+void tunneler_udp_ack(struct write_ctx_s *write_ctx) {
+    pbuf_free(write_ctx->pbuf);
 }
 
 int tunneler_udp_close(struct udp_pcb *pcb) {
@@ -84,6 +81,7 @@ u8_t recv_udp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     /* first see if this datagram belongs to an active connection */
     for (con_pcb = udp_pcbs; con_pcb != NULL; con_pcb = con_pcb->next) {
         if (con_pcb->remote_port == src_p && ip_addr_cmp(&con_pcb->remote_ip, &src)) {
+            // TODO move pcb to front of list
             return 0; // let lwip process the datagram
         }
     }

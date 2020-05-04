@@ -70,7 +70,8 @@ extern void NF_tunneler_dial_completed(tunneler_io_context *tnlr_io_ctx, void *z
 
 extern int NF_tunneler_write(tunneler_io_context *tnlr_io_ctx, const void *data, size_t len);
 
-extern void NF_tunneler_ack(void *write_ctx);
+struct write_ctx_s;
+extern void NF_tunneler_ack(struct write_ctx_s *write_ctx);
 
 extern int NF_tunneler_close(tunneler_io_context *tnlr_io_ctx);
 

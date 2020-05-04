@@ -13,7 +13,7 @@ extern void tunneler_tcp_dial_completed(struct tcp_pcb *pcb, struct io_ctx_s *io
 
 extern u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_addr_t *addr);
 
-extern void tunneler_tcp_ack(struct tcp_pcb *pcb, struct pbuf *p);
+extern void tunneler_tcp_ack(struct write_ctx_s *write_ctx);
 
 extern int tunneler_tcp_close(struct tcp_pcb *pcb);
 

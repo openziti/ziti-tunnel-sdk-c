@@ -90,7 +90,8 @@ static err_t on_tcp_client_data(void *io_ctx, struct tcp_pcb *pcb, struct pbuf *
     u16_t len = p->len;
     struct write_ctx_s *wr_ctx = calloc(1, sizeof(struct write_ctx_s));
     wr_ctx->pbuf = p;
-    wr_ctx->pcb = pcb;
+    wr_ctx->tcp = pcb;
+    wr_ctx->ack = tunneler_tcp_ack;
     ssize_t s = zwrite(_io_ctx->ziti_io_ctx, wr_ctx, p->payload, len);
     if (s < 0) {
         free(wr_ctx);
@@ -139,9 +140,10 @@ ssize_t tunneler_tcp_write(struct tcp_pcb *pcb, const void *data, size_t len) {
     return sendlen;
 }
 
-void tunneler_tcp_ack(struct tcp_pcb *pcb, struct pbuf *p) {
-    tcp_recved(pcb, p->len);
-    pbuf_free(p);
+void tunneler_tcp_ack(struct write_ctx_s *write_ctx) {
+    struct write_ctx_s *wr_ctx = write_ctx;
+    tcp_recved(wr_ctx->tcp, wr_ctx->pbuf->len);
+    pbuf_free(wr_ctx->pbuf);
 }
 
 int tunneler_tcp_close(struct tcp_pcb *pcb) {

@@ -54,11 +54,9 @@ tunneler_context NF_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop) {
 }
 
 /** called by tunneler application when data has been successfully written to ziti */
-void NF_tunneler_ack(void *write_ctx) {
-    struct write_ctx_s * ctx = write_ctx;
-    // TODO deal with udp
-    tunneler_tcp_ack(ctx->pcb, ctx->pbuf);
-    free(ctx);
+void NF_tunneler_ack(struct write_ctx_s *write_ctx) {
+    write_ctx->ack(write_ctx);
+    free(write_ctx);
 }
 
 static tunneler_io_context new_tunneler_io_context(tunneler_context tnlr_ctx, struct tcp_pcb *pcb) {
