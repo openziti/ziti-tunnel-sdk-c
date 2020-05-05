@@ -9,7 +9,7 @@
 
 extern ssize_t tunneler_tcp_write(struct tcp_pcb *pcb, const void *data, size_t len);
 
-extern void tunneler_tcp_dial_completed(struct tcp_pcb *pcb, struct io_ctx_s *io_ctx, bool ok);
+extern void tunneler_tcp_dial_completed(tunneler_io_context *tnlr_io_ctx, void *ziti_io_ctx, bool ok);
 
 extern u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_addr_t *addr);
 

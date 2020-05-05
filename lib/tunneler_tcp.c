@@ -158,29 +158,34 @@ int tunneler_tcp_close(struct tcp_pcb *pcb) {
     return 0;
 }
 
-void tunneler_tcp_dial_completed(struct tcp_pcb *pcb, struct io_ctx_s *io_ctx, bool ok) {
-    tcp_arg(pcb, io_ctx);
-    tcp_recv(pcb, on_tcp_client_data);
-    tcp_err(pcb, on_tcp_client_err);
+void tunneler_tcp_dial_completed(tunneler_io_context *tnlr_io_ctx, void *ziti_io_ctx, bool ok) {
+    struct io_ctx_s *io_ctx = malloc(sizeof(struct io_ctx_s));
+    io_ctx->tnlr_io_ctx = *tnlr_io_ctx;
+    io_ctx->ziti_io_ctx = ziti_io_ctx;
+
+    tcp_arg(io_ctx->tnlr_io_ctx->tcp, io_ctx);
+    tcp_recv(io_ctx->tnlr_io_ctx->tcp, on_tcp_client_data);
+    tcp_err(io_ctx->tnlr_io_ctx->tcp, on_tcp_client_err);
 
     /* Send a SYN|ACK together with the MSS option. */
-    err_t rc = tcp_enqueue_flags(pcb, TCP_SYN | TCP_ACK);
+    err_t rc = tcp_enqueue_flags(io_ctx->tnlr_io_ctx->tcp, TCP_SYN | TCP_ACK);
     if (rc != ERR_OK) {
-        tcp_abandon(pcb, 0);
+        tcp_abandon(io_ctx->tnlr_io_ctx->tcp, 0);
         return;
     }
 
-    tcp_output(pcb);
-    memp_free(MEMP_TCP_PCB_LISTEN, pcb->listener);
+    tcp_output(io_ctx->tnlr_io_ctx->tcp);
+    memp_free(MEMP_TCP_PCB_LISTEN, io_ctx->tnlr_io_ctx->tcp->listener);
 }
 
-static tunneler_io_context new_tunneler_io_context(tunneler_context tnlr_ctx, struct tcp_pcb *pcb) {
+static tunneler_io_context new_tunneler_io_context(tunneler_context tnlr_ctx, const char *service_name, struct tcp_pcb *pcb) {
     struct tunneler_io_ctx_s *ctx = malloc(sizeof(struct tunneler_io_ctx_s));
     if (ctx == NULL) {
         ZITI_LOG(ERROR, "failed to allocate tunneler_io_ctx");
         return NULL;
     }
     ctx->tnlr_ctx = tnlr_ctx;
+    ctx->service_name = service_name;
     ctx->proto = tun_tcp;
     ctx->tcp = pcb;
     return ctx;
@@ -243,7 +248,7 @@ u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     ziti_dial_cb zdial = tnlr_ctx->opts.ziti_dial;
 
     struct tcp_pcb *npcb = new_tcp_pcb(src, dst, tcphdr);
-    tunneler_io_context tnlr_io_ctx = new_tunneler_io_context(tnlr_ctx, npcb);
+    tunneler_io_context tnlr_io_ctx = new_tunneler_io_context(tnlr_ctx, intercept_ctx->service_name, npcb);
     void *ziti_io_ctx = zdial(intercept_ctx, tnlr_io_ctx);
     if (ziti_io_ctx == NULL) {
         ZITI_LOG(ERROR, "ziti_dial(%s) failed", intercept_ctx->service_name);

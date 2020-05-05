@@ -4,23 +4,37 @@
 #include "nf/ziti_log.h"
 
 /** called by lwip when a packet arrives from a connected client */
-void on_udp_client_data(void *io_ctx, struct udp_pcb *pcb, struct pbuf *p, const ip_addr_t *addr, u16_t port) {
-    if (io_ctx == NULL) {
+void on_udp_client_data(void *io_context, struct udp_pcb *pcb, struct pbuf *p, const ip_addr_t *addr, u16_t port) {
+    if (io_context == NULL) {
         ZITI_LOG(INFO, "conn was closed");
         return;
     }
     ZITI_LOG(DEBUG, "on_udp_client_data %d bytes from %s:%d", p->len, ipaddr_ntoa(addr), port);
-    struct io_ctx_s *_io_ctx = (struct io_ctx_s *)io_ctx;
-    ziti_write_cb zwrite = _io_ctx->tnlr_io_ctx->tnlr_ctx->opts.ziti_write;
 
+    struct io_ctx_s *io_ctx = (struct io_ctx_s *)io_context;
+    switch (io_ctx->tnlr_io_ctx->udp.dial_status) {
+        case initiated:
+            ZITI_LOG(INFO, "dial_status is initiated");
+            // TODO enqueue pbuf onto tnlr_io_ctx->udp.queued
+            return;
+        case succeeded:
+            break;
+        case failed:
+        default:
+            ZITI_LOG(INFO, "dial_status is failed or invalid");
+            // TODO remove pbuf from active list
+            return;
+    }
+
+    ziti_write_cb zwrite = io_ctx->tnlr_io_ctx->tnlr_ctx->opts.ziti_write;
     struct write_ctx_s *wr_ctx = calloc(1, sizeof(struct write_ctx_s));
     wr_ctx->pbuf = p;
     wr_ctx->udp = pcb;
     wr_ctx->ack = tunneler_udp_ack;
-    ssize_t s = zwrite(_io_ctx->ziti_io_ctx, wr_ctx, p->payload, p->len);
+    ssize_t s = zwrite(io_ctx->ziti_io_ctx, wr_ctx, p->payload, p->len);
     if (s < 0) {
         free(wr_ctx);
-        free(_io_ctx);
+        free(io_ctx);
         pbuf_free(p);
     }
 }
@@ -36,9 +50,10 @@ int tunneler_udp_close(struct udp_pcb *pcb) {
     return 0;
 }
 
-void tunneler_udp_dial_completed(struct udp_pcb *pcb, struct io_ctx_s *io_ctx, bool ok) {
-    udp_recv(pcb, on_udp_client_data, io_ctx);
-    // TODO connect?
+void tunneler_udp_dial_completed(tunneler_io_context *tnlr_io_ctx, void *ziti_io_ctx, bool ok) {
+    (*tnlr_io_ctx)->udp.dial_status = ok ? succeeded : failed;
+
+    // no longer need to enqueue datagrams from the client. flush queued packets now, probably?
 }
 
 /** called by lwip when a udp datagram arrives. return 1 to indicate that the IP packet was consumed. */
@@ -94,12 +109,17 @@ u8_t recv_udp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     }
 
     ZITI_LOG(INFO, "intercepting packet with dst %s:%d for service %s", ipaddr_ntoa(&dst), dst_p, intercept_ctx->service_name);
+    ziti_dial_cb zdial = tnlr_ctx->opts.ziti_dial;
+
     /* make a new pcb for this connection and register it with lwip */
     struct udp_pcb *npcb = udp_new();
-    err_t err = udp_bind(npcb, &dst, dst_p);
+    ip_addr_set_ipaddr(&npcb->local_ip, &dst);
+    npcb->local_port = dst_p;
+    err_t err = udp_connect(npcb, &src, src_p);
     if (err != ERR_OK) {
-        ZITI_LOG(ERROR, "failed to udp_bind %s:%d: err: %d", ipaddr_ntoa(&dst), dst_p, err);
+        ZITI_LOG(ERROR, "failed to udp_connect %s:%d: err: %d", ipaddr_ntoa(&src), src_p, err);
         udp_remove(npcb);
+        pbuf_free(p);
         return 1;
     }
 
@@ -108,16 +128,32 @@ u8_t recv_udp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     tunneler_io_context ctx = (tunneler_io_context)calloc(1, sizeof(struct tunneler_io_ctx_s));
     ctx->tnlr_ctx = tnlr_ctx;
     ctx->proto = tun_udp;
+    ctx->service_name = intercept_ctx->service_name;
     ctx->udp.pcb = npcb;
-    udp_recv(npcb, on_udp_client_data, ctx);
+    ctx->udp.dial_status = initiated;
+    ctx->udp.queued = NULL;
 
-    return 0;
+    void *ziti_io_ctx = zdial(intercept_ctx, ctx);
+    if (ziti_io_ctx == NULL) {
+        ZITI_LOG(ERROR, "ziti_dial(%s) failed", intercept_ctx->service_name);
+        udp_remove(npcb);
+        pbuf_free(p);
+        free_tunneler_io_context(&ctx);
+        return 1;
+    }
+
+    struct io_ctx_s *io_ctx = calloc(1, sizeof(struct io_ctx_s));
+    io_ctx->tnlr_io_ctx = ctx;
+    io_ctx->ziti_io_ctx = ziti_io_ctx;
+    udp_recv(npcb, on_udp_client_data, io_ctx);
+
+    return 0; /* lwip will call on_udp_client_data for this packet */
 }
 
 ssize_t tunneler_udp_write(struct udp_pcb *pcb, const void *data, size_t len) {
     struct pbuf *p = pbuf_alloc(PBUF_TRANSPORT, len, PBUF_RAM);
     memcpy(p->payload, data, len);
-    err_t err = udp_send(pcb, p);
+    err_t err = udp_sendto_if_src(pcb, p, &pcb->remote_ip, pcb->remote_port, netif_default, &pcb->local_ip);
     pbuf_free(p);
     if (err != ERR_OK) {
         return -1;

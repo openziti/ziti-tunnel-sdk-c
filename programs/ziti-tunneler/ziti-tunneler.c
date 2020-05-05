@@ -77,7 +77,7 @@ int main(int argc, char *argv[]) {
 
     nf_options opts = {
             .init_cb = on_nf_init,
-            .config = "/Users/scarey/Downloads/localdev-0.13.json",
+            .config = "/Users/scarey/Downloads/localdev-0.14.json",
             .service_cb = on_service,
             .ctx = tnlr_ctx, /* this is passed to the service_cb */
             .refresh_interval = 10,
