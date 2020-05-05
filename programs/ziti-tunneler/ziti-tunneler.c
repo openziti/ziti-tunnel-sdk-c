@@ -16,8 +16,6 @@
 
 /** callback from ziti SDK when a new service becomes available to our identity */
 void on_service(nf_context nf_ctx, ziti_service *service, int status, void *tnlr_ctx) {
-    printf("service_available: %s\n", service->name);
-
     ziti_context *ziti_ctx = malloc(sizeof(ziti_context));
     if (ziti_ctx == NULL) {
         fprintf(stderr, "failed to allocate dial context\n");
@@ -25,14 +23,18 @@ void on_service(nf_context nf_ctx, ziti_service *service, int status, void *tnlr
     }
     ziti_ctx->nf_ctx = nf_ctx;
 
-    ziti_intercept intercept;
     if (status == ZITI_OK && (service->perm_flags & ZITI_CAN_DIAL)) {
+        ziti_intercept intercept;
         int rc = ziti_service_get_config(service, "ziti-tunneler-client.v1", &intercept, parse_ziti_intercept);
         if (rc == 0) {
+            printf("service_available: %s\n", service->name);
             NF_tunneler_intercept_v1(tnlr_ctx, ziti_ctx, service->name, intercept.hostname, intercept.port);
             free(intercept.hostname);
         }
         printf("ziti_service_get_config rc: %d\n", rc);
+    } else if (status == ZITI_SERVICE_UNAVAILABLE) {
+        printf("service unavailable: %s\n", service->name);
+        NF_tunneler_stop_intercepting(tnlr_ctx, service->name);
     }
 }
 
