@@ -3,6 +3,39 @@
 #include "intercept.h"
 #include "nf/ziti_log.h"
 
+static void to_ziti(tunneler_io_context tnlr_io_ctx, void *ziti_io_ctx, struct pbuf *p) {
+    struct pbuf *recv_data = NULL;
+    if (tnlr_io_ctx->udp.queued != NULL) {
+        if (p != NULL) {
+            pbuf_cat(tnlr_io_ctx->udp.queued, p);
+        }
+        recv_data = tnlr_io_ctx->udp.queued;
+        tnlr_io_ctx->udp.queued = NULL;
+    } else {
+        recv_data = p;
+    }
+
+    if (recv_data == NULL) {
+        ZITI_LOG(DEBUG, "no data to write");
+        return;
+    }
+
+    do {
+        ZITI_LOG(INFO, "writing %d bytes to ziti", recv_data->len);
+        ziti_write_cb zwrite = tnlr_io_ctx->tnlr_ctx->opts.ziti_write;
+        struct write_ctx_s *wr_ctx = calloc(1, sizeof(struct write_ctx_s));
+        wr_ctx->pbuf = recv_data;
+        wr_ctx->udp = tnlr_io_ctx->udp.pcb;
+        wr_ctx->ack = tunneler_udp_ack;
+        ssize_t s = zwrite(ziti_io_ctx, wr_ctx, recv_data->payload, recv_data->len);
+        if (s < 0) {
+            free(wr_ctx);
+            pbuf_free(recv_data);
+        }
+        recv_data = recv_data->next;
+    } while (recv_data != NULL);
+}
+
 /** called by lwip when a packet arrives from a connected client */
 void on_udp_client_data(void *io_context, struct udp_pcb *pcb, struct pbuf *p, const ip_addr_t *addr, u16_t port) {
     if (io_context == NULL) {
@@ -11,31 +44,25 @@ void on_udp_client_data(void *io_context, struct udp_pcb *pcb, struct pbuf *p, c
     }
     ZITI_LOG(DEBUG, "on_udp_client_data %d bytes from %s:%d", p->len, ipaddr_ntoa(addr), port);
 
-    struct io_ctx_s *io_ctx = (struct io_ctx_s *)io_context;
+    struct io_ctx_s *io_ctx = (struct io_ctx_s *) io_context;
     switch (io_ctx->tnlr_io_ctx->udp.dial_status) {
         case initiated:
             ZITI_LOG(INFO, "dial_status is initiated");
-            // TODO enqueue pbuf onto tnlr_io_ctx->udp.queued
+            if (io_ctx->tnlr_io_ctx->udp.queued == NULL) {
+                io_ctx->tnlr_io_ctx->udp.queued = p;
+            } else {
+                pbuf_cat(io_ctx->tnlr_io_ctx->udp.queued, p);
+            }
+            ZITI_LOG(INFO, "queued %d bytes", io_ctx->tnlr_io_ctx->udp.queued->len);
             return;
         case succeeded:
+            to_ziti(io_ctx->tnlr_io_ctx, io_ctx->ziti_io_ctx, p);
             break;
         case failed:
         default:
             ZITI_LOG(INFO, "dial_status is failed or invalid");
-            // TODO remove pbuf from active list
+            NF_tunneler_close(&io_ctx->tnlr_io_ctx);
             return;
-    }
-
-    ziti_write_cb zwrite = io_ctx->tnlr_io_ctx->tnlr_ctx->opts.ziti_write;
-    struct write_ctx_s *wr_ctx = calloc(1, sizeof(struct write_ctx_s));
-    wr_ctx->pbuf = p;
-    wr_ctx->udp = pcb;
-    wr_ctx->ack = tunneler_udp_ack;
-    ssize_t s = zwrite(io_ctx->ziti_io_ctx, wr_ctx, p->payload, p->len);
-    if (s < 0) {
-        free(wr_ctx);
-        free(io_ctx);
-        pbuf_free(p);
     }
 }
 
@@ -52,6 +79,10 @@ int tunneler_udp_close(struct udp_pcb *pcb) {
 
 void tunneler_udp_dial_completed(tunneler_io_context *tnlr_io_ctx, void *ziti_io_ctx, bool ok) {
     (*tnlr_io_ctx)->udp.dial_status = ok ? succeeded : failed;
+    /* send any data that was queued while waiting for the dial to complete */
+    if (ok) {
+        to_ziti(*tnlr_io_ctx, ziti_io_ctx, NULL);
+    }
 
     // no longer need to enqueue datagrams from the client. flush queued packets now, probably?
 }
@@ -153,6 +184,9 @@ u8_t recv_udp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
 ssize_t tunneler_udp_write(struct udp_pcb *pcb, const void *data, size_t len) {
     struct pbuf *p = pbuf_alloc(PBUF_TRANSPORT, len, PBUF_RAM);
     memcpy(p->payload, data, len);
+    /* use udp_sendto_if_src even though local and remote addresses are in pcb, because
+     * udp_send verifies that the dest IP matches the netif's IP, and fails with ERR_RTE.
+     */
     err_t err = udp_sendto_if_src(pcb, p, &pcb->remote_ip, pcb->remote_port, netif_default, &pcb->local_ip);
     pbuf_free(p);
     if (err != ERR_OK) {
