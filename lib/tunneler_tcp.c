@@ -5,6 +5,10 @@
 #include "intercept.h"
 #include "nf/ziti_log.h"
 
+#if _WIN32
+#define MIN(a,b) ((a)<(b) ? (a) : (b))
+#endif
+
 /** called by lwip when a client sends a SYN segment to an intercepted address.
  * this only exists to appease lwip */
 static err_t on_accept(void *arg, struct tcp_pcb *pcb, err_t err) {
