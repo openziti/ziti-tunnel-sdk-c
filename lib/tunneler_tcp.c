@@ -18,6 +18,15 @@ static err_t on_accept(void *arg, struct tcp_pcb *pcb, err_t err) {
 
 /** create a tcp connection to be managed by lwip */
 static struct tcp_pcb *new_tcp_pcb(ip_addr_t src, ip_addr_t dest, struct tcp_hdr *tcphdr) {
+    /** associate all injected PCBs with the same phony listener to appease some LWIP checks */
+    static struct tcp_pcb_listen * phony_listener = NULL;
+    if (phony_listener == NULL) {
+        if ((phony_listener = memp_malloc(MEMP_TCP_PCB_LISTEN)) == NULL) {
+            ZITI_LOG(ERROR, "failed to allocate listener");
+            return NULL;
+        }
+        phony_listener->accept = on_accept;
+    }
     struct tcp_pcb *npcb = tcp_new();
     if (npcb == NULL) {
         ZITI_LOG(ERROR, "tcp_new failed");
@@ -38,13 +47,7 @@ static struct tcp_pcb *new_tcp_pcb(ip_addr_t src, ip_addr_t dest, struct tcp_hdr
     npcb->snd_lbb = iss;
     npcb->snd_wl1 = lwip_ntohl(tcphdr->seqno) - 1;/* initialise to seqno-1 to force window update */
     /* allocate a listener and set accept fn to appease lwip */
-    npcb->listener = (struct tcp_pcb_listen *)memp_malloc(MEMP_TCP_PCB_LISTEN); // TODO common listener
-    if (npcb->listener == NULL) {
-        ZITI_LOG(ERROR, "memp_malloc failed");
-        tcp_free(npcb);
-        return NULL;
-    }
-    npcb->listener->accept = on_accept;
+    npcb->listener = phony_listener;
     npcb->netif_idx = netif_get_index(netif_default);
 
     /* Register the new PCB so that we can begin receiving segments for it. */
