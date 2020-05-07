@@ -71,6 +71,8 @@ void tunneler_udp_ack(struct write_ctx_s *write_ctx) {
 }
 
 int tunneler_udp_close(struct udp_pcb *pcb) {
+    struct io_ctx_s *io_ctx = pcb->recv_arg;
+    ZITI_LOG(INFO, "closing %s session", io_ctx->tnlr_io_ctx->service_name);
     if (pcb != NULL) {
         udp_remove(pcb);
     }
@@ -82,9 +84,9 @@ void tunneler_udp_dial_completed(tunneler_io_context *tnlr_io_ctx, void *ziti_io
     /* send any data that was queued while waiting for the dial to complete */
     if (ok) {
         to_ziti(*tnlr_io_ctx, ziti_io_ctx, NULL);
+    } else {
+        NF_tunneler_close(tnlr_io_ctx);
     }
-
-    // no longer need to enqueue datagrams from the client. flush queued packets now, probably?
 }
 
 /** called by lwip when a udp datagram arrives. return 1 to indicate that the IP packet was consumed. */
@@ -140,7 +142,7 @@ u8_t recv_udp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     /* is the dest address being intercepted? */
     intercept_ctx_t * intercept_ctx = lookup_l4_intercept(tnlr_ctx, &dst, dst_p);
     if (intercept_ctx == NULL) {
-        ZITI_LOG(DEBUG, "no v1 intercepts match %s:%d", ipaddr_ntoa(&dst), dst_p);
+        ZITI_LOG(VERBOSE, "no v1 intercepts match %s:%d", ipaddr_ntoa(&dst), dst_p);
         return 0;
     }
 
@@ -198,5 +200,4 @@ ssize_t tunneler_udp_write(struct udp_pcb *pcb, const void *data, size_t len) {
         return -1;
     }
     return len;
-
 }
