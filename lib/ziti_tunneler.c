@@ -54,23 +54,9 @@ tunneler_context NF_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop) {
 }
 
 /** called by tunneler application when data has been successfully written to ziti */
-void NF_tunneler_ack(void *write_ctx) {
-    struct write_ctx_s * ctx = write_ctx;
-    // TODO deal with udp
-    tunneler_tcp_ack(ctx->pcb, ctx->pbuf);
-    free(ctx);
-}
-
-static tunneler_io_context new_tunneler_io_context(tunneler_context tnlr_ctx, struct tcp_pcb *pcb) {
-    struct tunneler_io_ctx_s *ctx = malloc(sizeof(struct tunneler_io_ctx_s));
-    if (ctx == NULL) {
-        ZITI_LOG(ERROR, "failed to allocate tunneler_io_ctx");
-        return NULL;
-    }
-    ctx->tnlr_ctx = tnlr_ctx;
-    ctx->proto = tun_tcp;
-    ctx->tcp = pcb;
-    return ctx;
+void NF_tunneler_ack(struct write_ctx_s *write_ctx) {
+    write_ctx->ack(write_ctx);
+    free(write_ctx);
 }
 
 void free_tunneler_io_context(tunneler_io_context *tnlr_io_ctx) {
@@ -89,16 +75,14 @@ void free_tunneler_io_context(tunneler_io_context *tnlr_io_ctx) {
  * - let the client know that we have a connection (e.g. send SYN/ACK)
  */
 void NF_tunneler_dial_completed(tunneler_io_context *tnlr_io_ctx, void *ziti_io_ctx, bool ok) {
-    struct io_ctx_s *io_ctx = malloc(sizeof(struct io_ctx_s));
-    io_ctx->tnlr_io_ctx = *tnlr_io_ctx;
-    io_ctx->ziti_io_ctx = ziti_io_ctx;
+    ZITI_LOG(INFO, "ziti dial completed: svc=%s, ok=%d", (*tnlr_io_ctx)->service_name, ok);
 
     switch ((*tnlr_io_ctx)->proto) {
         case tun_tcp:
-            tunneler_tcp_dial_completed((*tnlr_io_ctx)->tcp, io_ctx, ok);
+            tunneler_tcp_dial_completed(tnlr_io_ctx, ziti_io_ctx, ok);
             break;
         case tun_udp:
-            tunneler_udp_dial_completed((*tnlr_io_ctx)->udp.pcb, io_ctx, ok);
+            tunneler_udp_dial_completed(tnlr_io_ctx, ziti_io_ctx, ok);
             break;
         default:
             ZITI_LOG(ERROR, "unknown proto %d", (*tnlr_io_ctx)->proto);
@@ -154,12 +138,25 @@ int NF_tunneler_write(tunneler_io_context *tnlr_io_ctx, const void *data, size_t
 
 /** called by tunneler application when a ziti connection closes */
 int NF_tunneler_close(tunneler_io_context *tnlr_io_ctx) {
-    if (tnlr_io_ctx != NULL && *tnlr_io_ctx != NULL) {
-        tunneler_tcp_close((*tnlr_io_ctx)->tcp);
-        free(*tnlr_io_ctx);
-        *tnlr_io_ctx = NULL;
+    if (tnlr_io_ctx == NULL || *tnlr_io_ctx == NULL) {
+        ZITI_LOG(INFO, "null tnlr_io_ctx");
+        return 0;
     }
 
+    switch ((*tnlr_io_ctx)->proto) {
+        case tun_tcp:
+            tunneler_tcp_close((*tnlr_io_ctx)->tcp);
+            break;
+        case tun_udp:
+            tunneler_udp_close((*tnlr_io_ctx)->udp.pcb);
+            break;
+        default:
+            ZITI_LOG(ERROR, "unknown proto %d", (*tnlr_io_ctx)->proto);
+            break;
+    }
+
+    free(*tnlr_io_ctx);
+    *tnlr_io_ctx = NULL;
     return 0;
 }
 

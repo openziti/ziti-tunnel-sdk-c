@@ -19,23 +19,34 @@ typedef enum  {
 } tunneler_proto_type;
 
 struct tunneler_io_ctx_s {
-    tunneler_context   tnlr_ctx;
+    tunneler_context    tnlr_ctx;
+    const char *        service_name;
     tunneler_proto_type proto;
     union {
         struct tcp_pcb *tcp;
         struct {
             struct udp_pcb *pcb;
+            struct pbuf *queued;
+            enum ziti_dial_status { initiated, succeeded, failed } dial_status;
             //ziti_udp_cb cb;
-            void *ctx;
+            //void *ctx;
         } udp;
     };
 };
 
 extern void free_tunneler_io_context(tunneler_io_context *tnlr_io_ctx);
 
+struct write_ctx_s;
+
+typedef void (*ack_fn)(struct write_ctx_s *write_ctx);
+
 struct write_ctx_s {
     struct pbuf * pbuf;
-    struct tcp_pcb *pcb;
+    union {
+        struct tcp_pcb *tcp;
+        struct udp_pcb *udp;
+    };
+    ack_fn ack;
 };
 
 #endif //ZITI_TUNNELER_SDK_ZITI_TUNNELER_PRIV_H
