@@ -1,7 +1,7 @@
 #ifndef ZITI_TUNNELER_SDK_TUNNELER_UDP_H
 #define ZITI_TUNNELER_SDK_TUNNELER_UDP_H
 
-#include "nf/ziti_tunneler.h"
+#include "ziti/ziti_tunneler.h"
 #include "lwip/udp.h"
 #include "lwip/raw.h"
 

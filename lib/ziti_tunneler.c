@@ -23,7 +23,7 @@ limitations under the License.
 #include "lwip/raw.h"
 #include "lwip/timeouts.h"
 #include "netif_shim.h"
-#include "nf/ziti_tunneler.h"
+#include "ziti/ziti_tunneler.h"
 #include "ziti_tunneler_priv.h"
 #include "intercept.h"
 #include "tunneler_tcp.h"
@@ -36,7 +36,7 @@ struct ip_globals ip_data;
 
 static void run_packet_loop(uv_loop_t *loop, tunneler_context tnlr_ctx);
 
-tunneler_context NF_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop) {
+tunneler_context ziti_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop) {
     if (opts == NULL) {
         ZITI_LOG(ERROR, "invalid tunneler options");
         return NULL;
@@ -54,7 +54,7 @@ tunneler_context NF_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop) {
 }
 
 /** called by tunneler application when data has been successfully written to ziti */
-void NF_tunneler_ack(struct write_ctx_s *write_ctx) {
+void ziti_tunneler_ack(struct write_ctx_s *write_ctx) {
     write_ctx->ack(write_ctx);
     free(write_ctx);
 }
@@ -74,7 +74,7 @@ void free_tunneler_io_context(tunneler_io_context *tnlr_io_ctx) {
  * called by tunneler application when a service dial has completed
  * - let the client know that we have a connection (e.g. send SYN/ACK)
  */
-void NF_tunneler_dial_completed(tunneler_io_context *tnlr_io_ctx, void *ziti_io_ctx, bool ok) {
+void ziti_tunneler_dial_completed(tunneler_io_context *tnlr_io_ctx, void *ziti_io_ctx, bool ok) {
     ZITI_LOG(INFO, "ziti dial completed: svc=%s, ok=%d", (*tnlr_io_ctx)->service_name, ok);
 
     switch ((*tnlr_io_ctx)->proto) {
@@ -91,7 +91,7 @@ void NF_tunneler_dial_completed(tunneler_io_context *tnlr_io_ctx, void *ziti_io_
 }
 
 /** arrange to intercept traffic defined by a v1 client tunneler config */
-int NF_tunneler_intercept_v1(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_name, const char *hostname, int port) {
+int ziti_tunneler_intercept_v1(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_name, const char *hostname, int port) {
     ip_addr_t intercept_ip;
 
     if (ipaddr_aton(hostname, &intercept_ip) == 0) {
@@ -105,12 +105,12 @@ int NF_tunneler_intercept_v1(tunneler_context tnlr_ctx, const void *ziti_ctx, co
     return 0;
 }
 
-void NF_tunneler_stop_intercepting(tunneler_context tnlr_ctx, const char *service_name) {
+void ziti_tunneler_stop_intercepting(tunneler_context tnlr_ctx, const char *service_name) {
     remove_intercept(tnlr_ctx, service_name);
 }
 
 /** called by tunneler application when data is read from a ziti connection */
-int NF_tunneler_write(tunneler_io_context *tnlr_io_ctx, const void *data, size_t len) {
+int ziti_tunneler_write(tunneler_io_context *tnlr_io_ctx, const void *data, size_t len) {
     if (tnlr_io_ctx == NULL || *tnlr_io_ctx == NULL) {
         ZITI_LOG(WARN, "null tunneler io context");
         return -1;
@@ -128,7 +128,7 @@ int NF_tunneler_write(tunneler_io_context *tnlr_io_ctx, const void *data, size_t
 
     if (r < 0) {
         ZITI_LOG(ERROR, "failed to write to client");
-        NF_tunneler_close(tnlr_io_ctx);
+        ziti_tunneler_close(tnlr_io_ctx);
         return -1;
     }
     struct tcp_pcb *pcb = (*tnlr_io_ctx)->tcp;
@@ -137,7 +137,7 @@ int NF_tunneler_write(tunneler_io_context *tnlr_io_ctx, const void *data, size_t
 }
 
 /** called by tunneler application when a ziti connection closes */
-int NF_tunneler_close(tunneler_io_context *tnlr_io_ctx) {
+int ziti_tunneler_close(tunneler_io_context *tnlr_io_ctx) {
     if (tnlr_io_ctx == NULL || *tnlr_io_ctx == NULL) {
         ZITI_LOG(INFO, "null tnlr_io_ctx");
         return 0;

@@ -267,7 +267,7 @@ u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
         }
         tcp_output(npcb);
     }
-    /* now we wait for the tunneler app to call NF_tunneler_dial_complete() */
+    /* now we wait for the tunneler app to call ziti_tunneler_dial_complete() */
 
     //pbuf_free(p);
     return 0; // TODO we should return 1, but that seems to cause the client to stall irrecoverably.

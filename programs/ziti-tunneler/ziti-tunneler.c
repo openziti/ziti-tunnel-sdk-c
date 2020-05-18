@@ -3,8 +3,8 @@
 #include <stdlib.h>
 #include "uv.h"
 #include "ziti/ziti.h"
-#include "nf/ziti_tunneler.h"
-#include "nf/ziti_tunneler_cbs.h"
+#include "ziti/ziti_tunneler.h"
+#include "ziti/ziti_tunneler_cbs.h"
 
 #if __APPLE__ && __MACH__
 #include "netif_driver/darwin/utun.h"
@@ -21,19 +21,19 @@ void on_service(ziti_context ziti_ctx, ziti_service *service, int status, void *
         int rc = ziti_service_get_config(service, "ziti-tunneler-client.v1", &intercept, parse_ziti_intercept);
         if (rc == 0) {
             printf("service_available: %s\n", service->name);
-            NF_tunneler_intercept_v1(tnlr_ctx, ziti_ctx, service->name, intercept.hostname, intercept.port);
+            ziti_tunneler_intercept_v1(tnlr_ctx, ziti_ctx, service->name, intercept.hostname, intercept.port);
             free(intercept.hostname);
         }
         printf("ziti_service_get_config rc: %d\n", rc);
     } else if (status == ZITI_SERVICE_UNAVAILABLE) {
         printf("service unavailable: %s\n", service->name);
-        NF_tunneler_stop_intercepting(tnlr_ctx, service->name);
+        ziti_tunneler_stop_intercepting(tnlr_ctx, service->name);
     }
 }
 
 const char *cfg_types[] = { "ziti-tunneler-client.v1", "ziti-tunneler-server.v1", NULL };
 
-static void on_nf_init(ziti_context ziti_ctx, int status, void *init_ctx) {
+static void on_ziti_init(ziti_context ziti_ctx, int status, void *init_ctx) {
     if (status != ZITI_OK) {
         fprintf(stderr, "failed to initialize ziti\n");
         exit(1);
@@ -41,8 +41,8 @@ static void on_nf_init(ziti_context ziti_ctx, int status, void *init_ctx) {
 }
 
 int main(int argc, char *argv[]) {
-    uv_loop_t *nf_loop = uv_default_loop();
-    if (nf_loop == NULL) {
+    uv_loop_t *ziti_loop = uv_default_loop();
+    if (ziti_loop == NULL) {
         fprintf(stderr, "failed to initialize default uv loop\n");
         return 1;
     }
@@ -66,10 +66,10 @@ int main(int argc, char *argv[]) {
             .ziti_close = ziti_sdk_c_close,
             .ziti_write = ziti_sdk_c_write
     };
-    tunneler_context tnlr_ctx = NF_tunneler_init(&tunneler_opts, nf_loop);
+    tunneler_context tnlr_ctx = ziti_tunneler_init(&tunneler_opts, ziti_loop);
 
     ziti_options opts = {
-            .init_cb = on_nf_init,
+            .init_cb = on_ziti_init,
             .config = "/Users/scarey/Downloads/localdev-0.14.1.json",
             .service_cb = on_service,
             .ctx = tnlr_ctx, /* this is passed to the service_cb */
@@ -77,12 +77,12 @@ int main(int argc, char *argv[]) {
             .config_types = cfg_types,
     };
 
-    if (ziti_init_opts(&opts, nf_loop, NULL) != 0) {
+    if (ziti_init_opts(&opts, ziti_loop, NULL) != 0) {
         fprintf(stderr, "failed to initialize ziti\n");
         return 1;
     }
 
-    if (uv_run(nf_loop, UV_RUN_DEFAULT) != 0) {
+    if (uv_run(ziti_loop, UV_RUN_DEFAULT) != 0) {
         fprintf(stderr, "failed to run event loop\n");
         exit(1);
     }

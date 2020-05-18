@@ -1,12 +1,12 @@
 #include <stdio.h>
 #include <ziti/ziti_log.h>
-#include "nf/ziti_tunneler_cbs.h"
+#include "ziti/ziti_tunneler_cbs.h"
 
 void on_ziti_connect(ziti_connection conn, int status) {
     ZITI_LOG(VERBOSE, "on_ziti_connect status: %d", status);
     ziti_io_context *ziti_io_ctx = ziti_conn_data(conn);
     if (status == ZITI_OK) {
-        NF_tunneler_dial_completed(&ziti_io_ctx->tnlr_io_ctx, ziti_io_ctx, status == ZITI_OK);
+        ziti_tunneler_dial_completed(&ziti_io_ctx->tnlr_io_ctx, ziti_io_ctx, status == ZITI_OK);
     } else {
         free(ziti_io_ctx);
     }
@@ -20,13 +20,13 @@ ssize_t on_ziti_data(ziti_connection conn, uint8_t *data, ssize_t len) {
         return len;
     }
     if (len > 0) {
-        int accepted = NF_tunneler_write(&ziti_io_ctx->tnlr_io_ctx, data, len);
+        int accepted = ziti_tunneler_write(&ziti_io_ctx->tnlr_io_ctx, data, len);
         if (accepted < 0) {
             ziti_sdk_c_close(ziti_io_ctx);
         }
         return accepted;
     } else {
-        NF_tunneler_close(&ziti_io_ctx->tnlr_io_ctx);
+        ziti_tunneler_close(&ziti_io_ctx->tnlr_io_ctx);
     }
     return len;
 }
@@ -57,13 +57,13 @@ void * ziti_sdk_c_dial(const intercept_ctx_t *intercept_ctx, tunneler_io_context
 
     ziti_context ziti_ctx = (ziti_context)intercept_ctx->ziti_ctx;
     if (ziti_conn_init(ziti_ctx, &ziti_io_ctx->ziti_conn, ziti_io_ctx) != ZITI_OK) {
-        ZITI_LOG(ERROR, "NF_conn_init failed");
+        ZITI_LOG(ERROR, "ziti_conn_init failed");
         free(ziti_io_ctx);
         return NULL;
     }
 
     if (ziti_dial(ziti_io_ctx->ziti_conn, intercept_ctx->service_name, on_ziti_connect, on_ziti_data) != ZITI_OK) {
-        ZITI_LOG(ERROR, "NF_dial failed");
+        ZITI_LOG(ERROR, "ziti_dial failed");
         free(ziti_io_ctx);
         return NULL;
     }
@@ -71,9 +71,9 @@ void * ziti_sdk_c_dial(const intercept_ctx_t *intercept_ctx, tunneler_io_context
     return ziti_io_ctx;
 }
 
-/** called by ziti SDK when data transfer initiated by NF_write completes */
+/** called by ziti SDK when data transfer initiated by ziti_write completes */
 static void on_ziti_write(ziti_connection ziti_conn, ssize_t len, void *ctx) {
-    NF_tunneler_ack(ctx);
+    ziti_tunneler_ack(ctx);
 }
 
 /** called from tunneler SDK when intercepted client sends data */

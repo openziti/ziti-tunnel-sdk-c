@@ -1,7 +1,7 @@
 #ifndef ZITI_TUNNELER_SDK_ZITI_TUNNELER_CBS_H
 #define ZITI_TUNNELER_SDK_ZITI_TUNNELER_CBS_H
 
-#include "nf/ziti_tunneler.h"
+#include "ziti/ziti_tunneler.h"
 #include "ziti/ziti.h"
 
 #ifdef __cplusplus

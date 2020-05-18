@@ -61,7 +61,7 @@ void on_udp_client_data(void *io_context, struct udp_pcb *pcb, struct pbuf *p, c
         case failed:
         default:
             ZITI_LOG(INFO, "dial_status is failed or invalid");
-            NF_tunneler_close(&io_ctx->tnlr_io_ctx);
+            ziti_tunneler_close(&io_ctx->tnlr_io_ctx);
             return;
     }
 }
@@ -85,7 +85,7 @@ void tunneler_udp_dial_completed(tunneler_io_context *tnlr_io_ctx, void *ziti_io
     if (ok) {
         to_ziti(*tnlr_io_ctx, ziti_io_ctx, NULL);
     } else {
-        NF_tunneler_close(tnlr_io_ctx);
+        ziti_tunneler_close(tnlr_io_ctx);
     }
 }
 
