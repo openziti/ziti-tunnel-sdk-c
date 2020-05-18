@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "uv.h"
-#include "nf/ziti.h"
+#include "ziti/ziti.h"
 #include "nf/ziti_tunneler.h"
 #include "nf/ziti_tunneler_cbs.h"
 
@@ -15,14 +15,7 @@
 #endif
 
 /** callback from ziti SDK when a new service becomes available to our identity */
-void on_service(nf_context nf_ctx, ziti_service *service, int status, void *tnlr_ctx) {
-    ziti_context *ziti_ctx = malloc(sizeof(ziti_context));
-    if (ziti_ctx == NULL) {
-        fprintf(stderr, "failed to allocate dial context\n");
-        return;
-    }
-    ziti_ctx->nf_ctx = nf_ctx;
-
+void on_service(ziti_context ziti_ctx, ziti_service *service, int status, void *tnlr_ctx) {
     if (status == ZITI_OK && (service->perm_flags & ZITI_CAN_DIAL)) {
         ziti_intercept intercept;
         int rc = ziti_service_get_config(service, "ziti-tunneler-client.v1", &intercept, parse_ziti_intercept);
@@ -40,7 +33,7 @@ void on_service(nf_context nf_ctx, ziti_service *service, int status, void *tnlr
 
 const char *cfg_types[] = { "ziti-tunneler-client.v1", "ziti-tunneler-server.v1", NULL };
 
-static void on_nf_init(nf_context nf_ctx, int status, void *init_ctx) {
+static void on_nf_init(ziti_context ziti_ctx, int status, void *init_ctx) {
     if (status != ZITI_OK) {
         fprintf(stderr, "failed to initialize ziti\n");
         exit(1);
@@ -75,16 +68,16 @@ int main(int argc, char *argv[]) {
     };
     tunneler_context tnlr_ctx = NF_tunneler_init(&tunneler_opts, nf_loop);
 
-    nf_options opts = {
+    ziti_options opts = {
             .init_cb = on_nf_init,
-            .config = "/Users/scarey/Downloads/localdev-0.14.json",
+            .config = "/Users/scarey/Downloads/localdev-0.14.1.json",
             .service_cb = on_service,
             .ctx = tnlr_ctx, /* this is passed to the service_cb */
             .refresh_interval = 10,
             .config_types = cfg_types,
     };
 
-    if (NF_init_opts(&opts, nf_loop, NULL) != 0) {
+    if (ziti_init_opts(&opts, nf_loop, NULL) != 0) {
         fprintf(stderr, "failed to initialize ziti\n");
         return 1;
     }

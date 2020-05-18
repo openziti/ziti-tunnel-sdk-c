@@ -29,7 +29,7 @@ limitations under the License.
 #include "tunneler_tcp.h"
 #include "tunneler_udp.h"
 #include "uv.h"
-#include "nf/ziti_log.h"
+#include "ziti/ziti_log.h"
 
 // TODO this should be defined in liblwipcore.a (ip.o), but link fails unless we define it here (or link in lwip's ip.o)
 struct ip_globals ip_data;

@@ -2,7 +2,7 @@
 #include <string.h>
 #include <stdio.h>
 
-#include "nf/ziti_log.h"
+#include "ziti/ziti_log.h"
 #include "intercept.h"
 #include "ziti_tunneler_priv.h"
 

@@ -49,15 +49,15 @@ struct io_ctx_s {
  * called when a client connection is intercepted.
  * implementations are expected to dial the service and return
  * context that will be passed to ziti_read/ziti_write */
-typedef void * (*ziti_dial_cb)(const intercept_ctx_t *intercept_ctx, tunneler_io_context tnlr_io_ctx);
-typedef void (*ziti_close_cb)(void *ziti_io_ctx);
-typedef ssize_t (*ziti_write_cb)(const void *ziti_io_ctx, void *write_ctx, const void *data, size_t len);
+typedef void * (*ziti_sdk_dial_cb)(const intercept_ctx_t *intercept_ctx, tunneler_io_context tnlr_io_ctx);
+typedef void (*ziti_sdk_close_cb)(void *ziti_io_ctx);
+typedef ssize_t (*ziti_sdk_write_cb)(const void *ziti_io_ctx, void *write_ctx, const void *data, size_t len);
 
 typedef struct tunneler_sdk_options_s {
     netif_driver   netif_driver;
-    ziti_dial_cb   ziti_dial;
-    ziti_close_cb  ziti_close;
-    ziti_write_cb  ziti_write;
+    ziti_sdk_dial_cb   ziti_dial;
+    ziti_sdk_close_cb  ziti_close;
+    ziti_sdk_write_cb  ziti_write;
 } tunneler_sdk_options;
 
 extern tunneler_context NF_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop);
