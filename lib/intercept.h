@@ -1,7 +1,7 @@
 #ifndef ZITI_TUNNELER_SDK_INTERCEPT_H
 #define ZITI_TUNNELER_SDK_INTERCEPT_H
 
-#include "nf/ziti_tunneler.h"
+#include "ziti/ziti_tunneler.h"
 #include "lwip/ip_addr.h"
 
 /**
