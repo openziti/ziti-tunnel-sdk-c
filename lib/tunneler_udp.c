@@ -1,7 +1,7 @@
 #include "tunneler_udp.h"
 #include "ziti_tunneler_priv.h"
 #include "intercept.h"
-#include "nf/ziti_log.h"
+#include "ziti/ziti_log.h"
 
 static void to_ziti(tunneler_io_context tnlr_io_ctx, void *ziti_io_ctx, struct pbuf *p) {
     struct pbuf *recv_data = NULL;
@@ -22,7 +22,7 @@ static void to_ziti(tunneler_io_context tnlr_io_ctx, void *ziti_io_ctx, struct p
 
     do {
         ZITI_LOG(INFO, "writing %d bytes to ziti", recv_data->len);
-        ziti_write_cb zwrite = tnlr_io_ctx->tnlr_ctx->opts.ziti_write;
+        ziti_sdk_write_cb zwrite = tnlr_io_ctx->tnlr_ctx->opts.ziti_write;
         struct write_ctx_s *wr_ctx = calloc(1, sizeof(struct write_ctx_s));
         wr_ctx->pbuf = recv_data;
         wr_ctx->udp = tnlr_io_ctx->udp.pcb;
@@ -61,7 +61,7 @@ void on_udp_client_data(void *io_context, struct udp_pcb *pcb, struct pbuf *p, c
         case failed:
         default:
             ZITI_LOG(INFO, "dial_status is failed or invalid");
-            NF_tunneler_close(&io_ctx->tnlr_io_ctx);
+            ziti_tunneler_close(&io_ctx->tnlr_io_ctx);
             return;
     }
 }
@@ -85,7 +85,7 @@ void tunneler_udp_dial_completed(tunneler_io_context *tnlr_io_ctx, void *ziti_io
     if (ok) {
         to_ziti(*tnlr_io_ctx, ziti_io_ctx, NULL);
     } else {
-        NF_tunneler_close(tnlr_io_ctx);
+        ziti_tunneler_close(tnlr_io_ctx);
     }
 }
 
@@ -147,7 +147,7 @@ u8_t recv_udp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     }
 
     ZITI_LOG(INFO, "intercepting packet with dst %s:%d for service %s", ipaddr_ntoa(&dst), dst_p, intercept_ctx->service_name);
-    ziti_dial_cb zdial = tnlr_ctx->opts.ziti_dial;
+    ziti_sdk_dial_cb zdial = tnlr_ctx->opts.ziti_dial;
 
     /* make a new pcb for this connection and register it with lwip */
     struct udp_pcb *npcb = udp_new();

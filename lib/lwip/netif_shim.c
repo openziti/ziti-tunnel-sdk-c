@@ -6,7 +6,7 @@
 #include "lwip/pbuf.h"
 #include "lwip/ip_addr.h"
 #include "lwip/netif.h"
-#include "nf/netif_driver.h"
+#include "ziti/netif_driver.h"
 #include "netif_shim.h"
 
 #define IFNAME0 't'

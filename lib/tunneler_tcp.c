@@ -3,7 +3,7 @@
 //#include "lwip_cloned_fns.h"
 #include "ziti_tunneler_priv.h"
 #include "intercept.h"
-#include "nf/ziti_log.h"
+#include "ziti/ziti_log.h"
 
 #if _WIN32
 #define MIN(a,b) ((a)<(b) ? (a) : (b))
@@ -93,7 +93,7 @@ static err_t on_tcp_client_data(void *io_ctx, struct tcp_pcb *pcb, struct pbuf *
         return err;
     }
 
-    ziti_write_cb zwrite = _io_ctx->tnlr_io_ctx->tnlr_ctx->opts.ziti_write;
+    ziti_sdk_write_cb zwrite = _io_ctx->tnlr_io_ctx->tnlr_ctx->opts.ziti_write;
     u16_t len = p->len;
     struct write_ctx_s *wr_ctx = calloc(1, sizeof(struct write_ctx_s));
     wr_ctx->pbuf = p;
@@ -252,7 +252,7 @@ u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
 
     /* we know this is a SYN segment for an intercepted address, and we will process it */
     ZITI_LOG(INFO, "intercepting packet with dst %s:%d for service %s", ipaddr_ntoa(&dst), dst_p, intercept_ctx->service_name);
-    ziti_dial_cb zdial = tnlr_ctx->opts.ziti_dial;
+    ziti_sdk_dial_cb zdial = tnlr_ctx->opts.ziti_dial;
 
     struct tcp_pcb *npcb = new_tcp_pcb(src, dst, tcphdr);
     tunneler_io_context tnlr_io_ctx = new_tunneler_io_context(tnlr_ctx, intercept_ctx->service_name, npcb);
@@ -267,7 +267,7 @@ u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
         }
         tcp_output(npcb);
     }
-    /* now we wait for the tunneler app to call NF_tunneler_dial_complete() */
+    /* now we wait for the tunneler app to call ziti_tunneler_dial_complete() */
 
     //pbuf_free(p);
     return 0; // TODO we should return 1, but that seems to cause the client to stall irrecoverably.
