@@ -16,15 +16,30 @@
 
 /** callback from ziti SDK when a new service becomes available to our identity */
 void on_service(ziti_context ziti_ctx, ziti_service *service, int status, void *tnlr_ctx) {
-    if (status == ZITI_OK && (service->perm_flags & ZITI_CAN_DIAL)) {
-        ziti_intercept intercept;
-        int rc = ziti_service_get_config(service, "ziti-tunneler-client.v1", &intercept, parse_ziti_intercept);
-        if (rc == 0) {
-            printf("service_available: %s\n", service->name);
-            ziti_tunneler_intercept_v1(tnlr_ctx, ziti_ctx, service->name, intercept.hostname, intercept.port);
-            free(intercept.hostname);
+    if (status == ZITI_OK) {
+        fprintf(stderr, "service %s available", service->name);
+        if (service->perm_flags & ZITI_CAN_DIAL) {
+            ziti_intercept v1_config;
+            int get_config_rc;
+            get_config_rc = ziti_service_get_config(service, "ziti-tunneler-client.v1", &v1_config, parse_ziti_intercept);
+            if (get_config_rc == 0) {
+                ziti_tunneler_intercept_v1(tnlr_ctx, ziti_ctx, service->name, v1_config.hostname, v1_config.port);
+                free_ziti_intercept(&v1_config);
+            } else {
+                fprintf(stderr, "service %s lacks ziti-tunneler-client.v1 config; not intercepting", service->name);
+            }
         }
-        printf("ziti_service_get_config rc: %d\n", rc);
+        if (service->perm_flags & ZITI_CAN_BIND) {
+            ziti_server_cfg_v1 v1_config;
+            int get_config_rc;
+            get_config_rc = ziti_service_get_config(service, "ziti-tunneler-server.v1", &v1_config, parse_ziti_server_cfg_v1);
+            if (get_config_rc == 0) {
+                ziti_tunneler_host_v1(tnlr_ctx, ziti_ctx, service->name, v1_config.protocol, v1_config.hostname, v1_config.port);
+                free_ziti_server_cfg_v1(&v1_config);
+            } else {
+                fprintf(stderr, "service %s lacks ziti-tunneler-server.v1 config; not hosting", service->name);
+            }
+        }
     } else if (status == ZITI_SERVICE_UNAVAILABLE) {
         printf("service unavailable: %s\n", service->name);
         ziti_tunneler_stop_intercepting(tnlr_ctx, service->name);
@@ -64,7 +79,8 @@ int main(int argc, char *argv[]) {
             .netif_driver = tun,
             .ziti_dial = ziti_sdk_c_dial,
             .ziti_close = ziti_sdk_c_close,
-            .ziti_write = ziti_sdk_c_write
+            .ziti_write = ziti_sdk_c_write,
+            .ziti_host_v1 = ziti_sdk_c_host_v1
     };
     tunneler_context tnlr_ctx = ziti_tunneler_init(&tunneler_opts, ziti_loop);
 

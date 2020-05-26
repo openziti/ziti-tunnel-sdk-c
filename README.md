@@ -1,43 +1,89 @@
-# API Notes
+# Ziti Tunneler SDK
 
-The ziti tunneler SDK dispatches layer 3 packets to ziti service connections.
-Using the SDK, a tunneler application only needs to proxy layer 3
-packets from a virtual NIC (typically a tun interface)
+The Ziti Tunneler SDK provides protocol translation and other common functions
+that are useful to Ziti Tunnelers.
 
-typedef void (*to_client_cb)(uint8_t *packet, size_t len)
+## What's a Ziti Tunneler?
 
-- `NF_tunnel_init(to_client_cb)`
+Ziti Tunnelers allow pre-existing TCP/IP applications to access or provide
+services on a secure Ziti network. A Ziti Tunneler is a Ziti-native application
+that communicates with local peers using TCP/IP and proxies the payload to/from
+a Ziti service.
 
+Note that embedding the Ziti SDK directly into an application is preferable to
+using a Ziti Tunneler, if possible. A Ziti-native application is secured and
+encrypted to the farthest edges of the communication path - all the way to the
+application's internal buffers. A Ziti Tunneler cannot secure the communication
+between itself and the TCP/IP application.
 
-implement the following callbacks:
+Ziti Tunnelers are intedned for situations where going Ziti-native is expensive
+or impossible to implement (e.g. a third-party applications or libraries). Ziti
+Tunnelers enable standard TCP/IP applications to reap _most_ of the security and
+reliability benefits offered by Ziti networks without changing a line of code.
 
-- `on_service_add(const char *, intercept_address)`
-  `on_service_del(const char *, intercept_address)`
+## What is the Ziti Tunneler SDK?
 
-  These functions are called when a service is added to an appwan.
-  Implementing applications should establish routes to the virtual
-  NIC for the intercept address of the added service.
+The Ziti Tunneler SDK provides functionality that is common to Ziti Tunnelers across
+supported operating systems:
 
+- Converse with TCP/IP peers
+- Map TCP/IP connections to Ziti sessions
+- Respond to DNS queries for Ziti service hostnames
 
+A Ziti Tunneler application that uses the Ziti Tunneler SDK only needs to
+implement platform-specific functionality, such as creating a virtual network
+interface, and providing a user interface.
 
-- `to_ziti(uint8_t *packet, size_t len)`
+A set of callback
+functions that interact with the specific _ziti-sdk_ that the application
+uses (e.g. `ziti-sdk-c`, `ziti-sdk-go`).
 
-  Implementing applications must call this function when a packet is
-  read from the virtual NIC.
+The Ziti Tunneler SDK includes an implementation of the required callback
+functions for `ziti-sdk-c`. Here's how a minimal tunneler application written
+in C could use the Ziti Tunneler SDK:
 
+```c
+int main(int argc, char *argv[]) {
+    uv_loop_t *nf_loop = uv_default_loop();
+    netif_driver tun = tun_open(NULL, 0); /* open a tun device, and */
 
-- `to_client(uint8_t *packet, size_t len)`
+    if (tun == NULL) {
+        fprintf(stderr, "failed to open network interface: %s\n", tun_error);
+        return 1;
+    }
 
-  This function is called by the SDK when data is received from a
-  connected ziti service. The implementing application should write
-  the packet to the virtual NIC.
+    tunneler_sdk_options tunneler_opts = {
+            .netif_driver = tun,
+            .ziti_dial = ziti_sdk_c_dial,
+            .ziti_close = ziti_sdk_c_close,
+            .ziti_write = ziti_sdk_c_write
+    };
+    tunneler_context tnlr_ctx = NF_tunneler_init(&tunneler_opts, nf_loop);
 
+    nf_options opts = {
+            .init_cb = on_nf_init,
+            .config = argv[1],
+            .service_cb = on_service,
+            .ctx = tnlr_ctx, /* this is passed to the service_cb */
+            .refresh_interval = 10,
+            .config_types = cfg_types,
+    };
 
-# Design Notes
+    if (NF_init_opts(&opts, nf_loop, NULL) != 0) {
+        fprintf(stderr, "failed to initialize ziti\n");
+        return 1;
+    }
 
-## Packet Flow
+    if (uv_run(nf_loop, UV_RUN_DEFAULT) != 0) {
+        fprintf(stderr, "failed to run event loop\n");
+        exit(1);
+    }
 
-The tunneler application adds a handle to the same uv loop that drives events
-for the Ziti SDK. The handle will most likely be a `poll` handle that reads
-the packet device. Packet devices are OS-specific (e.g. file descriptor
-on Linux (darwin?), stream socket on Windows)
+    free(tnlr_ctx);
+    return 0;
+}
+```
+
+Once the Ziti Tunneler SDK is initialized with a network device and ziti-sdk
+callbacks, a tunneler application only needs to indiciate which service(s)
+that should be  

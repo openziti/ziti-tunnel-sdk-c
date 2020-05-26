@@ -15,7 +15,9 @@ struct tunneler_ctx_s {
 
 typedef enum  {
     tun_tcp,
-    tun_udp
+    tun_udp,
+    hosted_tcp,
+    hosted_udp
 } tunneler_proto_type;
 
 struct tunneler_io_ctx_s {
@@ -28,9 +30,9 @@ struct tunneler_io_ctx_s {
             struct udp_pcb *pcb;
             struct pbuf *queued;
             enum ziti_dial_status { initiated, succeeded, failed } dial_status;
-            //ziti_udp_cb cb;
-            //void *ctx;
         } udp;
+        uv_tcp_t *hosted_tcp;
+        uv_udp_t *hosted_udp;
     };
 };
 

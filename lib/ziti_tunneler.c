@@ -90,6 +90,12 @@ void ziti_tunneler_dial_completed(tunneler_io_context *tnlr_io_ctx, void *ziti_i
     }
 }
 
+int ziti_tunneler_host_v1(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_name, const char *protocol, const char *hostname, int port) {
+    // ziti_context ziti_ctx, uv_loop_t *loop, const char *service_name, const char *proto, const char *hostname, int port
+    tnlr_ctx->opts.ziti_host_v1(ziti_ctx, tnlr_ctx.);
+    return 0;
+}
+
 /** arrange to intercept traffic defined by a v1 client tunneler config */
 int ziti_tunneler_intercept_v1(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_name, const char *hostname, int port) {
     ip_addr_t intercept_ip;
@@ -201,8 +207,9 @@ static struct raw_pcb * init_protocol_handler(u8_t proto, raw_recv_fn recv_fn, v
 }
 
 static void run_packet_loop(uv_loop_t *loop, tunneler_context tnlr_ctx) {
-    if (tnlr_ctx->opts.ziti_close == NULL || tnlr_ctx->opts.ziti_dial == NULL || tnlr_ctx->opts.ziti_write == NULL) {
-        ZITI_LOG(ERROR, "ziti_* callback options cannot be null");
+    if (tnlr_ctx->opts.ziti_close == NULL || tnlr_ctx->opts.ziti_dial == NULL ||
+        tnlr_ctx->opts.ziti_write == NULL || tnlr_ctx->opts.ziti_host_v1 == NULL) {
+        ZITI_LOG(ERROR, "ziti_sdk_* callback options cannot be null");
         exit(1);
     }
 

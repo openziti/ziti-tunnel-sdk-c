@@ -23,6 +23,8 @@ ssize_t ziti_sdk_c_write(const void *ziti_io_ctx, void *write_ctx, const void *d
 /** called by tunneler SDK after a client connection is closed */
 void ziti_sdk_c_close(void *ziti_io_ctx);
 
+void ziti_sdk_c_host_v1(ziti_context ziti_ctx, uv_loop_t *loop, const char *service_name, const char *proto, const char *hostname, int port);
+
 #ifdef __cplusplus
 }
 #endif
