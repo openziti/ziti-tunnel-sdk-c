@@ -11,4 +11,4 @@ add_executable(ziti-tunneler-app ziti-tunneler.c ${NETIF_DRIVER_SOURCE})
 
 target_link_libraries(ziti-tunneler-app
         PUBLIC ziti ziti_tunneler ziti_tunneler_cbs
-        PUBLIC lwipcore lwipcontribportunix ziti_tunneler)
+        PUBLIC lwipcore ${lwip_sys_lib} ziti_tunneler)
