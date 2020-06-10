@@ -13,21 +13,19 @@ target_link_libraries(ziti_tunneler_cbs
         PUBLIC ziti
         )
 
-if(WIN32)
-    set(lwip_sys "win32")
-    set(lwip_sys_lib "lwipwin32arch")
-else()
-    set(lwip_sys "unix")
-    set(lwip_sys_lib "lwipcontribportunix")
-endif()
-
 set (LWIP_DIR "${CMAKE_SOURCE_DIR}/deps/lwip")
 set (LWIP_CONTRIB_DIR "${CMAKE_SOURCE_DIR}/deps/lwip-contrib")
 
-if (WIN32)
+if(WIN32)
     set(LWIP_CONTRIB_INCLUDE "${LWIP_CONTRIB_DIR}/ports/win32/include")
+    set(lwip_sys "win32")
+    set(lwip_sys_lib "lwipwin32arch")
+    set(lwip_sys_srcs ${LWIP_CONTRIB_DIR}/ports/win32/sys_arch.c)
 else()
-    set(LWIP_CONTRIB_INCLUDE  "${LWIP_CONTRIB_DIR}/ports/unix/port/include")
+    set(LWIP_CONTRIB_INCLUDE "${LWIP_CONTRIB_DIR}/ports/unix/port/include")
+    set(lwip_sys "unix")
+    set(lwip_sys_lib "lwipunixarch")
+    set(lwip_sys_srcs ${LWIP_CONTRIB_DIR}/ports/unix/port/sys_arch.c)
 endif()
 
 set (LWIP_INCLUDE_DIRS
@@ -37,9 +35,6 @@ set (LWIP_INCLUDE_DIRS
         )
 
 include(${LWIP_DIR}/src/Filelists.cmake)
-if (UNIX)
-include(${LWIP_CONTRIB_DIR}/ports/${lwip_sys}/Filelists.cmake)
-endif()
 
 target_include_directories(ziti_tunneler
         PUBLIC ${LWIP_INCLUDE_DIRS}
@@ -48,16 +43,12 @@ target_include_directories(ziti_tunneler
         PRIVATE ${ziti-tunneler-sdk-deps_SOURCE_DIR}
         )
 
-if(WIN32)
-    add_library(lwipwin32arch STATIC
-            ${LWIP_CONTRIB_DIR}/ports/win32/sys_arch.c)
+add_library(${lwip_sys_lib} STATIC
+        ${lwip_sys_srcs})
 
-    target_include_directories(lwipwin32arch
-            PUBLIC "${LWIP_DIR}/src/include"
-            PUBLIC "${LWIP_CONTRIB_INCLUDE}"
-            PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/lwip"
-            )
-endif()
+target_include_directories(${lwip_sys_lib}
+        PUBLIC ${LWIP_INCLUDE_DIRS}
+        )
 
 target_link_libraries(ziti_tunneler
         PUBLIC ziti
