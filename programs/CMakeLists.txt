@@ -1,3 +1,1 @@
-if (NOT WIN32)
-    add_subdirectory(ziti-tunneler)
-endif()
+add_subdirectory(ziti-tunneler)
