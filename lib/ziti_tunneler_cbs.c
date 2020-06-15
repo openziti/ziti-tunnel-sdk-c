@@ -46,7 +46,7 @@ void * ziti_sdk_c_dial(const intercept_ctx_t *intercept_ctx, tunneler_io_context
         ZITI_LOG(WARN, "null intercept_ctx");
         return NULL;
     }
-    ZITI_LOG(VERBOSE, "ziti_dial(%s)", intercept_ctx->service_name);
+    ZITI_LOG(VERBOSE, "ziti_dial(name=%s,id=%s)", intercept_ctx->service_name, intercept_ctx->service_id);
 
     ziti_io_context *ziti_io_ctx = malloc(sizeof(struct ziti_io_ctx_s));
     if (ziti_io_ctx == NULL) {
