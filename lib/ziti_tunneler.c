@@ -91,22 +91,23 @@ void ziti_tunneler_dial_completed(tunneler_io_context *tnlr_io_ctx, void *ziti_i
 }
 
 /** arrange to intercept traffic defined by a v1 client tunneler config */
-int ziti_tunneler_intercept_v1(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_name, const char *hostname, int port) {
+int ziti_tunneler_intercept_v1(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_id, const char *service_name, const char *hostname, int port) {
     ip_addr_t intercept_ip;
 
     if (ipaddr_aton(hostname, &intercept_ip) == 0) {
-        ZITI_LOG(DEBUG, "v1 intercept hostname %s for service %s is not an ip", hostname, service_name);
+        ZITI_LOG(DEBUG, "v1 intercept hostname %s for service id %s is not an ip", hostname, service_id);
         /* TODO: handle hostnames */
         return -1;
     }
 
-    add_v1_intercept(tnlr_ctx, ziti_ctx, service_name, hostname, port);
+    add_v1_intercept(tnlr_ctx, ziti_ctx, service_id, service_name, hostname, port);
 
     return 0;
 }
 
-void ziti_tunneler_stop_intercepting(tunneler_context tnlr_ctx, const char *service_name) {
-    remove_intercept(tnlr_ctx, service_name);
+void ziti_tunneler_stop_intercepting(tunneler_context tnlr_ctx, const char *service_id) {
+    ZITI_LOG(DEBUG, "removing intercept for service id %s", service_id);
+    remove_intercept(tnlr_ctx, service_id);
 }
 
 /** called by tunneler application when data is read from a ziti connection */

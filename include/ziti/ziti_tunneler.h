@@ -35,7 +35,8 @@ typedef struct tunneler_ctx_s *tunneler_context;
 typedef struct tunneler_io_ctx_s *tunneler_io_context;
 
 /** data needed to dial a ziti service when a client connection is intercepted */
-typedef struct intercept_ctx_s{
+typedef struct intercept_ctx_s {
+    const char *  service_id;
     const char *  service_name;
     const void *  ziti_ctx;
 } intercept_ctx_t;
@@ -62,9 +63,9 @@ typedef struct tunneler_sdk_options_s {
 
 extern tunneler_context ziti_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop);
 
-extern int ziti_tunneler_intercept_v1(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_name, const char *hostname, int port);
+extern int ziti_tunneler_intercept_v1(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_id, const char *service_name, const char *hostname, int port);
 
-extern void ziti_tunneler_stop_intercepting(tunneler_context tnlr_ctx, const char *service_name);
+extern void ziti_tunneler_stop_intercepting(tunneler_context tnlr_ctx, const char *service_id);
 
 extern void ziti_tunneler_dial_completed(tunneler_io_context *tnlr_io_ctx, void *ziti_io_ctx, bool ok);
 

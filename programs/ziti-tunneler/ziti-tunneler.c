@@ -21,13 +21,13 @@ void on_service(ziti_context ziti_ctx, ziti_service *service, int status, void *
         int rc = ziti_service_get_config(service, "ziti-tunneler-client.v1", &intercept, parse_ziti_intercept);
         if (rc == 0) {
             printf("service_available: %s\n", service->name);
-            ziti_tunneler_intercept_v1(tnlr_ctx, ziti_ctx, service->name, intercept.hostname, intercept.port);
+            ziti_tunneler_intercept_v1(tnlr_ctx, ziti_ctx, service->id, service->name, intercept.hostname, intercept.port);
             free(intercept.hostname);
         }
         printf("ziti_service_get_config rc: %d\n", rc);
     } else if (status == ZITI_SERVICE_UNAVAILABLE) {
         printf("service unavailable: %s\n", service->name);
-        ziti_tunneler_stop_intercepting(tnlr_ctx, service->name);
+        ziti_tunneler_stop_intercepting(tnlr_ctx, service->id);
     }
 }
 
