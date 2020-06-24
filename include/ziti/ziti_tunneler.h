@@ -42,8 +42,8 @@ typedef struct intercept_ctx_s {
 } intercept_ctx_t;
 
 struct io_ctx_s {
-    tunneler_io_context  tnlr_io_ctx;
-    void *               ziti_io_ctx; // context specific to ziti SDK being used by the app.
+    tunneler_io_context * tnlr_io_ctx_p; // use pointer to allow tsdk and zsdk callbacks to see when context is nulled.
+    void *                ziti_io_ctx; // context specific to ziti SDK being used by the app.
 };
 
 /**

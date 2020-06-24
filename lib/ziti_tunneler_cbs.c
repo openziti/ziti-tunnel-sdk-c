@@ -12,11 +12,12 @@ void on_ziti_connect(ziti_connection conn, int status) {
     }
 }
 
+/** called by ziti SDK when ziti service has data for the client */
 ssize_t on_ziti_data(ziti_connection conn, uint8_t *data, ssize_t len) {
     ziti_io_context *ziti_io_ctx = ziti_conn_data(conn);
     ZITI_LOG(TRACE, "got %zd bytes from ziti", len);
     if (ziti_io_ctx == NULL || ziti_io_ctx->tnlr_io_ctx == NULL) {
-        ZITI_LOG(ERROR, "bad ziti_io_context");
+        ZITI_LOG(DEBUG, "null io_context - connection may have been closed already");
         return len;
     }
     if (len > 0) {
