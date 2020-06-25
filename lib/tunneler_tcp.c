@@ -185,7 +185,6 @@ void tunneler_tcp_dial_completed(tunneler_io_context *tnlr_io_ctx, void *ziti_io
     }
 
     tcp_output((*tnlr_io_ctx)->tcp);
-    memp_free(MEMP_TCP_PCB_LISTEN, pcb->listener);
 }
 
 static tunneler_io_context new_tunneler_io_context(tunneler_context tnlr_ctx, const char *service_name, struct tcp_pcb *pcb) {
@@ -272,6 +271,6 @@ u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     }
     /* now we wait for the tunneler app to call ziti_tunneler_dial_complete() */
 
-    //pbuf_free(p);
-    return 0; // TODO we should return 1, but that seems to cause the client to stall irrecoverably.
+    pbuf_free(p);
+    return 1;
 }
