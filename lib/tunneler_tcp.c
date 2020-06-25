@@ -259,7 +259,6 @@ u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
 
     struct tcp_pcb *npcb = new_tcp_pcb(src, dst, tcphdr);
     tunneler_io_context tnlr_io_ctx = new_tunneler_io_context(tnlr_ctx, intercept_ctx->service_name, npcb);
-    ZITI_LOG(INFO, "created tnlr_io_ctx %p", tnlr_io_ctx);
     void *ziti_io_ctx = zdial(intercept_ctx, tnlr_io_ctx);
     if (ziti_io_ctx == NULL) {
         ZITI_LOG(ERROR, "ziti_dial(%s) failed", intercept_ctx->service_name);
