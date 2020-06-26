@@ -27,9 +27,6 @@ struct tunneler_io_ctx_s {
         struct {
             struct udp_pcb *pcb;
             struct pbuf *queued;
-            enum ziti_dial_status { initiated, succeeded, failed } dial_status;
-            //ziti_udp_cb cb;
-            //void *ctx;
         } udp;
     };
 };
