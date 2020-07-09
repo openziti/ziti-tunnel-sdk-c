@@ -76,7 +76,7 @@ void free_tunneler_io_context(tunneler_io_context *tnlr_io_ctx) {
  */
 void ziti_tunneler_dial_completed(tunneler_io_context *tnlr_io_ctx, void *ziti_io_ctx, bool ok) {
     const char *status = ok ? "succeeded" : "failed";
-    ZITI_LOG(INFO, "ziti dial %s: svc=%s, client=%s", status, (*tnlr_io_ctx)->service_name, (*tnlr_io_ctx)->client);
+    ZITI_LOG(INFO, "ziti dial %s: service=%s, client=%s", status, (*tnlr_io_ctx)->service_name, (*tnlr_io_ctx)->client);
 
     switch ((*tnlr_io_ctx)->proto) {
         case tun_tcp:
