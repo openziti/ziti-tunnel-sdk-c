@@ -75,7 +75,8 @@ void free_tunneler_io_context(tunneler_io_context *tnlr_io_ctx) {
  * - let the client know that we have a connection (e.g. send SYN/ACK)
  */
 void ziti_tunneler_dial_completed(tunneler_io_context *tnlr_io_ctx, void *ziti_io_ctx, bool ok) {
-    ZITI_LOG(INFO, "ziti dial completed: svc=%s, ok=%d", (*tnlr_io_ctx)->service_name, ok);
+    const char *status = ok ? "succeeded" : "failed";
+    ZITI_LOG(INFO, "ziti dial %s: svc=%s, client=%s", status, (*tnlr_io_ctx)->service_name, (*tnlr_io_ctx)->client);
 
     switch ((*tnlr_io_ctx)->proto) {
         case tun_tcp:
@@ -143,7 +144,8 @@ int ziti_tunneler_close(tunneler_io_context *tnlr_io_ctx) {
         ZITI_LOG(INFO, "null tnlr_io_ctx");
         return 0;
     }
-
+    ZITI_LOG(INFO, "closing connection: service=%s, client=%s",
+            (*tnlr_io_ctx)->service_name, (*tnlr_io_ctx)->client);
     switch ((*tnlr_io_ctx)->proto) {
         case tun_tcp:
             tunneler_tcp_close((*tnlr_io_ctx)->tcp);

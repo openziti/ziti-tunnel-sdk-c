@@ -27,6 +27,7 @@ ssize_t on_ziti_data(ziti_connection conn, uint8_t *data, ssize_t len) {
         }
         return accepted;
     } else {
+        ZITI_LOG(INFO, "ziti service closed connection");
         ziti_tunneler_close(&ziti_io_ctx->tnlr_io_ctx);
     }
     return len;
