@@ -277,6 +277,30 @@ u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
         return 0;
     }
 
+    /* pass the segment to lwip if a matching active connection exists */
+    for (struct tcp_pcb *tpcb = tcp_active_pcbs, *prev = NULL; tpcb != NULL; tpcb = tpcb->next) {
+        if (tpcb->remote_port == src_p &&
+            tpcb->local_port == dst_p &&
+            ip_addr_cmp(&tpcb->remote_ip, &src) &&
+            ip_addr_cmp(&tpcb->local_ip, &dst)) {
+            ZITI_LOG(VERBOSE, "received SYN on active connection: client=tcp:%s:%d, service=%s", ipaddr_ntoa(&src), src_p, intercept_ctx->service_name);
+            /* Move this PCB to the front of the list so that subsequent
+               lookups will be faster (we exploit locality in TCP segment
+               arrivals). */
+            LWIP_ASSERT("tcp_input: pcb->next != pcb (before cache)", tpcb->next != tpcb);
+            if (prev != NULL) {
+                prev->next = tpcb->next;
+                tpcb->next = tcp_active_pcbs;
+                tcp_active_pcbs = tpcb;
+            } else {
+                TCP_STATS_INC(tcp.cachehit);
+            }
+            LWIP_ASSERT("tcp_input: pcb->next != pcb (after cache)", tpcb->next != tpcb);
+            return 0;
+        }
+        prev = tpcb;
+    }
+
     /* we know this is a SYN segment for an intercepted address, and we will process it */
     ziti_sdk_dial_cb zdial = tnlr_ctx->opts.ziti_dial;
 
