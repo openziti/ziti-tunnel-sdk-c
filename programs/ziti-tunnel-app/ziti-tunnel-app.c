@@ -116,7 +116,6 @@ static int run_opts(int argc, char *argv[]) {
                             run_options, &option_index)) != -1) {
         switch (c) {
             case 'c':
-                printf("config = %s\n", optarg);
                 OPTS.config = strdup(optarg);
                 break;
             case 'd':
