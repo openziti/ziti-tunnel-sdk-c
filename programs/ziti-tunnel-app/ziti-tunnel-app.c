@@ -5,6 +5,7 @@
 #include "ziti/ziti.h"
 #include "ziti/ziti_tunneler.h"
 #include "ziti/ziti_tunneler_cbs.h"
+#include <ziti/ziti_log.h>
 
 #if __APPLE__ && __MACH__
 #include "netif_driver/darwin/utun.h"
@@ -196,6 +197,7 @@ static CommandLine main_cmd = make_command_set(
         NULL, main_cmds);
 
 int main(int argc, char *argv[]) {
+    init_debug();
     const char *name = strrchr(argv[0], '/');
     if (name == NULL) {
         name = argv[0];

@@ -39,6 +39,9 @@ struct ip_globals ip_data;
 static void run_packet_loop(uv_loop_t *loop, tunneler_context tnlr_ctx);
 
 tunneler_context ziti_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop) {
+    init_debug();
+    ZITI_LOG(INFO, "Ziti Tunneler SDK (%s)", ziti_tunneler_version());
+
     if (opts == NULL) {
         ZITI_LOG(ERROR, "invalid tunneler options");
         return NULL;
