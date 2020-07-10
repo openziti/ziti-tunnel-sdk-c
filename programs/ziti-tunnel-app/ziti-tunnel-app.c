@@ -178,7 +178,7 @@ static void version() {
     }
 }
 
-static CommandLine run_cmd = make_command("run", "run proxy", "run <service-name>:port", "start tunneler", run_opts, run);
+static CommandLine run_cmd = make_command("run", "run Ziti tunnel", "run <service-name>:port", "start tunneler", run_opts, run);
 static CommandLine ver_cmd = make_command("version", "show version", "version", NULL, version_opts, version);
 static CommandLine help_cmd = make_command("help", "this message", NULL, NULL, NULL, usage);
 static CommandLine *main_cmds[] = {
