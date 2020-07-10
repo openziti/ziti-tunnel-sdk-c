@@ -21,6 +21,7 @@ typedef enum  {
 struct tunneler_io_ctx_s {
     tunneler_context    tnlr_ctx;
     const char *        service_name;
+    char                client[32];
     tunneler_proto_type proto;
     union {
         struct tcp_pcb *tcp;

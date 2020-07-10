@@ -69,46 +69,8 @@ ssize_t utun_write(netif_handle tun, const void *buf, size_t len) {
     return utun_data_len(writev(tun->fd, iv, 2));
 }
 
-struct check_data_s {
-    netif_handle dev;
-    void *       netif;
-    packet_cb    cb;
-};
-
-static void on_uv_check_poll(uv_check_t *handle) {
-    struct check_data_s *chk_data = handle->data;
-    struct pollfd fd = {
-            .fd = chk_data->dev->fd,
-            .events = POLLIN,
-            .revents = 0,
-    };
-    do {
-        int n = poll(&fd, 1, 0);
-        if (n == -1) {
-            perror("poll failed");
-            exit(1);
-        }
-
-        if (fd.revents & POLLIN) {
-            char buf[0xffff];
-
-            ssize_t nr = utun_read(chk_data->dev, buf, sizeof(buf));
-            chk_data->cb(buf, nr, chk_data->netif);
-        }
-    } while (fd.revents & POLLIN);
-}
-
-int utun_setup(netif_handle dev, uv_loop_t *loop, packet_cb cb, void* netif) {
-    uv_check_t *chk = malloc(sizeof(uv_check_t));
-
-    struct check_data_s *chk_data = calloc(1, sizeof(struct check_data_s)); // TODO free this
-    chk_data->dev = dev;
-    chk_data->netif = netif;
-    chk_data->cb = cb;
-    uv_check_init(loop, chk);
-    chk->data = chk_data;
-    uv_check_start(chk, on_uv_check_poll);
-    return 0;
+int utun_uv_poll_init(netif_handle tun, uv_loop_t *loop, uv_poll_t *tun_poll_req) {
+    return uv_poll_init(loop, tun_poll_req, tun->fd);
 }
 
 /**
@@ -195,7 +157,7 @@ netif_driver utun_open(char *error, size_t error_len) {
     driver->handle       = tun;
     driver->read         = utun_read;
     driver->write        = utun_write;
-    driver->setup        = utun_setup;
+    driver->uv_poll_init = utun_uv_poll_init;
     driver->close        = utun_close;
 
     return driver;

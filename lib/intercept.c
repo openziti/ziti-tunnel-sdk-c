@@ -41,6 +41,7 @@ extern int add_v1_intercept(tunneler_context tnlr_ctx, const void *ziti_ctx, con
         last->next = new;
     }
 
+    ZITI_LOG(INFO, "intercepting %s:%d for service %s (id %s)", hostname, port, service_name, service_id);
     return 0;
 }
 
@@ -54,7 +55,8 @@ void remove_intercept(tunneler_context tnlr_ctx, const char *service_id) {
 
     for (intercept = tnlr_ctx->intercepts; intercept != NULL; intercept = intercept->next) {
         if (strcmp(intercept->ctx.service_id, service_id) == 0) {
-            ZITI_LOG(INFO, "removing intercept for service %s (id %s)", intercept->ctx.service_name, service_id);
+            ZITI_LOG(INFO, "removing intercept %s:%d for service %s (id %s)",
+                    intercept->cfg.v1.hostname, intercept->cfg.v1.port, intercept->ctx.service_name, service_id);
             if (prev != NULL) {
                 prev->next = intercept->next;
             } else {

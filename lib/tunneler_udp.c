@@ -47,7 +47,7 @@ void on_udp_client_data_enqueue(void *tnlr_io_context, struct udp_pcb *pcb, stru
     } else {
         pbuf_cat(tnlr_io_ctx->udp.queued, p);
     }
-    ZITI_LOG(INFO, "queued %d bytes", tnlr_io_ctx->udp.queued->len);
+    ZITI_LOG(VERBOSE, "queued %d bytes", tnlr_io_ctx->udp.queued->len);
 }
 
 /** called by lwip when a packet arrives from a connected client and the ziti service is connected */
@@ -56,7 +56,7 @@ void on_udp_client_data(void *io_context, struct udp_pcb *pcb, struct pbuf *p, c
         ZITI_LOG(INFO, "conn was closed");
         return;
     }
-    ZITI_LOG(DEBUG, "on_udp_client_data %d bytes from %s:%d", p->len, ipaddr_ntoa(addr), port);
+    ZITI_LOG(VERBOSE, "%d bytes from %s:%d", p->len, ipaddr_ntoa(addr), port);
 
     struct io_ctx_s *io_ctx = (struct io_ctx_s *) io_context;
     to_ziti(io_ctx->tnlr_io_ctx_p, io_ctx->ziti_io_ctx, p);
@@ -129,6 +129,9 @@ u8_t recv_udp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     u16_t src_p = lwip_ntohs(udphdr->src);
     u16_t dst_p = lwip_ntohs(udphdr->dest);
 
+    ZITI_LOG(TRACE, "received datagram %s:%d->%s:%d",
+             ipaddr_ntoa(&src), src_p, ipaddr_ntoa(&dst), dst_p);
+
     /* first see if this datagram belongs to an active connection */
     for (con_pcb = udp_pcbs, prev = NULL; con_pcb != NULL; con_pcb = con_pcb->next) {
         if (con_pcb->remote_port == src_p && ip_addr_cmp(&con_pcb->remote_ip, &src)) {
@@ -149,7 +152,8 @@ u8_t recv_udp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
         return 0;
     }
 
-    ZITI_LOG(INFO, "intercepting packet with dst %s:%d for service %s", ipaddr_ntoa(&dst), dst_p, intercept_ctx->service_name);
+    ZITI_LOG(INFO, "intercepted connection to %s:%d for service %s (id %s)", ipaddr_ntoa(&dst), dst_p,
+             intercept_ctx->service_name, intercept_ctx->service_id);
     ziti_sdk_dial_cb zdial = tnlr_ctx->opts.ziti_dial;
 
     /* make a new pcb for this connection and register it with lwip */
@@ -175,6 +179,7 @@ u8_t recv_udp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     ctx->tnlr_ctx = tnlr_ctx;
     ctx->proto = tun_udp;
     ctx->service_name = intercept_ctx->service_name;
+    snprintf(ctx->client, sizeof(ctx->client), "udp:%s:%d", ipaddr_ntoa(&src), src_p);
     ctx->udp.pcb = npcb;
     ctx->udp.queued = NULL;
 
