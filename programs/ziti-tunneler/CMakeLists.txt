@@ -12,5 +12,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL Darwin OR CMAKE_SYSTEM_NAME STREQUAL Linux)
 
     target_link_libraries(ziti-tunneler-app
             PUBLIC ziti ziti_tunneler ziti_tunneler_cbs
-            PUBLIC lwipcore ${lwip_sys_lib} ziti_tunneler)
+            PUBLIC lwipcore ${lwip_sys_lib} ziti_tunneler
+            PUBLIC subcommand
+            )
 endif()
