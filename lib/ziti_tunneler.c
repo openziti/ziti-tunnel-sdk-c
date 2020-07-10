@@ -31,6 +31,8 @@ limitations under the License.
 #include "uv.h"
 #include "ziti/ziti_log.h"
 
+#include <string.h>
+
 // TODO this should be defined in liblwipcore.a (ip.o), but link fails unless we define it here (or link in lwip's ip.o)
 struct ip_globals ip_data;
 
@@ -244,4 +246,10 @@ static void run_packet_loop(uv_loop_t *loop, tunneler_context tnlr_ctx) {
 
     uv_timer_init(loop, &tnlr_ctx->lwip_timer_req);
     uv_timer_start(&tnlr_ctx->lwip_timer_req, check_lwip_timeouts, 0, 100);
+}
+
+#define _str(x) #x
+#define str(x) _str(x)
+const char* ziti_tunneler_version() {
+    return str(GIT_VERSION);
 }
