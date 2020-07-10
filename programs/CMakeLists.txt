@@ -1,1 +1,1 @@
-add_subdirectory(ziti-tunneler)
+add_subdirectory(ziti-tunnel-app)
