@@ -190,11 +190,11 @@ static CommandLine *main_cmds[] = {
 };
 
 #define GLOBAL_FLAGS "[--debug=level|-d[ddd]] [--config|-c=<path>] "
-static CommandLine main_cmd = make_command_set(NULL,
-                                        "Ziti Tunnel",
-                                        GLOBAL_FLAGS
-                                                "<command> [<args>]", "Ziti Tunnel",
-                                        NULL, main_cmds);
+static CommandLine main_cmd = make_command_set(
+        NULL,
+        "Ziti Tunnel App",
+        "<command> [<args>]", "Ziti Tunnel App",
+        NULL, main_cmds);
 
 int main(int argc, char *argv[]) {
     const char *name = strrchr(argv[0], '/');
