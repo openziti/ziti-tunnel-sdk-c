@@ -3,7 +3,7 @@
 
 #define NO_SYS 1
 
-#define MEM_SIZE              1048576     /* the size of the heap memory (1600) */
+#define MEM_SIZE              524288      /* the size of the heap memory (1600) */
 
 #if SCAREY_DEBUGGING_LWIP
 #define MEMP_OVERFLOW_CHECK   2           /* reserves bytes before and after each memp element in every pool and fills it with a prominent default value */
@@ -18,8 +18,8 @@
 #define PBUF_POOL_SIZE        512         /* number of buffers in the pbuf pool (16) */
 
 #define TCP_WND               0xffff      /* size of a TCP window. when using TCP_RCV_SCALE, TCP_WND is the total size with scaling applied (4 * TCP_MSS) */
-#define TCP_MSS               0xff00      /* TCP Maximum segment size (536) */
-#define TCP_SND_BUF           (8*TCP_MSS) /* TCP sender buffer space in bytes (2 * TCP_MSS) */
+#define TCP_MSS               32768       /* TCP Maximum segment size (536) */
+#define TCP_SND_BUF           (2*TCP_MSS) /* TCP sender buffer space in bytes (2 * TCP_MSS) */
 #define TCP_SND_QUEUELEN      64          /* TCP sender buffer space in pbufs ((4 * (TCP_SND_BUF) + (TCP_MSS - 1))/(TCP_MSS)) */
 // TCP_SNDQUEUELEN_OVERFLOW = 0xffffu - 3
 #define TCP_SNDLOWAT          (0xffff-(4*TCP_MSS)-1) /* TCP writable space (bytes). must be less than TCP_SND_BUF. the amount of space which must be available in the TCP snd_buf for select to return writable (combined with TCP_SNDQUEUELOWAT) LWIP_MIN(LWIP_MAX(((TCP_SND_BUF)/2), (2 * TCP_MSS) + 1), (TCP_SND_BUF) - 1) */
