@@ -11,7 +11,6 @@
 #include <sys/ioctl.h>
 #include <sys/kern_event.h>
 #include <sys/uio.h>
-#include <poll.h>
 
 #include "utun.h"
 
@@ -134,16 +133,33 @@ netif_driver utun_open(char *error, size_t error_len) {
         return NULL;
     }
 
-    struct ifreq ifname_req;
-    socklen_t ifname_req_size = sizeof(ifname_req);
-    if (getsockopt(tun->fd, SYSPROTO_CONTROL, UTUN_OPT_IFNAME, &ifname_req, &ifname_req_size) == -1) {
+    struct ifreq if_req;
+    socklen_t ifname_req_size = sizeof(if_req);
+    if (getsockopt(tun->fd, SYSPROTO_CONTROL, UTUN_OPT_IFNAME, &if_req, &ifname_req_size) == -1) {
         if (error != NULL) {
             snprintf(error, error_len, "failed to get ifname: %s", strerror(errno));
-            utun_close(tun);
-            return NULL;
         }
+        utun_close(tun);
+        return NULL;
     }
-    strncpy(tun->name, ifname_req.ifr_name, sizeof(tun->name));
+    strncpy(tun->name, if_req.ifr_name, sizeof(tun->name));
+
+    int s = socket(PF_LOCAL, SOCK_DGRAM, 0);
+    if (s < 0) {
+        if (error != NULL) {
+            snprintf(error, error_len, "failed to get socket: %s", strerror(errno));
+        }
+        return NULL;
+    }
+
+    if_req.ifr_mtu = 0xFFFF;
+    if (ioctl(s, SIOCSIFMTU, &if_req) == -1) {
+        if (error != NULL) {
+            snprintf(error, error_len, "failed to get mtu: %s", strerror(errno));
+        }
+        utun_close(tun);
+        return NULL;
+    }
 
     struct netif_driver_s *driver = calloc(1, sizeof(struct netif_driver_s));
     if (driver == NULL) {

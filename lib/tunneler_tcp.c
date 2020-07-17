@@ -1,6 +1,6 @@
 #include <stdlib.h>
 #include "tunneler_tcp.h"
-//#include "lwip_cloned_fns.h"
+#include "lwip_cloned_fns.h"
 #include "ziti_tunneler_priv.h"
 #include "intercept.h"
 #include "ziti/ziti_log.h"
@@ -17,7 +17,7 @@ static err_t on_accept(void *arg, struct tcp_pcb *pcb, err_t err) {
 }
 
 /** create a tcp connection to be managed by lwip */
-static struct tcp_pcb *new_tcp_pcb(ip_addr_t src, ip_addr_t dest, struct tcp_hdr *tcphdr) {
+static struct tcp_pcb *new_tcp_pcb(ip_addr_t src, ip_addr_t dest, struct tcp_hdr *tcphdr, struct pbuf *p) {
     /** associate all injected PCBs with the same phony listener to appease some LWIP checks */
     static struct tcp_pcb_listen * phony_listener = NULL;
     if (phony_listener == NULL) {
@@ -54,13 +54,15 @@ static struct tcp_pcb *new_tcp_pcb(ip_addr_t src, ip_addr_t dest, struct tcp_hdr
     TCP_REG_ACTIVE(npcb);
 
     /* Parse any options in the SYN. */
-    //tunneler_tcp_parseopt(npcb);
+    tunneler_tcp_input(p);
+    tunneler_tcp_parseopt(npcb);
     npcb->snd_wnd = lwip_ntohs(tcphdr->wnd);
     npcb->snd_wnd_max = npcb->snd_wnd;
 
 #if TCP_CALCULATE_EFF_SEND_MSS
     npcb->mss = tcp_eff_send_mss(npcb->mss, &npcb->local_ip, &npcb->remote_ip);
 #endif /* TCP_CALCULATE_EFF_SEND_MSS */
+    ZITI_LOG(INFO, "snd_wnd: %d, snd_snd_max: %d, mss: %d", npcb->snd_wnd, npcb->snd_wnd_max, npcb->mss);
 
     MIB2_STATS_INC(mib2.tcppassiveopens);
 
@@ -124,7 +126,7 @@ static void  on_tcp_client_err(void *io_ctx, err_t err) {
         ZITI_LOG(TRACE, "client finished err=%d", err);
     }
     else {
-        // TODO handle better?
+        // TODO handle better? At least close ziti and free context!
         ZITI_LOG(ERROR, "unhandled client err=%d", err);
     }
 }
@@ -303,8 +305,8 @@ u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
 
     /* we know this is a SYN segment for an intercepted address, and we will process it */
     ziti_sdk_dial_cb zdial = tnlr_ctx->opts.ziti_dial;
-
-    struct tcp_pcb *npcb = new_tcp_pcb(src, dst, tcphdr);
+    pbuf_remove_header(p, iphdr_hlen);
+    struct tcp_pcb *npcb = new_tcp_pcb(src, dst, tcphdr, p);
     if (npcb == NULL) {
         ZITI_LOG(ERROR, "failed to allocate tcp pcb");
         return 0;
