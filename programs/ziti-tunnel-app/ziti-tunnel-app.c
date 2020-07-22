@@ -171,6 +171,7 @@ static int version_opts(int argc, char *argv[]) {
     }
     return optind;
 }
+
 static void version() {
     if (verbose_version) {
         printf("ziti-tunneler:\t%s\nziti-sdk:\t%s\n", ziti_tunneler_version(), ziti_get_version()->version);
@@ -179,10 +180,103 @@ static void version() {
     }
 }
 
-static CommandLine run_cmd = make_command("run", "run Ziti tunnel", "run <service-name>:port", "start tunneler", run_opts, run);
+static ziti_enroll_opts enroll_opts;
+static char* config_file;
+static FILE *config_file_f;
+
+static int parse_enroll_opts(int argc, char *argv[]) {
+    static struct option opts[] = {
+            {"jwt", required_argument, NULL, 'j'},
+            {"identity", required_argument, NULL, 'i'},
+            {"key", optional_argument, NULL, 'k'},
+            {"cert", optional_argument, NULL, 'c'},
+    };
+    int c, option_index, errors = 0;
+    optind = 0;
+
+    while ((c = getopt_long(argc, argv, "j:i:k:c:",
+                            opts, &option_index)) != -1) {
+        switch (c) {
+            case 'j':
+                enroll_opts.jwt = realpath(optarg, NULL);
+                break;
+            case 'k':
+                enroll_opts.enroll_key = realpath(optarg, NULL);
+                break;
+            case 'c':
+                enroll_opts.enroll_cert = realpath(optarg, NULL);
+                break;
+            case 'i':
+                config_file = optarg;
+                break;
+            default: {
+                fprintf(stderr, "Unknown option '%c'\n", c);
+                errors++;
+                break;
+            }
+        }
+    }
+    if (errors > 0) {
+        commandline_help(stderr);
+        exit(1);
+    }
+    return optind;
+}
+
+static void enroll_cb(ziti_config *cfg, int status, char *err, void *ctx) {
+    if (status != ZITI_OK) {
+        ZITI_LOG(ERROR, "enrollment failed: %s(%d)", err, status);
+        exit(status);
+    }
+
+    FILE *f = ctx;
+
+    char output_buf[16000];
+    size_t len;
+    json_from_ziti_config(cfg, output_buf, sizeof(output_buf), &len);
+
+    if (fwrite(output_buf, 1, len, f) != len) {
+        ZITI_LOG(ERROR, "failed to write config file");
+        fclose(f);
+        exit (-1);
+    }
+
+    fflush(f);
+    fclose(f);
+}
+
+static void enroll(int argc, char *argv[]) {
+    if (config_file == 0) {
+        ZITI_LOG(ERROR, "output file option(-i|--identity) is required\n");
+        exit(-1);
+    }
+
+    if (enroll_opts.jwt == NULL) {
+        ZITI_LOG(ERROR, "JWT file option(-j|--jwt) is required\n");
+        exit(-1);
+    }
+
+    FILE *outfile;
+    if ((outfile = fopen(config_file, "wb")) == NULL) {
+        ZITI_LOG(ERROR, "failed to open file %s: %s(%d)\n", config_file, strerror(errno), errno);
+        exit(-1);
+
+    }
+    uv_loop_t *l = uv_loop_new();
+    ziti_enroll(&enroll_opts, l, enroll_cb, outfile);
+
+    uv_run(l, UV_RUN_DEFAULT);
+}
+
+static CommandLine enroll_cmd = make_command("enroll", "enroll Ziti identity",
+        "enroll -j|--jwt <enrollment token> -i|--identity <identity> [-k|--key <private_key> [-c|--cert <certificate>]]", NULL,
+        parse_enroll_opts, enroll);
+static CommandLine run_cmd = make_command("run", "run Ziti tunnel", "run -i|--identity <identity>",
+        "start tunneler", run_opts, run);
 static CommandLine ver_cmd = make_command("version", "show version", "version", NULL, version_opts, version);
 static CommandLine help_cmd = make_command("help", "this message", NULL, NULL, NULL, usage);
 static CommandLine *main_cmds[] = {
+        &enroll_cmd,
         &run_cmd,
         &ver_cmd,
         &help_cmd,
