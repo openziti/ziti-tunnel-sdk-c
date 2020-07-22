@@ -1,5 +1,5 @@
 if(CMAKE_SYSTEM_NAME STREQUAL Darwin OR CMAKE_SYSTEM_NAME STREQUAL Linux)
-    project(ziti-tunneler-app)
+    project(ziti-tunnel-app)
 
     if(CMAKE_SYSTEM_NAME STREQUAL Darwin)
         set(NETIF_DRIVER_SOURCE netif_driver/darwin/utun.c)
@@ -8,9 +8,11 @@ if(CMAKE_SYSTEM_NAME STREQUAL Darwin OR CMAKE_SYSTEM_NAME STREQUAL Linux)
         set(NETIF_DRIVER_SOURCE netif_driver/linux/tun.c)
     endif()
 
-    add_executable(ziti-tunneler-app ziti-tunneler.c ${NETIF_DRIVER_SOURCE})
+    add_executable(ziti-tunnel-app ziti-tunnel-app.c ${NETIF_DRIVER_SOURCE})
 
-    target_link_libraries(ziti-tunneler-app
+    target_link_libraries(ziti-tunnel-app
             PUBLIC ziti ziti_tunneler ziti_tunneler_cbs
-            PUBLIC lwipcore ${lwip_sys_lib} ziti_tunneler)
+            PUBLIC lwipcore ${lwip_sys_lib} ziti_tunneler
+            PUBLIC subcommand
+            )
 endif()

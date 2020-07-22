@@ -1,6 +1,6 @@
 #include <stdlib.h>
 #include "tunneler_tcp.h"
-//#include "lwip_cloned_fns.h"
+#include "lwip_cloned_fns.h"
 #include "ziti_tunneler_priv.h"
 #include "intercept.h"
 #include "ziti/ziti_log.h"
@@ -17,7 +17,7 @@ static err_t on_accept(void *arg, struct tcp_pcb *pcb, err_t err) {
 }
 
 /** create a tcp connection to be managed by lwip */
-static struct tcp_pcb *new_tcp_pcb(ip_addr_t src, ip_addr_t dest, struct tcp_hdr *tcphdr) {
+static struct tcp_pcb *new_tcp_pcb(ip_addr_t src, ip_addr_t dest, struct tcp_hdr *tcphdr, struct pbuf *p) {
     /** associate all injected PCBs with the same phony listener to appease some LWIP checks */
     static struct tcp_pcb_listen * phony_listener = NULL;
     if (phony_listener == NULL) {
@@ -54,13 +54,15 @@ static struct tcp_pcb *new_tcp_pcb(ip_addr_t src, ip_addr_t dest, struct tcp_hdr
     TCP_REG_ACTIVE(npcb);
 
     /* Parse any options in the SYN. */
-    //tunneler_tcp_parseopt(npcb);
+    tunneler_tcp_input(p);
+    tunneler_tcp_parseopt(npcb);
     npcb->snd_wnd = lwip_ntohs(tcphdr->wnd);
     npcb->snd_wnd_max = npcb->snd_wnd;
 
 #if TCP_CALCULATE_EFF_SEND_MSS
     npcb->mss = tcp_eff_send_mss(npcb->mss, &npcb->local_ip, &npcb->remote_ip);
 #endif /* TCP_CALCULATE_EFF_SEND_MSS */
+    ZITI_LOG(INFO, "snd_wnd: %d, snd_snd_max: %d, mss: %d", npcb->snd_wnd, npcb->snd_wnd_max, npcb->mss);
 
     MIB2_STATS_INC(mib2.tcppassiveopens);
 
@@ -82,18 +84,26 @@ static err_t on_tcp_client_data(void *io_ctx, struct tcp_pcb *pcb, struct pbuf *
         ZITI_LOG(INFO, "conn was closed err=%d", err);
         return ERR_OK;
     }
-    ZITI_LOG(DEBUG, "on_tcp_client_data status %d", err);
+    ZITI_LOG(VERBOSE, "status %d", err);
     struct io_ctx_s *_io_ctx = (struct io_ctx_s *)io_ctx;
+    tunneler_io_context tnlr_io_ctx = *_io_ctx->tnlr_io_ctx_p;
+
+    if (tnlr_io_ctx == NULL) {
+        ZITI_LOG(INFO, "null tnlr_io_ctx");
+        return ERR_CONN;
+    }
+
     if (err == ERR_OK && p == NULL) {
+        ZITI_LOG(INFO, "client closed connection: client=%s, service=%s", tnlr_io_ctx->client, tnlr_io_ctx->service_name);
         tcp_close(pcb);
-        _io_ctx->tnlr_io_ctx->tnlr_ctx->opts.ziti_close(_io_ctx->ziti_io_ctx);
+        tnlr_io_ctx->tnlr_ctx->opts.ziti_close(_io_ctx->ziti_io_ctx);
         _io_ctx->ziti_io_ctx = NULL;
-        free_tunneler_io_context(&(_io_ctx->tnlr_io_ctx));
+        free_tunneler_io_context(_io_ctx->tnlr_io_ctx_p);
         free(_io_ctx);
         return err;
     }
 
-    ziti_sdk_write_cb zwrite = _io_ctx->tnlr_io_ctx->tnlr_ctx->opts.ziti_write;
+    ziti_sdk_write_cb zwrite = tnlr_io_ctx->tnlr_ctx->opts.ziti_write;
     u16_t len = p->len;
     struct write_ctx_s *wr_ctx = calloc(1, sizeof(struct write_ctx_s));
     wr_ctx->pbuf = p;
@@ -101,6 +111,7 @@ static err_t on_tcp_client_data(void *io_ctx, struct tcp_pcb *pcb, struct pbuf *
     wr_ctx->ack = tunneler_tcp_ack;
     ssize_t s = zwrite(_io_ctx->ziti_io_ctx, wr_ctx, p->payload, len);
     if (s < 0) {
+        ZITI_LOG(ERROR, "ziti_write failed: service=%s, client=%s, ret=%ld", tnlr_io_ctx->service_name, tnlr_io_ctx->client, s);
         free(wr_ctx);
         free(_io_ctx);
         pbuf_free(p);
@@ -115,7 +126,7 @@ static void  on_tcp_client_err(void *io_ctx, err_t err) {
         ZITI_LOG(TRACE, "client finished err=%d", err);
     }
     else {
-        // TODO handle better?
+        // TODO handle better? At least close ziti and free context!
         ZITI_LOG(ERROR, "unhandled client err=%d", err);
     }
 }
@@ -128,7 +139,7 @@ ssize_t tunneler_tcp_write(struct tcp_pcb *pcb, const void *data, size_t len) {
 
     int qlen = tcp_sndqueuelen(pcb);
     if (qlen > TCP_SND_QUEUELEN) {
-        ZITI_LOG(INFO, "we are in for it now sndqueuelen %d, %d", qlen, TCP_SND_QUEUELEN);
+        ZITI_LOG(WARN, "sndqueuelen limit reached (%d > %d)", qlen, TCP_SND_QUEUELEN);
     }
     // avoid ERR_MEM.
     size_t sendlen = MIN(len, tcp_sndbuf(pcb));
@@ -154,35 +165,52 @@ void tunneler_tcp_ack(struct write_ctx_s *write_ctx) {
 }
 
 int tunneler_tcp_close(struct tcp_pcb *pcb) {
-    if (pcb != NULL) {
-        tcp_arg(pcb, NULL);
-        tcp_recv(pcb, NULL);
-        if (tcp_close(pcb) != ERR_OK) {
-            ZITI_LOG(ERROR, "failed to tcp_close");
-            return -1;
-        }
+    if (pcb == NULL) {
+        ZITI_LOG(WARN, "null pcb");
+        return 0;
+    }
+    ZITI_LOG(INFO, "closing %p, state=%d", pcb, pcb->state);
+    tcp_arg(pcb, NULL);
+    tcp_recv(pcb, NULL);
+    err_t err = tcp_close(pcb);
+    if (err != ERR_OK) {
+        ZITI_LOG(ERROR, "tcp_close(%p) failed; err=%d", pcb, err);
+        return -1;
     }
     return 0;
 }
 
 void tunneler_tcp_dial_completed(tunneler_io_context *tnlr_io_ctx, void *ziti_io_ctx, bool ok) {
-    struct io_ctx_s *io_ctx = malloc(sizeof(struct io_ctx_s));
-    io_ctx->tnlr_io_ctx = *tnlr_io_ctx;
-    io_ctx->ziti_io_ctx = ziti_io_ctx;
-
-    tcp_arg(io_ctx->tnlr_io_ctx->tcp, io_ctx);
-    tcp_recv(io_ctx->tnlr_io_ctx->tcp, on_tcp_client_data);
-    tcp_err(io_ctx->tnlr_io_ctx->tcp, on_tcp_client_err);
-
-    /* Send a SYN|ACK together with the MSS option. */
-    err_t rc = tcp_enqueue_flags(io_ctx->tnlr_io_ctx->tcp, TCP_SYN | TCP_ACK);
-    if (rc != ERR_OK) {
-        tcp_abandon(io_ctx->tnlr_io_ctx->tcp, 0);
+    if (tnlr_io_ctx == NULL || *tnlr_io_ctx == NULL) {
+        ZITI_LOG(WARN, "null tnlr_io_ctx");
+        return;
+    }
+    if (ziti_io_ctx == NULL) {
+        ZITI_LOG(WARN, "null ziti_io_ctx");
         return;
     }
 
-    tcp_output(io_ctx->tnlr_io_ctx->tcp);
-    memp_free(MEMP_TCP_PCB_LISTEN, io_ctx->tnlr_io_ctx->tcp->listener);
+    struct io_ctx_s *io_ctx = malloc(sizeof(struct io_ctx_s));
+    io_ctx->tnlr_io_ctx_p = tnlr_io_ctx;
+    io_ctx->ziti_io_ctx = ziti_io_ctx;
+    struct tcp_pcb *pcb = (*tnlr_io_ctx)->tcp;
+    if (pcb == NULL) {
+        ZITI_LOG(ERROR, "null pcb");
+        free_tunneler_io_context(tnlr_io_ctx);
+        return;
+    }
+    tcp_arg(pcb, io_ctx);
+    tcp_recv(pcb, on_tcp_client_data);
+    tcp_err(pcb, on_tcp_client_err);
+
+    /* Send a SYN|ACK together with the MSS option. */
+    err_t rc = tcp_enqueue_flags(pcb, TCP_SYN | TCP_ACK);
+    if (rc != ERR_OK) {
+        tcp_abandon(pcb, 0);
+        return;
+    }
+
+    tcp_output((*tnlr_io_ctx)->tcp);
 }
 
 static tunneler_io_context new_tunneler_io_context(tunneler_context tnlr_ctx, const char *service_name, struct tcp_pcb *pcb) {
@@ -193,6 +221,7 @@ static tunneler_io_context new_tunneler_io_context(tunneler_context tnlr_ctx, co
     }
     ctx->tnlr_ctx = tnlr_ctx;
     ctx->service_name = service_name;
+    snprintf(ctx->client, sizeof(ctx->client), "tcp:%s:%d", ipaddr_ntoa(&pcb->remote_ip), pcb->remote_port);
     ctx->proto = tun_tcp;
     ctx->tcp = pcb;
     return ctx;
@@ -234,7 +263,7 @@ u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     u16_t src_p = lwip_ntohs(tcphdr->src);
     u16_t dst_p = lwip_ntohs(tcphdr->dest);
 
-    ZITI_LOG(DEBUG, "received segment %s:%d->%s:%d",
+    ZITI_LOG(TRACE, "received segment %s:%d->%s:%d",
              ipaddr_ntoa(&src), src_p, ipaddr_ntoa(&dst), dst_p);
 
     u8_t flags = TCPH_FLAGS(tcphdr);
@@ -250,12 +279,47 @@ u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
         return 0;
     }
 
-    /* we know this is a SYN segment for an intercepted address, and we will process it */
-    ZITI_LOG(INFO, "intercepting packet with dst %s:%d for service %s", ipaddr_ntoa(&dst), dst_p, intercept_ctx->service_name);
-    ziti_sdk_dial_cb zdial = tnlr_ctx->opts.ziti_dial;
+    /* pass the segment to lwip if a matching active connection exists */
+    for (struct tcp_pcb *tpcb = tcp_active_pcbs, *prev = NULL; tpcb != NULL; tpcb = tpcb->next) {
+        if (tpcb->remote_port == src_p &&
+            tpcb->local_port == dst_p &&
+            ip_addr_cmp(&tpcb->remote_ip, &src) &&
+            ip_addr_cmp(&tpcb->local_ip, &dst)) {
+            ZITI_LOG(VERBOSE, "received SYN on active connection: client=tcp:%s:%d, service=%s", ipaddr_ntoa(&src), src_p, intercept_ctx->service_name);
+            /* Move this PCB to the front of the list so that subsequent
+               lookups will be faster (we exploit locality in TCP segment
+               arrivals). */
+            LWIP_ASSERT("tcp_input: pcb->next != pcb (before cache)", tpcb->next != tpcb);
+            if (prev != NULL) {
+                prev->next = tpcb->next;
+                tpcb->next = tcp_active_pcbs;
+                tcp_active_pcbs = tpcb;
+            } else {
+                TCP_STATS_INC(tcp.cachehit);
+            }
+            LWIP_ASSERT("tcp_input: pcb->next != pcb (after cache)", tpcb->next != tpcb);
+            return 0;
+        }
+        prev = tpcb;
+    }
 
-    struct tcp_pcb *npcb = new_tcp_pcb(src, dst, tcphdr);
+    /* we know this is a SYN segment for an intercepted address, and we will process it */
+    ziti_sdk_dial_cb zdial = tnlr_ctx->opts.ziti_dial;
+    pbuf_remove_header(p, iphdr_hlen);
+    struct tcp_pcb *npcb = new_tcp_pcb(src, dst, tcphdr, p);
+    if (npcb == NULL) {
+        ZITI_LOG(ERROR, "failed to allocate tcp pcb");
+        return 0;
+    }
+
     tunneler_io_context tnlr_io_ctx = new_tunneler_io_context(tnlr_ctx, intercept_ctx->service_name, npcb);
+    if (tnlr_io_ctx == NULL) {
+        ZITI_LOG(ERROR, "failed to allocate tunneler io context");
+        return 0;
+    }
+
+    ZITI_LOG(INFO, "intercepted connection to %s:%d from client %s for service %s (id %s)", ipaddr_ntoa(&dst), dst_p, tnlr_io_ctx->client,
+             intercept_ctx->service_name, intercept_ctx->service_id);
     void *ziti_io_ctx = zdial(intercept_ctx, tnlr_io_ctx);
     if (ziti_io_ctx == NULL) {
         ZITI_LOG(ERROR, "ziti_dial(%s) failed", intercept_ctx->service_name);
@@ -269,6 +333,6 @@ u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     }
     /* now we wait for the tunneler app to call ziti_tunneler_dial_complete() */
 
-    //pbuf_free(p);
-    return 0; // TODO we should return 1, but that seems to cause the client to stall irrecoverably.
+    pbuf_free(p);
+    return 1;
 }

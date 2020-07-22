@@ -24,8 +24,8 @@ struct intercept_s {
     struct intercept_s *next;
 };
 
-extern int add_v1_intercept(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_name, const char *hostname, int port);
-extern void remove_intercept(tunneler_context tnlr_ctx, const char *serivce_name);
+extern int add_v1_intercept(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_id, const char *service_name, const char *hostname, int port);
+extern void remove_intercept(tunneler_context tnlr_ctx, const char *serivce_id);
 
 /** return the intercept context for a packet based on its destination ip:port */
 extern intercept_ctx_t *lookup_l4_intercept(tunneler_context tnlr_ctx, ip_addr_t *dst_addr, int dst_port);

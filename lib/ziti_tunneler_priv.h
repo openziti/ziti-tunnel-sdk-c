@@ -23,13 +23,13 @@ typedef enum  {
 struct tunneler_io_ctx_s {
     tunneler_context    tnlr_ctx;
     const char *        service_name;
+    char                client[32];
     tunneler_proto_type proto;
     union {
         struct tcp_pcb *tcp;
         struct {
             struct udp_pcb *pcb;
             struct pbuf *queued;
-            enum ziti_dial_status { initiated, succeeded, failed } dial_status;
         } udp;
         uv_tcp_t *hosted_tcp;
         uv_udp_t *hosted_udp;

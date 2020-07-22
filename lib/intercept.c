@@ -6,7 +6,7 @@
 #include "intercept.h"
 #include "ziti_tunneler_priv.h"
 
-extern int add_v1_intercept(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_name, const char *hostname, int port) {
+extern int add_v1_intercept(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_id, const char *service_name, const char *hostname, int port) {
     if (tnlr_ctx == NULL) {
         ZITI_LOG(ERROR, "null tnlr_ctx");
         return -1;
@@ -18,6 +18,7 @@ extern int add_v1_intercept(tunneler_context tnlr_ctx, const void *ziti_ctx, con
     }
 
     new = calloc(1, sizeof(struct intercept_s));
+    new->ctx.service_id = strdup(service_id);
     new->ctx.service_name = strdup(service_name);
     new->ctx.ziti_ctx = ziti_ctx;
     new->next = NULL;
@@ -26,6 +27,7 @@ extern int add_v1_intercept(tunneler_context tnlr_ctx, const void *ziti_ctx, con
     if (ipaddr_aton(hostname, &new->cfg.v1.resolved_hostname) == 0) {
         /* TODO generate IP address when service cfg uses hostname. */
         ZITI_LOG(ERROR, "sorry! support for DNS hostnames is coming soon");
+        free((char *)new->ctx.service_id);
         free((char *)new->ctx.service_name);
         free(new->cfg.v1.hostname);
         free(new);
@@ -40,10 +42,11 @@ extern int add_v1_intercept(tunneler_context tnlr_ctx, const void *ziti_ctx, con
         last->next = new;
     }
 
+    ZITI_LOG(INFO, "intercepting %s:%d for service %s (id %s)", hostname, port, service_name, service_id);
     return 0;
 }
 
-void remove_intercept(tunneler_context tnlr_ctx, const char *service_name) {
+void remove_intercept(tunneler_context tnlr_ctx, const char *service_id) {
     struct intercept_s *intercept, *prev = NULL;
 
     if (tnlr_ctx == NULL) {
@@ -52,17 +55,22 @@ void remove_intercept(tunneler_context tnlr_ctx, const char *service_name) {
     }
 
     for (intercept = tnlr_ctx->intercepts; intercept != NULL; intercept = intercept->next) {
-        if (strcmp(intercept->ctx.service_name, service_name) == 0) {
+        if (strcmp(intercept->ctx.service_id, service_id) == 0) {
+            ZITI_LOG(INFO, "removing intercept %s:%d for service %s (id %s)",
+                    intercept->cfg.v1.hostname, intercept->cfg.v1.port, intercept->ctx.service_name, service_id);
             if (prev != NULL) {
                 prev->next = intercept->next;
             } else {
                 tnlr_ctx->intercepts = intercept->next;
             }
-            // TODO close active connections
+            free((char *)intercept->ctx.service_id);
             free((char *)intercept->ctx.service_name);
             switch (intercept->cfg_version) {
                 case 1:
                     free(intercept->cfg.v1.hostname);
+                    break;
+                default:
+                    ZITI_LOG(DEBUG, "unknown config version %d", intercept->cfg_version);
                     break;
             }
         }

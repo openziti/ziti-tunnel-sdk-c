@@ -1,12 +1,17 @@
 cmake_minimum_required(VERSION 3.12)
-file(READ version ver)
+execute_process(
+        COMMAND git describe --tags --dirty=-local
+        OUTPUT_VARIABLE GIT_VERSION
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+string(REGEX MATCH "([0-9]+\\.[0-9]+\\.[0-9]+)" ver "${GIT_VERSION}")
 
 project(ziti-tunneler-sdk
-        VERSION ${ver}
+        VERSION "${ver}"
         LANGUAGES C CXX)
 include(CPack)
 
-message("project version: ${PROJECT_VERSION}")
+message("project version: ${PROJECT_VERSION} (git version ${GIT_VERSION})")
 message("cross-compiling: ${CMAKE_CROSSCOMPILING}")
 
 link_directories(${CMAKE_BINARY_DIR}/lib)

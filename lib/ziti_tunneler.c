@@ -31,12 +31,17 @@ limitations under the License.
 #include "uv.h"
 #include "ziti/ziti_log.h"
 
+#include <string.h>
+
 // TODO this should be defined in liblwipcore.a (ip.o), but link fails unless we define it here (or link in lwip's ip.o)
 struct ip_globals ip_data;
 
 static void run_packet_loop(uv_loop_t *loop, tunneler_context tnlr_ctx);
 
 tunneler_context ziti_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop) {
+    init_debug();
+    ZITI_LOG(INFO, "Ziti Tunneler SDK (%s)", ziti_tunneler_version());
+
     if (opts == NULL) {
         ZITI_LOG(ERROR, "invalid tunneler options");
         return NULL;
@@ -75,7 +80,8 @@ void free_tunneler_io_context(tunneler_io_context *tnlr_io_ctx) {
  * - let the client know that we have a connection (e.g. send SYN/ACK)
  */
 void ziti_tunneler_dial_completed(tunneler_io_context *tnlr_io_ctx, void *ziti_io_ctx, bool ok) {
-    ZITI_LOG(INFO, "ziti dial completed: svc=%s, ok=%d", (*tnlr_io_ctx)->service_name, ok);
+    const char *status = ok ? "succeeded" : "failed";
+    ZITI_LOG(INFO, "ziti dial %s: service=%s, client=%s", status, (*tnlr_io_ctx)->service_name, (*tnlr_io_ctx)->client);
 
     switch ((*tnlr_io_ctx)->proto) {
         case tun_tcp:
@@ -90,29 +96,30 @@ void ziti_tunneler_dial_completed(tunneler_io_context *tnlr_io_ctx, void *ziti_i
     }
 }
 
-int ziti_tunneler_host_v1(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_name, const char *protocol, const char *hostname, int port) {
+int ziti_tunneler_host_v1(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_id, const char *protocol, const char *hostname, int port) {
     // ziti_context ziti_ctx, uv_loop_t *loop, const char *service_name, const char *proto, const char *hostname, int port
-    tnlr_ctx->opts.ziti_host_v1(ziti_ctx, tnlr_ctx.);
+    tnlr_ctx->opts.ziti_host_v1(ziti_ctx, NULL /* TODO loop */, service_id, protocol, hostname, port);
     return 0;
 }
 
 /** arrange to intercept traffic defined by a v1 client tunneler config */
-int ziti_tunneler_intercept_v1(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_name, const char *hostname, int port) {
+int ziti_tunneler_intercept_v1(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_id, const char *service_name, const char *hostname, int port) {
     ip_addr_t intercept_ip;
 
     if (ipaddr_aton(hostname, &intercept_ip) == 0) {
-        ZITI_LOG(DEBUG, "v1 intercept hostname %s for service %s is not an ip", hostname, service_name);
+        ZITI_LOG(DEBUG, "v1 intercept hostname %s for service id %s is not an ip", hostname, service_id);
         /* TODO: handle hostnames */
         return -1;
     }
 
-    add_v1_intercept(tnlr_ctx, ziti_ctx, service_name, hostname, port);
+    add_v1_intercept(tnlr_ctx, ziti_ctx, service_id, service_name, hostname, port);
 
     return 0;
 }
 
-void ziti_tunneler_stop_intercepting(tunneler_context tnlr_ctx, const char *service_name) {
-    remove_intercept(tnlr_ctx, service_name);
+void ziti_tunneler_stop_intercepting(tunneler_context tnlr_ctx, const char *service_id) {
+    ZITI_LOG(DEBUG, "removing intercept for service id %s", service_id);
+    remove_intercept(tnlr_ctx, service_id);
 }
 
 /** called by tunneler application when data is read from a ziti connection */
@@ -148,7 +155,8 @@ int ziti_tunneler_close(tunneler_io_context *tnlr_io_ctx) {
         ZITI_LOG(INFO, "null tnlr_io_ctx");
         return 0;
     }
-
+    ZITI_LOG(INFO, "closing connection: service=%s, client=%s",
+            (*tnlr_io_ctx)->service_name, (*tnlr_io_ctx)->client);
     switch ((*tnlr_io_ctx)->proto) {
         case tun_tcp:
             tunneler_tcp_close((*tnlr_io_ctx)->tcp);
@@ -248,4 +256,10 @@ static void run_packet_loop(uv_loop_t *loop, tunneler_context tnlr_ctx) {
 
     uv_timer_init(loop, &tnlr_ctx->lwip_timer_req);
     uv_timer_start(&tnlr_ctx->lwip_timer_req, check_lwip_timeouts, 0, 100);
+}
+
+#define _str(x) #x
+#define str(x) _str(x)
+const char* ziti_tunneler_version() {
+    return str(GIT_VERSION);
 }
