@@ -73,7 +73,7 @@ extern void ziti_tunneler_stop_intercepting(tunneler_context tnlr_ctx, const cha
 
 extern void ziti_tunneler_dial_completed(tunneler_io_context *tnlr_io_ctx, void *ziti_io_ctx, bool ok);
 
-extern int ziti_tunneler_write(tunneler_io_context *tnlr_io_ctx, const void *data, size_t len);
+extern ssize_t ziti_tunneler_write(tunneler_io_context *tnlr_io_ctx, const void *data, size_t len);
 
 struct write_ctx_s;
 extern void ziti_tunneler_ack(struct write_ctx_s *write_ctx);

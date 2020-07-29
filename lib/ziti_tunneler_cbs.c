@@ -9,6 +9,7 @@ void on_ziti_connect(ziti_connection conn, int status) {
     if (status == ZITI_OK) {
         ziti_tunneler_dial_completed(&ziti_io_ctx->tnlr_io_ctx, ziti_io_ctx, status == ZITI_OK);
     } else {
+        ZITI_LOG(ERROR, "ziti dial failed: %s", ziti_errorstr(status));
         free(ziti_io_ctx);
     }
 }
@@ -87,24 +88,10 @@ ssize_t ziti_sdk_c_write(const void *ziti_io_ctx, void *write_ctx, const void *d
 
 /********** hosting **********/
 
-static void on_client_write(ziti_connection clt, ssize_t status, void *ctx) {
-    free(ctx);
-}
-
-static ssize_t on_client_data(ziti_connection clt, uint8_t *data, ssize_t len) {
-    if (len > 0) {
-        printf("client sent:\n%.*s", (int)len, data);
-        char *reply = malloc(128);
-        size_t l = sprintf(reply, "%zd\n", len);
-        ziti_write(clt, reply, l, on_client_write, reply);
-    }
-    else if (len == ZITI_EOF) {
-        printf("client disconnected\n");
-    }
-    else {
-        fprintf(stderr, "error: %zd(%s)", len, ziti_errorstr(len));
-    }
-    return len;
+/** called by ziti SDK when a hosted ziti client write (to a hosted server) is completed */
+static void on_hosted_client_write(uv_write_t *req, int status) {
+    free(req->data);
+    free(req);
 }
 
 struct hosted_service_ctx_s {
@@ -114,6 +101,28 @@ struct hosted_service_ctx_s {
     int          port;
     uv_loop_t *  loop;
 };
+
+/* called by ziti sdk when a client of a hosted service sends data */
+static ssize_t on_hosted_client_data(ziti_connection clt, uint8_t *data, ssize_t len) {
+    //struct hosted_service_ctx_s *hosted_ctx = ziti_conn_data(clt);
+    uv_stream_t *server_c = ziti_conn_data(clt);
+    if (len > 0) {
+        uv_write_t *req = malloc(sizeof(uv_write_t));
+        char *copy = malloc(len);
+        memcpy(copy, data, len);
+        uv_buf_t buf = uv_buf_init(copy, len);
+        req->data = copy;
+        uv_write(req, server_c, &buf, 1, on_hosted_client_write);
+    }
+    else if (len == ZITI_EOF) {
+        ZITI_LOG(INFO, "client disconnected");
+        uv_close(server_c, NULL); // TODO
+    }
+    else {
+        ZITI_LOG(ERROR, "error: %zd(%s)", len, ziti_errorstr(len));
+    }
+    return len;
+}
 
 #define safe_free(p) if ((p) != NULL) free((p))
 
@@ -131,29 +140,31 @@ static void alloc_buffer(uv_handle_t *handle, size_t suggested_size, uv_buf_t *b
     /* TODO throttle based on pending requests */
 }
 
-/** called by libuv when a hosted server sends data to the client */
-static void on_hosted_tcp_data(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
+/** called by ziti SDK when data transfer initiated by ziti_write completes */
+static void on_hosted_ziti_write(ziti_connection ziti_conn, ssize_t len, void *ctx) {
+    free(ctx);
+}
 
-    //ziti_write(conn);
+/** called by libuv when a hosted server sends data to a client */
+static void on_hosted_tcp_server_data(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
+    ziti_connection client = stream->data;
+    ziti_write(client, buf->base, nread, on_hosted_ziti_write, buf->base);
 }
 
 /** called by libuv when a connection is established (or failed) with a server */
-static void on_hosted_tcp_connect(uv_connect_t *c, int status) {
+static void on_hosted_tcp_server_connect_complete(uv_connect_t *c, int status) {
     if (status < 0) {
         ZITI_LOG(ERROR, "connection to server failed: %s", uv_strerror(status));
         return;
     }
-    // c->data needs to contain tunneler_context and service_name
-    // TODO create initial tunneler_io_ctx in SDK function that calls ziti_sdk_c_host_v1 */
-    /* set up the io context for this connection */
-    /* the tunneler side is c->handle. */
-    /* the ziti side is.... ? */
-    c->data = NULL;
-    uv_read_start(c->handle, alloc_buffer, on_hosted_tcp_data);
+    ZITI_LOG(INFO, "connected to server for client %p: %p", c->handle->data, c);
+    ziti_conn_set_data(c->handle->data, c->handle);
+    uv_read_start(c->handle, alloc_buffer, on_hosted_tcp_server_data);
 }
 
 /** called by ziti sdk when a client connection is established (or fails) */
-static void on_hosted_tcp_server_connect(ziti_connection clt, int status) {
+static void on_hosted_client_connect_complete(ziti_connection clt, int status) {
+    ZITI_LOG(INFO, "client %p connected to hosted service", clt);
     if (status == ZITI_OK) {
         struct hosted_service_ctx_s *host_ctx = ziti_conn_data(clt);
         if (host_ctx == NULL) {
@@ -183,7 +194,7 @@ static void on_hosted_tcp_server_connect(ziti_connection clt, int status) {
             return;
         }
 
-        /* getaddrinfo returns a list of addrinfo strctures that would normally be attempted in order
+        /* getaddrinfo returns a list of addrinfo structures that would normally be attempted in order
          * until one succeeds. We are implementing an async API, so probing is more complicated than
          * simple iteration. For now we use the first addrinfo in the list and hope for the best.
          */
@@ -193,7 +204,7 @@ static void on_hosted_tcp_server_connect(ziti_connection clt, int status) {
                 uv_tcp_init(host_ctx->loop, sock);
                 sock->data = clt;
                 uv_connect_t *c = malloc(sizeof(uv_connect_t));
-                uv_tcp_connect(c, sock, ai->ai_addr, on_hosted_tcp_connect);
+                uv_tcp_connect(c, sock, ai->ai_addr, on_hosted_tcp_server_connect_complete);
                 }
                 break;
             case IPPROTO_UDP:
@@ -204,13 +215,14 @@ static void on_hosted_tcp_server_connect(ziti_connection clt, int status) {
 }
 
 /** called by ziti sdk when a ziti endpoint (client) initiates connection to a hosted service */
-static void on_client(ziti_connection serv, ziti_connection client, int status) {
+static void on_hosted_client_connect(ziti_connection serv, ziti_connection client, int status) {
     struct hosted_service_ctx_s *hosted_ctx = ziti_conn_data(serv);
     ziti_conn_set_data(client, hosted_ctx);
-    ziti_accept(client, on_hosted_tcp_server_connect, on_client_data);
+    ziti_accept(client, on_hosted_client_connect_complete, on_hosted_client_data);
 }
 
-static void listen_cb(ziti_connection serv, int status) {
+/** called by ziti SDK when a hosted service listener is ready */
+static void hosted_listen_cb(ziti_connection serv, int status) {
     struct hosted_service_ctx_s *host_ctx = ziti_conn_data(serv);
     if (host_ctx == NULL) {
         ZITI_LOG(DEBUG, "null host_ctx");
@@ -220,9 +232,8 @@ static void listen_cb(ziti_connection serv, int status) {
     if (status == ZITI_OK) {
         ZITI_LOG(INFO, "hosting service %s", host_ctx->service_name);
     } else {
-        ZITI_LOG(ERROR, "unable to host service %s; listen_cb status=%d", host_ctx->service_name, status);
+        ZITI_LOG(ERROR, "unable to host service %s: %s", host_ctx->service_name, ziti_errorstr(status));
         free_hosted_service_ctx(host_ctx);
-        ziti_close(&serv);
     }
 }
 
@@ -257,8 +268,7 @@ void ziti_sdk_c_host_v1(ziti_context ziti_ctx, uv_loop_t *loop, const char *serv
     host_ctx->port = port;
     host_ctx->loop = loop;
 
-    ziti_connection conn;
-    ziti_conn_init(ziti_ctx, &conn, host_ctx);
-
-    ziti_listen(conn, service_name, listen_cb, on_client);
+    ziti_connection serv;
+    ziti_conn_init(ziti_ctx, &serv, host_ctx);
+    ziti_listen(serv, service_name, hosted_listen_cb, on_hosted_client_connect);
 }

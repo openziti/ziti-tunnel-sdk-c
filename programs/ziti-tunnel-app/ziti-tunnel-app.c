@@ -29,7 +29,7 @@ static ziti_options OPTS = {
 /** callback from ziti SDK when a new service becomes available to our identity */
 void on_service(ziti_context ziti_ctx, ziti_service *service, int status, void *tnlr_ctx) {
     if (status == ZITI_OK) {
-        fprintf(stderr, "service %s available", service->name);
+        fprintf(stderr, "service %s available\n", service->name);
         if (service->perm_flags & ZITI_CAN_DIAL) {
             ziti_intercept v1_config;
             int get_config_rc;
@@ -38,22 +38,20 @@ void on_service(ziti_context ziti_ctx, ziti_service *service, int status, void *
                 ziti_tunneler_intercept_v1(tnlr_ctx, ziti_ctx, service->id, service->name, v1_config.hostname, v1_config.port);
                 free_ziti_intercept(&v1_config);
             } else {
-                fprintf(stderr, "service %s lacks ziti-tunneler-client.v1 config; not intercepting", service->name);
+                fprintf(stderr, "service %s lacks ziti-tunneler-client.v1 config; not intercepting\n", service->name);
             }
         }
-#if 0
         if (service->perm_flags & ZITI_CAN_BIND) {
             ziti_server_cfg_v1 v1_config;
             int get_config_rc;
             get_config_rc = ziti_service_get_config(service, "ziti-tunneler-server.v1", &v1_config, parse_ziti_server_cfg_v1);
             if (get_config_rc == 0) {
-                ziti_tunneler_host_v1(tnlr_ctx, ziti_ctx, service->id, v1_config.protocol, v1_config.hostname, v1_config.port);
+                ziti_tunneler_host_v1(tnlr_ctx, ziti_ctx, service->name, v1_config.protocol, v1_config.hostname, v1_config.port);
                 free_ziti_server_cfg_v1(&v1_config);
             } else {
-                fprintf(stderr, "service %s lacks ziti-tunneler-server.v1 config; not hosting", service->name);
+                fprintf(stderr, "service %s lacks ziti-tunneler-server.v1 config; not hosting\n", service->name);
             }
         }
-#endif
     } else if (status == ZITI_SERVICE_UNAVAILABLE) {
         printf("service unavailable: %s\n", service->name);
         ziti_tunneler_stop_intercepting(tnlr_ctx, service->name);

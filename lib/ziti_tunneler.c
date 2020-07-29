@@ -52,6 +52,7 @@ tunneler_context ziti_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop)
         ZITI_LOG(ERROR, "failed to allocate tunneler context");
         return NULL;
     }
+    ctx->loop = loop;
     memcpy(&ctx->opts, opts, sizeof(ctx->opts));
     run_packet_loop(loop, ctx);
 
@@ -96,9 +97,9 @@ void ziti_tunneler_dial_completed(tunneler_io_context *tnlr_io_ctx, void *ziti_i
     }
 }
 
-int ziti_tunneler_host_v1(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_id, const char *protocol, const char *hostname, int port) {
+int ziti_tunneler_host_v1(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_name, const char *protocol, const char *hostname, int port) {
     // ziti_context ziti_ctx, uv_loop_t *loop, const char *service_name, const char *proto, const char *hostname, int port
-    tnlr_ctx->opts.ziti_host_v1(ziti_ctx, NULL /* TODO loop */, service_id, protocol, hostname, port);
+    tnlr_ctx->opts.ziti_host_v1((void *)ziti_ctx, tnlr_ctx->loop, service_name, protocol, hostname, port);
     return 0;
 }
 
@@ -123,13 +124,13 @@ void ziti_tunneler_stop_intercepting(tunneler_context tnlr_ctx, const char *serv
 }
 
 /** called by tunneler application when data is read from a ziti connection */
-int ziti_tunneler_write(tunneler_io_context *tnlr_io_ctx, const void *data, size_t len) {
+ssize_t ziti_tunneler_write(tunneler_io_context *tnlr_io_ctx, const void *data, size_t len) {
     if (tnlr_io_ctx == NULL || *tnlr_io_ctx == NULL) {
         ZITI_LOG(WARN, "null tunneler io context");
         return -1;
     }
 
-    int r;
+    ssize_t r;
     switch ((*tnlr_io_ctx)->proto) {
         case tun_tcp:
             r = tunneler_tcp_write((*tnlr_io_ctx)->tcp, data, len);
