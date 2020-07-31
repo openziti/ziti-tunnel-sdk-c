@@ -32,13 +32,13 @@ void on_service(ziti_context ziti_ctx, ziti_service *service, int status, void *
         ziti_intercept intercept;
         int rc = ziti_service_get_config(service, "ziti-tunneler-client.v1", &intercept, parse_ziti_intercept);
         if (rc == 0) {
-            printf("service_available: %s\n", service->name);
+            ZITI_LOG(INFO, "service_available: %s => %s:%d", service->name, intercept.hostname, intercept.port);
             ziti_tunneler_intercept_v1(tnlr_ctx, ziti_ctx, service->id, service->name, intercept.hostname, intercept.port);
             free(intercept.hostname);
         }
-        printf("ziti_service_get_config rc: %d\n", rc);
+        ZITI_LOG(DEBUG, "ziti_service_get_config rc: %d", rc);
     } else if (status == ZITI_SERVICE_UNAVAILABLE) {
-        printf("service unavailable: %s\n", service->name);
+        ZITI_LOG(INFO, "service unavailable: %s", service->name);
         ziti_tunneler_stop_intercepting(tnlr_ctx, service->id);
     }
 }
@@ -50,7 +50,10 @@ static void on_ziti_init(ziti_context ziti_ctx, int status, void *init_ctx) {
     }
 }
 
+extern dns_manager *get_dnsmasq_manager();
+
 static int run_tunnel() {
+    const char* dns_range = "169.254.0.0/16";
     uv_loop_t *ziti_loop = uv_default_loop();
     if (ziti_loop == NULL) {
         fprintf(stderr, "failed to initialize default uv loop\n");
@@ -62,7 +65,7 @@ static int run_tunnel() {
 #if __APPLE__ && __MACH__
     tun = utun_open(tun_error, sizeof(tun_error));
 #elif __linux__
-    tun = tun_open(tun_error, sizeof(tun_error));
+    tun = tun_open(tun_error, sizeof(tun_error), dns_range);
 #endif
 
     if (tun == NULL) {
@@ -77,6 +80,7 @@ static int run_tunnel() {
             .ziti_write = ziti_sdk_c_write
     };
     tunneler_context tnlr_ctx = ziti_tunneler_init(&tunneler_opts, ziti_loop);
+    ziti_tunneler_set_dns(tnlr_ctx, get_dnsmasq_manager());
 
     OPTS.ctx = tnlr_ctx;
 

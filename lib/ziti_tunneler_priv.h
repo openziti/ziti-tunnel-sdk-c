@@ -11,6 +11,7 @@ struct tunneler_ctx_s {
     uv_poll_t    netif_poll_req;
     uv_timer_t   lwip_timer_req;
     struct intercept_s *intercepts;
+    dns_manager *dns;
 };
 
 typedef enum  {

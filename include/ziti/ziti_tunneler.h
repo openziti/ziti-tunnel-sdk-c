@@ -59,9 +59,18 @@ typedef struct tunneler_sdk_options_s {
     ziti_sdk_dial_cb   ziti_dial;
     ziti_sdk_close_cb  ziti_close;
     ziti_sdk_write_cb  ziti_write;
+    const char *ip_range;
 } tunneler_sdk_options;
 
+typedef struct dns_manager_s dns_manager;
+struct dns_manager_s {
+    const char* (*map_to_ip)(dns_manager *dns, const char *host);
+    void *data;
+};
+
 extern tunneler_context ziti_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop);
+
+extern void ziti_tunneler_set_dns(tunneler_context tnlr_ctx, dns_manager *dns);
 
 extern int ziti_tunneler_intercept_v1(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_id, const char *service_name, const char *hostname, int port);
 
