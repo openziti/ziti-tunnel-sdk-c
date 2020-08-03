@@ -55,7 +55,7 @@ extern dns_manager *get_dnsmasq_manager(const char* path);
 static int run_tunnel(const char *ip_range, dns_manager *dns) {
     uv_loop_t *ziti_loop = uv_default_loop();
     if (ziti_loop == NULL) {
-        ZITI_LOG(ERROR, "failed to initialize default uv loop\n");
+        ZITI_LOG(ERROR, "failed to initialize default uv loop");
         return 1;
     }
 
@@ -68,7 +68,7 @@ static int run_tunnel(const char *ip_range, dns_manager *dns) {
 #endif
 
     if (tun == NULL) {
-        ZITI_LOG(ERROR, "failed to open network interface: %s\n", tun_error);
+        ZITI_LOG(ERROR, "failed to open network interface: %s", tun_error);
         return 1;
     }
 
@@ -84,12 +84,12 @@ static int run_tunnel(const char *ip_range, dns_manager *dns) {
     OPTS.ctx = tnlr_ctx;
 
     if (ziti_init_opts(&OPTS, ziti_loop, NULL) != 0) {
-        ZITI_LOG(ERROR, "failed to initialize ziti\n");
+        ZITI_LOG(ERROR, "failed to initialize ziti");
         return 1;
     }
 
     if (uv_run(ziti_loop, UV_RUN_DEFAULT) != 0) {
-        ZITI_LOG(ERROR, "failed to run event loop\n");
+        ZITI_LOG(ERROR, "failed to run event loop");
         exit(1);
     }
 
@@ -140,7 +140,7 @@ static int run_opts(int argc, char *argv[]) {
                 dns_impl = optarg;
                 break;
             default: {
-                ZITI_LOG(ERROR, "Unknown option '%c'\n", c);
+                ZITI_LOG(ERROR, "Unknown option '%c'", c);
                 errors++;
                 break;
             }
@@ -293,18 +293,18 @@ static void enroll_cb(ziti_config *cfg, int status, char *err, void *ctx) {
 
 static void enroll(int argc, char *argv[]) {
     if (config_file == 0) {
-        ZITI_LOG(ERROR, "output file option(-i|--identity) is required\n");
+        ZITI_LOG(ERROR, "output file option(-i|--identity) is required");
         exit(-1);
     }
 
     if (enroll_opts.jwt == NULL) {
-        ZITI_LOG(ERROR, "JWT file option(-j|--jwt) is required\n");
+        ZITI_LOG(ERROR, "JWT file option(-j|--jwt) is required");
         exit(-1);
     }
 
     FILE *outfile;
     if ((outfile = fopen(config_file, "wb")) == NULL) {
-        ZITI_LOG(ERROR, "failed to open file %s: %s(%d)\n", config_file, strerror(errno), errno);
+        ZITI_LOG(ERROR, "failed to open file %s: %s(%d)", config_file, strerror(errno), errno);
         exit(-1);
 
     }

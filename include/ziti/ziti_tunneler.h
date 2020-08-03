@@ -59,7 +59,6 @@ typedef struct tunneler_sdk_options_s {
     ziti_sdk_dial_cb   ziti_dial;
     ziti_sdk_close_cb  ziti_close;
     ziti_sdk_write_cb  ziti_write;
-    const char *ip_range;
 } tunneler_sdk_options;
 
 typedef struct dns_manager_s dns_manager;

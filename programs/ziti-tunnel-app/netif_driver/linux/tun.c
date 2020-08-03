@@ -100,8 +100,12 @@ netif_driver tun_open(char *error, size_t error_len, const char *dns_block) {
     driver->uv_poll_init = tun_uv_poll_init;
     driver->close        = tun_close;
 
-    system("ip link set tun0 up");
-    system("ip route add 169.254.0.0/16 dev tun0");
+    char cmd[1024];
+    sprintf(cmd, "ip link set %s up", tun->name);
+    system(cmd);
+
+    sprintf(cmd, "ip route add %s dev %s", dns_block, tun->name);
+    system(cmd);
 
     return driver;
 }
