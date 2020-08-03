@@ -45,7 +45,7 @@ void on_service(ziti_context ziti_ctx, ziti_service *service, int status, void *
 
 static void on_ziti_init(ziti_context ziti_ctx, int status, void *init_ctx) {
     if (status != ZITI_OK) {
-        fprintf(stderr, "failed to initialize ziti\n");
+        ZITI_LOG(ERROR, "failed to initialize ziti");
         exit(1);
     }
 }
@@ -55,7 +55,7 @@ extern dns_manager *get_dnsmasq_manager(const char* path);
 static int run_tunnel(const char *ip_range, dns_manager *dns) {
     uv_loop_t *ziti_loop = uv_default_loop();
     if (ziti_loop == NULL) {
-        fprintf(stderr, "failed to initialize default uv loop\n");
+        ZITI_LOG(ERROR, "failed to initialize default uv loop\n");
         return 1;
     }
 
@@ -68,7 +68,7 @@ static int run_tunnel(const char *ip_range, dns_manager *dns) {
 #endif
 
     if (tun == NULL) {
-        fprintf(stderr, "failed to open network interface: %s\n", tun_error);
+        ZITI_LOG(ERROR, "failed to open network interface: %s\n", tun_error);
         return 1;
     }
 
@@ -84,12 +84,12 @@ static int run_tunnel(const char *ip_range, dns_manager *dns) {
     OPTS.ctx = tnlr_ctx;
 
     if (ziti_init_opts(&OPTS, ziti_loop, NULL) != 0) {
-        fprintf(stderr, "failed to initialize ziti\n");
+        ZITI_LOG(ERROR, "failed to initialize ziti\n");
         return 1;
     }
 
     if (uv_run(ziti_loop, UV_RUN_DEFAULT) != 0) {
-        fprintf(stderr, "failed to run event loop\n");
+        ZITI_LOG(ERROR, "failed to run event loop\n");
         exit(1);
     }
 
@@ -115,7 +115,7 @@ static struct option run_options[] = {
 };
 
 static const char* ip_range = "169.254.0.0/16";
-static const char* dns_impl = "dnsmasq:/tmp/hosts";
+static const char* dns_impl = NULL;
 
 static int run_opts(int argc, char *argv[]) {
     int c, option_index, errors = 0;
@@ -140,7 +140,7 @@ static int run_opts(int argc, char *argv[]) {
                 dns_impl = optarg;
                 break;
             default: {
-                fprintf(stderr, "Unknown option '%c'\n", c);
+                ZITI_LOG(ERROR, "Unknown option '%c'\n", c);
                 errors++;
                 break;
             }
@@ -159,7 +159,7 @@ static void run(int argc, char *argv[]) {
     int bits;
     int rc = sscanf(ip_range, "%d.%d.%d.%d/%d", &ip[0], &ip[1], &ip[2], &ip[3], &bits);
     if (rc != 5) {
-        fprintf(stderr, "Invalid IP range specification: n.n.n.n/m format is expected");
+        ZITI_LOG(ERROR, "Invalid IP range specification: n.n.n.n/m format is expected");
         exit(1);
     }
 
@@ -170,10 +170,13 @@ static void run(int argc, char *argv[]) {
     }
 
     dns_manager *dns = NULL;
-    if (strncmp("dnsmasq", dns_impl, strlen("dnsmasq")) == 0) {
+    if (dns_impl == NULL) {
+        // TODO internal DNS handling goes here(?)
+        ZITI_LOG(WARN, "No DNS support specified; services won't be available by DNS names");
+    } else if (strncmp("dnsmasq", dns_impl, strlen("dnsmasq")) == 0) {
         char *col = strchr(dns_impl, ':');
         if (col == NULL) {
-            fprintf(stderr, "DNS dnsmasq option should be `--dns=dnsmasq:<hosts-dir>");
+            ZITI_LOG(ERROR, "DNS dnsmasq option should be `--dns=dnsmasq:<hosts-dir>");
             exit(1);
         }
         dns = get_dnsmasq_manager(col + 1);
