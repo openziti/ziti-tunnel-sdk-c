@@ -104,8 +104,10 @@ netif_driver tun_open(char *error, size_t error_len, const char *dns_block) {
     sprintf(cmd, "ip link set %s up", tun->name);
     system(cmd);
 
-    sprintf(cmd, "ip route add %s dev %s", dns_block, tun->name);
-    system(cmd);
+    if (dns_block) {
+        sprintf(cmd, "ip route add %s dev %s", dns_block, tun->name);
+        system(cmd);
+    }
 
     return driver;
 }
