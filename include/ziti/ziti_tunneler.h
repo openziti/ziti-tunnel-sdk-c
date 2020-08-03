@@ -87,6 +87,8 @@ extern int ziti_tunneler_close(tunneler_io_context *tnlr_io_ctx);
 
 extern const char* ziti_tunneler_version();
 
+extern void ziti_tunneler_init_dns(uint32_t mask, int bits);
+
 #ifdef __cplusplus
 }
 #endif

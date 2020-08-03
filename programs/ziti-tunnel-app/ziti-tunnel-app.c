@@ -50,10 +50,9 @@ static void on_ziti_init(ziti_context ziti_ctx, int status, void *init_ctx) {
     }
 }
 
-extern dns_manager *get_dnsmasq_manager();
+extern dns_manager *get_dnsmasq_manager(const char* path);
 
-static int run_tunnel() {
-    const char* dns_range = "169.254.0.0/16";
+static int run_tunnel(const char *ip_range, dns_manager *dns) {
     uv_loop_t *ziti_loop = uv_default_loop();
     if (ziti_loop == NULL) {
         fprintf(stderr, "failed to initialize default uv loop\n");
@@ -65,7 +64,7 @@ static int run_tunnel() {
 #if __APPLE__ && __MACH__
     tun = utun_open(tun_error, sizeof(tun_error));
 #elif __linux__
-    tun = tun_open(tun_error, sizeof(tun_error), dns_range);
+    tun = tun_open(tun_error, sizeof(tun_error), ip_range);
 #endif
 
     if (tun == NULL) {
@@ -80,7 +79,7 @@ static int run_tunnel() {
             .ziti_write = ziti_sdk_c_write
     };
     tunneler_context tnlr_ctx = ziti_tunneler_init(&tunneler_opts, ziti_loop);
-    ziti_tunneler_set_dns(tnlr_ctx, get_dnsmasq_manager());
+    ziti_tunneler_set_dns(tnlr_ctx, dns);
 
     OPTS.ctx = tnlr_ctx;
 
@@ -111,13 +110,18 @@ static struct option run_options[] = {
         { "config", required_argument, NULL, 'c' },
         { "debug", required_argument, NULL, 'd'},
         {"refresh", required_argument, NULL, 'r'},
+        { "ip", required_argument, NULL, 'i'},
+        { "dns", optional_argument, NULL, 'n'},
 };
+
+static const char* ip_range = "169.254.0.0/16";
+static const char* dns_impl = "dnsmasq:/tmp/hosts";
 
 static int run_opts(int argc, char *argv[]) {
     int c, option_index, errors = 0;
     optind = 0;
 
-    while ((c = getopt_long(argc, argv, "c:d:r:",
+    while ((c = getopt_long(argc, argv, "c:d:r:i:n:",
                             run_options, &option_index)) != -1) {
         switch (c) {
             case 'c':
@@ -128,6 +132,12 @@ static int run_opts(int argc, char *argv[]) {
                 break;
             case 'r':
                 OPTS.refresh_interval = strtol(optarg, NULL, 10);
+                break;
+            case 'i': // ip range
+                ip_range = optarg;
+                break;
+            case 'n': // DNS manager implementation
+                dns_impl = optarg;
                 break;
             default: {
                 fprintf(stderr, "Unknown option '%c'\n", c);
@@ -144,7 +154,36 @@ static int run_opts(int argc, char *argv[]) {
 }
 
 static void run(int argc, char *argv[]) {
-    int rc = run_tunnel();
+
+    uint ip[4];
+    int bits;
+    int rc = sscanf(ip_range, "%d.%d.%d.%d/%d", &ip[0], &ip[1], &ip[2], &ip[3], &bits);
+    if (rc != 5) {
+        fprintf(stderr, "Invalid IP range specification: n.n.n.n/m format is expected");
+        exit(1);
+    }
+
+    uint32_t mask = 0;
+    for (int i = 0; i < 4; i++) {
+        mask <<= 8U;
+        mask |= (ip[i] & 0xFF);
+    }
+
+    dns_manager *dns = NULL;
+    if (strncmp("dnsmasq", dns_impl, strlen("dnsmasq")) == 0) {
+        char *col = strchr(dns_impl, ':');
+        if (col == NULL) {
+            fprintf(stderr, "DNS dnsmasq option should be `--dns=dnsmasq:<hosts-dir>");
+            exit(1);
+        }
+        dns = get_dnsmasq_manager(col + 1);
+    }
+
+    ziti_tunneler_init_dns(mask, bits);
+
+
+
+    rc = run_tunnel(ip_range, dns);
     exit(rc);
 }
 

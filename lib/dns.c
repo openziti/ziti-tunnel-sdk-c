@@ -45,10 +45,10 @@ static cache ip_cache = {
         .entries = {0},
 };
 
-void init_dns(uint32_t mask, int mask_bits) {
-    if (mask_bits > 32 || mask_bits < 8) mask_bits = 16;
+void ziti_tunneler_init_dns(uint32_t mask, int bits) {
+    if (bits > 32 || bits < 8) bits = 16;
     ip_cache.base = mask;
-    ip_cache.counter_bits = ~( (uint32_t)-1 << (32 - (uint32_t)mask_bits));
+    ip_cache.counter_bits = ~( (uint32_t)-1 << (32 - (uint32_t)bits));
 }
 
 const char* assign_ip(const char *hostname) {
@@ -62,7 +62,7 @@ const char* assign_ip(const char *hostname) {
     e = calloc(1, sizeof(struct dns_entry));
     uint32_t addr = ip_cache.base | (ip_cache.counter++ & ip_cache.counter_bits);
     if (ip_cache.counter > ip_cache.counter_bits) {
-        fprintf(stderr, "WARN: DNS assignment space is exhausted")
+        fprintf(stderr, "WARN: DNS assignment space is exhausted");
     }
     snprintf(e->ip, MAX_IP_LENGTH, "%d.%d.%d.%d", addr>>24U, (addr>>16U) & 0xFFU, (addr>>8U)&0xFFU, addr&0xFFU);
 
