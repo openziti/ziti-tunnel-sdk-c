@@ -48,4 +48,6 @@ struct write_ctx_s {
     ack_fn ack;
 };
 
+const char* assign_ip(const char *hostname);
+
 #endif //ZITI_TUNNELER_SDK_ZITI_TUNNELER_PRIV_H

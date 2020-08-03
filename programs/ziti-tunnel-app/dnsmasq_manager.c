@@ -15,33 +15,24 @@ limitations under the License.
 */
 
 #include <ziti/ziti_tunneler.h>
-#include <ziti/model_support.h>
-#include <string.h>
-#include <unistd.h>
+#include <stdlib.h>
 
-static const char* map_to_ip(dns_manager *dns, const char *hostname);
+static int apply_address(dns_manager *dns, const char *hostname, const char *ip);
 
-typedef struct cache_s {
-    uint32_t base;
-    uint32_t counter;
-    model_map cache;
-} cache;
-
-static cache ip_cache = {
-        .base = 0xA9FE0000, // 169.254.0.0
-        .counter = 0x00000201, // 0.0.2.1 -- starting
+struct dnsmasq_config {
+    const char *mapping_dir;
 };
 
-
+static struct dnsmasq_config dnsmask_cfg;
 static dns_manager dnsmasq_manager = {
-        .map_to_ip = map_to_ip,
-        .data = &ip_cache
+        .apply = apply_address,
+        .data = &dnsmask_cfg
 };
 
-#define DNS_HOSTS_DIR "/tmp/hosts/"
-static void apply_address(const char *hostname, const char *ip) {
+static int apply_address(dns_manager *dns, const char *hostname, const char *ip) {
     char fname[PATH_MAX];
-    sprintf(fname, DNS_HOSTS_DIR "%s", hostname);
+    struct dnsmasq_config *cfg = dns->data;
+    sprintf(fname,  "%s/%s", cfg->mapping_dir, hostname);
 
     char entry[512];
     int c = snprintf(entry, sizeof(entry), "%s\t%s", ip, hostname);
@@ -51,27 +42,11 @@ static void apply_address(const char *hostname, const char *ip) {
     fclose(rec);
 
     system("killall -HUP dnsmasq");
+    return 0;
 }
 
-static const char* map_to_ip(dns_manager *dns, const char *hostname) {
-    cache *c = dns->data;
-
-    char *ip;
-    if ((ip = model_map_get(&c->cache, hostname)) != NULL) {
-        return ip;
-    }
-
-    uint32_t addr = c->base | c->counter++;
-    ip = calloc(1, 16);
-    sprintf(ip, "%d.%d.%d.%d", addr>>24U, (addr>>16U) & 0xFFU, (addr>>8U)&0xFFU, addr&0xFFU);
-
-    model_map_set(&c->cache, hostname, ip);
-
-    apply_address(hostname, ip);
-    return ip;
-}
-
-dns_manager *get_dnsmasq_manager() {
+dns_manager *get_dnsmasq_manager(const char* mapping_dir) {
+    dnsmask_cfg.mapping_dir = mapping_dir;
     return &dnsmasq_manager;
 }
 

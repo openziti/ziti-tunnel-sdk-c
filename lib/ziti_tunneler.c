@@ -110,8 +110,13 @@ int ziti_tunneler_intercept_v1(tunneler_context tnlr_ctx, const void *ziti_ctx, 
     const char *ip;
     if (ipaddr_aton(hostname, &intercept_ip) == 0) {
         if (tnlr_ctx->dns) {
-            ip = tnlr_ctx->dns->map_to_ip(tnlr_ctx->dns, hostname);
-            ZITI_LOG(INFO, "service[%s]: mapped v1 intercept hostname[%s] => ip[%s]", service_id, hostname, ip);
+            ip = assign_ip(hostname);
+            if (tnlr_ctx->dns->apply(tnlr_ctx->dns, hostname, ip) != 0) {
+                ZITI_LOG(ERROR, "failed to apply DNS mapping for service[%s]: %s => %s", service_id, hostname, ip);
+            }
+            else {
+                ZITI_LOG(INFO, "service[%s]: mapped v1 intercept hostname[%s] => ip[%s]", service_id, hostname, ip);
+            }
         } else {
             ZITI_LOG(DEBUG, "v1 intercept hostname %s for service id %s is not an ip", hostname, service_id);
             return -1;

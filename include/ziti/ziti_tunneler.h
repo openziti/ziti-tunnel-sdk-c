@@ -64,7 +64,7 @@ typedef struct tunneler_sdk_options_s {
 
 typedef struct dns_manager_s dns_manager;
 struct dns_manager_s {
-    const char* (*map_to_ip)(dns_manager *dns, const char *host);
+    int (*apply)(dns_manager *dns, const char *host, const char *ip);
     void *data;
 };
 
