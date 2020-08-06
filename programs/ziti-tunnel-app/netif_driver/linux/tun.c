@@ -14,7 +14,7 @@
 
 /*
  * ip link set tun0 up
- * ip addr add 169.254.1.1 remote 1.1.1.1/32 dev tun0
+ * ip addr add 169.254.1.1 remote 169.254.0.0/16 dev tun0
  */
 
 #if 0
@@ -50,7 +50,7 @@ int tun_uv_poll_init(netif_handle tun, uv_loop_t *loop, uv_poll_t *tun_poll_req)
     return uv_poll_init(loop, tun_poll_req, tun->fd);
 }
 
-netif_driver tun_open(char *error, size_t error_len) {
+netif_driver tun_open(char *error, size_t error_len, const char *dns_block) {
     if (error != NULL) {
         memset(error, 0, error_len * sizeof(char));
     }
@@ -99,6 +99,15 @@ netif_driver tun_open(char *error, size_t error_len) {
     driver->write        = tun_write;
     driver->uv_poll_init = tun_uv_poll_init;
     driver->close        = tun_close;
+
+    char cmd[1024];
+    sprintf(cmd, "ip link set %s up", tun->name);
+    system(cmd);
+
+    if (dns_block) {
+        sprintf(cmd, "ip route add %s dev %s", dns_block, tun->name);
+        system(cmd);
+    }
 
     return driver;
 }
