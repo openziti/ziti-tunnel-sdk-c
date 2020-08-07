@@ -19,6 +19,10 @@ limitations under the License.
 #define LWIP_DONT_PROVIDE_BYTEORDER_FUNCTIONS 1
 #endif
 
+#if defined(__mips) || defined(__mips__)
+#define LWIP_DONT_PROVIDE_BYTEORDER_FUNCTIONS 1
+#endif
+
 #include "lwip/init.h"
 #include "lwip/raw.h"
 #include "lwip/timeouts.h"
@@ -99,21 +103,36 @@ void ziti_tunneler_dial_completed(tunneler_io_context *tnlr_io_ctx, void *ziti_i
 
 int ziti_tunneler_host_v1(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_name, const char *protocol, const char *hostname, int port) {
     // ziti_context ziti_ctx, uv_loop_t *loop, const char *service_name, const char *proto, const char *hostname, int port
-    tnlr_ctx->opts.ziti_host_v1((void *)ziti_ctx, tnlr_ctx->loop, service_name, protocol, hostname, port);
+    tnlr_ctx->opts.ziti_host_v1((void *) ziti_ctx, tnlr_ctx->loop, service_name, protocol, hostname, port);
     return 0;
+}
+
+void ziti_tunneler_set_dns(tunneler_context tnlr_ctx, dns_manager *dns) {
+    tnlr_ctx->dns = dns;
 }
 
 /** arrange to intercept traffic defined by a v1 client tunneler config */
 int ziti_tunneler_intercept_v1(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_id, const char *service_name, const char *hostname, int port) {
     ip_addr_t intercept_ip;
-
+    const char *ip;
     if (ipaddr_aton(hostname, &intercept_ip) == 0) {
-        ZITI_LOG(DEBUG, "v1 intercept hostname %s for service id %s is not an ip", hostname, service_id);
-        /* TODO: handle hostnames */
-        return -1;
+        if (tnlr_ctx->dns) {
+            ip = assign_ip(hostname);
+            if (tnlr_ctx->dns->apply(tnlr_ctx->dns, hostname, ip) != 0) {
+                ZITI_LOG(ERROR, "failed to apply DNS mapping for service[%s]: %s => %s", service_id, hostname, ip);
+            }
+            else {
+                ZITI_LOG(INFO, "service[%s]: mapped v1 intercept hostname[%s] => ip[%s]", service_id, hostname, ip);
+            }
+        } else {
+            ZITI_LOG(DEBUG, "v1 intercept hostname %s for service id %s is not an ip", hostname, service_id);
+            return -1;
+        }
+    } else {
+        ip = hostname;
     }
 
-    add_v1_intercept(tnlr_ctx, ziti_ctx, service_id, service_name, hostname, port);
+    add_v1_intercept(tnlr_ctx, ziti_ctx, service_id, service_name, ip, port);
 
     return 0;
 }

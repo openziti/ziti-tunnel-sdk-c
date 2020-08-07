@@ -63,7 +63,15 @@ typedef struct tunneler_sdk_options_s {
     ziti_sdk_host_v1_cb ziti_host_v1;
 } tunneler_sdk_options;
 
+typedef struct dns_manager_s dns_manager;
+struct dns_manager_s {
+    int (*apply)(dns_manager *dns, const char *host, const char *ip);
+    void *data;
+};
+
 extern tunneler_context ziti_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop);
+
+extern void ziti_tunneler_set_dns(tunneler_context tnlr_ctx, dns_manager *dns);
 
 extern int ziti_tunneler_intercept_v1(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_id, const char *service_name, const char *hostname, int port);
 
@@ -81,6 +89,8 @@ extern void ziti_tunneler_ack(struct write_ctx_s *write_ctx);
 extern int ziti_tunneler_close(tunneler_io_context *tnlr_io_ctx);
 
 extern const char* ziti_tunneler_version();
+
+extern void ziti_tunneler_init_dns(uint32_t mask, int bits);
 
 #ifdef __cplusplus
 }

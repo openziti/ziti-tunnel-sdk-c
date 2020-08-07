@@ -29,16 +29,16 @@ static ziti_options OPTS = {
 /** callback from ziti SDK when a new service becomes available to our identity */
 void on_service(ziti_context ziti_ctx, ziti_service *service, int status, void *tnlr_ctx) {
     if (status == ZITI_OK) {
-        fprintf(stderr, "service %s available\n", service->name);
         if (service->perm_flags & ZITI_CAN_DIAL) {
             ziti_intercept v1_config;
             int get_config_rc;
             get_config_rc = ziti_service_get_config(service, "ziti-tunneler-client.v1", &v1_config, parse_ziti_intercept);
             if (get_config_rc == 0) {
+                ZITI_LOG(INFO, "service_available: %s => %s:%d", service->name, v1_config.hostname, v1_config.port);
                 ziti_tunneler_intercept_v1(tnlr_ctx, ziti_ctx, service->id, service->name, v1_config.hostname, v1_config.port);
                 free_ziti_intercept(&v1_config);
             } else {
-                fprintf(stderr, "service %s lacks ziti-tunneler-client.v1 config; not intercepting\n", service->name);
+                ZITI_LOG(INFO, "service %s lacks ziti-tunneler-client.v1 config; not intercepting", service->name);
             }
         }
         if (service->perm_flags & ZITI_CAN_BIND) {
@@ -46,29 +46,32 @@ void on_service(ziti_context ziti_ctx, ziti_service *service, int status, void *
             int get_config_rc;
             get_config_rc = ziti_service_get_config(service, "ziti-tunneler-server.v1", &v1_config, parse_ziti_server_cfg_v1);
             if (get_config_rc == 0) {
+                ZITI_LOG(INFO, "service_available: %s => %s:%s:%d", service->name, v1_config.protocol, v1_config.hostname, v1_config.port);
                 ziti_tunneler_host_v1(tnlr_ctx, ziti_ctx, service->name, v1_config.protocol, v1_config.hostname, v1_config.port);
                 free_ziti_server_cfg_v1(&v1_config);
             } else {
-                fprintf(stderr, "service %s lacks ziti-tunneler-server.v1 config; not hosting\n", service->name);
+                ZITI_LOG(INFO, "service %s lacks ziti-tunneler-server.v1 config; not hosting", service->name);
             }
         }
     } else if (status == ZITI_SERVICE_UNAVAILABLE) {
-        printf("service unavailable: %s\n", service->name);
+        ZITI_LOG(INFO, "service unavailable: %s", service->name);
         ziti_tunneler_stop_intercepting(tnlr_ctx, service->name);
     }
 }
 
 static void on_ziti_init(ziti_context ziti_ctx, int status, void *init_ctx) {
     if (status != ZITI_OK) {
-        fprintf(stderr, "failed to initialize ziti\n");
+        ZITI_LOG(ERROR, "failed to initialize ziti");
         exit(1);
     }
 }
 
-static int run_tunnel() {
+extern dns_manager *get_dnsmasq_manager(const char* path);
+
+static int run_tunnel(const char *ip_range, dns_manager *dns) {
     uv_loop_t *ziti_loop = uv_default_loop();
     if (ziti_loop == NULL) {
-        fprintf(stderr, "failed to initialize default uv loop\n");
+        ZITI_LOG(ERROR, "failed to initialize default uv loop");
         return 1;
     }
 
@@ -77,11 +80,11 @@ static int run_tunnel() {
 #if __APPLE__ && __MACH__
     tun = utun_open(tun_error, sizeof(tun_error));
 #elif __linux__
-    tun = tun_open(tun_error, sizeof(tun_error));
+    tun = tun_open(tun_error, sizeof(tun_error), ip_range);
 #endif
 
     if (tun == NULL) {
-        fprintf(stderr, "failed to open network interface: %s\n", tun_error);
+        ZITI_LOG(ERROR, "failed to open network interface: %s", tun_error);
         return 1;
     }
 
@@ -94,16 +97,17 @@ static int run_tunnel() {
 
     };
     tunneler_context tnlr_ctx = ziti_tunneler_init(&tunneler_opts, ziti_loop);
+    ziti_tunneler_set_dns(tnlr_ctx, dns);
 
     OPTS.ctx = tnlr_ctx;
 
     if (ziti_init_opts(&OPTS, ziti_loop, NULL) != 0) {
-        fprintf(stderr, "failed to initialize ziti\n");
+        ZITI_LOG(ERROR, "failed to initialize ziti");
         return 1;
     }
 
     if (uv_run(ziti_loop, UV_RUN_DEFAULT) != 0) {
-        fprintf(stderr, "failed to run event loop\n");
+        ZITI_LOG(ERROR, "failed to run event loop");
         exit(1);
     }
 
@@ -124,13 +128,18 @@ static struct option run_options[] = {
         { "config", required_argument, NULL, 'c' },
         { "debug", required_argument, NULL, 'd'},
         {"refresh", required_argument, NULL, 'r'},
+        { "ip", required_argument, NULL, 'i'},
+        { "dns", optional_argument, NULL, 'n'},
 };
+
+static const char* ip_range = "169.254.0.0/16";
+static const char* dns_impl = NULL;
 
 static int run_opts(int argc, char *argv[]) {
     int c, option_index, errors = 0;
     optind = 0;
 
-    while ((c = getopt_long(argc, argv, "c:d:r:",
+    while ((c = getopt_long(argc, argv, "c:d:r:i:n:",
                             run_options, &option_index)) != -1) {
         switch (c) {
             case 'c':
@@ -142,8 +151,14 @@ static int run_opts(int argc, char *argv[]) {
             case 'r':
                 OPTS.refresh_interval = strtol(optarg, NULL, 10);
                 break;
+            case 'i': // ip range
+                ip_range = optarg;
+                break;
+            case 'n': // DNS manager implementation
+                dns_impl = optarg;
+                break;
             default: {
-                fprintf(stderr, "Unknown option '%c'\n", c);
+                ZITI_LOG(ERROR, "Unknown option '%c'", c);
                 errors++;
                 break;
             }
@@ -157,7 +172,39 @@ static int run_opts(int argc, char *argv[]) {
 }
 
 static void run(int argc, char *argv[]) {
-    int rc = run_tunnel();
+
+    uint ip[4];
+    int bits;
+    int rc = sscanf(ip_range, "%d.%d.%d.%d/%d", &ip[0], &ip[1], &ip[2], &ip[3], &bits);
+    if (rc != 5) {
+        ZITI_LOG(ERROR, "Invalid IP range specification: n.n.n.n/m format is expected");
+        exit(1);
+    }
+
+    uint32_t mask = 0;
+    for (int i = 0; i < 4; i++) {
+        mask <<= 8U;
+        mask |= (ip[i] & 0xFF);
+    }
+
+    dns_manager *dns = NULL;
+    if (dns_impl == NULL) {
+        // TODO internal DNS handling goes here(?)
+        ZITI_LOG(WARN, "No DNS support specified; services won't be available by DNS names");
+    } else if (strncmp("dnsmasq", dns_impl, strlen("dnsmasq")) == 0) {
+        char *col = strchr(dns_impl, ':');
+        if (col == NULL) {
+            ZITI_LOG(ERROR, "DNS dnsmasq option should be `--dns=dnsmasq:<hosts-dir>");
+            exit(1);
+        }
+        dns = get_dnsmasq_manager(col + 1);
+    }
+
+    ziti_tunneler_init_dns(mask, bits);
+
+
+
+    rc = run_tunnel(ip_range, dns);
     exit(rc);
 }
 
@@ -264,18 +311,18 @@ static void enroll_cb(ziti_config *cfg, int status, char *err, void *ctx) {
 
 static void enroll(int argc, char *argv[]) {
     if (config_file == 0) {
-        ZITI_LOG(ERROR, "output file option(-i|--identity) is required\n");
+        ZITI_LOG(ERROR, "output file option(-i|--identity) is required");
         exit(-1);
     }
 
     if (enroll_opts.jwt == NULL) {
-        ZITI_LOG(ERROR, "JWT file option(-j|--jwt) is required\n");
+        ZITI_LOG(ERROR, "JWT file option(-j|--jwt) is required");
         exit(-1);
     }
 
     FILE *outfile;
     if ((outfile = fopen(config_file, "wb")) == NULL) {
-        ZITI_LOG(ERROR, "failed to open file %s: %s(%d)\n", config_file, strerror(errno), errno);
+        ZITI_LOG(ERROR, "failed to open file %s: %s(%d)", config_file, strerror(errno), errno);
         exit(-1);
 
     }

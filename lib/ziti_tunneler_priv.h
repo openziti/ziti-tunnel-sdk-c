@@ -12,6 +12,7 @@ typedef struct tunneler_ctx_s {
     uv_poll_t    netif_poll_req;
     uv_timer_t   lwip_timer_req;
     struct intercept_s *intercepts;
+    dns_manager *dns;
 } *tunneler_context;
 
 typedef enum  {
@@ -51,5 +52,7 @@ struct write_ctx_s {
     };
     ack_fn ack;
 };
+
+const char* assign_ip(const char *hostname);
 
 #endif //ZITI_TUNNELER_SDK_ZITI_TUNNELER_PRIV_H
