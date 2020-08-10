@@ -4,6 +4,3 @@
 [submodule "deps/lwip-contrib"]
 	path = deps/lwip-contrib
 	url = https://git.savannah.nongnu.org/git/lwip/lwip-contrib.git
-[submodule "deps/ziti-sdk-c"]
-	path = deps/ziti-sdk-c
-	url = https://github.com/openziti/ziti-sdk-c.git
