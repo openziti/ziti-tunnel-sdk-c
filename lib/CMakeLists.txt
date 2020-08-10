@@ -7,6 +7,7 @@ set_property(TARGET ziti_tunneler PROPERTY C_STANDARD 11)
 
 target_compile_definitions(ziti_tunneler
         PRIVATE GIT_VERSION=${GIT_VERSION}
+        PRIVATE ZITI_LOG_PREFIX=${PROJECT_NAME}
         )
 
 add_library(ziti_tunneler_cbs STATIC ziti_tunneler_cbs.c)

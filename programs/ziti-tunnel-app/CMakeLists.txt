@@ -10,6 +10,11 @@ if(CMAKE_SYSTEM_NAME STREQUAL Darwin OR CMAKE_SYSTEM_NAME STREQUAL Linux)
 
     add_executable(ziti-tunnel-app ziti-tunnel-app.c ${NETIF_DRIVER_SOURCE} dnsmasq_manager.c)
 
+    target_compile_definitions(ziti-tunnel-app
+            PRIVATE GIT_VERSION=${GIT_VERSION}
+            PRIVATE ZITI_LOG_PREFIX=${PROJECT_NAME}
+            )
+
     target_link_libraries(ziti-tunnel-app
             PUBLIC ziti ziti_tunneler ziti_tunneler_cbs
             PUBLIC lwipcore ${lwip_sys_lib} ziti_tunneler
