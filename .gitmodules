@@ -1,6 +1,0 @@
-[submodule "deps/lwip"]
-	path = deps/lwip
-	url = https://git.savannah.nongnu.org/git/lwip.git
-[submodule "deps/lwip-contrib"]
-	path = deps/lwip-contrib
-	url = https://git.savannah.nongnu.org/git/lwip/lwip-contrib.git
