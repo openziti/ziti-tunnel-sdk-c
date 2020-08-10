@@ -19,8 +19,10 @@ target_link_libraries(ziti_tunneler_cbs
         PUBLIC ziti
         )
 
-set (LWIP_DIR "${CMAKE_SOURCE_DIR}/deps/lwip")
-set (LWIP_CONTRIB_DIR "${CMAKE_SOURCE_DIR}/deps/lwip-contrib")
+FetchContent_GetProperties(lwip)
+set (LWIP_DIR "${lwip_SOURCE_DIR}")
+FetchContent_GetProperties(lwip-contrib)
+set (LWIP_CONTRIB_DIR "${lwip-contrib_SOURCE_DIR}")
 
 if(WIN32)
     set(LWIP_CONTRIB_INCLUDE "${LWIP_CONTRIB_DIR}/ports/win32/include")
