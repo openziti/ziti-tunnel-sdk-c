@@ -3,9 +3,10 @@
 // some constants used below to be declared
 #define _WIN32_WINNT  _WIN32_WINNT_WIN6
  // Windows Server 2008
-#include <ws2tcpip.h>#include <ws2tcpip.h>
+#include <ws2tcpip.h>
 #endif
 
+#include <assert.h>
 #include <stdio.h>
 #include <ziti/ziti_log.h>
 #include "ziti/ziti_tunneler_cbs.h"
