@@ -102,8 +102,8 @@ void ziti_tunneler_dial_completed(tunneler_io_context *tnlr_io_ctx, void *ziti_i
 }
 
 int ziti_tunneler_host_v1(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_name, const char *protocol, const char *hostname, int port) {
-    // ziti_context ziti_ctx, uv_loop_t *loop, const char *service_name, const char *proto, const char *hostname, int port
     tnlr_ctx->opts.ziti_host_v1((void *) ziti_ctx, tnlr_ctx->loop, service_name, protocol, hostname, port);
+    ZITI_LOG(INFO, "hosting service %s at %s:%s:%d", service_name, protocol, hostname, port);
     return 0;
 }
 
@@ -133,7 +133,7 @@ int ziti_tunneler_intercept_v1(tunneler_context tnlr_ctx, const void *ziti_ctx, 
     }
 
     add_v1_intercept(tnlr_ctx, ziti_ctx, service_id, service_name, ip, port);
-
+    ZITI_LOG(INFO, "intercepting service %s at %s:%d (svcid %s)", service_name, hostname, port, service_id);
     return 0;
 }
 

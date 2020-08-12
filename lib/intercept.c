@@ -35,14 +35,12 @@ extern int add_v1_intercept(tunneler_context tnlr_ctx, const void *ziti_ctx, con
     }
     new->cfg.v1.port = port;
 
-    ZITI_LOG(INFO, "intercepting v1 service '%s' at %s:%d", service_name, hostname, port);
     if (last == NULL) {
         tnlr_ctx->intercepts = new;
     } else {
         last->next = new;
     }
 
-    ZITI_LOG(INFO, "intercepting %s:%d for service %s (id %s)", hostname, port, service_name, service_id);
     return 0;
 }
 

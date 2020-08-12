@@ -14,6 +14,15 @@ typedef struct ziti_io_ctx_s {
     tunneler_io_context  tnlr_io_ctx;
 } ziti_io_context;
 
+struct hosted_io_ctx_s {
+    struct hosted_service_ctx_s *service;
+    ziti_connection client;
+    union {
+        uv_tcp_t *tcp;
+        uv_udp_t *udp;
+    } server;
+};
+
 /** called by tunneler SDK after a client connection is intercepted */
 void *ziti_sdk_c_dial(const intercept_ctx_t *intercept_ctx, tunneler_io_context tnlr_io_ctx);
 

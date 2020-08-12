@@ -33,8 +33,7 @@ struct tunneler_io_ctx_s {
             struct udp_pcb *pcb;
             struct pbuf *queued;
         } udp;
-        uv_tcp_t *hosted_tcp;
-        uv_udp_t *hosted_udp;
+        hosted_io_context hosted;
     };
 };
 

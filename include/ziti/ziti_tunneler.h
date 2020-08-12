@@ -33,6 +33,7 @@ extern "C" {
 
 typedef struct tunneler_ctx_s *tunneler_context;
 typedef struct tunneler_io_ctx_s *tunneler_io_context;
+typedef struct hosted_io_ctx_s *hosted_io_context;
 
 /** data needed to dial a ziti service when a client connection is intercepted */
 typedef struct intercept_ctx_s {
@@ -45,6 +46,15 @@ struct io_ctx_s {
     tunneler_io_context * tnlr_io_ctx_p; // use pointer to allow tsdk and zsdk callbacks to see when context is nulled.
     void *                ziti_io_ctx; // context specific to ziti SDK being used by the app.
 };
+
+typedef struct hosted_service_ctx_s {
+    char *       service_name;
+    char *       proto;
+    int          proto_id;
+    char *       hostname;
+    int          port;
+    uv_loop_t *  loop;
+} *hosted_service_context;
 
 /**
  * called when a client connection is intercepted.
