@@ -2,8 +2,10 @@ include(FetchContent)
 
 FetchContent_Declare(ziti-sdk-c
         GIT_REPOSITORY https://github.com/openziti/ziti-sdk-c.git
-        GIT_TAG 0.15.7
+        GIT_TAG 0.15.8
         )
+set(ZITI_BUILD_TESTS off)
+set(ZITI_BUILD_PROGRAMS off)
 FetchContent_MakeAvailable(ziti-sdk-c)
 
 FetchContent_Declare(lwip
