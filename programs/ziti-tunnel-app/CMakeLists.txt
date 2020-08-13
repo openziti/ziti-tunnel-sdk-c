@@ -9,6 +9,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL Darwin OR CMAKE_SYSTEM_NAME STREQUAL Linux)
     endif()
 
     add_executable(ziti-tunnel-app ziti-tunnel-app.c ${NETIF_DRIVER_SOURCE} dnsmasq_manager.c)
+    set_property(TARGET ziti-tunnel-app PROPERTY C_STANDARD 11)
+
 
     target_compile_definitions(ziti-tunnel-app
             PRIVATE GIT_VERSION=${GIT_VERSION}
