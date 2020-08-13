@@ -17,9 +17,7 @@ typedef struct tunneler_ctx_s {
 
 typedef enum  {
     tun_tcp,
-    tun_udp,
-    hosted_tcp,
-    hosted_udp
+    tun_udp
 } tunneler_proto_type;
 
 struct tunneler_io_ctx_s {
@@ -33,7 +31,6 @@ struct tunneler_io_ctx_s {
             struct udp_pcb *pcb;
             struct pbuf *queued;
         } udp;
-        hosted_io_context hosted;
     };
 };
 
