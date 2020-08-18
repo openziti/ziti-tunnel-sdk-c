@@ -33,6 +33,7 @@ extern "C" {
 
 typedef struct tunneler_ctx_s *tunneler_context;
 typedef struct tunneler_io_ctx_s *tunneler_io_context;
+typedef struct hosted_io_ctx_s *hosted_io_context;
 
 /** data needed to dial a ziti service when a client connection is intercepted */
 typedef struct intercept_ctx_s {
@@ -46,6 +47,16 @@ struct io_ctx_s {
     void *                ziti_io_ctx; // context specific to ziti SDK being used by the app.
 };
 
+typedef struct hosted_service_ctx_s {
+    char *       service_name;
+    char *       proto;
+    int          proto_id;
+    char *       hostname;
+    int          port;
+    void *       ziti_ctx;
+    uv_loop_t *  loop;
+} *hosted_service_context;
+
 /**
  * called when a client connection is intercepted.
  * implementations are expected to dial the service and return
@@ -53,12 +64,14 @@ struct io_ctx_s {
 typedef void * (*ziti_sdk_dial_cb)(const intercept_ctx_t *intercept_ctx, tunneler_io_context tnlr_io_ctx);
 typedef void (*ziti_sdk_close_cb)(void *ziti_io_ctx);
 typedef ssize_t (*ziti_sdk_write_cb)(const void *ziti_io_ctx, void *write_ctx, const void *data, size_t len);
+typedef void (*ziti_sdk_host_v1_cb)(void *ziti_ctx, uv_loop_t *loop, const char *service_name, const char *proto, const char *hostname, int port);
 
 typedef struct tunneler_sdk_options_s {
     netif_driver   netif_driver;
-    ziti_sdk_dial_cb   ziti_dial;
-    ziti_sdk_close_cb  ziti_close;
-    ziti_sdk_write_cb  ziti_write;
+    ziti_sdk_dial_cb    ziti_dial;
+    ziti_sdk_close_cb   ziti_close;
+    ziti_sdk_write_cb   ziti_write;
+    ziti_sdk_host_v1_cb ziti_host_v1;
 } tunneler_sdk_options;
 
 typedef struct dns_manager_s dns_manager;
@@ -73,11 +86,13 @@ extern void ziti_tunneler_set_dns(tunneler_context tnlr_ctx, dns_manager *dns);
 
 extern int ziti_tunneler_intercept_v1(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_id, const char *service_name, const char *hostname, int port);
 
+extern int ziti_tunneler_host_v1(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_name, const char *protocol, const char *hostname, int port);
+
 extern void ziti_tunneler_stop_intercepting(tunneler_context tnlr_ctx, const char *service_id);
 
 extern void ziti_tunneler_dial_completed(tunneler_io_context *tnlr_io_ctx, void *ziti_io_ctx, bool ok);
 
-extern int ziti_tunneler_write(tunneler_io_context *tnlr_io_ctx, const void *data, size_t len);
+extern ssize_t ziti_tunneler_write(tunneler_io_context *tnlr_io_ctx, const void *data, size_t len);
 
 struct write_ctx_s;
 extern void ziti_tunneler_ack(struct write_ctx_s *write_ctx);

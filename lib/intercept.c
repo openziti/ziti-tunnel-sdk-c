@@ -41,7 +41,6 @@ extern int add_v1_intercept(tunneler_context tnlr_ctx, const void *ziti_ctx, con
         last->next = new;
     }
 
-    ZITI_LOG(INFO, "intercepting %s:%d for service %s (id %s)", hostname, port, service_name, service_id);
     return 0;
 }
 

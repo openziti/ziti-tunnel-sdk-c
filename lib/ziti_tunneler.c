@@ -56,6 +56,7 @@ tunneler_context ziti_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop)
         ZITI_LOG(ERROR, "failed to allocate tunneler context");
         return NULL;
     }
+    ctx->loop = loop;
     memcpy(&ctx->opts, opts, sizeof(ctx->opts));
     run_packet_loop(loop, ctx);
 
@@ -100,6 +101,12 @@ void ziti_tunneler_dial_completed(tunneler_io_context *tnlr_io_ctx, void *ziti_i
     }
 }
 
+int ziti_tunneler_host_v1(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_name, const char *protocol, const char *hostname, int port) {
+    tnlr_ctx->opts.ziti_host_v1((void *) ziti_ctx, tnlr_ctx->loop, service_name, protocol, hostname, port);
+    ZITI_LOG(INFO, "hosting service %s at %s:%s:%d", service_name, protocol, hostname, port);
+    return 0;
+}
+
 void ziti_tunneler_set_dns(tunneler_context tnlr_ctx, dns_manager *dns) {
     tnlr_ctx->dns = dns;
 }
@@ -126,7 +133,7 @@ int ziti_tunneler_intercept_v1(tunneler_context tnlr_ctx, const void *ziti_ctx, 
     }
 
     add_v1_intercept(tnlr_ctx, ziti_ctx, service_id, service_name, ip, port);
-
+    ZITI_LOG(INFO, "intercepting service %s at %s:%d (svcid %s)", service_name, hostname, port, service_id);
     return 0;
 }
 
@@ -136,13 +143,13 @@ void ziti_tunneler_stop_intercepting(tunneler_context tnlr_ctx, const char *serv
 }
 
 /** called by tunneler application when data is read from a ziti connection */
-int ziti_tunneler_write(tunneler_io_context *tnlr_io_ctx, const void *data, size_t len) {
+ssize_t ziti_tunneler_write(tunneler_io_context *tnlr_io_ctx, const void *data, size_t len) {
     if (tnlr_io_ctx == NULL || *tnlr_io_ctx == NULL) {
         ZITI_LOG(WARN, "null tunneler io context");
         return -1;
     }
 
-    int r;
+    ssize_t r;
     switch ((*tnlr_io_ctx)->proto) {
         case tun_tcp:
             r = tunneler_tcp_write((*tnlr_io_ctx)->tcp, data, len);
@@ -228,8 +235,9 @@ static struct raw_pcb * init_protocol_handler(u8_t proto, raw_recv_fn recv_fn, v
 }
 
 static void run_packet_loop(uv_loop_t *loop, tunneler_context tnlr_ctx) {
-    if (tnlr_ctx->opts.ziti_close == NULL || tnlr_ctx->opts.ziti_dial == NULL || tnlr_ctx->opts.ziti_write == NULL) {
-        ZITI_LOG(ERROR, "ziti_* callback options cannot be null");
+    if (tnlr_ctx->opts.ziti_close == NULL || tnlr_ctx->opts.ziti_dial == NULL ||
+        tnlr_ctx->opts.ziti_write == NULL || tnlr_ctx->opts.ziti_host_v1 == NULL) {
+        ZITI_LOG(ERROR, "ziti_sdk_* callback options cannot be null");
         exit(1);
     }
 

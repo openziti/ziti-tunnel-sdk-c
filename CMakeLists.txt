@@ -4,10 +4,10 @@ execute_process(
         OUTPUT_VARIABLE GIT_VERSION
         OUTPUT_STRIP_TRAILING_WHITESPACE
 )
-string(REGEX MATCH "([0-9]+\\.[0-9]+\\.[0-9]+)" ver ${GIT_VERSION})
+string(REGEX MATCH "([0-9]+\\.[0-9]+\\.[0-9]+)" ver "${GIT_VERSION}")
 
 project(ziti-tunneler-sdk
-        VERSION ${ver}
+        VERSION "${ver}"
         LANGUAGES C CXX)
 include(CPack)
 
