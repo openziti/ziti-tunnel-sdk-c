@@ -37,9 +37,6 @@ limitations under the License.
 
 #include <string.h>
 
-// TODO this should be defined in liblwipcore.a (ip.o), but link fails unless we define it here (or link in lwip's ip.o)
-struct ip_globals ip_data;
-
 static void run_packet_loop(uv_loop_t *loop, tunneler_context tnlr_ctx);
 
 tunneler_context ziti_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop) {
