@@ -53,6 +53,7 @@ typedef struct hosted_service_ctx_s {
     int          proto_id;
     char *       hostname;
     int          port;
+    void *       ziti_ctx;
     uv_loop_t *  loop;
 } *hosted_service_context;
 
