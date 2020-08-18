@@ -220,6 +220,7 @@ static void on_hosted_udp_server_data(uv_udp_t* handle, ssize_t nread, const uv_
         }
         ZITI_LOG(ERROR, "error receiving data from hosted service %s", io_ctx->service->service_name);
         ziti_close(&io_ctx->client);
+    }
 }
 
 /** called by ziti sdk when a client connection is established (or fails) */
