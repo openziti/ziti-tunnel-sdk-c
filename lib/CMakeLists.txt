@@ -1,22 +1,22 @@
 
-add_library(ziti_tunneler STATIC
-        ziti_tunneler.c tunneler_tcp.c tunneler_udp.c intercept.c
+add_library(ziti-tunnel-sdk-c STATIC
+        ziti_tunnel.c tunnel_tcp.c tunnel_udp.c intercept.c
         lwip/netif_shim.c lwip/lwiphooks_ip6.c lwip/lwiphooks_ip4.c lwip/lwip_cloned_fns.c dns.c)
 
-set_property(TARGET ziti_tunneler PROPERTY C_STANDARD 11)
+set_property(TARGET ziti-tunnel-sdk-c PROPERTY C_STANDARD 11)
 
-target_compile_definitions(ziti_tunneler
+target_compile_definitions(ziti-tunnel-sdk-c
         PRIVATE GIT_VERSION=${GIT_VERSION}
         PRIVATE ZITI_LOG_PREFIX=${PROJECT_NAME}
         )
 
-add_library(ziti_tunneler_cbs STATIC ziti_tunneler_cbs.c)
+add_library(ziti-tunnel-cbs-c STATIC ziti_tunnel_cbs.c)
 
-target_include_directories(ziti_tunneler_cbs
+target_include_directories(ziti-tunnel-cbs-c
         PUBLIC ../include
         )
 
-target_link_libraries(ziti_tunneler_cbs
+target_link_libraries(ziti-tunnel-cbs-c
         PUBLIC ziti
         )
 
@@ -45,11 +45,11 @@ set (LWIP_INCLUDE_DIRS
 
 include(${LWIP_DIR}/src/Filelists.cmake)
 
-target_include_directories(ziti_tunneler
+target_include_directories(ziti-tunnel-sdk-c
         PUBLIC ${LWIP_INCLUDE_DIRS}
         PUBLIC ../include
         PRIVATE ../include/priv
-        PRIVATE ${ziti-tunneler-sdk-deps_SOURCE_DIR}
+        PRIVATE ${ziti-tunnel-sdk-c-deps_SOURCE_DIR}
         )
 
 add_library(${lwip_sys_lib} STATIC
@@ -59,7 +59,7 @@ target_include_directories(${lwip_sys_lib}
         PUBLIC ${LWIP_INCLUDE_DIRS}
         )
 
-target_link_libraries(ziti_tunneler
+target_link_libraries(ziti-tunnel-sdk-c
         PUBLIC ziti
         PUBLIC ${lwip_sys_lib}
         PUBLIC lwipcore

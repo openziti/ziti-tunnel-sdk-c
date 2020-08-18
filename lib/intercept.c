@@ -4,7 +4,7 @@
 
 #include "ziti/ziti_log.h"
 #include "intercept.h"
-#include "ziti_tunneler_priv.h"
+#include "ziti_tunnel_priv.h"
 
 extern int add_v1_intercept(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_id, const char *service_name, const char *hostname, int port) {
     if (tnlr_ctx == NULL) {

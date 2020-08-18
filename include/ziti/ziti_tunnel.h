@@ -20,8 +20,8 @@ limitations under the License.
  * tunneler application.
  */
 
-#ifndef ZITI_TUNNELER_SDK_ZITI_TUNNELER_H
-#define ZITI_TUNNELER_SDK_ZITI_TUNNELER_H
+#ifndef ZITI_TUNNELER_SDK_ZITI_TUNNEL_H
+#define ZITI_TUNNELER_SDK_ZITI_TUNNEL_H
 
 #include <stdbool.h>
 #include "uv.h"
@@ -107,4 +107,4 @@ extern void ziti_tunneler_init_dns(uint32_t mask, int bits);
 }
 #endif
 
-#endif /* ZITI_TUNNELER_SDK_ZITI_TUNNELER_H */
+#endif /* ZITI_TUNNELER_SDK_ZITI_TUNNEL_H */

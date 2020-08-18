@@ -14,7 +14,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include <ziti/ziti_log.h>
-#include "ziti/ziti_tunneler_cbs.h"
+#include "ziti/ziti_tunnel_cbs.h"
 
 void on_ziti_connect(ziti_connection conn, int status) {
     ZITI_LOG(VERBOSE, "on_ziti_connect status: %d", status);
