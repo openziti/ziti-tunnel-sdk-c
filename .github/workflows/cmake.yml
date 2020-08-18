@@ -28,3 +28,8 @@ jobs:
         run: cmake -S ${{ github.workspace }} -B ${{runner.workspace}}/build -G "MinGW Makefiles"
       - name: build
         run: cmake --build ${{runner.workspace}}/build
+      - uses: actions/upload-artifact@v2
+        if: matrix.os != 'windows-latest'
+        with:
+          name: ziti-tunnel-app-${{ matrix.os }}
+          path: ${{ runner.workspace }}/build/programs/ziti-tunnel-app/ziti-tunnel-app
