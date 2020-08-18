@@ -19,7 +19,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL Darwin OR CMAKE_SYSTEM_NAME STREQUAL Linux)
 
     target_link_libraries(ziti-edge-tunnel
             PUBLIC ziti ziti-tunnel-sdk-c ziti-tunnel-cbs-c
-            PUBLIC lwipcore ${lwip_sys_lib}
+            PUBLIC lwipcore ${lwip_sys_lib} ziti-tunnel-sdk-c
             PUBLIC subcommand
             )
 endif()
