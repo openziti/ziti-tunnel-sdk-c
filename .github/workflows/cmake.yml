@@ -31,5 +31,5 @@ jobs:
       - uses: actions/upload-artifact@v2
         if: matrix.os != 'windows-latest'
         with:
-          name: ziti-tunnel-app-${{ matrix.os }}
-          path: ${{ runner.workspace }}/build/programs/ziti-tunnel-app/ziti-tunnel-app
+          name: ziti-edge-tunnel-${{ matrix.os }}
+          path: ${{ runner.workspace }}/build/programs/ziti-edge-tunnel/ziti-edge-tunnel

@@ -3,8 +3,8 @@
 #include <stdlib.h>
 #include "uv.h"
 #include "ziti/ziti.h"
-#include "ziti/ziti_tunneler.h"
-#include "ziti/ziti_tunneler_cbs.h"
+#include "ziti/ziti_tunnel.h"
+#include "ziti/ziti_tunnel_cbs.h"
 #include <ziti/ziti_log.h>
 
 #if __APPLE__ && __MACH__

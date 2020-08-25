@@ -1,7 +1,7 @@
 #include <stdlib.h>
-#include "tunneler_tcp.h"
+#include "tunnel_tcp.h"
 #include "lwip_cloned_fns.h"
-#include "ziti_tunneler_priv.h"
+#include "ziti_tunnel_priv.h"
 #include "intercept.h"
 #include "ziti/ziti_log.h"
 

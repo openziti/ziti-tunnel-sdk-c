@@ -1,7 +1,7 @@
 #include <string.h>
 
-#include "tunneler_udp.h"
-#include "ziti_tunneler_priv.h"
+#include "tunnel_udp.h"
+#include "ziti_tunnel_priv.h"
 #include "intercept.h"
 #include "ziti/ziti_log.h"
 

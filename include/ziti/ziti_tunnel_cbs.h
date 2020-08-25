@@ -1,7 +1,7 @@
-#ifndef ZITI_TUNNELER_SDK_ZITI_TUNNELER_CBS_H
-#define ZITI_TUNNELER_SDK_ZITI_TUNNELER_CBS_H
+#ifndef ZITI_TUNNELER_SDK_ZITI_TUNNEL_CBS_H
+#define ZITI_TUNNELER_SDK_ZITI_TUNNEL_CBS_H
 
-#include "ziti/ziti_tunneler.h"
+#include "ziti/ziti_tunnel.h"
 #include "ziti/ziti.h"
 
 #ifdef __cplusplus
@@ -38,4 +38,4 @@ void ziti_sdk_c_host_v1(ziti_context ziti_ctx, uv_loop_t *loop, const char *serv
 }
 #endif
 
-#endif //ZITI_TUNNELER_SDK_ZITI_TUNNELER_CBS_H
+#endif //ZITI_TUNNELER_SDK_ZITI_TUNNEL_CBS_H

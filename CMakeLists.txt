@@ -6,7 +6,7 @@ execute_process(
 )
 string(REGEX MATCH "([0-9]+\\.[0-9]+\\.[0-9]+)" ver "${GIT_VERSION}")
 
-project(ziti-tunneler-sdk
+project(ziti-tunnel-sdk-c
         VERSION "${ver}"
         LANGUAGES C CXX)
 include(CPack)
@@ -28,7 +28,7 @@ endif()
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
-install(TARGETS lwipcore ziti_tunneler ziti_tunneler_cbs
+install(TARGETS lwipcore ziti-tunnel-sdk-c ziti-tunnel-cbs-c
         DESTINATION ${CMAKE_INSTALL_LIBDIR}
         )
 

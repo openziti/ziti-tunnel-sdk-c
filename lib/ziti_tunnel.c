@@ -27,18 +27,15 @@ limitations under the License.
 #include "lwip/raw.h"
 #include "lwip/timeouts.h"
 #include "netif_shim.h"
-#include "ziti/ziti_tunneler.h"
-#include "ziti_tunneler_priv.h"
+#include "ziti/ziti_tunnel.h"
+#include "ziti_tunnel_priv.h"
 #include "intercept.h"
-#include "tunneler_tcp.h"
-#include "tunneler_udp.h"
+#include "tunnel_tcp.h"
+#include "tunnel_udp.h"
 #include "uv.h"
 #include "ziti/ziti_log.h"
 
 #include <string.h>
-
-// TODO this should be defined in liblwipcore.a (ip.o), but link fails unless we define it here (or link in lwip's ip.o)
-struct ip_globals ip_data;
 
 static void run_packet_loop(uv_loop_t *loop, tunneler_context tnlr_ctx);
 
