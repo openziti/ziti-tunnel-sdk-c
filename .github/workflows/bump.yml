@@ -19,6 +19,7 @@ jobs:
 
   build:
     runs-on: ${{ matrix.os }}
+    needs: tag
     strategy:
       matrix:
         os:
