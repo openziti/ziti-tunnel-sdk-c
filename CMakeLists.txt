@@ -10,6 +10,21 @@ project(ziti-tunnel-sdk-c
         VERSION "${ver}"
         LANGUAGES C CXX)
 include(CPack)
+set(CPACK_PACKAGE_VENDOR "NetFoundry")
+
+add_custom_target(bundle
+        COMMENT "creates publishable artifacts")
+
+file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/bundle)
+
+macro(BUNDLE_COMP comp)
+    add_custom_target(${comp}-bundle
+            BYPRODUCTS ${CMAKE_BINARY_DIR}/bundle/${comp}-${CPACK_SYSTEM_NAME}_${CMAKE_SYSTEM_PROCESSOR}.zip
+            DEPENDS ${comp}
+            COMMAND zip ${CMAKE_BINARY_DIR}/bundle/${comp}-${CPACK_SYSTEM_NAME}_${CMAKE_SYSTEM_PROCESSOR}.zip ${comp}
+            )
+    add_dependencies(bundle ${comp}-bundle)
+endmacro()
 
 message("project version: ${PROJECT_VERSION} (git version ${GIT_VERSION})")
 message("cross-compiling: ${CMAKE_CROSSCOMPILING}")
