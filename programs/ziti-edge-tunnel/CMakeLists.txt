@@ -22,4 +22,6 @@ if(CMAKE_SYSTEM_NAME STREQUAL Darwin OR CMAKE_SYSTEM_NAME STREQUAL Linux)
             PUBLIC lwipcore ${lwip_sys_lib} ziti-tunnel-sdk-c
             PUBLIC subcommand
             )
+
+    BUNDLE_COMP(ziti-edge-tunnel)
 endif()
