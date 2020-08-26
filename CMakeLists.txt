@@ -15,6 +15,8 @@ set(CPACK_PACKAGE_VENDOR "NetFoundry")
 add_custom_target(bundle
         COMMENT "creates publishable artifacts")
 
+file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/bundle)
+
 macro(BUNDLE_COMP comp)
     add_custom_target(${comp}-bundle
             BYPRODUCTS ${CMAKE_BINARY_DIR}/bundle/${comp}-${CPACK_SYSTEM_NAME}_${CMAKE_SYSTEM_PROCESSOR}.zip
