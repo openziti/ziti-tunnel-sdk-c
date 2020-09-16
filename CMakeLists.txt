@@ -47,6 +47,10 @@ install(TARGETS lwipcore ziti-tunnel-sdk-c ziti-tunnel-cbs-c
         DESTINATION ${CMAKE_INSTALL_LIBDIR}
         )
 
+install(TARGETS ziti-edge-tunnel
+        DESTINATION ${CMAKE_INSTALL_BINDIR}
+        )
+
 if (WIN32)
 install(TARGETS lwipwin32arch
         DESTINATION ${CMAKE_INSTALL_LIBDIR}
