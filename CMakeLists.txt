@@ -47,7 +47,7 @@ install(TARGETS lwipcore ziti-tunnel-sdk-c ziti-tunnel-cbs-c
         DESTINATION ${CMAKE_INSTALL_LIBDIR}
         )
 
-if (NOT WIN32)
+if(CMAKE_SYSTEM_NAME STREQUAL Darwin OR CMAKE_SYSTEM_NAME STREQUAL Linux)
 install(TARGETS ziti-edge-tunnel
         DESTINATION ${CMAKE_INSTALL_BINDIR}
         )
