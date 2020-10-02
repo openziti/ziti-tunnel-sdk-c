@@ -2,7 +2,7 @@ include(FetchContent)
 
 FetchContent_Declare(ziti-sdk-c
         GIT_REPOSITORY https://github.com/openziti/ziti-sdk-c.git
-        GIT_TAG 0.15.15
+        GIT_TAG 0.15.16
 
         )
 set(ZITI_BUILD_TESTS off)
