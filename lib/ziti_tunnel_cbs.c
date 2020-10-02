@@ -177,8 +177,9 @@ static ssize_t on_hosted_client_data(ziti_connection clt, uint8_t *data, ssize_t
     return len;
 }
 
+#define ZITI_MTU (15 * 1024)
 static void alloc_buffer(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf) {
-    *buf = uv_buf_init((char*) malloc(suggested_size), suggested_size);
+    *buf = uv_buf_init((char*) malloc(ZITI_MTU), ZITI_MTU);
 }
 
 /** called by ziti SDK when data transfer initiated by ziti_write completes */
