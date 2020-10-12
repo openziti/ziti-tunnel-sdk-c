@@ -198,6 +198,14 @@ static void on_hosted_tcp_server_data(uv_stream_t *stream, ssize_t nread, const 
         return;
     }
 
+    if (io_ctx->client == NULL) {
+        ZITI_LOG(ERROR, "null client. did server side close?");
+        if (nread > 0) {
+            free(buf->base);
+        }
+        return;
+    }
+
     if (nread > 0) {
         ziti_write(io_ctx->client, buf->base, nread, on_hosted_ziti_write, buf->base);
     } else {
