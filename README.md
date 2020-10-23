@@ -1,3 +1,7 @@
+[![Apache 2.0](https://img.shields.io/github/license/openziti/ziti-tunnel-sdk-c)](https://github.com/openziti/ziti-tunnel-sdk-c/blob/master/LICENSE)
+[![Latest Release](https://img.shields.io/github/v/release/openziti/ziti-tunnel-sdk-c)](https://github.com/openziti/ziti-tunnel-sdk-c/releases/latest)
+[![Build Status](https://github.com/openziti/ziti-tunnel-sdk-c/workflows/CI%20build/badge.svg)](https://github.com/openziti/ziti-tunnel-sdk-c/actions?query=workflow%3A%22CI+build%22)
+
 # Ziti Tunneler SDK
 
 The Ziti Tunneler SDK provides protocol translation and other common functions
