@@ -34,6 +34,9 @@ void ziti_sdk_c_close(void *ziti_io_ctx);
 
 void ziti_sdk_c_host_v1(ziti_context ziti_ctx, uv_loop_t *loop, const char *service_name, const char *proto, const char *hostname, int port);
 
+/** passed to ziti-sdk via ziti_options.service_cb */
+void ziti_sdk_c_on_service(ziti_context ziti_ctx, ziti_service *service, int status, void *tnlr_ctx);
+
 #ifdef __cplusplus
 }
 #endif

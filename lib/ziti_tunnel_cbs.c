@@ -390,3 +390,48 @@ void ziti_sdk_c_host_v1(ziti_context ziti_ctx, uv_loop_t *loop, const char *serv
     ziti_conn_init(ziti_ctx, &serv, service_ctx);
     ziti_listen(serv, service_name, hosted_listen_cb, on_hosted_client_connect);
 }
+
+void ziti_sdk_c_on_service(ziti_context ziti_ctx, ziti_service *service, int status, void *tnlr_ctx) {
+    if (status == ZITI_OK) {
+        if (service->perm_flags & ZITI_CAN_DIAL) {
+            int get_config_rc;
+            {
+                ziti_intercept_cfg_v1 config;
+                get_config_rc = ziti_service_get_config(service, "intercept.v1", &config, parse_ziti_intercept_cfg_v1);
+                if (get_config_rc == 0) {
+//                    ziti_tunneler_intercept_v2(tnlr_ctx, ziti_ctx, service->id, service->name, &v2_config);
+                    tag *dial_id = (tag *) model_map_get(&config.dial_options, "identity");
+                    free_ziti_intercept_cfg_v1(&config);
+                }
+            }
+            {
+                ziti_client_cfg_v1 config;
+                get_config_rc = ziti_service_get_config(service, "ziti-tunneler-client.v1", &config, parse_ziti_client_cfg_v1);
+                if (get_config_rc == 0) {
+                    ZITI_LOG(INFO, "service_available: %s => %s:%d", service->name, config.hostname, config.port);
+                    ziti_tunneler_intercept_v1(tnlr_ctx, ziti_ctx, service->id, service->name, config.hostname,
+                                               config.port);
+                    free_ziti_client_cfg_v1(&config);
+                } else {
+                    ZITI_LOG(INFO, "service %s lacks ziti-tunneler-client.v1 config; not intercepting", service->name);
+                }
+            }
+        }
+        if (service->perm_flags & ZITI_CAN_BIND) {
+            ziti_server_cfg_v1 v1_config;
+            int get_config_rc;
+            get_config_rc = ziti_service_get_config(service, "ziti-tunneler-server.v1", &v1_config, parse_ziti_server_cfg_v1);
+            if (get_config_rc == 0) {
+                ZITI_LOG(INFO, "service_available: %s => %s:%s:%d", service->name, v1_config.protocol, v1_config.hostname, v1_config.port);
+                ziti_tunneler_host_v1(tnlr_ctx, ziti_ctx, service->name, v1_config.protocol, v1_config.hostname, v1_config.port);
+                free_ziti_server_cfg_v1(&v1_config);
+            } else {
+                ZITI_LOG(INFO, "service %s lacks ziti-tunneler-server.v1 config; not hosting", service->name);
+            }
+        }
+    } else if (status == ZITI_SERVICE_UNAVAILABLE) {
+        ZITI_LOG(INFO, "service unavailable: %s", service->name);
+        ziti_tunneler_stop_intercepting(tnlr_ctx, service->name);
+    }
+
+}
