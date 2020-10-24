@@ -5,6 +5,27 @@
 #include "intercept.h"
 #include "ziti/ziti_log.h"
 
+#if 0
+#include <assert.h>
+#include <lwip/timeouts.h>
+
+static void check_tcp_dups(const char *m, void *n) {
+    struct tcp_pcb * visited[100];
+    int i = 0;
+    memset(visited, 0, sizeof(visited));
+
+    for (struct tcp_pcb *tpcb = tcp_active_pcbs; tpcb != NULL; tpcb = tpcb->next) {
+        for (int j = 0; j < i; j++) {
+            if (visited[j] == tpcb) {
+                ZITI_LOG(ERROR, "dup detected when adding %p", n);
+                assert(false);
+            }
+        }
+        visited[i++] = tpcb;
+    }
+}
+#endif
+
 #if _WIN32
 #define MIN(a,b) ((a)<(b) ? (a) : (b))
 #endif
@@ -170,6 +191,9 @@ int tunneler_tcp_close(struct tcp_pcb *pcb) {
         return 0;
     }
     ZITI_LOG(INFO, "closing %p, state=%d", pcb, pcb->state);
+    if (pcb->state == CLOSED) {
+        return 0;
+    }
     tcp_arg(pcb, NULL);
     tcp_recv(pcb, NULL);
     err_t err = tcp_close(pcb);
