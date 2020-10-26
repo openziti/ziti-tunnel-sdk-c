@@ -9,6 +9,34 @@
 #define MIN(a,b) ((a)<(b) ? (a) : (b))
 #endif
 
+#define LOG_STATE(level, op, pcb, ...) \
+ZITI_LOG(level, op " %p, state=%d(%s) flags=%#0x", ##__VA_ARGS__, pcb, pcb->state, tcp_state_str(pcb->state), pcb->flags)
+
+#define tcp_states(XX)\
+  XX(CLOSED)\
+  XX(LISTEN)\
+  XX(SYN_SENT)\
+  XX(SYN_RCVD)\
+  XX(ESTABLISHED)\
+  XX(FIN_WAIT_1)\
+  XX(FIN_WAIT_2)\
+  XX(CLOSE_WAIT)\
+  XX(CLOSING)\
+  XX(LAST_ACK)\
+  XX(TIME_WAIT)
+
+#define tcp_str(s) #s,
+static const char* tcp_labels[] = {
+        tcp_states(tcp_str)
+};
+
+static const char* tcp_state_str(int st) {
+    if (st < 0 || st >= sizeof(tcp_labels)/sizeof(tcp_labels[0])) {
+        return "unknown";
+    }
+    return tcp_labels[st];
+}
+
 /** called by lwip when a client sends a SYN segment to an intercepted address.
  * this only exists to appease lwip */
 static err_t on_accept(void *arg, struct tcp_pcb *pcb, err_t err) {
@@ -84,7 +112,7 @@ static err_t on_tcp_client_data(void *io_ctx, struct tcp_pcb *pcb, struct pbuf *
         ZITI_LOG(INFO, "conn was closed err=%d", err);
         return ERR_OK;
     }
-    ZITI_LOG(VERBOSE, "status %d", err);
+    LOG_STATE(VERBOSE, "status %d", pcb, err);
     struct io_ctx_s *_io_ctx = (struct io_ctx_s *)io_ctx;
     tunneler_io_context tnlr_io_ctx = *_io_ctx->tnlr_io_ctx_p;
 
@@ -94,12 +122,14 @@ static err_t on_tcp_client_data(void *io_ctx, struct tcp_pcb *pcb, struct pbuf *
     }
 
     if (err == ERR_OK && p == NULL) {
-        ZITI_LOG(INFO, "client closed connection: client=%s, service=%s", tnlr_io_ctx->client, tnlr_io_ctx->service_name);
-        tcp_close(pcb);
-        tnlr_io_ctx->tnlr_ctx->opts.ziti_close(_io_ctx->ziti_io_ctx);
-        _io_ctx->ziti_io_ctx = NULL;
-        free_tunneler_io_context(_io_ctx->tnlr_io_ctx_p);
-        free(_io_ctx);
+        ZITI_LOG(INFO, "client sent FIN: client=%s, service=%s", tnlr_io_ctx->client, tnlr_io_ctx->service_name);
+        LOG_STATE(DEBUG, "FIN received", pcb);
+        if (tnlr_io_ctx->tnlr_ctx->opts.ziti_close(_io_ctx->ziti_io_ctx)) {
+            tcp_close(pcb);
+            _io_ctx->ziti_io_ctx = NULL;
+            free_tunneler_io_context(&tnlr_io_ctx);
+            free(_io_ctx);
+        }
         return err;
     }
 
@@ -164,12 +194,28 @@ void tunneler_tcp_ack(struct write_ctx_s *write_ctx) {
     pbuf_free(wr_ctx->pbuf);
 }
 
+int tunneler_tcp_close_write(struct tcp_pcb *pcb) {
+    if (pcb == NULL) {
+        ZITI_LOG(WARN, "null pcb");
+        return 0;
+    }
+    LOG_STATE(DEBUG, "closing write", pcb);
+    err_t err = tcp_shutdown(pcb, 0, 1);
+    if (err != ERR_OK) {
+        ZITI_LOG(ERROR, "tcp_close(%p) failed; err=%d", pcb, err);
+        return -1;
+    }
+    LOG_STATE(DEBUG, "closed write", pcb);
+
+    return 0;
+}
+
 int tunneler_tcp_close(struct tcp_pcb *pcb) {
     if (pcb == NULL) {
         ZITI_LOG(WARN, "null pcb");
         return 0;
     }
-    ZITI_LOG(INFO, "closing %p, state=%d", pcb, pcb->state);
+    LOG_STATE(DEBUG, "closing", pcb);
     if (pcb->state == CLOSED) {
         return 0;
     }
@@ -180,6 +226,7 @@ int tunneler_tcp_close(struct tcp_pcb *pcb) {
         ZITI_LOG(ERROR, "tcp_close(%p) failed; err=%d", pcb, err);
         return -1;
     }
+    LOG_STATE(DEBUG, "closed", pcb);
     return 0;
 }
 

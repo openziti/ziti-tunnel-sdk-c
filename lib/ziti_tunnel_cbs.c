@@ -41,20 +41,41 @@ ssize_t on_ziti_data(ziti_connection conn, uint8_t *data, ssize_t len) {
             ziti_sdk_c_close(ziti_io_ctx);
         }
         return accepted;
-    } else {
-        ZITI_LOG(INFO, "ziti service closed connection");
+    } else if (len == ZITI_EOF) {
+        ZITI_LOG(DEBUG, "ziti connection sent EOF (ziti_eof=%d, tnlr_eof=%d)", ziti_io_ctx->ziti_eof, ziti_io_ctx->tnlr_eof);
+        ziti_io_ctx->ziti_eof = true;
+        if (ziti_io_ctx->tnlr_eof) /* both sides are closed now */ {
+            ziti_tunneler_close(&ziti_io_ctx->tnlr_io_ctx);
+            free(ziti_io_ctx);
+        } else {
+            ziti_tunneler_close_write(&ziti_io_ctx->tnlr_io_ctx);
+        }
+    } else if (len < 0) {
+        ZITI_LOG(ERROR, "ziti connection is closed due to [%zd](%s)", len, ziti_errorstr(len));
         ziti_tunneler_close(&ziti_io_ctx->tnlr_io_ctx);
+        free(ziti_io_ctx);
     }
     return len;
 }
 
 /** called by tunneler SDK after a client connection is closed */
-void ziti_sdk_c_close(void *ziti_io_ctx) {
-    ziti_io_context *_ziti_io_ctx = ziti_io_ctx;
-    if (_ziti_io_ctx->ziti_conn != NULL) {
-        ziti_close(&_ziti_io_ctx->ziti_conn);
+int ziti_sdk_c_close(void *io_ctx) {
+    ziti_io_context *ziti_io_ctx = io_ctx;
+    if (ziti_io_ctx->ziti_conn != NULL) {
+        ZITI_LOG(DEBUG, "closing ziti_conn tnlr_eof=%d, ziti_eof=%d", ziti_io_ctx->tnlr_eof, ziti_io_ctx->ziti_eof);
+        ziti_io_ctx->tnlr_eof = true;
+        if (ziti_io_ctx->ziti_eof) { // both sides are now closed
+            ZITI_LOG(DEBUG, "closing ziti_conn tnlr_eof=%d, ziti_eof=%d", ziti_io_ctx->tnlr_eof, ziti_io_ctx->ziti_eof);
+            ziti_close(&ziti_io_ctx->ziti_conn);
+            free(ziti_io_ctx);
+            return 1;
+        } else {
+            ZITI_LOG(DEBUG, "closing ziti_conn tnlr_eof=%d, ziti_eof=%d", ziti_io_ctx->tnlr_eof, ziti_io_ctx->ziti_eof);
+            ziti_close_write(ziti_io_ctx->ziti_conn);
+            return 0;
+        }
     }
-    //free(_ziti_io_ctx); // TODO don't know when it's OK to free this
+    return 1;
 }
 
 /** called by tunneler SDK after a client connection is intercepted */
@@ -84,6 +105,8 @@ void * ziti_sdk_c_dial(const intercept_ctx_t *intercept_ctx, tunneler_io_context
         free(ziti_io_ctx);
         return NULL;
     }
+    ziti_io_ctx->ziti_eof = false;
+    ziti_io_ctx->tnlr_eof = false;
 
     return ziti_io_ctx;
 }

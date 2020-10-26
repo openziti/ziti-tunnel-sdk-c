@@ -62,7 +62,7 @@ typedef struct hosted_service_ctx_s {
  * implementations are expected to dial the service and return
  * context that will be passed to ziti_read/ziti_write */
 typedef void * (*ziti_sdk_dial_cb)(const intercept_ctx_t *intercept_ctx, tunneler_io_context tnlr_io_ctx);
-typedef void (*ziti_sdk_close_cb)(void *ziti_io_ctx);
+typedef int (*ziti_sdk_close_cb)(void *ziti_io_ctx);
 typedef ssize_t (*ziti_sdk_write_cb)(const void *ziti_io_ctx, void *write_ctx, const void *data, size_t len);
 typedef void (*ziti_sdk_host_v1_cb)(void *ziti_ctx, uv_loop_t *loop, const char *service_name, const char *proto, const char *hostname, int port);
 
@@ -98,6 +98,8 @@ struct write_ctx_s;
 extern void ziti_tunneler_ack(struct write_ctx_s *write_ctx);
 
 extern int ziti_tunneler_close(tunneler_io_context *tnlr_io_ctx);
+
+int ziti_tunneler_close_write(tunneler_io_context *tnlr_io_ctx);
 
 extern const char* ziti_tunneler_version();
 

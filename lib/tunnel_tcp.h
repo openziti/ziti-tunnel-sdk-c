@@ -17,4 +17,6 @@ extern void tunneler_tcp_ack(struct write_ctx_s *write_ctx);
 
 extern int tunneler_tcp_close(struct tcp_pcb *pcb);
 
+extern int tunneler_tcp_close_write(struct tcp_pcb *pcb);
+
 #endif //ZITI_TUNNELER_SDK_TUNNELER_TCP_H
