@@ -177,9 +177,11 @@ int ziti_tunneler_close(tunneler_io_context *tnlr_io_ctx) {
     switch ((*tnlr_io_ctx)->proto) {
         case tun_tcp:
             tunneler_tcp_close((*tnlr_io_ctx)->tcp);
+            (*tnlr_io_ctx)->tcp = NULL;
             break;
         case tun_udp:
             tunneler_udp_close((*tnlr_io_ctx)->udp.pcb);
+            (*tnlr_io_ctx)->udp.pcb = NULL;
             break;
         default:
             ZITI_LOG(ERROR, "unknown proto %d", (*tnlr_io_ctx)->proto);
@@ -272,7 +274,7 @@ static void run_packet_loop(uv_loop_t *loop, tunneler_context tnlr_ctx) {
     }
 
     uv_timer_init(loop, &tnlr_ctx->lwip_timer_req);
-    uv_timer_start(&tnlr_ctx->lwip_timer_req, check_lwip_timeouts, 0, 100);
+    uv_timer_start(&tnlr_ctx->lwip_timer_req, check_lwip_timeouts, 0, 10);
 }
 
 #define _str(x) #x
