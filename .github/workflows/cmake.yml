@@ -31,5 +31,5 @@ jobs:
       - uses: actions/upload-artifact@v2
         if: matrix.os != 'windows-latest'
         with:
-          name: ${{ matrix.os }}
+          name: ${{ runner.os }}
           path: ${{ runner.workspace }}/build/bundle/*.zip

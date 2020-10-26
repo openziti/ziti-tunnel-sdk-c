@@ -170,6 +170,9 @@ int tunneler_tcp_close(struct tcp_pcb *pcb) {
         return 0;
     }
     ZITI_LOG(INFO, "closing %p, state=%d", pcb, pcb->state);
+    if (pcb->state == CLOSED) {
+        return 0;
+    }
     tcp_arg(pcb, NULL);
     tcp_recv(pcb, NULL);
     err_t err = tcp_close(pcb);
