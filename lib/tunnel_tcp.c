@@ -202,7 +202,7 @@ int tunneler_tcp_close_write(struct tcp_pcb *pcb) {
     LOG_STATE(DEBUG, "closing write", pcb);
     err_t err = tcp_shutdown(pcb, 0, 1);
     if (err != ERR_OK) {
-        ZITI_LOG(ERROR, "tcp_close(%p) failed; err=%d", pcb, err);
+        LOG_STATE(ERROR, "tcp_shutdown failed: err=%d", pcb, err);
         return -1;
     }
     LOG_STATE(DEBUG, "closed write", pcb);
@@ -223,7 +223,7 @@ int tunneler_tcp_close(struct tcp_pcb *pcb) {
     tcp_recv(pcb, NULL);
     err_t err = tcp_close(pcb);
     if (err != ERR_OK) {
-        ZITI_LOG(ERROR, "tcp_close(%p) failed; err=%d", pcb, err);
+        LOG_STATE(ERROR, "tcp_close failed; err=%d", pcb, err);
         return -1;
     }
     LOG_STATE(DEBUG, "closed", pcb);

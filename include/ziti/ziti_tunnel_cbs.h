@@ -20,9 +20,11 @@ struct hosted_io_ctx_s {
     struct hosted_service_ctx_s *service;
     ziti_connection client;
     union {
-        uv_tcp_t *tcp;
-        uv_udp_t *udp;
+        uv_tcp_t tcp;
+        uv_udp_t udp;
     } server;
+    bool ziti_eof;
+    bool tcp_eof;
 };
 
 /** called by tunneler SDK after a client connection is intercepted */

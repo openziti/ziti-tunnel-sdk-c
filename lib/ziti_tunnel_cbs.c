@@ -11,9 +11,9 @@
  * - crash when dialing underlay for hosted service and server is not there?
  * - dns udp hosted?
  */
-#include <assert.h>
 #include <stdio.h>
 #include <ziti/ziti_log.h>
+#include <memory.h>
 #include "ziti/ziti_tunnel_cbs.h"
 
 void on_ziti_connect(ziti_connection conn, int status) {
@@ -158,6 +158,10 @@ static void hosted_server_close_cb(uv_handle_t *handle) {
     free_hosted_io_ctx(handle->data);
 }
 
+static void tcp_shutdown_cb(uv_shutdown_t *req, int res) {
+    free(req);
+}
+
 /* called by ziti sdk when a client of a hosted service sends data */
 static ssize_t on_hosted_client_data(ziti_connection clt, uint8_t *data, ssize_t len) {
     struct hosted_io_ctx_s *io_ctx = ziti_conn_data(clt);
@@ -169,13 +173,13 @@ static ssize_t on_hosted_client_data(ziti_connection clt, uint8_t *data, ssize_t
             case IPPROTO_TCP: {
                 uv_write_t *req = malloc(sizeof(uv_write_t));
                 req->data = copy;
-                uv_write(req, (uv_stream_t *) io_ctx->server.tcp, &buf, 1, on_hosted_tcp_client_write);
+                uv_write(req, (uv_stream_t *) &io_ctx->server.tcp, &buf, 1, on_hosted_tcp_client_write);
                 }
                 break;
             case IPPROTO_UDP: {
                 uv_udp_send_t *req = malloc(sizeof(uv_udp_send_t));
                 req->data = copy;
-                uv_udp_send(req, io_ctx->server.udp, &buf, 1, NULL, on_hosted_udp_client_write);
+                uv_udp_send(req, &io_ctx->server.udp, &buf, 1, NULL, on_hosted_udp_client_write);
                 }
                 break;
             default:
@@ -184,13 +188,20 @@ static ssize_t on_hosted_client_data(ziti_connection clt, uint8_t *data, ssize_t
         }
     }
     else if (len == ZITI_EOF) {
-        ZITI_LOG(INFO, "client disconnected");
+        ZITI_LOG(INFO, "client sent EOF");
+        io_ctx->ziti_eof = true;
         switch (io_ctx->service->proto_id) {
             case IPPROTO_TCP:
-                uv_close((uv_handle_t *)io_ctx->server.tcp, NULL);
+                if (io_ctx->tcp_eof) {
+                    ziti_close(&clt);
+                    uv_close((uv_handle_t *)&io_ctx->server.tcp, hosted_server_close_cb);
+                } else {
+                    uv_shutdown_t *shut = calloc(1, sizeof(uv_shutdown_t));
+                    uv_shutdown(shut, (uv_stream_t *) &io_ctx->server.tcp, tcp_shutdown_cb);
+                }
                 break;
             case IPPROTO_UDP:
-                uv_close((uv_handle_t *)io_ctx->server.udp, NULL);
+                uv_close((uv_handle_t *)&io_ctx->server.udp, NULL);
                 break;
         }
     }
@@ -225,11 +236,17 @@ static void on_hosted_tcp_server_data(uv_stream_t *stream, ssize_t nread, const 
         ziti_write(io_ctx->client, buf->base, nread, on_hosted_ziti_write, buf->base);
     } else {
         if (nread == UV_EOF) {
-            ZITI_LOG(INFO, "server disconnected");
+            ZITI_LOG(INFO, "server sent FIN");
+            if (io_ctx->ziti_eof) {
+                ziti_close(&io_ctx->client);
+                uv_close((uv_handle_t *) &io_ctx->server.tcp, hosted_server_close_cb);
+            } else {
+                ziti_close_write(io_ctx->client);
+            }
         } else {
             ZITI_LOG(WARN, "error reading from server");
+            ziti_close(&io_ctx->client);
         }
-        ziti_close(&io_ctx->client);
     }
 }
 
@@ -276,7 +293,7 @@ static void on_hosted_tcp_server_connect_complete(uv_connect_t *c, int status) {
         return;
     }
     ZITI_LOG(INFO, "connected to server for client %p: %p", c->handle->data, c);
-    uv_read_start((uv_stream_t *) io_ctx->server.tcp, alloc_buffer, on_hosted_tcp_server_data);
+    uv_read_start((uv_stream_t *) &io_ctx->server.tcp, alloc_buffer, on_hosted_tcp_server_data);
     ziti_accept(io_ctx->client, on_hosted_client_connect_complete, on_hosted_client_data);
 }
 
@@ -327,23 +344,19 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
      */
     switch (ai->ai_protocol) {
         case IPPROTO_TCP: {
-            uv_tcp_t *sock = malloc(sizeof(uv_tcp_t));
-            uv_tcp_init(service_ctx->loop, sock);
-            sock->data = io_ctx;
-            io_ctx->server.tcp = sock;
+            uv_tcp_init(service_ctx->loop, &io_ctx->server.tcp);
+            io_ctx->server.tcp.data = io_ctx;
             ziti_conn_set_data(clt, io_ctx);
             uv_connect_t *c = malloc(sizeof(uv_connect_t));
-            uv_tcp_connect(c, sock, ai->ai_addr, on_hosted_tcp_server_connect_complete);
+            uv_tcp_connect(c, &io_ctx->server.tcp, ai->ai_addr, on_hosted_tcp_server_connect_complete);
             }
             break;
         case IPPROTO_UDP: {
-            uv_udp_t *sock = malloc(sizeof(uv_udp_t));
-            uv_udp_init(service_ctx->loop, sock);
-            sock->data = io_ctx;
-            io_ctx->server.udp = sock;
+            uv_udp_init(service_ctx->loop, &io_ctx->server.udp);
+            io_ctx->server.udp.data = io_ctx;
             ziti_conn_set_data(clt, io_ctx);
-            uv_udp_connect(sock, ai->ai_addr);
-            uv_udp_recv_start(sock, alloc_buffer, on_hosted_udp_server_data);
+            uv_udp_connect(&io_ctx->server.udp, ai->ai_addr);
+            uv_udp_recv_start(&io_ctx->server.udp, alloc_buffer, on_hosted_udp_server_data);
             ziti_accept(clt, on_hosted_client_connect_complete, on_hosted_client_data);
             }
             break;
