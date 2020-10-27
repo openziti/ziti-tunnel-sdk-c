@@ -193,6 +193,25 @@ int ziti_tunneler_close(tunneler_io_context *tnlr_io_ctx) {
     return 0;
 }
 
+/** called by tunneler application when an EOF is received from */
+int ziti_tunneler_close_write(tunneler_io_context *tnlr_io_ctx) {
+    if (tnlr_io_ctx == NULL || *tnlr_io_ctx == NULL) {
+        ZITI_LOG(INFO, "null tnlr_io_ctx");
+        return 0;
+    }
+    ZITI_LOG(INFO, "closing write connection: service=%s, client=%s",
+            (*tnlr_io_ctx)->service_name, (*tnlr_io_ctx)->client);
+    switch ((*tnlr_io_ctx)->proto) {
+        case tun_tcp:
+            tunneler_tcp_close_write((*tnlr_io_ctx)->tcp);
+            break;
+        default:
+            ZITI_LOG(WARN, "not sending FIN on %d connection", (*tnlr_io_ctx)->proto);
+            break;
+    }
+    return 0;
+}
+
 static void on_tun_data(uv_poll_t * req, int status, int events) {
     if (status != 0) {
         ZITI_LOG(WARN, "not sure why status is %d", status);
