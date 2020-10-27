@@ -188,7 +188,7 @@ static ssize_t on_hosted_client_data(ziti_connection clt, uint8_t *data, ssize_t
         }
     }
     else if (len == ZITI_EOF) {
-        ZITI_LOG(INFO, "client sent EOF");
+        ZITI_LOG(INFO, "client sent EOF, ziti_eof=%d, tcp_eof=%d", io_ctx->ziti_eof, io_ctx->tcp_eof);
         io_ctx->ziti_eof = true;
         switch (io_ctx->service->proto_id) {
             case IPPROTO_TCP:
@@ -236,7 +236,7 @@ static void on_hosted_tcp_server_data(uv_stream_t *stream, ssize_t nread, const 
         ziti_write(io_ctx->client, buf->base, nread, on_hosted_ziti_write, buf->base);
     } else {
         if (nread == UV_EOF) {
-            ZITI_LOG(INFO, "server sent FIN");
+            ZITI_LOG(INFO, "server sent FIN ziti_eof=%d, tcp_eof=%d", io_ctx->ziti_eof, io_ctx->tcp_eof);
             if (io_ctx->ziti_eof) {
                 ziti_close(&io_ctx->client);
                 uv_close((uv_handle_t *) &io_ctx->server.tcp, hosted_server_close_cb);
