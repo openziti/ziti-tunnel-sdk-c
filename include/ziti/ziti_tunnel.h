@@ -99,7 +99,7 @@ extern void ziti_tunneler_ack(struct write_ctx_s *write_ctx);
 
 extern int ziti_tunneler_close(tunneler_io_context *tnlr_io_ctx);
 
-int ziti_tunneler_close_write(tunneler_io_context *tnlr_io_ctx);
+extern int ziti_tunneler_close_write(tunneler_io_context *tnlr_io_ctx);
 
 extern const char* ziti_tunneler_version();
 
