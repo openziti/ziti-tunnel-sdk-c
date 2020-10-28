@@ -20,14 +20,23 @@ jobs:
           fetch-depth: 0
       - name: make build dir
         run: cmake -E make_directory ${{runner.workspace}}/build
+        
+        #mac/linux
       - name: configure cmake
+        if: matrix.os != 'windows-latest'
         run: cmake -S ${{ github.workspace }} -B ${{runner.workspace}}/build
       - name: build
         if: matrix.os != 'windows-latest'
         run: cmake --build ${{runner.workspace}}/build --target bundle
+
+        #windows
+      - name: configure cmake (WIN)
+        if: matrix.os == 'windows-latest'
+        run: cmake -G Ninja -S ${{runner.workspace}} -B ${{runner.workspace}}/build -DCMAKE_INSTALL_PREFIX=${{runner.workspace}}\install
       - name: build (WIN)
         if: matrix.os == 'windows-latest'
-        run: cmake --build ${{runner.workspace}}/build --config Release
+        run: cmake --build ${{runner.workspace}}/build --target install
+
       - uses: actions/upload-artifact@v2
         if: matrix.os != 'windows-latest'
         with:
