@@ -32,7 +32,7 @@ jobs:
         #windows
       - name: configure cmake (WIN)
         if: matrix.os == 'windows-latest'
-        run: cmake -G Ninja -S ${{runner.workspace}} -B ${{runner.workspace}}/build -DCMAKE_INSTALL_PREFIX=${{runner.workspace}}\install
+        run: cmake -G Ninja -S ${{ github.workspace }} -B ${{runner.workspace}}/build -DCMAKE_INSTALL_PREFIX=${{runner.workspace}}\install
       - name: build (WIN)
         if: matrix.os == 'windows-latest'
         run: cmake --build ${{runner.workspace}}/build --target install
