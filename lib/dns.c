@@ -65,6 +65,7 @@ const char* assign_ip(const char *hostname) {
         fprintf(stderr, "WARN: DNS assignment space is exhausted");
     }
     snprintf(e->ip, MAX_IP_LENGTH, "%d.%d.%d.%d", addr>>24U, (addr>>16U) & 0xFFU, (addr>>8U)&0xFFU, addr&0xFFU);
+    snprintf(e->hostname, sizeof(e->hostname), "%s",hostname);
 
     LIST_INSERT_HEAD(&ip_cache.entries, e, _next);
     return e->ip;
