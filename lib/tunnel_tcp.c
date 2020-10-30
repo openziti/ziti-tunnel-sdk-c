@@ -151,13 +151,14 @@ static err_t on_tcp_client_data(void *io_ctx, struct tcp_pcb *pcb, struct pbuf *
 }
 
 static void  on_tcp_client_err(void *io_ctx, err_t err) {
+    struct io_ctx_s *io = io_ctx;
     // we initiated close and cleared arg err should be ERR_ABRT
     if (io_ctx == NULL) {
-        ZITI_LOG(TRACE, "client finished err=%d", err);
+        ZITI_LOG(TRACE, "client pcb(%p) finished err=%d", (*io->tnlr_io_ctx_p)->tcp, err);
     }
     else {
-        // TODO handle better? At least close ziti and free context!
-        ZITI_LOG(ERROR, "unhandled client err=%d", err);
+        ZITI_LOG(ERROR, "client pcb(%p) err=%d, terminating connection", (*io->tnlr_io_ctx_p)->tcp, err);
+        (*io->tnlr_io_ctx_p)->tnlr_ctx->opts.ziti_close(io->ziti_io_ctx);
     }
 }
 
@@ -173,18 +174,20 @@ ssize_t tunneler_tcp_write(struct tcp_pcb *pcb, const void *data, size_t len) {
     }
     // avoid ERR_MEM.
     size_t sendlen = MIN(len, tcp_sndbuf(pcb));
+    ZITI_LOG(TRACE, "pcb[%p] sendlen=%zd", pcb, sendlen);
+    if (sendlen > 0) {
+        err_t w_err = tcp_write(pcb, data, (u16_t) sendlen,
+                                TCP_WRITE_FLAG_COPY); // TODO hold data until client acks... via on_client_ack maybe? then we wouldn't need to copy here.
+        if (w_err != ERR_OK) {
+            ZITI_LOG(ERROR, "failed to tcp_write %d (%ld, %zd)", w_err, sendlen, len);
+            return -1;
+        }
 
-    err_t w_err = tcp_write(pcb, data, (u16_t)sendlen, TCP_WRITE_FLAG_COPY); // TODO hold data until client acks... via on_client_ack maybe? then we wouldn't need to copy here.
-    if (w_err != ERR_OK) {
-        ZITI_LOG(ERROR, "failed to tcp_write %d (%ld, %zd)", w_err, sendlen, len);
-        return -1;
+        if (tcp_output(pcb) != ERR_OK) {
+            ZITI_LOG(ERROR, "failed to tcp_output");
+            return -1;
+        }
     }
-
-    if (tcp_output(pcb) != ERR_OK) {
-        ZITI_LOG(ERROR, "failed to tcp_output");
-        return -1;
-    }
-
     return sendlen;
 }
 
