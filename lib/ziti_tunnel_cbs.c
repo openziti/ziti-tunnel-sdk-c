@@ -33,7 +33,10 @@ ssize_t on_ziti_data(ziti_connection conn, uint8_t *data, ssize_t len) {
     ZITI_LOG(TRACE, "got %zd bytes from ziti", len);
     if (ziti_io_ctx == NULL || ziti_io_ctx->tnlr_io_ctx == NULL) {
         ZITI_LOG(DEBUG, "null io_context - connection may have been closed already");
-        return len;
+        ziti_conn_set_data(conn, NULL);
+        ziti_close(&conn);
+        if (ziti_io_ctx) free(ziti_io_ctx);
+        return UV_ECONNABORTED;
     }
     if (len > 0) {
         int accepted = ziti_tunneler_write(&ziti_io_ctx->tnlr_io_ctx, data, len);
