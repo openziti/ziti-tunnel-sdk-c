@@ -49,6 +49,7 @@ ssize_t on_ziti_data(ziti_connection conn, uint8_t *data, ssize_t len) {
         ziti_io_ctx->ziti_eof = true;
         if (ziti_io_ctx->tnlr_eof) /* both sides are closed now */ {
             ziti_tunneler_close(&ziti_io_ctx->tnlr_io_ctx);
+            ziti_conn_set_data(conn, NULL);
             free(ziti_io_ctx);
         } else {
             ziti_tunneler_close_write(&ziti_io_ctx->tnlr_io_ctx);
@@ -56,6 +57,7 @@ ssize_t on_ziti_data(ziti_connection conn, uint8_t *data, ssize_t len) {
     } else if (len < 0) {
         ZITI_LOG(ERROR, "ziti connection is closed due to [%zd](%s)", len, ziti_errorstr(len));
         ziti_tunneler_close(&ziti_io_ctx->tnlr_io_ctx);
+        ziti_conn_set_data(conn, NULL);
         free(ziti_io_ctx);
     }
     return len;
