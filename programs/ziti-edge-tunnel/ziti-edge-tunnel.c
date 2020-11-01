@@ -30,13 +30,13 @@ static ziti_options OPTS = {
 void on_service(ziti_context ziti_ctx, ziti_service *service, int status, void *tnlr_ctx) {
     if (status == ZITI_OK) {
         if (service->perm_flags & ZITI_CAN_DIAL) {
-            ziti_intercept v1_config;
+            ziti_client_cfg_v1 v1_config;
             int get_config_rc;
-            get_config_rc = ziti_service_get_config(service, "ziti-tunneler-client.v1", &v1_config, parse_ziti_intercept);
+            get_config_rc = ziti_service_get_config(service, "ziti-tunneler-client.v1", &v1_config, parse_ziti_client_cfg_v1);
             if (get_config_rc == 0) {
                 ZITI_LOG(INFO, "service_available: %s => %s:%d", service->name, v1_config.hostname, v1_config.port);
                 ziti_tunneler_intercept_v1(tnlr_ctx, ziti_ctx, service->id, service->name, v1_config.hostname, v1_config.port);
-                free_ziti_intercept(&v1_config);
+                free_ziti_client_cfg_v1(&v1_config);
             } else {
                 ZITI_LOG(INFO, "service %s lacks ziti-tunneler-client.v1 config; not intercepting", service->name);
             }
