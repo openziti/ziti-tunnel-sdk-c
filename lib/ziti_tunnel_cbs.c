@@ -407,7 +407,7 @@ static void hosted_listen_cb(ziti_connection serv, int status) {
 }
 
 /** called by the tunneler sdk when a hosted service becomes available */
-void ziti_sdk_c_host_v1(ziti_context ziti_ctx, uv_loop_t *loop, const char *service_name, const char *proto, const char *hostname, int port) {
+void ziti_sdk_c_host_v1(void *ziti_ctx, uv_loop_t *loop, const char *service_name, const char *proto, const char *hostname, int port) {
     if (service_name == NULL) {
         ZITI_LOG(ERROR, "null service_name");
         return;
@@ -456,7 +456,7 @@ void ziti_sdk_c_on_service(ziti_context ziti_ctx, ziti_service *service, int sta
                 ziti_intercept_cfg_v1 config;
                 get_config_rc = ziti_service_get_config(service, "intercept.v1", &config, parse_ziti_intercept_cfg_v1);
                 if (get_config_rc == 0) {
-                    ziti_tunneler_intercept_v2(tnlr_ctx, ziti_ctx, service->id, service->name, &config);
+                    //ziti_tunneler_intercept_v2(tnlr_ctx, ziti_ctx, service->id, service->name, &config);
                     tag *dial_id = (tag *) model_map_get(&config.dial_options, "identity");
                     free_ziti_intercept_cfg_v1(&config);
                 }
@@ -469,8 +469,6 @@ void ziti_sdk_c_on_service(ziti_context ziti_ctx, ziti_service *service, int sta
                     ziti_tunneler_intercept_v1(tnlr_ctx, ziti_ctx, service->id, service->name, config.hostname,
                                                config.port);
                     free_ziti_client_cfg_v1(&config);
-                } else {
-                    ZITI_LOG(INFO, "service %s lacks ziti-tunneler-client.v1 config; not intercepting", service->name);
                 }
             }
         }
