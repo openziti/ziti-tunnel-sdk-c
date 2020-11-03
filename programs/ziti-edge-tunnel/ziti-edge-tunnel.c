@@ -17,7 +17,7 @@
 
 static void on_ziti_init(ziti_context ziti_ctx, int status, void *init_ctx);
 
-const char *cfg_types[] = { "ziti-tunneler-client.v1", "ziti-tunneler-client.v2", "ziti-tunneler-server.v1", NULL };
+const char *cfg_types[] = { "ziti-tunneler-client.v1", "intercept.v1", "ziti-tunneler-server.v1", "host.v1", NULL };
 static ziti_options OPTS = {
         .config_types = cfg_types,
         .service_cb = ziti_sdk_c_on_service,
@@ -167,9 +167,6 @@ static void run(int argc, char *argv[]) {
     }
 
     ziti_tunneler_init_dns(mask, bits);
-
-
-
     rc = run_tunnel(ip_range, dns);
     exit(rc);
 }
@@ -212,7 +209,6 @@ static void version() {
 
 static ziti_enroll_opts enroll_opts;
 static char* config_file;
-static FILE *config_file_f;
 
 static int parse_enroll_opts(int argc, char *argv[]) {
     static struct option opts[] = {

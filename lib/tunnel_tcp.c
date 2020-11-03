@@ -324,6 +324,8 @@ u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     ZITI_LOG(INFO, "intercepted connection to %s:%d from client %s for service %s (id %s)", ipaddr_ntoa(&dst), dst_p, tnlr_io_ctx->client,
              intercept_ctx->service_name, intercept_ctx->service_id);
     void *ziti_io_ctx = zdial(intercept_ctx, tnlr_io_ctx);
+    // todo ziti_dial_with_options
+    // construct options here? or pass src/dst info (and???) into zdial?
     if (ziti_io_ctx == NULL) {
         ZITI_LOG(ERROR, "ziti_dial(%s) failed", intercept_ctx->service_name);
         free_tunneler_io_context(&tnlr_io_ctx);

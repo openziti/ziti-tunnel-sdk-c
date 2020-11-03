@@ -57,6 +57,10 @@ void ziti_sdk_c_close(void *ziti_io_ctx) {
     //free(_ziti_io_ctx); // TODO don't know when it's OK to free this
 }
 
+void * ziti_sdk_c_dial_with_options(const intercept_ctx_t *intercept_ctx, tunneler_io_context tnlr_io_ctx) {
+    return NULL;
+}
+
 /** called by tunneler SDK after a client connection is intercepted */
 void * ziti_sdk_c_dial(const intercept_ctx_t *intercept_ctx, tunneler_io_context tnlr_io_ctx) {
     if (intercept_ctx == NULL) {
@@ -79,6 +83,18 @@ void * ziti_sdk_c_dial(const intercept_ctx_t *intercept_ctx, tunneler_io_context
         return NULL;
     }
 
+    /* build dial options:
+     * - dial_options.identity
+     * - dial_options.app_data
+     *
+     * app_data is json:
+     * {
+     *    "source_ip": "resolved from intercept cfg. can be ip, ip:port; varrefs to $tunneler_id.name $tunneler_id.tag[tagName] are resolved here"
+     *    "intercepted_protocol": "tcp"
+     *    "intercepted_ip": "get from intercept_ctx"
+     *    "intercepted_port": "get from intercept_ctx"
+     * }
+     */
     if (ziti_dial(ziti_io_ctx->ziti_conn, intercept_ctx->service_name, on_ziti_connect, on_ziti_data) != ZITI_OK) {
         ZITI_LOG(ERROR, "ziti_dial failed");
         free(ziti_io_ctx);
@@ -399,7 +415,7 @@ void ziti_sdk_c_on_service(ziti_context ziti_ctx, ziti_service *service, int sta
                 ziti_intercept_cfg_v1 config;
                 get_config_rc = ziti_service_get_config(service, "intercept.v1", &config, parse_ziti_intercept_cfg_v1);
                 if (get_config_rc == 0) {
-//                    ziti_tunneler_intercept_v2(tnlr_ctx, ziti_ctx, service->id, service->name, &v2_config);
+                    ziti_tunneler_intercept_v2(tnlr_ctx, ziti_ctx, service->id, service->name, &config);
                     tag *dial_id = (tag *) model_map_get(&config.dial_options, "identity");
                     free_ziti_intercept_cfg_v1(&config);
                 }
