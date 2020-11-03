@@ -108,8 +108,7 @@ void ziti_tunneler_set_dns(tunneler_context tnlr_ctx, dns_manager *dns) {
     tnlr_ctx->dns = dns;
 }
 
-/** arrange to intercept traffic defined by a v1 client tunneler config */
-int ziti_tunneler_intercept_v1(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_id, const char *service_name, const char *hostname, int port) {
+static char *get_intercept_ip(tunneler_context tnlr_ctx, const char *service_id, const char *hostname) {
     ip_addr_t intercept_ip;
     const char *ip;
     if (ipaddr_aton(hostname, &intercept_ip) == 0) {
@@ -117,20 +116,35 @@ int ziti_tunneler_intercept_v1(tunneler_context tnlr_ctx, const void *ziti_ctx, 
             ip = assign_ip(hostname);
             if (tnlr_ctx->dns->apply(tnlr_ctx->dns, hostname, ip) != 0) {
                 ZITI_LOG(ERROR, "failed to apply DNS mapping for service[%s]: %s => %s", service_id, hostname, ip);
+                return NULL;
             }
-            else {
-                ZITI_LOG(INFO, "service[%s]: mapped v1 intercept hostname[%s] => ip[%s]", service_id, hostname, ip);
-            }
+            ZITI_LOG(INFO, "service[%s]: mapped v1 intercept hostname[%s] => ip[%s]", service_id, hostname, ip);
         } else {
             ZITI_LOG(DEBUG, "v1 intercept hostname %s for service id %s is not an ip", hostname, service_id);
-            return -1;
         }
     } else {
         ip = hostname;
     }
+    return ip;
+}
+
+/** arrange to intercept traffic defined by a v1 client tunneler config */
+int ziti_tunneler_intercept_v1(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_id, const char *service_name, const char *hostname, int port) {
+    ip_addr_t intercept_ip;
+    const char *ip = get_intercept_ip(tnlr_ctx, hostname, service_id);
+    if (ip == NULL) {
+        ZITI_LOG(DEBUG, "service[%s]: failed to get ip address for intercept hostname[%s]", service_id, hostname);
+        return -1;
+    }
 
     add_v1_intercept(tnlr_ctx, ziti_ctx, service_id, service_name, ip, port);
     ZITI_LOG(INFO, "intercepting service %s at %s:%d (svcid %s)", service_name, hostname, port, service_id);
+    return 0;
+}
+
+int ziti_tunneler_intercept_v2(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_id, const char *service_name,
+                               const char **protocols, const char **addresses, int *ports, port_range_t *port_ranges,
+                               const char *dial_identity, int dial_timeout) {
     return 0;
 }
 

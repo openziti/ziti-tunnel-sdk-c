@@ -86,6 +86,15 @@ extern void ziti_tunneler_set_dns(tunneler_context tnlr_ctx, dns_manager *dns);
 
 extern int ziti_tunneler_intercept_v1(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_id, const char *service_name, const char *hostname, int port);
 
+typedef struct port_range_s {
+    int low;
+    int high;
+} port_range_t;
+
+extern int ziti_tunneler_intercept_v2(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_id, const char *service_name,
+                                      const char **protocols, const char **addresses, int *ports, port_range_t *port_ranges,
+                                      const char *dial_identity, int dial_timeout);
+
 extern int ziti_tunneler_host_v1(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_name, const char *protocol, const char *hostname, int port);
 
 extern void ziti_tunneler_stop_intercepting(tunneler_context tnlr_ctx, const char *service_id);
