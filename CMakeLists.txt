@@ -1,4 +1,6 @@
 cmake_minimum_required(VERSION 3.12)
+set(ZITI_SDK_C_BRANCH "0.17.4")
+
 execute_process(
         COMMAND git describe --tags --dirty=-local
         OUTPUT_VARIABLE GIT_VERSION
