@@ -17,10 +17,19 @@ if(CMAKE_SYSTEM_NAME STREQUAL Darwin OR CMAKE_SYSTEM_NAME STREQUAL Linux)
             PRIVATE ZITI_LOG_PREFIX=${PROJECT_NAME}
             )
 
+    set(LWIP_MEM_SIZE 524288)
+    set(LWIP_PBUF_POOL_SIZE 512)
+    set(UDP_MAX_CONNECTIONS 64)
+    set(TCP_MAX_CONNECTIONS 256)
+    set(TCP_MAX_QUEUED_SEGMENTS 1024)
+
     # override LWIP defaults here
     target_compile_definitions(lwipcore
-            PUBLIC MEMP_NUM_TCP_PCB=256
-            PUBLIC MEMP_NUM_UDP_PCB=64
+            PUBLIC MEM_SIZE=${LWIP_MEM_SIZE}
+            PUBLIC PBUF_POOL_SIZE=${LWIP_PBUF_POOL_SIZE}
+            PUBLIC MEMP_NUM_TCP_PCB=${TCP_MAX_CONNECTIONS}
+            PUBLIC MEMP_NUM_TCP_SEG=${TCP_MAX_QUEUED_SEGMENTS}
+            PUBLIC MEMP_NUM_UDP_PCB=${UDP_MAX_CONNECTIONS}
             )
 
     target_link_libraries(ziti-edge-tunnel
