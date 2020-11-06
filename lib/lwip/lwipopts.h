@@ -14,6 +14,9 @@
 #endif
 //#define MEMP_NUM_PBUF       64          /* number of memp struct pbufs (used for PBUF_ROM and PBUF_REF) */
 
+#ifndef MEMP_NUM_UDP_PCB
+#define MEMP_NUM_UDP_PCB      16          /* simultaneously active UDP "connections" (4) */
+#endif
 #ifndef MEMP_NUM_TCP_PCB
 #define MEMP_NUM_TCP_PCB      64          /* simultaneously active TCP connections (5) */
 #endif
