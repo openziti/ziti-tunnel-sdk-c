@@ -20,6 +20,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL Darwin OR CMAKE_SYSTEM_NAME STREQUAL Linux)
     # override LWIP defaults here
     target_compile_definitions(lwipcore
             PUBLIC MEMP_NUM_TCP_PCB=256
+            PUBLIC MEMP_NUM_UDP_PCB=64
             )
 
     target_link_libraries(ziti-edge-tunnel
