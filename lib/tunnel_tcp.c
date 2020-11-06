@@ -361,14 +361,14 @@ u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     pbuf_remove_header(p, iphdr_hlen);
     struct tcp_pcb *npcb = new_tcp_pcb(src, dst, tcphdr, p);
     if (npcb == NULL) {
-        ZITI_LOG(ERROR, "failed to allocate tcp pcb");
-        return 0;
+        ZITI_LOG(ERROR, "failed to allocate tcp pcb - TCP connection limit is %d", MEMP_NUM_TCP_PCB);
+        goto done;
     }
 
     tunneler_io_context tnlr_io_ctx = new_tunneler_io_context(tnlr_ctx, intercept_ctx->service_name, npcb);
     if (tnlr_io_ctx == NULL) {
         ZITI_LOG(ERROR, "failed to allocate tunneler io context");
-        return 0;
+        goto done;
     }
 
     ZITI_LOG(INFO, "intercepted connection to %s:%d from client %s for service %s (id %s)", ipaddr_ntoa(&dst), dst_p, tnlr_io_ctx->client,
@@ -380,12 +380,13 @@ u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
         err_t rc = tcp_enqueue_flags(npcb, TCP_FIN);
         if (rc != ERR_OK) {
             tcp_abandon(npcb, 0);
-            return 0;
+            goto done;
         }
         tcp_output(npcb);
+        /* now we wait for the tunneler app to call ziti_tunneler_dial_complete() */
     }
-    /* now we wait for the tunneler app to call ziti_tunneler_dial_complete() */
 
+done:
     pbuf_free(p);
     return 1;
 }

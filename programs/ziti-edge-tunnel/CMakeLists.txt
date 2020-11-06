@@ -17,6 +17,11 @@ if(CMAKE_SYSTEM_NAME STREQUAL Darwin OR CMAKE_SYSTEM_NAME STREQUAL Linux)
             PRIVATE ZITI_LOG_PREFIX=${PROJECT_NAME}
             )
 
+    # override LWIP defaults here
+    target_compile_definitions(lwipcore
+            PUBLIC MEMP_NUM_TCP_PCB=256
+            )
+
     target_link_libraries(ziti-edge-tunnel
             PUBLIC ziti ziti-tunnel-sdk-c ziti-tunnel-cbs-c
             PUBLIC lwipcore ${lwip_sys_lib} ziti-tunnel-sdk-c

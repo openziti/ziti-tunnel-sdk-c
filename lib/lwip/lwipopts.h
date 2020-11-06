@@ -3,7 +3,9 @@
 
 #define NO_SYS 1
 
+#ifndef MEM_SIZE
 #define MEM_SIZE              524288      /* the size of the heap memory (1600) */
+#endif
 
 #if SCAREY_DEBUGGING_LWIP
 #define MEMP_OVERFLOW_CHECK   2           /* reserves bytes before and after each memp element in every pool and fills it with a prominent default value */
@@ -12,10 +14,15 @@
 #endif
 //#define MEMP_NUM_PBUF       64          /* number of memp struct pbufs (used for PBUF_ROM and PBUF_REF) */
 
+#ifndef MEMP_NUM_TCP_PCB
 #define MEMP_NUM_TCP_PCB      64          /* simultaneously active TCP connections (5) */
+#endif
+#ifndef MEMP_NUM_TCP_SEG
 #define MEMP_NUM_TCP_SEG      1024        /* simultaneously queued TCP segments (16) */
-
+#endif
+#ifndef PBUF_POOL_SIZE
 #define PBUF_POOL_SIZE        512         /* number of buffers in the pbuf pool (16) */
+#endif
 
 #define TCP_WND               0xffff      /* size of a TCP window. when using TCP_RCV_SCALE, TCP_WND is the total size with scaling applied (4 * TCP_MSS) */
 #define TCP_MSS               32768       /* TCP Maximum segment size (536) */
