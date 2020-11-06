@@ -11,7 +11,6 @@ if(CMAKE_SYSTEM_NAME STREQUAL Darwin OR CMAKE_SYSTEM_NAME STREQUAL Linux)
     add_executable(ziti-edge-tunnel ziti-edge-tunnel.c ${NETIF_DRIVER_SOURCE} dnsmasq_manager.c)
     set_property(TARGET ziti-edge-tunnel PROPERTY C_STANDARD 11)
 
-
     target_compile_definitions(ziti-edge-tunnel
             PRIVATE GIT_VERSION=${GIT_VERSION}
             PRIVATE ZITI_LOG_PREFIX=${PROJECT_NAME}

@@ -47,23 +47,13 @@ install(TARGETS lwipcore ziti-tunnel-sdk-c ziti-tunnel-cbs-c
         DESTINATION ${CMAKE_INSTALL_LIBDIR}
         )
 
-if(NOT LWIP_MEM_SIZE)
-set(LWIP_MEM_SIZE 524288)
-endif()
-if(NOT LWIP_PBUF_POOL_SIZE)
-set(LWIP_PBUF_POOL_SIZE 512)
-endif()
-if(NOT UDP_MAX_CONNECTIONS)
-set(UDP_MAX_CONNECTIONS 64)
-endif()
-if(NOT TCP_MAX_CONNECTIONS)
-set(TCP_MAX_CONNECTIONS 256)
-endif()
-if(NOT TCP_MAX_QUEUED_SEGMENTS)
-set(TCP_MAX_QUEUED_SEGMENTS 1024)
-endif()
+# lwip macro defaults. override on command line or in parent cmakelists.
+set(LWIP_MEM_SIZE 524288 CACHE STRING "LWIP MEM_SIZE option")
+set(LWIP_PBUF_POOL_SIZE 512 CACHE STRING "LWIP PBUF_POOL_SIZE option")
+set(UDP_MAX_CONNECTIONS 64 CACHE STRING "LWIP MEMP_NUM_UDP_PCB option")
+set(TCP_MAX_QUEUED_SEGMENTS 1024 CACHE STRING "LWIP MEMP_NUM_TCP_SEG option")
+set(TCP_MAX_CONNECTIONS 256 CACHE STRING "LWIP MEMP_NUM_TCP_PCB option")
 
-# override LWIP defaults here
 target_compile_definitions(lwipcore
     PUBLIC MEM_SIZE=${LWIP_MEM_SIZE}
     PUBLIC PBUF_POOL_SIZE=${LWIP_PBUF_POOL_SIZE}
