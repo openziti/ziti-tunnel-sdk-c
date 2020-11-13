@@ -18,6 +18,7 @@ target_include_directories(ziti-tunnel-cbs-c
 
 target_link_libraries(ziti-tunnel-cbs-c
         PUBLIC ziti
+        PUBLIC ziti-tunnel-sdk-c
         )
 
 FetchContent_GetProperties(lwip)

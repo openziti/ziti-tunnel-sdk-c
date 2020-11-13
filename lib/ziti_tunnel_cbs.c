@@ -16,6 +16,8 @@
 #include <memory.h>
 #include "ziti/ziti_tunnel_cbs.h"
 
+IMPL_MODEL(tunneler_app_data, TUNNELER_APP_DATA_MODEL)
+
 void on_ziti_connect(ziti_connection conn, int status) {
     ZITI_LOG(VERBOSE, "on_ziti_connect status: %d", status);
     ziti_io_context *ziti_io_ctx = ziti_conn_data(conn);
@@ -35,7 +37,7 @@ ssize_t on_ziti_data(ziti_connection conn, uint8_t *data, ssize_t len) {
         ZITI_LOG(DEBUG, "null io_context - connection may have been closed already");
         ziti_conn_set_data(conn, NULL);
         ziti_close(&conn);
-        if (ziti_io_ctx) free(ziti_io_ctx);
+        free(ziti_io_ctx);
         return UV_ECONNABORTED;
     }
     if (len > 0) {
@@ -83,8 +85,80 @@ int ziti_sdk_c_close(void *io_ctx) {
     return 1;
 }
 
-void * ziti_sdk_c_dial_with_options(const intercept_ctx_t *intercept_ctx, tunneler_io_context tnlr_io_ctx) {
-    return NULL;
+static void tunneler_app_data_set_intercepted(tunneler_app_data *app_data, const char *intercepted) {
+    if (app_data == NULL || intercepted == NULL) {
+        ZITI_LOG(DEBUG, "null app_data or intercepted");
+        return;
+    }
+
+}
+
+/** render app_data as string (json) into supplied buffer. returns json string length. */
+static size_t get_app_data_json(char *buf, size_t bufsz, tunneler_io_context io, const char *source_ip) {
+    tunneler_app_data app_data;
+    memset(&app_data, 0, sizeof(app_data));
+    model_map_clear(&app_data.data, NULL);
+    tag proto_tag, ip_tag, port_tag, source_ip_tag;
+    const char *intercepted = get_intercepted_address(io);
+
+    if (intercepted != NULL) {
+        const char *proto_sep = strchr(intercepted, ':');
+        proto_tag.type = tag_string;
+        proto_tag.string_value = strndup(intercepted, proto_sep - intercepted);
+        model_map_set(&app_data.data, "intercepted_protocol", &proto_tag);
+
+        const char *ip_sep = strrchr(intercepted, ':');
+        ip_tag.type = tag_string;
+        ip_tag.string_value = strndup(proto_sep + 1, ip_sep - proto_sep);
+        model_map_set(&app_data.data, "intercepted_address", &ip_tag);
+
+        const char *port_str = ip_sep + 1;
+        port_tag.type = tag_number;
+        port_tag.num_value = (int) strtol(port_str, NULL, 10);
+        model_map_set(&app_data.data, "intercepted_port", &port_tag);
+    }
+
+    if (source_ip != NULL) {
+        source_ip_tag.type = tag_string;
+        source_ip_tag.string_value = (char *) source_ip;
+        model_map_set(&app_data.data, "source_ip", &source_ip_tag);
+    }
+
+    size_t json_len;
+    if (json_from_tunneler_app_data(&app_data, buf, bufsz, &json_len) != 0) {
+        ZITI_LOG(ERROR, "encoded app data length %ld bytes exceeds %ld byte limit ", json_len, sizeof(json));
+        free_tunneler_app_data(&app_data);
+        return 1;
+    }
+
+    return json_len;
+}
+
+static int dial_opts_from_client_cfg_v1(ziti_dial_opts *opts, const ziti_client_cfg_v1 *config, tunneler_io_context tnlr_io_ctx) {
+}
+
+/** initialize dial options from a ziti_intercept_cfg_v1 */
+static int dial_opts_from_intercept_cfg_v1(ziti_dial_opts *opts, const ziti_intercept_cfg_v1 *config, tunneler_io_context tnlr_io_ctx) {
+    model_map *dial_options_cfg = (model_map *)&config->dial_options;
+    tag *t = (tag *) model_map_get(dial_options_cfg, "identity");
+    if (t != NULL) {
+        if (t->type == tag_string) {
+            opts->identity = t->string_value; // todo strdup? t->string_value is allocated in ziti_intercept_cfg_v1.
+        } else {
+            ZITI_LOG(WARN, "dial_options.identity has non-string type %d", t->type);
+        }
+    }
+
+    t = (tag *)model_map_get(dial_options_cfg, "connect_timeout_seconds");
+    if (t != NULL) {
+        if (t->type == tag_number) {
+            opts->connect_timeout_seconds = t->num_value;
+        } else {
+            ZITI_LOG(WARN, "dial_options.connect_timeout_seconds has non-numeric type %d", t->type);
+        }
+    }
+
+    return 0;
 }
 
 /** called by tunneler SDK after a client connection is intercepted */
@@ -93,7 +167,7 @@ void * ziti_sdk_c_dial(const intercept_ctx_t *intercept_ctx, tunneler_io_context
         ZITI_LOG(WARN, "null intercept_ctx");
         return NULL;
     }
-    ZITI_LOG(VERBOSE, "ziti_dial(name=%s,id=%s)", intercept_ctx->service_name, intercept_ctx->service_id);
+    ZITI_LOG(VERBOSE, "ziti_dial(name=%s)", intercept_ctx->service_name);
 
     ziti_io_context *ziti_io_ctx = malloc(sizeof(struct ziti_io_ctx_s));
     if (ziti_io_ctx == NULL) {
@@ -109,19 +183,26 @@ void * ziti_sdk_c_dial(const intercept_ctx_t *intercept_ctx, tunneler_io_context
         return NULL;
     }
 
-    /* build dial options:
-     * - dial_options.identity
-     * - dial_options.app_data
-     *
-     * app_data is json:
-     * {
-     *    "source_ip": "resolved from intercept cfg. can be ip, ip:port; varrefs to $tunneler_id.name $tunneler_id.tag[tagName] are resolved here"
-     *    "intercepted_protocol": "tcp"
-     *    "intercepted_ip": "get from intercept_ctx"
-     *    "intercepted_port": "get from intercept_ctx"
-     * }
-     */
-    if (ziti_dial(ziti_io_ctx->ziti_conn, intercept_ctx->service_name, on_ziti_connect, on_ziti_data) != ZITI_OK) {
+    ziti_dial_opts dial_opts;
+    memset(&dial_opts, 0, sizeof(dial_opts));
+    char app_data_json[256];
+
+    switch (intercept_ctx->cfg_type) {
+        case CLIENT_CFG_V1:
+            dial_opts_from_client_cfg_v1(&dial_opts, (ziti_client_cfg_v1 *)intercept_ctx->cfg, tnlr_io_ctx);
+            dial_opts.app_data_sz = get_app_data_json(app_data_json, sizeof(app_data_json), tnlr_io_ctx, NULL);
+            dial_opts.app_data = app_data_json;
+            break;
+        case INTERCEPT_CFG_V1:
+            dial_opts_from_intercept_cfg_v1(&dial_opts, (ziti_intercept_cfg_v1 *)intercept_ctx->cfg, tnlr_io_ctx);
+            dial_opts.app_data_sz = get_app_data_json(app_data_json, sizeof(app_data_json), tnlr_io_ctx, ((ziti_intercept_cfg_v1 *)intercept_ctx->cfg)->source_ip);
+            dial_opts.app_data = app_data_json;
+            break;
+        default:
+            break;
+    }
+
+    if (ziti_dial_with_options(ziti_io_ctx->ziti_conn, intercept_ctx->service_name, &dial_opts, on_ziti_connect, on_ziti_data) != ZITI_OK) {
         ZITI_LOG(ERROR, "ziti_dial failed");
         free(ziti_io_ctx);
         return NULL;
@@ -448,17 +529,62 @@ void ziti_sdk_c_host_v1(void *ziti_ctx, uv_loop_t *loop, const char *service_nam
     ziti_listen(serv, service_name, hosted_listen_cb, on_hosted_client_connect);
 }
 
+intercept_ctx_t *new_intercept_ctx(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_name, cfg_type_e cfg_type, const void *cfg) {
+    intercept_ctx_t *i_ctx = calloc(1, sizeof(intercept_ctx_t));
+    int i;
+
+    i_ctx->ziti_ctx = ziti_ctx;
+    i_ctx->service_name = service_name;
+
+    STAILQ_INIT(&i_ctx->protocols);
+    STAILQ_INIT(&i_ctx->cidrs);
+    STAILQ_INIT(&i_ctx->port_ranges);
+
+    switch (cfg_type) {
+        case CLIENT_CFG_V1:
+            intercept_ctx_add_protocol(i_ctx, "udp");
+            intercept_ctx_add_protocol(i_ctx, "tcp");
+            intercept_ctx_add_cidr(tnlr_ctx, i_ctx, ((ziti_client_cfg_v1 *)cfg)->hostname);
+            intercept_ctx_add_port_range(i_ctx, ((ziti_client_cfg_v1 *)cfg)->port, ((ziti_client_cfg_v1 *)cfg)->port);
+            break;
+        case INTERCEPT_CFG_V1:
+            {
+                const ziti_intercept_cfg_v1 *config = cfg;
+                for (i = 0; config->protocols[i] != NULL; i++) {
+                    intercept_ctx_add_protocol(i_ctx, ((ziti_intercept_cfg_v1 *)cfg)->protocols[i]);
+                }
+                for (i = 0; config->addresses[i] != NULL; i++) {
+                    intercept_ctx_add_cidr(tnlr_ctx, i_ctx, config->addresses[i]);
+                }
+                for (i = 0; config->port_ranges[i] != NULL; i++) {
+                    intercept_ctx_add_port_range(i_ctx, config->port_ranges[i]->low, config->port_ranges[i]->high);
+                }
+            }
+            break;
+        default:
+            break;
+    }
+
+    i_ctx->cfg_type = cfg_type;
+    i_ctx->cfg = cfg;
+
+    return i_ctx;
+}
+
+/** set up intercept or host context according to service permissions and configuration */
 void ziti_sdk_c_on_service(ziti_context ziti_ctx, ziti_service *service, int status, void *tnlr_ctx) {
     if (status == ZITI_OK) {
         if (service->perm_flags & ZITI_CAN_DIAL) {
+            /* look for intercept configurations. if one is found, resolve its addresses and add
+             * add intercept context */
             int get_config_rc;
             {
                 ziti_intercept_cfg_v1 config;
                 get_config_rc = ziti_service_get_config(service, "intercept.v1", &config, parse_ziti_intercept_cfg_v1);
                 if (get_config_rc == 0) {
-                    //ziti_tunneler_intercept_v2(tnlr_ctx, ziti_ctx, service->id, service->name, &config);
-                    tag *dial_id = (tag *) model_map_get(&config.dial_options, "identity");
-                    free_ziti_intercept_cfg_v1(&config);
+                    intercept_ctx_t *i_ctx = new_intercept_ctx(tnlr_ctx, ziti_ctx, service->name, INTERCEPT_CFG_V1, &config);
+                    ziti_tunneler_intercept(tnlr_ctx, i_ctx);
+//                    free_ziti_intercept_cfg_v1(&config);
                 }
             }
             {
@@ -466,9 +592,9 @@ void ziti_sdk_c_on_service(ziti_context ziti_ctx, ziti_service *service, int sta
                 get_config_rc = ziti_service_get_config(service, "ziti-tunneler-client.v1", &config, parse_ziti_client_cfg_v1);
                 if (get_config_rc == 0) {
                     ZITI_LOG(INFO, "service_available: %s => %s:%d", service->name, config.hostname, config.port);
-                    ziti_tunneler_intercept_v1(tnlr_ctx, ziti_ctx, service->id, service->name, config.hostname,
-                                               config.port);
-                    free_ziti_client_cfg_v1(&config);
+                    intercept_ctx_t *i_ctx = new_intercept_ctx(tnlr_ctx, ziti_ctx, service->name, CLIENT_CFG_V1, &config);
+                    ziti_tunneler_intercept(tnlr_ctx, i_ctx);
+//                    free_ziti_client_cfg_v1(&config);
                 }
             }
         }
@@ -486,7 +612,7 @@ void ziti_sdk_c_on_service(ziti_context ziti_ctx, ziti_service *service, int sta
         }
     } else if (status == ZITI_SERVICE_UNAVAILABLE) {
         ZITI_LOG(INFO, "service unavailable: %s", service->name);
-        ziti_tunneler_stop_intercepting(tnlr_ctx, service->name);
+        ziti_tunneler_stop_intercepting(tnlr_ctx, ziti_ctx, service->name);
     }
 
 }

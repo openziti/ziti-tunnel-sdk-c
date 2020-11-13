@@ -8,6 +8,11 @@
 extern "C" {
 #endif
 
+#define TUNNELER_APP_DATA_MODEL(XX, ...) \
+XX(data, json, map, data, __VA_ARGS__)
+
+DECLARE_MODEL(tunneler_app_data, TUNNELER_APP_DATA_MODEL)
+
 /** context passed through the tunneler SDK for network i/o */
 typedef struct ziti_io_ctx_s {
     ziti_connection      ziti_conn;

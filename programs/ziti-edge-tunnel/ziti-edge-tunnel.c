@@ -15,22 +15,24 @@
 #error "please port this file to your operating system"
 #endif
 
-static void on_ziti_init(ziti_context ziti_ctx, int status, void *init_ctx);
-
-const char *cfg_types[] = { "ziti-tunneler-client.v1", "intercept.v1", "ziti-tunneler-server.v1", "host.v1", NULL };
-static ziti_options OPTS = {
-        .config_types = cfg_types,
-        .service_cb = ziti_sdk_c_on_service,
-        .init_cb = on_ziti_init,
-        .refresh_interval = 10, /* default refresh */
-};
-
 static void on_ziti_init(ziti_context ziti_ctx, int status, void *init_ctx) {
     if (status != ZITI_OK) {
         ZITI_LOG(ERROR, "failed to initialize ziti");
         exit(1);
     }
 }
+
+static void on_service(ziti_context ziti_ctx, ziti_service *service, int status, void *tnlr_ctx) {
+    ziti_sdk_c_on_service(ziti_ctx, service, status, tnlr_ctx);
+}
+
+const char *cfg_types[] = { "ziti-tunneler-client.v1", "intercept.v1", "ziti-tunneler-server.v1", "host.v1", NULL };
+static ziti_options OPTS = {
+        .config_types = cfg_types,
+        .service_cb = on_service,
+        .init_cb = on_ziti_init,
+        .refresh_interval = 10, /* default refresh */
+};
 
 extern dns_manager *get_dnsmasq_manager(const char* path);
 

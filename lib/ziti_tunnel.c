@@ -66,6 +66,13 @@ void ziti_tunneler_ack(struct write_ctx_s *write_ctx) {
     free(write_ctx);
 }
 
+const char *get_intercepted_address(const struct tunneler_io_ctx_s * tnlr_io) {
+    if (tnlr_io == NULL) {
+        return NULL;
+    }
+    return tnlr_io->intercepted;
+}
+
 void free_tunneler_io_context(tunneler_io_context *tnlr_io_ctx) {
     if (tnlr_io_ctx == NULL) {
         return;
@@ -108,49 +115,105 @@ void ziti_tunneler_set_dns(tunneler_context tnlr_ctx, dns_manager *dns) {
     tnlr_ctx->dns = dns;
 }
 
-static char *get_intercept_ip(tunneler_context tnlr_ctx, const char *service_id, const char *hostname) {
-    ip_addr_t intercept_ip;
-    const char *ip;
-    if (ipaddr_aton(hostname, &intercept_ip) == 0) {
-        if (tnlr_ctx->dns) {
-            ip = assign_ip(hostname);
-            if (tnlr_ctx->dns->apply(tnlr_ctx->dns, hostname, ip) != 0) {
-                ZITI_LOG(ERROR, "failed to apply DNS mapping for service[%s]: %s => %s", service_id, hostname, ip);
-                return NULL;
-            }
-            ZITI_LOG(INFO, "service[%s]: mapped v1 intercept hostname[%s] => ip[%s]", service_id, hostname, ip);
-        } else {
-            ZITI_LOG(DEBUG, "v1 intercept hostname %s for service id %s is not an ip", hostname, service_id);
-        }
-    } else {
-        ip = hostname;
-    }
-    return ip;
+void intercept_ctx_add_protocol(intercept_ctx_t *ctx, const char *protocol) {
+    protocol_t *proto = calloc(1, sizeof(protocol_t));
+    proto->protocol = strdup(protocol);
+    STAILQ_INSERT_TAIL(&ctx->protocols, proto, entries);
 }
 
-/** arrange to intercept traffic defined by a v1 client tunneler config */
-int ziti_tunneler_intercept_v1(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_id, const char *service_name, const char *hostname, int port) {
-    ip_addr_t intercept_ip;
-    const char *ip = get_intercept_ip(tnlr_ctx, hostname, service_id);
-    if (ip == NULL) {
-        ZITI_LOG(DEBUG, "service[%s]: failed to get ip address for intercept hostname[%s]", service_id, hostname);
+void intercept_ctx_add_cidr(tunneler_context tnlr_ctx, intercept_ctx_t *i_ctx, const char *cidr_str) {
+    cidr_t *cidr = calloc(1, sizeof(cidr_t));
+    bool failed = false;
+    const char *prefix_sep = strchr(cidr_str, '/');
+    const char *ip_str = cidr_str;
+
+    if (prefix_sep != NULL) {
+        ip_str = strndup(cidr_str, prefix_sep - cidr_str);
+        cidr->prefix_len = (int)strtol(prefix_sep+1, NULL, 10);
+    }
+
+    if (ipaddr_aton(ip_str, &cidr->ip) == 0) {
+        // does not parse as IP address; assume hostname and try to get IP from the dns manager
+        if (tnlr_ctx->dns) {
+            const char *resolved_ip_str = assign_ip(ip_str);
+            if (tnlr_ctx->dns->apply(tnlr_ctx->dns, ip_str, resolved_ip_str) != 0) {
+                ZITI_LOG(ERROR, "failed to apply DNS mapping for service[%s]: %s => %s", i_ctx->service_name,
+                         ip_str, resolved_ip_str);
+                failed = true;
+            } else {
+                ZITI_LOG(DEBUG, "intercept hostname %s for service[%s] is not an ip", ip_str, i_ctx->service_name);
+                if (ipaddr_aton(resolved_ip_str, &cidr->ip) != 0) {
+                    ZITI_LOG(ERROR, "failed to parse '%s' as ip address (provided by dns manager)", resolved_ip_str);
+                    failed = true;
+                }
+            }
+        }
+    }
+
+    if (!failed) {
+        STAILQ_INSERT_TAIL(&i_ctx->cidrs, cidr, entries);
+    } else {
+        free(cidr);
+    }
+
+    if (ip_str != cidr_str) {
+        free((char *)ip_str);
+    }
+}
+
+void intercept_ctx_add_port_range(intercept_ctx_t *i_ctx, uint16_t low, uint16_t high) {
+    port_range_t *pr = calloc(1, sizeof(port_range_t));
+    pr->low = low;
+    pr->high = high;
+    STAILQ_INSERT_TAIL(&i_ctx->port_ranges, pr, entries);
+}
+
+/** intercept a service as described by the intercept_ctx */
+int ziti_tunneler_intercept(tunneler_context tnlr_ctx, intercept_ctx_t *i_ctx) {
+    if (tnlr_ctx == NULL) {
+        ZITI_LOG(ERROR, "null tnlr_ctx");
         return -1;
     }
+    struct intercept_s *new, *last;
 
-    add_v1_intercept(tnlr_ctx, ziti_ctx, service_id, service_name, ip, port);
-    ZITI_LOG(INFO, "intercepting service %s at %s:%d (svcid %s)", service_name, hostname, port, service_id);
+    for (last = tnlr_ctx->intercepts; last != NULL; last = last->next) {
+        if (last->next == NULL) break;
+    }
+
+    new = calloc(1, sizeof(struct intercept_s));
+    new->ctx = i_ctx;
+    new->next = NULL;
+
+    if (last == NULL) {
+        tnlr_ctx->intercepts = new;
+    } else {
+        last->next = new;
+    }
+
     return 0;
 }
 
-int ziti_tunneler_intercept_v2(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_id, const char *service_name,
-                               const char **protocols, const char **addresses, int *ports, port_range_t *port_ranges,
-                               const char *dial_identity, int dial_timeout) {
-    return 0;
-}
+void ziti_tunneler_stop_intercepting(tunneler_context tnlr_ctx, void *ziti_ctx, const char *service_name) {
+    ZITI_LOG(DEBUG, "removing intercept for service %s", service_name);
+    struct intercept_s *intercept, *prev = NULL;
 
-void ziti_tunneler_stop_intercepting(tunneler_context tnlr_ctx, const char *service_id) {
-    ZITI_LOG(DEBUG, "removing intercept for service id %s", service_id);
-    remove_intercept(tnlr_ctx, service_id);
+    if (tnlr_ctx == NULL) {
+        ZITI_LOG(DEBUG, "null tnlr_ctx");
+        return;
+    }
+
+    for (intercept = tnlr_ctx->intercepts; intercept != NULL; intercept = intercept->next) {
+        if (strcmp(intercept->ctx->service_name, service_name) == 0 &&
+            intercept->ctx->ziti_ctx == ziti_ctx) {
+            if (prev != NULL) {
+                prev->next = intercept->next;
+            } else {
+                tnlr_ctx->intercepts = intercept->next;
+            }
+            // todo free intercept_ctx
+        }
+        prev = intercept;
+    }
 }
 
 /** called by tunneler application when data is read from a ziti connection */

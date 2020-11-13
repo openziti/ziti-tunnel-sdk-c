@@ -1,6 +1,7 @@
 #ifndef ZITI_TUNNELER_SDK_ZITI_TUNNELER_PRIV_H
 #define ZITI_TUNNELER_SDK_ZITI_TUNNELER_PRIV_H
 
+#include "ziti/ziti_tunnel.h"
 #include "lwip/netif.h"
 
 typedef struct tunneler_ctx_s {
@@ -23,7 +24,8 @@ typedef enum  {
 struct tunneler_io_ctx_s {
     tunneler_context    tnlr_ctx;
     const char *        service_name;
-    char                client[32];
+    char                client[64];
+    char                intercepted[64];
     tunneler_proto_type proto;
     union {
         struct tcp_pcb *tcp;
