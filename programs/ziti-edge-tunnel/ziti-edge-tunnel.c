@@ -6,6 +6,7 @@
 #include "ziti/ziti_tunnel.h"
 #include "ziti/ziti_tunnel_cbs.h"
 #include <ziti/ziti_log.h>
+#include <lwip/ip_addr.h>
 
 #if __APPLE__ && __MACH__
 #include "netif_driver/darwin/utun.h"
@@ -36,6 +37,11 @@ void on_service(ziti_context ziti_ctx, ziti_service *service, int status, void *
             if (get_config_rc == 0) {
                 ZITI_LOG(INFO, "service_available: %s => %s:%d", service->name, v1_config.hostname, v1_config.port);
                 ziti_tunneler_intercept_v1(tnlr_ctx, ziti_ctx, service->id, service->name, v1_config.hostname, v1_config.port);
+                ip_addr_t intercept_ip;
+                if (ipaddr_aton(v1_config.hostname, &intercept_ip) == 1) {
+                    tunneler_sdk_options *tun_opts = OPTS.ctx;
+                    tun_add_route(tun_opts->netif_driver, v1_config.hostname);
+                }
                 free_ziti_client_cfg_v1(&v1_config);
             } else {
                 ZITI_LOG(INFO, "service %s lacks ziti-tunneler-client.v1 config; not intercepting", service->name);

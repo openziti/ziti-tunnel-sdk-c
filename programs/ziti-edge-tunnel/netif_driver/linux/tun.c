@@ -111,3 +111,10 @@ netif_driver tun_open(char *error, size_t error_len, const char *dns_block) {
 
     return driver;
 }
+
+void tun_add_route(netif_driver netif, const char *ip) {
+    struct netif_handle_s *h = netif->handle;
+    char cmd[1024];
+    sprintf(cmd, "ip route add %s/32 dev %s", ip, h->name);
+    system(cmd);
+}
