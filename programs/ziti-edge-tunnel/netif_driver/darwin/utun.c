@@ -83,7 +83,7 @@ int utun_uv_poll_init(netif_handle tun, uv_loop_t *loop, uv_poll_t *tun_poll_req
  */
 void utun_add_route(netif_handle tun, const char *ip) {
     char cmd[1024];
-    sprintf(cmd, "route add -host %s -interface %s", ip, tun->name);
+    snprintf(cmd, sizeof(cmd), "route add -host %s -interface %s", ip, tun->name);
     system(cmd);
 }
 
