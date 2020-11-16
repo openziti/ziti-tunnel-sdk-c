@@ -6,6 +6,7 @@
 #include "ziti/ziti_tunnel.h"
 #include "ziti/ziti_tunnel_cbs.h"
 #include <ziti/ziti_log.h>
+#include <lwip/ip_addr.h>
 
 #if __APPLE__ && __MACH__
 #include "netif_driver/darwin/utun.h"
@@ -36,6 +37,11 @@ void on_service(ziti_context ziti_ctx, ziti_service *service, int status, void *
             if (get_config_rc == 0) {
                 ZITI_LOG(INFO, "service_available: %s => %s:%d", service->name, v1_config.hostname, v1_config.port);
                 ziti_tunneler_intercept_v1(tnlr_ctx, ziti_ctx, service->id, service->name, v1_config.hostname, v1_config.port);
+                ip_addr_t intercept_ip;
+                if (ipaddr_aton(v1_config.hostname, &intercept_ip) == 1) {
+                    tunneler_sdk_options *tun_opts = OPTS.ctx;
+                    tun_opts->netif_driver->add_route(tun_opts->netif_driver->handle, v1_config.hostname);
+                }
                 free_ziti_client_cfg_v1(&v1_config);
             } else {
                 ZITI_LOG(INFO, "service %s lacks ziti-tunneler-client.v1 config; not intercepting", service->name);
@@ -78,7 +84,7 @@ static int run_tunnel(const char *ip_range, dns_manager *dns) {
     netif_driver tun;
     char tun_error[64];
 #if __APPLE__ && __MACH__
-    tun = utun_open(tun_error, sizeof(tun_error));
+    tun = utun_open(tun_error, sizeof(tun_error), ip_range);
 #elif __linux__
     tun = tun_open(tun_error, sizeof(tun_error), ip_range);
 #endif
@@ -127,12 +133,12 @@ static void usage() {
 static struct option run_options[] = {
         { "config", required_argument, NULL, 'c' },
         { "debug", required_argument, NULL, 'd'},
-        {"refresh", required_argument, NULL, 'r'},
+        { "refresh", required_argument, NULL, 'r'},
         { "ip", required_argument, NULL, 'i'},
         { "dns", optional_argument, NULL, 'n'},
 };
 
-static const char* ip_range = "169.254.0.0/16";
+static const char* ip_range = "100.64.0.0/10";
 static const char* dns_impl = NULL;
 
 static int run_opts(int argc, char *argv[]) {
@@ -184,7 +190,7 @@ static void run(int argc, char *argv[]) {
     uint32_t mask = 0;
     for (int i = 0; i < 4; i++) {
         mask <<= 8U;
-        mask |= (ip[i] & 0xFF);
+        mask |= (ip[i] & 0xFFU);
     }
 
     dns_manager *dns = NULL;
