@@ -15,6 +15,7 @@ typedef ssize_t (*netif_read_cb)(netif_handle dev, void *buf, size_t buf_len);
 typedef ssize_t (*netif_write_cb)(netif_handle dev, const void *buf, size_t len);
 typedef int (*uv_poll_req_fn)(netif_handle dev, uv_loop_t *loop, uv_poll_t *tun_poll_req);
 typedef int (*setup_packet_cb)(netif_handle dev, uv_loop_t *loop, packet_cb cb, void* netif);
+typedef void (*add_route_cb)(netif_handle dev, const char *ip);
 
 typedef struct netif_driver_s {
     netif_handle   handle;
@@ -23,6 +24,7 @@ typedef struct netif_driver_s {
     netif_close_cb close;
     uv_poll_req_fn uv_poll_init;
     setup_packet_cb setup;
+    add_route_cb add_route;
 } netif_driver_t;
 typedef netif_driver_t *netif_driver;
 
