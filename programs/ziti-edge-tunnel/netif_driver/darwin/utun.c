@@ -178,3 +178,7 @@ netif_driver utun_open(char *error, size_t error_len) {
 
     return driver;
 }
+
+void tun_add_route(netif_driver netif, const char *route) {
+    // TODO
+}
