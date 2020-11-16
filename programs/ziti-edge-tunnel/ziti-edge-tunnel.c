@@ -46,7 +46,7 @@ static int run_tunnel(const char *ip_range, dns_manager *dns) {
     netif_driver tun;
     char tun_error[64];
 #if __APPLE__ && __MACH__
-    tun = utun_open(tun_error, sizeof(tun_error));
+    tun = utun_open(tun_error, sizeof(tun_error), ip_range);
 #elif __linux__
     tun = tun_open(tun_error, sizeof(tun_error), ip_range);
 #endif
@@ -100,7 +100,7 @@ static struct option run_options[] = {
         { "dns", optional_argument, NULL, 'n'},
 };
 
-static const char* ip_range = "169.254.0.0/16";
+static const char* ip_range = "100.64.0.0/10";
 static const char* dns_impl = NULL;
 
 static int run_opts(int argc, char *argv[]) {
@@ -152,7 +152,7 @@ static void run(int argc, char *argv[]) {
     uint32_t mask = 0;
     for (int i = 0; i < 4; i++) {
         mask <<= 8U;
-        mask |= (ip[i] & 0xFF);
+        mask |= (ip[i] & 0xFFU);
     }
 
     dns_manager *dns = NULL;

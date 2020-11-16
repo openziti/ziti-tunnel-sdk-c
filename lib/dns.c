@@ -18,7 +18,7 @@ limitations under the License.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <uv_mbed/queue.h>
+#include <ziti/model_support.h>
 
 
 #define MAX_DNS_NAME 256
@@ -27,21 +27,19 @@ limitations under the License.
 struct dns_entry {
     char hostname[MAX_DNS_NAME];
     char ip[MAX_IP_LENGTH];
-
-    LIST_ENTRY(dns_entry) _next;
 };
 
 typedef struct cache_s {
     uint32_t base;
     uint32_t counter;
     uint32_t counter_bits;
-    LIST_HEAD(entries, dns_entry) entries;
+    model_map entries;
 } cache;
 
 static cache ip_cache = {
-        .base = 0xA9FE0000, // 169.254.0.0
+        .base = 0x64400000, // 100.64.0.0
         .counter = 0x00000201, // 0.0.1.1 -- starting
-        .counter_bits = 0xffff,
+        .counter_bits = 0x3fffff, // 10-bit netmask
         .entries = {0},
 };
 
@@ -52,11 +50,9 @@ void ziti_tunneler_init_dns(uint32_t mask, int bits) {
 }
 
 const char* assign_ip(const char *hostname) {
-    struct dns_entry *e;
-    LIST_FOREACH(e, &ip_cache.entries, _next) {
-        if (strncmp(hostname, e->hostname, MAX_DNS_NAME) == 0) {
-            return e->ip;
-        }
+    struct dns_entry *e = model_map_get(&ip_cache.entries, hostname);
+    if (e != NULL) {
+        return e->ip;
     }
 
     e = calloc(1, sizeof(struct dns_entry));
@@ -67,6 +63,6 @@ const char* assign_ip(const char *hostname) {
     snprintf(e->ip, MAX_IP_LENGTH, "%d.%d.%d.%d", addr>>24U, (addr>>16U) & 0xFFU, (addr>>8U)&0xFFU, addr&0xFFU);
     snprintf(e->hostname, sizeof(e->hostname), "%s",hostname);
 
-    LIST_INSERT_HEAD(&ip_cache.entries, e, _next);
+    model_map_set(&ip_cache.entries, e->hostname, e);
     return e->ip;
 }

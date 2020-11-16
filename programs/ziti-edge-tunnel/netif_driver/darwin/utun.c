@@ -73,11 +73,7 @@ int utun_uv_poll_init(netif_handle tun, uv_loop_t *loop, uv_poll_t *tun_poll_req
 }
 
 /**
- * open a utun device
- * @param num populated with the unit number of the utun device that was opened
- * @return file descriptor to opened utun
- *
- * set up interface address and routes:
+ * this could also be done with `route` command if interface has local address assigned:
  * - ifconfig utun2 169.254.1.2/32 169.254.1.2
  * - route add -host 2.2.2.2 -interface utun2
  * - route add -host 1.2.3.4 -interface utun2
@@ -85,7 +81,18 @@ int utun_uv_poll_init(netif_handle tun, uv_loop_t *loop, uv_poll_t *tun_poll_req
  * - ifconfig utun4 inet6 2001:DB8:2:2::2/128
  * - ifconfig utun4 inet6 2001:DB8:2:2::3/128 2001:DB8:2:2::3
  */
-netif_driver utun_open(char *error, size_t error_len) {
+void utun_add_route(netif_handle tun, const char *ip) {
+    char cmd[1024];
+    snprintf(cmd, sizeof(cmd), "route add -host %s -interface %s", ip, tun->name);
+    system(cmd);
+}
+
+/**
+ * open a utun device
+ * @param num populated with the unit number of the utun device that was opened
+ * @return file descriptor to opened utun
+ */
+netif_driver utun_open(char *error, size_t error_len, const char *cidr) {
     if (error != NULL) {
         memset(error, 0, error_len * sizeof(char));
     }
@@ -174,7 +181,25 @@ netif_driver utun_open(char *error, size_t error_len) {
     driver->read         = utun_read;
     driver->write        = utun_write;
     driver->uv_poll_init = utun_uv_poll_init;
+    driver->add_route    = utun_add_route;
     driver->close        = utun_close;
 
+    if (cidr) {
+        char cmd[1024];
+        int ip_len = (int)strlen(cidr);
+        const char *prefix_sep = strchr(cidr, '/');
+        if (prefix_sep != NULL) {
+            ip_len = (int)(prefix_sep - cidr);
+        }
+        // add address to interface. darwin utun devices may only have "point to point" addresses
+        snprintf(cmd, sizeof(cmd), "ifconfig %s %.*s %.*s", tun->name, ip_len, cidr, ip_len, cidr);
+        system(cmd);
+
+        // add a route for the subnet if one was specified
+        if (prefix_sep != NULL) {
+            snprintf(cmd, sizeof(cmd), "route add -net %s -interface %s", cidr, tun->name);
+            system(cmd);
+        }
+    }
     return driver;
 }
