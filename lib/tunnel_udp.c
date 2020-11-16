@@ -159,7 +159,7 @@ u8_t recv_udp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     /* make a new pcb for this connection and register it with lwip */
     struct udp_pcb *npcb = udp_new();
     if (npcb == NULL) {
-        ZITI_LOG(ERROR, "unable to allocate UDP pcb");
+        ZITI_LOG(ERROR, "unable to allocate UDP pcb - UDP connection limit is %d", MEMP_NUM_UDP_PCB);
         pbuf_free(p);
         return 1;
     }

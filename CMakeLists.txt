@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.12)
 if(NOT ZITI_SDK_C_BRANCH)
     #allow using a different branch of the CSDK easily
-    set(ZITI_SDK_C_BRANCH "0.17.4")
+    set(ZITI_SDK_C_BRANCH "0.17.8")
 endif()
 
 execute_process(
@@ -51,6 +51,21 @@ install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
 install(TARGETS lwipcore ziti-tunnel-sdk-c ziti-tunnel-cbs-c
         DESTINATION ${CMAKE_INSTALL_LIBDIR}
         )
+
+# lwip macro defaults. override on command line or in parent cmakelists.
+set(LWIP_MEM_SIZE 524288 CACHE STRING "LWIP MEM_SIZE option")
+set(LWIP_PBUF_POOL_SIZE 512 CACHE STRING "LWIP PBUF_POOL_SIZE option")
+set(UDP_MAX_CONNECTIONS 64 CACHE STRING "LWIP MEMP_NUM_UDP_PCB option")
+set(TCP_MAX_QUEUED_SEGMENTS 1024 CACHE STRING "LWIP MEMP_NUM_TCP_SEG option")
+set(TCP_MAX_CONNECTIONS 256 CACHE STRING "LWIP MEMP_NUM_TCP_PCB option")
+
+target_compile_definitions(lwipcore
+    PUBLIC MEM_SIZE=${LWIP_MEM_SIZE}
+    PUBLIC PBUF_POOL_SIZE=${LWIP_PBUF_POOL_SIZE}
+    PUBLIC MEMP_NUM_TCP_PCB=${TCP_MAX_CONNECTIONS}
+    PUBLIC MEMP_NUM_TCP_SEG=${TCP_MAX_QUEUED_SEGMENTS}
+    PUBLIC MEMP_NUM_UDP_PCB=${UDP_MAX_CONNECTIONS}
+)
 
 if(CMAKE_SYSTEM_NAME STREQUAL Darwin OR CMAKE_SYSTEM_NAME STREQUAL Linux)
 install(TARGETS ziti-edge-tunnel
