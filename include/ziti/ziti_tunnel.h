@@ -74,7 +74,7 @@ typedef struct intercept_ctx_s {
 } intercept_ctx_t;
 
 extern void intercept_ctx_add_protocol(intercept_ctx_t *ctx, const char *protocol);
-extern void intercept_ctx_add_cidr(tunneler_context tnlr_ctx, intercept_ctx_t *i_ctx, const char *cidr);
+extern void intercept_ctx_add_address(tunneler_context tnlr_ctx, intercept_ctx_t *i_ctx, const char *cidr_str);
 extern void intercept_ctx_add_port_range(intercept_ctx_t *i_ctx, uint16_t low, uint16_t high);
 
 struct io_ctx_s {
@@ -84,12 +84,10 @@ struct io_ctx_s {
 
 typedef struct hosted_service_ctx_s {
     char *       service_name;
-    char *       proto;
-    int          proto_id;
-    char *       hostname;
-    int          port;
-    void *       ziti_ctx;
+    const void * ziti_ctx;
     uv_loop_t *  loop;
+    cfg_type_e   cfg_type;
+    const void * cfg;
 } *hosted_service_context;
 
 /**

@@ -9,7 +9,7 @@ extern "C" {
 #endif
 
 #define TUNNELER_APP_DATA_MODEL(XX, ...) \
-XX(data, json, map, data, __VA_ARGS__)
+XX(data, string, map, data, __VA_ARGS__)
 
 DECLARE_MODEL(tunneler_app_data, TUNNELER_APP_DATA_MODEL)
 

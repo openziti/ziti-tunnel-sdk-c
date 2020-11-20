@@ -105,6 +105,10 @@ void ziti_tunneler_dial_completed(tunneler_io_context *tnlr_io_ctx, void *ziti_i
     }
 }
 
+int ziti_tunneler_host(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_name, cfg_type_e cfg_type, void *config) {
+
+}
+
 int ziti_tunneler_host_v1(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_name, const char *protocol, const char *hostname, int port) {
     tnlr_ctx->opts.ziti_host_v1((void *) ziti_ctx, tnlr_ctx->loop, service_name, protocol, hostname, port);
     ZITI_LOG(INFO, "hosting service %s at %s:%s:%d", service_name, protocol, hostname, port);
@@ -121,7 +125,7 @@ void intercept_ctx_add_protocol(intercept_ctx_t *ctx, const char *protocol) {
     STAILQ_INSERT_TAIL(&ctx->protocols, proto, entries);
 }
 
-void intercept_ctx_add_cidr(tunneler_context tnlr_ctx, intercept_ctx_t *i_ctx, const char *cidr_str) {
+void intercept_ctx_add_address(tunneler_context tnlr_ctx, intercept_ctx_t *i_ctx, const char *cidr_str) {
     cidr_t *cidr = calloc(1, sizeof(cidr_t));
     bool failed = false;
     const char *prefix_sep = strchr(cidr_str, '/');
@@ -189,6 +193,17 @@ int ziti_tunneler_intercept(tunneler_context tnlr_ctx, intercept_ctx_t *i_ctx) {
     } else {
         last->next = new;
     }
+
+#if 0
+    // TODO a few things to think about here:
+    // - omit specific routes for hostname-configured services
+    // - route reference counting
+    netif_driver_t *tun = tnlr_ctx->opts.netif_driver;
+    cidr_t *cidr;
+    STAILQ_FOREACH(cidr, &i_ctx->cidrs, entries) {
+        tun->add_route(tun->handle, cidr->ip)
+    }
+#endif
 
     return 0;
 }
