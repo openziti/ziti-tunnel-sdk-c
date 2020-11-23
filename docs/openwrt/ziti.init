@@ -14,6 +14,8 @@ keyfile=/etc/ziti/id.key
 
 log_opts="-s -t ziti"
 
+interface="wan"
+
 start_service() {
 	enroll
   # commands to launch application
@@ -31,7 +33,19 @@ start_service() {
 	procd_set_param stderr 1
 	procd_set_param stdout 1
 	procd_set_param pidfile /var/run/${prog}.pid
+
+  procd_open_trigger
+	for iface in $interface; do
+	  logger $log_opts "adding interface trigger $iface"
+	  procd_add_reload_interface_trigger $iface
+	done
+  procd_close_trigger
 	procd_close_instance
+}
+
+reload_service() {
+  stop
+  start
 }
 
 enroll() {
