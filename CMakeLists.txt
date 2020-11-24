@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.12)
 if(NOT ZITI_SDK_C_BRANCH)
     #allow using a different branch of the CSDK easily
-    set(ZITI_SDK_C_BRANCH "0.17.16")
+    set(ZITI_SDK_C_BRANCH "0.17.17")
 endif()
 
 execute_process(
