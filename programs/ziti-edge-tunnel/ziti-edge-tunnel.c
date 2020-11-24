@@ -43,6 +43,7 @@ extern dns_manager *get_dnsmasq_manager(const char* path);
 
 static int run_tunnel(const char *ip_range, dns_manager *dns) {
     uv_loop_t *ziti_loop = uv_default_loop();
+    init_debug(ziti_loop);
     if (ziti_loop == NULL) {
         ZITI_LOG(ERROR, "failed to initialize default uv loop");
         return 1;
@@ -324,7 +325,6 @@ static CommandLine main_cmd = make_command_set(
         NULL, main_cmds);
 
 int main(int argc, char *argv[]) {
-    init_debug();
     const char *name = strrchr(argv[0], '/');
     if (name == NULL) {
         name = argv[0];
