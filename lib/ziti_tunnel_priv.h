@@ -4,7 +4,7 @@
 #include "lwip/netif.h"
 
 typedef struct tunneler_ctx_s {
-    tunneler_sdk_options opts;
+    tunneler_sdk_options opts; // this must be first - it is accessed opaquely through tunneler_context*
     struct netif netif;
     struct raw_pcb *tcp;
     struct raw_pcb *udp;

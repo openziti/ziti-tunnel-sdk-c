@@ -4,6 +4,7 @@
 #include "ziti_tunnel_priv.h"
 #include "intercept.h"
 #include "ziti/ziti_log.h"
+#include "uv_mbed/queue.h"
 
 #if _WIN32
 #define MIN(a,b) ((a)<(b) ? (a) : (b))
@@ -114,7 +115,7 @@ static err_t on_tcp_client_data(void *io_ctx, struct tcp_pcb *pcb, struct pbuf *
     }
     LOG_STATE(VERBOSE, "status %d", pcb, err);
     struct io_ctx_s *_io_ctx = (struct io_ctx_s *)io_ctx;
-    tunneler_io_context tnlr_io_ctx = *_io_ctx->tnlr_io_ctx_p;
+    tunneler_io_context tnlr_io_ctx = _io_ctx->tnlr_io;
 
     if (tnlr_io_ctx == NULL) {
         ZITI_LOG(INFO, "null tnlr_io_ctx");
@@ -124,9 +125,9 @@ static err_t on_tcp_client_data(void *io_ctx, struct tcp_pcb *pcb, struct pbuf *
     if (err == ERR_OK && p == NULL) {
         ZITI_LOG(INFO, "client sent FIN: client=%s, service=%s", tnlr_io_ctx->client, tnlr_io_ctx->service_name);
         LOG_STATE(DEBUG, "FIN received", pcb);
-        if (tnlr_io_ctx->tnlr_ctx->opts.ziti_close(_io_ctx->ziti_io_ctx)) {
+        if (tnlr_io_ctx->tnlr_ctx->opts.ziti_close(_io_ctx->ziti_io)) {
             tcp_close(pcb);
-            _io_ctx->ziti_io_ctx = NULL;
+            _io_ctx->ziti_io = NULL;
             free_tunneler_io_context(&tnlr_io_ctx);
             free(_io_ctx);
         }
@@ -139,7 +140,7 @@ static err_t on_tcp_client_data(void *io_ctx, struct tcp_pcb *pcb, struct pbuf *
     wr_ctx->pbuf = p;
     wr_ctx->tcp = pcb;
     wr_ctx->ack = tunneler_tcp_ack;
-    ssize_t s = zwrite(_io_ctx->ziti_io_ctx, wr_ctx, p->payload, len);
+    ssize_t s = zwrite(_io_ctx->ziti_io, wr_ctx, p->payload, len);
     if (s < 0) {
         ZITI_LOG(ERROR, "ziti_write failed: service=%s, client=%s, ret=%ld", tnlr_io_ctx->service_name, tnlr_io_ctx->client, s);
         free(wr_ctx);
@@ -154,11 +155,15 @@ static void  on_tcp_client_err(void *io_ctx, err_t err) {
     struct io_ctx_s *io = io_ctx;
     // we initiated close and cleared arg err should be ERR_ABRT
     if (io_ctx == NULL) {
-        ZITI_LOG(TRACE, "client pcb(%p) finished err=%d", (*io->tnlr_io_ctx_p)->tcp, err);
+        ZITI_LOG(TRACE, "client pcb(%p) finished err=%d", io->tnlr_io->tcp, err);
     }
     else {
-        ZITI_LOG(ERROR, "client pcb(%p) err=%d, terminating connection", (*io->tnlr_io_ctx_p)->tcp, err);
-        (*io->tnlr_io_ctx_p)->tnlr_ctx->opts.ziti_close(io->ziti_io_ctx);
+        const char *client = "<unknown>";
+        if (io->tnlr_io != NULL) {
+            client = io->tnlr_io->client;
+        }
+        ZITI_LOG(ERROR, "client=%s err=%d, terminating connection", client, err);
+        io->tnlr_io->tnlr_ctx->opts.ziti_close(io->ziti_io);
     }
 }
 
@@ -233,26 +238,27 @@ int tunneler_tcp_close(struct tcp_pcb *pcb) {
     return 0;
 }
 
-void tunneler_tcp_dial_completed(tunneler_io_context *tnlr_io_ctx, void *ziti_io_ctx, bool ok) {
-    if (tnlr_io_ctx == NULL || *tnlr_io_ctx == NULL) {
+void tunneler_tcp_dial_completed(struct io_ctx_s *io, bool ok) {
+    if (io == NULL) {
+        ZITI_LOG(WARN, "null io_ctx");
+        return;
+    }
+    if (io->tnlr_io == NULL) {
         ZITI_LOG(WARN, "null tnlr_io_ctx");
         return;
     }
-    if (ziti_io_ctx == NULL) {
+    if (io->ziti_io == NULL) {
         ZITI_LOG(WARN, "null ziti_io_ctx");
         return;
     }
 
-    struct io_ctx_s *io_ctx = malloc(sizeof(struct io_ctx_s));
-    io_ctx->tnlr_io_ctx_p = tnlr_io_ctx;
-    io_ctx->ziti_io_ctx = ziti_io_ctx;
-    struct tcp_pcb *pcb = (*tnlr_io_ctx)->tcp;
+    struct tcp_pcb *pcb = io->tnlr_io->tcp;
     if (pcb == NULL) {
         ZITI_LOG(ERROR, "null pcb");
-        free_tunneler_io_context(tnlr_io_ctx);
+        free_tunneler_io_context(&io->tnlr_io);
         return;
     }
-    tcp_arg(pcb, io_ctx);
+    tcp_arg(pcb, io);
     tcp_recv(pcb, on_tcp_client_data);
     tcp_err(pcb, on_tcp_client_err);
 
@@ -263,7 +269,7 @@ void tunneler_tcp_dial_completed(tunneler_io_context *tnlr_io_ctx, void *ziti_io
         return;
     }
 
-    tcp_output((*tnlr_io_ctx)->tcp);
+    tcp_output(io->tnlr_io->tcp);
 }
 
 static tunneler_io_context new_tunneler_io_context(tunneler_context tnlr_ctx, const char *service_name, struct tcp_pcb *pcb) {
@@ -365,18 +371,23 @@ u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
         goto done;
     }
 
-    tunneler_io_context tnlr_io_ctx = new_tunneler_io_context(tnlr_ctx, intercept_ctx->service_name, npcb);
-    if (tnlr_io_ctx == NULL) {
+    struct io_ctx_s *io = calloc(1, sizeof(struct io_ctx_s));
+    if (io == NULL) {
+        ZITI_LOG(ERROR, "failed to allocate io_context");
+        goto done;
+    }
+    io->tnlr_io = new_tunneler_io_context(tnlr_ctx, intercept_ctx->service_name, npcb);
+    if (io->tnlr_io == NULL) {
         ZITI_LOG(ERROR, "failed to allocate tunneler io context");
         goto done;
     }
 
-    ZITI_LOG(INFO, "intercepted connection to %s:%d from client %s for service %s (id %s)", ipaddr_ntoa(&dst), dst_p, tnlr_io_ctx->client,
+    ZITI_LOG(INFO, "intercepted connection to %s:%d from client %s for service %s (id %s)", ipaddr_ntoa(&dst), dst_p, io->tnlr_io->client,
              intercept_ctx->service_name, intercept_ctx->service_id);
-    void *ziti_io_ctx = zdial(intercept_ctx, tnlr_io_ctx);
+    void *ziti_io_ctx = zdial(intercept_ctx, io);
     if (ziti_io_ctx == NULL) {
         ZITI_LOG(ERROR, "ziti_dial(%s) failed", intercept_ctx->service_name);
-        free_tunneler_io_context(&tnlr_io_ctx);
+        free_tunneler_io_context(&io->tnlr_io);
         err_t rc = tcp_enqueue_flags(npcb, TCP_FIN);
         if (rc != ERR_OK) {
             tcp_abandon(npcb, 0);
@@ -389,4 +400,25 @@ u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
 done:
     pbuf_free(p);
     return 1;
+}
+
+struct io_ctx_list_s *tunneler_tcp_active(const void *ztx, const char *service_name) {
+    struct io_ctx_list_s *l = calloc(1, sizeof(struct io_ctx_list_s));
+    SLIST_INIT(l);
+
+    for (struct tcp_pcb *tpcb = tcp_active_pcbs; tpcb != NULL; tpcb = tpcb->next) {
+        struct io_ctx_s *io = tpcb->callback_arg;
+        if (io != NULL) {
+            tunneler_io_context tnlr_io = io->tnlr_io;
+            if (tnlr_io != NULL) {
+                if (strcmp(tnlr_io->service_name, service_name) == 0 && io->ziti_ctx == ztx) {
+                    struct io_ctx_list_entry_s *n = calloc(1, sizeof(struct io_ctx_list_entry_s));
+                    n->io = io;
+                    SLIST_INSERT_HEAD(l, n, entries);
+                }
+            }
+        }
+    }
+
+    return l;
 }
