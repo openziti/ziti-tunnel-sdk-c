@@ -27,16 +27,6 @@ static ziti_options OPTS = {
         .refresh_interval = 10, /* default refresh */
 };
 
-static tunneler_context my_tnlr_ctx;
-static ziti_context my_ziti_ctx;
-
-static void sigfn(int signo) {
-    if (signo == SIGUSR1) {
-        ziti_tunneler_stop_intercepting(my_tnlr_ctx, "VXFvlJ2GR");
-    }
-    ziti_tunneler_intercept_v1(my_tnlr_ctx, my_ziti_ctx, "VXFvlJ2GR", "lambda-caeli-sshd", "1.1.1.1", 22);
-}
-
 /** callback from ziti SDK when a new service becomes available to our identity */
 void on_service(ziti_context ziti_ctx, ziti_service *service, int status, void *tnlr_ctx) {
     if (status == ZITI_OK) {
@@ -80,7 +70,6 @@ static void on_ziti_init(ziti_context ziti_ctx, int status, void *init_ctx) {
         ZITI_LOG(ERROR, "failed to initialize ziti");
         exit(1);
     }
-    my_ziti_ctx = ziti_ctx;
 }
 
 extern dns_manager *get_dnsmasq_manager(const char* path);
@@ -124,8 +113,6 @@ static int run_tunnel(const char *ip_range, dns_manager *dns) {
         return 1;
     }
 
-    my_tnlr_ctx = tnlr_ctx;
-    signal(SIGUSR1, sigfn);
     if (uv_run(ziti_loop, UV_RUN_DEFAULT) != 0) {
         ZITI_LOG(ERROR, "failed to run event loop");
         exit(1);
