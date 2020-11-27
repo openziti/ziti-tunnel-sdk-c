@@ -381,6 +381,7 @@ u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
         ZITI_LOG(ERROR, "failed to allocate tunneler io context");
         goto done;
     }
+    io->ziti_ctx = intercept_ctx->ziti_ctx;
 
     ZITI_LOG(INFO, "intercepted connection to %s:%d from client %s for service %s (id %s)", ipaddr_ntoa(&dst), dst_p, io->tnlr_io->client,
              intercept_ctx->service_name, intercept_ctx->service_id);
