@@ -393,7 +393,8 @@ static void hosted_listen_cb(ziti_connection serv, int status) {
 }
 
 /** called by the tunneler sdk when a hosted service becomes available */
-void ziti_sdk_c_host_v1(ziti_context ziti_ctx, uv_loop_t *loop, const char *service_name, const char *proto, const char *hostname, int port) {
+void ziti_sdk_c_host_v1(void *ztx, uv_loop_t *loop, const char *service_name, const char *proto, const char *hostname, int port) {
+    ziti_context ziti_ctx = ztx;
     if (service_name == NULL) {
         ZITI_LOG(ERROR, "null service_name");
         return;
