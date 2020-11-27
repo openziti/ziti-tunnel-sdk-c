@@ -38,6 +38,7 @@ ssize_t on_ziti_data(ziti_connection conn, uint8_t *data, ssize_t len) {
     ZITI_LOG(TRACE, "got %zd bytes from ziti", len);
     if (io == NULL) {
         ZITI_LOG(WARN, "null io");
+        return UV_ECONNABORTED;
     }
     ziti_io_context *ziti_io_ctx = io->ziti_io;
     if (io->ziti_io == NULL || io->tnlr_io == NULL) {
