@@ -25,6 +25,7 @@ limitations under the License.
 
 #include <stdbool.h>
 #include "uv.h"
+#include "uv_mbed/queue.h"
 #include "ziti/netif_driver.h"
 
 #ifdef __cplusplus
@@ -43,9 +44,16 @@ typedef struct intercept_ctx_s {
 } intercept_ctx_t;
 
 struct io_ctx_s {
-    tunneler_io_context * tnlr_io_ctx_p; // use pointer to allow tsdk and zsdk callbacks to see when context is nulled.
-    void *                ziti_io_ctx; // context specific to ziti SDK being used by the app.
+    tunneler_io_context   tnlr_io;
+    void *                ziti_io; // context specific to ziti SDK being used by the app.
+    const void *          ziti_ctx;
 };
+
+struct io_ctx_list_entry_s {
+    struct io_ctx_s *io;
+    SLIST_ENTRY(io_ctx_list_entry_s) entries;
+};
+SLIST_HEAD(io_ctx_list_s, io_ctx_list_entry_s);
 
 typedef struct hosted_service_ctx_s {
     char *       service_name;
@@ -61,7 +69,7 @@ typedef struct hosted_service_ctx_s {
  * called when a client connection is intercepted.
  * implementations are expected to dial the service and return
  * context that will be passed to ziti_read/ziti_write */
-typedef void * (*ziti_sdk_dial_cb)(const intercept_ctx_t *intercept_ctx, tunneler_io_context tnlr_io_ctx);
+typedef void * (*ziti_sdk_dial_cb)(const intercept_ctx_t *intercept_ctx, struct io_ctx_s *io);
 typedef int (*ziti_sdk_close_cb)(void *ziti_io_ctx);
 typedef ssize_t (*ziti_sdk_write_cb)(const void *ziti_io_ctx, void *write_ctx, const void *data, size_t len);
 typedef void (*ziti_sdk_host_v1_cb)(void *ziti_ctx, uv_loop_t *loop, const char *service_name, const char *proto, const char *hostname, int port);
@@ -90,7 +98,7 @@ extern int ziti_tunneler_host_v1(tunneler_context tnlr_ctx, const void *ziti_ctx
 
 extern void ziti_tunneler_stop_intercepting(tunneler_context tnlr_ctx, const char *service_id);
 
-extern void ziti_tunneler_dial_completed(tunneler_io_context *tnlr_io_ctx, void *ziti_io_ctx, bool ok);
+extern void ziti_tunneler_dial_completed(struct io_ctx_s *io_context, bool ok);
 
 extern ssize_t ziti_tunneler_write(tunneler_io_context *tnlr_io_ctx, const void *data, size_t len);
 

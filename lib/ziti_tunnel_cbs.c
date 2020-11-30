@@ -18,47 +18,60 @@
 
 void on_ziti_connect(ziti_connection conn, int status) {
     ZITI_LOG(VERBOSE, "on_ziti_connect status: %d", status);
-    ziti_io_context *ziti_io_ctx = ziti_conn_data(conn);
+    struct io_ctx_s *io = ziti_conn_data(conn);
+    if (io == NULL) {
+        ZITI_LOG(WARN, "null io");
+        return;
+    }
     if (status == ZITI_OK) {
-        ziti_tunneler_dial_completed(&ziti_io_ctx->tnlr_io_ctx, ziti_io_ctx, status == ZITI_OK);
+        ziti_tunneler_dial_completed(io, status == ZITI_OK);
     } else {
         ZITI_LOG(ERROR, "ziti dial failed: %s", ziti_errorstr(status));
-        free(ziti_io_ctx);
+        free(io->ziti_io);
+        io->ziti_io = NULL;
     }
 }
 
 /** called by ziti SDK when ziti service has data for the client */
 ssize_t on_ziti_data(ziti_connection conn, uint8_t *data, ssize_t len) {
-    ziti_io_context *ziti_io_ctx = ziti_conn_data(conn);
+    struct io_ctx_s *io = ziti_conn_data(conn);
     ZITI_LOG(TRACE, "got %zd bytes from ziti", len);
-    if (ziti_io_ctx == NULL || ziti_io_ctx->tnlr_io_ctx == NULL) {
+    if (io == NULL) {
+        ZITI_LOG(WARN, "null io");
+        return UV_ECONNABORTED;
+    }
+    ziti_io_context *ziti_io_ctx = io->ziti_io;
+    if (io->ziti_io == NULL || io->tnlr_io == NULL) {
         ZITI_LOG(DEBUG, "null io_context - connection may have been closed already");
         ziti_conn_set_data(conn, NULL);
         ziti_close(&conn);
-        if (ziti_io_ctx) free(ziti_io_ctx);
+        if (io->ziti_io) free(io->ziti_io);
+        io->ziti_io = NULL;
         return UV_ECONNABORTED;
     }
     if (len > 0) {
-        int accepted = ziti_tunneler_write(&ziti_io_ctx->tnlr_io_ctx, data, len);
+        int accepted = ziti_tunneler_write(&io->tnlr_io, data, len);
         if (accepted < 0) {
-            ziti_sdk_c_close(ziti_io_ctx);
+            ziti_sdk_c_close(io->ziti_io);
         }
         return accepted;
     } else if (len == ZITI_EOF) {
         ZITI_LOG(DEBUG, "ziti connection sent EOF (ziti_eof=%d, tnlr_eof=%d)", ziti_io_ctx->ziti_eof, ziti_io_ctx->tnlr_eof);
         ziti_io_ctx->ziti_eof = true;
         if (ziti_io_ctx->tnlr_eof) /* both sides are closed now */ {
-            ziti_tunneler_close(&ziti_io_ctx->tnlr_io_ctx);
+            ziti_tunneler_close(&io->tnlr_io);
             ziti_conn_set_data(conn, NULL);
             free(ziti_io_ctx);
+            free(io);
         } else {
-            ziti_tunneler_close_write(&ziti_io_ctx->tnlr_io_ctx);
+            ziti_tunneler_close_write(&io->tnlr_io);
         }
     } else if (len < 0) {
         ZITI_LOG(ERROR, "ziti connection is closed due to [%zd](%s)", len, ziti_errorstr(len));
-        ziti_tunneler_close(&ziti_io_ctx->tnlr_io_ctx);
+        ziti_tunneler_close(&io->tnlr_io);
         ziti_conn_set_data(conn, NULL);
         free(ziti_io_ctx);
+        free(io);
     }
     return len;
 }
@@ -84,7 +97,7 @@ int ziti_sdk_c_close(void *io_ctx) {
 }
 
 /** called by tunneler SDK after a client connection is intercepted */
-void * ziti_sdk_c_dial(const intercept_ctx_t *intercept_ctx, tunneler_io_context tnlr_io_ctx) {
+void * ziti_sdk_c_dial(const intercept_ctx_t *intercept_ctx, struct io_ctx_s *io) {
     if (intercept_ctx == NULL) {
         ZITI_LOG(WARN, "null intercept_ctx");
         return NULL;
@@ -96,10 +109,10 @@ void * ziti_sdk_c_dial(const intercept_ctx_t *intercept_ctx, tunneler_io_context
         ZITI_LOG(ERROR, "failed to allocate io context");
         return NULL;
     }
-    ziti_io_ctx->tnlr_io_ctx = tnlr_io_ctx;
+    io->ziti_io = ziti_io_ctx;
 
     ziti_context ziti_ctx = (ziti_context)intercept_ctx->ziti_ctx;
-    if (ziti_conn_init(ziti_ctx, &ziti_io_ctx->ziti_conn, ziti_io_ctx) != ZITI_OK) {
+    if (ziti_conn_init(ziti_ctx, &ziti_io_ctx->ziti_conn, io) != ZITI_OK) {
         ZITI_LOG(ERROR, "ziti_conn_init failed");
         free(ziti_io_ctx);
         return NULL;
@@ -260,7 +273,7 @@ static void on_hosted_udp_server_data(uv_udp_t* handle, ssize_t nread, const uv_
     struct hosted_io_ctx_s *io_ctx = handle->data;
     if (nread > 0) {
         ziti_write(io_ctx->client, buf->base, nread, on_hosted_ziti_write, buf->base);
-    } else if (addr == NULL) {
+    } else if (addr == NULL && nread != 0) {
         if (buf->base != NULL) {
             free(buf->base);
         }
@@ -274,6 +287,14 @@ static void on_hosted_client_connect_complete(ziti_connection clt, int err) {
     struct hosted_io_ctx_s *io_ctx = ziti_conn_data(clt);
     if (err == ZITI_OK) {
         ZITI_LOG(INFO, "client connected to hosted service %s", io_ctx->service->service_name);
+        switch (io_ctx->service->proto_id) {
+            case IPPROTO_TCP:
+                uv_read_start((uv_stream_t *) &io_ctx->server.tcp, alloc_buffer, on_hosted_tcp_server_data);
+                break;
+            case IPPROTO_UDP:
+                uv_udp_recv_start(&io_ctx->server.udp, alloc_buffer, on_hosted_udp_server_data);
+                break;
+        }
     } else {
         ZITI_LOG(ERROR, "client failed to connect to hosted service %s: %s", io_ctx->service->service_name,
                  ziti_errorstr(err));
@@ -295,11 +316,12 @@ static void on_hosted_tcp_server_connect_complete(uv_connect_t *c, int status) {
         ZITI_LOG(ERROR, "connect hosted service %s to %s:%s:%d failed: %s", io_ctx->service->service_name,
                  io_ctx->service->proto, io_ctx->service->hostname, io_ctx->service->port, uv_strerror(status));
         ziti_close(&io_ctx->client);
+        free(c);
         return;
     }
     ZITI_LOG(INFO, "connected to server for client %p: %p", c->handle->data, c);
-    uv_read_start((uv_stream_t *) &io_ctx->server.tcp, alloc_buffer, on_hosted_tcp_server_data);
     ziti_accept(io_ctx->client, on_hosted_client_connect_complete, on_hosted_client_data);
+    free(c);
 }
 
 /** called by ziti sdk when a ziti endpoint (client) initiates connection to a hosted service */
@@ -361,11 +383,11 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
             io_ctx->server.udp.data = io_ctx;
             ziti_conn_set_data(clt, io_ctx);
             uv_udp_connect(&io_ctx->server.udp, ai->ai_addr);
-            uv_udp_recv_start(&io_ctx->server.udp, alloc_buffer, on_hosted_udp_server_data);
             ziti_accept(clt, on_hosted_client_connect_complete, on_hosted_client_data);
             }
             break;
     }
+    freeaddrinfo(ai);
 }
 
 /** called by ziti SDK when a hosted service listener is ready */
@@ -383,7 +405,8 @@ static void hosted_listen_cb(ziti_connection serv, int status) {
 }
 
 /** called by the tunneler sdk when a hosted service becomes available */
-void ziti_sdk_c_host_v1(ziti_context ziti_ctx, uv_loop_t *loop, const char *service_name, const char *proto, const char *hostname, int port) {
+void ziti_sdk_c_host_v1(void *ztx, uv_loop_t *loop, const char *service_name, const char *proto, const char *hostname, int port) {
+    ziti_context ziti_ctx = ztx;
     if (service_name == NULL) {
         ZITI_LOG(ERROR, "null service_name");
         return;

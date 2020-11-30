@@ -81,19 +81,26 @@ void free_tunneler_io_context(tunneler_io_context *tnlr_io_ctx) {
  * called by tunneler application when a service dial has completed
  * - let the client know that we have a connection (e.g. send SYN/ACK)
  */
-void ziti_tunneler_dial_completed(tunneler_io_context *tnlr_io_ctx, void *ziti_io_ctx, bool ok) {
+void ziti_tunneler_dial_completed(struct io_ctx_s *io, bool ok) {
+    if (io == NULL) {
+        ZITI_LOG(ERROR, "null io");
+        return;
+    }
+    if (io->ziti_io == NULL || io->tnlr_io == NULL) {
+        ZITI_LOG(ERROR, "null ziti_io or tnlr_io");
+    }
     const char *status = ok ? "succeeded" : "failed";
-    ZITI_LOG(INFO, "ziti dial %s: service=%s, client=%s", status, (*tnlr_io_ctx)->service_name, (*tnlr_io_ctx)->client);
+    ZITI_LOG(INFO, "ziti dial %s: service=%s, client=%s", status, io->tnlr_io->service_name, io->tnlr_io->client);
 
-    switch ((*tnlr_io_ctx)->proto) {
+    switch (io->tnlr_io->proto) {
         case tun_tcp:
-            tunneler_tcp_dial_completed(tnlr_io_ctx, ziti_io_ctx, ok);
+            tunneler_tcp_dial_completed(io, ok);
             break;
         case tun_udp:
-            tunneler_udp_dial_completed(tnlr_io_ctx, ziti_io_ctx, ok);
+            tunneler_udp_dial_completed(io, ok);
             break;
         default:
-            ZITI_LOG(ERROR, "unknown proto %d", (*tnlr_io_ctx)->proto);
+            ZITI_LOG(ERROR, "unknown proto %d", io->tnlr_io->proto);
             break;
     }
 }
@@ -134,8 +141,46 @@ int ziti_tunneler_intercept_v1(tunneler_context tnlr_ctx, const void *ziti_ctx, 
     return 0;
 }
 
+static void tunneler_kill_active(const void *ztx, const char *service_name) {
+    struct io_ctx_list_s *l;
+
+    l = tunneler_tcp_active(ztx, service_name);
+    while (!SLIST_EMPTY(l)) {
+        struct io_ctx_list_entry_s *n = SLIST_FIRST(l);
+        ziti_tunneler_close(&n->io->tnlr_io);
+        SLIST_REMOVE_HEAD(l, entries);
+        free(n);
+    }
+
+    // todo be selective about protocols when merging newer config types
+    l = tunneler_udp_active(ztx, service_name);
+}
+
 void ziti_tunneler_stop_intercepting(tunneler_context tnlr_ctx, const char *service_id) {
     ZITI_LOG(DEBUG, "removing intercept for service id %s", service_id);
+    struct intercept_s *intercept, *prev = NULL;
+    const void *ziti_ctx = NULL;
+    const char *service_name = NULL;
+
+    if (tnlr_ctx == NULL) {
+        ZITI_LOG(DEBUG, "null tnlr_ctx");
+        return;
+    }
+
+    // find the service name and ziti_context for this service id
+    for (intercept = tnlr_ctx->intercepts; intercept != NULL; intercept = intercept->next) {
+        if (strcmp(intercept->ctx.service_id, service_id) == 0) {
+            ziti_ctx = intercept->ctx.ziti_ctx;
+            service_name = intercept->ctx.service_name;
+            break;
+        }
+    }
+
+    // kill active connections
+    if (service_name != NULL && ziti_ctx != NULL) {
+        tunneler_kill_active(ziti_ctx, service_name);
+    }
+
     remove_intercept(tnlr_ctx, service_id);
 }
 
