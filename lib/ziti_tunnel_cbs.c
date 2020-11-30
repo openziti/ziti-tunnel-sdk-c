@@ -62,6 +62,7 @@ ssize_t on_ziti_data(ziti_connection conn, uint8_t *data, ssize_t len) {
             ziti_tunneler_close(&io->tnlr_io);
             ziti_conn_set_data(conn, NULL);
             free(ziti_io_ctx);
+            free(io);
         } else {
             ziti_tunneler_close_write(&io->tnlr_io);
         }
@@ -70,6 +71,7 @@ ssize_t on_ziti_data(ziti_connection conn, uint8_t *data, ssize_t len) {
         ziti_tunneler_close(&io->tnlr_io);
         ziti_conn_set_data(conn, NULL);
         free(ziti_io_ctx);
+        free(io);
     }
     return len;
 }
@@ -285,7 +287,14 @@ static void on_hosted_client_connect_complete(ziti_connection clt, int err) {
     struct hosted_io_ctx_s *io_ctx = ziti_conn_data(clt);
     if (err == ZITI_OK) {
         ZITI_LOG(INFO, "client connected to hosted service %s", io_ctx->service->service_name);
-        uv_read_start((uv_stream_t *) &io_ctx->server.tcp, alloc_buffer, on_hosted_tcp_server_data);
+        switch (io_ctx->service->proto_id) {
+            case IPPROTO_TCP:
+                uv_read_start((uv_stream_t *) &io_ctx->server.tcp, alloc_buffer, on_hosted_tcp_server_data);
+                break;
+            case IPPROTO_UDP:
+                uv_udp_recv_start(&io_ctx->server.udp, alloc_buffer, on_hosted_udp_server_data);
+                break;
+        }
     } else {
         ZITI_LOG(ERROR, "client failed to connect to hosted service %s: %s", io_ctx->service->service_name,
                  ziti_errorstr(err));
@@ -310,6 +319,7 @@ static void on_hosted_tcp_server_connect_complete(uv_connect_t *c, int status) {
         return;
     }
     ZITI_LOG(INFO, "connected to server for client %p: %p", c->handle->data, c);
+    free(c);
     ziti_accept(io_ctx->client, on_hosted_client_connect_complete, on_hosted_client_data);
 }
 
@@ -372,11 +382,11 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
             io_ctx->server.udp.data = io_ctx;
             ziti_conn_set_data(clt, io_ctx);
             uv_udp_connect(&io_ctx->server.udp, ai->ai_addr);
-            uv_udp_recv_start(&io_ctx->server.udp, alloc_buffer, on_hosted_udp_server_data);
             ziti_accept(clt, on_hosted_client_connect_complete, on_hosted_client_data);
             }
             break;
     }
+    freeaddrinfo(ai);
 }
 
 /** called by ziti SDK when a hosted service listener is ready */
