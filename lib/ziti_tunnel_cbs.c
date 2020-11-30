@@ -316,11 +316,12 @@ static void on_hosted_tcp_server_connect_complete(uv_connect_t *c, int status) {
         ZITI_LOG(ERROR, "connect hosted service %s to %s:%s:%d failed: %s", io_ctx->service->service_name,
                  io_ctx->service->proto, io_ctx->service->hostname, io_ctx->service->port, uv_strerror(status));
         ziti_close(&io_ctx->client);
+        free(c);
         return;
     }
     ZITI_LOG(INFO, "connected to server for client %p: %p", c->handle->data, c);
-    free(c);
     ziti_accept(io_ctx->client, on_hosted_client_connect_complete, on_hosted_client_data);
+    free(c);
 }
 
 /** called by ziti sdk when a ziti endpoint (client) initiates connection to a hosted service */
