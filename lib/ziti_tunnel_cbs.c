@@ -285,6 +285,7 @@ static void on_hosted_client_connect_complete(ziti_connection clt, int err) {
     struct hosted_io_ctx_s *io_ctx = ziti_conn_data(clt);
     if (err == ZITI_OK) {
         ZITI_LOG(INFO, "client connected to hosted service %s", io_ctx->service->service_name);
+        uv_read_start((uv_stream_t *) &io_ctx->server.tcp, alloc_buffer, on_hosted_tcp_server_data);
     } else {
         ZITI_LOG(ERROR, "client failed to connect to hosted service %s: %s", io_ctx->service->service_name,
                  ziti_errorstr(err));
@@ -309,7 +310,6 @@ static void on_hosted_tcp_server_connect_complete(uv_connect_t *c, int status) {
         return;
     }
     ZITI_LOG(INFO, "connected to server for client %p: %p", c->handle->data, c);
-    uv_read_start((uv_stream_t *) &io_ctx->server.tcp, alloc_buffer, on_hosted_tcp_server_data);
     ziti_accept(io_ctx->client, on_hosted_client_connect_complete, on_hosted_client_data);
 }
 
