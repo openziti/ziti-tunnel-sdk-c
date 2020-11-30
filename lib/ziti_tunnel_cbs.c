@@ -271,7 +271,7 @@ static void on_hosted_udp_server_data(uv_udp_t* handle, ssize_t nread, const uv_
     struct hosted_io_ctx_s *io_ctx = handle->data;
     if (nread > 0) {
         ziti_write(io_ctx->client, buf->base, nread, on_hosted_ziti_write, buf->base);
-    } else if (addr == NULL) {
+    } else if (addr == NULL && nread != 0) {
         if (buf->base != NULL) {
             free(buf->base);
         }
