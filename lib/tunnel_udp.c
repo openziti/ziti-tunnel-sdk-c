@@ -168,8 +168,6 @@ u8_t recv_udp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
         return 0;
     }
 
-    ZITI_LOG(INFO, "intercepted connection to %s:%d for service %s (id %s)", ipaddr_ntoa(&dst), dst_p,
-             intercept_ctx->service_name, intercept_ctx->service_id);
     ziti_sdk_dial_cb zdial = tnlr_ctx->opts.ziti_dial;
 
     /* make a new pcb for this connection and register it with lwip */
@@ -191,29 +189,41 @@ u8_t recv_udp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
 
     udp_bind_netif(npcb, &tnlr_ctx->netif);
 
-    tunneler_io_context ctx = (tunneler_io_context)calloc(1, sizeof(struct tunneler_io_ctx_s));
-    ctx->tnlr_ctx = tnlr_ctx;
-    ctx->proto = tun_udp;
-    ctx->service_name = intercept_ctx->service_name;
-    snprintf(ctx->client, sizeof(ctx->client), "udp:%s:%d", ipaddr_ntoa(&src), src_p);
-    ctx->udp.pcb = npcb;
-    ctx->udp.queued = NULL;
+    struct io_ctx_s *io = calloc(1, sizeof(struct io_ctx_s));
+    if (io == NULL) {
+        ZITI_LOG(ERROR, "failed to allocate io_context");
+        udp_remove(npcb);
+        pbuf_free(p);
+        return 1;
+    }
+    io->tnlr_io = (tunneler_io_context)calloc(1, sizeof(struct tunneler_io_ctx_s));
+    if (io->tnlr_io == NULL) {
+        ZITI_LOG(ERROR, "failed to allocate tunneler io context");
+        udp_remove(npcb);
+        pbuf_free(p);
+        return 1;
+    }
+    io->tnlr_io->tnlr_ctx = tnlr_ctx;
+    io->tnlr_io->proto = tun_udp;
+    io->tnlr_io->service_name = intercept_ctx->service_name;
+    snprintf(io->tnlr_io->client, sizeof(io->tnlr_io->client), "udp:%s:%d", ipaddr_ntoa(&src), src_p);
+    io->tnlr_io->udp.pcb = npcb;
+    io->tnlr_io->udp.queued = NULL;
+    io->ziti_ctx = intercept_ctx->ziti_ctx;
 
-    void *ziti_io_ctx = zdial(intercept_ctx, ctx);
+    ZITI_LOG(INFO, "intercepted connection to %s:%d from client %s for service %s (id %s)", ipaddr_ntoa(&dst), dst_p, io->tnlr_io->client,
+             intercept_ctx->service_name, intercept_ctx->service_id);
+
+    void *ziti_io_ctx = zdial(intercept_ctx, io);
     if (ziti_io_ctx == NULL) {
         ZITI_LOG(ERROR, "ziti_dial(%s) failed", intercept_ctx->service_name);
         udp_remove(npcb);
         pbuf_free(p);
-        free_tunneler_io_context(&ctx);
+        free_tunneler_io_context(&io->tnlr_io);
         return 1;
     }
 
-    struct io_ctx_s *io_ctx = calloc(1, sizeof(struct io_ctx_s));
-    io_ctx->tnlr_io = ctx;
-    io_ctx->ziti_io = ziti_io_ctx;
-    io_ctx->ziti_ctx = intercept_ctx->ziti_ctx;
-
-    udp_recv(npcb, on_udp_client_data_enqueue, io_ctx);
+    udp_recv(npcb, on_udp_client_data_enqueue, io);
     return 0; /* lwip will call on_udp_client_data_enqueue for this packet */
 }
 
