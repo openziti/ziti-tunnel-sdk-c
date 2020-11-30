@@ -220,6 +220,7 @@ u8_t recv_udp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
         udp_remove(npcb);
         pbuf_free(p);
         free_tunneler_io_context(&io->tnlr_io);
+        free(io);
         return 1;
     }
 

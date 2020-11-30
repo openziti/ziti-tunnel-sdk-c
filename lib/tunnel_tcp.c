@@ -114,37 +114,36 @@ static err_t on_tcp_client_data(void *io_ctx, struct tcp_pcb *pcb, struct pbuf *
         return ERR_OK;
     }
     LOG_STATE(VERBOSE, "status %d", pcb, err);
-    struct io_ctx_s *_io_ctx = (struct io_ctx_s *)io_ctx;
-    tunneler_io_context tnlr_io_ctx = _io_ctx->tnlr_io;
+    struct io_ctx_s *io = (struct io_ctx_s *)io_ctx;
 
-    if (tnlr_io_ctx == NULL) {
+    if (io->tnlr_io == NULL) {
         ZITI_LOG(INFO, "null tnlr_io_ctx");
         return ERR_CONN;
     }
 
     if (err == ERR_OK && p == NULL) {
-        ZITI_LOG(INFO, "client sent FIN: client=%s, service=%s", tnlr_io_ctx->client, tnlr_io_ctx->service_name);
+        ZITI_LOG(INFO, "client sent FIN: client=%s, service=%s", io->tnlr_io->client, io->tnlr_io->service_name);
         LOG_STATE(DEBUG, "FIN received", pcb);
-        if (tnlr_io_ctx->tnlr_ctx->opts.ziti_close(_io_ctx->ziti_io)) {
+        if (io->tnlr_io->tnlr_ctx->opts.ziti_close(io->ziti_io)) {
             tcp_close(pcb);
-            _io_ctx->ziti_io = NULL;
-            free_tunneler_io_context(&tnlr_io_ctx);
-            free(_io_ctx);
+            io->ziti_io = NULL;
+            free_tunneler_io_context(&io->tnlr_io);
+            free(io);
         }
         return err;
     }
 
-    ziti_sdk_write_cb zwrite = tnlr_io_ctx->tnlr_ctx->opts.ziti_write;
+    ziti_sdk_write_cb zwrite = io->tnlr_io->tnlr_ctx->opts.ziti_write;
     u16_t len = p->len;
     struct write_ctx_s *wr_ctx = calloc(1, sizeof(struct write_ctx_s));
     wr_ctx->pbuf = p;
     wr_ctx->tcp = pcb;
     wr_ctx->ack = tunneler_tcp_ack;
-    ssize_t s = zwrite(_io_ctx->ziti_io, wr_ctx, p->payload, len);
+    ssize_t s = zwrite(io->ziti_io, wr_ctx, p->payload, len);
     if (s < 0) {
-        ZITI_LOG(ERROR, "ziti_write failed: service=%s, client=%s, ret=%ld", tnlr_io_ctx->service_name, tnlr_io_ctx->client, s);
+        ZITI_LOG(ERROR, "ziti_write failed: service=%s, client=%s, ret=%ld", io->tnlr_io->service_name, io->tnlr_io->client, s);
         free(wr_ctx);
-        free(_io_ctx);
+        free(io);
         pbuf_free(p);
         return ERR_ABRT;
     }
@@ -256,6 +255,7 @@ void tunneler_tcp_dial_completed(struct io_ctx_s *io, bool ok) {
     if (pcb == NULL) {
         ZITI_LOG(ERROR, "null pcb");
         free_tunneler_io_context(&io->tnlr_io);
+        free(io);
         return;
     }
     tcp_arg(pcb, io);
@@ -389,6 +389,7 @@ u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     if (ziti_io_ctx == NULL) {
         ZITI_LOG(ERROR, "ziti_dial(%s) failed", intercept_ctx->service_name);
         free_tunneler_io_context(&io->tnlr_io);
+        free(io);
         err_t rc = tcp_enqueue_flags(npcb, TCP_FIN);
         if (rc != ERR_OK) {
             tcp_abandon(npcb, 0);
