@@ -25,7 +25,7 @@ intercept_ctx_t *lookup_l4_intercept(tunneler_context tnlr_ctx, char *protocol, 
                 break;
             }
         }
-        if (!protocol_match) break;
+        if (!protocol_match) continue;
 
         cidr_t *c;
         STAILQ_FOREACH(c, &intercept->ctx->cidrs, entries) {
@@ -35,7 +35,7 @@ intercept_ctx_t *lookup_l4_intercept(tunneler_context tnlr_ctx, char *protocol, 
                 break;
             }
         }
-        if (!address_match) break;
+        if (!address_match) continue;
 
         port_range_t *pr;
         STAILQ_FOREACH(pr, &intercept->ctx->port_ranges, entries) {

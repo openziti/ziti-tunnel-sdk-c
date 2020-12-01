@@ -26,7 +26,7 @@ static void on_service(ziti_context ziti_ctx, ziti_service *service, int status,
     ziti_sdk_c_on_service(ziti_ctx, service, status, tnlr_ctx);
     ip_addr_t intercept_ip;
     if (ipaddr_aton(v1_config.hostname, &intercept_ip) == 1) {
-        tunneler_sdk_options *tun_opts = OPTS.ctx;
+        tunneler_sdk_options *tun_opts = tnlr_ctx;
         tun_opts->netif_driver->add_route(tun_opts->netif_driver->handle, v1_config.hostname);
     }
 }
@@ -67,7 +67,7 @@ static int run_tunnel(const char *ip_range, dns_manager *dns) {
             .ziti_dial = ziti_sdk_c_dial,
             .ziti_close = ziti_sdk_c_close,
             .ziti_write = ziti_sdk_c_write,
-            .ziti_host_v1 = ziti_sdk_c_host_v1
+            .ziti_host = ziti_sdk_c_host
 
     };
     tunneler_context tnlr_ctx = ziti_tunneler_init(&tunneler_opts, ziti_loop);

@@ -148,12 +148,10 @@ u8_t recv_udp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     /* is the dest address being intercepted? */
     intercept_ctx_t * intercept_ctx = lookup_l4_intercept(tnlr_ctx, "udp", &dst, dst_p);
     if (intercept_ctx == NULL) {
-        ZITI_LOG(VERBOSE, "no v1 intercepts match %s:%d", ipaddr_ntoa(&dst), dst_p);
+        ZITI_LOG(DEBUG, "no intercepted addresses match udp:%s:%d", ipaddr_ntoa(&dst), dst_p);
         return 0;
     }
 
-    ZITI_LOG(INFO, "intercepted connection to %s:%d for service %s", ipaddr_ntoa(&dst), dst_p,
-             intercept_ctx->service_name);
     ziti_sdk_dial_cb zdial = tnlr_ctx->opts.ziti_dial;
 
     /* make a new pcb for this connection and register it with lwip */
@@ -180,8 +178,12 @@ u8_t recv_udp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     ctx->proto = tun_udp;
     ctx->service_name = intercept_ctx->service_name;
     snprintf(ctx->client, sizeof(ctx->client), "udp:%s:%d", ipaddr_ntoa(&src), src_p);
+    snprintf(ctx->intercepted, sizeof(ctx->intercepted), "udp:%s:%d", ipaddr_ntoa(&dst), dst_p);
     ctx->udp.pcb = npcb;
     ctx->udp.queued = NULL;
+
+    ZITI_LOG(INFO, "intercepted address[%s] client[%s] service[%s]", ctx->intercepted, ctx->client,
+             intercept_ctx->service_name);
 
     void *ziti_io_ctx = zdial(intercept_ctx, ctx);
     if (ziti_io_ctx == NULL) {

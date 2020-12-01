@@ -106,13 +106,7 @@ void ziti_tunneler_dial_completed(tunneler_io_context *tnlr_io_ctx, void *ziti_i
 }
 
 int ziti_tunneler_host(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_name, cfg_type_e cfg_type, void *config) {
-
-}
-
-int ziti_tunneler_host_v1(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_name, const char *protocol, const char *hostname, int port) {
-    tnlr_ctx->opts.ziti_host_v1((void *) ziti_ctx, tnlr_ctx->loop, service_name, protocol, hostname, port);
-    ZITI_LOG(INFO, "hosting service %s at %s:%s:%d", service_name, protocol, hostname, port);
-    return 0;
+    tnlr_ctx->opts.ziti_host((void *) ziti_ctx, tnlr_ctx->loop, service_name, cfg_type, config);
 }
 
 void ziti_tunneler_set_dns(tunneler_context tnlr_ctx, dns_manager *dns) {
@@ -194,14 +188,14 @@ int ziti_tunneler_intercept(tunneler_context tnlr_ctx, intercept_ctx_t *i_ctx) {
         last->next = new;
     }
 
-#if 0
+#if 1
     // TODO a few things to think about here:
     // - omit specific routes for hostname-configured services
     // - route reference counting
     netif_driver_t *tun = tnlr_ctx->opts.netif_driver;
     cidr_t *cidr;
     STAILQ_FOREACH(cidr, &i_ctx->cidrs, entries) {
-        tun->add_route(tun->handle, cidr->ip)
+        tun->add_route(tun->handle, ipaddr_ntoa(&cidr->ip));
     }
 #endif
 
@@ -345,15 +339,16 @@ static struct raw_pcb * init_protocol_handler(u8_t proto, raw_recv_fn recv_fn, v
 }
 
 static void run_packet_loop(uv_loop_t *loop, tunneler_context tnlr_ctx) {
-    if (tnlr_ctx->opts.ziti_close == NULL || tnlr_ctx->opts.ziti_dial == NULL ||
-        tnlr_ctx->opts.ziti_write == NULL || tnlr_ctx->opts.ziti_host_v1 == NULL) {
+    tunneler_sdk_options opts = tnlr_ctx->opts;
+    if (opts.ziti_close == NULL || opts.ziti_dial == NULL || opts.ziti_write == NULL ||
+        opts.ziti_host == NULL) {
         ZITI_LOG(ERROR, "ziti_sdk_* callback options cannot be null");
         exit(1);
     }
 
     lwip_init();
 
-    netif_driver netif_driver = tnlr_ctx->opts.netif_driver;
+    netif_driver netif_driver = opts.netif_driver;
     if (netif_add_noaddr(&tnlr_ctx->netif, netif_driver, netif_shim_init, ip_input) == NULL) {
         ZITI_LOG(ERROR, "netif_add failed");
         exit(1);

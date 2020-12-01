@@ -42,7 +42,7 @@ ssize_t ziti_sdk_c_write(const void *ziti_io_ctx, void *write_ctx, const void *d
  * return 0 if TX should still be open, 1 if both sides are closed */
 int ziti_sdk_c_close(void *io_ctx);
 
-void ziti_sdk_c_host_v1(void *ziti_ctx, uv_loop_t *loop, const char *service_name, const char *proto, const char *hostname, int port);
+void ziti_sdk_c_host(void *ziti_ctx, uv_loop_t *loop, const char *service_name, cfg_type_e cfgtype, const void *cfg);
 
 /** passed to ziti-sdk via ziti_options.service_cb */
 void ziti_sdk_c_on_service(ziti_context ziti_ctx, ziti_service *service, int status, void *tnlr_ctx);

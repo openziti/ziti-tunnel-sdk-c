@@ -97,14 +97,14 @@ typedef struct hosted_service_ctx_s {
 typedef void * (*ziti_sdk_dial_cb)(const intercept_ctx_t *intercept_ctx, tunneler_io_context tnlr_io_ctx);
 typedef int (*ziti_sdk_close_cb)(void *ziti_io_ctx);
 typedef ssize_t (*ziti_sdk_write_cb)(const void *ziti_io_ctx, void *write_ctx, const void *data, size_t len);
-typedef void (*ziti_sdk_host_v1_cb)(void *ziti_ctx, uv_loop_t *loop, const char *service_name, const char *proto, const char *hostname, int port);
+typedef void (*ziti_sdk_host_cb)(void *ziti_ctx, uv_loop_t *loop, const char *service_name, cfg_type_e cfg_type, const void *cfg);
 
 typedef struct tunneler_sdk_options_s {
     netif_driver   netif_driver;
     ziti_sdk_dial_cb    ziti_dial;
     ziti_sdk_close_cb   ziti_close;
     ziti_sdk_write_cb   ziti_write;
-    ziti_sdk_host_v1_cb ziti_host_v1;
+    ziti_sdk_host_cb    ziti_host;
 } tunneler_sdk_options;
 
 typedef struct dns_manager_s dns_manager;
