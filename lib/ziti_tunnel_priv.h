@@ -36,7 +36,7 @@ struct tunneler_io_ctx_s {
     };
 };
 
-extern void free_tunneler_io_context(tunneler_io_context *tnlr_io_ctx);
+extern void free_tunneler_io_context(tunneler_io_context *tnlr_io_ctx_p);
 
 struct write_ctx_s;
 

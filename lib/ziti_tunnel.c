@@ -73,14 +73,14 @@ const char *get_intercepted_address(const struct tunneler_io_ctx_s * tnlr_io) {
     return tnlr_io->intercepted;
 }
 
-void free_tunneler_io_context(tunneler_io_context *tnlr_io_ctx) {
-    if (tnlr_io_ctx == NULL) {
+void free_tunneler_io_context(tunneler_io_context *tnlr_io_ctx_p) {
+    if (tnlr_io_ctx_p == NULL) {
         return;
     }
 
-    if (*tnlr_io_ctx != NULL) {
-        free(*tnlr_io_ctx);
-        *tnlr_io_ctx = NULL;
+    if (*tnlr_io_ctx_p != NULL) {
+        free(*tnlr_io_ctx_p);
+        *tnlr_io_ctx_p = NULL;
     }
 }
 
@@ -153,6 +153,8 @@ void intercept_ctx_add_address(tunneler_context tnlr_ctx, intercept_ctx_t *i_ctx
                 }
             }
         }
+    } else {
+        // return IP for route
     }
 
     if (!failed) {
@@ -278,46 +280,46 @@ ssize_t ziti_tunneler_write(tunneler_io_context *tnlr_io_ctx, const void *data, 
 }
 
 /** called by tunneler application when a ziti connection closes */
-int ziti_tunneler_close(tunneler_io_context *tnlr_io_ctx) {
-    if (tnlr_io_ctx == NULL || *tnlr_io_ctx == NULL) {
+int ziti_tunneler_close(tunneler_io_context *tnlr_io_ctx_p) {
+    if (tnlr_io_ctx_p == NULL || *tnlr_io_ctx_p == NULL) {
         ZITI_LOG(INFO, "null tnlr_io_ctx");
         return 0;
     }
     ZITI_LOG(INFO, "closing connection: service=%s, client=%s",
-            (*tnlr_io_ctx)->service_name, (*tnlr_io_ctx)->client);
-    switch ((*tnlr_io_ctx)->proto) {
+             (*tnlr_io_ctx_p)->service_name, (*tnlr_io_ctx_p)->client);
+    switch ((*tnlr_io_ctx_p)->proto) {
         case tun_tcp:
-            tunneler_tcp_close((*tnlr_io_ctx)->tcp);
-            (*tnlr_io_ctx)->tcp = NULL;
+            tunneler_tcp_close((*tnlr_io_ctx_p)->tcp);
+            (*tnlr_io_ctx_p)->tcp = NULL;
             break;
         case tun_udp:
-            tunneler_udp_close((*tnlr_io_ctx)->udp.pcb);
-            (*tnlr_io_ctx)->udp.pcb = NULL;
+            tunneler_udp_close((*tnlr_io_ctx_p)->udp.pcb);
+            (*tnlr_io_ctx_p)->udp.pcb = NULL;
             break;
         default:
-            ZITI_LOG(ERROR, "unknown proto %d", (*tnlr_io_ctx)->proto);
+            ZITI_LOG(ERROR, "unknown proto %d", (*tnlr_io_ctx_p)->proto);
             break;
     }
 
-    free(*tnlr_io_ctx);
-    *tnlr_io_ctx = NULL;
+    free(*tnlr_io_ctx_p);
+    *tnlr_io_ctx_p = NULL;
     return 0;
 }
 
 /** called by tunneler application when an EOF is received from */
-int ziti_tunneler_close_write(tunneler_io_context *tnlr_io_ctx) {
-    if (tnlr_io_ctx == NULL || *tnlr_io_ctx == NULL) {
+int ziti_tunneler_close_write(tunneler_io_context *tnlr_io_ctx_p) {
+    if (tnlr_io_ctx_p == NULL || *tnlr_io_ctx_p == NULL) {
         ZITI_LOG(INFO, "null tnlr_io_ctx");
         return 0;
     }
     ZITI_LOG(INFO, "closing write connection: service=%s, client=%s",
-            (*tnlr_io_ctx)->service_name, (*tnlr_io_ctx)->client);
-    switch ((*tnlr_io_ctx)->proto) {
+             (*tnlr_io_ctx_p)->service_name, (*tnlr_io_ctx_p)->client);
+    switch ((*tnlr_io_ctx_p)->proto) {
         case tun_tcp:
-            tunneler_tcp_close_write((*tnlr_io_ctx)->tcp);
+            tunneler_tcp_close_write((*tnlr_io_ctx_p)->tcp);
             break;
         default:
-            ZITI_LOG(WARN, "not sending FIN on %d connection", (*tnlr_io_ctx)->proto);
+            ZITI_LOG(WARN, "not sending FIN on %d connection", (*tnlr_io_ctx_p)->proto);
             break;
     }
     return 0;

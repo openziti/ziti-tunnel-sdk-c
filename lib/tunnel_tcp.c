@@ -154,7 +154,7 @@ static void  on_tcp_client_err(void *io_ctx, err_t err) {
     struct io_ctx_s *io = io_ctx;
     // we initiated close and cleared arg err should be ERR_ABRT
     if (io_ctx == NULL) {
-        ZITI_LOG(TRACE, "client pcb(%p) finished err=%d", io->tnlr_io->tcp, err);
+        ZITI_LOG(TRACE, "null io_ctx finished err=%d", err);
     }
     else {
         const char *client = "<unknown>";

@@ -51,6 +51,7 @@ typedef struct protocol_s {
 } protocol_t;
 
 typedef struct cidr_s {
+    // todo save configured hostname here?
     ip_addr_t  ip;
     uint8_t    prefix_len;
     STAILQ_ENTRY(cidr_s) entries;
@@ -126,7 +127,7 @@ extern void ziti_tunneler_set_dns(tunneler_context tnlr_ctx, dns_manager *dns);
 
 extern int ziti_tunneler_intercept(tunneler_context tnlr_ctx, intercept_ctx_t *i_ctx);
 
-extern int ziti_tunneler_host_v1(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_name, const char *protocol, const char *hostname, int port);
+extern int ziti_tunneler_host(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_name, cfg_type_e cfg_type, void *cfg);
 
 extern void ziti_tunneler_stop_intercepting(tunneler_context tnlr_ctx, void *ziti_ctx, const char *service_name);
 
@@ -137,9 +138,9 @@ extern ssize_t ziti_tunneler_write(tunneler_io_context *tnlr_io_ctx, const void 
 struct write_ctx_s;
 extern void ziti_tunneler_ack(struct write_ctx_s *write_ctx);
 
-extern int ziti_tunneler_close(tunneler_io_context *tnlr_io_ctx);
+extern int ziti_tunneler_close(tunneler_io_context *tnlr_io_ctx_p);
 
-extern int ziti_tunneler_close_write(tunneler_io_context *tnlr_io_ctx);
+extern int ziti_tunneler_close_write(tunneler_io_context *tnlr_io_ctx_p);
 
 extern const char* ziti_tunneler_version();
 

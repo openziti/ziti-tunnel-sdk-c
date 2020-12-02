@@ -25,10 +25,14 @@ static void on_ziti_init(ziti_context ziti_ctx, int status, void *init_ctx) {
 static void on_service(ziti_context ziti_ctx, ziti_service *service, int status, void *tnlr_ctx) {
     ziti_sdk_c_on_service(ziti_ctx, service, status, tnlr_ctx);
     ip_addr_t intercept_ip;
+
+    // add route if configured address is an ip.
+#if 0
     if (ipaddr_aton(v1_config.hostname, &intercept_ip) == 1) {
         tunneler_sdk_options *tun_opts = tnlr_ctx;
         tun_opts->netif_driver->add_route(tun_opts->netif_driver->handle, v1_config.hostname);
     }
+#endif
 }
 
 const char *cfg_types[] = { "ziti-tunneler-client.v1", "intercept.v1", "ziti-tunneler-server.v1", "host.v1", NULL };
