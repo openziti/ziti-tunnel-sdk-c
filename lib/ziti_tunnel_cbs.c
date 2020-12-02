@@ -104,8 +104,29 @@ int ziti_sdk_c_close(void *io_ctx) {
     return 1;
 }
 
+static char *string_replace(char *source, size_t sourceSize, const char *substring, const char *with) {
+    char *substring_source = strstr(source, substring);
+    if (substring_source == NULL) {
+        return NULL;
+    }
+
+    if (sourceSize < strlen(source) + (strlen(with) - strlen(substring)) + 1) {
+        ZITI_LOG(DEBUG, "replacing %s with %s in %s - not enough space", substring, with, source);
+        return NULL;
+    }
+
+    memmove(
+            substring_source + strlen(with),
+            substring_source + strlen(substring),
+            strlen(substring_source) - strlen(substring) + 1
+    );
+
+    memcpy(substring_source, with, strlen(with));
+    return substring_source + strlen(with);
+}
+
 /** render app_data as string (json) into supplied buffer. returns json string length. */
-static size_t get_app_data_json(char *buf, size_t bufsz, tunneler_io_context io, const char *source_ip) {
+static size_t get_app_data_json(char *buf, size_t bufsz, tunneler_io_context io, ziti_context ziti_ctx, const char *source_ip) {
     tunneler_app_data app_data_model;
     memset(&app_data_model, 0, sizeof(app_data_model));
     model_map_clear(&app_data_model.data, NULL);
@@ -132,8 +153,29 @@ static size_t get_app_data_json(char *buf, size_t bufsz, tunneler_io_context io,
         model_map_set(&app_data_model.data, "intercepted_port", (char *) port);
     }
 
+    char resolved_source_ip[64];
     if (source_ip != NULL) {
-        model_map_set(&app_data_model.data, "source_ip", (char *) source_ip);
+        const ziti_identity *zid = ziti_get_identity(ziti_ctx);
+        strncpy(resolved_source_ip, source_ip, sizeof(resolved_source_ip));
+        string_replace(resolved_source_ip, sizeof(resolved_source_ip), "$tunneler_id.name", zid->name);
+        char *tag_ref_start = strnstr(resolved_source_ip, "$tunneler_id.tag[", sizeof(resolved_source_ip));
+        if (tag_ref_start != NULL) {
+            char tag_name[32];
+            if (sscanf(tag_ref_start, "$tunneler_id.tag[%32[^]]", tag_name) > 0) {
+                // currently won't work due to https://github.com/openziti/ziti-sdk-c/issues/138
+                const char *tag_value = model_map_get(&zid->tags, tag_name);
+                if (tag_value != NULL) {
+                    char tag_ref[32];
+                    snprintf(tag_ref, sizeof(tag_ref), "$tunneler_id.tag[%s]", tag_name);
+                    string_replace(resolved_source_ip, sizeof(resolved_source_ip), tag_ref, tag_value);
+                } else {
+                    ZITI_LOG(WARN, "cannot set source_ip='%s': identity %s has no tag named '%s'",
+                             source_ip, zid->name, tag_name);
+                }
+            }
+        }
+        string_replace(resolved_source_ip, sizeof(resolved_source_ip), "$intercepted_port", model_map_get(&app_data_model.data, "intercepted_port"));
+        model_map_set(&app_data_model.data, "source_ip", resolved_source_ip);
     }
 
     size_t json_len;
@@ -210,30 +252,7 @@ void * ziti_sdk_c_dial(const intercept_ctx_t *intercept_ctx, struct io_ctx_s *io
             break;
     }
 
-    // replace variable references. assumes the entire source_ip string is the variable reference.
-    if (source_ip != NULL) {
-        const ziti_identity *zid = ziti_get_identity((ziti_context)intercept_ctx->ziti_ctx);
-        if (strcmp(source_ip, "$tunneler_id.name") == 0) {
-            source_ip = zid->name;
-        } else if (strstr(source_ip, "$tunneler_id.tag[") != NULL) {
-            char tag_name[32];
-            int n = sscanf(source_ip, "$tunneler_id.tag[%32[^]]", tag_name);
-            if (n > 0) {
-                // currently won't work due to https://github.com/openziti/ziti-sdk-c/issues/138
-                const char *tag_value = model_map_get(&zid->tags, tag_name);
-                if (tag_value != NULL) {
-                    source_ip = tag_value;
-                } else {
-                    ZITI_LOG(WARN, "service[%s] cannot set source_ip='%s': identity %s has no tag named '%s'",
-                             intercept_ctx->service_name, source_ip, zid->name, tag_name);
-                    free(ziti_io_ctx);
-                    return NULL;
-                }
-            }
-        }
-    }
-
-    dial_opts.app_data_sz = get_app_data_json(app_data_json, sizeof(app_data_json), io->tnlr_io, source_ip) + 1;
+    dial_opts.app_data_sz = get_app_data_json(app_data_json, sizeof(app_data_json), io->tnlr_io, ziti_ctx, source_ip) + 1;
     dial_opts.app_data = app_data_json;
 
     if (ziti_dial_with_options(ziti_io_ctx->ziti_conn, intercept_ctx->service_name, &dial_opts, on_ziti_connect, on_ziti_data) != ZITI_OK) {
