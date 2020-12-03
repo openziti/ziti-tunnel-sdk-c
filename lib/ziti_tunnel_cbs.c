@@ -158,7 +158,7 @@ static size_t get_app_data_json(char *buf, size_t bufsz, tunneler_io_context io,
         const ziti_identity *zid = ziti_get_identity(ziti_ctx);
         strncpy(resolved_source_ip, source_ip, sizeof(resolved_source_ip));
         string_replace(resolved_source_ip, sizeof(resolved_source_ip), "$tunneler_id.name", zid->name);
-        char *tag_ref_start = strnstr(resolved_source_ip, "$tunneler_id.tag[", sizeof(resolved_source_ip));
+        char *tag_ref_start = strstr(resolved_source_ip, "$tunneler_id.tag[");
         if (tag_ref_start != NULL) {
             char tag_name[32];
             if (sscanf(tag_ref_start, "$tunneler_id.tag[%32[^]]", tag_name) > 0) {
