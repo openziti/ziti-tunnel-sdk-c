@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <string.h>
 #include "tunnel_tcp.h"
 #include "lwip_cloned_fns.h"
 #include "ziti_tunnel_priv.h"
@@ -129,6 +130,7 @@ static err_t on_tcp_client_data(void *io_ctx, struct tcp_pcb *pcb, struct pbuf *
             io->ziti_io = NULL;
             free_tunneler_io_context(&io->tnlr_io);
             free(io);
+            tcp_arg(pcb, NULL);
         }
         return err;
     }
@@ -144,6 +146,7 @@ static err_t on_tcp_client_data(void *io_ctx, struct tcp_pcb *pcb, struct pbuf *
         ZITI_LOG(ERROR, "ziti_write failed: service=%s, client=%s, ret=%ld", io->tnlr_io->service_name, io->tnlr_io->client, s);
         free(wr_ctx);
         free(io);
+        tcp_arg(pcb, NULL);
         pbuf_free(p);
         return ERR_ABRT;
     }
@@ -154,7 +157,7 @@ static void  on_tcp_client_err(void *io_ctx, err_t err) {
     struct io_ctx_s *io = io_ctx;
     // we initiated close and cleared arg err should be ERR_ABRT
     if (io_ctx == NULL) {
-        ZITI_LOG(TRACE, "client pcb(%p) finished err=%d", io->tnlr_io->tcp, err);
+        ZITI_LOG(TRACE, "client pcb(<unknown>) finished err=%d", err);
     }
     else {
         const char *client = "<unknown>";
@@ -162,7 +165,9 @@ static void  on_tcp_client_err(void *io_ctx, err_t err) {
             client = io->tnlr_io->client;
         }
         ZITI_LOG(ERROR, "client=%s err=%d, terminating connection", client, err);
-        io->tnlr_io->tnlr_ctx->opts.ziti_close(io->ziti_io);
+        if (io->ziti_io != NULL && io->tnlr_io != NULL) {
+            io->tnlr_io->tnlr_ctx->opts.ziti_close(io->ziti_io);
+        }
     }
 }
 
