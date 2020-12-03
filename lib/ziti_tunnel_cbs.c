@@ -696,18 +696,27 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
     struct addrinfo source_hints;
     const char *source_ip = model_map_get(&app_data_model.data, "source_ip");
     if (source_ip != NULL) {
+        const char *port_sep = strchr(source_ip, ':');
+        const char *source_port = NULL;
+        char source_ip_cp[64];
+        if (port_sep != NULL) {
+            source_port = port_sep + 1;
+            strncpy(source_ip_cp, source_ip, port_sep-source_ip);
+            source_ip_cp[port_sep-source_ip] = '\0';
+            source_ip = source_ip_cp;
+        }
         source_hints.ai_flags = AI_ADDRCONFIG | AI_NUMERICHOST;
         source_hints.ai_protocol = dial_ai_params.hints.ai_protocol;
         source_hints.ai_socktype = dial_ai_params.hints.ai_socktype;
-        if ((s = getaddrinfo(source_ip, NULL, &source_hints, &source_ai)) != 0) {
-            ZITI_LOG(ERROR, "hosted_service[%s], client[%s]: getaddrinfo(%s,NULL) failed: %s",
-                     service_ctx->service_name, client_identity, source_ip, gai_strerror(s));
+        if ((s = getaddrinfo(source_ip, source_port, &source_hints, &source_ai)) != 0) {
+            ZITI_LOG(ERROR, "hosted_service[%s], client[%s]: getaddrinfo(%s,%s) failed: %s",
+                     service_ctx->service_name, client_identity, source_ip, source_port, gai_strerror(s));
             err = true;
             goto done;
         }
         if (source_ai->ai_next != NULL) {
-            ZITI_LOG(DEBUG, "hosted_service[%s], client[%s]: getaddrinfo(%s,NULL) returned multiple results; using first",
-                     service_ctx->service_name, client_identity, source_ip);
+            ZITI_LOG(DEBUG, "hosted_service[%s], client[%s]: getaddrinfo(%s,%s) returned multiple results; using first",
+                     service_ctx->service_name, client_identity, source_ip, source_port);
         }
     }
 
