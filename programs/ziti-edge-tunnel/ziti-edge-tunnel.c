@@ -335,7 +335,7 @@ int main(int argc, char *argv[]) {
         name = name + 1;
     }
     main_cmd.name = name;
-    init_debug(uv_default_loop());
+    ziti_log_init(uv_default_loop(), ZITI_LOG_DEFAULT_LEVEL, NULL);
     commandline_run(&main_cmd, argc, argv);
     return 0;
 }
