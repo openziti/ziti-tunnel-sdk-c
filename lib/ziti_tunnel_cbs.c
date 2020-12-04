@@ -244,17 +244,17 @@ static void on_hosted_tcp_server_data(uv_stream_t *stream, ssize_t nread, const 
     struct hosted_io_ctx_s *io_ctx = stream->data;
     if (io_ctx == NULL) {
         ZITI_LOG(ERROR, "null io_ctx");
-        if (nread > 0) {
-            free(buf->base);
-        }
+        if (buf->base) free(buf->base);
         return;
     }
 
     if (nread > 0) {
         ziti_write(io_ctx->client, buf->base, nread, on_hosted_ziti_write, buf->base);
     } else {
-        if (nread == UV_EOF) {
-            ZITI_LOG(INFO, "server sent FIN ziti_eof=%d, tcp_eof=%d", io_ctx->ziti_eof, io_ctx->tcp_eof);
+        if (nread == UV_ENOBUFS) {
+            ZITI_LOG(WARN, "tcp server is throttled: could not allocate buffer for incoming data [%zd](%s)", nread, uv_strerror(nread));
+        } else if (nread == UV_EOF) {
+            ZITI_LOG(DEBUG, "server sent FIN ziti_eof=%d, tcp_eof=%d", io_ctx->ziti_eof, io_ctx->tcp_eof);
             if (io_ctx->ziti_eof) {
                 ziti_close(&io_ctx->client);
                 uv_close((uv_handle_t *) &io_ctx->server.tcp, hosted_server_close_cb);
@@ -262,9 +262,12 @@ static void on_hosted_tcp_server_data(uv_stream_t *stream, ssize_t nread, const 
                 ziti_close_write(io_ctx->client);
             }
         } else {
-            ZITI_LOG(WARN, "error reading from server");
+            ZITI_LOG(WARN, "error reading from server [%zd](%s)", nread, uv_strerror(nread));
             ziti_close(&io_ctx->client);
         }
+
+        if (buf->base)
+            free(buf->base);
     }
 }
 
