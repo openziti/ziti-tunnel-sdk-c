@@ -151,9 +151,17 @@ static void tunneler_kill_active(const void *ztx, const char *service_name) {
         SLIST_REMOVE_HEAD(l, entries);
         free(n);
     }
+    free(l);
 
     // todo be selective about protocols when merging newer config types
     l = tunneler_udp_active(ztx, service_name);
+    while (!SLIST_EMPTY(l)) {
+        struct io_ctx_list_entry_s *n = SLIST_FIRST(l);
+        ziti_tunneler_close(&n->io->tnlr_io);
+        SLIST_REMOVE_HEAD(l, entries);
+        free(n);
+    }
+    free(l);
 }
 
 void ziti_tunneler_stop_intercepting(tunneler_context tnlr_ctx, const char *service_id) {
