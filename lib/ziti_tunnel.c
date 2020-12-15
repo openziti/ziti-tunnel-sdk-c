@@ -29,7 +29,6 @@ limitations under the License.
 #include "netif_shim.h"
 #include "ziti/ziti_tunnel.h"
 #include "ziti_tunnel_priv.h"
-#include "intercept.h"
 #include "tunnel_tcp.h"
 #include "tunnel_udp.h"
 #include "uv.h"
@@ -38,6 +37,8 @@ limitations under the License.
 #include <string.h>
 
 static void run_packet_loop(uv_loop_t *loop, tunneler_context tnlr_ctx);
+
+STAILQ_HEAD(tlnr_ctx_list_s, tunneler_ctx_s) tnlr_ctx_list_head = STAILQ_HEAD_INITIALIZER(tnlr_ctx_list_head);
 
 tunneler_context ziti_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop) {
     ziti_log_init(loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
@@ -55,9 +56,22 @@ tunneler_context ziti_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop)
     }
     ctx->loop = loop;
     memcpy(&ctx->opts, opts, sizeof(ctx->opts));
+    STAILQ_INIT(&ctx->intercepts);
     run_packet_loop(loop, ctx);
 
     return ctx;
+}
+
+static void tunneler_kill_active(const void *ztx, const char *service_name);
+
+void ziti_tunneler_shutdown(tunneler_context tnlr_ctx) {
+    ZITI_LOG(DEBUG, "tnlr_ctx %p", tnlr_ctx);
+
+    while (!STAILQ_EMPTY(&tnlr_ctx->intercepts)) {
+        intercept_ctx_t *i = STAILQ_FIRST(&tnlr_ctx->intercepts);
+        tunneler_kill_active(i->ziti_ctx, i->service_name);
+        STAILQ_REMOVE_HEAD(&tnlr_ctx->intercepts, entries);
+    }
 }
 
 /** called by tunneler application when data has been successfully written to ziti */
@@ -126,53 +140,82 @@ void intercept_ctx_add_protocol(intercept_ctx_t *ctx, const char *protocol) {
     STAILQ_INSERT_TAIL(&ctx->protocols, proto, entries);
 }
 
-void intercept_ctx_add_address(tunneler_context tnlr_ctx, intercept_ctx_t *i_ctx, const char *cidr_str) {
-    cidr_t *cidr = calloc(1, sizeof(cidr_t));
-    bool failed = false;
-    const char *prefix_sep = strchr(cidr_str, '/');
-    const char *ip_str = cidr_str;
+address_t *parse_address(const char *hn_or_ip_or_cidr, dns_manager *dns) {
+    address_t *addr = calloc(1, sizeof(address_t));
+    strncpy(addr->str, hn_or_ip_or_cidr, sizeof(addr->str));
+    addr->is_hostname = false;
+    char *prefix_sep = strchr(addr->str, '/');
 
     if (prefix_sep != NULL) {
-        ip_str = strndup(cidr_str, prefix_sep - cidr_str);
-        cidr->prefix_len = (int)strtol(prefix_sep+1, NULL, 10);
+        *prefix_sep = '\0';
+        addr->prefix_len = (int)strtol(prefix_sep + 1, NULL, 10);
     }
 
-    if (ipaddr_aton(ip_str, &cidr->ip) == 0) {
+    if (ipaddr_aton(addr->str, &addr->ip) == 0) {
         // does not parse as IP address; assume hostname and try to get IP from the dns manager
-        if (tnlr_ctx->dns) {
-            const char *resolved_ip_str = assign_ip(ip_str);
-            if (tnlr_ctx->dns->apply(tnlr_ctx->dns, ip_str, resolved_ip_str) != 0) {
-                ZITI_LOG(ERROR, "failed to apply DNS mapping for service[%s]: %s => %s", i_ctx->service_name,
-                         ip_str, resolved_ip_str);
-                failed = true;
+        if (dns) {
+            const char *resolved_ip_str = assign_ip(addr->str);
+            if (dns->apply(dns, addr->str, resolved_ip_str) != 0) {
+                ZITI_LOG(ERROR, "failed to apply DNS mapping %s => %s", addr->str, resolved_ip_str);
+                free(addr);
+                return NULL;
             } else {
-                ZITI_LOG(DEBUG, "intercept hostname %s for service[%s] is not an ip", ip_str, i_ctx->service_name);
-                if (ipaddr_aton(resolved_ip_str, &cidr->ip) != 0) {
-                    ZITI_LOG(ERROR, "failed to parse '%s' as ip address (provided by dns manager)", resolved_ip_str);
-                    failed = true;
+                ZITI_LOG(DEBUG, "intercept hostname %s is not an ip", addr->str);
+                if (ipaddr_aton(resolved_ip_str, &addr->ip) != 0) {
+                    ZITI_LOG(ERROR, "dns manager provided unparsable ip address '%s'", resolved_ip_str);
+                    free(addr);
+                    return NULL;
+                } else {
+                    addr->is_hostname = true;
                 }
             }
         }
-    } else {
-        // return IP for route
     }
 
-    if (!failed) {
-        STAILQ_INSERT_TAIL(&i_ctx->cidrs, cidr, entries);
+    if (prefix_sep != NULL) {
+        *prefix_sep = '/'; // replace '/' that was nulled for easy parsing
     } else {
-        free(cidr);
+        // use full ip
+        addr->prefix_len = IP_IS_V4(&addr->ip) ? 32 : 128;
     }
 
-    if (ip_str != cidr_str) {
-        free((char *)ip_str);
-    }
+    return addr;
 }
 
-void intercept_ctx_add_port_range(intercept_ctx_t *i_ctx, uint16_t low, uint16_t high) {
+address_t *intercept_ctx_add_address(tunneler_context tnlr_ctx, intercept_ctx_t *i_ctx, const char *address) {
+    address_t *addr = parse_address(address, tnlr_ctx->dns);
+
+    if (addr == NULL) {
+        ZITI_LOG(ERROR, "failed to parse address '%s' service[%s]", address, i_ctx->service_name);
+        return NULL;
+    }
+
+    STAILQ_INSERT_TAIL(&i_ctx->addresses, addr, entries);
+    return addr;
+}
+
+port_range_t *parse_port_range(uint16_t low, uint16_t high) {
     port_range_t *pr = calloc(1, sizeof(port_range_t));
-    pr->low = low;
-    pr->high = high;
+    if (low <= high) {
+        pr->low = low;
+        pr->high = high;
+    } else {
+        pr->low = high;
+        pr->high = low;
+    }
+
+    if (low == high) {
+        snprintf(pr->str, sizeof(pr->str), "%d", low);
+    } else {
+        snprintf(pr->str, sizeof(pr->str), "[%d-%d]", low, high);
+    }
+    return pr;
+}
+
+port_range_t *intercept_ctx_add_port_range(intercept_ctx_t *i_ctx, uint16_t low, uint16_t high) {
+    port_range_t *pr = parse_port_range(low, high);
     STAILQ_INSERT_TAIL(&i_ctx->port_ranges, pr, entries);
+    return pr;
 }
 
 /** intercept a service as described by the intercept_ctx */
@@ -181,32 +224,30 @@ int ziti_tunneler_intercept(tunneler_context tnlr_ctx, intercept_ctx_t *i_ctx) {
         ZITI_LOG(ERROR, "null tnlr_ctx");
         return -1;
     }
-    struct intercept_s *new, *last;
 
-    for (last = tnlr_ctx->intercepts; last != NULL; last = last->next) {
-        if (last->next == NULL) break;
+    address_t *address;
+    STAILQ_FOREACH(address, &i_ctx->addresses, entries) {
+        protocol_t *proto;
+        STAILQ_FOREACH(proto, &i_ctx->protocols, entries) {
+            port_range_t *pr;
+            STAILQ_FOREACH(pr, &i_ctx->port_ranges, entries) {
+                // todo find conflicts with services
+                // intercept_ctx_t *match;
+                // match = lookup_intercept_by_address(tnlr_ctx, proto->protocol, &address->ip, pr->low, pr->high);
+                ZITI_LOG(INFO, "intercepting %s:%s:%s service[%s]",
+                         proto->protocol, address->str, pr->str, i_ctx->service_name);
+            }
+        }
     }
 
-    new = calloc(1, sizeof(struct intercept_s));
-    new->ctx = i_ctx;
-    new->next = NULL;
-
-    if (last == NULL) {
-        tnlr_ctx->intercepts = new;
-    } else {
-        last->next = new;
-    }
-
-#if 1
-    // TODO a few things to think about here:
-    // - omit specific routes for hostname-configured services
-    // - route reference counting
     netif_driver_t *tun = tnlr_ctx->opts.netif_driver;
-    cidr_t *cidr;
-    STAILQ_FOREACH(cidr, &i_ctx->cidrs, entries) {
-        tun->add_route(tun->handle, ipaddr_ntoa(&cidr->ip));
+    STAILQ_FOREACH(address, &i_ctx->addresses, entries) {
+        if (tun->add_route != NULL && !address->is_hostname) {
+            tun->add_route(tun->handle, ipaddr_ntoa(&address->ip));
+        }
     }
-#endif
+
+    STAILQ_INSERT_TAIL(&tnlr_ctx->intercepts, (struct intercept_ctx_s *)i_ctx, entries);
 
     return 0;
 }
@@ -217,6 +258,7 @@ static void tunneler_kill_active(const void *ztx, const char *service_name) {
     l = tunneler_tcp_active(ztx, service_name);
     while (!SLIST_EMPTY(l)) {
         struct io_ctx_list_entry_s *n = SLIST_FIRST(l);
+        ZITI_LOG(INFO, "service[%s] client[%s] killing active connection", service_name, n->io->tnlr_io->client);
         ziti_tunneler_close(&n->io->tnlr_io);
         SLIST_REMOVE_HEAD(l, entries);
         free(n);
@@ -224,11 +266,20 @@ static void tunneler_kill_active(const void *ztx, const char *service_name) {
 
     // todo be selective about protocols when merging newer config types
     l = tunneler_udp_active(ztx, service_name);
+    while (!SLIST_EMPTY(l)) {
+        struct io_ctx_list_entry_s *n = SLIST_FIRST(l);
+        ZITI_LOG(INFO, "service[%s] client[%s] killing active connection", service_name, n->io->tnlr_io->client);
+        ziti_tunneler_close(&n->io->tnlr_io);
+        SLIST_REMOVE_HEAD(l, entries);
+        free(n);
+    }
 }
 
+// when called due to service unavailable we want to remove from tnlr_ctx.
+// when called due to conflict we want to mark as disabled
 void ziti_tunneler_stop_intercepting(tunneler_context tnlr_ctx, void *ziti_ctx, const char *service_name) {
     ZITI_LOG(DEBUG, "removing intercept for service %s", service_name);
-    struct intercept_s *intercept, *prev = NULL;
+    struct intercept_ctx_s *intercept;
 
     if (tnlr_ctx == NULL) {
         ZITI_LOG(DEBUG, "null tnlr_ctx");
@@ -237,18 +288,14 @@ void ziti_tunneler_stop_intercepting(tunneler_context tnlr_ctx, void *ziti_ctx, 
 
     tunneler_kill_active(ziti_ctx, service_name);
 
-    for (intercept = tnlr_ctx->intercepts; intercept != NULL; intercept = intercept->next) {
-        if (strcmp(intercept->ctx->service_name, service_name) == 0 &&
-            intercept->ctx->ziti_ctx == ziti_ctx) {
-            if (prev != NULL) {
-                prev->next = intercept->next;
-            } else {
-                tnlr_ctx->intercepts = intercept->next;
-            }
+    STAILQ_FOREACH(intercept, &tnlr_ctx->intercepts, entries) {
+        if (strcmp(intercept->service_name, service_name) == 0 &&
+            intercept->ziti_ctx == ziti_ctx) {
+            STAILQ_REMOVE(&tnlr_ctx->intercepts, intercept, intercept_ctx_s, entries);
             // todo deep free intercept_ctx
-            //free(intercept->ctx);
+            free(intercept);
+            break;
         }
-        prev = intercept;
     }
 }
 

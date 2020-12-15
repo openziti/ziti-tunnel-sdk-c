@@ -81,10 +81,18 @@ int utun_uv_poll_init(netif_handle tun, uv_loop_t *loop, uv_poll_t *tun_poll_req
  * - ifconfig utun4 inet6 2001:DB8:2:2::2/128
  * - ifconfig utun4 inet6 2001:DB8:2:2::3/128 2001:DB8:2:2::3
  */
-void utun_add_route(netif_handle tun, const char *ip) {
+int utun_add_route(netif_handle tun, const char *dest) {
     char cmd[1024];
-    snprintf(cmd, sizeof(cmd), "route add -host %s -interface %s", ip, tun->name);
-    system(cmd);
+    snprintf(cmd, sizeof(cmd), "route add %s -interface %s", dest, tun->name);
+    int s = system(cmd);
+    return s;
+}
+
+int utun_delete_route(netif_handle tun, const char *dest) {
+    char cmd[1024];
+    snprintf(cmd, sizeof(cmd), "route delete %s -interface %s", dest, tun->name);
+    int s = system(cmd);
+    return s;
 }
 
 /**
@@ -182,6 +190,7 @@ netif_driver utun_open(char *error, size_t error_len, const char *cidr) {
     driver->write        = utun_write;
     driver->uv_poll_init = utun_uv_poll_init;
     driver->add_route    = utun_add_route;
+    driver->delete_route = utun_delete_route;
     driver->close        = utun_close;
 
     if (cidr) {

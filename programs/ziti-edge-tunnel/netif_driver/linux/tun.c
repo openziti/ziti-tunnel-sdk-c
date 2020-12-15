@@ -50,10 +50,18 @@ int tun_uv_poll_init(netif_handle tun, uv_loop_t *loop, uv_poll_t *tun_poll_req)
     return uv_poll_init(loop, tun_poll_req, tun->fd);
 }
 
-void tun_add_route(netif_handle tun, const char *ip) {
+int tun_add_route(netif_handle tun, const char *dest) {
     char cmd[1024];
-    snprintf(cmd, sizeof(cmd), "ip route add %s/32 dev %s", ip, tun->name);
-    system(cmd);
+    snprintf(cmd, sizeof(cmd), "ip route add %s dev %s", dest, tun->name);
+    int s = system(cmd);
+    return s;
+}
+
+int tun_delete_route(netif_handle tun, const char *dest) {
+    char cmd[1024];
+    snprintf(cmd, sizeof(cmd), "ip route delete %s dev %s", dest, tun->name);
+    int s = system(cmd);
+    return s;
 }
 
 netif_driver tun_open(char *error, size_t error_len, const char *dns_block) {
@@ -105,6 +113,7 @@ netif_driver tun_open(char *error, size_t error_len, const char *dns_block) {
     driver->write        = tun_write;
     driver->uv_poll_init = tun_uv_poll_init;
     driver->add_route    = tun_add_route;
+    driver->delete_route = tun_delete_route;
     driver->close        = tun_close;
 
     char cmd[1024];

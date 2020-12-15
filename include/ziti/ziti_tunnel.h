@@ -50,16 +50,18 @@ typedef struct protocol_s {
     STAILQ_ENTRY(protocol_s) entries;
 } protocol_t;
 
-typedef struct cidr_s {
-    // todo save configured hostname here?
+typedef struct address_s {
+    char       str[UV_MAXHOSTNAMESIZE]; // hostname || ip || ip/prefix
+    bool       is_hostname;
     ip_addr_t  ip;
     uint8_t    prefix_len;
-    STAILQ_ENTRY(cidr_s) entries;
-} cidr_t;
+    STAILQ_ENTRY(address_s) entries;
+} address_t;
 
 typedef struct port_range_s {
     int low;
     int high;
+    char str[16]; // [123456-123456]
     STAILQ_ENTRY(port_range_s) entries;
 } port_range_t;
 
@@ -69,14 +71,16 @@ typedef struct intercept_ctx_s {
     const void *  ziti_ctx;
     STAILQ_HEAD(protocol, protocol_s)     protocols;
     STAILQ_HEAD(port_range, port_range_s) port_ranges;
-    STAILQ_HEAD(cidr, cidr_s)             cidrs;
+    STAILQ_HEAD(address, address_s)       addresses;
     cfg_type_e    cfg_type;
     const void *  cfg;
+    STAILQ_ENTRY(intercept_ctx_s) entries;
 } intercept_ctx_t;
 
 extern void intercept_ctx_add_protocol(intercept_ctx_t *ctx, const char *protocol);
-extern void intercept_ctx_add_address(tunneler_context tnlr_ctx, intercept_ctx_t *i_ctx, const char *cidr_str);
-extern void intercept_ctx_add_port_range(intercept_ctx_t *i_ctx, uint16_t low, uint16_t high);
+/** parse address string as hostname|ip|cidr and add result to list of intercepted addresses */
+extern address_t *intercept_ctx_add_address(tunneler_context tnlr_ctx, intercept_ctx_t *i_ctx, const char *address);
+extern port_range_t *intercept_ctx_add_port_range(intercept_ctx_t *i_ctx, uint16_t low, uint16_t high);
 
 struct io_ctx_s {
     tunneler_io_context   tnlr_io;
@@ -121,7 +125,13 @@ struct dns_manager_s {
     void *data;
 };
 
+extern address_t *parse_address(const char *hn_or_ip_or_cidr, dns_manager *dns);
+
 extern tunneler_context ziti_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop);
+
+/** called by tunneler application when it is done with a tunneler_context.
+ * calls `stop_intercepting` for each intercepted service. */
+extern void ziti_tunneler_shutdown(tunneler_context tnlr_ctx);
 
 extern void ziti_tunneler_set_dns(tunneler_context tnlr_ctx, dns_manager *dns);
 

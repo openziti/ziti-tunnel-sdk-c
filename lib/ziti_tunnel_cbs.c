@@ -882,7 +882,7 @@ intercept_ctx_t *new_intercept_ctx(tunneler_context tnlr_ctx, const void *ziti_c
     i_ctx->service_name = service_name;
 
     STAILQ_INIT(&i_ctx->protocols);
-    STAILQ_INIT(&i_ctx->cidrs);
+    STAILQ_INIT(&i_ctx->addresses);
     STAILQ_INIT(&i_ctx->port_ranges);
 
     switch (cfg_type) {
@@ -896,7 +896,7 @@ intercept_ctx_t *new_intercept_ctx(tunneler_context tnlr_ctx, const void *ziti_c
             {
                 const ziti_intercept_cfg_v1 *config = cfg;
                 for (i = 0; config->protocols[i] != NULL; i++) {
-                    intercept_ctx_add_protocol(i_ctx, ((ziti_intercept_cfg_v1 *)cfg)->protocols[i]);
+                    intercept_ctx_add_protocol(i_ctx, config->protocols[i]);
                 }
                 for (i = 0; config->addresses[i] != NULL; i++) {
                     intercept_ctx_add_address(tnlr_ctx, i_ctx, config->addresses[i]);
