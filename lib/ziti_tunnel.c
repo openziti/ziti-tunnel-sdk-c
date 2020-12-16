@@ -260,6 +260,7 @@ static void tunneler_kill_active(const void *ztx, const char *service_name) {
         SLIST_REMOVE_HEAD(l, entries);
         free(n);
     }
+    free(l);
 
     // todo be selective about protocols when merging newer config types
     l = tunneler_udp_active(ztx, service_name);
@@ -270,6 +271,7 @@ static void tunneler_kill_active(const void *ztx, const char *service_name) {
         SLIST_REMOVE_HEAD(l, entries);
         free(n);
     }
+    free(l);
 }
 
 // when called due to service unavailable we want to remove from tnlr_ctx.
