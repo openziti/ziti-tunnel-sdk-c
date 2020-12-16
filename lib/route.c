@@ -10,7 +10,7 @@ int add_route(netif_driver tun, address_t *dest) {
     if (tun == NULL) {
         return 1;
     }
-    return tun->add_route(tun->handle, dest_cidr);
+    return tun->add_route(tun->handle, dest->str);
 }
 
 /**
