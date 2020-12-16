@@ -568,6 +568,7 @@ static bool addrinfo_from_host_cfg_v1(struct addrinfo_params_s *dial_params, con
                      "service config specifies 'dialInterceptedPort' but client didn't send intercepted port");
             return false;
         } else {
+            errno = 0;
             strtol(dial_params->port, NULL, 10);
             if (errno != 0) {
                 snprintf(dial_params->err, sizeof(dial_params->err),
