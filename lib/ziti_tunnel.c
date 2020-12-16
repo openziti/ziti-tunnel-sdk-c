@@ -240,11 +240,8 @@ int ziti_tunneler_intercept(tunneler_context tnlr_ctx, intercept_ctx_t *i_ctx) {
         }
     }
 
-    netif_driver_t *tun = tnlr_ctx->opts.netif_driver;
     STAILQ_FOREACH(address, &i_ctx->addresses, entries) {
-        if (tun->add_route != NULL && !address->is_hostname) {
-            tun->add_route(tun->handle, ipaddr_ntoa(&address->ip));
-        }
+         add_route(tnlr_ctx->opts.netif_driver, address);
     }
 
     STAILQ_INSERT_TAIL(&tnlr_ctx->intercepts, (struct intercept_ctx_s *)i_ctx, entries);

@@ -57,4 +57,6 @@ struct write_ctx_s {
 
 const char* assign_ip(const char *hostname);
 
+extern int add_route(netif_driver tun, address_t *dest);
+
 #endif //ZITI_TUNNELER_SDK_ZITI_TUNNELER_PRIV_H
