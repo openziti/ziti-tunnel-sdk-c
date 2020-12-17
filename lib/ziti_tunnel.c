@@ -126,8 +126,8 @@ void ziti_tunneler_dial_completed(struct io_ctx_s *io, bool ok) {
     }
 }
 
-int ziti_tunneler_host(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_name, cfg_type_e cfg_type, void *config) {
-    tnlr_ctx->opts.ziti_host((void *) ziti_ctx, tnlr_ctx->loop, service_name, cfg_type, config);
+host_ctx_t *ziti_tunneler_host(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_name, cfg_type_e cfg_type, void *config) {
+    return tnlr_ctx->opts.ziti_host((void *) ziti_ctx, tnlr_ctx->loop, service_name, cfg_type, config);
 }
 
 void ziti_tunneler_set_dns(tunneler_context tnlr_ctx, dns_manager *dns) {
@@ -234,7 +234,7 @@ int ziti_tunneler_intercept(tunneler_context tnlr_ctx, intercept_ctx_t *i_ctx) {
                 // todo find conflicts with services
                 // intercept_ctx_t *match;
                 // match = lookup_intercept_by_address(tnlr_ctx, proto->protocol, &address->ip, pr->low, pr->high);
-                ZITI_LOG(INFO, "intercepting %s:%s:%s service[%s]",
+                ZITI_LOG(DEBUG, "intercepting address[%s:%s:%s] service[%s]",
                          proto->protocol, address->str, pr->str, i_ctx->service_name);
             }
         }

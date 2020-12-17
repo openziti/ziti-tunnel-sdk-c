@@ -100,7 +100,13 @@ typedef struct hosted_service_ctx_s {
     uv_loop_t *  loop;
     cfg_type_e   cfg_type;
     const void * cfg;
-} *hosted_service_context;
+    char address[64];
+} host_ctx_t;
+
+typedef struct tunneled_service_s {
+    intercept_ctx_t *intercept;
+    host_ctx_t      *host;
+} tunneled_service_t;
 
 /**
  * called when a client connection is intercepted.
@@ -109,7 +115,7 @@ typedef struct hosted_service_ctx_s {
 typedef void * (*ziti_sdk_dial_cb)(const intercept_ctx_t *intercept_ctx, struct io_ctx_s *io);
 typedef int (*ziti_sdk_close_cb)(void *ziti_io_ctx);
 typedef ssize_t (*ziti_sdk_write_cb)(const void *ziti_io_ctx, void *write_ctx, const void *data, size_t len);
-typedef void (*ziti_sdk_host_cb)(void *ziti_ctx, uv_loop_t *loop, const char *service_name, cfg_type_e cfg_type, const void *cfg);
+typedef host_ctx_t * (*ziti_sdk_host_cb)(void *ziti_ctx, uv_loop_t *loop, const char *service_name, cfg_type_e cfg_type, const void *cfg);
 
 typedef struct tunneler_sdk_options_s {
     netif_driver   netif_driver;
@@ -137,7 +143,7 @@ extern void ziti_tunneler_set_dns(tunneler_context tnlr_ctx, dns_manager *dns);
 
 extern int ziti_tunneler_intercept(tunneler_context tnlr_ctx, intercept_ctx_t *i_ctx);
 
-extern int ziti_tunneler_host(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_name, cfg_type_e cfg_type, void *cfg);
+extern host_ctx_t * ziti_tunneler_host(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_name, cfg_type_e cfg_type, void *cfg);
 
 extern void ziti_tunneler_stop_intercepting(tunneler_context tnlr_ctx, void *ziti_ctx, const char *service_name);
 

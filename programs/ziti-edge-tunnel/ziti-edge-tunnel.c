@@ -23,7 +23,26 @@ static void on_ziti_init(ziti_context ziti_ctx, int status, void *init_ctx) {
 }
 
 static void on_service(ziti_context ziti_ctx, ziti_service *service, int status, void *tnlr_ctx) {
-    ziti_sdk_c_on_service(ziti_ctx, service, status, tnlr_ctx);
+    if (service)
+    ZITI_LOG(DEBUG, "service[%s]", service->name);
+    tunneled_service_t *ts = ziti_sdk_c_on_service(ziti_ctx, service, status, tnlr_ctx);
+    if (ts->intercept != NULL) {
+        protocol_t *proto;
+        STAILQ_FOREACH(proto, &ts->intercept->protocols, entries) {
+            address_t *address;
+            STAILQ_FOREACH(address, &ts->intercept->addresses, entries) {
+                port_range_t *pr;
+                STAILQ_FOREACH(pr, &ts->intercept->port_ranges, entries) {
+                    ZITI_LOG(INFO, "intercepting address[%s:%s:%s] service[%s]",
+                             proto->protocol, address->str, pr->str, service->name);
+                }
+            }
+        }
+
+    }
+    if (ts->host != NULL) {
+        ZITI_LOG(INFO, "hosting server_address[%s] service[%s]", ts->host->address, service->name);
+    }
 }
 
 const char *cfg_types[] = { "ziti-tunneler-client.v1", "intercept.v1", "ziti-tunneler-server.v1", "host.v1", NULL };
