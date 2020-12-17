@@ -40,9 +40,6 @@ add_subdirectory(deps)
 add_subdirectory(lib)
 add_subdirectory(programs)
 
-#enable_testing()
-#add_subdirectory(tests)
-
 if (WIN32)
 set(CMAKE_INSTALL_LIBDIR lib)
 set(CMAKE_INSTALL_INCLUDEDIR include)
