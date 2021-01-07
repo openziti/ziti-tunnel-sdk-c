@@ -130,7 +130,7 @@ static int run_tunnel(const char *ip_range, dns_manager *dns) {
 
     OPTS.app_ctx = tnlr_ctx;
 
-    if (ziti_init_opts(&OPTS, ziti_loop, NULL) != 0) {
+    if (ziti_init_opts(&OPTS, ziti_loop) != 0) {
         ZITI_LOG(ERROR, "failed to initialize ziti");
         return 1;
     }
