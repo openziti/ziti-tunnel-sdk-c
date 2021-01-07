@@ -161,7 +161,7 @@ address_t *parse_address(const char *hn_or_ip_or_cidr, dns_manager *dns) {
                 return NULL;
             } else {
                 ZITI_LOG(DEBUG, "intercept hostname %s is not an ip", addr->str);
-                if (ipaddr_aton(resolved_ip_str, &addr->ip) != 0) {
+                if (ipaddr_aton(resolved_ip_str, &addr->ip) == 0) {
                     ZITI_LOG(ERROR, "dns manager provided unparsable ip address '%s'", resolved_ip_str);
                     free(addr);
                     return NULL;
