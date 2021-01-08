@@ -125,13 +125,7 @@ static err_t on_tcp_client_data(void *io_ctx, struct tcp_pcb *pcb, struct pbuf *
     if (err == ERR_OK && p == NULL) {
         ZITI_LOG(INFO, "client sent FIN: client=%s, service=%s", io->tnlr_io->client, io->tnlr_io->service_name);
         LOG_STATE(DEBUG, "FIN received", pcb);
-        if (io->tnlr_io->tnlr_ctx->opts.ziti_close(io->ziti_io)) {
-            tcp_close(pcb);
-            io->ziti_io = NULL;
-            free_tunneler_io_context(&io->tnlr_io);
-            free(io);
-            tcp_arg(pcb, NULL);
-        }
+        io->tnlr_io->tnlr_ctx->opts.ziti_close_write(io->ziti_io);
         return err;
     }
 
