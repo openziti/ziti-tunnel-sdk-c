@@ -167,6 +167,9 @@ static void  on_tcp_client_err(void *io_ctx, err_t err) {
         ZITI_LOG(ERROR, "client=%s err=%d, terminating connection", client, err);
         if (io->ziti_io != NULL && io->tnlr_io != NULL) {
             io->tnlr_io->tnlr_ctx->opts.ziti_close(io->ziti_io);
+            io->ziti_io = NULL;
+            free_tunneler_io_context(&io->tnlr_io);
+            free(io);
         }
     }
 }
