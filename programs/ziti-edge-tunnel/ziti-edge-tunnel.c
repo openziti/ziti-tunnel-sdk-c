@@ -121,6 +121,7 @@ static int run_tunnel(const char *ip_range, dns_manager *dns) {
             .netif_driver = tun,
             .ziti_dial = ziti_sdk_c_dial,
             .ziti_close = ziti_sdk_c_close,
+            .ziti_close_write = ziti_sdk_c_close_write,
             .ziti_write = ziti_sdk_c_write,
             .ziti_host_v1 = ziti_sdk_c_host_v1
 

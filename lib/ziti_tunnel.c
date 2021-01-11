@@ -307,7 +307,8 @@ static struct raw_pcb * init_protocol_handler(u8_t proto, raw_recv_fn recv_fn, v
 
 static void run_packet_loop(uv_loop_t *loop, tunneler_context tnlr_ctx) {
     if (tnlr_ctx->opts.ziti_close == NULL || tnlr_ctx->opts.ziti_dial == NULL ||
-        tnlr_ctx->opts.ziti_write == NULL || tnlr_ctx->opts.ziti_host_v1 == NULL) {
+        tnlr_ctx->opts.ziti_write == NULL || tnlr_ctx->opts.ziti_host_v1 == NULL ||
+        tnlr_ctx->opts.ziti_close_write == NULL) {
         ZITI_LOG(ERROR, "ziti_sdk_* callback options cannot be null");
         exit(1);
     }

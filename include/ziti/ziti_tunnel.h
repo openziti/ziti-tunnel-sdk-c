@@ -78,6 +78,7 @@ typedef struct tunneler_sdk_options_s {
     netif_driver   netif_driver;
     ziti_sdk_dial_cb    ziti_dial;
     ziti_sdk_close_cb   ziti_close;
+    ziti_sdk_close_cb   ziti_close_write;
     ziti_sdk_write_cb   ziti_write;
     ziti_sdk_host_v1_cb ziti_host_v1;
 } tunneler_sdk_options;

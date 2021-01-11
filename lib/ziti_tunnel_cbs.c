@@ -84,6 +84,18 @@ int ziti_sdk_c_close(void *io_ctx) {
     if (ziti_io_ctx->ziti_conn != NULL) {
         ZITI_LOG(DEBUG, "closing ziti_conn tnlr_eof=%d, ziti_eof=%d", ziti_io_ctx->tnlr_eof, ziti_io_ctx->ziti_eof);
         ziti_io_ctx->tnlr_eof = true;
+        ziti_close(ziti_io_ctx->ziti_conn, ziti_conn_close_cb);
+        free(ziti_io_ctx);
+    }
+    return 1;
+}
+
+/** called by tunneler SDK after a client sends connection is closed */
+int ziti_sdk_c_close_write(void *io_ctx) {
+    ziti_io_context *ziti_io_ctx = io_ctx;
+    if (ziti_io_ctx->ziti_conn != NULL) {
+        ZITI_LOG(DEBUG, "closing ziti_conn tnlr_eof=%d, ziti_eof=%d", ziti_io_ctx->tnlr_eof, ziti_io_ctx->ziti_eof);
+        ziti_io_ctx->tnlr_eof = true;
         if (ziti_io_ctx->ziti_eof) { // both sides are now closed
             ZITI_LOG(DEBUG, "closing ziti_conn tnlr_eof=%d, ziti_eof=%d", ziti_io_ctx->tnlr_eof, ziti_io_ctx->ziti_eof);
             ziti_close(ziti_io_ctx->ziti_conn, ziti_conn_close_cb);
