@@ -16,14 +16,14 @@
 #error "please port this file to your operating system"
 #endif
 
-static void on_ziti_init(ziti_context ziti_ctx, int status, void *init_ctx);
 static void on_service(ziti_context ziti_ctx, ziti_service *service, int status, void *tnlr_ctx);
+static void on_ziti_event(ziti_context ztx, const ziti_event_t *event);
 
 const char *cfg_types[] = { "ziti-tunneler-client.v1", "ziti-tunneler-server.v1", NULL };
 static ziti_options OPTS = {
         .config_types = cfg_types,
-        .service_cb = on_service,
-        .init_cb = on_ziti_init,
+        .events = ZitiContextEvent|ZitiServiceEvent,
+        .event_cb = on_ziti_event,
         .refresh_interval = 10, /* default refresh */
 };
 
@@ -39,7 +39,7 @@ void on_service(ziti_context ziti_ctx, ziti_service *service, int status, void *
                 ziti_tunneler_intercept_v1(tnlr_ctx, ziti_ctx, service->id, service->name, v1_config.hostname, v1_config.port);
                 ip_addr_t intercept_ip;
                 if (ipaddr_aton(v1_config.hostname, &intercept_ip) == 1) {
-                    tunneler_sdk_options *tun_opts = OPTS.ctx;
+                    tunneler_sdk_options *tun_opts = tnlr_ctx;
                     tun_opts->netif_driver->add_route(tun_opts->netif_driver->handle, v1_config.hostname);
                 }
                 free_ziti_client_cfg_v1(&v1_config);
@@ -65,10 +65,32 @@ void on_service(ziti_context ziti_ctx, ziti_service *service, int status, void *
     }
 }
 
-static void on_ziti_init(ziti_context ziti_ctx, int status, void *init_ctx) {
-    if (status != ZITI_OK) {
-        ZITI_LOG(ERROR, "failed to initialize ziti");
-        exit(1);
+static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
+    switch (event->type) {
+        case ZitiContextEvent:
+            if (event->event.ctx.ctrl_status == ZITI_OK) {
+                ZITI_LOG(INFO, "ziti_ctx[%s] connected to controller", ziti_get_identity(ztx)->name);
+            } else {
+                ZITI_LOG(WARN, "ziti_ctx controller connections failed: %s", ziti_errorstr(event->event.ctx.ctrl_status));
+            }
+            break;
+
+        case ZitiServiceEvent: {
+            ziti_service **zs;
+            for (zs = event->event.service.removed; *zs != NULL; zs++) {
+                on_service(ztx, *zs, ZITI_SERVICE_UNAVAILABLE, ziti_app_ctx(ztx));
+            }
+            for (zs = event->event.service.added; *zs != NULL; zs++) {
+                on_service(ztx, *zs, ZITI_OK, ziti_app_ctx(ztx));
+            }
+            for (zs = event->event.service.changed; *zs != NULL; zs++) {
+                on_service(ztx, *zs, ZITI_OK, ziti_app_ctx(ztx));
+            }
+            break;
+        }
+
+        case ZitiRouterEvent:
+            break;
     }
 }
 
@@ -107,9 +129,9 @@ static int run_tunnel(const char *ip_range, dns_manager *dns) {
     tunneler_context tnlr_ctx = ziti_tunneler_init(&tunneler_opts, ziti_loop);
     ziti_tunneler_set_dns(tnlr_ctx, dns);
 
-    OPTS.ctx = tnlr_ctx;
+    OPTS.app_ctx = tnlr_ctx;
 
-    if (ziti_init_opts(&OPTS, ziti_loop, NULL) != 0) {
+    if (ziti_init_opts(&OPTS, ziti_loop) != 0) {
         ZITI_LOG(ERROR, "failed to initialize ziti");
         return 1;
     }
