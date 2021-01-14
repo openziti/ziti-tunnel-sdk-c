@@ -145,7 +145,10 @@ void * ziti_sdk_c_dial(const intercept_ctx_t *intercept_ctx, struct io_ctx_s *io
 
 /** called by ziti SDK when data transfer initiated by ziti_write completes */
 static void on_ziti_write(ziti_connection ziti_conn, ssize_t len, void *ctx) {
-    ziti_tunneler_ack(ctx);
+    if (len > 0) {
+        ziti_tunneler_ack(ctx);
+    }
+    free(ctx);
 }
 
 /** called from tunneler SDK when intercepted client sends data */

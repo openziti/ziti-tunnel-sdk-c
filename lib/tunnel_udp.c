@@ -39,7 +39,7 @@ static void to_ziti(struct io_ctx_s *io, struct pbuf *p) {
         wr_ctx->ack = tunneler_udp_ack;
         ssize_t s = zwrite(io->ziti_io, wr_ctx, recv_data->payload, recv_data->len);
         if (s < 0) {
-            free(wr_ctx);
+            ZITI_LOG(ERROR, "ziti_write failed: service=%s, client=%s, ret=%ld", io->tnlr_io->service_name, io->tnlr_io->client, s);
             pbuf_free(recv_data);
         }
         recv_data = recv_data->next;
