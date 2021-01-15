@@ -63,7 +63,6 @@ tunneler_context ziti_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop)
 /** called by tunneler application when data has been successfully written to ziti */
 void ziti_tunneler_ack(struct write_ctx_s *write_ctx) {
     write_ctx->ack(write_ctx);
-    free(write_ctx);
 }
 
 void free_tunneler_io_context(tunneler_io_context *tnlr_io_ctx) {
