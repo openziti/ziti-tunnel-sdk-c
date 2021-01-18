@@ -85,6 +85,7 @@ int ziti_sdk_c_close(void *io_ctx) {
         ZITI_LOG(DEBUG, "closing ziti_conn tnlr_eof=%d, ziti_eof=%d", ziti_io_ctx->tnlr_eof, ziti_io_ctx->ziti_eof);
         ziti_io_ctx->tnlr_eof = true;
         ziti_close(ziti_io_ctx->ziti_conn, ziti_conn_close_cb);
+        ziti_conn_set_data(ziti_io_ctx->ziti_conn, NULL);
         free(ziti_io_ctx);
     }
     return 1;
