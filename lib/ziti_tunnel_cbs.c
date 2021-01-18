@@ -349,7 +349,7 @@ static void on_hosted_tcp_server_connect_complete(uv_connect_t *c, int status) {
 }
 
 /** called by ziti sdk when a ziti endpoint (client) initiates connection to a hosted service */
-static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, int status) {
+static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, int status, ziti_client_ctx *clt_ctx) {
     struct hosted_service_ctx_s *service_ctx = ziti_conn_data(serv);
 
     if (service_ctx == NULL) {
@@ -361,7 +361,7 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
     struct addrinfo *ai, hints;
     memset(&hints, 0, sizeof(hints));
     hints.ai_flags = AI_ADDRCONFIG;   /* only return local IPs */
-    hints.ai_flags |= AI_NUMERICSERV; /* we are supplying a numeric port; don't attempt to resolve servname */;
+    hints.ai_flags |= AI_NUMERICSERV; /* we are supplying a numeric port; don't attempt to resolve servname */
     hints.ai_protocol = service_ctx->proto_id;
     switch (service_ctx->proto_id) {
         case IPPROTO_TCP:
