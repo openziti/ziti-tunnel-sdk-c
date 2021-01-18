@@ -219,7 +219,6 @@ void * ziti_sdk_c_dial(const intercept_ctx_t *intercept_ctx, struct io_ctx_s *io
         ZITI_LOG(WARN, "null intercept_ctx");
         return NULL;
     }
-    ZITI_LOG(VERBOSE, "ziti_dial(name=%s)", intercept_ctx->service_name);
 
     ziti_io_context *ziti_io_ctx = malloc(sizeof(struct ziti_io_ctx_s));
     if (ziti_io_ctx == NULL) {
@@ -255,6 +254,7 @@ void * ziti_sdk_c_dial(const intercept_ctx_t *intercept_ctx, struct io_ctx_s *io
     dial_opts.app_data_sz = get_app_data_json(app_data_json, sizeof(app_data_json), io->tnlr_io, ziti_ctx, source_ip) + 1;
     dial_opts.app_data = app_data_json;
 
+    ZITI_LOG(DEBUG, "service[%s] app_data_json='%s'", intercept_ctx->service_name, app_data_json);
     if (ziti_dial_with_options(ziti_io_ctx->ziti_conn, intercept_ctx->service_name, &dial_opts, on_ziti_connect, on_ziti_data) != ZITI_OK) {
         ZITI_LOG(ERROR, "ziti_dial failed");
         free(ziti_io_ctx);
