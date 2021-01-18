@@ -132,6 +132,7 @@ static err_t on_tcp_client_data(void *io_ctx, struct tcp_pcb *pcb, struct pbuf *
         ZITI_LOG(INFO, "client sent FIN: client=%s, service=%s", io->tnlr_io->client, io->tnlr_io->service_name);
         LOG_STATE(DEBUG, "FIN received", pcb);
         io->tnlr_io->tnlr_ctx->opts.ziti_close_write(io->ziti_io);
+        io->ziti_io = NULL;
         return err;
     }
 
