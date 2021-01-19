@@ -15,6 +15,7 @@ limitations under the License.
 */
 
 #include <ziti/ziti_tunnel.h>
+#include <ziti/ziti_log.h>
 #include <stdlib.h>
 
 static int apply_address(dns_manager *dns, const char *hostname, const char *ip);
@@ -38,6 +39,7 @@ static int apply_address(dns_manager *dns, const char *hostname, const char *ip)
     int c = snprintf(entry, sizeof(entry), "%s\t%s", ip, hostname);
     FILE *rec = fopen(fname, "wb");
     if (rec == NULL) {
+        ZITI_LOG(ERROR, "failed to open %s: %s", fname, strerror(errno));
         return 1;
     }
     fwrite(entry, 1, c, rec);
