@@ -637,7 +637,7 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
 
     if (status != ZITI_OK) {
         ZITI_LOG(ERROR, "incoming connection to service[%s] failed: %s", service_ctx->service_name, ziti_errorstr(status));
-        ziti_close(&clt);
+        ziti_close(clt, ziti_conn_close_cb);
         return;
     }
 
@@ -827,7 +827,7 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
 
 done:
     if (err) {
-        ziti_close(&clt);
+        ziti_close(clt, ziti_conn_close_cb);
         safe_free(io_ctx);
     }
     if (app_data_json != NULL) {
