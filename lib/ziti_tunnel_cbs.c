@@ -641,15 +641,16 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
         return;
     }
 
-    const char *client_identity = ziti_conn_source_identity(clt);
+    const char *client_identity = clt_ctx->caller_id;
     if (client_identity == NULL) client_identity = "<unidentified>";
 
     struct addrinfo *dial_ai = NULL, *source_ai = NULL;
     struct hosted_io_ctx_s *io_ctx = NULL;
     bool err = false;
 
-    char *app_data_json = ziti_conn_data(clt);
+    char *app_data_json = (char *) clt_ctx->app_data;
     tunneler_app_data app_data_model;
+    memset(&app_data_model, 0, sizeof(app_data_model));
     if (app_data_json != NULL) {
         ZITI_LOG(DEBUG, "hosted_service[%s], client[%s]: received app_data_json='%s'", service_ctx->service_name,
                  client_identity, app_data_json);
