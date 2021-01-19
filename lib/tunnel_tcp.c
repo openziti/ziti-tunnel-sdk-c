@@ -110,6 +110,9 @@ static struct tcp_pcb *new_tcp_pcb(ip_addr_t src, ip_addr_t dest, struct tcp_hdr
 static err_t on_tcp_client_data(void *io_ctx, struct tcp_pcb *pcb, struct pbuf *p, err_t err) {
     if (io_ctx == NULL) {
         ZITI_LOG(INFO, "conn was closed err=%d", err);
+        if (p != NULL) {
+            pbuf_free(p);
+        }
         return ERR_OK;
     }
     LOG_STATE(VERBOSE, "status %d", pcb, err);
@@ -117,19 +120,17 @@ static err_t on_tcp_client_data(void *io_ctx, struct tcp_pcb *pcb, struct pbuf *
 
     if (io->tnlr_io == NULL) {
         ZITI_LOG(INFO, "null tnlr_io_ctx");
+        if (p != NULL) {
+            pbuf_free(p);
+        }
         return ERR_CONN;
     }
 
     if (err == ERR_OK && p == NULL) {
         ZITI_LOG(INFO, "client sent FIN: client=%s, service=%s", io->tnlr_io->client, io->tnlr_io->service_name);
         LOG_STATE(DEBUG, "FIN received", pcb);
-        if (io->tnlr_io->tnlr_ctx->opts.ziti_close(io->ziti_io)) {
-            tcp_close(pcb);
-            io->ziti_io = NULL;
-            free_tunneler_io_context(&io->tnlr_io);
-            free(io);
-            tcp_arg(pcb, NULL);
-        }
+        io->tnlr_io->tnlr_ctx->opts.ziti_close_write(io->ziti_io);
+        io->ziti_io = NULL;
         return err;
     }
 
@@ -142,7 +143,6 @@ static err_t on_tcp_client_data(void *io_ctx, struct tcp_pcb *pcb, struct pbuf *
     ssize_t s = zwrite(io->ziti_io, wr_ctx, p->payload, len);
     if (s < 0) {
         ZITI_LOG(ERROR, "ziti_write failed: service=%s, client=%s, ret=%ld", io->tnlr_io->service_name, io->tnlr_io->client, s);
-        free(wr_ctx);
         free(io);
         tcp_arg(pcb, NULL);
         pbuf_free(p);
@@ -165,6 +165,9 @@ static void  on_tcp_client_err(void *io_ctx, err_t err) {
         ZITI_LOG(ERROR, "client=%s err=%d, terminating connection", client, err);
         if (io->ziti_io != NULL && io->tnlr_io != NULL) {
             io->tnlr_io->tnlr_ctx->opts.ziti_close(io->ziti_io);
+            io->ziti_io = NULL;
+            free_tunneler_io_context(&io->tnlr_io);
+            free(io);
         }
     }
 }

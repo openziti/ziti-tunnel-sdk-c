@@ -77,7 +77,6 @@ void ziti_tunneler_shutdown(tunneler_context tnlr_ctx) {
 /** called by tunneler application when data has been successfully written to ziti */
 void ziti_tunneler_ack(struct write_ctx_s *write_ctx) {
     write_ctx->ack(write_ctx);
-    free(write_ctx);
 }
 
 const char *get_intercepted_address(const struct tunneler_io_ctx_s * tnlr_io) {
@@ -413,8 +412,8 @@ static struct raw_pcb * init_protocol_handler(u8_t proto, raw_recv_fn recv_fn, v
 
 static void run_packet_loop(uv_loop_t *loop, tunneler_context tnlr_ctx) {
     tunneler_sdk_options opts = tnlr_ctx->opts;
-    if (opts.ziti_close == NULL || opts.ziti_dial == NULL || opts.ziti_write == NULL ||
-        opts.ziti_host == NULL) {
+    if (opts.ziti_close == NULL || opts.ziti_close_write == NULL ||  opts.ziti_write == NULL ||
+        opts.ziti_dial == NULL || opts.ziti_host == NULL) {
         ZITI_LOG(ERROR, "ziti_sdk_* callback options cannot be null");
         exit(1);
     }
