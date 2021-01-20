@@ -79,7 +79,7 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ${{runner.workspace}}/downloads/ubuntu-16.04-x86_64/ziti-edge-tunnel-Linux_x86_64.zip
+        asset_path: ${{runner.workspace}}/downloads/Linux-x86_64/ziti-edge-tunnel-Linux_x86_64.zip
         asset_name: ziti-edge-tunnel-Linux_x86_64.zip
         asset_content_type: application/octet-stream
 
@@ -89,7 +89,7 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ${{runner.workspace}}/downloads/ubuntu-16.04-arm/ziti-edge-tunnel-Linux_arm.zip
+        asset_path: ${{runner.workspace}}/downloads/Linux-arm/ziti-edge-tunnel-Linux_arm.zip
         asset_name: ziti-edge-tunnel-Linux_arm.zip
         asset_content_type: application/octet-stream
 
@@ -99,6 +99,6 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ${{runner.workspace}}/downloads/macOS-latest-x86_64/ziti-edge-tunnel-Darwin_x86_64.zip
+        asset_path: ${{runner.workspace}}/downloads/macOS-x86_64/ziti-edge-tunnel-Darwin_x86_64.zip
         asset_name: ziti-edge-tunnel-Darwin_x86_64.zip
         asset_content_type: application/octet-stream
