@@ -26,22 +26,34 @@ jobs:
     strategy:
       matrix:
         os:
-          - ubuntu-latest
+          - ubuntu-16.04
           - macOS-latest
+        toolchain: [ default.cmake ]
+        arch: [ x86_64 ]
+        install: [ '' ]
+
+        include:
+          - os: ubuntu-16.04
+            arch: arm
+            toolchain: Linux-arm.cmake
+            install: crossbuild-essentials-armhf
 
     steps:
     - uses: actions/checkout@v2
       with:
         fetch-depth: '0'
+    - name: install tools
+      if: matrix.install != ''
+      run: sudo apt install ${{matrix.install}}
     - name: make build dir
       run: cmake -E make_directory ${{runner.workspace}}/build
     - name: configure cmake
-      run: cmake -DCMAKE_BUILD_TYPE=Debug -S ${{ github.workspace }} -B ${{runner.workspace}}/build
+      run: cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=${{github.workspace}}/toolchain/${{matrix.toolchain}} -S ${{ github.workspace }} -B ${{runner.workspace}}/build
     - name: build
       run: cmake --build ${{runner.workspace}}/build --target bundle
     - uses: actions/upload-artifact@v2
       with:
-        name: ${{ matrix.os }}
+        name: ${{ runner.os }}-${{matrix.arch}}
         path: ${{ runner.workspace }}/build/bundle/*.zip
 
   release:
@@ -67,15 +79,26 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ${{runner.workspace}}/downloads/ubuntu-latest/ziti-edge-tunnel-Linux_x86_64.zip
+        asset_path: ${{runner.workspace}}/downloads/Linux-x86_64/ziti-edge-tunnel-Linux_x86_64.zip
         asset_name: ziti-edge-tunnel-Linux_x86_64.zip
         asset_content_type: application/octet-stream
+
+    - name: upload Linux ARM
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ${{runner.workspace}}/downloads/Linux-arm/ziti-edge-tunnel-Linux_arm.zip
+        asset_name: ziti-edge-tunnel-Linux_arm.zip
+        asset_content_type: application/octet-stream
+
     - name: upload MacOS
       uses: actions/upload-release-asset@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ${{runner.workspace}}/downloads/macOS-latest/ziti-edge-tunnel-Darwin_x86_64.zip
+        asset_path: ${{runner.workspace}}/downloads/macOS-x86_64/ziti-edge-tunnel-Darwin_x86_64.zip
         asset_name: ziti-edge-tunnel-Darwin_x86_64.zip
         asset_content_type: application/octet-stream
