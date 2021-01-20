@@ -48,7 +48,7 @@ jobs:
     - name: make build dir
       run: cmake -E make_directory ${{runner.workspace}}/build
     - name: configure cmake
-      run: cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=${{github.workspace}}/toolchain/${{matrix.toolchain}} -S ${{ github.workspace }} -B ${{runner.workspace}}/build
+      run: cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=${{github.workspace}}/toolchains/${{matrix.toolchain}} -S ${{ github.workspace }} -B ${{runner.workspace}}/build
     - name: build
       run: cmake --build ${{runner.workspace}}/build --target bundle
     - uses: actions/upload-artifact@v2
