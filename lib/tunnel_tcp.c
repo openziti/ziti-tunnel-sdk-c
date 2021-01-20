@@ -112,6 +112,9 @@ static struct tcp_pcb *new_tcp_pcb(ip_addr_t src, ip_addr_t dest, struct tcp_hdr
 static err_t on_tcp_client_data(void *io_ctx, struct tcp_pcb *pcb, struct pbuf *p, err_t err) {
     if (io_ctx == NULL) {
         ZITI_LOG(INFO, "conn was closed err=%d", err);
+        if (p != NULL) {
+            pbuf_free(p);
+        }
         return ERR_OK;
     }
     LOG_STATE(VERBOSE, "status %d", pcb, err);
@@ -119,6 +122,9 @@ static err_t on_tcp_client_data(void *io_ctx, struct tcp_pcb *pcb, struct pbuf *
 
     if (io->tnlr_io == NULL) {
         ZITI_LOG(INFO, "null tnlr_io_ctx");
+        if (p != NULL) {
+            pbuf_free(p);
+        }
         return ERR_CONN;
     }
 
@@ -126,6 +132,7 @@ static err_t on_tcp_client_data(void *io_ctx, struct tcp_pcb *pcb, struct pbuf *
         ZITI_LOG(INFO, "client sent FIN: client=%s, service=%s", io->tnlr_io->client, io->tnlr_io->service_name);
         LOG_STATE(DEBUG, "FIN received", pcb);
         io->tnlr_io->tnlr_ctx->opts.ziti_close_write(io->ziti_io);
+        io->ziti_io = NULL;
         return err;
     }
 
