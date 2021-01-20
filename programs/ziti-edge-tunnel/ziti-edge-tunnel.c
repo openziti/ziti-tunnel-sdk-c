@@ -149,6 +149,8 @@ static const char* ip_range = "100.64.0.0/10";
 static const char* dns_impl = NULL;
 
 static int run_opts(int argc, char *argv[]) {
+    ziti_set_app_info(main_cmd.name, ziti_tunneler_version());
+
     int c, option_index, errors = 0;
     optind = 0;
 
