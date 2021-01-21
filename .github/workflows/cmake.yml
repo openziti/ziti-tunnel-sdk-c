@@ -1,6 +1,9 @@
 name: CI build
 
 on:
+  push:
+    branches: [ '**' ]
+
   pull_request:
     branches: [ master ]
 
@@ -10,9 +13,24 @@ jobs:
     strategy:
       matrix:
         os:
-          - ubuntu-latest
+          - ubuntu-16.04
           - macOS-latest
-          - windows-latest
+        cmake_opts: [ "" ]
+        arch: [ x86_64 ]
+        toolchain: [ default.cmake ]
+        cmake_target: [ bundle ]
+
+        include:
+          - os: windows-latest
+            cmake_opts: -G "MinGW Makefiles" -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}\install
+            toolchain: default.cmake
+            arch: [ x86_64 ]
+
+          - os: ubuntu-16.04
+            install: crossbuild-essential-armhf
+            toolchain: Linux-arm.cmake
+            cmake_target: bundle
+            arch: arm
 
     steps:
       - uses: actions/checkout@v2
@@ -20,25 +38,18 @@ jobs:
           fetch-depth: 0
       - name: make build dir
         run: cmake -E make_directory ${{runner.workspace}}/build
-        
-        #mac/linux
-      - name: configure cmake
-        if: matrix.os != 'windows-latest'
-        run: cmake -S ${{ github.workspace }} -B ${{runner.workspace}}/build
-      - name: build
-        if: matrix.os != 'windows-latest'
-        run: cmake --build ${{runner.workspace}}/build --target bundle
 
-        #windows
-      - name: configure cmake (WIN)
-        if: matrix.os == 'windows-latest'
-        run: cmake -G "MinGW Makefiles" -S ${{ github.workspace }} -B ${{runner.workspace}}/build -DCMAKE_INSTALL_PREFIX=${{runner.workspace}}\install
-      - name: build (WIN)
-        if: matrix.os == 'windows-latest'
-        run: cmake --build ${{runner.workspace}}/build --target install
+      - name: install toolchain
+        if: matrix.install != ''
+        run: sudo apt install ${{ matrix.install }}
+
+      - name: configure cmake
+        run: cmake ${{matrix.cmake_opts}} -DCMAKE_TOOLCHAIN_FILE=${{github.workspace}}/toolchains/${{matrix.toolchain}} -S ${{ github.workspace }} -B ${{runner.workspace}}/build
+      - name: build
+        run: cmake --build ${{runner.workspace}}/build --target ${{ matrix.cmake_target }}
 
       - uses: actions/upload-artifact@v2
-        if: matrix.os != 'windows-latest'
+        if: matrix.cmake_target == 'bundle'
         with:
-          name: ${{ runner.os }}
+          name: ${{ runner.os }}-${{ matrix.arch }}
           path: ${{ runner.workspace }}/build/bundle/*.zip
