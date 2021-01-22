@@ -277,7 +277,7 @@ static void on_hosted_tcp_server_data(uv_stream_t *stream, ssize_t nread, const 
         if (nread == UV_ENOBUFS) {
             ZITI_LOG(WARN, "tcp server is throttled: could not allocate buffer for incoming data [%zd](%s)", nread, uv_strerror(nread));
         } else if (nread == UV_EOF) {
-            ZITI_LOG(INFO, "server sent FIN ziti_eof=%d, tcp_eof=%d", io_ctx->ziti_eof, io_ctx->tcp_eof);
+            ZITI_LOG(DEBUG, "server sent FIN ziti_eof=%d, tcp_eof=%d", io_ctx->ziti_eof, io_ctx->tcp_eof);
             if (io_ctx->ziti_eof) {
                 ziti_close(io_ctx->client, ziti_conn_close_cb);
                 io_ctx->client = NULL;
