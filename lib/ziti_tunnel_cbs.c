@@ -198,6 +198,23 @@ static void tcp_shutdown_cb(uv_shutdown_t *req, int res) {
     free(req);
 }
 
+static void hosted_server_close(struct hosted_io_ctx_s *io_ctx) {
+    switch (io_ctx->service->proto_id) {
+        case IPPROTO_TCP:
+            if (io_ctx->tcp_eof) {
+                ziti_close(io_ctx->client, ziti_conn_close_cb);
+                uv_close((uv_handle_t *)&io_ctx->server.tcp, hosted_server_close_cb);
+            } else {
+                uv_shutdown_t *shut = calloc(1, sizeof(uv_shutdown_t));
+                uv_shutdown(shut, (uv_stream_t *) &io_ctx->server.tcp, tcp_shutdown_cb);
+            }
+            break;
+        case IPPROTO_UDP:
+            uv_close((uv_handle_t *)&io_ctx->server.udp, NULL);
+            break;
+    }
+}
+
 /* called by ziti sdk when a client of a hosted service sends data */
 static ssize_t on_hosted_client_data(ziti_connection clt, uint8_t *data, ssize_t len) {
     struct hosted_io_ctx_s *io_ctx = ziti_conn_data(clt);
@@ -226,23 +243,11 @@ static ssize_t on_hosted_client_data(ziti_connection clt, uint8_t *data, ssize_t
     else if (len == ZITI_EOF) {
         ZITI_LOG(INFO, "client sent EOF, ziti_eof=%d, tcp_eof=%d", io_ctx->ziti_eof, io_ctx->tcp_eof);
         io_ctx->ziti_eof = true;
-        switch (io_ctx->service->proto_id) {
-            case IPPROTO_TCP:
-                if (io_ctx->tcp_eof) {
-                    ziti_close(clt, ziti_conn_close_cb);
-                    uv_close((uv_handle_t *)&io_ctx->server.tcp, hosted_server_close_cb);
-                } else {
-                    uv_shutdown_t *shut = calloc(1, sizeof(uv_shutdown_t));
-                    uv_shutdown(shut, (uv_stream_t *) &io_ctx->server.tcp, tcp_shutdown_cb);
-                }
-                break;
-            case IPPROTO_UDP:
-                uv_close((uv_handle_t *)&io_ctx->server.udp, NULL);
-                break;
-        }
+        hosted_server_close(io_ctx);
     }
     else {
-        ZITI_LOG(ERROR, "error: %zd(%s)", len, ziti_errorstr(len));
+        ZITI_LOG(DEBUG, "client status %s. closing server connection", ziti_errorstr(len));
+        hosted_server_close(io_ctx);
     }
     return len;
 }
@@ -279,6 +284,8 @@ static void on_hosted_tcp_server_data(uv_stream_t *stream, ssize_t nread, const 
                 uv_close((uv_handle_t *) &io_ctx->server.tcp, hosted_server_close_cb);
             } else {
                 ziti_close_write(io_ctx->client);
+                uv_read_stop((uv_stream_t *) &io_ctx->server.tcp);
+                io_ctx->tcp_eof = true;
             }
         } else {
             ZITI_LOG(WARN, "error reading from server [%zd](%s)", nread, uv_strerror(nread));
