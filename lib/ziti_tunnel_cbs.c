@@ -203,7 +203,9 @@ static void hosted_server_close(struct hosted_io_ctx_s *io_ctx) {
         case IPPROTO_TCP:
             if (io_ctx->tcp_eof) {
                 ziti_close(io_ctx->client, ziti_conn_close_cb);
+                ziti_conn_set_data(io_ctx->client, NULL);
                 uv_close((uv_handle_t *)&io_ctx->server.tcp, hosted_server_close_cb);
+                io_ctx->server.tcp.data = NULL;
             } else {
                 uv_shutdown_t *shut = calloc(1, sizeof(uv_shutdown_t));
                 uv_shutdown(shut, (uv_stream_t *) &io_ctx->server.tcp, tcp_shutdown_cb);
@@ -211,6 +213,7 @@ static void hosted_server_close(struct hosted_io_ctx_s *io_ctx) {
             break;
         case IPPROTO_UDP:
             uv_close((uv_handle_t *)&io_ctx->server.udp, NULL);
+            io_ctx->server.udp.data = NULL;
             break;
     }
 }
@@ -280,8 +283,10 @@ static void on_hosted_tcp_server_data(uv_stream_t *stream, ssize_t nread, const 
             ZITI_LOG(DEBUG, "server sent FIN ziti_eof=%d, tcp_eof=%d", io_ctx->ziti_eof, io_ctx->tcp_eof);
             if (io_ctx->ziti_eof) {
                 ziti_close(io_ctx->client, ziti_conn_close_cb);
+                ziti_conn_set_data(io_ctx->client, NULL);
                 io_ctx->client = NULL;
                 uv_close((uv_handle_t *) &io_ctx->server.tcp, hosted_server_close_cb);
+                stream->data = NULL;
             } else {
                 ziti_close_write(io_ctx->client);
                 uv_read_stop((uv_stream_t *) &io_ctx->server.tcp);
@@ -290,6 +295,7 @@ static void on_hosted_tcp_server_data(uv_stream_t *stream, ssize_t nread, const 
         } else {
             ZITI_LOG(WARN, "error reading from server [%zd](%s)", nread, uv_strerror(nread));
             ziti_close(io_ctx->client, ziti_conn_close_cb);
+            ziti_conn_set_data(io_ctx->client, NULL);
             io_ctx->client = NULL;
         }
 
@@ -309,7 +315,9 @@ static void on_hosted_udp_server_data(uv_udp_t* handle, ssize_t nread, const uv_
         }
         ZITI_LOG(ERROR, "error receiving data from hosted service %s", io_ctx->service->service_name);
         ziti_close(io_ctx->client, ziti_conn_close_cb);
+        ziti_conn_set_data(io_ctx->client, NULL);
         io_ctx->client = NULL;
+        handle->data = NULL;
     }
 }
 
