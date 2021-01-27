@@ -399,7 +399,7 @@ static void on_hosted_tcp_server_connect_complete(uv_connect_t *c, int status) {
     struct hosted_io_ctx_s *io_ctx = c->handle->data;
     if (io_ctx->client == NULL) {
         ZITI_LOG(ERROR, "client closed before server connection was established");
-        free(c);
+        uv_close((uv_handle_t *) c->handle, hosted_server_close_cb);
         return;
     }
 
