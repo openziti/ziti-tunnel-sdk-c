@@ -65,3 +65,16 @@ target_link_libraries(ziti-tunnel-sdk-c
         PUBLIC ${lwip_sys_lib}
         PUBLIC lwipcore
         )
+
+#copy relevant .h files to the include folder
+install(DIRECTORY "${LWIP_DIR}/src/include/lwip"
+     DESTINATION "${CMAKE_INSTALL_PREFIX}/include"
+     FILES_MATCHING PATTERN "*.h"
+)
+install(DIRECTORY "${LWIP_CONTRIB_DIR}/ports/${lwip_sys}/include/arch"
+     DESTINATION "${CMAKE_INSTALL_PREFIX}/include"
+     FILES_MATCHING PATTERN "*.h"
+)
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/lwip/lwipopts.h"
+     DESTINATION "${CMAKE_INSTALL_PREFIX}/include"
+)
