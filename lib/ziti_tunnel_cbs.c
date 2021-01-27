@@ -226,10 +226,6 @@ static void ziti_client_close(struct hosted_io_ctx_s *io_ctx) {
     ziti_conn_set_data(io_ctx->client, NULL);
 }
 
-static void ziti_client_shutdown(struct hosted_io_ctx_s *io_ctx) {
-
-}
-
 /* called by ziti sdk when a client of a hosted service sends data */
 static ssize_t on_hosted_client_data(ziti_connection clt, uint8_t *data, ssize_t len) {
     struct hosted_io_ctx_s *io_ctx = ziti_conn_data(clt);
