@@ -17,6 +17,8 @@ project(ziti-tunnel-sdk-c
 include(CPack)
 set(CPACK_PACKAGE_VENDOR "NetFoundry")
 
+add_compile_options(-g)
+
 add_custom_target(bundle
         COMMENT "creates publishable artifacts")
 
