@@ -157,8 +157,9 @@ ssize_t ziti_sdk_c_write(const void *ziti_io_ctx, void *write_ctx, const void *d
     struct ziti_io_ctx_s *_ziti_io_ctx = (struct ziti_io_ctx_s *)ziti_io_ctx;
     int zs = ziti_write(_ziti_io_ctx->ziti_conn, (void *)data, len, on_ziti_write, write_ctx);
     if (zs != ZITI_OK) {
-        on_ziti_write(_ziti_io_ctx->ziti_conn, len, on_ziti_write);
+        on_ziti_write(_ziti_io_ctx->ziti_conn, len, write_ctx);
     }
+    return zs;
 }
 
 /********** hosting **********/
