@@ -29,6 +29,7 @@ jobs:
           - os: ubuntu-16.04
             install: crossbuild-essential-armhf
             toolchain: Linux-arm.cmake
+            cmake_opts: -DCMAKE_BUILD_TYPE=Release
             cmake_target: bundle
             arch: arm
 
@@ -46,7 +47,7 @@ jobs:
       - name: configure cmake
         run: cmake ${{matrix.cmake_opts}} -DCMAKE_TOOLCHAIN_FILE=${{github.workspace}}/toolchains/${{matrix.toolchain}} -S ${{ github.workspace }} -B ${{runner.workspace}}/build
       - name: build
-        run: cmake --build ${{runner.workspace}}/build --target ${{ matrix.cmake_target }}
+        run: cmake --build ${{runner.workspace}}/build --target ${{ matrix.cmake_target }} --verbose
 
       - uses: actions/upload-artifact@v2
         if: matrix.cmake_target == 'bundle'
