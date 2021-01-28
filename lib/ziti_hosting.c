@@ -80,13 +80,14 @@ static void tcp_shutdown_cb(uv_shutdown_t *req, int res) {
     free(req);
 }
 
+#define safe_close(h, cb) if(!uv_is_closing((uv_handle_t*)h)) uv_close((uv_handle_t*)h, cb)
 static void hosted_server_close(struct hosted_io_ctx_s *io_ctx) {
     switch (io_ctx->service->proto_id) {
         case IPPROTO_TCP:
-            uv_close((uv_handle_t *) &io_ctx->server.tcp, hosted_server_close_cb);
+            safe_close(&io_ctx->server.tcp, hosted_server_close_cb);
             break;
         case IPPROTO_UDP:
-            uv_close((uv_handle_t *) &io_ctx->server.udp, hosted_server_close_cb);
+            safe_close( &io_ctx->server.udp, hosted_server_close_cb);
             break;
     }
 }
@@ -138,7 +139,7 @@ static ssize_t on_hosted_client_data(ziti_connection clt, uint8_t *data, ssize_t
     }
     else if (len == ZITI_EOF) {
         // client will not send more data, but should send one more message for connection closed.
-        ZITI_LOG(INFO, "io %p sent EOF, ziti_eof=%d, tcp_eof=%d", io_ctx, io_ctx->ziti_eof, io_ctx->tcp_eof);
+        ZITI_LOG(DEBUG, "io %p sent EOF, ziti_eof=%d, tcp_eof=%d", io_ctx, io_ctx->ziti_eof, io_ctx->tcp_eof);
         io_ctx->ziti_eof = true;
         if (io_ctx->tcp_eof) {
             // server has also sent EOF, so close both sides now
@@ -188,7 +189,7 @@ static void on_hosted_tcp_server_data(uv_stream_t *stream, ssize_t nread, const 
         if (nread == UV_ENOBUFS) {
             ZITI_LOG(WARN, "tcp server is throttled: could not allocate buffer for incoming data [%zd](%s)", nread, uv_strerror(nread));
         } else if (nread == UV_EOF) {
-            ZITI_LOG(INFO, "server sent FIN ziti_eof=%d, tcp_eof=%d, io=%p", io_ctx->ziti_eof, io_ctx->tcp_eof, io_ctx);
+            ZITI_LOG(DEBUG, "server sent FIN ziti_eof=%d, tcp_eof=%d, io=%p", io_ctx->ziti_eof, io_ctx->tcp_eof, io_ctx);
             io_ctx->tcp_eof = true;
             if (io_ctx->ziti_eof) {
                 // ziti client has also sent EOF, so close both sides now
@@ -231,7 +232,7 @@ static void on_hosted_udp_server_data(uv_udp_t* handle, ssize_t nread, const uv_
 static void on_hosted_client_connect_complete(ziti_connection clt, int err) {
     struct hosted_io_ctx_s *io_ctx = ziti_conn_data(clt);
     if (err == ZITI_OK) {
-        ZITI_LOG(INFO, "client connected to hosted service %s", io_ctx->service->service_name);
+        ZITI_LOG(DEBUG, "client connected to hosted service %s", io_ctx->service->service_name);
         switch (io_ctx->service->proto_id) {
             case IPPROTO_TCP:
                 uv_read_start((uv_stream_t *) &io_ctx->server.tcp, alloc_buffer, on_hosted_tcp_server_data);
@@ -271,7 +272,7 @@ static void on_hosted_tcp_server_connect_complete(uv_connect_t *c, int status) {
         free(c);
         return;
     }
-    ZITI_LOG(INFO, "connected to server for client %p(%p): %p", c->handle->data, c->data, c);
+    ZITI_LOG(DEBUG, "connected to server for client %p(%p): %p", c->handle->data, c->data, c);
     ziti_accept(io_ctx->client, on_hosted_client_connect_complete, on_hosted_client_data);
     free(c);
 }
