@@ -80,13 +80,14 @@ static void tcp_shutdown_cb(uv_shutdown_t *req, int res) {
     free(req);
 }
 
+#define safe_close(h, cb) if(!uv_is_closing((uv_handle_t*)h)) uv_close((uv_handle_t*)h, cb)
 static void hosted_server_close(struct hosted_io_ctx_s *io_ctx) {
     switch (io_ctx->service->proto_id) {
         case IPPROTO_TCP:
-            uv_close((uv_handle_t *) &io_ctx->server.tcp, hosted_server_close_cb);
+            safe_close(&io_ctx->server.tcp, hosted_server_close_cb);
             break;
         case IPPROTO_UDP:
-            uv_close((uv_handle_t *) &io_ctx->server.udp, hosted_server_close_cb);
+            safe_close( &io_ctx->server.udp, hosted_server_close_cb);
             break;
     }
 }
