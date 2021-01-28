@@ -1,5 +1,5 @@
 /*
-Copyright 2021 Netfoundry, Inc.
+Copyright 2021 NetFoundry, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,6 +24,8 @@ limitations under the License.
 
 static void ziti_conn_close_cb(ziti_connection zc) {
     ZITI_LOG(TRACE, "ziti_conn[%p] is closed", zc);
+    struct hosted_io_ctx_s *io_ctx = ziti_conn_data(zc);
+    if (io_ctx) free(io_ctx);
 }
 
 /** called by ziti SDK when a ziti client write (to a hosted tcp server) is completed */
@@ -57,7 +59,12 @@ static void free_hosted_io_ctx(struct hosted_io_ctx_s *io_ctx) {
 }
 
 static void hosted_server_close_cb(uv_handle_t *handle) {
-    free_hosted_io_ctx(handle->data);
+    struct hosted_io_ctx_s *io_ctx = handle->data;
+    if (io_ctx->client) {
+        ziti_close(io_ctx->client, ziti_conn_close_cb);
+    } else {
+        free_hosted_io_ctx(handle->data);
+    }
 }
 
 static void tcp_shutdown_cb(uv_shutdown_t *req, int res) {
@@ -68,11 +75,9 @@ static void hosted_server_close(struct hosted_io_ctx_s *io_ctx) {
     switch (io_ctx->service->proto_id) {
         case IPPROTO_TCP:
             uv_close((uv_handle_t *) &io_ctx->server.tcp, hosted_server_close_cb);
-            io_ctx->server.tcp.data = NULL;
             break;
         case IPPROTO_UDP:
-            uv_close((uv_handle_t *) &io_ctx->server.udp, NULL);
-            io_ctx->server.udp.data = NULL;
+            uv_close((uv_handle_t *) &io_ctx->server.udp, hosted_server_close_cb);
             break;
     }
 }
@@ -82,11 +87,6 @@ static void hosted_server_shutdown(struct hosted_io_ctx_s *io_ctx) {
         uv_shutdown_t *shut = calloc(1, sizeof(uv_shutdown_t));
         uv_shutdown(shut, (uv_stream_t *) &io_ctx->server.tcp, tcp_shutdown_cb);
     }
-}
-
-static void ziti_client_close(struct hosted_io_ctx_s *io_ctx) {
-    ziti_close(io_ctx->client, ziti_conn_close_cb);
-    ziti_conn_set_data(io_ctx->client, NULL);
 }
 
 /* called by ziti sdk when a client of a hosted service sends data */
@@ -114,7 +114,7 @@ static ssize_t on_hosted_client_data(ziti_connection clt, uint8_t *data, ssize_t
                     ZITI_LOG(ERROR, "uv_write failed: %s", uv_err_name(err));
                     on_hosted_tcp_client_write(req, err);
                 }
-                }
+            }
                 break;
             case IPPROTO_UDP: {
                 uv_udp_send_t *req = malloc(sizeof(uv_udp_send_t));
@@ -133,7 +133,6 @@ static ssize_t on_hosted_client_data(ziti_connection clt, uint8_t *data, ssize_t
         io_ctx->ziti_eof = true;
         if (io_ctx->tcp_eof) {
             // server has also sent EOF, so close both sides now
-            ziti_client_close(io_ctx);
             hosted_server_close(io_ctx);
         } else {
             // server can still send data, and ziti can still receive
@@ -142,7 +141,6 @@ static ssize_t on_hosted_client_data(ziti_connection clt, uint8_t *data, ssize_t
     }
     else {
         ZITI_LOG(DEBUG, "client status %s. closing server connection", ziti_errorstr(len));
-        ziti_conn_set_data(io_ctx->client, NULL);
         hosted_server_close(io_ctx);
     }
     return len;
@@ -175,7 +173,6 @@ static void on_hosted_tcp_server_data(uv_stream_t *stream, ssize_t nread, const 
                      ziti_errorstr(zs));
             on_hosted_ziti_write(io_ctx->client, nread, buf->base);
             // close both sides
-            ziti_client_close(io_ctx);
             hosted_server_close(io_ctx);
         }
     } else {
@@ -186,7 +183,6 @@ static void on_hosted_tcp_server_data(uv_stream_t *stream, ssize_t nread, const 
             io_ctx->tcp_eof = true;
             if (io_ctx->ziti_eof) {
                 // ziti client has also sent EOF, so close both sides now
-                ziti_client_close(io_ctx);
                 hosted_server_close(io_ctx);
             } else {
                 // server will not send more data, but ziti may.
@@ -195,9 +191,7 @@ static void on_hosted_tcp_server_data(uv_stream_t *stream, ssize_t nread, const 
             }
         } else {
             ZITI_LOG(WARN, "error reading from server [%zd](%s)", nread, uv_strerror(nread));
-            ziti_client_close(io_ctx);
-            stream->data = NULL;
-            free_hosted_io_ctx(io_ctx);
+            hosted_server_close(io_ctx);
         }
 
         if (buf->base)
@@ -213,7 +207,6 @@ static void on_hosted_udp_server_data(uv_udp_t* handle, ssize_t nread, const uv_
         if (zs != ZITI_OK) {
             ZITI_LOG(ERROR, "ziti_write failed: %s", ziti_errorstr(zs));
             on_hosted_ziti_write(io_ctx->client, nread, buf->base);
-            ziti_client_close(io_ctx);
             hosted_server_close(io_ctx);
         }
     } else if (addr == NULL && nread != 0) {
@@ -221,8 +214,7 @@ static void on_hosted_udp_server_data(uv_udp_t* handle, ssize_t nread, const uv_
             free(buf->base);
         }
         ZITI_LOG(ERROR, "error receiving data from hosted service %s", io_ctx->service->service_name);
-        ziti_client_close(io_ctx);
-        handle->data = NULL;
+        hosted_server_close(io_ctx);
     }
 }
 
@@ -258,19 +250,19 @@ static void on_hosted_tcp_server_connect_complete(uv_connect_t *c, int status) {
     struct hosted_io_ctx_s *io_ctx = c->handle->data;
     if (io_ctx->client == NULL) {
         ZITI_LOG(ERROR, "client closed before server connection was established");
-        uv_close((uv_handle_t *) c->handle, hosted_server_close_cb);
+        hosted_server_close(io_ctx);
+        free(c);
         return;
     }
 
     if (status < 0) {
         ZITI_LOG(ERROR, "connect hosted service %s to %s:%s:%d failed: %s", io_ctx->service->service_name,
                  io_ctx->service->proto, io_ctx->service->hostname, io_ctx->service->port, uv_strerror(status));
-        ziti_close(io_ctx->client, ziti_conn_close_cb);
-        io_ctx->client = NULL;
+        hosted_server_close(io_ctx);
         free(c);
         return;
     }
-    ZITI_LOG(INFO, "connected to server for client %p: %p", c->handle->data, c);
+    ZITI_LOG(INFO, "connected to server for client %p(%p): %p", c->handle->data, c->data, c);
     ziti_accept(io_ctx->client, on_hosted_client_connect_complete, on_hosted_client_data);
     free(c);
 }
@@ -325,7 +317,9 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
             uv_tcp_init(service_ctx->loop, &io_ctx->server.tcp);
             io_ctx->server.tcp.data = io_ctx;
             ziti_conn_set_data(clt, io_ctx);
-            uv_connect_t *c = malloc(sizeof(uv_connect_t));
+            uv_connect_t *c = calloc(1, sizeof(uv_connect_t));
+            c->data = clt;
+            ZITI_LOG(DEBUG, "connecting to TCP(%s:%d) for client(%p)", service_ctx->hostname, service_ctx->port, clt);
             uv_tcp_connect(c, &io_ctx->server.tcp, ai->ai_addr, on_hosted_tcp_server_connect_complete);
             }
             break;
@@ -351,6 +345,7 @@ static void hosted_listen_cb(ziti_connection serv, int status) {
 
     if (status != ZITI_OK) {
         ZITI_LOG(ERROR, "unable to host service %s: %s", host_ctx->service_name, ziti_errorstr(status));
+        ziti_conn_set_data(serv, NULL);
         ziti_close(serv, ziti_conn_close_cb);
         free_hosted_service_ctx(host_ctx);
     }
