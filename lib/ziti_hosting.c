@@ -14,11 +14,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-#include <stdio.h>
-#include <ziti/ziti_log.h>
-#include <memory.h>
-#include "ziti/ziti_tunnel_cbs.h"
-
 #if _WIN32
 // _WIN32_WINNT needs to be declared and needs to be > 0x600 in order for
 // some constants used below to be declared
@@ -26,6 +21,12 @@ limitations under the License.
  // Windows Server 2008
 #include <ws2tcpip.h>
 #endif
+
+
+#include <stdio.h>
+#include <ziti/ziti_log.h>
+#include <memory.h>
+#include "ziti/ziti_tunnel_cbs.h"
 
 /********** hosting **********/
 
