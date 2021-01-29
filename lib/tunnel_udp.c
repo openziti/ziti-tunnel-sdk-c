@@ -8,12 +8,12 @@
 static void to_ziti(struct io_ctx_s *io, struct pbuf *p) {
     if (io == NULL) {
         ZITI_LOG(ERROR, "null io");
+        if (p != NULL) {
+            pbuf_free(p);
+        }
         return;
     }
-    if (io->tnlr_io == NULL || io->ziti_io == NULL) {
-        ZITI_LOG(ERROR, "null tnlr or ziti io");
-        return;
-    }
+
     struct pbuf *recv_data = NULL;
     if (io->tnlr_io->udp.queued != NULL) {
         if (p != NULL) {
@@ -84,10 +84,6 @@ void tunneler_udp_ack(struct write_ctx_s *write_ctx) {
 int tunneler_udp_close(struct udp_pcb *pcb) {
     struct io_ctx_s *io_ctx = pcb->recv_arg;
     tunneler_io_context tnlr_io_ctx = io_ctx->tnlr_io;
-    if (tnlr_io_ctx == NULL) {
-        ZITI_LOG(INFO, "null tnlr_io_ctx");
-        return 0;
-    }
     ZITI_LOG(INFO, "closing %s session", tnlr_io_ctx->service_name);
     if (pcb != NULL) {
         udp_remove(pcb);
@@ -104,7 +100,7 @@ void tunneler_udp_dial_completed(struct io_ctx_s *io, bool ok) {
     if (ok) {
         to_ziti(io, NULL);
     } else {
-        ziti_tunneler_close(&io->tnlr_io);
+        ziti_tunneler_close(io->tnlr_io);
     }
 }
 
