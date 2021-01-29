@@ -115,24 +115,15 @@ static err_t on_tcp_client_data(void *io_ctx, struct tcp_pcb *pcb, struct pbuf *
         if (p != NULL) {
             pbuf_free(p);
         }
-        return ERR_OK;
+        return ERR_CONN;
     }
     LOG_STATE(VERBOSE, "status %d", pcb, err);
     struct io_ctx_s *io = (struct io_ctx_s *)io_ctx;
 
-    if (io->tnlr_io == NULL) {
-        ZITI_LOG(INFO, "null tnlr_io_ctx");
-        if (p != NULL) {
-            pbuf_free(p);
-        }
-        return ERR_CONN;
-    }
-
     if (err == ERR_OK && p == NULL) {
-        ZITI_LOG(INFO, "client sent FIN: client=%s, service=%s", io->tnlr_io->client, io->tnlr_io->service_name);
+        ZITI_LOG(DEBUG, "client sent FIN: client=%s, service=%s", io->tnlr_io->client, io->tnlr_io->service_name);
         LOG_STATE(DEBUG, "FIN received", pcb);
         io->tnlr_io->tnlr_ctx->opts.ziti_close_write(io->ziti_io);
-        io->ziti_io = NULL;
         return err;
     }
 
@@ -145,7 +136,7 @@ static err_t on_tcp_client_data(void *io_ctx, struct tcp_pcb *pcb, struct pbuf *
     ssize_t s = zwrite(io->ziti_io, wr_ctx, p->payload, len);
     if (s < 0) {
         ZITI_LOG(ERROR, "ziti_write failed: service=%s, client=%s, ret=%ld", io->tnlr_io->service_name, io->tnlr_io->client, s);
-        free(io);
+        //free(io);
         tcp_arg(pcb, NULL);
         pbuf_free(p);
         return ERR_ABRT;
@@ -153,7 +144,9 @@ static err_t on_tcp_client_data(void *io_ctx, struct tcp_pcb *pcb, struct pbuf *
     return ERR_OK;
 }
 
-static void  on_tcp_client_err(void *io_ctx, err_t err) {
+/** called by lwip when an error has occurred on a tcp connection.
+ * the corresponding pcb is not valid by the time this fn is called. */
+static void on_tcp_client_err(void *io_ctx, err_t err) {
     struct io_ctx_s *io = io_ctx;
     // we initiated close and cleared arg err should be ERR_ABRT
     if (io_ctx == NULL) {
@@ -165,12 +158,9 @@ static void  on_tcp_client_err(void *io_ctx, err_t err) {
             client = io->tnlr_io->client;
         }
         ZITI_LOG(ERROR, "client=%s err=%d, terminating connection", client, err);
-        if (io->ziti_io != NULL && io->tnlr_io != NULL) {
-            io->tnlr_io->tnlr_ctx->opts.ziti_close(io->ziti_io);
-            io->ziti_io = NULL;
-            free_tunneler_io_context(&io->tnlr_io);
-            free(io);
-        }
+        // null our pcb so tunneler_tcp_close doesn't try to close it.
+        io->tnlr_io->tcp = NULL;
+        io->tnlr_io->tnlr_ctx->opts.ziti_close(io->ziti_io);
     }
 }
 
@@ -227,7 +217,7 @@ int tunneler_tcp_close_write(struct tcp_pcb *pcb) {
 
 int tunneler_tcp_close(struct tcp_pcb *pcb) {
     if (pcb == NULL) {
-        ZITI_LOG(WARN, "null pcb");
+        ZITI_LOG(DEBUG, "null pcb");
         return 0;
     }
     LOG_STATE(DEBUG, "closing", pcb);
@@ -250,22 +240,8 @@ void tunneler_tcp_dial_completed(struct io_ctx_s *io, bool ok) {
         ZITI_LOG(WARN, "null io_ctx");
         return;
     }
-    if (io->tnlr_io == NULL) {
-        ZITI_LOG(WARN, "null tnlr_io_ctx");
-        return;
-    }
-    if (io->ziti_io == NULL) {
-        ZITI_LOG(WARN, "null ziti_io_ctx");
-        return;
-    }
 
     struct tcp_pcb *pcb = io->tnlr_io->tcp;
-    if (pcb == NULL) {
-        ZITI_LOG(ERROR, "null pcb");
-        free_tunneler_io_context(&io->tnlr_io);
-        free(io);
-        return;
-    }
     tcp_arg(pcb, io);
     tcp_recv(pcb, on_tcp_client_data);
     tcp_err(pcb, on_tcp_client_err);
@@ -404,8 +380,8 @@ u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
             goto done;
         }
         tcp_output(npcb);
-        /* now we wait for the tunneler app to call ziti_tunneler_dial_complete() */
     }
+    /* now we wait for the tunneler app to call ziti_tunneler_dial_complete() */
 
 done:
     pbuf_free(p);

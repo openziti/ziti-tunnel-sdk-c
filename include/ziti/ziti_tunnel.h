@@ -101,14 +101,14 @@ extern void ziti_tunneler_stop_intercepting(tunneler_context tnlr_ctx, const cha
 
 extern void ziti_tunneler_dial_completed(struct io_ctx_s *io_context, bool ok);
 
-extern ssize_t ziti_tunneler_write(tunneler_io_context *tnlr_io_ctx, const void *data, size_t len);
+extern ssize_t ziti_tunneler_write(tunneler_io_context tnlr_io_ctx, const void *data, size_t len);
 
 struct write_ctx_s;
 extern void ziti_tunneler_ack(struct write_ctx_s *write_ctx);
 
-extern int ziti_tunneler_close(tunneler_io_context *tnlr_io_ctx);
+extern int ziti_tunneler_close(tunneler_io_context tnlr_io_ctx);
 
-extern int ziti_tunneler_close_write(tunneler_io_context *tnlr_io_ctx);
+extern int ziti_tunneler_close_write(tunneler_io_context tnlr_io_ctx);
 
 extern const char* ziti_tunneler_version();
 
