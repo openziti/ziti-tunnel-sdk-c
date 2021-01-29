@@ -41,6 +41,7 @@ static ssize_t on_ziti_data(ziti_connection conn, uint8_t *data, ssize_t len) {
     if (len > 0) {
         int accepted = ziti_tunneler_write(io->tnlr_io, data, len);
         if (accepted < 0) {
+            ZITI_LOG(ERROR, "failed to write to client");
             ziti_sdk_c_close(io->ziti_io);
         }
         return accepted;
@@ -56,7 +57,7 @@ static ssize_t on_ziti_data(ziti_connection conn, uint8_t *data, ssize_t len) {
             ziti_tunneler_close_write(io->tnlr_io);
         }
     } else if (len < 0) {
-        ZITI_LOG(ERROR, "ziti connection is closed due to [%zd](%s)", len, ziti_errorstr(len));
+        ZITI_LOG(DEBUG, "ziti connection is closed due to [%zd](%s)", len, ziti_errorstr(len));
         ziti_close(conn, ziti_conn_close_cb);
     }
     return len;

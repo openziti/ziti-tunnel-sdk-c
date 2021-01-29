@@ -208,13 +208,6 @@ ssize_t ziti_tunneler_write(tunneler_io_context tnlr_io_ctx, const void *data, s
             break;
     }
 
-    if (r < 0) {
-        ZITI_LOG(ERROR, "failed to write to client");
-        ziti_tunneler_close(tnlr_io_ctx);
-        return -1;
-    }
-    struct tcp_pcb *pcb = tnlr_io_ctx->tcp;
-
     return r;
 }
 
