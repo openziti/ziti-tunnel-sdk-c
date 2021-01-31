@@ -21,8 +21,9 @@ static void on_ziti_connect(ziti_connection conn, int status) {
         ziti_close(conn, NULL);
         return;
     }
-    ziti_tunneler_dial_completed(io, status == ZITI_OK);
-    if (status != ZITI_OK) {
+    if (status == ZITI_OK) {
+        ziti_tunneler_dial_completed(io, true);
+    } else {
         ZITI_LOG(ERROR, "ziti dial failed: %s", ziti_errorstr(status));
         ziti_close(conn, ziti_conn_close_cb);
     }
