@@ -10,7 +10,7 @@ target_compile_definitions(ziti-tunnel-sdk-c
         PRIVATE ZITI_LOG_PREFIX=${PROJECT_NAME}
         )
 
-add_library(ziti-tunnel-cbs-c STATIC ziti_tunnel_cbs.c)
+add_library(ziti-tunnel-cbs-c STATIC ziti_tunnel_cbs.c ziti_hosting.c)
 
 target_include_directories(ziti-tunnel-cbs-c
         PUBLIC ../include
