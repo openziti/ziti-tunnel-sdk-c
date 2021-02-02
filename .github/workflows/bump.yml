@@ -2,14 +2,14 @@ name: Bump version
 on:
   push:
     branches:
-      - master
+      - main
 jobs:
   tag:
     runs-on: ubuntu-latest
     outputs:
       release_tag: ${{ steps.make_tag.outputs.new_tag }}
     steps:
-    - uses: actions/checkout@master
+    - uses: actions/checkout@main
       with:
         fetch-depth: '0'
     - name: Bump version and push tag
