@@ -61,7 +61,7 @@ void on_service(ziti_context ziti_ctx, ziti_service *service, int status, void *
         }
     } else if (status == ZITI_SERVICE_UNAVAILABLE) {
         ZITI_LOG(INFO, "service unavailable: %s", service->name);
-        ziti_tunneler_stop_intercepting(tnlr_ctx, service->name);
+        ziti_tunneler_stop_intercepting(tnlr_ctx, service->id);
     }
 }
 
