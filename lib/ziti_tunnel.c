@@ -142,11 +142,14 @@ int ziti_tunneler_intercept_v1(tunneler_context tnlr_ctx, const void *ziti_ctx, 
 
 static void tunneler_kill_active(const void *ztx, const char *service_name) {
     struct io_ctx_list_s *l;
+    ziti_sdk_close_cb zclose;
 
     l = tunneler_tcp_active(ztx, service_name);
     while (!SLIST_EMPTY(l)) {
         struct io_ctx_list_entry_s *n = SLIST_FIRST(l);
         ziti_tunneler_close(n->io->tnlr_io);
+        zclose = n->io->tnlr_io->tnlr_ctx->opts.ziti_close;
+        if (zclose) zclose(n->io->ziti_io);
         SLIST_REMOVE_HEAD(l, entries);
         free(n);
     }
@@ -157,6 +160,8 @@ static void tunneler_kill_active(const void *ztx, const char *service_name) {
     while (!SLIST_EMPTY(l)) {
         struct io_ctx_list_entry_s *n = SLIST_FIRST(l);
         ziti_tunneler_close(n->io->tnlr_io);
+        zclose = n->io->tnlr_io->tnlr_ctx->opts.ziti_close;
+        if (zclose) zclose(n->io->ziti_io);
         SLIST_REMOVE_HEAD(l, entries);
         free(n);
     }
