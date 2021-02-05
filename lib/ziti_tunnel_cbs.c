@@ -66,7 +66,7 @@ static ssize_t on_ziti_data(ziti_connection conn, uint8_t *data, ssize_t len) {
     return len;
 }
 
-/** called by tunneler SDK after a client connection is closed */
+/** called by tunneler SDK after a client connection is closed. also called from ziti_tunneler_stop_intercepting */
 int ziti_sdk_c_close(void *io_ctx) {
     if (io_ctx == NULL) {
         ZITI_LOG(DEBUG, "null io_ctx");

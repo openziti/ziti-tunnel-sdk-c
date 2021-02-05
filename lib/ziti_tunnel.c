@@ -250,12 +250,15 @@ int ziti_tunneler_intercept(tunneler_context tnlr_ctx, intercept_ctx_t *i_ctx) {
 
 static void tunneler_kill_active(const void *ztx, const char *service_name) {
     struct io_ctx_list_s *l;
+    ziti_sdk_close_cb zclose;
 
     l = tunneler_tcp_active(ztx, service_name);
     while (!SLIST_EMPTY(l)) {
         struct io_ctx_list_entry_s *n = SLIST_FIRST(l);
-        ZITI_LOG(INFO, "service[%s] client[%s] killing active connection", service_name, n->io->tnlr_io->client);
-        ziti_tunneler_close(n->io->tnlr_io);
+        ZITI_LOG(DEBUG, "service[%s] client[%s] killing active connection", service_name, n->io->tnlr_io->client);
+        // close the ziti connection, which also closes the underlay
+        zclose = n->io->tnlr_io->tnlr_ctx->opts.ziti_close;
+        if (zclose) zclose(n->io->ziti_io);
         SLIST_REMOVE_HEAD(l, entries);
         free(n);
     }
@@ -265,8 +268,10 @@ static void tunneler_kill_active(const void *ztx, const char *service_name) {
     l = tunneler_udp_active(ztx, service_name);
     while (!SLIST_EMPTY(l)) {
         struct io_ctx_list_entry_s *n = SLIST_FIRST(l);
-        ZITI_LOG(INFO, "service[%s] client[%s] killing active connection", service_name, n->io->tnlr_io->client);
-        ziti_tunneler_close(n->io->tnlr_io);
+        ZITI_LOG(DEBUG, "service[%s] client[%s] killing active connection", service_name, n->io->tnlr_io->client);
+        // close the ziti connection, which also closes the underlay
+        zclose = n->io->tnlr_io->tnlr_ctx->opts.ziti_close;
+        if (zclose) zclose(n->io->ziti_io);
         SLIST_REMOVE_HEAD(l, entries);
         free(n);
     }
@@ -314,7 +319,6 @@ ssize_t ziti_tunneler_write(tunneler_io_context tnlr_io_ctx, const void *data, s
             break;
     }
 
-    // todo how does connection close sequence start?
     return r;
 }
 

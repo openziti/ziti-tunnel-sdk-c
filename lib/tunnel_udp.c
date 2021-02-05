@@ -60,7 +60,7 @@ void on_udp_client_data_enqueue(void *io_context, struct udp_pcb *pcb, struct pb
     if (tnlr_io_ctx->udp.queued == NULL) {
         tnlr_io_ctx->udp.queued = p;
     } else {
-        pbuf_cat(tnlr_io_ctx->udp.queued, p);
+        pbuf_chain(tnlr_io_ctx->udp.queued, p);
     }
     ZITI_LOG(VERBOSE, "queued %d bytes", tnlr_io_ctx->udp.queued->len);
 }
