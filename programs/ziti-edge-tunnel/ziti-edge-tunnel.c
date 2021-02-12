@@ -95,8 +95,9 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
 }
 
 extern dns_manager *get_dnsmasq_manager(const char* path);
+extern dns_manager *get_internal_dns();
 
-static int run_tunnel(const char *ip_range, dns_manager *dns) {
+static int run_tunnel(uint32_t tun_ip, const char *ip_range, dns_manager *dns) {
     uv_loop_t *ziti_loop = uv_default_loop();
     ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
     if (ziti_loop == NULL) {
@@ -109,7 +110,7 @@ static int run_tunnel(const char *ip_range, dns_manager *dns) {
 #if __APPLE__ && __MACH__
     tun = utun_open(tun_error, sizeof(tun_error), ip_range);
 #elif __linux__
-    tun = tun_open(tun_error, sizeof(tun_error), ip_range);
+    tun = tun_open(tun_ip, dns->dns_ip, ip_range, tun_error, sizeof(tun_error));
 #endif
 
     if (tun == NULL) {
@@ -219,10 +220,13 @@ static void run(int argc, char *argv[]) {
         mask |= (ip[i] & 0xFFU);
     }
 
+    uint32_t tun_ip = htonl(mask | 0x1);
+    uint32_t dns_ip = htonl(mask | 0x2);
+
     dns_manager *dns = NULL;
     if (dns_impl == NULL) {
-        // TODO internal DNS handling goes here(?)
-        ZITI_LOG(WARN, "No DNS support specified; services won't be available by DNS names");
+        ZITI_LOG(INFO, "setting up internal DNS");
+        dns = get_internal_dns(dns_ip);
     } else if (strncmp("dnsmasq", dns_impl, strlen("dnsmasq")) == 0) {
         char *col = strchr(dns_impl, ':');
         if (col == NULL) {
@@ -236,7 +240,7 @@ static void run(int argc, char *argv[]) {
 
 
 
-    rc = run_tunnel(ip_range, dns);
+    rc = run_tunnel(tun_ip, ip_range, dns);
     exit(rc);
 }
 
