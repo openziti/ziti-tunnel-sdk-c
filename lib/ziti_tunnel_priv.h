@@ -13,6 +13,7 @@ typedef struct tunneler_ctx_s {
     uv_timer_t   lwip_timer_req;
     struct intercept_s *intercepts;
     dns_manager *dns;
+    struct udp_pcb *dns_pcb;
 } *tunneler_context;
 
 typedef enum  {

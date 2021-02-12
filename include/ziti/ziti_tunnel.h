@@ -85,7 +85,12 @@ typedef struct tunneler_sdk_options_s {
 
 typedef struct dns_manager_s dns_manager;
 struct dns_manager_s {
+    bool internal_dns;
+    uint32_t dns_ip;
+    uint16_t dns_port;
+
     int (*apply)(dns_manager *dns, const char *host, const char *ip);
+    int (*query)(dns_manager *dns, const uint8_t *q_packet, size_t q_len, uint8_t **r_packet, size_t *r_len);
     void *data;
 };
 
