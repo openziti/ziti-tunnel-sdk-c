@@ -33,7 +33,7 @@ struct dns_store {
     model_map map;
 };
 
-dns_manager* get_internal_dns(uint32_t dns_ip) {
+dns_manager* get_tunneler_dns(uint32_t dns_ip) {
     dns_manager *mgr = calloc(1, sizeof(dns_manager));
     mgr->dns_ip = dns_ip;
     mgr->dns_port = 53;

@@ -94,6 +94,8 @@ struct dns_manager_s {
     void *data;
 };
 
+extern dns_manager *get_tunneler_dns(uint32_t dns_ip);
+
 extern tunneler_context ziti_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop);
 
 extern void ziti_tunneler_set_dns(tunneler_context tnlr_ctx, dns_manager *dns);

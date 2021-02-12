@@ -8,7 +8,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL Darwin OR CMAKE_SYSTEM_NAME STREQUAL Linux)
         set(NETIF_DRIVER_SOURCE netif_driver/linux/tun.c)
     endif()
 
-    add_executable(ziti-edge-tunnel ziti-edge-tunnel.c ${NETIF_DRIVER_SOURCE} dnsmasq_manager.c internal_dns_manager.c)
+    add_executable(ziti-edge-tunnel ziti-edge-tunnel.c ${NETIF_DRIVER_SOURCE} dnsmasq_manager.c)
     set_property(TARGET ziti-edge-tunnel PROPERTY C_STANDARD 11)
 
     target_compile_definitions(ziti-edge-tunnel
