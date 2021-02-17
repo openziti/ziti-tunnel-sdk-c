@@ -96,14 +96,7 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
 
 extern dns_manager *get_dnsmasq_manager(const char* path);
 
-static int run_tunnel(uint32_t tun_ip, const char *ip_range, dns_manager *dns) {
-    uv_loop_t *ziti_loop = uv_default_loop();
-    ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
-    if (ziti_loop == NULL) {
-        ZITI_LOG(ERROR, "failed to initialize default uv loop");
-        return 1;
-    }
-
+static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, const char *ip_range, dns_manager *dns) {
     netif_driver tun;
     char tun_error[64];
 #if __APPLE__ && __MACH__
@@ -203,6 +196,10 @@ static int run_opts(int argc, char *argv[]) {
     return optind;
 }
 
+static int dns_fallback(const char *name, void *ctx, struct in_addr* addr) {
+    return 3; // NXDOMAIN
+}
+
 static void run(int argc, char *argv[]) {
 
     uint ip[4];
@@ -222,10 +219,17 @@ static void run(int argc, char *argv[]) {
     uint32_t tun_ip = htonl(mask | 0x1);
     uint32_t dns_ip = htonl(mask | 0x2);
 
+    uv_loop_t *ziti_loop = uv_default_loop();
+    ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
+    if (ziti_loop == NULL) {
+        ZITI_LOG(ERROR, "failed to initialize default uv loop");
+        exit(1);
+    }
+
     dns_manager *dns = NULL;
     if (dns_impl == NULL) {
         ZITI_LOG(INFO, "setting up internal DNS");
-        dns = get_tunneler_dns(dns_ip);
+        dns = get_tunneler_dns(ziti_loop, dns_ip, dns_fallback, NULL);
     } else if (strncmp("dnsmasq", dns_impl, strlen("dnsmasq")) == 0) {
         char *col = strchr(dns_impl, ':');
         if (col == NULL) {
@@ -237,9 +241,7 @@ static void run(int argc, char *argv[]) {
 
     ziti_tunneler_init_dns(mask, bits);
 
-
-
-    rc = run_tunnel(tun_ip, ip_range, dns);
+    rc = run_tunnel(ziti_loop, tun_ip, ip_range, dns);
     exit(rc);
 }
 
