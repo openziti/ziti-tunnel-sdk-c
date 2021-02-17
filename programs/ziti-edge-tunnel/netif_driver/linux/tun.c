@@ -5,6 +5,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <stdarg.h>
 
 #include "tun.h"
 
@@ -22,6 +23,8 @@
 #define IP_UP_ARGS "link set %s up"
 #define IP_BIN "/sbin/ip "
 #endif
+
+#define RESOLVECTL "resolvectl"
 
 static int tun_close(struct netif_handle_s *tun) {
     int r = 0;
@@ -56,7 +59,20 @@ void tun_add_route(netif_handle tun, const char *ip) {
     system(cmd);
 }
 
-netif_driver tun_open(char *error, size_t error_len, const char *dns_block) {
+static void run_command(const char* cmd, ...) {
+    char cmdline[1024];
+    va_list args;
+    va_start(args, cmd);
+
+    vsprintf(cmdline, cmd, args);
+
+    int rc = system(cmdline);
+    if (rc != 0) {
+        fprintf(stderr, "cmd{%s} failed: %d/%d/%s\n", cmd, rc, errno, strerror(errno));
+    }
+}
+
+netif_driver tun_open(uint32_t tun_ip, uint32_t dns_ip, const char *dns_block, char *error, size_t error_len) {
     if (error != NULL) {
         memset(error, 0, error_len * sizeof(char));
     }
@@ -107,13 +123,16 @@ netif_driver tun_open(char *error, size_t error_len, const char *dns_block) {
     driver->add_route    = tun_add_route;
     driver->close        = tun_close;
 
-    char cmd[1024];
-    sprintf(cmd, "ip link set %s up", tun->name);
-    system(cmd);
+    run_command("ip link set %s up", tun->name);
+    run_command("ip addr add %s dev %s", inet_ntoa(*(struct in_addr*)&tun_ip), tun->name);
+
+    if (dns_ip) {
+        run_command(RESOLVECTL " dns %s %s", tun->name, inet_ntoa(*(struct in_addr*)&dns_ip));
+        run_command(RESOLVECTL " domain %s ~.", tun->name);
+    }
 
     if (dns_block) {
-        sprintf(cmd, "ip route add %s dev %s", dns_block, tun->name);
-        system(cmd);
+        run_command("ip route add %s dev %s", dns_block, tun->name);
     }
 
     return driver;

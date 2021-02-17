@@ -19,6 +19,7 @@ limitations under the License.
 #include <stdlib.h>
 #include <string.h>
 #include <ziti/model_support.h>
+#include <ctype.h>
 
 
 #define MAX_DNS_NAME 256
@@ -50,7 +51,15 @@ void ziti_tunneler_init_dns(uint32_t mask, int bits) {
 }
 
 const char* assign_ip(const char *hostname) {
-    struct dns_entry *e = model_map_get(&ip_cache.entries, hostname);
+    char canonical[MAX_DNS_NAME];
+    char *p = canonical;
+    const char *hp = hostname;
+    while (*hp) {
+        *p++ = (char)tolower(*hp++);
+    }
+    *p = 0;
+
+    struct dns_entry *e = model_map_get(&ip_cache.entries, canonical);
     if (e != NULL) {
         return e->ip;
     }
@@ -61,7 +70,7 @@ const char* assign_ip(const char *hostname) {
         fprintf(stderr, "WARN: DNS assignment space is exhausted");
     }
     snprintf(e->ip, MAX_IP_LENGTH, "%d.%d.%d.%d", addr>>24U, (addr>>16U) & 0xFFU, (addr>>8U)&0xFFU, addr&0xFFU);
-    snprintf(e->hostname, sizeof(e->hostname), "%s",hostname);
+    snprintf(e->hostname, sizeof(e->hostname), "%s", canonical);
 
     model_map_set(&ip_cache.entries, e->hostname, e);
     return e->ip;

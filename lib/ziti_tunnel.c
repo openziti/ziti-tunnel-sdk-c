@@ -37,6 +37,13 @@ limitations under the License.
 
 #include <string.h>
 
+struct resolve_req {
+    struct pbuf *qp;
+    ip_addr_t addr;
+    u16_t port;
+    tunneler_context tnlr_ctx;
+};
+
 static void run_packet_loop(uv_loop_t *loop, tunneler_context tnlr_ctx);
 
 tunneler_context ziti_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop) {
@@ -110,8 +117,53 @@ int ziti_tunneler_host_v1(tunneler_context tnlr_ctx, const void *ziti_ctx, const
     return 0;
 }
 
+static void send_dns_resp(uint8_t *resp, size_t resp_len, void *ctx) {
+    struct resolve_req *rreq = ctx;
+
+    ZITI_LOG(TRACE, "sending DNS resp[%zd] -> %s:%d", resp_len, ipaddr_ntoa(&rreq->addr), rreq->port);
+    struct pbuf *rp = pbuf_alloc(PBUF_TRANSPORT, resp_len, PBUF_RAM);
+    memcpy(rp->payload, resp, resp_len);
+
+    err_t err = udp_sendto_if_src(rreq->tnlr_ctx->dns_pcb, rp, &rreq->addr, rreq->port,
+                                  netif_default, &rreq->tnlr_ctx->dns_pcb->local_ip);
+    if (err != ERR_OK) {
+        ZITI_LOG(WARN, "udp_send() DNS response: %d", err);
+    }
+
+    pbuf_free(rp);
+    pbuf_free(rreq->qp);
+    free(rreq);
+}
+
+static void on_dns_packet(void *arg, struct udp_pcb *pcb, struct pbuf *p,
+    const ip_addr_t *addr, u16_t port) {
+    tunneler_context tnlr_ctx = arg;
+
+    struct resolve_req *rr = calloc(1,sizeof(struct resolve_req));
+    rr->qp = p;
+    rr->addr = *addr;
+    rr->port = port;
+    rr->tnlr_ctx = tnlr_ctx;
+
+    int rc = tnlr_ctx->dns->query(tnlr_ctx->dns, p->payload, p->len, send_dns_resp, rr);
+    if (rc != 0) {
+        ZITI_LOG(WARN, "DNS resolve error: %d", rc);
+        pbuf_free(p);
+        free(rr);
+    }
+}
+
 void ziti_tunneler_set_dns(tunneler_context tnlr_ctx, dns_manager *dns) {
     tnlr_ctx->dns = dns;
+    if (dns->internal_dns) {
+        tnlr_ctx->dns_pcb = udp_new();
+        ip_addr_t dns_addr = {
+                .type = IPADDR_TYPE_V4,
+                .u_addr.ip4.addr = dns->dns_ip,
+        };
+        udp_bind(tnlr_ctx->dns_pcb, &dns_addr, dns->dns_port);
+        udp_recv(tnlr_ctx->dns_pcb, on_dns_packet, tnlr_ctx);
+    }
 }
 
 /** arrange to intercept traffic defined by a v1 client tunneler config */
