@@ -85,7 +85,7 @@ typedef struct tunneler_sdk_options_s {
 
 typedef struct dns_manager_s dns_manager;
 
-typedef int (*fallback_cb)(const char *name, void *ctx, struct in_addr* addr);
+typedef int (*dns_fallback_cb)(const char *name, void *ctx, struct in_addr* addr);
 
 typedef void (*dns_answer_cb)(uint8_t *a_packet, size_t a_len, void *ctx);
 typedef int (*dns_query)(dns_manager *dns, const uint8_t *q_packet, size_t q_len, dns_answer_cb cb, void *ctx);
@@ -99,13 +99,13 @@ struct dns_manager_s {
     dns_query query;
 
     uv_loop_t *loop;
-    fallback_cb fb_cb;
+    dns_fallback_cb fb_cb;
     void *fb_ctx;
     void *data;
 };
 
 // fallback will be called on the worker thread to avoid blocking event loop
-extern dns_manager *get_tunneler_dns(uv_loop_t *l, uint32_t dns_ip, fallback_cb cb, void *ctx);
+extern dns_manager *get_tunneler_dns(uv_loop_t *l, uint32_t dns_ip, dns_fallback_cb cb, void *ctx);
 
 extern tunneler_context ziti_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop);
 

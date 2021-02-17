@@ -120,7 +120,7 @@ int ziti_tunneler_host_v1(tunneler_context tnlr_ctx, const void *ziti_ctx, const
 static void send_dns_resp(uint8_t *resp, size_t resp_len, void *ctx) {
     struct resolve_req *rreq = ctx;
 
-    ZITI_LOG(INFO, "sending DNS resp[%zd] -> %s:%d", resp_len, ipaddr_ntoa(&rreq->addr), rreq->port);
+    ZITI_LOG(TRACE, "sending DNS resp[%zd] -> %s:%d", resp_len, ipaddr_ntoa(&rreq->addr), rreq->port);
     struct pbuf *rp = pbuf_alloc(PBUF_TRANSPORT, resp_len, PBUF_RAM);
     memcpy(rp->payload, resp, resp_len);
 

@@ -33,7 +33,7 @@ struct dns_store {
     model_map map;
 };
 
-dns_manager* get_tunneler_dns(uv_loop_t *l, uint32_t dns_ip, fallback_cb fb_cb, void *ctx) {
+dns_manager* get_tunneler_dns(uv_loop_t *l, uint32_t dns_ip, dns_fallback_cb fb_cb, void *ctx) {
     dns_manager *mgr = calloc(1, sizeof(dns_manager));
     mgr->dns_ip = dns_ip;
     mgr->dns_port = 53;
@@ -89,7 +89,7 @@ static int apply_dns(dns_manager *mgr, const char *host, const char *ip) {
 
 struct dns_req {
     char host[255];
-    fallback_cb fallback;
+    dns_fallback_cb fallback;
     void *fb_ctx;
 
     struct in_addr addr;
@@ -107,8 +107,6 @@ void fallback_work(uv_work_t *work_req) {
 }
 
 void dns_work_complete(uv_work_t *work_req, int status) {
-
-    ZITI_LOG(INFO, "DNS complete: %d", status);
     struct dns_req *req = work_req->data;
 
     uint8_t *rp = req->rp;
