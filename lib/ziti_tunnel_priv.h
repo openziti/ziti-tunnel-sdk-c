@@ -15,6 +15,7 @@ typedef struct tunneler_ctx_s {
     STAILQ_HEAD(intercept_ctx_list_s, intercept_ctx_s) intercepts;
 //    STAILQ_HEAD(hosted_service_ctx_list_s, hosted_service_ctx_s) hosts;
     dns_manager *dns;
+    struct udp_pcb *dns_pcb;
 } *tunneler_context;
 
 /** return the intercept context for a packet based on its destination ip:port */
