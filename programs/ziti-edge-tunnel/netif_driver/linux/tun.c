@@ -34,19 +34,12 @@
 #define RESOLVECTL "resolvectl"
 
 static struct {
-    char tun_name[16];
+    char tun_name[IFNAMSIZ];
     uint32_t dns_ip;
 
     uv_udp_t nl_udp;
     uv_timer_t update_timer;
 } dns_maintainer;
-
-typedef struct nl_req_s nl_req_t;
-
-struct nl_req_s {
-  struct nlmsghdr hdr;
-  struct rtgenmsg gen;
-};
 
 static int tun_close(struct netif_handle_s *tun) {
     int r = 0;
