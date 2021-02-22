@@ -100,12 +100,12 @@ static void set_dns(uv_work_t *wr) {
 }
 
 static void after_set_dns(uv_work_t *wr, int status) {
-    ZITI_LOG(INFO, "DNS update: %d", status);
+    ZITI_LOG(DEBUG, "DNS update: %d", status);
     free(wr);
 }
 
 static void on_dns_update_time(uv_timer_t *t) {
-    ZITI_LOG(INFO, "queuing DNS update");
+    ZITI_LOG(DEBUG, "queuing DNS update");
     uv_work_t *wr = calloc(1, sizeof(uv_work_t));
     uv_queue_work(t->loop, wr, set_dns, after_set_dns);
 
