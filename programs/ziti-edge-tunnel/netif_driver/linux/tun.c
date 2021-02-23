@@ -74,7 +74,7 @@ void tun_add_route(netif_handle tun, const char *ip) {
     system(cmd);
 }
 
-static void run_command(const char* cmd, ...) {
+static int run_command(const char* cmd, ...) {
     char cmdline[1024];
     va_list args;
     va_start(args, cmd);
@@ -83,13 +83,22 @@ static void run_command(const char* cmd, ...) {
 
     int rc = system(cmdline);
     if (rc != 0) {
-        ZITI_LOG(ERROR, "cmd{%s} failed: %d/%d/%s\n", cmd, rc, errno, strerror(errno));
+        ZITI_LOG(ERROR, "cmd{%s} failed: %d/%d/%s\n", cmdline, rc, errno, strerror(errno));
     }
+    ZITI_LOG(DEBUG, "system(%s) returned %d", cmdline, rc);
+    return rc;
 }
 
 static void set_dns(uv_work_t *wr) {
     run_command(RESOLVECTL " dns %s %s", dns_maintainer.tun_name, inet_ntoa(*(struct in_addr*)&dns_maintainer.dns_ip));
-    run_command(RESOLVECTL " domain %s ~.", dns_maintainer.tun_name);
+    int s = run_command("/bin/sh -c " RESOLVECTL " domain | fgrep -v '%s' | fgrep '~.'",
+                        dns_maintainer.tun_name);
+    char *domain = "";
+    // set wildcard domain if any other resolvers set it.
+    if (s == 0) {
+        domain = "~.";
+    }
+    run_command(RESOLVECTL " domain %s '%s'", dns_maintainer.tun_name, domain);
 }
 
 static void after_set_dns(uv_work_t *wr, int status) {
