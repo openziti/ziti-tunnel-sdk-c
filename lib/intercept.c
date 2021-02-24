@@ -28,8 +28,19 @@ intercept_ctx_t *lookup_intercept_by_address(tunneler_context tnlr_ctx, const ch
 
         address_t *c;
         STAILQ_FOREACH(c, &intercept->addresses, entries) {
-            // todo CIDR
-            if (ip_addr_cmp(&c->ip, dst_addr)) {
+            if (IP_IS_V4(&c->ip) && c->prefix_len != 32) {
+                // todo set mask when config is parsed.
+                uint8_t bits = 32 - c->prefix_len;
+                ip4_addr_t mask;
+                ip4_addr_set_u32(&mask, PP_HTONL(0xffffffffUL >> bits << bits));
+                if (ip_addr_netcmp(dst_addr, &c->ip, &mask)) {
+                    address_match = true;
+                    break;
+                }
+            } else if (IP_IS_V6(&c->ip) && c->prefix_len != 128) {
+                ZITI_LOG(ERROR, "IPv6 range intercept not currently supported (%s)", c->str);
+                break;
+            } else if (ip_addr_cmp(&c->ip, dst_addr)) {
                 address_match = true;
                 break;
             }

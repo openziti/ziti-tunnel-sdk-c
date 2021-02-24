@@ -198,8 +198,8 @@ address_t *parse_address(const char *hn_or_ip_or_cidr, dns_manager *dns) {
     char *prefix_sep = strchr(addr->str, '/');
 
     if (prefix_sep != NULL) {
-        *prefix_sep = '\0';
         addr->prefix_len = (int)strtol(prefix_sep + 1, NULL, 10);
+        // todo update addr->str with network address (accounting for prefix) - e.g. zero non-prefix bits
     }
 
     if (ipaddr_aton(addr->str, &addr->ip) == 0) {
