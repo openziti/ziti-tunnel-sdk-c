@@ -8,6 +8,11 @@
 extern "C" {
 #endif
 
+#define TUNNELER_APP_DATA_MODEL(XX, ...) \
+XX(data, string, map, data, __VA_ARGS__)
+
+DECLARE_MODEL(tunneler_app_data, TUNNELER_APP_DATA_MODEL)
+
 /** context passed through the tunneler SDK for network i/o */
 typedef struct ziti_io_ctx_s {
     ziti_connection      ziti_conn;
@@ -18,6 +23,8 @@ typedef struct ziti_io_ctx_s {
 struct hosted_io_ctx_s {
     struct hosted_service_ctx_s *service;
     ziti_connection client;
+    char server_dial_str[64];
+    int server_proto_id;
     union {
         uv_tcp_t tcp;
         uv_udp_t udp;
@@ -37,7 +44,10 @@ ssize_t ziti_sdk_c_write(const void *ziti_io_ctx, void *write_ctx, const void *d
 int ziti_sdk_c_close(void *io_ctx);
 int ziti_sdk_c_close_write(void *io_ctx);
 
-void ziti_sdk_c_host_v1(void *ziti_ctx, uv_loop_t *loop, const char *service_id, const char *proto, const char *hostname, int port);
+host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, uv_loop_t *loop, const char *service_name, cfg_type_e cfgtype, const void *cfg);
+
+/** passed to ziti-sdk via ziti_options.service_cb */
+tunneled_service_t *ziti_sdk_c_on_service(ziti_context ziti_ctx, ziti_service *service, int status, void *tnlr_ctx);
 
 #ifdef __cplusplus
 }

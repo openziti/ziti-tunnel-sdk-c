@@ -1,6 +1,6 @@
 
 add_library(ziti-tunnel-sdk-c STATIC
-        ziti_tunnel.c tunnel_tcp.c tunnel_udp.c intercept.c internal_dns_manager.c
+        ziti_tunnel.c tunnel_tcp.c tunnel_udp.c intercept.c route.c internal_dns_manager.c
         lwip/netif_shim.c lwip/lwiphooks_ip6.c lwip/lwiphooks_ip4.c lwip/lwip_cloned_fns.c dns.c)
 
 set_property(TARGET ziti-tunnel-sdk-c PROPERTY C_STANDARD 11)
@@ -18,6 +18,7 @@ target_include_directories(ziti-tunnel-cbs-c
 
 target_link_libraries(ziti-tunnel-cbs-c
         PUBLIC ziti
+        PUBLIC ziti-tunnel-sdk-c
         )
 
 FetchContent_GetProperties(lwip)
@@ -64,3 +65,16 @@ target_link_libraries(ziti-tunnel-sdk-c
         PUBLIC ${lwip_sys_lib}
         PUBLIC lwipcore
         )
+
+#copy relevant .h files to the include folder
+install(DIRECTORY "${LWIP_DIR}/src/include/lwip"
+     DESTINATION "${CMAKE_INSTALL_PREFIX}/include"
+     FILES_MATCHING PATTERN "*.h"
+)
+install(DIRECTORY "${LWIP_CONTRIB_DIR}/ports/${lwip_sys}/include/arch"
+     DESTINATION "${CMAKE_INSTALL_PREFIX}/include"
+     FILES_MATCHING PATTERN "*.h"
+)
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/lwip/lwipopts.h"
+     DESTINATION "${CMAKE_INSTALL_PREFIX}/include"
+)

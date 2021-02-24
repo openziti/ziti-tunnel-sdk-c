@@ -2,7 +2,6 @@
 
 #include "tunnel_udp.h"
 #include "ziti_tunnel_priv.h"
-#include "intercept.h"
 #include "ziti/ziti_log.h"
 
 static void to_ziti(struct io_ctx_s *io, struct pbuf *p) {
@@ -158,9 +157,9 @@ u8_t recv_udp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     }
 
     /* is the dest address being intercepted? */
-    intercept_ctx_t * intercept_ctx = lookup_l4_intercept(tnlr_ctx, &dst, dst_p);
+    intercept_ctx_t * intercept_ctx = lookup_intercept_by_address(tnlr_ctx, "udp", &dst, dst_p, dst_p);
     if (intercept_ctx == NULL) {
-        ZITI_LOG(VERBOSE, "no v1 intercepts match %s:%d", ipaddr_ntoa(&dst), dst_p);
+        ZITI_LOG(DEBUG, "no intercepted addresses match udp:%s:%d", ipaddr_ntoa(&dst), dst_p);
         return 0;
     }
 
@@ -203,12 +202,13 @@ u8_t recv_udp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     io->tnlr_io->proto = tun_udp;
     io->tnlr_io->service_name = intercept_ctx->service_name;
     snprintf(io->tnlr_io->client, sizeof(io->tnlr_io->client), "udp:%s:%d", ipaddr_ntoa(&src), src_p);
+    snprintf(io->tnlr_io->intercepted, sizeof(io->tnlr_io->intercepted), "udp:%s:%d", ipaddr_ntoa(&dst), dst_p);
     io->tnlr_io->udp.pcb = npcb;
     io->tnlr_io->udp.queued = NULL;
     io->ziti_ctx = intercept_ctx->ziti_ctx;
 
-    ZITI_LOG(INFO, "intercepted connection to %s:%d from client %s for service %s (id %s)", ipaddr_ntoa(&dst), dst_p, io->tnlr_io->client,
-             intercept_ctx->service_name, intercept_ctx->service_id);
+    ZITI_LOG(INFO, "intercepted address[%s] client[%s] service[%s]", io->tnlr_io->intercepted, io->tnlr_io->client,
+             intercept_ctx->service_name);
 
     void *ziti_io_ctx = zdial(intercept_ctx, io);
     if (ziti_io_ctx == NULL) {

@@ -1,9 +1,7 @@
 #include <stdlib.h>
-#include <string.h>
 #include "tunnel_tcp.h"
 #include "lwip_cloned_fns.h"
 #include "ziti_tunnel_priv.h"
-#include "intercept.h"
 #include "ziti/ziti_log.h"
 #include "uv_mbed/queue.h"
 
@@ -262,6 +260,7 @@ static tunneler_io_context new_tunneler_io_context(tunneler_context tnlr_ctx, co
     ctx->tnlr_ctx = tnlr_ctx;
     ctx->service_name = service_name;
     snprintf(ctx->client, sizeof(ctx->client), "tcp:%s:%d", ipaddr_ntoa(&pcb->remote_ip), pcb->remote_port);
+    snprintf(ctx->intercepted, sizeof(ctx->intercepted), "tcp:%s:%d", ipaddr_ntoa(&pcb->local_ip), pcb->local_port);
     ctx->proto = tun_tcp;
     ctx->tcp = pcb;
     return ctx;
@@ -312,10 +311,10 @@ u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
         return 0;
     }
 
-    intercept_ctx_t *intercept_ctx = lookup_l4_intercept(tnlr_ctx, &dst, dst_p);
+    intercept_ctx_t *intercept_ctx = lookup_intercept_by_address(tnlr_ctx, "tcp", &dst, dst_p, dst_p);
     if (intercept_ctx == NULL) {
         /* dst address is not being intercepted. don't consume */
-        ZITI_LOG(DEBUG, "no v1 intercepts match %s:%d", ipaddr_ntoa(&dst), dst_p);
+        ZITI_LOG(DEBUG, "no intercepted addresses match tcp:%s:%d", ipaddr_ntoa(&dst), dst_p);
         return 0;
     }
 
@@ -364,8 +363,9 @@ u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     }
     io->ziti_ctx = intercept_ctx->ziti_ctx;
 
-    ZITI_LOG(INFO, "intercepted connection to %s:%d from client %s for service %s (id %s)", ipaddr_ntoa(&dst), dst_p, io->tnlr_io->client,
-             intercept_ctx->service_name, intercept_ctx->service_id);
+    snprintf(io->tnlr_io->intercepted, sizeof(io->tnlr_io->intercepted), "tcp:%s:%d", ipaddr_ntoa(&dst), dst_p);
+    ZITI_LOG(INFO, "intercepted address[%s] client[%s] service[%s]", io->tnlr_io->intercepted, io->tnlr_io->client,
+             intercept_ctx->service_name);
     void *ziti_io_ctx = zdial(intercept_ctx, io);
     if (ziti_io_ctx == NULL) {
         ZITI_LOG(ERROR, "ziti_dial(%s) failed", intercept_ctx->service_name);
