@@ -74,25 +74,38 @@ void tun_add_route(netif_handle tun, const char *ip) {
     system(cmd);
 }
 
-static int run_command(const char* cmd, ...) {
+static int run_command_va(bool log_nonzero_ec, const char* cmd, va_list args) {
     char cmdline[1024];
-    va_list args;
-    va_start(args, cmd);
-
     vsprintf(cmdline, cmd, args);
 
     int rc = system(cmdline);
-    if (rc != 0) {
+    if (rc != 0 && log_nonzero_ec) {
         ZITI_LOG(ERROR, "cmd{%s} failed: %d/%d/%s\n", cmdline, rc, errno, strerror(errno));
     }
     ZITI_LOG(DEBUG, "system(%s) returned %d", cmdline, rc);
-    return rc;
+    return WEXITSTATUS(rc);
+}
+
+static int run_command(const char *cmd, ...) {
+    va_list args;
+    va_start(args, cmd);
+    int r = run_command_va(true, cmd, args);
+    va_end(args);
+    return r;
+}
+
+static int run_command_ex(bool log_nonzero_ec, const char *cmd, ...) {
+    va_list args;
+    va_start(args, cmd);
+    int r = run_command_va(log_nonzero_ec, cmd, args);
+    va_end(args);
+    return r;
 }
 
 static void set_dns(uv_work_t *wr) {
     run_command(RESOLVECTL " dns %s %s", dns_maintainer.tun_name, inet_ntoa(*(struct in_addr*)&dns_maintainer.dns_ip));
-    int s = run_command("/bin/sh -c " RESOLVECTL " domain | fgrep -v '%s' | fgrep '~.'",
-                        dns_maintainer.tun_name);
+    int s = run_command_ex(false, RESOLVECTL " domain | fgrep -v '%s' | fgrep -q '~.'",
+                           dns_maintainer.tun_name);
     char *domain = "";
     // set wildcard domain if any other resolvers set it.
     if (s == 0) {
