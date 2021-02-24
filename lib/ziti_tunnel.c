@@ -198,8 +198,8 @@ address_t *parse_address(const char *hn_or_ip_or_cidr, dns_manager *dns) {
     char *prefix_sep = strchr(addr->str, '/');
 
     if (prefix_sep != NULL) {
+        *prefix_sep = '\0';
         addr->prefix_len = (int)strtol(prefix_sep + 1, NULL, 10);
-        // todo update addr->str with network address (accounting for prefix) - e.g. zero non-prefix bits
     }
 
     if (ipaddr_aton(addr->str, &addr->ip) == 0) {
@@ -224,7 +224,13 @@ address_t *parse_address(const char *hn_or_ip_or_cidr, dns_manager *dns) {
     }
 
     if (prefix_sep != NULL) {
-        *prefix_sep = '/'; // replace '/' that was nulled for easy parsing
+        // update ip (and str) with masked address
+        uint8_t bits = 32 - addr->prefix_len;
+        ip4_addr_t mask, net;
+        ip4_addr_set_u32(&mask, PP_HTONL(0xffffffffUL >> bits << bits));
+        ip4_addr_set_u32(&net, addr->ip.u_addr.ip4.addr & mask.addr);
+        ip_addr_set_ip4_u32(&addr->ip, net.addr);
+        snprintf(addr->str, sizeof(addr->str), "%s/%d", ip4addr_ntoa(&net), addr->prefix_len);
     } else {
         // use full ip
         addr->prefix_len = IP_IS_V4(&addr->ip) ? 32 : 128;
