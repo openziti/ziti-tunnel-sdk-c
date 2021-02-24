@@ -148,11 +148,11 @@ static void usage() {
 }
 
 static struct option run_options[] = {
-        { "config", required_argument, NULL, 'c' },
-        { "debug", required_argument, NULL, 'd'},
+        { "identity", required_argument, NULL, 'i' },
+        { "verbose", required_argument, NULL, 'v'},
         { "refresh", required_argument, NULL, 'r'},
-        { "ip", required_argument, NULL, 'i'},
-        { "dns", optional_argument, NULL, 'n'},
+        { "dns-ip-range", required_argument, NULL, 'd'},
+        { "dns", required_argument, NULL, 'n'},
 };
 
 static const char* ip_range = "100.64.0.0/10";
@@ -164,19 +164,19 @@ static int run_opts(int argc, char *argv[]) {
     int c, option_index, errors = 0;
     optind = 0;
 
-    while ((c = getopt_long(argc, argv, "c:d:r:i:n:",
+    while ((c = getopt_long(argc, argv, "i:v:r:d:n:",
                             run_options, &option_index)) != -1) {
         switch (c) {
-            case 'c':
+            case 'i':
                 OPTS.config = strdup(optarg);
                 break;
-            case 'd':
+            case 'v':
                 setenv("ZITI_LOG", optarg, true);
                 break;
             case 'r':
                 OPTS.refresh_interval = strtol(optarg, NULL, 10);
                 break;
-            case 'i': // ip range
+            case 'd': // ip range
                 ip_range = optarg;
                 break;
             case 'n': // DNS manager implementation

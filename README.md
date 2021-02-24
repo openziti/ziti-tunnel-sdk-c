@@ -20,10 +20,42 @@ encrypted to the farthest edges of the communication path - all the way to the
 application's internal buffers. A Ziti Tunneler cannot secure the communication
 between itself and the TCP/IP application.
 
-Ziti Tunnelers are intedned for situations where going Ziti-native is expensive
+Ziti Tunnelers are intended for situations where going Ziti-native is expensive
 or impossible to implement (e.g. a third-party applications or libraries). Ziti
 Tunnelers enable standard TCP/IP applications to reap _most_ of the security and
 reliability benefits offered by Ziti networks without changing a line of code.
+
+### Running `ziti-edge-tunnel`
+Download appropriate version from [Releases](https://github.com/openziti/ziti-tunnel-sdk-c/releases/latest)
+
+#### Linux
+Enrollment
+
+```
+$ ziti-edge-tunnel enroll -j <enrollment JWT file> -i <output identity file>
+```
+
+Run tunnel with default options (DNS configured with systemd-resolved)
+
+```
+$ ziti-edge-tunnel run -i <identity file>
+```
+
+Sample service file
+``` 
+[Unit]
+Description=Ziti Edge Tunnel
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/opt/ziti/bin/ziti-edge-tunnel run -i /opt/ziti/etc/id.json
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+```
 
 ## What is the Ziti Tunneler SDK?
 
