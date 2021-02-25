@@ -126,8 +126,22 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, const char *ip_rang
 #include <getopt.h>
 
 static CommandLine main_cmd;
-static void usage() {
-    commandline_print_usage(&main_cmd, stdout);
+static void usage(int argc, char *argv[]) {
+    if (argc == 0) {
+        commandline_print_usage(&main_cmd, stdout);
+        return;
+    }
+
+    if (strcmp(argv[0], "help") == 0) {
+        printf("seriously? you need help\n");
+        return;
+    }
+    char *help_args[] = {
+            "ziti-edge-tunnel",
+            argv[0],
+            "-h"
+    };
+    commandline_run(&main_cmd, 3, help_args);
 }
 
 static struct option run_options[] = {
@@ -384,7 +398,8 @@ static CommandLine *main_cmds[] = {
 static CommandLine main_cmd = make_command_set(
         NULL,
         "Ziti Tunnel App",
-        "<command> [<args>]", "Ziti Tunnel App",
+        "<command> [<args>]", "to get help for specific command run 'ziti-edge-tunnel help <command>' "
+                              "or 'ziti-edge-tunnel <command> -h'",
         NULL, main_cmds);
 
 int main(int argc, char *argv[]) {
