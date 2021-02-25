@@ -15,15 +15,27 @@
 #error "please port this file to your operating system"
 #endif
 
+extern dns_manager *get_dnsmasq_manager(const char* path);
+
+struct ziti_instance_s {
+    ziti_options opts;
+    ziti_context ztx;
+    LIST_ENTRY(ziti_instance_s) _next;
+};
+
+// temporary list to pass info between parse and run
+static LIST_HEAD(instance_list, ziti_instance_s) instance_init_list;
+
+// map<path -> ziti_instance>
+static model_map instances;
+
 static void on_ziti_event(ziti_context ztx, const ziti_event_t *event);
 
 const char *cfg_types[] = { "ziti-tunneler-client.v1", "intercept.v1", "ziti-tunneler-server.v1", "host.v1", NULL };
-static ziti_options OPTS = {
-        .config_types = cfg_types,
-        .events = ZitiContextEvent|ZitiServiceEvent,
-        .event_cb = on_ziti_event,
-        .refresh_interval = 10, /* default refresh */
-};
+
+static long refresh_interval = 10;
+
+static tunneler_context tnlr_ctx;
 
 /** callback from ziti SDK when a new service becomes available to our identity */
 static void on_service(ziti_context ziti_ctx, ziti_service *service, int status, void *tnlr_ctx) {
@@ -77,7 +89,24 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
     }
 }
 
-extern dns_manager *get_dnsmasq_manager(const char* path);
+static void load_ziti_async(uv_async_t *ar) {
+    struct ziti_instance_s *inst = ar->data;
+
+    char *config_path = realpath(inst->opts.config, NULL);
+    if (model_map_get(&instances, config_path) != NULL) {
+        ZITI_LOG(WARN, "ziti context already loaded for %s", inst->opts.config);
+    } else {
+        ZITI_LOG(INFO, "loading ziti instance from %s", config_path);
+        inst->opts.app_ctx = tnlr_ctx;
+        if (ziti_init_opts(&inst->opts, ar->loop) == ZITI_OK) {
+            model_map_set(&instances, config_path, inst);
+        } else {
+            ZITI_LOG(ERROR, "failed to initialize ziti");
+        }
+    }
+    free(config_path);
+    uv_close((uv_handle_t *) ar, (uv_close_cb) free);
+}
 
 static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, const char *ip_range, dns_manager *dns) {
     netif_driver tun;
@@ -102,14 +131,18 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, const char *ip_rang
             .ziti_host = ziti_sdk_c_host
 
     };
-    tunneler_context tnlr_ctx = ziti_tunneler_init(&tunneler_opts, ziti_loop);
+
+    tnlr_ctx = ziti_tunneler_init(&tunneler_opts, ziti_loop);
     ziti_tunneler_set_dns(tnlr_ctx, dns);
 
-    OPTS.app_ctx = tnlr_ctx;
+    while(!LIST_EMPTY(&instance_init_list)) {
+        struct ziti_instance_s *inst = LIST_FIRST(&instance_init_list);
+        LIST_REMOVE(inst, _next);
 
-    if (ziti_init_opts(&OPTS, ziti_loop) != 0) {
-        ZITI_LOG(ERROR, "failed to initialize ziti");
-        return 1;
+        uv_async_t *ar = calloc(1, sizeof(uv_async_t));
+        ar->data = inst;
+        uv_async_init(ziti_loop, ar, load_ziti_async);
+        uv_async_send(ar);
     }
 
     if (uv_run(ziti_loop, UV_RUN_DEFAULT) != 0) {
@@ -164,14 +197,21 @@ static int run_opts(int argc, char *argv[]) {
     while ((c = getopt_long(argc, argv, "i:v:r:d:n:",
                             run_options, &option_index)) != -1) {
         switch (c) {
-            case 'i':
-                OPTS.config = strdup(optarg);
+            case 'i': {
+                struct ziti_instance_s *inst = calloc(1, sizeof(struct ziti_instance_s));
+                inst->opts.config = strdup(optarg);
+                inst->opts.config_types = cfg_types;
+                inst->opts.events = ZitiContextEvent|ZitiServiceEvent;
+                inst->opts.event_cb = on_ziti_event;
+                inst->opts.refresh_interval = refresh_interval; /* default refresh */
+                LIST_INSERT_HEAD(&instance_init_list, inst, _next);
                 break;
+            }
             case 'v':
                 setenv("ZITI_LOG", optarg, true);
                 break;
             case 'r':
-                OPTS.refresh_interval = strtol(optarg, NULL, 10);
+                refresh_interval = strtol(optarg, NULL, 10);
                 break;
             case 'd': // ip range
                 ip_range = optarg;
