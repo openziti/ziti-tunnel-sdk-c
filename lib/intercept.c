@@ -13,11 +13,12 @@ intercept_ctx_t *lookup_intercept_by_address(tunneler_context tnlr_ctx, const ch
         return NULL;
     }
 
-    bool protocol_match = false;
-    bool address_match = false;
 
     STAILQ_FOREACH(intercept, &tnlr_ctx->intercepts, entries) {
         protocol_t *p;
+        bool protocol_match = false;
+        bool address_match = false;
+
         STAILQ_FOREACH(p, &intercept->protocols, entries) {
             if (strcmp(p->protocol, protocol) == 0) {
                 protocol_match = true;

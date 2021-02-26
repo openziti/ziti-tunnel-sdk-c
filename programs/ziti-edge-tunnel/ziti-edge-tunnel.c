@@ -126,8 +126,22 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, const char *ip_rang
 #include <getopt.h>
 
 static CommandLine main_cmd;
-static void usage() {
-    commandline_print_usage(&main_cmd, stdout);
+static void usage(int argc, char *argv[]) {
+    if (argc == 0) {
+        commandline_print_usage(&main_cmd, stdout);
+        return;
+    }
+
+    if (strcmp(argv[0], "help") == 0) {
+        printf("seriously? you need help\n");
+        return;
+    }
+    char *help_args[] = {
+            "ziti-edge-tunnel",
+            argv[0],
+            "-h"
+    };
+    commandline_run(&main_cmd, 3, help_args);
 }
 
 static struct option run_options[] = {
@@ -210,7 +224,7 @@ static void run(int argc, char *argv[]) {
     }
 
     dns_manager *dns = NULL;
-    if (dns_impl == NULL) {
+    if (dns_impl == NULL || strcmp(dns_impl, "internal") == 0) {
         ZITI_LOG(INFO, "setting up internal DNS");
         dns = get_tunneler_dns(ziti_loop, dns_ip, dns_fallback, NULL);
     } else if (strncmp("dnsmasq", dns_impl, strlen("dnsmasq")) == 0) {
@@ -220,6 +234,9 @@ static void run(int argc, char *argv[]) {
             exit(1);
         }
         dns = get_dnsmasq_manager(col + 1);
+    } else {
+        ZITI_LOG(ERROR, "DNS setting '%s' is not supported", dns_impl);
+        exit(1);
     }
 
     ziti_tunneler_init_dns(mask, bits);
@@ -352,11 +369,22 @@ static void enroll(int argc, char *argv[]) {
 }
 
 static CommandLine enroll_cmd = make_command("enroll", "enroll Ziti identity",
-        "enroll -j|--jwt <enrollment token> -i|--identity <identity> [-k|--key <private_key> [-c|--cert <certificate>]]", NULL,
+        "-j|--jwt <enrollment token> -i|--identity <identity> [-k|--key <private_key> [-c|--cert <certificate>]]",
+        "\t-j|--jwt\tenrollment token file\n"
+        "\t-i|--identity\toutput identity file\n"
+        "\t-k|--key\tprivate key for enrollment\n"
+        "\t-c|--cert\tcertificate for enrollment\n",
         parse_enroll_opts, enroll);
-static CommandLine run_cmd = make_command("run", "run Ziti tunnel", "run -i|--identity <identity>",
-        "start tunneler", run_opts, run);
-static CommandLine ver_cmd = make_command("version", "show version", "version", NULL, version_opts, version);
+static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required superuser access)",
+                                          "-i <id.file> [-r N] [-v N] [-d|--dns-ip-range N.N.N.N/n] [-n|--dns <internal|dnsmasq=<dnsmasq hosts dir>>]",
+                                          "\t-i|--identity <identity>\trun with provided identity file (required)\n"
+                                          "\t-v|--verbose N\tset log level, higher level -- more verbose (default 3)\n"
+                                          "\t-r|--refresh N\tset service polling interval in seconds (default 10)\n"
+                                          "\t-d|--dns-ip-range <ip range>\tspecify CIDR block in which service DNS names"
+                                          " are assigned in N.N.N.N/n format (default 100.64.0.0/10)\n"
+                                          "\t-n|--dns <internal|dnsmasq=<dnsmasq opts>> DNS configuration setting (default internal)\n",
+        run_opts, run);
+static CommandLine ver_cmd = make_command("version", "show version", "[-v]", "\t-v\tshow verbose version information\n", version_opts, version);
 static CommandLine help_cmd = make_command("help", "this message", NULL, NULL, NULL, usage);
 static CommandLine *main_cmds[] = {
         &enroll_cmd,
@@ -370,7 +398,8 @@ static CommandLine *main_cmds[] = {
 static CommandLine main_cmd = make_command_set(
         NULL,
         "Ziti Tunnel App",
-        "<command> [<args>]", "Ziti Tunnel App",
+        "<command> [<args>]", "to get help for specific command run 'ziti-edge-tunnel help <command>' "
+                              "or 'ziti-edge-tunnel <command> -h'",
         NULL, main_cmds);
 
 int main(int argc, char *argv[]) {
