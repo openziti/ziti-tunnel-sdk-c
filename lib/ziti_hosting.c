@@ -598,7 +598,7 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
         ziti_close(clt, ziti_conn_close_cb);
         safe_free(io_ctx);
     }
-    if (app_data_json != NULL) {
+    if (clt_ctx->app_data != NULL) {
         free_tunneler_app_data(&app_data_model);
     }
     if (dial_ai != NULL) {
