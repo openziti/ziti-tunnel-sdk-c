@@ -6,3 +6,5 @@ build-*/
 build/
 /cmake-build-*/
 install/
+
+.vscode/
