@@ -117,33 +117,37 @@ static char *string_replace(char *source, size_t sourceSize, const char *substri
 
 /** render app_data as string (json) into supplied buffer. returns json string length. */
 static size_t get_app_data_json(char *buf, size_t bufsz, tunneler_io_context io, ziti_context ziti_ctx, const char *source_ip) {
+    static const char *PROTO_KEY = "intercepted_protocol";
+    static const char *IP_KEY = "intercepted_ip";
+    static const char *PORT_KEY = "intercepted_port";
+
     tunneler_app_data app_data_model;
     memset(&app_data_model, 0, sizeof(app_data_model));
     model_map_clear(&app_data_model.data, NULL);
 
     const char *intercepted = get_intercepted_address(io);
-    if (intercepted != NULL) {
-        char proto[8];
-        char ip[64];
+    char proto[8];
+    char ip[64];
+    char resolved_source_ip[64];
 
+    if (intercepted != NULL) {
         const char *proto_sep = strchr(intercepted, ':');
         if (proto_sep != NULL) {
             snprintf(proto, sizeof(proto), "%.*s", (int) (proto_sep - intercepted), intercepted);
-            model_map_set(&app_data_model.data, "intercepted_protocol", proto);
+            model_map_set(&app_data_model.data, PROTO_KEY, proto);
         }
 
         const char *ip_start = proto_sep + 1;
         const char *ip_sep = strrchr(intercepted, ':');
         if (ip_sep != NULL) {
             snprintf(ip, sizeof(ip), "%.*s", (int) (ip_sep - ip_start), ip_start);
-            model_map_set(&app_data_model.data, "intercepted_ip", ip);
-        }
+            model_map_set(&app_data_model.data, IP_KEY, ip);
 
-        const char *port = ip_sep + 1;
-        model_map_set(&app_data_model.data, "intercepted_port", (char *) port);
+            const char *port = ip_sep + 1;
+            model_map_set(&app_data_model.data, PORT_KEY, (char *) strdup(port));
+        }
     }
 
-    char resolved_source_ip[64];
     if (source_ip != NULL) {
         const ziti_identity *zid = ziti_get_identity(ziti_ctx);
         strncpy(resolved_source_ip, source_ip, sizeof(resolved_source_ip));
@@ -174,7 +178,12 @@ static size_t get_app_data_json(char *buf, size_t bufsz, tunneler_io_context io,
         json_len = 0;
     }
 
-    //free_tunneler_app_data(&app_data_model); // todo leak?
+    // values point to stack buffers
+    model_map_remove(&app_data_model.data, PROTO_KEY);
+    model_map_remove(&app_data_model.data, IP_KEY);
+    model_map_remove(&app_data_model.data, PORT_KEY);
+
+    free_tunneler_app_data(&app_data_model);
     return json_len;
 }
 
@@ -242,10 +251,10 @@ void * ziti_sdk_c_dial(const intercept_ctx_t *intercept_ctx, struct io_ctx_s *io
             break;
     }
 
-    dial_opts.app_data_sz = get_app_data_json(app_data_json, sizeof(app_data_json), io->tnlr_io, ziti_ctx, source_ip) + 1;
+    dial_opts.app_data_sz = get_app_data_json(app_data_json, sizeof(app_data_json), io->tnlr_io, ziti_ctx, source_ip);
     dial_opts.app_data = app_data_json;
 
-    ZITI_LOG(DEBUG, "service[%s] app_data_json='%s'", intercept_ctx->service_name, app_data_json);
+    ZITI_LOG(DEBUG, "service[%s] app_data_json[%zd]='%.*s'", intercept_ctx->service_name, dial_opts.app_data_sz, (int)dial_opts.app_data_sz, app_data_json);
     if (ziti_dial_with_options(ziti_io_ctx->ziti_conn, intercept_ctx->service_name, &dial_opts, on_ziti_connect, on_ziti_data) != ZITI_OK) {
         ZITI_LOG(ERROR, "ziti_dial failed");
         free(ziti_io_ctx);
