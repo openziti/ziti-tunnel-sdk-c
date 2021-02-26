@@ -13,7 +13,6 @@ intercept_ctx_t *lookup_intercept_by_address(tunneler_context tnlr_ctx, const ch
         return NULL;
     }
 
-
     STAILQ_FOREACH(intercept, &tnlr_ctx->intercepts, entries) {
         protocol_t *p;
         bool protocol_match = false;
@@ -30,17 +29,12 @@ intercept_ctx_t *lookup_intercept_by_address(tunneler_context tnlr_ctx, const ch
         address_t *c;
         STAILQ_FOREACH(c, &intercept->addresses, entries) {
             if (IP_IS_V4(&c->ip) && c->prefix_len != 32) {
-                // todo set mask when config is parsed.
-                uint8_t bits = 32 - c->prefix_len;
-                ip4_addr_t mask;
-                ip4_addr_set_u32(&mask, PP_HTONL(0xffffffffUL >> bits << bits));
-                if (ip_addr_netcmp(dst_addr, &c->ip, &mask)) {
+                if (ip_addr_netcmp(dst_addr, &c->ip, ip_2_ip4(&c->_netmask))) {
                     address_match = true;
                     break;
                 }
             } else if (IP_IS_V6(&c->ip) && c->prefix_len != 128) {
-                ZITI_LOG(ERROR, "IPv6 range intercept not currently supported (%s)", c->str);
-                break;
+                ZITI_LOG(ERROR, "IPv6 CIDR intercept is not currently supported");
             } else if (ip_addr_cmp(&c->ip, dst_addr)) {
                 address_match = true;
                 break;

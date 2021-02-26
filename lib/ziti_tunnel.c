@@ -223,17 +223,21 @@ address_t *parse_address(const char *hn_or_ip_or_cidr, dns_manager *dns) {
         }
     }
 
+    uint8_t addr_bits = IP_IS_V4(&addr->ip) ? 32 : 128;
+    uint8_t net_bits = addr_bits - addr->prefix_len;
+
     if (prefix_sep != NULL) {
-        // update ip (and str) with masked address
-        uint8_t bits = 32 - addr->prefix_len;
-        ip4_addr_t mask, net;
-        ip4_addr_set_u32(&mask, PP_HTONL(0xffffffffUL >> bits << bits));
-        ip4_addr_set_u32(&net, addr->ip.u_addr.ip4.addr & mask.addr);
-        ip_addr_set_ip4_u32(&addr->ip, net.addr);
-        snprintf(addr->str, sizeof(addr->str), "%s/%d", ip4addr_ntoa(&net), addr->prefix_len);
+        // update ip (and str) with masked address - host bits zeroed
+        if (addr->ip.type == IPADDR_TYPE_V4) {
+            ip_addr_set_ip4_u32(&addr->_netmask, PP_HTONL(IPADDR_BROADCAST >> net_bits << net_bits));
+            ip_addr_set_ip4_u32(&addr->ip, ip_2_ip4(&addr->ip)->addr & ip_2_ip4(&addr->_netmask)->addr);
+        } else if (addr->ip.type == IPADDR_TYPE_V6) {
+            ZITI_LOG(ERROR, "IPv6 CIDR intercept is not currently supported");
+        }
+        snprintf(addr->str, sizeof(addr->str), "%s/%d", ipaddr_ntoa(&addr->ip), addr->prefix_len);
     } else {
         // use full ip
-        addr->prefix_len = IP_IS_V4(&addr->ip) ? 32 : 128;
+        addr->prefix_len = addr_bits;
     }
 
     return addr;
