@@ -425,7 +425,7 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
         ZITI_LOG(DEBUG, "hosted_service[%s], client[%s]: received app_data_json='%.*s'", service_ctx->service_name,
                  client_identity, clt_ctx->app_data_sz, clt_ctx->app_data);
         if (parse_tunneler_app_data(&app_data_model, (char *)clt_ctx->app_data, clt_ctx->app_data_sz) != 0) {
-            ZITI_LOG(ERROR, "hosted_service[%s], client[%s]: failed to parse app_data_json '%.*%s'",
+            ZITI_LOG(ERROR, "hosted_service[%s], client[%s]: failed to parse app_data_json '%.*s'",
                      service_ctx->service_name,
                      client_identity, clt_ctx->app_data_sz, clt_ctx->app_data);
             err = true;
@@ -490,9 +490,9 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
                  service_ctx->service_name, client_identity);
     }
 
-    struct addrinfo source_hints;
     const char *source_ip = model_map_get(&app_data_model.data, "source_ip");
     if (source_ip != NULL) {
+        struct addrinfo source_hints = {0};
         const char *port_sep = strchr(source_ip, ':');
         const char *source_port = NULL;
         char source_ip_cp[64];
