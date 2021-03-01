@@ -34,7 +34,10 @@ limitations under the License.
 static void ziti_conn_close_cb(ziti_connection zc) {
     ZITI_LOG(TRACE, "ziti_conn[%p] is closed", zc);
     struct hosted_io_ctx_s *io_ctx = ziti_conn_data(zc);
-    if (io_ctx) free(io_ctx);
+    if (io_ctx) {
+        free(io_ctx);
+        ziti_conn_set_data(zc, NULL);
+    }
 }
 
 /** called by ziti SDK when a ziti client write (to a hosted tcp server) is completed */
@@ -596,7 +599,6 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
     done:
     if (err) {
         ziti_close(clt, ziti_conn_close_cb);
-        safe_free(io_ctx);
     }
     if (clt_ctx->app_data != NULL) {
         free_tunneler_app_data(&app_data_model);
