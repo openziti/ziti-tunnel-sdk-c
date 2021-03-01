@@ -120,6 +120,7 @@ static size_t get_app_data_json(char *buf, size_t bufsz, tunneler_io_context io,
     static const char *PROTO_KEY = "intercepted_protocol";
     static const char *IP_KEY = "intercepted_ip";
     static const char *PORT_KEY = "intercepted_port";
+    static const char *SOURCE_IP_KEY = "source_ip";
 
     tunneler_app_data app_data_model;
     memset(&app_data_model, 0, sizeof(app_data_model));
@@ -169,7 +170,7 @@ static size_t get_app_data_json(char *buf, size_t bufsz, tunneler_io_context io,
             }
         }
         string_replace(resolved_source_ip, sizeof(resolved_source_ip), "$intercepted_port", model_map_get(&app_data_model.data, "intercepted_port"));
-        model_map_set(&app_data_model.data, "source_ip", resolved_source_ip);
+        model_map_set(&app_data_model.data, SOURCE_IP_KEY, resolved_source_ip);
     }
 
     size_t json_len;
@@ -182,6 +183,7 @@ static size_t get_app_data_json(char *buf, size_t bufsz, tunneler_io_context io,
     model_map_remove(&app_data_model.data, PROTO_KEY);
     model_map_remove(&app_data_model.data, IP_KEY);
     model_map_remove(&app_data_model.data, PORT_KEY);
+    model_map_remove(&app_data_model.data, SOURCE_IP_KEY);
 
     free_tunneler_app_data(&app_data_model);
     return json_len;
