@@ -15,15 +15,39 @@
 #error "please port this file to your operating system"
 #endif
 
+extern dns_manager *get_dnsmasq_manager(const char* path);
+
+struct ziti_instance_s {
+    ziti_options opts;
+    ziti_context ztx;
+    LIST_ENTRY(ziti_instance_s) _next;
+};
+
+// temporary list to pass info between parse and run
+static LIST_HEAD(instance_list, ziti_instance_s) instance_init_list;
+
+// map<path -> ziti_instance>
+static model_map instances;
+
 static void on_ziti_event(ziti_context ztx, const ziti_event_t *event);
 
-const char *cfg_types[] = { "ziti-tunneler-client.v1", "intercept.v1", "ziti-tunneler-server.v1", "host.v1", NULL };
-static ziti_options OPTS = {
-        .config_types = cfg_types,
-        .events = ZitiContextEvent|ZitiServiceEvent,
-        .event_cb = on_ziti_event,
-        .refresh_interval = 10, /* default refresh */
-};
+static const char * cfg_types[] = { "ziti-tunneler-client.v1", "intercept.v1", "ziti-tunneler-server.v1", "host.v1", NULL };
+
+static long refresh_interval = 10;
+
+static char *config_dir = NULL;
+
+static tunneler_context tnlr_ctx;
+
+static struct ziti_instance_s *new_ziti_instance(const char *path) {
+    struct ziti_instance_s *inst = calloc(1, sizeof(struct ziti_instance_s));
+    inst->opts.config = realpath(path, NULL);
+    inst->opts.config_types = cfg_types;
+    inst->opts.events = ZitiContextEvent|ZitiServiceEvent;
+    inst->opts.event_cb = on_ziti_event;
+    inst->opts.refresh_interval = refresh_interval; /* default refresh */
+    return inst;
+}
 
 /** callback from ziti SDK when a new service becomes available to our identity */
 static void on_service(ziti_context ziti_ctx, ziti_service *service, int status, void *tnlr_ctx) {
@@ -77,7 +101,58 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
     }
 }
 
-extern dns_manager *get_dnsmasq_manager(const char* path);
+static void load_ziti_async(uv_async_t *ar) {
+    struct ziti_instance_s *inst = ar->data;
+
+    char *config_path = realpath(inst->opts.config, NULL);
+    if (model_map_get(&instances, config_path) != NULL) {
+        ZITI_LOG(WARN, "ziti context already loaded for %s", inst->opts.config);
+    } else {
+        ZITI_LOG(INFO, "loading ziti instance from %s", config_path);
+        inst->opts.app_ctx = tnlr_ctx;
+        if (ziti_init_opts(&inst->opts, ar->loop) == ZITI_OK) {
+            model_map_set(&instances, config_path, inst);
+        } else {
+            ZITI_LOG(ERROR, "failed to initialize ziti");
+        }
+    }
+    free(config_path);
+    uv_close((uv_handle_t *) ar, (uv_close_cb) free);
+}
+
+static void load_identities(uv_work_t *wr) {
+    if (config_dir != NULL) {
+        uv_fs_t fs;
+        int rc = uv_fs_scandir(wr->loop, &fs, config_dir, 0, NULL);
+        if (rc < 0) {
+            ZITI_LOG(ERROR, "failed to scan dir: %d/%s", rc, uv_strerror(rc));
+        }
+
+        uv_dirent_t file;
+        while (uv_fs_scandir_next(&fs, &file) != UV_EOF) {
+            ZITI_LOG(INFO, "file = %s %d", file.name, file.type);
+
+            if (file.type == UV_DIRENT_FILE) {
+                char path[MAXPATHLEN];
+                snprintf(path, sizeof(path), "%s/%s", config_dir, file.name);
+                struct ziti_instance_s *inst = new_ziti_instance(path);
+                LIST_INSERT_HEAD(&instance_init_list, inst, _next);
+            }
+        }
+    }
+}
+
+static void load_identities_complete(uv_work_t * wr, int status) {
+    while(!LIST_EMPTY(&instance_init_list)) {
+        struct ziti_instance_s *inst = LIST_FIRST(&instance_init_list);
+        LIST_REMOVE(inst, _next);
+
+        uv_async_t *ar = calloc(1, sizeof(uv_async_t));
+        ar->data = inst;
+        uv_async_init(wr->loop, ar, load_ziti_async);
+        uv_async_send(ar);
+    }
+}
 
 static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, const char *ip_range, dns_manager *dns) {
     netif_driver tun;
@@ -102,15 +177,12 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, const char *ip_rang
             .ziti_host = ziti_sdk_c_host
 
     };
-    tunneler_context tnlr_ctx = ziti_tunneler_init(&tunneler_opts, ziti_loop);
+
+    tnlr_ctx = ziti_tunneler_init(&tunneler_opts, ziti_loop);
     ziti_tunneler_set_dns(tnlr_ctx, dns);
 
-    OPTS.app_ctx = tnlr_ctx;
-
-    if (ziti_init_opts(&OPTS, ziti_loop) != 0) {
-        ZITI_LOG(ERROR, "failed to initialize ziti");
-        return 1;
-    }
+    uv_work_t *loader = calloc(1, sizeof(uv_work_t));
+    uv_queue_work(ziti_loop, loader, load_identities, load_identities_complete);
 
     if (uv_run(ziti_loop, UV_RUN_DEFAULT) != 0) {
         ZITI_LOG(ERROR, "failed to run event loop");
@@ -146,6 +218,7 @@ static void usage(int argc, char *argv[]) {
 
 static struct option run_options[] = {
         { "identity", required_argument, NULL, 'i' },
+        { "identity-dir", required_argument, NULL, 'I'},
         { "verbose", required_argument, NULL, 'v'},
         { "refresh", required_argument, NULL, 'r'},
         { "dns-ip-range", required_argument, NULL, 'd'},
@@ -161,17 +234,22 @@ static int run_opts(int argc, char *argv[]) {
     int c, option_index, errors = 0;
     optind = 0;
 
-    while ((c = getopt_long(argc, argv, "i:v:r:d:n:",
+    while ((c = getopt_long(argc, argv, "i:I:v:r:d:n:",
                             run_options, &option_index)) != -1) {
         switch (c) {
-            case 'i':
-                OPTS.config = strdup(optarg);
+            case 'i': {
+                struct ziti_instance_s *inst = new_ziti_instance(optarg);
+                LIST_INSERT_HEAD(&instance_init_list, inst, _next);
+                break;
+            }
+            case 'I':
+                config_dir = optarg;
                 break;
             case 'v':
                 setenv("ZITI_LOG", optarg, true);
                 break;
             case 'r':
-                OPTS.refresh_interval = strtol(optarg, NULL, 10);
+                refresh_interval = strtol(optarg, NULL, 10);
                 break;
             case 'd': // ip range
                 ip_range = optarg;
@@ -378,6 +456,7 @@ static CommandLine enroll_cmd = make_command("enroll", "enroll Ziti identity",
 static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required superuser access)",
                                           "-i <id.file> [-r N] [-v N] [-d|--dns-ip-range N.N.N.N/n] [-n|--dns <internal|dnsmasq=<dnsmasq hosts dir>>]",
                                           "\t-i|--identity <identity>\trun with provided identity file (required)\n"
+                                          "\t-I|--identity-dir <dir>\tload identities from provided directory\n"
                                           "\t-v|--verbose N\tset log level, higher level -- more verbose (default 3)\n"
                                           "\t-r|--refresh N\tset service polling interval in seconds (default 10)\n"
                                           "\t-d|--dns-ip-range <ip range>\tspecify CIDR block in which service DNS names"
