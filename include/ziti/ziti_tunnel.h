@@ -54,6 +54,7 @@ typedef struct address_s {
     char       str[UV_MAXHOSTNAMESIZE]; // hostname || ip || ip/prefix
     bool       is_hostname;
     ip_addr_t  ip;
+    ip_addr_t  _netmask;
     uint8_t    prefix_len;
     STAILQ_ENTRY(address_s) entries;
 } address_t;

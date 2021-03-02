@@ -223,11 +223,21 @@ address_t *parse_address(const char *hn_or_ip_or_cidr, dns_manager *dns) {
         }
     }
 
+    uint8_t addr_bits = IP_IS_V4(&addr->ip) ? 32 : 128;
+    uint8_t net_bits = addr_bits - addr->prefix_len;
+
     if (prefix_sep != NULL) {
-        *prefix_sep = '/'; // replace '/' that was nulled for easy parsing
+        // update ip (and str) with masked address - host bits zeroed
+        if (addr->ip.type == IPADDR_TYPE_V4) {
+            ip_addr_set_ip4_u32(&addr->_netmask, PP_HTONL(IPADDR_BROADCAST >> net_bits << net_bits));
+            ip_addr_set_ip4_u32(&addr->ip, ip_2_ip4(&addr->ip)->addr & ip_2_ip4(&addr->_netmask)->addr);
+        } else if (addr->ip.type == IPADDR_TYPE_V6) {
+            ZITI_LOG(ERROR, "IPv6 CIDR intercept is not currently supported");
+        }
+        snprintf(addr->str, sizeof(addr->str), "%s/%d", ipaddr_ntoa(&addr->ip), addr->prefix_len);
     } else {
         // use full ip
-        addr->prefix_len = IP_IS_V4(&addr->ip) ? 32 : 128;
+        addr->prefix_len = addr_bits;
     }
 
     return addr;
