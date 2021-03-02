@@ -423,11 +423,11 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
     memset(&app_data_model, 0, sizeof(app_data_model));
     if (clt_ctx->app_data != NULL) {
         ZITI_LOG(DEBUG, "hosted_service[%s], client[%s]: received app_data_json='%.*s'", service_ctx->service_name,
-                 client_identity, clt_ctx->app_data_sz, clt_ctx->app_data);
+                 client_identity, (int)clt_ctx->app_data_sz, clt_ctx->app_data);
         if (parse_tunneler_app_data(&app_data_model, (char *)clt_ctx->app_data, clt_ctx->app_data_sz) != 0) {
             ZITI_LOG(ERROR, "hosted_service[%s], client[%s]: failed to parse app_data_json '%.*s'",
                      service_ctx->service_name,
-                     client_identity, clt_ctx->app_data_sz, clt_ctx->app_data);
+                     client_identity, (int)clt_ctx->app_data_sz, clt_ctx->app_data);
             err = true;
             goto done;
         }
