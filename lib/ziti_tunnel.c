@@ -93,6 +93,13 @@ const char *get_intercepted_address(const struct tunneler_io_ctx_s * tnlr_io) {
     return tnlr_io->intercepted;
 }
 
+const char *get_client_address(const struct tunneler_io_ctx_s * tnlr_io) {
+    if (tnlr_io == NULL) {
+        return NULL;
+    }
+    return tnlr_io->client;
+}
+
 void free_tunneler_io_context(tunneler_io_context *tnlr_io_ctx_p) {
     if (tnlr_io_ctx_p == NULL) {
         return;

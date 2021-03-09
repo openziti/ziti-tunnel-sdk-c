@@ -115,11 +115,39 @@ static char *string_replace(char *source, size_t sourceSize, const char *substri
     return substring_source + strlen(with);
 }
 
+static void parse_address2(const char *address, char **proto, char **ip, char **port) {
+    if (proto != NULL) *proto = NULL;
+    if (ip != NULL) *ip = NULL;
+    if (port != NULL) *port = NULL;
+
+    if (address != NULL) {
+        const char *proto_sep = strchr(address, ':');
+        if (proto_sep != NULL) {
+            size_t proto_len = proto_sep - address + 1;
+            *proto = malloc(proto_len);
+            snprintf(*proto, proto_len, "%.*s", (int) (proto_sep - address), address);
+        }
+
+        const char *ip_start = proto_sep + 1;
+        const char *ip_sep = strrchr(address, ':');
+        if (ip_sep != NULL) {
+            size_t ip_len = ip_sep - ip_start + 1;
+            *ip = malloc(ip_len);
+            snprintf(*ip, ip_len, "%.*s", (int) (ip_sep - ip_start), ip_start);
+            *port = strdup(ip_sep + 1);
+        }
+    }
+
+}
+
 /** render app_data as string (json) into supplied buffer. returns json string length. */
 static size_t get_app_data_json(char *buf, size_t bufsz, tunneler_io_context io, ziti_context ziti_ctx, const char *source_ip) {
     static const char *PROTO_KEY = "intercepted_protocol";
     static const char *IP_KEY = "intercepted_ip";
     static const char *PORT_KEY = "intercepted_port";
+    static const char *CLIENT_PROTO_KEY = "client_proto";
+    static const char *CLIENT_IP_KEY = "client_ip";
+    static const char *CLIENT_PORT_KEY = "client_port";
     static const char *SOURCE_IP_KEY = "source_ip";
 
     tunneler_app_data app_data_model;
@@ -127,26 +155,22 @@ static size_t get_app_data_json(char *buf, size_t bufsz, tunneler_io_context io,
     model_map_clear(&app_data_model.data, NULL);
 
     const char *intercepted = get_intercepted_address(io);
-    char proto[8];
-    char ip[64];
+    const char *client = get_client_address(io);
+    char *_proto, *_ip, *_port;
     char resolved_source_ip[64];
 
     if (intercepted != NULL) {
-        const char *proto_sep = strchr(intercepted, ':');
-        if (proto_sep != NULL) {
-            snprintf(proto, sizeof(proto), "%.*s", (int) (proto_sep - intercepted), intercepted);
-            model_map_set(&app_data_model.data, PROTO_KEY, proto);
-        }
+        parse_address2(intercepted, &_proto, &_ip, &_port);
+        if (_proto) model_map_set(&app_data_model.data, PROTO_KEY, _proto);
+        if (_ip) model_map_set(&app_data_model.data, IP_KEY, _ip);
+        if (_port) model_map_set(&app_data_model.data, PORT_KEY, (char *) _port);
+    }
 
-        const char *ip_start = proto_sep + 1;
-        const char *ip_sep = strrchr(intercepted, ':');
-        if (ip_sep != NULL) {
-            snprintf(ip, sizeof(ip), "%.*s", (int) (ip_sep - ip_start), ip_start);
-            model_map_set(&app_data_model.data, IP_KEY, ip);
-
-            const char *port = ip_sep + 1;
-            model_map_set(&app_data_model.data, PORT_KEY, (char *) strdup(port));
-        }
+    if (client != NULL) {
+        parse_address2(client, &_proto, &_ip, &_port);
+        if (_proto) model_map_set(&app_data_model.data, CLIENT_PROTO_KEY, _proto);
+        if (_ip) model_map_set(&app_data_model.data, CLIENT_IP_KEY, _ip);
+        if (_port) model_map_set(&app_data_model.data, CLIENT_PORT_KEY, (char *) _port);
     }
 
     if (source_ip != NULL) {
@@ -169,7 +193,9 @@ static size_t get_app_data_json(char *buf, size_t bufsz, tunneler_io_context io,
                 }
             }
         }
-        string_replace(resolved_source_ip, sizeof(resolved_source_ip), "$intercepted_port", model_map_get(&app_data_model.data, "intercepted_port"));
+        string_replace(resolved_source_ip, sizeof(resolved_source_ip), "$intercepted_port", model_map_get(&app_data_model.data, PORT_KEY));
+        string_replace(resolved_source_ip, sizeof(resolved_source_ip), "$client_ip", model_map_get(&app_data_model.data, CLIENT_IP_KEY));
+        string_replace(resolved_source_ip, sizeof(resolved_source_ip), "$client_port", model_map_get(&app_data_model.data, CLIENT_PORT_KEY));
         model_map_set(&app_data_model.data, SOURCE_IP_KEY, resolved_source_ip);
     }
 
@@ -179,10 +205,7 @@ static size_t get_app_data_json(char *buf, size_t bufsz, tunneler_io_context io,
         json_len = 0;
     }
 
-    // values point to stack buffers
-    model_map_remove(&app_data_model.data, PROTO_KEY);
-    model_map_remove(&app_data_model.data, IP_KEY);
-    model_map_remove(&app_data_model.data, PORT_KEY);
+    // value points to stack buffer
     model_map_remove(&app_data_model.data, SOURCE_IP_KEY);
 
     free_tunneler_app_data(&app_data_model);

@@ -36,6 +36,7 @@ extern "C" {
 typedef struct tunneler_ctx_s *tunneler_context;
 typedef struct tunneler_io_ctx_s *tunneler_io_context;
 const char * get_intercepted_address(const struct tunneler_io_ctx_s * tnlr_io);
+const char * get_client_address(const struct tunneler_io_ctx_s * tnlr_io);
 typedef struct hosted_io_ctx_s *hosted_io_context;
 
 typedef enum {
