@@ -502,7 +502,7 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
             source_ip_cp[port_sep-source_ip] = '\0';
             source_ip = source_ip_cp;
         }
-        source_hints.ai_flags = AI_ADDRCONFIG | AI_NUMERICHOST;
+        source_hints.ai_flags = AI_ADDRCONFIG | AI_NUMERICHOST | AI_NUMERICSERV;
         source_hints.ai_protocol = dial_ai_params.hints.ai_protocol;
         source_hints.ai_socktype = dial_ai_params.hints.ai_socktype;
         if ((s = getaddrinfo(source_ip, source_port, &source_hints, &source_ai)) != 0) {
@@ -539,8 +539,6 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
     switch (dial_ai->ai_protocol) {
         case IPPROTO_TCP:
             uv_tcp_init(service_ctx->loop, &io_ctx->server.tcp);
-            io_ctx->server.tcp.data = io_ctx;
-            ziti_conn_set_data(clt, io_ctx);
             if (source_ai != NULL) {
                 uv_err = uv_tcp_bind(&io_ctx->server.tcp, source_ai->ai_addr, 0);
                 if (uv_err != 0) {
@@ -550,6 +548,8 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
                     goto done;
                 }
             }
+            io_ctx->server.tcp.data = io_ctx;
+            ziti_conn_set_data(clt, io_ctx);
             {
                 uv_connect_t *c = malloc(sizeof(uv_connect_t));
                 uv_err = uv_tcp_connect(c, &io_ctx->server.tcp, dial_ai->ai_addr, on_hosted_tcp_server_connect_complete);
