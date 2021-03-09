@@ -548,6 +548,7 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
                     goto done;
                 }
             }
+            // todo why exactly does moving this (from before bind) avoid crash?
             io_ctx->server.tcp.data = io_ctx;
             ziti_conn_set_data(clt, io_ctx);
             {
@@ -563,8 +564,6 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
             break;
         case IPPROTO_UDP:
             uv_udp_init(service_ctx->loop, &io_ctx->server.udp);
-            io_ctx->server.udp.data = io_ctx;
-            ziti_conn_set_data(clt, io_ctx);
             if (source_ai != NULL) {
                 uv_err = uv_udp_bind(&io_ctx->server.udp, source_ai->ai_addr, 0);
                 if (uv_err != 0) {
@@ -574,6 +573,8 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
                     goto done;
                 }
             }
+            io_ctx->server.udp.data = io_ctx;
+            ziti_conn_set_data(clt, io_ctx);
             uv_err = uv_udp_connect(&io_ctx->server.udp, dial_ai->ai_addr);
             if (uv_err != 0) {
                 ZITI_LOG(ERROR, "hosted_service[%s], client[%s]: uv_udp_connect failed: %s",

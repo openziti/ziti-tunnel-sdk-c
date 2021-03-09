@@ -115,6 +115,7 @@ static char *string_replace(char *source, size_t sourceSize, const char *substri
     return substring_source + strlen(with);
 }
 
+// todo rename or refactor
 static void parse_address2(const char *address, char **proto, char **ip, char **port) {
     if (proto != NULL) *proto = NULL;
     if (ip != NULL) *ip = NULL;
@@ -145,7 +146,7 @@ static size_t get_app_data_json(char *buf, size_t bufsz, tunneler_io_context io,
     static const char *PROTO_KEY = "intercepted_protocol";
     static const char *IP_KEY = "intercepted_ip";
     static const char *PORT_KEY = "intercepted_port";
-    static const char *CLIENT_PROTO_KEY = "client_proto";
+    static const char *CLIENT_PROTO_KEY = "client_protocol"; // todo is this worthwhile? should always match intercepted_protocol
     static const char *CLIENT_IP_KEY = "client_ip";
     static const char *CLIENT_PORT_KEY = "client_port";
     static const char *SOURCE_IP_KEY = "source_ip";
