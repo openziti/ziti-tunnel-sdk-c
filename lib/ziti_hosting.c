@@ -32,11 +32,15 @@ limitations under the License.
 
 
 static void ziti_conn_close_cb(ziti_connection zc) {
-    ZITI_LOG(TRACE, "ziti_conn[%p] is closed", zc);
     struct hosted_io_ctx_s *io_ctx = ziti_conn_data(zc);
     if (io_ctx) {
+        ZITI_LOG(TRACE, "hosted_service[%s] client[%s] ziti_conn[%p] closed",
+                 io_ctx->service->service_name, ziti_conn_source_identity(zc), zc);
+        io_ctx->client = NULL;
         free(io_ctx);
         ziti_conn_set_data(zc, NULL);
+    } else {
+        ZITI_LOG(TRACE, "ziti_conn[%p] is closed", zc);
     }
 }
 
@@ -83,8 +87,12 @@ static void hosted_server_close_cb(uv_handle_t *handle) {
     struct hosted_io_ctx_s *io_ctx = handle->data;
     if (io_ctx->client) {
         ziti_close(io_ctx->client, ziti_conn_close_cb);
+        ZITI_LOG(TRACE, "hosted_service[%s] client[%s] server_conn[%p] closed",
+                 io_ctx->service->service_name, ziti_conn_source_identity(io_ctx->client));
     } else {
+        ZITI_LOG(TRACE, "server_conn[%p] closed", handle);
         free_hosted_io_ctx(handle->data);
+        handle->data = NULL;
     }
 }
 

@@ -444,5 +444,5 @@ static void ziti_conn_close_cb(ziti_connection zc) {
     ziti_tunneler_close(io->tnlr_io);
     free(io);
     ziti_conn_set_data(zc, NULL);
-    ZITI_LOG(VERBOSE, "nulled data for ziti_conn[%p]");
+    ZITI_LOG(VERBOSE, "nulled data for ziti_conn[%p]", zc);
 }
