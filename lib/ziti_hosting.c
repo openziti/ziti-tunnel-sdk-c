@@ -598,7 +598,7 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
 
     done:
     if (err) {
-        ziti_close(clt, ziti_conn_close_cb);
+        hosted_server_close(io_ctx);
     }
     if (clt_ctx->app_data != NULL) {
         free_tunneler_app_data(&app_data_model);
