@@ -36,7 +36,6 @@ static void ziti_conn_close_cb(ziti_connection zc) {
     if (io_ctx) {
         ZITI_LOG(TRACE, "hosted_service[%s] client[%s] ziti_conn[%p] closed",
                  io_ctx->service->service_name, ziti_conn_source_identity(zc), zc);
-        io_ctx->client = NULL;
         free(io_ctx);
         ziti_conn_set_data(zc, NULL);
     } else {
@@ -76,13 +75,6 @@ static void free_hosted_service_ctx(struct hosted_service_ctx_s *hosted_ctx) {
     }
 }
 
-static void free_hosted_io_ctx(struct hosted_io_ctx_s *io_ctx) {
-    if (io_ctx == NULL) {
-        return;
-    }
-    free(io_ctx);
-}
-
 static void hosted_server_close_cb(uv_handle_t *handle) {
     struct hosted_io_ctx_s *io_ctx = handle->data;
     if (io_ctx->client) {
@@ -91,7 +83,7 @@ static void hosted_server_close_cb(uv_handle_t *handle) {
                  io_ctx->service->service_name, ziti_conn_source_identity(io_ctx->client), handle);
     } else {
         ZITI_LOG(TRACE, "server_conn[%p] closed", handle);
-        free_hosted_io_ctx(handle->data);
+        safe_free(handle->data);
         handle->data = NULL;
     }
 }
@@ -308,7 +300,7 @@ struct addrinfo_params_s {
     const char *    port;
     char            _port_str[12]; // buffer used when config type uses int for port
     struct addrinfo hints;
-    char            err[64];
+    char            err[128];
 };
 
 static int get_protocol_id(const char *protocol) {
@@ -529,6 +521,7 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
     io_ctx->service = service_ctx;
     io_ctx->client = clt;
     io_ctx->server_proto_id = dial_ai->ai_protocol;
+    ziti_conn_set_data(clt, io_ctx);
 
     char host[48];
     char port[12];
@@ -547,6 +540,7 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
     switch (dial_ai->ai_protocol) {
         case IPPROTO_TCP:
             uv_tcp_init(service_ctx->loop, &io_ctx->server.tcp);
+            io_ctx->server.tcp.data = io_ctx;
             if (source_ai != NULL) {
                 uv_err = uv_tcp_bind(&io_ctx->server.tcp, source_ai->ai_addr, 0);
                 if (uv_err != 0) {
@@ -556,8 +550,6 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
                     goto done;
                 }
             }
-            io_ctx->server.tcp.data = io_ctx;
-            ziti_conn_set_data(clt, io_ctx);
             {
                 uv_connect_t *c = malloc(sizeof(uv_connect_t));
                 uv_err = uv_tcp_connect(c, &io_ctx->server.tcp, dial_ai->ai_addr, on_hosted_tcp_server_connect_complete);
@@ -571,6 +563,7 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
             break;
         case IPPROTO_UDP:
             uv_udp_init(service_ctx->loop, &io_ctx->server.udp);
+            io_ctx->server.udp.data = io_ctx;
             if (source_ai != NULL) {
                 uv_err = uv_udp_bind(&io_ctx->server.udp, source_ai->ai_addr, 0);
                 if (uv_err != 0) {
@@ -580,8 +573,6 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
                     goto done;
                 }
             }
-            io_ctx->server.udp.data = io_ctx;
-            ziti_conn_set_data(clt, io_ctx);
             uv_err = uv_udp_connect(&io_ctx->server.udp, dial_ai->ai_addr);
             if (uv_err != 0) {
                 ZITI_LOG(ERROR, "hosted_service[%s], client[%s]: uv_udp_connect failed: %s",
@@ -606,7 +597,7 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
 
     done:
     if (err) {
-        ziti_close(clt, ziti_conn_close_cb);
+        hosted_server_close(io_ctx);
     }
     if (clt_ctx->app_data != NULL) {
         free_tunneler_app_data(&app_data_model);
