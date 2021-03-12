@@ -36,6 +36,14 @@ limitations under the License.
 
 #include <string.h>
 
+const char *INTERCEPTED_PROTO_KEY = "intercepted_protocol";
+const char *INTERCEPTED_IP_KEY = "intercepted_ip";
+const char *INTERCEPTED_PORT_KEY = "intercepted_port";
+const char *CLIENT_PROTO_KEY = "client_protocol";
+const char *CLIENT_IP_KEY = "client_ip";
+const char *CLIENT_PORT_KEY = "client_port";
+const char *SOURCE_IP_KEY = "source_ip";
+
 struct resolve_req {
     struct pbuf *qp;
     ip_addr_t addr;

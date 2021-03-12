@@ -33,6 +33,15 @@ limitations under the License.
 extern "C" {
 #endif
 
+/** keys used in app_data model map */
+extern const char *INTERCEPTED_PROTO_KEY; // "intercepted_protocol"
+extern const char *INTERCEPTED_IP_KEY;    // "intercepted_ip"
+extern const char *INTERCEPTED_PORT_KEY;  // "intercepted_port"
+extern const char *CLIENT_PROTO_KEY;      // "client_protocol"
+extern const char *CLIENT_IP_KEY;         // "client_ip"
+extern const char *CLIENT_PORT_KEY;       // "client_port"
+extern const char *SOURCE_IP_KEY;         // "source_ip"
+
 typedef struct tunneler_ctx_s *tunneler_context;
 typedef struct tunneler_io_ctx_s *tunneler_io_context;
 const char * get_intercepted_address(const struct tunneler_io_ctx_s * tnlr_io);

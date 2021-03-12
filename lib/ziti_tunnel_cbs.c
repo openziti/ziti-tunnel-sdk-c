@@ -115,8 +115,8 @@ static char *string_replace(char *source, size_t sourceSize, const char *substri
     return substring_source + strlen(with);
 }
 
-// todo rename or refactor
-static void parse_address2(const char *address, char **proto, char **ip, char **port) {
+/** parse "proto:ip:port" */
+static void parse_socket_address(const char *address, char **proto, char **ip, char **port) {
     if (proto != NULL) *proto = NULL;
     if (ip != NULL) *ip = NULL;
     if (port != NULL) *port = NULL;
@@ -138,19 +138,10 @@ static void parse_address2(const char *address, char **proto, char **ip, char **
             *port = strdup(ip_sep + 1);
         }
     }
-
 }
 
 /** render app_data as string (json) into supplied buffer. returns json string length. */
 static size_t get_app_data_json(char *buf, size_t bufsz, tunneler_io_context io, ziti_context ziti_ctx, const char *source_ip) {
-    static const char *PROTO_KEY = "intercepted_protocol";
-    static const char *IP_KEY = "intercepted_ip";
-    static const char *PORT_KEY = "intercepted_port";
-    static const char *CLIENT_PROTO_KEY = "client_protocol"; // todo is this worthwhile? should always match intercepted_protocol
-    static const char *CLIENT_IP_KEY = "client_ip";
-    static const char *CLIENT_PORT_KEY = "client_port";
-    static const char *SOURCE_IP_KEY = "source_ip";
-
     tunneler_app_data app_data_model;
     memset(&app_data_model, 0, sizeof(app_data_model));
     model_map_clear(&app_data_model.data, NULL);
@@ -161,14 +152,14 @@ static size_t get_app_data_json(char *buf, size_t bufsz, tunneler_io_context io,
     char resolved_source_ip[64];
 
     if (intercepted != NULL) {
-        parse_address2(intercepted, &_proto, &_ip, &_port);
-        if (_proto) model_map_set(&app_data_model.data, PROTO_KEY, _proto);
-        if (_ip) model_map_set(&app_data_model.data, IP_KEY, _ip);
-        if (_port) model_map_set(&app_data_model.data, PORT_KEY, (char *) _port);
+        parse_socket_address(intercepted, &_proto, &_ip, &_port);
+        if (_proto) model_map_set(&app_data_model.data, INTERCEPTED_PROTO_KEY, _proto);
+        if (_ip) model_map_set(&app_data_model.data, INTERCEPTED_IP_KEY, _ip);
+        if (_port) model_map_set(&app_data_model.data, INTERCEPTED_PORT_KEY, (char *) _port);
     }
 
     if (client != NULL) {
-        parse_address2(client, &_proto, &_ip, &_port);
+        parse_socket_address(client, &_proto, &_ip, &_port);
         if (_proto) model_map_set(&app_data_model.data, CLIENT_PROTO_KEY, _proto);
         if (_ip) model_map_set(&app_data_model.data, CLIENT_IP_KEY, _ip);
         if (_port) model_map_set(&app_data_model.data, CLIENT_PORT_KEY, (char *) _port);
@@ -194,7 +185,7 @@ static size_t get_app_data_json(char *buf, size_t bufsz, tunneler_io_context io,
                 }
             }
         }
-        string_replace(resolved_source_ip, sizeof(resolved_source_ip), "$intercepted_port", model_map_get(&app_data_model.data, PORT_KEY));
+        string_replace(resolved_source_ip, sizeof(resolved_source_ip), "$intercepted_port", model_map_get(&app_data_model.data, INTERCEPTED_PORT_KEY));
         string_replace(resolved_source_ip, sizeof(resolved_source_ip), "$client_ip", model_map_get(&app_data_model.data, CLIENT_IP_KEY));
         string_replace(resolved_source_ip, sizeof(resolved_source_ip), "$client_port", model_map_get(&app_data_model.data, CLIENT_PORT_KEY));
         model_map_set(&app_data_model.data, SOURCE_IP_KEY, resolved_source_ip);
