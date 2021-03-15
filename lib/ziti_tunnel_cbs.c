@@ -115,38 +115,54 @@ static char *string_replace(char *source, size_t sourceSize, const char *substri
     return substring_source + strlen(with);
 }
 
-/** render app_data as string (json) into supplied buffer. returns json string length. */
-static size_t get_app_data_json(char *buf, size_t bufsz, tunneler_io_context io, ziti_context ziti_ctx, const char *source_ip) {
-    static const char *PROTO_KEY = "intercepted_protocol";
-    static const char *IP_KEY = "intercepted_ip";
-    static const char *PORT_KEY = "intercepted_port";
-    static const char *SOURCE_IP_KEY = "source_ip";
+/** parse "proto:ip:port" */
+static void parse_socket_address(const char *address, char **proto, char **ip, char **port) {
+    if (proto != NULL) *proto = NULL;
+    if (ip != NULL) *ip = NULL;
+    if (port != NULL) *port = NULL;
 
+    if (address != NULL) {
+        const char *proto_sep = strchr(address, ':');
+        if (proto_sep != NULL) {
+            size_t proto_len = proto_sep - address + 1;
+            *proto = malloc(proto_len);
+            snprintf(*proto, proto_len, "%.*s", (int) (proto_sep - address), address);
+        }
+
+        const char *ip_start = proto_sep + 1;
+        const char *ip_sep = strrchr(address, ':');
+        if (ip_sep != NULL) {
+            size_t ip_len = ip_sep - ip_start + 1;
+            *ip = malloc(ip_len);
+            snprintf(*ip, ip_len, "%.*s", (int) (ip_sep - ip_start), ip_start);
+            *port = strdup(ip_sep + 1);
+        }
+    }
+}
+
+/** render app_data as string (json) */
+static ssize_t get_app_data_json(char *buf, size_t bufsz, tunneler_io_context io, ziti_context ziti_ctx, const char *source_ip) {
     tunneler_app_data app_data_model;
     memset(&app_data_model, 0, sizeof(app_data_model));
     model_map_clear(&app_data_model.data, NULL);
 
     const char *intercepted = get_intercepted_address(io);
-    char proto[8];
-    char ip[64];
+    const char *client = get_client_address(io);
+    char *_proto, *_ip, *_port;
     char resolved_source_ip[64];
 
     if (intercepted != NULL) {
-        const char *proto_sep = strchr(intercepted, ':');
-        if (proto_sep != NULL) {
-            snprintf(proto, sizeof(proto), "%.*s", (int) (proto_sep - intercepted), intercepted);
-            model_map_set(&app_data_model.data, PROTO_KEY, proto);
-        }
+        parse_socket_address(intercepted, &_proto, &_ip, &_port);
+        if (_proto) model_map_set(&app_data_model.data, INTERCEPTED_PROTO_KEY, _proto);
+        if (_ip) model_map_set(&app_data_model.data, INTERCEPTED_IP_KEY, _ip);
+        if (_port) model_map_set(&app_data_model.data, INTERCEPTED_PORT_KEY, (char *) _port);
+    }
 
-        const char *ip_start = proto_sep + 1;
-        const char *ip_sep = strrchr(intercepted, ':');
-        if (ip_sep != NULL) {
-            snprintf(ip, sizeof(ip), "%.*s", (int) (ip_sep - ip_start), ip_start);
-            model_map_set(&app_data_model.data, IP_KEY, ip);
-
-            const char *port = ip_sep + 1;
-            model_map_set(&app_data_model.data, PORT_KEY, (char *) strdup(port));
-        }
+    if (client != NULL) {
+        parse_socket_address(client, &_proto, &_ip, &_port);
+        if (_proto) model_map_set(&app_data_model.data, CLIENT_PROTO_KEY, _proto);
+        if (_ip) model_map_set(&app_data_model.data, CLIENT_IP_KEY, _ip);
+        if (_port) model_map_set(&app_data_model.data, CLIENT_PORT_KEY, (char *) _port);
     }
 
     if (source_ip != NULL) {
@@ -169,23 +185,18 @@ static size_t get_app_data_json(char *buf, size_t bufsz, tunneler_io_context io,
                 }
             }
         }
-        string_replace(resolved_source_ip, sizeof(resolved_source_ip), "$intercepted_port", model_map_get(&app_data_model.data, "intercepted_port"));
+        string_replace(resolved_source_ip, sizeof(resolved_source_ip), "$intercepted_port", model_map_get(&app_data_model.data, INTERCEPTED_PORT_KEY));
+        string_replace(resolved_source_ip, sizeof(resolved_source_ip), "$client_ip", model_map_get(&app_data_model.data, CLIENT_IP_KEY));
+        string_replace(resolved_source_ip, sizeof(resolved_source_ip), "$client_port", model_map_get(&app_data_model.data, CLIENT_PORT_KEY));
         model_map_set(&app_data_model.data, SOURCE_IP_KEY, resolved_source_ip);
     }
 
-    size_t json_len;
-    if (json_from_tunneler_app_data(&app_data_model, buf, bufsz, &json_len) != 0) {
-        ZITI_LOG(ERROR, "encoded app data length %ld bytes exceeds %ld byte limit ", json_len, sizeof(json));
-        json_len = 0;
-    }
+    ssize_t json_len = tunneler_app_data_to_json_r(&app_data_model, MODEL_JSON_COMPACT, buf, bufsz);
 
-    // values point to stack buffers
-    model_map_remove(&app_data_model.data, PROTO_KEY);
-    model_map_remove(&app_data_model.data, IP_KEY);
-    model_map_remove(&app_data_model.data, PORT_KEY);
+    // value points to stack buffer
     model_map_remove(&app_data_model.data, SOURCE_IP_KEY);
-
     free_tunneler_app_data(&app_data_model);
+
     return json_len;
 }
 
@@ -253,15 +264,23 @@ void * ziti_sdk_c_dial(const intercept_ctx_t *intercept_ctx, struct io_ctx_s *io
             break;
     }
 
-    dial_opts.app_data_sz = get_app_data_json(app_data_json, sizeof(app_data_json), io->tnlr_io, ziti_ctx, source_ip);
+    ssize_t json_len = get_app_data_json(app_data_json, sizeof(app_data_json), io->tnlr_io, ziti_ctx, source_ip);
+    if (json_len < 0) {
+        ZITI_LOG(ERROR, "service[%s] failed to encode app_data", intercept_ctx->service_name);
+        free(ziti_io_ctx);
+        return NULL;
+    }
+
+    dial_opts.app_data_sz = (size_t) json_len;
     dial_opts.app_data = app_data_json;
 
-    ZITI_LOG(DEBUG, "service[%s] app_data_json[%zd]='%.*s'", intercept_ctx->service_name, dial_opts.app_data_sz, (int)dial_opts.app_data_sz, app_data_json);
+    ZITI_LOG(DEBUG, "service[%s] app_data_json[%zd]='%.*s'", intercept_ctx->service_name, dial_opts.app_data_sz, (int)dial_opts.app_data_sz, dial_opts.app_data);
     if (ziti_dial_with_options(ziti_io_ctx->ziti_conn, intercept_ctx->service_name, &dial_opts, on_ziti_connect, on_ziti_data) != ZITI_OK) {
         ZITI_LOG(ERROR, "ziti_dial failed");
         free(ziti_io_ctx);
         return NULL;
     }
+
     ziti_io_ctx->ziti_eof = false;
     ziti_io_ctx->tnlr_eof = false;
 
@@ -420,5 +439,5 @@ static void ziti_conn_close_cb(ziti_connection zc) {
     ziti_tunneler_close(io->tnlr_io);
     free(io);
     ziti_conn_set_data(zc, NULL);
-    ZITI_LOG(VERBOSE, "nulled data for ziti_conn[%p]");
+    ZITI_LOG(VERBOSE, "nulled data for ziti_conn[%p]", zc);
 }

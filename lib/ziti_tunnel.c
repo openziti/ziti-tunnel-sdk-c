@@ -36,6 +36,14 @@ limitations under the License.
 
 #include <string.h>
 
+const char *INTERCEPTED_PROTO_KEY = "intercepted_protocol";
+const char *INTERCEPTED_IP_KEY = "intercepted_ip";
+const char *INTERCEPTED_PORT_KEY = "intercepted_port";
+const char *CLIENT_PROTO_KEY = "client_protocol";
+const char *CLIENT_IP_KEY = "client_ip";
+const char *CLIENT_PORT_KEY = "client_port";
+const char *SOURCE_IP_KEY = "source_ip";
+
 struct resolve_req {
     struct pbuf *qp;
     ip_addr_t addr;
@@ -91,6 +99,13 @@ const char *get_intercepted_address(const struct tunneler_io_ctx_s * tnlr_io) {
         return NULL;
     }
     return tnlr_io->intercepted;
+}
+
+const char *get_client_address(const struct tunneler_io_ctx_s * tnlr_io) {
+    if (tnlr_io == NULL) {
+        return NULL;
+    }
+    return tnlr_io->client;
 }
 
 void free_tunneler_io_context(tunneler_io_context *tnlr_io_ctx_p) {

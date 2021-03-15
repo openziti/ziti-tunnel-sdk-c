@@ -32,11 +32,14 @@ limitations under the License.
 
 
 static void ziti_conn_close_cb(ziti_connection zc) {
-    ZITI_LOG(TRACE, "ziti_conn[%p] is closed", zc);
     struct hosted_io_ctx_s *io_ctx = ziti_conn_data(zc);
     if (io_ctx) {
+        ZITI_LOG(TRACE, "hosted_service[%s] client[%s] ziti_conn[%p] closed",
+                 io_ctx->service->service_name, ziti_conn_source_identity(zc), zc);
         free(io_ctx);
         ziti_conn_set_data(zc, NULL);
+    } else {
+        ZITI_LOG(TRACE, "ziti_conn[%p] is closed", zc);
     }
 }
 
@@ -72,19 +75,16 @@ static void free_hosted_service_ctx(struct hosted_service_ctx_s *hosted_ctx) {
     }
 }
 
-static void free_hosted_io_ctx(struct hosted_io_ctx_s *io_ctx) {
-    if (io_ctx == NULL) {
-        return;
-    }
-    free(io_ctx);
-}
-
 static void hosted_server_close_cb(uv_handle_t *handle) {
     struct hosted_io_ctx_s *io_ctx = handle->data;
     if (io_ctx->client) {
         ziti_close(io_ctx->client, ziti_conn_close_cb);
+        ZITI_LOG(TRACE, "hosted_service[%s] client[%s] server_conn[%p] closed",
+                 io_ctx->service->service_name, ziti_conn_source_identity(io_ctx->client), handle);
     } else {
-        free_hosted_io_ctx(handle->data);
+        ZITI_LOG(TRACE, "server_conn[%p] closed", handle);
+        safe_free(handle->data);
+        handle->data = NULL;
     }
 }
 
@@ -94,6 +94,9 @@ static void tcp_shutdown_cb(uv_shutdown_t *req, int res) {
 
 #define safe_close(h, cb) if(!uv_is_closing((uv_handle_t*)h)) uv_close((uv_handle_t*)h, cb)
 static void hosted_server_close(struct hosted_io_ctx_s *io_ctx) {
+    if (io_ctx == NULL) {
+        return;
+    }
     switch (io_ctx->server_proto_id) {
         case IPPROTO_TCP:
             safe_close(&io_ctx->server.tcp, hosted_server_close_cb);
@@ -300,7 +303,7 @@ struct addrinfo_params_s {
     const char *    port;
     char            _port_str[12]; // buffer used when config type uses int for port
     struct addrinfo hints;
-    char            err[64];
+    char            err[128];
 };
 
 static int get_protocol_id(const char *protocol) {
@@ -327,7 +330,7 @@ static bool addrinfo_from_host_cfg_v1(struct addrinfo_params_s *dial_params, con
     const char *dial_protocol_str = NULL;
 
     if (config->dial_intercepted_protocol) {
-        dial_protocol_str = model_map_get(app_data, "intercepted_protocol");
+        dial_protocol_str = model_map_get(app_data, INTERCEPTED_PROTO_KEY);
         if (dial_protocol_str == NULL) {
             snprintf(dial_params->err, sizeof(dial_params->err),
                      "service config specifies 'dialInterceptedProtocol', but client didn't send intercepted protocol");
@@ -344,7 +347,7 @@ static bool addrinfo_from_host_cfg_v1(struct addrinfo_params_s *dial_params, con
     }
 
     if (config->dial_intercepted_address) {
-        dial_params->address = model_map_get(app_data, "intercepted_ip");
+        dial_params->address = model_map_get(app_data, INTERCEPTED_IP_KEY);
         if (dial_params->address == NULL) {
             snprintf(dial_params->err, sizeof(dial_params->err),
                      "service config specifies 'dialInterceptedAddress' but client didn't send intercepted ip");
@@ -355,7 +358,7 @@ static bool addrinfo_from_host_cfg_v1(struct addrinfo_params_s *dial_params, con
     }
 
     if (config->dial_intercepted_port) {
-        dial_params->port = model_map_get(app_data, "intercepted_port");
+        dial_params->port = model_map_get(app_data, INTERCEPTED_PORT_KEY);
         if (dial_params->port == NULL) {
             snprintf(dial_params->err, sizeof(dial_params->err),
                      "service config specifies 'dialInterceptedPort' but client didn't send intercepted port");
@@ -479,9 +482,9 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
                  service_ctx->service_name, client_identity, dial_ai_params.address, dial_ai_params.port);
     }
 
-    const char *iproto = model_map_get(&app_data_model.data, "intercepted_protocol");
-    const char *iip = model_map_get(&app_data_model.data, "intercepted_ip");
-    const char *iport = model_map_get(&app_data_model.data, "intercepted_port");
+    const char *iproto = model_map_get(&app_data_model.data, INTERCEPTED_PROTO_KEY);
+    const char *iip = model_map_get(&app_data_model.data, INTERCEPTED_IP_KEY);
+    const char *iport = model_map_get(&app_data_model.data, INTERCEPTED_PORT_KEY);
     if (iproto != NULL && iip != NULL && iport != NULL) {
         ZITI_LOG(INFO, "hosted_service[%s], client[%s] intercepted_addr[%s:%s:%s]: incoming connection",
                  service_ctx->service_name, client_identity, iproto, iip, iport);
@@ -490,7 +493,7 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
                  service_ctx->service_name, client_identity);
     }
 
-    const char *source_ip = model_map_get(&app_data_model.data, "source_ip");
+    const char *source_ip = model_map_get(&app_data_model.data, SOURCE_IP_KEY);
     if (source_ip != NULL) {
         struct addrinfo source_hints = {0};
         const char *port_sep = strchr(source_ip, ':');
@@ -502,7 +505,7 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
             source_ip_cp[port_sep-source_ip] = '\0';
             source_ip = source_ip_cp;
         }
-        source_hints.ai_flags = AI_ADDRCONFIG | AI_NUMERICHOST;
+        source_hints.ai_flags = AI_ADDRCONFIG | AI_NUMERICHOST | AI_NUMERICSERV;
         source_hints.ai_protocol = dial_ai_params.hints.ai_protocol;
         source_hints.ai_socktype = dial_ai_params.hints.ai_socktype;
         if ((s = getaddrinfo(source_ip, source_port, &source_hints, &source_ai)) != 0) {
@@ -521,6 +524,7 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
     io_ctx->service = service_ctx;
     io_ctx->client = clt;
     io_ctx->server_proto_id = dial_ai->ai_protocol;
+    ziti_conn_set_data(clt, io_ctx);
 
     char host[48];
     char port[12];
@@ -540,7 +544,6 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
         case IPPROTO_TCP:
             uv_tcp_init(service_ctx->loop, &io_ctx->server.tcp);
             io_ctx->server.tcp.data = io_ctx;
-            ziti_conn_set_data(clt, io_ctx);
             if (source_ai != NULL) {
                 uv_err = uv_tcp_bind(&io_ctx->server.tcp, source_ai->ai_addr, 0);
                 if (uv_err != 0) {
@@ -564,7 +567,6 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
         case IPPROTO_UDP:
             uv_udp_init(service_ctx->loop, &io_ctx->server.udp);
             io_ctx->server.udp.data = io_ctx;
-            ziti_conn_set_data(clt, io_ctx);
             if (source_ai != NULL) {
                 uv_err = uv_udp_bind(&io_ctx->server.udp, source_ai->ai_addr, 0);
                 if (uv_err != 0) {

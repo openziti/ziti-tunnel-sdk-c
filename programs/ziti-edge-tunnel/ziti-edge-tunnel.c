@@ -409,16 +409,16 @@ static void enroll_cb(ziti_config *cfg, int status, char *err, void *ctx) {
 
     FILE *f = ctx;
 
-    char output_buf[16000];
     size_t len;
-    json_from_ziti_config(cfg, output_buf, sizeof(output_buf), &len);
+    char *cfg_json = ziti_config_to_json(cfg, 0, &len);
 
-    if (fwrite(output_buf, 1, len, f) != len) {
+    if (fwrite(cfg_json, 1, len, f) != len) {
         ZITI_LOG(ERROR, "failed to write config file");
         fclose(f);
         exit (-1);
     }
 
+    free(cfg_json);
     fflush(f);
     fclose(f);
 }
