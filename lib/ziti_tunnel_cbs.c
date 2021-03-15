@@ -274,7 +274,7 @@ void * ziti_sdk_c_dial(const intercept_ctx_t *intercept_ctx, struct io_ctx_s *io
     dial_opts.app_data_sz = (size_t) json_len;
     dial_opts.app_data = app_data_json;
 
-    ZITI_LOG(DEBUG, "service[%s] app_data_json[%zd]='%s'", intercept_ctx->service_name, dial_opts.app_data_sz, dial_opts.app_data);
+    ZITI_LOG(DEBUG, "service[%s] app_data_json[%zd]='%.*s'", intercept_ctx->service_name, dial_opts.app_data_sz, (int)dial_opts.app_data_sz, dial_opts.app_data);
     if (ziti_dial_with_options(ziti_io_ctx->ziti_conn, intercept_ctx->service_name, &dial_opts, on_ziti_connect, on_ziti_data) != ZITI_OK) {
         ZITI_LOG(ERROR, "ziti_dial failed");
         free(ziti_io_ctx);
