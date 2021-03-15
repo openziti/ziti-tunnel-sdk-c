@@ -191,7 +191,7 @@ static char *get_app_data_json(tunneler_io_context io, ziti_context ziti_ctx, co
         model_map_set(&app_data_model.data, SOURCE_IP_KEY, resolved_source_ip);
     }
 
-    char *app_data_json = tunneler_app_data_to_json(&app_data_model, 0, json_len);
+    char *app_data_json = tunneler_app_data_to_json(&app_data_model, MODEL_JSON_COMPACT, json_len);
     if (app_data_json == NULL) {
         ZITI_LOG(ERROR, "failed to encode app data");
     }
