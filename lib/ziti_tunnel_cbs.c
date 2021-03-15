@@ -141,7 +141,7 @@ static void parse_socket_address(const char *address, char **proto, char **ip, c
 }
 
 /** render app_data as string (json) */
-static char *get_app_data_json(tunneler_io_context io, ziti_context ziti_ctx, const char *source_ip, size_t *json_len) {
+static ssize_t get_app_data_json(char *buf, size_t bufsz, tunneler_io_context io, ziti_context ziti_ctx, const char *source_ip) {
     tunneler_app_data app_data_model;
     memset(&app_data_model, 0, sizeof(app_data_model));
     model_map_clear(&app_data_model.data, NULL);
@@ -191,16 +191,13 @@ static char *get_app_data_json(tunneler_io_context io, ziti_context ziti_ctx, co
         model_map_set(&app_data_model.data, SOURCE_IP_KEY, resolved_source_ip);
     }
 
-    char *app_data_json = tunneler_app_data_to_json(&app_data_model, MODEL_JSON_COMPACT, json_len);
-    if (app_data_json == NULL) {
-        ZITI_LOG(ERROR, "failed to encode app data");
-    }
+    ssize_t json_len = tunneler_app_data_to_json_r(&app_data_model, MODEL_JSON_COMPACT, buf, bufsz);
 
     // value points to stack buffer
     model_map_remove(&app_data_model.data, SOURCE_IP_KEY);
-
     free_tunneler_app_data(&app_data_model);
-    return app_data_json;
+
+    return json_len;
 }
 
 static void dial_opts_from_client_cfg_v1(ziti_dial_opts *opts, const ziti_client_cfg_v1 *config) {
@@ -252,6 +249,7 @@ void * ziti_sdk_c_dial(const intercept_ctx_t *intercept_ctx, struct io_ctx_s *io
 
     ziti_dial_opts dial_opts;
     memset(&dial_opts, 0, sizeof(dial_opts));
+    char app_data_json[256];
     const char *source_ip = NULL;
 
     switch (intercept_ctx->cfg_type) {
@@ -266,15 +264,21 @@ void * ziti_sdk_c_dial(const intercept_ctx_t *intercept_ctx, struct io_ctx_s *io
             break;
     }
 
-    dial_opts.app_data = get_app_data_json(io->tnlr_io, ziti_ctx, source_ip, &dial_opts.app_data_sz);
+    ssize_t json_len = get_app_data_json(app_data_json, sizeof(app_data_json), io->tnlr_io, ziti_ctx, source_ip);
+    if (json_len < 0) {
+        ZITI_LOG(ERROR, "service[%s] failed to encode app_data", intercept_ctx->service_name);
+        free(ziti_io_ctx);
+        return NULL;
+    }
+
+    dial_opts.app_data_sz = (size_t) json_len;
     ZITI_LOG(DEBUG, "service[%s] app_data_json[%zd]='%s'", intercept_ctx->service_name, dial_opts.app_data_sz, dial_opts.app_data);
     if (ziti_dial_with_options(ziti_io_ctx->ziti_conn, intercept_ctx->service_name, &dial_opts, on_ziti_connect, on_ziti_data) != ZITI_OK) {
         ZITI_LOG(ERROR, "ziti_dial failed");
         free(ziti_io_ctx);
-        free(dial_opts.app_data);
         return NULL;
     }
-    free(dial_opts.app_data);
+
     ziti_io_ctx->ziti_eof = false;
     ziti_io_ctx->tnlr_eof = false;
 
