@@ -17,6 +17,7 @@ limitations under the License.
 #include <ziti/ziti_tunnel.h>
 #include <ziti/ziti_log.h>
 #include <stdlib.h>
+#include <string.h>
 
 static int apply_address(dns_manager *dns, const char *hostname, const char *ip);
 

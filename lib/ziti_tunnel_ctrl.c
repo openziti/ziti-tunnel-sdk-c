@@ -17,6 +17,8 @@ limitations under the License.
 #include <ziti/ziti_tunnel_cbs.h>
 #include <ziti/ziti_log.h>
 
+IMPL_ENUM(TunnelCommand, TUNNEL_COMMANDS)
+
 static struct cmd_ctx_s {
     ziti_tunnel_ctrl ctrl;
     tunneler_context tunnel_ctx;
@@ -60,9 +62,19 @@ const ziti_tunnel_ctrl* ziti_tunnel_init_cmd(uv_loop_t *loop, tunneler_context t
 }
 
 static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
+
+    switch (cmd->command) {
+        case TunnelCommand_LoadIdentity: {
+            const char *path = model_map_get(&cmd->data, "path");
+            load_identity(path, cb, ctx);
+            return 0;
+        }
+    }
+
     tunnel_result result = {
             .success = false,
-            .error = "command not implemented"
+            .error = "command not implemented",
+            .data = NULL,
     };
 
     cb(&result, ctx);
@@ -71,6 +83,12 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
 }
 
 static int load_identity(const char *path, command_cb cb, void *ctx) {
+
+    uv_fs_t fs;
+    if (path == NULL || uv_fs_stat(CMD_CTX.loop, &fs, path, NULL) != 0) {
+
+    }
+
     struct ziti_instance_s *inst = new_ziti_instance(path);
     inst->load_cb = cb;
     inst->load_ctx = ctx;

@@ -13,9 +13,15 @@ XX(data, string, map, data, __VA_ARGS__)
 
 DECLARE_MODEL(tunneler_app_data, TUNNELER_APP_DATA_MODEL)
 
+#define TUNNEL_COMMANDS(XX,...) \
+XX(ZitiDump, __VA_ARGS__)    \
+XX(LoadIdentity, __VA_ARGS__)
+
+DECLARE_ENUM(TunnelCommand, TUNNEL_COMMANDS)
+
 #define TUNNEL_CMD(XX, ...) \
-XX(id, string, none, id, __VA_ARGS__) \
-XX(data, json, none, data, __VA_ARGS__)
+XX(command, TunnelCommand, none, command, __VA_ARGS__) \
+XX(data, json, map, data, __VA_ARGS__)
 
 #define TUNNEL_CMD_RES(XX, ...) \
 XX(success, bool, none, success, __VA_ARGS__) \
