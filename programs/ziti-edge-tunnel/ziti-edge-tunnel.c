@@ -45,16 +45,17 @@ static void on_cmd_write(uv_write_t *wr, int len) {
     if (wr->data) {
         free(wr->data);
     }
+    free(wr);
 }
 
 static void on_command_resp(const tunnel_result* result, void *ctx) {
-    static char json[1024];
     size_t json_len;
-    int rc = json_from_tunnel_result(result, json, sizeof(json), &json_len);
-    ZITI_LOG(INFO, "resp[%d,len=%zd] = %.*s, result.data = %s", rc, json_len, (int)json_len, json, result->data);
+    char *json = tunnel_result_to_json(result, MODEL_JSON_COMPACT, &json_len);
+    ZITI_LOG(INFO, "resp[%d,len=%zd] = %.*s",
+             result->success, json_len, (int)json_len, json, result->data);
 
     if (uv_is_active((const uv_handle_t *) &cmd_conn)) {
-        uv_buf_t b = uv_buf_init(strdup(json), json_len);
+        uv_buf_t b = uv_buf_init(json, json_len);
         uv_write_t *wr = calloc(1, sizeof(uv_write_t));
         wr->data = b.base;
         uv_write(wr, (uv_stream_t *) &cmd_conn, &b, 1, on_cmd_write);
@@ -67,9 +68,17 @@ static void on_cmd(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
     } else {
         ZITI_LOG(INFO, "received cmd <%.*s>", (int) len, b->base);
 
-        tunnel_comand cmd;
-        parse_tunnel_comand(&cmd, b->base, len);
-        CMD_CTRL->process(&cmd, on_command_resp, NULL);
+        tunnel_comand cmd = {0};
+        if (parse_tunnel_comand(&cmd, b->base, len) == 0) {
+            CMD_CTRL->process(&cmd, on_command_resp, NULL);
+        } else {
+            tunnel_result resp = {
+                    .success = false,
+                    .error = "failed to parse command"
+            };
+            on_command_resp(&resp, NULL);
+        }
+        free_tunnel_comand(&cmd);
     }
 
     free(b->base);
@@ -175,7 +184,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, const char *ip_rang
     tunneler_context tunneler = ziti_tunneler_init(&tunneler_opts, ziti_loop);
     ziti_tunneler_set_dns(tunneler, dns);
 
-    CMD_CTRL = ziti_tunnel_init_cmd(ziti_loop, tunneler, NULL); // TODO
+    CMD_CTRL = ziti_tunnel_init_cmd(ziti_loop, tunneler, NULL);
 
     uv_work_t *loader = calloc(1, sizeof(uv_work_t));
     uv_queue_work(ziti_loop, loader, load_identities, load_identities_complete);

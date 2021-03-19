@@ -62,36 +62,63 @@ const ziti_tunnel_ctrl* ziti_tunnel_init_cmd(uv_loop_t *loop, tunneler_context t
 }
 
 static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
-
+    tunnel_result result = {
+                    .success = false,
+                    .error = NULL,
+                    .data = NULL,
+    };
+    ZITI_LOG(INFO, "processing command[%s] with data[%s]", TunnelCommands.name(cmd->command), cmd->data);
     switch (cmd->command) {
         case TunnelCommand_LoadIdentity: {
-            const char *path = model_map_get(&cmd->data, "path");
-            load_identity(path, cb, ctx);
+            load_identity_cmd load;
+            if (cmd->data == NULL || parse_load_identity_cmd(&load, cmd->data, strlen(cmd->data)) != 0) {
+                result.success = false;
+                result.error = "invalid command";
+                break;
+            }
+            load_identity(load.path, cb, ctx);
             return 0;
         }
+
+        case TunnelCommand_ListIdentities: {
+            identity_list id_list = {0};
+            id_list.identities = calloc(model_map_size(&instances) + 1, sizeof(identity_info*));
+            const char *key;
+            struct ziti_instance_s *inst;
+            int idx = 0;
+            MODEL_MAP_FOREACH(key, inst, &instances) {
+                identity_info *info = alloc_identity_info();
+                const ziti_identity *identity = ziti_get_identity(inst->ztx);
+                info->name = strdup(identity->name);
+                info->id = strdup(identity->id);
+                info->network = strdup(ziti_get_controller(inst->ztx));
+                info->config = strdup(key);
+
+                id_list.identities[idx++] = info;
+            }
+
+            result.data = identity_list_to_json(&id_list, MODEL_JSON_COMPACT, NULL);
+
+            cb(&result, ctx);
+
+            free_identity_list(&id_list);
+            free(result.data);
+            return 0;
+        }
+
+        default: result.error = "command not implemented";
     }
 
-    tunnel_result result = {
-            .success = false,
-            .error = "command not implemented",
-            .data = NULL,
-    };
-
     cb(&result, ctx);
-
     return 0;
 }
 
 static int load_identity(const char *path, command_cb cb, void *ctx) {
 
-    uv_fs_t fs;
-    if (path == NULL || uv_fs_stat(CMD_CTX.loop, &fs, path, NULL) != 0) {
-
-    }
-
     struct ziti_instance_s *inst = new_ziti_instance(path);
     inst->load_cb = cb;
     inst->load_ctx = ctx;
+    inst->opts.config = strdup(path);
 
     uv_async_t *ar = calloc(1, sizeof(uv_async_t));
     ar->data = inst;
@@ -182,6 +209,7 @@ static void load_ziti_async(uv_async_t *ar) {
     };
 
     char *config_path = realpath(inst->opts.config, NULL);
+    ZITI_LOG(INFO, "attempting to load ziti instance from file[%s]", inst->opts.config);
     if (model_map_get(&instances, config_path) != NULL) {
         ZITI_LOG(WARN, "ziti context already loaded for %s", inst->opts.config);
         result.success = false;
@@ -211,3 +239,7 @@ static void load_ziti_async(uv_async_t *ar) {
 
 IMPL_MODEL(tunnel_comand, TUNNEL_CMD)
 IMPL_MODEL(tunnel_result, TUNNEL_CMD_RES)
+IMPL_MODEL(load_identity_cmd, LOAD_IDENTITY)
+
+IMPL_MODEL(identity_info, IDENTITY_INFO)
+IMPL_MODEL(identity_list, IDENTITY_LIST)
