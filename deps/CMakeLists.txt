@@ -1,5 +1,7 @@
 include(FetchContent)
 
+if (not TUNNEL_SDK_ONLY)
+
 FetchContent_Declare(ziti-sdk-c
         GIT_REPOSITORY https://github.com/openziti/ziti-sdk-c.git
         GIT_TAG ${ZITI_SDK_C_BRANCH}
@@ -7,6 +9,8 @@ FetchContent_Declare(ziti-sdk-c
 set(ZITI_BUILD_TESTS off)
 set(ZITI_BUILD_PROGRAMS off)
 FetchContent_MakeAvailable(ziti-sdk-c)
+
+endif()
 
 FetchContent_Declare(lwip
         GIT_REPOSITORY https://git.savannah.nongnu.org/git/lwip.git

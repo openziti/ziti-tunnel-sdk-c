@@ -4,6 +4,8 @@ if(NOT ZITI_SDK_C_BRANCH)
     set(ZITI_SDK_C_BRANCH "0.21.3")
 endif()
 
+option(TUNNEL_SDK_ONLY "build only ziti-tunnel-sdk (without ziti)" OFF)
+
 execute_process(
         COMMAND git describe --tags --dirty=-local
         OUTPUT_VARIABLE GIT_VERSION
@@ -39,9 +41,13 @@ message("cross-compiling: ${CMAKE_CROSSCOMPILING}")
 link_directories(${CMAKE_BINARY_DIR}/lib)
 
 add_subdirectory(deps)
+
 add_subdirectory(lib/ziti-tunnel)
+
+if (not TUNNEL_SDK_ONLY)
 add_subdirectory(lib/ziti-tunnel-cbs)
 add_subdirectory(programs)
+endif()
 
 if (WIN32)
 set(CMAKE_INSTALL_LIBDIR lib)
