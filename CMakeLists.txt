@@ -6,6 +6,8 @@ endif()
 
 option(TUNNEL_SDK_ONLY "build only ziti-tunnel-sdk (without ziti)" OFF)
 
+message("tunnel only = ${TUNNEL_SDK_ONLY}")
+
 execute_process(
         COMMAND git describe --tags --dirty=-local
         OUTPUT_VARIABLE GIT_VERSION
@@ -44,7 +46,7 @@ add_subdirectory(deps)
 
 add_subdirectory(lib/ziti-tunnel)
 
-if (not TUNNEL_SDK_ONLY)
+if(NOT TUNNEL_SDK_ONLY)
 add_subdirectory(lib/ziti-tunnel-cbs)
 add_subdirectory(programs)
 endif()

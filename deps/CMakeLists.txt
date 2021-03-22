@@ -1,6 +1,6 @@
 include(FetchContent)
 
-if (not TUNNEL_SDK_ONLY)
+if(NOT TUNNEL_SDK_ONLY)
 
 FetchContent_Declare(ziti-sdk-c
         GIT_REPOSITORY https://github.com/openziti/ziti-sdk-c.git
