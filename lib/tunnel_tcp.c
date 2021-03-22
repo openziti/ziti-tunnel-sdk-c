@@ -2,7 +2,7 @@
 #include "tunnel_tcp.h"
 #include "lwip_cloned_fns.h"
 #include "ziti_tunnel_priv.h"
-#include "sys/queue.h"
+#include "ziti/sys/queue.h"
 
 #if _WIN32
 #define MIN(a,b) ((a)<(b) ? (a) : (b))

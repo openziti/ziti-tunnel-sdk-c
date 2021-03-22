@@ -1,5 +1,4 @@
 #include "ziti_tunnel_priv.h"
-#include "sys/queue.h"
 #include <string.h>
 
 struct route_count {

@@ -19,7 +19,7 @@ limitations under the License.
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
-#include "sys/queue.h"
+#include "ziti/sys/queue.h"
 
 #define MAX_DNS_NAME 256
 #define MAX_IP_LENGTH 16

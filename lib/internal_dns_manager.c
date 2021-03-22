@@ -18,7 +18,6 @@ limitations under the License.
 #include <string.h>
 #include <ctype.h>
 #include "ziti_tunnel_priv.h"
-#include "sys/queue.h"
 
 const char DNS_OPT[] = { 0x0, 0x0, 0x29, 0x02, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 };
 
