@@ -26,7 +26,7 @@ limitations under the License.
 #include <stdio.h>
 #include <ziti/ziti_log.h>
 #include <memory.h>
-#include "ziti/ziti_tunnel_cbs.h"
+#include <ziti/ziti_tunnel_cbs.h>
 
 /********** hosting **********/
 
