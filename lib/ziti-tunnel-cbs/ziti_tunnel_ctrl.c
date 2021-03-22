@@ -61,9 +61,9 @@ const ziti_tunnel_ctrl* ziti_tunnel_init_cmd(uv_loop_t *loop, tunneler_context t
 
 static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
     tunnel_result result = {
-                    .success = false,
-                    .error = NULL,
-                    .data = NULL,
+            .success = false,
+            .error = NULL,
+            .data = NULL,
     };
     ZITI_LOG(INFO, "processing command[%s] with data[%s]", TunnelCommands.name(cmd->command), cmd->data);
     switch (cmd->command) {
@@ -149,7 +149,7 @@ static void on_service(ziti_context ziti_ctx, ziti_service *service, int status,
                 port_range_t *pr;
                 STAILQ_FOREACH(pr, &ts->intercept->port_ranges, entries) {
                     ZITI_LOG(INFO, "intercepting address[%s:%s:%s] service[%s]",
-                            proto->protocol, address->str, pr->str, service->name);
+                             proto->protocol, address->str, pr->str, service->name);
                 }
             }
         }

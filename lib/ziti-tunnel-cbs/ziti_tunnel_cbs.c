@@ -181,7 +181,7 @@ static ssize_t get_app_data_json(char *buf, size_t bufsz, tunneler_io_context io
                     string_replace(resolved_source_ip, sizeof(resolved_source_ip), tag_ref, tag_value);
                 } else {
                     ZITI_LOG(WARN, "cannot set source_ip='%s': identity %s has no tag named '%s'",
-                            source_ip, zid->name, tag_name);
+                             source_ip, zid->name, tag_name);
                 }
             }
         }
