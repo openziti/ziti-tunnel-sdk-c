@@ -25,7 +25,7 @@ limitations under the License.
 
 #include <stdbool.h>
 #include "uv.h"
-#include "uv_mbed/queue.h"
+#include "sys/queue.h"
 #include "ziti/netif_driver.h"
 #include "lwip/ip_addr.h"
 
@@ -47,6 +47,8 @@ typedef struct tunneler_io_ctx_s *tunneler_io_context;
 const char * get_intercepted_address(const struct tunneler_io_ctx_s * tnlr_io);
 const char * get_client_address(const struct tunneler_io_ctx_s * tnlr_io);
 typedef struct hosted_io_ctx_s *hosted_io_context;
+
+typedef void (*tunnel_logger_f)(int level, const char *file, unsigned int line, const char *func, const char *fmt, ...);
 
 typedef enum {
     CLIENT_CFG_V1,    // ziti-tunnel-client.v1
@@ -191,6 +193,9 @@ extern int ziti_tunneler_close_write(tunneler_io_context tnlr_io_ctx);
 extern const char* ziti_tunneler_version();
 
 extern void ziti_tunneler_init_dns(uint32_t mask, int bits);
+
+extern void ziti_tunnel_set_logger(tunnel_logger_f logger);
+extern void ziti_tunnel_set_log_level(int lvl);
 
 #ifdef __cplusplus
 }

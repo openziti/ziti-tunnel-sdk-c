@@ -52,7 +52,7 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
     size_t json_len;
     char *json = tunnel_result_to_json(result, MODEL_JSON_COMPACT, &json_len);
     ZITI_LOG(INFO, "resp[%d,len=%zd] = %.*s",
-             result->success, json_len, (int)json_len, json, result->data);
+            result->success, json_len, (int)json_len, json, result->data);
 
     if (uv_is_active((const uv_handle_t *) &cmd_conn)) {
         uv_buf_t b = uv_buf_init(json, json_len);
@@ -304,6 +304,10 @@ static void run(int argc, char *argv[]) {
 
     uv_loop_t *ziti_loop = uv_default_loop();
     ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
+
+    ziti_tunnel_set_log_level(ziti_log_level());
+    ziti_tunnel_set_logger(ziti_logger);
+
     if (ziti_loop == NULL) {
         ZITI_LOG(ERROR, "failed to initialize default uv loop");
         exit(1);

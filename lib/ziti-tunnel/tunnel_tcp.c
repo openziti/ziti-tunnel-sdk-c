@@ -2,15 +2,14 @@
 #include "tunnel_tcp.h"
 #include "lwip_cloned_fns.h"
 #include "ziti_tunnel_priv.h"
-#include "ziti/ziti_log.h"
-#include "uv_mbed/queue.h"
+#include "ziti/sys/queue.h"
 
 #if _WIN32
 #define MIN(a,b) ((a)<(b) ? (a) : (b))
 #endif
 
 #define LOG_STATE(level, op, pcb, ...) \
-ZITI_LOG(level, op " %p, state=%d(%s) flags=%#0x", ##__VA_ARGS__, pcb, pcb->state, tcp_state_str(pcb->state), pcb->flags)
+TNL_LOG(level, op " %p, state=%d(%s) flags=%#0x", ##__VA_ARGS__, pcb, pcb->state, tcp_state_str(pcb->state), pcb->flags)
 
 #define tcp_states(XX)\
   XX(CLOSED)\
@@ -40,7 +39,7 @@ static const char* tcp_state_str(int st) {
 /** called by lwip when a client sends a SYN segment to an intercepted address.
  * this only exists to appease lwip */
 static err_t on_accept(void *arg, struct tcp_pcb *pcb, err_t err) {
-    ZITI_LOG(DEBUG, "on_accept: %d", err);
+    TNL_LOG(DEBUG, "on_accept: %d", err);
     return ERR_OK;
 }
 
@@ -50,14 +49,14 @@ static struct tcp_pcb *new_tcp_pcb(ip_addr_t src, ip_addr_t dest, struct tcp_hdr
     static struct tcp_pcb_listen * phony_listener = NULL;
     if (phony_listener == NULL) {
         if ((phony_listener = memp_malloc(MEMP_TCP_PCB_LISTEN)) == NULL) {
-            ZITI_LOG(ERROR, "failed to allocate listener");
+            TNL_LOG(ERR, "failed to allocate listener");
             return NULL;
         }
         phony_listener->accept = on_accept;
     }
     struct tcp_pcb *npcb = tcp_new();
     if (npcb == NULL) {
-        ZITI_LOG(ERROR, "tcp_new failed");
+        TNL_LOG(ERR, "tcp_new failed");
         return NULL;
     }
     /* Set up the new PCB. */
@@ -90,7 +89,7 @@ static struct tcp_pcb *new_tcp_pcb(ip_addr_t src, ip_addr_t dest, struct tcp_hdr
 #if TCP_CALCULATE_EFF_SEND_MSS
     npcb->mss = tcp_eff_send_mss(npcb->mss, &npcb->local_ip, &npcb->remote_ip);
 #endif /* TCP_CALCULATE_EFF_SEND_MSS */
-    ZITI_LOG(INFO, "snd_wnd: %d, snd_snd_max: %d, mss: %d", npcb->snd_wnd, npcb->snd_wnd_max, npcb->mss);
+    TNL_LOG(INFO, "snd_wnd: %d, snd_snd_max: %d, mss: %d", npcb->snd_wnd, npcb->snd_wnd_max, npcb->mss);
 
     MIB2_STATS_INC(mib2.tcppassiveopens);
 
@@ -109,7 +108,7 @@ static struct tcp_pcb *new_tcp_pcb(ip_addr_t src, ip_addr_t dest, struct tcp_hdr
  */
 static err_t on_tcp_client_data(void *io_ctx, struct tcp_pcb *pcb, struct pbuf *p, err_t err) {
     if (io_ctx == NULL) {
-        ZITI_LOG(INFO, "conn was closed err=%d", err);
+        TNL_LOG(INFO, "conn was closed err=%d", err);
         if (p != NULL) {
             pbuf_free(p);
         }
@@ -119,7 +118,7 @@ static err_t on_tcp_client_data(void *io_ctx, struct tcp_pcb *pcb, struct pbuf *
     struct io_ctx_s *io = (struct io_ctx_s *)io_ctx;
 
     if (err == ERR_OK && p == NULL) {
-        ZITI_LOG(DEBUG, "client sent FIN: client=%s, service=%s", io->tnlr_io->client, io->tnlr_io->service_name);
+        TNL_LOG(DEBUG, "client sent FIN: client=%s, service=%s", io->tnlr_io->client, io->tnlr_io->service_name);
         LOG_STATE(DEBUG, "FIN received", pcb);
         io->tnlr_io->tnlr_ctx->opts.ziti_close_write(io->ziti_io);
         return err;
@@ -133,7 +132,7 @@ static err_t on_tcp_client_data(void *io_ctx, struct tcp_pcb *pcb, struct pbuf *
     wr_ctx->ack = tunneler_tcp_ack;
     ssize_t s = zwrite(io->ziti_io, wr_ctx, p->payload, len);
     if (s < 0) {
-        ZITI_LOG(ERROR, "ziti_write failed: service=%s, client=%s, ret=%ld", io->tnlr_io->service_name, io->tnlr_io->client, s);
+        TNL_LOG(ERR, "ziti_write failed: service=%s, client=%s, ret=%ld", io->tnlr_io->service_name, io->tnlr_io->client, s);
         return ERR_ABRT;
     }
     return ERR_OK;
@@ -145,14 +144,14 @@ static void on_tcp_client_err(void *io_ctx, err_t err) {
     struct io_ctx_s *io = io_ctx;
     // we initiated close and cleared arg err should be ERR_ABRT
     if (io_ctx == NULL) {
-        ZITI_LOG(TRACE, "client pcb(<unknown>) finished err=%d", err);
+        TNL_LOG(TRACE, "client pcb(<unknown>) finished err=%d", err);
     }
     else {
         const char *client = "<unknown>";
         if (io->tnlr_io != NULL) {
             client = io->tnlr_io->client;
         }
-        ZITI_LOG(ERROR, "client=%s err=%d, terminating connection", client, err);
+        TNL_LOG(ERR, "client=%s err=%d, terminating connection", client, err);
         // null our pcb so tunneler_tcp_close doesn't try to close it.
         io->tnlr_io->tcp = NULL;
         io->tnlr_io->tnlr_ctx->opts.ziti_close(io->ziti_io);
@@ -161,27 +160,27 @@ static void on_tcp_client_err(void *io_ctx, err_t err) {
 
 ssize_t tunneler_tcp_write(struct tcp_pcb *pcb, const void *data, size_t len) {
     if (pcb == NULL) {
-        ZITI_LOG(WARN, "null pcb");
+        TNL_LOG(WARN, "null pcb");
         return -1;
     }
 
     int qlen = tcp_sndqueuelen(pcb);
     if (qlen > TCP_SND_QUEUELEN) {
-        ZITI_LOG(WARN, "sndqueuelen limit reached (%d > %d)", qlen, TCP_SND_QUEUELEN);
+        TNL_LOG(WARN, "sndqueuelen limit reached (%d > %d)", qlen, TCP_SND_QUEUELEN);
     }
     // avoid ERR_MEM.
     size_t sendlen = MIN(len, tcp_sndbuf(pcb));
-    ZITI_LOG(TRACE, "pcb[%p] sendlen=%zd", pcb, sendlen);
+    TNL_LOG(TRACE, "pcb[%p] sendlen=%zd", pcb, sendlen);
     if (sendlen > 0) {
         err_t w_err = tcp_write(pcb, data, (u16_t) sendlen,
                                 TCP_WRITE_FLAG_COPY); // TODO hold data until client acks... via on_client_ack maybe? then we wouldn't need to copy here.
         if (w_err != ERR_OK) {
-            ZITI_LOG(ERROR, "failed to tcp_write %d (%ld, %zd)", w_err, sendlen, len);
+            TNL_LOG(ERR, "failed to tcp_write %d (%ld, %zd)", w_err, sendlen, len);
             return -1;
         }
 
         if (tcp_output(pcb) != ERR_OK) {
-            ZITI_LOG(ERROR, "failed to tcp_output");
+            TNL_LOG(ERR, "failed to tcp_output");
             return -1;
         }
     }
@@ -196,13 +195,13 @@ void tunneler_tcp_ack(struct write_ctx_s *write_ctx) {
 
 int tunneler_tcp_close_write(struct tcp_pcb *pcb) {
     if (pcb == NULL) {
-        ZITI_LOG(WARN, "null pcb");
+        TNL_LOG(WARN, "null pcb");
         return 0;
     }
     LOG_STATE(DEBUG, "closing write", pcb);
     err_t err = tcp_shutdown(pcb, 0, 1);
     if (err != ERR_OK) {
-        LOG_STATE(ERROR, "tcp_shutdown failed: err=%d", pcb, err);
+        LOG_STATE(ERR, "tcp_shutdown failed: err=%d", pcb, err);
         return -1;
     }
     LOG_STATE(DEBUG, "closed write", pcb);
@@ -212,7 +211,7 @@ int tunneler_tcp_close_write(struct tcp_pcb *pcb) {
 
 int tunneler_tcp_close(struct tcp_pcb *pcb) {
     if (pcb == NULL) {
-        ZITI_LOG(DEBUG, "null pcb");
+        TNL_LOG(DEBUG, "null pcb");
         return 0;
     }
     LOG_STATE(DEBUG, "closing", pcb);
@@ -223,7 +222,7 @@ int tunneler_tcp_close(struct tcp_pcb *pcb) {
     tcp_recv(pcb, NULL);
     err_t err = tcp_close(pcb);
     if (err != ERR_OK) {
-        LOG_STATE(ERROR, "tcp_close failed; err=%d", pcb, err);
+        LOG_STATE(ERR, "tcp_close failed; err=%d", pcb, err);
         return -1;
     }
     LOG_STATE(DEBUG, "closed", pcb);
@@ -232,7 +231,7 @@ int tunneler_tcp_close(struct tcp_pcb *pcb) {
 
 void tunneler_tcp_dial_completed(struct io_ctx_s *io, bool ok) {
     if (io == NULL) {
-        ZITI_LOG(WARN, "null io_ctx");
+        TNL_LOG(WARN, "null io_ctx");
         return;
     }
 
@@ -254,7 +253,7 @@ void tunneler_tcp_dial_completed(struct io_ctx_s *io, bool ok) {
 static tunneler_io_context new_tunneler_io_context(tunneler_context tnlr_ctx, const char *service_name, struct tcp_pcb *pcb) {
     struct tunneler_io_ctx_s *ctx = malloc(sizeof(struct tunneler_io_ctx_s));
     if (ctx == NULL) {
-        ZITI_LOG(ERROR, "failed to allocate tunneler_io_ctx");
+        TNL_LOG(ERR, "failed to allocate tunneler_io_ctx");
         return NULL;
     }
     ctx->tnlr_ctx = tnlr_ctx;
@@ -293,7 +292,7 @@ u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
         }
             break;
         default:
-            ZITI_LOG(INFO, "unsupported IP protocol version: %d", ip_version);
+            TNL_LOG(INFO, "unsupported IP protocol version: %d", ip_version);
             return 0;
     }
 
@@ -302,8 +301,8 @@ u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     u16_t src_p = lwip_ntohs(tcphdr->src);
     u16_t dst_p = lwip_ntohs(tcphdr->dest);
 
-    ZITI_LOG(TRACE, "received segment %s:%d->%s:%d",
-             ipaddr_ntoa(&src), src_p, ipaddr_ntoa(&dst), dst_p);
+    TNL_LOG(TRACE, "received segment %s:%d->%s:%d",
+            ipaddr_ntoa(&src), src_p, ipaddr_ntoa(&dst), dst_p);
 
     u8_t flags = TCPH_FLAGS(tcphdr);
     if (!(flags & TCP_SYN)) {
@@ -314,7 +313,7 @@ u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     intercept_ctx_t *intercept_ctx = lookup_intercept_by_address(tnlr_ctx, "tcp", &dst, dst_p, dst_p);
     if (intercept_ctx == NULL) {
         /* dst address is not being intercepted. don't consume */
-        ZITI_LOG(TRACE, "no intercepted addresses match tcp:%s:%d", ipaddr_ntoa(&dst), dst_p);
+        TNL_LOG(TRACE, "no intercepted addresses match tcp:%s:%d", ipaddr_ntoa(&dst), dst_p);
         return 0;
     }
 
@@ -324,7 +323,7 @@ u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
             tpcb->local_port == dst_p &&
             ip_addr_cmp(&tpcb->remote_ip, &src) &&
             ip_addr_cmp(&tpcb->local_ip, &dst)) {
-            ZITI_LOG(VERBOSE, "received SYN on active connection: client=tcp:%s:%d, service=%s", ipaddr_ntoa(&src), src_p, intercept_ctx->service_name);
+            TNL_LOG(VERBOSE, "received SYN on active connection: client=tcp:%s:%d, service=%s", ipaddr_ntoa(&src), src_p, intercept_ctx->service_name);
             /* Move this PCB to the front of the list so that subsequent
                lookups will be faster (we exploit locality in TCP segment
                arrivals). */
@@ -347,28 +346,28 @@ u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     pbuf_remove_header(p, iphdr_hlen);
     struct tcp_pcb *npcb = new_tcp_pcb(src, dst, tcphdr, p);
     if (npcb == NULL) {
-        ZITI_LOG(ERROR, "failed to allocate tcp pcb - TCP connection limit is %d", MEMP_NUM_TCP_PCB);
+        TNL_LOG(ERR, "failed to allocate tcp pcb - TCP connection limit is %d", MEMP_NUM_TCP_PCB);
         goto done;
     }
 
     struct io_ctx_s *io = calloc(1, sizeof(struct io_ctx_s));
     if (io == NULL) {
-        ZITI_LOG(ERROR, "failed to allocate io_context");
+        TNL_LOG(ERR, "failed to allocate io_context");
         goto done;
     }
     io->tnlr_io = new_tunneler_io_context(tnlr_ctx, intercept_ctx->service_name, npcb);
     if (io->tnlr_io == NULL) {
-        ZITI_LOG(ERROR, "failed to allocate tunneler io context");
+        TNL_LOG(ERR, "failed to allocate tunneler io context");
         goto done;
     }
     io->ziti_ctx = intercept_ctx->ziti_ctx;
 
     snprintf(io->tnlr_io->intercepted, sizeof(io->tnlr_io->intercepted), "tcp:%s:%d", ipaddr_ntoa(&dst), dst_p);
-    ZITI_LOG(INFO, "intercepted address[%s] client[%s] service[%s]", io->tnlr_io->intercepted, io->tnlr_io->client,
-             intercept_ctx->service_name);
+    TNL_LOG(INFO, "intercepted address[%s] client[%s] service[%s]", io->tnlr_io->intercepted, io->tnlr_io->client,
+            intercept_ctx->service_name);
     void *ziti_io_ctx = zdial(intercept_ctx, io);
     if (ziti_io_ctx == NULL) {
-        ZITI_LOG(ERROR, "ziti_dial(%s) failed", intercept_ctx->service_name);
+        TNL_LOG(ERR, "ziti_dial(%s) failed", intercept_ctx->service_name);
         free_tunneler_io_context(&io->tnlr_io);
         free(io);
         err_t rc = tcp_enqueue_flags(npcb, TCP_FIN);

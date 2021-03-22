@@ -1,7 +1,6 @@
 #include <string.h>
 #include <stdio.h>
 
-#include "ziti/ziti_log.h"
 #include "ziti_tunnel_priv.h"
 
 /** return the intercept context for a packet based on its destination ip:port */
@@ -9,7 +8,7 @@ intercept_ctx_t *lookup_intercept_by_address(tunneler_context tnlr_ctx, const ch
     struct intercept_ctx_s *intercept;
 
     if (tnlr_ctx == NULL) {
-        ZITI_LOG(DEBUG, "null tnlr_ctx");
+        TNL_LOG(DEBUG, "null tnlr_ctx");
         return NULL;
     }
 
@@ -34,7 +33,7 @@ intercept_ctx_t *lookup_intercept_by_address(tunneler_context tnlr_ctx, const ch
                     break;
                 }
             } else if (IP_IS_V6(&c->ip) && c->prefix_len != 128) {
-                ZITI_LOG(ERROR, "IPv6 CIDR intercept is not currently supported");
+                TNL_LOG(ERR, "IPv6 CIDR intercept is not currently supported");
             } else if (ip_addr_cmp(&c->ip, dst_addr)) {
                 address_match = true;
                 break;

@@ -18,9 +18,8 @@ limitations under the License.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <ziti/model_support.h>
 #include <ctype.h>
-
+#include "ziti/sys/queue.h"
 
 #define MAX_DNS_NAME 256
 #define MAX_IP_LENGTH 16
@@ -28,13 +27,14 @@ limitations under the License.
 struct dns_entry {
     char hostname[MAX_DNS_NAME];
     char ip[MAX_IP_LENGTH];
+    LIST_ENTRY(dns_entry) _next;
 };
 
 typedef struct cache_s {
     uint32_t base;
     uint32_t counter;
     uint32_t counter_bits;
-    model_map entries;
+    LIST_HEAD(dns, dns_entry) entries;
 } cache;
 
 static cache ip_cache = {
@@ -59,7 +59,11 @@ const char* assign_ip(const char *hostname) {
     }
     *p = 0;
 
-    struct dns_entry *e = model_map_get(&ip_cache.entries, canonical);
+    struct dns_entry *e;
+    LIST_FOREACH(e, &ip_cache.entries, _next) {
+        if (strcmp(e->hostname, canonical) == 0) break;
+    }
+
     if (e != NULL) {
         return e->ip;
     }
@@ -72,6 +76,6 @@ const char* assign_ip(const char *hostname) {
     snprintf(e->ip, MAX_IP_LENGTH, "%d.%d.%d.%d", addr>>24U, (addr>>16U) & 0xFFU, (addr>>8U)&0xFFU, addr&0xFFU);
     snprintf(e->hostname, sizeof(e->hostname), "%s", canonical);
 
-    model_map_set(&ip_cache.entries, e->hostname, e);
+    LIST_INSERT_HEAD(&ip_cache.entries, e, _next);
     return e->ip;
 }

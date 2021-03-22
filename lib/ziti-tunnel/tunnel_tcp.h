@@ -2,7 +2,7 @@
 #define ZITI_TUNNELER_SDK_TUNNELER_TCP_H
 
 #include <stdbool.h>
-#include "ziti/ziti_tunnel.h"
+#include <ziti/ziti_tunnel.h>
 #include "lwip/ip_addr.h"
 #include "lwip/raw.h"
 #include "lwip/priv/tcp_priv.h"

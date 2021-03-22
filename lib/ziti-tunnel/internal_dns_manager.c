@@ -14,11 +14,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-#include <ziti/model_support.h>
 #include <ziti/ziti_tunnel.h>
-#include <ziti/ziti_log.h>
 #include <string.h>
 #include <ctype.h>
+#include "ziti_tunnel_priv.h"
 
 const char DNS_OPT[] = { 0x0, 0x0, 0x29, 0x02, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 };
 
@@ -26,12 +25,40 @@ static int apply_dns(dns_manager *mgr, const char *host, const char *ip);
 static int query_dns(dns_manager *dns, const uint8_t *q_packet, size_t q_len, dns_answer_cb r_packet, void *r_len);
 
 struct dns_record {
+    char *name;
     struct in_addr ip;
+    LIST_ENTRY(dns_record) _next;
 };
 
 struct dns_store {
-    model_map map;
+    LIST_HEAD(map, dns_record) map;
 };
+
+static struct dns_record* find_record (struct dns_store* store, const char *hostname) {
+    struct dns_record* result;
+    LIST_FOREACH(result, &store->map, _next) {
+        if (strcmp(hostname, result->name) == 0) break;
+    }
+    return result;
+}
+
+static void add_record(struct dns_store* store, const char *hostname, const char *ip) {
+    struct dns_record *rec = calloc(1, sizeof(struct dns_record));
+    rec->name = strdup(hostname);
+    inet_aton(ip, &rec->ip);
+
+    struct dns_record *old;
+    LIST_FOREACH(old, &store->map, _next) {
+        if (strcmp(old->name, hostname) == 0) break;
+    }
+    if (old) {
+        LIST_REMOVE(old, _next);
+        free(old->name);
+        free(old);
+    }
+
+    LIST_INSERT_HEAD(&store->map, rec, _next);
+}
 
 dns_manager* get_tunneler_dns(uv_loop_t *l, uint32_t dns_ip, dns_fallback_cb fb_cb, void *ctx) {
     dns_manager *mgr = calloc(1, sizeof(dns_manager));
@@ -51,7 +78,7 @@ dns_manager* get_tunneler_dns(uv_loop_t *l, uint32_t dns_ip, dns_fallback_cb fb_
 }
 
 static int apply_dns(dns_manager *mgr, const char *host, const char *ip) {
-    ZITI_LOG(DEBUG, "received DNS record: %s(%s)", host, ip);
+    TNL_LOG(DEBUG, "received DNS record: %s(%s)", host, ip);
     char hostname[256];
     const char *r = host;
     char *p = hostname;
@@ -60,12 +87,7 @@ static int apply_dns(dns_manager *mgr, const char *host, const char *ip) {
     }
     *p = '\0';
 
-    struct dns_record *rec = calloc(1, sizeof(struct dns_record));
-    inet_aton(ip, &rec->ip);
-    struct dns_record *old = model_map_set(mgr->data, hostname, rec);
-    if (old) {
-        free(old);
-    }
+    add_record(mgr->data, hostname, ip);
 
     return 0;
 }
@@ -112,7 +134,7 @@ void dns_work_complete(uv_work_t *work_req, int status) {
     uint8_t *rp = req->rp;
     DNS_SET_CODE(req->resp, req->code);
     if (req->code == DNS_NO_ERROR) {
-        ZITI_LOG(TRACE, "found record for host[%s]", req->host);
+        TNL_LOG(TRACE, "found record for host[%s]", req->host);
         DNS_SET_ARS(req->resp, 1);
 
         // name ref
@@ -169,7 +191,7 @@ static int query_dns(dns_manager *dns, const uint8_t *q_packet, size_t q_len, dn
     uint16_t flags = DNS_FLAGS(q_packet);
     uint16_t qrrs = DNS_QRS(q_packet);
 
-    ZITI_LOG(TRACE, "received DNS query q_len=%zd id(%04x) flags(%04x)", q_len, DNS_ID(q_packet), DNS_FLAGS(q_packet));
+    TNL_LOG(TRACE, "received DNS query q_len=%zd id(%04x) flags(%04x)", q_len, DNS_ID(q_packet), DNS_FLAGS(q_packet));
 
     if (!IS_QUERY(flags) || qrrs != 1) {
         DNS_SET_ARS(req->resp, 0);
@@ -204,10 +226,10 @@ static int query_dns(dns_manager *dns, const uint8_t *q_packet, size_t q_len, dn
 
     req->rp = rp;
 
-    ZITI_LOG(TRACE, "received query for %s type(%x) class(%x)", req->host, type, class);
+    TNL_LOG(TRACE, "received query for %s type(%x) class(%x)", req->host, type, class);
 
     struct dns_store *store = dns->data;
-    struct dns_record *rec = (type == 1) ? model_map_get(&store->map, req->host) : NULL;
+    struct dns_record *rec = (type == 1) ? find_record(store, req->host) : NULL;
 
     if (!rec && dns->fb_cb) {
         req->fb_ctx = dns->fb_ctx;
