@@ -29,7 +29,7 @@
 #define IP_BIN "/sbin/ip "
 #endif
 
-#define CHECK_UV(op) do{ int rc = op; if (rc < 0) ZITI_LOG(ERROR, "uv_err: %d/%s", rc, uv_strerror(rc)); } while(0)
+#define CHECK_UV(op) do{ int rc = op; if (rc < 0) TNL_LOG(ERROR, "uv_err: %d/%s", rc, uv_strerror(rc)); } while(0)
 
 #define RESOLVECTL "resolvectl"
 
@@ -88,9 +88,9 @@ static int run_command_va(bool log_nonzero_ec, const char* cmd, va_list args) {
 
     int rc = system(cmdline);
     if (rc != 0 && log_nonzero_ec) {
-        ZITI_LOG(ERROR, "cmd{%s} failed: %d/%d/%s\n", cmdline, rc, errno, strerror(errno));
+        TNL_LOG(ERROR, "cmd{%s} failed: %d/%d/%s\n", cmdline, rc, errno, strerror(errno));
     }
-    ZITI_LOG(DEBUG, "system(%s) returned %d", cmdline, rc);
+    TNL_LOG(DEBUG, "system(%s) returned %d", cmdline, rc);
     return WEXITSTATUS(rc);
 }
 
@@ -123,12 +123,12 @@ static void set_dns(uv_work_t *wr) {
 }
 
 static void after_set_dns(uv_work_t *wr, int status) {
-    ZITI_LOG(DEBUG, "DNS update: %d", status);
+    TNL_LOG(DEBUG, "DNS update: %d", status);
     free(wr);
 }
 
 static void on_dns_update_time(uv_timer_t *t) {
-    ZITI_LOG(DEBUG, "queuing DNS update");
+    TNL_LOG(DEBUG, "queuing DNS update");
     uv_work_t *wr = calloc(1, sizeof(uv_work_t));
     uv_queue_work(t->loop, wr, set_dns, after_set_dns);
 
@@ -152,17 +152,17 @@ static void init_dns_maintainer(uv_loop_t *loop, const char *tun_name, uint32_t 
     strncpy(dns_maintainer.tun_name, tun_name, sizeof(dns_maintainer.tun_name));
     dns_maintainer.dns_ip = dns_ip;
 
-    ZITI_LOG(DEBUG, "setting up NETLINK listener");
+    TNL_LOG(DEBUG, "setting up NETLINK listener");
     struct sockaddr_nl local = {0};
     local.nl_family = AF_NETLINK;
     local.nl_groups = RTMGRP_LINK;// | RTMGRP_IPV4_ROUTE;
 
     int s = socket(AF_NETLINK, SOCK_DGRAM, NETLINK_ROUTE);
     if ( s < 0) {
-        ZITI_LOG(ERROR, "failed to open netlink socket: %d/%s", errno, strerror(errno));
+        TNL_LOG(ERROR, "failed to open netlink socket: %d/%s", errno, strerror(errno));
     }
     if (bind(s, &local, sizeof(local)) < 0) {
-        ZITI_LOG(ERROR, "failed to bind %d/%s", errno, strerror(errno));
+        TNL_LOG(ERROR, "failed to bind %d/%s", errno, strerror(errno));
     }
 
     CHECK_UV(uv_udp_init(loop, &dns_maintainer.nl_udp));

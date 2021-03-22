@@ -65,7 +65,7 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
                     .error = NULL,
                     .data = NULL,
     };
-    ZITI_LOG(INFO, "processing command[%s] with data[%s]", TunnelCommands.name(cmd->command), cmd->data);
+    TNL_LOG(INFO, "processing command[%s] with data[%s]", TunnelCommands.name(cmd->command), cmd->data);
     switch (cmd->command) {
         case TunnelCommand_LoadIdentity: {
             tunnel_load_identity load;
@@ -139,7 +139,7 @@ static struct ziti_instance_s *new_ziti_instance(const char *path) {
 
 /** callback from ziti SDK when a new service becomes available to our identity */
 static void on_service(ziti_context ziti_ctx, ziti_service *service, int status, void *tnlr_ctx) {
-    ZITI_LOG(DEBUG, "service[%s]", service->name);
+    TNL_LOG(DEBUG, "service[%s]", service->name);
     tunneled_service_t *ts = ziti_sdk_c_on_service(ziti_ctx, service, status, tnlr_ctx);
     if (ts->intercept != NULL) {
         protocol_t *proto;
@@ -148,15 +148,15 @@ static void on_service(ziti_context ziti_ctx, ziti_service *service, int status,
             STAILQ_FOREACH(address, &ts->intercept->addresses, entries) {
                 port_range_t *pr;
                 STAILQ_FOREACH(pr, &ts->intercept->port_ranges, entries) {
-                    ZITI_LOG(INFO, "intercepting address[%s:%s:%s] service[%s]",
-                             proto->protocol, address->str, pr->str, service->name);
+                    TNL_LOG(INFO, "intercepting address[%s:%s:%s] service[%s]",
+                            proto->protocol, address->str, pr->str, service->name);
                 }
             }
         }
 
     }
     if (ts->host != NULL) {
-        ZITI_LOG(INFO, "hosting server_address[%s] service[%s]", ts->host->address, service->name);
+        TNL_LOG(INFO, "hosting server_address[%s] service[%s]", ts->host->address, service->name);
     }
 }
 
@@ -168,15 +168,15 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
     }
 
     if (instance->ztx != ztx) {
-        ZITI_LOG(ERROR, "something bad had happened: incorrect context");
+        TNL_LOG(ERROR, "something bad had happened: incorrect context");
     }
 
     switch (event->type) {
         case ZitiContextEvent:
             if (event->event.ctx.ctrl_status == ZITI_OK) {
-                ZITI_LOG(INFO, "ziti_ctx[%s] connected to controller", ziti_get_identity(ztx)->name);
+                TNL_LOG(INFO, "ziti_ctx[%s] connected to controller", ziti_get_identity(ztx)->name);
             } else {
-                ZITI_LOG(WARN, "ziti_ctx controller connections failed: %s", ziti_errorstr(event->event.ctx.ctrl_status));
+                TNL_LOG(WARN, "ziti_ctx controller connections failed: %s", ziti_errorstr(event->event.ctx.ctrl_status));
             }
             break;
 
@@ -208,13 +208,13 @@ static void load_ziti_async(uv_async_t *ar) {
     };
 
     char *config_path = realpath(inst->opts.config, NULL);
-    ZITI_LOG(INFO, "attempting to load ziti instance from file[%s]", inst->opts.config);
+    TNL_LOG(INFO, "attempting to load ziti instance from file[%s]", inst->opts.config);
     if (model_map_get(&instances, config_path) != NULL) {
-        ZITI_LOG(WARN, "ziti context already loaded for %s", inst->opts.config);
+        TNL_LOG(WARN, "ziti context already loaded for %s", inst->opts.config);
         result.success = false;
         result.error = "context already loaded";
     } else {
-        ZITI_LOG(INFO, "loading ziti instance from %s", config_path);
+        TNL_LOG(INFO, "loading ziti instance from %s", config_path);
         inst->opts.app_ctx = inst;
         if (ziti_init_opts(&inst->opts, ar->loop) == ZITI_OK) {
             model_map_set(&instances, config_path, inst);

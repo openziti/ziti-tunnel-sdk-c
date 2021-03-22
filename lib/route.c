@@ -1,7 +1,14 @@
 #include "ziti_tunnel_priv.h"
-#include "ziti/model_support.h"
+#include "sys/queue.h"
+#include <string.h>
 
-model_map route_counts = { NULL };
+struct route_count {
+    char *route;
+    int count;
+    LIST_ENTRY(route_count) _next;
+};
+
+static LIST_HEAD(routes, route_count) route_counts = LIST_HEAD_INITIALIZER(&route_counts);
 
 // macOS ip4: NEIPv4Settings.includedRoutes+=<IP> NEIPv4Settings.subnetMasks+=<IP>
 // macOS ip6: NEIPv6Settings.includedRoutes+=<IP> NEIPv6Settings.networkPrefixLengths+=<PREFIX_LEN>
@@ -15,13 +22,17 @@ int add_route(netif_driver tun, address_t *dest) {
         return 1;
     }
 
-    int *n = model_map_get(&route_counts, dest->str);
-    if (n != NULL) {
-        *n += 1;
+    struct route_count *r;
+    LIST_FOREACH(r, &route_counts, _next){
+        if (strcmp(r->route, dest->str) == 0) break;
+    }
+    if (r != NULL) {
+        r->count += 1;
     } else {
-        n = malloc(sizeof(int));
-        *n = 1;
-        model_map_set(&route_counts, dest->str, n);
+        r = malloc(sizeof(struct route_count));
+        r->route = strdup(dest->str);
+        r->count = 1;
+        LIST_INSERT_HEAD(&route_counts, r, _next);
         return tun->add_route(tun->handle, dest->str);
     }
     return 0;
@@ -38,12 +49,16 @@ int delete_route(netif_driver tun, address_t *dest) {
         return 1;
     }
 
-    int *n = model_map_get(&route_counts, dest->str);
-    if (n != NULL) {
-        *n -= 1;
-        if (*n == 0) {
-            free(n);
-            model_map_remove(&route_counts, dest->str);
+    struct route_count *r;
+    LIST_FOREACH(r, &route_counts, _next){
+        if (strcmp(r->route, dest->str) == 0) break;
+    }
+    if (r != NULL) {
+        r->count -= 1;
+        if (r->count == 0) {
+            LIST_REMOVE(r, _next);
+            free(r->route);
+            free(r);
             tun->delete_route(tun->handle, dest->str);
         }
     }
