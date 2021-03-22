@@ -40,7 +40,7 @@ static int apply_address(dns_manager *dns, const char *hostname, const char *ip)
     int c = snprintf(entry, sizeof(entry), "%s\t%s", ip, hostname);
     FILE *rec = fopen(fname, "wb");
     if (rec == NULL) {
-        TNL_LOG(ERROR, "failed to open %s: %s", fname, strerror(errno));
+        ZITI_LOG(ERROR, "failed to open %s: %s", fname, strerror(errno));
         return 1;
     }
     fwrite(entry, 1, c, rec);

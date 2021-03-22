@@ -51,7 +51,7 @@ static void on_cmd_write(uv_write_t *wr, int len) {
 static void on_command_resp(const tunnel_result* result, void *ctx) {
     size_t json_len;
     char *json = tunnel_result_to_json(result, MODEL_JSON_COMPACT, &json_len);
-    TNL_LOG(INFO, "resp[%d,len=%zd] = %.*s",
+    ZITI_LOG(INFO, "resp[%d,len=%zd] = %.*s",
             result->success, json_len, (int)json_len, json, result->data);
 
     if (uv_is_active((const uv_handle_t *) &cmd_conn)) {
@@ -66,7 +66,7 @@ static void on_cmd(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
     if (len < 0) {
         uv_close((uv_handle_t *) s, NULL);
     } else {
-        TNL_LOG(INFO, "received cmd <%.*s>", (int) len, b->base);
+        ZITI_LOG(INFO, "received cmd <%.*s>", (int) len, b->base);
 
         tunnel_comand cmd = {0};
         if (parse_tunnel_comand(&cmd, b->base, len) == 0) {
@@ -120,12 +120,12 @@ static void load_identities(uv_work_t *wr) {
         uv_fs_t fs;
         int rc = uv_fs_scandir(wr->loop, &fs, config_dir, 0, NULL);
         if (rc < 0) {
-            TNL_LOG(ERROR, "failed to scan dir: %d/%s", rc, uv_strerror(rc));
+            ZITI_LOG(ERROR, "failed to scan dir: %d/%s", rc, uv_strerror(rc));
         }
 
         uv_dirent_t file;
         while (uv_fs_scandir_next(&fs, &file) != UV_EOF) {
-            TNL_LOG(INFO, "file = %s %d", file.name, file.type);
+            ZITI_LOG(INFO, "file = %s %d", file.name, file.type);
 
             if (file.type == UV_DIRENT_FILE) {
                 struct cfg_instance_s *inst = calloc(1, sizeof(struct cfg_instance_s));
@@ -140,9 +140,9 @@ static void load_identities(uv_work_t *wr) {
 static void load_id_cb(const tunnel_result *res, void *ctx) {
     struct cfg_instance_s *inst = ctx;
     if (res->success) {
-        TNL_LOG(INFO, "identity[%s] loaded", inst->cfg);
+        ZITI_LOG(INFO, "identity[%s] loaded", inst->cfg);
     } else {
-        TNL_LOG(ERROR, "identity[%s] failed to load: %s", inst->cfg, res->error);
+        ZITI_LOG(ERROR, "identity[%s] failed to load: %s", inst->cfg, res->error);
     }
     free((void*)inst->cfg);
     free(inst);
@@ -167,7 +167,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, const char *ip_rang
 #endif
 
     if (tun == NULL) {
-        TNL_LOG(ERROR, "failed to open network interface: %s", tun_error);
+        ZITI_LOG(ERROR, "failed to open network interface: %s", tun_error);
         return 1;
     }
 
@@ -192,7 +192,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, const char *ip_rang
     start_cmd_socket(ziti_loop);
 
     if (uv_run(ziti_loop, UV_RUN_DEFAULT) != 0) {
-        TNL_LOG(ERROR, "failed to run event loop");
+        ZITI_LOG(ERROR, "failed to run event loop");
         exit(1);
     }
 
@@ -266,7 +266,7 @@ static int run_opts(int argc, char *argv[]) {
                 dns_impl = optarg;
                 break;
             default: {
-                TNL_LOG(ERROR, "Unknown option '%c'", c);
+                ZITI_LOG(ERROR, "Unknown option '%c'", c);
                 errors++;
                 break;
             }
@@ -289,7 +289,7 @@ static void run(int argc, char *argv[]) {
     int bits;
     int rc = sscanf(ip_range, "%d.%d.%d.%d/%d", &ip[0], &ip[1], &ip[2], &ip[3], &bits);
     if (rc != 5) {
-        TNL_LOG(ERROR, "Invalid IP range specification: n.n.n.n/m format is expected");
+        ZITI_LOG(ERROR, "Invalid IP range specification: n.n.n.n/m format is expected");
         exit(1);
     }
 
@@ -309,23 +309,23 @@ static void run(int argc, char *argv[]) {
     ziti_tunnel_set_logger(ziti_logger);
 
     if (ziti_loop == NULL) {
-        TNL_LOG(ERROR, "failed to initialize default uv loop");
+        ZITI_LOG(ERROR, "failed to initialize default uv loop");
         exit(1);
     }
 
     dns_manager *dns = NULL;
     if (dns_impl == NULL || strcmp(dns_impl, "internal") == 0) {
-        TNL_LOG(INFO, "setting up internal DNS");
+        ZITI_LOG(INFO, "setting up internal DNS");
         dns = get_tunneler_dns(ziti_loop, dns_ip, dns_fallback, NULL);
     } else if (strncmp("dnsmasq", dns_impl, strlen("dnsmasq")) == 0) {
         char *col = strchr(dns_impl, ':');
         if (col == NULL) {
-            TNL_LOG(ERROR, "DNS dnsmasq option should be `--dns=dnsmasq:<hosts-dir>");
+            ZITI_LOG(ERROR, "DNS dnsmasq option should be `--dns=dnsmasq:<hosts-dir>");
             exit(1);
         }
         dns = get_dnsmasq_manager(col + 1);
     } else {
-        TNL_LOG(ERROR, "DNS setting '%s' is not supported", dns_impl);
+        ZITI_LOG(ERROR, "DNS setting '%s' is not supported", dns_impl);
         exit(1);
     }
 
@@ -415,7 +415,7 @@ static int parse_enroll_opts(int argc, char *argv[]) {
 
 static void enroll_cb(ziti_config *cfg, int status, char *err, void *ctx) {
     if (status != ZITI_OK) {
-        TNL_LOG(ERROR, "enrollment failed: %s(%d)", err, status);
+        ZITI_LOG(ERROR, "enrollment failed: %s(%d)", err, status);
         exit(status);
     }
 
@@ -425,7 +425,7 @@ static void enroll_cb(ziti_config *cfg, int status, char *err, void *ctx) {
     char *cfg_json = ziti_config_to_json(cfg, 0, &len);
 
     if (fwrite(cfg_json, 1, len, f) != len) {
-        TNL_LOG(ERROR, "failed to write config file");
+        ZITI_LOG(ERROR, "failed to write config file");
         fclose(f);
         exit (-1);
     }
@@ -437,18 +437,18 @@ static void enroll_cb(ziti_config *cfg, int status, char *err, void *ctx) {
 
 static void enroll(int argc, char *argv[]) {
     if (config_file == 0) {
-        TNL_LOG(ERROR, "output file option(-i|--identity) is required");
+        ZITI_LOG(ERROR, "output file option(-i|--identity) is required");
         exit(-1);
     }
 
     if (enroll_opts.jwt == NULL) {
-        TNL_LOG(ERROR, "JWT file option(-j|--jwt) is required");
+        ZITI_LOG(ERROR, "JWT file option(-j|--jwt) is required");
         exit(-1);
     }
 
     FILE *outfile;
     if ((outfile = fopen(config_file, "wb")) == NULL) {
-        TNL_LOG(ERROR, "failed to open file %s: %s(%d)", config_file, strerror(errno), errno);
+        ZITI_LOG(ERROR, "failed to open file %s: %s(%d)", config_file, strerror(errno), errno);
         exit(-1);
 
     }
