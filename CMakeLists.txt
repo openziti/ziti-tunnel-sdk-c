@@ -39,8 +39,8 @@ message("cross-compiling: ${CMAKE_CROSSCOMPILING}")
 link_directories(${CMAKE_BINARY_DIR}/lib)
 
 add_subdirectory(deps)
-add_subdirectory(lib)
-add_subdirectory(lib-ziti-tunnel-cbs)
+add_subdirectory(lib/ziti-tunnel)
+add_subdirectory(lib/ziti-tunnel-cbs)
 add_subdirectory(programs)
 
 if (WIN32)
