@@ -45,7 +45,6 @@ const char *CLIENT_PORT_KEY = "client_port";
 const char *SOURCE_IP_KEY = "source_ip";
 
 struct resolve_req {
-    struct pbuf *qp;
     ip_addr_t addr;
     u16_t port;
     tunneler_context tnlr_ctx;
@@ -165,7 +164,6 @@ static void send_dns_resp(uint8_t *resp, size_t resp_len, void *ctx) {
     }
 
     pbuf_free(rp);
-    pbuf_free(rreq->qp);
     free(rreq);
 }
 
@@ -174,7 +172,6 @@ static void on_dns_packet(void *arg, struct udp_pcb *pcb, struct pbuf *p,
     tunneler_context tnlr_ctx = arg;
 
     struct resolve_req *rr = calloc(1,sizeof(struct resolve_req));
-    rr->qp = p;
     rr->addr = *addr;
     rr->port = port;
     rr->tnlr_ctx = tnlr_ctx;
@@ -182,9 +179,9 @@ static void on_dns_packet(void *arg, struct udp_pcb *pcb, struct pbuf *p,
     int rc = tnlr_ctx->dns->query(tnlr_ctx->dns, p->payload, p->len, send_dns_resp, rr);
     if (rc != 0) {
         ZITI_LOG(WARN, "DNS resolve error: %d", rc);
-        pbuf_free(p);
         free(rr);
     }
+    pbuf_free(p);
 }
 
 void ziti_tunneler_set_dns(tunneler_context tnlr_ctx, dns_manager *dns) {
