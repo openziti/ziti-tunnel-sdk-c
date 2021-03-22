@@ -5,7 +5,7 @@
 
 static void to_ziti(struct io_ctx_s *io, struct pbuf *p) {
     if (io == NULL) {
-        TNL_LOG(ERROR, "null io");
+        TNL_LOG(ERR, "null io");
         if (p != NULL) {
             pbuf_free(p);
         }
@@ -37,7 +37,7 @@ static void to_ziti(struct io_ctx_s *io, struct pbuf *p) {
         wr_ctx->ack = tunneler_udp_ack;
         ssize_t s = zwrite(io->ziti_io, wr_ctx, recv_data->payload, recv_data->len);
         if (s < 0) {
-            TNL_LOG(ERROR, "ziti_write failed: service=%s, client=%s, ret=%ld", io->tnlr_io->service_name, io->tnlr_io->client, s);
+            TNL_LOG(ERR, "ziti_write failed: service=%s, client=%s, ret=%ld", io->tnlr_io->service_name, io->tnlr_io->client, s);
             break;
         }
         recv_data = recv_data->next;
@@ -167,7 +167,7 @@ u8_t recv_udp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     /* make a new pcb for this connection and register it with lwip */
     struct udp_pcb *npcb = udp_new();
     if (npcb == NULL) {
-        TNL_LOG(ERROR, "unable to allocate UDP pcb - UDP connection limit is %d", MEMP_NUM_UDP_PCB);
+        TNL_LOG(ERR, "unable to allocate UDP pcb - UDP connection limit is %d", MEMP_NUM_UDP_PCB);
         pbuf_free(p);
         return 1;
     }
@@ -175,7 +175,7 @@ u8_t recv_udp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     npcb->local_port = dst_p;
     err_t err = udp_connect(npcb, &src, src_p);
     if (err != ERR_OK) {
-        TNL_LOG(ERROR, "failed to udp_connect %s:%d: err: %d", ipaddr_ntoa(&src), src_p, err);
+        TNL_LOG(ERR, "failed to udp_connect %s:%d: err: %d", ipaddr_ntoa(&src), src_p, err);
         udp_remove(npcb);
         pbuf_free(p);
         return 1;
@@ -185,14 +185,14 @@ u8_t recv_udp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
 
     struct io_ctx_s *io = calloc(1, sizeof(struct io_ctx_s));
     if (io == NULL) {
-        TNL_LOG(ERROR, "failed to allocate io_context");
+        TNL_LOG(ERR, "failed to allocate io_context");
         udp_remove(npcb);
         pbuf_free(p);
         return 1;
     }
     io->tnlr_io = (tunneler_io_context)calloc(1, sizeof(struct tunneler_io_ctx_s));
     if (io->tnlr_io == NULL) {
-        TNL_LOG(ERROR, "failed to allocate tunneler io context");
+        TNL_LOG(ERR, "failed to allocate tunneler io context");
         udp_remove(npcb);
         pbuf_free(p);
         return 1;
@@ -211,7 +211,7 @@ u8_t recv_udp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
 
     void *ziti_io_ctx = zdial(intercept_ctx, io);
     if (ziti_io_ctx == NULL) {
-        TNL_LOG(ERROR, "ziti_dial(%s) failed", intercept_ctx->service_name);
+        TNL_LOG(ERR, "ziti_dial(%s) failed", intercept_ctx->service_name);
         udp_remove(npcb);
         pbuf_free(p);
         free_tunneler_io_context(&io->tnlr_io);

@@ -57,13 +57,13 @@ tunneler_context ziti_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop)
     TNL_LOG(INFO, "Ziti Tunneler SDK (%s)", ziti_tunneler_version());
 
     if (opts == NULL) {
-        TNL_LOG(ERROR, "invalid tunneler options");
+        TNL_LOG(ERR, "invalid tunneler options");
         return NULL;
     }
 
     struct tunneler_ctx_s *ctx = calloc(1, sizeof(struct tunneler_ctx_s));
     if (ctx == NULL) {
-        TNL_LOG(ERROR, "failed to allocate tunneler context");
+        TNL_LOG(ERR, "failed to allocate tunneler context");
         return NULL;
     }
     ctx->loop = loop;
@@ -122,11 +122,11 @@ void free_tunneler_io_context(tunneler_io_context *tnlr_io_ctx_p) {
  */
 void ziti_tunneler_dial_completed(struct io_ctx_s *io, bool ok) {
     if (io == NULL) {
-        TNL_LOG(ERROR, "null io");
+        TNL_LOG(ERR, "null io");
         return;
     }
     if (io->ziti_io == NULL || io->tnlr_io == NULL) {
-        TNL_LOG(ERROR, "null ziti_io or tnlr_io");
+        TNL_LOG(ERR, "null ziti_io or tnlr_io");
     }
     const char *status = ok ? "succeeded" : "failed";
     TNL_LOG(INFO, "ziti dial %s: service=%s, client=%s", status, io->tnlr_io->service_name, io->tnlr_io->client);
@@ -139,7 +139,7 @@ void ziti_tunneler_dial_completed(struct io_ctx_s *io, bool ok) {
             tunneler_udp_dial_completed(io, ok);
             break;
         default:
-            TNL_LOG(ERROR, "unknown proto %d", io->tnlr_io->proto);
+            TNL_LOG(ERR, "unknown proto %d", io->tnlr_io->proto);
             break;
     }
 }
@@ -217,13 +217,13 @@ address_t *parse_address(const char *hn_or_ip_or_cidr, dns_manager *dns) {
         if (dns) {
             const char *resolved_ip_str = assign_ip(addr->str);
             if (dns->apply(dns, addr->str, resolved_ip_str) != 0) {
-                TNL_LOG(ERROR, "failed to apply DNS mapping %s => %s", addr->str, resolved_ip_str);
+                TNL_LOG(ERR, "failed to apply DNS mapping %s => %s", addr->str, resolved_ip_str);
                 free(addr);
                 return NULL;
             } else {
                 TNL_LOG(DEBUG, "intercept hostname %s is not an ip", addr->str);
                 if (ipaddr_aton(resolved_ip_str, &addr->ip) == 0) {
-                    TNL_LOG(ERROR, "dns manager provided unparsable ip address '%s'", resolved_ip_str);
+                    TNL_LOG(ERR, "dns manager provided unparsable ip address '%s'", resolved_ip_str);
                     free(addr);
                     return NULL;
                 } else {
@@ -242,7 +242,7 @@ address_t *parse_address(const char *hn_or_ip_or_cidr, dns_manager *dns) {
             ip_addr_set_ip4_u32(&addr->_netmask, PP_HTONL(IPADDR_BROADCAST >> net_bits << net_bits));
             ip_addr_set_ip4_u32(&addr->ip, ip_2_ip4(&addr->ip)->addr & ip_2_ip4(&addr->_netmask)->addr);
         } else if (addr->ip.type == IPADDR_TYPE_V6) {
-            TNL_LOG(ERROR, "IPv6 CIDR intercept is not currently supported");
+            TNL_LOG(ERR, "IPv6 CIDR intercept is not currently supported");
         }
         snprintf(addr->str, sizeof(addr->str), "%s/%d", ipaddr_ntoa(&addr->ip), addr->prefix_len);
     } else {
@@ -257,7 +257,7 @@ address_t *intercept_ctx_add_address(tunneler_context tnlr_ctx, intercept_ctx_t 
     address_t *addr = parse_address(address, tnlr_ctx->dns);
 
     if (addr == NULL) {
-        TNL_LOG(ERROR, "failed to parse address '%s' service[%s]", address, i_ctx->service_name);
+        TNL_LOG(ERR, "failed to parse address '%s' service[%s]", address, i_ctx->service_name);
         return NULL;
     }
 
@@ -292,7 +292,7 @@ port_range_t *intercept_ctx_add_port_range(intercept_ctx_t *i_ctx, uint16_t low,
 /** intercept a service as described by the intercept_ctx */
 int ziti_tunneler_intercept(tunneler_context tnlr_ctx, intercept_ctx_t *i_ctx) {
     if (tnlr_ctx == NULL) {
-        TNL_LOG(ERROR, "null tnlr_ctx");
+        TNL_LOG(ERR, "null tnlr_ctx");
         return -1;
     }
 
@@ -412,7 +412,7 @@ int ziti_tunneler_close(tunneler_io_context tnlr_io_ctx) {
             tnlr_io_ctx->udp.pcb = NULL;
             break;
         default:
-            TNL_LOG(ERROR, "unknown proto %d", tnlr_io_ctx->proto);
+            TNL_LOG(ERR, "unknown proto %d", tnlr_io_ctx->proto);
             break;
     }
 
@@ -463,12 +463,12 @@ static struct raw_pcb * init_protocol_handler(u8_t proto, raw_recv_fn recv_fn, v
     err_t err;
 
     if ((pcb = raw_new_ip_type(IPADDR_TYPE_ANY, proto)) == NULL) {
-        TNL_LOG(ERROR, "failed to allocate raw pcb for protocol %d", proto);
+        TNL_LOG(ERR, "failed to allocate raw pcb for protocol %d", proto);
         return NULL;
     }
 
     if ((err = raw_bind(pcb, IP_ANY_TYPE)) != ERR_OK) {
-        TNL_LOG(ERROR, "failed to bind for protocol %d: error %d", proto, err);
+        TNL_LOG(ERR, "failed to bind for protocol %d: error %d", proto, err);
         raw_remove(pcb);
         return NULL;
     }
@@ -483,7 +483,7 @@ static void run_packet_loop(uv_loop_t *loop, tunneler_context tnlr_ctx) {
     tunneler_sdk_options opts = tnlr_ctx->opts;
     if (opts.ziti_close == NULL || opts.ziti_close_write == NULL ||  opts.ziti_write == NULL ||
         opts.ziti_dial == NULL || opts.ziti_host == NULL) {
-        TNL_LOG(ERROR, "ziti_sdk_* callback options cannot be null");
+        TNL_LOG(ERR, "ziti_sdk_* callback options cannot be null");
         exit(1);
     }
 
@@ -491,7 +491,7 @@ static void run_packet_loop(uv_loop_t *loop, tunneler_context tnlr_ctx) {
 
     netif_driver netif_driver = opts.netif_driver;
     if (netif_add_noaddr(&tnlr_ctx->netif, netif_driver, netif_shim_init, ip_input) == NULL) {
-        TNL_LOG(ERROR, "netif_add failed");
+        TNL_LOG(ERR, "netif_add failed");
         exit(1);
     }
 
@@ -504,7 +504,7 @@ static void run_packet_loop(uv_loop_t *loop, tunneler_context tnlr_ctx) {
     } else if (netif_driver->uv_poll_init) {
         netif_driver->uv_poll_init(netif_driver->handle, loop, &tnlr_ctx->netif_poll_req);
         if (uv_poll_start(&tnlr_ctx->netif_poll_req, UV_READABLE, on_tun_data) != 0) {
-            TNL_LOG(ERROR, "failed to start tun poll handle");
+            TNL_LOG(ERR, "failed to start tun poll handle");
             exit(1);
         }
     } else {
@@ -512,11 +512,11 @@ static void run_packet_loop(uv_loop_t *loop, tunneler_context tnlr_ctx) {
     }
 
     if ((tnlr_ctx->tcp = init_protocol_handler(IP_PROTO_TCP, recv_tcp, tnlr_ctx)) == NULL) {
-        TNL_LOG(ERROR, "tcp setup failed");
+        TNL_LOG(ERR, "tcp setup failed");
         exit(1);
     }
     if ((tnlr_ctx->udp = init_protocol_handler(IP_PROTO_UDP, recv_udp, tnlr_ctx)) == NULL) {
-        TNL_LOG(ERROR, "udp setup failed");
+        TNL_LOG(ERR, "udp setup failed");
         exit(1);
     }
 

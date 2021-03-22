@@ -6,7 +6,7 @@
 
 enum {
     NONE,
-    ERROR,
+    ERR,
     WARN,
     INFO,
     DEBUG,

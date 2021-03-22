@@ -33,7 +33,7 @@ intercept_ctx_t *lookup_intercept_by_address(tunneler_context tnlr_ctx, const ch
                     break;
                 }
             } else if (IP_IS_V6(&c->ip) && c->prefix_len != 128) {
-                TNL_LOG(ERROR, "IPv6 CIDR intercept is not currently supported");
+                TNL_LOG(ERR, "IPv6 CIDR intercept is not currently supported");
             } else if (ip_addr_cmp(&c->ip, dst_addr)) {
                 address_match = true;
                 break;
