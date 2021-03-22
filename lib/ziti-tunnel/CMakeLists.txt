@@ -37,7 +37,7 @@ include(${LWIP_DIR}/src/Filelists.cmake)
 
 target_include_directories(ziti-tunnel-sdk-c
         PUBLIC ${LWIP_INCLUDE_DIRS}
-        PUBLIC ${CMAKE_SOURCE_DIR}/include
+        PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
         PRIVATE ${ziti-tunnel-sdk-c-deps_SOURCE_DIR}
         )
 
