@@ -1,6 +1,7 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "uv.h"
 #include "ziti/ziti.h"
 #include "ziti/ziti_tunnel.h"
@@ -17,107 +18,101 @@
 
 extern dns_manager *get_dnsmasq_manager(const char* path);
 
-struct ziti_instance_s {
-    ziti_options opts;
-    ziti_context ztx;
-    LIST_ENTRY(ziti_instance_s) _next;
+struct cfg_instance_s {
+    char *cfg;
+    LIST_ENTRY(cfg_instance_s) _next;
 };
 
 // temporary list to pass info between parse and run
-static LIST_HEAD(instance_list, ziti_instance_s) instance_init_list;
-
-// map<path -> ziti_instance>
-static model_map instances;
-
-static void on_ziti_event(ziti_context ztx, const ziti_event_t *event);
-
-static const char * cfg_types[] = { "ziti-tunneler-client.v1", "intercept.v1", "ziti-tunneler-server.v1", "host.v1", NULL };
+static LIST_HEAD(instance_list, cfg_instance_s) load_list;
 
 static long refresh_interval = 10;
 
 static char *config_dir = NULL;
 
-static tunneler_context tnlr_ctx;
+static uv_pipe_t cmd_server;
+static uv_pipe_t cmd_conn;
 
-static struct ziti_instance_s *new_ziti_instance(const char *path) {
-    struct ziti_instance_s *inst = calloc(1, sizeof(struct ziti_instance_s));
-    inst->opts.config = realpath(path, NULL);
-    inst->opts.config_types = cfg_types;
-    inst->opts.events = ZitiContextEvent|ZitiServiceEvent;
-    inst->opts.event_cb = on_ziti_event;
-    inst->opts.refresh_interval = refresh_interval; /* default refresh */
-    return inst;
+// singleton
+static const ziti_tunnel_ctrl *CMD_CTRL;
+
+static void cmd_alloc(uv_handle_t *s, size_t sugg, uv_buf_t *b) {
+    b->base = malloc(sugg);
+    b->len = sugg;
 }
 
-/** callback from ziti SDK when a new service becomes available to our identity */
-static void on_service(ziti_context ziti_ctx, ziti_service *service, int status, void *tnlr_ctx) {
-    ZITI_LOG(DEBUG, "service[%s]", service->name);
-    tunneled_service_t *ts = ziti_sdk_c_on_service(ziti_ctx, service, status, tnlr_ctx);
-    if (ts->intercept != NULL) {
-        protocol_t *proto;
-        STAILQ_FOREACH(proto, &ts->intercept->protocols, entries) {
-            address_t *address;
-            STAILQ_FOREACH(address, &ts->intercept->addresses, entries) {
-                port_range_t *pr;
-                STAILQ_FOREACH(pr, &ts->intercept->port_ranges, entries) {
-                    ZITI_LOG(INFO, "intercepting address[%s:%s:%s] service[%s]",
-                             proto->protocol, address->str, pr->str, service->name);
-                }
-            }
-        }
-
+static void on_cmd_write(uv_write_t *wr, int len) {
+    if (wr->data) {
+        free(wr->data);
     }
-    if (ts->host != NULL) {
-        ZITI_LOG(INFO, "hosting server_address[%s] service[%s]", ts->host->address, service->name);
+    free(wr);
+}
+
+static void on_command_resp(const tunnel_result* result, void *ctx) {
+    size_t json_len;
+    char *json = tunnel_result_to_json(result, MODEL_JSON_COMPACT, &json_len);
+    ZITI_LOG(INFO, "resp[%d,len=%zd] = %.*s",
+             result->success, json_len, (int)json_len, json, result->data);
+
+    if (uv_is_active((const uv_handle_t *) &cmd_conn)) {
+        uv_buf_t b = uv_buf_init(json, json_len);
+        uv_write_t *wr = calloc(1, sizeof(uv_write_t));
+        wr->data = b.base;
+        uv_write(wr, (uv_stream_t *) &cmd_conn, &b, 1, on_cmd_write);
     }
 }
 
-static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
-    switch (event->type) {
-        case ZitiContextEvent:
-            if (event->event.ctx.ctrl_status == ZITI_OK) {
-                ZITI_LOG(INFO, "ziti_ctx[%s] connected to controller", ziti_get_identity(ztx)->name);
-            } else {
-                ZITI_LOG(WARN, "ziti_ctx controller connections failed: %s", ziti_errorstr(event->event.ctx.ctrl_status));
-            }
-            break;
-
-        case ZitiServiceEvent: {
-            ziti_service **zs;
-            for (zs = event->event.service.removed; *zs != NULL; zs++) {
-                on_service(ztx, *zs, ZITI_SERVICE_UNAVAILABLE, ziti_app_ctx(ztx));
-            }
-            for (zs = event->event.service.added; *zs != NULL; zs++) {
-                on_service(ztx, *zs, ZITI_OK, ziti_app_ctx(ztx));
-            }
-            for (zs = event->event.service.changed; *zs != NULL; zs++) {
-                on_service(ztx, *zs, ZITI_OK, ziti_app_ctx(ztx));
-            }
-            break;
-        }
-
-        case ZitiRouterEvent:
-            break;
-    }
-}
-
-static void load_ziti_async(uv_async_t *ar) {
-    struct ziti_instance_s *inst = ar->data;
-
-    char *config_path = realpath(inst->opts.config, NULL);
-    if (model_map_get(&instances, config_path) != NULL) {
-        ZITI_LOG(WARN, "ziti context already loaded for %s", inst->opts.config);
+static void on_cmd(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
+    if (len < 0) {
+        uv_close((uv_handle_t *) s, NULL);
     } else {
-        ZITI_LOG(INFO, "loading ziti instance from %s", config_path);
-        inst->opts.app_ctx = tnlr_ctx;
-        if (ziti_init_opts(&inst->opts, ar->loop) == ZITI_OK) {
-            model_map_set(&instances, config_path, inst);
+        ZITI_LOG(INFO, "received cmd <%.*s>", (int) len, b->base);
+
+        tunnel_comand cmd = {0};
+        if (parse_tunnel_comand(&cmd, b->base, len) == 0) {
+            CMD_CTRL->process(&cmd, on_command_resp, NULL);
         } else {
-            ZITI_LOG(ERROR, "failed to initialize ziti");
+            tunnel_result resp = {
+                    .success = false,
+                    .error = "failed to parse command"
+            };
+            on_command_resp(&resp, NULL);
         }
+        free_tunnel_comand(&cmd);
     }
-    free(config_path);
-    uv_close((uv_handle_t *) ar, (uv_close_cb) free);
+
+    free(b->base);
+}
+
+static void on_cmd_client(uv_stream_t *s, int status) {
+    // only allow a single client
+    if (!uv_is_active((const uv_handle_t *) &cmd_conn)) {
+        uv_pipe_init(s->loop, &cmd_conn, 0);
+        uv_accept(s, (uv_stream_t *) &cmd_conn);
+        uv_read_start((uv_stream_t *) &cmd_conn, cmd_alloc, on_cmd);
+    } else {
+        uv_pipe_t *tmp = malloc(sizeof(uv_pipe_t));
+        uv_pipe_init(s->loop, tmp, 0);
+        uv_accept(s, (uv_stream_t *) tmp);
+        uv_close((uv_handle_t *) tmp, (uv_close_cb) free);
+    }
+}
+
+static int start_cmd_socket(uv_loop_t *l) {
+
+    if (uv_is_active((const uv_handle_t *) &cmd_server)) {
+        return 0;
+    }
+    static char sockfile[] = "/tmp/ziti-edge-tunnel.sock";
+    uv_fs_t fs;
+    uv_fs_unlink(l, &fs, sockfile, NULL);
+
+    uv_pipe_init(l, &cmd_server, 0);
+    uv_pipe_bind(&cmd_server, sockfile);
+    uv_pipe_chmod(&cmd_server, UV_WRITABLE | UV_READABLE);
+    uv_unref((uv_handle_t *) &cmd_server);
+
+    return uv_listen((uv_stream_t *) &cmd_server, 0, on_cmd_client);
 }
 
 static void load_identities(uv_work_t *wr) {
@@ -133,24 +128,32 @@ static void load_identities(uv_work_t *wr) {
             ZITI_LOG(INFO, "file = %s %d", file.name, file.type);
 
             if (file.type == UV_DIRENT_FILE) {
-                char path[MAXPATHLEN];
-                snprintf(path, sizeof(path), "%s/%s", config_dir, file.name);
-                struct ziti_instance_s *inst = new_ziti_instance(path);
-                LIST_INSERT_HEAD(&instance_init_list, inst, _next);
+                struct cfg_instance_s *inst = calloc(1, sizeof(struct cfg_instance_s));
+                inst->cfg = malloc(MAXPATHLEN);
+                snprintf(inst->cfg, MAXPATHLEN, "%s/%s", config_dir, file.name);
+                LIST_INSERT_HEAD(&load_list, inst, _next);
             }
         }
     }
 }
 
+static void load_id_cb(const tunnel_result *res, void *ctx) {
+    struct cfg_instance_s *inst = ctx;
+    if (res->success) {
+        ZITI_LOG(INFO, "identity[%s] loaded", inst->cfg);
+    } else {
+        ZITI_LOG(ERROR, "identity[%s] failed to load: %s", inst->cfg, res->error);
+    }
+    free((void*)inst->cfg);
+    free(inst);
+}
+
 static void load_identities_complete(uv_work_t * wr, int status) {
-    while(!LIST_EMPTY(&instance_init_list)) {
-        struct ziti_instance_s *inst = LIST_FIRST(&instance_init_list);
+    while(!LIST_EMPTY(&load_list)) {
+        struct cfg_instance_s *inst = LIST_FIRST(&load_list);
         LIST_REMOVE(inst, _next);
 
-        uv_async_t *ar = calloc(1, sizeof(uv_async_t));
-        ar->data = inst;
-        uv_async_init(wr->loop, ar, load_ziti_async);
-        uv_async_send(ar);
+        CMD_CTRL->load_identity(inst->cfg, load_id_cb, inst);
     }
 }
 
@@ -178,18 +181,22 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, const char *ip_rang
 
     };
 
-    tnlr_ctx = ziti_tunneler_init(&tunneler_opts, ziti_loop);
-    ziti_tunneler_set_dns(tnlr_ctx, dns);
+    tunneler_context tunneler = ziti_tunneler_init(&tunneler_opts, ziti_loop);
+    ziti_tunneler_set_dns(tunneler, dns);
+
+    CMD_CTRL = ziti_tunnel_init_cmd(ziti_loop, tunneler, NULL);
 
     uv_work_t *loader = calloc(1, sizeof(uv_work_t));
     uv_queue_work(ziti_loop, loader, load_identities, load_identities_complete);
+
+    start_cmd_socket(ziti_loop);
 
     if (uv_run(ziti_loop, UV_RUN_DEFAULT) != 0) {
         ZITI_LOG(ERROR, "failed to run event loop");
         exit(1);
     }
 
-    free(tnlr_ctx);
+    free(tunneler);
     return 0;
 }
 
@@ -238,8 +245,9 @@ static int run_opts(int argc, char *argv[]) {
                             run_options, &option_index)) != -1) {
         switch (c) {
             case 'i': {
-                struct ziti_instance_s *inst = new_ziti_instance(optarg);
-                LIST_INSERT_HEAD(&instance_init_list, inst, _next);
+                struct cfg_instance_s *inst = calloc(1, sizeof(struct cfg_instance_s));
+                inst->cfg = strdup(optarg);
+                LIST_INSERT_HEAD(&load_list, inst, _next);
                 break;
             }
             case 'I':

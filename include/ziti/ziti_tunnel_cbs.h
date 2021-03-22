@@ -13,6 +13,40 @@ XX(data, string, map, data, __VA_ARGS__)
 
 DECLARE_MODEL(tunneler_app_data, TUNNELER_APP_DATA_MODEL)
 
+#define TUNNEL_COMMANDS(XX,...) \
+XX(ZitiDump, __VA_ARGS__)    \
+XX(LoadIdentity, __VA_ARGS__)   \
+XX(ListIdentities, __VA_ARGS__)
+
+DECLARE_ENUM(TunnelCommand, TUNNEL_COMMANDS)
+
+#define TUNNEL_CMD(XX, ...) \
+XX(command, TunnelCommand, none, command, __VA_ARGS__) \
+XX(data, json, none, data, __VA_ARGS__)
+
+#define TUNNEL_CMD_RES(XX, ...) \
+XX(success, bool, none, success, __VA_ARGS__) \
+XX(error, string, none, error, __VA_ARGS__)\
+XX(data, json, none, data, __VA_ARGS__)
+
+#define TNL_LOAD_IDENTITY(XX, ...) \
+XX(path, string, none, path, __VA_ARGS__)
+
+#define TNL_IDENTITY_INFO(XX, ...) \
+XX(name, string, none, name, __VA_ARGS__) \
+XX(config, string, none, config, __VA_ARGS__) \
+XX(network, string, none, network, __VA_ARGS__) \
+XX(id, string, none, id, __VA_ARGS__)
+
+#define TNL_IDENTITY_LIST(XX, ...) \
+XX(identities, tunnel_identity_info, array, identities, __VA_ARGS__)
+
+DECLARE_MODEL(tunnel_comand, TUNNEL_CMD)
+DECLARE_MODEL(tunnel_result, TUNNEL_CMD_RES)
+DECLARE_MODEL(tunnel_load_identity, TNL_LOAD_IDENTITY)
+DECLARE_MODEL(tunnel_identity_info, TNL_IDENTITY_INFO)
+DECLARE_MODEL(tunnel_identity_list, TNL_IDENTITY_LIST)
+
 /** context passed through the tunneler SDK for network i/o */
 typedef struct ziti_io_ctx_s {
     ziti_connection      ziti_conn;
@@ -33,6 +67,12 @@ struct hosted_io_ctx_s {
     bool tcp_eof;
 };
 
+typedef void (*command_cb)(const tunnel_result *, void *ctx);
+typedef struct {
+    int (*process)(const tunnel_comand *cmd, command_cb cb, void *ctx);
+    int (*load_identity)(const char *path, command_cb, void *ctx);
+} ziti_tunnel_ctrl;
+
 /** called by tunneler SDK after a client connection is intercepted */
 void *ziti_sdk_c_dial(const intercept_ctx_t *intercept_ctx, struct io_ctx_s *io);
 
@@ -48,6 +88,10 @@ host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, uv_loop_t *loop, const char *service
 
 /** passed to ziti-sdk via ziti_options.service_cb */
 tunneled_service_t *ziti_sdk_c_on_service(ziti_context ziti_ctx, ziti_service *service, int status, void *tnlr_ctx);
+
+
+const ziti_tunnel_ctrl* ziti_tunnel_init_cmd(uv_loop_t *loop, tunneler_context, command_cb);
+
 
 #ifdef __cplusplus
 }

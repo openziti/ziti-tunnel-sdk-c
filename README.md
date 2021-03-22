@@ -94,13 +94,13 @@ int main(int argc, char *argv[]) {
             .ziti_close = ziti_sdk_c_close,
             .ziti_write = ziti_sdk_c_write
     };
-    tunneler_context tnlr_ctx = NF_tunneler_init(&tunneler_opts, nf_loop);
+    tunneler_context TUNNEL_CTX = NF_tunneler_init(&tunneler_opts, nf_loop);
 
     nf_options opts = {
             .init_cb = on_nf_init,
             .config = argv[1],
             .service_cb = on_service,
-            .ctx = tnlr_ctx, /* this is passed to the service_cb */
+            .ctx = TUNNEL_CTX, /* this is passed to the service_cb */
             .refresh_interval = 10,
             .config_types = cfg_types,
     };
@@ -115,7 +115,7 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    free(tnlr_ctx);
+    free(TUNNEL_CTX);
     return 0;
 }
 ```
