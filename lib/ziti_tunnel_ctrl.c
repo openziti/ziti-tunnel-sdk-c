@@ -17,8 +17,6 @@ limitations under the License.
 #include <ziti/ziti_tunnel_cbs.h>
 #include <ziti/ziti_log.h>
 
-IMPL_ENUM(TunnelCommand, TUNNEL_COMMANDS)
-
 static struct cmd_ctx_s {
     ziti_tunnel_ctrl ctrl;
     tunneler_context tunnel_ctx;
@@ -70,8 +68,8 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
     ZITI_LOG(INFO, "processing command[%s] with data[%s]", TunnelCommands.name(cmd->command), cmd->data);
     switch (cmd->command) {
         case TunnelCommand_LoadIdentity: {
-            load_identity_cmd load;
-            if (cmd->data == NULL || parse_load_identity_cmd(&load, cmd->data, strlen(cmd->data)) != 0) {
+            tunnel_load_identity load;
+            if (cmd->data == NULL || parse_tunnel_load_identity(&load, cmd->data, strlen(cmd->data)) != 0) {
                 result.success = false;
                 result.error = "invalid command";
                 break;
@@ -81,13 +79,13 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
         }
 
         case TunnelCommand_ListIdentities: {
-            identity_list id_list = {0};
-            id_list.identities = calloc(model_map_size(&instances) + 1, sizeof(identity_info*));
+            tunnel_identity_list id_list = {0};
+            id_list.identities = calloc(model_map_size(&instances) + 1, sizeof(tunnel_identity_info*));
             const char *key;
             struct ziti_instance_s *inst;
             int idx = 0;
             MODEL_MAP_FOREACH(key, inst, &instances) {
-                identity_info *info = alloc_identity_info();
+                tunnel_identity_info *info = alloc_tunnel_identity_info();
                 const ziti_identity *identity = ziti_get_identity(inst->ztx);
                 info->name = strdup(identity->name);
                 info->id = strdup(identity->id);
@@ -97,11 +95,12 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
                 id_list.identities[idx++] = info;
             }
 
-            result.data = identity_list_to_json(&id_list, MODEL_JSON_COMPACT, NULL);
+            result.data = tunnel_identity_list_to_json(&id_list, MODEL_JSON_COMPACT, NULL);
+            result.success = true;
 
             cb(&result, ctx);
 
-            free_identity_list(&id_list);
+            free_tunnel_identity_list(&id_list);
             free(result.data);
             return 0;
         }
@@ -237,9 +236,11 @@ static void load_ziti_async(uv_async_t *ar) {
     uv_close((uv_handle_t *) ar, (uv_close_cb) free);
 }
 
+IMPL_ENUM(TunnelCommand, TUNNEL_COMMANDS)
+
 IMPL_MODEL(tunnel_comand, TUNNEL_CMD)
 IMPL_MODEL(tunnel_result, TUNNEL_CMD_RES)
-IMPL_MODEL(load_identity_cmd, LOAD_IDENTITY)
+IMPL_MODEL(tunnel_load_identity, TNL_LOAD_IDENTITY)
 
-IMPL_MODEL(identity_info, IDENTITY_INFO)
-IMPL_MODEL(identity_list, IDENTITY_LIST)
+IMPL_MODEL(tunnel_identity_info, TNL_IDENTITY_INFO)
+IMPL_MODEL(tunnel_identity_list, TNL_IDENTITY_LIST)

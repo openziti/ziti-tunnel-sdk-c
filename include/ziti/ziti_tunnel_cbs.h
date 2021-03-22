@@ -29,23 +29,23 @@ XX(success, bool, none, success, __VA_ARGS__) \
 XX(error, string, none, error, __VA_ARGS__)\
 XX(data, json, none, data, __VA_ARGS__)
 
-#define LOAD_IDENTITY(XX, ...) \
+#define TNL_LOAD_IDENTITY(XX, ...) \
 XX(path, string, none, path, __VA_ARGS__)
 
-#define IDENTITY_INFO(XX, ...) \
+#define TNL_IDENTITY_INFO(XX, ...) \
 XX(name, string, none, name, __VA_ARGS__) \
 XX(config, string, none, config, __VA_ARGS__) \
 XX(network, string, none, network, __VA_ARGS__) \
 XX(id, string, none, id, __VA_ARGS__)
 
-#define IDENTITY_LIST(XX, ...) \
-XX(identities, identity_info, array, identities, __VA_ARGS__)
+#define TNL_IDENTITY_LIST(XX, ...) \
+XX(identities, tunnel_identity_info, array, identities, __VA_ARGS__)
 
 DECLARE_MODEL(tunnel_comand, TUNNEL_CMD)
 DECLARE_MODEL(tunnel_result, TUNNEL_CMD_RES)
-DECLARE_MODEL(load_identity_cmd, LOAD_IDENTITY)
-DECLARE_MODEL(identity_info, IDENTITY_INFO)
-DECLARE_MODEL(identity_list, IDENTITY_LIST)
+DECLARE_MODEL(tunnel_load_identity, TNL_LOAD_IDENTITY)
+DECLARE_MODEL(tunnel_identity_info, TNL_IDENTITY_INFO)
+DECLARE_MODEL(tunnel_identity_list, TNL_IDENTITY_LIST)
 
 /** context passed through the tunneler SDK for network i/o */
 typedef struct ziti_io_ctx_s {
