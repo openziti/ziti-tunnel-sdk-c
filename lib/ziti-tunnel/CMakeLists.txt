@@ -66,3 +66,10 @@ install(DIRECTORY "${LWIP_CONTRIB_DIR}/ports/${lwip_sys}/include/arch"
 install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/lwip/lwipopts.h"
      DESTINATION "${CMAKE_INSTALL_PREFIX}/include"
 )
+
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+
+install(TARGETS lwipcore ziti-tunnel-sdk-c
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        )

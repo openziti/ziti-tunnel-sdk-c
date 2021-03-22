@@ -56,13 +56,6 @@ set(CMAKE_INSTALL_LIBDIR lib)
 set(CMAKE_INSTALL_INCLUDEDIR include)
 endif()
 
-install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
-        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
-
-install(TARGETS lwipcore ziti-tunnel-sdk-c ziti-tunnel-cbs-c
-        DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        )
-
 # lwip macro defaults. override on command line or in parent cmakelists.
 set(LWIP_MEM_SIZE 524288 CACHE STRING "LWIP MEM_SIZE option")
 set(LWIP_PBUF_POOL_SIZE 512 CACHE STRING "LWIP PBUF_POOL_SIZE option")
