@@ -71,11 +71,7 @@ target_compile_definitions(lwipcore
     PUBLIC MEMP_NUM_UDP_PCB=${UDP_MAX_CONNECTIONS}
 )
 
-if(CMAKE_SYSTEM_NAME STREQUAL Darwin OR CMAKE_SYSTEM_NAME STREQUAL Linux)
-install(TARGETS ziti-edge-tunnel
-        DESTINATION ${CMAKE_INSTALL_BINDIR}
-        )
-endif()
+
 
 if (WIN32)
 install(TARGETS lwipwin32arch

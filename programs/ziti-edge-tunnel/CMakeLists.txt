@@ -23,4 +23,9 @@ if(CMAKE_SYSTEM_NAME STREQUAL Darwin OR CMAKE_SYSTEM_NAME STREQUAL Linux)
             )
 
     BUNDLE_COMP(ziti-edge-tunnel)
+
+    install(TARGETS ziti-edge-tunnel
+        DESTINATION ${CMAKE_INSTALL_BINDIR}
+        )
+
 endif()
