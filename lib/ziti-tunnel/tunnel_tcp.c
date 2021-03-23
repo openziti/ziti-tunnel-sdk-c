@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <string.h>
 #include "tunnel_tcp.h"
 #include "lwip_cloned_fns.h"
 #include "ziti_tunnel_priv.h"
