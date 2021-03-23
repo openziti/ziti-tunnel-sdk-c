@@ -17,8 +17,8 @@ target_link_libraries(ziti-tunnel-cbs-c
         )
 
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
-        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+        DESTINATION ${CMAKE_INSTALL_PREFIX}/include)
 
 install(TARGETS ziti-tunnel-cbs-c
-        DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        DESTINATION ${CMAKE_INSTALL_PREFIX}/lib
         )

@@ -71,5 +71,5 @@ install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
         DESTINATION ${CMAKE_INSTALL_PREFIX}/include)
 
 install(TARGETS lwipcore ziti-tunnel-sdk-c
-        DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        DESTINATION ${CMAKE_INSTALL_PREFIX}/lib
         )
