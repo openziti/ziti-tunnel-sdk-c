@@ -494,7 +494,7 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
     }
 
     const char *source_ip = model_map_get(&app_data_model.data, SOURCE_IP_KEY);
-    if (source_ip != NULL) {
+    if (source_ip != NULL && *source_ip != 0) {
         struct addrinfo source_hints = {0};
         const char *port_sep = strchr(source_ip, ':');
         const char *source_port = NULL;
