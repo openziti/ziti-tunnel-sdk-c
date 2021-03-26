@@ -165,7 +165,7 @@ static ssize_t get_app_data_json(char *buf, size_t bufsz, tunneler_io_context io
         if (_port) model_map_set(&app_data_model.data, CLIENT_PORT_KEY, (char *) _port);
     }
 
-    if (source_ip != NULL) {
+    if (source_ip != NULL && *source_ip != 0) {
         const ziti_identity *zid = ziti_get_identity(ziti_ctx);
         strncpy(resolved_source_ip, source_ip, sizeof(resolved_source_ip));
         string_replace(resolved_source_ip, sizeof(resolved_source_ip), "$tunneler_id.name", zid->name);
