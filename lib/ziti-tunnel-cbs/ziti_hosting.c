@@ -333,7 +333,7 @@ static bool addrinfo_from_host_cfg_v1(struct addrinfo_params_s *dial_params, con
         dial_protocol_str = model_map_get(app_data, DST_PROTO_KEY);
         if (dial_protocol_str == NULL) {
             snprintf(dial_params->err, sizeof(dial_params->err),
-                     "service config specifies 'dialInterceptedProtocol', but client didn't send intercepted protocol");
+                     "service config specifies 'dialInterceptedProtocol', but client didn't send %s", DST_PROTO_KEY);
             return false;
         }
     } else {
@@ -350,7 +350,7 @@ static bool addrinfo_from_host_cfg_v1(struct addrinfo_params_s *dial_params, con
         dial_params->address = model_map_get(app_data, DST_IP_KEY);
         if (dial_params->address == NULL) {
             snprintf(dial_params->err, sizeof(dial_params->err),
-                     "service config specifies 'dialInterceptedAddress' but client didn't send intercepted ip");
+                     "service config specifies 'dialInterceptedAddress' but client didn't send %s", DST_IP_KEY);
             return false;
         }
     } else {
@@ -361,7 +361,7 @@ static bool addrinfo_from_host_cfg_v1(struct addrinfo_params_s *dial_params, con
         dial_params->port = model_map_get(app_data, DST_PORT_KEY);
         if (dial_params->port == NULL) {
             snprintf(dial_params->err, sizeof(dial_params->err),
-                     "service config specifies 'dialInterceptedPort' but client didn't send intercepted port");
+                     "service config specifies 'dialInterceptedPort' but client didn't send %s", DST_PORT_KEY);
             return false;
         } else {
             errno = 0;
