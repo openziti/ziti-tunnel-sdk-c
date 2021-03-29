@@ -37,11 +37,11 @@ extern "C" {
 extern const char *DST_PROTO_KEY; // "dst_protocol"
 extern const char *DST_IP_KEY;    // "dst_ip"
 extern const char *DST_PORT_KEY;  // "dst_port"
-extern const char *DST_HOST_KEY;          // "dst_hostname"
-extern const char *SRC_PROTO_KEY;      // "client_protocol"
-extern const char *SRC_IP_KEY;         // "client_ip"
-extern const char *SRC_PORT_KEY;       // "client_port"
-extern const char *SOURCE_IP_KEY;         // "source_ip"
+extern const char *DST_HOST_KEY;  // "dst_hostname"
+extern const char *SRC_PROTO_KEY; // "src_protocol"
+extern const char *SRC_IP_KEY;    // "src_ip"
+extern const char *SRC_PORT_KEY;  // "src_port"
+extern const char *SOURCE_IP_KEY; // "source_ip"
 
 typedef struct tunneler_ctx_s *tunneler_context;
 typedef struct tunneler_io_ctx_s *tunneler_io_context;
