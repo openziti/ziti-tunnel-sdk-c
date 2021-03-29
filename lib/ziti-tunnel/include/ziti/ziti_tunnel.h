@@ -34,12 +34,13 @@ extern "C" {
 #endif
 
 /** keys used in app_data model map */
-extern const char *INTERCEPTED_PROTO_KEY; // "intercepted_protocol"
-extern const char *INTERCEPTED_IP_KEY;    // "intercepted_ip"
-extern const char *INTERCEPTED_PORT_KEY;  // "intercepted_port"
-extern const char *CLIENT_PROTO_KEY;      // "client_protocol"
-extern const char *CLIENT_IP_KEY;         // "client_ip"
-extern const char *CLIENT_PORT_KEY;       // "client_port"
+extern const char *DST_PROTO_KEY; // "dst_protocol"
+extern const char *DST_IP_KEY;    // "dst_ip"
+extern const char *DST_PORT_KEY;  // "dst_port"
+extern const char *DST_HOST_KEY;          // "dst_hostname"
+extern const char *SRC_PROTO_KEY;      // "client_protocol"
+extern const char *SRC_IP_KEY;         // "client_ip"
+extern const char *SRC_PORT_KEY;       // "client_port"
 extern const char *SOURCE_IP_KEY;         // "source_ip"
 
 typedef struct tunneler_ctx_s *tunneler_context;
