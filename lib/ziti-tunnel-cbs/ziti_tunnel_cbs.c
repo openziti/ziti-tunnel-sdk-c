@@ -179,7 +179,7 @@ static ssize_t get_app_data_json(char *buf, size_t bufsz, tunneler_io_context io
         string_replace(resolved_source_ip, sizeof(resolved_source_ip), "$intercepted_port", app_data.dst_port);
         string_replace(resolved_source_ip, sizeof(resolved_source_ip), "$client_ip", app_data.src_ip);
         string_replace(resolved_source_ip, sizeof(resolved_source_ip), "$client_port", app_data.src_port);
-        app_data.src_ip = resolved_source_ip;
+        app_data.source_ip = resolved_source_ip;
     }
 
     ssize_t json_len = tunneler_app_data_to_json_r(&app_data, MODEL_JSON_COMPACT, buf, bufsz);
