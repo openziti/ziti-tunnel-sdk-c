@@ -330,10 +330,10 @@ static bool addrinfo_from_host_cfg_v1(struct addrinfo_params_s *dial_params, con
     const char *dial_protocol_str = NULL;
 
     if (config->dial_intercepted_protocol) {
-        dial_protocol_str = model_map_get(app_data, INTERCEPTED_PROTO_KEY);
+        dial_protocol_str = model_map_get(app_data, DST_PROTO_KEY);
         if (dial_protocol_str == NULL) {
             snprintf(dial_params->err, sizeof(dial_params->err),
-                     "service config specifies 'dialInterceptedProtocol', but client didn't send intercepted protocol");
+                     "service config specifies 'dialInterceptedProtocol', but client didn't send %s", DST_PROTO_KEY);
             return false;
         }
     } else {
@@ -342,15 +342,15 @@ static bool addrinfo_from_host_cfg_v1(struct addrinfo_params_s *dial_params, con
 
     dial_params->hints.ai_protocol = get_protocol_id(dial_protocol_str);
     if (dial_params->hints.ai_protocol < 0) {
-        snprintf(dial_params->err, sizeof(dial_params->err), "unsupported dial protocol '%s'", dial_protocol_str);
+        snprintf(dial_params->err, sizeof(dial_params->err), "unsupported %s '%s'", DST_PROTO_KEY, dial_protocol_str);
         return false;
     }
 
     if (config->dial_intercepted_address) {
-        dial_params->address = model_map_get(app_data, INTERCEPTED_IP_KEY);
+        dial_params->address = model_map_get(app_data, DST_IP_KEY);
         if (dial_params->address == NULL) {
             snprintf(dial_params->err, sizeof(dial_params->err),
-                     "service config specifies 'dialInterceptedAddress' but client didn't send intercepted ip");
+                     "service config specifies 'dialInterceptedAddress' but client didn't send %s", DST_IP_KEY);
             return false;
         }
     } else {
@@ -358,17 +358,17 @@ static bool addrinfo_from_host_cfg_v1(struct addrinfo_params_s *dial_params, con
     }
 
     if (config->dial_intercepted_port) {
-        dial_params->port = model_map_get(app_data, INTERCEPTED_PORT_KEY);
+        dial_params->port = model_map_get(app_data, DST_PORT_KEY);
         if (dial_params->port == NULL) {
             snprintf(dial_params->err, sizeof(dial_params->err),
-                     "service config specifies 'dialInterceptedPort' but client didn't send intercepted port");
+                     "service config specifies 'dialInterceptedPort' but client didn't send %s", DST_PORT_KEY);
             return false;
         } else {
             errno = 0;
             strtol(dial_params->port, NULL, 10);
             if (errno != 0) {
                 snprintf(dial_params->err, sizeof(dial_params->err),
-                         "client sent invalid intercept port '%s'", dial_params->port);
+                         "client sent invalid %s '%s'", DST_PORT_KEY, dial_params->port);
                 return false;
             }
         }
@@ -482,12 +482,12 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
                  service_ctx->service_name, client_identity, dial_ai_params.address, dial_ai_params.port);
     }
 
-    const char *iproto = model_map_get(&app_data_model.data, INTERCEPTED_PROTO_KEY);
-    const char *iip = model_map_get(&app_data_model.data, INTERCEPTED_IP_KEY);
-    const char *iport = model_map_get(&app_data_model.data, INTERCEPTED_PORT_KEY);
-    if (iproto != NULL && iip != NULL && iport != NULL) {
-        ZITI_LOG(INFO, "hosted_service[%s], client[%s] intercepted_addr[%s:%s:%s]: incoming connection",
-                 service_ctx->service_name, client_identity, iproto, iip, iport);
+    const char *dst_proto = model_map_get(&app_data_model.data, DST_PROTO_KEY);
+    const char *dst_ip = model_map_get(&app_data_model.data, DST_IP_KEY);
+    const char *dst_port = model_map_get(&app_data_model.data, DST_PORT_KEY);
+    if (dst_proto != NULL && dst_ip != NULL && dst_port != NULL) {
+        ZITI_LOG(INFO, "hosted_service[%s], client[%s] dst_addr[%s:%s:%s]: incoming connection",
+                 service_ctx->service_name, client_identity, dst_proto, dst_ip, dst_port);
     } else {
         ZITI_LOG(INFO, "hosted_service[%s], client[%s] incoming connection",
                  service_ctx->service_name, client_identity);

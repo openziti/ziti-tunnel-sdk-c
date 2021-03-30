@@ -153,16 +153,16 @@ static ssize_t get_app_data_json(char *buf, size_t bufsz, tunneler_io_context io
 
     if (intercepted != NULL) {
         parse_socket_address(intercepted, &_proto, &_ip, &_port);
-        if (_proto) model_map_set(&app_data_model.data, INTERCEPTED_PROTO_KEY, _proto);
-        if (_ip) model_map_set(&app_data_model.data, INTERCEPTED_IP_KEY, _ip);
-        if (_port) model_map_set(&app_data_model.data, INTERCEPTED_PORT_KEY, (char *) _port);
+        if (_proto) model_map_set(&app_data_model.data, DST_PROTO_KEY, _proto);
+        if (_ip) model_map_set(&app_data_model.data, DST_IP_KEY, _ip);
+        if (_port) model_map_set(&app_data_model.data, DST_PORT_KEY, (char *) _port);
     }
 
     if (client != NULL) {
         parse_socket_address(client, &_proto, &_ip, &_port);
-        if (_proto) model_map_set(&app_data_model.data, CLIENT_PROTO_KEY, _proto);
-        if (_ip) model_map_set(&app_data_model.data, CLIENT_IP_KEY, _ip);
-        if (_port) model_map_set(&app_data_model.data, CLIENT_PORT_KEY, (char *) _port);
+        if (_proto) model_map_set(&app_data_model.data, SRC_PROTO_KEY, _proto);
+        if (_ip) model_map_set(&app_data_model.data, SRC_IP_KEY, _ip);
+        if (_port) model_map_set(&app_data_model.data, SRC_PORT_KEY, (char *) _port);
     }
 
     if (source_ip != NULL && *source_ip != 0) {
@@ -185,9 +185,9 @@ static ssize_t get_app_data_json(char *buf, size_t bufsz, tunneler_io_context io
                 }
             }
         }
-        string_replace(resolved_source_ip, sizeof(resolved_source_ip), "$intercepted_port", model_map_get(&app_data_model.data, INTERCEPTED_PORT_KEY));
-        string_replace(resolved_source_ip, sizeof(resolved_source_ip), "$client_ip", model_map_get(&app_data_model.data, CLIENT_IP_KEY));
-        string_replace(resolved_source_ip, sizeof(resolved_source_ip), "$client_port", model_map_get(&app_data_model.data, CLIENT_PORT_KEY));
+        string_replace(resolved_source_ip, sizeof(resolved_source_ip), "$intercepted_port", model_map_get(&app_data_model.data, DST_PORT_KEY));
+        string_replace(resolved_source_ip, sizeof(resolved_source_ip), "$client_ip", model_map_get(&app_data_model.data, SRC_IP_KEY));
+        string_replace(resolved_source_ip, sizeof(resolved_source_ip), "$client_port", model_map_get(&app_data_model.data, SRC_PORT_KEY));
         model_map_set(&app_data_model.data, SOURCE_IP_KEY, resolved_source_ip);
     }
 

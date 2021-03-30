@@ -35,12 +35,13 @@ limitations under the License.
 
 #include <string.h>
 
-const char *INTERCEPTED_PROTO_KEY = "intercepted_protocol";
-const char *INTERCEPTED_IP_KEY = "intercepted_ip";
-const char *INTERCEPTED_PORT_KEY = "intercepted_port";
-const char *CLIENT_PROTO_KEY = "client_protocol";
-const char *CLIENT_IP_KEY = "client_ip";
-const char *CLIENT_PORT_KEY = "client_port";
+const char *DST_PROTO_KEY = "dst_protocol";
+const char *DST_IP_KEY = "dst_ip";
+const char *DST_PORT_KEY = "dst_port";
+const char *DST_HOST_KEY = "dst_hostname";
+const char *SRC_PROTO_KEY = "src_protocol";
+const char *SRC_IP_KEY = "src_ip";
+const char *SRC_PORT_KEY = "src_port";
 const char *SOURCE_IP_KEY = "source_ip";
 
 struct resolve_req {
