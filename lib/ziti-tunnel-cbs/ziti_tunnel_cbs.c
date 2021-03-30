@@ -146,7 +146,7 @@ static ssize_t get_app_data_json(char *buf, size_t bufsz, tunneler_io_context io
 
     const char *intercepted = get_intercepted_address(io);
     const char *client = get_client_address(io);
-    char resolved_source_ip[64];
+    char source_addr[64];
 
     if (intercepted != NULL) {
         parse_socket_address(intercepted, &app_data.dst_protocol, &app_data.dst_ip, &app_data.dst_port);
@@ -158,9 +158,9 @@ static ssize_t get_app_data_json(char *buf, size_t bufsz, tunneler_io_context io
 
     if (source_ip != NULL && *source_ip != 0) {
         const ziti_identity *zid = ziti_get_identity(ziti_ctx);
-        strncpy(resolved_source_ip, source_ip, sizeof(resolved_source_ip));
-        string_replace(resolved_source_ip, sizeof(resolved_source_ip), "$tunneler_id.name", zid->name);
-        char *tag_ref_start = strstr(resolved_source_ip, "$tunneler_id.tag[");
+        strncpy(source_addr, source_ip, sizeof(source_addr));
+        string_replace(source_addr, sizeof(source_addr), "$tunneler_id.name", zid->name);
+        char *tag_ref_start = strstr(source_addr, "$tunneler_id.tag[");
         if (tag_ref_start != NULL) {
             char tag_name[32];
             if (sscanf(tag_ref_start, "$tunneler_id.tag[%32[^]]", tag_name) > 0) {
@@ -169,23 +169,23 @@ static ssize_t get_app_data_json(char *buf, size_t bufsz, tunneler_io_context io
                 if (tag_value != NULL) {
                     char tag_ref[32];
                     snprintf(tag_ref, sizeof(tag_ref), "$tunneler_id.tag[%s]", tag_name);
-                    string_replace(resolved_source_ip, sizeof(resolved_source_ip), tag_ref, tag_value);
+                    string_replace(source_addr, sizeof(source_addr), tag_ref, tag_value);
                 } else {
                     ZITI_LOG(WARN, "cannot set source_ip='%s': identity %s has no tag named '%s'",
                              source_ip, zid->name, tag_name);
                 }
             }
         }
-        string_replace(resolved_source_ip, sizeof(resolved_source_ip), "$intercepted_port", app_data.dst_port);
-        string_replace(resolved_source_ip, sizeof(resolved_source_ip), "$client_ip", app_data.src_ip);
-        string_replace(resolved_source_ip, sizeof(resolved_source_ip), "$client_port", app_data.src_port);
-        app_data.source_ip = resolved_source_ip;
+        string_replace(source_addr, sizeof(source_addr), "$intercepted_port", app_data.dst_port);
+        string_replace(source_addr, sizeof(source_addr), "$client_ip", app_data.src_ip);
+        string_replace(source_addr, sizeof(source_addr), "$client_port", app_data.src_port);
+        app_data.source_addr = source_addr;
     }
 
     ssize_t json_len = tunneler_app_data_to_json_r(&app_data, MODEL_JSON_COMPACT, buf, bufsz);
 
     // value points to stack buffer
-    app_data.source_ip = NULL;
+    app_data.source_addr = NULL;
     free_tunneler_app_data(&app_data);
 
     return json_len;

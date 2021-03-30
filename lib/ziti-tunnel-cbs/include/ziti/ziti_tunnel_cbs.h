@@ -16,7 +16,7 @@ XX(dst_port, string, none, dst_port, __VA_ARGS__)\
 XX(src_protocol, string, none, src_protocol, __VA_ARGS__)\
 XX(src_ip, string, none, src_ip, __VA_ARGS__)\
 XX(src_port, string, none, src_port, __VA_ARGS__)\
-XX(source_ip, string, none, source_ip, __VA_ARGS__)
+XX(source_addr, string, none, source_addr, __VA_ARGS__)
 
 DECLARE_MODEL(tunneler_app_data, TUNNELER_APP_DATA_MODEL)
 
