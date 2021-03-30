@@ -326,11 +326,11 @@ static const char *get_protocol_str(int protocol_id) {
     }
 }
 
-static bool addrinfo_from_host_cfg_v1(struct addrinfo_params_s *dial_params, const ziti_host_cfg_v1 *config, model_map *app_data) {
+static bool addrinfo_from_host_cfg_v1(struct addrinfo_params_s *dial_params, const ziti_host_cfg_v1 *config, tunneler_app_data *app_data) {
     const char *dial_protocol_str = NULL;
 
     if (config->dial_intercepted_protocol) {
-        dial_protocol_str = model_map_get(app_data, DST_PROTO_KEY);
+        dial_protocol_str = app_data->dst_protocol;
         if (dial_protocol_str == NULL) {
             snprintf(dial_params->err, sizeof(dial_params->err),
                      "service config specifies 'dialInterceptedProtocol', but client didn't send %s", DST_PROTO_KEY);
@@ -347,7 +347,7 @@ static bool addrinfo_from_host_cfg_v1(struct addrinfo_params_s *dial_params, con
     }
 
     if (config->dial_intercepted_address) {
-        dial_params->address = model_map_get(app_data, DST_IP_KEY);
+        dial_params->address = app_data->dst_ip;
         if (dial_params->address == NULL) {
             snprintf(dial_params->err, sizeof(dial_params->err),
                      "service config specifies 'dialInterceptedAddress' but client didn't send %s", DST_IP_KEY);
@@ -358,7 +358,7 @@ static bool addrinfo_from_host_cfg_v1(struct addrinfo_params_s *dial_params, con
     }
 
     if (config->dial_intercepted_port) {
-        dial_params->port = model_map_get(app_data, DST_PORT_KEY);
+        dial_params->port = app_data->dst_port;
         if (dial_params->port == NULL) {
             snprintf(dial_params->err, sizeof(dial_params->err),
                      "service config specifies 'dialInterceptedPort' but client didn't send %s", DST_PORT_KEY);
@@ -380,7 +380,7 @@ static bool addrinfo_from_host_cfg_v1(struct addrinfo_params_s *dial_params, con
     return true;
 }
 
-static bool addrinfo_from_server_cfg_v1(struct addrinfo_params_s *dial_params, const ziti_server_cfg_v1 *config, model_map *app_data) {
+static bool addrinfo_from_server_cfg_v1(struct addrinfo_params_s *dial_params, const ziti_server_cfg_v1 *config, tunneler_app_data *app_data) {
     dial_params->hints.ai_protocol = get_protocol_id(config->protocol);
     if (dial_params->hints.ai_protocol < 0) {
         snprintf(dial_params->err, sizeof(dial_params->err), "unsupported dial protocol '%s'", config->protocol);
@@ -422,12 +422,12 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
     struct hosted_io_ctx_s *io_ctx = NULL;
     bool err = false;
 
-    tunneler_app_data app_data_model;
-    memset(&app_data_model, 0, sizeof(app_data_model));
+    tunneler_app_data app_data;
+    memset(&app_data, 0, sizeof(app_data));
     if (clt_ctx->app_data != NULL) {
         ZITI_LOG(DEBUG, "hosted_service[%s], client[%s]: received app_data_json='%.*s'", service_ctx->service_name,
                  client_identity, (int)clt_ctx->app_data_sz, clt_ctx->app_data);
-        if (parse_tunneler_app_data(&app_data_model, (char *)clt_ctx->app_data, clt_ctx->app_data_sz) != 0) {
+        if (parse_tunneler_app_data(&app_data, (char *)clt_ctx->app_data, clt_ctx->app_data_sz) != 0) {
             ZITI_LOG(ERROR, "hosted_service[%s], client[%s]: failed to parse app_data_json '%.*s'",
                      service_ctx->service_name,
                      client_identity, (int)clt_ctx->app_data_sz, clt_ctx->app_data);
@@ -442,10 +442,10 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
 
     switch (service_ctx->cfg_type) {
         case HOST_CFG_V1:
-            s = addrinfo_from_host_cfg_v1(&dial_ai_params, service_ctx->cfg, &app_data_model.data);
+            s = addrinfo_from_host_cfg_v1(&dial_ai_params, service_ctx->cfg, &app_data);
             break;
         case SERVER_CFG_V1:
-            s = addrinfo_from_server_cfg_v1(&dial_ai_params, service_ctx->cfg, &app_data_model.data);
+            s = addrinfo_from_server_cfg_v1(&dial_ai_params, service_ctx->cfg, &app_data);
             break;
         default:
             ZITI_LOG(ERROR, "hosted_service[%s], client[%s]: unexpected cfg_type %d",
@@ -482,9 +482,9 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
                  service_ctx->service_name, client_identity, dial_ai_params.address, dial_ai_params.port);
     }
 
-    const char *dst_proto = model_map_get(&app_data_model.data, DST_PROTO_KEY);
-    const char *dst_ip = model_map_get(&app_data_model.data, DST_IP_KEY);
-    const char *dst_port = model_map_get(&app_data_model.data, DST_PORT_KEY);
+    const char *dst_proto = app_data.dst_protocol;
+    const char *dst_ip = app_data.dst_ip;
+    const char *dst_port = app_data.dst_port;
     if (dst_proto != NULL && dst_ip != NULL && dst_port != NULL) {
         ZITI_LOG(INFO, "hosted_service[%s], client[%s] dst_addr[%s:%s:%s]: incoming connection",
                  service_ctx->service_name, client_identity, dst_proto, dst_ip, dst_port);
@@ -493,7 +493,7 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
                  service_ctx->service_name, client_identity);
     }
 
-    const char *source_ip = model_map_get(&app_data_model.data, SOURCE_IP_KEY);
+    const char *source_ip = app_data.source_ip;
     if (source_ip != NULL && *source_ip != 0) {
         struct addrinfo source_hints = {0};
         const char *port_sep = strchr(source_ip, ':');
@@ -603,7 +603,7 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
         hosted_server_close(io_ctx);
     }
     if (clt_ctx->app_data != NULL) {
-        free_tunneler_app_data(&app_data_model);
+        free_tunneler_app_data(&app_data);
     }
     if (dial_ai != NULL) {
         freeaddrinfo(dial_ai);
