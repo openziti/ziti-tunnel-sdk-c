@@ -493,30 +493,30 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
                  service_ctx->service_name, client_identity);
     }
 
-    const char *source_ip = app_data.source_ip;
-    if (source_ip != NULL && *source_ip != 0) {
+    const char *source_addr = app_data.source_addr;
+    if (source_addr != NULL && *source_addr != 0) {
         struct addrinfo source_hints = {0};
-        const char *port_sep = strchr(source_ip, ':');
+        const char *port_sep = strchr(source_addr, ':');
         const char *source_port = NULL;
         char source_ip_cp[64];
         if (port_sep != NULL) {
             source_port = port_sep + 1;
-            strncpy(source_ip_cp, source_ip, port_sep-source_ip);
-            source_ip_cp[port_sep-source_ip] = '\0';
-            source_ip = source_ip_cp;
+            strncpy(source_ip_cp, source_addr, port_sep - source_addr);
+            source_ip_cp[port_sep - source_addr] = '\0';
+            source_addr = source_ip_cp;
         }
         source_hints.ai_flags = AI_ADDRCONFIG | AI_NUMERICHOST | AI_NUMERICSERV;
         source_hints.ai_protocol = dial_ai_params.hints.ai_protocol;
         source_hints.ai_socktype = dial_ai_params.hints.ai_socktype;
-        if ((s = getaddrinfo(source_ip, source_port, &source_hints, &source_ai)) != 0) {
+        if ((s = getaddrinfo(source_addr, source_port, &source_hints, &source_ai)) != 0) {
             ZITI_LOG(ERROR, "hosted_service[%s], client[%s]: getaddrinfo(%s,%s) failed: %s",
-                     service_ctx->service_name, client_identity, source_ip, source_port, gai_strerror(s));
+                     service_ctx->service_name, client_identity, source_addr, source_port, gai_strerror(s));
             err = true;
             goto done;
         }
         if (source_ai->ai_next != NULL) {
             ZITI_LOG(DEBUG, "hosted_service[%s], client[%s]: getaddrinfo(%s,%s) returned multiple results; using first",
-                     service_ctx->service_name, client_identity, source_ip, source_port);
+                     service_ctx->service_name, client_identity, source_addr, source_port);
         }
     }
 
