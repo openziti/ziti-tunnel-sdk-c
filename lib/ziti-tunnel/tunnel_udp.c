@@ -204,7 +204,7 @@ u8_t recv_udp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     snprintf(io->tnlr_io->intercepted, sizeof(io->tnlr_io->intercepted), "udp:%s:%d", ipaddr_ntoa(&dst), dst_p);
     io->tnlr_io->udp.pcb = npcb;
     io->tnlr_io->udp.queued = NULL;
-    io->ziti_ctx = intercept_ctx->ziti_ctx;
+    io->ziti_ctx = intercept_ctx->app_intercept_ctx;
 
     TNL_LOG(INFO, "intercepted address[%s] client[%s] service[%s]", io->tnlr_io->intercepted, io->tnlr_io->client,
             intercept_ctx->service_name);
@@ -237,7 +237,7 @@ ssize_t tunneler_udp_write(struct udp_pcb *pcb, const void *data, size_t len) {
     return len;
 }
 
-struct io_ctx_list_s *tunneler_udp_active(const void *ztx, const char *service_name) {
+struct io_ctx_list_s *tunneler_udp_active(const void *zi_ctx) {
     struct io_ctx_list_s *l = calloc(1, sizeof(struct io_ctx_list_s));
     SLIST_INIT(l);
 
@@ -247,7 +247,7 @@ struct io_ctx_list_s *tunneler_udp_active(const void *ztx, const char *service_n
             if (io != NULL) {
                 tunneler_io_context tnlr_io = io->tnlr_io;
                 if (tnlr_io != NULL) {
-                    if (strcmp(tnlr_io->service_name, service_name) == 0 && io->ziti_ctx == ztx) {
+                    if (io->ziti_ctx == zi_ctx) {
                         struct io_ctx_list_entry_s *n = calloc(1, sizeof(struct io_ctx_list_entry_s));
                         n->io = io;
                         SLIST_INSERT_HEAD(l, n, entries);

@@ -11,6 +11,6 @@ extern u8_t recv_udp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, co
 extern void tunneler_udp_ack(struct write_ctx_s *write_ctx);
 extern int tunneler_udp_close(struct udp_pcb *pcb);
 /** return list of io contexts for active connections to the given service. caller must free the returned pointer */
-extern struct io_ctx_list_s *tunneler_udp_active(const void *ztx, const char *service_name);
+extern struct io_ctx_list_s *tunneler_udp_active(const void *zi_ctx);
 
 #endif //ZITI_TUNNELER_SDK_TUNNELER_UDP_H

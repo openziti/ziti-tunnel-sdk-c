@@ -4,6 +4,8 @@
 #include "ziti/ziti_tunnel.h"
 #include "lwip/netif.h"
 
+#include <ziti/ziti_tunnel.h>
+
 enum {
     NONE,
     ERR,
@@ -21,6 +23,18 @@ if (tunnel_logger && level <= tunnel_log_level) { tunnel_logger(level, __FILE__,
 extern int tunnel_log_level;
 typedef void (*tunnel_logger_f)(int level, const char *file, unsigned int line, const char *func, const char *fmt, ...);
 extern tunnel_logger_f tunnel_logger;
+
+struct intercept_ctx_s {
+    tunneler_context tnlr_ctx;
+    const char *service_name;
+    void *app_intercept_ctx;
+
+    STAILQ_HEAD(protocol, protocol_s)     protocols;
+    STAILQ_HEAD(port_range, port_range_s) port_ranges;
+    STAILQ_HEAD(address, address_s)       addresses;
+
+    STAILQ_ENTRY(intercept_ctx_s) entries;
+};
 
 typedef struct tunneler_ctx_s {
     tunneler_sdk_options opts; // this must be first - it is accessed opaquely through tunneler_context*

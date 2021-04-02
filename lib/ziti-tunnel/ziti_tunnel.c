@@ -75,14 +75,14 @@ tunneler_context ziti_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop)
     return ctx;
 }
 
-static void tunneler_kill_active(const void *ztx, const char *service_name);
+static void tunneler_kill_active(const void *ztx);
 
 void ziti_tunneler_shutdown(tunneler_context tnlr_ctx) {
     TNL_LOG(DEBUG, "tnlr_ctx %p", tnlr_ctx);
 
     while (!STAILQ_EMPTY(&tnlr_ctx->intercepts)) {
         intercept_ctx_t *i = STAILQ_FIRST(&tnlr_ctx->intercepts);
-        tunneler_kill_active(i->ziti_ctx, i->service_name);
+        tunneler_kill_active(i->app_intercept_ctx);
         STAILQ_REMOVE_HEAD(&tnlr_ctx->intercepts, entries);
     }
 }
@@ -196,6 +196,18 @@ void ziti_tunneler_set_dns(tunneler_context tnlr_ctx, dns_manager *dns) {
     }
 }
 
+intercept_ctx_t* intercept_ctx_new(tunneler_context tnlr_ctx, const char *app_id, void *app_intercept_ctx) {
+    intercept_ctx_t *ictx = calloc(1, sizeof(intercept_ctx_t));
+    ictx->tnlr_ctx = tnlr_ctx;
+    ictx->service_name = app_id;
+    ictx->app_intercept_ctx = app_intercept_ctx;
+    STAILQ_INIT(&ictx->protocols);
+    STAILQ_INIT(&ictx->addresses);
+    STAILQ_INIT(&ictx->port_ranges);
+
+    return ictx;
+}
+
 void intercept_ctx_add_protocol(intercept_ctx_t *ctx, const char *protocol) {
     protocol_t *proto = calloc(1, sizeof(protocol_t));
     proto->protocol = strdup(protocol);
@@ -254,8 +266,8 @@ address_t *parse_address(const char *hn_or_ip_or_cidr, dns_manager *dns) {
     return addr;
 }
 
-address_t *intercept_ctx_add_address(tunneler_context tnlr_ctx, intercept_ctx_t *i_ctx, const char *address) {
-    address_t *addr = parse_address(address, tnlr_ctx->dns);
+address_t *intercept_ctx_add_address(intercept_ctx_t *i_ctx, const char *address) {
+    address_t *addr = parse_address(address, i_ctx->tnlr_ctx->dns);
 
     if (addr == NULL) {
         TNL_LOG(ERR, "failed to parse address '%s' service[%s]", address, i_ctx->service_name);
@@ -321,14 +333,14 @@ int ziti_tunneler_intercept(tunneler_context tnlr_ctx, intercept_ctx_t *i_ctx) {
     return 0;
 }
 
-static void tunneler_kill_active(const void *ztx, const char *service_name) {
+static void tunneler_kill_active(const void *zi_ctx) {
     struct io_ctx_list_s *l;
     ziti_sdk_close_cb zclose;
 
-    l = tunneler_tcp_active(ztx, service_name);
+    l = tunneler_tcp_active(zi_ctx);
     while (!SLIST_EMPTY(l)) {
         struct io_ctx_list_entry_s *n = SLIST_FIRST(l);
-        TNL_LOG(DEBUG, "service[%s] client[%s] killing active connection", service_name, n->io->tnlr_io->client);
+        TNL_LOG(DEBUG, "service_ctx[%p] client[%s] killing active connection", zi_ctx, n->io->tnlr_io->client);
         // close the ziti connection, which also closes the underlay
         zclose = n->io->tnlr_io->tnlr_ctx->opts.ziti_close;
         if (zclose) zclose(n->io->ziti_io);
@@ -338,10 +350,10 @@ static void tunneler_kill_active(const void *ztx, const char *service_name) {
     free(l);
 
     // todo be selective about protocols when merging newer config types
-    l = tunneler_udp_active(ztx, service_name);
+    l = tunneler_udp_active(zi_ctx);
     while (!SLIST_EMPTY(l)) {
         struct io_ctx_list_entry_s *n = SLIST_FIRST(l);
-        TNL_LOG(DEBUG, "service[%s] client[%s] killing active connection", service_name, n->io->tnlr_io->client);
+        TNL_LOG(DEBUG, "service[%p] client[%s] killing active connection", zi_ctx, n->io->tnlr_io->client);
         // close the ziti connection, which also closes the underlay
         zclose = n->io->tnlr_io->tnlr_ctx->opts.ziti_close;
         if (zclose) zclose(n->io->ziti_io);
@@ -353,26 +365,48 @@ static void tunneler_kill_active(const void *ztx, const char *service_name) {
 
 // when called due to service unavailable we want to remove from tnlr_ctx.
 // when called due to conflict we want to mark as disabled
-void ziti_tunneler_stop_intercepting(tunneler_context tnlr_ctx, void *ziti_ctx, const char *service_name) {
-    TNL_LOG(DEBUG, "removing intercept for service %s", service_name);
-    struct intercept_ctx_s *intercept;
-
+void ziti_tunneler_stop_intercepting(tunneler_context tnlr_ctx, void *zi_ctx) {
     if (tnlr_ctx == NULL) {
         TNL_LOG(DEBUG, "null tnlr_ctx");
         return;
     }
 
-    tunneler_kill_active(ziti_ctx, service_name);
-
+    TNL_LOG(DEBUG, "removing intercept for service_ctx[%p]", zi_ctx);
+    struct intercept_ctx_s *intercept;
     STAILQ_FOREACH(intercept, &tnlr_ctx->intercepts, entries) {
-        if (strcmp(intercept->service_name, service_name) == 0 &&
-            intercept->ziti_ctx == ziti_ctx) {
+        if (intercept->app_intercept_ctx == zi_ctx) {
             STAILQ_REMOVE(&tnlr_ctx->intercepts, intercept, intercept_ctx_s, entries);
-            // todo deep free intercept_ctx
-            free(intercept);
             break;
         }
     }
+
+    if (intercept) {
+        TNL_LOG(DEBUG, "removing intercept for service[%s] service_ctx[%p]", intercept->service_name, zi_ctx);
+
+        while(!STAILQ_EMPTY(&intercept->protocols)) {
+            protocol_t *p = STAILQ_FIRST(&intercept->protocols);
+            STAILQ_REMOVE(&intercept->protocols, p, protocol_s, entries);
+            free(p->protocol);
+            free(p);
+        }
+        while(!STAILQ_EMPTY(&intercept->addresses)) {
+            address_t *a = STAILQ_FIRST(&intercept->addresses);
+            STAILQ_REMOVE(&intercept->addresses, a, address_s, entries);
+            free(a);
+        }
+
+        while(!STAILQ_EMPTY(&intercept->port_ranges)) {
+            port_range_t *p = STAILQ_FIRST(&intercept->port_ranges);
+            STAILQ_REMOVE(&intercept->port_ranges, p, port_range_s , entries);
+            free(p);
+        }
+
+        free(intercept);
+    }
+
+
+    tunneler_kill_active(zi_ctx);
+
 }
 
 /** called by tunneler application when data is read from a ziti connection */
