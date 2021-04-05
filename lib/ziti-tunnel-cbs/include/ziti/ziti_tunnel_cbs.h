@@ -81,7 +81,7 @@ typedef struct {
 } ziti_tunnel_ctrl;
 
 /** called by tunneler SDK after a client connection is intercepted */
-void *ziti_sdk_c_dial(const intercept_ctx_t *intercept_ctx, struct io_ctx_s *io);
+void *ziti_sdk_c_dial(const void *app_intercept_ctx, struct io_ctx_s *io);
 
 /** called from tunneler SDK when intercepted client sends data */
 ssize_t ziti_sdk_c_write(const void *ziti_io_ctx, void *write_ctx, const void *data, size_t len);

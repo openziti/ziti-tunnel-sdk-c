@@ -17,21 +17,7 @@ limitations under the License.
 #include <ziti/ziti_tunnel_cbs.h>
 #include <ziti/ziti_log.h>
 
-static struct cmd_ctx_s {
-    ziti_tunnel_ctrl ctrl;
-    tunneler_context tunnel_ctx;
-    command_cb cb;
-    uv_loop_t *loop;
-} CMD_CTX;
-
-struct ziti_instance_s {
-    ziti_options opts;
-    command_cb load_cb;
-    void *load_ctx;
-
-    ziti_context ztx;
-    LIST_ENTRY(ziti_instance_s) _next;
-};
+#include "ziti_instance.h"
 
 // temporary list to pass info between parse and run
 static LIST_HEAD(instance_list, ziti_instance_s) instance_init_list;
@@ -142,17 +128,18 @@ static void on_service(ziti_context ziti_ctx, ziti_service *service, int status,
     ZITI_LOG(DEBUG, "service[%s]", service->name);
     tunneled_service_t *ts = ziti_sdk_c_on_service(ziti_ctx, service, status, tnlr_ctx);
     if (ts->intercept != NULL) {
+        ZITI_LOG(INFO, "starting intercepting for service[%s]", service->name);
         protocol_t *proto;
-        STAILQ_FOREACH(proto, &ts->intercept->protocols, entries) {
-            address_t *address;
-            STAILQ_FOREACH(address, &ts->intercept->addresses, entries) {
-                port_range_t *pr;
-                STAILQ_FOREACH(pr, &ts->intercept->port_ranges, entries) {
-                    ZITI_LOG(INFO, "intercepting address[%s:%s:%s] service[%s]",
-                             proto->protocol, address->str, pr->str, service->name);
-                }
-            }
-        }
+//        STAILQ_FOREACH(proto, &ts->intercept->protocols, entries) {
+//            address_t *address;
+//            STAILQ_FOREACH(address, &ts->intercept->addresses, entries) {
+//                port_range_t *pr;
+//                STAILQ_FOREACH(pr, &ts->intercept->port_ranges, entries) {
+//                    ZITI_LOG(INFO, "intercepting address[%s:%s:%s] service[%s]",
+//                             proto->protocol, address->str, pr->str, service->name);
+//                }
+//            }
+//        }
 
     }
     if (ts->host != NULL) {
