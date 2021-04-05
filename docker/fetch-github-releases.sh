@@ -2,8 +2,8 @@
 set -o pipefail
 
 echo "Fetching from GitHub."
-if [ -z "${GITHUB_BASE_URL}" ]; then GITHUB_BASE_URL="https://netfoundry.jfrog.io/netfoundry"; fi
-if [ -z "${GITHUB_REPO}" ]; then  GITHUB_REPO="ziti-release"; fi
+if [ -z "${GITHUB_BASE_URL}" ]; then GITHUB_BASE_URL="https://github.com/openziti"; fi
+if [ -z "${GITHUB_REPO}" ]; then  GITHUB_REPO="ziti-tunnel-sdk-c"; fi
 for var in GITHUB_BASE_URL GITHUB_REPO ZITI_VERSION; do
     if [ -z "${!var}" ]; then
         echo "ERROR: ${var} must be set when fetching binaries from GitHub." >&2
