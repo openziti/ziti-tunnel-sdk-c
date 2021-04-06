@@ -1,9 +1,17 @@
-#!/bin/bash -eu
-set -o pipefail
+#!/bin/bash
+
+set -euo pipefail
+
+[[ $# -eq 0 ]] && {
+    echo "ERROR: need the base name of the executable to fetch e.g. \"ziti-edge-tunnel\"." >&2
+    exit 1
+}
 
 echo "Fetching from GitHub."
-if [ -z "${GITHUB_BASE_URL}" ]; then GITHUB_BASE_URL="https://github.com/openziti"; fi
-if [ -z "${GITHUB_REPO}" ]; then  GITHUB_REPO="ziti-tunnel-sdk-c"; fi
+# defaults
+: ${GITHUB_BASE_URL:="https://github.com/openziti"}
+: ${GITHUB_REPO:="ziti-tunnel-sdk-c"}
+
 for var in GITHUB_BASE_URL GITHUB_REPO ZITI_VERSION; do
     if [ -z "${!var}" ]; then
         echo "ERROR: ${var} must be set when fetching binaries from GitHub." >&2
