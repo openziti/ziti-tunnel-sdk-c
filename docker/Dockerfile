@@ -27,7 +27,7 @@ RUN bash ./fetch-github-releases.sh ziti-edge-tunnel
 FROM debian:stable-slim
 
 RUN mkdir -p /usr/local/bin /etc/ssl/certs
-RUN apt-get -q update && apt-get -q install -y --no-install-recommends iptables
+RUN apt-get -q update && apt-get -q install -y --no-install-recommends iptables systemd
 # Use 32-bit arm binaries on arm64 until we have 64-bit arm builds. This also affects fetch-github-releases.sh.
 RUN if [ "$(uname -m)" = "aarch64" ]; then dpkg --add-architecture armhf; apt update; apt install -y libc6:armhf; fi
 COPY --from=fetch-ziti-artifacts /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs
