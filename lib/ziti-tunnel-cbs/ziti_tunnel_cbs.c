@@ -96,7 +96,7 @@ static ssize_t on_ziti_data(ziti_connection conn, uint8_t *data, ssize_t len) {
     }
     ziti_io_context *ziti_io_ctx = io->ziti_io;
     if (len > 0) {
-        int accepted = ziti_tunneler_write(io->tnlr_io, data, len);
+        ssize_t accepted = ziti_tunneler_write(io->tnlr_io, data, len);
         if (accepted < 0) {
             ZITI_LOG(ERROR, "failed to write to client");
             ziti_sdk_c_close(io->ziti_io);
@@ -249,7 +249,7 @@ static void dial_opts_from_client_cfg_v1(ziti_dial_opts *opts, const ziti_client
 }
 
 /** initialize dial options from a ziti_intercept_cfg_v1 */
-static void dial_opts_from_intercept_cfg_v1(ziti_dial_opts *opts, ziti_intercept_cfg_v1 *config) {
+static void dial_opts_from_intercept_cfg_v1(ziti_dial_opts *opts, const ziti_intercept_cfg_v1 *config) {
     //model_map dial_options_cfg = config->dial_options;
     tag *t = (tag *) model_map_get(&(config->dial_options), "identity");
     if (t != NULL) {
@@ -276,7 +276,7 @@ void * ziti_sdk_c_dial(const void *intercept_ctx, struct io_ctx_s *io) {
         ZITI_LOG(WARN, "null intercept_ctx");
         return NULL;
     }
-    ziti_intercept_t *zi_ctx = intercept_ctx;
+    const ziti_intercept_t *zi_ctx = intercept_ctx;
     ZITI_LOG(VERBOSE, "ziti_dial(name=%s)", zi_ctx->service_name);
 
     ziti_io_context *ziti_io_ctx = malloc(sizeof(struct ziti_io_ctx_s));
