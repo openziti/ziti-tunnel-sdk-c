@@ -59,11 +59,11 @@ Run `docker buildx` like this:
 
         $ git fetch --tags && git tag -l | sort -Vr | head -1
         v0.16.1
-        $ ziti_version="0.16.1"
+        $ ZITI_VERSION="0.16.1"
         $ docker buildx build \
             --platform linux/amd64,linux/arm/v7,linux/aarch64 \
-            --build-arg ZITI_VERSION="${ziti_version}" \
-            -t "netfoundry/ziti-edge-tunnel:${ziti_version}" .
+            --build-arg ZITI_VERSION="${ZITI_VERSION}" \
+            -t "netfoundry/ziti-edge-tunnel:${ZITI_VERSION}" .
 
 Notes:
 
@@ -93,11 +93,23 @@ This build method produces an image for the CPU that is running the build host
 (typically amd64), and places the resulting image into your local Docker image
 cache.
 
-        $ ziti_version="0.16.1" \
+        $ ZITI_VERSION="0.16.1" \
         $ docker build \
-            --build-arg ZITI_VERSION="${ziti_version}" \
-            -t "netfoundry/ziti-edge-tunnel:${ziti_version}" .
+            --build-arg ZITI_VERSION="${ZITI_VERSION}" \
+            -t "netfoundry/ziti-edge-tunnel:${ZITI_VERSION}" .
 
-## Shell Script for Linux to run builder, Build, Push, and stop builder
+## Shell Script for Linux
 
-        $ ./docker/buildx.sh
+        $ ./buildx.sh -h
+        Usage: VARIABLES ./buildx.sh [OPTION]...
+
+        Build multi-platform Docker container image on Linux.
+
+        VARIABLES
+            ZITI_VERSION      e.g. "0.16.1" corresponding to Git tag "v0.16.1"
+
+        OPTIONS
+            -c                don't check out v${ZITI_VERSION} (use Git working copy)
+
+        EXAMPLES
+            ZITI_VERSION=0.16.1 ./buildx.sh
