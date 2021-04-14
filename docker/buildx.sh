@@ -2,7 +2,7 @@
 set -euo pipefail
 
 _usage(){
-    cat <<-EOF
+    cat >&2 <<-EOF
 Usage: VARIABLES ./buildx.sh [OPTION]...
 
 Build multi-platform Docker container image on Linux.
@@ -11,7 +11,9 @@ VARIABLES
     ZITI_VERSION      e.g. "0.16.1" corresponding to Git tag "v0.16.1"
 
 OPTIONS
+    -r REPO           container image repository e.g. netfoundry/ziti-edge-tunnel
     -c                don't check out v\${ZITI_VERSION} (use Git working copy)
+
 
 EXAMPLES
     ZITI_VERSION=0.16.1 ./buildx.sh -c
@@ -26,19 +28,31 @@ EOF
     }
 }
 
-# default to latest
-: ${ZITI_VERSION:=$(git fetch --tags && git tag -l|sort -Vr|head -1|sed -E 's/^v(.*)/\1/')}
 BASENAME=$(basename $0) || exit $?
 DIRNAME=$(dirname $0) || exit $?
 
-while getopts :c OPT;do
-  case $OPT in
-	c) 	FLAGS+=$OPT ;; # don't checkout vZITI_VERSION
-    *|\?|h) _usage;exit
-			;;
-  esac
+while getopts :r:c OPT;do
+    case $OPT in
+        r)  CONTAINER_REPO=$OPTARG 
+            ;;
+        c) 	FLAGS+=$OPT     # don't checkout vZITI_VERSION
+            ;;
+        h) _usage; exit 0   # not an error
+            ;;
+        *|\?) _usage 1      # error
+            ;;
+    esac
 done
 shift "$((OPTIND-1))"
+
+# default to latest
+: ${ZITI_VERSION:=$(git fetch --quiet --tags && git tag -l|sort -Vr|head -1|sed -E 's/^v(.*)/\1/')}
+
+# required opts
+[[ ! -z ${CONTAINER_REPO:+true} ]] || {
+    echo "ERROR: missing -r REPO option to define container image repository name for image push" >&2
+    _usage; exit 1
+}
 
 if [[ ${FLAGS:-} =~ c ]]; then
     echo "WARN: not checking out Git tag v${ZITI_VERSION}"
@@ -55,12 +69,11 @@ docker run --rm arm32v7/alpine uname -a|egrep -q 'armv7l Linux'
 
 docker buildx create --use --name=ziti-builder 2>/dev/null || docker buildx use --default ziti-builder
 
-cd $DIRNAME             # ensure ziti-tunnel-sdk-c/docker/Dockerfile is in PWD
-docker buildx build . \
+docker buildx build $DIRNAME \
     --platform linux/amd64,linux/arm/v7,linux/arm64 \
     --build-arg ZITI_VERSION=${ZITI_VERSION} \
-    --tag netfoundry/ziti-edge-tunnel:${ZITI_VERSION} \
-    --tag netfoundry/ziti-edge-tunnel:latest \
+    --tag ${CONTAINER_REPO}:${ZITI_VERSION} \
+    --tag ${CONTAINER_REPO}:latest \
     --push
 
 docker buildx stop ziti-builder
