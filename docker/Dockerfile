@@ -23,7 +23,6 @@ RUN bash ./fetch-github-releases.sh ziti-edge-tunnel
 #
 ################
 
-#FROM ubuntu:20.10
 FROM debian:stable-slim
 
 RUN mkdir -p /usr/local/bin /etc/ssl/certs
