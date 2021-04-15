@@ -109,7 +109,8 @@ cache.
             ZITI_VERSION      e.g. "0.16.1" corresponding to Git tag "v0.16.1"
 
         OPTIONS
+            -r REPO           container image repository e.g. netfoundry/ziti-edge-tunnel
             -c                don't check out v${ZITI_VERSION} (use Git working copy)
 
         EXAMPLES
-            ZITI_VERSION=0.16.1 ./buildx.sh
+            ZITI_VERSION=0.16.1 ./buildx.sh -r netfoundry/ziti-edge-tunnel
