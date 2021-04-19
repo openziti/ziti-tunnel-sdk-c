@@ -35,6 +35,9 @@ static int process_cmd(const tunnel_comand *cmd, void (*cb)(const tunnel_result 
 static int load_identity(const char *path, command_cb cb, void *ctx);
 static struct ziti_instance_s *new_ziti_instance(const char *path);
 static void load_ziti_async(uv_async_t *ar);
+static void on_sigdump(uv_signal_t *sig, int signum);
+
+static uv_signal_t sighup;
 
 const ziti_tunnel_ctrl* ziti_tunnel_init_cmd(uv_loop_t *loop, tunneler_context tunnel_ctx, command_cb cb) {
     CMD_CTX.loop = loop;
@@ -42,6 +45,11 @@ const ziti_tunnel_ctrl* ziti_tunnel_init_cmd(uv_loop_t *loop, tunneler_context t
     CMD_CTX.cb = cb;
     CMD_CTX.ctrl.process = process_cmd;
     CMD_CTX.ctrl.load_identity = load_identity;
+
+    uv_signal_init(loop, &sighup);
+    uv_signal_start(&sighup, on_sigdump, SIGUSR1);
+    uv_unref((uv_handle_t *) &sighup);
+
     return &CMD_CTX.ctrl;
 }
 
@@ -221,6 +229,31 @@ static void load_ziti_async(uv_async_t *ar) {
 
     free(config_path);
     uv_close((uv_handle_t *) ar, (uv_close_cb) free);
+}
+
+static void on_sigdump(uv_signal_t *sig, int signum) {
+    char fname[MAXPATHLEN];
+    snprintf(fname, sizeof(fname), "/tmp/ziti-dump.%d.dump", getpid());
+    ZITI_LOG(INFO, "saving Ziti dump to %s", fname);
+    FILE *dumpfile = fopen(fname, "a+");
+
+    uv_timeval64_t dump_time;
+    uv_gettimeofday(&dump_time);
+
+    char time_str[32];
+    struct tm* start_tm = gmtime(&dump_time.tv_sec);
+    strftime(time_str, sizeof(time_str), "%FT%T", start_tm);
+
+    fprintf(dumpfile, "ZIti Dump starting: %s\n",time_str);
+    const char *k;
+    struct ziti_instance_s *inst;
+    MODEL_MAP_FOREACH(k, inst, &instances) {
+        fprintf(dumpfile, "instance: %s\n", k);
+        ziti_dump(inst->ztx, (int (*)(void *, const char *, ...)) fprintf, dumpfile);
+    }
+
+    fflush(dumpfile);
+    fclose(dumpfile);
 }
 
 IMPL_ENUM(TunnelCommand, TUNNEL_COMMANDS)
