@@ -37,7 +37,7 @@ static struct ziti_instance_s *new_ziti_instance(const char *path);
 static void load_ziti_async(uv_async_t *ar);
 static void on_sigdump(uv_signal_t *sig, int signum);
 
-static uv_signal_t sighup;
+static uv_signal_t sigusr1;
 
 const ziti_tunnel_ctrl* ziti_tunnel_init_cmd(uv_loop_t *loop, tunneler_context tunnel_ctx, command_cb cb) {
     CMD_CTX.loop = loop;
@@ -46,9 +46,9 @@ const ziti_tunnel_ctrl* ziti_tunnel_init_cmd(uv_loop_t *loop, tunneler_context t
     CMD_CTX.ctrl.process = process_cmd;
     CMD_CTX.ctrl.load_identity = load_identity;
 
-    uv_signal_init(loop, &sighup);
-    uv_signal_start(&sighup, on_sigdump, SIGUSR1);
-    uv_unref((uv_handle_t *) &sighup);
+    uv_signal_init(loop, &sigusr1);
+    uv_signal_start(&sigusr1, on_sigdump, SIGUSR1);
+    uv_unref((uv_handle_t *) &sigusr1);
 
     return &CMD_CTX.ctrl;
 }
