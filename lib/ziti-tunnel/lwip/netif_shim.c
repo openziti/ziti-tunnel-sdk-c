@@ -2,6 +2,7 @@
 
 #define LWIP_DONT_PROVIDE_BYTEORDER_FUNCTIONS 1
 
+#include "uv.h"
 #include "lwip/err.h"
 #include "lwip/pbuf.h"
 #include "lwip/ip_addr.h"

@@ -49,6 +49,7 @@
 
 #ifdef _WIN32
 #define LWIP_NORAND 1
+#define LWIP_NO_UNISTD_H 1
 #endif
 
 // hooks

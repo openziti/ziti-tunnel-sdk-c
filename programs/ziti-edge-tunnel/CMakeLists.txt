@@ -7,6 +7,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL Linux)
     set(NETIF_DRIVER_SOURCE netif_driver/linux/tun.c)
 endif()
 if(CMAKE_SYSTEM_NAME STREQUAL Windows)
+    include(wintun.cmake)
+    set(tun_lib wintun)
     set(NETIF_DRIVER_SOURCE netif_driver/windows/tun.c netif_driver/windows/tun.h)
 endif()
 
@@ -20,7 +22,7 @@ target_compile_definitions(ziti-edge-tunnel
 
 target_link_libraries(ziti-edge-tunnel
         PUBLIC ziti ziti-tunnel-sdk-c ziti-tunnel-cbs-c
-        PUBLIC lwipcore ${lwip_sys_lib} ziti-tunnel-sdk-c
+        PUBLIC lwipcore ${lwip_sys_lib} ziti-tunnel-sdk-c ${tun_lib}
         PUBLIC subcommand
         )
 

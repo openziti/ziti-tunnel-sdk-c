@@ -135,7 +135,7 @@ u8_t recv_udp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     }
 
     /* reach into the pbuf to get to the UDP header */
-    struct udp_hdr *udphdr = (struct udp_hdr *)(p->payload + iphdr_hlen);
+    struct udp_hdr *udphdr = (struct udp_hdr *)((char*)p->payload + iphdr_hlen);
     u16_t src_p = lwip_ntohs(udphdr->src);
     u16_t dst_p = lwip_ntohs(udphdr->dest);
 
