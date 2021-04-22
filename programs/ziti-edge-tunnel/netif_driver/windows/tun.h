@@ -6,11 +6,6 @@
 #define ZITI_TUNNEL_SDK_C_TUN_H
 
 
-struct netif_handle_s {
-    int  fd;
-    //char name[IFNAMSIZ];
-};
-
 extern netif_driver tun_open(struct uv_loop_s *loop, uint32_t tun_ip, uint32_t dns_ip, const char *cidr, char *error, size_t error_len);
 
 #endif //ZITI_TUNNEL_SDK_C_TUN_H
