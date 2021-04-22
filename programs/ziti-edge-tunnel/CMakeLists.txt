@@ -9,6 +9,7 @@ endif()
 if(CMAKE_SYSTEM_NAME STREQUAL Windows)
     include(wintun.cmake)
     set(tun_lib wintun)
+    set(tun_lib_loc ${wintun_SOURCE_DIR}/bin/${CMAKE_SYSTEM_PROCESSOR}/wintun.dll)
     set(NETIF_DRIVER_SOURCE netif_driver/windows/tun.c netif_driver/windows/tun.h)
 endif()
 
@@ -26,6 +27,7 @@ target_link_libraries(ziti-edge-tunnel
         PUBLIC subcommand
         )
 
+set(ziti-edge-tunnel_BUNDLE_COMPS ${tun_lib_loc})
 BUNDLE_COMP(ziti-edge-tunnel)
 
 install(TARGETS ziti-edge-tunnel

@@ -32,7 +32,7 @@ macro(BUNDLE_COMP comp)
     add_custom_target(${comp}-bundle
             BYPRODUCTS ${CMAKE_BINARY_DIR}/bundle/${comp}-${CPACK_SYSTEM_NAME}_${CMAKE_SYSTEM_PROCESSOR}.zip
             DEPENDS ${comp}
-            COMMAND zip ${CMAKE_BINARY_DIR}/bundle/${comp}-${CPACK_SYSTEM_NAME}_${CMAKE_SYSTEM_PROCESSOR}.zip ${comp}
+            COMMAND 7z a ${CMAKE_BINARY_DIR}/bundle/${comp}-${CPACK_SYSTEM_NAME}_${CMAKE_SYSTEM_PROCESSOR}.zip ${comp}${CMAKE_EXECUTABLE_SUFFIX} ${comp_BUNDLE_COMPS}
             )
     add_dependencies(bundle ${comp}-bundle)
 endmacro()
