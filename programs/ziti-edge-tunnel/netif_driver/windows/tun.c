@@ -9,6 +9,7 @@
 #include <wintun.h>
 #include <stdbool.h>
 #include <ziti/ziti_log.h>
+#include <netioapi.h>
 
 #include "tun.h"
 
@@ -106,10 +107,11 @@ netif_driver tun_open(struct uv_loop_s *loop, uint32_t tun_ip, uint32_t dns_ip, 
         return NULL;
     }
 
-    GUID ExampleGuid = { 0xdeadbabe, 0xcafe, 0xbeef, { 0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef } };
+    GUID adapterGuid;
+    IIDFromString(L"2cbfd72d-370c-43b0-b0cd-c8f092a7e134", &adapterGuid);
     tun->adapter = WintunOpenAdapter(L"Ziti", L"tun0");
     if (!tun->adapter) {
-        tun->adapter = WintunCreateAdapter(L"Ziti", L"tun0", &ExampleGuid, NULL);
+        tun->adapter = WintunCreateAdapter(L"Ziti", L"tun0", &adapterGuid, NULL);
         if (!tun->adapter) {
             DWORD err = GetLastError();
             snprintf(error, error_len, "Failed to create adapter: %d", err);
@@ -117,9 +119,26 @@ netif_driver tun_open(struct uv_loop_s *loop, uint32_t tun_ip, uint32_t dns_ip, 
         }
     }
 
+    DWORD Version = WintunGetRunningDriverVersion();
+    ZITI_LOG(INFO, "Wintun v%u.%u loaded", (Version >> 16) & 0xff, (Version >> 0) & 0xff);
+
+    MIB_UNICASTIPADDRESS_ROW AddressRow;
+    InitializeUnicastIpAddressEntry(&AddressRow);
+    WintunGetAdapterLUID(tun->adapter, &AddressRow.InterfaceLuid);
+    AddressRow.Address.Ipv4.sin_family = AF_INET;
+    AddressRow.Address.Ipv4.sin_addr.S_un.S_addr = tun_ip;
+    AddressRow.OnLinkPrefixLength = 16;
+    DWORD err = CreateUnicastIpAddressEntry(&AddressRow);
+    if (err != ERROR_SUCCESS && err != ERROR_OBJECT_ALREADY_EXISTS)
+    {
+        ZITI_LOG(ERROR, "Failed to set IP address: %d", err);
+        tun_close(tun);
+        return NULL;
+    }
+
     tun->session = WintunStartSession(tun->adapter, WINTUN_MAX_RING_CAPACITY);
     if (!tun->session) {
-        DWORD err = GetLastError();
+        err = GetLastError();
         snprintf(error, error_len, "Failed to start session: %d", err);
         return NULL;
     }
@@ -176,11 +195,9 @@ static int tun_close(struct netif_handle_s *tun) {
 }
 
 static void tun_reader(void *h) {
-    ZITI_LOG(INFO, "starting read notify thread");
     netif_handle tun = h;
-    ZITI_LOG(DEBUG, "tun=%p, adapter=%p, session=%p", tun, tun->adapter, tun->session);
-
     HANDLE readEv = WintunGetReadWaitEvent(tun->session);
+
     if (!readEv) {
         DWORD err = GetLastError();
         ZITI_LOG(ERROR, "failed to get ReadWaitEvent from(%p) err=%d", readEv, tun->session, err);
@@ -195,7 +212,6 @@ static void tun_reader(void *h) {
             break;
         }
 
-        ZITI_LOG(TRACE, "read available");
         uv_async_send(tun->read_available);
     }
 }
