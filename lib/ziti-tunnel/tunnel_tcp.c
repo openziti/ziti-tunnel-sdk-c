@@ -311,7 +311,7 @@ u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
         return 0;
     }
 
-    intercept_ctx_t *intercept_ctx = lookup_intercept_by_address(tnlr_ctx, "tcp", &dst, dst_p, dst_p);
+    intercept_ctx_t *intercept_ctx = lookup_intercept_by_address(tnlr_ctx, "tcp", &dst, dst_p);
     if (intercept_ctx == NULL) {
         /* dst address is not being intercepted. don't consume */
         TNL_LOG(TRACE, "no intercepted addresses match tcp:%s:%d", ipaddr_ntoa(&dst), dst_p);

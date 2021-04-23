@@ -57,6 +57,14 @@ static void on_hosted_udp_client_write(uv_udp_send_t* req, int status) {
 
 #define safe_free(p) if ((p) != NULL) free((p))
 
+#define STAILQ_CLEAR(slist_head, free_fn) do { \
+    while (!STAILQ_EMPTY(slist_head)) { \
+        void *elem = STAILQ_FIRST(slist_head); \
+        STAILQ_REMOVE_HEAD((slist_head), entries); \
+        free_fn(elem); \
+    } \
+} while(0);
+
 static void free_hosted_service_ctx(struct hosted_service_ctx_s *hosted_ctx) {
     if (hosted_ctx == NULL) {
         return;
@@ -73,6 +81,20 @@ static void free_hosted_service_ctx(struct hosted_service_ctx_s *hosted_ctx) {
             ZITI_LOG(DEBUG, "unexpected cfg_type %d", hosted_ctx->cfg_type);
             break;
     }
+
+    if (hosted_ctx->forward_protocol) {
+        STAILQ_CLEAR(&hosted_ctx->proto_u.allowed_protocols, safe_free);
+    }
+
+    if (hosted_ctx->forward_address) {
+        STAILQ_CLEAR(&hosted_ctx->addr_u.allowed_addresses, safe_free);
+    }
+
+    if (hosted_ctx->forward_port) {
+        STAILQ_CLEAR(&hosted_ctx->port_u.allowed_port_ranges, safe_free);
+    }
+
+    STAILQ_CLEAR(&hosted_ctx->allowed_source_addresses, safe_free);
 }
 
 static void hosted_server_close_cb(uv_handle_t *handle) {
@@ -326,18 +348,26 @@ static const char *get_protocol_str(int protocol_id) {
     }
 }
 
-static bool addrinfo_from_host_cfg_v1(struct addrinfo_params_s *dial_params, const ziti_host_cfg_v1 *config, tunneler_app_data *app_data) {
+static bool addrinfo_from_host_ctx(struct addrinfo_params_s *dial_params, const host_ctx_t *host_ctx, tunneler_app_data *app_data) {
     const char *dial_protocol_str = NULL;
 
-    if (config->dial_intercepted_protocol) {
+    if (host_ctx->forward_protocol) {
         dial_protocol_str = app_data->dst_protocol;
-        if (dial_protocol_str == NULL) {
+        if (dial_protocol_str == NULL | dial_protocol_str[0] == '\0') {
             snprintf(dial_params->err, sizeof(dial_params->err),
-                     "service config specifies 'dialInterceptedProtocol', but client didn't send %s", DST_PROTO_KEY);
+                     "hosted_service[%s] config specifies 'forwardProtocol', but client didn't send %s",
+                     host_ctx->service_name, DST_PROTO_KEY);
             return false;
         }
+        if (!protocol_match(app_data->dst_protocol, &host_ctx->proto_u.allowed_protocols)) {
+            snprintf(dial_params->err, sizeof(dial_params->err),
+                     "hosted_service[%s] client requested protocol '%s' is not allowed", host_ctx->service_name,
+                     app_data->dst_protocol);
+            return false;
+        }
+        dial_protocol_str = app_data->dst_protocol;
     } else {
-        dial_protocol_str = config->protocol;
+        dial_protocol_str = host_ctx->proto_u.protocol;
     }
 
     dial_params->hints.ai_protocol = get_protocol_id(dial_protocol_str);
@@ -346,57 +376,64 @@ static bool addrinfo_from_host_cfg_v1(struct addrinfo_params_s *dial_params, con
         return false;
     }
 
-    if (config->dial_intercepted_address) {
+    if (host_ctx->forward_address) {
         dial_params->address = app_data->dst_ip;
-        if (dial_params->address == NULL) {
+        if (dial_params->address == NULL || dial_params->address[0] == '\0') {
             snprintf(dial_params->err, sizeof(dial_params->err),
-                     "service config specifies 'dialInterceptedAddress' but client didn't send %s", DST_IP_KEY);
+                     "hosted_service[%s] config specifies 'forwardAddress' but client didn't send %s",
+                     host_ctx->service_name, DST_IP_KEY);
             return false;
         }
+        address_t *dst = parse_address(app_data->dst_ip, NULL);
+        if (dst == NULL) {
+            snprintf(dial_params->err, sizeof(dial_params->err),
+                     "hosted_service[%s] failed to parse requested address '%s'", host_ctx->service_name,
+                     app_data->dst_ip);
+            return false;
+        }
+        if (!address_match(&dst->ip, (address_list_t *)&host_ctx->addr_u.allowed_addresses)) {
+            snprintf(dial_params->err, sizeof(dial_params->err),
+                     "hosted_service[%s] client requested address '%s' is not allowed", host_ctx->service_name,
+                     dst->str);
+            free(dst);
+            return false;
+        }
+        free(dst);
+        dial_params->address = app_data->dst_ip;
     } else {
-        dial_params->address = config->address;
+        dial_params->address = host_ctx->addr_u.address;
     }
 
-    if (config->dial_intercepted_port) {
-        dial_params->port = app_data->dst_port;
-        if (dial_params->port == NULL) {
+    if (host_ctx->forward_port) {
+        int port = 0;
+        if (app_data->dst_port == NULL) {
             snprintf(dial_params->err, sizeof(dial_params->err),
-                     "service config specifies 'dialInterceptedPort' but client didn't send %s", DST_PORT_KEY);
+                     "hosted_service[%s] config specifies 'forwardPort' but client didn't send %s",
+                     host_ctx->service_name, DST_PORT_KEY);
             return false;
         } else {
             errno = 0;
-            strtol(dial_params->port, NULL, 10);
+            port = (int)strtol(app_data->dst_port, NULL, 10);
             if (errno != 0) {
                 snprintf(dial_params->err, sizeof(dial_params->err),
-                         "client sent invalid %s '%s'", DST_PORT_KEY, dial_params->port);
+                         "hosted_service[%s] client sent invalid %s '%s'", host_ctx->service_name,
+                         DST_PORT_KEY, app_data->dst_port);
                 return false;
             }
         }
+        if (!port_match(port, &host_ctx->port_u.allowed_port_ranges)) {
+            snprintf(dial_params->err, sizeof(dial_params->err),
+                     "hosted_service[%s] client requested port '%s' is not allowed", host_ctx->service_name,
+                     app_data->dst_port);
+            return false;
+        }
+        dial_params->port = app_data->dst_port;
     } else {
-        snprintf(dial_params->_port_str, sizeof(dial_params->_port_str), "%d", config->port);
+        snprintf(dial_params->_port_str, sizeof(dial_params->_port_str), "%d", host_ctx->port_u.port);
         dial_params->port = dial_params->_port_str;
     }
 
     return true;
-}
-
-static bool addrinfo_from_server_cfg_v1(struct addrinfo_params_s *dial_params, const ziti_server_cfg_v1 *config, tunneler_app_data *app_data) {
-    dial_params->hints.ai_protocol = get_protocol_id(config->protocol);
-    if (dial_params->hints.ai_protocol < 0) {
-        snprintf(dial_params->err, sizeof(dial_params->err), "unsupported dial protocol '%s'", config->protocol);
-        return false;
-    }
-
-    dial_params->address = config->hostname;
-
-    snprintf(dial_params->_port_str, sizeof(dial_params->_port_str), "%d", config->port);
-    dial_params->port = dial_params->_port_str;
-
-    return true;
-}
-
-void set_dial_addr_from_addrinfo(struct hosted_io_ctx_s *io, struct addrinfo *ai) {
-
 }
 
 /** called by ziti sdk when a ziti endpoint (client) initiates connection to a hosted service */
@@ -438,22 +475,7 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
 
     struct addrinfo_params_s dial_ai_params;
     memset(&dial_ai_params, 0, sizeof(dial_ai_params));
-    int s = false;
-
-    switch (service_ctx->cfg_type) {
-        case HOST_CFG_V1:
-            s = addrinfo_from_host_cfg_v1(&dial_ai_params, service_ctx->cfg, &app_data);
-            break;
-        case SERVER_CFG_V1:
-            s = addrinfo_from_server_cfg_v1(&dial_ai_params, service_ctx->cfg, &app_data);
-            break;
-        default:
-            ZITI_LOG(ERROR, "hosted_service[%s], client[%s]: unexpected cfg_type %d",
-                     service_ctx->service_name, client_identity, service_ctx->cfg_type);
-            err = true;
-            goto done;
-    }
-
+    int s = addrinfo_from_host_ctx(&dial_ai_params, service_ctx, &app_data);
     if (!s) {
         ZITI_LOG(ERROR, "hosted_service[%s], client[%s]: failed to create dial addrinfo params: %s",
                  service_ctx->service_name, client_identity, dial_ai_params.err);
@@ -699,22 +721,98 @@ host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, uv_loop_t *loop, const char *service
             const ziti_host_cfg_v1 *host_v1_cfg = cfg;
             listen_opts_from_host_cfg_v1(&listen_opts, host_v1_cfg);
             listen_opts_p = &listen_opts;
-            if (!host_v1_cfg->dial_intercepted_protocol) {
+            int i;
+
+            host_ctx->forward_protocol = host_v1_cfg->forward_protocol;
+            if (host_v1_cfg->forward_protocol) {
+                STAILQ_INIT(&host_ctx->proto_u.allowed_protocols);
+                string_array allowed_protos = host_v1_cfg->allowed_protocols;
+                for (i = 0; allowed_protos != NULL && allowed_protos[i] != NULL; i++) {
+                    protocol_t *p = calloc(1, sizeof(protocol_t));
+                    p->protocol = strdup(allowed_protos[i]);
+                    STAILQ_INSERT_TAIL(&host_ctx->proto_u.allowed_protocols, p, entries);
+                }
+                if (i == 0) {
+                    ZITI_LOG(ERROR,
+                             "hosted_service[%s] specifies 'forwardProtocol' with zero-length 'allowedProtocols'",
+                             host_ctx->service_name);
+                    free_hosted_service_ctx(host_ctx);
+                    return NULL;
+                }
+            } else {
+                host_ctx->proto_u.protocol = host_v1_cfg->protocol;
                 display_proto = host_v1_cfg->protocol;
             }
-            if (!host_v1_cfg->dial_intercepted_address) {
+
+            host_ctx->forward_address = host_v1_cfg->forward_address;
+            if (host_v1_cfg->forward_address) {
+                STAILQ_INIT(&host_ctx->addr_u.allowed_addresses);
+                string_array allowed_addrs = host_v1_cfg->allowed_addresses;
+                for (i = 0; allowed_addrs != NULL && allowed_addrs[i] != NULL; i++) {
+                    address_t *a = parse_address(allowed_addrs[i], NULL);
+                    if (a == NULL) {
+                        ZITI_LOG(ERROR, "hosted_service[%s] failed to parse allowed_address '%s'",
+                                 host_ctx->service_name, allowed_addrs[i]);
+                        free_hosted_service_ctx(host_ctx);
+                        return NULL;
+                    }
+                    STAILQ_INSERT_TAIL(&host_ctx->addr_u.allowed_addresses, a, entries);
+                }
+                if (i == 0) {
+                    ZITI_LOG(ERROR, "hosted_service[%s] specifies 'forwardAddress' with zero-length 'allowedAddresses'",
+                             host_ctx->service_name);
+                    free_hosted_service_ctx(host_ctx);
+                    return NULL;
+                }
+            } else {
+                host_ctx->addr_u.address = host_v1_cfg->address;
                 display_addr = host_v1_cfg->address;
             }
-            if (!host_v1_cfg->dial_intercepted_port) {
+
+            host_ctx->forward_port = host_v1_cfg->forward_port;
+            if (host_v1_cfg->forward_port) {
+                STAILQ_INIT(&host_ctx->port_u.allowed_port_ranges);
+                ziti_port_range_array port_ranges = host_v1_cfg->allowed_port_ranges;
+                for (i = 0; port_ranges != NULL && port_ranges[i] != NULL; i++) {
+                    port_range_t *pr = parse_port_range(port_ranges[i]->low, port_ranges[i]->high);
+                    STAILQ_INSERT_TAIL(&host_ctx->port_u.allowed_port_ranges, pr, entries);
+                }
+                if (i == 0) {
+                    ZITI_LOG(ERROR, "hosted_service[%s] specifies 'forwardPort' with zero-length 'allowedPortRanges'",
+                             host_ctx->service_name);
+                    free_hosted_service_ctx(host_ctx);
+                }
+            } else {
+                host_ctx->port_u.port = host_v1_cfg->port;
                 snprintf(display_port, sizeof(display_port), "%d", host_v1_cfg->port);
+            }
+
+            STAILQ_INIT(&host_ctx->allowed_source_addresses);
+            string_array allowed_src_addrs = host_v1_cfg->allowed_source_addresses;
+            for (i = 0; allowed_src_addrs != NULL && allowed_src_addrs[i] != NULL; i++) {
+                address_t *a = parse_address(allowed_src_addrs[i], NULL);
+                if (a == NULL) {
+                    ZITI_LOG(ERROR, "hosted_service[%s] failed to parse allowed_source_address '%s'",
+                             host_ctx->service_name, allowed_src_addrs);
+                    free_hosted_service_ctx(host_ctx);
+                    return NULL;
+                }
+                STAILQ_INSERT_TAIL(&host_ctx->addr_u.allowed_addresses, a, entries);
             }
         }
             break;
         case SERVER_CFG_V1: {
             const ziti_server_cfg_v1 *server_v1_cfg = cfg;
             display_proto = server_v1_cfg->protocol;
+            host_ctx->forward_protocol = false;
+            host_ctx->proto_u.protocol = server_v1_cfg->protocol;
+
             display_addr = server_v1_cfg->hostname;
+            host_ctx->forward_address = false;
+            host_ctx->addr_u.address = server_v1_cfg->hostname;
+
             snprintf(display_port, sizeof(display_port), "%d", server_v1_cfg->port);
+            host_ctx->forward_port = false;
         }
             break;
         default:
@@ -722,7 +820,7 @@ host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, uv_loop_t *loop, const char *service
             break;
     }
 
-    snprintf(host_ctx->address, sizeof(host_ctx->address), "%s:%s:%s", display_proto, display_addr, display_port);
+    snprintf(host_ctx->display_address, sizeof(host_ctx->display_address), "%s:%s:%s", display_proto, display_addr, display_port);
     ziti_connection serv;
     ziti_conn_init(ziti_ctx, &serv, host_ctx);
 
