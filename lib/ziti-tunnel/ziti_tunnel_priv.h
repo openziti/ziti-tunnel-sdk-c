@@ -29,9 +29,9 @@ struct intercept_ctx_s {
     const char *service_name;
     void *app_intercept_ctx;
 
-    STAILQ_HEAD(protocol, protocol_s)     protocols;
-    STAILQ_HEAD(port_range, port_range_s) port_ranges;
-    STAILQ_HEAD(address, address_s)       addresses;
+    protocol_list_t protocols;
+    address_list_t addresses;
+    port_range_list_t port_ranges;
 
     STAILQ_ENTRY(intercept_ctx_s) entries;
 };
