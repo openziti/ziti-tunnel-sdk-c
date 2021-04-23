@@ -176,9 +176,10 @@ static ssize_t get_app_data_json(char *buf, size_t bufsz, tunneler_io_context io
                 }
             }
         }
-        string_replace(source_addr, sizeof(source_addr), "$intercepted_port", app_data.dst_port);
-        string_replace(source_addr, sizeof(source_addr), "$client_ip", app_data.src_ip);
-        string_replace(source_addr, sizeof(source_addr), "$client_port", app_data.src_port);
+        string_replace(source_addr, sizeof(source_addr), "$dst_ip", app_data.dst_ip);
+        string_replace(source_addr, sizeof(source_addr), "$dst_port", app_data.dst_port);
+        string_replace(source_addr, sizeof(source_addr), "$src_ip", app_data.src_ip);
+        string_replace(source_addr, sizeof(source_addr), "$src_port", app_data.src_port);
         app_data.source_addr = source_addr;
     }
 
@@ -253,6 +254,29 @@ void * ziti_sdk_c_dial(const intercept_ctx_t *intercept_ctx, struct io_ctx_s *io
             break;
         default:
             break;
+    }
+
+    char resolved_dial_identity[128];
+    if (dial_opts.identity != NULL && dial_opts.identity[0] != '\0') {
+        const char *dst_addr = get_client_address(io->tnlr_io);
+        if (dst_addr != NULL) {
+            char *proto, *ip, *port;
+            strncpy(resolved_dial_identity, dial_opts.identity, sizeof(resolved_dial_identity));
+            parse_socket_address(dst_addr, &proto, &ip, &port);
+            if (proto != NULL) {
+                string_replace(resolved_dial_identity, sizeof(resolved_dial_identity), "$dst_protocol", proto);
+                free(proto);
+            }
+            if (ip != NULL) {
+                string_replace(resolved_dial_identity, sizeof(resolved_dial_identity), "$dst_ip", ip);
+                free(ip);
+            }
+            if (port != NULL) {
+                string_replace(resolved_dial_identity, sizeof(resolved_dial_identity), "$dst_port", port);
+                free(port);
+            }
+        }
+        dial_opts.identity = resolved_dial_identity;
     }
 
     ssize_t json_len = get_app_data_json(app_data_json, sizeof(app_data_json), io->tnlr_io, ziti_ctx, source_ip);
