@@ -723,6 +723,7 @@ host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, uv_loop_t *loop, const char *service
             listen_opts_p = &listen_opts;
             int i;
 
+            host_ctx->forward_protocol = host_v1_cfg->forward_protocol;
             if (host_v1_cfg->forward_protocol) {
                 STAILQ_INIT(&host_ctx->proto_u.allowed_protocols);
                 string_array allowed_protos = host_v1_cfg->allowed_protocols;
@@ -743,6 +744,7 @@ host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, uv_loop_t *loop, const char *service
                 display_proto = host_v1_cfg->protocol;
             }
 
+            host_ctx->forward_address = host_v1_cfg->forward_address;
             if (host_v1_cfg->forward_address) {
                 STAILQ_INIT(&host_ctx->addr_u.allowed_addresses);
                 string_array allowed_addrs = host_v1_cfg->allowed_addresses;
@@ -767,6 +769,7 @@ host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, uv_loop_t *loop, const char *service
                 display_addr = host_v1_cfg->address;
             }
 
+            host_ctx->forward_port = host_v1_cfg->forward_port;
             if (host_v1_cfg->forward_port) {
                 STAILQ_INIT(&host_ctx->port_u.allowed_port_ranges);
                 ziti_port_range_array port_ranges = host_v1_cfg->allowed_port_ranges;
