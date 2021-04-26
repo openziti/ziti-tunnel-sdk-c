@@ -62,6 +62,7 @@ typedef struct protocol_s {
     char *protocol;
     STAILQ_ENTRY(protocol_s) entries;
 } protocol_t;
+typedef STAILQ_HEAD(protocol_list_s, protocol_s) protocol_list_t;
 
 typedef struct address_s {
     char       str[UV_MAXHOSTNAMESIZE]; // hostname || ip || ip/prefix
@@ -71,6 +72,7 @@ typedef struct address_s {
     uint8_t    prefix_len;
     STAILQ_ENTRY(address_s) entries;
 } address_t;
+typedef STAILQ_HEAD(address_list_s, address_s) address_list_t;
 
 typedef struct port_range_s {
     int low;
@@ -78,6 +80,7 @@ typedef struct port_range_s {
     char str[16]; // [123456-123456]
     STAILQ_ENTRY(port_range_s) entries;
 } port_range_t;
+typedef STAILQ_HEAD(port_range_list_s, port_range_s) port_range_list_t;
 
 /** data needed to intercept packets and dial the associated ziti service */
 typedef struct intercept_ctx_s  intercept_ctx_t;
@@ -106,7 +109,23 @@ typedef struct hosted_service_ctx_s {
     uv_loop_t *  loop;
     cfg_type_e   cfg_type;
     const void * cfg;
-    char address[64];
+    char display_address[64];
+    bool forward_protocol;
+    union {
+        protocol_list_t allowed_protocols;
+        char *protocol;
+    } proto_u;
+    bool forward_address;
+    union {
+        address_list_t allowed_addresses;
+        char *address;
+    } addr_u;
+    bool forward_port;
+    union {
+        port_range_list_t allowed_port_ranges;
+        uint16_t port;
+    } port_u;
+    address_list_t    allowed_source_addresses;
 } host_ctx_t;
 
 typedef struct tunneled_service_s {
@@ -157,6 +176,11 @@ struct dns_manager_s {
 extern dns_manager *get_tunneler_dns(uv_loop_t *l, uint32_t dns_ip, dns_fallback_cb cb, void *ctx);
 
 extern address_t *parse_address(const char *hn_or_ip_or_cidr, dns_manager *dns);
+extern port_range_t *parse_port_range(uint16_t low, uint16_t high);
+
+extern bool protocol_match(const char *protocol, const protocol_list_t *protocols);
+extern bool address_match(const ip_addr_t *addr, const address_list_t *addresses);
+extern bool port_match(int port, const port_range_list_t *port_ranges);
 
 extern tunneler_context ziti_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop);
 

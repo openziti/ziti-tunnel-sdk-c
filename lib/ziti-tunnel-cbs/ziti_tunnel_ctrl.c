@@ -160,7 +160,7 @@ static void on_service(ziti_context ziti_ctx, ziti_service *service, int status,
 
     }
     if (ts->host != NULL) {
-        ZITI_LOG(INFO, "hosting server_address[%s] service[%s]", ts->host->address, service->name);
+        ZITI_LOG(INFO, "hosting server_address[%s] service[%s]", ts->host->display_address, service->name);
     }
 }
 

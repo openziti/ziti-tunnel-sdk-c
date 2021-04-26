@@ -156,7 +156,7 @@ u8_t recv_udp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     }
 
     /* is the dest address being intercepted? */
-    intercept_ctx_t * intercept_ctx = lookup_intercept_by_address(tnlr_ctx, "udp", &dst, dst_p, dst_p);
+    intercept_ctx_t * intercept_ctx = lookup_intercept_by_address(tnlr_ctx, "udp", &dst, dst_p);
     if (intercept_ctx == NULL) {
         TNL_LOG(TRACE, "no intercepted addresses match udp:%s:%d", ipaddr_ntoa(&dst), dst_p);
         return 0;

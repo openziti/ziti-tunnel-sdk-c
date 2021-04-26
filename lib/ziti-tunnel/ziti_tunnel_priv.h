@@ -29,9 +29,9 @@ struct intercept_ctx_s {
     const char *service_name;
     void *app_intercept_ctx;
 
-    STAILQ_HEAD(protocol, protocol_s)     protocols;
-    STAILQ_HEAD(port_range, port_range_s) port_ranges;
-    STAILQ_HEAD(address, address_s)       addresses;
+    protocol_list_t protocols;
+    address_list_t addresses;
+    port_range_list_t port_ranges;
 
     STAILQ_ENTRY(intercept_ctx_s) entries;
 };
@@ -51,7 +51,7 @@ typedef struct tunneler_ctx_s {
 } *tunneler_context;
 
 /** return the intercept context for a packet based on its destination ip:port */
-extern intercept_ctx_t *lookup_intercept_by_address(tunneler_context tnlr_ctx, const char *protocol, ip_addr_t *dst_addr, int dst_port_low, int dst_port_high);
+extern intercept_ctx_t *lookup_intercept_by_address(tunneler_context tnlr_ctx, const char *protocol, ip_addr_t *dst_addr, int dst_port);
 
 typedef enum  {
     tun_tcp,
