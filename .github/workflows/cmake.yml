@@ -18,7 +18,6 @@ jobs:
         cmake_opts: [ "" ]
         arch: [ x86_64 ]
         toolchain: [ default.cmake ]
-        cmake_target: [ bundle ]
 
         include:
           - os: windows-latest
@@ -30,7 +29,6 @@ jobs:
             install: crossbuild-essential-armhf
             toolchain: Linux-arm.cmake
             cmake_opts: -DCMAKE_BUILD_TYPE=Release
-            cmake_target: bundle
             arch: arm
 
     steps:
@@ -47,10 +45,9 @@ jobs:
       - name: configure cmake
         run: cmake ${{matrix.cmake_opts}} -DCMAKE_TOOLCHAIN_FILE=${{github.workspace}}/toolchains/${{matrix.toolchain}} -S ${{ github.workspace }} -B ${{runner.workspace}}/build
       - name: build
-        run: cmake --build ${{runner.workspace}}/build --target ${{ matrix.cmake_target }} --verbose
+        run: cmake --build ${{runner.workspace}}/build --target bundle --verbose
 
       - uses: actions/upload-artifact@v2
-        if: matrix.cmake_target == 'bundle'
         with:
           name: ${{ runner.os }}-${{ matrix.arch }}
           path: ${{ runner.workspace }}/build/bundle/*.zip

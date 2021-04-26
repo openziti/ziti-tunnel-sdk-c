@@ -19,6 +19,8 @@ limitations under the License.
 
 #include "ziti_instance.h"
 
+#include <time.h>
+
 // temporary list to pass info between parse and run
 static LIST_HEAD(instance_list, ziti_instance_s) instance_init_list;
 
@@ -122,6 +124,11 @@ static int load_identity(const char *path, command_cb cb, void *ctx) {
     return 0;
 }
 
+
+#if _WIN32
+#define realpath(rel, abs) _fullpath(abs, rel, PATH_MAX)
+#endif
+
 static struct ziti_instance_s *new_ziti_instance(const char *path) {
     struct ziti_instance_s *inst = calloc(1, sizeof(struct ziti_instance_s));
     inst->opts.config = realpath(path, NULL);
@@ -195,6 +202,7 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
             break;
     }
 }
+
 
 static void load_ziti_async(uv_async_t *ar) {
     struct ziti_instance_s *inst = ar->data;
