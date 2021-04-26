@@ -12,9 +12,16 @@
 #include "netif_driver/darwin/utun.h"
 #elif __linux__
 #include "netif_driver/linux/tun.h"
-#else
-#error "please port this file to your operating system"
+#elif _WIN32
+#include "netif_driver/windows/tun.h"
+#ifndef MAXPATHLEN
+#define MAXPATHLEN _MAX_PATH
 #endif
+
+#define setenv(n,v,o) do {if(o || getenv(n) == NULL) _putenv_s(n,v); } while(0)
+#endif
+
+
 
 extern dns_manager *get_dnsmasq_manager(const char* path);
 
@@ -164,6 +171,10 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, const char *ip_rang
     tun = utun_open(tun_error, sizeof(tun_error), ip_range);
 #elif __linux__
     tun = tun_open(ziti_loop, tun_ip, dns->dns_ip, ip_range, tun_error, sizeof(tun_error));
+#elif _WIN32
+    tun = tun_open(ziti_loop, tun_ip, dns->dns_ip, ip_range, tun_error, sizeof(tun_error));
+#else
+#error "ziti-edge-tunnel is not supported on this system"
 #endif
 
     if (tun == NULL) {
@@ -285,7 +296,7 @@ static int dns_fallback(const char *name, void *ctx, struct in_addr* addr) {
 
 static void run(int argc, char *argv[]) {
 
-    uint ip[4];
+    uint32_t ip[4];
     int bits;
     int rc = sscanf(ip_range, "%d.%d.%d.%d/%d", &ip[0], &ip[1], &ip[2], &ip[3], &bits);
     if (rc != 5) {
@@ -373,6 +384,10 @@ static void version() {
 
 static ziti_enroll_opts enroll_opts;
 static char* config_file;
+
+#if _WIN32
+#define realpath(rel, abs) _fullpath(abs, rel, PATH_MAX)
+#endif
 
 static int parse_enroll_opts(int argc, char *argv[]) {
     static struct option opts[] = {

@@ -45,7 +45,7 @@ static struct dns_record* find_record (struct dns_store* store, const char *host
 static void add_record(struct dns_store* store, const char *hostname, const char *ip) {
     struct dns_record *rec = calloc(1, sizeof(struct dns_record));
     rec->name = strdup(hostname);
-    inet_aton(ip, &rec->ip);
+    inet_pton(AF_INET, ip, &rec->ip);
 
     struct dns_record *old;
     LIST_FOREACH(old, &store->map, _next) {

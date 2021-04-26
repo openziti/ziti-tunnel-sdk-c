@@ -298,7 +298,7 @@ u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     }
 
     /* reach into the pbuf to get to the TCP header */
-    struct tcp_hdr *tcphdr = (struct tcp_hdr *)(p->payload + iphdr_hlen);
+    struct tcp_hdr *tcphdr = (struct tcp_hdr *)((char*)p->payload + iphdr_hlen);
     u16_t src_p = lwip_ntohs(tcphdr->src);
     u16_t dst_p = lwip_ntohs(tcphdr->dest);
 

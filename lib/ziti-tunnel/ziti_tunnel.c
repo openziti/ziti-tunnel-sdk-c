@@ -23,6 +23,8 @@ limitations under the License.
 #define LWIP_DONT_PROVIDE_BYTEORDER_FUNCTIONS 1
 #endif
 
+#include "uv.h"
+
 #include "lwip/init.h"
 #include "lwip/raw.h"
 #include "lwip/timeouts.h"
@@ -31,7 +33,6 @@ limitations under the License.
 #include "ziti_tunnel_priv.h"
 #include "tunnel_tcp.h"
 #include "tunnel_udp.h"
-#include "uv.h"
 
 #include <string.h>
 
