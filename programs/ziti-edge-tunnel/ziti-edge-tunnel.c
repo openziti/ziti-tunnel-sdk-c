@@ -173,6 +173,8 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, const char *ip_rang
     tun = tun_open(ziti_loop, tun_ip, dns->dns_ip, ip_range, tun_error, sizeof(tun_error));
 #elif _WIN32
     tun = tun_open(ziti_loop, tun_ip, dns->dns_ip, ip_range, tun_error, sizeof(tun_error));
+#else
+#error "ziti-edge-tunnel is not supported on this system"
 #endif
 
     if (tun == NULL) {

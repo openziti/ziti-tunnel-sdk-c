@@ -10,11 +10,16 @@
 #include <stdbool.h>
 #include <ziti/ziti_log.h>
 #include <netioapi.h>
+#include <iphlpapi.h>
 
 #include "tun.h"
 
+#define ZITI_TUN_GUID L"2cbfd72d-370c-43b0-b0cd-c8f092a7e134"
+#define ZITI_TUN L"ziti-tun0"
 
 struct netif_handle_s {
+    wchar_t name[MAX_ADAPTER_NAME];
+    NET_LUID luid;
     WINTUN_ADAPTER_HANDLE adapter;
     WINTUN_SESSION_HANDLE session;
 
@@ -29,6 +34,10 @@ struct netif_handle_s {
 static int tun_close(struct netif_handle_s *tun);
 static int tun_setup_read(netif_handle tun, uv_loop_t *loop, packet_cb on_packet, void *netif);
 static ssize_t tun_write(netif_handle tun, const void *buf, size_t len);
+
+static int tun_add_route(netif_handle tun, const char *dest);
+static int tun_del_route(netif_handle tun, const char *dest);
+int set_dns(netif_handle tun, uint32_t dns_ip);
 
 static WINTUN_CREATE_ADAPTER_FUNC WintunCreateAdapter;
 static WINTUN_DELETE_ADAPTER_FUNC WintunDeleteAdapter;
@@ -108,8 +117,8 @@ netif_driver tun_open(struct uv_loop_s *loop, uint32_t tun_ip, uint32_t dns_ip, 
     }
 
     GUID adapterGuid;
-    IIDFromString(L"2cbfd72d-370c-43b0-b0cd-c8f092a7e134", &adapterGuid);
-    tun->adapter = WintunOpenAdapter(L"Ziti", L"tun0");
+    IIDFromString(ZITI_TUN_GUID, &adapterGuid);
+    tun->adapter = WintunOpenAdapter(L"Ziti", ZITI_TUN);
     if (!tun->adapter) {
         tun->adapter = WintunCreateAdapter(L"Ziti", L"tun0", &adapterGuid, NULL);
         if (!tun->adapter) {
@@ -122,16 +131,19 @@ netif_driver tun_open(struct uv_loop_s *loop, uint32_t tun_ip, uint32_t dns_ip, 
     DWORD Version = WintunGetRunningDriverVersion();
     ZITI_LOG(INFO, "Wintun v%u.%u loaded", (Version >> 16) & 0xff, (Version >> 0) & 0xff);
 
+    WintunGetAdapterLUID(tun->adapter, &tun->luid);
+    WintunGetAdapterName(tun->adapter, tun->name);
+
     MIB_UNICASTIPADDRESS_ROW AddressRow;
     InitializeUnicastIpAddressEntry(&AddressRow);
-    WintunGetAdapterLUID(tun->adapter, &AddressRow.InterfaceLuid);
+    AddressRow.InterfaceLuid = tun->luid;
     AddressRow.Address.Ipv4.sin_family = AF_INET;
     AddressRow.Address.Ipv4.sin_addr.S_un.S_addr = tun_ip;
     AddressRow.OnLinkPrefixLength = 16;
     DWORD err = CreateUnicastIpAddressEntry(&AddressRow);
     if (err != ERROR_SUCCESS && err != ERROR_OBJECT_ALREADY_EXISTS)
     {
-        ZITI_LOG(ERROR, "Failed to set IP address: %d", err);
+        snprintf(error, error_len, "Failed to set IP address: %d", err);
         tun_close(tun);
         return NULL;
     }
@@ -151,28 +163,22 @@ netif_driver tun_open(struct uv_loop_s *loop, uint32_t tun_ip, uint32_t dns_ip, 
         }
         return NULL;
     }
-    ZITI_LOG(DEBUG, "tun=%p, adapter=%p, session=%p", tun, tun->adapter, tun->session);
 
     driver->handle       = tun;
     driver->setup        = tun_setup_read;
     driver->write        = tun_write;
-    driver->add_route    = NULL; // TODO tun_add_route;
-    driver->delete_route = NULL; // TODO tun_delete_route;
+    driver->add_route    = tun_add_route;
+    driver->delete_route = tun_del_route;
     driver->close        = tun_close;
 
-//    run_command("ip link set %s up", tun->name);
-//    run_command("ip addr add %s dev %s", inet_ntoa(*(struct in_addr*)&tun_ip), tun->name);
-//
-//    if (dns_ip) {
-//        init_dns_maintainer(loop, tun->name, dns_ip);
-//    }
-//
-//    if (dns_block) {
-//        run_command("ip route add %s dev %s", dns_block, tun->name);
-//    }
+    if (dns_ip) {
+        set_dns(tun, dns_ip);
+    }
 
+    if (cidr) {
+        tun_add_route(tun, cidr);
+    }
 
-    //strcpy_s(error, error_len, "TODO: Implement me!");
     return driver;
 }
 
@@ -259,4 +265,62 @@ ssize_t tun_write(netif_handle tun, const void *buf, size_t len) {
     memcpy(packet, buf, len);
     WintunSendPacket(tun->session, packet);
     return 0;
+}
+
+static int parse_route(PIP_ADDRESS_PREFIX pfx, const char *route) {
+    int ip[4];
+    int bits;
+    sscanf(route, "%d.%d.%d.%d/%d", &ip[0], &ip[1], &ip[2], &ip[3], &bits);
+
+    pfx->PrefixLength = bits;
+    pfx->Prefix.Ipv4.sin_family = AF_INET;
+    pfx->Prefix.Ipv4.sin_addr.S_un.S_addr = (ip[0]) | (ip[1] << 8) | (ip[2] << 16) | (ip[3] << 24);
+}
+
+static DWORD tun_do_route(netif_handle tun, const char *dest, NTSTATUS (*rt_f)(const MIB_IPFORWARD_ROW2*)) {
+    MIB_IPFORWARD_ROW2 rt;
+    InitializeIpForwardEntry(&rt);
+
+    rt.InterfaceLuid = tun->luid;
+    parse_route(&rt.DestinationPrefix, dest);
+
+    return rt_f(&rt);
+}
+
+int tun_add_route(netif_handle tun, const char *dest) {
+    ZITI_LOG(INFO, "adding route: %s", dest);
+    DWORD rc = tun_do_route(tun, dest, CreateIpForwardEntry2);
+    if (rc != 0 && rc != ERROR_OBJECT_ALREADY_EXISTS) {
+        DWORD err = GetLastError();
+        ZITI_LOG(WARN, "failed to add route %d err=%d", rc, err);
+    }
+    return 0;
+}
+
+int tun_del_route(netif_handle tun, const char *dest) {
+    ZITI_LOG(INFO, "removing route: %s", dest);
+    DWORD rc = tun_do_route(tun, dest, DeleteIpForwardEntry2);
+    if (rc != 0) {
+        DWORD err = GetLastError();
+        ZITI_LOG(WARN, "failed to delete route %d err=%d", rc, err);
+    }
+    return 0;
+}
+
+int set_dns(netif_handle tun, uint32_t dns_ip) {
+    // TODO maybe call winapi SetInterfaceDnsSetting
+    char cmd[1024];
+    char ip[4];
+    memcpy(ip, &dns_ip, 4);
+    snprintf(cmd, sizeof(cmd),
+             "powershell -Command Set-DnsClientServerAddress "
+             "-InterfaceAlias %ls "
+             "-ServerAddress %d.%d.%d.%d",
+             tun->name, ip[0], ip[1], ip[2], ip[3]);
+    ZITI_LOG(INFO, "executing '%s'", cmd);
+    int rc = system(cmd);
+    if (rc != 0) {
+        ZITI_LOG(WARN, "set DNS: %d(err=%d)", rc, GetLastError());
+    }
+    return rc;
 }
