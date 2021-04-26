@@ -209,7 +209,7 @@ u8_t recv_udp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     TNL_LOG(INFO, "intercepted address[%s] client[%s] service[%s]", io->tnlr_io->intercepted, io->tnlr_io->client,
             intercept_ctx->service_name);
 
-    void *ziti_io_ctx = zdial(intercept_ctx, io);
+    void *ziti_io_ctx = zdial(intercept_ctx->app_intercept_ctx, io);
     if (ziti_io_ctx == NULL) {
         TNL_LOG(ERR, "ziti_dial(%s) failed", intercept_ctx->service_name);
         udp_remove(npcb);

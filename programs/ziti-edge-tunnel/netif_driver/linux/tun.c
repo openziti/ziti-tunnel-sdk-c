@@ -1,4 +1,5 @@
 #include <sys/ioctl.h>
+#include <sys/wait.h>
 //#include <linux/if.h>
 #include <linux/if_tun.h>
 #include <linux/netlink.h>
