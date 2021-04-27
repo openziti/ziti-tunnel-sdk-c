@@ -32,7 +32,11 @@ jobs:
     - name: make build dir
       run: cmake -E make_directory ${{runner.workspace}}/build
     - name: configure cmake
+      if: ${{ runner.os != 'Windows' }}
       run: cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=${{github.workspace}}/toolchains/${{matrix.toolchain}} -S ${{ github.workspace }} -B ${{runner.workspace}}/build
+    - name: configure cmake WIN
+      if: ${{ runner.os == 'Windows' }}
+      run: cmake -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=${{github.workspace}}/toolchains/${{matrix.toolchain}} -S ${{ github.workspace }} -B ${{runner.workspace}}/build
     - name: build
       run: cmake --build ${{runner.workspace}}/build --target bundle --verbose
     - uses: actions/upload-artifact@v2
