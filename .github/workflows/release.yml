@@ -96,6 +96,6 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.get_release.outputs.upload_url }}
-        asset_path: ${{runner.workspace}}/downloads/Windows-x86_64/ziti-edge-tunnel-Windows_x86_64.zip
+        asset_path: ${{runner.workspace}}/downloads/Windows-x86_64/ziti-edge-tunnel-win64_AMD64.zip
         asset_name: ziti-edge-tunnel-Windows_x86_64.zip
         asset_content_type: application/octet-stream
