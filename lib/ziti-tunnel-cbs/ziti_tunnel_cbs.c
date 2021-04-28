@@ -94,7 +94,7 @@ int ziti_sdk_c_close_write(void *io_ctx) {
     return 0;
 }
 
-static char *string_replace(char *source, size_t sourceSize, const char *substring, const char *with) {
+char *string_replace(char *source, size_t sourceSize, const char *substring, const char *with) {
     char *substring_source = strstr(source, substring);
     if (substring_source == NULL) {
         return NULL;

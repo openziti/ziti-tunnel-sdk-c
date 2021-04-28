@@ -668,7 +668,6 @@ static void listen_opts_from_host_cfg_v1(ziti_listen_opts *opts, const ziti_host
                      t->string_value);
         } else {
             opts->identity = t->string_value;
-            // todo resolve $tunneler_id refs
         }
     }
 
@@ -797,7 +796,7 @@ host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, uv_loop_t *loop, const char *service
                     free_hosted_service_ctx(host_ctx);
                     return NULL;
                 }
-                STAILQ_INSERT_TAIL(&host_ctx->addr_u.allowed_addresses, a, entries);
+                STAILQ_INSERT_TAIL(&host_ctx->allowed_source_addresses, a, entries);
             }
         }
             break;
@@ -825,6 +824,15 @@ host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, uv_loop_t *loop, const char *service
     ziti_connection serv;
     ziti_conn_init(ziti_ctx, &serv, host_ctx);
 
+    char listen_identity[128];
+    if (listen_opts_p != NULL) {
+        if (listen_opts_p->identity != NULL && listen_opts_p->identity[0] != '\0') {
+            const ziti_identity *zid = ziti_get_identity(ziti_ctx);
+            strncpy(listen_identity, listen_opts_p->identity, sizeof(listen_identity));
+            string_replace(listen_identity, sizeof(listen_identity), "$tunneler_id.name", zid->name);
+            listen_opts_p->identity = listen_identity;
+        }
+    }
     ziti_listen_with_options(serv, service_name, listen_opts_p, hosted_listen_cb, on_hosted_client_connect);
 
     return host_ctx;
