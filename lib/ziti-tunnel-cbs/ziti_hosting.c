@@ -829,8 +829,9 @@ host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, uv_loop_t *loop, const char *service
         if (listen_opts_p->identity != NULL && listen_opts_p->identity[0] != '\0') {
             const ziti_identity *zid = ziti_get_identity(ziti_ctx);
             strncpy(listen_identity, listen_opts_p->identity, sizeof(listen_identity));
-            string_replace(listen_identity, sizeof(listen_identity), "$tunneler_id.name", zid->name);
-            listen_opts_p->identity = listen_identity;
+            if (string_replace(listen_identity, sizeof(listen_identity), "$tunneler_id.name", zid->name) != NULL) {
+                listen_opts_p->identity = listen_identity;
+            }
         }
     }
     ziti_listen_with_options(serv, service_name, listen_opts_p, hosted_listen_cb, on_hosted_client_connect);
