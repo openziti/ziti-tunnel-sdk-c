@@ -107,6 +107,8 @@ netif_driver tun_open(struct uv_loop_s *loop, uint32_t tun_ip, uint32_t dns_ip, 
         strcpy_s(error, error_len, "Failed to load wintun.dll");
         return NULL;
     }
+    DWORD Version = WintunGetRunningDriverVersion();
+    ZITI_LOG(INFO, "Wintun v%u.%u loaded", (Version >> 16) & 0xff, (Version >> 0) & 0xff);
 
     struct netif_handle_s *tun = calloc(1, sizeof(struct netif_handle_s));
     if (tun == NULL) {
@@ -115,21 +117,20 @@ netif_driver tun_open(struct uv_loop_s *loop, uint32_t tun_ip, uint32_t dns_ip, 
         }
         return NULL;
     }
-
+    BOOL rr;
     GUID adapterGuid;
     IIDFromString(ZITI_TUN_GUID, &adapterGuid);
-    tun->adapter = WintunOpenAdapter(L"Ziti", ZITI_TUN);
-    if (!tun->adapter) {
-        tun->adapter = WintunCreateAdapter(L"Ziti", L"tun0", &adapterGuid, NULL);
-        if (!tun->adapter) {
-            DWORD err = GetLastError();
-            snprintf(error, error_len, "Failed to create adapter: %d", err);
-            return NULL;
-        }
+    WINTUN_ADAPTER_HANDLE adapter = WintunOpenAdapter(L"Ziti", ZITI_TUN);
+    if (adapter) {
+        WintunDeleteAdapter(adapter, true, &rr);
     }
 
-    DWORD Version = WintunGetRunningDriverVersion();
-    ZITI_LOG(INFO, "Wintun v%u.%u loaded", (Version >> 16) & 0xff, (Version >> 0) & 0xff);
+    tun->adapter = WintunCreateAdapter(L"Ziti", ZITI_TUN, &adapterGuid, NULL);
+    if (!tun->adapter) {
+        DWORD err = GetLastError();
+        snprintf(error, error_len, "Failed to create adapter: %d", err);
+        return NULL;
+    }
 
     WintunGetAdapterLUID(tun->adapter, &tun->luid);
     WintunGetAdapterName(tun->adapter, tun->name);
