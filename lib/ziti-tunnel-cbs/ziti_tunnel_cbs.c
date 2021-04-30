@@ -94,23 +94,33 @@ int ziti_sdk_c_close_write(void *io_ctx) {
     return 0;
 }
 
-static char *string_replace(char *source, size_t sourceSize, const char *substring, const char *with) {
+/**
+ * replaces first occurrence of _substring_ in _source_ with _with_.
+ * returns pointer to last replaced char in _source_, or NULL if no replacement was made.
+ */
+char *string_replace(char *source, size_t sourceSize, const char *substring, const char *with) {
+    /* look for first occurrence */
     char *substring_source = strstr(source, substring);
     if (substring_source == NULL) {
         return NULL;
     }
 
+    /* verify the replacement fits in _source_ */
     if (sourceSize < strlen(source) + (strlen(with) - strlen(substring)) + 1) {
         ZITI_LOG(DEBUG, "replacing %s with %s in %s - not enough space", substring, with, source);
         return NULL;
     }
 
+    /* shift the portion of _source_ that will be to the right of the replacement into position.
+     * memmove allows overlapping dest/src addresses
+     */
     memmove(
             substring_source + strlen(with),
             substring_source + strlen(substring),
             strlen(substring_source) - strlen(substring) + 1
     );
 
+    /* copy the replacement into place */
     memcpy(substring_source, with, strlen(with));
     return substring_source + strlen(with);
 }

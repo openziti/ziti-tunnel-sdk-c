@@ -80,6 +80,8 @@ typedef struct {
     int (*load_identity)(const char *path, command_cb, void *ctx);
 } ziti_tunnel_ctrl;
 
+char *string_replace(char *source, size_t sourceSize, const char *substring, const char *with);
+
 /** called by tunneler SDK after a client connection is intercepted */
 void *ziti_sdk_c_dial(const intercept_ctx_t *intercept_ctx, struct io_ctx_s *io);
 
