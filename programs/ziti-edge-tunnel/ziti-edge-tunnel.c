@@ -110,16 +110,35 @@ static int start_cmd_socket(uv_loop_t *l) {
     if (uv_is_active((const uv_handle_t *) &cmd_server)) {
         return 0;
     }
+#if _WIN32
+    static char sockfile[] = "\\\\.\\pipe\\ziti-edge-tunnel.sock";
+#elif __unix__
     static char sockfile[] = "/tmp/ziti-edge-tunnel.sock";
+#endif
     uv_fs_t fs;
     uv_fs_unlink(l, &fs, sockfile, NULL);
 
-    uv_pipe_init(l, &cmd_server, 0);
-    uv_pipe_bind(&cmd_server, sockfile);
-    uv_pipe_chmod(&cmd_server, UV_WRITABLE | UV_READABLE);
+#define CHECK_UV(op) do{ \
+    int uv_rc = (op);    \
+    if (uv_rc != 0) {    \
+       ZITI_LOG(WARN, "failed to open IPC socket op=[%s] err=%d[%s]", #op, uv_rc, uv_strerror(uv_rc));\
+       goto uv_err; \
+    }                    \
+    } while(0)
+
+
+    CHECK_UV(uv_pipe_init(l, &cmd_server, 0));
+    CHECK_UV(uv_pipe_bind(&cmd_server, sockfile));
+    CHECK_UV(uv_pipe_chmod(&cmd_server, UV_WRITABLE | UV_READABLE));
+
     uv_unref((uv_handle_t *) &cmd_server);
 
-    return uv_listen((uv_stream_t *) &cmd_server, 0, on_cmd_client);
+    CHECK_UV(uv_listen((uv_stream_t *) &cmd_server, 0, on_cmd_client));
+
+    return 0;
+
+    uv_err:
+    return -1;
 }
 
 static void load_identities(uv_work_t *wr) {
