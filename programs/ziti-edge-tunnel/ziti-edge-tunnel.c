@@ -112,7 +112,7 @@ static int start_cmd_socket(uv_loop_t *l) {
     }
 #if _WIN32
     static char sockfile[] = "\\\\.\\pipe\\ziti-edge-tunnel.sock";
-#elif __unix__
+#elif __unix__ || unix
     static char sockfile[] = "/tmp/ziti-edge-tunnel.sock";
 #endif
     uv_fs_t fs;
