@@ -148,23 +148,29 @@ int ziti_sdk_c_close_write(void *io_ctx) {
     return 0;
 }
 
-static char *string_replace(char *source, size_t sourceSize, const char *substring, const char *with) {
+char *string_replace(char *source, size_t sourceSize, const char *substring, const char *with) {
+    /* look for first occurrence */
     char *substring_source = strstr(source, substring);
     if (substring_source == NULL) {
         return NULL;
     }
 
+    /* verify the replacement fits in _source_ */
     if (sourceSize < strlen(source) + (strlen(with) - strlen(substring)) + 1) {
         ZITI_LOG(DEBUG, "replacing %s with %s in %s - not enough space", substring, with, source);
         return NULL;
     }
 
+    /* shift the portion of _source_ that will be to the right of the replacement into position.
+     * memmove allows overlapping dest/src addresses
+     */
     memmove(
             substring_source + strlen(with),
             substring_source + strlen(substring),
             strlen(substring_source) - strlen(substring) + 1
     );
 
+    /* copy the replacement into place */
     memcpy(substring_source, with, strlen(with));
     return substring_source + strlen(with);
 }
@@ -313,7 +319,7 @@ void * ziti_sdk_c_dial(const void *intercept_ctx, struct io_ctx_s *io) {
 
     char resolved_dial_identity[128];
     if (dial_opts.identity != NULL && dial_opts.identity[0] != '\0') {
-        const char *dst_addr = get_client_address(io->tnlr_io);
+        const char *dst_addr = get_intercepted_address(io->tnlr_io);
         if (dst_addr != NULL) {
             char *proto, *ip, *port;
             strncpy(resolved_dial_identity, dial_opts.identity, sizeof(resolved_dial_identity));

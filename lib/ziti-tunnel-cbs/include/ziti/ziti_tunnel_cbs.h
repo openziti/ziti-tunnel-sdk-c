@@ -84,6 +84,12 @@ typedef struct {
     int (*load_identity)(const char *path, command_cb, void *ctx);
 } ziti_tunnel_ctrl;
 
+/**
+  * replaces first occurrence of _substring_ in _source_ with _with_.
+  * returns pointer to last replaced char in _source_, or NULL if no replacement was made.
+  */
+char *string_replace(char *source, size_t sourceSize, const char *substring, const char *with);
+
 /** called by tunneler SDK after a client connection is intercepted */
 void *ziti_sdk_c_dial(const void *app_intercept_ctx, struct io_ctx_s *io);
 
