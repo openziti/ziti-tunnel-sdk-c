@@ -48,11 +48,15 @@ XX(id, string, none, id, __VA_ARGS__)
 #define TNL_IDENTITY_LIST(XX, ...) \
 XX(identities, tunnel_identity_info, array, identities, __VA_ARGS__)
 
+#define TNL_ZITI_DUMP(XX, ...) \
+XX(path, string, none, path, __VA_ARGS__)
+
 DECLARE_MODEL(tunnel_comand, TUNNEL_CMD)
 DECLARE_MODEL(tunnel_result, TUNNEL_CMD_RES)
 DECLARE_MODEL(tunnel_load_identity, TNL_LOAD_IDENTITY)
 DECLARE_MODEL(tunnel_identity_info, TNL_IDENTITY_INFO)
 DECLARE_MODEL(tunnel_identity_list, TNL_IDENTITY_LIST)
+DECLARE_MODEL(tunnel_ziti_dump, TNL_ZITI_DUMP)
 
 /** context passed through the tunneler SDK for network i/o */
 typedef struct ziti_io_ctx_s {

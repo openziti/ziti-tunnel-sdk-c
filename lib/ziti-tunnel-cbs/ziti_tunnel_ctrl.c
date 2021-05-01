@@ -103,6 +103,10 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
             return 0;
         }
 
+        case TunnelCommand_ZitiDump: {
+
+        }
+
         default: result.error = "command not implemented";
     }
 
@@ -277,3 +281,4 @@ IMPL_MODEL(tunnel_load_identity, TNL_LOAD_IDENTITY)
 
 IMPL_MODEL(tunnel_identity_info, TNL_IDENTITY_INFO)
 IMPL_MODEL(tunnel_identity_list, TNL_IDENTITY_LIST)
+IMPL_MODEL(tunnel_ziti_dump, TNL_ZITI_DUMP)

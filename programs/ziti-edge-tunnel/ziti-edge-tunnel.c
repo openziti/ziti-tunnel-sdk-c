@@ -490,6 +490,9 @@ static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required supe
                                           " are assigned in N.N.N.N/n format (default 100.64.0.0/10)\n"
                                           "\t-n|--dns <internal|dnsmasq=<dnsmasq opts>> DNS configuration setting (default internal)\n",
         run_opts, run);
+static CommandLine dump_cmd = make_command("dump", "dump the identities information", "[-i <identity>] [-p <dir>]",
+                                           "\t-i|--identity\tdump identity info\n"
+                                           "\t-p|--path\tdump into path\n", dump_opts, dump);
 static CommandLine ver_cmd = make_command("version", "show version", "[-v]", "\t-v\tshow verbose version information\n", version_opts, version);
 static CommandLine help_cmd = make_command("help", "this message", NULL, NULL, NULL, usage);
 static CommandLine *main_cmds[] = {
