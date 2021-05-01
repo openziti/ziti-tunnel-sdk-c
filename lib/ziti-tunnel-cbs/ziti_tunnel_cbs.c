@@ -319,7 +319,7 @@ void * ziti_sdk_c_dial(const void *intercept_ctx, struct io_ctx_s *io) {
 
     char resolved_dial_identity[128];
     if (dial_opts.identity != NULL && dial_opts.identity[0] != '\0') {
-        const char *dst_addr = get_client_address(io->tnlr_io);
+        const char *dst_addr = get_intercepted_address(io->tnlr_io);
         if (dst_addr != NULL) {
             char *proto, *ip, *port;
             strncpy(resolved_dial_identity, dial_opts.identity, sizeof(resolved_dial_identity));
