@@ -509,6 +509,7 @@ static void ziti_conn_close_cb(ziti_connection zc) {
     ZITI_LOG(VERBOSE, "nulled data for ziti_conn[%p]", zc);
 }
 
+/*
 int ziti_dump_to_file_cb(void* outputPath, const char *fmt,  ...) {
     static char line[4096];
 
@@ -534,8 +535,9 @@ int ziti_dump_to_file_cb(void* outputPath, const char *fmt,  ...) {
 void ziti_dump_to_file(void *ctx, char* outputPath) {
     //actually invoke ziti_dump here
     ziti_dump(ctx, ziti_dump_to_file_cb, outputPath);
-}
+}*/
 
+/*
 int ziti_dump_to_log_cb(void* stringsBuilder, const char *fmt,  ...) {
     static char line[4096];
 
@@ -559,3 +561,4 @@ void ziti_dump_to_log(void *ctx) {
     ZITI_LOG(INFO, "ziti dump to log %s", *buffer);
     free(buffer);
 }
+*/

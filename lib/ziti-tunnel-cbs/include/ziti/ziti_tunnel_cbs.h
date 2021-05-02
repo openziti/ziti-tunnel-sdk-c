@@ -49,6 +49,7 @@ XX(id, string, none, id, __VA_ARGS__)
 XX(identities, tunnel_identity_info, array, identities, __VA_ARGS__)
 
 #define TNL_ZITI_DUMP(XX, ...) \
+XX(id, string, none, id, __VA_ARGS__) \
 XX(path, string, none, path, __VA_ARGS__)
 
 DECLARE_MODEL(tunnel_comand, TUNNEL_CMD)

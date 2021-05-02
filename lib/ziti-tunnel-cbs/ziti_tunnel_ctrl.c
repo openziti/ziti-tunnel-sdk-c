@@ -57,6 +57,58 @@ const ziti_tunnel_ctrl* ziti_tunnel_init_cmd(uv_loop_t *loop, tunneler_context t
     return &CMD_CTX.ctrl;
 }
 
+
+int ziti_dump_to_log_cb(void* stringsBuilder, const char *fmt,  ...) {
+    static char line[4096];
+
+    va_list vargs;
+    va_start(vargs, fmt);
+    vsnprintf(line, sizeof(line), fmt, vargs);
+    va_end(vargs);
+
+    // write/append to the buffer
+    stringsBuilder = realloc(stringsBuilder, sizeof(stringsBuilder) + (sizeof(line) * sizeof(char)));
+    strncat(stringsBuilder, line, sizeof(line));
+    return 0;
+}
+
+void ziti_dump_to_log(void *ctx) {
+    char* buffer;
+    buffer = malloc(2*sizeof(char));
+    strcpy(buffer, "\n");
+    //actually invoke ziti_dump here
+    ziti_dump(ctx, ziti_dump_to_log_cb, buffer);
+    ZITI_LOG(INFO, "ziti dump to log %s", *buffer);
+    free(buffer);
+}
+
+int ziti_dump_to_file_cb(void* outputPath, const char *fmt,  ...) {
+    static char line[4096];
+
+    va_list vargs;
+    va_start(vargs, fmt);
+    vsnprintf(line, sizeof(line), fmt, vargs);
+    va_end(vargs);
+
+    // write/append to file
+    FILE *fp;
+    fp = fopen(outputPath, "a+");
+    if(fp == NULL)
+    {
+        ZITI_LOG(ERROR, "ziti dump to file failed. Unable to Read / Write / Create File");
+        return -1;
+    }
+    fputs(line, fp);
+    fclose(fp);
+
+    return 0;
+}
+
+void ziti_dump_to_file(void *ctx, char* outputPath) {
+    //actually invoke ziti_dump here
+    ziti_dump(ctx, ziti_dump_to_file_cb, outputPath);
+}
+
 static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
     tunnel_result result = {
             .success = false,
@@ -104,7 +156,21 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
         }
 
         case TunnelCommand_ZitiDump: {
+            printf("ziti dump started ");
+            tunnel_ziti_dump dump;
+            if (cmd->data != NULL && parse_tunnel_ziti_dump(&dump, cmd->data, strlen(cmd->data)) != 0) {
+                result.success = false;
+                result.error = "invalid command";
+                break;
+            }
+            if (dump.path == NULL) {
+                ziti_dump_to_log(ctx);
+            }
+            else {
+                ziti_dump_to_file(ctx, dump.path);
+            }
 
+            return 0;
         }
 
         default: result.error = "command not implemented";
@@ -127,7 +193,6 @@ static int load_identity(const char *path, command_cb cb, void *ctx) {
     uv_async_send(ar);
     return 0;
 }
-
 
 #if _WIN32
 #define realpath(rel, abs) _fullpath(abs, rel, PATH_MAX)

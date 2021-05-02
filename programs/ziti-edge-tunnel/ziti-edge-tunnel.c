@@ -40,6 +40,11 @@ static char *config_dir = NULL;
 static uv_pipe_t cmd_server;
 static uv_pipe_t cmd_conn;
 
+struct dump_option_s {
+    char *identity;
+    char *path;
+};
+
 // singleton
 static const ziti_tunnel_ctrl *CMD_CTRL;
 
@@ -492,6 +497,45 @@ static void enroll(int argc, char *argv[]) {
     uv_run(l, UV_RUN_DEFAULT);
 }
 
+static struct dump_option_s dump_options;
+
+static int dump_opts(int argc, char *argv[]) {
+    static struct option opts[] = {
+            {"identity", required_argument, NULL, 'i'},
+            {"path", optional_argument, NULL, 'p'},
+    };
+    int c, option_index, errors = 0;
+    optind = 0;
+
+    while ((c = getopt_long(argc, argv, "i:p:",
+                            opts, &option_index)) != -1) {
+        switch (c) {
+            case 'i':
+                dump_options.identity = realpath(optarg, NULL);
+                break;
+            case 'p':
+                dump_options.path = realpath(optarg, NULL);
+                break;
+            default: {
+                fprintf(stderr, "Unknown option '%c'\n", c);
+                errors++;
+                break;
+            }
+        }
+    }
+    if (errors > 0) {
+        commandline_help(stderr);
+        exit(1);
+    }
+    return optind;
+}
+
+static void dump(int argc, char *argv[]) {
+    if (dump_options.path != NULL) {
+        // put the message into the pipe uv
+    }
+}
+
 static CommandLine enroll_cmd = make_command("enroll", "enroll Ziti identity",
         "-j|--jwt <enrollment token> -i|--identity <identity> [-k|--key <private_key> [-c|--cert <certificate>]]",
         "\t-j|--jwt\tenrollment token file\n"
@@ -517,6 +561,7 @@ static CommandLine help_cmd = make_command("help", "this message", NULL, NULL, N
 static CommandLine *main_cmds[] = {
         &enroll_cmd,
         &run_cmd,
+        &dump_cmd,
         &ver_cmd,
         &help_cmd,
         NULL
