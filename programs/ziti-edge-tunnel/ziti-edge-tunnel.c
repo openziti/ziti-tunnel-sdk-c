@@ -48,6 +48,12 @@ struct dump_option_s {
 // singleton
 static const ziti_tunnel_ctrl *CMD_CTRL;
 
+#if _WIN32
+static char sockfile[] = "\\\\.\\pipe\\ziti-edge-tunnel.sock";
+#elif __unix__ || unix || ( __APPLE__ && __MACH__ )
+static char sockfile[] = "/tmp/ziti-edge-tunnel.sock";
+#endif
+
 static void cmd_alloc(uv_handle_t *s, size_t sugg, uv_buf_t *b) {
     b->base = malloc(sugg);
     b->len = sugg;
@@ -115,11 +121,7 @@ static int start_cmd_socket(uv_loop_t *l) {
     if (uv_is_active((const uv_handle_t *) &cmd_server)) {
         return 0;
     }
-#if _WIN32
-    static char sockfile[] = "\\\\.\\pipe\\ziti-edge-tunnel.sock";
-#elif __unix__ || unix || ( __APPLE__ && __MACH__ )
-    static char sockfile[] = "/tmp/ziti-edge-tunnel.sock";
-#endif
+
     uv_fs_t fs;
     uv_fs_unlink(l, &fs, sockfile, NULL);
 
@@ -136,9 +138,9 @@ static int start_cmd_socket(uv_loop_t *l) {
     CHECK_UV(uv_pipe_bind(&cmd_server, sockfile));
     CHECK_UV(uv_pipe_chmod(&cmd_server, UV_WRITABLE | UV_READABLE));
 
-    uv_unref((uv_handle_t *) &cmd_server);
-
     CHECK_UV(uv_listen((uv_stream_t *) &cmd_server, 0, on_cmd_client));
+
+    uv_unref((uv_handle_t *) &cmd_server);
 
     return 0;
 
@@ -497,7 +499,7 @@ static void enroll(int argc, char *argv[]) {
     uv_run(l, UV_RUN_DEFAULT);
 }
 
-static struct dump_option_s dump_options;
+static struct dump_option_s *dump_options;
 
 static int dump_opts(int argc, char *argv[]) {
     static struct option opts[] = {
@@ -511,10 +513,10 @@ static int dump_opts(int argc, char *argv[]) {
                             opts, &option_index)) != -1) {
         switch (c) {
             case 'i':
-                dump_options.identity = realpath(optarg, NULL);
+                dump_options->identity = realpath(optarg, NULL); // what is this realpath
                 break;
             case 'p':
-                dump_options.path = realpath(optarg, NULL);
+                dump_options->path = realpath(optarg, NULL);
                 break;
             default: {
                 fprintf(stderr, "Unknown option '%c'\n", c);
@@ -530,10 +532,67 @@ static int dump_opts(int argc, char *argv[]) {
     return optind;
 }
 
-static void dump(int argc, char *argv[]) {
-    if (dump_options.path != NULL) {
-        // put the message into the pipe uv
+typedef struct {
+    uv_write_t req;
+    uv_buf_t buf;
+} write_req_t;
+
+void free_write_req(uv_write_t *req) {
+    write_req_t *wr = (write_req_t*) req;
+    free(wr->buf.base);
+    free(wr);
+}
+
+void on_write(uv_write_t *req, int status) {
+    if (status < 0) {
+        fprintf(stderr, "write error %s\n", uv_err_name(status));
+    } else {
+        puts("done.");
     }
+    free_write_req(req);
+}
+
+void on_connect(uv_connect_t* connect, int status){
+    if (status < 0) {
+        puts("failed to connect!");
+    } else {
+        puts("connected!");
+    }
+}
+
+void send_message_to_pipe(uv_connect_t *connect, void *message) {
+    puts("sending msg...");
+
+    write_req_t *req = (write_req_t*) malloc(sizeof(write_req_t));
+    req->buf = uv_buf_init(message, sizeof(message));
+    uv_write((uv_write_t*) req, connect->handle, &req->buf, 1, on_write);
+}
+
+static void connect_cmd_socket(char sockfile[],uv_connect_t* connect, uv_pipe_t* handle) {
+    uv_loop_t *loop = uv_loop_new();
+    uv_pipe_init(loop, handle, 0);
+
+    uv_pipe_connect(connect, handle, sockfile, on_connect);
+    uv_run(loop, UV_RUN_DEFAULT);
+}
+
+static void close_cmd_socket(uv_pipe_t* handle) {
+    uv_unref(handle);
+    uv_close(handle, (uv_close_cb) free);
+}
+
+static void dump(int argc, char *argv[]) {
+    uv_pipe_t* handle = (uv_pipe_t*)malloc(sizeof(uv_pipe_t));
+    uv_connect_t* connect = (uv_connect_t*)malloc(sizeof(uv_connect_t));
+
+    connect_cmd_socket(sockfile, connect, handle);
+    send_message_to_pipe(connect, dump_options);
+
+    close_cmd_socket(handle);
+    if (dump_options->path != NULL) {
+        // send path to the command
+    }
+
 }
 
 static CommandLine enroll_cmd = make_command("enroll", "enroll Ziti identity",
