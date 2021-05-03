@@ -40,11 +40,6 @@ static char *config_dir = NULL;
 static uv_pipe_t cmd_server;
 static uv_pipe_t cmd_conn;
 
-struct dump_option_s {
-    char *identity;
-    char *path;
-};
-
 // singleton
 static const ziti_tunnel_ctrl *CMD_CTRL;
 
@@ -499,7 +494,7 @@ static void enroll(int argc, char *argv[]) {
     uv_run(l, UV_RUN_DEFAULT);
 }
 
-static struct dump_option_s *dump_options;
+static tunnel_comand *cmd;
 
 static int dump_opts(int argc, char *argv[]) {
     static struct option opts[] = {
@@ -509,13 +504,20 @@ static int dump_opts(int argc, char *argv[]) {
     int c, option_index, errors = 0;
     optind = 0;
 
+    tunnel_ziti_dump *dump_options;
+    dump_options = calloc(1, sizeof(dump_options));
+    cmd = calloc(1, sizeof(tunnel_comand));
+    cmd->command = TunnelCommand_ZitiDump;
+
     while ((c = getopt_long(argc, argv, "i:p:",
                             opts, &option_index)) != -1) {
         switch (c) {
             case 'i':
-                dump_options->identity = realpath(optarg, NULL); // what is this realpath
+                dump_options->id = malloc(sizeof(*optarg));
+                dump_options->id = realpath(optarg, NULL); // what is this realpath
                 break;
             case 'p':
+                dump_options->path = malloc(sizeof(*optarg));
                 dump_options->path = realpath(optarg, NULL);
                 break;
             default: {
@@ -529,6 +531,9 @@ static int dump_opts(int argc, char *argv[]) {
         commandline_help(stderr);
         exit(1);
     }
+    size_t json_len;
+    cmd->data = tunnel_ziti_dump_to_json(dump_options, MODEL_JSON_COMPACT, &json_len);
+
     return optind;
 }
 
@@ -547,7 +552,7 @@ void on_write(uv_write_t *req, int status) {
     if (status < 0) {
         fprintf(stderr, "write error %s\n", uv_err_name(status));
     } else {
-        puts("done.");
+        printf("done.");
     }
     free_write_req(req);
 }
@@ -560,20 +565,41 @@ void on_connect(uv_connect_t* connect, int status){
     }
 }
 
-void send_message_to_pipe(uv_connect_t *connect, void *message) {
+void send_message_to_pipe(uv_connect_t *connect, void *message, size_t datalen) {
     puts("sending msg...");
 
     write_req_t *req = (write_req_t*) malloc(sizeof(write_req_t));
-    req->buf = uv_buf_init(message, sizeof(message));
+    req->buf = uv_buf_init(message, datalen);
     uv_write((uv_write_t*) req, connect->handle, &req->buf, 1, on_write);
+}
+
+static void on_read_response(uv_stream_t *s, int status) {
+    if (status < 0) {
+        fprintf(stderr, "could not read response message error %s\n", uv_err_name(status));
+    } else {
+        printf("done.");
+    }
 }
 
 static void connect_cmd_socket(char sockfile[],uv_connect_t* connect, uv_pipe_t* handle) {
     uv_loop_t *loop = uv_loop_new();
-    uv_pipe_init(loop, handle, 0);
+
+#define CHECK_UV(op) do{ \
+    int uv_rc = (op);    \
+    if (uv_rc != 0) {    \
+       ZITI_LOG(WARN, "failed to open IPC socket op=[%s] err=%d[%s]", #op, uv_rc, uv_strerror(uv_rc));\
+       goto uv_err; \
+    }                    \
+    } while(0)
+
+    CHECK_UV(uv_pipe_init(loop, handle, 0));
 
     uv_pipe_connect(connect, handle, sockfile, on_connect);
-    uv_run(loop, UV_RUN_DEFAULT);
+    CHECK_UV(uv_run(loop, UV_RUN_DEFAULT));
+
+    uv_err:
+    return;
+
 }
 
 static void close_cmd_socket(uv_pipe_t* handle) {
@@ -586,12 +612,14 @@ static void dump(int argc, char *argv[]) {
     uv_connect_t* connect = (uv_connect_t*)malloc(sizeof(uv_connect_t));
 
     connect_cmd_socket(sockfile, connect, handle);
-    send_message_to_pipe(connect, dump_options);
+
+    size_t json_len;
+    char* json = tunnel_comand_to_json(cmd, MODEL_JSON_COMPACT, &json_len);
+    send_message_to_pipe(connect, json, json_len);
+
+    // read response message
 
     close_cmd_socket(handle);
-    if (dump_options->path != NULL) {
-        // send path to the command
-    }
 
 }
 
