@@ -18,7 +18,7 @@ limitations under the License.
 #include <ziti/ziti_log.h>
 
 #include "ziti_instance.h"
-
+#include "stdarg.h"
 #include <time.h>
 
 // temporary list to pass info between parse and run
@@ -169,9 +169,11 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
                     ziti_dump_to_log(inst->ztx);
                 } else {
                     const ziti_identity *identity = ziti_get_identity(inst->ztx);
-                    dump.path = realloc(dump.path, sizeof(dump.path) + (sizeof(identity->name) * sizeof(char)));
-                    strncat(dump.path, identity->name, sizeof(identity->name));
-                    ziti_dump_to_file(ctx, dump.path);
+                    // dump.path = realloc(dump.path, sizeof(dump.path) + (strlen(identity->name) * sizeof(char)));
+                    strncat(dump.path, "/", 1);
+                    strncat(dump.path, identity->name, strlen(identity->name));
+                    strncat(dump.path, ".ziti", 5);
+                    ziti_dump_to_file(inst->ztx, dump.path);
                 }
             }
             return 0;
