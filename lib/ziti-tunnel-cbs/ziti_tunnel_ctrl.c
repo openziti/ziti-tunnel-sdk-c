@@ -67,7 +67,6 @@ int ziti_dump_to_log_cb(void* stringsBuilder, const char *fmt,  ...) {
     va_end(vargs);
 
     // write/append to the buffer
-    stringsBuilder = realloc(stringsBuilder, sizeof(stringsBuilder) + (sizeof(line) * sizeof(char)));
     strncat(stringsBuilder, line, sizeof(line));
     return 0;
 }
@@ -78,7 +77,7 @@ void ziti_dump_to_log(void *ctx) {
     strcpy(buffer, "\n");
     //actually invoke ziti_dump here
     ziti_dump(ctx, ziti_dump_to_log_cb, buffer);
-    ZITI_LOG(INFO, "ziti dump to log %s", *buffer);
+    ZITI_LOG(INFO, "ziti dump to log %s", buffer);
     free(buffer);
 }
 
@@ -156,20 +155,25 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
         }
 
         case TunnelCommand_ZitiDump: {
-            printf("ziti dump started ");
+            ZITI_LOG(INFO, "ziti dump started ");
             tunnel_ziti_dump dump;
             if (cmd->data != NULL && parse_tunnel_ziti_dump(&dump, cmd->data, strlen(cmd->data)) != 0) {
                 result.success = false;
                 result.error = "invalid command";
                 break;
             }
-            if (dump.path == NULL) {
-                ziti_dump_to_log(ctx);
+            const char *key;
+            struct ziti_instance_s *inst;
+            MODEL_MAP_FOREACH(key, inst, &instances) {
+                if (dump.path == NULL) {
+                    ziti_dump_to_log(inst->ztx);
+                } else {
+                    const ziti_identity *identity = ziti_get_identity(inst->ztx);
+                    dump.path = realloc(dump.path, sizeof(dump.path) + (sizeof(identity->name) * sizeof(char)));
+                    strncat(dump.path, identity->name, sizeof(identity->name));
+                    ziti_dump_to_file(ctx, dump.path);
+                }
             }
-            else {
-                ziti_dump_to_file(ctx, dump.path);
-            }
-
             return 0;
         }
 

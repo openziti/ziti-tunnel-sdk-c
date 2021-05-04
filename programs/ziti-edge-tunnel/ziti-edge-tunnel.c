@@ -620,7 +620,7 @@ static void dump(int argc, char *argv[]) {
     // read response message
 
     close_cmd_socket(handle);
-
+    free(json);
 }
 
 static CommandLine enroll_cmd = make_command("enroll", "enroll Ziti identity",
