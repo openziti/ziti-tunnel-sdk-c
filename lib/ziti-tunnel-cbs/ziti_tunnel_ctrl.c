@@ -66,6 +66,9 @@ int ziti_dump_to_log_cb(void* stringsBuilder, const char *fmt,  ...) {
     vsnprintf(line, sizeof(line), fmt, vargs);
     va_end(vargs);
 
+    if (strlen(stringsBuilder) + strlen(line) > 4096) {
+        return -1;
+    }
     // write/append to the buffer
     strncat(stringsBuilder, line, sizeof(line));
     return 0;
@@ -73,8 +76,7 @@ int ziti_dump_to_log_cb(void* stringsBuilder, const char *fmt,  ...) {
 
 void ziti_dump_to_log(void *ctx) {
     char* buffer;
-    buffer = malloc(2*sizeof(char));
-    strcpy(buffer, "\n");
+    buffer = malloc(4096*sizeof(char));
     //actually invoke ziti_dump here
     ziti_dump(ctx, ziti_dump_to_log_cb, buffer);
     ZITI_LOG(INFO, "ziti dump to log %s", buffer);
@@ -98,6 +100,7 @@ int ziti_dump_to_file_cb(void* outputPath, const char *fmt,  ...) {
         return -1;
     }
     fputs(line, fp);
+    fflush(fp);
     fclose(fp);
 
     return 0;
@@ -155,6 +158,9 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
         }
 
         case TunnelCommand_ZitiDump: {
+            #ifndef MAXPATHLEN
+            #define MAXPATHLEN 1024
+            #endif
             ZITI_LOG(INFO, "ziti dump started ");
             tunnel_ziti_dump dump;
             if (cmd->data != NULL && parse_tunnel_ziti_dump(&dump, cmd->data, strlen(cmd->data)) != 0) {
@@ -165,17 +171,19 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
             const char *key;
             struct ziti_instance_s *inst;
             MODEL_MAP_FOREACH(key, inst, &instances) {
+                const ziti_identity *identity = ziti_get_identity(inst->ztx);
+                if (dump.id != NULL && strcmp(dump.id, identity->name) != 0) {
+                    continue;
+                }
                 if (dump.path == NULL) {
                     ziti_dump_to_log(inst->ztx);
                 } else {
-                    const ziti_identity *identity = ziti_get_identity(inst->ztx);
-                    // dump.path = realloc(dump.path, sizeof(dump.path) + (strlen(identity->name) * sizeof(char)));
-                    strncat(dump.path, "/", 1);
-                    strncat(dump.path, identity->name, strlen(identity->name));
-                    strncat(dump.path, ".ziti", 5);
-                    ziti_dump_to_file(inst->ztx, dump.path);
+                    char dump_path[MAXPATHLEN];
+                    snprintf(dump_path, sizeof(dump_path), "%s/%s.ziti", dump.path, identity->name);
+                    ziti_dump_to_file(inst->ztx, dump_path);
                 }
             }
+            ZITI_LOG(INFO, "ziti dump finished ");
             return 0;
         }
 

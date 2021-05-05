@@ -498,7 +498,7 @@ static tunnel_comand *cmd;
 
 static int dump_opts(int argc, char *argv[]) {
     static struct option opts[] = {
-            {"identity", required_argument, NULL, 'i'},
+            {"identity", optional_argument, NULL, 'i'},
             {"path", optional_argument, NULL, 'p'},
     };
     int c, option_index, errors = 0;
@@ -514,7 +514,7 @@ static int dump_opts(int argc, char *argv[]) {
         switch (c) {
             case 'i':
                 dump_options->id = malloc(sizeof(*optarg));
-                dump_options->id = realpath(optarg, NULL); // what is this realpath
+                dump_options->id = optarg;
                 break;
             case 'p':
                 dump_options->path = malloc(sizeof(*optarg));
