@@ -66,7 +66,7 @@ int ziti_dump_to_log_cb(void* stringsBuilder, const char *fmt,  ...) {
     vsnprintf(line, sizeof(line), fmt, vargs);
     va_end(vargs);
 
-    if (strlen(stringsBuilder) + strlen(line) > 4096) {
+    if (strlen(stringsBuilder) + strlen(line) > 8192) {
         return -1;
     }
     // write/append to the buffer
@@ -76,7 +76,7 @@ int ziti_dump_to_log_cb(void* stringsBuilder, const char *fmt,  ...) {
 
 void ziti_dump_to_log(void *ctx) {
     char* buffer;
-    buffer = malloc(4096*sizeof(char));
+    buffer = malloc(8192*sizeof(char));
     //actually invoke ziti_dump here
     ziti_dump(ctx, ziti_dump_to_log_cb, buffer);
     ZITI_LOG(INFO, "ziti dump to log %s", buffer);

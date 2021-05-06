@@ -135,9 +135,9 @@ static int start_cmd_socket(uv_loop_t *l) {
     CHECK_UV(uv_pipe_bind(&cmd_server, sockfile));
     CHECK_UV(uv_pipe_chmod(&cmd_server, UV_WRITABLE | UV_READABLE));
 
-    CHECK_UV(uv_listen((uv_stream_t *) &cmd_server, 0, on_cmd_client));
-
     uv_unref((uv_handle_t *) &cmd_server);
+
+    CHECK_UV(uv_listen((uv_stream_t *) &cmd_server, 0, on_cmd_client));
 
     return 0;
 
