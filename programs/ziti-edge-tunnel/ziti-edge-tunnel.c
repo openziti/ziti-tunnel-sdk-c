@@ -602,7 +602,6 @@ static void dump(int argc, char *argv[]) {
 
     send_message_to_pipe(connect, json, json_len);
     assert(0 == uv_run(loop, UV_RUN_DEFAULT));
-    printf("exiting program.\n");
 
     free(json);
 }

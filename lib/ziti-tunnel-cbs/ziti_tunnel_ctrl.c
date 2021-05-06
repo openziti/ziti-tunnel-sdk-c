@@ -83,7 +83,7 @@ void ziti_dump_to_log(void *ctx) {
     free(buffer);
 }
 
-int ziti_dump_to_file_cb(void* outputPath, const char *fmt,  ...) {
+int ziti_dump_to_file_cb(void* fp, const char *fmt,  ...) {
     static char line[4096];
 
     va_list vargs;
@@ -92,23 +92,32 @@ int ziti_dump_to_file_cb(void* outputPath, const char *fmt,  ...) {
     va_end(vargs);
 
     // write/append to file
-    FILE *fp;
-    fp = fopen(outputPath, "a+");
-    if(fp == NULL)
-    {
-        ZITI_LOG(ERROR, "ziti dump to file failed. Unable to Read / Write / Create File");
-        return -1;
-    }
     fputs(line, fp);
-    fflush(fp);
-    fclose(fp);
 
     return 0;
 }
 
-void ziti_dump_to_file(void *ctx, char* outputPath) {
+void ziti_dump_to_file(void *ctx, char* outputFile) {
+    FILE *fp;
+    fp = fopen(outputFile, "a+");
+    if(fp == NULL)
+    {
+        ZITI_LOG(ERROR, "ziti dump to file failed. Unable to Read / Write / Create File");
+        return;
+    }
+    uv_timeval64_t dump_time;
+    uv_gettimeofday(&dump_time);
+
+    char time_str[32];
+    struct tm* start_tm = gmtime(&dump_time.tv_sec);
+    strftime(time_str, sizeof(time_str), "%FT%T", start_tm);
+
+    fprintf(fp, "Ziti Dump starting: %s\n",time_str);
+
     //actually invoke ziti_dump here
-    ziti_dump(ctx, ziti_dump_to_file_cb, outputPath);
+    ziti_dump(ctx, ziti_dump_to_file_cb, fp);
+    fflush(fp);
+    fclose(fp);
 }
 
 static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
