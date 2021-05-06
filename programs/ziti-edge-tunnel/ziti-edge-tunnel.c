@@ -55,12 +55,6 @@ static void cmd_alloc(uv_handle_t *s, size_t sugg, uv_buf_t *b) {
     b->len = sugg;
 }
 
-uv_buf_t read_alloc(uv_handle_t *handle, size_t sugg, uv_buf_t *b) {
-    b->base = malloc(sugg);
-    b->len = sugg;
-    return *b;
-}
-
 static void on_cmd_write(uv_write_t *wr, int len) {
     if (wr->data) {
         free(wr->data);
@@ -79,12 +73,12 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
         uv_write_t *wr = calloc(1, sizeof(uv_write_t));
         wr->data = b.base;
         uv_write(wr, (uv_stream_t *) &cmd_conn, &b, 1, on_cmd_write);
-        ZITI_LOG(INFO, "resp data sent to the client");
     }
 }
 
 static void on_cmd(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
     if (len < 0) {
+        ZITI_LOG(WARN, "received from client - %s. Closing connection.", uv_err_name(len));
         uv_close((uv_handle_t *) s, NULL);
     } else {
         ZITI_LOG(INFO, "received cmd <%.*s>", (int) len, b->base);
@@ -561,24 +555,13 @@ static void on_response(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
     close_cmd_socket(s);
 }
 
-typedef struct {
-    uv_write_t req;
-    uv_buf_t buf;
-} write_req_t;
-
-void free_write_req(uv_write_t *req) {
-    write_req_t *wr = (write_req_t*) req;
-    // free(wr->buf.base);
-    free(wr);
-}
-
-void on_write(write_req_t* req, int status) {
+void on_write(uv_write_t* req, int status) {
     if (status < 0) {
         printf("Could not sent message to the tunnel. Write error %s\n", uv_err_name(status));
     } else {
         puts("Message sent to the tunnel.");
     }
-    free_write_req(req);
+    free(req);
 }
 
 void on_connect(uv_connect_t* connect, int status){
@@ -602,7 +585,7 @@ static uv_loop_t* connect_cmd_socket(char sockfile[],uv_connect_t* connect, uv_p
     assert(0 == uv_pipe_init(loop, client_handle, 1));
 
     uv_pipe_connect(connect, client_handle, sockfile, on_connect);
-    assert(0 == uv_read_start((uv_stream_t *) client_handle, read_alloc, on_response));
+    assert(0 == uv_read_start((uv_stream_t *) client_handle, cmd_alloc, on_response));
 
     return loop;
 }
