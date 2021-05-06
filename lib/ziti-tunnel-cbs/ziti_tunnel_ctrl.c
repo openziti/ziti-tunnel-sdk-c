@@ -187,9 +187,9 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
                 if (dump.path == NULL) {
                     ziti_dump_to_log(inst->ztx);
                 } else {
-                    char dump_path[MAXPATHLEN];
-                    snprintf(dump_path, sizeof(dump_path), "%s/%s.ziti", dump.path, identity->name);
-                    ziti_dump_to_file(inst->ztx, dump_path);
+                    char dump_file[MAXPATHLEN];
+                    snprintf(dump_file, sizeof(dump_file), "%s/%s.ziti", dump.path, identity->name);
+                    ziti_dump_to_file(inst->ztx, dump_file);
                 }
                 result.success = true;
             }
