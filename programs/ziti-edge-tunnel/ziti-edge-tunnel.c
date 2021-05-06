@@ -7,6 +7,7 @@
 #include "ziti/ziti_tunnel.h"
 #include "ziti/ziti_tunnel_cbs.h"
 #include <ziti/ziti_log.h>
+#include "assert.h"
 
 #if __APPLE__ && __MACH__
 #include "netif_driver/darwin/utun.h"
@@ -54,6 +55,12 @@ static void cmd_alloc(uv_handle_t *s, size_t sugg, uv_buf_t *b) {
     b->len = sugg;
 }
 
+uv_buf_t read_alloc(uv_handle_t *handle, size_t sugg, uv_buf_t *b) {
+    b->base = malloc(sugg);
+    b->len = sugg;
+    return *b;
+}
+
 static void on_cmd_write(uv_write_t *wr, int len) {
     if (wr->data) {
         free(wr->data);
@@ -72,6 +79,7 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
         uv_write_t *wr = calloc(1, sizeof(uv_write_t));
         wr->data = b.base;
         uv_write(wr, (uv_stream_t *) &cmd_conn, &b, 1, on_cmd_write);
+        ZITI_LOG(INFO, "resp data sent to the client");
     }
 }
 
@@ -537,6 +545,22 @@ static int dump_opts(int argc, char *argv[]) {
     return optind;
 }
 
+static void close_cmd_socket(uv_pipe_t* handle) {
+    uv_unref(handle);
+    uv_close(handle, (uv_close_cb) free);
+}
+
+static void on_response(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
+    if (len > 0) {
+        printf("received response <%.*s>\n", (int) len, b->base);
+    } else {
+        printf("Read Response error %s\n", uv_err_name(len));
+        printf("received response <%.*s>\n", (int) len, b->base);
+    }
+    uv_read_stop(s);
+    close_cmd_socket(s);
+}
+
 typedef struct {
     uv_write_t req;
     uv_buf_t buf;
@@ -544,15 +568,15 @@ typedef struct {
 
 void free_write_req(uv_write_t *req) {
     write_req_t *wr = (write_req_t*) req;
-    free(wr->buf.base);
+    // free(wr->buf.base);
     free(wr);
 }
 
-void on_write(uv_write_t *req, int status) {
+void on_write(write_req_t* req, int status) {
     if (status < 0) {
-        fprintf(stderr, "write error %s\n", uv_err_name(status));
+        printf("Could not sent message to the tunnel. Write error %s\n", uv_err_name(status));
     } else {
-        printf("done.");
+        puts("Message sent to the tunnel.");
     }
     free_write_req(req);
 }
@@ -566,60 +590,37 @@ void on_connect(uv_connect_t* connect, int status){
 }
 
 void send_message_to_pipe(uv_connect_t *connect, void *message, size_t datalen) {
-    puts("sending msg...");
-
-    write_req_t *req = (write_req_t*) malloc(sizeof(write_req_t));
-    req->buf = uv_buf_init(message, datalen);
-    uv_write((uv_write_t*) req, connect->handle, &req->buf, 1, on_write);
+    printf("Message...%s\n", message);
+    uv_write_t *req = (uv_write_t*) malloc(sizeof(uv_write_t));
+    uv_buf_t buf = uv_buf_init(message, datalen);
+    uv_write((uv_write_t*) req, connect->handle, &buf, 1,    on_write);
 }
 
-static void on_read_response(uv_stream_t *s, int status) {
-    if (status < 0) {
-        fprintf(stderr, "could not read response message error %s\n", uv_err_name(status));
-    } else {
-        printf("done.");
-    }
-}
+static uv_loop_t* connect_cmd_socket(char sockfile[],uv_connect_t* connect, uv_pipe_t* client_handle) {
+    uv_loop_t* loop = uv_default_loop();
 
-static void connect_cmd_socket(char sockfile[],uv_connect_t* connect, uv_pipe_t* handle) {
-    uv_loop_t *loop = uv_loop_new();
+    assert(0 == uv_pipe_init(loop, client_handle, 1));
 
-#define CHECK_UV(op) do{ \
-    int uv_rc = (op);    \
-    if (uv_rc != 0) {    \
-       ZITI_LOG(WARN, "failed to open IPC socket op=[%s] err=%d[%s]", #op, uv_rc, uv_strerror(uv_rc));\
-       goto uv_err; \
-    }                    \
-    } while(0)
+    uv_pipe_connect(connect, client_handle, sockfile, on_connect);
+    assert(0 == uv_read_start((uv_stream_t *) client_handle, read_alloc, on_response));
 
-    CHECK_UV(uv_pipe_init(loop, handle, 0));
-
-    uv_pipe_connect(connect, handle, sockfile, on_connect);
-    CHECK_UV(uv_run(loop, UV_RUN_DEFAULT));
-
-    uv_err:
-    return;
-
-}
-
-static void close_cmd_socket(uv_pipe_t* handle) {
-    uv_unref(handle);
-    uv_close(handle, (uv_close_cb) free);
+    return loop;
 }
 
 static void dump(int argc, char *argv[]) {
-    uv_pipe_t* handle = (uv_pipe_t*)malloc(sizeof(uv_pipe_t));
+
+    uv_pipe_t* client_handle = (uv_pipe_t*)malloc(sizeof(uv_pipe_t));
     uv_connect_t* connect = (uv_connect_t*)malloc(sizeof(uv_connect_t));
 
-    connect_cmd_socket(sockfile, connect, handle);
+    uv_loop_t* loop = connect_cmd_socket(sockfile, connect, client_handle);
 
     size_t json_len;
     char* json = tunnel_comand_to_json(cmd, MODEL_JSON_COMPACT, &json_len);
+
     send_message_to_pipe(connect, json, json_len);
+    assert(0 == uv_run(loop, UV_RUN_DEFAULT));
+    printf("exiting program.\n");
 
-    // read response message
-
-    close_cmd_socket(handle);
     free(json);
 }
 

@@ -182,9 +182,10 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
                     snprintf(dump_path, sizeof(dump_path), "%s/%s.ziti", dump.path, identity->name);
                     ziti_dump_to_file(inst->ztx, dump_path);
                 }
+                result.success = true;
             }
             ZITI_LOG(INFO, "ziti dump finished ");
-            return 0;
+            break;
         }
 
         default: result.error = "command not implemented";
