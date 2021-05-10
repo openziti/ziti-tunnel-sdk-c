@@ -501,7 +501,7 @@ static tunnel_comand *cmd;
 static int dump_opts(int argc, char *argv[]) {
     static struct option opts[] = {
             {"identity", optional_argument, NULL, 'i'},
-            {"path", optional_argument, NULL, 'p'},
+            {"dump_path", optional_argument, NULL, 'p'},
     };
     int c, option_index, errors = 0;
     optind = 0;
@@ -519,8 +519,8 @@ static int dump_opts(int argc, char *argv[]) {
                 dump_options->id = optarg;
                 break;
             case 'p':
-                dump_options->path = malloc(sizeof(*optarg));
-                dump_options->path = realpath(optarg, NULL);
+                dump_options->dump_path = malloc(sizeof(*optarg));
+                dump_options->dump_path = realpath(optarg, NULL);
                 break;
             default: {
                 fprintf(stderr, "Unknown option '%c'\n", c);
@@ -625,7 +625,7 @@ static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required supe
         run_opts, run);
 static CommandLine dump_cmd = make_command("dump", "dump the identities information", "[-i <identity>] [-p <dir>]",
                                            "\t-i|--identity\tdump identity info\n"
-                                           "\t-p|--path\tdump into path\n", dump_opts, dump);
+                                           "\t-p|--dump_path\tdump into path\n", dump_opts, dump);
 static CommandLine ver_cmd = make_command("version", "show version", "[-v]", "\t-v\tshow verbose version information\n", version_opts, version);
 static CommandLine help_cmd = make_command("help", "this message", NULL, NULL, NULL, usage);
 static CommandLine *main_cmds[] = {

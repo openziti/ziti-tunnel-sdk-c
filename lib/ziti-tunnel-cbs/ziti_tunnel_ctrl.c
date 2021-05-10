@@ -77,6 +77,7 @@ int ziti_dump_to_log_cb(void* stringsBuilder, const char *fmt,  ...) {
 void ziti_dump_to_log(void *ctx) {
     char* buffer;
     buffer = malloc(8192*sizeof(char));
+    buffer[0] = 0;
     //actually invoke ziti_dump here
     ziti_dump(ctx, ziti_dump_to_log_cb, buffer);
     ZITI_LOG(INFO, "ziti dump to log %s", buffer);
@@ -184,11 +185,11 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
                 if (dump.id != NULL && strcmp(dump.id, identity->name) != 0) {
                     continue;
                 }
-                if (dump.path == NULL) {
+                if (dump.dump_path == NULL) {
                     ziti_dump_to_log(inst->ztx);
                 } else {
                     char dump_file[MAXPATHLEN];
-                    snprintf(dump_file, sizeof(dump_file), "%s/%s.ziti", dump.path, identity->name);
+                    snprintf(dump_file, sizeof(dump_file), "%s/%s.ziti", dump.dump_path, identity->name);
                     ziti_dump_to_file(inst->ztx, dump_file);
                 }
                 result.success = true;
