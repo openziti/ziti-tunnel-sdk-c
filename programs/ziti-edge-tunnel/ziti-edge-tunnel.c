@@ -564,14 +564,6 @@ void on_write(uv_write_t* req, int status) {
     free(req);
 }
 
-void on_connect(uv_connect_t* connect, int status){
-    if (status < 0) {
-        puts("failed to connect!");
-    } else {
-        puts("connected!");
-    }
-}
-
 void send_message_to_pipe(uv_connect_t *connect, void *message, size_t datalen) {
     printf("Message...%s\n", message);
     uv_write_t *req = (uv_write_t*) malloc(sizeof(uv_write_t));
@@ -579,13 +571,27 @@ void send_message_to_pipe(uv_connect_t *connect, void *message, size_t datalen) 
     uv_write((uv_write_t*) req, connect->handle, &buf, 1,    on_write);
 }
 
-static uv_loop_t* connect_cmd_socket(char sockfile[],uv_connect_t* connect, uv_pipe_t* client_handle) {
+void on_connect(uv_connect_t* connect, int status){
+    if (status < 0) {
+        puts("failed to connect!");
+    } else {
+        puts("connected!");
+        assert(0 == uv_read_start((uv_stream_t *) connect->handle, cmd_alloc, on_response));
+
+        size_t json_len;
+        char* json = tunnel_comand_to_json(cmd, MODEL_JSON_COMPACT, &json_len);
+        send_message_to_pipe(connect, json, json_len);
+        free(json);
+
+    }
+}
+
+static uv_loop_t* connect_and_send_cmd(char sockfile[],uv_connect_t* connect, uv_pipe_t* client_handle) {
     uv_loop_t* loop = uv_default_loop();
 
-    assert(0 == uv_pipe_init(loop, client_handle, 1));
+    assert(0 == uv_pipe_init(loop, client_handle, 0));
 
     uv_pipe_connect(connect, client_handle, sockfile, on_connect);
-    assert(0 == uv_read_start((uv_stream_t *) client_handle, cmd_alloc, on_response));
 
     return loop;
 }
@@ -595,15 +601,9 @@ static void dump(int argc, char *argv[]) {
     uv_pipe_t* client_handle = (uv_pipe_t*)malloc(sizeof(uv_pipe_t));
     uv_connect_t* connect = (uv_connect_t*)malloc(sizeof(uv_connect_t));
 
-    uv_loop_t* loop = connect_cmd_socket(sockfile, connect, client_handle);
+    uv_loop_t* loop = connect_and_send_cmd(sockfile, connect, client_handle);
 
-    size_t json_len;
-    char* json = tunnel_comand_to_json(cmd, MODEL_JSON_COMPACT, &json_len);
-
-    send_message_to_pipe(connect, json, json_len);
     assert(0 == uv_run(loop, UV_RUN_DEFAULT));
-
-    free(json);
 }
 
 static CommandLine enroll_cmd = make_command("enroll", "enroll Ziti identity",
