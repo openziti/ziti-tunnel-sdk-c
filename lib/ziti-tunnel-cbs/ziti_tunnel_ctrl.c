@@ -21,6 +21,10 @@ limitations under the License.
 #include "stdarg.h"
 #include <time.h>
 
+#ifndef MAXBUFFERLEN
+#define MAXBUFFERLEN 8192
+#endif
+
 // temporary list to pass info between parse and run
 static LIST_HEAD(instance_list, ziti_instance_s) instance_init_list;
 
@@ -66,7 +70,7 @@ int ziti_dump_to_log_cb(void* stringsBuilder, const char *fmt,  ...) {
     vsnprintf(line, sizeof(line), fmt, vargs);
     va_end(vargs);
 
-    if (strlen(stringsBuilder) + strlen(line) > 8192) {
+    if (strlen(stringsBuilder) + strlen(line) > MAXBUFFERLEN) {
         return -1;
     }
     // write/append to the buffer
@@ -76,7 +80,7 @@ int ziti_dump_to_log_cb(void* stringsBuilder, const char *fmt,  ...) {
 
 void ziti_dump_to_log(void *ctx) {
     char* buffer;
-    buffer = malloc(8192*sizeof(char));
+    buffer = malloc(MAXBUFFERLEN*sizeof(char));
     buffer[0] = 0;
     //actually invoke ziti_dump here
     ziti_dump(ctx, ziti_dump_to_log_cb, buffer);
@@ -89,11 +93,9 @@ int ziti_dump_to_file_cb(void* fp, const char *fmt,  ...) {
 
     va_list vargs;
     va_start(vargs, fmt);
-    vsnprintf(line, sizeof(line), fmt, vargs);
-    va_end(vargs);
-
     // write/append to file
-    fputs(line, fp);
+    vfprintf(fp, fmt, vargs);
+    va_end(vargs);
 
     return 0;
 }

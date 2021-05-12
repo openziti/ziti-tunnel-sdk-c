@@ -506,8 +506,7 @@ static int dump_opts(int argc, char *argv[]) {
     int c, option_index, errors = 0;
     optind = 0;
 
-    tunnel_ziti_dump *dump_options;
-    dump_options = calloc(1, sizeof(dump_options));
+    tunnel_ziti_dump *dump_options = calloc(1, sizeof(tunnel_ziti_dump));
     cmd = calloc(1, sizeof(tunnel_comand));
     cmd->command = TunnelCommand_ZitiDump;
 
@@ -515,11 +514,9 @@ static int dump_opts(int argc, char *argv[]) {
                             opts, &option_index)) != -1) {
         switch (c) {
             case 'i':
-                dump_options->id = malloc(sizeof(*optarg));
                 dump_options->id = optarg;
                 break;
             case 'p':
-                dump_options->dump_path = malloc(sizeof(*optarg));
                 dump_options->dump_path = realpath(optarg, NULL);
                 break;
             default: {
@@ -582,7 +579,7 @@ void on_connect(uv_connect_t* connect, int status){
         char* json = tunnel_comand_to_json(cmd, MODEL_JSON_COMPACT, &json_len);
         send_message_to_pipe(connect, json, json_len);
         free(json);
-
+        free(cmd);
     }
 }
 
@@ -603,7 +600,10 @@ static void dump(int argc, char *argv[]) {
 
     uv_loop_t* loop = connect_and_send_cmd(sockfile, connect, client_handle);
 
-    assert(0 == uv_run(loop, UV_RUN_DEFAULT));
+    int res = uv_run(loop, UV_RUN_DEFAULT);
+    if (res != 0) {
+        printf("UV run error %s\n", uv_err_name(res));
+    }
 }
 
 static CommandLine enroll_cmd = make_command("enroll", "enroll Ziti identity",
