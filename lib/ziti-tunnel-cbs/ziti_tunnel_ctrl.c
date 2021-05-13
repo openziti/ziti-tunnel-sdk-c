@@ -62,7 +62,7 @@ const ziti_tunnel_ctrl* ziti_tunnel_init_cmd(uv_loop_t *loop, tunneler_context t
 }
 
 
-int ziti_dump_to_log_cb(void* stringsBuilder, const char *fmt,  ...) {
+int ziti_dump_to_log_op(void* stringsBuilder, const char *fmt,  ...) {
     static char line[4096];
 
     va_list vargs;
@@ -83,12 +83,12 @@ void ziti_dump_to_log(void *ctx) {
     buffer = malloc(MAXBUFFERLEN*sizeof(char));
     buffer[0] = 0;
     //actually invoke ziti_dump here
-    ziti_dump(ctx, ziti_dump_to_log_cb, buffer);
+    ziti_dump(ctx, ziti_dump_to_log_op, buffer);
     ZITI_LOG(INFO, "ziti dump to log %s", buffer);
     free(buffer);
 }
 
-int ziti_dump_to_file_cb(void* fp, const char *fmt,  ...) {
+int ziti_dump_to_file_op(void* fp, const char *fmt,  ...) {
     static char line[4096];
 
     va_list vargs;
@@ -118,7 +118,7 @@ void ziti_dump_to_file(void *ctx, char* outputFile) {
     fprintf(fp, "Ziti Dump starting: %s\n",time_str);
 
     //actually invoke ziti_dump here
-    ziti_dump(ctx, ziti_dump_to_file_cb, fp);
+    ziti_dump(ctx, ziti_dump_to_file_op, fp);
     fflush(fp);
     fclose(fp);
 }
