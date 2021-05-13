@@ -538,7 +538,7 @@ static int dump_opts(int argc, char *argv[]) {
 
 static void close_cmd_socket(uv_pipe_t* handle) {
     uv_unref(handle);
-    uv_close(handle, (uv_close_cb) free);
+    uv_close(handle, NULL);
 }
 
 static void on_response(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
@@ -595,10 +595,10 @@ static uv_loop_t* connect_and_send_cmd(char sockfile[],uv_connect_t* connect, uv
 
 static void dump(int argc, char *argv[]) {
 
-    uv_pipe_t* client_handle = (uv_pipe_t*)malloc(sizeof(uv_pipe_t));
+    uv_pipe_t client_handle;
     uv_connect_t* connect = (uv_connect_t*)malloc(sizeof(uv_connect_t));
 
-    uv_loop_t* loop = connect_and_send_cmd(sockfile, connect, client_handle);
+    uv_loop_t* loop = connect_and_send_cmd(sockfile, connect, &client_handle);
 
     int res = uv_run(loop, UV_RUN_DEFAULT);
     if (res != 0) {
