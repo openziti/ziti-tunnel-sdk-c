@@ -7,7 +7,6 @@
 #include "ziti/ziti_tunnel.h"
 #include "ziti/ziti_tunnel_cbs.h"
 #include <ziti/ziti_log.h>
-#include "assert.h"
 
 #if __APPLE__ && __MACH__
 #include "netif_driver/darwin/utun.h"
@@ -573,7 +572,10 @@ void on_connect(uv_connect_t* connect, int status){
         puts("failed to connect!");
     } else {
         puts("connected!");
-        assert(0 == uv_read_start((uv_stream_t *) connect->handle, cmd_alloc, on_response));
+        int res = uv_read_start((uv_stream_t *) connect->handle, cmd_alloc, on_response);
+        if (res != 0) {
+            printf("UV read error %s\n", uv_err_name(res));
+        }
 
         size_t json_len;
         char* json = tunnel_comand_to_json(cmd, MODEL_JSON_COMPACT, &json_len);
@@ -586,7 +588,11 @@ void on_connect(uv_connect_t* connect, int status){
 static uv_loop_t* connect_and_send_cmd(char sockfile[],uv_connect_t* connect, uv_pipe_t* client_handle) {
     uv_loop_t* loop = uv_default_loop();
 
-    assert(0 == uv_pipe_init(loop, client_handle, 0));
+    int res = uv_pipe_init(loop, client_handle, 0);
+    if (res != 0) {
+        printf("UV client handle init failed %s\n", uv_err_name(res));
+        return NULL;
+    }
 
     uv_pipe_connect(connect, client_handle, sockfile, on_connect);
 
@@ -599,6 +605,11 @@ static void dump(int argc, char *argv[]) {
     uv_connect_t* connect = (uv_connect_t*)malloc(sizeof(uv_connect_t));
 
     uv_loop_t* loop = connect_and_send_cmd(sockfile, connect, &client_handle);
+
+    if (loop == NULL) {
+        printf("Cannot run UV loop, loop is null");
+        return;
+    }
 
     int res = uv_run(loop, UV_RUN_DEFAULT);
     if (res != 0) {
