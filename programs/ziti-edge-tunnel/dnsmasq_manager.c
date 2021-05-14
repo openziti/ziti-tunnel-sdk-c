@@ -19,6 +19,12 @@ limitations under the License.
 #include <stdlib.h>
 #include <string.h>
 
+#if _WIN32
+#ifndef PATH_MAX
+#define PATH_MAX MAX_PATH
+#endif
+#endif
+
 static int apply_address(dns_manager *dns, const char *hostname, const char *ip);
 
 struct dnsmasq_config {

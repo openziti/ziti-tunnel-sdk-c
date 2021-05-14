@@ -126,7 +126,7 @@ static int load_identity(const char *path, command_cb cb, void *ctx) {
 
 
 #if _WIN32
-#define realpath(rel, abs) _fullpath(abs, rel, PATH_MAX)
+#define realpath(rel, abs) _fullpath(abs, rel, MAX_PATH)
 #endif
 
 static struct ziti_instance_s *new_ziti_instance(const char *path) {

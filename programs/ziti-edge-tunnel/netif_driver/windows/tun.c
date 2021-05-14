@@ -11,6 +11,8 @@
 #include <ziti/ziti_log.h>
 #include <netioapi.h>
 #include <iphlpapi.h>
+#include <stdlib.h>
+#include <combaseapi.h>
 
 #include "tun.h"
 
