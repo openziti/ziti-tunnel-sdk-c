@@ -18,7 +18,7 @@ endif()
 if (MSVC)
     message("using visual studio")
     FetchContent_Declare(win-c
-            GIT_REPOSITORY https://github.com/ekoby/win-c.git
+            GIT_REPOSITORY https://github.com/netfoundry/win-c.git
             GIT_TAG master
             )
     FetchContent_MakeAvailable(win-c)
