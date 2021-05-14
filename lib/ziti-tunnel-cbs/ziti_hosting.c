@@ -28,6 +28,13 @@ limitations under the License.
 #include <memory.h>
 #include <ziti/ziti_tunnel_cbs.h>
 
+#if _WIN32
+#ifndef strcasecmp
+#define strcasecmp(a,b) stricmp(a,b)
+#endif
+#endif
+
+
 /********** hosting **********/
 
 
