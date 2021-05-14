@@ -3,8 +3,13 @@
 #include <stdint.h>
 #include <ziti/netif_driver.h>
 
+#ifndef _Out_cap_c_
 #define _Out_cap_c_(n)
+#endif
+
+#ifndef _Ret_bytecount_
 #define _Ret_bytecount_(n)
+#endif
 
 #include <wintun.h>
 #include <stdbool.h>
@@ -280,7 +285,9 @@ static int parse_route(PIP_ADDRESS_PREFIX pfx, const char *route) {
     pfx->Prefix.Ipv4.sin_addr.S_un.S_addr = (ip[0]) | (ip[1] << 8) | (ip[2] << 16) | (ip[3] << 24);
 }
 
-static DWORD tun_do_route(netif_handle tun, const char *dest, NTSTATUS (*rt_f)(const MIB_IPFORWARD_ROW2*)) {
+typedef NTSTATUS(__stdcall *route_f)(const MIB_IPFORWARD_ROW2*);
+
+static DWORD tun_do_route(netif_handle tun, const char *dest, route_f rt_f) {
     MIB_IPFORWARD_ROW2 rt;
     InitializeIpForwardEntry(&rt);
 
