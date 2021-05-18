@@ -408,6 +408,9 @@ static ziti_enroll_opts enroll_opts;
 static char* config_file;
 
 #if _WIN32
+#ifndef PATH_MAX
+#define PATH_MAX MAX_PATH
+#endif
 #define realpath(rel, abs) _fullpath(abs, rel, PATH_MAX)
 #endif
 
