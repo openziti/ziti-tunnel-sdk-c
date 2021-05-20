@@ -538,25 +538,19 @@ static int dump_opts(int argc, char *argv[]) {
     return optind;
 }
 
-static void close_cmd_socket(uv_pipe_t* handle) {
-    uv_unref(handle);
-    uv_close(handle, NULL);
-}
-
 static void on_response(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
     if (len > 0) {
         printf("received response <%.*s>\n", (int) len, b->base);
     } else {
-        printf("Read Response error %s\n", uv_err_name(len));
-        printf("received response <%.*s>\n", (int) len, b->base);
+        fprintf(stderr,"Read Response error %s\n", uv_err_name(len));
     }
     uv_read_stop(s);
-    close_cmd_socket(s);
+    uv_close(s, NULL);
 }
 
 void on_write(uv_write_t* req, int status) {
     if (status < 0) {
-        printf("Could not sent message to the tunnel. Write error %s\n", uv_err_name(status));
+        fprintf(stderr,"Could not sent message to the tunnel. Write error %s\n", uv_err_name(status));
     } else {
         puts("Message sent to the tunnel.");
     }
