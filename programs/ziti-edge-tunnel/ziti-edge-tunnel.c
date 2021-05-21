@@ -43,6 +43,12 @@ static uv_pipe_t cmd_conn;
 // singleton
 static const ziti_tunnel_ctrl *CMD_CTRL;
 
+#if _WIN32
+static char sockfile[] = "\\\\.\\pipe\\ziti-edge-tunnel.sock";
+#elif __unix__ || unix || ( __APPLE__ && __MACH__ )
+static char sockfile[] = "/tmp/ziti-edge-tunnel.sock";
+#endif
+
 static void cmd_alloc(uv_handle_t *s, size_t sugg, uv_buf_t *b) {
     b->base = malloc(sugg);
     b->len = sugg;
@@ -71,6 +77,7 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
 
 static void on_cmd(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
     if (len < 0) {
+        ZITI_LOG(WARN, "received from client - %s. Closing connection.", uv_err_name(len));
         uv_close((uv_handle_t *) s, NULL);
     } else {
         ZITI_LOG(INFO, "received cmd <%.*s>", (int) len, b->base);
@@ -110,11 +117,7 @@ static int start_cmd_socket(uv_loop_t *l) {
     if (uv_is_active((const uv_handle_t *) &cmd_server)) {
         return 0;
     }
-#if _WIN32
-    static char sockfile[] = "\\\\.\\pipe\\ziti-edge-tunnel.sock";
-#elif __unix__ || unix || ( __APPLE__ && __MACH__ )
-    static char sockfile[] = "/tmp/ziti-edge-tunnel.sock";
-#endif
+
     uv_fs_t fs;
     uv_fs_unlink(l, &fs, sockfile, NULL);
 
@@ -495,6 +498,122 @@ static void enroll(int argc, char *argv[]) {
     uv_run(l, UV_RUN_DEFAULT);
 }
 
+static tunnel_comand *cmd;
+
+static int dump_opts(int argc, char *argv[]) {
+    static struct option opts[] = {
+            {"identity", optional_argument, NULL, 'i'},
+            {"dump_path", optional_argument, NULL, 'p'},
+    };
+    int c, option_index, errors = 0;
+    optind = 0;
+
+    tunnel_ziti_dump *dump_options = calloc(1, sizeof(tunnel_ziti_dump));
+    cmd = calloc(1, sizeof(tunnel_comand));
+    cmd->command = TunnelCommand_ZitiDump;
+
+    while ((c = getopt_long(argc, argv, "i:p:",
+                            opts, &option_index)) != -1) {
+        switch (c) {
+            case 'i':
+                dump_options->id = optarg;
+                break;
+            case 'p':
+                dump_options->dump_path = realpath(optarg, NULL);
+                break;
+            default: {
+                fprintf(stderr, "Unknown option '%c'\n", c);
+                errors++;
+                break;
+            }
+        }
+    }
+    if (errors > 0) {
+        commandline_help(stderr);
+        exit(1);
+    }
+    size_t json_len;
+    cmd->data = tunnel_ziti_dump_to_json(dump_options, MODEL_JSON_COMPACT, &json_len);
+
+    return optind;
+}
+
+static void on_response(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
+    if (len > 0) {
+        printf("received response <%.*s>\n", (int) len, b->base);
+    } else {
+        fprintf(stderr,"Read Response error %s\n", uv_err_name(len));
+    }
+    uv_read_stop(s);
+    uv_close(s, NULL);
+}
+
+void on_write(uv_write_t* req, int status) {
+    if (status < 0) {
+        fprintf(stderr,"Could not sent message to the tunnel. Write error %s\n", uv_err_name(status));
+    } else {
+        puts("Message sent to the tunnel.");
+    }
+    free(req);
+}
+
+void send_message_to_pipe(uv_connect_t *connect, void *message, size_t datalen) {
+    printf("Message...%s\n", message);
+    uv_write_t *req = (uv_write_t*) malloc(sizeof(uv_write_t));
+    uv_buf_t buf = uv_buf_init(message, datalen);
+    uv_write((uv_write_t*) req, connect->handle, &buf, 1,    on_write);
+}
+
+void on_connect(uv_connect_t* connect, int status){
+    if (status < 0) {
+        puts("failed to connect!");
+    } else {
+        puts("connected!");
+        int res = uv_read_start((uv_stream_t *) connect->handle, cmd_alloc, on_response);
+        if (res != 0) {
+            printf("UV read error %s\n", uv_err_name(res));
+        }
+
+        size_t json_len;
+        char* json = tunnel_comand_to_json(cmd, MODEL_JSON_COMPACT, &json_len);
+        send_message_to_pipe(connect, json, json_len);
+        free(json);
+        free(cmd);
+    }
+}
+
+static uv_loop_t* connect_and_send_cmd(char sockfile[],uv_connect_t* connect, uv_pipe_t* client_handle) {
+    uv_loop_t* loop = uv_default_loop();
+
+    int res = uv_pipe_init(loop, client_handle, 0);
+    if (res != 0) {
+        printf("UV client handle init failed %s\n", uv_err_name(res));
+        return NULL;
+    }
+
+    uv_pipe_connect(connect, client_handle, sockfile, on_connect);
+
+    return loop;
+}
+
+static void dump(int argc, char *argv[]) {
+
+    uv_pipe_t client_handle;
+    uv_connect_t* connect = (uv_connect_t*)malloc(sizeof(uv_connect_t));
+
+    uv_loop_t* loop = connect_and_send_cmd(sockfile, connect, &client_handle);
+
+    if (loop == NULL) {
+        printf("Cannot run UV loop, loop is null");
+        return;
+    }
+
+    int res = uv_run(loop, UV_RUN_DEFAULT);
+    if (res != 0) {
+        printf("UV run error %s\n", uv_err_name(res));
+    }
+}
+
 static CommandLine enroll_cmd = make_command("enroll", "enroll Ziti identity",
         "-j|--jwt <enrollment token> -i|--identity <identity> [-k|--key <private_key> [-c|--cert <certificate>]]",
         "\t-j|--jwt\tenrollment token file\n"
@@ -512,11 +631,15 @@ static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required supe
                                           " are assigned in N.N.N.N/n format (default 100.64.0.0/10)\n"
                                           "\t-n|--dns <internal|dnsmasq=<dnsmasq opts>> DNS configuration setting (default internal)\n",
         run_opts, run);
+static CommandLine dump_cmd = make_command("dump", "dump the identities information", "[-i <identity>] [-p <dir>]",
+                                           "\t-i|--identity\tdump identity info\n"
+                                           "\t-p|--dump_path\tdump into path\n", dump_opts, dump);
 static CommandLine ver_cmd = make_command("version", "show version", "[-v]", "\t-v\tshow verbose version information\n", version_opts, version);
 static CommandLine help_cmd = make_command("help", "this message", NULL, NULL, NULL, usage);
 static CommandLine *main_cmds[] = {
         &enroll_cmd,
         &run_cmd,
+        &dump_cmd,
         &ver_cmd,
         &help_cmd,
         NULL

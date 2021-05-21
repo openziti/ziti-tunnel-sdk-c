@@ -18,8 +18,12 @@ limitations under the License.
 #include <ziti/ziti_log.h>
 
 #include "ziti_instance.h"
-
+#include "stdarg.h"
 #include <time.h>
+
+#ifndef MAXBUFFERLEN
+#define MAXBUFFERLEN 8192
+#endif
 
 // temporary list to pass info between parse and run
 static LIST_HEAD(instance_list, ziti_instance_s) instance_init_list;
@@ -55,6 +59,68 @@ const ziti_tunnel_ctrl* ziti_tunnel_init_cmd(uv_loop_t *loop, tunneler_context t
 #endif
 
     return &CMD_CTX.ctrl;
+}
+
+
+int ziti_dump_to_log_op(void* stringsBuilder, const char *fmt,  ...) {
+    static char line[4096];
+
+    va_list vargs;
+    va_start(vargs, fmt);
+    vsnprintf(line, sizeof(line), fmt, vargs);
+    va_end(vargs);
+
+    if (strlen(stringsBuilder) + strlen(line) > MAXBUFFERLEN) {
+        return -1;
+    }
+    // write/append to the buffer
+    strncat(stringsBuilder, line, sizeof(line));
+    return 0;
+}
+
+void ziti_dump_to_log(void *ctx) {
+    char* buffer;
+    buffer = malloc(MAXBUFFERLEN*sizeof(char));
+    buffer[0] = 0;
+    //actually invoke ziti_dump here
+    ziti_dump(ctx, ziti_dump_to_log_op, buffer);
+    ZITI_LOG(INFO, "ziti dump to log %s", buffer);
+    free(buffer);
+}
+
+int ziti_dump_to_file_op(void* fp, const char *fmt,  ...) {
+    static char line[4096];
+
+    va_list vargs;
+    va_start(vargs, fmt);
+    // write/append to file
+    vfprintf(fp, fmt, vargs);
+    va_end(vargs);
+
+    return 0;
+}
+
+void ziti_dump_to_file(void *ctx, char* outputFile) {
+    FILE *fp;
+    fp = fopen(outputFile, "a+");
+    if(fp == NULL)
+    {
+        ZITI_LOG(ERROR, "ziti dump to file failed. Unable to Read / Write / Create File");
+        return;
+    }
+    uv_timeval64_t dump_time;
+    uv_gettimeofday(&dump_time);
+
+    char time_str[32];
+    struct tm* start_tm = gmtime(&dump_time.tv_sec);
+    strftime(time_str, sizeof(time_str), "%FT%T", start_tm);
+
+    fprintf(fp, "Ziti Dump starting: %s\n",time_str);
+
+    //actually invoke ziti_dump here
+    ziti_dump(ctx, ziti_dump_to_file_op, fp);
+    fflush(fp);
+    fclose(fp);
 }
 
 static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
@@ -103,6 +169,37 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
             return 0;
         }
 
+        case TunnelCommand_ZitiDump: {
+            #ifndef MAXPATHLEN
+            #define MAXPATHLEN 1024
+            #endif
+            ZITI_LOG(INFO, "ziti dump started ");
+            tunnel_ziti_dump dump;
+            if (cmd->data != NULL && parse_tunnel_ziti_dump(&dump, cmd->data, strlen(cmd->data)) != 0) {
+                result.success = false;
+                result.error = "invalid command";
+                break;
+            }
+            const char *key;
+            struct ziti_instance_s *inst;
+            MODEL_MAP_FOREACH(key, inst, &instances) {
+                const ziti_identity *identity = ziti_get_identity(inst->ztx);
+                if (dump.id != NULL && strcmp(dump.id, identity->name) != 0) {
+                    continue;
+                }
+                if (dump.dump_path == NULL) {
+                    ziti_dump_to_log(inst->ztx);
+                } else {
+                    char dump_file[MAXPATHLEN];
+                    snprintf(dump_file, sizeof(dump_file), "%s/%s.ziti", dump.dump_path, identity->name);
+                    ziti_dump_to_file(inst->ztx, dump_file);
+                }
+                result.success = true;
+            }
+            ZITI_LOG(INFO, "ziti dump finished ");
+            break;
+        }
+
         default: result.error = "command not implemented";
     }
 
@@ -123,7 +220,6 @@ static int load_identity(const char *path, command_cb cb, void *ctx) {
     uv_async_send(ar);
     return 0;
 }
-
 
 #if _WIN32
 #define realpath(rel, abs) _fullpath(abs, rel, MAX_PATH)
@@ -277,3 +373,4 @@ IMPL_MODEL(tunnel_load_identity, TNL_LOAD_IDENTITY)
 
 IMPL_MODEL(tunnel_identity_info, TNL_IDENTITY_INFO)
 IMPL_MODEL(tunnel_identity_list, TNL_IDENTITY_LIST)
+IMPL_MODEL(tunnel_ziti_dump, TNL_ZITI_DUMP)
