@@ -1,0 +1,58 @@
+version: "3.3"
+services:
+    ziti-test:
+        image: netfoundry/ziti-tunnel:0.18.2
+        network_mode: host
+        cap_add:
+        - NET_ADMIN
+        entrypoint: ["sh", "-c", "while true; do sleep 11; done"]
+    ziti-tproxy:
+        image: netfoundry/ziti-tunnel:0.18.2
+        network_mode: host
+        cap_add:
+        - NET_ADMIN
+        volumes:
+        - .:/netfoundry
+        environment:
+        - NF_REG_NAME
+        command: tproxy
+#        command: tproxy --resolver udp://127.0.0.123:53
+    ziti-iproxy:
+        image: netfoundry/ziti-tunnel:0.18.2
+        volumes:
+        - .:/netfoundry
+        network_mode: host
+        cap_add:
+        - NET_ADMIN
+        environment:
+        - NF_REG_NAME
+        command: tproxy --resolver none
+    ziti-tun:
+        image: netfoundry/ziti-tunnel:0.18.2
+        volumes:
+        - .:/netfoundry
+        network_mode: host
+        cap_add:
+        - NET_ADMIN
+        environment:
+        - NF_REG_NAME
+        command: tun
+        devices:
+        - "/dev/net/tun:/dev/net/tun"
+    ziti-proxy:
+        image: netfoundry/ziti-tunnel:0.18.2
+        volumes:
+        - .:/netfoundry
+        environment:
+        - NF_REG_NAME
+        ports:
+        - "8888:8888"
+        - "9999:9999"
+        command: proxy "my example service":8888 "my other example service":9999
+    ziti-host:
+        image: netfoundry/ziti-tunnel:0.18.2
+        volumes:
+        - .:/netfoundry
+        environment:
+        - NF_REG_NAME
+        command: host 
