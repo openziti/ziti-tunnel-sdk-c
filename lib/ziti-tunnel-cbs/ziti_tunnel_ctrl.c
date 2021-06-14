@@ -182,7 +182,10 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
                 result.error = "invalid command";
                 break;
             }
-            disconnect_identity(NULL, NULL);
+            struct ziti_instance_s *inst = model_map_get(&instances, disable_id.path);
+            disconnect_identity(inst->ztx, CMD_CTX.tunnel_ctx);
+            result.success = true;
+            cb(&result, ctx);
             return 0;
         }
 
