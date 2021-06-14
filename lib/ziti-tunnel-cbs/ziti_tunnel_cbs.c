@@ -440,6 +440,15 @@ intercept_ctx_t *new_intercept_ctx(tunneler_context tnlr_ctx, ziti_intercept_t *
     return i_ctx;
 }
 
+void remove_intercept(void *tnlr_ctx, ziti_intercept_t *zi_ctx) {
+    if (zi_ctx) {
+        ZITI_LOG(INFO, "removing service intercept: %s", zi_ctx->service_name);
+        ziti_tunneler_stop_intercepting(tnlr_ctx, zi_ctx);
+        free(zi_ctx);
+        ZITI_LOG(INFO, "removed service intercept: %s", zi_ctx->service_name);
+    }
+}
+
 static tunneled_service_t current_tunneled_service;
 
 /** set up intercept or host context according to service permissions and configuration */
@@ -483,13 +492,22 @@ tunneled_service_t *ziti_sdk_c_on_service(ziti_context ziti_ctx, ziti_service *s
     } else if (status == ZITI_SERVICE_UNAVAILABLE) {
         ZITI_LOG(INFO, "service unavailable: %s", service->name);
         ziti_intercept_t *zi_ctx = model_map_remove(&ziti_instance->intercepts, service->name);
-        if (zi_ctx) {
-            ziti_tunneler_stop_intercepting(tnlr_ctx, zi_ctx);
-            free(zi_ctx);
-        }
+        remove_intercept(tnlr_ctx, zi_ctx);
     }
 
     return &current_tunneled_service;
+}
+
+void remove_intercepts(ziti_context ziti_ctx, void *tnlr_ctx) {
+
+    struct ziti_instance_s *ziti_instance = ziti_app_ctx(ziti_ctx);
+
+    model_map_iter it = model_map_iterator(&ziti_instance->intercepts);
+    while(it) {
+        ziti_intercept_t *zi_ctx = model_map_it_value(it);
+        remove_intercept(tnlr_ctx, zi_ctx);
+        it = model_map_it_remove(zi_ctx);
+    }
 }
 
 /** called by ziti sdk after ziti_close completes */

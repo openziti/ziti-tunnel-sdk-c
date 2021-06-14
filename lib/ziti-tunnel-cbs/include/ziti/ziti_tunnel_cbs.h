@@ -23,7 +23,8 @@ DECLARE_MODEL(tunneler_app_data, TUNNELER_APP_DATA_MODEL)
 #define TUNNEL_COMMANDS(XX,...) \
 XX(ZitiDump, __VA_ARGS__)    \
 XX(LoadIdentity, __VA_ARGS__)   \
-XX(ListIdentities, __VA_ARGS__)
+XX(ListIdentities, __VA_ARGS__) \
+XX(DisableIdentity, __VA_ARGS__)
 
 DECLARE_ENUM(TunnelCommand, TUNNEL_COMMANDS)
 
@@ -37,6 +38,9 @@ XX(error, string, none, error, __VA_ARGS__)\
 XX(data, json, none, data, __VA_ARGS__)
 
 #define TNL_LOAD_IDENTITY(XX, ...) \
+XX(path, string, none, path, __VA_ARGS__)
+
+#define TNL_DISABLE_IDENTITY(XX, ...) \
 XX(path, string, none, path, __VA_ARGS__)
 
 #define TNL_IDENTITY_INFO(XX, ...) \
@@ -58,6 +62,7 @@ DECLARE_MODEL(tunnel_load_identity, TNL_LOAD_IDENTITY)
 DECLARE_MODEL(tunnel_identity_info, TNL_IDENTITY_INFO)
 DECLARE_MODEL(tunnel_identity_list, TNL_IDENTITY_LIST)
 DECLARE_MODEL(tunnel_ziti_dump, TNL_ZITI_DUMP)
+DECLARE_MODEL(tunnel_disable_identity, TNL_DISABLE_IDENTITY)
 
 /** context passed through the tunneler SDK for network i/o */
 typedef struct ziti_io_ctx_s {
@@ -107,6 +112,7 @@ host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, uv_loop_t *loop, const char *service
 /** passed to ziti-sdk via ziti_options.service_cb */
 tunneled_service_t *ziti_sdk_c_on_service(ziti_context ziti_ctx, ziti_service *service, int status, void *tnlr_ctx);
 
+void remove_intercepts(ziti_context ziti_ctx, void *tnlr_ctx);
 
 const ziti_tunnel_ctrl* ziti_tunnel_init_cmd(uv_loop_t *loop, tunneler_context, command_cb);
 

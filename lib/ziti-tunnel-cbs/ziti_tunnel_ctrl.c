@@ -123,6 +123,12 @@ void ziti_dump_to_file(void *ctx, char* outputFile) {
     fclose(fp);
 }
 
+static void disconnect_identity(ziti_context ziti_ctx, void *tnlr_ctx) {
+    ZITI_LOG(INFO, "Disconnecting Identity %s", ziti_get_identity(ziti_ctx)->name);
+    remove_intercepts(ziti_ctx, tnlr_ctx);
+}
+
+
 static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
     tunnel_result result = {
             .success = false,
@@ -166,6 +172,17 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
 
             free_tunnel_identity_list(&id_list);
             free(result.data);
+            return 0;
+        }
+
+        case TunnelCommand_DisableIdentity: {
+            tunnel_disable_identity disable_id;
+            if (cmd->data == NULL || parse_tunnel_disable_identity(&disable_id, cmd->data, strlen(cmd->data)) != 0) {
+                result.success = false;
+                result.error = "invalid command";
+                break;
+            }
+            disconnect_identity(NULL, NULL);
             return 0;
         }
 
@@ -373,4 +390,5 @@ IMPL_MODEL(tunnel_load_identity, TNL_LOAD_IDENTITY)
 
 IMPL_MODEL(tunnel_identity_info, TNL_IDENTITY_INFO)
 IMPL_MODEL(tunnel_identity_list, TNL_IDENTITY_LIST)
+IMPL_MODEL(tunnel_disable_identity, TNL_DISABLE_IDENTITY)
 IMPL_MODEL(tunnel_ziti_dump, TNL_ZITI_DUMP)
