@@ -382,6 +382,13 @@ void ziti_tunneler_stop_intercepting(tunneler_context tnlr_ctx, void *zi_ctx) {
     }
 
     if (intercept) {
+        TNL_LOG(DEBUG, "removing routes for service[%s] service_ctx[%p]", intercept->service_name, zi_ctx);
+        address_t *address;
+        STAILQ_FOREACH(address, &intercept->addresses, entries) {
+            delete_route(tnlr_ctx->opts.netif_driver, address);
+            tnlr_ctx->dns->remove(tnlr_ctx->dns, address->str);
+        }
+
         TNL_LOG(DEBUG, "removing intercept for service[%s] service_ctx[%p]", intercept->service_name, zi_ctx);
 
         while(!STAILQ_EMPTY(&intercept->protocols)) {
