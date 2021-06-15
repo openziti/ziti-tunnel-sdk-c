@@ -77,6 +77,9 @@ struct hosted_io_ctx_s {
     } server;
     bool ziti_eof;
     bool tcp_eof;
+
+    // count of ziti_write requests yet to be ack'ed by ziti sdk
+    size_t in_wreqs;
 };
 
 typedef void (*command_cb)(const tunnel_result *, void *ctx);
