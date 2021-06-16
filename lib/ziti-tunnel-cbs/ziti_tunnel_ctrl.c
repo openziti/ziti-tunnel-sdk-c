@@ -184,9 +184,16 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
                 break;
             }
             struct ziti_instance_s *inst = model_map_get(&instances, disable_id.path);
-            disconnect_identity(inst->ztx, CMD_CTX.tunnel_ctx);
-            model_map_remove(&instances, disable_id.path);
-            result.success = true;
+            if (inst) {
+                disconnect_identity(inst->ztx, CMD_CTX.tunnel_ctx);
+                model_map_remove(&instances, disable_id.path);
+                result.success = true;
+            } else {
+                result.success = false;
+                result.error = malloc(sizeof(disable_id.path) + 35);
+                sprintf(result.error, "ziti instance for id %s is not found", disable_id.path);
+            }
+
             cb(&result, ctx);
             return 0;
         }
