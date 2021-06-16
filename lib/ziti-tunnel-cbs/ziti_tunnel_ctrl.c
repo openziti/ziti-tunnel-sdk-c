@@ -126,6 +126,7 @@ void ziti_dump_to_file(void *ctx, char* outputFile) {
 static void disconnect_identity(ziti_context ziti_ctx, void *tnlr_ctx) {
     ZITI_LOG(INFO, "Disconnecting Identity %s", ziti_get_identity(ziti_ctx)->name);
     remove_intercepts(ziti_ctx, tnlr_ctx);
+    ziti_shutdown(ziti_ctx);
 }
 
 
@@ -184,6 +185,7 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
             }
             struct ziti_instance_s *inst = model_map_get(&instances, disable_id.path);
             disconnect_identity(inst->ztx, CMD_CTX.tunnel_ctx);
+            model_map_remove(&instances, disable_id.path);
             result.success = true;
             cb(&result, ctx);
             return 0;
