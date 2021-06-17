@@ -335,6 +335,13 @@ static void run(int argc, char *argv[]) {
     uint32_t tun_ip = htonl(mask | 0x1);
     uint32_t dns_ip = htonl(mask | 0x2);
 
+#if __unix__ || __unix
+    // prevent termination when running under valgrind
+    // client forcefully closing connection results in SIGPIPE
+    // which causes valgrind to freak out
+    signal(SIGPIPE, SIG_IGN);
+#endif
+
     uv_loop_t *ziti_loop = uv_default_loop();
     ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
 
@@ -545,7 +552,7 @@ static void on_response(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
         fprintf(stderr,"Read Response error %s\n", uv_err_name(len));
     }
     uv_read_stop(s);
-    uv_close(s, NULL);
+    uv_close((uv_handle_t *) s, NULL);
 }
 
 void on_write(uv_write_t* req, int status) {
