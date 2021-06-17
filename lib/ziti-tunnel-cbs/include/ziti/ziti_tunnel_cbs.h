@@ -24,6 +24,7 @@ DECLARE_MODEL(tunneler_app_data, TUNNELER_APP_DATA_MODEL)
 XX(ZitiDump, __VA_ARGS__)    \
 XX(LoadIdentity, __VA_ARGS__)   \
 XX(ListIdentities, __VA_ARGS__) \
+XX(EnableMFA, __VA_ARGS__)  \
 XX(SubmitMFA, __VA_ARGS__)
 
 DECLARE_ENUM(TunnelCommand, TUNNEL_COMMANDS)
@@ -51,8 +52,11 @@ XX(id, string, none, id, __VA_ARGS__)
 XX(identities, tunnel_identity_info, array, identities, __VA_ARGS__)
 
 #define TNL_ZITI_DUMP(XX, ...) \
-XX(id, string, none, id, __VA_ARGS__) \
+XX(identifier, string, none, id, __VA_ARGS__) \
 XX(dump_path, string, none, dump_path, __VA_ARGS__)
+
+#define TNL_ENABLE_MFA(XX, ...) \
+XX(identifier, string, none, id, __VA_ARGS__)
 
 // MFA auth command
 #define TNL_SUBMIT_MFA(XX, ...) \
@@ -66,6 +70,7 @@ DECLARE_MODEL(tunnel_load_identity, TNL_LOAD_IDENTITY)
 DECLARE_MODEL(tunnel_identity_info, TNL_IDENTITY_INFO)
 DECLARE_MODEL(tunnel_identity_list, TNL_IDENTITY_LIST)
 DECLARE_MODEL(tunnel_ziti_dump, TNL_ZITI_DUMP)
+DECLARE_MODEL(tunnel_enable_mfa, TNL_ENABLE_MFA)
 DECLARE_MODEL(tunnel_submit_mfa, TNL_SUBMIT_MFA)
 
 #define TUNNEL_EVENTS(XX, ...) \

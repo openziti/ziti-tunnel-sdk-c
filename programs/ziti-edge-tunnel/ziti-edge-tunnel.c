@@ -541,7 +541,7 @@ static int dump_opts(int argc, char *argv[]) {
                             opts, &option_index)) != -1) {
         switch (c) {
             case 'i':
-                dump_options->id = optarg;
+                dump_options->identifier = optarg;
                 break;
             case 'p':
                 dump_options->dump_path = realpath(optarg, NULL);
@@ -621,8 +621,7 @@ static uv_loop_t* connect_and_send_cmd(char sockfile[],uv_connect_t* connect, uv
     return loop;
 }
 
-static void dump(int argc, char *argv[]) {
-
+static void send_message_to_tunnel() {
     uv_pipe_t client_handle;
     uv_connect_t* connect = (uv_connect_t*)malloc(sizeof(uv_connect_t));
 
@@ -638,6 +637,46 @@ static void dump(int argc, char *argv[]) {
         printf("UV run error %s\n", uv_err_name(res));
     }
 }
+
+static void send_message_to_tunnel_fn(int argc, char *argv[]) {
+    send_message_to_tunnel();
+}
+
+
+static int enable_mfa_opts(int argc, char *argv[]) {
+    static struct option opts[] = {
+            {"identity", optional_argument, NULL, 'i'},
+    };
+    int c, option_index, errors = 0;
+    optind = 0;
+
+    tunnel_enable_mfa *enable_mfa_options = calloc(1, sizeof(tunnel_enable_mfa));
+    cmd = calloc(1, sizeof(tunnel_comand));
+    cmd->command = TunnelCommand_EnableMFA;
+
+    while ((c = getopt_long(argc, argv, "i:",
+                            opts, &option_index)) != -1) {
+        switch (c) {
+            case 'i':
+                enable_mfa_options->identifier = optarg;
+                break;
+            default: {
+                fprintf(stderr, "Unknown option '%c'\n", c);
+                errors++;
+                break;
+            }
+        }
+    }
+    if (errors > 0) {
+        commandline_help(stderr);
+        exit(1);
+    }
+    size_t json_len;
+    cmd->data = tunnel_enable_mfa_to_json(enable_mfa_options, MODEL_JSON_COMPACT, &json_len);
+
+    return optind;
+}
+
 
 static CommandLine enroll_cmd = make_command("enroll", "enroll Ziti identity",
         "-j|--jwt <enrollment token> -i|--identity <identity> [-k|--key <private_key> [-c|--cert <certificate>]]",
@@ -658,13 +697,16 @@ static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required supe
         run_opts, run);
 static CommandLine dump_cmd = make_command("dump", "dump the identities information", "[-i <identity>] [-p <dir>]",
                                            "\t-i|--identity\tdump identity info\n"
-                                           "\t-p|--dump_path\tdump into path\n", dump_opts, dump);
+                                           "\t-p|--dump_path\tdump into path\n", dump_opts, send_message_to_tunnel_fn);
+static CommandLine enable_mfa_cmd = make_command("enable_mfa", "Enable MFA function fetches the totp url from the controller", "[-i <identity>]",
+                                           "\t-i|--identity\tidentity info for enabling mfa\n", enable_mfa_opts, send_message_to_tunnel_fn);
 static CommandLine ver_cmd = make_command("version", "show version", "[-v]", "\t-v\tshow verbose version information\n", version_opts, version);
 static CommandLine help_cmd = make_command("help", "this message", NULL, NULL, NULL, usage);
 static CommandLine *main_cmds[] = {
         &enroll_cmd,
         &run_cmd,
         &dump_cmd,
+        &enable_mfa_cmd,
         &ver_cmd,
         &help_cmd,
         NULL

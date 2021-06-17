@@ -43,6 +43,7 @@ static struct ziti_instance_s *new_ziti_instance(const char *identifier, const c
 static void load_ziti_async(uv_async_t *ar);
 static void on_sigdump(uv_signal_t *sig, int signum);
 static void on_mfa_query(ziti_context ztx, void* mfa_ctx, ziti_auth_query_mfa *aq_mfa, ziti_ar_mfa_cb response_cb);
+static void enable_mfa(ziti_context ztx, const char* identifier);
 static void submit_mfa(struct mfa_request_s *req, const char *code);
 
 static uv_signal_t sigusr1;
@@ -187,7 +188,7 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
             struct ziti_instance_s *inst;
             MODEL_MAP_FOREACH(key, inst, &instances) {
                 const ziti_identity *identity = ziti_get_identity(inst->ztx);
-                if (dump.id != NULL && strcmp(dump.id, identity->name) != 0) {
+                if (dump.identifier != NULL && strcmp(dump.identifier, identity->name) != 0) {
                     continue;
                 }
                 if (dump.dump_path == NULL) {
@@ -201,6 +202,28 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
             }
             ZITI_LOG(INFO, "ziti dump finished ");
             break;
+        }
+
+        case TunnelCommand_EnableMFA: {
+            tunnel_enable_mfa enable_mfa_cmd;
+            if (cmd->data != NULL && parse_tunnel_enable_mfa(&enable_mfa_cmd, cmd->data, strlen(cmd->data)) != 0) {
+                result.success = false;
+                result.error = "invalid command";
+                break;
+            }
+
+            struct ziti_instance_s *inst = model_map_get(&instances, enable_mfa_cmd.identifier);
+            if (inst == NULL) {
+                result.error = "ziti context not found";
+                result.success = false;
+                break;
+            }
+
+            enable_mfa(inst->ztx, enable_mfa_cmd.identifier);
+
+            free_tunnel_enable_mfa(&enable_mfa_cmd);
+            cb(&result, ctx);
+            return 0;
         }
 
         default: result.error = "command not implemented";
@@ -232,6 +255,7 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
             free_tunnel_submit_mfa(&auth);
             return 0;
         }
+
         case TunnelCommand_Unknown:
             break;
     }
@@ -423,6 +447,14 @@ static void submit_mfa(struct mfa_request_s *req, const char *code) {
     req->submit_f(req->ztx, req->submit_ctx, (char*)code, on_submit_mfa, req);
 }
 
+static void on_enable_mfa(ziti_context ztx, int status, ziti_mfa_enrollment enrollment, void *ctx) {
+    ZITI_LOG(INFO, "Got the enrollment info from the controller - %d, %s, %s", enrollment.is_verified, enrollment.provisioning_url, enrollment.recovery_codes);
+}
+
+static void enable_mfa(ziti_context ztx, const char* identifier) {
+    ziti_mfa_enroll(ztx, on_enable_mfa, identifier);
+}
+
 static void on_sigdump(uv_signal_t *sig, int signum) {
 #ifndef MAXPATHLEN
 #define MAXPATHLEN 1024
@@ -460,6 +492,7 @@ IMPL_MODEL(tunnel_load_identity, TNL_LOAD_IDENTITY)
 IMPL_MODEL(tunnel_identity_info, TNL_IDENTITY_INFO)
 IMPL_MODEL(tunnel_identity_list, TNL_IDENTITY_LIST)
 IMPL_MODEL(tunnel_ziti_dump, TNL_ZITI_DUMP)
+IMPL_MODEL(tunnel_enable_mfa, TNL_ENABLE_MFA)
 IMPL_MODEL(tunnel_submit_mfa, TNL_SUBMIT_MFA)
 
 // ************** TUNNEL Events
