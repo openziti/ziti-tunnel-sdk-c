@@ -25,6 +25,8 @@
 
 extern dns_manager *get_dnsmasq_manager(const char* path);
 
+static void send_message_to_tunnel();
+
 struct cfg_instance_s {
     char *cfg;
     LIST_ENTRY(cfg_instance_s) _next;
@@ -656,6 +658,44 @@ static void send_message_to_tunnel_fn(int argc, char *argv[]) {
     send_message_to_tunnel();
 }
 
+static int disable_identity_opts(int argc, char *argv[]) {
+    static struct option opts[] = {
+            {"identity", required_argument, NULL, 'i'},
+    };
+    int c, option_index, errors = 0;
+    optind = 0;
+
+    tunnel_disable_identity *disable_identity_options = calloc(1, sizeof(tunnel_disable_identity));
+    cmd = calloc(1, sizeof(tunnel_comand));
+    cmd->command = TunnelCommand_DisableIdentity;
+
+    while ((c = getopt_long(argc, argv, "i:",
+                            opts, &option_index)) != -1) {
+        switch (c) {
+            case 'i':
+                disable_identity_options->path = realpath(optarg, NULL);
+                break;
+            default: {
+                fprintf(stderr, "Unknown option '%c'\n", c);
+                errors++;
+                break;
+            }
+        }
+    }
+    if (errors > 0) {
+        commandline_help(stderr);
+        exit(1);
+    }
+    size_t json_len;
+    cmd->data = tunnel_disable_identity_to_json(disable_identity_options, MODEL_JSON_COMPACT, &json_len);
+
+    return optind;
+}
+
+static void send_message_to_tunnel_fn(int argc, char *argv[]) {
+    send_message_to_tunnel();
+}
+
 
 static int enable_mfa_opts(int argc, char *argv[]) {
     static struct option opts[] = {
@@ -710,6 +750,10 @@ static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required supe
                                           "\t-n|--dns <internal|dnsmasq=<dnsmasq opts>> DNS configuration setting (default internal)\n",
         run_opts, run);
 static CommandLine dump_cmd = make_command("dump", "dump the identities information", "[-i <identity>] [-p <dir>]",
+                                           "\t-i|--identity\tdump identity info\n"
+                                           "\t-p|--dump_path\tdump into path\n", dump_opts, send_message_to_tunnel_fn);
+static CommandLine disable_id_cmd = make_command("disable", "disable the identities information", "[-i <identity>]",
+                                           "\t-i|--identity\tidentity info that needs to be disabled\n", disable_identity_opts, send_message_to_tunnel_fn);
                                            "\t-i|--identity\tidentity name\n"
                                            "\t-p|--dump_path\tdump into path\n", dump_opts, send_message_to_tunnel_fn);
 static CommandLine enable_mfa_cmd = make_command("enable_mfa", "Enable MFA function fetches the totp url from the controller", "[-i <identity>]",
@@ -719,6 +763,7 @@ static CommandLine help_cmd = make_command("help", "this message", NULL, NULL, N
 static CommandLine *main_cmds[] = {
         &enroll_cmd,
         &run_cmd,
+        &disable_id_cmd,
         &dump_cmd,
         &enable_mfa_cmd,
         &ver_cmd,

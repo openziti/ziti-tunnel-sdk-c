@@ -140,6 +140,13 @@ static void ziti_dump_to_file(void *ctx, char* outputFile) {
     fclose(fp);
 }
 
+static void disconnect_identity(ziti_context ziti_ctx, void *tnlr_ctx) {
+    ZITI_LOG(INFO, "Disconnecting Identity %s", ziti_get_identity(ziti_ctx)->name);
+    remove_intercepts(ziti_ctx, tnlr_ctx);
+    ziti_shutdown(ziti_ctx);
+}
+
+
 static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
     tunnel_result result = {
             .success = false,
@@ -184,6 +191,28 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
 
             free_tunnel_identity_list(&id_list);
             free(result.data);
+            return 0;
+        }
+
+        case TunnelCommand_DisableIdentity: {
+            tunnel_disable_identity disable_id;
+            if (cmd->data == NULL || parse_tunnel_disable_identity(&disable_id, cmd->data, strlen(cmd->data)) != 0) {
+                result.success = false;
+                result.error = "invalid command";
+                break;
+            }
+            struct ziti_instance_s *inst = model_map_get(&instances, disable_id.path);
+            if (inst) {
+                disconnect_identity(inst->ztx, CMD_CTX.tunnel_ctx);
+                model_map_remove(&instances, disable_id.path);
+                result.success = true;
+            } else {
+                result.success = false;
+                result.error = malloc(sizeof(disable_id.path) + 35);
+                sprintf(result.error, "ziti instance for id %s is not found", disable_id.path);
+            }
+
+            cb(&result, ctx);
             return 0;
         }
 
@@ -565,6 +594,7 @@ IMPL_MODEL(tunnel_load_identity, TNL_LOAD_IDENTITY)
 
 IMPL_MODEL(tunnel_identity_info, TNL_IDENTITY_INFO)
 IMPL_MODEL(tunnel_identity_list, TNL_IDENTITY_LIST)
+IMPL_MODEL(tunnel_disable_identity, TNL_DISABLE_IDENTITY)
 IMPL_MODEL(tunnel_ziti_dump, TNL_ZITI_DUMP)
 IMPL_MODEL(tunnel_enable_mfa, TNL_ENABLE_MFA)
 IMPL_MODEL(tunnel_mfa_enrol_res, TNL_MFA_ENROL_RES)

@@ -164,6 +164,7 @@ struct dns_manager_s {
     uint16_t dns_port;
 
     int (*apply)(dns_manager *dns, const char *host, const char *ip);
+    int (*remove)(dns_manager *dns, const char *host);
     dns_query query;
 
     uv_loop_t *loop;
