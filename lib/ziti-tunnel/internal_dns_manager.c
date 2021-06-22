@@ -23,6 +23,7 @@ const char DNS_OPT[] = { 0x0, 0x0, 0x29, 0x02, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0
 
 static int apply_dns(dns_manager *mgr, const char *host, const char *ip);
 static int query_dns(dns_manager *dns, const uint8_t *q_packet, size_t q_len, dns_answer_cb r_packet, void *r_len);
+static int remove_dns(dns_manager *mgr, const char *host);
 
 struct dns_record {
     char *name;
@@ -60,6 +61,18 @@ static void add_record(struct dns_store* store, const char *hostname, const char
     LIST_INSERT_HEAD(&store->map, rec, _next);
 }
 
+static void remove_record(struct dns_store* store, const char *hostname) {
+    struct dns_record *old;
+    LIST_FOREACH(old, &store->map, _next) {
+        if (strcmp(old->name, hostname) == 0) break;
+    }
+    if (old) {
+        LIST_REMOVE(old, _next);
+        free(old->name);
+        free(old);
+    }
+}
+
 dns_manager* get_tunneler_dns(uv_loop_t *l, uint32_t dns_ip, dns_fallback_cb fb_cb, void *ctx) {
     dns_manager *mgr = calloc(1, sizeof(dns_manager));
     mgr->dns_ip = dns_ip;
@@ -68,6 +81,7 @@ dns_manager* get_tunneler_dns(uv_loop_t *l, uint32_t dns_ip, dns_fallback_cb fb_
 
     mgr->apply = apply_dns;
     mgr->query = query_dns;
+    mgr->remove = remove_dns;
 
     mgr->loop = l;
     mgr->fb_cb = fb_cb;
@@ -88,6 +102,24 @@ static int apply_dns(dns_manager *mgr, const char *host, const char *ip) {
     *p = '\0';
 
     add_record(mgr->data, hostname, ip);
+
+    return 0;
+}
+
+static int remove_dns(dns_manager *mgr, const char *host) {
+    char hostname[256];
+    const char *r = host;
+    char *p = hostname;
+    while (*r) {
+        *p++ = (char)tolower(*r++);
+    }
+    *p = '\0';
+
+    struct dns_record *rec = find_record(mgr->data, hostname);
+    if (rec != NULL) {
+        TNL_LOG(DEBUG, "removing DNS record: %s(%s)", rec->name, inet_ntoa(rec->ip));
+        remove_record(mgr->data, hostname);
+    }
 
     return 0;
 }

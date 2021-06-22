@@ -25,6 +25,8 @@
 
 extern dns_manager *get_dnsmasq_manager(const char* path);
 
+static void send_message_to_tunnel();
+
 struct cfg_instance_s {
     char *cfg;
     LIST_ENTRY(cfg_instance_s) _next;
@@ -628,8 +630,7 @@ static uv_loop_t* connect_and_send_cmd(char sockfile[],uv_connect_t* connect, uv
     return loop;
 }
 
-static void dump(int argc, char *argv[]) {
-
+static void send_message_to_tunnel() {
     uv_pipe_t client_handle;
     uv_connect_t* connect = (uv_connect_t*)malloc(sizeof(uv_connect_t));
 
@@ -644,6 +645,44 @@ static void dump(int argc, char *argv[]) {
     if (res != 0) {
         printf("UV run error %s\n", uv_err_name(res));
     }
+}
+
+static void send_message_to_tunnel_fn(int argc, char *argv[]) {
+    send_message_to_tunnel();
+}
+
+static int disable_identity_opts(int argc, char *argv[]) {
+    static struct option opts[] = {
+            {"identity", required_argument, NULL, 'i'},
+    };
+    int c, option_index, errors = 0;
+    optind = 0;
+
+    tunnel_disable_identity *disable_identity_options = calloc(1, sizeof(tunnel_disable_identity));
+    cmd = calloc(1, sizeof(tunnel_comand));
+    cmd->command = TunnelCommand_DisableIdentity;
+
+    while ((c = getopt_long(argc, argv, "i:",
+                            opts, &option_index)) != -1) {
+        switch (c) {
+            case 'i':
+                disable_identity_options->path = realpath(optarg, NULL);
+                break;
+            default: {
+                fprintf(stderr, "Unknown option '%c'\n", c);
+                errors++;
+                break;
+            }
+        }
+    }
+    if (errors > 0) {
+        commandline_help(stderr);
+        exit(1);
+    }
+    size_t json_len;
+    cmd->data = tunnel_disable_identity_to_json(disable_identity_options, MODEL_JSON_COMPACT, &json_len);
+
+    return optind;
 }
 
 static CommandLine enroll_cmd = make_command("enroll", "enroll Ziti identity",
@@ -665,12 +704,15 @@ static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required supe
         run_opts, run);
 static CommandLine dump_cmd = make_command("dump", "dump the identities information", "[-i <identity>] [-p <dir>]",
                                            "\t-i|--identity\tdump identity info\n"
-                                           "\t-p|--dump_path\tdump into path\n", dump_opts, dump);
+                                           "\t-p|--dump_path\tdump into path\n", dump_opts, send_message_to_tunnel_fn);
+static CommandLine disable_id_cmd = make_command("disable", "disable the identities information", "[-i <identity>]",
+                                           "\t-i|--identity\tidentity info that needs to be disabled\n", disable_identity_opts, send_message_to_tunnel_fn);
 static CommandLine ver_cmd = make_command("version", "show version", "[-v]", "\t-v\tshow verbose version information\n", version_opts, version);
 static CommandLine help_cmd = make_command("help", "this message", NULL, NULL, NULL, usage);
 static CommandLine *main_cmds[] = {
         &enroll_cmd,
         &run_cmd,
+        &disable_id_cmd,
         &dump_cmd,
         &ver_cmd,
         &help_cmd,
