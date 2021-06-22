@@ -59,10 +59,10 @@ XX(dump_path, string, none, dump_path, __VA_ARGS__)
 XX(identifier, string, none, id, __VA_ARGS__)
 
 #define TNL_MFA_ENROL_RES(XX,...) \
-XX(identifier, string, none, id, __VA_ARGS__) \
-XX(is_verified, bool, none, id, __VA_ARGS__) \
-XX(provisioning_url, string, none, id, __VA_ARGS__) \
-XX(recovery_codes, string, none, id, __VA_ARGS__) \
+XX(identifier, string, none, identifier, __VA_ARGS__) \
+XX(is_verified, bool, none, is_verified, __VA_ARGS__) \
+XX(provisioning_url, string, none, provisioning_url, __VA_ARGS__) \
+XX(recovery_codes, string, array, recovery_codes, __VA_ARGS__)
 
 // MFA auth command
 #define TNL_SUBMIT_MFA(XX, ...) \

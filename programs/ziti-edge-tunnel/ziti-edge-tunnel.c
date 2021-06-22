@@ -67,6 +67,10 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
     ZITI_LOG(INFO, "resp[%d,len=%zd] = %.*s",
             result->success, json_len, (int)json_len, json, result->data);
 
+    if (result->data != NULL){
+        free(result->data);
+    }
+
     if (uv_is_active((const uv_handle_t *) &cmd_conn)) {
         uv_buf_t b = uv_buf_init(json, json_len);
         uv_write_t *wr = calloc(1, sizeof(uv_write_t));
@@ -559,6 +563,9 @@ static int dump_opts(int argc, char *argv[]) {
     }
     size_t json_len;
     cmd->data = tunnel_ziti_dump_to_json(dump_options, MODEL_JSON_COMPACT, &json_len);
+    if (dump_options != NULL) {
+        free_tunnel_ziti_dump(dump_options);
+    }
 
     return optind;
 }
@@ -603,7 +610,7 @@ void on_connect(uv_connect_t* connect, int status){
         char* json = tunnel_comand_to_json(cmd, MODEL_JSON_COMPACT, &json_len);
         send_message_to_pipe(connect, json, json_len);
         free(json);
-        free(cmd);
+        free_tunnel_comand(cmd);
     }
 }
 

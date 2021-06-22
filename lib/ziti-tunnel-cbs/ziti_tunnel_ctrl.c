@@ -234,7 +234,7 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
             }
 
             struct tunnel_cb_s *req = malloc(sizeof(struct tunnel_cb_s));
-            req->ctx = enable_mfa_cmd.identifier;
+            req->ctx = strdup(enable_mfa_cmd.identifier);
             req->cmd_cb = cb;
             req->cmd_ctx = ctx;
 
@@ -466,8 +466,6 @@ static void submit_mfa(struct mfa_request_s *req, const char *code) {
 }
 
 static void on_enable_mfa(ziti_context ztx, int status, ziti_mfa_enrollment enrollment, void *ctx) {
-    ZITI_LOG(INFO, "Got the enrollment info from the controller - %d, %s, %s", enrollment.is_verified, enrollment.provisioning_url, enrollment.recovery_codes);
-
     // send the response from enroll mfa to client
     struct tunnel_cb_s *req = ctx;
     tunnel_result result = {0};
@@ -477,15 +475,14 @@ static void on_enable_mfa(ziti_context ztx, int status, ziti_mfa_enrollment enro
     } else {
         result.success = true;
 
-        tunnel_mfa_enrol_res *enrol_res = malloc(sizeof(tunnel_mfa_enrol_res));
-        enrol_res->identifier = strdup(req->ctx);
-        enrol_res->is_verified = enrollment.is_verified;
-        enrol_res->provisioning_url = enrollment.provisioning_url;
-        enrol_res->recovery_codes = enrollment.recovery_codes;
+        tunnel_mfa_enrol_res enrol_res = {0};
+        enrol_res.identifier = req->ctx;
+        enrol_res.is_verified = enrollment.is_verified;
+        enrol_res.provisioning_url = enrollment.provisioning_url;
+        enrol_res.recovery_codes = enrollment.recovery_codes;
         size_t json_len;
-        result.data = tunnel_mfa_enrol_res_to_json(enrol_res, MODEL_JSON_COMPACT, &json_len);
+        result.data = tunnel_mfa_enrol_res_to_json(&enrol_res, MODEL_JSON_COMPACT, &json_len);
     }
-
     if (req->cmd_cb) {
         req->cmd_cb(&result, req->cmd_ctx);
     }
