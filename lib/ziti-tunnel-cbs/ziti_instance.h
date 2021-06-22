@@ -22,16 +22,31 @@ limitations under the License.
 static struct cmd_ctx_s {
     ziti_tunnel_ctrl ctrl;
     tunneler_context tunnel_ctx;
-    command_cb cb;
+    event_cb on_event;
     uv_loop_t *loop;
 } CMD_CTX;
 
+struct mfa_request_s {
+    ziti_context ztx;
+
+    ziti_ar_mfa_cb submit_f;
+    void *submit_ctx;
+
+    command_cb cmd_cb;
+    void *cmd_ctx;
+
+    // TODO maybe for getting all outstanding MFA reqs
+    // LIST_ENTRY(mfa_request_s) _next;
+};
+
 struct ziti_instance_s {
+    char *identifier;
     ziti_options opts;
     command_cb load_cb;
     void *load_ctx;
 
     ziti_context ztx;
+    struct mfa_request_s *mfa_req;
     model_map intercepts;
     LIST_ENTRY(ziti_instance_s) _next;
 };

@@ -24,7 +24,8 @@ DECLARE_MODEL(tunneler_app_data, TUNNELER_APP_DATA_MODEL)
 XX(ZitiDump, __VA_ARGS__)    \
 XX(LoadIdentity, __VA_ARGS__)   \
 XX(ListIdentities, __VA_ARGS__) \
-XX(DisableIdentity, __VA_ARGS__)
+XX(DisableIdentity, __VA_ARGS__) \
+XX(SubmitMFA, __VA_ARGS__)
 
 DECLARE_ENUM(TunnelCommand, TUNNEL_COMMANDS)
 
@@ -38,6 +39,7 @@ XX(error, string, none, error, __VA_ARGS__)\
 XX(data, json, none, data, __VA_ARGS__)
 
 #define TNL_LOAD_IDENTITY(XX, ...) \
+XX(identifier, string, none, identifier, __VA_ARGS__)\
 XX(path, string, none, path, __VA_ARGS__)
 
 #define TNL_DISABLE_IDENTITY(XX, ...) \
@@ -56,6 +58,12 @@ XX(identities, tunnel_identity_info, array, identities, __VA_ARGS__)
 XX(id, string, none, id, __VA_ARGS__) \
 XX(dump_path, string, none, dump_path, __VA_ARGS__)
 
+// MFA auth command
+#define TNL_SUBMIT_MFA(XX, ...) \
+XX(identifier, string, none, identifier, __VA_ARGS__) \
+XX(code, string, none, code, __VA_ARGS__)
+
+
 DECLARE_MODEL(tunnel_comand, TUNNEL_CMD)
 DECLARE_MODEL(tunnel_result, TUNNEL_CMD_RES)
 DECLARE_MODEL(tunnel_load_identity, TNL_LOAD_IDENTITY)
@@ -63,6 +71,30 @@ DECLARE_MODEL(tunnel_identity_info, TNL_IDENTITY_INFO)
 DECLARE_MODEL(tunnel_identity_list, TNL_IDENTITY_LIST)
 DECLARE_MODEL(tunnel_ziti_dump, TNL_ZITI_DUMP)
 DECLARE_MODEL(tunnel_disable_identity, TNL_DISABLE_IDENTITY)
+DECLARE_MODEL(tunnel_submit_mfa, TNL_SUBMIT_MFA)
+
+#define TUNNEL_EVENTS(XX, ...) \
+XX(ContextEvent, __VA_ARGS__) \
+XX(ServiceEvent, __VA_ARGS__)  \
+XX(MFAEvent, __VA_ARGS__)
+
+DECLARE_ENUM(TunnelEvent, TUNNEL_EVENTS)
+
+#define BASE_EVENT_MODEL(XX, ...) \
+XX(identifier, string, none, identifier, __VA_ARGS__) \
+XX(event_type, TunnelEvent, none, type, __VA_ARGS__)
+
+#define ZTX_EVENT_MODEL(XX, ...)  \
+BASE_EVENT_MODEL(XX, __VA_ARGS__)            \
+XX(status, string, none, status, __VA_ARGS__)
+
+#define MFA_EVENT_MODEL(XX, ...)  \
+BASE_EVENT_MODEL(XX, __VA_ARGS__)               \
+XX(provider, string, none, provider, __VA_ARGS__)
+
+DECLARE_MODEL(base_event, BASE_EVENT_MODEL)
+DECLARE_MODEL(ziti_ctx_event, ZTX_EVENT_MODEL)
+DECLARE_MODEL(mfa_event, MFA_EVENT_MODEL)
 
 /** context passed through the tunneler SDK for network i/o */
 typedef struct ziti_io_ctx_s {
@@ -82,12 +114,19 @@ struct hosted_io_ctx_s {
     } server;
     bool ziti_eof;
     bool tcp_eof;
+
+    // count of ziti_write requests yet to be ack'ed by ziti sdk
+    size_t in_wreqs;
 };
 
+typedef void (*event_cb)(const base_event* event);
 typedef void (*command_cb)(const tunnel_result *, void *ctx);
 typedef struct {
     int (*process)(const tunnel_comand *cmd, command_cb cb, void *ctx);
-    int (*load_identity)(const char *path, command_cb, void *ctx);
+    int (*load_identity)(const char *identifier, const char *path, command_cb, void *ctx);
+
+    // do not use, temporary accessor
+    ziti_context (*get_ziti)(const char *identifier);
 } ziti_tunnel_ctrl;
 
 /**
@@ -114,7 +153,7 @@ tunneled_service_t *ziti_sdk_c_on_service(ziti_context ziti_ctx, ziti_service *s
 
 void remove_intercepts(ziti_context ziti_ctx, void *tnlr_ctx);
 
-const ziti_tunnel_ctrl* ziti_tunnel_init_cmd(uv_loop_t *loop, tunneler_context, command_cb);
+const ziti_tunnel_ctrl* ziti_tunnel_init_cmd(uv_loop_t *loop, tunneler_context, event_cb);
 
 
 #ifdef __cplusplus

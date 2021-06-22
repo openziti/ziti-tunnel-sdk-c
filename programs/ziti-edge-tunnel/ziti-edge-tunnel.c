@@ -184,7 +184,32 @@ static void load_identities_complete(uv_work_t * wr, int status) {
         struct cfg_instance_s *inst = LIST_FIRST(&load_list);
         LIST_REMOVE(inst, _next);
 
-        CMD_CTRL->load_identity(inst->cfg, load_id_cb, inst);
+        CMD_CTRL->load_identity(NULL, inst->cfg, load_id_cb, inst);
+    }
+}
+
+static void on_event(const base_event *ev) {
+    switch (ev->event_type) {
+        case TunnelEvent_ContextEvent: {
+            const ziti_ctx_event *zev = (ziti_ctx_event *) ev;
+            ZITI_LOG(INFO, "ztx[%s] status is %s", ev->identifier, zev->status);
+            break;
+        }
+
+        case TunnelEvent_ServiceEvent:
+            // TODO
+            break;
+
+        case TunnelEvent_MFAEvent: {
+            const mfa_event *mfa_ev = (mfa_event *) ev;
+            ZITI_LOG(INFO, "ztx[%s] is requesting MFA code[%s]", ev->identifier, mfa_ev->provider);
+            break;
+        }
+
+        case TunnelEvent_Unknown:
+        default:
+            ZITI_LOG(WARN, "unhandled event received: %d", ev->event_type);
+            break;
     }
 }
 
@@ -219,7 +244,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, const char *ip_rang
     tunneler_context tunneler = ziti_tunneler_init(&tunneler_opts, ziti_loop);
     ziti_tunneler_set_dns(tunneler, dns);
 
-    CMD_CTRL = ziti_tunnel_init_cmd(ziti_loop, tunneler, NULL);
+    CMD_CTRL = ziti_tunnel_init_cmd(ziti_loop, tunneler, on_event);
 
     uv_work_t *loader = calloc(1, sizeof(uv_work_t));
     uv_queue_work(ziti_loop, loader, load_identities, load_identities_complete);
@@ -336,6 +361,13 @@ static void run(int argc, char *argv[]) {
 
     uint32_t tun_ip = htonl(mask | 0x1);
     uint32_t dns_ip = htonl(mask | 0x2);
+
+#if __unix__ || __unix
+    // prevent termination when running under valgrind
+    // client forcefully closing connection results in SIGPIPE
+    // which causes valgrind to freak out
+    signal(SIGPIPE, SIG_IGN);
+#endif
 
     uv_loop_t *ziti_loop = uv_default_loop();
     ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
@@ -547,7 +579,7 @@ static void on_response(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
         fprintf(stderr,"Read Response error %s\n", uv_err_name(len));
     }
     uv_read_stop(s);
-    uv_close(s, NULL);
+    uv_close((uv_handle_t *)s, NULL);
 }
 
 void on_write(uv_write_t* req, int status) {
