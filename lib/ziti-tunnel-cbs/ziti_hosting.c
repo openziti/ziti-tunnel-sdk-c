@@ -34,6 +34,8 @@ limitations under the License.
 #endif
 #endif
 
+#define ZITI_MTU (15 * 1024)
+#define MAX_OUTSTANDING_WRITES 8
 
 /********** hosting **********/
 
@@ -121,11 +123,17 @@ static void tcp_shutdown_cb(uv_shutdown_t *req, int res) {
     free(req);
 }
 
-#define safe_close(h, cb) if(!uv_is_closing((uv_handle_t*)h)) uv_close((uv_handle_t*)h, cb)
+#define safe_close(h, cb) if(!uv_is_closing((uv_handle_t*)(h))) uv_close((uv_handle_t*)(h), cb)
 static void hosted_server_close(struct hosted_io_ctx_s *io_ctx) {
     if (io_ctx == NULL) {
         return;
     }
+    if (io_ctx->in_wreqs > 0) {
+        // can't dispose yet, wait for all callbacks to return
+        ZITI_LOG(VERBOSE, "delaying hosted_io_ctx release: in_wreqs = %d", io_ctx->in_wreqs);
+        return;
+    }
+
     switch (io_ctx->server_proto_id) {
         case IPPROTO_TCP:
             safe_close(&io_ctx->server.tcp, hosted_server_close_cb);
@@ -205,14 +213,45 @@ static ssize_t on_hosted_client_data(ziti_connection clt, uint8_t *data, ssize_t
     return len;
 }
 
-#define ZITI_MTU (15 * 1024)
 static void alloc_buffer(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf) {
-    *buf = uv_buf_init((char*) malloc(ZITI_MTU), ZITI_MTU);
+    struct hosted_io_ctx_s *io_ctx = handle->data;
+
+    if (io_ctx->in_wreqs < MAX_OUTSTANDING_WRITES) {
+        *buf = uv_buf_init((char*) malloc(ZITI_MTU), ZITI_MTU);
+    } else {
+        ZITI_LOG(VERBOSE, "max ziti writes[%d] reached for %s", io_ctx->in_wreqs, io_ctx->server_dial_str);
+        // provoke UV_ENOBUFS
+        buf->base = NULL;
+        buf->len = 0;
+    }
 }
 
 /** called by ziti SDK when data transfer initiated by ziti_write completes */
 static void on_hosted_ziti_write(ziti_connection ziti_conn, ssize_t len, void *ctx) {
-    free(ctx);
+    struct hosted_io_ctx_s *io_ctx = ziti_conn_data(ziti_conn);
+
+    if (ctx) free(ctx);
+
+    io_ctx->in_wreqs--;
+    if (io_ctx->in_wreqs < 0) {
+        ZITI_LOG(ERROR, "WTF: accounting error");
+        io_ctx->in_wreqs = 0;
+    }
+
+    if (len < 0) {
+        ZITI_LOG(WARN, "ziti write error: %zd(%s), stop reading peer", len, ziti_errorstr((int)len));
+
+        switch (io_ctx->server_proto_id) {
+            case IPPROTO_TCP:
+                uv_read_stop((uv_stream_t *) &io_ctx->server.tcp);
+                break;
+            case IPPROTO_UDP:
+                uv_udp_recv_stop(&io_ctx->server.udp);
+                break;
+        }
+
+        hosted_server_close(io_ctx);
+    }
 }
 
 /** called by libuv when a hosted TCP server sends data to a client */
@@ -226,17 +265,16 @@ static void on_hosted_tcp_server_data(uv_stream_t *stream, ssize_t nread, const 
     }
 
     if (nread > 0) {
+        io_ctx->in_wreqs++;
         int zs = ziti_write(io_ctx->client, buf->base, nread, on_hosted_ziti_write, buf->base);
         if (zs != ZITI_OK) {
             ZITI_LOG(ERROR, "ziti_write to %s failed: %s", ziti_conn_source_identity(io_ctx->client),
                      ziti_errorstr(zs));
-            on_hosted_ziti_write(io_ctx->client, nread, buf->base);
-            // close both sides
-            hosted_server_close(io_ctx);
+            on_hosted_ziti_write(io_ctx->client, zs, buf->base);
         }
     } else {
         if (nread == UV_ENOBUFS) {
-            ZITI_LOG(WARN, "tcp server is throttled: could not allocate buffer for incoming data [%zd](%s)", nread, uv_strerror(nread));
+            ZITI_LOG(VERBOSE, "tcp server is throttled: could not allocate buffer for incoming data [%zd](%s)", nread, uv_strerror(nread));
         } else if (nread == UV_EOF) {
             ZITI_LOG(DEBUG, "server sent FIN ziti_eof=%d, tcp_eof=%d, io=%p", io_ctx->ziti_eof, io_ctx->tcp_eof, io_ctx);
             io_ctx->tcp_eof = true;

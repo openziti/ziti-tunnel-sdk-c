@@ -44,10 +44,9 @@ static void load_ziti_async(uv_async_t *ar);
 static void on_sigdump(uv_signal_t *sig, int signum);
 static void on_mfa_query(ziti_context ztx, void* mfa_ctx, ziti_auth_query_mfa *aq_mfa, ziti_ar_mfa_cb response_cb);
 static void enable_mfa(ziti_context ztx, void *ctx);
-static void submit_mfa(struct mfa_request_s *req, const char *code);
 static char *extract_filename(char *str);
-
-static uv_signal_t sigusr1;
+static void submit_mfa(struct mfa_request_s *req, const char *code);
+static ziti_context get_ziti(const char *identifier);
 
 struct tunnel_cb_s {
     void *ctx;
@@ -55,12 +54,15 @@ struct tunnel_cb_s {
     void *cmd_ctx;
 };
 
+static uv_signal_t sigusr1;
+
 const ziti_tunnel_ctrl* ziti_tunnel_init_cmd(uv_loop_t *loop, tunneler_context tunnel_ctx, event_cb on_event) {
     CMD_CTX.loop = loop;
     CMD_CTX.tunnel_ctx = tunnel_ctx;
     CMD_CTX.on_event = on_event;
     CMD_CTX.ctrl.process = process_cmd;
     CMD_CTX.ctrl.load_identity = load_identity;
+    CMD_CTX.ctrl.get_ziti = get_ziti;
 
 #ifndef _WIN32
     uv_signal_init(loop, &sigusr1);
@@ -71,8 +73,13 @@ const ziti_tunnel_ctrl* ziti_tunnel_init_cmd(uv_loop_t *loop, tunneler_context t
     return &CMD_CTX.ctrl;
 }
 
+static ziti_context get_ziti(const char *identifier) {
+    struct ziti_instance_s *inst = model_map_get(&instances, identifier);
 
-int ziti_dump_to_log_op(void* stringsBuilder, const char *fmt,  ...) {
+    return inst ? inst->ztx : NULL;
+}
+
+static int ziti_dump_to_log_op(void* stringsBuilder, const char *fmt,  ...) {
     static char line[4096];
 
     va_list vargs;
@@ -88,7 +95,7 @@ int ziti_dump_to_log_op(void* stringsBuilder, const char *fmt,  ...) {
     return 0;
 }
 
-void ziti_dump_to_log(void *ctx) {
+static void ziti_dump_to_log(void *ctx) {
     char* buffer;
     buffer = malloc(MAXBUFFERLEN*sizeof(char));
     buffer[0] = 0;
@@ -98,7 +105,7 @@ void ziti_dump_to_log(void *ctx) {
     free(buffer);
 }
 
-int ziti_dump_to_file_op(void* fp, const char *fmt,  ...) {
+static int ziti_dump_to_file_op(void* fp, const char *fmt,  ...) {
     static char line[4096];
 
     va_list vargs;
@@ -110,7 +117,7 @@ int ziti_dump_to_file_op(void* fp, const char *fmt,  ...) {
     return 0;
 }
 
-void ziti_dump_to_file(void *ctx, char* outputFile) {
+static void ziti_dump_to_file(void *ctx, char* outputFile) {
     FILE *fp;
     fp = fopen(outputFile, "a+");
     if(fp == NULL)

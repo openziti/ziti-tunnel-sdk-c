@@ -121,6 +121,9 @@ struct hosted_io_ctx_s {
     } server;
     bool ziti_eof;
     bool tcp_eof;
+
+    // count of ziti_write requests yet to be ack'ed by ziti sdk
+    size_t in_wreqs;
 };
 
 typedef void (*event_cb)(const base_event* event);
@@ -128,6 +131,8 @@ typedef void (*command_cb)(const tunnel_result *, void *ctx);
 typedef struct {
     int (*process)(const tunnel_comand *cmd, command_cb cb, void *ctx);
     int (*load_identity)(const char *identifier, const char *path, command_cb, void *ctx);
+    // do not use, temporary accessor
+    ziti_context (*get_ziti)(const char *identifier);
 } ziti_tunnel_ctrl;
 
 /**

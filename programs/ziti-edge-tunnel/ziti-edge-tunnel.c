@@ -364,6 +364,13 @@ static void run(int argc, char *argv[]) {
     uint32_t tun_ip = htonl(mask | 0x1);
     uint32_t dns_ip = htonl(mask | 0x2);
 
+#if __unix__ || __unix
+    // prevent termination when running under valgrind
+    // client forcefully closing connection results in SIGPIPE
+    // which causes valgrind to freak out
+    signal(SIGPIPE, SIG_IGN);
+#endif
+
     uv_loop_t *ziti_loop = uv_default_loop();
     ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
 
