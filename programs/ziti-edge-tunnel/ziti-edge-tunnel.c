@@ -692,11 +692,6 @@ static int disable_identity_opts(int argc, char *argv[]) {
     return optind;
 }
 
-static void send_message_to_tunnel_fn(int argc, char *argv[]) {
-    send_message_to_tunnel();
-}
-
-
 static int enable_mfa_opts(int argc, char *argv[]) {
     static struct option opts[] = {
             {"identity", optional_argument, NULL, 'i'},
@@ -754,8 +749,6 @@ static CommandLine dump_cmd = make_command("dump", "dump the identities informat
                                            "\t-p|--dump_path\tdump into path\n", dump_opts, send_message_to_tunnel_fn);
 static CommandLine disable_id_cmd = make_command("disable", "disable the identities information", "[-i <identity>]",
                                            "\t-i|--identity\tidentity info that needs to be disabled\n", disable_identity_opts, send_message_to_tunnel_fn);
-                                           "\t-i|--identity\tidentity name\n"
-                                           "\t-p|--dump_path\tdump into path\n", dump_opts, send_message_to_tunnel_fn);
 static CommandLine enable_mfa_cmd = make_command("enable_mfa", "Enable MFA function fetches the totp url from the controller", "[-i <identity>]",
                                            "\t-i|--identity\tidentity info for enabling mfa\n", enable_mfa_opts, send_message_to_tunnel_fn);
 static CommandLine ver_cmd = make_command("version", "show version", "[-v]", "\t-v\tshow verbose version information\n", version_opts, version);
