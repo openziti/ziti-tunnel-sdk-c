@@ -170,22 +170,6 @@ static ssize_t get_app_data_json(char *buf, size_t bufsz, tunneler_io_context io
         const ziti_identity *zid = ziti_get_identity(ziti_ctx);
         strncpy(source_addr, source_ip, sizeof(source_addr));
         string_replace(source_addr, sizeof(source_addr), "$tunneler_id.name", zid->name);
-        char *tag_ref_start = strstr(source_addr, "$tunneler_id.tag[");
-        if (tag_ref_start != NULL) {
-            char tag_name[32];
-            if (sscanf(tag_ref_start, "$tunneler_id.tag[%32[^]]", tag_name) > 0) {
-                // currently won't work due to https://github.com/openziti/ziti-sdk-c/issues/138
-                const char *tag_value = model_map_get(&zid->tags, tag_name);
-                if (tag_value != NULL) {
-                    char tag_ref[32];
-                    snprintf(tag_ref, sizeof(tag_ref), "$tunneler_id.tag[%s]", tag_name);
-                    string_replace(source_addr, sizeof(source_addr), tag_ref, tag_value);
-                } else {
-                    ZITI_LOG(WARN, "cannot set source_ip='%s': identity %s has no tag named '%s'",
-                             source_ip, zid->name, tag_name);
-                }
-            }
-        }
         string_replace(source_addr, sizeof(source_addr), "$dst_ip", app_data.dst_ip);
         string_replace(source_addr, sizeof(source_addr), "$dst_port", app_data.dst_port);
         string_replace(source_addr, sizeof(source_addr), "$src_ip", app_data.src_ip);
