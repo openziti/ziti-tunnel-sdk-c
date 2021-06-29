@@ -4,8 +4,8 @@ Setup Ziti Edge Tunnel on Teltonica RUT240
 # Download and install
 1. get ziti-edge-tunnel bundle from https://ziti-public.s3.us-east-2.amazonaws.com/mips-teltonica/ziti-edge-tunnel-Linux_mips.zip
 1. unzip and copy `ziti-edge-tunnel` executable to `/usr/sbin` (location could be different with appropriate adjustments to init script) 
-1. get ziti init script from https://ziti-public.s3.us-east-2.amazonaws.com/mips-teltonica/ziti.init
-1. put init script as `/etc/init.d/ziti`
+1. get [ziti init script](ziti.init) and modify if needed
+1. put [init script](ziti.init) as `/etc/init.d/ziti`
 
 # Configure Ziti identity
 1. create folder '/etc/ziti'
@@ -15,7 +15,7 @@ Setup Ziti Edge Tunnel on Teltonica RUT240
    - certificate should be saved as `/etc/ziti/id.crt`
 
 # Configure Ziti service to autostart
-`# /etc/init.s/ziti enable`
+`# /etc/init.d/ziti enable`
 The first time ziti service starts it enrolls with controller specified by `ca.jwt`
 
 # Alternative enrollment
