@@ -299,7 +299,7 @@ static struct ziti_instance_s *new_ziti_instance(const char *identifier, const c
     inst->identifier = strdup(identifier ? identifier : path);
     inst->opts.config = realpath(path, NULL);
     inst->opts.config_types = cfg_types;
-    inst->opts.events = ZitiContextEvent|ZitiServiceEvent;
+    inst->opts.events = ZitiContextEvent|ZitiServiceEvent|ZitiRouterEvent;
     inst->opts.event_cb = on_ziti_event;
     inst->opts.refresh_interval = refresh_interval; /* default refresh */
     //inst->opts.aq_mfa_cb = on_mfa_query;
@@ -372,8 +372,29 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
             break;
         }
 
-        case ZitiRouterEvent:
+        case ZitiRouterEvent: {
+            const struct ziti_router_event *rt_event = &event->event.router;
+            const char *ctx_name = ziti_get_identity(ztx)->name;
+            switch (rt_event->status) {
+                case EdgeRouterAdded:
+                    ZITI_LOG(INFO, "ztx[%s] added edge router %s@%s", ctx_name, rt_event->name, rt_event->address);
+                    ziti_tunneler_exclude_route(CMD_CTX.tunnel_ctx, rt_event->address);
+                    break;
+                case EdgeRouterConnected:
+                    ZITI_LOG(INFO, "ztx[%s] router %s connected", ctx_name, rt_event->name);
+                    break;
+                case EdgeRouterDisconnected:
+                    ZITI_LOG(INFO, "ztx[%s] router %s disconnected", ctx_name, rt_event->name);
+                    break;
+                case EdgeRouterRemoved:
+                    ZITI_LOG(INFO, "ztx[%s] router %s removed", ctx_name, rt_event->name);
+                    break;
+                case EdgeRouterUnavailable:
+                    ZITI_LOG(INFO, "ztx[%s] router %s is unavailable", ctx_name, rt_event->name);
+                    break;
+            }
             break;
+        }
     }
 }
 

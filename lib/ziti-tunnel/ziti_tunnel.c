@@ -76,6 +76,32 @@ tunneler_context ziti_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop)
     return ctx;
 }
 
+void ziti_tunneler_exclude_route(tunneler_context tnlr_ctx, const char *dst) {
+    address_t *addr = parse_address(dst, NULL);
+    TNL_LOG(DEBUG, "excluding %s from tunneler intercept", addr->str);
+    if (tnlr_ctx->opts.netif_driver->exclude_rt) {
+        if (!addr->is_hostname) {
+            tnlr_ctx->opts.netif_driver->exclude_rt(tnlr_ctx->opts.netif_driver->handle, tnlr_ctx->loop, addr->str);
+        } else {
+            char resolved_ip[32];
+            uv_getaddrinfo_t resolve_req = {0};
+            uv_getaddrinfo(tnlr_ctx->loop, &resolve_req, NULL, addr->str, "80", NULL);
+
+            struct addrinfo *addrinfo = resolve_req.addrinfo;
+            while (addrinfo != NULL) {
+                uv_ip4_name((const struct sockaddr_in*)addrinfo->ai_addr, resolved_ip, 32);
+                tnlr_ctx->opts.netif_driver->exclude_rt(tnlr_ctx->opts.netif_driver->handle, tnlr_ctx->loop, resolved_ip);
+                addrinfo = addrinfo->ai_next;
+            }
+            uv_freeaddrinfo(resolve_req.addrinfo);
+        }
+    } else {
+        TNL_LOG(WARN, "netif_driver->exclude_rt function is not implemented");
+    }
+    free(addr);
+}
+
+
 static void tunneler_kill_active(const void *ztx);
 
 void ziti_tunneler_shutdown(tunneler_context tnlr_ctx) {
@@ -227,6 +253,7 @@ address_t *parse_address(const char *hn_or_ip_or_cidr, dns_manager *dns) {
     }
 
     if (ipaddr_aton(addr->str, &addr->ip) == 0) {
+        addr->is_hostname = true;
         // does not parse as IP address; assume hostname and try to get IP from the dns manager
         if (dns) {
             const char *resolved_ip_str = assign_ip(addr->str);
@@ -240,8 +267,6 @@ address_t *parse_address(const char *hn_or_ip_or_cidr, dns_manager *dns) {
                     TNL_LOG(ERR, "dns manager provided unparsable ip address '%s'", resolved_ip_str);
                     free(addr);
                     return NULL;
-                } else {
-                    addr->is_hostname = true;
                 }
             }
         }
