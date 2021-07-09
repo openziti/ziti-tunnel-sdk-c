@@ -476,6 +476,20 @@ tunneled_service_t *ziti_sdk_c_on_service(ziti_context ziti_ctx, ziti_service *s
     return &current_tunneled_service;
 }
 
+void remove_intercepts(ziti_context ziti_ctx, void *tnlr_ctx) {
+
+    struct ziti_instance_s *ziti_instance = ziti_app_ctx(ziti_ctx);
+
+    model_map_iter it = model_map_iterator(&ziti_instance->intercepts);
+    while(it) {
+        ziti_intercept_t *zi_ctx = model_map_it_value(it);
+        if (zi_ctx) {
+            ziti_tunneler_stop_intercepting(tnlr_ctx, zi_ctx);
+        }
+        it = model_map_it_remove(it);
+    }
+}
+
 /** called by ziti sdk after ziti_close completes */
 static void ziti_conn_close_cb(ziti_connection zc) {
     ZITI_LOG(TRACE, "ziti_conn[%p] is closed", zc);
