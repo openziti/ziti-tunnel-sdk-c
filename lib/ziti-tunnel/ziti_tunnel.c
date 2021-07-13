@@ -82,6 +82,9 @@ void ziti_tunneler_exclude_route(tunneler_context tnlr_ctx, const char *dst) {
     if (tnlr_ctx->opts.netif_driver->exclude_rt) {
         if (!addr->is_hostname) {
             tnlr_ctx->opts.netif_driver->exclude_rt(tnlr_ctx->opts.netif_driver->handle, tnlr_ctx->loop, addr->str);
+            struct excluded_route_s *exrt = calloc(1, sizeof(struct excluded_route_s));
+            strncpy(exrt->route, addr->str, MAX_ROUTE_LEN);
+            LIST_INSERT_HEAD(&tnlr_ctx->excluded_rts, exrt, _next);
         } else {
             char resolved_ip[32];
             uv_getaddrinfo_t resolve_req = {0};
@@ -89,8 +92,10 @@ void ziti_tunneler_exclude_route(tunneler_context tnlr_ctx, const char *dst) {
 
             struct addrinfo *addrinfo = resolve_req.addrinfo;
             while (addrinfo != NULL) {
-                uv_ip4_name((const struct sockaddr_in*)addrinfo->ai_addr, resolved_ip, 32);
-                tnlr_ctx->opts.netif_driver->exclude_rt(tnlr_ctx->opts.netif_driver->handle, tnlr_ctx->loop, resolved_ip);
+                struct excluded_route_s *exrt = calloc(1, sizeof(struct excluded_route_s));
+                uv_ip4_name((const struct sockaddr_in*)addrinfo->ai_addr, exrt->route, MAX_ROUTE_LEN);
+                LIST_INSERT_HEAD(&tnlr_ctx->excluded_rts, exrt, _next);
+                tnlr_ctx->opts.netif_driver->exclude_rt(tnlr_ctx->opts.netif_driver->handle, tnlr_ctx->loop, exrt->route);
                 addrinfo = addrinfo->ai_next;
             }
             uv_freeaddrinfo(resolve_req.addrinfo);
