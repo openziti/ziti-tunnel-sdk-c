@@ -42,7 +42,7 @@ static int load_identity(const char *identifier, const char *path, command_cb cb
 static struct ziti_instance_s *new_ziti_instance(const char *identifier, const char *path);
 static void load_ziti_async(uv_async_t *ar);
 static void on_sigdump(uv_signal_t *sig, int signum);
-static void on_mfa_query(ziti_context ztx, void* mfa_ctx, ziti_auth_query_mfa *aq_mfa, ziti_ar_mfa_cb response_cb);
+// static void on_mfa_query(ziti_context ztx, void* mfa_ctx, ziti_auth_query_mfa *aq_mfa, ziti_ar_mfa_cb response_cb);
 static void submit_mfa(struct mfa_request_s *req, const char *code);
 static ziti_context get_ziti(const char *identifier);
 
@@ -302,7 +302,7 @@ static struct ziti_instance_s *new_ziti_instance(const char *identifier, const c
     inst->opts.events = ZitiContextEvent|ZitiServiceEvent;
     inst->opts.event_cb = on_ziti_event;
     inst->opts.refresh_interval = refresh_interval; /* default refresh */
-    inst->opts.aq_mfa_cb = on_mfa_query;
+    //inst->opts.aq_mfa_cb = on_mfa_query;
     inst->opts.app_ctx = inst;
     return inst;
 }
@@ -414,6 +414,7 @@ static void load_ziti_async(uv_async_t *ar) {
     uv_close((uv_handle_t *) ar, (uv_close_cb) free);
 }
 
+/*
 static void on_mfa_query(ziti_context ztx, void* mfa_ctx, ziti_auth_query_mfa *aq_mfa, ziti_ar_mfa_cb response_cb) {
     struct ziti_instance_s *inst = ziti_app_ctx(ztx);
 
@@ -433,6 +434,7 @@ static void on_mfa_query(ziti_context ztx, void* mfa_ctx, ziti_auth_query_mfa *a
 
     free_mfa_event(&ev);
 }
+ */
 
 static void on_submit_mfa(ziti_context ztx, void *mfa_ctx, int status, void *ctx) {
     struct mfa_request_s *req = ctx;
@@ -456,7 +458,7 @@ static void on_submit_mfa(ziti_context ztx, void *mfa_ctx, int status, void *ctx
 }
 
 static void submit_mfa(struct mfa_request_s *req, const char *code) {
-    req->submit_f(req->ztx, req->submit_ctx, (char*)code, on_submit_mfa, req);
+    //req->submit_f(req->ztx, req->submit_ctx, (char*)code, on_submit_mfa, req);
 }
 
 static void on_sigdump(uv_signal_t *sig, int signum) {

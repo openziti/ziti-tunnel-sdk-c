@@ -28,6 +28,9 @@
 #endif
 
 #define TCP_WND               0xffff      /* size of a TCP window. when using TCP_RCV_SCALE, TCP_WND is the total size with scaling applied (4 * TCP_MSS) */
+#ifdef TCP_MSS
+#undef TCP_MSS  /* cleanup warnings */
+#endif
 #define TCP_MSS               32768       /* TCP Maximum segment size (536) */
 #define TCP_SND_BUF           (2*TCP_MSS) /* TCP sender buffer space in bytes (2 * TCP_MSS) */
 #define TCP_SND_QUEUELEN      64          /* TCP sender buffer space in pbufs ((4 * (TCP_SND_BUF) + (TCP_MSS - 1))/(TCP_MSS)) */

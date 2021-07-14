@@ -29,7 +29,7 @@ static struct cmd_ctx_s {
 struct mfa_request_s {
     ziti_context ztx;
 
-    ziti_ar_mfa_cb submit_f;
+    // ziti_ar_mfa_cb submit_f;
     void *submit_ctx;
 
     command_cb cmd_cb;
