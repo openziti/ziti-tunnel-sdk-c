@@ -26,7 +26,7 @@ extern tunnel_logger_f tunnel_logger;
 
 struct intercept_ctx_s {
     tunneler_context tnlr_ctx;
-    const char *service_name;
+    char *service_name;
     void *app_intercept_ctx;
 
     protocol_list_t protocols;
