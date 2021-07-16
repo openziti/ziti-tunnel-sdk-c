@@ -200,7 +200,7 @@ void ziti_tunneler_set_dns(tunneler_context tnlr_ctx, dns_manager *dns) {
 intercept_ctx_t* intercept_ctx_new(tunneler_context tnlr_ctx, const char *app_id, void *app_intercept_ctx) {
     intercept_ctx_t *ictx = calloc(1, sizeof(intercept_ctx_t));
     ictx->tnlr_ctx = tnlr_ctx;
-    ictx->service_name = app_id;
+    ictx->service_name = strdup(app_id);
     ictx->app_intercept_ctx = app_intercept_ctx;
     STAILQ_INIT(&ictx->protocols);
     STAILQ_INIT(&ictx->addresses);
@@ -409,6 +409,7 @@ void ziti_tunneler_stop_intercepting(tunneler_context tnlr_ctx, void *zi_ctx) {
             free(p);
         }
 
+        free(intercept->service_name);
         free(intercept);
     }
 
