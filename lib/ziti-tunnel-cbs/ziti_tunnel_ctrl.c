@@ -461,14 +461,26 @@ static void submit_mfa(struct mfa_request_s *req, const char *code) {
     //req->submit_f(req->ztx, req->submit_ctx, (char*)code, on_submit_mfa, req);
 }
 
+#define CHECK(lbl, op) do{ \
+int rc = (op);                  \
+if (rc < 0) {              \
+ZITI_LOG(ERROR, "operation[" #op "] failed: %d(%s) errno=%d", rc, strerror(rc), errno); \
+goto lbl;\
+}                           \
+}while(0)
+
 static void on_sigdump(uv_signal_t *sig, int signum) {
 #ifndef MAXPATHLEN
 #define MAXPATHLEN 1024
 #endif
     char fname[MAXPATHLEN];
-    snprintf(fname, sizeof(fname), "/tmp/ziti-dump.%d.dump", getpid());
+    snprintf(fname, sizeof(fname), "/tmp/ziti-dump.%lu.dump", (unsigned long)uv_os_getpid());
     ZITI_LOG(INFO, "saving Ziti dump to %s", fname);
     FILE *dumpfile = fopen(fname, "a+");
+    if (dumpfile == NULL) {
+        ZITI_LOG(ERROR, "failed to open dump output file(%s): %d(%s)", fname, errno, strerror(errno));
+        return;
+    }
 
     uv_timeval64_t dump_time;
     uv_gettimeofday(&dump_time);
@@ -477,15 +489,16 @@ static void on_sigdump(uv_signal_t *sig, int signum) {
     struct tm* start_tm = gmtime(&dump_time.tv_sec);
     strftime(time_str, sizeof(time_str), "%FT%T", start_tm);
 
-    fprintf(dumpfile, "ZIti Dump starting: %s\n",time_str);
+    CHECK(cleanup, fprintf(dumpfile, "ZIti Dump starting: %s\n",time_str));
     const char *k;
     struct ziti_instance_s *inst;
     MODEL_MAP_FOREACH(k, inst, &instances) {
-        fprintf(dumpfile, "instance: %s\n", k);
+        CHECK(cleanup, fprintf(dumpfile, "instance: %s\n", k));
         ziti_dump(inst->ztx, (int (*)(void *, const char *, ...)) fprintf, dumpfile);
     }
 
-    fflush(dumpfile);
+    CHECK(cleanup, fflush(dumpfile));
+    cleanup:
     fclose(dumpfile);
 }
 
