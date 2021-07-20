@@ -90,7 +90,7 @@ static struct tcp_pcb *new_tcp_pcb(ip_addr_t src, ip_addr_t dest, struct tcp_hdr
 #if TCP_CALCULATE_EFF_SEND_MSS
     npcb->mss = tcp_eff_send_mss(npcb->mss, &npcb->local_ip, &npcb->remote_ip);
 #endif /* TCP_CALCULATE_EFF_SEND_MSS */
-    TNL_LOG(INFO, "snd_wnd: %d, snd_snd_max: %d, mss: %d", npcb->snd_wnd, npcb->snd_wnd_max, npcb->mss);
+    TNL_LOG(DEBUG, "snd_wnd: %d, snd_snd_max: %d, mss: %d", npcb->snd_wnd, npcb->snd_wnd_max, npcb->mss);
 
     MIB2_STATS_INC(mib2.tcppassiveopens);
 
