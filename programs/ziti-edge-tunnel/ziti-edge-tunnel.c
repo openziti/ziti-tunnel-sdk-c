@@ -462,7 +462,7 @@ static int parse_enroll_opts(int argc, char *argv[]) {
                             opts, &option_index)) != -1) {
         switch (c) {
             case 'j':
-                enroll_opts.jwt = realpath(optarg, NULL);
+                enroll_opts.jwt = optarg;
                 break;
             case 'k':
                 enroll_opts.enroll_key = realpath(optarg, NULL);
