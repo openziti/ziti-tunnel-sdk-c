@@ -131,7 +131,7 @@ void ziti_tunneler_dial_completed(struct io_ctx_s *io, bool ok) {
         TNL_LOG(ERR, "null ziti_io or tnlr_io");
     }
     const char *status = ok ? "succeeded" : "failed";
-    TNL_LOG(INFO, "ziti dial %s: service=%s, client=%s", status, io->tnlr_io->service_name, io->tnlr_io->client);
+    TNL_LOG(DEBUG, "ziti dial %s: client[%s] service[%s]", status, io->tnlr_io->client, io->tnlr_io->service_name);
 
     switch (io->tnlr_io->proto) {
         case tun_tcp:
@@ -444,8 +444,8 @@ int ziti_tunneler_close(tunneler_io_context tnlr_io_ctx) {
         TNL_LOG(INFO, "null tnlr_io_ctx");
         return 0;
     }
-    TNL_LOG(INFO, "closing connection: service=%s, client=%s",
-            tnlr_io_ctx->service_name, tnlr_io_ctx->client);
+    TNL_LOG(INFO, "closing connection: client[%s] service[%s]",
+            tnlr_io_ctx->client, tnlr_io_ctx->service_name);
     switch (tnlr_io_ctx->proto) {
         case tun_tcp:
             tunneler_tcp_close(tnlr_io_ctx->tcp);
@@ -467,11 +467,11 @@ int ziti_tunneler_close(tunneler_io_context tnlr_io_ctx) {
 /** called by tunneler application when an EOF is received from ziti */
 int ziti_tunneler_close_write(tunneler_io_context tnlr_io_ctx) {
     if (tnlr_io_ctx == NULL) {
-        TNL_LOG(INFO, "null tnlr_io_ctx");
+        TNL_LOG(DEBUG, "null tnlr_io_ctx");
         return 0;
     }
-    TNL_LOG(INFO, "closing write connection: service=%s, client=%s",
-            tnlr_io_ctx->service_name, tnlr_io_ctx->client);
+    TNL_LOG(DEBUG, "closing write connection: client[%s] service[%s]",
+            tnlr_io_ctx->client, tnlr_io_ctx->service_name);
     switch (tnlr_io_ctx->proto) {
         case tun_tcp:
             tunneler_tcp_close_write(tnlr_io_ctx->tcp);
