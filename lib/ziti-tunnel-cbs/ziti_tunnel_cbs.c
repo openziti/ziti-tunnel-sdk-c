@@ -6,10 +6,12 @@
 #include <ws2tcpip.h>
 #endif
 
-#include <stdio.h>
-#include <ziti/ziti_log.h>
-#include <memory.h>
 #include "ziti/ziti_tunnel_cbs.h"
+#include <ziti/ziti_log.h>
+
+#include <stdio.h>
+#include <string.h>
+#include <memory.h>
 
 IMPL_MODEL(tunneler_app_data, TUNNELER_APP_DATA_MODEL)
 
@@ -321,7 +323,7 @@ intercept_ctx_t *new_intercept_ctx(tunneler_context tnlr_ctx, const void *ziti_c
     int i;
 
     i_ctx->ziti_ctx = ziti_ctx;
-    i_ctx->service_name = service_name;
+    i_ctx->service_name = strdup(service_name);
 
     STAILQ_INIT(&i_ctx->protocols);
     STAILQ_INIT(&i_ctx->addresses);

@@ -369,6 +369,7 @@ void ziti_tunneler_stop_intercepting(tunneler_context tnlr_ctx, void *ziti_ctx, 
             intercept->ziti_ctx == ziti_ctx) {
             STAILQ_REMOVE(&tnlr_ctx->intercepts, intercept, intercept_ctx_s, entries);
             // todo deep free intercept_ctx
+            free(intercept->service_name);
             free(intercept);
             break;
         }
