@@ -84,7 +84,7 @@ typedef STAILQ_HEAD(port_range_list_s, port_range_s) port_range_list_t;
 
 /** data needed to intercept packets and dial the associated ziti service */
 typedef struct intercept_ctx_s {
-    const char *  service_name;
+    char *  service_name;
     const void *  ziti_ctx;
     protocol_list_t protocols;
     address_list_t addresses;
