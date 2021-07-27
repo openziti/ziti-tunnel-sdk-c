@@ -26,6 +26,10 @@ limitations under the License.
 #define MAXBUFFERLEN 8192
 #endif
 
+#ifndef HOST_NAME_MAX
+#define HOST_NAME_MAX 254
+#endif
+
 // temporary list to pass info between parse and run
 // static LIST_HEAD(instance_list, ziti_instance_s) instance_init_list;
 

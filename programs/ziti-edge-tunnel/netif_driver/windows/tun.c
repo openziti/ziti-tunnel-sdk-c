@@ -45,6 +45,9 @@ static ssize_t tun_write(netif_handle tun, const void *buf, size_t len);
 static int tun_add_route(netif_handle tun, const char *dest);
 static int tun_del_route(netif_handle tun, const char *dest);
 int set_dns(netif_handle tun, uint32_t dns_ip);
+static int tun_exclude_rt(netif_handle dev, uv_loop_t *loop, const char *dest);
+static void if_change_cb(PVOID CallerContext, PMIB_IPINTERFACE_ROW Row, MIB_NOTIFICATION_TYPE NotificationType);
+static HANDLE if_change_handle;
 
 static WINTUN_CREATE_ADAPTER_FUNC WintunCreateAdapter;
 static WINTUN_DELETE_ADAPTER_FUNC WintunDeleteAdapter;
@@ -67,6 +70,8 @@ static WINTUN_SEND_PACKET_FUNC WintunSendPacket;
 
 static uv_once_t wintunInit;
 static HMODULE WINTUN;
+
+static MIB_IPFORWARD_ROW2 default_rt;
 
 static void InitializeWintun(void)
 {
@@ -142,6 +147,8 @@ netif_driver tun_open(struct uv_loop_s *loop, uint32_t tun_ip, uint32_t dns_ip, 
     WintunGetAdapterLUID(tun->adapter, &tun->luid);
     WintunGetAdapterName(tun->adapter, tun->name);
 
+    NotifyIpInterfaceChange(AF_INET, if_change_cb, NULL, TRUE, &if_change_handle);
+
     MIB_UNICASTIPADDRESS_ROW AddressRow;
     InitializeUnicastIpAddressEntry(&AddressRow);
     AddressRow.InterfaceLuid = tun->luid;
@@ -178,6 +185,7 @@ netif_driver tun_open(struct uv_loop_s *loop, uint32_t tun_ip, uint32_t dns_ip, 
     driver->add_route    = tun_add_route;
     driver->delete_route = tun_del_route;
     driver->close        = tun_close;
+    driver->exclude_rt   = tun_exclude_rt;
 
     if (dns_ip) {
         set_dns(tun, dns_ip);
@@ -278,11 +286,13 @@ ssize_t tun_write(netif_handle tun, const void *buf, size_t len) {
 static int parse_route(PIP_ADDRESS_PREFIX pfx, const char *route) {
     int ip[4];
     int bits;
-    sscanf(route, "%d.%d.%d.%d/%d", &ip[0], &ip[1], &ip[2], &ip[3], &bits);
-
-    pfx->PrefixLength = bits;
-    pfx->Prefix.Ipv4.sin_family = AF_INET;
-    pfx->Prefix.Ipv4.sin_addr.S_un.S_addr = (ip[0]) | (ip[1] << 8) | (ip[2] << 16) | (ip[3] << 24);
+    if (sscanf_s(route, "%d.%d.%d.%d/%d", &ip[0], &ip[1], &ip[2], &ip[3], &bits) == 5) {
+        pfx->PrefixLength = bits;
+        pfx->Prefix.Ipv4.sin_family = AF_INET;
+        pfx->Prefix.Ipv4.sin_addr.S_un.S_addr = (ip[0]) | (ip[1] << 8) | (ip[2] << 16) | (ip[3] << 24);
+        return 0;
+    }
+    return -1;
 }
 
 typedef NTSTATUS(__stdcall *route_f)(const MIB_IPFORWARD_ROW2*);
@@ -313,6 +323,73 @@ int tun_del_route(netif_handle tun, const char *dest) {
     if (rc != 0) {
         DWORD err = GetLastError();
         ZITI_LOG(WARN, "failed to delete route %d err=%d", rc, err);
+    }
+    return 0;
+}
+
+static void if_change_cb(PVOID CallerContext, PMIB_IPINTERFACE_ROW Row, MIB_NOTIFICATION_TYPE NotificationType) {
+    MIB_IPFORWARD_ROW2 rt = {0};
+    rt.DestinationPrefix.Prefix.Ipv4.sin_family = AF_INET;
+    ZITI_LOG(INFO, "interface change: if_idx = %d, change = %d", Row ? Row->InterfaceIndex : 0, NotificationType);
+    int rc = GetIpForwardEntry2(&rt);
+    if ( rc == NO_ERROR) {
+        if (default_rt.InterfaceIndex != rt.InterfaceIndex) {
+            ZITI_LOG(INFO, "default route is now via if_idx[%d]", rt.InterfaceIndex);
+            default_rt.InterfaceIndex = rt.InterfaceIndex;
+            default_rt.InterfaceLuid = rt.InterfaceLuid;
+            default_rt.Metric = rt.Metric;
+            default_rt.NextHop = rt.NextHop;
+        }
+    } else {
+        char err[256];
+        FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM, NULL, GetLastError(),
+                      MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+                      err, sizeof(err), NULL);
+        ZITI_LOG(WARN, "failed to get default route: %d(%s)", rc, err);
+    }
+}
+
+static int tun_exclude_rt(netif_handle dev, uv_loop_t *loop, const char *dest) {
+
+    union {
+        uint32_t addr;
+        uint8_t bits[4];
+    } dest_addr;
+
+    uint8_t prefix;
+
+    int parsed = sscanf_s(dest, "%d.%d.%d.%d/%d", &dest_addr.bits[0], &dest_addr.bits[1], &dest_addr.bits[2], &dest_addr.bits[3], &prefix);
+    if (parsed < 4) {
+        ZITI_LOG(WARN, "could not parse excluded route[%s]", dest);
+        return -1;
+    }
+    if (parsed == 4) {
+        prefix = 32;
+    }
+
+    MIB_IPFORWARD_ROW2 route = {0};
+    route.DestinationPrefix.Prefix.si_family = AF_INET;
+    parse_route(&route.DestinationPrefix, dest);
+    route.DestinationPrefix.PrefixLength = prefix;
+    route.DestinationPrefix.Prefix.Ipv4.sin_addr.S_un.S_addr = dest_addr.addr;
+    int rc = GetIpForwardEntry2(&route);
+    if (rc == NO_ERROR) {
+        ZITI_LOG(INFO, "route to %s found", dest);
+        DeleteIpForwardEntry2(&route);
+    }
+
+    route.InterfaceIndex = default_rt.InterfaceIndex;
+    route.InterfaceLuid = default_rt.InterfaceLuid;
+    route.Metric = default_rt.Metric;
+    route.NextHop = default_rt.NextHop;
+
+    rc = CreateIpForwardEntry2(&route);
+    if (rc != NO_ERROR) {
+        char err[256];
+        FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM, NULL, GetLastError(),
+                      MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+                      err, sizeof(err), NULL);
+        ZITI_LOG(WARN, "failed to create exclusion route: %d(%s)", rc, err);
     }
     return 0;
 }
