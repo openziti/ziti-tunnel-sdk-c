@@ -78,6 +78,13 @@ tunneler_context ziti_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop)
 
 void ziti_tunneler_exclude_route(tunneler_context tnlr_ctx, const char *dst) {
     address_t *addr = parse_address(dst, NULL);
+    uv_interface_address_t *if_addrs;
+    int err, num_if_addrs;
+    if ((err = uv_interface_addresses(&if_addrs, &num_if_addrs)) != 0) {
+        TNL_LOG(ERR, "uv_interface_addresses failed: %s", uv_strerror(err));
+        return;
+    }
+
     TNL_LOG(DEBUG, "excluding %s from tunneler intercept", addr->str);
     if (tnlr_ctx->opts.netif_driver->exclude_rt) {
         if (!addr->is_hostname) {
@@ -86,7 +93,6 @@ void ziti_tunneler_exclude_route(tunneler_context tnlr_ctx, const char *dst) {
             strncpy(exrt->route, addr->str, MAX_ROUTE_LEN);
             LIST_INSERT_HEAD(&tnlr_ctx->excluded_rts, exrt, _next);
         } else {
-            char resolved_ip[32];
             uv_getaddrinfo_t resolve_req = {0};
             uv_getaddrinfo(tnlr_ctx->loop, &resolve_req, NULL, addr->str, "80", NULL);
 
@@ -94,6 +100,23 @@ void ziti_tunneler_exclude_route(tunneler_context tnlr_ctx, const char *dst) {
             while (addrinfo != NULL) {
                 struct excluded_route_s *exrt = calloc(1, sizeof(struct excluded_route_s));
                 uv_ip4_name((const struct sockaddr_in*)addrinfo->ai_addr, exrt->route, MAX_ROUTE_LEN);
+                // make sure the address isn't local
+                for (int i = 0; i < num_if_addrs; i++) {
+                    uv_getnameinfo_t ni_req = {0};
+                    struct sockaddr *a = (struct sockaddr *)&if_addrs[i].address;
+                    if (a->sa_family == AF_INET || a->sa_family == AF_INET6) {
+                        err = uv_getnameinfo(tnlr_ctx->loop, &ni_req, NULL, a, NI_NUMERICHOST);
+                        if (err == 0) {
+                            TNL_LOG(TRACE, "found ifaddr %s", ni_req.host);
+                            if (strcmp(ni_req.host, exrt->route) == 0) {
+                                TNL_LOG(DEBUG, "%s is a local address on %s; not excluding route", exrt->route, if_addrs[i].name);
+                                goto done;
+                            }
+                        } else {
+                            TNL_LOG(WARN, "uv_getnameinfo failed: %s", uv_strerror(err));
+                        }
+                    }
+                }
                 LIST_INSERT_HEAD(&tnlr_ctx->excluded_rts, exrt, _next);
                 tnlr_ctx->opts.netif_driver->exclude_rt(tnlr_ctx->opts.netif_driver->handle, tnlr_ctx->loop, exrt->route);
                 addrinfo = addrinfo->ai_next;
@@ -103,6 +126,8 @@ void ziti_tunneler_exclude_route(tunneler_context tnlr_ctx, const char *dst) {
     } else {
         TNL_LOG(WARN, "netif_driver->exclude_rt function is not implemented");
     }
+    done:
+    uv_free_interface_addresses(if_addrs, num_if_addrs);
     free(addr);
 }
 
