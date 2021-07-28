@@ -118,7 +118,7 @@ static int utun_exclude_rt(netif_handle dev, uv_loop_t *l, const char *addr) {
     ZITI_LOG(DEBUG, "default route gw is '%s'", gw);
 
     char cmd[1024];
-    snprintf(cmd, sizeof(cmd), "route change %s %s", addr, gw);
+    snprintf(cmd, sizeof(cmd), "route add %s %s", addr, gw);
     ZITI_LOG(DEBUG, "executing '%s'", cmd);
     s = system(cmd);
     return s;
