@@ -18,11 +18,15 @@
 #include <iphlpapi.h>
 #include <stdlib.h>
 #include <combaseapi.h>
+#include <ziti/model_support.h>
 
 #include "tun.h"
 
 #define ZITI_TUN_GUID L"2cbfd72d-370c-43b0-b0cd-c8f092a7e134"
 #define ZITI_TUN L"ziti-tun0"
+
+#define ROUTE_LIFETIME (10 * 60) /* in seconds */
+#define ROUTE_REFRESH ((ROUTE_LIFETIME - (ROUTE_LIFETIME/10))*1000)
 
 struct netif_handle_s {
     wchar_t name[MAX_ADAPTER_NAME];
@@ -36,6 +40,9 @@ struct netif_handle_s {
 
     packet_cb on_packet;
     void *netif;
+
+    model_map excluded_routes;
+    uv_timer_t route_timer;
 };
 
 static int tun_close(struct netif_handle_s *tun);
@@ -47,6 +54,7 @@ static int tun_del_route(netif_handle tun, const char *dest);
 int set_dns(netif_handle tun, uint32_t dns_ip);
 static int tun_exclude_rt(netif_handle dev, uv_loop_t *loop, const char *dest);
 static void if_change_cb(PVOID CallerContext, PMIB_IPINTERFACE_ROW Row, MIB_NOTIFICATION_TYPE NotificationType);
+static void refresh_routes(uv_timer_t *timer);
 static HANDLE if_change_handle;
 
 static WINTUN_CREATE_ADAPTER_FUNC WintunCreateAdapter;
@@ -147,7 +155,7 @@ netif_driver tun_open(struct uv_loop_s *loop, uint32_t tun_ip, uint32_t dns_ip, 
     WintunGetAdapterLUID(tun->adapter, &tun->luid);
     WintunGetAdapterName(tun->adapter, tun->name);
 
-    NotifyIpInterfaceChange(AF_INET, if_change_cb, NULL, TRUE, &if_change_handle);
+    NotifyIpInterfaceChange(AF_INET, if_change_cb, tun, TRUE, &if_change_handle);
 
     MIB_UNICASTIPADDRESS_ROW AddressRow;
     InitializeUnicastIpAddressEntry(&AddressRow);
@@ -186,6 +194,10 @@ netif_driver tun_open(struct uv_loop_s *loop, uint32_t tun_ip, uint32_t dns_ip, 
     driver->delete_route = tun_del_route;
     driver->close        = tun_close;
     driver->exclude_rt   = tun_exclude_rt;
+    uv_timer_init(loop, &tun->route_timer);
+    tun->route_timer.data = tun;
+    uv_unref((uv_handle_t *) &tun->route_timer);
+    uv_timer_start(&tun->route_timer, refresh_routes, ROUTE_REFRESH, ROUTE_REFRESH);
 
     if (dns_ip) {
         set_dns(tun, dns_ip);
@@ -239,7 +251,7 @@ static void tun_reader(void *h) {
 }
 
 static void tun_read(uv_async_t *ar) {
-    ZITI_LOG(VERBOSE, "starting read");
+    ZITI_LOG(TRACE, "starting read");
     netif_handle tun = ar->data;
 
     for (int i = 0; i < 128; i++) {
@@ -286,13 +298,17 @@ ssize_t tun_write(netif_handle tun, const void *buf, size_t len) {
 static int parse_route(PIP_ADDRESS_PREFIX pfx, const char *route) {
     int ip[4];
     int bits;
-    if (sscanf_s(route, "%d.%d.%d.%d/%d", &ip[0], &ip[1], &ip[2], &ip[3], &bits) == 5) {
-        pfx->PrefixLength = bits;
+    int rc = sscanf_s(route, "%d.%d.%d.%d/%d", &ip[0], &ip[1], &ip[2], &ip[3], &bits);
+    if (rc < 4) {
+        ZITI_LOG(WARN, "invalid IPV4 route spec[%s]", route);
+        return -1;
+    } else {
+        pfx->PrefixLength = rc == 4 ? 32 : bits;
+
         pfx->Prefix.Ipv4.sin_family = AF_INET;
         pfx->Prefix.Ipv4.sin_addr.S_un.S_addr = (ip[0]) | (ip[1] << 8) | (ip[2] << 16) | (ip[3] << 24);
-        return 0;
     }
-    return -1;
+    return 0;
 }
 
 typedef NTSTATUS(__stdcall *route_f)(const MIB_IPFORWARD_ROW2*);
@@ -308,7 +324,7 @@ static DWORD tun_do_route(netif_handle tun, const char *dest, route_f rt_f) {
 }
 
 int tun_add_route(netif_handle tun, const char *dest) {
-    ZITI_LOG(INFO, "adding route: %s", dest);
+    ZITI_LOG(DEBUG, "adding route: %s", dest);
     DWORD rc = tun_do_route(tun, dest, CreateIpForwardEntry2);
     if (rc != 0 && rc != ERROR_OBJECT_ALREADY_EXISTS) {
         DWORD err = GetLastError();
@@ -318,7 +334,7 @@ int tun_add_route(netif_handle tun, const char *dest) {
 }
 
 int tun_del_route(netif_handle tun, const char *dest) {
-    ZITI_LOG(INFO, "removing route: %s", dest);
+    ZITI_LOG(DEBUG, "removing route: %s", dest);
     DWORD rc = tun_do_route(tun, dest, DeleteIpForwardEntry2);
     if (rc != 0) {
         DWORD err = GetLastError();
@@ -328,17 +344,35 @@ int tun_del_route(netif_handle tun, const char *dest) {
 }
 
 static void if_change_cb(PVOID CallerContext, PMIB_IPINTERFACE_ROW Row, MIB_NOTIFICATION_TYPE NotificationType) {
+    struct netif_handle_s *tun = CallerContext;
+
     MIB_IPFORWARD_ROW2 rt = {0};
     rt.DestinationPrefix.Prefix.Ipv4.sin_family = AF_INET;
-    ZITI_LOG(INFO, "interface change: if_idx = %d, change = %d", Row ? Row->InterfaceIndex : 0, NotificationType);
+    ZITI_LOG(DEBUG, "interface change: if_idx = %d, change = %d", Row ? Row->InterfaceIndex : 0, NotificationType);
     int rc = GetIpForwardEntry2(&rt);
-    if ( rc == NO_ERROR) {
+    if (rc == NO_ERROR) {
         if (default_rt.InterfaceIndex != rt.InterfaceIndex) {
             ZITI_LOG(INFO, "default route is now via if_idx[%d]", rt.InterfaceIndex);
             default_rt.InterfaceIndex = rt.InterfaceIndex;
             default_rt.InterfaceLuid = rt.InterfaceLuid;
             default_rt.Metric = rt.Metric;
             default_rt.NextHop = rt.NextHop;
+
+            ZITI_LOG(INFO, "updating excluded routes");
+            const char *dest;
+            MIB_IPFORWARD_ROW2 *route;
+            MODEL_MAP_FOREACH(dest, route, &tun->excluded_routes) {
+                route->NextHop = rt.NextHop;
+                route->InterfaceIndex = rt.InterfaceIndex;
+                route->InterfaceLuid = rt.InterfaceLuid;
+                if (SetIpForwardEntry2(route) != NO_ERROR) {
+                    char err[256];
+                    FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM, NULL, GetLastError(),
+                                  MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+                                  err, sizeof(err), NULL);
+                    ZITI_LOG(WARN, "failed to update route[%s]: %d(%s)", dest, rc, err);
+                }
+            }
         }
     } else {
         char err[256];
@@ -351,39 +385,23 @@ static void if_change_cb(PVOID CallerContext, PMIB_IPINTERFACE_ROW Row, MIB_NOTI
 
 static int tun_exclude_rt(netif_handle dev, uv_loop_t *loop, const char *dest) {
 
-    union {
-        uint32_t addr;
-        uint8_t bits[4];
-    } dest_addr;
-
-    uint8_t prefix;
-
-    int parsed = sscanf_s(dest, "%d.%d.%d.%d/%d", &dest_addr.bits[0], &dest_addr.bits[1], &dest_addr.bits[2], &dest_addr.bits[3], &prefix);
-    if (parsed < 4) {
-        ZITI_LOG(WARN, "could not parse excluded route[%s]", dest);
-        return -1;
-    }
-    if (parsed == 4) {
-        prefix = 32;
-    }
-
-    MIB_IPFORWARD_ROW2 route = {0};
-    route.DestinationPrefix.Prefix.si_family = AF_INET;
-    parse_route(&route.DestinationPrefix, dest);
-    route.DestinationPrefix.PrefixLength = prefix;
-    route.DestinationPrefix.Prefix.Ipv4.sin_addr.S_un.S_addr = dest_addr.addr;
-    int rc = GetIpForwardEntry2(&route);
+    MIB_IPFORWARD_ROW2 *route = calloc(1, sizeof(MIB_IPFORWARD_ROW2));
+    route->DestinationPrefix.Prefix.si_family = AF_INET;
+    parse_route(&route->DestinationPrefix, dest);
+    int rc = GetIpForwardEntry2(route);
     if (rc == NO_ERROR) {
-        ZITI_LOG(INFO, "route to %s found", dest);
-        DeleteIpForwardEntry2(&route);
+        ZITI_LOG(DEBUG, "route to %s found", dest);
+        DeleteIpForwardEntry2(route);
     }
 
-    route.InterfaceIndex = default_rt.InterfaceIndex;
-    route.InterfaceLuid = default_rt.InterfaceLuid;
-    route.Metric = default_rt.Metric;
-    route.NextHop = default_rt.NextHop;
+    route->InterfaceIndex = default_rt.InterfaceIndex;
+    route->InterfaceLuid = default_rt.InterfaceLuid;
+    route->Metric = 0;
+    route->NextHop = default_rt.NextHop;
+    route->ValidLifetime = ROUTE_LIFETIME;
+    route->PreferredLifetime = ROUTE_LIFETIME;
 
-    rc = CreateIpForwardEntry2(&route);
+    rc = CreateIpForwardEntry2(route);
     if (rc != NO_ERROR) {
         char err[256];
         FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM, NULL, GetLastError(),
@@ -391,7 +409,26 @@ static int tun_exclude_rt(netif_handle dev, uv_loop_t *loop, const char *dest) {
                       err, sizeof(err), NULL);
         ZITI_LOG(WARN, "failed to create exclusion route: %d(%s)", rc, err);
     }
+    model_map_set(&dev->excluded_routes, dest, route);
     return 0;
+}
+
+void refresh_routes(uv_timer_t *timer) {
+    ZITI_LOG(DEBUG, "refreshing excluded routes");
+    struct netif_handle_s *tun = timer->data;
+    const char *dest;
+    MIB_IPFORWARD_ROW2 *route;
+    MODEL_MAP_FOREACH(dest, route, &tun->excluded_routes) {
+        ZITI_LOG(DEBUG, "refreshing route to %s", dest);
+        int rc = SetIpForwardEntry2(route);
+        if (rc != NO_ERROR) {
+        char err[256];
+        FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM, NULL, GetLastError(),
+                      MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+                      err, sizeof(err), NULL);
+            ZITI_LOG(WARN, "failed to create exclusion route[%s]: %d(%s)", dest, rc, err);
+        }
+    }
 }
 
 int set_dns(netif_handle tun, uint32_t dns_ip) {
