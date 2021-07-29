@@ -11,6 +11,7 @@
 #include <sys/ioctl.h>
 #include <sys/kern_event.h>
 #include <sys/uio.h>
+#include <ziti/ziti_log.h>
 
 #include "utun.h"
 
@@ -92,6 +93,34 @@ int utun_delete_route(netif_handle tun, const char *dest) {
     char cmd[1024];
     snprintf(cmd, sizeof(cmd), "route delete %s -interface %s", dest, tun->name);
     int s = system(cmd);
+    return s;
+}
+
+static int utun_exclude_rt(netif_handle dev, uv_loop_t *l, const char *addr) {
+    char gw[128] = {0};
+    const char *get_gw_cmd = "route -n get default | awk '/gateway: / { printf \"%s\", $2 }'";
+    ZITI_LOG(DEBUG, "executing '%s'", get_gw_cmd);
+    FILE *get_gw_pipe = popen(get_gw_cmd, "r");
+    if (get_gw_pipe == NULL) {
+        ZITI_LOG(ERROR, "popen(%s) failed", get_gw_cmd);
+        return -1;
+    }
+    size_t gw_len = fread(gw, 1, sizeof(gw), get_gw_pipe);
+    int s = pclose(get_gw_pipe);
+    if (!WIFEXITED(s) || WEXITSTATUS(s) != 0) {
+        ZITI_LOG(ERROR, "%s failed", get_gw_cmd);
+        return -1;
+    }
+    if (ferror(get_gw_pipe) || gw_len == 0) {
+        ZITI_LOG(ERROR, "failed to get default gateway");
+        return -1;
+    }
+    ZITI_LOG(DEBUG, "default route gw is '%s'", gw);
+
+    char cmd[1024];
+    snprintf(cmd, sizeof(cmd), "route add %s %s", addr, gw);
+    ZITI_LOG(DEBUG, "executing '%s'", cmd);
+    s = system(cmd);
     return s;
 }
 
@@ -191,6 +220,7 @@ netif_driver utun_open(char *error, size_t error_len, const char *cidr) {
     driver->uv_poll_init = utun_uv_poll_init;
     driver->add_route    = utun_add_route;
     driver->delete_route = utun_delete_route;
+    driver->exclude_rt   = utun_exclude_rt;
     driver->close        = utun_close;
 
     if (cidr) {

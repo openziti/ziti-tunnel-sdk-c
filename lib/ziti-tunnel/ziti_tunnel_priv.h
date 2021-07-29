@@ -6,6 +6,9 @@
 
 #include <ziti/ziti_tunnel.h>
 
+/* xxx.xxx.xxx.xxx/xx */
+#define MAX_ROUTE_LEN (4*4 + 2 + 1)
+
 enum {
     NONE,
     ERR,
@@ -36,6 +39,11 @@ struct intercept_ctx_s {
     STAILQ_ENTRY(intercept_ctx_s) entries;
 };
 
+struct excluded_route_s {
+    char route[MAX_ROUTE_LEN];
+    LIST_ENTRY(excluded_route_s) _next;
+};
+
 typedef struct tunneler_ctx_s {
     tunneler_sdk_options opts; // this must be first - it is accessed opaquely through tunneler_context*
     struct netif netif;
@@ -46,6 +54,8 @@ typedef struct tunneler_ctx_s {
     uv_timer_t   lwip_timer_req;
     STAILQ_HEAD(intercept_ctx_list_s, intercept_ctx_s) intercepts;
 //    STAILQ_HEAD(hosted_service_ctx_list_s, hosted_service_ctx_s) hosts;
+    LIST_HEAD(exclusions, excluded_route_s) excluded_rts;
+
     dns_manager *dns;
     struct udp_pcb *dns_pcb;
 } *tunneler_context;
