@@ -112,6 +112,7 @@ void free_tunneler_io_context(tunneler_io_context *tnlr_io_ctx_p) {
     }
 
     if (*tnlr_io_ctx_p != NULL) {
+        free((*tnlr_io_ctx_p)->service_name);
         free(*tnlr_io_ctx_p);
         *tnlr_io_ctx_p = NULL;
     }
