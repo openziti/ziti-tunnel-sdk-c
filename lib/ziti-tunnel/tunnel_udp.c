@@ -199,7 +199,7 @@ u8_t recv_udp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     }
     io->tnlr_io->tnlr_ctx = tnlr_ctx;
     io->tnlr_io->proto = tun_udp;
-    io->tnlr_io->service_name = intercept_ctx->service_name;
+    io->tnlr_io->service_name = strdup(intercept_ctx->service_name);
     snprintf(io->tnlr_io->client, sizeof(io->tnlr_io->client), "udp:%s:%d", ipaddr_ntoa(&src), src_p);
     snprintf(io->tnlr_io->intercepted, sizeof(io->tnlr_io->intercepted), "udp:%s:%d", ipaddr_ntoa(&dst), dst_p);
     io->tnlr_io->udp.pcb = npcb;
