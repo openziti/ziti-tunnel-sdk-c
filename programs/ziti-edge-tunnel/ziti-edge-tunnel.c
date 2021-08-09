@@ -155,11 +155,12 @@ static void load_identities(uv_work_t *wr) {
         uv_fs_t fs;
         int rc = uv_fs_scandir(wr->loop, &fs, config_dir, 0, NULL);
         if (rc < 0) {
-            ZITI_LOG(ERROR, "failed to scan dir: %d/%s", rc, uv_strerror(rc));
+            ZITI_LOG(ERROR, "failed to scan dir[%s]: %d/%s", config_dir, rc, uv_strerror(rc));
+            return;
         }
 
         uv_dirent_t file;
-        while (uv_fs_scandir_next(&fs, &file) != UV_EOF) {
+        while (uv_fs_scandir_next(&fs, &file) == 0) {
             ZITI_LOG(INFO, "file = %s %d", file.name, file.type);
 
             if (file.type == UV_DIRENT_FILE) {
@@ -466,7 +467,7 @@ static int parse_enroll_opts(int argc, char *argv[]) {
                             opts, &option_index)) != -1) {
         switch (c) {
             case 'j':
-                enroll_opts.jwt = realpath(optarg, NULL);
+                enroll_opts.jwt = optarg;
                 break;
             case 'k':
                 enroll_opts.enroll_key = realpath(optarg, NULL);

@@ -181,6 +181,22 @@ static void init_dns_maintainer(uv_loop_t *loop, const char *tun_name, uint32_t 
     do_dns_update(loop, 0);
 }
 
+static int tun_exclude_rt(netif_handle dev, uv_loop_t *l, const char *addr) {
+    char def_route[128];
+    FILE *def_rt = popen("ip route show default", "r");
+    int def_rt_size = (int)fread(def_route, 1, sizeof(def_route), def_rt);
+    ZITI_LOG(DEBUG, "default route is '%.*s'", def_rt_size, def_route);
+    pclose(def_rt);
+
+    char *p = strstr(def_route, "via ");
+    if (p == NULL) return -1;
+    char *gw = p + 4;
+    char *endgw = strchr(gw, ' ');
+    int gw_len = (int)(endgw - gw);
+
+    return run_command("ip route replace %s via %.*s", addr, gw_len, gw);
+}
+
 netif_driver tun_open(uv_loop_t *loop, uint32_t tun_ip, uint32_t dns_ip, const char *dns_block, char *error, size_t error_len) {
     if (error != NULL) {
         memset(error, 0, error_len * sizeof(char));
@@ -232,6 +248,7 @@ netif_driver tun_open(uv_loop_t *loop, uint32_t tun_ip, uint32_t dns_ip, const c
     driver->add_route    = tun_add_route;
     driver->delete_route = tun_delete_route;
     driver->close        = tun_close;
+    driver->exclude_rt   = tun_exclude_rt;
 
     run_command("ip link set %s up", tun->name);
     run_command("ip addr add %s dev %s", inet_ntoa(*(struct in_addr*)&tun_ip), tun->name);

@@ -185,6 +185,8 @@ extern bool port_match(int port, const port_range_list_t *port_ranges);
 
 extern tunneler_context ziti_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop);
 
+extern void ziti_tunneler_exclude_route(tunneler_context tnlr_ctx, const char* dst);
+
 /** called by tunneler application when it is done with a tunneler_context.
  * calls `stop_intercepting` for each intercepted service. */
 extern void ziti_tunneler_shutdown(tunneler_context tnlr_ctx);

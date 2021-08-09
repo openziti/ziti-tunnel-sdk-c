@@ -76,6 +76,62 @@ tunneler_context ziti_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop)
     return ctx;
 }
 
+void ziti_tunneler_exclude_route(tunneler_context tnlr_ctx, const char *dst) {
+    address_t *addr = parse_address(dst, NULL);
+    uv_interface_address_t *if_addrs;
+    int err, num_if_addrs;
+    if ((err = uv_interface_addresses(&if_addrs, &num_if_addrs)) != 0) {
+        TNL_LOG(ERR, "uv_interface_addresses failed: %s", uv_strerror(err));
+        return;
+    }
+
+    TNL_LOG(DEBUG, "excluding %s from tunneler intercept", addr->str);
+    if (tnlr_ctx->opts.netif_driver->exclude_rt) {
+        if (!addr->is_hostname) {
+            tnlr_ctx->opts.netif_driver->exclude_rt(tnlr_ctx->opts.netif_driver->handle, tnlr_ctx->loop, addr->str);
+            struct excluded_route_s *exrt = calloc(1, sizeof(struct excluded_route_s));
+            strncpy(exrt->route, addr->str, MAX_ROUTE_LEN);
+            LIST_INSERT_HEAD(&tnlr_ctx->excluded_rts, exrt, _next);
+        } else {
+            uv_getaddrinfo_t resolve_req = {0};
+            uv_getaddrinfo(tnlr_ctx->loop, &resolve_req, NULL, addr->str, "80", NULL);
+
+            struct addrinfo *addrinfo = resolve_req.addrinfo;
+            while (addrinfo != NULL) {
+                struct excluded_route_s *exrt = calloc(1, sizeof(struct excluded_route_s));
+                uv_ip4_name((const struct sockaddr_in*)addrinfo->ai_addr, exrt->route, MAX_ROUTE_LEN);
+                // make sure the address isn't local
+                for (int i = 0; i < num_if_addrs; i++) {
+                    uv_getnameinfo_t ni_req = {0};
+                    struct sockaddr *a = (struct sockaddr *)&if_addrs[i].address;
+                    if (a->sa_family == AF_INET || a->sa_family == AF_INET6) {
+                        err = uv_getnameinfo(tnlr_ctx->loop, &ni_req, NULL, a, NI_NUMERICHOST);
+                        if (err == 0) {
+                            TNL_LOG(TRACE, "found ifaddr %s", ni_req.host);
+                            if (strcmp(ni_req.host, exrt->route) == 0) {
+                                TNL_LOG(DEBUG, "%s is a local address on %s; not excluding route", exrt->route, if_addrs[i].name);
+                                goto done;
+                            }
+                        } else {
+                            TNL_LOG(WARN, "uv_getnameinfo failed: %s", uv_strerror(err));
+                        }
+                    }
+                }
+                LIST_INSERT_HEAD(&tnlr_ctx->excluded_rts, exrt, _next);
+                tnlr_ctx->opts.netif_driver->exclude_rt(tnlr_ctx->opts.netif_driver->handle, tnlr_ctx->loop, exrt->route);
+                addrinfo = addrinfo->ai_next;
+            }
+            uv_freeaddrinfo(resolve_req.addrinfo);
+        }
+    } else {
+        TNL_LOG(WARN, "netif_driver->exclude_rt function is not implemented");
+    }
+    done:
+    uv_free_interface_addresses(if_addrs, num_if_addrs);
+    free(addr);
+}
+
+
 static void tunneler_kill_active(const void *ztx);
 
 void ziti_tunneler_shutdown(tunneler_context tnlr_ctx) {
@@ -131,7 +187,7 @@ void ziti_tunneler_dial_completed(struct io_ctx_s *io, bool ok) {
         TNL_LOG(ERR, "null ziti_io or tnlr_io");
     }
     const char *status = ok ? "succeeded" : "failed";
-    TNL_LOG(INFO, "ziti dial %s: service=%s, client=%s", status, io->tnlr_io->service_name, io->tnlr_io->client);
+    TNL_LOG(DEBUG, "ziti dial %s: client[%s] service[%s]", status, io->tnlr_io->client, io->tnlr_io->service_name);
 
     switch (io->tnlr_io->proto) {
         case tun_tcp:
@@ -200,7 +256,7 @@ void ziti_tunneler_set_dns(tunneler_context tnlr_ctx, dns_manager *dns) {
 intercept_ctx_t* intercept_ctx_new(tunneler_context tnlr_ctx, const char *app_id, void *app_intercept_ctx) {
     intercept_ctx_t *ictx = calloc(1, sizeof(intercept_ctx_t));
     ictx->tnlr_ctx = tnlr_ctx;
-    ictx->service_name = app_id;
+    ictx->service_name = strdup(app_id);
     ictx->app_intercept_ctx = app_intercept_ctx;
     STAILQ_INIT(&ictx->protocols);
     STAILQ_INIT(&ictx->addresses);
@@ -227,6 +283,7 @@ address_t *parse_address(const char *hn_or_ip_or_cidr, dns_manager *dns) {
     }
 
     if (ipaddr_aton(addr->str, &addr->ip) == 0) {
+        addr->is_hostname = true;
         // does not parse as IP address; assume hostname and try to get IP from the dns manager
         if (dns) {
             const char *resolved_ip_str = assign_ip(addr->str);
@@ -240,8 +297,6 @@ address_t *parse_address(const char *hn_or_ip_or_cidr, dns_manager *dns) {
                     TNL_LOG(ERR, "dns manager provided unparsable ip address '%s'", resolved_ip_str);
                     free(addr);
                     return NULL;
-                } else {
-                    addr->is_hostname = true;
                 }
             }
         }
@@ -409,6 +464,7 @@ void ziti_tunneler_stop_intercepting(tunneler_context tnlr_ctx, void *zi_ctx) {
             free(p);
         }
 
+        free(intercept->service_name);
         free(intercept);
     }
 
@@ -443,8 +499,8 @@ int ziti_tunneler_close(tunneler_io_context tnlr_io_ctx) {
         TNL_LOG(INFO, "null tnlr_io_ctx");
         return 0;
     }
-    TNL_LOG(INFO, "closing connection: service=%s, client=%s",
-            tnlr_io_ctx->service_name, tnlr_io_ctx->client);
+    TNL_LOG(INFO, "closing connection: client[%s] service[%s]",
+            tnlr_io_ctx->client, tnlr_io_ctx->service_name);
     switch (tnlr_io_ctx->proto) {
         case tun_tcp:
             tunneler_tcp_close(tnlr_io_ctx->tcp);
@@ -466,11 +522,11 @@ int ziti_tunneler_close(tunneler_io_context tnlr_io_ctx) {
 /** called by tunneler application when an EOF is received from ziti */
 int ziti_tunneler_close_write(tunneler_io_context tnlr_io_ctx) {
     if (tnlr_io_ctx == NULL) {
-        TNL_LOG(INFO, "null tnlr_io_ctx");
+        TNL_LOG(DEBUG, "null tnlr_io_ctx");
         return 0;
     }
-    TNL_LOG(INFO, "closing write connection: service=%s, client=%s",
-            tnlr_io_ctx->service_name, tnlr_io_ctx->client);
+    TNL_LOG(DEBUG, "closing write connection: client[%s] service[%s]",
+            tnlr_io_ctx->client, tnlr_io_ctx->service_name);
     switch (tnlr_io_ctx->proto) {
         case tun_tcp:
             tunneler_tcp_close_write(tnlr_io_ctx->tcp);

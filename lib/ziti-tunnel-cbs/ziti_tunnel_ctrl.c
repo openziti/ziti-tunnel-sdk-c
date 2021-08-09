@@ -20,9 +20,14 @@ limitations under the License.
 #include "ziti_instance.h"
 #include "stdarg.h"
 #include <time.h>
+#include <http_parser.h>
 
 #ifndef MAXBUFFERLEN
 #define MAXBUFFERLEN 8192
+#endif
+
+#ifndef HOST_NAME_MAX
+#define HOST_NAME_MAX 254
 #endif
 
 // temporary list to pass info between parse and run
@@ -42,9 +47,9 @@ static int load_identity(const char *identifier, const char *path, command_cb cb
 static struct ziti_instance_s *new_ziti_instance(const char *identifier, const char *path);
 static void load_ziti_async(uv_async_t *ar);
 static void on_sigdump(uv_signal_t *sig, int signum);
-static void on_mfa_query(ziti_context ztx, void* mfa_ctx, ziti_auth_query_mfa *aq_mfa, ziti_ar_mfa_cb response_cb);
 static void enable_mfa(ziti_context ztx, void *ctx);
 static char *extract_filename(char *str);
+// static void on_mfa_query(ziti_context ztx, void* mfa_ctx, ziti_auth_query_mfa *aq_mfa, ziti_ar_mfa_cb response_cb);
 static void submit_mfa(struct mfa_request_s *req, const char *code);
 static ziti_context get_ziti(const char *identifier);
 
@@ -341,10 +346,10 @@ static struct ziti_instance_s *new_ziti_instance(const char *identifier, const c
     inst->identifier = strdup(identifier ? identifier : extract_filename(path));
     inst->opts.config = realpath(path, NULL);
     inst->opts.config_types = cfg_types;
-    inst->opts.events = ZitiContextEvent|ZitiServiceEvent;
+    inst->opts.events = ZitiContextEvent|ZitiServiceEvent|ZitiRouterEvent;
     inst->opts.event_cb = on_ziti_event;
     inst->opts.refresh_interval = refresh_interval; /* default refresh */
-    inst->opts.aq_mfa_cb = on_mfa_query;
+    //inst->opts.aq_mfa_cb = on_mfa_query;
     inst->opts.app_ctx = inst;
     return inst;
 }
@@ -392,6 +397,16 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
             if (event->event.ctx.ctrl_status == ZITI_OK) {
                 ZITI_LOG(INFO, "ziti_ctx[%s] connected to controller", ziti_get_identity(ztx)->name);
                 ev.status = "OK";
+                const char *ctrl = ziti_get_controller(ztx);
+                struct http_parser_url ctrl_url;
+                if (http_parser_parse_url(ctrl, strlen(ctrl), 0, &ctrl_url) == 0 && (ctrl_url.field_set & UF_HOST)) {
+                    char ctrl_hostname[HOST_NAME_MAX];
+                    snprintf(ctrl_hostname, sizeof(ctrl_hostname), "%.*s", ctrl_url.field_data[UF_HOST].len, ctrl + ctrl_url.field_data[UF_HOST].off);
+                    ziti_tunneler_exclude_route(CMD_CTX.tunnel_ctx, ctrl_hostname);
+                } else {
+                    ZITI_LOG(WARN, "failed to parse controller URL(%s)", ctrl);
+                }
+
             } else {
                 ZITI_LOG(WARN, "ziti_ctx controller connections failed: %s", ziti_errorstr(event->event.ctx.ctrl_status));
                 ev.status = (char*)ziti_errorstr(event->event.ctx.ctrl_status);
@@ -414,8 +429,29 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
             break;
         }
 
-        case ZitiRouterEvent:
+        case ZitiRouterEvent: {
+            const struct ziti_router_event *rt_event = &event->event.router;
+            const char *ctx_name = ziti_get_identity(ztx)->name;
+            switch (rt_event->status) {
+                case EdgeRouterAdded:
+                    ZITI_LOG(INFO, "ztx[%s] added edge router %s@%s", ctx_name, rt_event->name, rt_event->address);
+                    ziti_tunneler_exclude_route(CMD_CTX.tunnel_ctx, rt_event->address);
+                    break;
+                case EdgeRouterConnected:
+                    ZITI_LOG(INFO, "ztx[%s] router %s connected", ctx_name, rt_event->name);
+                    break;
+                case EdgeRouterDisconnected:
+                    ZITI_LOG(INFO, "ztx[%s] router %s disconnected", ctx_name, rt_event->name);
+                    break;
+                case EdgeRouterRemoved:
+                    ZITI_LOG(INFO, "ztx[%s] router %s removed", ctx_name, rt_event->name);
+                    break;
+                case EdgeRouterUnavailable:
+                    ZITI_LOG(INFO, "ztx[%s] router %s is unavailable", ctx_name, rt_event->name);
+                    break;
+            }
             break;
+        }
     }
 }
 
@@ -456,6 +492,7 @@ static void load_ziti_async(uv_async_t *ar) {
     uv_close((uv_handle_t *) ar, (uv_close_cb) free);
 }
 
+/*
 static void on_mfa_query(ziti_context ztx, void* mfa_ctx, ziti_auth_query_mfa *aq_mfa, ziti_ar_mfa_cb response_cb) {
     struct ziti_instance_s *inst = ziti_app_ctx(ztx);
 
@@ -475,6 +512,7 @@ static void on_mfa_query(ziti_context ztx, void* mfa_ctx, ziti_auth_query_mfa *a
 
     free_mfa_event(&ev);
 }
+ */
 
 static void on_submit_mfa(ziti_context ztx, void *mfa_ctx, int status, void *ctx) {
     struct mfa_request_s *req = ctx;
@@ -498,7 +536,7 @@ static void on_submit_mfa(ziti_context ztx, void *mfa_ctx, int status, void *ctx
 }
 
 static void submit_mfa(struct mfa_request_s *req, const char *code) {
-    req->submit_f(req->ztx, req->submit_ctx, (char*)code, on_submit_mfa, req);
+    //req->submit_f(req->ztx, req->submit_ctx, (char*)code, on_submit_mfa, req);
 }
 
 static void on_enable_mfa(ziti_context ztx, int status, ziti_mfa_enrollment enrollment, void *ctx) {
@@ -558,14 +596,26 @@ static char *extract_filename(char *str) {
     return filename;
 }
 
+#define CHECK(lbl, op) do{ \
+int rc = (op);                  \
+if (rc < 0) {              \
+ZITI_LOG(ERROR, "operation[" #op "] failed: %d(%s) errno=%d", rc, strerror(rc), errno); \
+goto lbl;\
+}                           \
+}while(0)
+
 static void on_sigdump(uv_signal_t *sig, int signum) {
 #ifndef MAXPATHLEN
 #define MAXPATHLEN 1024
 #endif
     char fname[MAXPATHLEN];
-    snprintf(fname, sizeof(fname), "/tmp/ziti-dump.%d.dump", getpid());
+    snprintf(fname, sizeof(fname), "/tmp/ziti-dump.%lu.dump", (unsigned long)uv_os_getpid());
     ZITI_LOG(INFO, "saving Ziti dump to %s", fname);
     FILE *dumpfile = fopen(fname, "a+");
+    if (dumpfile == NULL) {
+        ZITI_LOG(ERROR, "failed to open dump output file(%s): %d(%s)", fname, errno, strerror(errno));
+        return;
+    }
 
     uv_timeval64_t dump_time;
     uv_gettimeofday(&dump_time);
@@ -574,15 +624,16 @@ static void on_sigdump(uv_signal_t *sig, int signum) {
     struct tm* start_tm = gmtime(&dump_time.tv_sec);
     strftime(time_str, sizeof(time_str), "%FT%T", start_tm);
 
-    fprintf(dumpfile, "ZIti Dump starting: %s\n",time_str);
+    CHECK(cleanup, fprintf(dumpfile, "ZIti Dump starting: %s\n",time_str));
     const char *k;
     struct ziti_instance_s *inst;
     MODEL_MAP_FOREACH(k, inst, &instances) {
-        fprintf(dumpfile, "instance: %s\n", k);
+        CHECK(cleanup, fprintf(dumpfile, "instance: %s\n", k));
         ziti_dump(inst->ztx, (int (*)(void *, const char *, ...)) fprintf, dumpfile);
     }
 
-    fflush(dumpfile);
+    CHECK(cleanup, fflush(dumpfile));
+    cleanup:
     fclose(dumpfile);
 }
 
