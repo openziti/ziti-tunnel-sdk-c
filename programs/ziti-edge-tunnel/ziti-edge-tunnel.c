@@ -695,7 +695,7 @@ static int disable_identity_opts(int argc, char *argv[]) {
 
 static int enable_mfa_opts(int argc, char *argv[]) {
     static struct option opts[] = {
-            {"identity", optional_argument, NULL, 'i'},
+            {"identity", required_argument, NULL, 'i'},
     };
     int c, option_index, errors = 0;
     optind = 0;
@@ -729,7 +729,7 @@ static int enable_mfa_opts(int argc, char *argv[]) {
 
 static int verify_mfa_opts(int argc, char *argv[]) {
     static struct option opts[] = {
-            {"identity", optional_argument, NULL, 'i'},
+            {"identity", required_argument, NULL, 'i'},
             {"code", required_argument, NULL, 'c'},
     };
     int c, option_index, errors = 0;
@@ -765,6 +765,44 @@ static int verify_mfa_opts(int argc, char *argv[]) {
     return optind;
 }
 
+static int remove_mfa_opts(int argc, char *argv[]) {
+    static struct option opts[] = {
+            {"identity", optional_argument, NULL, 'i'},
+            {"code", required_argument, NULL, 'c'},
+    };
+    int c, option_index, errors = 0;
+    optind = 0;
+
+    tunnel_remove_mfa *remove_mfa_options = calloc(1, sizeof(tunnel_remove_mfa));
+    cmd = calloc(1, sizeof(tunnel_comand));
+    cmd->command = TunnelCommand_RemoveMFA;
+
+    while ((c = getopt_long(argc, argv, "i:c:",
+                            opts, &option_index)) != -1) {
+        switch (c) {
+            case 'i':
+                remove_mfa_options->identifier = optarg;
+                break;
+            case 'c':
+                remove_mfa_options->code = optarg;
+                break;
+            default: {
+                fprintf(stderr, "Unknown option '%c'\n", c);
+                errors++;
+                break;
+            }
+        }
+    }
+    if (errors > 0) {
+        commandline_help(stderr);
+        exit(1);
+    }
+    size_t json_len;
+    cmd->data = tunnel_remove_mfa_to_json(remove_mfa_options, MODEL_JSON_COMPACT, &json_len);
+
+    return optind;
+}
+
 static CommandLine enroll_cmd = make_command("enroll", "enroll Ziti identity",
         "-j|--jwt <enrollment token> -i|--identity <identity> [-k|--key <private_key> [-c|--cert <certificate>]]",
         "\t-j|--jwt\tenrollment token file\n"
@@ -792,6 +830,8 @@ static CommandLine enable_mfa_cmd = make_command("enable_mfa", "Enable MFA funct
 static CommandLine verify_mfa_cmd = make_command("verify_mfa", "Verify MFA function submits auth code to the controller", "[-i <identity>] [-c <code>]",
                                                  "\t-i|--identity\tidentity info to verify mfa login\n"
                                                  "\t-c|--authcode\tauth code to verify mfa login\n", verify_mfa_opts, send_message_to_tunnel_fn);
+static CommandLine remove_mfa_cmd = make_command("remove_mfa", "Remove MFA function removes MFA registration from the controller", "[-i <identity>]",
+                                                 "\t-i|--identity\tidentity info for removing mfa\n", remove_mfa_opts, send_message_to_tunnel_fn);
 static CommandLine ver_cmd = make_command("version", "show version", "[-v]", "\t-v\tshow verbose version information\n", version_opts, version);
 static CommandLine help_cmd = make_command("help", "this message", NULL, NULL, NULL, usage);
 static CommandLine *main_cmds[] = {
@@ -801,6 +841,7 @@ static CommandLine *main_cmds[] = {
         &dump_cmd,
         &enable_mfa_cmd,
         &verify_mfa_cmd,
+        &remove_mfa_cmd,
         &ver_cmd,
         &help_cmd,
         NULL
