@@ -3,10 +3,13 @@
 set -e -u -o pipefail
 
 function alldone() {
-    # send SIGINT to ziti-edge-tunnel to trigger graceful exit
-    kill -INT $ZITI_EDGE_TUNNEL_PID
-    # let entrypoint script exit after ziti-edge-tunnel PID
-    wait $ZITI_EDGE_TUNNEL_PID
+    # if successfully sent to background then send SIGINT to trigger a cleanup
+    # of iptables mangle rules and loopback assignments
+    [[ "${ZITI_EDGE_TUNNEL_PID:-}" =~ ^[0-9]+$ ]] && {
+        kill -INT "$ZITI_EDGE_TUNNEL_PID"
+        # let entrypoint script exit after ziti-tunnel PID
+        wait "$ZITI_EDGE_TUNNEL_PID"
+    }
 }
 trap alldone exit
 
