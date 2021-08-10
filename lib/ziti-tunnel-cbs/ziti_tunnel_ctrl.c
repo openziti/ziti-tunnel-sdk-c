@@ -508,6 +508,15 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
             }
             break;
         }
+
+        case ZitiMfaAuthEvent : {
+            const char *ctx_name = ziti_get_identity(ztx)->name;
+            ZITI_LOG(INFO, "ztx[%s] Mfa event received", ctx_name);
+            ziti_ctx_event ev = {0};
+            ev.event_type = TunnelEvents.MFAEvent;
+            ev.identifier = instance->identifier;
+            CMD_CTX.on_event((const base_event *) &ev);
+        }
     }
 }
 
