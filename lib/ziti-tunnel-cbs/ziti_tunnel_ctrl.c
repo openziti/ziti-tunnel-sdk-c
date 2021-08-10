@@ -52,7 +52,7 @@ static void verify_mfa(ziti_context ztx, char *code, void *ctx);
 static void remove_mfa(ziti_context ztx, char *code, void *ctx);
 static char *extract_filename(char *str);
 // static void on_mfa_query(ziti_context ztx, void* mfa_ctx, ziti_auth_query_mfa *aq_mfa, ziti_ar_mfa_cb response_cb);
-static void submit_mfa(struct mfa_request_s *req, const char *code);
+static void submit_mfa(ziti_context ztx, const char *code, void *ctx);
 static ziti_context get_ziti(const char *identifier);
 
 struct tunnel_cb_s {
@@ -361,10 +361,12 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
                 break;
             }
 
-            inst->mfa_req->cmd_cb = cb;
-            inst->mfa_req->cmd_ctx = ctx;
+            struct tunnel_cb_s *req = malloc(sizeof(struct tunnel_cb_s));
+            req->ctx = strdup(auth.identifier);
+            req->cmd_cb = cb;
+            req->cmd_ctx = ctx;
 
-            submit_mfa(inst->mfa_req, auth.code);
+            submit_mfa(inst->mfa_req, auth.code, req);
             free_tunnel_submit_mfa(&auth);
             return 0;
         }
@@ -569,7 +571,7 @@ static void on_mfa_query(ziti_context ztx, void* mfa_ctx, ziti_auth_query_mfa *a
  */
 
 static void on_submit_mfa(ziti_context ztx, void *mfa_ctx, int status, void *ctx) {
-    struct mfa_request_s *req = ctx;
+    struct tunnel_cb_s *req = ctx;
     tunnel_result result = {0};
     if (status != ZITI_OK) {
         result.success = false;
@@ -585,12 +587,13 @@ static void on_submit_mfa(ziti_context ztx, void *mfa_ctx, int status, void *ctx
     if (status == ZITI_OK) {
         struct ziti_instance_s *inst = ziti_app_ctx(ztx);
         inst->mfa_req = NULL;
-        free(req);
     }
+    free(req);
 }
 
-static void submit_mfa(struct mfa_request_s *req, const char *code) {
+static void submit_mfa(ziti_context ztx, const char *code, void *ctx) {
     //req->submit_f(req->ztx, req->submit_ctx, (char*)code, on_submit_mfa, req);
+    ziti_mfa_auth(ztx, code, on_submit_mfa, ctx);
 }
 
 static void on_enable_mfa(ziti_context ztx, int status, ziti_mfa_enrollment enrollment, void *ctx) {
