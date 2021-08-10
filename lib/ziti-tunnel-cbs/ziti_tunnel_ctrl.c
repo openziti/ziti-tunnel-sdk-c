@@ -48,7 +48,6 @@ static struct ziti_instance_s *new_ziti_instance(const char *identifier, const c
 static void load_ziti_async(uv_async_t *ar);
 static void on_sigdump(uv_signal_t *sig, int signum);
 static void enable_mfa(ziti_context ztx, void *ctx);
-static char *extract_filename(char *str);
 // static void on_mfa_query(ziti_context ztx, void* mfa_ctx, ziti_auth_query_mfa *aq_mfa, ziti_ar_mfa_cb response_cb);
 static void submit_mfa(struct mfa_request_s *req, const char *code);
 static ziti_context get_ziti(const char *identifier);
@@ -167,7 +166,7 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
                 result.error = "invalid command";
                 break;
             }
-            const char *id = load.identifier ? load.identifier : extract_filename(load.path);
+            const char *id = load.identifier ? load.identifier : load.path;
             load_identity(id, load.path, cb, ctx);
             return 0;
         }
@@ -343,7 +342,7 @@ static int load_identity(const char *identifier, const char *path, command_cb cb
 
 static struct ziti_instance_s *new_ziti_instance(const char *identifier, const char *path) {
     struct ziti_instance_s *inst = calloc(1, sizeof(struct ziti_instance_s));
-    inst->identifier = strdup(identifier ? identifier : extract_filename(path));
+    inst->identifier = strdup(identifier ? identifier : path);
     inst->opts.config = realpath(path, NULL);
     inst->opts.config_types = cfg_types;
     inst->opts.events = ZitiContextEvent|ZitiServiceEvent|ZitiRouterEvent;
@@ -565,35 +564,6 @@ static void on_enable_mfa(ziti_context ztx, int status, ziti_mfa_enrollment enro
 
 static void enable_mfa(ziti_context ztx, void *ctx) {
     ziti_mfa_enroll(ztx, on_enable_mfa, ctx);
-}
-
-static char *extract_filename(char *str) {
-    int ch = '/';
-    size_t len;
-    char *basefilename;
-    char *filename = NULL;
-
-    // Search backwards for last backslash in filepath
-    basefilename = strrchr(str, ch);
-
-    // if backslash not found in filepath
-    if (basefilename == NULL) {
-        ch = '\\';
-        basefilename = strrchr(str, ch);
-        if (basefilename == NULL) {
-            basefilename = str; // The whole name is the base file name
-        } else {
-            basefilename++; // Skip the slash
-        }
-    } else {
-        basefilename++; // Skip the slash
-    }
-
-    // extract filename from file path
-    len = strlen(basefilename);
-    filename = malloc(len + 1);
-    strncpy(filename, basefilename, len + 1);
-    return filename;
 }
 
 #define CHECK(lbl, op) do{ \
