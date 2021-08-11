@@ -19,12 +19,12 @@ services:
         - --verbose=4
         - --dns-ip-range=100.64.64.0/18
 #        - --dns=dnsmasq:/ziti-edge-tunnel/hosts  # alternative to systemd-resolved, assumes Docker host has dnsmasq watching for hosts files in ./hosts
-    ziti-tun-dir:                # ip route to tun device transparent interceptor with DNS via systemd-resolved
+    ziti-tun-dir:             # 
         <<: *base-service
         command: 
         - --verbose=4
         - --dns-ip-range=100.64.64.0/18
-        environment: [] # ignore NF_REG_NAME and load all dirs
+        environment: []      # ignore NF_REG_NAME and load all identities in same dir
     ziti-test:               # docker-compose exec ziti-test bash
         <<: *base-service
         entrypoint: ["sh", "-c", "while true; do sleep infinity; done"]
