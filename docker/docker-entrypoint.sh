@@ -42,20 +42,23 @@ if [[ -n "${NF_REG_NAME:-}" ]]; then
     else
         echo "INFO: identity file ${IDENTITY_FILE} does not exist"
         for dir in "/var/run/secrets/netfoundry.io/enrollment-token" "${IDENTITIES_DIR}"; do
-            _jwt="${dir}/${NF_REG_NAME}.jwt"
-            echo "INFO: looking for ${_jwt}"
-            if [[ -s "${_jwt}" ]]; then
-                jwt="${_jwt}"
+            JWT_CANDIDATE="${dir}/${NF_REG_NAME}.jwt"
+            echo "INFO: looking for ${JWT_CANDIDATE}"
+            if [[ -s "${JWT_CANDIDATE}" ]]; then
+                JWT_FILE="${JWT_CANDIDATE}"
                 break
             fi
         done
-        if [[ -n "${jwt:-}" ]]; then
-            echo "INFO: enrolling ${jwt}"
-            ziti-edge-tunnel enroll --jwt "${jwt}" --identity "${IDENTITY_FILE}"
+        if [[ -n "${JWT_FILE:-}" ]]; then
+            echo "INFO: enrolling ${JWT_FILE}"
+            ziti-edge-tunnel enroll --jwt "${JWT_FILE}" --identity "${IDENTITY_FILE}" || {
+                echo "ERROR: failed to enroll with token from ${JWT_FILE} ($(wc -c < "${JWT_FILE}")B)" >&2
+                exit 1
+            }
         elif [[ -n "${NF_REG_TOKEN:-}" ]]; then
             echo "INFO: attempting enrollment with NF_REG_TOKEN"
             ziti-edge-tunnel enroll --jwt - --identity "${IDENTITY_FILE}" <<< "${NF_REG_TOKEN}" || {
-                echo "ERROR: failed to enroll with token from NF_REG_TOKEN" >&2
+                echo "ERROR: failed to enroll with token from NF_REG_TOKEN ($(wc -c <<<"${NF_REG_TOKEN}")B)" >&2
                 exit 1
             }
         else
