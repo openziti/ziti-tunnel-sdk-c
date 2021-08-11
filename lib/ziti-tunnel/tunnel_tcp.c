@@ -258,7 +258,7 @@ static tunneler_io_context new_tunneler_io_context(tunneler_context tnlr_ctx, co
         return NULL;
     }
     ctx->tnlr_ctx = tnlr_ctx;
-    ctx->service_name = service_name;
+    ctx->service_name = strdup(service_name);
     snprintf(ctx->client, sizeof(ctx->client), "tcp:%s:%d", ipaddr_ntoa(&pcb->remote_ip), pcb->remote_port);
     snprintf(ctx->intercepted, sizeof(ctx->intercepted), "tcp:%s:%d", ipaddr_ntoa(&pcb->local_ip), pcb->local_port);
     ctx->proto = tun_tcp;

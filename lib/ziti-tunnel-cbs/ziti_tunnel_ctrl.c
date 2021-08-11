@@ -340,7 +340,7 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
 
         default: result.error = "command not implemented";
         case TunnelCommand_SubmitMFA: {
-            tunnel_submit_mfa auth = {0};
+            tunnel_submit_mfa auth;
             if (cmd->data == NULL || parse_tunnel_submit_mfa(&auth, cmd->data, strlen(cmd->data)) != 0) {
                 result.error = "invalid command";
                 result.success = false;
@@ -354,18 +354,12 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
                 break;
             }
 
-            if (inst->mfa_req == NULL) {
-                result.error = "no active MFA auth request";
-                result.success = false;
-                break;
-            }
-
             struct tunnel_cb_s *req = malloc(sizeof(struct tunnel_cb_s));
             req->ctx = strdup(auth.identifier);
             req->cmd_cb = cb;
             req->cmd_ctx = ctx;
 
-            submit_mfa(inst->mfa_req, auth.code, req);
+            submit_mfa(inst->ztx, strdup(auth.code), req);
             free_tunnel_submit_mfa(&auth);
             return 0;
         }
@@ -401,7 +395,7 @@ static struct ziti_instance_s *new_ziti_instance(const char *identifier, const c
     inst->identifier = strdup(identifier ? identifier : path);
     inst->opts.config = realpath(path, NULL);
     inst->opts.config_types = cfg_types;
-    inst->opts.events = ZitiContextEvent|ZitiServiceEvent|ZitiRouterEvent;
+    inst->opts.events = ZitiContextEvent|ZitiServiceEvent|ZitiRouterEvent|ZitiMfaAuthEvent;
     inst->opts.event_cb = on_ziti_event;
     inst->opts.refresh_interval = refresh_interval; /* default refresh */
     //inst->opts.aq_mfa_cb = on_mfa_query;
@@ -578,7 +572,7 @@ static void on_mfa_query(ziti_context ztx, void* mfa_ctx, ziti_auth_query_mfa *a
 }
  */
 
-static void on_submit_mfa(ziti_context ztx, void *mfa_ctx, int status, void *ctx) {
+static void on_submit_mfa(ziti_context ztx, int status, void *ctx) {
     struct tunnel_cb_s *req = ctx;
     tunnel_result result = {0};
     if (status != ZITI_OK) {
