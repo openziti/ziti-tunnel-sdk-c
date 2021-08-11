@@ -252,6 +252,11 @@ static void on_hosted_ziti_write(ziti_connection ziti_conn, ssize_t len, void *c
 
         hosted_server_close(io_ctx);
     }
+
+    if (io_ctx->ziti_eof && io_ctx->tcp_eof && io_ctx->in_wreqs == 0) {
+        ZITI_LOG(TRACE, "closing: no more write requests and both sides EOF");
+        hosted_server_close(io_ctx);
+    }
 }
 
 /** called by libuv when a hosted TCP server sends data to a client */
