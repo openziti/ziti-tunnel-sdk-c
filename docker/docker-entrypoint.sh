@@ -16,56 +16,72 @@ trap alldone exit
 # Ensure that ziti-edge-tunnel's identity is stored on a volume
 # so we don't throw away the one-time enrollment token
 
-persisted_dir="/ziti-edge-tunnel"
-if ! mountpoint "${persisted_dir}"; then
-    echo "ERROR: please run this image with a volume mounted on ${persisted_dir}" >&2
+IDENTITIES_DIR="/ziti-edge-tunnel"
+if ! mountpoint "${IDENTITIES_DIR}" &>/dev/null; then
+    echo "ERROR: please run this image with a volume mounted on ${IDENTITIES_DIR}" >&2
     exit 1
 fi
 
-# try to figure out the client name if it wasn't provided
-if [[ -z "${NF_REG_NAME}" ]]; then
-    if [[ -n "${IOTEDGE_DEVICEID}" ]]; then
+# TODO: What is the origin story of IOTEDGE_DEVICEID and can it be decommissioned? -Ken
+if [[ -z "${NF_REG_NAME:-}" ]]; then
+    if [[ -n "${IOTEDGE_DEVICEID:-}" ]]; then
         echo "INFO: setting NF_REG_NAME to \${IOTEDGE_DEVICEID} (${IOTEDGE_DEVICEID})"
         NF_REG_NAME="${IOTEDGE_DEVICEID}"
     fi
 fi
-if [[ -z "${NF_REG_NAME}" ]]; then
-    echo "ERROR: please set the NF_REG_NAME environment variable when running this image" >&2
-    exit 1
-fi
 
-# if not non-empty identity file then look for enrollment token
-json="${persisted_dir}/${NF_REG_NAME}.json"
-if [[ ! -s "${json}" ]]; then
-    echo "INFO: identity configuration ${json} does not exist"
-    for dir in "/var/run/secrets/netfoundry.io/enrollment-token" "${persisted_dir}"; do
-        _jwt="${dir}/${NF_REG_NAME}.jwt"
-        echo "INFO: looking for ${_jwt}"
-        if [[ -s "${_jwt}" ]]; then
-            jwt="${_jwt}"
-            break
-        fi
-    done
-    if [[ -n "${jwt:-}" ]]; then
-        echo "INFO: enrolling ${jwt}"
-        ziti-edge-tunnel enroll --jwt "${jwt}" --identity "${json}"
-    elif [[ -n "${NF_REG_TOKEN:-}" ]]; then
-        echo "INFO: attempting enrollment with NF_REG_TOKEN"
-        ziti-edge-tunnel enroll --jwt - --identity "${json}" <<< "${NF_REG_TOKEN}" || {
-            echo "ERROR: failed to enroll with token from NF_REG_TOKEN" >&2
-            exit 1
-        }
+typeset -a TUNNEL_OPTS
+# if identity file, else multiple identities dir
+if [[ -n "${NF_REG_NAME:-}" ]]; then
+    IDENTITY_FILE="${IDENTITIES_DIR}/${NF_REG_NAME}.json"
+    TUNNEL_OPTS=("--identity" "${IDENTITY_FILE}")
+    # if non-empty identity file
+    if [[ -s "${IDENTITY_FILE}" ]]; then
+        echo "INFO: found identity file ${IDENTITY_FILE}"
+    # look for enrollment token
     else
-        echo "INFO: ${NF_REG_NAME}.jwt was not found, trying stdin" >&2
-        ziti-edge-tunnel enroll --jwt - --identity "${json}" || {
-            echo "ERROR: failed to enroll with token from stdin" >&2
-            exit 1
-        }
+        echo "INFO: identity file ${IDENTITY_FILE} does not exist"
+        for dir in "/var/run/secrets/netfoundry.io/enrollment-token" "${IDENTITIES_DIR}"; do
+            _jwt="${dir}/${NF_REG_NAME}.jwt"
+            echo "INFO: looking for ${_jwt}"
+            if [[ -s "${_jwt}" ]]; then
+                jwt="${_jwt}"
+                break
+            fi
+        done
+        if [[ -n "${jwt:-}" ]]; then
+            echo "INFO: enrolling ${jwt}"
+            ziti-edge-tunnel enroll --jwt "${jwt}" --identity "${IDENTITY_FILE}"
+        elif [[ -n "${NF_REG_TOKEN:-}" ]]; then
+            echo "INFO: attempting enrollment with NF_REG_TOKEN"
+            ziti-edge-tunnel enroll --jwt - --identity "${IDENTITY_FILE}" <<< "${NF_REG_TOKEN}" || {
+                echo "ERROR: failed to enroll with token from NF_REG_TOKEN" >&2
+                exit 1
+            }
+        else
+            echo "INFO: ${NF_REG_NAME}.jwt was not found, trying stdin" >&2
+            ziti-edge-tunnel enroll --jwt - --identity "${IDENTITY_FILE}" || {
+                echo "ERROR: failed to enroll with token from stdin" >&2
+                exit 1
+            }
+        fi
+    fi
+else
+    typeset -a JSON_FILES
+    JSON_FILES=( $(ls -1 "${IDENTITIES_DIR}"/*.json) )
+    if [[ ${#JSON_FILES[*]} -gt 0 ]]; then
+        echo "INFO: NF_REG_NAME not set, loading ${#JSON_FILES[*]} identities from ${IDENTITIES_DIR}"
+        TUNNEL_OPTS=("--identity-dir" "${IDENTITIES_DIR}")
+    else
+        echo "ERROR: NF_REG_NAME not set and zero identities found in ${IDENTITIES_DIR}" >&2
+        exit 1
     fi
 fi
 
+
+
 echo "INFO: running ziti-edge-tunnel"
 set -x
-ziti-edge-tunnel run --identity "${json}" "${@}" &
+ziti-edge-tunnel run "${TUNNEL_OPTS[@]}" "${@}" &
 ZITI_EDGE_TUNNEL_PID=$!
 wait $ZITI_EDGE_TUNNEL_PID
