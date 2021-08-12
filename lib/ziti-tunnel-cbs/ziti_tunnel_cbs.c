@@ -370,7 +370,7 @@ ssize_t ziti_sdk_c_write(const void *ziti_io_ctx, void *write_ctx, const void *d
 ziti_intercept_t *new_ziti_intercept(ziti_context ztx, ziti_service *service) {
     ziti_intercept_t *zi_ctx = calloc(1, sizeof(ziti_intercept_t));
     zi_ctx->ztx = ztx;
-    zi_ctx->service_name = service->name;
+    zi_ctx->service_name = strdup(service->name);
     bool have_intercept = false;
 
     for (int i = 0; i < sizeof(intercept_cfgtypes) / sizeof(cfgtype_desc_t); i++) {
