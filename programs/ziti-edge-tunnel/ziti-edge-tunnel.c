@@ -693,6 +693,40 @@ static int disable_identity_opts(int argc, char *argv[]) {
     return optind;
 }
 
+static int enable_identity_opts(int argc, char *argv[]) {
+    static struct option opts[] = {
+            {"identity", required_argument, NULL, 'i'},
+    };
+    int c, option_index, errors = 0;
+    optind = 0;
+
+    tunnel_load_identity *load_identity_options = calloc(1, sizeof(tunnel_load_identity));
+    cmd = calloc(1, sizeof(tunnel_comand));
+    cmd->command = TunnelCommand_LoadIdentity;
+
+    while ((c = getopt_long(argc, argv, "i:",
+                            opts, &option_index)) != -1) {
+        switch (c) {
+            case 'i':
+                load_identity_options->path = realpath(optarg, NULL);
+                break;
+            default: {
+                fprintf(stderr, "Unknown option '%c'\n", c);
+                errors++;
+                break;
+            }
+        }
+    }
+    if (errors > 0) {
+        commandline_help(stderr);
+        exit(1);
+    }
+    size_t json_len;
+    cmd->data = tunnel_load_identity_to_json(load_identity_options, MODEL_JSON_COMPACT, &json_len);
+
+    return optind;
+}
+
 static int enable_mfa_opts(int argc, char *argv[]) {
     static struct option opts[] = {
             {"identity", required_argument, NULL, 'i'},
@@ -939,6 +973,8 @@ static CommandLine dump_cmd = make_command("dump", "dump the identities informat
                                            "\t-p|--dump_path\tdump into path\n", dump_opts, send_message_to_tunnel_fn);
 static CommandLine disable_id_cmd = make_command("disable", "disable the identities information", "[-i <identity>]",
                                            "\t-i|--identity\tidentity info that needs to be disabled\n", disable_identity_opts, send_message_to_tunnel_fn);
+static CommandLine enable_id_cmd = make_command("enable", "enable the identities information", "[-i <identity>]",
+                                                 "\t-i|--identity\tidentity info that needs to be enabled\n", enable_identity_opts, send_message_to_tunnel_fn);
 static CommandLine enable_mfa_cmd = make_command("enable_mfa", "Enable MFA function fetches the totp url from the controller", "[-i <identity>]",
                                            "\t-i|--identity\tidentity info for enabling mfa\n", enable_mfa_opts, send_message_to_tunnel_fn);
 static CommandLine verify_mfa_cmd = make_command("verify_mfa", "Verify the mfa login using the auth code while enabling mfa", "[-i <identity>] [-c <code>]",
@@ -962,6 +998,7 @@ static CommandLine *main_cmds[] = {
         &enroll_cmd,
         &run_cmd,
         &disable_id_cmd,
+        &enable_id_cmd,
         &dump_cmd,
         &enable_mfa_cmd,
         &verify_mfa_cmd,
