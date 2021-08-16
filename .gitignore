@@ -8,3 +8,5 @@ build/
 install/
 
 .vscode/
+
+Pipfile
