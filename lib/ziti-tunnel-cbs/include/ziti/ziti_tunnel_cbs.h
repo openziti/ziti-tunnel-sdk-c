@@ -27,7 +27,8 @@ XX(ListIdentities, __VA_ARGS__) \
 XX(DisableIdentity, __VA_ARGS__) \
 XX(EnableMFA, __VA_ARGS__)  \
 XX(SubmitMFA, __VA_ARGS__)  \
-XX(VerifyMFA, __VA_ARGS__)
+XX(VerifyMFA, __VA_ARGS__)  \
+XX(RemoveMFA, __VA_ARGS__)
 
 DECLARE_ENUM(TunnelCommand, TUNNEL_COMMANDS)
 
@@ -79,6 +80,10 @@ XX(code, string, none, code, __VA_ARGS__)
 XX(identifier, string, none, identifier, __VA_ARGS__) \
 XX(code, string, none, code, __VA_ARGS__)
 
+#define TNL_REMOVE_MFA(XX, ...) \
+XX(identifier, string, none, id, __VA_ARGS__) \
+XX(code, string, none, code, __VA_ARGS__)
+
 DECLARE_MODEL(tunnel_comand, TUNNEL_CMD)
 DECLARE_MODEL(tunnel_result, TUNNEL_CMD_RES)
 DECLARE_MODEL(tunnel_load_identity, TNL_LOAD_IDENTITY)
@@ -90,6 +95,7 @@ DECLARE_MODEL(tunnel_enable_mfa, TNL_ENABLE_MFA)
 DECLARE_MODEL(tunnel_mfa_enrol_res, TNL_MFA_ENROL_RES)
 DECLARE_MODEL(tunnel_submit_mfa, TNL_SUBMIT_MFA)
 DECLARE_MODEL(tunnel_verify_mfa, TNL_VERIFY_MFA)
+DECLARE_MODEL(tunnel_remove_mfa, TNL_REMOVE_MFA)
 
 #define TUNNEL_EVENTS(XX, ...) \
 XX(ContextEvent, __VA_ARGS__) \

@@ -49,8 +49,9 @@ static void load_ziti_async(uv_async_t *ar);
 static void on_sigdump(uv_signal_t *sig, int signum);
 static void enable_mfa(ziti_context ztx, void *ctx);
 static void verify_mfa(ziti_context ztx, char *code, void *ctx);
+static void remove_mfa(ziti_context ztx, char *code, void *ctx);
 // static void on_mfa_query(ziti_context ztx, void* mfa_ctx, ziti_auth_query_mfa *aq_mfa, ziti_ar_mfa_cb response_cb);
-static void submit_mfa(struct mfa_request_s *req, const char *code);
+static void submit_mfa(ziti_context ztx, const char *code, void *ctx);
 static ziti_context get_ziti(const char *identifier);
 
 struct tunnel_cb_s {
@@ -311,9 +312,35 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
             return 0;
         }
 
+        case TunnelCommand_RemoveMFA: {
+            tunnel_remove_mfa remove_mfa_cmd;
+            if (cmd->data != NULL && parse_tunnel_remove_mfa(&remove_mfa_cmd, cmd->data, strlen(cmd->data)) != 0) {
+                result.success = false;
+                result.error = "invalid command";
+                break;
+            }
+
+            struct ziti_instance_s *inst = model_map_get(&instances, remove_mfa_cmd.identifier);
+            if (inst == NULL) {
+                result.error = "ziti context not found";
+                result.success = false;
+                break;
+            }
+
+            struct tunnel_cb_s *req = malloc(sizeof(struct tunnel_cb_s));
+            req->ctx = strdup(remove_mfa_cmd.identifier);
+            req->cmd_cb = cb;
+            req->cmd_ctx = ctx;
+
+            remove_mfa(inst->ztx, strdup(remove_mfa_cmd.code), req);
+
+            free_tunnel_remove_mfa(&remove_mfa_cmd);
+            return 0;
+        }
+
         default: result.error = "command not implemented";
         case TunnelCommand_SubmitMFA: {
-            tunnel_submit_mfa auth = {0};
+            tunnel_submit_mfa auth;
             if (cmd->data == NULL || parse_tunnel_submit_mfa(&auth, cmd->data, strlen(cmd->data)) != 0) {
                 result.error = "invalid command";
                 result.success = false;
@@ -327,16 +354,12 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
                 break;
             }
 
-            if (inst->mfa_req == NULL) {
-                result.error = "no active MFA auth request";
-                result.success = false;
-                break;
-            }
+            struct tunnel_cb_s *req = malloc(sizeof(struct tunnel_cb_s));
+            req->ctx = strdup(auth.identifier);
+            req->cmd_cb = cb;
+            req->cmd_ctx = ctx;
 
-            inst->mfa_req->cmd_cb = cb;
-            inst->mfa_req->cmd_ctx = ctx;
-
-            submit_mfa(inst->mfa_req, auth.code);
+            submit_mfa(inst->ztx, strdup(auth.code), req);
             free_tunnel_submit_mfa(&auth);
             return 0;
         }
@@ -372,7 +395,7 @@ static struct ziti_instance_s *new_ziti_instance(const char *identifier, const c
     inst->identifier = strdup(identifier ? identifier : path);
     inst->opts.config = realpath(path, NULL);
     inst->opts.config_types = cfg_types;
-    inst->opts.events = ZitiContextEvent|ZitiServiceEvent|ZitiRouterEvent;
+    inst->opts.events = ZitiContextEvent|ZitiServiceEvent|ZitiRouterEvent|ZitiMfaAuthEvent;
     inst->opts.event_cb = on_ziti_event;
     inst->opts.refresh_interval = refresh_interval; /* default refresh */
     //inst->opts.aq_mfa_cb = on_mfa_query;
@@ -478,6 +501,15 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
             }
             break;
         }
+
+        case ZitiMfaAuthEvent : {
+            const char *ctx_name = ziti_get_identity(ztx)->name;
+            ZITI_LOG(INFO, "ztx[%s] Mfa event received", ctx_name);
+            ziti_ctx_event ev = {0};
+            ev.event_type = TunnelEvents.MFAEvent;
+            ev.identifier = instance->identifier;
+            CMD_CTX.on_event((const base_event *) &ev);
+        }
     }
 }
 
@@ -540,8 +572,8 @@ static void on_mfa_query(ziti_context ztx, void* mfa_ctx, ziti_auth_query_mfa *a
 }
  */
 
-static void on_submit_mfa(ziti_context ztx, void *mfa_ctx, int status, void *ctx) {
-    struct mfa_request_s *req = ctx;
+static void on_submit_mfa(ziti_context ztx, int status, void *ctx) {
+    struct tunnel_cb_s *req = ctx;
     tunnel_result result = {0};
     if (status != ZITI_OK) {
         result.success = false;
@@ -557,12 +589,13 @@ static void on_submit_mfa(ziti_context ztx, void *mfa_ctx, int status, void *ctx
     if (status == ZITI_OK) {
         struct ziti_instance_s *inst = ziti_app_ctx(ztx);
         inst->mfa_req = NULL;
-        free(req);
     }
+    free(req);
 }
 
-static void submit_mfa(struct mfa_request_s *req, const char *code) {
+static void submit_mfa(ziti_context ztx, const char *code, void *ctx) {
     //req->submit_f(req->ztx, req->submit_ctx, (char*)code, on_submit_mfa, req);
+    ziti_mfa_auth(ztx, code, on_submit_mfa, ctx);
 }
 
 static void on_enable_mfa(ziti_context ztx, int status, ziti_mfa_enrollment enrollment, void *ctx) {
@@ -611,6 +644,26 @@ static void on_verify_mfa(ziti_context ztx, int status, void *ctx) {
 
 static void verify_mfa(ziti_context ztx, char *code, void *ctx) {
     ziti_mfa_verify(ztx, code, on_verify_mfa, ctx);
+}
+
+static void on_remove_mfa(ziti_context ztx, int status, void *ctx) {
+// send the response from verify mfa to client
+    struct tunnel_cb_s *req = ctx;
+    tunnel_result result = {0};
+    if (status != ZITI_OK) {
+        result.success = false;
+        result.error = (char*)ziti_errorstr(status);
+    } else {
+        result.success = true;
+    }
+    if (req->cmd_cb) {
+        req->cmd_cb(&result, req->cmd_ctx);
+    }
+    free(req);
+}
+
+static void remove_mfa(ziti_context ztx, char *code, void *ctx) {
+    ziti_mfa_remove(ztx, code, on_remove_mfa, ctx);
 }
 
 #define CHECK(lbl, op) do{ \
@@ -668,6 +721,7 @@ IMPL_MODEL(tunnel_enable_mfa, TNL_ENABLE_MFA)
 IMPL_MODEL(tunnel_mfa_enrol_res, TNL_MFA_ENROL_RES)
 IMPL_MODEL(tunnel_submit_mfa, TNL_SUBMIT_MFA)
 IMPL_MODEL(tunnel_verify_mfa, TNL_VERIFY_MFA)
+IMPL_MODEL(tunnel_remove_mfa, TNL_REMOVE_MFA)
 
 // ************** TUNNEL Events
 IMPL_ENUM(TunnelEvent, TUNNEL_EVENTS)
