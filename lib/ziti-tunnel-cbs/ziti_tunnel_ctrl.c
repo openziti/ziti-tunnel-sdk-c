@@ -455,10 +455,35 @@ static struct ziti_instance_s *new_ziti_instance(const char *identifier, const c
     return inst;
 }
 
+static void displayTimeout(ziti_service *service) {
+    int posture_set_idx;
+    int minTimeoutRemaining = -1;
+    int minTimeout = -1;
+    for(posture_set_idx = 0; service->posture_query_set[posture_set_idx] != 0; posture_set_idx++) {
+        int posture_query_idx;
+        for(posture_query_idx = 0; service->posture_query_set[posture_set_idx]->posture_queries[posture_query_idx]; posture_query_idx++){
+
+            int timeoutRemaining = *service->posture_query_set[posture_set_idx]->posture_queries[posture_query_idx]->timeoutRemaining;
+            if ((minTimeoutRemaining == -1) || (timeoutRemaining < minTimeoutRemaining)) {
+                minTimeoutRemaining = timeoutRemaining;
+            }
+
+            int timeout = service->posture_query_set[posture_set_idx]->posture_queries[posture_query_idx]->timeout;
+            if ((minTimeout == -1) || (timeout < minTimeout)) {
+                minTimeout = timeout;
+            }
+        }
+    }
+    ZITI_LOG(DEBUG, "service[%s] timeout=%d timeoutRemaining=%d", service->name, minTimeout, minTimeoutRemaining);
+}
+
 /** callback from ziti SDK when a new service becomes available to our identity */
 static void on_service(ziti_context ziti_ctx, ziti_service *service, int status, void *tnlr_ctx) {
     ZITI_LOG(DEBUG, "service[%s]", service->name);
     tunneled_service_t *ts = ziti_sdk_c_on_service(ziti_ctx, service, status, tnlr_ctx);
+    if (status == ZITI_OK){
+        displayTimeout(service);
+    }
     if (ts->intercept != NULL) {
         ZITI_LOG(INFO, "starting intercepting for service[%s]", service->name);
         protocol_t *proto;
