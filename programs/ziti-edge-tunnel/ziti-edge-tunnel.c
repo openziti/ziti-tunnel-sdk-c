@@ -184,7 +184,7 @@ void on_write_event(uv_write_t* req, int status) {
     if (status < 0) {
         ZITI_LOG(ERROR,"Could not sent events message. Write error %s\n", uv_err_name(status));
     } else {
-        ZITI_LOG(TRACE,"Events message is sent.");
+        ZITI_LOG(INFO,"Events message is sent.");
     }
     /*if (req->data) {
         free(req->data);
@@ -194,11 +194,21 @@ void on_write_event(uv_write_t* req, int status) {
 
 static void send_events_message(void *message, size_t datalen) {
     if (event_conn != NULL) {
-        ZITI_LOG(TRACE,"Events Message...%s\n", message);
+        ZITI_LOG(INFO,"Events Message...%s", message);
         uv_buf_t buf = uv_buf_init(message, datalen);
         uv_write_t *wr = calloc(1, sizeof(uv_write_t));
         wr->data = buf.base;
-        uv_write(wr, event_conn, &buf, 1, on_write_event);
+        int err = uv_write(wr, event_conn, &buf, 1, on_write_event);
+        if (err < 0){
+            ZITI_LOG(ERROR,"Events client write operation failed, received error - %s", uv_err_name(err));
+            if (err == UV_EPIPE) {
+                if (current_events_channels > 0) {
+                    ZITI_LOG(WARN,"Events client closed connection");
+                    --current_events_channels;
+                    //remove from event conn list
+                }
+            }
+        }
     }
 }
 
