@@ -81,6 +81,7 @@ struct tunneler_io_ctx_s {
             struct pbuf *queued;
         } udp;
     };
+    uv_timer_t *conn_timer;
 };
 
 extern void free_tunneler_io_context(tunneler_io_context *tnlr_io_ctx_p);
