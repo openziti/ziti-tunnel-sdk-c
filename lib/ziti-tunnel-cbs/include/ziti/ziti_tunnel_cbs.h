@@ -123,9 +123,14 @@ DECLARE_ENUM(TunnelEvent, TUNNEL_EVENTS)
 
 #define BASE_EVENT_MODEL(XX, ...) \
 XX(identifier, string, none, identifier, __VA_ARGS__) \
-XX(event_type, TunnelEvent, none, type, __VA_ARGS__)
+XX(event_type, TunnelEvent, none, type, __VA_ARGS__)  \
+XX(code, int, none, code, __VA_ARGS__)
 
 #define ZTX_EVENT_MODEL(XX, ...)  \
+BASE_EVENT_MODEL(XX, __VA_ARGS__)            \
+XX(status, string, none, status, __VA_ARGS__)
+
+#define ZTX_SVC_EVENT_MODEL(XX, ...)  \
 BASE_EVENT_MODEL(XX, __VA_ARGS__)            \
 XX(status, string, none, status, __VA_ARGS__)
 
@@ -136,6 +141,7 @@ XX(provider, string, none, provider, __VA_ARGS__)
 DECLARE_MODEL(base_event, BASE_EVENT_MODEL)
 DECLARE_MODEL(ziti_ctx_event, ZTX_EVENT_MODEL)
 DECLARE_MODEL(mfa_event, MFA_EVENT_MODEL)
+DECLARE_MODEL(service_event, ZTX_SVC_EVENT_MODEL)
 
 /** context passed through the tunneler SDK for network i/o */
 typedef struct ziti_io_ctx_s {

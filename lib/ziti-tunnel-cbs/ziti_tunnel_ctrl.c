@@ -520,6 +520,7 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
             ziti_ctx_event ev = {0};
             ev.event_type = TunnelEvents.ContextEvent;
             ev.identifier = instance->identifier;
+            ev.code = event->event.ctx.ctrl_status;
             if (event->event.ctx.ctrl_status == ZITI_OK) {
                 ZITI_LOG(INFO, "ziti_ctx[%s] connected to controller", ziti_get_identity(ztx)->name);
                 ev.status = "OK";
@@ -552,6 +553,11 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
             for (zs = event->event.service.changed; *zs != NULL; zs++) {
                 on_service(ztx, *zs, ZITI_OK, CMD_CTX.tunnel_ctx);
             }
+
+            ziti_ctx_event ev = {0};
+            ev.event_type = TunnelEvents.ServiceEvent;
+            ev.identifier = instance->identifier;
+            CMD_CTX.on_event((const base_event *) &ev);
             break;
         }
 

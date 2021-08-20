@@ -7,6 +7,7 @@
 #include "ziti/ziti_tunnel.h"
 #include "ziti/ziti_tunnel_cbs.h"
 #include <ziti/ziti_log.h>
+#include "events/events.h"
 
 #if __APPLE__ && __MACH__
 #include "netif_driver/darwin/utun.h"
@@ -87,14 +88,6 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
         uv_write(wr, (uv_stream_t *) &cmd_conn, &b, 1, on_cmd_write);
     }
 
-
-    // test move it to the callback in the run tunnel
-    size_t datalen;
-    char *message = (char *) calloc(8, sizeof(char));
-    strcpy(message,"testing");
-    datalen = strlen(message);
-    send_events_message(message, datalen);
-    free(message);
 }
 
 static void on_cmd(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
@@ -174,9 +167,8 @@ static void on_events_client(uv_stream_t *s, int status) {
         uv_accept(s, (uv_stream_t *) event_conn);
         ZITI_LOG(DEBUG,"Received events connection request %d", ++current_events_channels);
     } else {
-        ZITI_LOG(WARN,"Maximum events connection requests exceeded");
+        ZITI_LOG(WARN, "Maximum events connection requests exceeded");
     }
-    // close the connections when client exits
 }
 
 
@@ -186,9 +178,9 @@ void on_write_event(uv_write_t* req, int status) {
     } else {
         ZITI_LOG(INFO,"Events message is sent.");
     }
-    /*if (req->data) {
+    if (req->data) {
         free(req->data);
-    }*/
+    }
     free(req);
 }
 
@@ -205,6 +197,8 @@ static void send_events_message(void *message, size_t datalen) {
                 if (current_events_channels > 0) {
                     ZITI_LOG(WARN,"Events client closed connection");
                     --current_events_channels;
+                    uv_close((uv_handle_t *) event_conn, (uv_close_cb) free);
+                    event_conn = NULL;
                     //remove from event conn list
                 }
             }
@@ -292,16 +286,44 @@ static void on_event(const base_event *ev) {
         case TunnelEvent_ContextEvent: {
             const ziti_ctx_event *zev = (ziti_ctx_event *) ev;
             ZITI_LOG(INFO, "ztx[%s] status is %s", ev->identifier, zev->status);
+
+            if (zev->code == ZITI_OK) {
+                identity_event id_event = {
+                        .Op = "identity",
+                        .Action = "added",
+                        .Id = strdup(ev->identifier)
+                };
+
+                size_t json_len;
+                char *json = identity_event_to_json(&id_event, MODEL_JSON_COMPACT, &json_len);
+                send_events_message(json, json_len);
+                // free(json);
+            }
+
             break;
         }
 
-        case TunnelEvent_ServiceEvent:
+        case TunnelEvent_ServiceEvent: {
+            const service_event *svc_ev = (service_event *) ev;
+            ZITI_LOG(INFO, "ztx[%s] service event", ev->identifier);
+            services_event svc_event = {
+                    .Op = "Service",
+                    .Action = "updated",
+                    .Id = strdup(ev->identifier)
+            };
+
+            size_t json_len;
+            char *json = services_event_to_json(&svc_event, MODEL_JSON_COMPACT, &json_len);
+            send_events_message(json, json_len);
+            // free(json);
             // TODO
             break;
+        }
 
         case TunnelEvent_MFAEvent: {
             const mfa_event *mfa_ev = (mfa_event *) ev;
             ZITI_LOG(INFO, "ztx[%s] is requesting MFA code[%s]", ev->identifier, mfa_ev->provider);
+
             break;
         }
 
