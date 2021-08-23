@@ -515,6 +515,11 @@ int ziti_tunneler_close(tunneler_io_context tnlr_io_ctx) {
             break;
     }
 
+    if (tnlr_io_ctx->conn_timer) {
+        uv_close((uv_handle_t *) tnlr_io_ctx->conn_timer, (uv_close_cb) free);
+        tnlr_io_ctx->conn_timer = NULL;
+    }
+
     free(tnlr_io_ctx);
     return 0;
 }

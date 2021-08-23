@@ -252,7 +252,7 @@ void tunneler_tcp_dial_completed(struct io_ctx_s *io, bool ok) {
 }
 
 static tunneler_io_context new_tunneler_io_context(tunneler_context tnlr_ctx, const char *service_name, struct tcp_pcb *pcb) {
-    struct tunneler_io_ctx_s *ctx = malloc(sizeof(struct tunneler_io_ctx_s));
+    struct tunneler_io_ctx_s *ctx = calloc(1, sizeof(struct tunneler_io_ctx_s));
     if (ctx == NULL) {
         TNL_LOG(ERR, "failed to allocate tunneler_io_ctx");
         return NULL;
