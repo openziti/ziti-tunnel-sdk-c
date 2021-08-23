@@ -7,7 +7,8 @@
 #include "ziti/ziti_tunnel.h"
 #include "ziti/ziti_tunnel_cbs.h"
 #include <ziti/ziti_log.h>
-#include "events/events.h"
+#include "model/events.h"
+#include "instance.h"
 
 #if __APPLE__ && __MACH__
 #include "netif_driver/darwin/utun.h"
@@ -50,6 +51,16 @@ static uv_pipe_t *event_conn;
 static const ziti_tunnel_ctrl *CMD_CTRL;
 static long events_channels_count = 8;
 static long current_events_channels = 0;
+
+const char* EVENT_ADDED="added";
+const char* EVENT_REMOVED="removed";
+const char* EVENT_UPDATED="updated";
+const char* EVENT_BULK="bulk";
+const char* EVENT_ERROR="error";
+const char* EVENT_CHANGED="changed";
+const char* EVENT_NORMAL="normal";
+const char* EVENT_CONNECTED="connected";
+const char* EVENT_DISCONNECTED="disconnected";
 
 #if _WIN32
 static char sockfile[] = "\\\\.\\pipe\\ziti-edge-tunnel.sock";
@@ -287,19 +298,23 @@ static void on_event(const base_event *ev) {
             const ziti_ctx_event *zev = (ziti_ctx_event *) ev;
             ZITI_LOG(INFO, "ztx[%s] status is %s", ev->identifier, zev->status);
 
-            if (zev->code == ZITI_OK) {
-                identity_event id_event = {
-                        .Op = "identity",
-                        .Action = "added",
-                        .Id = strdup(ev->identifier)
-                };
+            identity_event id_event = {
+                    .Op = "identity",
+                    .Action = EVENT_ADDED,
+                    .Identifier = ev->identifier
+            };
 
-                size_t json_len;
-                char *json = identity_event_to_json(&id_event, MODEL_JSON_COMPACT, &json_len);
-                send_events_message(json, json_len);
-                // free(json);
+            tunnel_identity *tnl_identity = NULL;
+            if (zev->code == ZITI_OK) {
+                if (zev->identity) {
+                    id_event.Id = get_tunnel_identity(zev->identity);
+                }
             }
 
+            size_t json_len;
+            char *json = identity_event_to_json(&id_event, MODEL_JSON_COMPACT, &json_len);
+            send_events_message(json, json_len);
+            // free(json);
             break;
         }
 
@@ -1149,3 +1164,10 @@ int main(int argc, char *argv[]) {
     commandline_run(&main_cmd, argc, argv);
     return 0;
 }
+
+// ******* TUNNEL EVENT BROADCAST MESSAGES
+IMPL_MODEL(status_event, STATUS_EVENT)
+IMPL_MODEL(action_event, ACTION_EVENT)
+IMPL_MODEL(identity_event, IDENTITY_EVENT)
+IMPL_MODEL(services_event, SERVICES_EVENT)
+IMPL_MODEL(tunnel_status_event, TUNNEL_STATUS_EVENT)

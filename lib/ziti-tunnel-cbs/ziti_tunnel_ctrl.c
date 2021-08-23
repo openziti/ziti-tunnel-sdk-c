@@ -522,6 +522,7 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
             ev.identifier = instance->identifier;
             ev.code = event->event.ctx.ctrl_status;
             if (event->event.ctx.ctrl_status == ZITI_OK) {
+                ev.identity = ziti_get_identity(ztx);
                 ZITI_LOG(INFO, "ziti_ctx[%s] connected to controller", ziti_get_identity(ztx)->name);
                 ev.status = "OK";
                 const char *ctrl = ziti_get_controller(ztx);
@@ -845,3 +846,4 @@ IMPL_ENUM(TunnelEvent, TUNNEL_EVENTS)
 IMPL_MODEL(base_event, BASE_EVENT_MODEL)
 IMPL_MODEL(ziti_ctx_event, ZTX_EVENT_MODEL)
 IMPL_MODEL(mfa_event, MFA_EVENT_MODEL)
+
