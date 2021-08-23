@@ -3,7 +3,7 @@
 #include "tunnel_udp.h"
 #include "ziti_tunnel_priv.h"
 
-#define UDP_TIMEOUT 30
+#define UDP_TIMEOUT 30000
 
 // initiate orderly shutdown
 static void udp_timeout_cb(uv_timer_t *t) {
