@@ -20,6 +20,6 @@ limitations under the License.
 #include <ziti/ziti_model.h>
 #include "model/dtos.h"
 
-extern tunnel_identity get_tunnel_identity(ziti_identity *identity);
+extern tunnel_identity get_tunnel_identity(char* identifier);
 
 #endif //ZITI_TUNNEL_SDK_C_INSTANCE_H

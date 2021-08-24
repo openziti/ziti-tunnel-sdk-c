@@ -24,10 +24,10 @@ struct tnl_identity_s {
 
 static LIST_HEAD(tnl_identities, tnl_identity_s) tnl_identity_list = LIST_HEAD_INITIALIZER(&tnl_identity_list);
 
-tunnel_identity get_tunnel_identity(ziti_identity *identity) {
+tunnel_identity get_tunnel_identity(char* identifier) {
     // Loop through list and add it
     tunnel_identity tnl_identity = {
-            .Id = identity->id
+            .Identifier = identifier
     };
     return tnl_identity;
 }

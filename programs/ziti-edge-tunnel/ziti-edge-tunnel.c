@@ -52,15 +52,15 @@ static const ziti_tunnel_ctrl *CMD_CTRL;
 static long events_channels_count = 8;
 static long current_events_channels = 0;
 
-const char* EVENT_ADDED="added";
-const char* EVENT_REMOVED="removed";
-const char* EVENT_UPDATED="updated";
-const char* EVENT_BULK="bulk";
-const char* EVENT_ERROR="error";
-const char* EVENT_CHANGED="changed";
-const char* EVENT_NORMAL="normal";
-const char* EVENT_CONNECTED="connected";
-const char* EVENT_DISCONNECTED="disconnected";
+char* EVENT_ADDED="added";
+char* EVENT_REMOVED="removed";
+char* EVENT_UPDATED="updated";
+char* EVENT_BULK="bulk";
+char* EVENT_ERROR="error";
+char* EVENT_CHANGED="changed";
+char* EVENT_NORMAL="normal";
+char* EVENT_CONNECTED="connected";
+char* EVENT_DISCONNECTED="disconnected";
 
 #if _WIN32
 static char sockfile[] = "\\\\.\\pipe\\ziti-edge-tunnel.sock";
@@ -196,8 +196,8 @@ void on_write_event(uv_write_t* req, int status) {
 }
 
 static void send_events_message(void *message, size_t datalen) {
+    ZITI_LOG(DEBUG,"Events Message...%s", message);
     if (event_conn != NULL) {
-        ZITI_LOG(INFO,"Events Message...%s", message);
         uv_buf_t buf = uv_buf_init(message, datalen);
         uv_write_t *wr = calloc(1, sizeof(uv_write_t));
         wr->data = buf.base;
@@ -301,14 +301,17 @@ static void on_event(const base_event *ev) {
             identity_event id_event = {
                     .Op = "identity",
                     .Action = EVENT_ADDED,
-                    .Identifier = ev->identifier
+                    .Id = get_tunnel_identity(ev->identifier)
             };
 
-            tunnel_identity *tnl_identity = NULL;
             if (zev->code == ZITI_OK) {
-                if (zev->identity) {
-                    id_event.Id = get_tunnel_identity(zev->identity);
+                id_event.Id.Loaded = true;
+                if (zev->name) {
+                    id_event.Id.Name = zev->name;
+                    id_event.Id.ControllerVersion = zev->version;
+                    id_event.Id.Config.ZtAPI = zev->controller;
                 }
+                ZITI_LOG(DEBUG, "ztx[%s] controller connected", ev->identifier);
             }
 
             size_t json_len;
@@ -338,7 +341,7 @@ static void on_event(const base_event *ev) {
         case TunnelEvent_MFAEvent: {
             const mfa_event *mfa_ev = (mfa_event *) ev;
             ZITI_LOG(INFO, "ztx[%s] is requesting MFA code[%s]", ev->identifier, mfa_ev->provider);
-
+            // get tunnel identity and set mfa enabled and needed
             break;
         }
 

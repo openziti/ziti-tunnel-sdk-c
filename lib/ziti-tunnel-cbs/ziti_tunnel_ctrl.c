@@ -522,7 +522,9 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
             ev.identifier = instance->identifier;
             ev.code = event->event.ctx.ctrl_status;
             if (event->event.ctx.ctrl_status == ZITI_OK) {
-                ev.identity = ziti_get_identity(ztx);
+                ev.name = ziti_get_identity(ztx)->name;
+                ev.version = ziti_get_controller_version(ztx)->version;
+                ev.controller = instance->opts.controller;
                 ZITI_LOG(INFO, "ziti_ctx[%s] connected to controller", ziti_get_identity(ztx)->name);
                 ev.status = "OK";
                 const char *ctrl = ziti_get_controller(ztx);

@@ -32,9 +32,10 @@ XX(Up, string, none, Up, __VA_ARGS__) \
 XX(Down, string, none, Down, __VA_ARGS__)
 
 #define TUNNEL_IDENTITY(XX, ...) \
-XX(Id, string, none, Id, __VA_ARGS__) \
+XX(Name, string, none, Name, __VA_ARGS__) \
 XX(Identifier, string, none, Identifier, __VA_ARGS__) \
 XX(Active, bool, none, Active, __VA_ARGS__) \
+XX(Loaded, bool, none, Loaded, __VA_ARGS__) \
 XX(Config, tunnel_config, none, Config, __VA_ARGS__) \
 XX(ControllerVersion, string, none, ControllerVersion, __VA_ARGS__) \
 XX(Status, string, none, Status, __VA_ARGS__) \
