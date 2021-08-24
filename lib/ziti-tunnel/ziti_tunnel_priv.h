@@ -30,7 +30,7 @@ typedef struct tunneler_ctx_s {
     uv_loop_t      *loop;
     uv_poll_t    netif_poll_req;
     uv_timer_t   lwip_timer_req;
-    STAILQ_HEAD(intercept_ctx_list_s, intercept_ctx_s) intercepts;
+    LIST_HEAD(intercept_ctx_list_s, intercept_ctx_s) intercepts;
 //    STAILQ_HEAD(hosted_service_ctx_list_s, hosted_service_ctx_s) hosts;
     dns_manager *dns;
     struct udp_pcb *dns_pcb;
@@ -60,6 +60,8 @@ struct tunneler_io_ctx_s {
 };
 
 extern void free_tunneler_io_context(tunneler_io_context *tnlr_io_ctx_p);
+
+extern void free_intercept(intercept_ctx_t *intercept);
 
 struct write_ctx_s;
 

@@ -91,7 +91,8 @@ typedef struct intercept_ctx_s {
     port_range_list_t port_ranges;
     cfg_type_e    cfg_type;
     const void *  cfg;
-    STAILQ_ENTRY(intercept_ctx_s) entries;
+    void (*free_cfg)(void *);
+    LIST_ENTRY(intercept_ctx_s) entries;
 } intercept_ctx_t;
 
 extern void intercept_ctx_add_protocol(intercept_ctx_t *ctx, const char *protocol);
@@ -201,6 +202,8 @@ extern void ziti_tunneler_set_dns(tunneler_context tnlr_ctx, dns_manager *dns);
 extern int ziti_tunneler_intercept(tunneler_context tnlr_ctx, intercept_ctx_t *i_ctx);
 
 extern host_ctx_t * ziti_tunneler_host(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_name, cfg_type_e cfg_type, void *cfg);
+
+extern intercept_ctx_t * ziti_tunnel_find_intercept(tunneler_context tnlr_ctx, void *ziti_ctx, const char *service_name);
 
 extern void ziti_tunneler_stop_intercepting(tunneler_context tnlr_ctx, void *ziti_ctx, const char *service_name);
 
