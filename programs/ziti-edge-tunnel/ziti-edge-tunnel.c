@@ -305,11 +305,11 @@ static void on_event(const base_event *ev) {
             };
 
             if (zev->code == ZITI_OK) {
-                id_event.Id.Loaded = true;
+                id_event.Id->Loaded = true;
                 if (zev->name) {
-                    id_event.Id.Name = zev->name;
-                    id_event.Id.ControllerVersion = zev->version;
-                    id_event.Id.Config.ZtAPI = zev->controller;
+                    id_event.Id->Name = zev->name;
+                    id_event.Id->ControllerVersion = zev->version;
+                    id_event.Id->Config.ZtAPI = zev->controller;
                 }
                 ZITI_LOG(DEBUG, "ztx[%s] controller connected", ev->identifier);
             }

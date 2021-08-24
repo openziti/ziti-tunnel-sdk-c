@@ -36,7 +36,7 @@ XX(active, bool, none, active, __VA_ARGS__)
 #define IDENTITY_EVENT(XX, ...) \
 XX(Op, string, none, Op, __VA_ARGS__) \
 XX(Action, string, none, Action, __VA_ARGS__) \
-XX(Id, tunnel_identity, none, Id, __VA_ARGS__)
+XX(Id, tunnel_identity, ptr, Id, __VA_ARGS__)
 
 #define SERVICES_EVENT(XX, ...) \
 XX(Op, string, none, Op, __VA_ARGS__) \

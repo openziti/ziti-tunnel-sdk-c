@@ -24,12 +24,20 @@ struct tnl_identity_s {
 
 static LIST_HEAD(tnl_identities, tnl_identity_s) tnl_identity_list = LIST_HEAD_INITIALIZER(&tnl_identity_list);
 
-tunnel_identity get_tunnel_identity(char* identifier) {
-    // Loop through list and add it
-    tunnel_identity tnl_identity = {
-            .Identifier = identifier
-    };
-    return tnl_identity;
+tunnel_identity *get_tunnel_identity(char* identifier) {
+    struct tnl_identity_s *tnl_id;
+    LIST_FOREACH(tnl_id, &tnl_identity_list, _next) {
+        if (strcmp(identifier, tnl_id->id->Identifier) == 0) break;
+    }
+    if (tnl_id != NULL) {
+        return tnl_id->id;
+    } else {
+        tnl_id = malloc(sizeof(struct tnl_identity_s));
+        tnl_id->id = calloc(1, sizeof(struct tunnel_identity_s));
+        tnl_id->id->Identifier = identifier;
+        LIST_INSERT_HEAD(&tnl_identity_list, tnl_id, _next);
+        return tnl_id->id;
+    }
 }
 
 // ************** TUNNEL BROADCAST MESSAGES
