@@ -54,7 +54,10 @@ static void remove_mfa(ziti_context ztx, char *code, void *ctx);
 static void submit_mfa(ziti_context ztx, const char *code, void *ctx);
 static void generate_mfa_codes(ziti_context ztx, char *code, void *ctx);
 static void get_mfa_codes(ziti_context ztx, char *code, void *ctx);
+static void tunnel_status_event(TunnelEvent event, int status, char* operation, void *ctx);
 static ziti_context get_ziti(const char *identifier);
+
+static char* MFAAuthenticationAction = "mfa_auth_status";
 
 struct tunnel_cb_s {
     void *ctx;
@@ -591,7 +594,7 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
         case ZitiMfaAuthEvent : {
             const char *ctx_name = ziti_get_identity(ztx)->name;
             ZITI_LOG(INFO, "ztx[%s] Mfa event received", ctx_name);
-            ziti_ctx_event ev = {0};
+            mfa_event ev = {0};
             ev.event_type = TunnelEvents.MFAEvent;
             ev.identifier = instance->identifier;
             CMD_CTX.on_event((const base_event *) &ev);
@@ -672,15 +675,16 @@ static void on_submit_mfa(ziti_context ztx, int status, void *ctx) {
         req->cmd_cb(&result, req->cmd_ctx);
     }
 
+    struct ziti_instance_s *inst = ziti_app_ctx(ztx);
+    tunnel_status_event(TunnelEvent_MFAStatusEvent, ZITI_OK, MFAAuthenticationAction, inst);
+
     if (status == ZITI_OK) {
-        struct ziti_instance_s *inst = ziti_app_ctx(ztx);
         inst->mfa_req = NULL;
     }
     free(req);
 }
 
 static void submit_mfa(ziti_context ztx, const char *code, void *ctx) {
-    //req->submit_f(req->ztx, req->submit_ctx, (char*)code, on_submit_mfa, req);
     ziti_mfa_auth(ztx, code, on_submit_mfa, ctx);
 }
 
@@ -789,6 +793,31 @@ ZITI_LOG(ERROR, "operation[" #op "] failed: %d(%s) errno=%d", rc, strerror(rc), 
 goto lbl;\
 }                           \
 }while(0)
+
+static void tunnel_status_event(TunnelEvent event, int status, char* operation, void *ctx) {
+
+    switch(event) {
+        case TunnelEvent_MFAStatusEvent:{
+            mfa_event ev = {0};
+            ev.event_type = TunnelEvents.MFAStatusEvent;
+            struct ziti_instance_s *inst = ctx;
+            ev.identifier = inst->identifier;
+            ev.code = status;
+            ev.operation = operation;
+            if (status != ZITI_OK) {
+                ev.status = (char*)ziti_errorstr(status);
+            }
+            CMD_CTX.on_event((const base_event *) &ev);
+            break;
+        }
+
+        case TunnelEvent_Unknown:
+        default:
+            ZITI_LOG(WARN, "unhandled event received: %d", event);
+            break;
+    }
+
+}
 
 static void on_sigdump(uv_signal_t *sig, int signum) {
 #ifndef MAXPATHLEN

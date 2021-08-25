@@ -195,10 +195,10 @@ void on_write_event(uv_write_t* req, int status) {
     free(req);
 }
 
-static void send_events_message(void *message, size_t datalen) {
+static void send_events_message(void *message, size_t data_len) {
     ZITI_LOG(DEBUG,"Events Message...%s", message);
     if (event_conn != NULL) {
-        uv_buf_t buf = uv_buf_init(message, datalen);
+        uv_buf_t buf = uv_buf_init(message, data_len);
         uv_write_t *wr = calloc(1, sizeof(uv_write_t));
         wr->data = buf.base;
         int err = uv_write(wr, event_conn, &buf, 1, on_write_event);
@@ -318,6 +318,7 @@ static void on_event(const base_event *ev) {
             char *json = identity_event_to_json(&id_event, MODEL_JSON_COMPACT, &json_len);
             send_events_message(json, json_len);
             // free(json);
+            // free(zev);
             break;
         }
 
@@ -334,14 +335,50 @@ static void on_event(const base_event *ev) {
             char *json = services_event_to_json(&svc_event, MODEL_JSON_COMPACT, &json_len);
             send_events_message(json, json_len);
             // free(json);
-            // TODO
+            // free(svc_ev);
             break;
         }
 
         case TunnelEvent_MFAEvent: {
             const mfa_event *mfa_ev = (mfa_event *) ev;
             ZITI_LOG(INFO, "ztx[%s] is requesting MFA code[%s]", ev->identifier, mfa_ev->provider);
-            // get tunnel identity and set mfa enabled and needed
+            set_mfa_status(ev->identifier, true, true);
+            identity_event id_event = {
+                    .Op = "identity",
+                    .Action = EVENT_ADDED,
+                    .Id = get_tunnel_identity(ev->identifier)
+            };
+
+            size_t json_len;
+            char *json = identity_event_to_json(&id_event, MODEL_JSON_COMPACT, &json_len);
+            send_events_message(json, json_len);
+            // free(json);
+            // free(mfa_ev);
+            break;
+        }
+
+        case TunnelEvent_MFAStatusEvent:{
+            const mfa_event *mfa_ev = (mfa_event *) ev;
+            ZITI_LOG(INFO, "ztx[%s] MFA ([%s]) Status code : %s", ev->identifier, mfa_ev->provider, mfa_ev->status);
+
+            mfa_status_event mfa_sts_event = {
+                .Op = "mfa",
+                .Action = mfa_ev->operation,
+                .Identifier = mfa_ev->identifier
+            };
+
+            if (mfa_ev->code == ZITI_OK) {
+                set_mfa_status(ev->identifier, true, false);
+                update_mfa_time(ev->identifier);
+                mfa_sts_event.Successful = true;
+            } else {
+                mfa_sts_event.Successful = false;
+                mfa_sts_event.Error = mfa_ev->status;
+            }
+
+            size_t json_len;
+            char *json = mfa_status_event_to_json(&mfa_sts_event, MODEL_JSON_COMPACT, &json_len);
+            send_events_message(json, json_len);
             break;
         }
 
@@ -1174,3 +1211,4 @@ IMPL_MODEL(action_event, ACTION_EVENT)
 IMPL_MODEL(identity_event, IDENTITY_EVENT)
 IMPL_MODEL(services_event, SERVICES_EVENT)
 IMPL_MODEL(tunnel_status_event, TUNNEL_STATUS_EVENT)
+IMPL_MODEL(mfa_status_event, MFA_STATUS_EVENT)

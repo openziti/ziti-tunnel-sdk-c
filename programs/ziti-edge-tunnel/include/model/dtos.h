@@ -48,8 +48,8 @@ XX(MfaMinTimeout, int, none, MfaMinTimeout, __VA_ARGS__) \
 XX(MfaMaxTimeout, int, none, MfaMaxTimeout, __VA_ARGS__) \
 XX(MfaMinTimeoutRem, int, none, MfaMinTimeoutRem, __VA_ARGS__) \
 XX(MfaMaxTimeoutRem, int, none, MfaMaxTimeoutRem, __VA_ARGS__) \
-XX(MfaLastUpdatedTime, timestamp, none, MfaLastUpdatedTime, __VA_ARGS__) \
-XX(ServiceUpdatedTime, timestamp, none, ServiceUpdatedTime, __VA_ARGS__) \
+XX(MfaLastUpdatedTime, timestamp, ptr, MfaLastUpdatedTime, __VA_ARGS__) \
+XX(ServiceUpdatedTime, timestamp, ptr, ServiceUpdatedTime, __VA_ARGS__) \
 XX(Deleted, bool, none, Deleted, __VA_ARGS__)
 
 #define TUNNEL_ADDRESS(XX, ...) \

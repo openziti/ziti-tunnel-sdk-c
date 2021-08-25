@@ -22,4 +22,8 @@ limitations under the License.
 
 extern tunnel_identity *get_tunnel_identity(char* identifier);
 
+extern void set_mfa_status(char* identifier, bool mfa_enabled, bool mfa_needed);
+
+void update_mfa_time(char* identifier);
+
 #endif //ZITI_TUNNEL_SDK_C_INSTANCE_H
