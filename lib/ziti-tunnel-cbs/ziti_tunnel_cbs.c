@@ -12,24 +12,14 @@
 #include "ziti/ziti_tunnel_cbs.h"
 #include "ziti_instance.h"
 
-IMPL_MODEL(tunneler_app_data, TUNNELER_APP_DATA_MODEL)
-
-static void ziti_conn_close_cb(ziti_connection zc);
-
-typedef struct ziti_intercept_s {
-    const char *service_name;
-    ziti_context ztx;
-    cfg_type_e cfg_type;
-    union {
-        ziti_intercept_cfg_v1 intercept_v1;
-        ziti_client_cfg_v1 client_v1;
-    } cfg;
-} ziti_intercept_t;
-
-
 typedef int (*cfg_parse_fn)(void *, const char *, size_t);
 typedef void* (*cfg_alloc_fn)();
 typedef void (*cfg_free_fn)(void *);
+typedef int (*cfg_cmp_fn)(const void *, const void*);
+
+IMPL_MODEL(tunneler_app_data, TUNNELER_APP_DATA_MODEL)
+
+static void ziti_conn_close_cb(ziti_connection zc);
 
 typedef struct cfgtype_desc_s {
     const char *name;
@@ -37,9 +27,25 @@ typedef struct cfgtype_desc_s {
     cfg_alloc_fn alloc;
     cfg_free_fn free;
     cfg_parse_fn parse;
+    cfg_cmp_fn compare;
 } cfgtype_desc_t;
 
-#define CFGTYPE_DESC(name, cfgtype, type) { (name), (cfgtype), (cfg_alloc_fn)alloc_##type, (cfg_free_fn)free_##type, (cfg_parse_fn)parse_##type }
+typedef struct ziti_intercept_s {
+    char *service_name;
+    ziti_context ztx;
+    struct cfgtype_desc_s *cfg_desc;
+    union {
+        ziti_intercept_cfg_v1 intercept_v1;
+        ziti_client_cfg_v1 client_v1;
+    } cfg;
+} ziti_intercept_t;
+
+#define CFGTYPE_DESC(name, cfgtype, type) { (name), (cfgtype), \
+(cfg_alloc_fn)alloc_##type,                                    \
+(cfg_free_fn)free_##type,                                      \
+(cfg_parse_fn)parse_##type,                                    \
+(cfg_cmp_fn)cmp_##type,                                        \
+}
 
 static struct cfgtype_desc_s intercept_cfgtypes[] = {
         CFGTYPE_DESC("intercept.v1", INTERCEPT_CFG_V1, ziti_intercept_cfg_v1),
@@ -53,16 +59,9 @@ static struct cfgtype_desc_s host_cfgtypes[] = {
 
 static void free_ziti_intercept(ziti_intercept_t *zi) {
     if (zi == NULL) return;
-
-    switch (zi->cfg_type) {
-        case CLIENT_CFG_V1:
-            free_ziti_client_cfg_v1(&zi->cfg.client_v1);
-            break;
-        case INTERCEPT_CFG_V1:
-            free_ziti_intercept_cfg_v1(&zi->cfg.intercept_v1);
-            break;
-        default:
-            ZITI_LOG(WARN, "unexpected ziti_intercept.cfg_type[%d]", zi->cfg_type);
+    free(zi->service_name);
+    if (zi->cfg_desc) {
+        zi->cfg_desc->free(&zi->cfg);
     }
 
     free(zi);
@@ -289,7 +288,7 @@ void * ziti_sdk_c_dial(const void *intercept_ctx, struct io_ctx_s *io) {
     char app_data_json[256];
     const char *source_ip = NULL;
 
-    switch (zi_ctx->cfg_type) {
+    switch (zi_ctx->cfg_desc->cfgtype) {
         case CLIENT_CFG_V1:
             dial_opts_from_client_cfg_v1(&dial_opts, &zi_ctx->cfg.client_v1);
             break;
@@ -367,7 +366,7 @@ ssize_t ziti_sdk_c_write(const void *ziti_io_ctx, void *write_ctx, const void *d
     return zs;
 }
 
-ziti_intercept_t *new_ziti_intercept(ziti_context ztx, ziti_service *service) {
+ziti_intercept_t *new_ziti_intercept(ziti_context ztx, ziti_service *service, ziti_intercept_t *curr_i) {
     ziti_intercept_t *zi_ctx = calloc(1, sizeof(ziti_intercept_t));
     zi_ctx->ztx = ztx;
     zi_ctx->service_name = strdup(service->name);
@@ -377,15 +376,21 @@ ziti_intercept_t *new_ziti_intercept(ziti_context ztx, ziti_service *service) {
         cfgtype_desc_t *cfgtype = &intercept_cfgtypes[i];
         const char *cfg_json = ziti_service_get_raw_config(service, cfgtype->name);
         if (cfg_json != 0 && cfgtype->parse(&zi_ctx->cfg, cfg_json, strlen(cfg_json)) == 0) {
-            ZITI_LOG(INFO, "creating intercept for service[%s] with %s = %s", service->name, cfgtype->name, cfg_json);
-            have_intercept = true;
-            zi_ctx->cfg_type = cfgtype->cfgtype;
+            zi_ctx->cfg_desc = cfgtype;
+
+            if (curr_i && cfgtype == curr_i->cfg_desc && cfgtype->compare(&zi_ctx->cfg, &curr_i->cfg) == 0) {
+                ZITI_LOG(DEBUG, "configuration[%s] was not changed for service[%s]", cfgtype->name, service->name);
+            } else {
+                ZITI_LOG(INFO, "%s intercept for service[%s] with %s = %s", curr_i ? "changing" : "creating", service->name, cfgtype->name, cfg_json);
+                have_intercept = true;
+            }
+
             break;
         }
     }
 
     if (!have_intercept) {
-        free(zi_ctx);
+        free_ziti_intercept(zi_ctx);
         return NULL;
     }
     return zi_ctx;
@@ -395,7 +400,7 @@ intercept_ctx_t *new_intercept_ctx(tunneler_context tnlr_ctx, ziti_intercept_t *
     intercept_ctx_t *i_ctx = intercept_ctx_new(tnlr_ctx, zi_ctx->service_name, zi_ctx);
     int i;
 
-    switch (zi_ctx->cfg_type) {
+    switch (zi_ctx->cfg_desc->cfgtype) {
         case CLIENT_CFG_V1:
             intercept_ctx_add_protocol(i_ctx, "udp");
             intercept_ctx_add_protocol(i_ctx, "tcp");
@@ -420,9 +425,14 @@ intercept_ctx_t *new_intercept_ctx(tunneler_context tnlr_ctx, ziti_intercept_t *
             break;
     }
 
-
     return i_ctx;
 }
+
+static void stop_intercept(struct tunneler_ctx_s *tnlr, struct ziti_instance_s *inst, ziti_intercept_t *zi) {
+    model_map_remove(&inst->intercepts, zi->service_name);
+    ziti_tunneler_stop_intercepting(tnlr, zi);
+    free_ziti_intercept(zi);
+};
 
 static tunneled_service_t current_tunneled_service;
 
@@ -437,18 +447,33 @@ tunneled_service_t *ziti_sdk_c_on_service(ziti_context ziti_ctx, ziti_service *s
         int i, get_config_rc;
         cfgtype_desc_t *cfgtype;
         void *config;
-        if (service->perm_flags & ZITI_CAN_DIAL) {
-            ziti_intercept_t *zi_ctx = new_ziti_intercept(ziti_ctx, service);
+
+        ziti_intercept_t *curr_i = model_map_get(&ziti_instance->intercepts, service->name);
+        if ((service->perm_flags & ZITI_CAN_DIAL) == 0) {
+            stop_intercept(tnlr_ctx, ziti_instance, curr_i);
+        } else {
+            ziti_intercept_t *zi_ctx = new_ziti_intercept(ziti_ctx, service, curr_i);
 
             if (zi_ctx) {
+                if (curr_i) {
+                    ZITI_LOG(DEBUG, "replacing intercept for service[%s]", service->name);
+                    stop_intercept(tnlr_ctx, ziti_instance, curr_i);
+                }
+
                 model_map_set(&ziti_instance->intercepts, service->name, zi_ctx);
                 intercept_ctx_t *i_ctx = new_intercept_ctx(tnlr_ctx, zi_ctx);
                 ziti_tunneler_intercept(tnlr_ctx, i_ctx);
                 current_tunneled_service.intercept = i_ctx;
             } else {
+                if (curr_i)
+                    current_tunneled_service.intercept = ziti_tunnel_find_intercept(tnlr_ctx, curr_i);
+            }
+
+            if (current_tunneled_service.intercept == NULL) {
                 ZITI_LOG(DEBUG, "service[%s] can be dialed, but lacks intercept configuration; not intercepting", service->name);
             }
         }
+
         if (service->perm_flags & ZITI_CAN_BIND) {
             for (i = 0; i < sizeof(host_cfgtypes) / sizeof(cfgtype_desc_t); i++) {
                 cfgtype = &host_cfgtypes[i];

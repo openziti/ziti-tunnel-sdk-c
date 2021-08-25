@@ -675,7 +675,7 @@ static void submit_mfa(ziti_context ztx, const char *code, void *ctx) {
     ziti_mfa_auth(ztx, code, on_submit_mfa, ctx);
 }
 
-static void on_enable_mfa(ziti_context ztx, int status, ziti_mfa_enrollment enrollment, void *ctx) {
+static void on_enable_mfa(ziti_context ztx, int status, ziti_mfa_enrollment *enrollment, void *ctx) {
     // send the response from enroll mfa to client
     struct tunnel_cb_s *req = ctx;
     tunnel_result result = {0};
@@ -687,9 +687,9 @@ static void on_enable_mfa(ziti_context ztx, int status, ziti_mfa_enrollment enro
 
         tunnel_mfa_enrol_res enrol_res = {0};
         enrol_res.identifier = req->ctx;
-        enrol_res.is_verified = enrollment.is_verified;
-        enrol_res.provisioning_url = enrollment.provisioning_url;
-        enrol_res.recovery_codes = enrollment.recovery_codes;
+        enrol_res.is_verified = enrollment->is_verified;
+        enrol_res.provisioning_url = enrollment->provisioning_url;
+        enrol_res.recovery_codes = enrollment->recovery_codes;
         size_t json_len;
         result.data = tunnel_mfa_enrol_res_to_json(&enrol_res, MODEL_JSON_COMPACT, &json_len);
     }
