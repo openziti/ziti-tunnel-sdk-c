@@ -456,19 +456,21 @@ static struct ziti_instance_s *new_ziti_instance(const char *identifier, const c
 }
 
 static void displayTimeout(ziti_service *service) {
-    int posture_set_idx;
     int minTimeoutRemaining = -1;
     int minTimeout = -1;
-    for(posture_set_idx = 0; service->posture_query_set[posture_set_idx] != 0; posture_set_idx++) {
-        int posture_query_idx;
-        for(posture_query_idx = 0; service->posture_query_set[posture_set_idx]->posture_queries[posture_query_idx]; posture_query_idx++){
 
-            int timeoutRemaining = *service->posture_query_set[posture_set_idx]->posture_queries[posture_query_idx]->timeoutRemaining;
+    ziti_posture_query_set *pq_set;
+    const char *id;
+    MODEL_MAP_FOREACH(id, pq_set, &service->posture_query_map) {
+        int posture_query_idx;
+        for(posture_query_idx = 0; pq_set->posture_queries[posture_query_idx]; posture_query_idx++){
+
+            int timeoutRemaining = *(pq_set->posture_queries[posture_query_idx]->timeoutRemaining);
             if ((minTimeoutRemaining == -1) || (timeoutRemaining < minTimeoutRemaining)) {
                 minTimeoutRemaining = timeoutRemaining;
             }
 
-            int timeout = service->posture_query_set[posture_set_idx]->posture_queries[posture_query_idx]->timeout;
+            int timeout = pq_set->posture_queries[posture_query_idx]->timeout;
             if ((minTimeout == -1) || (timeout < minTimeout)) {
                 minTimeout = timeout;
             }
