@@ -187,16 +187,16 @@ void on_write_event(uv_write_t* req, int status) {
     if (status < 0) {
         ZITI_LOG(ERROR,"Could not sent events message. Write error %s\n", uv_err_name(status));
     } else {
-        ZITI_LOG(INFO,"Events message is sent.");
+        ZITI_LOG(DEBUG,"Events message is sent.");
     }
-    if (req->data) {
+    /*if (req->data) {
         free(req->data);
-    }
+    }*/
     free(req);
 }
 
 static void send_events_message(void *message, size_t data_len) {
-    ZITI_LOG(DEBUG,"Events Message...%s", message);
+    ZITI_LOG(INFO,"Events Message...%s", message);
     if (event_conn != NULL) {
         uv_buf_t buf = uv_buf_init(message, data_len);
         uv_write_t *wr = calloc(1, sizeof(uv_write_t));
@@ -298,18 +298,17 @@ static void on_event(const base_event *ev) {
             const ziti_ctx_event *zev = (ziti_ctx_event *) ev;
             ZITI_LOG(INFO, "ztx[%s] status is %s", ev->identifier, zev->status);
 
-            identity_event id_event = {
-                    .Op = "identity",
-                    .Action = EVENT_ADDED,
-                    .Id = get_tunnel_identity(ev->identifier)
-            };
+            identity_event id_event = {0};
+            id_event.Op = strdup("identity");
+            id_event.Action = strdup(EVENT_ADDED);
+            id_event.Id = get_tunnel_identity(ev->identifier);
 
             if (zev->code == ZITI_OK) {
                 id_event.Id->Loaded = true;
                 if (zev->name) {
-                    id_event.Id->Name = zev->name;
-                    id_event.Id->ControllerVersion = zev->version;
-                    id_event.Id->Config.ZtAPI = zev->controller;
+                    id_event.Id->Name = strdup(zev->name);
+                    id_event.Id->ControllerVersion = strdup(zev->version);
+                    id_event.Id->Config.ZtAPI = strdup(zev->controller);
                 }
                 ZITI_LOG(DEBUG, "ztx[%s] controller connected", ev->identifier);
             }
@@ -317,8 +316,10 @@ static void on_event(const base_event *ev) {
             size_t json_len;
             char *json = identity_event_to_json(&id_event, MODEL_JSON_COMPACT, &json_len);
             send_events_message(json, json_len);
-            // free(json);
+            free(json);
             // free(zev);
+            id_event.Id = NULL;
+            free_identity_event(&id_event);
             break;
         }
 
@@ -326,16 +327,22 @@ static void on_event(const base_event *ev) {
             const service_event *svc_ev = (service_event *) ev;
             ZITI_LOG(INFO, "ztx[%s] service event", ev->identifier);
             services_event svc_event = {
-                    .Op = "Service",
-                    .Action = "updated",
-                    .Id = strdup(ev->identifier)
+                    .Op = strdup("bulkservice"),
+                    .Action = strdup(EVENT_BULK),
+                    .Identifier = strdup(ev->identifier),
             };
+
+            ziti_service **zs;
+            for (zs = svc_ev->added_services; *zs != NULL; zs++) {
+                tunnel_service *svc = get_tunnel_service(ev->identifier, zs, true, false);
+            }
+
 
             size_t json_len;
             char *json = services_event_to_json(&svc_event, MODEL_JSON_COMPACT, &json_len);
             send_events_message(json, json_len);
-            // free(json);
-            // free(svc_ev);
+            free(json);
+            free_services_event(&svc_event);
             break;
         }
 
@@ -344,16 +351,17 @@ static void on_event(const base_event *ev) {
             ZITI_LOG(INFO, "ztx[%s] is requesting MFA code[%s]", ev->identifier, mfa_ev->provider);
             set_mfa_status(ev->identifier, true, true);
             identity_event id_event = {
-                    .Op = "identity",
-                    .Action = EVENT_ADDED,
-                    .Id = get_tunnel_identity(ev->identifier)
+                    .Op = strdup("identity"),
+                    .Action = strdup(EVENT_ADDED),
+                    .Id = get_tunnel_identity(ev->identifier),
             };
 
             size_t json_len;
             char *json = identity_event_to_json(&id_event, MODEL_JSON_COMPACT, &json_len);
             send_events_message(json, json_len);
-            // free(json);
-            // free(mfa_ev);
+            free(json);
+            id_event.Id = NULL;
+            free_identity_event(&id_event);
             break;
         }
 
@@ -362,23 +370,26 @@ static void on_event(const base_event *ev) {
             ZITI_LOG(INFO, "ztx[%s] MFA ([%s]) Status code : %s", ev->identifier, mfa_ev->provider, mfa_ev->status);
 
             mfa_status_event mfa_sts_event = {
-                .Op = "mfa",
-                .Action = mfa_ev->operation,
-                .Identifier = mfa_ev->identifier
+                .Op = strdup("mfa"),
+                .Action = strdup(mfa_ev->operation),
+                .Identifier = strdup(mfa_ev->identifier)
             };
 
             if (mfa_ev->code == ZITI_OK) {
+                // check for auth success
                 set_mfa_status(ev->identifier, true, false);
                 update_mfa_time(ev->identifier);
                 mfa_sts_event.Successful = true;
             } else {
                 mfa_sts_event.Successful = false;
-                mfa_sts_event.Error = mfa_ev->status;
+                mfa_sts_event.Error = strdup(mfa_ev->status);
             }
 
             size_t json_len;
             char *json = mfa_status_event_to_json(&mfa_sts_event, MODEL_JSON_COMPACT, &json_len);
             send_events_message(json, json_len);
+            free(json);
+            free_mfa_status_event(&mfa_sts_event);
             break;
         }
 

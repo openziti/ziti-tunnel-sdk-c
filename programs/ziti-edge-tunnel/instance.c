@@ -21,26 +21,11 @@ limitations under the License.
 
 struct tnl_identity_s {
     tunnel_identity *id;
+    tunnel_service_array *tnl_svc_array;
     LIST_ENTRY(tnl_identity_s) _next;
 };
 
 static LIST_HEAD(tnl_identities, tnl_identity_s) tnl_identity_list = LIST_HEAD_INITIALIZER(&tnl_identity_list);
-
-tunnel_identity *get_tunnel_identity(char* identifier) {
-    struct tnl_identity_s *tnl_id;
-    LIST_FOREACH(tnl_id, &tnl_identity_list, _next) {
-        if (strcmp(identifier, tnl_id->id->Identifier) == 0) break;
-    }
-    if (tnl_id != NULL) {
-        return tnl_id->id;
-    } else {
-        tnl_id = malloc(sizeof(struct tnl_identity_s));
-        tnl_id->id = calloc(1, sizeof(struct tunnel_identity_s));
-        tnl_id->id->Identifier = identifier;
-        LIST_INSERT_HEAD(&tnl_identity_list, tnl_id, _next);
-        return tnl_id->id;
-    }
-}
 
 tunnel_identity *find_tunnel_identity(char* identifier) {
     struct tnl_identity_s *tnl_id;
@@ -53,6 +38,36 @@ tunnel_identity *find_tunnel_identity(char* identifier) {
         ZITI_LOG(WARN, "ztx[%s] is not found. It may not be active/connected", identifier);
         return NULL;
     }
+}
+
+tunnel_identity *get_tunnel_identity(char* identifier) {
+    tunnel_identity *id = find_tunnel_identity(identifier);
+
+    if (id != NULL) {
+        return id;
+    } else {
+        struct tnl_identity_s *tnl_id = malloc(sizeof(struct tnl_identity_s));
+        tnl_id->id = calloc(1, sizeof(struct tunnel_identity_s));
+        tnl_id->id->Identifier = strdup(identifier);
+        LIST_INSERT_HEAD(&tnl_identity_list, tnl_id, _next);
+        return tnl_id->id;
+    }
+}
+
+tunnel_service *get_tunnel_service(char* identifier, ziti_service* zs, bool isAdded, bool isRemoved) {
+    tunnel_identity *id = find_tunnel_identity(identifier);
+
+    if (id->Services == NULL) {
+        id->Services = malloc(sizeof(tunnel_service_array));
+    }
+    tunnel_service svc = {
+            .Id = strdup(zs->id),
+            .Name = strdup(zs->name)
+    };
+    // svc.Addresses = [];
+    // svc.Timeout =
+    // svc.TimeoutRemaining =
+    return &svc;
 }
 
 void set_mfa_status(char* identifier, bool mfa_enabled, bool mfa_needed) {

@@ -484,7 +484,7 @@ static void displayTimeout(ziti_service *service) {
 static void on_service(ziti_context ziti_ctx, ziti_service *service, int status, void *tnlr_ctx) {
     ZITI_LOG(DEBUG, "service[%s]", service->name);
     tunneled_service_t *ts = ziti_sdk_c_on_service(ziti_ctx, service, status, tnlr_ctx);
-    if (status == ZITI_OK){
+    if (status == ZITI_OK && service->posture_query_set != NULL){
         displayTimeout(service);
     }
     if (ts->intercept != NULL) {
@@ -550,17 +550,21 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
 
         case ZitiServiceEvent: {
             ziti_service **zs;
+            service_event ev = {0};
             for (zs = event->event.service.removed; *zs != NULL; zs++) {
                 on_service(ztx, *zs, ZITI_SERVICE_UNAVAILABLE, CMD_CTX.tunnel_ctx);
+                ev.removed_services = event->event.service.removed;
             }
             for (zs = event->event.service.added; *zs != NULL; zs++) {
                 on_service(ztx, *zs, ZITI_OK, CMD_CTX.tunnel_ctx);
+                ev.added_services = event->event.service.added;
             }
             for (zs = event->event.service.changed; *zs != NULL; zs++) {
                 on_service(ztx, *zs, ZITI_OK, CMD_CTX.tunnel_ctx);
+                ev.added_services = event->event.service.changed;
+                ev.removed_services = event->event.service.changed;
             }
 
-            ziti_ctx_event ev = {0};
             ev.event_type = TunnelEvents.ServiceEvent;
             ev.identifier = instance->identifier;
             CMD_CTX.on_event((const base_event *) &ev);
@@ -676,7 +680,7 @@ static void on_submit_mfa(ziti_context ztx, int status, void *ctx) {
     }
 
     struct ziti_instance_s *inst = ziti_app_ctx(ztx);
-    tunnel_status_event(TunnelEvent_MFAStatusEvent, ZITI_OK, MFAAuthenticationAction, inst);
+    tunnel_status_event(TunnelEvent_MFAStatusEvent, status, MFAAuthenticationAction, inst);
 
     if (status == ZITI_OK) {
         inst->mfa_req = NULL;
