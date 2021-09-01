@@ -48,6 +48,8 @@ typedef struct tunneler_io_ctx_s *tunneler_io_context;
 const char * get_intercepted_address(const struct tunneler_io_ctx_s * tnlr_io);
 const char * get_client_address(const struct tunneler_io_ctx_s * tnlr_io);
 typedef struct hosted_io_ctx_s *hosted_io_context;
+typedef struct hosted_service_ctx_s host_ctx_t;
+typedef struct io_ctx_s io_ctx_t;
 
 typedef void (*tunnel_logger_f)(int level, const char *file, unsigned int line, const char *func, const char *fmt, ...);
 
@@ -82,6 +84,15 @@ typedef struct port_range_s {
 } port_range_t;
 typedef STAILQ_HEAD(port_range_list_s, port_range_s) port_range_list_t;
 
+/**
+ * called when a client connection is intercepted.
+ * implementations are expected to dial the service and return
+ * context that will be passed to ziti_read/ziti_write */
+typedef void * (*ziti_sdk_dial_cb)(const void *app_intercept_ctx, io_ctx_t *io);
+typedef int (*ziti_sdk_close_cb)(void *ziti_io_ctx);
+typedef ssize_t (*ziti_sdk_write_cb)(const void *ziti_io_ctx, void *write_ctx, const void *data, size_t len);
+typedef host_ctx_t * (*ziti_sdk_host_cb)(void *ziti_ctx, uv_loop_t *loop, const char *service_name, cfg_type_e cfg_type, const void *cfg);
+
 /** data needed to intercept packets and dial the associated ziti service */
 typedef struct intercept_ctx_s  intercept_ctx_t;
 extern intercept_ctx_t* intercept_ctx_new(tunneler_context tnlt_ctx, const char *app_id, void *app_intercept_ctx);
@@ -90,11 +101,15 @@ extern void intercept_ctx_add_protocol(intercept_ctx_t *ctx, const char *protoco
 /** parse address string as hostname|ip|cidr and add result to list of intercepted addresses */
 extern address_t *intercept_ctx_add_address(intercept_ctx_t *i_ctx, const char *address);
 extern port_range_t *intercept_ctx_add_port_range(intercept_ctx_t *i_ctx, uint16_t low, uint16_t high);
+extern void intercept_ctx_override_cbs(intercept_ctx_t *i_ctx, ziti_sdk_dial_cb dial, ziti_sdk_write_cb write, ziti_sdk_close_cb close_write, ziti_sdk_close_cb close);
 
 struct io_ctx_s {
     tunneler_io_context   tnlr_io;
     void *                ziti_io; // context specific to ziti SDK being used by the app.
     const void *          ziti_ctx;
+    ziti_sdk_write_cb     write_fn;
+    ziti_sdk_close_cb     close_write_fn;
+    ziti_sdk_close_cb     close_fn;
 };
 
 struct io_ctx_list_entry_s {
@@ -103,7 +118,7 @@ struct io_ctx_list_entry_s {
 };
 SLIST_HEAD(io_ctx_list_s, io_ctx_list_entry_s);
 
-typedef struct hosted_service_ctx_s {
+struct hosted_service_ctx_s {
     char *       service_name;
     const void * ziti_ctx;
     uv_loop_t *  loop;
@@ -126,21 +141,13 @@ typedef struct hosted_service_ctx_s {
         uint16_t port;
     } port_u;
     address_list_t    allowed_source_addresses;
-} host_ctx_t;
+};
 
 typedef struct tunneled_service_s {
     intercept_ctx_t *intercept;
     host_ctx_t      *host;
 } tunneled_service_t;
 
-/**
- * called when a client connection is intercepted.
- * implementations are expected to dial the service and return
- * context that will be passed to ziti_read/ziti_write */
-typedef void * (*ziti_sdk_dial_cb)(const void *app_intercept_ctx, struct io_ctx_s *io);
-typedef int (*ziti_sdk_close_cb)(void *ziti_io_ctx);
-typedef ssize_t (*ziti_sdk_write_cb)(const void *ziti_io_ctx, void *write_ctx, const void *data, size_t len);
-typedef host_ctx_t * (*ziti_sdk_host_cb)(void *ziti_ctx, uv_loop_t *loop, const char *service_name, cfg_type_e cfg_type, const void *cfg);
 
 typedef struct tunneler_sdk_options_s {
     netif_driver   netif_driver;

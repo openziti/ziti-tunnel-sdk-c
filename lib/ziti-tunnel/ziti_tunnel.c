@@ -358,6 +358,13 @@ port_range_t *intercept_ctx_add_port_range(intercept_ctx_t *i_ctx, uint16_t low,
     return pr;
 }
 
+void intercept_ctx_override_cbs(intercept_ctx_t *i_ctx, ziti_sdk_dial_cb dial, ziti_sdk_write_cb write, ziti_sdk_close_cb close_write, ziti_sdk_close_cb close) {
+    i_ctx->dial_fn = dial;
+    i_ctx->write_fn = write;
+    i_ctx->close_write_fn = close_write;
+    i_ctx->close_fn = close;
+}
+
 /** intercept a service as described by the intercept_ctx */
 int ziti_tunneler_intercept(tunneler_context tnlr_ctx, intercept_ctx_t *i_ctx) {
     if (tnlr_ctx == NULL) {
@@ -398,7 +405,7 @@ static void tunneler_kill_active(const void *zi_ctx) {
         struct io_ctx_list_entry_s *n = SLIST_FIRST(l);
         TNL_LOG(DEBUG, "service_ctx[%p] client[%s] killing active connection", zi_ctx, n->io->tnlr_io->client);
         // close the ziti connection, which also closes the underlay
-        zclose = n->io->tnlr_io->tnlr_ctx->opts.ziti_close;
+        zclose = n->io->close_fn;
         if (zclose) zclose(n->io->ziti_io);
         SLIST_REMOVE_HEAD(l, entries);
         free(n);
@@ -411,7 +418,7 @@ static void tunneler_kill_active(const void *zi_ctx) {
         struct io_ctx_list_entry_s *n = SLIST_FIRST(l);
         TNL_LOG(DEBUG, "service[%p] client[%s] killing active connection", zi_ctx, n->io->tnlr_io->client);
         // close the ziti connection, which also closes the underlay
-        zclose = n->io->tnlr_io->tnlr_ctx->opts.ziti_close;
+        zclose = n->io->close_fn;
         if (zclose) zclose(n->io->ziti_io);
         SLIST_REMOVE_HEAD(l, entries);
         free(n);

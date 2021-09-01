@@ -36,6 +36,11 @@ struct intercept_ctx_s {
     address_list_t addresses;
     port_range_list_t port_ranges;
 
+    ziti_sdk_dial_cb dial_fn;
+    ziti_sdk_write_cb write_fn;
+    ziti_sdk_close_cb close_write_fn;
+    ziti_sdk_close_cb close_fn;
+
     LIST_ENTRY(intercept_ctx_s) entries;
 };
 
