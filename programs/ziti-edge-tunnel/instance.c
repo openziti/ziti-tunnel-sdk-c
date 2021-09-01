@@ -54,15 +54,46 @@ tunnel_identity *get_tunnel_identity(char* identifier) {
     }
 }
 
-static void getTimeout(ziti_service *service, tunnel_service *tnl_svc) {
+static tunnel_posture_check *getTunnelPostureCheck(ziti_posture_query *pq){
+    tunnel_posture_check *pc = calloc(1, sizeof(struct tunnel_posture_check_s));
+    pc->Id = strdup(pq->id);
+    pc->IsPassing = pq->is_passing;
+    pc->QueryType = strdup(pq->query_type);
+    pc->Timeout = pq->timeout;
+    pc->TimeoutRemaining = pq->timeoutRemaining;
+    return pc;
+}
+
+static void setTunnelPostureDataTimeout(tunnel_service *tnl_svc, ziti_service *service) {
     int posture_set_idx;
     int minTimeoutRemaining = -1;
     int minTimeout = -1;
+    bool hasAccess = false;
+    model_map postureCheckMap = {0};
+
     if (service->posture_query_set != NULL) {
 
         for (posture_set_idx = 0; service->posture_query_set[posture_set_idx] != 0; posture_set_idx++) {
             int posture_query_idx;
+
+            ziti_posture_query_set *pqs = service->posture_query_set[posture_set_idx];
+            if (pqs->policy_type == "Bind") {
+                ZITI_LOG(TRACE, "Posture Query set returned a Bind policy: %s [ignored]", pqs->policy_id);
+                continue;
+            } else {
+                ZITI_LOG(TRACE, "Posture Query set returned a %s policy: %s, is_passing %t", pqs->policy_type, pqs->policy_id, pqs->is_passing);
+            }
+
+            if (pqs->is_passing) {
+                hasAccess = true;
+            }
+
             for (posture_query_idx = 0; service->posture_query_set[posture_set_idx]->posture_queries[posture_query_idx]; posture_query_idx++) {
+                ziti_posture_query *pq = service->posture_query_set[posture_set_idx]->posture_queries[posture_query_idx];
+                ziti_posture_query *tmp = model_map_get(&postureCheckMap, pq->id);
+                if (tmp == NULL) {
+                    model_map_set(&postureCheckMap, pq->id, pq);
+                }
 
                 int timeoutRemaining = *service->posture_query_set[posture_set_idx]->posture_queries[posture_query_idx]->timeoutRemaining;
                 if ((minTimeoutRemaining == -1) || (timeoutRemaining < minTimeoutRemaining)) {
@@ -76,23 +107,36 @@ static void getTimeout(ziti_service *service, tunnel_service *tnl_svc) {
             }
         }
     }
+
+    if (model_map_size(&postureCheckMap) > 0) {
+        int idx = 0;
+        tnl_svc->PostureChecks = calloc(model_map_size(&postureCheckMap), sizeof(struct tunnel_posture_check_s));
+        model_map_iter itr = model_map_iterator(&postureCheckMap);
+        while (itr != NULL){
+            ziti_posture_query *pq = model_map_it_value(itr);
+            tunnel_posture_check *pc = getTunnelPostureCheck(pq);
+            tnl_svc->PostureChecks[idx] = pc;
+        }
+        model_map_clear(&postureCheckMap, (_free_f) free_ziti_posture_query);
+    }
+
+    tnl_svc->IsAccessable = hasAccess;
     tnl_svc->Timeout = minTimeout;
     tnl_svc->TimeoutRemaining = minTimeoutRemaining;
     ZITI_LOG(DEBUG, "service[%s] timeout=%d timeoutRemaining=%d", service->name, minTimeout, minTimeoutRemaining);
 }
 
+
 tunnel_service *get_tunnel_service(tunnel_identity* id, ziti_service* zs) {
     struct tunnel_service_s *svc = malloc(sizeof(struct tunnel_service_s));
     svc->Id = strdup(zs->id);
     svc->Name = strdup(zs->name);
-    getTimeout(zs, svc);
+    svc->PostureChecks = NULL;
+    setTunnelPostureDataTimeout(svc, zs);
     // set correct values below
     svc->OwnsIntercept = true;
-    svc->IsAccessable = true;
-
     svc->Addresses = NULL;
     svc->Ports = NULL;
-    svc->PostureChecks = NULL;
     svc->Protocols = NULL;
     return svc;
 }
