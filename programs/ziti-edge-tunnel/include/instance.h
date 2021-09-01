@@ -26,6 +26,6 @@ extern void set_mfa_status(char* identifier, bool mfa_enabled, bool mfa_needed);
 
 void update_mfa_time(char* identifier);
 
-tunnel_service *get_tunnel_service(char* identifier, ziti_service* zs, bool isAdded, bool isRemoved);
+tunnel_service *get_tunnel_service(tunnel_identity* identifier, ziti_service* zs);
 
 #endif //ZITI_TUNNEL_SDK_C_INSTANCE_H

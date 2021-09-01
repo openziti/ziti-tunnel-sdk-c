@@ -332,16 +332,47 @@ static void on_event(const base_event *ev) {
                     .Identifier = strdup(ev->identifier),
             };
 
+            tunnel_identity *id = get_tunnel_identity(ev->identifier);
             ziti_service **zs;
-            for (zs = svc_ev->added_services; *zs != NULL; zs++) {
-                tunnel_service *svc = get_tunnel_service(ev->identifier, zs, true, false);
+            int idx = 0;
+
+            if (svc_ev->removed_services != NULL) {
+                svc_event.RemovedServices = calloc(sizeof(svc_ev->added_services) + 1, sizeof(tunnel_service *));
+
+                for (zs = svc_ev->removed_services; *zs != NULL; zs++) {
+                    tunnel_service *svc = get_tunnel_service(id, *zs);
+                    svc_event.RemovedServices[idx++] = svc;
+                }
             }
 
+            idx = 0;
+
+            if (svc_ev->added_services != NULL) {
+                svc_event.AddedServices = calloc(sizeof(svc_ev->added_services) + 1, sizeof(tunnel_service *));
+                // reallocate when new event comes, we need to maintain the whole list of services in tunnel_identity
+                /*if (id->Services == NULL) {
+                    id->Services = calloc(sizeof(svc_ev->added_services) + 1, sizeof(tunnel_service *));
+                } else {
+                    id->Services = realloc(sizeof(svc_ev->added_services) + 1, sizeof(tunnel_service *));
+                }*/
+                for (zs = svc_ev->added_services; *zs != NULL; zs++) {
+                    tunnel_service *svc = get_tunnel_service(id, *zs);
+                    svc_event.AddedServices[idx++] = svc;
+                    // id->Services[idx++] = svc;
+                }
+                // update tunnel id instance services
+            }
 
             size_t json_len;
             char *json = services_event_to_json(&svc_event, MODEL_JSON_COMPACT, &json_len);
             send_events_message(json, json_len);
             free(json);
+            /*if (svc_event.AddedServices != NULL) {
+                svc_event.AddedServices = NULL;
+            }
+            if (svc_event.RemovedServices != NULL) {
+                svc_event.RemovedServices=NULL;
+            }*/
             free_services_event(&svc_event);
             break;
         }

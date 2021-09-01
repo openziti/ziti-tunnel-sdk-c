@@ -54,20 +54,47 @@ tunnel_identity *get_tunnel_identity(char* identifier) {
     }
 }
 
-tunnel_service *get_tunnel_service(char* identifier, ziti_service* zs, bool isAdded, bool isRemoved) {
-    tunnel_identity *id = find_tunnel_identity(identifier);
+static void getTimeout(ziti_service *service, tunnel_service *tnl_svc) {
+    int posture_set_idx;
+    int minTimeoutRemaining = -1;
+    int minTimeout = -1;
+    if (service->posture_query_set != NULL) {
 
-    if (id->Services == NULL) {
-        id->Services = malloc(sizeof(tunnel_service_array));
+        for (posture_set_idx = 0; service->posture_query_set[posture_set_idx] != 0; posture_set_idx++) {
+            int posture_query_idx;
+            for (posture_query_idx = 0; service->posture_query_set[posture_set_idx]->posture_queries[posture_query_idx]; posture_query_idx++) {
+
+                int timeoutRemaining = *service->posture_query_set[posture_set_idx]->posture_queries[posture_query_idx]->timeoutRemaining;
+                if ((minTimeoutRemaining == -1) || (timeoutRemaining < minTimeoutRemaining)) {
+                    minTimeoutRemaining = timeoutRemaining;
+                }
+
+                int timeout = service->posture_query_set[posture_set_idx]->posture_queries[posture_query_idx]->timeout;
+                if ((minTimeout == -1) || (timeout < minTimeout)) {
+                    minTimeout = timeout;
+                }
+            }
+        }
     }
-    tunnel_service svc = {
-            .Id = strdup(zs->id),
-            .Name = strdup(zs->name)
-    };
-    // svc.Addresses = [];
-    // svc.Timeout =
-    // svc.TimeoutRemaining =
-    return &svc;
+    tnl_svc->Timeout = minTimeout;
+    tnl_svc->TimeoutRemaining = minTimeoutRemaining;
+    ZITI_LOG(DEBUG, "service[%s] timeout=%d timeoutRemaining=%d", service->name, minTimeout, minTimeoutRemaining);
+}
+
+tunnel_service *get_tunnel_service(tunnel_identity* id, ziti_service* zs) {
+    struct tunnel_service_s *svc = malloc(sizeof(struct tunnel_service_s));
+    svc->Id = strdup(zs->id);
+    svc->Name = strdup(zs->name);
+    getTimeout(zs, svc);
+    // set correct values below
+    svc->OwnsIntercept = true;
+    svc->IsAccessable = true;
+
+    svc->Addresses = NULL;
+    svc->Ports = NULL;
+    svc->PostureChecks = NULL;
+    svc->Protocols = NULL;
+    return svc;
 }
 
 void set_mfa_status(char* identifier, bool mfa_enabled, bool mfa_needed) {
