@@ -26,6 +26,8 @@ struct tnl_identity_s {
 };
 
 static LIST_HEAD(tnl_identities, tnl_identity_s) tnl_identity_list = LIST_HEAD_INITIALIZER(&tnl_identity_list);
+static const char* CFG_INTERCEPT_V1 = "intercept.v1";
+static const char* CFG_ZITI_TUNNELER_CLIENT_V1 = "ziti-tunneler-client.v1";
 
 tunnel_identity *find_tunnel_identity(char* identifier) {
     struct tnl_identity_s *tnl_id;
@@ -126,18 +128,66 @@ static void setTunnelPostureDataTimeout(tunnel_service *tnl_svc, ziti_service *s
     ZITI_LOG(DEBUG, "service[%s] timeout=%d timeoutRemaining=%d", service->name, minTimeout, minTimeoutRemaining);
 }
 
+static tunnel_address *to_address(string hostOrIPOrCIDR) {
+    tunnel_address *tnl_address = calloc(1, sizeof(struct tunnel_address_s));
+    tnl_address->IsHost = false;
+    tnl_address->Prefix = 0;
+
+    char* ip = {0};
+    uv_inet_pton(AF_INET, strdup(hostOrIPOrCIDR), ip);
+    if (ip != NULL) {
+        tnl_address->IP = ip;
+        tnl_address->HostName = NULL;
+        ZITI_LOG(TRACE, "IP address: %s", ip);
+    } else {
+        tnl_address->IsHost = true;
+        tnl_address->IP = NULL;
+        tnl_address->HostName = hostOrIPOrCIDR;
+        ZITI_LOG(TRACE, "Hostname: %s", hostOrIPOrCIDR);
+    }
+    // find CIDR
+    return tnl_address;
+}
+
+static void setTunnelServiceAddress(tunnel_service *tnl_svc, ziti_service *service) {
+    const char* intercept_v1_config = ziti_service_get_raw_config(service, CFG_INTERCEPT_V1);
+    tunnel_address_array *tnl_addr_arr;
+    if (strlen(intercept_v1_config) > 0) {
+        ZITI_LOG(TRACE, "intercept.v1: %s", intercept_v1_config);
+        ziti_intercept_cfg_v1 cfg_v1;
+        parse_ziti_intercept_cfg_v1(&cfg_v1, intercept_v1_config, strlen(intercept_v1_config));
+        tnl_addr_arr = calloc(sizeof(cfg_v1.addresses), sizeof(struct tunnel_address_s));
+        int address_idx;
+        for(address_idx=0; cfg_v1.addresses[address_idx]; address_idx++) {
+            char* addr = cfg_v1.addresses[address_idx];
+            tnl_addr_arr[address_idx] = to_address(addr);
+        }
+    } else {
+        const char* zt_client_v1_config = ziti_service_get_raw_config(service, CFG_ZITI_TUNNELER_CLIENT_V1);
+        ZITI_LOG(TRACE, "ziti-tunneler-client.v1: %s", zt_client_v1_config);
+        ziti_client_cfg_v1 zt_client_cfg_v1;
+        parse_ziti_client_cfg_v1(&zt_client_cfg_v1, zt_client_v1_config, strlen(zt_client_v1_config));
+        tnl_addr_arr = calloc(1, sizeof(struct tunnel_address_s));
+        int idx =0 ;
+        tnl_addr_arr[0] = to_address(zt_client_cfg_v1.hostname);
+
+    }
+    if (tnl_addr_arr != NULL) {
+        tnl_svc->Addresses = tnl_addr_arr;
+        tnl_svc->Ports = NULL;
+    }
+
+    tnl_svc->Protocols = NULL;
+}
 
 tunnel_service *get_tunnel_service(tunnel_identity* id, ziti_service* zs) {
     struct tunnel_service_s *svc = malloc(sizeof(struct tunnel_service_s));
     svc->Id = strdup(zs->id);
     svc->Name = strdup(zs->name);
     svc->PostureChecks = NULL;
-    setTunnelPostureDataTimeout(svc, zs);
-    // set correct values below
     svc->OwnsIntercept = true;
-    svc->Addresses = NULL;
-    svc->Ports = NULL;
-    svc->Protocols = NULL;
+    setTunnelPostureDataTimeout(svc, zs);
+    setTunnelServiceAddress(svc, zs);
     return svc;
 }
 
