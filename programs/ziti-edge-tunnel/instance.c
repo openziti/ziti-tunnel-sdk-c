@@ -149,35 +149,70 @@ static tunnel_address *to_address(string hostOrIPOrCIDR) {
     return tnl_address;
 }
 
+tunnel_port_range *getTunnelPortRange(ziti_port_range *zpr){
+    tunnel_port_range *tpr = calloc(1, sizeof(struct tunnel_port_range_s));
+    tpr->High = zpr->high;
+    tpr->Low = zpr->low;
+    return tpr;
+}
+
 static void setTunnelServiceAddress(tunnel_service *tnl_svc, ziti_service *service) {
     const char* intercept_v1_config = ziti_service_get_raw_config(service, CFG_INTERCEPT_V1);
     tunnel_address_array *tnl_addr_arr;
+    string_array protocols = {0};
+    tunnel_port_range_array *tnl_port_range_arr;
     if (strlen(intercept_v1_config) > 0) {
         ZITI_LOG(TRACE, "intercept.v1: %s", intercept_v1_config);
         ziti_intercept_cfg_v1 cfg_v1;
         parse_ziti_intercept_cfg_v1(&cfg_v1, intercept_v1_config, strlen(intercept_v1_config));
+
+        // set address
         tnl_addr_arr = calloc(sizeof(cfg_v1.addresses), sizeof(struct tunnel_address_s));
         int address_idx;
         for(address_idx=0; cfg_v1.addresses[address_idx]; address_idx++) {
             char* addr = cfg_v1.addresses[address_idx];
             tnl_addr_arr[address_idx] = to_address(addr);
         }
+
+        // set protocols
+        protocols = cfg_v1.protocols;
+
+        // set ports
+        tnl_port_range_arr = calloc(sizeof(cfg_v1.port_ranges), sizeof(struct tunnel_port_range_s));
+        int port_idx;
+        for(port_idx=0; cfg_v1.port_ranges[port_idx]; port_idx++) {
+            tnl_port_range_arr[port_idx] = getTunnelPortRange(cfg_v1.port_ranges[port_idx]);
+        }
     } else {
         const char* zt_client_v1_config = ziti_service_get_raw_config(service, CFG_ZITI_TUNNELER_CLIENT_V1);
         ZITI_LOG(TRACE, "ziti-tunneler-client.v1: %s", zt_client_v1_config);
         ziti_client_cfg_v1 zt_client_cfg_v1;
         parse_ziti_client_cfg_v1(&zt_client_cfg_v1, zt_client_v1_config, strlen(zt_client_v1_config));
+
+        // set tunnel address
         tnl_addr_arr = calloc(1, sizeof(struct tunnel_address_s));
-        int idx =0 ;
         tnl_addr_arr[0] = to_address(zt_client_cfg_v1.hostname);
 
+        // set protocols
+        protocols = calloc(2, sizeof(char*));
+        int idx=0;
+        protocols[idx++] = strdup("TCP");
+        protocols[idx] = strdup("UDP");
+
+        // set port range
+        // set ports
+        tnl_port_range_arr = calloc(1, sizeof(struct tunnel_port_range_s));
+        tunnel_port_range *tpr = calloc(1, sizeof(struct tunnel_port_range_s));
+        tpr->Low = zt_client_cfg_v1.port;
+        tpr->High = zt_client_cfg_v1.port;
+        tnl_port_range_arr[0] = tpr;
     }
     if (tnl_addr_arr != NULL) {
         tnl_svc->Addresses = tnl_addr_arr;
-        tnl_svc->Ports = NULL;
+        tnl_svc->Ports = tnl_port_range_arr;
     }
 
-    tnl_svc->Protocols = NULL;
+    tnl_svc->Protocols = protocols;
 }
 
 tunnel_service *get_tunnel_service(tunnel_identity* id, ziti_service* zs) {
