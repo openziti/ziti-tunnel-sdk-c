@@ -456,19 +456,21 @@ static struct ziti_instance_s *new_ziti_instance(const char *identifier, const c
 }
 
 static void displayTimeout(ziti_service *service) {
-    int posture_set_idx;
     int minTimeoutRemaining = -1;
     int minTimeout = -1;
-    for(posture_set_idx = 0; service->posture_query_set[posture_set_idx] != 0; posture_set_idx++) {
-        int posture_query_idx;
-        for(posture_query_idx = 0; service->posture_query_set[posture_set_idx]->posture_queries[posture_query_idx]; posture_query_idx++){
 
-            int timeoutRemaining = *service->posture_query_set[posture_set_idx]->posture_queries[posture_query_idx]->timeoutRemaining;
+    ziti_posture_query_set *pq_set;
+    const char *id;
+    MODEL_MAP_FOREACH(id, pq_set, &service->posture_query_map) {
+        int posture_query_idx;
+        for(posture_query_idx = 0; pq_set->posture_queries[posture_query_idx]; posture_query_idx++){
+
+            int timeoutRemaining = *(pq_set->posture_queries[posture_query_idx]->timeoutRemaining);
             if ((minTimeoutRemaining == -1) || (timeoutRemaining < minTimeoutRemaining)) {
                 minTimeoutRemaining = timeoutRemaining;
             }
 
-            int timeout = service->posture_query_set[posture_set_idx]->posture_queries[posture_query_idx]->timeout;
+            int timeout = pq_set->posture_queries[posture_query_idx]->timeout;
             if ((minTimeout == -1) || (timeout < minTimeout)) {
                 minTimeout = timeout;
             }
@@ -682,7 +684,7 @@ static void submit_mfa(ziti_context ztx, const char *code, void *ctx) {
     ziti_mfa_auth(ztx, code, on_submit_mfa, ctx);
 }
 
-static void on_enable_mfa(ziti_context ztx, int status, ziti_mfa_enrollment enrollment, void *ctx) {
+static void on_enable_mfa(ziti_context ztx, int status, ziti_mfa_enrollment *enrollment, void *ctx) {
     // send the response from enroll mfa to client
     struct tunnel_cb_s *req = ctx;
     tunnel_result result = {0};
@@ -694,9 +696,9 @@ static void on_enable_mfa(ziti_context ztx, int status, ziti_mfa_enrollment enro
 
         tunnel_mfa_enrol_res enrol_res = {0};
         enrol_res.identifier = req->ctx;
-        enrol_res.is_verified = enrollment.is_verified;
-        enrol_res.provisioning_url = enrollment.provisioning_url;
-        enrol_res.recovery_codes = enrollment.recovery_codes;
+        enrol_res.is_verified = enrollment->is_verified;
+        enrol_res.provisioning_url = enrollment->provisioning_url;
+        enrol_res.recovery_codes = enrollment->recovery_codes;
         size_t json_len;
         result.data = tunnel_mfa_enrol_res_to_json(&enrol_res, MODEL_JSON_COMPACT, &json_len);
     }

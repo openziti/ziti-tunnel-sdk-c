@@ -48,7 +48,7 @@ intercept_ctx_t *lookup_intercept_by_address(tunneler_context tnlr_ctx, const ch
     }
 
     intercept_ctx_t *intercept;
-    STAILQ_FOREACH(intercept, &tnlr_ctx->intercepts, entries) {
+    LIST_FOREACH(intercept, &tnlr_ctx->intercepts, entries) {
         if (!protocol_match(protocol, &intercept->protocols)) continue;
         if (!address_match(dst_addr, &intercept->addresses)) continue;
         if (port_match(dst_port, &intercept->port_ranges)) {
@@ -57,4 +57,26 @@ intercept_ctx_t *lookup_intercept_by_address(tunneler_context tnlr_ctx, const ch
     }
 
     return NULL;
+}
+
+void free_intercept(intercept_ctx_t *intercept) {
+    while(!STAILQ_EMPTY(&intercept->addresses)) {
+        address_t *a = STAILQ_FIRST(&intercept->addresses);
+        STAILQ_REMOVE_HEAD(&intercept->addresses, entries);
+        free(a);
+    }
+    while(!STAILQ_EMPTY(&intercept->protocols)) {
+        protocol_t *p = STAILQ_FIRST(&intercept->protocols);
+        STAILQ_REMOVE_HEAD(&intercept->protocols, entries);
+        free(p->protocol);
+        free(p);
+    }
+    while(!STAILQ_EMPTY(&intercept->port_ranges)) {
+        port_range_t *pr = STAILQ_FIRST(&intercept->port_ranges);
+        STAILQ_REMOVE_HEAD(&intercept->port_ranges, entries);
+        free(pr);
+    }
+
+    free(intercept->service_name);
+    free(intercept);
 }
