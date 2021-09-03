@@ -693,6 +693,40 @@ static int disable_identity_opts(int argc, char *argv[]) {
     return optind;
 }
 
+static int enable_identity_opts(int argc, char *argv[]) {
+    static struct option opts[] = {
+            {"identity", required_argument, NULL, 'i'},
+    };
+    int c, option_index, errors = 0;
+    optind = 0;
+
+    tunnel_load_identity *load_identity_options = calloc(1, sizeof(tunnel_load_identity));
+    cmd = calloc(1, sizeof(tunnel_comand));
+    cmd->command = TunnelCommand_LoadIdentity;
+
+    while ((c = getopt_long(argc, argv, "i:",
+                            opts, &option_index)) != -1) {
+        switch (c) {
+            case 'i':
+                load_identity_options->path = realpath(optarg, NULL);
+                break;
+            default: {
+                fprintf(stderr, "Unknown option '%c'\n", c);
+                errors++;
+                break;
+            }
+        }
+    }
+    if (errors > 0) {
+        commandline_help(stderr);
+        exit(1);
+    }
+    size_t json_len;
+    cmd->data = tunnel_load_identity_to_json(load_identity_options, MODEL_JSON_COMPACT, &json_len);
+
+    return optind;
+}
+
 static int enable_mfa_opts(int argc, char *argv[]) {
     static struct option opts[] = {
             {"identity", required_argument, NULL, 'i'},
@@ -841,6 +875,82 @@ static int submit_mfa_opts(int argc, char *argv[]) {
     return optind;
 }
 
+static int generate_mfa_codes_opts(int argc, char *argv[]) {
+    static struct option opts[] = {
+            {"identity", required_argument, NULL, 'i'},
+            {"code", required_argument, NULL, 'c'},
+    };
+    int c, option_index, errors = 0;
+    optind = 0;
+
+    tunnel_generate_mfa_codes *mfa_codes_options = calloc(1, sizeof(tunnel_generate_mfa_codes));
+    cmd = calloc(1, sizeof(tunnel_comand));
+    cmd->command = TunnelCommand_GenerateMFACodes;
+
+    while ((c = getopt_long(argc, argv, "i:c:",
+                            opts, &option_index)) != -1) {
+        switch (c) {
+            case 'i':
+                mfa_codes_options->identifier = optarg;
+                break;
+            case 'c':
+                mfa_codes_options->code = optarg;
+                break;
+            default: {
+                fprintf(stderr, "Unknown option '%c'\n", c);
+                errors++;
+                break;
+            }
+        }
+    }
+    if (errors > 0) {
+        commandline_help(stderr);
+        exit(1);
+    }
+    size_t json_len;
+    cmd->data = tunnel_generate_mfa_codes_to_json(mfa_codes_options, MODEL_JSON_COMPACT, &json_len);
+
+    return optind;
+}
+
+static int get_mfa_codes_opts(int argc, char *argv[]) {
+    static struct option opts[] = {
+            {"identity", required_argument, NULL, 'i'},
+            {"code", required_argument, NULL, 'c'},
+    };
+    int c, option_index, errors = 0;
+    optind = 0;
+
+    tunnel_get_mfa_codes *get_mfa_codes_options = calloc(1, sizeof(tunnel_get_mfa_codes));
+    cmd = calloc(1, sizeof(tunnel_comand));
+    cmd->command = TunnelCommand_GetMFACodes;
+
+    while ((c = getopt_long(argc, argv, "i:c:",
+                            opts, &option_index)) != -1) {
+        switch (c) {
+            case 'i':
+                get_mfa_codes_options->identifier = optarg;
+                break;
+            case 'c':
+                get_mfa_codes_options->code = optarg;
+                break;
+            default: {
+                fprintf(stderr, "Unknown option '%c'\n", c);
+                errors++;
+                break;
+            }
+        }
+    }
+    if (errors > 0) {
+        commandline_help(stderr);
+        exit(1);
+    }
+    size_t json_len;
+    cmd->data = tunnel_get_mfa_codes_to_json(get_mfa_codes_options, MODEL_JSON_COMPACT, &json_len);
+
+    return optind;
+}
+
 static CommandLine enroll_cmd = make_command("enroll", "enroll Ziti identity",
         "-j|--jwt <enrollment token> -i|--identity <identity> [-k|--key <private_key> [-c|--cert <certificate>]]",
         "\t-j|--jwt\tenrollment token file\n"
@@ -863,6 +973,8 @@ static CommandLine dump_cmd = make_command("dump", "dump the identities informat
                                            "\t-p|--dump_path\tdump into path\n", dump_opts, send_message_to_tunnel_fn);
 static CommandLine disable_id_cmd = make_command("disable", "disable the identities information", "[-i <identity>]",
                                            "\t-i|--identity\tidentity info that needs to be disabled\n", disable_identity_opts, send_message_to_tunnel_fn);
+static CommandLine enable_id_cmd = make_command("enable", "enable the identities information", "[-i <identity>]",
+                                                 "\t-i|--identity\tidentity info that needs to be enabled\n", enable_identity_opts, send_message_to_tunnel_fn);
 static CommandLine enable_mfa_cmd = make_command("enable_mfa", "Enable MFA function fetches the totp url from the controller", "[-i <identity>]",
                                            "\t-i|--identity\tidentity info for enabling mfa\n", enable_mfa_opts, send_message_to_tunnel_fn);
 static CommandLine verify_mfa_cmd = make_command("verify_mfa", "Verify the mfa login using the auth code while enabling mfa", "[-i <identity>] [-c <code>]",
@@ -874,17 +986,26 @@ static CommandLine remove_mfa_cmd = make_command("remove_mfa", "Removes MFA regi
 static CommandLine submit_mfa_cmd = make_command("submit_mfa", "Submit MFA code to authenticate to the controller", "[-i <identity>] [-c <code>]",
                                                  "\t-i|--identity\tidentity info for removing mfa\n"
                                                  "\t-c|--authcode\tauth code to authenticate mfa login\n", submit_mfa_opts, send_message_to_tunnel_fn);
+static CommandLine generate_mfa_codes_cmd = make_command("generate_mfa_codes", "Generate MFA codes", "[-i <identity>] [-c <code>]",
+                                                 "\t-i|--identity\tidentity info for generating mfa codes\n"
+                                                 "\t-c|--authcode\tauth code to authenticate the request for generating mfa codes\n", generate_mfa_codes_opts, send_message_to_tunnel_fn);
+static CommandLine get_mfa_codes_cmd = make_command("get_mfa_codes", "Get MFA codes", "[-i <identity>] [-c <code>]",
+                                                         "\t-i|--identity\tidentity info for fetching mfa codes\n"
+                                                         "\t-c|--authcode\tauth code to authenticate the request for fetching mfa codes\n", get_mfa_codes_opts, send_message_to_tunnel_fn);
 static CommandLine ver_cmd = make_command("version", "show version", "[-v]", "\t-v\tshow verbose version information\n", version_opts, version);
 static CommandLine help_cmd = make_command("help", "this message", NULL, NULL, NULL, usage);
 static CommandLine *main_cmds[] = {
         &enroll_cmd,
         &run_cmd,
         &disable_id_cmd,
+        &enable_id_cmd,
         &dump_cmd,
         &enable_mfa_cmd,
         &verify_mfa_cmd,
         &remove_mfa_cmd,
         &submit_mfa_cmd,
+        &generate_mfa_codes_cmd,
+        &get_mfa_codes_cmd,
         &ver_cmd,
         &help_cmd,
         NULL

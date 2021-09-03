@@ -52,6 +52,8 @@ static void verify_mfa(ziti_context ztx, char *code, void *ctx);
 static void remove_mfa(ziti_context ztx, char *code, void *ctx);
 // static void on_mfa_query(ziti_context ztx, void* mfa_ctx, ziti_auth_query_mfa *aq_mfa, ziti_ar_mfa_cb response_cb);
 static void submit_mfa(ziti_context ztx, const char *code, void *ctx);
+static void generate_mfa_codes(ziti_context ztx, char *code, void *ctx);
+static void get_mfa_codes(ziti_context ztx, char *code, void *ctx);
 static ziti_context get_ziti(const char *identifier);
 
 struct tunnel_cb_s {
@@ -364,6 +366,56 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
             return 0;
         }
 
+        case TunnelCommand_GenerateMFACodes: {
+            tunnel_generate_mfa_codes generate_mfa_codes_cmd;
+            if (cmd->data == NULL || parse_tunnel_generate_mfa_codes(&generate_mfa_codes_cmd, cmd->data, strlen(cmd->data)) != 0) {
+                result.error = "invalid command";
+                result.success = false;
+                break;
+            }
+
+            struct ziti_instance_s *inst = model_map_get(&instances, generate_mfa_codes_cmd.identifier);
+            if (inst == NULL) {
+                result.error = "ziti context not found";
+                result.success = false;
+                break;
+            }
+
+            struct tunnel_cb_s *req = malloc(sizeof(struct tunnel_cb_s));
+            req->ctx = strdup(generate_mfa_codes_cmd.identifier);
+            req->cmd_cb = cb;
+            req->cmd_ctx = ctx;
+
+            generate_mfa_codes(inst->ztx, strdup(generate_mfa_codes_cmd.code), req);
+            free_tunnel_generate_mfa_codes(&generate_mfa_codes_cmd);
+            return 0;
+        }
+
+        case TunnelCommand_GetMFACodes: {
+            tunnel_get_mfa_codes get_mfa_codes_cmd;
+            if (cmd->data == NULL || parse_tunnel_get_mfa_codes(&get_mfa_codes_cmd, cmd->data, strlen(cmd->data)) != 0) {
+                result.error = "invalid command";
+                result.success = false;
+                break;
+            }
+
+            struct ziti_instance_s *inst = model_map_get(&instances, get_mfa_codes_cmd.identifier);
+            if (inst == NULL) {
+                result.error = "ziti context not found";
+                result.success = false;
+                break;
+            }
+
+            struct tunnel_cb_s *req = malloc(sizeof(struct tunnel_cb_s));
+            req->ctx = strdup(get_mfa_codes_cmd.identifier);
+            req->cmd_cb = cb;
+            req->cmd_ctx = ctx;
+
+            get_mfa_codes(inst->ztx, strdup(get_mfa_codes_cmd.code), req);
+            free_tunnel_get_mfa_codes(&get_mfa_codes_cmd);
+            return 0;
+        }
+
         case TunnelCommand_Unknown:
             break;
     }
@@ -403,10 +455,37 @@ static struct ziti_instance_s *new_ziti_instance(const char *identifier, const c
     return inst;
 }
 
+static void displayTimeout(ziti_service *service) {
+    int minTimeoutRemaining = -1;
+    int minTimeout = -1;
+
+    ziti_posture_query_set *pq_set;
+    const char *id;
+    MODEL_MAP_FOREACH(id, pq_set, &service->posture_query_map) {
+        int posture_query_idx;
+        for(posture_query_idx = 0; pq_set->posture_queries[posture_query_idx]; posture_query_idx++){
+
+            int timeoutRemaining = *(pq_set->posture_queries[posture_query_idx]->timeoutRemaining);
+            if ((minTimeoutRemaining == -1) || (timeoutRemaining < minTimeoutRemaining)) {
+                minTimeoutRemaining = timeoutRemaining;
+            }
+
+            int timeout = pq_set->posture_queries[posture_query_idx]->timeout;
+            if ((minTimeout == -1) || (timeout < minTimeout)) {
+                minTimeout = timeout;
+            }
+        }
+    }
+    ZITI_LOG(DEBUG, "service[%s] timeout=%d timeoutRemaining=%d", service->name, minTimeout, minTimeoutRemaining);
+}
+
 /** callback from ziti SDK when a new service becomes available to our identity */
 static void on_service(ziti_context ziti_ctx, ziti_service *service, int status, void *tnlr_ctx) {
     ZITI_LOG(DEBUG, "service[%s]", service->name);
     tunneled_service_t *ts = ziti_sdk_c_on_service(ziti_ctx, service, status, tnlr_ctx);
+    if (status == ZITI_OK){
+        displayTimeout(service);
+    }
     if (ts->intercept != NULL) {
         ZITI_LOG(INFO, "starting intercepting for service[%s]", service->name);
         protocol_t *proto;
@@ -598,7 +677,7 @@ static void submit_mfa(ziti_context ztx, const char *code, void *ctx) {
     ziti_mfa_auth(ztx, code, on_submit_mfa, ctx);
 }
 
-static void on_enable_mfa(ziti_context ztx, int status, ziti_mfa_enrollment enrollment, void *ctx) {
+static void on_enable_mfa(ziti_context ztx, int status, ziti_mfa_enrollment *enrollment, void *ctx) {
     // send the response from enroll mfa to client
     struct tunnel_cb_s *req = ctx;
     tunnel_result result = {0};
@@ -610,9 +689,9 @@ static void on_enable_mfa(ziti_context ztx, int status, ziti_mfa_enrollment enro
 
         tunnel_mfa_enrol_res enrol_res = {0};
         enrol_res.identifier = req->ctx;
-        enrol_res.is_verified = enrollment.is_verified;
-        enrol_res.provisioning_url = enrollment.provisioning_url;
-        enrol_res.recovery_codes = enrollment.recovery_codes;
+        enrol_res.is_verified = enrollment->is_verified;
+        enrol_res.provisioning_url = enrollment->provisioning_url;
+        enrol_res.recovery_codes = enrollment->recovery_codes;
         size_t json_len;
         result.data = tunnel_mfa_enrol_res_to_json(&enrol_res, MODEL_JSON_COMPACT, &json_len);
     }
@@ -664,6 +743,36 @@ static void on_remove_mfa(ziti_context ztx, int status, void *ctx) {
 
 static void remove_mfa(ziti_context ztx, char *code, void *ctx) {
     ziti_mfa_remove(ztx, code, on_remove_mfa, ctx);
+}
+
+static void on_mfa_recovery_codes(ziti_context ztx, int status, char **recovery_codes, void *ctx) {
+    struct tunnel_cb_s *req = ctx;
+    tunnel_result result = {0};
+    if (status != ZITI_OK) {
+        result.success = false;
+        result.error = (char*)ziti_errorstr(status);
+    } else {
+        result.success = true;
+
+        tunnel_mfa_recovery_codes mfa_recovery_codes = {0};
+        mfa_recovery_codes.identifier = req->ctx;
+        mfa_recovery_codes.recovery_codes = recovery_codes;
+
+        size_t json_len;
+        result.data = tunnel_mfa_recovery_codes_to_json(&mfa_recovery_codes, MODEL_JSON_COMPACT, &json_len);
+    }
+    if (req->cmd_cb) {
+        req->cmd_cb(&result, req->cmd_ctx);
+    }
+    free(req);
+}
+
+static void generate_mfa_codes(ziti_context ztx, char *code, void *ctx) {
+    ziti_mfa_new_recovery_codes(ztx, code, on_mfa_recovery_codes, ctx);
+}
+
+static void get_mfa_codes(ziti_context ztx, char *code, void *ctx) {
+    ziti_mfa_get_recovery_codes(ztx, code, on_mfa_recovery_codes, ctx);
 }
 
 #define CHECK(lbl, op) do{ \
@@ -722,6 +831,9 @@ IMPL_MODEL(tunnel_mfa_enrol_res, TNL_MFA_ENROL_RES)
 IMPL_MODEL(tunnel_submit_mfa, TNL_SUBMIT_MFA)
 IMPL_MODEL(tunnel_verify_mfa, TNL_VERIFY_MFA)
 IMPL_MODEL(tunnel_remove_mfa, TNL_REMOVE_MFA)
+IMPL_MODEL(tunnel_generate_mfa_codes, TNL_GENERATE_MFA_CODES)
+IMPL_MODEL(tunnel_mfa_recovery_codes, TNL_MFA_RECOVERY_CODES)
+IMPL_MODEL(tunnel_get_mfa_codes, TNL_GET_MFA_CODES)
 
 // ************** TUNNEL Events
 IMPL_ENUM(TunnelEvent, TUNNEL_EVENTS)

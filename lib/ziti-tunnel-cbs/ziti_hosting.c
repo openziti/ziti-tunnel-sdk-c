@@ -232,10 +232,10 @@ static void on_hosted_ziti_write(ziti_connection ziti_conn, ssize_t len, void *c
 
     if (ctx) free(ctx);
 
-    io_ctx->in_wreqs--;
-    if (io_ctx->in_wreqs < 0) {
+    if (io_ctx->in_wreqs == 0) {
         ZITI_LOG(ERROR, "WTF: accounting error");
-        io_ctx->in_wreqs = 0;
+    } else {
+        io_ctx->in_wreqs--;
     }
 
     if (len < 0) {
@@ -305,6 +305,7 @@ static void on_hosted_tcp_server_data(uv_stream_t *stream, ssize_t nread, const 
 static void on_hosted_udp_server_data(uv_udp_t* handle, ssize_t nread, const uv_buf_t* buf, const struct sockaddr* addr, unsigned flags) {
     struct hosted_io_ctx_s *io_ctx = handle->data;
     if (nread > 0) {
+        io_ctx->in_wreqs++;
         int zs = ziti_write(io_ctx->client, buf->base, nread, on_hosted_ziti_write, buf->base);
         if (zs != ZITI_OK) {
             ZITI_LOG(ERROR, "ziti_write failed: %s", ziti_errorstr(zs));
