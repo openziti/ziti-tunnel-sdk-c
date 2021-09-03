@@ -189,6 +189,9 @@ void on_write_event(uv_write_t* req, int status) {
     } else {
         ZITI_LOG(DEBUG,"Events message is sent.");
     }
+    if (req->data) {
+        free(req->data);
+    }
     free(req);
 }
 
@@ -313,8 +316,6 @@ static void on_event(const base_event *ev) {
             size_t json_len;
             char *json = identity_event_to_json(&id_event, MODEL_JSON_COMPACT, &json_len);
             send_events_message(json, json_len);
-            free(json);
-            // free(zev);
             id_event.Id = NULL;
             free_identity_event(&id_event);
             break;
@@ -356,7 +357,6 @@ static void on_event(const base_event *ev) {
             size_t json_len;
             char *json = services_event_to_json(&svc_event, MODEL_JSON_COMPACT, &json_len);
             send_events_message(json, json_len);
-            free(json);
             if (svc_event.AddedServices != NULL) {
                 svc_event.AddedServices = NULL;
             }
@@ -377,7 +377,6 @@ static void on_event(const base_event *ev) {
             size_t json_len;
             char *json = identity_event_to_json(&id_event, MODEL_JSON_COMPACT, &json_len);
             send_events_message(json, json_len);
-            free(json);
             id_event.Id = NULL;
             free_identity_event(&id_event);
             break;
@@ -406,7 +405,6 @@ static void on_event(const base_event *ev) {
             size_t json_len;
             char *json = mfa_status_event_to_json(&mfa_sts_event, MODEL_JSON_COMPACT, &json_len);
             send_events_message(json, json_len);
-            free(json);
             free_mfa_status_event(&mfa_sts_event);
             break;
         }
