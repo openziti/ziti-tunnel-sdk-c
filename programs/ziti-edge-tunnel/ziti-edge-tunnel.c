@@ -177,10 +177,6 @@ static void on_events_client(uv_stream_t *s, int status) {
         uv_pipe_init(s->loop, event_conn, 0);
         uv_accept(s, (uv_stream_t *) event_conn);
         ZITI_LOG(DEBUG,"Received events connection request %d", ++current_events_channels);
-        /*size_t json_len;
-        char* json = tunnel_identity_to_json(id, MODEL_JSON_COMPACT, &json_len);
-        send_events_message(json, json_len);
-        free(json); */
     } else {
         ZITI_LOG(WARN, "Maximum events connection requests exceeded");
     }
@@ -193,9 +189,6 @@ void on_write_event(uv_write_t* req, int status) {
     } else {
         ZITI_LOG(DEBUG,"Events message is sent.");
     }
-    /*if (req->data) {
-        free(req->data);
-    }*/
     free(req);
 }
 
@@ -366,9 +359,6 @@ static void on_event(const base_event *ev) {
             free(json);
             if (svc_event.AddedServices != NULL) {
                 svc_event.AddedServices = NULL;
-            }
-            if (svc_event.RemovedServices != NULL) {
-                free_tunnel_service_array(svc_event.RemovedServices);
             }
             free_services_event(&svc_event);
             break;

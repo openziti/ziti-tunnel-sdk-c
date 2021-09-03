@@ -20,14 +20,14 @@ limitations under the License.
 #include <ziti/ziti_model.h>
 #include "model/dtos.h"
 
-tunnel_identity *get_tunnel_identity(char* identifier);
+extern tunnel_identity *get_tunnel_identity(char* identifier);
 
-void set_mfa_status(char* identifier, bool mfa_enabled, bool mfa_needed);
+extern void set_mfa_status(char* identifier, bool mfa_enabled, bool mfa_needed);
 
-void update_mfa_time(char* identifier);
+extern void update_mfa_time(char* identifier);
 
-tunnel_service *get_tunnel_service(tunnel_identity* identifier, ziti_service* zs);
+extern tunnel_service *get_tunnel_service(tunnel_identity* identifier, ziti_service* zs);
 
-void add_or_remove_services_from_tunnel(tunnel_identity *id, tunnel_service_array added_services, tunnel_service_array removed_services);
+extern void add_or_remove_services_from_tunnel(tunnel_identity *id, tunnel_service_array added_services, tunnel_service_array removed_services);
 
 #endif //ZITI_TUNNEL_SDK_C_INSTANCE_H

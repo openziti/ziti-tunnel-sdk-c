@@ -95,8 +95,8 @@ void add_or_remove_services_from_tunnel(tunnel_identity *id, tunnel_service_arra
     if (id->Services == NULL) {
         id->Services = calloc(model_map_size(&updates), sizeof(struct tunnel_service_s));
     } else {
-        free_tunnel_service_array(id->Services);
-        id->Services = realloc(model_map_size(&updates), sizeof(struct tunnel_service_s));
+        free(id->Services);
+        id->Services = calloc(model_map_size(&updates), sizeof(struct tunnel_service_s));
     }
     model_map_iter it = model_map_iterator(&updates);
     idx=0;
@@ -113,7 +113,7 @@ static tunnel_posture_check *getTunnelPostureCheck(ziti_posture_query *pq){
     pc->IsPassing = pq->is_passing;
     pc->QueryType = strdup(pq->query_type);
     pc->Timeout = pq->timeout;
-    pc->TimeoutRemaining = pq->timeoutRemaining;
+    pc->TimeoutRemaining = *pq->timeoutRemaining;
     return pc;
 }
 
@@ -169,8 +169,8 @@ static void setTunnelPostureDataTimeout(tunnel_service *tnl_svc, ziti_service *s
             ziti_posture_query *pq = model_map_it_value(itr);
             tunnel_posture_check *pc = getTunnelPostureCheck(pq);
             tnl_svc->PostureChecks[idx] = pc;
+            itr = model_map_it_next(itr);
         }
-        model_map_clear(&postureCheckMap, (_free_f) free_ziti_posture_query);
     }
 
     tnl_svc->IsAccessable = hasAccess;
