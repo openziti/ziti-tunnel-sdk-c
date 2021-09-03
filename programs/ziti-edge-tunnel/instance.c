@@ -134,7 +134,7 @@ static void setTunnelPostureDataTimeout(tunnel_service *tnl_svc, ziti_service *s
                 ZITI_LOG(TRACE, "Posture Query set returned a Bind policy: %s [ignored]", pqs->policy_id);
                 continue;
             } else {
-                ZITI_LOG(TRACE, "Posture Query set returned a %s policy: %s, is_passing %t", pqs->policy_type, pqs->policy_id, pqs->is_passing);
+                ZITI_LOG(TRACE, "Posture Query set returned a %s policy: %s, is_passing %d", pqs->policy_type, pqs->policy_id, pqs->is_passing);
             }
 
             if (pqs->is_passing) {

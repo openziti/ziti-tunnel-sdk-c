@@ -366,7 +366,7 @@ static void on_event(const base_event *ev) {
 
         case TunnelEvent_MFAEvent: {
             const mfa_event *mfa_ev = (mfa_event *) ev;
-            ZITI_LOG(INFO, "ztx[%s] is requesting MFA code[%s]", ev->identifier, mfa_ev->provider);
+            ZITI_LOG(INFO, "ztx[%s] is requesting MFA code", ev->identifier);
             set_mfa_status(ev->identifier, true, true);
             identity_event id_event = {
                     .Op = strdup("identity"),
@@ -384,7 +384,7 @@ static void on_event(const base_event *ev) {
 
         case TunnelEvent_MFAStatusEvent:{
             const mfa_event *mfa_ev = (mfa_event *) ev;
-            ZITI_LOG(INFO, "ztx[%s] MFA ([%s]) Status code : %s", ev->identifier, mfa_ev->provider, mfa_ev->status);
+            ZITI_LOG(INFO, "ztx[%s] MFA Status code : %d", ev->identifier, mfa_ev->code);
 
             mfa_status_event mfa_sts_event = {
                 .Op = strdup("mfa"),
