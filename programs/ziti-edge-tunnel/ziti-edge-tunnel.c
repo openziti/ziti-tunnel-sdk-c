@@ -52,15 +52,15 @@ static const ziti_tunnel_ctrl *CMD_CTRL;
 static long events_channels_count = 8;
 static long current_events_channels = 0;
 
-char* EVENT_ADDED="added";
-char* EVENT_REMOVED="removed";
-char* EVENT_UPDATED="updated";
-char* EVENT_BULK="bulk";
-char* EVENT_ERROR="error";
-char* EVENT_CHANGED="changed";
-char* EVENT_NORMAL="normal";
-char* EVENT_CONNECTED="connected";
-char* EVENT_DISCONNECTED="disconnected";
+static const char* EVENT_ADDED="added";
+static const char* EVENT_REMOVED="removed";
+static const char* EVENT_UPDATED="updated";
+static const char* EVENT_BULK="bulk";
+static const char* EVENT_ERROR="error";
+static const char* EVENT_CHANGED="changed";
+static const char* EVENT_NORMAL="normal";
+static const char* EVENT_CONNECTED="connected";
+static const char* EVENT_DISCONNECTED="disconnected";
 
 #if _WIN32
 static char sockfile[] = "\\\\.\\pipe\\ziti-edge-tunnel.sock";
@@ -177,6 +177,10 @@ static void on_events_client(uv_stream_t *s, int status) {
         uv_pipe_init(s->loop, event_conn, 0);
         uv_accept(s, (uv_stream_t *) event_conn);
         ZITI_LOG(DEBUG,"Received events connection request %d", ++current_events_channels);
+        /*size_t json_len;
+        char* json = tunnel_identity_to_json(id, MODEL_JSON_COMPACT, &json_len);
+        send_events_message(json, json_len);
+        free(json); */
     } else {
         ZITI_LOG(WARN, "Maximum events connection requests exceeded");
     }
@@ -335,10 +339,8 @@ static void on_event(const base_event *ev) {
             tunnel_identity *id = get_tunnel_identity(ev->identifier);
             ziti_service **zs;
             int idx = 0;
-
             if (svc_ev->removed_services != NULL) {
                 svc_event.RemovedServices = calloc(sizeof(svc_ev->added_services) + 1, sizeof(tunnel_service *));
-
                 for (zs = svc_ev->removed_services; *zs != NULL; zs++) {
                     tunnel_service *svc = get_tunnel_service(id, *zs);
                     svc_event.RemovedServices[idx++] = svc;
@@ -346,33 +348,28 @@ static void on_event(const base_event *ev) {
             }
 
             idx = 0;
-
             if (svc_ev->added_services != NULL) {
                 svc_event.AddedServices = calloc(sizeof(svc_ev->added_services) + 1, sizeof(tunnel_service *));
-                // reallocate when new event comes, we need to maintain the whole list of services in tunnel_identity
-                /*if (id->Services == NULL) {
-                    id->Services = calloc(sizeof(svc_ev->added_services) + 1, sizeof(tunnel_service *));
-                } else {
-                    id->Services = realloc(sizeof(svc_ev->added_services) + 1, sizeof(tunnel_service *));
-                }*/
                 for (zs = svc_ev->added_services; *zs != NULL; zs++) {
                     tunnel_service *svc = get_tunnel_service(id, *zs);
                     svc_event.AddedServices[idx++] = svc;
-                    // id->Services[idx++] = svc;
                 }
-                // update tunnel id instance services
+            }
+
+            if (svc_ev->removed_services != NULL || svc_ev->added_services != NULL) {
+                add_or_remove_services_from_tunnel(id, svc_event.AddedServices, svc_event.RemovedServices);
             }
 
             size_t json_len;
             char *json = services_event_to_json(&svc_event, MODEL_JSON_COMPACT, &json_len);
             send_events_message(json, json_len);
             free(json);
-            /*if (svc_event.AddedServices != NULL) {
+            if (svc_event.AddedServices != NULL) {
                 svc_event.AddedServices = NULL;
             }
             if (svc_event.RemovedServices != NULL) {
-                svc_event.RemovedServices=NULL;
-            }*/
+                free_tunnel_service_array(svc_event.RemovedServices);
+            }
             free_services_event(&svc_event);
             break;
         }

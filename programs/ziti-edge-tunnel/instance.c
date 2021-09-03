@@ -51,9 +51,60 @@ tunnel_identity *get_tunnel_identity(char* identifier) {
         struct tnl_identity_s *tnl_id = malloc(sizeof(struct tnl_identity_s));
         tnl_id->id = calloc(1, sizeof(struct tunnel_identity_s));
         tnl_id->id->Identifier = strdup(identifier);
+        tnl_id->id->Services = NULL;
         LIST_INSERT_HEAD(&tnl_identity_list, tnl_id, _next);
         return tnl_id->id;
     }
+}
+
+void add_or_remove_services_from_tunnel(tunnel_identity *id, tunnel_service_array added_services, tunnel_service_array removed_services) {
+
+    model_map updates = {0};
+
+    int idx = 0;
+    // add services from tunnel id to map
+    if (id->Services != NULL) {
+        for (idx =0; id->Services[idx]; idx++) {
+            tunnel_service *svc = id->Services[idx];
+            model_map_set(&updates, svc->Name, svc);
+        }
+    }
+
+    // remove services from map
+    if (removed_services != NULL) {
+        for(idx=0; removed_services[idx]; idx++){
+            tunnel_service *svc = removed_services[idx];
+            tunnel_service *rem_svc = model_map_get(&updates, svc->Name);
+            if (rem_svc != NULL) {
+                model_map_remove(&updates, rem_svc->Name);
+                free_tunnel_service(rem_svc);
+                free(rem_svc);
+            }
+        }
+    }
+
+    //add services to map
+    if (added_services != NULL) {
+        for(idx=0; added_services[idx]; idx++){
+            tunnel_service *svc = added_services[idx];
+            model_map_set(&updates, svc->Name, svc);
+        }
+    }
+
+    // reallocate when new event comes, we need to maintain the whole list of services in tunnel_identity
+    if (id->Services == NULL) {
+        id->Services = calloc(model_map_size(&updates), sizeof(struct tunnel_service_s));
+    } else {
+        free_tunnel_service_array(id->Services);
+        id->Services = realloc(model_map_size(&updates), sizeof(struct tunnel_service_s));
+    }
+    model_map_iter it = model_map_iterator(&updates);
+    idx=0;
+    while(it != NULL) {
+        id->Services[idx++] = model_map_it_value(it);
+        it = model_map_it_next(it);
+    };
+
 }
 
 static tunnel_posture_check *getTunnelPostureCheck(ziti_posture_query *pq){
