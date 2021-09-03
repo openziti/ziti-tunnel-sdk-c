@@ -189,9 +189,6 @@ void on_write_event(uv_write_t* req, int status) {
     } else {
         ZITI_LOG(INFO,"Events message is sent.");
     }
-    if (req->data) {
-        free(req->data);
-    }
     free(req);
 }
 
@@ -314,7 +311,7 @@ static void on_event(const base_event *ev) {
             size_t json_len;
             char *json = identity_event_to_json(&id_event, MODEL_JSON_COMPACT, &json_len);
             send_events_message(json, json_len);
-            // free(json);
+            free(json);
             break;
         }
 
@@ -330,8 +327,7 @@ static void on_event(const base_event *ev) {
             size_t json_len;
             char *json = services_event_to_json(&svc_event, MODEL_JSON_COMPACT, &json_len);
             send_events_message(json, json_len);
-            // free(json);
-            // TODO
+            free(json);
             break;
         }
 
