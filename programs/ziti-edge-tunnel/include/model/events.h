@@ -33,7 +33,8 @@ XX(Action, string, none, Action, __VA_ARGS__) \
 XX(Identifier, string, none, Identifier, __VA_ARGS__)
 
 #define TUNNEL_STATUS_EVENT(XX, ...) \
-XX(active, bool, none, active, __VA_ARGS__)
+STATUS_EVENT(XX, __VA_ARGS__) \
+XX(Status, tunnel_status, ptr, Status, __VA_ARGS__)
 
 #define IDENTITY_EVENT(XX, ...) \
 ACTION_EVENT(XX, __VA_ARGS__) \

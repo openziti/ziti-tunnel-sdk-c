@@ -61,6 +61,7 @@ static const char* EVENT_CHANGED="changed";
 static const char* EVENT_NORMAL="normal";
 static const char* EVENT_CONNECTED="connected";
 static const char* EVENT_DISCONNECTED="disconnected";
+static const char* EVENT_STATUS="status";
 
 #if _WIN32
 static char sockfile[] = "\\\\.\\pipe\\ziti-edge-tunnel.sock";
@@ -177,6 +178,17 @@ static void on_events_client(uv_stream_t *s, int status) {
         uv_pipe_init(s->loop, event_conn, 0);
         uv_accept(s, (uv_stream_t *) event_conn);
         ZITI_LOG(DEBUG,"Received events connection request %d", ++current_events_channels);
+
+        // send status message immediately
+        tunnel_status_event tnl_sts_evt = {0};
+        tnl_sts_evt.Op = strdup(EVENT_STATUS);
+        tunnel_status *stat = get_tunnel_status();
+        tnl_sts_evt.Status = stat;
+        size_t json_len;
+        char *json = tunnel_status_event_to_json(&tnl_sts_evt, MODEL_JSON_COMPACT, &json_len);
+        send_events_message(json, json_len);
+        tnl_sts_evt.Status = NULL;
+        free_tunnel_status_event(&tnl_sts_evt);
     } else {
         ZITI_LOG(WARN, "Maximum events connection requests exceeded");
     }

@@ -185,7 +185,7 @@ static tunnel_address *to_address(string hostOrIPOrCIDR) {
     tnl_address->Prefix = 0;
 
     char* ip = {0};
-    uv_inet_pton(AF_INET, strdup(hostOrIPOrCIDR), ip);
+    int res = uv_inet_pton(AF_INET, strdup(hostOrIPOrCIDR), ip);
     if (ip != NULL) {
         tnl_address->IP = ip;
         tnl_address->HostName = NULL;
@@ -277,6 +277,28 @@ tunnel_service *get_tunnel_service(tunnel_identity* id, ziti_service* zs) {
     return svc;
 }
 
+tunnel_status *get_tunnel_status() {
+    tunnel_status *tnl_status = calloc(1, sizeof(struct tunnel_status_s));
+    tnl_status->Active = true;
+    tnl_status->Duration = 0;
+
+    struct tnl_identity_s *tnl_id;
+    int idx = 0;
+    LIST_FOREACH(tnl_id, &tnl_identity_list, _next) {
+        idx++;
+    }
+
+    tunnel_identity_array *tnl_id_arr = calloc(idx, sizeof(struct tunnel_identity_s));
+
+    idx = 0;
+    LIST_FOREACH(tnl_id, &tnl_identity_list, _next) {
+        tnl_id_arr[idx] = tnl_id->id;
+    }
+    tnl_status->Identities = tnl_id_arr;
+
+    return tnl_status;
+}
+
 void set_mfa_status(char* identifier, bool mfa_enabled, bool mfa_needed) {
     tunnel_identity *tnl_id = find_tunnel_identity(identifier);
     if (tnl_id != NULL) {
@@ -308,4 +330,5 @@ IMPL_MODEL(tunnel_address, TUNNEL_ADDRESS)
 IMPL_MODEL(tunnel_port_range, TUNNEL_PORT_RANGE)
 IMPL_MODEL(tunnel_posture_check, TUNNEL_POSTURE_CHECK)
 IMPL_MODEL(tunnel_service, TUNNEL_SERVICE)
+IMPL_MODEL(tunnel_status, TUNNEL_STATUS)
 
