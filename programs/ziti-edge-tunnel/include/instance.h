@@ -32,4 +32,6 @@ extern void add_or_remove_services_from_tunnel(tunnel_identity *id, tunnel_servi
 
 extern tunnel_status *get_tunnel_status();
 
+extern tunnel_identity_array get_tunnel_identities();
+
 #endif //ZITI_TUNNEL_SDK_C_INSTANCE_H

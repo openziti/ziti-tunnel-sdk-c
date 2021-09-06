@@ -52,12 +52,17 @@ XX(Error, string, none, Error, __VA_ARGS__) \
 XX(ProvisioningUrl, string, none, ProvisioningUrl, __VA_ARGS__) \
 XX(RecoveryCodes, string, none, RecoveryCodes, __VA_ARGS__)
 
+#define TUNNEL_METRICS_EVENT(XX, ...) \
+STATUS_EVENT(XX, __VA_ARGS__) \
+XX(Identities, tunnel_identity, array, Identities, __VA_ARGS__)
+
 DECLARE_MODEL(status_event, STATUS_EVENT)
 DECLARE_MODEL(action_event, ACTION_EVENT)
 DECLARE_MODEL(tunnel_status_event, TUNNEL_STATUS_EVENT)
 DECLARE_MODEL(identity_event, IDENTITY_EVENT)
 DECLARE_MODEL(services_event, SERVICES_EVENT)
 DECLARE_MODEL(mfa_status_event, MFA_STATUS_EVENT)
+DECLARE_MODEL(tunnel_metrics_event, TUNNEL_METRICS_EVENT)
 
 #ifdef __cplusplus
 }

@@ -278,6 +278,28 @@ tunnel_service *get_tunnel_service(tunnel_identity* id, ziti_service* zs) {
     return svc;
 }
 
+tunnel_identity_array get_tunnel_identities() {
+    struct tnl_identity_s *tnl_id;
+    int idx = 0;
+    LIST_FOREACH(tnl_id, &tnl_identity_list, _next) {
+        idx++;
+    }
+
+    if (idx > 0) {
+        tunnel_identity_array *tnl_id_arr = calloc(idx, sizeof(struct tunnel_identity_s));
+
+        idx = 0;
+        LIST_FOREACH(tnl_id, &tnl_identity_list, _next) {
+            tnl_id_arr[idx] = tnl_id->id;
+        }
+
+        return tnl_id_arr;
+    } else {
+        return NULL;
+    }
+
+}
+
 tunnel_status *get_tunnel_status() {
     if (tnl_status == NULL) {
         tnl_status = calloc(1, sizeof(struct tunnel_status_s));
@@ -295,19 +317,7 @@ tunnel_status *get_tunnel_status() {
         tnl_status->Duration = current_time_in_millis - start_time_in_millis;
     }
 
-    struct tnl_identity_s *tnl_id;
-    int idx = 0;
-    LIST_FOREACH(tnl_id, &tnl_identity_list, _next) {
-        idx++;
-    }
-
-    tunnel_identity_array *tnl_id_arr = calloc(idx, sizeof(struct tunnel_identity_s));
-
-    idx = 0;
-    LIST_FOREACH(tnl_id, &tnl_identity_list, _next) {
-        tnl_id_arr[idx] = tnl_id->id;
-    }
-    tnl_status->Identities = tnl_id_arr;
+    tnl_status->Identities = get_tunnel_identities();
 
     return tnl_status;
 }

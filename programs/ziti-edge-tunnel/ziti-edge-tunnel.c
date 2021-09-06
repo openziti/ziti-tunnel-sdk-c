@@ -39,6 +39,8 @@ struct cfg_instance_s {
 static LIST_HEAD(instance_list, cfg_instance_s) load_list;
 
 static long refresh_interval = 10;
+static long refresh_metrics = 5000;
+static long metrics_latency = 5000;
 
 static char *config_dir = NULL;
 
@@ -46,6 +48,9 @@ static uv_pipe_t cmd_server;
 static uv_pipe_t cmd_conn;
 static uv_pipe_t event_server;
 static uv_pipe_t *event_conn;
+
+//timer
+static uv_timer_t metrics_timer;
 
 // singleton
 static const ziti_tunnel_ctrl *CMD_CTRL;
@@ -62,6 +67,7 @@ static const char* EVENT_NORMAL="normal";
 static const char* EVENT_CONNECTED="connected";
 static const char* EVENT_DISCONNECTED="disconnected";
 static const char* EVENT_STATUS="status";
+static const char* EVENT_METRICS="metrics";
 
 #if _WIN32
 static char sockfile[] = "\\\\.\\pipe\\ziti-edge-tunnel.sock";
@@ -182,8 +188,7 @@ static void on_events_client(uv_stream_t *s, int status) {
         // send status message immediately
         tunnel_status_event tnl_sts_evt = {0};
         tnl_sts_evt.Op = strdup(EVENT_STATUS);
-        tunnel_status *stat = get_tunnel_status();
-        tnl_sts_evt.Status = stat;
+        tnl_sts_evt.Status = get_tunnel_status();
         size_t json_len;
         char *json = tunnel_status_event_to_json(&tnl_sts_evt, MODEL_JSON_COMPACT, &json_len);
         send_events_message(json, json_len);
@@ -261,6 +266,23 @@ static int start_event_socket(uv_loop_t *l) {
     return -1;
 }
 
+static void broadcast_metrics(uv_timer_t *timer) {
+    tunnel_metrics_event metrics_event = {0};
+    metrics_event.Op = strdup(EVENT_METRICS);
+    metrics_event.Identities = get_tunnel_identities();
+
+    size_t json_len;
+    char *json = tunnel_metrics_event_to_json(&metrics_event, MODEL_JSON_COMPACT, &json_len);
+    send_events_message(json, json_len);
+    metrics_event.Identities = NULL;
+    free_tunnel_metrics_event(&metrics_event);
+}
+
+static void start_metrics_timer(uv_loop_t *ziti_loop) {
+    uv_timer_init(ziti_loop, &metrics_timer);
+    uv_timer_start(&metrics_timer, broadcast_metrics, metrics_latency, refresh_metrics);
+}
+
 static void load_identities(uv_work_t *wr) {
     if (config_dir != NULL) {
         uv_fs_t fs;
@@ -301,6 +323,7 @@ static void load_identities_complete(uv_work_t * wr, int status) {
         LIST_REMOVE(inst, _next);
 
         CMD_CTRL->load_identity(NULL, inst->cfg, load_id_cb, inst);
+        start_metrics_timer(wr->loop);
     }
 }
 
@@ -478,6 +501,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, const char *ip_rang
     free(tunneler);
     uv_close((uv_handle_t *) &cmd_server, (uv_close_cb) free);
     uv_close((uv_handle_t *) &event_server, (uv_close_cb) free);
+    uv_timer_stop(&metrics_timer);
     return 0;
 }
 
@@ -1254,3 +1278,4 @@ IMPL_MODEL(identity_event, IDENTITY_EVENT)
 IMPL_MODEL(services_event, SERVICES_EVENT)
 IMPL_MODEL(tunnel_status_event, TUNNEL_STATUS_EVENT)
 IMPL_MODEL(mfa_status_event, MFA_STATUS_EVENT)
+IMPL_MODEL(tunnel_metrics_event, TUNNEL_METRICS_EVENT)
