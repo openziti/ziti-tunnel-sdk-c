@@ -28,6 +28,7 @@ struct tnl_identity_s {
 static LIST_HEAD(tnl_identities, tnl_identity_s) tnl_identity_list = LIST_HEAD_INITIALIZER(&tnl_identity_list);
 static const char* CFG_INTERCEPT_V1 = "intercept.v1";
 static const char* CFG_ZITI_TUNNELER_CLIENT_V1 = "ziti-tunneler-client.v1";
+tunnel_status *tnl_status;
 
 tunnel_identity *find_tunnel_identity(char* identifier) {
     struct tnl_identity_s *tnl_id;
@@ -278,9 +279,21 @@ tunnel_service *get_tunnel_service(tunnel_identity* id, ziti_service* zs) {
 }
 
 tunnel_status *get_tunnel_status() {
-    tunnel_status *tnl_status = calloc(1, sizeof(struct tunnel_status_s));
-    tnl_status->Active = true;
-    tnl_status->Duration = 0;
+    if (tnl_status == NULL) {
+        tnl_status = calloc(1, sizeof(struct tunnel_status_s));
+        tnl_status->Active = false;
+        tnl_status->Duration = 0;
+        uv_timeval64_t now;
+        uv_gettimeofday(&now);
+        tnl_status->StartTime.tv_sec = now.tv_sec;
+        tnl_status->StartTime.tv_usec = now.tv_usec;
+    } else {
+        uv_timeval64_t now;
+        uv_gettimeofday(&now);
+        uint64_t start_time_in_millis = (tnl_status->StartTime.tv_sec * (uint64_t)1000) + (tnl_status->StartTime.tv_usec / 1000);
+        uint64_t current_time_in_millis = (now.tv_sec * (uint64_t)1000) + (now.tv_usec / 1000);
+        tnl_status->Duration = current_time_in_millis - start_time_in_millis;
+    }
 
     struct tnl_identity_s *tnl_id;
     int idx = 0;

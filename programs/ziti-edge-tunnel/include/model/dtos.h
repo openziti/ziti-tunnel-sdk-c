@@ -84,6 +84,7 @@ XX(TimeoutRemaining, int, none, TimeoutRemaining, __VA_ARGS__)
 #define TUNNEL_STATUS(XX, ...) \
 XX(Active, bool, none, Active, __VA_ARGS__) \
 XX(Duration, int, none, Duration, __VA_ARGS__) \
+XX(StartTime, timestamp, none,StartTime, __VA_ARGS__) \
 XX(Identities, tunnel_identity, array, Identities, __VA_ARGS__)
 
 DECLARE_MODEL(tunnel_config, TUNNEL_CONFIG)

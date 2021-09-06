@@ -458,6 +458,9 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, const char *ip_rang
 
     tunneler_context tunneler = ziti_tunneler_init(&tunneler_opts, ziti_loop);
     ziti_tunneler_set_dns(tunneler, dns);
+    // generate tunnel status instance and save active state and start time
+    tunnel_status *tnl_status = get_tunnel_status();
+    tnl_status->Active = true;
 
     CMD_CTRL = ziti_tunnel_init_cmd(ziti_loop, tunneler, on_event);
 
