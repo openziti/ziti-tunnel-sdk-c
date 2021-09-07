@@ -28,7 +28,7 @@
 extern dns_manager *get_dnsmasq_manager(const char* path);
 
 static void send_message_to_tunnel();
-static void send_events_message(void *message, size_t datalen);
+static void send_events_message(void *message, size_t datalen, bool display_event);
 
 struct cfg_instance_s {
     char *cfg;
@@ -191,7 +191,7 @@ static void on_events_client(uv_stream_t *s, int status) {
         tnl_sts_evt.Status = get_tunnel_status();
         size_t json_len;
         char *json = tunnel_status_event_to_json(&tnl_sts_evt, MODEL_JSON_COMPACT, &json_len);
-        send_events_message(json, json_len);
+        send_events_message(json, json_len, true);
         tnl_sts_evt.Status = NULL;
         free_tunnel_status_event(&tnl_sts_evt);
     } else {
@@ -212,8 +212,10 @@ void on_write_event(uv_write_t* req, int status) {
     free(req);
 }
 
-static void send_events_message(void *message, size_t data_len) {
-    ZITI_LOG(INFO,"Events Message...%s", message);
+static void send_events_message(void *message, size_t data_len, bool display_event) {
+    if (display_event) {
+        ZITI_LOG(TRACE,"Events Message...%s", message);
+    }
     if (event_conn != NULL) {
         uv_buf_t buf = uv_buf_init(message, data_len);
         uv_write_t *wr = calloc(1, sizeof(uv_write_t));
@@ -292,7 +294,7 @@ static void broadcast_metrics(uv_timer_t *timer) {
     {
         size_t json_len;
         char *json = tunnel_metrics_event_to_json(&metrics_event, MODEL_JSON_COMPACT, &json_len);
-        send_events_message(json, json_len);
+        send_events_message(json, json_len, false);
     }
     metrics_event.Identities = NULL;
     free_tunnel_metrics_event(&metrics_event);
@@ -371,7 +373,7 @@ static void on_event(const base_event *ev) {
 
             size_t json_len;
             char *json = identity_event_to_json(&id_event, MODEL_JSON_COMPACT, &json_len);
-            send_events_message(json, json_len);
+            send_events_message(json, json_len, true);
             id_event.Id = NULL;
             free_identity_event(&id_event);
             break;
@@ -412,7 +414,7 @@ static void on_event(const base_event *ev) {
 
             size_t json_len;
             char *json = services_event_to_json(&svc_event, MODEL_JSON_COMPACT, &json_len);
-            send_events_message(json, json_len);
+            send_events_message(json, json_len, true);
             if (svc_event.AddedServices != NULL) {
                 svc_event.AddedServices = NULL;
             }
@@ -432,7 +434,7 @@ static void on_event(const base_event *ev) {
 
             size_t json_len;
             char *json = identity_event_to_json(&id_event, MODEL_JSON_COMPACT, &json_len);
-            send_events_message(json, json_len);
+            send_events_message(json, json_len, true);
             id_event.Id = NULL;
             free_identity_event(&id_event);
             break;
@@ -460,7 +462,7 @@ static void on_event(const base_event *ev) {
 
             size_t json_len;
             char *json = mfa_status_event_to_json(&mfa_sts_event, MODEL_JSON_COMPACT, &json_len);
-            send_events_message(json, json_len);
+            send_events_message(json, json_len, true);
             free_mfa_status_event(&mfa_sts_event);
             break;
         }
