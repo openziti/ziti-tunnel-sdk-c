@@ -266,14 +266,34 @@ static int start_event_socket(uv_loop_t *l) {
     return -1;
 }
 
+static void tnl_transfer_rates_cb(const tunnel_identity_metrics *metrics, void *ctx) {
+    tunnel_identity *tnl_id = ctx;
+    tnl_id->Metrics = calloc(1, sizeof(struct tunnel_metrics_s));
+    tnl_id->Metrics->Up = (int) strtol(metrics->up, NULL, 10);
+    tnl_id->Metrics->Down = (int) strtol(metrics->down, NULL, 10);
+}
+
 static void broadcast_metrics(uv_timer_t *timer) {
     tunnel_metrics_event metrics_event = {0};
     metrics_event.Op = strdup(EVENT_METRICS);
     metrics_event.Identities = get_tunnel_identities();
+    tunnel_identity *tnl_id;
+    int idx;
+    bool active_identities = false;
+    for(idx = 0; metrics_event.Identities[idx]; idx++) {
+        tnl_id = metrics_event.Identities[idx];
+        if (tnl_id->Active && tnl_id->Loaded) {
+            active_identities = true;
+            CMD_CTRL->get_transfer_rates(tnl_id->Identifier, NULL, tnl_transfer_rates_cb, tnl_id);
+        }
+    }
 
-    size_t json_len;
-    char *json = tunnel_metrics_event_to_json(&metrics_event, MODEL_JSON_COMPACT, &json_len);
-    send_events_message(json, json_len);
+    if (active_identities)
+    {
+        size_t json_len;
+        char *json = tunnel_metrics_event_to_json(&metrics_event, MODEL_JSON_COMPACT, &json_len);
+        send_events_message(json, json_len);
+    }
     metrics_event.Identities = NULL;
     free_tunnel_metrics_event(&metrics_event);
 }
@@ -337,9 +357,10 @@ static void on_event(const base_event *ev) {
             id_event.Op = strdup("identity");
             id_event.Action = strdup(EVENT_ADDED);
             id_event.Id = get_tunnel_identity(ev->identifier);
+            id_event.Id->Loaded = true;
 
             if (zev->code == ZITI_OK) {
-                id_event.Id->Loaded = true;
+                id_event.Id->Active = true; // determine it from controller
                 if (zev->name) {
                     id_event.Id->Name = strdup(zev->name);
                     id_event.Id->ControllerVersion = strdup(zev->version);

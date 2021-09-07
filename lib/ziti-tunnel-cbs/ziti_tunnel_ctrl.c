@@ -44,6 +44,7 @@ static long refresh_interval = 10;
 
 static int process_cmd(const tunnel_comand *cmd, void (*cb)(const tunnel_result *, void *ctx), void *ctx);
 static int load_identity(const char *identifier, const char *path, command_cb cb, void *ctx);
+static void get_transfer_rates(const char *identifier, const char *path, transfer_rates_cb cb, void *ctx);
 static struct ziti_instance_s *new_ziti_instance(const char *identifier, const char *path);
 static void load_ziti_async(uv_async_t *ar);
 static void on_sigdump(uv_signal_t *sig, int signum);
@@ -74,6 +75,7 @@ const ziti_tunnel_ctrl* ziti_tunnel_init_cmd(uv_loop_t *loop, tunneler_context t
     CMD_CTX.ctrl.process = process_cmd;
     CMD_CTX.ctrl.load_identity = load_identity;
     CMD_CTX.ctrl.get_ziti = get_ziti;
+    CMD_CTX.ctrl.get_transfer_rates = get_transfer_rates;
 
 #ifndef _WIN32
     uv_signal_init(loop, &sigusr1);
@@ -439,6 +441,29 @@ static int load_identity(const char *identifier, const char *path, command_cb cb
     uv_async_init(CMD_CTX.loop, ar, load_ziti_async);
     uv_async_send(ar);
     return 0;
+}
+
+doubleToString(char* string_val, int size, char *format, ...) {
+    va_list double_val;
+
+    va_start(double_val, format);
+    vsnprintf(string_val, size, format, double_val);
+    va_end(double_val);
+
+}
+
+static void get_transfer_rates(const char *identifier, const char *path, transfer_rates_cb cb, void *ctx) {
+    struct ziti_instance_s *inst = model_map_get(&instances, identifier);
+    double up, down;
+    ziti_get_transfer_rates(inst->ztx, &up, &down);
+    tunnel_identity_metrics *id_metrics = calloc(1, sizeof(struct tunnel_identity_metrics_s));
+    id_metrics->identifier = inst->identifier;
+    int metrics_len = 5;
+    id_metrics->up = malloc(metrics_len * sizeof(char));
+    doubleToString(id_metrics->up, metrics_len, "%f", up);
+    doubleToString(id_metrics->down, metrics_len, "%f", down);
+    cb(id_metrics, ctx);
+
 }
 
 #if _WIN32
@@ -857,6 +882,7 @@ IMPL_MODEL(tunnel_remove_mfa, TNL_REMOVE_MFA)
 IMPL_MODEL(tunnel_generate_mfa_codes, TNL_GENERATE_MFA_CODES)
 IMPL_MODEL(tunnel_mfa_recovery_codes, TNL_MFA_RECOVERY_CODES)
 IMPL_MODEL(tunnel_get_mfa_codes, TNL_GET_MFA_CODES)
+IMPL_MODEL(tunnel_identity_metrics, TNL_IDENTITY_METRICS)
 
 // ************** TUNNEL Events
 IMPL_ENUM(TunnelEvent, TUNNEL_EVENTS)

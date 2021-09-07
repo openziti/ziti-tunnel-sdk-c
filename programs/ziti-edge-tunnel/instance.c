@@ -317,7 +317,7 @@ tunnel_status *get_tunnel_status() {
         tnl_status->Duration = current_time_in_millis - start_time_in_millis;
     }
 
-    tnl_status->Identities = get_tunnel_identities();
+    tnl_status->Identities = get_tunnel_identities(false);
 
     return tnl_status;
 }
