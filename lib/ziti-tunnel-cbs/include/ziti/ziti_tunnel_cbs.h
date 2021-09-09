@@ -195,7 +195,6 @@ void remove_intercepts(ziti_context ziti_ctx, void *tnlr_ctx);
 
 const ziti_tunnel_ctrl* ziti_tunnel_init_cmd(uv_loop_t *loop, tunneler_context, event_cb);
 
-
 #ifdef __cplusplus
 }
 #endif

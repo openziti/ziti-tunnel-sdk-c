@@ -224,6 +224,8 @@ u8_t recv_udp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     TNL_LOG(INFO, "intercepted address[%s] client[%s] service[%s]", io->tnlr_io->intercepted, io->tnlr_io->client,
             intercept_ctx->service_name);
 
+    udp_recv(npcb, on_udp_client_data_enqueue, io);
+
     void *ziti_io_ctx = zdial(intercept_ctx->app_intercept_ctx, io);
     if (ziti_io_ctx == NULL) {
         TNL_LOG(ERR, "ziti_dial(%s) failed", intercept_ctx->service_name);
@@ -234,7 +236,6 @@ u8_t recv_udp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
         return 1;
     }
 
-    udp_recv(npcb, on_udp_client_data_enqueue, io);
     return 0; /* lwip will call on_udp_client_data_enqueue for this packet */
 }
 
