@@ -22,7 +22,7 @@ if ! mountpoint "${IDENTITIES_DIR}" &>/dev/null; then
     exit 1
 fi
 
-# TODO: What is the origin story of IOTEDGE_DEVICEID and can it be decommissioned? -Ken
+# IOTEDGE_DEVICEID is a standard var assigned by Azure IoT
 if [[ -z "${NF_REG_NAME:-}" ]]; then
     if [[ -n "${IOTEDGE_DEVICEID:-}" ]]; then
         echo "INFO: setting NF_REG_NAME to \${IOTEDGE_DEVICEID} (${IOTEDGE_DEVICEID})"
