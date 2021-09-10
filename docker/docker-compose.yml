@@ -1,0 +1,30 @@
+version: "3.9"
+
+x-base-service: &base-service
+    image: netfoundry/ziti-edge-tunnel:latest # https://hub.docker.com/repository/docker/netfoundry/ziti-edge-tunnel/tags?page=1&ordering=last_updated
+    devices:
+    - /dev/net/tun:/dev/net/tun
+    volumes:
+    - .:/ziti-edge-tunnel
+    - /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket
+    environment:
+    - NF_REG_NAME            # inherit when run like this: NF_REG_NAME=AcmeIdentity docker-compose up ziti-tproxy
+    network_mode: host       # use the Docker host's network, not the Docker bridge
+    privileged: true
+
+services:
+    ziti-tun:                # ip route to tun device transparent interceptor with DNS via systemd-resolved
+        <<: *base-service
+        command: 
+        - --verbose=4
+        - --dns-ip-range=100.64.64.0/18
+#        - --dns=dnsmasq:/ziti-edge-tunnel/hosts  # alternative to systemd-resolved, assumes Docker host has dnsmasq watching for hosts files in ./hosts
+    ziti-tun-dir:             # 
+        <<: *base-service
+        command: 
+        - --verbose=4
+        - --dns-ip-range=100.64.64.0/18
+        environment: []      # ignore NF_REG_NAME and load all identities in same dir
+    ziti-test:               # docker-compose exec ziti-test bash
+        <<: *base-service
+        entrypoint: ["sh", "-c", "while true; do sleep infinity; done"]
