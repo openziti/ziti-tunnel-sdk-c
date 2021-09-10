@@ -70,7 +70,7 @@ tunneler_context ziti_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop)
     }
     ctx->loop = loop;
     memcpy(&ctx->opts, opts, sizeof(ctx->opts));
-    STAILQ_INIT(&ctx->intercepts);
+    LIST_INIT(&ctx->intercepts);
     run_packet_loop(loop, ctx);
 
     return ctx;
@@ -137,10 +137,10 @@ static void tunneler_kill_active(const void *ztx);
 void ziti_tunneler_shutdown(tunneler_context tnlr_ctx) {
     TNL_LOG(DEBUG, "tnlr_ctx %p", tnlr_ctx);
 
-    while (!STAILQ_EMPTY(&tnlr_ctx->intercepts)) {
-        intercept_ctx_t *i = STAILQ_FIRST(&tnlr_ctx->intercepts);
+    while (!LIST_EMPTY(&tnlr_ctx->intercepts)) {
+        intercept_ctx_t *i = LIST_FIRST(&tnlr_ctx->intercepts);
         tunneler_kill_active(i->app_intercept_ctx);
-        STAILQ_REMOVE_HEAD(&tnlr_ctx->intercepts, entries);
+        LIST_REMOVE(i, entries);
     }
 }
 
@@ -384,7 +384,7 @@ int ziti_tunneler_intercept(tunneler_context tnlr_ctx, intercept_ctx_t *i_ctx) {
          add_route(tnlr_ctx->opts.netif_driver, address);
     }
 
-    STAILQ_INSERT_TAIL(&tnlr_ctx->intercepts, (struct intercept_ctx_s *)i_ctx, entries);
+    LIST_INSERT_HEAD(&tnlr_ctx->intercepts, (struct intercept_ctx_s *)i_ctx, entries);
 
     return 0;
 }
@@ -419,53 +419,35 @@ static void tunneler_kill_active(const void *zi_ctx) {
     free(l);
 }
 
+intercept_ctx_t * ziti_tunnel_find_intercept(tunneler_context tnlr_ctx, void *zi_ctx) {
+    struct intercept_ctx_s *intercept;
+    if (tnlr_ctx == NULL) {
+        TNL_LOG(WARN, "null tnlr_ctx");
+        return NULL;
+    }
+
+    LIST_FOREACH(intercept, &tnlr_ctx->intercepts, entries) {
+        if (intercept->app_intercept_ctx == zi_ctx) {
+            return intercept;
+        }
+    }
+
+    return NULL;
+}
+
+
 // when called due to service unavailable we want to remove from tnlr_ctx.
 // when called due to conflict we want to mark as disabled
 void ziti_tunneler_stop_intercepting(tunneler_context tnlr_ctx, void *zi_ctx) {
-    if (tnlr_ctx == NULL) {
-        TNL_LOG(DEBUG, "null tnlr_ctx");
-        return;
-    }
-
     TNL_LOG(DEBUG, "removing intercept for service_ctx[%p]", zi_ctx);
-    struct intercept_ctx_s *intercept;
-    STAILQ_FOREACH(intercept, &tnlr_ctx->intercepts, entries) {
-        if (intercept->app_intercept_ctx == zi_ctx) {
-            STAILQ_REMOVE(&tnlr_ctx->intercepts, intercept, intercept_ctx_s, entries);
-            break;
-        }
-    }
+    struct intercept_ctx_s *intercept = ziti_tunnel_find_intercept(tnlr_ctx, zi_ctx);
 
-    if (intercept) {
+    if (intercept != NULL) {
         TNL_LOG(DEBUG, "removing routes for service[%s] service_ctx[%p]", intercept->service_name, zi_ctx);
-        address_t *address;
-        STAILQ_FOREACH(address, &intercept->addresses, entries) {
-            delete_route(tnlr_ctx->opts.netif_driver, address);
-            tnlr_ctx->dns->remove(tnlr_ctx->dns, address->str);
-        }
+        tunneler_kill_active(zi_ctx);
 
-        TNL_LOG(DEBUG, "removing intercept for service[%s] service_ctx[%p]", intercept->service_name, zi_ctx);
-
-        while(!STAILQ_EMPTY(&intercept->protocols)) {
-            protocol_t *p = STAILQ_FIRST(&intercept->protocols);
-            STAILQ_REMOVE(&intercept->protocols, p, protocol_s, entries);
-            free(p->protocol);
-            free(p);
-        }
-        while(!STAILQ_EMPTY(&intercept->addresses)) {
-            address_t *a = STAILQ_FIRST(&intercept->addresses);
-            STAILQ_REMOVE(&intercept->addresses, a, address_s, entries);
-            free(a);
-        }
-
-        while(!STAILQ_EMPTY(&intercept->port_ranges)) {
-            port_range_t *p = STAILQ_FIRST(&intercept->port_ranges);
-            STAILQ_REMOVE(&intercept->port_ranges, p, port_range_s , entries);
-            free(p);
-        }
-
-        free(intercept->service_name);
-        free(intercept);
+        LIST_REMOVE(intercept, entries);
+        free_intercept(intercept);
     }
 
 
@@ -513,6 +495,11 @@ int ziti_tunneler_close(tunneler_io_context tnlr_io_ctx) {
         default:
             TNL_LOG(ERR, "unknown proto %d", tnlr_io_ctx->proto);
             break;
+    }
+
+    if (tnlr_io_ctx->conn_timer) {
+        uv_close((uv_handle_t *) tnlr_io_ctx->conn_timer, (uv_close_cb) free);
+        tnlr_io_ctx->conn_timer = NULL;
     }
 
     free(tnlr_io_ctx);
