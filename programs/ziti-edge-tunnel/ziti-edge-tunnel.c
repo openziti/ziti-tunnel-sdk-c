@@ -459,11 +459,12 @@ static int parse_enroll_opts(int argc, char *argv[]) {
             {"identity", required_argument, NULL, 'i'},
             {"key", optional_argument, NULL, 'k'},
             {"cert", optional_argument, NULL, 'c'},
+            { "name", optional_argument, NULL, 'n'}
     };
     int c, option_index, errors = 0;
     optind = 0;
 
-    while ((c = getopt_long(argc, argv, "j:i:k:c:",
+    while ((c = getopt_long(argc, argv, "j:i:k:c:n:",
                             opts, &option_index)) != -1) {
         switch (c) {
             case 'j':
@@ -474,6 +475,9 @@ static int parse_enroll_opts(int argc, char *argv[]) {
                 break;
             case 'c':
                 enroll_opts.enroll_cert = realpath(optarg, NULL);
+                break;
+            case 'n':
+                enroll_opts.enroll_name = optarg;
                 break;
             case 'i':
                 config_file = optarg;
@@ -952,11 +956,12 @@ static int get_mfa_codes_opts(int argc, char *argv[]) {
 }
 
 static CommandLine enroll_cmd = make_command("enroll", "enroll Ziti identity",
-        "-j|--jwt <enrollment token> -i|--identity <identity> [-k|--key <private_key> [-c|--cert <certificate>]]",
+        "-j|--jwt <enrollment token> -i|--identity <identity> [-k|--key <private_key> [-c|--cert <certificate>]] [-n|--name <name>]",
         "\t-j|--jwt\tenrollment token file\n"
         "\t-i|--identity\toutput identity file\n"
         "\t-k|--key\tprivate key for enrollment\n"
-        "\t-c|--cert\tcertificate for enrollment\n",
+        "\t-c|--cert\tcertificate for enrollment\n"
+        "\t-n|--name\tidentity name\n",
         parse_enroll_opts, enroll);
 static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required superuser access)",
                                           "-i <id.file> [-r N] [-v N] [-d|--dns-ip-range N.N.N.N/n] [-n|--dns <internal|dnsmasq=<dnsmasq hosts dir>>]",
