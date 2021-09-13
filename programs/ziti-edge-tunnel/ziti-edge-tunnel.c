@@ -396,7 +396,10 @@ static void on_event(const base_event *ev) {
             if (svc_ev->removed_services != NULL) {
                 svc_event.RemovedServices = calloc(sizeof(svc_ev->removed_services), sizeof(struct tunnel_service_s));
                 for (zs = svc_ev->removed_services; *zs != NULL; zs++) {
-                    tunnel_service *svc = get_tunnel_service(id, *zs);
+                    tunnel_service *svc = find_tunnel_service(id, (*zs)->id);
+                    if (svc == NULL) {
+                        svc = get_tunnel_service(id, *zs);
+                    }
                     svc_event.RemovedServices[idx++] = svc;
                 }
             }

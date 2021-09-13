@@ -247,10 +247,10 @@ static void setTunnelServiceAddress(tunnel_service *tnl_svc, ziti_service *servi
         // set protocols
         tnl_svc->Protocols = calloc(3, sizeof(char*));
         int idx=0;
-        tnl_svc->Protocols[idx] = malloc(4);
+        tnl_svc->Protocols[idx] = calloc(3, sizeof(char));
         tnl_svc->Protocols[idx] = strdup("TCP");
         idx++;
-        tnl_svc->Protocols[idx] = malloc(4);
+        tnl_svc->Protocols[idx] = calloc(3, sizeof(char));
         tnl_svc->Protocols[idx] = strdup("UDP");
 
         // set port range
@@ -262,6 +262,20 @@ static void setTunnelServiceAddress(tunnel_service *tnl_svc, ziti_service *servi
         tnl_svc->Ports[0] = tpr;
     }
 
+}
+
+tunnel_service *find_tunnel_service(tunnel_identity* id, char* svc_id) {
+    int idx = 0;
+    tunnel_service *svc = NULL;
+    if (id->Services != NULL) {
+        for (idx =0; id->Services[idx]; idx++) {
+            svc = id->Services[idx];
+            if (strcmp(svc->Id, svc_id) == 0) {
+                break;
+            }
+        }
+    }
+    return svc;
 }
 
 tunnel_service *get_tunnel_service(tunnel_identity* id, ziti_service* zs) {
