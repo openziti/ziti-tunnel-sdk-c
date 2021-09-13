@@ -174,6 +174,9 @@ void free_tunneler_io_context(tunneler_io_context *tnlr_io_ctx_p) {
     }
 }
 
+void ziti_tunneler_set_idle_timeout(struct io_ctx_s *io_context, unsigned int timeout) {
+    io_context->tnlr_io->idle_timeout = timeout;
+}
 /**
  * called by tunneler application when a service dial has completed
  * - let the client know that we have a connection (e.g. send SYN/ACK)
