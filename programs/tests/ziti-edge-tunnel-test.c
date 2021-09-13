@@ -76,7 +76,6 @@ int main(int argc, char *argv[]) {
         printf("UV run error %s\n", uv_err_name(res));
         return 1;
     }
-    uv_read_stop(&client_handle);
     uv_close((uv_handle_t *)&client_handle, NULL);
     return 0;
 }

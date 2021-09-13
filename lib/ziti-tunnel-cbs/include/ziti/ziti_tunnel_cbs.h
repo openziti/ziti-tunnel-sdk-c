@@ -123,13 +123,13 @@ DECLARE_ENUM(TunnelEvent, TUNNEL_EVENTS)
 
 #define BASE_EVENT_MODEL(XX, ...) \
 XX(identifier, string, none, identifier, __VA_ARGS__) \
-XX(event_type, TunnelEvent, none, type, __VA_ARGS__)  \
-XX(code, int, none, code, __VA_ARGS__)
+XX(event_type, TunnelEvent, none, type, __VA_ARGS__)
 
 #define ZTX_EVENT_MODEL(XX, ...)  \
 BASE_EVENT_MODEL(XX, __VA_ARGS__) \
 XX(status, string, none, status, __VA_ARGS__) \
-XX(identity, ziti_identity, ptr, identity, __VA_ARGS__)
+XX(identity, ziti_identity, ptr, identity, __VA_ARGS__) \
+XX(code, int, none, code, __VA_ARGS__)
 
 #define ZTX_SVC_EVENT_MODEL(XX, ...)  \
 BASE_EVENT_MODEL(XX, __VA_ARGS__)            \

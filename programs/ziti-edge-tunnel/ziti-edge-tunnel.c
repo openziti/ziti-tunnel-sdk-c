@@ -52,15 +52,20 @@ static const ziti_tunnel_ctrl *CMD_CTRL;
 static long events_channels_count = 8;
 static long current_events_channels = 0;
 
-const char* EVENT_ADDED="added";
-const char* EVENT_REMOVED="removed";
-const char* EVENT_UPDATED="updated";
-const char* EVENT_BULK="bulk";
-const char* EVENT_ERROR="error";
-const char* EVENT_CHANGED="changed";
-const char* EVENT_NORMAL="normal";
-const char* EVENT_CONNECTED="connected";
-const char* EVENT_DISCONNECTED="disconnected";
+#define EVENT_ACTIONS(XX, ...) \
+XX(added, __VA_ARGS__) \
+XX(removed, __VA_ARGS__) \
+XX(updated, __VA_ARGS__) \
+XX(bulk, __VA_ARGS__) \
+XX(error, __VA_ARGS__) \
+XX(changed, __VA_ARGS__) \
+XX(normal, __VA_ARGS__) \
+XX(connected, __VA_ARGS__) \
+XX(disconnected, __VA_ARGS__)
+
+DECLARE_ENUM(event, EVENT_ACTIONS)
+IMPL_ENUM(event, EVENT_ACTIONS)
+
 
 #if _WIN32
 static char sockfile[] = "\\\\.\\pipe\\ziti-edge-tunnel.sock";
@@ -300,7 +305,7 @@ static void on_event(const base_event *ev) {
 
             identity_event id_event = {
                     .Op = "identity",
-                    .Action = EVENT_ADDED,
+                    .Action = strdup(event_name(event_added)),
                     .Identifier = ev->identifier
             };
 
@@ -322,7 +327,7 @@ static void on_event(const base_event *ev) {
             ZITI_LOG(INFO, "ztx[%s] service event", ev->identifier);
             services_event svc_event = {
                     .Op = "Service",
-                    .Action = "updated",
+                    .Action = strdup(event_name(event_updated)),
                     .Id = strdup(ev->identifier)
             };
 
