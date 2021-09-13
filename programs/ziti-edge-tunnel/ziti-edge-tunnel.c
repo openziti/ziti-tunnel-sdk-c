@@ -282,11 +282,13 @@ static void broadcast_metrics(uv_timer_t *timer) {
     tunnel_identity *tnl_id;
     int idx;
     bool active_identities = false;
-    for(idx = 0; metrics_event.Identities[idx]; idx++) {
-        tnl_id = metrics_event.Identities[idx];
-        if (tnl_id->Active && tnl_id->Loaded) {
-            active_identities = true;
-            CMD_CTRL->get_transfer_rates(tnl_id->Identifier, NULL, tnl_transfer_rates_cb, tnl_id);
+    if (metrics_event.Identities != NULL) {
+        for(idx = 0; metrics_event.Identities[idx]; idx++) {
+            tnl_id = metrics_event.Identities[idx];
+            if (tnl_id->Active && tnl_id->Loaded) {
+                active_identities = true;
+                CMD_CTRL->get_transfer_rates(tnl_id->Identifier, NULL, tnl_transfer_rates_cb, tnl_id);
+            }
         }
     }
 
@@ -392,7 +394,7 @@ static void on_event(const base_event *ev) {
             ziti_service **zs;
             int idx = 0;
             if (svc_ev->removed_services != NULL) {
-                svc_event.RemovedServices = calloc(sizeof(svc_ev->added_services) + 1, sizeof(tunnel_service *));
+                svc_event.RemovedServices = calloc(sizeof(svc_ev->removed_services), sizeof(struct tunnel_service_s));
                 for (zs = svc_ev->removed_services; *zs != NULL; zs++) {
                     tunnel_service *svc = get_tunnel_service(id, *zs);
                     svc_event.RemovedServices[idx++] = svc;
@@ -401,7 +403,7 @@ static void on_event(const base_event *ev) {
 
             idx = 0;
             if (svc_ev->added_services != NULL) {
-                svc_event.AddedServices = calloc(sizeof(svc_ev->added_services) + 1, sizeof(tunnel_service *));
+                svc_event.AddedServices = calloc(sizeof(svc_ev->added_services), sizeof(struct tunnel_service_s));
                 for (zs = svc_ev->added_services; *zs != NULL; zs++) {
                     tunnel_service *svc = get_tunnel_service(id, *zs);
                     svc_event.AddedServices[idx++] = svc;
