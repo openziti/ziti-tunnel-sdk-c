@@ -123,39 +123,36 @@ static void setTunnelPostureDataTimeout(tunnel_service *tnl_svc, ziti_service *s
     bool hasAccess = false;
     model_map postureCheckMap = {0};
 
-    if (service->posture_query_set != NULL) {
+    ziti_posture_query_set *pqs;
+    const char *id;
+    MODEL_MAP_FOREACH(id, pqs, &service->posture_query_map) {
 
-        for (posture_set_idx = 0; service->posture_query_set[posture_set_idx] != 0; posture_set_idx++) {
-            int posture_query_idx;
+        if (pqs->policy_type == "Bind") {
+            ZITI_LOG(TRACE, "Posture Query set returned a Bind policy: %s [ignored]", pqs->policy_id);
+            continue;
+        } else {
+            ZITI_LOG(TRACE, "Posture Query set returned a %s policy: %s, is_passing %d", pqs->policy_type, pqs->policy_id, pqs->is_passing);
+        }
 
-            ziti_posture_query_set *pqs = service->posture_query_set[posture_set_idx];
-            if (pqs->policy_type == "Bind") {
-                ZITI_LOG(TRACE, "Posture Query set returned a Bind policy: %s [ignored]", pqs->policy_id);
-                continue;
-            } else {
-                ZITI_LOG(TRACE, "Posture Query set returned a %s policy: %s, is_passing %d", pqs->policy_type, pqs->policy_id, pqs->is_passing);
+        if (pqs->is_passing) {
+            hasAccess = true;
+        }
+
+        for (int posture_query_idx = 0; pqs->posture_queries[posture_query_idx]; posture_query_idx++) {
+            ziti_posture_query *pq = pqs->posture_queries[posture_query_idx];
+            ziti_posture_query *tmp = model_map_get(&postureCheckMap, pq->id);
+            if (tmp == NULL) {
+                model_map_set(&postureCheckMap, pq->id, pq);
             }
 
-            if (pqs->is_passing) {
-                hasAccess = true;
+            int timeoutRemaining = *pqs->posture_queries[posture_query_idx]->timeoutRemaining;
+            if ((minTimeoutRemaining == -1) || (timeoutRemaining < minTimeoutRemaining)) {
+                minTimeoutRemaining = timeoutRemaining;
             }
 
-            for (posture_query_idx = 0; service->posture_query_set[posture_set_idx]->posture_queries[posture_query_idx]; posture_query_idx++) {
-                ziti_posture_query *pq = service->posture_query_set[posture_set_idx]->posture_queries[posture_query_idx];
-                ziti_posture_query *tmp = model_map_get(&postureCheckMap, pq->id);
-                if (tmp == NULL) {
-                    model_map_set(&postureCheckMap, pq->id, pq);
-                }
-
-                int timeoutRemaining = *service->posture_query_set[posture_set_idx]->posture_queries[posture_query_idx]->timeoutRemaining;
-                if ((minTimeoutRemaining == -1) || (timeoutRemaining < minTimeoutRemaining)) {
-                    minTimeoutRemaining = timeoutRemaining;
-                }
-
-                int timeout = service->posture_query_set[posture_set_idx]->posture_queries[posture_query_idx]->timeout;
-                if ((minTimeout == -1) || (timeout < minTimeout)) {
-                    minTimeout = timeout;
-                }
+            int timeout = pqs->posture_queries[posture_query_idx]->timeout;
+            if ((minTimeout == -1) || (timeout < minTimeout)) {
+                minTimeout = timeout;
             }
         }
     }
