@@ -1,4 +1,4 @@
-FROM debian:stable-slim as fetch-ziti-artifacts
+FROM debian:buster-slim as fetch-ziti-artifacts
 # This build stage grabs artifacts that are copied into the final image.
 # It uses the same base as the final image to maximize docker cache hits.
 
@@ -23,7 +23,7 @@ RUN bash ./fetch-github-releases.sh ziti-edge-tunnel
 #
 ################
 
-FROM debian:stable-slim
+FROM debian:buster-slim
 
 RUN mkdir -p /usr/local/bin /etc/ssl/certs
 # psmisc: install killall, removed this because dnsmasq, the target of the hard-coded killall command, isn't running inside this container
@@ -31,7 +31,7 @@ RUN mkdir -p /usr/local/bin /etc/ssl/certs
 # iproute2: install /sbin/ip, necessary in conjunction with    --device="/dev/net/tun:/dev/net/tun"    to up the tun device, assign routes, and assign source IP 
 RUN apt-get -q update && apt-get -q install -y --no-install-recommends systemd iproute2
 # Use 32-bit arm binaries on arm64 until we have 64-bit arm builds. This also affects fetch-github-releases.sh.
-RUN if [ "$(uname -m)" = "aarch64" ]; then dpkg --add-architecture armhf; apt update; apt install -y libc6:armhf; fi
+RUN /bin/bash -c 'if [[ "$(uname -m)" == "aarch64" ]]; then dpkg --add-architecture armhf; apt update; apt install -y libc6:armhf; fi'
 COPY --from=fetch-ziti-artifacts /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs
 COPY --from=fetch-ziti-artifacts /tmp/ziti-edge-tunnel /usr/local/bin
 COPY ./docker-entrypoint.sh /

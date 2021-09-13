@@ -450,7 +450,10 @@ tunneled_service_t *ziti_sdk_c_on_service(ziti_context ziti_ctx, ziti_service *s
 
         ziti_intercept_t *curr_i = model_map_get(&ziti_instance->intercepts, service->name);
         if ((service->perm_flags & ZITI_CAN_DIAL) == 0) {
-            stop_intercept(tnlr_ctx, ziti_instance, curr_i);
+            if (curr_i) {
+                ZITI_LOG(DEBUG, "stopping intercept: can no longer dial service[%s]", service->name);
+                stop_intercept(tnlr_ctx, ziti_instance, curr_i);
+            }
         } else {
             ziti_intercept_t *zi_ctx = new_ziti_intercept(ziti_ctx, service, curr_i);
 
