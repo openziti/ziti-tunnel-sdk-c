@@ -109,7 +109,7 @@ int on_dns_close(void *dns_io_ctx) {
     free(dns_io_ctx);
 }
 
-const char* ziti_register_hostname(const char *hostname) {
+const char* ziti_dns_register_hostname(const char *hostname) {
     // IP address
     ip_addr_t addr;
     if (ipaddr_aton(hostname, &addr)) {

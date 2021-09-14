@@ -18,13 +18,20 @@ limitations under the License.
 #define ZITI_TUNNEL_SDK_C_ZITI_DNS_H
 
 #include <ziti/ziti_tunnel.h>
+typedef struct dns_manager_s dns_manager;
 
 typedef int (*dns_fallback_cb)(const char *name, void *ctx, struct in_addr* addr);
 
 int ziti_dns_setup(tunneler_context tnlr, const char *dns_addr, const char *dns_cidr);
 
 void ziti_dns_set_fallback(struct uv_loop_s *l, dns_fallback_cb fb, void *ctx);
+void ziti_dns_set_manager(dns_manager *mgr);
 
-const char* ziti_register_hostname(const char *hostname);
+const char* ziti_dns_register_hostname(const char *hostname);
 
+struct dns_manager_s {
+    int (*apply)(dns_manager *dns, const char *host, const char *ip);
+    int (*remove)(dns_manager *dns, const char *host);
+    void *data;
+};
 #endif //ZITI_TUNNEL_SDK_C_ZITI_DNS_H

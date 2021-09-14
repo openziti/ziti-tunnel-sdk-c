@@ -158,32 +158,7 @@ typedef struct tunneler_sdk_options_s {
     ziti_sdk_host_cb    ziti_host;
 } tunneler_sdk_options;
 
-typedef struct dns_manager_s dns_manager;
-
-typedef int (*dns_fallback_cb)(const char *name, void *ctx, struct in_addr* addr);
-
-typedef void (*dns_answer_cb)(uint8_t *a_packet, size_t a_len, void *ctx);
-typedef int (*dns_query)(dns_manager *dns, const uint8_t *q_packet, size_t q_len, dns_answer_cb cb, void *ctx);
-
-struct dns_manager_s {
-    bool internal_dns;
-    uint32_t dns_ip;
-    uint16_t dns_port;
-
-    int (*apply)(dns_manager *dns, const char *host, const char *ip);
-    int (*remove)(dns_manager *dns, const char *host);
-    dns_query query;
-
-    uv_loop_t *loop;
-    dns_fallback_cb fb_cb;
-    void *fb_ctx;
-    void *data;
-};
-
-// fallback will be called on the worker thread to avoid blocking event loop
-extern dns_manager *get_tunneler_dns(uv_loop_t *l, uint32_t dns_ip, dns_fallback_cb cb, void *ctx);
-
-extern address_t *parse_address(const char *hn_or_ip_or_cidr, dns_manager *dns);
+extern address_t *parse_address(const char *hn_or_ip_or_cidr);
 extern port_range_t *parse_port_range(uint16_t low, uint16_t high);
 
 extern bool protocol_match(const char *protocol, const protocol_list_t *protocols);
@@ -197,8 +172,6 @@ extern void ziti_tunneler_exclude_route(tunneler_context tnlr_ctx, const char* d
 /** called by tunneler application when it is done with a tunneler_context.
  * calls `stop_intercepting` for each intercepted service. */
 extern void ziti_tunneler_shutdown(tunneler_context tnlr_ctx);
-
-extern void ziti_tunneler_set_dns(tunneler_context tnlr_ctx, dns_manager *dns);
 
 extern int ziti_tunneler_intercept(tunneler_context tnlr_ctx, intercept_ctx_t *i_ctx);
 
@@ -222,8 +195,6 @@ extern int ziti_tunneler_close(tunneler_io_context tnlr_io_ctx);
 extern int ziti_tunneler_close_write(tunneler_io_context tnlr_io_ctx);
 
 extern const char* ziti_tunneler_version();
-
-extern void ziti_tunneler_init_dns(uint32_t mask, int bits);
 
 extern void ziti_tunnel_set_logger(tunnel_logger_f logger);
 extern void ziti_tunnel_set_log_level(int lvl);

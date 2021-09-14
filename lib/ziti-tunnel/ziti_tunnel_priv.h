@@ -61,8 +61,6 @@ typedef struct tunneler_ctx_s {
 //    STAILQ_HEAD(hosted_service_ctx_list_s, hosted_service_ctx_s) hosts;
     LIST_HEAD(exclusions, excluded_route_s) excluded_rts;
 
-    dns_manager *dns;
-    struct udp_pcb *dns_pcb;
 } *tunneler_context;
 
 /** return the intercept context for a packet based on its destination ip:port */
@@ -106,8 +104,6 @@ struct write_ctx_s {
     };
     ack_fn ack;
 };
-
-const char* assign_ip(const char *hostname);
 
 extern int add_route(netif_driver tun, address_t *dest);
 

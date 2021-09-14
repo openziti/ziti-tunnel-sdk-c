@@ -77,7 +77,7 @@ tunneler_context ziti_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop)
 }
 
 void ziti_tunneler_exclude_route(tunneler_context tnlr_ctx, const char *dst) {
-    address_t *addr = parse_address(dst, NULL);
+    address_t *addr = parse_address(dst);
     uv_interface_address_t *if_addrs;
     int err, num_if_addrs;
     if ((err = uv_interface_addresses(&if_addrs, &num_if_addrs)) != 0) {
@@ -209,53 +209,6 @@ host_ctx_t *ziti_tunneler_host(tunneler_context tnlr_ctx, const void *ziti_ctx, 
     return tnlr_ctx->opts.ziti_host((void *) ziti_ctx, tnlr_ctx->loop, service_name, cfg_type, config);
 }
 
-static void send_dns_resp(uint8_t *resp, size_t resp_len, void *ctx) {
-    struct resolve_req *rreq = ctx;
-
-    TNL_LOG(TRACE, "sending DNS resp[%zd] -> %s:%d", resp_len, ipaddr_ntoa(&rreq->addr), rreq->port);
-    struct pbuf *rp = pbuf_alloc(PBUF_TRANSPORT, resp_len, PBUF_RAM);
-    memcpy(rp->payload, resp, resp_len);
-
-    err_t err = udp_sendto_if_src(rreq->tnlr_ctx->dns_pcb, rp, &rreq->addr, rreq->port,
-                                  netif_default, &rreq->tnlr_ctx->dns_pcb->local_ip);
-    if (err != ERR_OK) {
-        TNL_LOG(WARN, "udp_send() DNS response: %d", err);
-    }
-
-    pbuf_free(rp);
-    free(rreq);
-}
-
-static void on_dns_packet(void *arg, struct udp_pcb *pcb, struct pbuf *p,
-    const ip_addr_t *addr, u16_t port) {
-    tunneler_context tnlr_ctx = arg;
-
-    struct resolve_req *rr = calloc(1,sizeof(struct resolve_req));
-    rr->addr = *addr;
-    rr->port = port;
-    rr->tnlr_ctx = tnlr_ctx;
-
-    int rc = tnlr_ctx->dns->query(tnlr_ctx->dns, p->payload, p->len, send_dns_resp, rr);
-    if (rc != 0) {
-        TNL_LOG(WARN, "DNS resolve error: %d", rc);
-        free(rr);
-    }
-    pbuf_free(p);
-}
-
-void ziti_tunneler_set_dns(tunneler_context tnlr_ctx, dns_manager *dns) {
-    tnlr_ctx->dns = dns;
-    if (dns->internal_dns) {
-        tnlr_ctx->dns_pcb = udp_new();
-        ip_addr_t dns_addr = {
-                .type = IPADDR_TYPE_V4,
-                .u_addr.ip4.addr = dns->dns_ip,
-        };
-        udp_bind(tnlr_ctx->dns_pcb, &dns_addr, dns->dns_port);
-        udp_recv(tnlr_ctx->dns_pcb, on_dns_packet, tnlr_ctx);
-    }
-}
-
 intercept_ctx_t* intercept_ctx_new(tunneler_context tnlr_ctx, const char *app_id, void *app_intercept_ctx) {
     intercept_ctx_t *ictx = calloc(1, sizeof(intercept_ctx_t));
     ictx->tnlr_ctx = tnlr_ctx;
@@ -274,7 +227,7 @@ void intercept_ctx_add_protocol(intercept_ctx_t *ctx, const char *protocol) {
     STAILQ_INSERT_TAIL(&ctx->protocols, proto, entries);
 }
 
-address_t *parse_address(const char *hn_or_ip_or_cidr, dns_manager *dns) {
+address_t *parse_address(const char *hn_or_ip_or_cidr) {
     address_t *addr = calloc(1, sizeof(address_t));
     strncpy(addr->str, hn_or_ip_or_cidr, sizeof(addr->str));
     addr->is_hostname = false;
@@ -286,23 +239,9 @@ address_t *parse_address(const char *hn_or_ip_or_cidr, dns_manager *dns) {
     }
 
     if (ipaddr_aton(addr->str, &addr->ip) == 0) {
-        addr->is_hostname = true;
-        // does not parse as IP address; assume hostname and try to get IP from the dns manager
-        if (dns) {
-            const char *resolved_ip_str = assign_ip(addr->str);
-            if (dns->apply(dns, addr->str, resolved_ip_str) != 0) {
-                TNL_LOG(ERR, "failed to apply DNS mapping %s => %s", addr->str, resolved_ip_str);
-                free(addr);
-                return NULL;
-            } else {
-                TNL_LOG(DEBUG, "intercept hostname %s is not an ip", addr->str);
-                if (ipaddr_aton(resolved_ip_str, &addr->ip) == 0) {
-                    TNL_LOG(ERR, "dns manager provided unparsable ip address '%s'", resolved_ip_str);
-                    free(addr);
-                    return NULL;
-                }
-            }
-        }
+        TNL_LOG(ERR, "hostnames are not supported");
+        free(addr);
+        return NULL;
     }
 
     uint8_t addr_bits = IP_IS_V4(&addr->ip) ? 32 : 128;
@@ -326,7 +265,7 @@ address_t *parse_address(const char *hn_or_ip_or_cidr, dns_manager *dns) {
 }
 
 address_t *intercept_ctx_add_address(intercept_ctx_t *i_ctx, const char *address) {
-    address_t *addr = parse_address(address, i_ctx->tnlr_ctx->dns);
+    address_t *addr = parse_address(address);
 
     if (addr == NULL) {
         TNL_LOG(ERR, "failed to parse address '%s' service[%s]", address, i_ctx->service_name);
