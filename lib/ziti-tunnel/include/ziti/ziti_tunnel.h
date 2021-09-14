@@ -199,6 +199,8 @@ extern host_ctx_t * ziti_tunneler_host(tunneler_context tnlr_ctx, const void *zi
 
 extern void ziti_tunneler_stop_intercepting(tunneler_context tnlr_ctx, void *zi_ctx);
 
+extern intercept_ctx_t * ziti_tunnel_find_intercept(tunneler_context tnlr_ctx, void *zi_ctx);
+
 extern void ziti_tunneler_dial_completed(struct io_ctx_s *io_context, bool ok);
 
 extern ssize_t ziti_tunneler_write(tunneler_io_context tnlr_io_ctx, const void *data, size_t len);

@@ -7,6 +7,8 @@
 #include "ziti/ziti_tunnel.h"
 #include "ziti/ziti_tunnel_cbs.h"
 #include <ziti/ziti_log.h>
+#include "model/events.h"
+#include "instance.h"
 
 #if __APPLE__ && __MACH__
 #include "netif_driver/darwin/utun.h"
@@ -26,6 +28,7 @@
 extern dns_manager *get_dnsmasq_manager(const char* path);
 
 static void send_message_to_tunnel();
+static void send_events_message(void *message, size_t datalen);
 
 struct cfg_instance_s {
     char *cfg;
@@ -41,14 +44,35 @@ static char *config_dir = NULL;
 
 static uv_pipe_t cmd_server;
 static uv_pipe_t cmd_conn;
+static uv_pipe_t event_server;
+static uv_pipe_t *event_conn;
 
 // singleton
 static const ziti_tunnel_ctrl *CMD_CTRL;
+static long events_channels_count = 8;
+static long current_events_channels = 0;
+
+#define EVENT_ACTIONS(XX, ...) \
+XX(added, __VA_ARGS__) \
+XX(removed, __VA_ARGS__) \
+XX(updated, __VA_ARGS__) \
+XX(bulk, __VA_ARGS__) \
+XX(error, __VA_ARGS__) \
+XX(changed, __VA_ARGS__) \
+XX(normal, __VA_ARGS__) \
+XX(connected, __VA_ARGS__) \
+XX(disconnected, __VA_ARGS__)
+
+DECLARE_ENUM(event, EVENT_ACTIONS)
+IMPL_ENUM(event, EVENT_ACTIONS)
+
 
 #if _WIN32
 static char sockfile[] = "\\\\.\\pipe\\ziti-edge-tunnel.sock";
+static char eventsockfile[] = "\\\\.\\pipe\\ziti-edge-tunnel-event.sock";
 #elif __unix__ || unix || ( __APPLE__ && __MACH__ )
 static char sockfile[] = "/tmp/ziti-edge-tunnel.sock";
+static char eventsockfile[] = "/tmp/ziti-edge-tunnel-event.sock";
 #endif
 
 static void cmd_alloc(uv_handle_t *s, size_t sugg, uv_buf_t *b) {
@@ -69,12 +93,17 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
     ZITI_LOG(INFO, "resp[%d,len=%zd] = %.*s",
             result->success, json_len, (int)json_len, json, result->data);
 
+    if (result->data != NULL){
+        free(result->data);
+    }
+
     if (uv_is_active((const uv_handle_t *) &cmd_conn)) {
         uv_buf_t b = uv_buf_init(json, json_len);
         uv_write_t *wr = calloc(1, sizeof(uv_write_t));
         wr->data = b.base;
         uv_write(wr, (uv_stream_t *) &cmd_conn, &b, 1, on_cmd_write);
     }
+
 }
 
 static void on_cmd(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
@@ -146,6 +175,85 @@ static int start_cmd_socket(uv_loop_t *l) {
     return -1;
 }
 
+
+static void on_events_client(uv_stream_t *s, int status) {
+    if (current_events_channels < events_channels_count) {
+        event_conn = malloc(sizeof(uv_pipe_t));
+        uv_pipe_init(s->loop, event_conn, 0);
+        uv_accept(s, (uv_stream_t *) event_conn);
+        ZITI_LOG(DEBUG,"Received events connection request %d", ++current_events_channels);
+    } else {
+        ZITI_LOG(WARN, "Maximum events connection requests exceeded");
+    }
+}
+
+
+void on_write_event(uv_write_t* req, int status) {
+    if (status < 0) {
+        ZITI_LOG(ERROR,"Could not sent events message. Write error %s\n", uv_err_name(status));
+    } else {
+        ZITI_LOG(INFO,"Events message is sent.");
+    }
+    if (req->data) {
+        free(req->data);
+    }
+    free(req);
+}
+
+static void send_events_message(void *message, size_t datalen) {
+    if (event_conn != NULL) {
+        ZITI_LOG(INFO,"Events Message...%s", message);
+        uv_buf_t buf = uv_buf_init(message, datalen);
+        uv_write_t *wr = calloc(1, sizeof(uv_write_t));
+        wr->data = buf.base;
+        int err = uv_write(wr, event_conn, &buf, 1, on_write_event);
+        if (err < 0){
+            ZITI_LOG(ERROR,"Events client write operation failed, received error - %s", uv_err_name(err));
+            if (err == UV_EPIPE) {
+                if (current_events_channels > 0) {
+                    ZITI_LOG(WARN,"Events client closed connection");
+                    --current_events_channels;
+                    uv_close((uv_handle_t *) event_conn, (uv_close_cb) free);
+                    event_conn = NULL;
+                    //remove from event conn list
+                }
+            }
+        }
+    }
+}
+
+static int start_event_socket(uv_loop_t *l) {
+
+    if (uv_is_active((const uv_handle_t *) &event_server)) {
+        return 0;
+    }
+
+    uv_fs_t fs;
+    uv_fs_unlink(l, &fs, eventsockfile, NULL);
+
+#define CHECK_UV(op) do{ \
+    int uv_rc = (op);    \
+    if (uv_rc != 0) {    \
+       ZITI_LOG(WARN, "failed to open event socket op=[%s] err=%d[%s]", #op, uv_rc, uv_strerror(uv_rc));\
+       goto uv_err; \
+    }                    \
+    } while(0)
+
+
+    CHECK_UV(uv_pipe_init(l, &event_server, 0));
+    CHECK_UV(uv_pipe_bind(&event_server, eventsockfile));
+    CHECK_UV(uv_pipe_chmod(&event_server, UV_WRITABLE | UV_READABLE));
+
+    uv_unref((uv_handle_t *) &event_server);
+
+    CHECK_UV(uv_listen((uv_stream_t *) &event_server, 0, on_events_client));
+
+    return 0;
+
+    uv_err:
+    return -1;
+}
+
 static void load_identities(uv_work_t *wr) {
     if (config_dir != NULL) {
         uv_fs_t fs;
@@ -194,16 +302,45 @@ static void on_event(const base_event *ev) {
         case TunnelEvent_ContextEvent: {
             const ziti_ctx_event *zev = (ziti_ctx_event *) ev;
             ZITI_LOG(INFO, "ztx[%s] status is %s", ev->identifier, zev->status);
+
+            identity_event id_event = {
+                    .Op = "identity",
+                    .Action = strdup(event_name(event_added)),
+                    .Identifier = ev->identifier
+            };
+
+            tunnel_identity *tnl_identity = NULL;
+            if (zev->code == ZITI_OK) {
+                if (zev->identity) {
+                    id_event.Id = get_tunnel_identity(zev->identity);
+                }
+            }
+
+            size_t json_len;
+            char *json = identity_event_to_json(&id_event, MODEL_JSON_COMPACT, &json_len);
+            send_events_message(json, json_len);
             break;
         }
 
-        case TunnelEvent_ServiceEvent:
-            // TODO
+        case TunnelEvent_ServiceEvent: {
+            const service_event *svc_ev = (service_event *) ev;
+            ZITI_LOG(INFO, "ztx[%s] service event", ev->identifier);
+            services_event svc_event = {
+                    .Op = "Service",
+                    .Action = strdup(event_name(event_updated)),
+                    .Id = strdup(ev->identifier)
+            };
+
+            size_t json_len;
+            char *json = services_event_to_json(&svc_event, MODEL_JSON_COMPACT, &json_len);
+            send_events_message(json, json_len);
             break;
+        }
 
         case TunnelEvent_MFAEvent: {
             const mfa_event *mfa_ev = (mfa_event *) ev;
             ZITI_LOG(INFO, "ztx[%s] is requesting MFA code[%s]", ev->identifier, mfa_ev->provider);
+
             break;
         }
 
@@ -251,6 +388,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, const char *ip_rang
     uv_queue_work(ziti_loop, loader, load_identities, load_identities_complete);
 
     start_cmd_socket(ziti_loop);
+    start_event_socket(ziti_loop);
 
     if (uv_run(ziti_loop, UV_RUN_DEFAULT) != 0) {
         ZITI_LOG(ERROR, "failed to run event loop");
@@ -258,6 +396,8 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, const char *ip_rang
     }
 
     free(tunneler);
+    uv_close((uv_handle_t *) &cmd_server, (uv_close_cb) free);
+    uv_close((uv_handle_t *) &event_server, (uv_close_cb) free);
     return 0;
 }
 
@@ -455,11 +595,12 @@ static int parse_enroll_opts(int argc, char *argv[]) {
             {"identity", required_argument, NULL, 'i'},
             {"key", optional_argument, NULL, 'k'},
             {"cert", optional_argument, NULL, 'c'},
+            { "name", optional_argument, NULL, 'n'}
     };
     int c, option_index, errors = 0;
     optind = 0;
 
-    while ((c = getopt_long(argc, argv, "j:i:k:c:",
+    while ((c = getopt_long(argc, argv, "j:i:k:c:n:",
                             opts, &option_index)) != -1) {
         switch (c) {
             case 'j':
@@ -470,6 +611,9 @@ static int parse_enroll_opts(int argc, char *argv[]) {
                 break;
             case 'c':
                 enroll_opts.enroll_cert = realpath(optarg, NULL);
+                break;
+            case 'n':
+                enroll_opts.enroll_name = optarg;
                 break;
             case 'i':
                 config_file = optarg;
@@ -551,7 +695,7 @@ static int dump_opts(int argc, char *argv[]) {
                             opts, &option_index)) != -1) {
         switch (c) {
             case 'i':
-                dump_options->id = optarg;
+                dump_options->identifier = optarg;
                 break;
             case 'p':
                 dump_options->dump_path = realpath(optarg, NULL);
@@ -569,6 +713,9 @@ static int dump_opts(int argc, char *argv[]) {
     }
     size_t json_len;
     cmd->data = tunnel_ziti_dump_to_json(dump_options, MODEL_JSON_COMPACT, &json_len);
+    if (dump_options != NULL) {
+        free_tunnel_ziti_dump(dump_options);
+    }
 
     return optind;
 }
@@ -613,7 +760,7 @@ void on_connect(uv_connect_t* connect, int status){
         char* json = tunnel_comand_to_json(cmd, MODEL_JSON_COMPACT, &json_len);
         send_message_to_pipe(connect, json, json_len);
         free(json);
-        free(cmd);
+        free_tunnel_comand(cmd);
     }
 }
 
@@ -686,12 +833,271 @@ static int disable_identity_opts(int argc, char *argv[]) {
     return optind;
 }
 
+static int enable_identity_opts(int argc, char *argv[]) {
+    static struct option opts[] = {
+            {"identity", required_argument, NULL, 'i'},
+    };
+    int c, option_index, errors = 0;
+    optind = 0;
+
+    tunnel_load_identity *load_identity_options = calloc(1, sizeof(tunnel_load_identity));
+    cmd = calloc(1, sizeof(tunnel_comand));
+    cmd->command = TunnelCommand_LoadIdentity;
+
+    while ((c = getopt_long(argc, argv, "i:",
+                            opts, &option_index)) != -1) {
+        switch (c) {
+            case 'i':
+                load_identity_options->path = realpath(optarg, NULL);
+                break;
+            default: {
+                fprintf(stderr, "Unknown option '%c'\n", c);
+                errors++;
+                break;
+            }
+        }
+    }
+    if (errors > 0) {
+        commandline_help(stderr);
+        exit(1);
+    }
+    size_t json_len;
+    cmd->data = tunnel_load_identity_to_json(load_identity_options, MODEL_JSON_COMPACT, &json_len);
+
+    return optind;
+}
+
+static int enable_mfa_opts(int argc, char *argv[]) {
+    static struct option opts[] = {
+            {"identity", required_argument, NULL, 'i'},
+    };
+    int c, option_index, errors = 0;
+    optind = 0;
+
+    tunnel_enable_mfa *enable_mfa_options = calloc(1, sizeof(tunnel_enable_mfa));
+    cmd = calloc(1, sizeof(tunnel_comand));
+    cmd->command = TunnelCommand_EnableMFA;
+
+    while ((c = getopt_long(argc, argv, "i:",
+                            opts, &option_index)) != -1) {
+        switch (c) {
+            case 'i':
+                enable_mfa_options->identifier = optarg;
+                break;
+            default: {
+                fprintf(stderr, "Unknown option '%c'\n", c);
+                errors++;
+                break;
+            }
+        }
+    }
+    if (errors > 0) {
+        commandline_help(stderr);
+        exit(1);
+    }
+    size_t json_len;
+    cmd->data = tunnel_enable_mfa_to_json(enable_mfa_options, MODEL_JSON_COMPACT, &json_len);
+
+    return optind;
+}
+
+static int verify_mfa_opts(int argc, char *argv[]) {
+    static struct option opts[] = {
+            {"identity", required_argument, NULL, 'i'},
+            {"code", required_argument, NULL, 'c'},
+    };
+    int c, option_index, errors = 0;
+    optind = 0;
+
+    tunnel_verify_mfa *verify_mfa_options = calloc(1, sizeof(tunnel_verify_mfa));
+    cmd = calloc(1, sizeof(tunnel_comand));
+    cmd->command = TunnelCommand_VerifyMFA;
+
+    while ((c = getopt_long(argc, argv, "i:c:",
+                            opts, &option_index)) != -1) {
+        switch (c) {
+            case 'i':
+                verify_mfa_options->identifier = optarg;
+                break;
+            case 'c':
+                verify_mfa_options->code = optarg;
+                break;
+            default: {
+                fprintf(stderr, "Unknown option '%c'\n", c);
+                errors++;
+                break;
+            }
+        }
+    }
+    if (errors > 0) {
+        commandline_help(stderr);
+        exit(1);
+    }
+    size_t json_len;
+    cmd->data = tunnel_verify_mfa_to_json(verify_mfa_options, MODEL_JSON_COMPACT, &json_len);
+
+    return optind;
+}
+
+static int remove_mfa_opts(int argc, char *argv[]) {
+    static struct option opts[] = {
+            {"identity", required_argument, NULL, 'i'},
+            {"code", required_argument, NULL, 'c'},
+    };
+    int c, option_index, errors = 0;
+    optind = 0;
+
+    tunnel_remove_mfa *remove_mfa_options = calloc(1, sizeof(tunnel_remove_mfa));
+    cmd = calloc(1, sizeof(tunnel_comand));
+    cmd->command = TunnelCommand_RemoveMFA;
+
+    while ((c = getopt_long(argc, argv, "i:c:",
+                            opts, &option_index)) != -1) {
+        switch (c) {
+            case 'i':
+                remove_mfa_options->identifier = optarg;
+                break;
+            case 'c':
+                remove_mfa_options->code = optarg;
+                break;
+            default: {
+                fprintf(stderr, "Unknown option '%c'\n", c);
+                errors++;
+                break;
+            }
+        }
+    }
+    if (errors > 0) {
+        commandline_help(stderr);
+        exit(1);
+    }
+    size_t json_len;
+    cmd->data = tunnel_remove_mfa_to_json(remove_mfa_options, MODEL_JSON_COMPACT, &json_len);
+
+    return optind;
+}
+
+static int submit_mfa_opts(int argc, char *argv[]) {
+    static struct option opts[] = {
+            {"identity", required_argument, NULL, 'i'},
+            {"code", required_argument, NULL, 'c'},
+    };
+    int c, option_index, errors = 0;
+    optind = 0;
+
+    tunnel_submit_mfa *submit_mfa_options = calloc(1, sizeof(tunnel_submit_mfa));
+    cmd = calloc(1, sizeof(tunnel_comand));
+    cmd->command = TunnelCommand_SubmitMFA;
+
+    while ((c = getopt_long(argc, argv, "i:c:",
+                            opts, &option_index)) != -1) {
+        switch (c) {
+            case 'i':
+                submit_mfa_options->identifier = optarg;
+                break;
+            case 'c':
+                submit_mfa_options->code = optarg;
+                break;
+            default: {
+                fprintf(stderr, "Unknown option '%c'\n", c);
+                errors++;
+                break;
+            }
+        }
+    }
+    if (errors > 0) {
+        commandline_help(stderr);
+        exit(1);
+    }
+    size_t json_len;
+    cmd->data = tunnel_submit_mfa_to_json(submit_mfa_options, MODEL_JSON_COMPACT, &json_len);
+
+    return optind;
+}
+
+static int generate_mfa_codes_opts(int argc, char *argv[]) {
+    static struct option opts[] = {
+            {"identity", required_argument, NULL, 'i'},
+            {"code", required_argument, NULL, 'c'},
+    };
+    int c, option_index, errors = 0;
+    optind = 0;
+
+    tunnel_generate_mfa_codes *mfa_codes_options = calloc(1, sizeof(tunnel_generate_mfa_codes));
+    cmd = calloc(1, sizeof(tunnel_comand));
+    cmd->command = TunnelCommand_GenerateMFACodes;
+
+    while ((c = getopt_long(argc, argv, "i:c:",
+                            opts, &option_index)) != -1) {
+        switch (c) {
+            case 'i':
+                mfa_codes_options->identifier = optarg;
+                break;
+            case 'c':
+                mfa_codes_options->code = optarg;
+                break;
+            default: {
+                fprintf(stderr, "Unknown option '%c'\n", c);
+                errors++;
+                break;
+            }
+        }
+    }
+    if (errors > 0) {
+        commandline_help(stderr);
+        exit(1);
+    }
+    size_t json_len;
+    cmd->data = tunnel_generate_mfa_codes_to_json(mfa_codes_options, MODEL_JSON_COMPACT, &json_len);
+
+    return optind;
+}
+
+static int get_mfa_codes_opts(int argc, char *argv[]) {
+    static struct option opts[] = {
+            {"identity", required_argument, NULL, 'i'},
+            {"code", required_argument, NULL, 'c'},
+    };
+    int c, option_index, errors = 0;
+    optind = 0;
+
+    tunnel_get_mfa_codes *get_mfa_codes_options = calloc(1, sizeof(tunnel_get_mfa_codes));
+    cmd = calloc(1, sizeof(tunnel_comand));
+    cmd->command = TunnelCommand_GetMFACodes;
+
+    while ((c = getopt_long(argc, argv, "i:c:",
+                            opts, &option_index)) != -1) {
+        switch (c) {
+            case 'i':
+                get_mfa_codes_options->identifier = optarg;
+                break;
+            case 'c':
+                get_mfa_codes_options->code = optarg;
+                break;
+            default: {
+                fprintf(stderr, "Unknown option '%c'\n", c);
+                errors++;
+                break;
+            }
+        }
+    }
+    if (errors > 0) {
+        commandline_help(stderr);
+        exit(1);
+    }
+    size_t json_len;
+    cmd->data = tunnel_get_mfa_codes_to_json(get_mfa_codes_options, MODEL_JSON_COMPACT, &json_len);
+
+    return optind;
+}
+
 static CommandLine enroll_cmd = make_command("enroll", "enroll Ziti identity",
-        "-j|--jwt <enrollment token> -i|--identity <identity> [-k|--key <private_key> [-c|--cert <certificate>]]",
+        "-j|--jwt <enrollment token> -i|--identity <identity> [-k|--key <private_key> [-c|--cert <certificate>]] [-n|--name <name>]",
         "\t-j|--jwt\tenrollment token file\n"
         "\t-i|--identity\toutput identity file\n"
         "\t-k|--key\tprivate key for enrollment\n"
-        "\t-c|--cert\tcertificate for enrollment\n",
+        "\t-c|--cert\tcertificate for enrollment\n"
+        "\t-n|--name\tidentity name\n",
         parse_enroll_opts, enroll);
 static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required superuser access)",
                                           "-i <id.file> [-r N] [-v N] [-d|--dns-ip-range N.N.N.N/n] [-n|--dns <internal|dnsmasq=<dnsmasq hosts dir>>]",
@@ -708,13 +1114,39 @@ static CommandLine dump_cmd = make_command("dump", "dump the identities informat
                                            "\t-p|--dump_path\tdump into path\n", dump_opts, send_message_to_tunnel_fn);
 static CommandLine disable_id_cmd = make_command("disable", "disable the identities information", "[-i <identity>]",
                                            "\t-i|--identity\tidentity info that needs to be disabled\n", disable_identity_opts, send_message_to_tunnel_fn);
+static CommandLine enable_id_cmd = make_command("enable", "enable the identities information", "[-i <identity>]",
+                                                 "\t-i|--identity\tidentity info that needs to be enabled\n", enable_identity_opts, send_message_to_tunnel_fn);
+static CommandLine enable_mfa_cmd = make_command("enable_mfa", "Enable MFA function fetches the totp url from the controller", "[-i <identity>]",
+                                           "\t-i|--identity\tidentity info for enabling mfa\n", enable_mfa_opts, send_message_to_tunnel_fn);
+static CommandLine verify_mfa_cmd = make_command("verify_mfa", "Verify the mfa login using the auth code while enabling mfa", "[-i <identity>] [-c <code>]",
+                                                 "\t-i|--identity\tidentity info to verify mfa login\n"
+                                                 "\t-c|--authcode\tauth code to verify mfa login\n", verify_mfa_opts, send_message_to_tunnel_fn);
+static CommandLine remove_mfa_cmd = make_command("remove_mfa", "Removes MFA registration from the controller", "[-i <identity>] [-c <code>]",
+                                                 "\t-i|--identity\tidentity info for removing mfa\n"
+                                                 "\t-c|--authcode\tauth code to verify mfa login\n", remove_mfa_opts, send_message_to_tunnel_fn);
+static CommandLine submit_mfa_cmd = make_command("submit_mfa", "Submit MFA code to authenticate to the controller", "[-i <identity>] [-c <code>]",
+                                                 "\t-i|--identity\tidentity info for removing mfa\n"
+                                                 "\t-c|--authcode\tauth code to authenticate mfa login\n", submit_mfa_opts, send_message_to_tunnel_fn);
+static CommandLine generate_mfa_codes_cmd = make_command("generate_mfa_codes", "Generate MFA codes", "[-i <identity>] [-c <code>]",
+                                                 "\t-i|--identity\tidentity info for generating mfa codes\n"
+                                                 "\t-c|--authcode\tauth code to authenticate the request for generating mfa codes\n", generate_mfa_codes_opts, send_message_to_tunnel_fn);
+static CommandLine get_mfa_codes_cmd = make_command("get_mfa_codes", "Get MFA codes", "[-i <identity>] [-c <code>]",
+                                                         "\t-i|--identity\tidentity info for fetching mfa codes\n"
+                                                         "\t-c|--authcode\tauth code to authenticate the request for fetching mfa codes\n", get_mfa_codes_opts, send_message_to_tunnel_fn);
 static CommandLine ver_cmd = make_command("version", "show version", "[-v]", "\t-v\tshow verbose version information\n", version_opts, version);
 static CommandLine help_cmd = make_command("help", "this message", NULL, NULL, NULL, usage);
 static CommandLine *main_cmds[] = {
         &enroll_cmd,
         &run_cmd,
         &disable_id_cmd,
+        &enable_id_cmd,
         &dump_cmd,
+        &enable_mfa_cmd,
+        &verify_mfa_cmd,
+        &remove_mfa_cmd,
+        &submit_mfa_cmd,
+        &generate_mfa_codes_cmd,
+        &get_mfa_codes_cmd,
         &ver_cmd,
         &help_cmd,
         NULL
@@ -739,3 +1171,10 @@ int main(int argc, char *argv[]) {
     commandline_run(&main_cmd, argc, argv);
     return 0;
 }
+
+// ******* TUNNEL EVENT BROADCAST MESSAGES
+IMPL_MODEL(status_event, STATUS_EVENT)
+IMPL_MODEL(action_event, ACTION_EVENT)
+IMPL_MODEL(identity_event, IDENTITY_EVENT)
+IMPL_MODEL(services_event, SERVICES_EVENT)
+IMPL_MODEL(tunnel_status_event, TUNNEL_STATUS_EVENT)
