@@ -26,6 +26,8 @@
 
 extern dns_manager *get_dnsmasq_manager(const char* path);
 
+static int dns_fallback(const char *name, void *ctx, struct in_addr* addr);
+
 static void send_message_to_tunnel();
 
 struct cfg_instance_s {
@@ -248,8 +250,9 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, const char *ip_rang
     };
 
     tunneler_context tunneler = ziti_tunneler_init(&tunneler_opts, ziti_loop);
-    ziti_tunneler_set_dns(tunneler, dns);
-    ziti_dns_setup(tunneler, "100.64.53.53", ip_range);
+
+    ziti_dns_setup(tunneler, ip4addr_ntoa(&dns->dns_ip), ip_range);
+    ziti_dns_set_fallback(ziti_loop, dns_fallback, NULL);
 
     CMD_CTRL = ziti_tunnel_init_cmd(ziti_loop, tunneler, on_event);
 
