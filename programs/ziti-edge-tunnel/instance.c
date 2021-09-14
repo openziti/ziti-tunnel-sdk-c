@@ -448,6 +448,7 @@ tunnel_status *get_tunnel_status() {
     if (tnl_status->Identities != NULL) {
         for (int id_idx = 0; tnl_status->Identities[id_idx] != 0; id_idx++) {
             set_mfa_timeout_rem(tnl_status->Identities[id_idx]);
+            tnl_status->Identities[id_idx]->Notified = false;
         }
     }
 
@@ -459,6 +460,7 @@ void set_mfa_status(char* identifier, bool mfa_enabled, bool mfa_needed) {
     if (tnl_id != NULL) {
         tnl_id->MfaEnabled = mfa_enabled;
         tnl_id->MfaNeeded = mfa_needed;
+        tnl_id->Notified = false;
         ZITI_LOG(DEBUG, "ztx[%s] mfa enabled : %d, mfa needed : %d ", identifier, mfa_enabled, mfa_needed);
     }
 }

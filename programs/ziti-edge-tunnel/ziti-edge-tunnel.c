@@ -19,6 +19,9 @@
 #ifndef MAXPATHLEN
 #define MAXPATHLEN _MAX_PATH
 #endif
+#ifndef MAXMESSAGELEN
+#define MAXMESSAGELEN 4096
+#endif
 
 #define setenv(n,v,o) do {if(o || getenv(n) == NULL) _putenv_s(n,v); } while(0)
 #endif
@@ -275,6 +278,78 @@ static void tnl_transfer_rates_cb(const tunnel_identity_metrics *metrics, void *
     tnl_id->Metrics->Down = (int) strtol(metrics->down, NULL, 10);
 }
 
+
+static char* addUnit(int count, char* unit) {
+    char* result = malloc(MAXMESSAGELEN);
+
+    if ((count == 1) || (count == 0)) {
+        snprintf(result, MAXMESSAGELEN, "%d %s", count, unit);
+    } else {
+        snprintf(result, MAXMESSAGELEN, "%d %ss", count, unit);
+    }
+    return result;
+}
+
+static string convert_seconds_to_readable_format(int input) {
+    int seconds = input % (60 * 60 * 24);
+    int hours = ((double) seconds / 60 / 60);
+    seconds = input % (60 * 60);
+    int minutes = ((double) seconds)/ 60;
+    seconds = input % 60;
+    char* result = malloc(MAXMESSAGELEN);
+
+    if (hours > 0) {
+        snprintf(result, MAXMESSAGELEN, "%s %s %s", addUnit(hours, "hour"), addUnit(minutes, "minute"), addUnit(seconds, "second"));
+    } else if (minutes > 0) {
+        snprintf(result, MAXMESSAGELEN, "%s %s", addUnit(minutes, "minute"), addUnit(seconds, "second"));
+    } else {
+        snprintf(result, MAXMESSAGELEN, "%s", addUnit(seconds, "second"));
+    }
+
+    return result;
+}
+
+static bool check_send_notification(tunnel_identity *tnl_id) {
+    if (tnl_id->MfaMinTimeoutRem > -1) {
+        tnl_id->MfaMinTimeoutRem = get_remaining_timeout(tnl_id->MfaMinTimeout, tnl_id->MfaMinTimeoutRem, tnl_id);
+    }
+    if (tnl_id->MfaMaxTimeoutRem > -1) {
+        tnl_id->MfaMaxTimeoutRem = get_remaining_timeout(tnl_id->MfaMaxTimeout, tnl_id->MfaMaxTimeoutRem, tnl_id);
+    }
+
+    if (tnl_id->MfaMinTimeoutRem > 20 * 60) {
+        // No services are nearing timeout
+        return false;
+    } else {
+        return true;
+    }
+}
+
+static notification_message *create_notificaiton_message(tunnel_identity *tnl_id) {
+    notification_message *notification = calloc(1, sizeof(struct notification_message_s));
+    notification->Message = malloc(MAXMESSAGELEN);
+    if (tnl_id->MfaMaxTimeoutRem == 0) {
+        snprintf(notification->Message, MAXMESSAGELEN, "All of the services of identity %s have timed out", tnl_id->Name);
+    } else if (tnl_id->MfaMinTimeoutRem == 0) {
+        snprintf(notification->Message, MAXMESSAGELEN, "Some of the services of identity %s have timed out", tnl_id->Name);
+    } else if (tnl_id->MfaMinTimeoutRem <= 20*60) {
+        snprintf(notification->Message, MAXMESSAGELEN, "Some of the services of identity %s are timing out in %s", tnl_id->Name, convert_seconds_to_readable_format(tnl_id->MfaMinTimeoutRem));
+    } else {
+        // do nothing
+    }
+
+    notification->IdentityName = strdup(tnl_id->Name);
+    notification->Identifier = strdup(tnl_id->Identifier);
+    notification->Severity = strdup("major");
+    uv_timeval64_t now;
+    uv_gettimeofday(&now);
+    notification->MfaTimeDuration = now.tv_sec - tnl_id->MfaLastUpdatedTime->tv_sec;
+    notification->MfaMinimumTimeout = tnl_id->MfaMinTimeoutRem;
+    notification->MfaMaximumTimeout = tnl_id->MfaMaxTimeoutRem;
+
+    return notification;
+}
+
 static void broadcast_metrics(uv_timer_t *timer) {
     tunnel_metrics_event metrics_event = {0};
     metrics_event.Op = strdup(EVENT_METRICS);
@@ -283,12 +358,41 @@ static void broadcast_metrics(uv_timer_t *timer) {
     int idx;
     bool active_identities = false;
     if (metrics_event.Identities != NULL) {
+        model_map notification_map = {0};
         for(idx = 0; metrics_event.Identities[idx]; idx++) {
             tnl_id = metrics_event.Identities[idx];
             if (tnl_id->Active && tnl_id->Loaded) {
                 active_identities = true;
                 CMD_CTRL->get_transfer_rates(tnl_id->Identifier, NULL, tnl_transfer_rates_cb, tnl_id);
+
+                // check timeout
+                if (tnl_id->MfaEnabled && !tnl_id->Notified && (tnl_id->MfaMinTimeoutRem > -1 || tnl_id->MfaMaxTimeoutRem > -1)) {
+                    if (check_send_notification(tnl_id)) {
+                        notification_message *message = create_notificaiton_message(tnl_id);
+                        model_map_set(&notification_map, tnl_id->Name, message);
+                        tnl_id->Notified = true;
+                    }
+                }
             }
+        }
+        if (model_map_size(&notification_map) > 0) {
+            notification_event event = {0};
+            event.Op = strdup("notification");
+            notification_message_array notification_messages = calloc(model_map_size(&notification_map) + 1, sizeof(struct notification_message_s));
+            int notification_idx = 0;
+            const char* key;
+            notification_message *message;
+            MODEL_MAP_FOREACH(key, message, &notification_map) {
+                notification_messages[notification_idx++] = message;
+            }
+            event.Notification = notification_messages;
+
+            size_t json_len;
+            char *json = notification_event_to_json(&event, MODEL_JSON_COMPACT, &json_len);
+            send_events_message(json, json_len, true);
+            event.Notification = NULL;
+            free_notification_event(&event);
+            model_map_clear(&notification_map, (_free_f) free_notification_message);
         }
     }
 
@@ -1307,3 +1411,5 @@ IMPL_MODEL(services_event, SERVICES_EVENT)
 IMPL_MODEL(tunnel_status_event, TUNNEL_STATUS_EVENT)
 IMPL_MODEL(mfa_status_event, MFA_STATUS_EVENT)
 IMPL_MODEL(tunnel_metrics_event, TUNNEL_METRICS_EVENT)
+IMPL_MODEL(notification_message, TUNNEL_NOTIFICATION_MESSAGE)
+IMPL_MODEL(notification_event, TUNNEL_NOTIFICATION_EVENT)
