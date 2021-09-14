@@ -147,6 +147,7 @@ void ziti_tunneler_shutdown(tunneler_context tnlr_ctx) {
 /** called by tunneler application when data has been successfully written to ziti */
 void ziti_tunneler_ack(struct write_ctx_s *write_ctx) {
     write_ctx->ack(write_ctx);
+    free(write_ctx);
 }
 
 const char *get_intercepted_address(const struct tunneler_io_ctx_s * tnlr_io) {

@@ -352,7 +352,6 @@ static void on_ziti_write(ziti_connection ziti_conn, ssize_t len, void *ctx) {
     if (len > 0) {
         ziti_tunneler_ack(ctx);
     }
-    free(ctx);
 }
 
 /** called from tunneler SDK when intercepted client sends data */

@@ -278,8 +278,6 @@ ssize_t on_dns_req(const void *ziti_io_ctx, void *write_ctx, const uint8_t *q_pa
 
     req->rp = rp;
 
-    ziti_tunneler_ack(write_ctx);
-
     ZITI_LOG(TRACE, "received query for %s type(%x) class(%x)", req->host, type, class);
 
     dns_entry_t *entry = model_map_get(&ziti_dns.hostnames, req->host);
@@ -287,6 +285,7 @@ ssize_t on_dns_req(const void *ziti_io_ctx, void *write_ctx, const uint8_t *q_pa
         req->fb_ctx = ziti_dns.fallback_ctx;
         req->fallback = ziti_dns.fallback_cb;
 
+        ziti_tunneler_ack(write_ctx);
         return uv_queue_work(ziti_dns.loop, work_req, fallback_work, dns_work_complete);
     }
 
@@ -298,6 +297,7 @@ ssize_t on_dns_req(const void *ziti_io_ctx, void *write_ctx, const uint8_t *q_pa
     }
 
     DONE:
+    ziti_tunneler_ack(write_ctx);
     dns_work_complete(work_req, 0);
 
     return q_len;
