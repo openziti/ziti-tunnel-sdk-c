@@ -52,15 +52,19 @@ static const ziti_tunnel_ctrl *CMD_CTRL;
 static long events_channels_count = 8;
 static long current_events_channels = 0;
 
-static const char* EVENT_ADDED="added";
-static const char* EVENT_REMOVED="removed";
-static const char* EVENT_UPDATED="updated";
-static const char* EVENT_BULK="bulk";
-static const char* EVENT_ERROR="error";
-static const char* EVENT_CHANGED="changed";
-static const char* EVENT_NORMAL="normal";
-static const char* EVENT_CONNECTED="connected";
-static const char* EVENT_DISCONNECTED="disconnected";
+#define EVENT_ACTIONS(XX, ...) \
+XX(added, __VA_ARGS__) \
+XX(removed, __VA_ARGS__) \
+XX(updated, __VA_ARGS__) \
+XX(bulk, __VA_ARGS__) \
+XX(error, __VA_ARGS__) \
+XX(changed, __VA_ARGS__) \
+XX(normal, __VA_ARGS__) \
+XX(connected, __VA_ARGS__) \
+XX(disconnected, __VA_ARGS__)
+
+DECLARE_ENUM(event, EVENT_ACTIONS)
+IMPL_ENUM(event, EVENT_ACTIONS)
 
 #if _WIN32
 static char sockfile[] = "\\\\.\\pipe\\ziti-edge-tunnel.sock";
@@ -300,7 +304,7 @@ static void on_event(const base_event *ev) {
 
             identity_event id_event = {0};
             id_event.Op = strdup("identity");
-            id_event.Action = strdup(EVENT_ADDED);
+            id_event.Action = strdup(event_name(event_added));
             id_event.Id = get_tunnel_identity(ev->identifier);
 
             if (zev->code == ZITI_OK) {
@@ -318,6 +322,7 @@ static void on_event(const base_event *ev) {
             send_events_message(json, json_len);
             id_event.Id = NULL;
             free_identity_event(&id_event);
+
             break;
         }
 
@@ -325,9 +330,9 @@ static void on_event(const base_event *ev) {
             const service_event *svc_ev = (service_event *) ev;
             ZITI_LOG(INFO, "ztx[%s] service event", ev->identifier);
             services_event svc_event = {
-                    .Op = strdup("bulkservice"),
-                    .Action = strdup(EVENT_BULK),
-                    .Identifier = strdup(ev->identifier),
+                .Op = strdup("bulkservice"),
+                .Action = strdup(event_name(event_updated)),
+                .Identifier = strdup(ev->identifier),
             };
 
             tunnel_identity *id = get_tunnel_identity(ev->identifier);
@@ -361,6 +366,7 @@ static void on_event(const base_event *ev) {
                 svc_event.AddedServices = NULL;
             }
             free_services_event(&svc_event);
+
             break;
         }
 
@@ -370,7 +376,7 @@ static void on_event(const base_event *ev) {
             set_mfa_status(ev->identifier, true, true);
             identity_event id_event = {
                     .Op = strdup("identity"),
-                    .Action = strdup(EVENT_ADDED),
+                    .Action = strdup(event_name(event_added)),
                     .Id = get_tunnel_identity(ev->identifier),
             };
 
