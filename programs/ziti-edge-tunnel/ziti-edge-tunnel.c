@@ -7,6 +7,8 @@
 #include "ziti/ziti_tunnel.h"
 #include "ziti/ziti_tunnel_cbs.h"
 #include <ziti/ziti_log.h>
+#include "model/events.h"
+#include "instance.h"
 
 #if __APPLE__ && __MACH__
 #include "netif_driver/darwin/utun.h"
@@ -26,6 +28,7 @@
 extern dns_manager *get_dnsmasq_manager(const char* path);
 
 static void send_message_to_tunnel();
+static void send_events_message(void *message, size_t datalen);
 
 struct cfg_instance_s {
     char *cfg;
@@ -41,14 +44,35 @@ static char *config_dir = NULL;
 
 static uv_pipe_t cmd_server;
 static uv_pipe_t cmd_conn;
+static uv_pipe_t event_server;
+static uv_pipe_t *event_conn;
 
 // singleton
 static const ziti_tunnel_ctrl *CMD_CTRL;
+static long events_channels_count = 8;
+static long current_events_channels = 0;
+
+#define EVENT_ACTIONS(XX, ...) \
+XX(added, __VA_ARGS__) \
+XX(removed, __VA_ARGS__) \
+XX(updated, __VA_ARGS__) \
+XX(bulk, __VA_ARGS__) \
+XX(error, __VA_ARGS__) \
+XX(changed, __VA_ARGS__) \
+XX(normal, __VA_ARGS__) \
+XX(connected, __VA_ARGS__) \
+XX(disconnected, __VA_ARGS__)
+
+DECLARE_ENUM(event, EVENT_ACTIONS)
+IMPL_ENUM(event, EVENT_ACTIONS)
+
 
 #if _WIN32
 static char sockfile[] = "\\\\.\\pipe\\ziti-edge-tunnel.sock";
+static char eventsockfile[] = "\\\\.\\pipe\\ziti-edge-tunnel-event.sock";
 #elif __unix__ || unix || ( __APPLE__ && __MACH__ )
 static char sockfile[] = "/tmp/ziti-edge-tunnel.sock";
+static char eventsockfile[] = "/tmp/ziti-edge-tunnel-event.sock";
 #endif
 
 static void cmd_alloc(uv_handle_t *s, size_t sugg, uv_buf_t *b) {
@@ -79,6 +103,7 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
         wr->data = b.base;
         uv_write(wr, (uv_stream_t *) &cmd_conn, &b, 1, on_cmd_write);
     }
+
 }
 
 static void on_cmd(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
@@ -150,6 +175,85 @@ static int start_cmd_socket(uv_loop_t *l) {
     return -1;
 }
 
+
+static void on_events_client(uv_stream_t *s, int status) {
+    if (current_events_channels < events_channels_count) {
+        event_conn = malloc(sizeof(uv_pipe_t));
+        uv_pipe_init(s->loop, event_conn, 0);
+        uv_accept(s, (uv_stream_t *) event_conn);
+        ZITI_LOG(DEBUG,"Received events connection request %d", ++current_events_channels);
+    } else {
+        ZITI_LOG(WARN, "Maximum events connection requests exceeded");
+    }
+}
+
+
+void on_write_event(uv_write_t* req, int status) {
+    if (status < 0) {
+        ZITI_LOG(ERROR,"Could not sent events message. Write error %s\n", uv_err_name(status));
+    } else {
+        ZITI_LOG(INFO,"Events message is sent.");
+    }
+    if (req->data) {
+        free(req->data);
+    }
+    free(req);
+}
+
+static void send_events_message(void *message, size_t datalen) {
+    if (event_conn != NULL) {
+        ZITI_LOG(INFO,"Events Message...%s", message);
+        uv_buf_t buf = uv_buf_init(message, datalen);
+        uv_write_t *wr = calloc(1, sizeof(uv_write_t));
+        wr->data = buf.base;
+        int err = uv_write(wr, event_conn, &buf, 1, on_write_event);
+        if (err < 0){
+            ZITI_LOG(ERROR,"Events client write operation failed, received error - %s", uv_err_name(err));
+            if (err == UV_EPIPE) {
+                if (current_events_channels > 0) {
+                    ZITI_LOG(WARN,"Events client closed connection");
+                    --current_events_channels;
+                    uv_close((uv_handle_t *) event_conn, (uv_close_cb) free);
+                    event_conn = NULL;
+                    //remove from event conn list
+                }
+            }
+        }
+    }
+}
+
+static int start_event_socket(uv_loop_t *l) {
+
+    if (uv_is_active((const uv_handle_t *) &event_server)) {
+        return 0;
+    }
+
+    uv_fs_t fs;
+    uv_fs_unlink(l, &fs, eventsockfile, NULL);
+
+#define CHECK_UV(op) do{ \
+    int uv_rc = (op);    \
+    if (uv_rc != 0) {    \
+       ZITI_LOG(WARN, "failed to open event socket op=[%s] err=%d[%s]", #op, uv_rc, uv_strerror(uv_rc));\
+       goto uv_err; \
+    }                    \
+    } while(0)
+
+
+    CHECK_UV(uv_pipe_init(l, &event_server, 0));
+    CHECK_UV(uv_pipe_bind(&event_server, eventsockfile));
+    CHECK_UV(uv_pipe_chmod(&event_server, UV_WRITABLE | UV_READABLE));
+
+    uv_unref((uv_handle_t *) &event_server);
+
+    CHECK_UV(uv_listen((uv_stream_t *) &event_server, 0, on_events_client));
+
+    return 0;
+
+    uv_err:
+    return -1;
+}
+
 static void load_identities(uv_work_t *wr) {
     if (config_dir != NULL) {
         uv_fs_t fs;
@@ -198,16 +302,45 @@ static void on_event(const base_event *ev) {
         case TunnelEvent_ContextEvent: {
             const ziti_ctx_event *zev = (ziti_ctx_event *) ev;
             ZITI_LOG(INFO, "ztx[%s] status is %s", ev->identifier, zev->status);
+
+            identity_event id_event = {
+                    .Op = "identity",
+                    .Action = strdup(event_name(event_added)),
+                    .Identifier = ev->identifier
+            };
+
+            tunnel_identity *tnl_identity = NULL;
+            if (zev->code == ZITI_OK) {
+                if (zev->identity) {
+                    id_event.Id = get_tunnel_identity(zev->identity);
+                }
+            }
+
+            size_t json_len;
+            char *json = identity_event_to_json(&id_event, MODEL_JSON_COMPACT, &json_len);
+            send_events_message(json, json_len);
             break;
         }
 
-        case TunnelEvent_ServiceEvent:
-            // TODO
+        case TunnelEvent_ServiceEvent: {
+            const service_event *svc_ev = (service_event *) ev;
+            ZITI_LOG(INFO, "ztx[%s] service event", ev->identifier);
+            services_event svc_event = {
+                    .Op = "Service",
+                    .Action = strdup(event_name(event_updated)),
+                    .Id = strdup(ev->identifier)
+            };
+
+            size_t json_len;
+            char *json = services_event_to_json(&svc_event, MODEL_JSON_COMPACT, &json_len);
+            send_events_message(json, json_len);
             break;
+        }
 
         case TunnelEvent_MFAEvent: {
             const mfa_event *mfa_ev = (mfa_event *) ev;
             ZITI_LOG(INFO, "ztx[%s] is requesting MFA code[%s]", ev->identifier, mfa_ev->provider);
+
             break;
         }
 
@@ -255,6 +388,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, const char *ip_rang
     uv_queue_work(ziti_loop, loader, load_identities, load_identities_complete);
 
     start_cmd_socket(ziti_loop);
+    start_event_socket(ziti_loop);
 
     if (uv_run(ziti_loop, UV_RUN_DEFAULT) != 0) {
         ZITI_LOG(ERROR, "failed to run event loop");
@@ -262,6 +396,8 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, const char *ip_rang
     }
 
     free(tunneler);
+    uv_close((uv_handle_t *) &cmd_server, (uv_close_cb) free);
+    uv_close((uv_handle_t *) &event_server, (uv_close_cb) free);
     return 0;
 }
 
@@ -1035,3 +1171,10 @@ int main(int argc, char *argv[]) {
     commandline_run(&main_cmd, argc, argv);
     return 0;
 }
+
+// ******* TUNNEL EVENT BROADCAST MESSAGES
+IMPL_MODEL(status_event, STATUS_EVENT)
+IMPL_MODEL(action_event, ACTION_EVENT)
+IMPL_MODEL(identity_event, IDENTITY_EVENT)
+IMPL_MODEL(services_event, SERVICES_EVENT)
+IMPL_MODEL(tunnel_status_event, TUNNEL_STATUS_EVENT)
