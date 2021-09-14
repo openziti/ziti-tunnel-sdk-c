@@ -19,14 +19,13 @@
 #ifndef MAXPATHLEN
 #define MAXPATHLEN _MAX_PATH
 #endif
-#ifndef MAXMESSAGELEN
-#define MAXMESSAGELEN 4096
-#endif
 
 #define setenv(n,v,o) do {if(o || getenv(n) == NULL) _putenv_s(n,v); } while(0)
 #endif
 
-
+#ifndef MAXMESSAGELEN
+#define MAXMESSAGELEN 4096
+#endif
 
 extern dns_manager *get_dnsmasq_manager(const char* path);
 
