@@ -27,7 +27,10 @@ int ziti_dns_setup(tunneler_context tnlr, const char *dns_addr, const char *dns_
 void ziti_dns_set_fallback(struct uv_loop_s *l, dns_fallback_cb fb, void *ctx);
 void ziti_dns_set_manager(dns_manager *mgr);
 
-const char* ziti_dns_register_hostname(const char *hostname);
+const char *ziti_dns_register_hostname(const char *hostname, void *intercept);
+const char *ziti_dns_reverse_lookup(const char *ip_addr);
+
+void ziti_dns_deregister_intercept(void *intercept);
 
 struct dns_manager_s {
     int (*apply)(dns_manager *dns, const char *host, const char *ip);
