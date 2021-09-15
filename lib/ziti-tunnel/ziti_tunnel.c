@@ -77,7 +77,6 @@ tunneler_context ziti_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop)
 }
 
 void ziti_tunneler_exclude_route(tunneler_context tnlr_ctx, const char *dst) {
-    address_t *addr = parse_address(dst);
     uv_interface_address_t *if_addrs;
     int err, num_if_addrs;
     if ((err = uv_interface_addresses(&if_addrs, &num_if_addrs)) != 0) {
@@ -85,50 +84,43 @@ void ziti_tunneler_exclude_route(tunneler_context tnlr_ctx, const char *dst) {
         return;
     }
 
-    TNL_LOG(DEBUG, "excluding %s from tunneler intercept", addr->str);
     if (tnlr_ctx->opts.netif_driver->exclude_rt) {
-        if (!addr->is_hostname) {
-            tnlr_ctx->opts.netif_driver->exclude_rt(tnlr_ctx->opts.netif_driver->handle, tnlr_ctx->loop, addr->str);
-            struct excluded_route_s *exrt = calloc(1, sizeof(struct excluded_route_s));
-            strncpy(exrt->route, addr->str, MAX_ROUTE_LEN);
-            LIST_INSERT_HEAD(&tnlr_ctx->excluded_rts, exrt, _next);
-        } else {
-            uv_getaddrinfo_t resolve_req = {0};
-            uv_getaddrinfo(tnlr_ctx->loop, &resolve_req, NULL, addr->str, "80", NULL);
+        TNL_LOG(DEBUG, "excluding %s from tunneler intercept", dst);
 
-            struct addrinfo *addrinfo = resolve_req.addrinfo;
-            while (addrinfo != NULL) {
-                struct excluded_route_s *exrt = calloc(1, sizeof(struct excluded_route_s));
-                uv_ip4_name((const struct sockaddr_in*)addrinfo->ai_addr, exrt->route, MAX_ROUTE_LEN);
-                // make sure the address isn't local
-                for (int i = 0; i < num_if_addrs; i++) {
-                    uv_getnameinfo_t ni_req = {0};
-                    struct sockaddr *a = (struct sockaddr *)&if_addrs[i].address;
-                    if (a->sa_family == AF_INET || a->sa_family == AF_INET6) {
-                        err = uv_getnameinfo(tnlr_ctx->loop, &ni_req, NULL, a, NI_NUMERICHOST);
-                        if (err == 0) {
-                            TNL_LOG(TRACE, "found ifaddr %s", ni_req.host);
-                            if (strcmp(ni_req.host, exrt->route) == 0) {
-                                TNL_LOG(DEBUG, "%s is a local address on %s; not excluding route", exrt->route, if_addrs[i].name);
-                                goto done;
-                            }
-                        } else {
-                            TNL_LOG(WARN, "uv_getnameinfo failed: %s", uv_strerror(err));
+        uv_getaddrinfo_t resolve_req = {0};
+        uv_getaddrinfo(tnlr_ctx->loop, &resolve_req, NULL, dst, "80", NULL);
+
+        struct addrinfo *addrinfo = resolve_req.addrinfo;
+        while (addrinfo != NULL) {
+            struct excluded_route_s *exrt = calloc(1, sizeof(struct excluded_route_s));
+            uv_ip4_name((const struct sockaddr_in*)addrinfo->ai_addr, exrt->route, MAX_ROUTE_LEN);
+            // make sure the address isn't local
+            for (int i = 0; i < num_if_addrs; i++) {
+                uv_getnameinfo_t ni_req = {0};
+                struct sockaddr *a = (struct sockaddr *)&if_addrs[i].address;
+                if (a->sa_family == AF_INET || a->sa_family == AF_INET6) {
+                    err = uv_getnameinfo(tnlr_ctx->loop, &ni_req, NULL, a, NI_NUMERICHOST);
+                    if (err == 0) {
+                        TNL_LOG(TRACE, "found ifaddr %s", ni_req.host);
+                        if (strcmp(ni_req.host, exrt->route) == 0) {
+                            TNL_LOG(DEBUG, "%s is a local address on %s; not excluding route", exrt->route, if_addrs[i].name);
+                            goto done;
                         }
+                    } else {
+                        TNL_LOG(WARN, "uv_getnameinfo failed: %s", uv_strerror(err));
                     }
                 }
-                LIST_INSERT_HEAD(&tnlr_ctx->excluded_rts, exrt, _next);
-                tnlr_ctx->opts.netif_driver->exclude_rt(tnlr_ctx->opts.netif_driver->handle, tnlr_ctx->loop, exrt->route);
-                addrinfo = addrinfo->ai_next;
             }
-            uv_freeaddrinfo(resolve_req.addrinfo);
+            LIST_INSERT_HEAD(&tnlr_ctx->excluded_rts, exrt, _next);
+            tnlr_ctx->opts.netif_driver->exclude_rt(tnlr_ctx->opts.netif_driver->handle, tnlr_ctx->loop, exrt->route);
+            addrinfo = addrinfo->ai_next;
         }
+        uv_freeaddrinfo(resolve_req.addrinfo);
     } else {
         TNL_LOG(WARN, "netif_driver->exclude_rt function is not implemented");
     }
     done:
     uv_free_interface_addresses(if_addrs, num_if_addrs);
-    free(addr);
 }
 
 
@@ -228,10 +220,9 @@ void intercept_ctx_add_protocol(intercept_ctx_t *ctx, const char *protocol) {
     STAILQ_INSERT_TAIL(&ctx->protocols, proto, entries);
 }
 
-address_t *parse_address(const char *hn_or_ip_or_cidr) {
+address_t *parse_address(const char *ip_or_cidr) {
     address_t *addr = calloc(1, sizeof(address_t));
-    strncpy(addr->str, hn_or_ip_or_cidr, sizeof(addr->str));
-    addr->is_hostname = false;
+    strncpy(addr->str, ip_or_cidr, sizeof(addr->str));
     char *prefix_sep = strchr(addr->str, '/');
 
     if (prefix_sep != NULL) {

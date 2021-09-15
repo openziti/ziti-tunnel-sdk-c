@@ -66,9 +66,11 @@ typedef struct protocol_s {
 } protocol_t;
 typedef STAILQ_HEAD(protocol_list_s, protocol_s) protocol_list_t;
 
+// xxx.xxx.xxx.xxx/xx
+#define MAX_IP_OR_CIDR 20
+
 typedef struct address_s {
-    char       str[UV_MAXHOSTNAMESIZE]; // hostname || ip || ip/prefix
-    bool       is_hostname;
+    char       str[MAX_IP_OR_CIDR]; // ip || ip/prefix
     ip_addr_t  ip;
     ip_addr_t  _netmask;
     uint8_t    prefix_len;
@@ -158,7 +160,7 @@ typedef struct tunneler_sdk_options_s {
     ziti_sdk_host_cb    ziti_host;
 } tunneler_sdk_options;
 
-extern address_t *parse_address(const char *hn_or_ip_or_cidr);
+extern address_t *parse_address(const char *ip_or_cidr);
 extern port_range_t *parse_port_range(uint16_t low, uint16_t high);
 
 extern bool protocol_match(const char *protocol, const protocol_list_t *protocols);
