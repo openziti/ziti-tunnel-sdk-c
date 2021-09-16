@@ -32,9 +32,10 @@ XX(Up, string, none, Up, __VA_ARGS__) \
 XX(Down, string, none, Down, __VA_ARGS__)
 
 #define TUNNEL_IDENTITY(XX, ...) \
-XX(Id, string, none, Id, __VA_ARGS__) \
+XX(Name, string, none, Name, __VA_ARGS__) \
 XX(Identifier, string, none, Identifier, __VA_ARGS__) \
 XX(Active, bool, none, Active, __VA_ARGS__) \
+XX(Loaded, bool, none, Loaded, __VA_ARGS__) \
 XX(Config, tunnel_config, none, Config, __VA_ARGS__) \
 XX(ControllerVersion, string, none, ControllerVersion, __VA_ARGS__) \
 XX(Status, string, none, Status, __VA_ARGS__) \
@@ -47,8 +48,8 @@ XX(MfaMinTimeout, int, none, MfaMinTimeout, __VA_ARGS__) \
 XX(MfaMaxTimeout, int, none, MfaMaxTimeout, __VA_ARGS__) \
 XX(MfaMinTimeoutRem, int, none, MfaMinTimeoutRem, __VA_ARGS__) \
 XX(MfaMaxTimeoutRem, int, none, MfaMaxTimeoutRem, __VA_ARGS__) \
-XX(MfaLastUpdatedTime, timestamp, none, MfaLastUpdatedTime, __VA_ARGS__) \
-XX(ServiceUpdatedTime, timestamp, none, ServiceUpdatedTime, __VA_ARGS__) \
+XX(MfaLastUpdatedTime, timestamp, ptr, MfaLastUpdatedTime, __VA_ARGS__) \
+XX(ServiceUpdatedTime, timestamp, ptr, ServiceUpdatedTime, __VA_ARGS__) \
 XX(Deleted, bool, none, Deleted, __VA_ARGS__)
 
 #define TUNNEL_ADDRESS(XX, ...) \

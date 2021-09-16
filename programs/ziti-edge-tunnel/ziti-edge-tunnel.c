@@ -69,7 +69,6 @@ XX(disconnected, __VA_ARGS__)
 DECLARE_ENUM(event, EVENT_ACTIONS)
 IMPL_ENUM(event, EVENT_ACTIONS)
 
-
 #if _WIN32
 static char sockfile[] = "\\\\.\\pipe\\ziti-edge-tunnel.sock";
 static char eventsockfile[] = "\\\\.\\pipe\\ziti-edge-tunnel-event.sock";
@@ -195,7 +194,7 @@ void on_write_event(uv_write_t* req, int status) {
     if (status < 0) {
         ZITI_LOG(ERROR,"Could not sent events message. Write error %s\n", uv_err_name(status));
     } else {
-        ZITI_LOG(INFO,"Events message is sent.");
+        ZITI_LOG(DEBUG,"Events message is sent.");
     }
     if (req->data) {
         free(req->data);
@@ -203,10 +202,10 @@ void on_write_event(uv_write_t* req, int status) {
     free(req);
 }
 
-static void send_events_message(void *message, size_t datalen) {
+static void send_events_message(void *message, size_t data_len) {
+    ZITI_LOG(INFO,"Events Message...%s", message);
     if (event_conn != NULL) {
-        ZITI_LOG(INFO,"Events Message...%s", message);
-        uv_buf_t buf = uv_buf_init(message, datalen);
+        uv_buf_t buf = uv_buf_init(message, data_len);
         uv_write_t *wr = calloc(1, sizeof(uv_write_t));
         wr->data = buf.base;
         int err = uv_write(wr, event_conn, &buf, 1, on_write_event);
@@ -306,22 +305,27 @@ static void on_event(const base_event *ev) {
             const ziti_ctx_event *zev = (ziti_ctx_event *) ev;
             ZITI_LOG(INFO, "ztx[%s] status is %s", ev->identifier, zev->status);
 
-            identity_event id_event = {
-                    .Op = "identity",
-                    .Action = strdup(event_name(event_added)),
-                    .Identifier = ev->identifier
-            };
+            identity_event id_event = {0};
+            id_event.Op = strdup("identity");
+            id_event.Action = strdup(event_name(event_added));
+            id_event.Id = get_tunnel_identity(ev->identifier);
 
-            tunnel_identity *tnl_identity = NULL;
             if (zev->code == ZITI_OK) {
-                if (zev->identity) {
-                    id_event.Id = get_tunnel_identity(zev->identity);
+                id_event.Id->Loaded = true;
+                if (zev->name) {
+                    id_event.Id->Name = strdup(zev->name);
+                    id_event.Id->ControllerVersion = strdup(zev->version);
+                    id_event.Id->Config.ZtAPI = strdup(zev->controller);
                 }
+                ZITI_LOG(DEBUG, "ztx[%s] controller connected", ev->identifier);
             }
 
             size_t json_len;
             char *json = identity_event_to_json(&id_event, MODEL_JSON_COMPACT, &json_len);
             send_events_message(json, json_len);
+            id_event.Id = NULL;
+            free_identity_event(&id_event);
+
             break;
         }
 
@@ -329,21 +333,88 @@ static void on_event(const base_event *ev) {
             const service_event *svc_ev = (service_event *) ev;
             ZITI_LOG(INFO, "ztx[%s] service event", ev->identifier);
             services_event svc_event = {
-                    .Op = "Service",
-                    .Action = strdup(event_name(event_updated)),
-                    .Id = strdup(ev->identifier)
+                .Op = strdup("bulkservice"),
+                .Action = strdup(event_name(event_updated)),
+                .Identifier = strdup(ev->identifier),
             };
+
+            tunnel_identity *id = get_tunnel_identity(ev->identifier);
+            ziti_service **zs;
+            int idx = 0;
+            if (svc_ev->removed_services != NULL) {
+                svc_event.RemovedServices = calloc(sizeof(svc_ev->added_services) + 1, sizeof(tunnel_service *));
+                for (zs = svc_ev->removed_services; *zs != NULL; zs++) {
+                    tunnel_service *svc = get_tunnel_service(id, *zs);
+                    svc_event.RemovedServices[idx++] = svc;
+                }
+            }
+
+            idx = 0;
+            if (svc_ev->added_services != NULL) {
+                svc_event.AddedServices = calloc(sizeof(svc_ev->added_services) + 1, sizeof(tunnel_service *));
+                for (zs = svc_ev->added_services; *zs != NULL; zs++) {
+                    tunnel_service *svc = get_tunnel_service(id, *zs);
+                    svc_event.AddedServices[idx++] = svc;
+                }
+            }
+
+            if (svc_ev->removed_services != NULL || svc_ev->added_services != NULL) {
+                add_or_remove_services_from_tunnel(id, svc_event.AddedServices, svc_event.RemovedServices);
+            }
 
             size_t json_len;
             char *json = services_event_to_json(&svc_event, MODEL_JSON_COMPACT, &json_len);
             send_events_message(json, json_len);
+            if (svc_event.AddedServices != NULL) {
+                svc_event.AddedServices = NULL;
+            }
+            free_services_event(&svc_event);
+
             break;
         }
 
         case TunnelEvent_MFAEvent: {
             const mfa_event *mfa_ev = (mfa_event *) ev;
-            ZITI_LOG(INFO, "ztx[%s] is requesting MFA code[%s]", ev->identifier, mfa_ev->provider);
+            ZITI_LOG(INFO, "ztx[%s] is requesting MFA code", ev->identifier);
+            set_mfa_status(ev->identifier, true, true);
+            identity_event id_event = {
+                    .Op = strdup("identity"),
+                    .Action = strdup(event_name(event_added)),
+                    .Id = get_tunnel_identity(ev->identifier),
+            };
 
+            size_t json_len;
+            char *json = identity_event_to_json(&id_event, MODEL_JSON_COMPACT, &json_len);
+            send_events_message(json, json_len);
+            id_event.Id = NULL;
+            free_identity_event(&id_event);
+            break;
+        }
+
+        case TunnelEvent_MFAStatusEvent:{
+            const mfa_event *mfa_ev = (mfa_event *) ev;
+            ZITI_LOG(INFO, "ztx[%s] MFA Status code : %d", ev->identifier, mfa_ev->code);
+
+            mfa_status_event mfa_sts_event = {
+                .Op = strdup("mfa"),
+                .Action = strdup(mfa_ev->operation),
+                .Identifier = strdup(mfa_ev->identifier)
+            };
+
+            if (mfa_ev->code == ZITI_OK) {
+                // check for auth success
+                set_mfa_status(ev->identifier, true, false);
+                update_mfa_time(ev->identifier);
+                mfa_sts_event.Successful = true;
+            } else {
+                mfa_sts_event.Successful = false;
+                mfa_sts_event.Error = strdup(mfa_ev->status);
+            }
+
+            size_t json_len;
+            char *json = mfa_status_event_to_json(&mfa_sts_event, MODEL_JSON_COMPACT, &json_len);
+            send_events_message(json, json_len);
+            free_mfa_status_event(&mfa_sts_event);
             break;
         }
 
@@ -1178,3 +1249,4 @@ IMPL_MODEL(action_event, ACTION_EVENT)
 IMPL_MODEL(identity_event, IDENTITY_EVENT)
 IMPL_MODEL(services_event, SERVICES_EVENT)
 IMPL_MODEL(tunnel_status_event, TUNNEL_STATUS_EVENT)
+IMPL_MODEL(mfa_status_event, MFA_STATUS_EVENT)

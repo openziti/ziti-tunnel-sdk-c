@@ -54,7 +54,10 @@ static void remove_mfa(ziti_context ztx, char *code, void *ctx);
 static void submit_mfa(ziti_context ztx, const char *code, void *ctx);
 static void generate_mfa_codes(ziti_context ztx, char *code, void *ctx);
 static void get_mfa_codes(ziti_context ztx, char *code, void *ctx);
+static void tunnel_status_event(TunnelEvent event, int status, char* operation, void *ctx);
 static ziti_context get_ziti(const char *identifier);
+
+static char* MFAAuthenticationAction = "mfa_auth_status";
 
 struct tunnel_cb_s {
     void *ctx;
@@ -455,37 +458,10 @@ static struct ziti_instance_s *new_ziti_instance(const char *identifier, const c
     return inst;
 }
 
-static void displayTimeout(ziti_service *service) {
-    int minTimeoutRemaining = -1;
-    int minTimeout = -1;
-
-    ziti_posture_query_set *pq_set;
-    const char *id;
-    MODEL_MAP_FOREACH(id, pq_set, &service->posture_query_map) {
-        int posture_query_idx;
-        for(posture_query_idx = 0; pq_set->posture_queries[posture_query_idx]; posture_query_idx++){
-
-            int timeoutRemaining = *(pq_set->posture_queries[posture_query_idx]->timeoutRemaining);
-            if ((minTimeoutRemaining == -1) || (timeoutRemaining < minTimeoutRemaining)) {
-                minTimeoutRemaining = timeoutRemaining;
-            }
-
-            int timeout = pq_set->posture_queries[posture_query_idx]->timeout;
-            if ((minTimeout == -1) || (timeout < minTimeout)) {
-                minTimeout = timeout;
-            }
-        }
-    }
-    ZITI_LOG(DEBUG, "service[%s] timeout=%d timeoutRemaining=%d", service->name, minTimeout, minTimeoutRemaining);
-}
-
 /** callback from ziti SDK when a new service becomes available to our identity */
 static void on_service(ziti_context ziti_ctx, ziti_service *service, int status, void *tnlr_ctx) {
     ZITI_LOG(DEBUG, "service[%s]", service->name);
     tunneled_service_t *ts = ziti_sdk_c_on_service(ziti_ctx, service, status, tnlr_ctx);
-    if (status == ZITI_OK){
-        displayTimeout(service);
-    }
     if (ts->intercept != NULL) {
         ZITI_LOG(INFO, "starting intercepting for service[%s]", service->name);
         protocol_t *proto;
@@ -524,7 +500,9 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
             ev.identifier = instance->identifier;
             ev.code = event->event.ctx.ctrl_status;
             if (event->event.ctx.ctrl_status == ZITI_OK) {
-                ev.identity = ziti_get_identity(ztx);
+                ev.name = ziti_get_identity(ztx)->name;
+                ev.version = ziti_get_controller_version(ztx)->version;
+                ev.controller = instance->opts.controller;
                 ZITI_LOG(INFO, "ziti_ctx[%s] connected to controller", ziti_get_identity(ztx)->name);
                 ev.status = "OK";
                 const char *ctrl = ziti_get_controller(ztx);
@@ -547,17 +525,29 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
 
         case ZitiServiceEvent: {
             ziti_service **zs;
+            service_event ev = {0};
+            if (*event->event.service.removed != NULL) {
+                ev.removed_services = event->event.service.removed;
+            }
             for (zs = event->event.service.removed; *zs != NULL; zs++) {
                 on_service(ztx, *zs, ZITI_SERVICE_UNAVAILABLE, CMD_CTX.tunnel_ctx);
             }
+
+            if (*event->event.service.added != NULL) {
+                ev.added_services = event->event.service.added;
+            }
             for (zs = event->event.service.added; *zs != NULL; zs++) {
                 on_service(ztx, *zs, ZITI_OK, CMD_CTX.tunnel_ctx);
+            }
+
+            if (*event->event.service.changed != NULL) {
+                ev.added_services = event->event.service.changed;
+                ev.removed_services = event->event.service.changed;
             }
             for (zs = event->event.service.changed; *zs != NULL; zs++) {
                 on_service(ztx, *zs, ZITI_OK, CMD_CTX.tunnel_ctx);
             }
 
-            ziti_ctx_event ev = {0};
             ev.event_type = TunnelEvents.ServiceEvent;
             ev.identifier = instance->identifier;
             CMD_CTX.on_event((const base_event *) &ev);
@@ -591,7 +581,7 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
         case ZitiMfaAuthEvent : {
             const char *ctx_name = ziti_get_identity(ztx)->name;
             ZITI_LOG(INFO, "ztx[%s] Mfa event received", ctx_name);
-            ziti_ctx_event ev = {0};
+            mfa_event ev = {0};
             ev.event_type = TunnelEvents.MFAEvent;
             ev.identifier = instance->identifier;
             CMD_CTX.on_event((const base_event *) &ev);
@@ -672,15 +662,16 @@ static void on_submit_mfa(ziti_context ztx, int status, void *ctx) {
         req->cmd_cb(&result, req->cmd_ctx);
     }
 
+    struct ziti_instance_s *inst = ziti_app_ctx(ztx);
+    tunnel_status_event(TunnelEvent_MFAStatusEvent, status, MFAAuthenticationAction, inst);
+
     if (status == ZITI_OK) {
-        struct ziti_instance_s *inst = ziti_app_ctx(ztx);
         inst->mfa_req = NULL;
     }
     free(req);
 }
 
 static void submit_mfa(ziti_context ztx, const char *code, void *ctx) {
-    //req->submit_f(req->ztx, req->submit_ctx, (char*)code, on_submit_mfa, req);
     ziti_mfa_auth(ztx, code, on_submit_mfa, ctx);
 }
 
@@ -789,6 +780,31 @@ ZITI_LOG(ERROR, "operation[" #op "] failed: %d(%s) errno=%d", rc, strerror(rc), 
 goto lbl;\
 }                           \
 }while(0)
+
+static void tunnel_status_event(TunnelEvent event, int status, char* operation, void *ctx) {
+
+    switch(event) {
+        case TunnelEvent_MFAStatusEvent:{
+            mfa_event ev = {0};
+            ev.event_type = TunnelEvents.MFAStatusEvent;
+            struct ziti_instance_s *inst = ctx;
+            ev.identifier = inst->identifier;
+            ev.code = status;
+            ev.operation = operation;
+            if (status != ZITI_OK) {
+                ev.status = (char*)ziti_errorstr(status);
+            }
+            CMD_CTX.on_event((const base_event *) &ev);
+            break;
+        }
+
+        case TunnelEvent_Unknown:
+        default:
+            ZITI_LOG(WARN, "unhandled event received: %d", event);
+            break;
+    }
+
+}
 
 static void on_sigdump(uv_signal_t *sig, int signum) {
 #ifndef MAXPATHLEN

@@ -117,7 +117,8 @@ DECLARE_MODEL(tunnel_get_mfa_codes, TNL_GET_MFA_CODES)
 #define TUNNEL_EVENTS(XX, ...) \
 XX(ContextEvent, __VA_ARGS__) \
 XX(ServiceEvent, __VA_ARGS__)  \
-XX(MFAEvent, __VA_ARGS__)
+XX(MFAEvent, __VA_ARGS__)      \
+XX(MFAStatusEvent, __VA_ARGS__)
 
 DECLARE_ENUM(TunnelEvent, TUNNEL_EVENTS)
 
@@ -128,16 +129,25 @@ XX(event_type, TunnelEvent, none, type, __VA_ARGS__)
 #define ZTX_EVENT_MODEL(XX, ...)  \
 BASE_EVENT_MODEL(XX, __VA_ARGS__) \
 XX(status, string, none, status, __VA_ARGS__) \
-XX(identity, ziti_identity, ptr, identity, __VA_ARGS__) \
+XX(name, string, none, name, __VA_ARGS__) \
+XX(version, string, none, version, __VA_ARGS__) \
+XX(controller, string, none, controller, __VA_ARGS__) \
 XX(code, int, none, code, __VA_ARGS__)
 
 #define ZTX_SVC_EVENT_MODEL(XX, ...)  \
 BASE_EVENT_MODEL(XX, __VA_ARGS__)            \
-XX(status, string, none, status, __VA_ARGS__)
+XX(status, string, none, status, __VA_ARGS__) \
+XX(added_services, ziti_service, array, added_services, __VA_ARGS__) \
+XX(removed_services, ziti_service, array, added_services, __VA_ARGS__)
 
 #define MFA_EVENT_MODEL(XX, ...)  \
 BASE_EVENT_MODEL(XX, __VA_ARGS__)               \
-XX(provider, string, none, provider, __VA_ARGS__)
+XX(provider, string, none, provider, __VA_ARGS__) \
+XX(status, string, none, status, __VA_ARGS__)   \
+XX(operation, string, none, operation, __VA_ARGS__) \
+XX(provisioning_url, string, none, provisioning_url, __VA_ARGS__) \
+XX(recovery_codes, string, none, recovery_codes, __VA_ARGS__) \
+XX(code, int, none, code, __VA_ARGS__)
 
 DECLARE_MODEL(base_event, BASE_EVENT_MODEL)
 DECLARE_MODEL(ziti_ctx_event, ZTX_EVENT_MODEL)

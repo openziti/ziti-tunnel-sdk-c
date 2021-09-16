@@ -28,29 +28,35 @@ extern "C" {
 XX(Op, string, none, Op, __VA_ARGS__)
 
 #define ACTION_EVENT(XX, ...) \
-XX(Action, string, none, Action, __VA_ARGS__)
+STATUS_EVENT(XX, __VA_ARGS__) \
+XX(Action, string, none, Action, __VA_ARGS__) \
+XX(Identifier, string, none, Identifier, __VA_ARGS__)
 
 #define TUNNEL_STATUS_EVENT(XX, ...) \
 XX(active, bool, none, active, __VA_ARGS__)
 
 #define IDENTITY_EVENT(XX, ...) \
-XX(Op, string, none, Op, __VA_ARGS__) \
-XX(Action, string, none, Action, __VA_ARGS__) \
-XX(Identifier, string, none, Identifier, __VA_ARGS__)   \
-XX(Id, tunnel_identity, none, Id, __VA_ARGS__)
+ACTION_EVENT(XX, __VA_ARGS__) \
+XX(Id, tunnel_identity, ptr, Id, __VA_ARGS__)
 
 #define SERVICES_EVENT(XX, ...) \
-XX(Op, string, none, Op, __VA_ARGS__) \
-XX(Action, string, none, Action, __VA_ARGS__) \
-XX(Identifier, string, none, Identifier, __VA_ARGS__)   \
-XX(Id, string, none, Id, __VA_ARGS__)   \
-XX(services, tunnel_service, array, services, __VA_ARGS__)
+ACTION_EVENT(XX, __VA_ARGS__) \
+XX(AddedServices, tunnel_service, array, AddedServices, __VA_ARGS__) \
+XX(RemovedServices, tunnel_service, array, RemovedServices, __VA_ARGS__)
+
+#define MFA_STATUS_EVENT(XX, ...) \
+ACTION_EVENT(XX, __VA_ARGS__) \
+XX(Successful, bool, none, Successful, __VA_ARGS__) \
+XX(Error, string, none, Error, __VA_ARGS__) \
+XX(ProvisioningUrl, string, none, ProvisioningUrl, __VA_ARGS__) \
+XX(RecoveryCodes, string, none, RecoveryCodes, __VA_ARGS__)
 
 DECLARE_MODEL(status_event, STATUS_EVENT)
 DECLARE_MODEL(action_event, ACTION_EVENT)
 DECLARE_MODEL(tunnel_status_event, TUNNEL_STATUS_EVENT)
 DECLARE_MODEL(identity_event, IDENTITY_EVENT)
 DECLARE_MODEL(services_event, SERVICES_EVENT)
+DECLARE_MODEL(mfa_status_event, MFA_STATUS_EVENT)
 
 #ifdef __cplusplus
 }
