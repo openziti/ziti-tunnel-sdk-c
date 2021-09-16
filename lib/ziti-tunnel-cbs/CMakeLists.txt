@@ -5,7 +5,7 @@ target_compile_definitions(ziti-tunnel-sdk-c
         PRIVATE ZITI_LOG_PREFIX=${PROJECT_NAME}
         )
 
-add_library(ziti-tunnel-cbs-c STATIC ziti_tunnel_cbs.c ziti_hosting.c ziti_tunnel_ctrl.c ziti_instance.h)
+add_library(ziti-tunnel-cbs-c STATIC ziti_tunnel_cbs.c ziti_hosting.c ziti_tunnel_ctrl.c ziti_instance.h ziti_dns.c)
 
 target_include_directories(ziti-tunnel-cbs-c
         PUBLIC include

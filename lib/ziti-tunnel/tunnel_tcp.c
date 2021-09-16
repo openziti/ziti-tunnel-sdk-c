@@ -121,17 +121,16 @@ static err_t on_tcp_client_data(void *io_ctx, struct tcp_pcb *pcb, struct pbuf *
     if (err == ERR_OK && p == NULL) {
         TNL_LOG(DEBUG, "client sent FIN: client=%s, service=%s", io->tnlr_io->client, io->tnlr_io->service_name);
         LOG_STATE(DEBUG, "FIN received", pcb);
-        io->tnlr_io->tnlr_ctx->opts.ziti_close_write(io->ziti_io);
+        io->close_write_fn(io->ziti_io);
         return err;
     }
 
-    ziti_sdk_write_cb zwrite = io->tnlr_io->tnlr_ctx->opts.ziti_write;
     u16_t len = p->len;
     struct write_ctx_s *wr_ctx = calloc(1, sizeof(struct write_ctx_s));
     wr_ctx->pbuf = p;
     wr_ctx->tcp = pcb;
     wr_ctx->ack = tunneler_tcp_ack;
-    ssize_t s = zwrite(io->ziti_io, wr_ctx, p->payload, len);
+    ssize_t s = io->write_fn(io->ziti_io, wr_ctx, p->payload, len);
     if (s < 0) {
         TNL_LOG(ERR, "ziti_write failed: service=%s, client=%s, ret=%ld", io->tnlr_io->service_name, io->tnlr_io->client, s);
         return ERR_ABRT;
@@ -155,7 +154,7 @@ static void on_tcp_client_err(void *io_ctx, err_t err) {
         TNL_LOG(ERR, "client=%s err=%d, terminating connection", client, err);
         // null our pcb so tunneler_tcp_close doesn't try to close it.
         io->tnlr_io->tcp = NULL;
-        io->tnlr_io->tnlr_ctx->opts.ziti_close(io->ziti_io);
+        io->close_fn(io->ziti_io);
     }
 }
 
@@ -343,7 +342,7 @@ u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     }
 
     /* we know this is a SYN segment for an intercepted address, and we will process it */
-    ziti_sdk_dial_cb zdial = tnlr_ctx->opts.ziti_dial;
+    ziti_sdk_dial_cb zdial = intercept_ctx->dial_fn ? intercept_ctx->dial_fn : tnlr_ctx->opts.ziti_dial;
     pbuf_remove_header(p, iphdr_hlen);
     struct tcp_pcb *npcb = new_tcp_pcb(src, dst, tcphdr, p);
     if (npcb == NULL) {
@@ -362,6 +361,9 @@ u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
         goto done;
     }
     io->ziti_ctx = intercept_ctx->app_intercept_ctx;
+    io->write_fn = intercept_ctx->write_fn ? intercept_ctx->write_fn : tnlr_ctx->opts.ziti_write;
+    io->close_write_fn = intercept_ctx->close_write_fn ? intercept_ctx->close_write_fn : tnlr_ctx->opts.ziti_close_write;
+    io->close_fn = intercept_ctx->close_fn ? intercept_ctx->close_fn : tnlr_ctx->opts.ziti_close;
 
     snprintf(io->tnlr_io->intercepted, sizeof(io->tnlr_io->intercepted), "tcp:%s:%d", ipaddr_ntoa(&dst), dst_p);
     TNL_LOG(INFO, "intercepted address[%s] client[%s] service[%s]", io->tnlr_io->intercepted, io->tnlr_io->client,

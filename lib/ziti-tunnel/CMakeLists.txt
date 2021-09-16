@@ -1,7 +1,7 @@
 
 add_library(ziti-tunnel-sdk-c STATIC
-        ziti_tunnel.c tunnel_tcp.c tunnel_udp.c intercept.c route.c internal_dns_manager.c
-        lwip/netif_shim.c lwip/lwiphooks_ip6.c lwip/lwiphooks_ip4.c lwip/lwip_cloned_fns.c dns.c tunnel_log.c)
+        ziti_tunnel.c tunnel_tcp.c tunnel_udp.c intercept.c route.c
+        lwip/netif_shim.c lwip/lwiphooks_ip6.c lwip/lwiphooks_ip4.c lwip/lwip_cloned_fns.c tunnel_log.c)
 
 set_property(TARGET ziti-tunnel-sdk-c PROPERTY C_STANDARD 11)
 

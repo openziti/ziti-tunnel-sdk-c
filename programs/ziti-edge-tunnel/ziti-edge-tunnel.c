@@ -7,6 +7,7 @@
 #include "ziti/ziti_tunnel.h"
 #include "ziti/ziti_tunnel_cbs.h"
 #include <ziti/ziti_log.h>
+#include <ziti/ziti_dns.h>
 #include "model/events.h"
 #include "instance.h"
 
@@ -26,6 +27,8 @@
 
 
 extern dns_manager *get_dnsmasq_manager(const char* path);
+
+static int dns_fallback(const char *name, void *ctx, struct in_addr* addr);
 
 static void send_message_to_tunnel();
 static void send_events_message(void *message, size_t datalen);
@@ -351,15 +354,15 @@ static void on_event(const base_event *ev) {
     }
 }
 
-static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, const char *ip_range, dns_manager *dns) {
+static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, const char *ip_range, dns_manager *dns) {
     netif_driver tun;
     char tun_error[64];
 #if __APPLE__ && __MACH__
     tun = utun_open(tun_error, sizeof(tun_error), ip_range);
 #elif __linux__
-    tun = tun_open(ziti_loop, tun_ip, dns->dns_ip, ip_range, tun_error, sizeof(tun_error));
+    tun = tun_open(ziti_loop, tun_ip, dns_ip, ip_range, tun_error, sizeof(tun_error));
 #elif _WIN32
-    tun = tun_open(ziti_loop, tun_ip, dns->dns_ip, ip_range, tun_error, sizeof(tun_error));
+    tun = tun_open(ziti_loop, tun_ip, dns_ip, ip_range, tun_error, sizeof(tun_error));
 #else
 #error "ziti-edge-tunnel is not supported on this system"
 #endif
@@ -380,7 +383,9 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, const char *ip_rang
     };
 
     tunneler_context tunneler = ziti_tunneler_init(&tunneler_opts, ziti_loop);
-    ziti_tunneler_set_dns(tunneler, dns);
+
+    ziti_dns_setup(tunneler, ip4addr_ntoa(&dns_ip), ip_range);
+    ziti_dns_set_fallback(ziti_loop, dns_fallback, NULL);
 
     CMD_CTRL = ziti_tunnel_init_cmd(ziti_loop, tunneler, on_event);
 
@@ -522,24 +527,19 @@ static void run(int argc, char *argv[]) {
     }
 
     dns_manager *dns = NULL;
-    if (dns_impl == NULL || strcmp(dns_impl, "internal") == 0) {
-        ZITI_LOG(INFO, "setting up internal DNS");
-        dns = get_tunneler_dns(ziti_loop, dns_ip, dns_fallback, NULL);
-    } else if (strncmp("dnsmasq", dns_impl, strlen("dnsmasq")) == 0) {
+    if (dns_impl && strncmp("dnsmasq", dns_impl, strlen("dnsmasq")) == 0) {
         char *col = strchr(dns_impl, ':');
         if (col == NULL) {
             ZITI_LOG(ERROR, "DNS dnsmasq option should be `--dns=dnsmasq:<hosts-dir>");
             exit(1);
         }
         dns = get_dnsmasq_manager(col + 1);
-    } else {
+    } else if (dns_impl) {
         ZITI_LOG(ERROR, "DNS setting '%s' is not supported", dns_impl);
         exit(1);
     }
 
-    ziti_tunneler_init_dns(mask, bits);
-
-    rc = run_tunnel(ziti_loop, tun_ip, ip_range, dns);
+    rc = run_tunnel(ziti_loop, tun_ip, dns_ip, ip_range, dns);
     exit(rc);
 }
 
