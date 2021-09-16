@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <ziti/ziti_log.h>
 #include <memory.h>
+#include <ziti/ziti_dns.h>
 #include "ziti/ziti_tunnel_cbs.h"
 #include "ziti_instance.h"
 
@@ -351,7 +352,6 @@ static void on_ziti_write(ziti_connection ziti_conn, ssize_t len, void *ctx) {
     if (len > 0) {
         ziti_tunneler_ack(ctx);
     }
-    free(ctx);
 }
 
 /** called from tunneler SDK when intercepted client sends data */
@@ -399,13 +399,15 @@ ziti_intercept_t *new_ziti_intercept(ziti_context ztx, ziti_service *service, zi
 intercept_ctx_t *new_intercept_ctx(tunneler_context tnlr_ctx, ziti_intercept_t *zi_ctx) {
     intercept_ctx_t *i_ctx = intercept_ctx_new(tnlr_ctx, zi_ctx->service_name, zi_ctx);
     int i;
-
+    const char *ip;
     switch (zi_ctx->cfg_desc->cfgtype) {
         case CLIENT_CFG_V1:
-            intercept_ctx_add_protocol(i_ctx, "udp");
-            intercept_ctx_add_protocol(i_ctx, "tcp");
-            intercept_ctx_add_address(i_ctx, zi_ctx->cfg.client_v1.hostname);
-            intercept_ctx_add_port_range(i_ctx,  zi_ctx->cfg.client_v1.port, zi_ctx->cfg.client_v1.port);
+            if((ip = ziti_dns_register_hostname(zi_ctx->cfg.client_v1.hostname)) != NULL) {
+                intercept_ctx_add_protocol(i_ctx, "udp");
+                intercept_ctx_add_protocol(i_ctx, "tcp");
+                intercept_ctx_add_address(i_ctx, ip);
+                intercept_ctx_add_port_range(i_ctx, zi_ctx->cfg.client_v1.port, zi_ctx->cfg.client_v1.port);
+            }
             break;
         case INTERCEPT_CFG_V1:
         {
@@ -414,7 +416,8 @@ intercept_ctx_t *new_intercept_ctx(tunneler_context tnlr_ctx, ziti_intercept_t *
                 intercept_ctx_add_protocol(i_ctx, config->protocols[i]);
             }
             for (i = 0; config->addresses[i] != NULL; i++) {
-                intercept_ctx_add_address(i_ctx, config->addresses[i]);
+                if ((ip = ziti_dns_register_hostname(config->addresses[i])) != NULL)
+                    intercept_ctx_add_address(i_ctx, ip);
             }
             for (i = 0; config->port_ranges[i] != NULL; i++) {
                 intercept_ctx_add_port_range(i_ctx, config->port_ranges[i]->low, config->port_ranges[i]->high);

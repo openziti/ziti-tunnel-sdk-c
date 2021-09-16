@@ -77,7 +77,6 @@ tunneler_context ziti_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop)
 }
 
 void ziti_tunneler_exclude_route(tunneler_context tnlr_ctx, const char *dst) {
-    address_t *addr = parse_address(dst, NULL);
     uv_interface_address_t *if_addrs;
     int err, num_if_addrs;
     if ((err = uv_interface_addresses(&if_addrs, &num_if_addrs)) != 0) {
@@ -85,50 +84,43 @@ void ziti_tunneler_exclude_route(tunneler_context tnlr_ctx, const char *dst) {
         return;
     }
 
-    TNL_LOG(DEBUG, "excluding %s from tunneler intercept", addr->str);
     if (tnlr_ctx->opts.netif_driver->exclude_rt) {
-        if (!addr->is_hostname) {
-            tnlr_ctx->opts.netif_driver->exclude_rt(tnlr_ctx->opts.netif_driver->handle, tnlr_ctx->loop, addr->str);
-            struct excluded_route_s *exrt = calloc(1, sizeof(struct excluded_route_s));
-            strncpy(exrt->route, addr->str, MAX_ROUTE_LEN);
-            LIST_INSERT_HEAD(&tnlr_ctx->excluded_rts, exrt, _next);
-        } else {
-            uv_getaddrinfo_t resolve_req = {0};
-            uv_getaddrinfo(tnlr_ctx->loop, &resolve_req, NULL, addr->str, "80", NULL);
+        TNL_LOG(DEBUG, "excluding %s from tunneler intercept", dst);
 
-            struct addrinfo *addrinfo = resolve_req.addrinfo;
-            while (addrinfo != NULL) {
-                struct excluded_route_s *exrt = calloc(1, sizeof(struct excluded_route_s));
-                uv_ip4_name((const struct sockaddr_in*)addrinfo->ai_addr, exrt->route, MAX_ROUTE_LEN);
-                // make sure the address isn't local
-                for (int i = 0; i < num_if_addrs; i++) {
-                    uv_getnameinfo_t ni_req = {0};
-                    struct sockaddr *a = (struct sockaddr *)&if_addrs[i].address;
-                    if (a->sa_family == AF_INET || a->sa_family == AF_INET6) {
-                        err = uv_getnameinfo(tnlr_ctx->loop, &ni_req, NULL, a, NI_NUMERICHOST);
-                        if (err == 0) {
-                            TNL_LOG(TRACE, "found ifaddr %s", ni_req.host);
-                            if (strcmp(ni_req.host, exrt->route) == 0) {
-                                TNL_LOG(DEBUG, "%s is a local address on %s; not excluding route", exrt->route, if_addrs[i].name);
-                                goto done;
-                            }
-                        } else {
-                            TNL_LOG(WARN, "uv_getnameinfo failed: %s", uv_strerror(err));
+        uv_getaddrinfo_t resolve_req = {0};
+        uv_getaddrinfo(tnlr_ctx->loop, &resolve_req, NULL, dst, "80", NULL);
+
+        struct addrinfo *addrinfo = resolve_req.addrinfo;
+        while (addrinfo != NULL) {
+            struct excluded_route_s *exrt = calloc(1, sizeof(struct excluded_route_s));
+            uv_ip4_name((const struct sockaddr_in*)addrinfo->ai_addr, exrt->route, MAX_ROUTE_LEN);
+            // make sure the address isn't local
+            for (int i = 0; i < num_if_addrs; i++) {
+                uv_getnameinfo_t ni_req = {0};
+                struct sockaddr *a = (struct sockaddr *)&if_addrs[i].address;
+                if (a->sa_family == AF_INET || a->sa_family == AF_INET6) {
+                    err = uv_getnameinfo(tnlr_ctx->loop, &ni_req, NULL, a, NI_NUMERICHOST);
+                    if (err == 0) {
+                        TNL_LOG(TRACE, "found ifaddr %s", ni_req.host);
+                        if (strcmp(ni_req.host, exrt->route) == 0) {
+                            TNL_LOG(DEBUG, "%s is a local address on %s; not excluding route", exrt->route, if_addrs[i].name);
+                            goto done;
                         }
+                    } else {
+                        TNL_LOG(WARN, "uv_getnameinfo failed: %s", uv_strerror(err));
                     }
                 }
-                LIST_INSERT_HEAD(&tnlr_ctx->excluded_rts, exrt, _next);
-                tnlr_ctx->opts.netif_driver->exclude_rt(tnlr_ctx->opts.netif_driver->handle, tnlr_ctx->loop, exrt->route);
-                addrinfo = addrinfo->ai_next;
             }
-            uv_freeaddrinfo(resolve_req.addrinfo);
+            LIST_INSERT_HEAD(&tnlr_ctx->excluded_rts, exrt, _next);
+            tnlr_ctx->opts.netif_driver->exclude_rt(tnlr_ctx->opts.netif_driver->handle, tnlr_ctx->loop, exrt->route);
+            addrinfo = addrinfo->ai_next;
         }
+        uv_freeaddrinfo(resolve_req.addrinfo);
     } else {
         TNL_LOG(WARN, "netif_driver->exclude_rt function is not implemented");
     }
     done:
     uv_free_interface_addresses(if_addrs, num_if_addrs);
-    free(addr);
 }
 
 
@@ -147,6 +139,7 @@ void ziti_tunneler_shutdown(tunneler_context tnlr_ctx) {
 /** called by tunneler application when data has been successfully written to ziti */
 void ziti_tunneler_ack(struct write_ctx_s *write_ctx) {
     write_ctx->ack(write_ctx);
+    free(write_ctx);
 }
 
 const char *get_intercepted_address(const struct tunneler_io_ctx_s * tnlr_io) {
@@ -174,6 +167,9 @@ void free_tunneler_io_context(tunneler_io_context *tnlr_io_ctx_p) {
     }
 }
 
+void ziti_tunneler_set_idle_timeout(struct io_ctx_s *io_context, unsigned int timeout) {
+    io_context->tnlr_io->idle_timeout = timeout;
+}
 /**
  * called by tunneler application when a service dial has completed
  * - let the client know that we have a connection (e.g. send SYN/ACK)
@@ -206,53 +202,6 @@ host_ctx_t *ziti_tunneler_host(tunneler_context tnlr_ctx, const void *ziti_ctx, 
     return tnlr_ctx->opts.ziti_host((void *) ziti_ctx, tnlr_ctx->loop, service_name, cfg_type, config);
 }
 
-static void send_dns_resp(uint8_t *resp, size_t resp_len, void *ctx) {
-    struct resolve_req *rreq = ctx;
-
-    TNL_LOG(TRACE, "sending DNS resp[%zd] -> %s:%d", resp_len, ipaddr_ntoa(&rreq->addr), rreq->port);
-    struct pbuf *rp = pbuf_alloc(PBUF_TRANSPORT, resp_len, PBUF_RAM);
-    memcpy(rp->payload, resp, resp_len);
-
-    err_t err = udp_sendto_if_src(rreq->tnlr_ctx->dns_pcb, rp, &rreq->addr, rreq->port,
-                                  netif_default, &rreq->tnlr_ctx->dns_pcb->local_ip);
-    if (err != ERR_OK) {
-        TNL_LOG(WARN, "udp_send() DNS response: %d", err);
-    }
-
-    pbuf_free(rp);
-    free(rreq);
-}
-
-static void on_dns_packet(void *arg, struct udp_pcb *pcb, struct pbuf *p,
-    const ip_addr_t *addr, u16_t port) {
-    tunneler_context tnlr_ctx = arg;
-
-    struct resolve_req *rr = calloc(1,sizeof(struct resolve_req));
-    rr->addr = *addr;
-    rr->port = port;
-    rr->tnlr_ctx = tnlr_ctx;
-
-    int rc = tnlr_ctx->dns->query(tnlr_ctx->dns, p->payload, p->len, send_dns_resp, rr);
-    if (rc != 0) {
-        TNL_LOG(WARN, "DNS resolve error: %d", rc);
-        free(rr);
-    }
-    pbuf_free(p);
-}
-
-void ziti_tunneler_set_dns(tunneler_context tnlr_ctx, dns_manager *dns) {
-    tnlr_ctx->dns = dns;
-    if (dns->internal_dns) {
-        tnlr_ctx->dns_pcb = udp_new();
-        ip_addr_t dns_addr = {
-                .type = IPADDR_TYPE_V4,
-                .u_addr.ip4.addr = dns->dns_ip,
-        };
-        udp_bind(tnlr_ctx->dns_pcb, &dns_addr, dns->dns_port);
-        udp_recv(tnlr_ctx->dns_pcb, on_dns_packet, tnlr_ctx);
-    }
-}
-
 intercept_ctx_t* intercept_ctx_new(tunneler_context tnlr_ctx, const char *app_id, void *app_intercept_ctx) {
     intercept_ctx_t *ictx = calloc(1, sizeof(intercept_ctx_t));
     ictx->tnlr_ctx = tnlr_ctx;
@@ -271,10 +220,9 @@ void intercept_ctx_add_protocol(intercept_ctx_t *ctx, const char *protocol) {
     STAILQ_INSERT_TAIL(&ctx->protocols, proto, entries);
 }
 
-address_t *parse_address(const char *hn_or_ip_or_cidr, dns_manager *dns) {
+address_t *parse_address(const char *ip_or_cidr) {
     address_t *addr = calloc(1, sizeof(address_t));
-    strncpy(addr->str, hn_or_ip_or_cidr, sizeof(addr->str));
-    addr->is_hostname = false;
+    strncpy(addr->str, ip_or_cidr, sizeof(addr->str));
     char *prefix_sep = strchr(addr->str, '/');
 
     if (prefix_sep != NULL) {
@@ -283,23 +231,9 @@ address_t *parse_address(const char *hn_or_ip_or_cidr, dns_manager *dns) {
     }
 
     if (ipaddr_aton(addr->str, &addr->ip) == 0) {
-        addr->is_hostname = true;
-        // does not parse as IP address; assume hostname and try to get IP from the dns manager
-        if (dns) {
-            const char *resolved_ip_str = assign_ip(addr->str);
-            if (dns->apply(dns, addr->str, resolved_ip_str) != 0) {
-                TNL_LOG(ERR, "failed to apply DNS mapping %s => %s", addr->str, resolved_ip_str);
-                free(addr);
-                return NULL;
-            } else {
-                TNL_LOG(DEBUG, "intercept hostname %s is not an ip", addr->str);
-                if (ipaddr_aton(resolved_ip_str, &addr->ip) == 0) {
-                    TNL_LOG(ERR, "dns manager provided unparsable ip address '%s'", resolved_ip_str);
-                    free(addr);
-                    return NULL;
-                }
-            }
-        }
+        TNL_LOG(ERR, "hostnames are not supported");
+        free(addr);
+        return NULL;
     }
 
     uint8_t addr_bits = IP_IS_V4(&addr->ip) ? 32 : 128;
@@ -323,7 +257,7 @@ address_t *parse_address(const char *hn_or_ip_or_cidr, dns_manager *dns) {
 }
 
 address_t *intercept_ctx_add_address(intercept_ctx_t *i_ctx, const char *address) {
-    address_t *addr = parse_address(address, i_ctx->tnlr_ctx->dns);
+    address_t *addr = parse_address(address);
 
     if (addr == NULL) {
         TNL_LOG(ERR, "failed to parse address '%s' service[%s]", address, i_ctx->service_name);
@@ -356,6 +290,13 @@ port_range_t *intercept_ctx_add_port_range(intercept_ctx_t *i_ctx, uint16_t low,
     port_range_t *pr = parse_port_range(low, high);
     STAILQ_INSERT_TAIL(&i_ctx->port_ranges, pr, entries);
     return pr;
+}
+
+void intercept_ctx_override_cbs(intercept_ctx_t *i_ctx, ziti_sdk_dial_cb dial, ziti_sdk_write_cb write, ziti_sdk_close_cb close_write, ziti_sdk_close_cb close) {
+    i_ctx->dial_fn = dial;
+    i_ctx->write_fn = write;
+    i_ctx->close_write_fn = close_write;
+    i_ctx->close_fn = close;
 }
 
 /** intercept a service as described by the intercept_ctx */
@@ -398,7 +339,7 @@ static void tunneler_kill_active(const void *zi_ctx) {
         struct io_ctx_list_entry_s *n = SLIST_FIRST(l);
         TNL_LOG(DEBUG, "service_ctx[%p] client[%s] killing active connection", zi_ctx, n->io->tnlr_io->client);
         // close the ziti connection, which also closes the underlay
-        zclose = n->io->tnlr_io->tnlr_ctx->opts.ziti_close;
+        zclose = n->io->close_fn;
         if (zclose) zclose(n->io->ziti_io);
         SLIST_REMOVE_HEAD(l, entries);
         free(n);
@@ -411,7 +352,7 @@ static void tunneler_kill_active(const void *zi_ctx) {
         struct io_ctx_list_entry_s *n = SLIST_FIRST(l);
         TNL_LOG(DEBUG, "service[%p] client[%s] killing active connection", zi_ctx, n->io->tnlr_io->client);
         // close the ziti connection, which also closes the underlay
-        zclose = n->io->tnlr_io->tnlr_ctx->opts.ziti_close;
+        zclose = n->io->close_fn;
         if (zclose) zclose(n->io->ziti_io);
         SLIST_REMOVE_HEAD(l, entries);
         free(n);
