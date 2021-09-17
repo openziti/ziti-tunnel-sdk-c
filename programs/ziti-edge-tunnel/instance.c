@@ -186,7 +186,7 @@ static tunnel_address *to_address(string hostOrIPOrCIDR) {
     tnl_address->Prefix = 0;
 
     char* ip = {0};
-    int res = uv_inet_pton(AF_INET, strdup(hostOrIPOrCIDR), ip);
+    uv_inet_pton(AF_INET, strdup(hostOrIPOrCIDR), ip);
     if (ip != NULL) {
         tnl_address->IP = ip;
         tnl_address->HostName = NULL;
