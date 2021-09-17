@@ -50,7 +50,7 @@ ACTION_EVENT(XX, __VA_ARGS__) \
 XX(Successful, bool, none, Successful, __VA_ARGS__) \
 XX(Error, string, none, Error, __VA_ARGS__) \
 XX(ProvisioningUrl, string, none, ProvisioningUrl, __VA_ARGS__) \
-XX(RecoveryCodes, string, none, RecoveryCodes, __VA_ARGS__)
+XX(RecoveryCodes, string, array, RecoveryCodes, __VA_ARGS__)
 
 #define TUNNEL_METRICS_EVENT(XX, ...) \
 STATUS_EVENT(XX, __VA_ARGS__) \

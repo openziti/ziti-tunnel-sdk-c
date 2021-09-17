@@ -128,6 +128,14 @@ XX(MFAStatusEvent, __VA_ARGS__)
 
 DECLARE_ENUM(TunnelEvent, TUNNEL_EVENTS)
 
+#define MFA_STATUS(XX, ...) \
+XX(mfa_auth_status, __VA_ARGS__) \
+XX(enrollment_verification, __VA_ARGS__) \
+XX(enrollment_remove, __VA_ARGS__) \
+XX(enrollment_challenge, __VA_ARGS__)
+
+DECLARE_ENUM(mfa_status, MFA_STATUS)
+
 #define BASE_EVENT_MODEL(XX, ...) \
 XX(identifier, string, none, identifier, __VA_ARGS__) \
 XX(event_type, TunnelEvent, none, type, __VA_ARGS__)  \
@@ -151,8 +159,9 @@ BASE_EVENT_MODEL(XX, __VA_ARGS__)               \
 XX(provider, string, none, provider, __VA_ARGS__) \
 XX(status, string, none, status, __VA_ARGS__)   \
 XX(operation, string, none, operation, __VA_ARGS__) \
+XX(operation_type, mfa_status, none, operation_type, __VA_ARGS__ ) \
 XX(provisioning_url, string, none, provisioning_url, __VA_ARGS__) \
-XX(recovery_codes, string, none, recovery_codes, __VA_ARGS__)
+XX(recovery_codes, string, array, recovery_codes, __VA_ARGS__)
 
 DECLARE_MODEL(base_event, BASE_EVENT_MODEL)
 DECLARE_MODEL(ziti_ctx_event, ZTX_EVENT_MODEL)

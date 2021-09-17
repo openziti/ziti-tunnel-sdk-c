@@ -566,12 +566,23 @@ static void on_event(const base_event *ev) {
             };
 
             if (mfa_ev->code == ZITI_OK) {
-                // check for auth success and set mfa_enabled = true, mfa needed = false
-                // check for auth verify and set mfa_enabled = true, mfa needed = false
-                // check for mfa removed and set mfa_enabled = false mfa needed = false
+                switch (mfa_ev->operation_type) {
+                    case mfa_status_mfa_auth_status:
+                    case mfa_status_enrollment_verification:
+                        set_mfa_status(ev->identifier, true, false);
+                        update_mfa_time(ev->identifier);
+                        break;
+                    case mfa_status_enrollment_remove:
+                        set_mfa_status(ev->identifier, false, false);
+                        break;
+                    case mfa_status_enrollment_challenge:
+                        mfa_sts_event.RecoveryCodes = mfa_ev->recovery_codes;
+                        mfa_sts_event.ProvisioningUrl = strdup(mfa_ev->provisioning_url);
+                        break;
+                    default:
+                        ZITI_LOG(WARN, "ztx[%s] MFA unknown status : %d", ev->identifier, mfa_ev->operation_type);
+                }
 
-                set_mfa_status(ev->identifier, true, false);
-                update_mfa_time(ev->identifier);
                 mfa_sts_event.Successful = true;
             } else {
                 mfa_sts_event.Successful = false;
@@ -581,8 +592,10 @@ static void on_event(const base_event *ev) {
             size_t json_len;
             char *json = mfa_status_event_to_json(&mfa_sts_event, MODEL_JSON_COMPACT, &json_len);
             send_events_message(json, json_len, true);
+            
+            mfa_sts_event.RecoveryCodes = NULL;
             free_mfa_status_event(&mfa_sts_event);
-            free_mfa_event(ev);
+            // free_mfa_event(mfa_ev);
             break;
         }
 
