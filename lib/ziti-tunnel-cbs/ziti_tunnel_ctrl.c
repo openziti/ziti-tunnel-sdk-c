@@ -762,7 +762,6 @@ static void on_enable_mfa(ziti_context ztx, int status, ziti_mfa_enrollment *enr
     ev->operation = strdup(mfa_status_name(mfa_status_enrollment_challenge));
     ev->operation_type = mfa_status_enrollment_challenge;
     ev->provisioning_url = strdup(enrollment->provisioning_url);
-    // ev->recovery_codes = enrollment->recovery_codes;
     char **rc = enrollment->recovery_codes;
     int code_len = 0;
     while (*rc != NULL) {
