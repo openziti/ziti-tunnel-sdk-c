@@ -184,10 +184,11 @@ static tunnel_address *to_address(string hostOrIPOrCIDR) {
     tnl_address->IsHost = false;
     tnl_address->Prefix = 0;
 
-    char* ip = {0};
-    uv_inet_pton(AF_INET, strdup(hostOrIPOrCIDR), ip);
-    if (ip != NULL) {
-        tnl_address->IP = ip;
+    struct in_addr ip;
+    int err = uv_inet_pton(AF_INET, hostOrIPOrCIDR, &ip);
+    if (err == 0) {
+        tnl_address->IP = calloc(INET_ADDRSTRLEN+1, sizeof(char));
+        uv_inet_ntop(AF_INET, &ip, tnl_address->IP, INET_ADDRSTRLEN);
         tnl_address->HostName = NULL;
         ZITI_LOG(TRACE, "IP address: %s", ip);
     } else {
@@ -209,16 +210,16 @@ tunnel_port_range *getTunnelPortRange(ziti_port_range *zpr){
 
 static void setTunnelServiceAddress(tunnel_service *tnl_svc, ziti_service *service) {
     const char* intercept_v1_config = ziti_service_get_raw_config(service, CFG_INTERCEPT_V1);
-    tunnel_address_array *tnl_addr_arr;
-    string_array protocols = {0};
-    tunnel_port_range_array *tnl_port_range_arr;
-    if (strlen(intercept_v1_config) > 0) {
+    tunnel_address_array tnl_addr_arr;
+    string_array protocols = NULL;
+    tunnel_port_range_array tnl_port_range_arr;
+    if (intercept_v1_config != NULL && strlen(intercept_v1_config) > 0) {
         ZITI_LOG(TRACE, "intercept.v1: %s", intercept_v1_config);
         ziti_intercept_cfg_v1 cfg_v1;
         parse_ziti_intercept_cfg_v1(&cfg_v1, intercept_v1_config, strlen(intercept_v1_config));
 
         // set address
-        tnl_addr_arr = calloc(sizeof(cfg_v1.addresses), sizeof(struct tunnel_address_s));
+        tnl_addr_arr = calloc(sizeof(cfg_v1.addresses), sizeof(tunnel_address *)); // todo sizeof(cfg_v1.addresses) does not yield the number of port addresses.
         int address_idx;
         for(address_idx=0; cfg_v1.addresses[address_idx]; address_idx++) {
             char* addr = cfg_v1.addresses[address_idx];
@@ -229,7 +230,7 @@ static void setTunnelServiceAddress(tunnel_service *tnl_svc, ziti_service *servi
         protocols = cfg_v1.protocols;
 
         // set ports
-        tnl_port_range_arr = calloc(sizeof(cfg_v1.port_ranges), sizeof(struct tunnel_port_range_s));
+        tnl_port_range_arr = calloc(sizeof(cfg_v1.port_ranges), sizeof(tunnel_port_range *)); // todo sizeof(cfg_v1.port_ranges) does not yield the number of port ranges.
         int port_idx;
         for(port_idx=0; cfg_v1.port_ranges[port_idx]; port_idx++) {
             tnl_port_range_arr[port_idx] = getTunnelPortRange(cfg_v1.port_ranges[port_idx]);
@@ -241,19 +242,19 @@ static void setTunnelServiceAddress(tunnel_service *tnl_svc, ziti_service *servi
         parse_ziti_client_cfg_v1(&zt_client_cfg_v1, zt_client_v1_config, strlen(zt_client_v1_config));
 
         // set tunnel address
-        tnl_addr_arr = calloc(1, sizeof(struct tunnel_address_s));
+        tnl_addr_arr = calloc(2, sizeof(tunnel_address *));
         tnl_addr_arr[0] = to_address(zt_client_cfg_v1.hostname);
 
         // set protocols
-        protocols = calloc(2, sizeof(char*));
+        protocols = calloc(3, sizeof(char*));
         int idx=0;
         protocols[idx++] = strdup("TCP");
         protocols[idx] = strdup("UDP");
 
         // set port range
         // set ports
-        tnl_port_range_arr = calloc(1, sizeof(struct tunnel_port_range_s));
-        tunnel_port_range *tpr = calloc(1, sizeof(struct tunnel_port_range_s));
+        tnl_port_range_arr = calloc(2, sizeof(tunnel_port_range *));
+        tunnel_port_range *tpr = calloc(1, sizeof(tunnel_port_range));
         tpr->Low = zt_client_cfg_v1.port;
         tpr->High = zt_client_cfg_v1.port;
         tnl_port_range_arr[0] = tpr;
