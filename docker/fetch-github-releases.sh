@@ -9,15 +9,16 @@ set -euo pipefail
 
 echo "Fetching from GitHub."
 # defaults
-: ${GITHUB_BASE_URL:="https://github.com/openziti"}
-: ${GITHUB_REPO:="ziti-tunnel-sdk-c"}
+: "${GITHUB_BASE_URL:=https://github.com/openziti}"
+: "${GITHUB_REPO:="ziti-tunnel-sdk-c"}"
+: "${ZITI_VERSION:="latest"}"
 
-for var in GITHUB_BASE_URL GITHUB_REPO ZITI_VERSION; do
-    if [ -z "${!var}" ]; then
-        echo "ERROR: ${var} must be set when fetching binaries from GitHub." >&2
-        exit 1
-    fi
-done
+if [[ "$ZITI_VERSION" == "latest" ]];then
+    echo "WARN: ZITI_VERSION unspecified, using 'latest'" >&2
+else
+    # ensure version string begins with 'v' by stripping if present and re-adding
+    ZITI_VERSION="v${ZITI_VERSION#v}"
+fi
 
 # map host architecture/os to directories that we use in GitHub.
 # (our artifact directories seem to align with Docker's TARGETARCH and TARGETOS
@@ -40,7 +41,7 @@ esac
 
 for exe in "${@}"; do
     zip="${exe}-${artifact_os}_${artifact_arch}.zip"
-    url="${GITHUB_BASE_URL}/${GITHUB_REPO}/releases/download/v${ZITI_VERSION}/${zip}"
+    url="${GITHUB_BASE_URL}/${GITHUB_REPO}/releases/download/${ZITI_VERSION}/${zip}"
     echo "Fetching ${zip} from ${url}"
     rm -f "${zip}" "${exe}"
     if { command -v curl > /dev/null; } 2>&1; then

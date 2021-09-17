@@ -435,7 +435,7 @@ static bool addrinfo_from_host_ctx(struct addrinfo_params_s *dial_params, const 
                      host_ctx->service_name, DST_IP_KEY);
             return false;
         }
-        address_t *dst = parse_address(app_data->dst_ip, NULL);
+        address_t *dst = parse_address(app_data->dst_ip);
         if (dst == NULL) {
             snprintf(dial_params->err, sizeof(dial_params->err),
                      "hosted_service[%s] failed to parse requested address '%s'", host_ctx->service_name,
@@ -799,7 +799,7 @@ host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, uv_loop_t *loop, const char *service
                 STAILQ_INIT(&host_ctx->addr_u.allowed_addresses);
                 string_array allowed_addrs = host_v1_cfg->allowed_addresses;
                 for (i = 0; allowed_addrs != NULL && allowed_addrs[i] != NULL; i++) {
-                    address_t *a = parse_address(allowed_addrs[i], NULL);
+                    address_t *a = parse_address(allowed_addrs[i]);
                     if (a == NULL) {
                         ZITI_LOG(ERROR, "hosted_service[%s] failed to parse allowed_address '%s'",
                                  host_ctx->service_name, allowed_addrs[i]);
@@ -840,7 +840,7 @@ host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, uv_loop_t *loop, const char *service
             STAILQ_INIT(&host_ctx->allowed_source_addresses);
             string_array allowed_src_addrs = host_v1_cfg->allowed_source_addresses;
             for (i = 0; allowed_src_addrs != NULL && allowed_src_addrs[i] != NULL; i++) {
-                address_t *a = parse_address(allowed_src_addrs[i], NULL);
+                address_t *a = parse_address(allowed_src_addrs[i]);
                 if (a == NULL) {
                     ZITI_LOG(ERROR, "hosted_service[%s] failed to parse allowed_source_address '%s'",
                              host_ctx->service_name, allowed_src_addrs);
