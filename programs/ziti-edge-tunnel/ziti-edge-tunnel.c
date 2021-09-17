@@ -7,6 +7,7 @@
 #include "ziti/ziti_tunnel.h"
 #include "ziti/ziti_tunnel_cbs.h"
 #include <ziti/ziti_log.h>
+#include <ziti/ziti_dns.h>
 #include "model/events.h"
 #include "instance.h"
 
@@ -26,6 +27,8 @@
 
 
 extern dns_manager *get_dnsmasq_manager(const char* path);
+
+static int dns_fallback(const char *name, void *ctx, struct in_addr* addr);
 
 static void send_message_to_tunnel();
 static void send_events_message(void *message, size_t datalen, bool display_event);
@@ -57,17 +60,19 @@ static const ziti_tunnel_ctrl *CMD_CTRL;
 static long events_channels_count = 8;
 static long current_events_channels = 0;
 
-static const char* EVENT_ADDED="added";
-static const char* EVENT_REMOVED="removed";
-static const char* EVENT_UPDATED="updated";
-static const char* EVENT_BULK="bulk";
-static const char* EVENT_ERROR="error";
-static const char* EVENT_CHANGED="changed";
-static const char* EVENT_NORMAL="normal";
-static const char* EVENT_CONNECTED="connected";
-static const char* EVENT_DISCONNECTED="disconnected";
-static const char* EVENT_STATUS="status";
-static const char* EVENT_METRICS="metrics";
+#define EVENT_ACTIONS(XX, ...) \
+XX(added, __VA_ARGS__) \
+XX(removed, __VA_ARGS__) \
+XX(updated, __VA_ARGS__) \
+XX(bulk, __VA_ARGS__) \
+XX(error, __VA_ARGS__) \
+XX(changed, __VA_ARGS__) \
+XX(normal, __VA_ARGS__) \
+XX(connected, __VA_ARGS__) \
+XX(disconnected, __VA_ARGS__)
+
+DECLARE_ENUM(event, EVENT_ACTIONS)
+IMPL_ENUM(event, EVENT_ACTIONS)
 
 #if _WIN32
 static char sockfile[] = "\\\\.\\pipe\\ziti-edge-tunnel.sock";
@@ -187,7 +192,7 @@ static void on_events_client(uv_stream_t *s, int status) {
 
         // send status message immediately
         tunnel_status_event tnl_sts_evt = {0};
-        tnl_sts_evt.Op = strdup(EVENT_STATUS);
+        tnl_sts_evt.Op = strdup("status");
         tnl_sts_evt.Status = get_tunnel_status();
         size_t json_len;
         char *json = tunnel_status_event_to_json(&tnl_sts_evt, MODEL_JSON_COMPACT, &json_len);
@@ -277,7 +282,7 @@ static void tnl_transfer_rates_cb(const tunnel_identity_metrics *metrics, void *
 
 static void broadcast_metrics(uv_timer_t *timer) {
     tunnel_metrics_event metrics_event = {0};
-    metrics_event.Op = strdup(EVENT_METRICS);
+    metrics_event.Op = strdup("metrics");
     metrics_event.Identities = get_tunnel_identities();
     tunnel_identity *tnl_id;
     int idx;
@@ -359,7 +364,7 @@ static void on_event(const base_event *ev) {
 
             identity_event id_event = {0};
             id_event.Op = strdup("identity");
-            id_event.Action = strdup(EVENT_ADDED);
+            id_event.Action = strdup(event_name(event_added));
             id_event.Id = get_tunnel_identity(ev->identifier);
             id_event.Id->Loaded = true;
 
@@ -378,6 +383,7 @@ static void on_event(const base_event *ev) {
             send_events_message(json, json_len, true);
             id_event.Id = NULL;
             free_identity_event(&id_event);
+
             break;
         }
 
@@ -385,9 +391,9 @@ static void on_event(const base_event *ev) {
             const service_event *svc_ev = (service_event *) ev;
             ZITI_LOG(INFO, "ztx[%s] service event", ev->identifier);
             services_event svc_event = {
-                    .Op = strdup("bulkservice"),
-                    .Action = strdup(EVENT_BULK),
-                    .Identifier = strdup(ev->identifier),
+                .Op = strdup("bulkservice"),
+                .Action = strdup(event_name(event_updated)),
+                .Identifier = strdup(ev->identifier),
             };
 
             tunnel_identity *id = get_tunnel_identity(ev->identifier);
@@ -424,6 +430,7 @@ static void on_event(const base_event *ev) {
                 svc_event.AddedServices = NULL;
             }
             free_services_event(&svc_event);
+
             break;
         }
 
@@ -433,7 +440,7 @@ static void on_event(const base_event *ev) {
             set_mfa_status(ev->identifier, true, true);
             identity_event id_event = {
                     .Op = strdup("identity"),
-                    .Action = strdup(EVENT_ADDED),
+                    .Action = strdup(event_name(event_added)),
                     .Id = get_tunnel_identity(ev->identifier),
             };
 
@@ -479,15 +486,15 @@ static void on_event(const base_event *ev) {
     }
 }
 
-static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, const char *ip_range, dns_manager *dns) {
+static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, const char *ip_range, dns_manager *dns) {
     netif_driver tun;
     char tun_error[64];
 #if __APPLE__ && __MACH__
     tun = utun_open(tun_error, sizeof(tun_error), ip_range);
 #elif __linux__
-    tun = tun_open(ziti_loop, tun_ip, dns->dns_ip, ip_range, tun_error, sizeof(tun_error));
+    tun = tun_open(ziti_loop, tun_ip, dns_ip, ip_range, tun_error, sizeof(tun_error));
 #elif _WIN32
-    tun = tun_open(ziti_loop, tun_ip, dns->dns_ip, ip_range, tun_error, sizeof(tun_error));
+    tun = tun_open(ziti_loop, tun_ip, dns_ip, ip_range, tun_error, sizeof(tun_error));
 #else
 #error "ziti-edge-tunnel is not supported on this system"
 #endif
@@ -508,10 +515,13 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, const char *ip_rang
     };
 
     tunneler_context tunneler = ziti_tunneler_init(&tunneler_opts, ziti_loop);
-    ziti_tunneler_set_dns(tunneler, dns);
+
     // generate tunnel status instance and save active state and start time
     tunnel_status *tnl_status = get_tunnel_status();
     tnl_status->Active = true;
+
+    ziti_dns_setup(tunneler, ip4addr_ntoa(&dns_ip), ip_range);
+    ziti_dns_set_fallback(ziti_loop, dns_fallback, NULL);
 
     CMD_CTRL = ziti_tunnel_init_cmd(ziti_loop, tunneler, on_event);
 
@@ -654,24 +664,19 @@ static void run(int argc, char *argv[]) {
     }
 
     dns_manager *dns = NULL;
-    if (dns_impl == NULL || strcmp(dns_impl, "internal") == 0) {
-        ZITI_LOG(INFO, "setting up internal DNS");
-        dns = get_tunneler_dns(ziti_loop, dns_ip, dns_fallback, NULL);
-    } else if (strncmp("dnsmasq", dns_impl, strlen("dnsmasq")) == 0) {
+    if (dns_impl && strncmp("dnsmasq", dns_impl, strlen("dnsmasq")) == 0) {
         char *col = strchr(dns_impl, ':');
         if (col == NULL) {
             ZITI_LOG(ERROR, "DNS dnsmasq option should be `--dns=dnsmasq:<hosts-dir>");
             exit(1);
         }
         dns = get_dnsmasq_manager(col + 1);
-    } else {
+    } else if (dns_impl) {
         ZITI_LOG(ERROR, "DNS setting '%s' is not supported", dns_impl);
         exit(1);
     }
 
-    ziti_tunneler_init_dns(mask, bits);
-
-    rc = run_tunnel(ziti_loop, tun_ip, ip_range, dns);
+    rc = run_tunnel(ziti_loop, tun_ip, dns_ip, ip_range, dns);
     exit(rc);
 }
 
@@ -727,11 +732,12 @@ static int parse_enroll_opts(int argc, char *argv[]) {
             {"identity", required_argument, NULL, 'i'},
             {"key", optional_argument, NULL, 'k'},
             {"cert", optional_argument, NULL, 'c'},
+            { "name", optional_argument, NULL, 'n'}
     };
     int c, option_index, errors = 0;
     optind = 0;
 
-    while ((c = getopt_long(argc, argv, "j:i:k:c:",
+    while ((c = getopt_long(argc, argv, "j:i:k:c:n:",
                             opts, &option_index)) != -1) {
         switch (c) {
             case 'j':
@@ -742,6 +748,9 @@ static int parse_enroll_opts(int argc, char *argv[]) {
                 break;
             case 'c':
                 enroll_opts.enroll_cert = realpath(optarg, NULL);
+                break;
+            case 'n':
+                enroll_opts.enroll_name = optarg;
                 break;
             case 'i':
                 config_file = optarg;
@@ -1220,11 +1229,12 @@ static int get_mfa_codes_opts(int argc, char *argv[]) {
 }
 
 static CommandLine enroll_cmd = make_command("enroll", "enroll Ziti identity",
-        "-j|--jwt <enrollment token> -i|--identity <identity> [-k|--key <private_key> [-c|--cert <certificate>]]",
+        "-j|--jwt <enrollment token> -i|--identity <identity> [-k|--key <private_key> [-c|--cert <certificate>]] [-n|--name <name>]",
         "\t-j|--jwt\tenrollment token file\n"
         "\t-i|--identity\toutput identity file\n"
         "\t-k|--key\tprivate key for enrollment\n"
-        "\t-c|--cert\tcertificate for enrollment\n",
+        "\t-c|--cert\tcertificate for enrollment\n"
+        "\t-n|--name\tidentity name\n",
         parse_enroll_opts, enroll);
 static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required superuser access)",
                                           "-i <id.file> [-r N] [-v N] [-d|--dns-ip-range N.N.N.N/n] [-n|--dns <internal|dnsmasq=<dnsmasq hosts dir>>]",

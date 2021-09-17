@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+#include <ziti/ziti_dns.h>
 #include <ziti/ziti_tunnel.h>
 #include <ziti/ziti_log.h>
 #include <stdlib.h>
