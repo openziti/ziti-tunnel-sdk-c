@@ -138,15 +138,15 @@ DECLARE_ENUM(mfa_status, MFA_STATUS)
 
 #define BASE_EVENT_MODEL(XX, ...) \
 XX(identifier, string, none, identifier, __VA_ARGS__) \
-XX(event_type, TunnelEvent, none, type, __VA_ARGS__)  \
-XX(code, int, none, code, __VA_ARGS__)
+XX(event_type, TunnelEvent, none, type, __VA_ARGS__)
 
 #define ZTX_EVENT_MODEL(XX, ...)  \
 BASE_EVENT_MODEL(XX, __VA_ARGS__) \
 XX(status, string, none, status, __VA_ARGS__) \
 XX(name, string, none, name, __VA_ARGS__) \
 XX(version, string, none, version, __VA_ARGS__) \
-XX(controller, string, none, controller, __VA_ARGS__)
+XX(controller, string, none, controller, __VA_ARGS__) \
+XX(code, int, none, code, __VA_ARGS__)
 
 #define ZTX_SVC_EVENT_MODEL(XX, ...)  \
 BASE_EVENT_MODEL(XX, __VA_ARGS__)            \
@@ -161,7 +161,8 @@ XX(status, string, none, status, __VA_ARGS__)   \
 XX(operation, string, none, operation, __VA_ARGS__) \
 XX(operation_type, mfa_status, none, operation_type, __VA_ARGS__ ) \
 XX(provisioning_url, string, none, provisioning_url, __VA_ARGS__) \
-XX(recovery_codes, string, array, recovery_codes, __VA_ARGS__)
+XX(recovery_codes, string, array, recovery_codes, __VA_ARGS__) \
+XX(code, int, none, code, __VA_ARGS__)
 
 DECLARE_MODEL(base_event, BASE_EVENT_MODEL)
 DECLARE_MODEL(ziti_ctx_event, ZTX_EVENT_MODEL)
@@ -227,7 +228,6 @@ tunneled_service_t *ziti_sdk_c_on_service(ziti_context ziti_ctx, ziti_service *s
 void remove_intercepts(ziti_context ziti_ctx, void *tnlr_ctx);
 
 const ziti_tunnel_ctrl* ziti_tunnel_init_cmd(uv_loop_t *loop, tunneler_context, event_cb);
-
 
 #ifdef __cplusplus
 }
