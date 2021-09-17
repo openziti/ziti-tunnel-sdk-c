@@ -100,16 +100,10 @@ void set_mfa_timeout(tunnel_identity *tnl_id) {
 
         tnl_id->MfaMaxTimeout = mfa_max_timeout;
         tnl_id->MfaMaxTimeoutRem = mfa_max_timeout_rem;
+        tnl_id->MaxTimeoutRemInSvcEvent = mfa_max_timeout_rem;
         tnl_id->MfaMinTimeout = mfa_min_timeout;
         tnl_id->MfaMinTimeoutRem = mfa_min_timeout_rem;
-        uv_timeval64_t now;
-        uv_gettimeofday(&now);
-        if (tnl_id->ServiceUpdatedTime == NULL) {
-            tnl_id->ServiceUpdatedTime = malloc(sizeof(timestamp));
-        }
-        tnl_id->ServiceUpdatedTime->tv_sec = now.tv_sec;
-        tnl_id->ServiceUpdatedTime->tv_usec = now.tv_usec;
-
+        tnl_id->MinTimeoutRemInSvcEvent = mfa_min_timeout_rem;
     }
 
 }
@@ -160,7 +154,13 @@ void add_or_remove_services_from_tunnel(tunnel_identity *id, tunnel_service_arra
         it = model_map_it_next(it);
     };
     set_mfa_timeout(id);
-
+    uv_timeval64_t now;
+    uv_gettimeofday(&now);
+    if (id->ServiceUpdatedTime == NULL) {
+        id->ServiceUpdatedTime = malloc(sizeof(timestamp));
+    }
+    id->ServiceUpdatedTime->tv_sec = now.tv_sec;
+    id->ServiceUpdatedTime->tv_usec = now.tv_usec;
 }
 
 static tunnel_posture_check *getTunnelPostureCheck(ziti_posture_query *pq){
@@ -365,6 +365,11 @@ tunnel_identity_array get_tunnel_identities() {
 }
 
 int get_remaining_timeout(int timeout, int timeout_rem, tunnel_identity *tnl_id) {
+
+    if (timeout <= 0 || timeout_rem <= 0 || tnl_id->MfaLastUpdatedTime == NULL || tnl_id->ServiceUpdatedTime == NULL) {
+        return timeout_rem;
+    }
+
     int timeout_remaining = 0;
     uv_timeval64_t now;
     uv_gettimeofday(&now);
@@ -414,10 +419,10 @@ void set_mfa_timeout_rem(tunnel_identity *tnl_id) {
         }
 
         if (tnl_id->MfaMinTimeoutRem > -1) {
-            tnl_id->MfaMinTimeoutRem = get_remaining_timeout(tnl_id->MfaMinTimeout, tnl_id->MfaMinTimeoutRem, tnl_id);
+            tnl_id->MfaMinTimeoutRem = get_remaining_timeout(tnl_id->MfaMinTimeout, tnl_id->MinTimeoutRemInSvcEvent, tnl_id);
         }
         if (tnl_id->MfaMaxTimeoutRem > -1) {
-            tnl_id->MfaMaxTimeoutRem = get_remaining_timeout(tnl_id->MfaMaxTimeout, tnl_id->MfaMaxTimeoutRem, tnl_id);
+            tnl_id->MfaMaxTimeoutRem = get_remaining_timeout(tnl_id->MfaMaxTimeout, tnl_id->MaxTimeoutRemInSvcEvent, tnl_id);
         }
         if (tnl_id->MfaMaxTimeoutRem == 0 && tnl_id->MfaEnabled ) {
             tnl_id->MfaNeeded = true;
@@ -443,7 +448,7 @@ tunnel_status *get_tunnel_status() {
         tnl_status->Duration = current_time_in_millis - start_time_in_millis;
     }
 
-    tnl_status->Identities = get_tunnel_identities(false);
+    tnl_status->Identities = get_tunnel_identities();
 
     if (tnl_status->Identities != NULL) {
         for (int id_idx = 0; tnl_status->Identities[id_idx] != 0; id_idx++) {

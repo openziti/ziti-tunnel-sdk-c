@@ -309,11 +309,19 @@ static string convert_seconds_to_readable_format(int input) {
 }
 
 static bool check_send_notification(tunnel_identity *tnl_id) {
-    if (tnl_id->MfaMinTimeoutRem > -1) {
-        tnl_id->MfaMinTimeoutRem = get_remaining_timeout(tnl_id->MfaMinTimeout, tnl_id->MfaMinTimeoutRem, tnl_id);
+    if (!tnl_id->MfaEnabled || tnl_id->MfaMinTimeout <= 0 || tnl_id->MinTimeoutRemInSvcEvent <=0) {
+        return false;
     }
-    if (tnl_id->MfaMaxTimeoutRem > -1) {
-        tnl_id->MfaMaxTimeoutRem = get_remaining_timeout(tnl_id->MfaMaxTimeout, tnl_id->MfaMaxTimeoutRem, tnl_id);
+    if (tnl_id->MfaMinTimeoutRem > 0) {
+        tnl_id->MfaMinTimeoutRem = get_remaining_timeout(tnl_id->MfaMinTimeout, tnl_id->MinTimeoutRemInSvcEvent, tnl_id);
+    }
+    if (tnl_id->MfaMaxTimeoutRem > 0) {
+        tnl_id->MfaMaxTimeoutRem = get_remaining_timeout(tnl_id->MfaMaxTimeout, tnl_id->MaxTimeoutRemInSvcEvent, tnl_id);
+    }
+
+    if (tnl_id->Notified) {
+        // No need to send notification again
+        return false;
     }
 
     if (tnl_id->MfaMinTimeoutRem > 20 * 60) {
@@ -324,7 +332,7 @@ static bool check_send_notification(tunnel_identity *tnl_id) {
     }
 }
 
-static notification_message *create_notificaiton_message(tunnel_identity *tnl_id) {
+static notification_message *create_notification_message(tunnel_identity *tnl_id) {
     notification_message *notification = calloc(1, sizeof(struct notification_message_s));
     notification->Message = malloc(MAXMESSAGELEN);
     if (tnl_id->MfaMaxTimeoutRem == 0) {
@@ -365,13 +373,12 @@ static void broadcast_metrics(uv_timer_t *timer) {
                 CMD_CTRL->get_transfer_rates(tnl_id->Identifier, NULL, tnl_transfer_rates_cb, tnl_id);
 
                 // check timeout
-                if (tnl_id->MfaEnabled && !tnl_id->Notified && (tnl_id->MfaMinTimeoutRem > -1 || tnl_id->MfaMaxTimeoutRem > -1)) {
-                    if (check_send_notification(tnl_id)) {
-                        notification_message *message = create_notificaiton_message(tnl_id);
-                        model_map_set(&notification_map, tnl_id->Name, message);
-                        tnl_id->Notified = true;
-                    }
+                if (check_send_notification(tnl_id)) {
+                    notification_message *message = create_notification_message(tnl_id);
+                    model_map_set(&notification_map, tnl_id->Name, message);
+                    tnl_id->Notified = true;
                 }
+
             }
         }
         if (model_map_size(&notification_map) > 0) {
@@ -559,7 +566,10 @@ static void on_event(const base_event *ev) {
             };
 
             if (mfa_ev->code == ZITI_OK) {
-                // check for auth success
+                // check for auth success and set mfa_enabled = true, mfa needed = false
+                // check for auth verify and set mfa_enabled = true, mfa needed = false
+                // check for mfa removed and set mfa_enabled = false mfa needed = false
+
                 set_mfa_status(ev->identifier, true, false);
                 update_mfa_time(ev->identifier);
                 mfa_sts_event.Successful = true;
@@ -572,6 +582,7 @@ static void on_event(const base_event *ev) {
             char *json = mfa_status_event_to_json(&mfa_sts_event, MODEL_JSON_COMPACT, &json_len);
             send_events_message(json, json_len, true);
             free_mfa_status_event(&mfa_sts_event);
+            free_mfa_event(ev);
             break;
         }
 
