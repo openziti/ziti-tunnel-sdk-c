@@ -478,6 +478,10 @@ static void on_event(const base_event *ev) {
             id_event.Id = get_tunnel_identity(ev->identifier);
             id_event.Id->Loaded = true;
 
+            action_event controller_event = {0};
+            controller_event.Op = strdup("controller");
+            controller_event.Identifier = strdup(ev->identifier);
+
             if (zev->code == ZITI_OK) {
                 id_event.Id->Active = true; // determine it from controller
                 if (zev->name) {
@@ -485,7 +489,11 @@ static void on_event(const base_event *ev) {
                     id_event.Id->ControllerVersion = strdup(zev->version);
                     id_event.Id->Config.ZtAPI = strdup(zev->controller);
                 }
+                controller_event.Action = strdup(event_name(event_connected));
                 ZITI_LOG(DEBUG, "ztx[%s] controller connected", ev->identifier);
+            } else {
+                controller_event.Action = strdup(event_name(event_disconnected));
+                ZITI_LOG(ERROR, "ztx[%s] failed to connect to controller due to %s", ev->identifier, zev->status);
             }
 
             size_t json_len;
@@ -493,6 +501,11 @@ static void on_event(const base_event *ev) {
             send_events_message(json, json_len, true);
             id_event.Id = NULL;
             free_identity_event(&id_event);
+
+            size_t controller_json_len;
+            char *controller_json = action_event_to_json(&controller_event, MODEL_JSON_COMPACT, &controller_json_len);
+            send_events_message(controller_json, controller_json_len, true);
+            free_action_event(&controller_event);
 
             break;
         }
@@ -548,17 +561,17 @@ static void on_event(const base_event *ev) {
             const mfa_event *mfa_ev = (mfa_event *) ev;
             ZITI_LOG(INFO, "ztx[%s] is requesting MFA code", ev->identifier);
             set_mfa_status(ev->identifier, true, true);
-            identity_event id_event = {
-                    .Op = strdup("identity"),
-                    .Action = strdup(event_name(event_added)),
-                    .Id = get_tunnel_identity(ev->identifier),
+            mfa_status_event mfa_sts_event = {
+                    .Op = strdup("mfa"),
+                    .Action = strdup(mfa_ev->operation),
+                    .Identifier = strdup(mfa_ev->identifier),
+                    .Successful = false
             };
 
             size_t json_len;
-            char *json = identity_event_to_json(&id_event, MODEL_JSON_COMPACT, &json_len);
+            char *json = mfa_status_event_to_json(&mfa_sts_event, MODEL_JSON_COMPACT, &json_len);
             send_events_message(json, json_len, true);
-            id_event.Id = NULL;
-            free_identity_event(&id_event);
+            free_mfa_status_event(&mfa_sts_event);
             break;
         }
 

@@ -639,6 +639,7 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
             mfa_event ev = {0};
             ev.event_type = TunnelEvents.MFAEvent;
             ev.identifier = instance->identifier;
+            ev.operation = mfa_status_name(mfa_status_auth_challenge);
             CMD_CTX.on_event((const base_event *) &ev);
         }
     }
