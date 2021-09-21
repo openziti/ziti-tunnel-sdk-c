@@ -220,9 +220,12 @@ static void setTunnelServiceAddress(tunnel_service *tnl_svc, ziti_service *servi
         parse_ziti_intercept_cfg_v1(&cfg_v1, intercept_v1_config, strlen(intercept_v1_config));
 
         // set address
-        tnl_addr_arr = calloc(sizeof(cfg_v1.addresses), sizeof(tunnel_address *)); // todo sizeof(cfg_v1.addresses) does not yield the number of port addresses.
-        int address_idx;
-        for(address_idx=0; cfg_v1.addresses[address_idx]; address_idx++) {
+        int idx = 0;
+        for(idx = 0; cfg_v1.addresses[idx]; idx++) {
+            // do nothing
+        }
+        tnl_addr_arr = calloc(idx+1, sizeof(tunnel_address *));
+        for(int address_idx=0; cfg_v1.addresses[address_idx]; address_idx++) {
             char* addr = cfg_v1.addresses[address_idx];
             tnl_addr_arr[address_idx] = to_address(addr);
         }
@@ -231,9 +234,11 @@ static void setTunnelServiceAddress(tunnel_service *tnl_svc, ziti_service *servi
         protocols = cfg_v1.protocols;
 
         // set ports
-        tnl_port_range_arr = calloc(sizeof(cfg_v1.port_ranges), sizeof(tunnel_port_range *)); // todo sizeof(cfg_v1.port_ranges) does not yield the number of port ranges.
-        int port_idx;
-        for(port_idx=0; cfg_v1.port_ranges[port_idx]; port_idx++) {
+        for(idx = 0; cfg_v1.port_ranges[idx]; idx++) {
+            // do nothing
+        }
+        tnl_port_range_arr = calloc(idx+1, sizeof(tunnel_port_range *));
+        for(int port_idx = 0; cfg_v1.port_ranges[port_idx]; port_idx++) {
             tnl_port_range_arr[port_idx] = getTunnelPortRange(cfg_v1.port_ranges[port_idx]);
         }
     } else {
