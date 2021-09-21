@@ -138,7 +138,7 @@ XX(code, int, none, code, __VA_ARGS__)
 BASE_EVENT_MODEL(XX, __VA_ARGS__)            \
 XX(status, string, none, status, __VA_ARGS__) \
 XX(added_services, ziti_service, array, added_services, __VA_ARGS__) \
-XX(removed_services, ziti_service, array, added_services, __VA_ARGS__)
+XX(removed_services, ziti_service, array, removed_services, __VA_ARGS__)
 
 #define MFA_EVENT_MODEL(XX, ...)  \
 BASE_EVENT_MODEL(XX, __VA_ARGS__)               \
