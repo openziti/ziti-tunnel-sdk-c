@@ -9,7 +9,7 @@ jobs:
     strategy:
       matrix:
         os:
-          - ubuntu-16.04
+          - ubuntu-18.04
           - macOS-latest
           - windows-latest
         toolchain: [ default.cmake ]
@@ -17,7 +17,7 @@ jobs:
         install: [ '' ]
 
         include:
-          - os: ubuntu-16.04
+          - os: ubuntu-18.04
             arch: arm
             toolchain: Linux-arm.cmake
             install: crossbuild-essential-armhf
