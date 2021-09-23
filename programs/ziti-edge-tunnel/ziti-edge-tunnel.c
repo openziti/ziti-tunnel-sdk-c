@@ -235,11 +235,15 @@ static void send_events_message(void *message, size_t data_len, bool display_eve
     }
     if (!LIST_EMPTY(&event_clients_list)) {
         struct event_conn_s *event_client;
+        int events_count = current_events_channels;
         LIST_FOREACH(event_client, &event_clients_list, _next_event) {
-            uv_buf_t buf = uv_buf_init(strdup(message), data_len);
-            uv_write_t *wr = calloc(1, sizeof(uv_write_t));
-            wr->data = buf.base;
-            int err = uv_write(wr, event_client->event_client_conn, &buf, 1, on_write_event);
+            int err = 0;
+            if (event_client->event_client_conn != NULL) {
+                uv_buf_t buf = uv_buf_init(strdup(message), data_len);
+                uv_write_t *wr = calloc(1, sizeof(uv_write_t));
+                wr->data = buf.base;
+                err = uv_write(wr, event_client->event_client_conn, &buf, 1, on_write_event);
+            }
             if (err < 0){
                 ZITI_LOG(ERROR,"Events client write operation failed, received error - %s", uv_err_name(err));
                 if (err == UV_EPIPE) {
@@ -248,12 +252,25 @@ static void send_events_message(void *message, size_t data_len, bool display_eve
                         --current_events_channels;
                         uv_close((uv_handle_t *) event_client->event_client_conn, (uv_close_cb) free);
                         event_client->event_client_conn = NULL;
-                        LIST_REMOVE(event_client, _next_event);
                     }
                 }
             }
         }
         free(message);
+        // clean up closed event connection from the list
+        if (events_count > current_events_channels) {
+            for (int idx = 0; idx < events_count; idx++) {
+                struct event_conn_s *del_event_client = NULL;
+                LIST_FOREACH(del_event_client, &event_clients_list, _next_event) {
+                    if (del_event_client->event_client_conn == NULL) {
+                        break;
+                    }
+                }
+                if (del_event_client) {
+                    LIST_REMOVE(del_event_client, _next_event);
+                }
+            }
+        }
     }
 }
 
