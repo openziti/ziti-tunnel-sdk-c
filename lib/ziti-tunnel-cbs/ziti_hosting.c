@@ -27,6 +27,7 @@ limitations under the License.
 #include <ziti/ziti_log.h>
 #include <memory.h>
 #include <ziti/ziti_tunnel_cbs.h>
+#include "ziti_hosting.h"
 
 #if _WIN32
 #ifndef strcasecmp
@@ -97,6 +98,13 @@ static void free_hosted_service_ctx(struct hosted_service_ctx_s *hosted_ctx) {
 
     if (hosted_ctx->forward_address) {
         STAILQ_CLEAR(&hosted_ctx->addr_u.allowed_addresses, safe_free);
+
+        while(!LIST_EMPTY(&hosted_ctx->addr_u.allowed_hostnames)) {
+            struct allowed_hostname_s *dns_entry = LIST_FIRST(&hosted_ctx->addr_u.allowed_hostnames);
+            LIST_REMOVE(dns_entry, _next);
+            safe_free(dns_entry->domain_name);
+            safe_free(dns_entry);
+        }
     }
 
     if (hosted_ctx->forward_port) {
@@ -399,6 +407,20 @@ static const char *get_protocol_str(int protocol_id) {
     }
 }
 
+static bool allowed_hostname_match(const char *hostname, const allowed_hostnames_t *hostnames) {
+    struct allowed_hostname_s *entry;
+    LIST_FOREACH(entry, hostnames, _next) {
+        if (entry->domain_name[0] == '*') {
+            for (char *dot = strchr(hostname, '.'); dot != NULL; dot = strchr(dot + 1, '.')) {
+                if (strcmp(dot, entry->domain_name + 1) == 0) return true;
+            }
+        } else if (strcmp(hostname, entry->domain_name) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static bool addrinfo_from_host_ctx(struct addrinfo_params_s *dial_params, const host_ctx_t *host_ctx, tunneler_app_data *app_data) {
     const char *dial_protocol_str = NULL;
 
@@ -428,29 +450,40 @@ static bool addrinfo_from_host_ctx(struct addrinfo_params_s *dial_params, const 
     }
 
     if (host_ctx->forward_address) {
-        dial_params->address = app_data->dst_ip;
-        if (dial_params->address == NULL || dial_params->address[0] == '\0') {
-            snprintf(dial_params->err, sizeof(dial_params->err),
-                     "hosted_service[%s] config specifies 'forwardAddress' but client didn't send %s",
-                     host_ctx->service_name, DST_IP_KEY);
-            return false;
-        }
-        address_t *dst = parse_address(app_data->dst_ip);
-        if (dst == NULL) {
-            snprintf(dial_params->err, sizeof(dial_params->err),
-                     "hosted_service[%s] failed to parse requested address '%s'", host_ctx->service_name,
-                     app_data->dst_ip);
-            return false;
-        }
-        if (!address_match(&dst->ip, (address_list_t *)&host_ctx->addr_u.allowed_addresses)) {
-            snprintf(dial_params->err, sizeof(dial_params->err),
-                     "hosted_service[%s] client requested address '%s' is not allowed", host_ctx->service_name,
-                     dst->str);
+        if (app_data->dst_hostname != NULL && app_data->dst_hostname[0] != 0) {
+            if (!allowed_hostname_match(app_data->dst_hostname, &host_ctx->addr_u.allowed_hostnames)) {
+                snprintf(dial_params->err, sizeof(dial_params->err),
+                         "hosted_service[%s] client requested address '%s' is not allowed", host_ctx->service_name,
+                         app_data->dst_hostname);
+                return false;
+            }
+
+            dial_params->address = app_data->dst_hostname;
+            dial_params->hints.ai_flags = AI_ADDRCONFIG;
+        } else if (app_data->dst_ip != NULL && app_data->dst_ip[0] != 0) {
+            address_t *dst = parse_address(app_data->dst_ip);
+            if (dst == NULL) {
+                snprintf(dial_params->err, sizeof(dial_params->err),
+                         "hosted_service[%s] failed to parse requested address '%s'", host_ctx->service_name,
+                         app_data->dst_ip);
+                return false;
+            }
+            if (!address_match(&dst->ip, &host_ctx->addr_u.allowed_addresses)) {
+                snprintf(dial_params->err, sizeof(dial_params->err),
+                         "hosted_service[%s] client requested address '%s' is not allowed", host_ctx->service_name,
+                         dst->str);
+                free(dst);
+                return false;
+            }
             free(dst);
+            dial_params->address = app_data->dst_ip;
+            dial_params->hints.ai_flags = AI_ADDRCONFIG | AI_NUMERICSERV;
+        } else {
+            snprintf(dial_params->err, sizeof(dial_params->err),
+                     "hosted_service[%s] config specifies 'forwardAddress' but client didn't send %s or %s",
+                     host_ctx->service_name, DST_HOST_KEY, DST_IP_KEY);
             return false;
         }
-        free(dst);
-        dial_params->address = app_data->dst_ip;
     } else {
         dial_params->address = host_ctx->addr_u.address;
     }
@@ -534,7 +567,6 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
         goto done;
     }
 
-    dial_ai_params.hints.ai_flags = AI_ADDRCONFIG | AI_NUMERICSERV;
     switch (dial_ai_params.hints.ai_protocol) {
         case IPPROTO_TCP:
             dial_ai_params.hints.ai_socktype = SOCK_STREAM;
@@ -544,6 +576,10 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
             break;
     }
 
+    uv_getaddrinfo_t resolv_req = {0};
+    const char *resolv_host = app_data.dst_hostname ? app_data.dst_hostname : app_data.dst_ip;
+
+    uv_getaddrinfo(service_ctx->loop, &resolv_req, NULL, resolv_host, dial_ai_params.port, &dial_ai_params.hints);
     if ((s = getaddrinfo(dial_ai_params.address, dial_ai_params.port, &dial_ai_params.hints, &dial_ai)) != 0) {
         ZITI_LOG(ERROR, "hosted_service[%s], client[%s]: getaddrinfo(%s,%s) failed: %s",
                  service_ctx->service_name, client_identity, dial_ai_params.address, dial_ai_params.port, gai_strerror(s));
@@ -556,7 +592,7 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
     }
 
     const char *dst_proto = app_data.dst_protocol;
-    const char *dst_ip = app_data.dst_ip;
+    const char *dst_ip = app_data.dst_hostname ? app_data.dst_hostname : app_data.dst_ip;
     const char *dst_port = app_data.dst_port;
     if (dst_proto != NULL && dst_ip != NULL && dst_port != NULL) {
         ZITI_LOG(INFO, "hosted_service[%s], client[%s] dst_addr[%s:%s:%s]: incoming connection",
@@ -797,16 +833,20 @@ host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, uv_loop_t *loop, const char *service
             host_ctx->forward_address = host_v1_cfg->forward_address;
             if (host_v1_cfg->forward_address) {
                 STAILQ_INIT(&host_ctx->addr_u.allowed_addresses);
+                LIST_INIT(&host_ctx->addr_u.allowed_hostnames);
+
                 string_array allowed_addrs = host_v1_cfg->allowed_addresses;
                 for (i = 0; allowed_addrs != NULL && allowed_addrs[i] != NULL; i++) {
                     address_t *a = parse_address(allowed_addrs[i]);
                     if (a == NULL) {
-                        ZITI_LOG(ERROR, "hosted_service[%s] failed to parse allowed_address '%s'",
+                        ZITI_LOG(DEBUG, "hosted_service[%s] failed to parse allowed_address '%s' as IP address",
                                  host_ctx->service_name, allowed_addrs[i]);
-                        free_hosted_service_ctx(host_ctx);
-                        return NULL;
+                        struct allowed_hostname_s *dns_entry = calloc(1, sizeof(struct allowed_hostname_s));
+                        dns_entry->domain_name = strdup(allowed_addrs[i]);
+                        LIST_INSERT_HEAD(&host_ctx->addr_u.allowed_hostnames, dns_entry, _next);
+                    } else {
+                        STAILQ_INSERT_TAIL(&host_ctx->addr_u.allowed_addresses, a, entries);
                     }
-                    STAILQ_INSERT_TAIL(&host_ctx->addr_u.allowed_addresses, a, entries);
                 }
                 if (i == 0) {
                     ZITI_LOG(ERROR, "hosted_service[%s] specifies 'forwardAddress' with zero-length 'allowedAddresses'",

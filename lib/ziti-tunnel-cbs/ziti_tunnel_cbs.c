@@ -12,6 +12,7 @@
 #include <ziti/ziti_dns.h>
 #include "ziti/ziti_tunnel_cbs.h"
 #include "ziti_instance.h"
+#include "ziti_hosting.h"
 
 typedef int (*cfg_parse_fn)(void *, const char *, size_t);
 typedef void* (*cfg_alloc_fn)();
@@ -210,6 +211,12 @@ static ssize_t get_app_data_json(char *buf, size_t bufsz, tunneler_io_context io
 
     if (intercepted != NULL) {
         parse_socket_address(intercepted, &app_data.dst_protocol, &app_data.dst_ip, &app_data.dst_port);
+        if (app_data.dst_ip) {
+            const char *dst_hostname = ziti_dns_reverse_lookup(app_data.dst_ip);
+            if (dst_hostname) {
+                app_data.dst_hostname = strdup(dst_hostname);
+            }
+        }
     }
 
     if (client != NULL) {

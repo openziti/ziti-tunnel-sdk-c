@@ -154,6 +154,8 @@ DECLARE_MODEL(ziti_ctx_event, ZTX_EVENT_MODEL)
 DECLARE_MODEL(mfa_event, MFA_EVENT_MODEL)
 DECLARE_MODEL(service_event, ZTX_SVC_EVENT_MODEL)
 
+typedef struct tunneled_service_s tunneled_service_t;
+
 /** context passed through the tunneler SDK for network i/o */
 typedef struct ziti_io_ctx_s {
     ziti_connection      ziti_conn;
