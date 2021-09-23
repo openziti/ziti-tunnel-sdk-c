@@ -301,13 +301,32 @@ static string convert_seconds_to_readable_format(int input) {
     int minutes = ((double) seconds)/ 60;
     seconds = input % 60;
     char* result = malloc(MAXMESSAGELEN);
+    char* hours_unit = NULL;
+    char* minutes_unit = NULL;
+    char* seconds_unit = NULL;
 
     if (hours > 0) {
-        snprintf(result, MAXMESSAGELEN, "%s %s %s", addUnit(hours, "hour"), addUnit(minutes, "minute"), addUnit(seconds, "second"));
+        hours_unit = addUnit(hours, "hour");
+        minutes_unit = addUnit(minutes, "minute");
+        seconds_unit = addUnit(seconds, "second");
+        snprintf(result, MAXMESSAGELEN, "%s %s %s", hours_unit, minutes_unit, seconds_unit);
     } else if (minutes > 0) {
-        snprintf(result, MAXMESSAGELEN, "%s %s", addUnit(minutes, "minute"), addUnit(seconds, "second"));
+        minutes_unit = addUnit(minutes, "minute");
+        seconds_unit = addUnit(seconds, "second");
+        snprintf(result, MAXMESSAGELEN, "%s %s", minutes_unit, seconds_unit);
     } else {
-        snprintf(result, MAXMESSAGELEN, "%s", addUnit(seconds, "second"));
+        seconds_unit = addUnit(seconds, "second");
+        snprintf(result, MAXMESSAGELEN, "%s", seconds_unit);
+    }
+
+    if (hours_unit != NULL) {
+        free(hours_unit);
+    }
+    if (minutes_unit != NULL) {
+        free(minutes_unit);
+    }
+    if (seconds_unit != NULL) {
+        free(seconds_unit);
     }
 
     return result;
@@ -345,7 +364,9 @@ static notification_message *create_notification_message(tunnel_identity *tnl_id
     } else if (tnl_id->MfaMinTimeoutRem == 0) {
         snprintf(notification->Message, MAXMESSAGELEN, "Some of the services of identity %s have timed out", tnl_id->Name);
     } else if (tnl_id->MfaMinTimeoutRem <= 20*60) {
-        snprintf(notification->Message, MAXMESSAGELEN, "Some of the services of identity %s are timing out in %s", tnl_id->Name, convert_seconds_to_readable_format(tnl_id->MfaMinTimeoutRem));
+        char* message = convert_seconds_to_readable_format(tnl_id->MfaMinTimeoutRem);
+        snprintf(notification->Message, MAXMESSAGELEN, "Some of the services of identity %s are timing out in %s", tnl_id->Name, message);
+        free(message);
     } else {
         // do nothing
     }
