@@ -81,6 +81,12 @@ XX(IsAccessable, bool, none, IsAccessable, __VA_ARGS__) \
 XX(Timeout, int, none, Timeout, __VA_ARGS__)         \
 XX(TimeoutRemaining, int, none, TimeoutRemaining, __VA_ARGS__)
 
+#define TUNNEL_STATUS(XX, ...) \
+XX(Active, bool, none, Active, __VA_ARGS__) \
+XX(Duration, int, none, Duration, __VA_ARGS__) \
+XX(StartTime, timestamp, none,StartTime, __VA_ARGS__) \
+XX(Identities, tunnel_identity, array, Identities, __VA_ARGS__)
+
 DECLARE_MODEL(tunnel_config, TUNNEL_CONFIG)
 DECLARE_MODEL(tunnel_metrics, TUNNEL_METRICS)
 DECLARE_MODEL(tunnel_address, TUNNEL_ADDRESS)
@@ -88,6 +94,7 @@ DECLARE_MODEL(tunnel_port_range, TUNNEL_PORT_RANGE)
 DECLARE_MODEL(tunnel_posture_check, TUNNEL_POSTURE_CHECK)
 DECLARE_MODEL(tunnel_service, TUNNEL_SERVICE)
 DECLARE_MODEL(tunnel_identity, TUNNEL_IDENTITY)
+DECLARE_MODEL(tunnel_status, TUNNEL_STATUS)
 
 #ifdef __cplusplus
 }

@@ -184,6 +184,17 @@ static void on_events_client(uv_stream_t *s, int status) {
         uv_pipe_init(s->loop, event_conn, 0);
         uv_accept(s, (uv_stream_t *) event_conn);
         ZITI_LOG(DEBUG,"Received events connection request %d", ++current_events_channels);
+
+        // send status message immediately
+        tunnel_status_event tnl_sts_evt = {0};
+        tnl_sts_evt.Op = strdup("status");
+        tunnel_status *stat = get_tunnel_status();
+        tnl_sts_evt.Status = stat;
+        size_t json_len;
+        char *json = tunnel_status_event_to_json(&tnl_sts_evt, MODEL_JSON_COMPACT, &json_len);
+        send_events_message(json, json_len);
+        tnl_sts_evt.Status = NULL;
+        free_tunnel_status_event(&tnl_sts_evt);
     } else {
         ZITI_LOG(WARN, "Maximum events connection requests exceeded");
     }
@@ -454,6 +465,10 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     };
 
     tunneler_context tunneler = ziti_tunneler_init(&tunneler_opts, ziti_loop);
+
+    // generate tunnel status instance and save active state and start time
+    tunnel_status *tnl_status = get_tunnel_status();
+    tnl_status->Active = true;
 
     ziti_dns_setup(tunneler, ip4addr_ntoa(&dns_ip), ip_range);
     ziti_dns_set_fallback(ziti_loop, dns_fallback, NULL);

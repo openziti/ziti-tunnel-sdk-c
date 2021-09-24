@@ -28,6 +28,7 @@ struct tnl_identity_s {
 static LIST_HEAD(tnl_identities, tnl_identity_s) tnl_identity_list = LIST_HEAD_INITIALIZER(&tnl_identity_list);
 static const char* CFG_INTERCEPT_V1 = "intercept.v1";
 static const char* CFG_ZITI_TUNNELER_CLIENT_V1 = "ziti-tunneler-client.v1";
+tunnel_status *tnl_status;
 
 tunnel_identity *find_tunnel_identity(char* identifier) {
     struct tnl_identity_s *tnl_id;
@@ -219,9 +220,12 @@ static void setTunnelServiceAddress(tunnel_service *tnl_svc, ziti_service *servi
         parse_ziti_intercept_cfg_v1(&cfg_v1, intercept_v1_config, strlen(intercept_v1_config));
 
         // set address
-        tnl_addr_arr = calloc(sizeof(cfg_v1.addresses), sizeof(tunnel_address *)); // todo sizeof(cfg_v1.addresses) does not yield the number of port addresses.
-        int address_idx;
-        for(address_idx=0; cfg_v1.addresses[address_idx]; address_idx++) {
+        int idx = 0;
+        for(idx = 0; cfg_v1.addresses[idx]; idx++) {
+            // do nothing
+        }
+        tnl_addr_arr = calloc(idx+1, sizeof(tunnel_address *));
+        for(int address_idx=0; cfg_v1.addresses[address_idx]; address_idx++) {
             char* addr = cfg_v1.addresses[address_idx];
             tnl_addr_arr[address_idx] = to_address(addr);
         }
@@ -230,9 +234,11 @@ static void setTunnelServiceAddress(tunnel_service *tnl_svc, ziti_service *servi
         protocols = cfg_v1.protocols;
 
         // set ports
-        tnl_port_range_arr = calloc(sizeof(cfg_v1.port_ranges), sizeof(tunnel_port_range *)); // todo sizeof(cfg_v1.port_ranges) does not yield the number of port ranges.
-        int port_idx;
-        for(port_idx=0; cfg_v1.port_ranges[port_idx]; port_idx++) {
+        for(idx = 0; cfg_v1.port_ranges[idx]; idx++) {
+            // do nothing
+        }
+        tnl_port_range_arr = calloc(idx+1, sizeof(tunnel_port_range *));
+        for(int port_idx = 0; cfg_v1.port_ranges[port_idx]; port_idx++) {
             tnl_port_range_arr[port_idx] = getTunnelPortRange(cfg_v1.port_ranges[port_idx]);
         }
     } else {
@@ -278,6 +284,40 @@ tunnel_service *get_tunnel_service(tunnel_identity* id, ziti_service* zs) {
     return svc;
 }
 
+tunnel_status *get_tunnel_status() {
+    if (tnl_status == NULL) {
+        tnl_status = calloc(1, sizeof(struct tunnel_status_s));
+        tnl_status->Active = false;
+        tnl_status->Duration = 0;
+        uv_timeval64_t now;
+        uv_gettimeofday(&now);
+        tnl_status->StartTime.tv_sec = now.tv_sec;
+        tnl_status->StartTime.tv_usec = now.tv_usec;
+    } else {
+        uv_timeval64_t now;
+        uv_gettimeofday(&now);
+        uint64_t start_time_in_millis = (tnl_status->StartTime.tv_sec * (uint64_t)1000) + (tnl_status->StartTime.tv_usec / 1000);
+        uint64_t current_time_in_millis = (now.tv_sec * (uint64_t)1000) + (now.tv_usec / 1000);
+        tnl_status->Duration = current_time_in_millis - start_time_in_millis;
+    }
+
+    struct tnl_identity_s *tnl_id;
+    int idx = 0;
+    LIST_FOREACH(tnl_id, &tnl_identity_list, _next) {
+        idx++;
+    }
+
+    tunnel_identity_array *tnl_id_arr = calloc(idx, sizeof(struct tunnel_identity_s));
+
+    idx = 0;
+    LIST_FOREACH(tnl_id, &tnl_identity_list, _next) {
+        tnl_id_arr[idx] = tnl_id->id;
+    }
+    tnl_status->Identities = tnl_id_arr;
+
+    return tnl_status;
+}
+
 void set_mfa_status(char* identifier, bool mfa_enabled, bool mfa_needed) {
     tunnel_identity *tnl_id = find_tunnel_identity(identifier);
     if (tnl_id != NULL) {
@@ -309,4 +349,5 @@ IMPL_MODEL(tunnel_address, TUNNEL_ADDRESS)
 IMPL_MODEL(tunnel_port_range, TUNNEL_PORT_RANGE)
 IMPL_MODEL(tunnel_posture_check, TUNNEL_POSTURE_CHECK)
 IMPL_MODEL(tunnel_service, TUNNEL_SERVICE)
+IMPL_MODEL(tunnel_status, TUNNEL_STATUS)
 
