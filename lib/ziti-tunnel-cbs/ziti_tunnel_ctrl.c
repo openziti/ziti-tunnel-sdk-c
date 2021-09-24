@@ -443,25 +443,15 @@ static int load_identity(const char *identifier, const char *path, command_cb cb
     return 0;
 }
 
-doubleToString(char* string_val, int size, char *format, ...) {
-    va_list double_val;
-
-    va_start(double_val, format);
-    vsnprintf(string_val, size, format, double_val);
-    va_end(double_val);
-
-}
-
 static void get_transfer_rates(const char *identifier, const char *path, transfer_rates_cb cb, void *ctx) {
     struct ziti_instance_s *inst = model_map_get(&instances, identifier);
     double up, down;
     ziti_get_transfer_rates(inst->ztx, &up, &down);
     tunnel_identity_metrics *id_metrics = calloc(1, sizeof(struct tunnel_identity_metrics_s));
     id_metrics->identifier = inst->identifier;
-    int metrics_len = 5;
-    id_metrics->up = malloc(metrics_len * sizeof(char));
-    doubleToString(id_metrics->up, metrics_len, "%f", up);
-    doubleToString(id_metrics->down, metrics_len, "%f", down);
+    int metrics_len = 6;
+    snprintf(id_metrics->up, metrics_len, "%lf", up);
+    snprintf(id_metrics->down, metrics_len, "%lf", down);
     cb(id_metrics, ctx);
 
 }
