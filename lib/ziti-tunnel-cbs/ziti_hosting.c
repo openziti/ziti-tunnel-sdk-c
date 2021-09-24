@@ -576,10 +576,6 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
             break;
     }
 
-    uv_getaddrinfo_t resolv_req = {0};
-    const char *resolv_host = app_data.dst_hostname ? app_data.dst_hostname : app_data.dst_ip;
-
-    uv_getaddrinfo(service_ctx->loop, &resolv_req, NULL, resolv_host, dial_ai_params.port, &dial_ai_params.hints);
     if ((s = getaddrinfo(dial_ai_params.address, dial_ai_params.port, &dial_ai_params.hints, &dial_ai)) != 0) {
         ZITI_LOG(ERROR, "hosted_service[%s], client[%s]: getaddrinfo(%s,%s) failed: %s",
                  service_ctx->service_name, client_identity, dial_ai_params.address, dial_ai_params.port, gai_strerror(s));
