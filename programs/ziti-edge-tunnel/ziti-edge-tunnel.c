@@ -48,7 +48,14 @@ struct event_conn_s {
     LIST_ENTRY(event_conn_s) _next_event;
 };
 // list to store the event connections
-static LIST_HEAD(events_list, event_conn_s) event_clients_list;
+static LIST_HEAD(events_list, event_conn_s) event_clients_list = LIST_HEAD_INITIALIZER(event_clients_list);
+
+struct ipc_conn_s {
+    uv_pipe_t *ipc_client_conn;
+    LIST_ENTRY(ipc_conn_s) _next_ipc_cmd;
+};
+// list to store the ipc connections
+static LIST_HEAD(ipc_list, ipc_conn_s) ipc_clients_list = LIST_HEAD_INITIALIZER(ipc_clients_list);
 
 static long refresh_interval = 10;
 static long refresh_metrics = 5000;
@@ -57,17 +64,16 @@ static long metrics_latency = 5000;
 static char *config_dir = NULL;
 
 static uv_pipe_t cmd_server;
-static uv_pipe_t cmd_conn;
 static uv_pipe_t event_server;
-// static uv_pipe_t *event_conn;
 
 //timer
 static uv_timer_t metrics_timer;
 
 // singleton
 static const ziti_tunnel_ctrl *CMD_CTRL;
-static long events_channels_count = 8;
+static long allowed_channels_count = 8;
 static long current_events_channels = 0;
+static long current_ipc_channels = 0;
 
 #define EVENT_ACTIONS(XX, ...) \
 XX(added, __VA_ARGS__) \
@@ -113,11 +119,11 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
         free(result->data);
     }
 
-    if (uv_is_active((const uv_handle_t *) &cmd_conn)) {
+    if (uv_is_active((const uv_handle_t *) ctx)) {
         uv_buf_t b = uv_buf_init(json, json_len);
         uv_write_t *wr = calloc(1, sizeof(uv_write_t));
         wr->data = b.base;
-        uv_write(wr, (uv_stream_t *) &cmd_conn, &b, 1, on_cmd_write);
+        uv_write(wr, (uv_stream_t *) ctx, &b, 1, on_cmd_write);
     }
 
 }
@@ -125,19 +131,30 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
 static void on_cmd(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
     if (len < 0) {
         ZITI_LOG(WARN, "received from client - %s. Closing connection.", uv_err_name(len));
+        struct ipc_conn_s *del_ipc_client = NULL;
+        LIST_FOREACH(del_ipc_client, &ipc_clients_list, _next_ipc_cmd) {
+            if((uv_stream_t *)del_ipc_client->ipc_client_conn == s) {
+                break;
+            }
+        }
+        if (del_ipc_client) {
+            LIST_REMOVE(del_ipc_client, _next_ipc_cmd);
+        }
         uv_close((uv_handle_t *) s, NULL);
+        ZITI_LOG(WARN,"IPC client connection closed, count: %d", --current_ipc_channels);
+
     } else {
         ZITI_LOG(INFO, "received cmd <%.*s>", (int) len, b->base);
 
         tunnel_comand cmd = {0};
         if (parse_tunnel_comand(&cmd, b->base, len) == 0) {
-            CMD_CTRL->process(&cmd, on_command_resp, NULL);
+            CMD_CTRL->process(&cmd, on_command_resp, s);
         } else {
             tunnel_result resp = {
                     .success = false,
                     .error = "failed to parse command"
             };
-            on_command_resp(&resp, NULL);
+            on_command_resp(&resp, s);
         }
         free_tunnel_comand(&cmd);
     }
@@ -147,11 +164,17 @@ static void on_cmd(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
 
 static void on_cmd_client(uv_stream_t *s, int status) {
     // only allow a single client
-    if (!uv_is_active((const uv_handle_t *) &cmd_conn)) {
-        uv_pipe_init(s->loop, &cmd_conn, 0);
-        uv_accept(s, (uv_stream_t *) &cmd_conn);
-        uv_read_start((uv_stream_t *) &cmd_conn, cmd_alloc, on_cmd);
+    if (current_ipc_channels < allowed_channels_count) {
+        uv_pipe_t *cmd_conn = malloc(sizeof(uv_pipe_t));
+        ZITI_LOG(DEBUG,"Received IPC client connection request, count: %d", ++current_ipc_channels);
+        uv_pipe_init(s->loop, cmd_conn, 0);
+        uv_accept(s, (uv_stream_t *) cmd_conn);
+        uv_read_start((uv_stream_t *) cmd_conn, cmd_alloc, on_cmd);
+        struct ipc_conn_s *ipc_conn = calloc(1, sizeof(struct ipc_conn_s));
+        ipc_conn->ipc_client_conn = cmd_conn;
+        LIST_INSERT_HEAD(&ipc_clients_list, ipc_conn, _next_ipc_cmd);
     } else {
+        ZITI_LOG(WARN, "Maximum IPC client connection requests exceeded");
         uv_pipe_t *tmp = malloc(sizeof(uv_pipe_t));
         uv_pipe_init(s->loop, tmp, 0);
         uv_accept(s, (uv_stream_t *) tmp);
@@ -193,12 +216,12 @@ static int start_cmd_socket(uv_loop_t *l) {
 
 
 static void on_events_client(uv_stream_t *s, int status) {
-    if (current_events_channels < events_channels_count) {
+    if (current_events_channels < allowed_channels_count) {
         uv_pipe_t* event_conn = malloc(sizeof(uv_pipe_t));
         uv_pipe_init(s->loop, event_conn, 0);
         uv_accept(s, (uv_stream_t *) event_conn);
-        ZITI_LOG(DEBUG,"Received events connection request %d", ++current_events_channels);
-        struct event_conn_s *event_client_conn = calloc(1, sizeof(struct uv_pipe_s));
+        ZITI_LOG(DEBUG,"Received events client connection request, count: %d", ++current_events_channels);
+        struct event_conn_s *event_client_conn = calloc(1, sizeof(struct event_conn_s));
         event_client_conn->event_client_conn = event_conn;
         LIST_INSERT_HEAD(&event_clients_list, event_client_conn, _next_event);
 
@@ -212,7 +235,11 @@ static void on_events_client(uv_stream_t *s, int status) {
         tnl_sts_evt.Status = NULL;
         free_tunnel_status_event(&tnl_sts_evt);
     } else {
-        ZITI_LOG(WARN, "Maximum events connection requests exceeded");
+        ZITI_LOG(WARN, "Maximum Events client connection requests exceeded");
+        uv_pipe_t* tmp = malloc(sizeof(uv_pipe_t));
+        uv_pipe_init(s->loop, tmp, 0);
+        uv_accept(s, (uv_stream_t *) tmp);
+        uv_close((uv_handle_t *) tmp, (uv_close_cb) free);
     }
 }
 
@@ -242,14 +269,13 @@ static void send_events_message(void *message, size_t data_len, bool display_eve
                 uv_buf_t buf = uv_buf_init(strdup(message), data_len);
                 uv_write_t *wr = calloc(1, sizeof(uv_write_t));
                 wr->data = buf.base;
-                err = uv_write(wr, event_client->event_client_conn, &buf, 1, on_write_event);
+                err = uv_write(wr, (uv_stream_t *)event_client->event_client_conn, &buf, 1, on_write_event);
             }
             if (err < 0){
                 ZITI_LOG(ERROR,"Events client write operation failed, received error - %s", uv_err_name(err));
                 if (err == UV_EPIPE) {
                     if (current_events_channels > 0) {
-                        ZITI_LOG(WARN,"Events client closed connection");
-                        --current_events_channels;
+                        ZITI_LOG(WARN,"Events client connection closed, count : %d", --current_events_channels);
                         uv_close((uv_handle_t *) event_client->event_client_conn, (uv_close_cb) free);
                         event_client->event_client_conn = NULL;
                     }
