@@ -458,8 +458,11 @@ static void broadcast_metrics(uv_timer_t *timer) {
                 // check timeout
                 if (check_send_notification(tnl_id)) {
                     notification_message *message = create_notification_message(tnl_id);
-                    model_map_set(&notification_map, tnl_id->Name, message);
-                    tnl_id->Notified = true;
+                    if (strlen(message->Message) > 0) {
+                        model_map_set(&notification_map, tnl_id->Name, message);
+                        tnl_id->Notified = true;
+                        ZITI_LOG(INFO, "Notification Message: %s", message->Message);
+                    }
                 }
 
             }
