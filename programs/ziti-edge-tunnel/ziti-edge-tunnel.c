@@ -276,7 +276,6 @@ static int start_event_socket(uv_loop_t *l) {
 static void tnl_transfer_rates(const tunnel_identity_metrics *metrics, void *ctx) {
     tunnel_identity *tnl_id = ctx;
     tnl_id->Metrics = calloc(1, sizeof(struct tunnel_metrics_s));
-    ZITI_LOG(INFO, "metrics string up %s down %s", metrics->up, metrics->down);
     if (metrics->up != NULL) {
         tnl_id->Metrics->Up = (int) strtol(metrics->up, NULL, 10);
     }
@@ -293,7 +292,6 @@ static void on_command_inline_resp(const tunnel_result* result, void *ctx) {
         switch (tnl_cmd_inline->command) {
             case TunnelCommand_GetMetrics: {
                 if (result->success) {
-                    ZITI_LOG(INFO, "metrics result %s", result->data);
                     tunnel_identity_metrics *id_metrics = calloc(1, sizeof(tunnel_identity_metrics));
                     if (parse_tunnel_identity_metrics(id_metrics, result->data, strlen(result->data)) != 0) {
                         ZITI_LOG("ERROR", "Could not fetch metrics data");

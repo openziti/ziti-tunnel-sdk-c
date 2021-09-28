@@ -468,7 +468,6 @@ static void get_transfer_rates(const char *identifier, transfer_rates_cb cb, voi
     tunnel_identity_metrics *id_metrics = calloc(1, sizeof(struct tunnel_identity_metrics_s));
     id_metrics->identifier = strdup(identifier);
     int metrics_len = 6;
-    ZITI_LOG(INFO, "metrics double up %lf, down %lf", up, down);
     if (up > 0) {
         id_metrics->up = malloc((metrics_len + 1) * sizeof(char));
         snprintf(id_metrics->up, metrics_len, "%.2lf", up);
