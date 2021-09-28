@@ -287,27 +287,26 @@ static void tnl_transfer_rates(const tunnel_identity_metrics *metrics, void *ctx
 }
 
 static void on_command_inline_resp(const tunnel_result* result, void *ctx) {
-
-    if (result->data == NULL || strlen(result->data) == 0) {
-        free_tunnel_result((tunnel_result*) result);
-        return;
-    }
-
     tunnel_command_inline *tnl_cmd_inline = ctx;
-    switch (tnl_cmd_inline->command) {
-        case TunnelCommand_GetMetrics:{
-            if (result->success) {
-                ZITI_LOG(INFO, "metrics result %s", result->data);
-                tunnel_identity_metrics *id_metrics = calloc(1, sizeof(tunnel_identity_metrics));
-                if (parse_tunnel_identity_metrics(id_metrics, result->data, strlen(result->data)) != 0) {
-                    ZITI_LOG("ERROR", "Could not fetch metrics data");
+
+    if (result->data != NULL && strlen(result->data) > 0) {
+        switch (tnl_cmd_inline->command) {
+            case TunnelCommand_GetMetrics: {
+                if (result->success) {
+                    ZITI_LOG(INFO, "metrics result %s", result->data);
+                    tunnel_identity_metrics *id_metrics = calloc(1, sizeof(tunnel_identity_metrics));
+                    if (parse_tunnel_identity_metrics(id_metrics, result->data, strlen(result->data)) != 0) {
+                        ZITI_LOG("ERROR", "Could not fetch metrics data");
+                        break;
+                    }
+                    tunnel_identity *tnl_id = find_tunnel_identity(tnl_cmd_inline->identifier);
+                    tnl_transfer_rates(id_metrics, tnl_id);
                 }
-                tunnel_identity *tnl_id = find_tunnel_identity(tnl_cmd_inline->identifier);
-                tnl_transfer_rates(id_metrics, tnl_id);
+                break;
             }
-        }
-        default: {
-            ZITI_LOG("ERROR", "Tunnel command not supported %d", tnl_cmd_inline->command);
+            default: {
+                ZITI_LOG("ERROR", "Tunnel command not supported %d", tnl_cmd_inline->command);
+            }
         }
     }
 
