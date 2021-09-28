@@ -273,11 +273,53 @@ static int start_event_socket(uv_loop_t *l) {
     return -1;
 }
 
-static void tnl_transfer_rates_cb(const tunnel_identity_metrics *metrics, void *ctx) {
+static void tnl_transfer_rates(const tunnel_identity_metrics *metrics, void *ctx) {
     tunnel_identity *tnl_id = ctx;
     tnl_id->Metrics = calloc(1, sizeof(struct tunnel_metrics_s));
-    tnl_id->Metrics->Up = (int) strtol(metrics->up, NULL, 10);
-    tnl_id->Metrics->Down = (int) strtol(metrics->down, NULL, 10);
+    ZITI_LOG(INFO, "metrics string up %s down %s", metrics->up, metrics->down);
+    if (metrics->up != NULL) {
+        tnl_id->Metrics->Up = (int) strtol(metrics->up, NULL, 10);
+    }
+    if (metrics->down != NULL) {
+        tnl_id->Metrics->Down = (int) strtol(metrics->down, NULL, 10);
+    }
+    free_tunnel_identity_metrics((tunnel_identity_metrics*) metrics);
+}
+
+static void on_command_inline_resp(const tunnel_result* result, void *ctx) {
+
+    if (result->data == NULL || strlen(result->data) == 0) {
+        free_tunnel_result((tunnel_result*) result);
+        return;
+    }
+
+    tunnel_command_inline *tnl_cmd_inline = ctx;
+    switch (tnl_cmd_inline->command) {
+        case TunnelCommand_GetMetrics:{
+            if (result->success) {
+                ZITI_LOG(INFO, "metrics result %s", result->data);
+                tunnel_identity_metrics *id_metrics = calloc(1, sizeof(tunnel_identity_metrics));
+                if (parse_tunnel_identity_metrics(id_metrics, result->data, strlen(result->data)) != 0) {
+                    ZITI_LOG("ERROR", "Could not fetch metrics data");
+                }
+                tunnel_identity *tnl_id = find_tunnel_identity(tnl_cmd_inline->identifier);
+                tnl_transfer_rates(id_metrics, tnl_id);
+            }
+        }
+        default: {
+            ZITI_LOG("ERROR", "Tunnel command not supported %d", tnl_cmd_inline->command);
+        }
+    }
+
+    if (tnl_cmd_inline != NULL) {
+        free_tunnel_command_inline(tnl_cmd_inline);
+    }
+    free_tunnel_result((tunnel_result*) result);
+}
+
+static void send_tunnel_command(tunnel_comand *cmd, void *ctx) {
+    CMD_CTRL->process(cmd, on_command_inline_resp, ctx);
+    free_tunnel_comand(&cmd);
 }
 
 static void broadcast_metrics(uv_timer_t *timer) {
@@ -292,7 +334,19 @@ static void broadcast_metrics(uv_timer_t *timer) {
             tnl_id = metrics_event.Identities[idx];
             if (tnl_id->Active && tnl_id->Loaded) {
                 active_identities = true;
-                CMD_CTRL->get_transfer_rates(tnl_id->Identifier, NULL, tnl_transfer_rates_cb, tnl_id);
+                tunnel_comand *cmd = calloc(1, sizeof(tunnel_comand));
+                cmd->command = TunnelCommand_GetMetrics;
+                tunnel_get_identity_metrics *get_metrics = calloc(1, sizeof(tunnel_get_identity_metrics));
+                get_metrics->identifier = strdup(tnl_id->Identifier);
+                size_t json_len;
+                cmd->data = tunnel_get_identity_metrics_to_json(get_metrics, MODEL_JSON_COMPACT, &json_len);
+
+                tunnel_command_inline *tnl_cmd_inline = calloc(1, sizeof(tunnel_command_inline));
+                tnl_cmd_inline->identifier = strdup(tnl_id->Identifier);
+                tnl_cmd_inline->command = TunnelCommand_GetMetrics;
+                send_tunnel_command(cmd, tnl_cmd_inline);
+
+                free_tunnel_get_identity_metrics(get_metrics);
             }
         }
     }

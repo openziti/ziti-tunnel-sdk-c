@@ -44,7 +44,7 @@ static long refresh_interval = 10;
 
 static int process_cmd(const tunnel_comand *cmd, void (*cb)(const tunnel_result *, void *ctx), void *ctx);
 static int load_identity(const char *identifier, const char *path, command_cb cb, void *ctx);
-static void get_transfer_rates(const char *identifier, const char *path, transfer_rates_cb cb, void *ctx);
+static void get_transfer_rates(const char *identifier, transfer_rates_cb cb, void *ctx);
 static struct ziti_instance_s *new_ziti_instance(const char *identifier, const char *path);
 static void load_ziti_async(uv_async_t *ar);
 static void on_sigdump(uv_signal_t *sig, int signum);
@@ -75,7 +75,6 @@ const ziti_tunnel_ctrl* ziti_tunnel_init_cmd(uv_loop_t *loop, tunneler_context t
     CMD_CTX.ctrl.process = process_cmd;
     CMD_CTX.ctrl.load_identity = load_identity;
     CMD_CTX.ctrl.get_ziti = get_ziti;
-    CMD_CTX.ctrl.get_transfer_rates = get_transfer_rates;
 
 #ifndef _WIN32
     uv_signal_init(loop, &sigusr1);
@@ -421,6 +420,25 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
             return 0;
         }
 
+        case TunnelCommand_GetMetrics: {
+            tunnel_get_identity_metrics get_identity_metrics_cmd;
+            if (cmd->data == NULL || parse_tunnel_get_identity_metrics(&get_identity_metrics_cmd, cmd->data, strlen(cmd->data)) != 0) {
+                result.error = "invalid command";
+                result.success = false;
+                break;
+            }
+
+            struct ziti_instance_s *inst = model_map_get(&instances, get_identity_metrics_cmd.identifier);
+            if (inst == NULL) {
+                result.error = "ziti context not found";
+                result.success = false;
+                break;
+            }
+
+            get_transfer_rates(strdup(get_identity_metrics_cmd.identifier), cb, ctx);
+            return 0;
+        }
+
         case TunnelCommand_Unknown:
             break;
     }
@@ -443,16 +461,31 @@ static int load_identity(const char *identifier, const char *path, command_cb cb
     return 0;
 }
 
-static void get_transfer_rates(const char *identifier, const char *path, transfer_rates_cb cb, void *ctx) {
+static void get_transfer_rates(const char *identifier, transfer_rates_cb cb, void *ctx) {
     struct ziti_instance_s *inst = model_map_get(&instances, identifier);
     double up, down;
     ziti_get_transfer_rates(inst->ztx, &up, &down);
     tunnel_identity_metrics *id_metrics = calloc(1, sizeof(struct tunnel_identity_metrics_s));
-    id_metrics->identifier = inst->identifier;
+    id_metrics->identifier = strdup(identifier);
     int metrics_len = 6;
-    snprintf(id_metrics->up, metrics_len, "%lf", up);
-    snprintf(id_metrics->down, metrics_len, "%lf", down);
-    cb(id_metrics, ctx);
+    ZITI_LOG(INFO, "metrics double up %lf, down %lf", up, down);
+    if (up > 0) {
+        id_metrics->up = malloc((metrics_len + 1) * sizeof(char));
+        snprintf(id_metrics->up, metrics_len, "%.2lf", up);
+    }
+    if (down > 0) {
+        id_metrics->down = malloc((metrics_len + 1) * sizeof(char));
+        snprintf(id_metrics->down, metrics_len, "%.2lf", down);
+    }
+
+    tunnel_result *result = calloc(1, sizeof(tunnel_result));
+    result->success = true;
+    size_t json_len;
+    char *json = tunnel_identity_metrics_to_json(id_metrics, MODEL_JSON_COMPACT, &json_len);
+    result->data = calloc(json_len, sizeof(char));
+    result->data = json;
+    free_tunnel_identity_metrics(id_metrics);
+    cb(result, ctx);
 
 }
 
@@ -872,6 +905,7 @@ IMPL_MODEL(tunnel_remove_mfa, TNL_REMOVE_MFA)
 IMPL_MODEL(tunnel_generate_mfa_codes, TNL_GENERATE_MFA_CODES)
 IMPL_MODEL(tunnel_mfa_recovery_codes, TNL_MFA_RECOVERY_CODES)
 IMPL_MODEL(tunnel_get_mfa_codes, TNL_GET_MFA_CODES)
+IMPL_MODEL(tunnel_get_identity_metrics, TNL_GET_IDENTITY_METRICS)
 IMPL_MODEL(tunnel_identity_metrics, TNL_IDENTITY_METRICS)
 
 // ************** TUNNEL Events
@@ -880,4 +914,5 @@ IMPL_ENUM(TunnelEvent, TUNNEL_EVENTS)
 IMPL_MODEL(base_event, BASE_EVENT_MODEL)
 IMPL_MODEL(ziti_ctx_event, ZTX_EVENT_MODEL)
 IMPL_MODEL(mfa_event, MFA_EVENT_MODEL)
+IMPL_MODEL(tunnel_command_inline, TUNNEL_CMD_INLINE)
 
