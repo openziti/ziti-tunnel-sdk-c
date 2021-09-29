@@ -207,13 +207,20 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
         }
 
         case TunnelCommand_DisableIdentity: {
-            tunnel_disable_identity disable_id;
+            tunnel_disable_identity disable_id = {0};
             if (cmd->data == NULL || parse_tunnel_disable_identity(&disable_id, cmd->data, strlen(cmd->data)) != 0) {
                 result.success = false;
                 result.error = "invalid command";
+                free_tunnel_disable_identity(&disable_id);
                 break;
             }
             struct ziti_instance_s *inst = model_map_get(&instances, disable_id.path);
+            if (inst == NULL) {
+                result.error = "ziti context not found";
+                result.success = false;
+                free_tunnel_disable_identity(&disable_id);
+                break;
+            }
             if (inst) {
                 disconnect_identity(inst->ztx, CMD_CTX.tunnel_ctx);
                 model_map_remove(&instances, disable_id.path);
@@ -225,6 +232,7 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
             }
 
             cb(&result, ctx);
+            free_tunnel_disable_identity(&disable_id);
             return 0;
         }
 
@@ -233,10 +241,11 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
             #define MAXPATHLEN 1024
             #endif
             ZITI_LOG(INFO, "ziti dump started ");
-            tunnel_ziti_dump dump;
+            tunnel_ziti_dump dump = {0};
             if (cmd->data != NULL && parse_tunnel_ziti_dump(&dump, cmd->data, strlen(cmd->data)) != 0) {
                 result.success = false;
                 result.error = "invalid command";
+                free_tunnel_ziti_dump(&dump);
                 break;
             }
             const char *key;
@@ -267,10 +276,11 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
         }
 
         case TunnelCommand_EnableMFA: {
-            tunnel_enable_mfa enable_mfa_cmd;
+            tunnel_enable_mfa enable_mfa_cmd = {0};
             if (cmd->data != NULL && parse_tunnel_enable_mfa(&enable_mfa_cmd, cmd->data, strlen(cmd->data)) != 0) {
                 result.success = false;
                 result.error = "invalid command";
+                free_tunnel_enable_mfa(&enable_mfa_cmd);
                 break;
             }
 
@@ -278,6 +288,7 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
             if (inst == NULL) {
                 result.error = "ziti context not found";
                 result.success = false;
+                free_tunnel_enable_mfa(&enable_mfa_cmd);
                 break;
             }
 
@@ -293,10 +304,11 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
         }
 
         case TunnelCommand_VerifyMFA: {
-            tunnel_verify_mfa verify_mfa_cmd;
+            tunnel_verify_mfa verify_mfa_cmd = {0};
             if (cmd->data != NULL && parse_tunnel_verify_mfa(&verify_mfa_cmd, cmd->data, strlen(cmd->data)) != 0) {
                 result.success = false;
                 result.error = "invalid command";
+                free_tunnel_verify_mfa(&verify_mfa_cmd);
                 break;
             }
 
@@ -304,6 +316,7 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
             if (inst == NULL) {
                 result.error = "ziti context not found";
                 result.success = false;
+                free_tunnel_verify_mfa(&verify_mfa_cmd);
                 break;
             }
 
@@ -319,10 +332,11 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
         }
 
         case TunnelCommand_RemoveMFA: {
-            tunnel_remove_mfa remove_mfa_cmd;
+            tunnel_remove_mfa remove_mfa_cmd = {0};
             if (cmd->data != NULL && parse_tunnel_remove_mfa(&remove_mfa_cmd, cmd->data, strlen(cmd->data)) != 0) {
                 result.success = false;
                 result.error = "invalid command";
+                free_tunnel_remove_mfa(&remove_mfa_cmd);
                 break;
             }
 
@@ -330,6 +344,7 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
             if (inst == NULL) {
                 result.error = "ziti context not found";
                 result.success = false;
+                free_tunnel_remove_mfa(&remove_mfa_cmd);
                 break;
             }
 
@@ -346,10 +361,11 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
 
         default: result.error = "command not implemented";
         case TunnelCommand_SubmitMFA: {
-            tunnel_submit_mfa auth;
+            tunnel_submit_mfa auth = {0};
             if (cmd->data == NULL || parse_tunnel_submit_mfa(&auth, cmd->data, strlen(cmd->data)) != 0) {
                 result.error = "invalid command";
                 result.success = false;
+                free_tunnel_submit_mfa(&auth);
                 break;
             }
 
@@ -357,6 +373,7 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
             if (inst == NULL) {
                 result.error = "ziti context not found";
                 result.success = false;
+                free_tunnel_submit_mfa(&auth);
                 break;
             }
 
@@ -371,10 +388,11 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
         }
 
         case TunnelCommand_GenerateMFACodes: {
-            tunnel_generate_mfa_codes generate_mfa_codes_cmd;
+            tunnel_generate_mfa_codes generate_mfa_codes_cmd = {0};
             if (cmd->data == NULL || parse_tunnel_generate_mfa_codes(&generate_mfa_codes_cmd, cmd->data, strlen(cmd->data)) != 0) {
                 result.error = "invalid command";
                 result.success = false;
+                free_tunnel_generate_mfa_codes(&generate_mfa_codes_cmd);
                 break;
             }
 
@@ -382,6 +400,7 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
             if (inst == NULL) {
                 result.error = "ziti context not found";
                 result.success = false;
+                free_tunnel_generate_mfa_codes(&generate_mfa_codes_cmd);
                 break;
             }
 
@@ -396,7 +415,7 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
         }
 
         case TunnelCommand_GetMFACodes: {
-            tunnel_get_mfa_codes get_mfa_codes_cmd;
+            tunnel_get_mfa_codes get_mfa_codes_cmd = {0};
             if (cmd->data == NULL || parse_tunnel_get_mfa_codes(&get_mfa_codes_cmd, cmd->data, strlen(cmd->data)) != 0) {
                 result.error = "invalid command";
                 result.success = false;
@@ -421,7 +440,7 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
         }
 
         case TunnelCommand_GetMetrics: {
-            tunnel_get_identity_metrics get_identity_metrics_cmd;
+            tunnel_get_identity_metrics get_identity_metrics_cmd = {0};
             if (cmd->data == NULL || parse_tunnel_get_identity_metrics(&get_identity_metrics_cmd, cmd->data, strlen(cmd->data)) != 0) {
                 result.error = "invalid command";
                 result.success = false;
@@ -436,6 +455,7 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
             }
 
             get_transfer_rates(strdup(get_identity_metrics_cmd.identifier), cb, ctx);
+            free_tunnel_get_identity_metrics(&get_identity_metrics_cmd);
             return 0;
         }
 
