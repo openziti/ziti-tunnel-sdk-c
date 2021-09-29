@@ -32,14 +32,14 @@ static void to_ziti(struct io_ctx_s *io, struct pbuf *p) {
     }
 
     if (recv_data == NULL) {
-        TNL_LOG(DEBUG, "no data to write");
+        TNL_LOG(TRACE, "no data to write");
         return;
     }
 
     uv_timer_start(io->tnlr_io->conn_timer, udp_timeout_cb, UDP_TIMEOUT, 0);
 
     do {
-        TNL_LOG(DEBUG, "writing %d bytes to ziti", recv_data->len);
+        TNL_LOG(TRACE, "writing %d bytes to ziti", recv_data->len);
         struct write_ctx_s *wr_ctx = calloc(1, sizeof(struct write_ctx_s));
         wr_ctx->pbuf = recv_data;
         wr_ctx->udp = io->tnlr_io->udp.pcb;
@@ -93,7 +93,7 @@ void tunneler_udp_ack(struct write_ctx_s *write_ctx) {
 int tunneler_udp_close(struct udp_pcb *pcb) {
     struct io_ctx_s *io_ctx = pcb->recv_arg;
     tunneler_io_context tnlr_io_ctx = io_ctx->tnlr_io;
-    TNL_LOG(INFO, "closing %s session", tnlr_io_ctx->service_name);
+    TNL_LOG(DEBUG, "closing %s session", tnlr_io_ctx->service_name);
     if (pcb != NULL) {
         udp_remove(pcb);
     }

@@ -51,4 +51,6 @@ struct ziti_instance_s {
     LIST_ENTRY(ziti_instance_s) _next;
 };
 
+typedef struct ziti_intercept_s ziti_intercept_t;
+
 #endif //ZITI_TUNNEL_SDK_C_ZITI_INSTANCE_H

@@ -419,10 +419,10 @@ ssize_t ziti_tunneler_write(tunneler_io_context tnlr_io_ctx, const void *data, s
 /** called by tunneler application when a ziti connection closes */
 int ziti_tunneler_close(tunneler_io_context tnlr_io_ctx) {
     if (tnlr_io_ctx == NULL) {
-        TNL_LOG(INFO, "null tnlr_io_ctx");
+        TNL_LOG(DEBUG, "null tnlr_io_ctx");
         return 0;
     }
-    TNL_LOG(INFO, "closing connection: client[%s] service[%s]",
+    TNL_LOG(DEBUG, "closing connection: client[%s] service[%s]",
             tnlr_io_ctx->client, tnlr_io_ctx->service_name);
     switch (tnlr_io_ctx->proto) {
         case tun_tcp:
