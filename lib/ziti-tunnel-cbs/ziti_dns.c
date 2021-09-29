@@ -24,11 +24,27 @@ limitations under the License.
 
 typedef struct ziti_dns_client_s {
     io_ctx_t *io_ctx;
+    LIST_HEAD(reqs, dns_req) active_reqs;
 } ziti_dns_client_t;
+
+struct dns_req {
+    char host[255];
+    dns_fallback_cb fallback;
+    void *fb_ctx;
+
+    struct in_addr addr;
+    int code;
+
+    uint8_t resp[512];
+    uint8_t *rp;
+
+    ziti_dns_client_t *clt;
+    LIST_ENTRY(dns_req) _next;
+};
 
 static void* on_dns_client(const void *app_intercept_ctx, io_ctx_t *io);
 static int on_dns_close(void *dns_io_ctx);
-static ssize_t on_dns_req(const void *ziti_io_ctx, void *write_ctx, const uint8_t *q_packet, size_t len);
+static ssize_t on_dns_req(void *ziti_io_ctx, void *write_ctx, const uint8_t *q_packet, size_t len);
 
 typedef struct dns_entry_s {
     char hostname[MAX_DNS_NAME];
@@ -104,6 +120,11 @@ void* on_dns_client(const void *app_intercept_ctx, io_ctx_t *io) {
 int on_dns_close(void *dns_io_ctx) {
     ZITI_LOG(TRACE, "DNS client close");
     ziti_dns_client_t *clt = dns_io_ctx;
+    while(!LIST_EMPTY(&clt->active_reqs)) {
+        struct dns_req *req = LIST_FIRST(&clt->active_reqs);
+        LIST_REMOVE(req, _next);
+        req->clt = NULL;
+    }
     ziti_tunneler_close(clt->io_ctx->tnlr_io);
     free(clt->io_ctx);
     free(dns_io_ctx);
@@ -163,19 +184,6 @@ static const char DNS_OPT[] = { 0x0, 0x0, 0x29, 0x02, 0x0, 0x0, 0x0, 0x0, 0x0, 0
 
 #define IS_QUERY(flags) ((flags & (1 << 15)) == 0)
 
-struct dns_req {
-    char host[255];
-    dns_fallback_cb fallback;
-    void *fb_ctx;
-
-    struct in_addr addr;
-    int code;
-
-    uint8_t resp[512];
-    uint8_t *rp;
-
-    const ziti_dns_client_t *clt;
-};
 
 static void fallback_work(uv_work_t *work_req) {
     struct dns_req *f_req = work_req->data;
@@ -184,54 +192,59 @@ static void fallback_work(uv_work_t *work_req) {
 
 static void dns_work_complete(uv_work_t *work_req, int status) {
     struct dns_req *req = work_req->data;
+    if (req->clt != NULL) {
+        LIST_REMOVE(req, _next);
 
-    uint8_t *rp = req->rp;
-    DNS_SET_CODE(req->resp, req->code);
-    if (req->code == DNS_NO_ERROR) {
-        ZITI_LOG(TRACE, "found record for host[%s]", req->host);
-        DNS_SET_ARS(req->resp, 1);
+        uint8_t *rp = req->rp;
+        DNS_SET_CODE(req->resp, req->code);
+        if (req->code == DNS_NO_ERROR) {
+            ZITI_LOG(TRACE, "found record for host[%s]", req->host);
+            DNS_SET_ARS(req->resp, 1);
 
-        // name ref
-        *rp++ = 0xc0;
-        *rp++ = 0x0c;
+            // name ref
+            *rp++ = 0xc0;
+            *rp++ = 0x0c;
 
-        // type A
-        *rp++ = 0;
-        *rp++ = 1;
+            // type A
+            *rp++ = 0;
+            *rp++ = 1;
 
-        // class IN
-        *rp++ = 0;
-        *rp++ = 1;
+            // class IN
+            *rp++ = 0;
+            *rp++ = 1;
 
-        // TTL
-        *rp++ = 0;
-        *rp++ = 0;
-        *rp++ = 0;
-        *rp++ = 255;
+            // TTL
+            *rp++ = 0;
+            *rp++ = 0;
+            *rp++ = 0;
+            *rp++ = 255;
 
-        // size 4
-        *rp++ = 0;
-        *rp++ = sizeof(req->addr.s_addr);
+            // size 4
+            *rp++ = 0;
+            *rp++ = sizeof(req->addr.s_addr);
 
-        memcpy(rp, &req->addr.s_addr, sizeof(req->addr.s_addr));
-        rp += sizeof(req->addr.s_addr);
+            memcpy(rp, &req->addr.s_addr, sizeof(req->addr.s_addr));
+            rp += sizeof(req->addr.s_addr);
+        } else {
+            DNS_SET_ARS(req->resp, 0);
+        }
+
+        DNS_SET_AARS(req->resp, 1);
+        memcpy(rp, DNS_OPT, sizeof(DNS_OPT));
+        rp += sizeof(DNS_OPT);
+
+        ziti_tunneler_write(req->clt->io_ctx->tnlr_io, req->resp, rp - req->resp);
     } else {
-        DNS_SET_ARS(req->resp, 0);
+        ZITI_LOG(DEBUG, "DNS request[%s] completed for closed client", req->host);
     }
-
-    DNS_SET_AARS(req->resp, 1);
-    memcpy(rp, DNS_OPT, sizeof(DNS_OPT));
-    rp += sizeof(DNS_OPT);
-
-    ziti_tunneler_write(req->clt->io_ctx->tnlr_io, req->resp, rp - req->resp);
-
     free(req);
     free(work_req);
 }
 
-ssize_t on_dns_req(const void *ziti_io_ctx, void *write_ctx, const uint8_t *q_packet, size_t q_len) {
+ssize_t on_dns_req(void *ziti_io_ctx, void *write_ctx, const uint8_t *q_packet, size_t q_len) {
     struct dns_req *req = calloc(1, sizeof(struct dns_req));
     req->clt = ziti_io_ctx;
+    LIST_INSERT_HEAD(&req->clt->active_reqs, req, _next);
 
     uv_work_t *work_req = calloc(1, sizeof(uv_work_t));
     work_req->data = req;
