@@ -17,6 +17,7 @@ limitations under the License.
 #include <ziti/ziti_tunnel_cbs.h>
 #include <ziti/ziti_log.h>
 
+#include "ziti_hosting.h"
 #include "ziti_instance.h"
 #include "stdarg.h"
 #include <time.h>
