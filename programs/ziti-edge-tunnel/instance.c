@@ -210,14 +210,14 @@ tunnel_port_range *getTunnelPortRange(ziti_port_range *zpr){
 }
 
 static void setTunnelServiceAddress(tunnel_service *tnl_svc, ziti_service *service) {
-    const char* intercept_v1_config = ziti_service_get_raw_config(service, CFG_INTERCEPT_V1);
-    tunnel_address_array tnl_addr_arr;
+    const char* cfg_json = ziti_service_get_raw_config(service, CFG_INTERCEPT_V1);
+    tunnel_address_array tnl_addr_arr = NULL;
     string_array protocols = NULL;
     tunnel_port_range_array tnl_port_range_arr;
-    if (intercept_v1_config != NULL && strlen(intercept_v1_config) > 0) {
-        ZITI_LOG(TRACE, "intercept.v1: %s", intercept_v1_config);
+    if (cfg_json != NULL && strlen(cfg_json) > 0) {
+        ZITI_LOG(TRACE, "intercept.v1: %s", cfg_json);
         ziti_intercept_cfg_v1 cfg_v1;
-        parse_ziti_intercept_cfg_v1(&cfg_v1, intercept_v1_config, strlen(intercept_v1_config));
+        parse_ziti_intercept_cfg_v1(&cfg_v1, cfg_json, strlen(cfg_json));
 
         // set address
         int idx = 0;
@@ -241,19 +241,18 @@ static void setTunnelServiceAddress(tunnel_service *tnl_svc, ziti_service *servi
         for(int port_idx = 0; cfg_v1.port_ranges[port_idx]; port_idx++) {
             tnl_port_range_arr[port_idx] = getTunnelPortRange(cfg_v1.port_ranges[port_idx]);
         }
-    } else {
-        const char* zt_client_v1_config = ziti_service_get_raw_config(service, CFG_ZITI_TUNNELER_CLIENT_V1);
-        ZITI_LOG(TRACE, "ziti-tunneler-client.v1: %s", zt_client_v1_config);
+    } else if ((cfg_json = ziti_service_get_raw_config(service, CFG_ZITI_TUNNELER_CLIENT_V1)) != NULL) {
+        ZITI_LOG(TRACE, "ziti-tunneler-client.v1: %s", cfg_json);
         ziti_client_cfg_v1 zt_client_cfg_v1;
-        parse_ziti_client_cfg_v1(&zt_client_cfg_v1, zt_client_v1_config, strlen(zt_client_v1_config));
+        parse_ziti_client_cfg_v1(&zt_client_cfg_v1, cfg_json, strlen(cfg_json));
 
         // set tunnel address
         tnl_addr_arr = calloc(2, sizeof(tunnel_address *));
         tnl_addr_arr[0] = to_address(zt_client_cfg_v1.hostname);
 
         // set protocols
-        protocols = calloc(3, sizeof(char*));
-        int idx=0;
+        protocols = calloc(3, sizeof(char *));
+        int idx = 0;
         protocols[idx++] = strdup("TCP");
         protocols[idx] = strdup("UDP");
 
