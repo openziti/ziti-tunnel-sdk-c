@@ -255,6 +255,10 @@ void ziti_dns_deregister_intercept(void *intercept) {
 }
 
 const char *ziti_dns_register_hostname(const char *hostname, void *intercept) {
+    // CIDR block
+    if (strchr(hostname, '/')) {
+        return hostname;
+    }
     // IP address
     ip_addr_t addr;
     if (ipaddr_aton(hostname, &addr)) {
