@@ -1,0 +1,11 @@
+<component name="CopyrightManager">
+  <settings default="NetFoundry">
+    <module2copyright>
+      <element module="Project Source Files" copyright="NetFoundry" />
+    </module2copyright>
+    <LanguageOptions name="ObjectiveC">
+      <option name="fileTypeOverride" value="3" />
+      <option name="prefixLines" value="false" />
+    </LanguageOptions>
+  </settings>
+</component>
