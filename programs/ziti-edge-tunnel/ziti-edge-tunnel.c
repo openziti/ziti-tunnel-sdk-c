@@ -47,7 +47,7 @@ extern dns_manager *get_dnsmasq_manager(const char* path);
 static int dns_fallback(const char *name, void *ctx, struct in_addr* addr);
 
 static void send_message_to_tunnel();
-static void send_events_message(void *message, size_t datalen, bool display_event);
+static void send_events_message(const void *message, char* (*to_json_f)(const void *msg, int, size_t*), bool displayEvent);
 
 struct cfg_instance_s {
     char *cfg;
@@ -210,9 +210,7 @@ static void on_events_client(uv_stream_t *s, int status) {
         tunnel_status_event tnl_sts_evt = {0};
         tnl_sts_evt.Op = strdup("status");
         tnl_sts_evt.Status = get_tunnel_status();
-        size_t json_len;
-        char *json = tunnel_status_event_to_json(&tnl_sts_evt, MODEL_JSON_COMPACT, &json_len);
-        send_events_message(json, json_len, true);
+        send_events_message(&tnl_sts_evt, tunnel_status_event_to_json, true);
         tnl_sts_evt.Status = NULL;
         free_tunnel_status_event(&tnl_sts_evt);
     } else {
@@ -233,12 +231,19 @@ void on_write_event(uv_write_t* req, int status) {
     free(req);
 }
 
-static void send_events_message(void *message, size_t data_len, bool display_event) {
-    if (display_event) {
-        ZITI_LOG(TRACE,"Events Message...%s", message);
-    }
+static void send_events_message(const void *message, char* (*to_json_f)(const void *msg, int, size_t*), bool displayEvent) {
     if (event_conn != NULL) {
-        uv_buf_t buf = uv_buf_init(message, data_len);
+        size_t data_len = 0;
+        char *json = to_json_f(message, MODEL_JSON_COMPACT, &data_len);
+        if (json == NULL) {
+            ZITI_LOG(ERROR, "failed to serialize event");
+            return;
+        }
+        if (displayEvent) {
+            ZITI_LOG(INFO,"Events Message => %s", json);
+        }
+
+        uv_buf_t buf = uv_buf_init(json, data_len);
         uv_write_t *wr = calloc(1, sizeof(uv_write_t));
         wr->data = buf.base;
         int err = uv_write(wr, event_conn, &buf, 1, on_write_event);
@@ -366,9 +371,8 @@ static void broadcast_metrics(uv_timer_t *timer) {
 
     if (active_identities)
     {
-        size_t json_len;
-        char *json = tunnel_metrics_event_to_json(&metrics_event, MODEL_JSON_COMPACT, &json_len);
-        send_events_message(json, json_len, false);
+        // do not display the metrics events in the logs as this event will get called every 5 seconds
+        send_events_message(&metrics_event, tunnel_metrics_event_to_json, false);
     }
     metrics_event.Identities = NULL;
     free_tunnel_metrics_event(&metrics_event);
@@ -445,9 +449,7 @@ static void on_event(const base_event *ev) {
                 ZITI_LOG(DEBUG, "ztx[%s] controller connected", ev->identifier);
             }
 
-            size_t json_len;
-            char *json = identity_event_to_json(&id_event, MODEL_JSON_COMPACT, &json_len);
-            send_events_message(json, json_len, true);
+            send_events_message(&id_event, identity_event_to_json, true);
             id_event.Id = NULL;
             free_identity_event(&id_event);
 
@@ -490,9 +492,7 @@ static void on_event(const base_event *ev) {
                 add_or_remove_services_from_tunnel(id, svc_event.AddedServices, svc_event.RemovedServices);
             }
 
-            size_t json_len;
-            char *json = services_event_to_json(&svc_event, MODEL_JSON_COMPACT, &json_len);
-            send_events_message(json, json_len, true);
+            send_events_message(&svc_event, services_event_to_json, true);
             if (svc_event.AddedServices != NULL) {
                 svc_event.AddedServices = NULL;
             }
@@ -511,9 +511,7 @@ static void on_event(const base_event *ev) {
                     .Id = get_tunnel_identity(ev->identifier),
             };
 
-            size_t json_len;
-            char *json = identity_event_to_json(&id_event, MODEL_JSON_COMPACT, &json_len);
-            send_events_message(json, json_len, true);
+            send_events_message(&id_event, identity_event_to_json, true);
             id_event.Id = NULL;
             free_identity_event(&id_event);
             break;
@@ -539,9 +537,7 @@ static void on_event(const base_event *ev) {
                 mfa_sts_event.Error = strdup(mfa_ev->status);
             }
 
-            size_t json_len;
-            char *json = mfa_status_event_to_json(&mfa_sts_event, MODEL_JSON_COMPACT, &json_len);
-            send_events_message(json, json_len, true);
+            send_events_message(&mfa_sts_event, mfa_status_event_to_json, true);
             free_mfa_status_event(&mfa_sts_event);
             break;
         }
