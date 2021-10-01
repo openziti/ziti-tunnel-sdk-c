@@ -31,7 +31,8 @@ XX(VerifyMFA, __VA_ARGS__)  \
 XX(RemoveMFA, __VA_ARGS__)  \
 XX(GenerateMFACodes, __VA_ARGS__) \
 XX(GetMFACodes, __VA_ARGS__) \
-XX(GetMetrics, __VA_ARGS__)
+XX(GetMetrics, __VA_ARGS__) \
+XX(ServiceControl, __VA_ARGS__)
 
 DECLARE_ENUM(TunnelCommand, TUNNEL_COMMANDS)
 
@@ -111,6 +112,9 @@ XX(down, string, none, down, __VA_ARGS__)
 XX(identifier, string, none, id, __VA_ARGS__) \
 XX(command, TunnelCommand, none, command, __VA_ARGS__)
 
+#define TUNNEL_SERVICE_CONTROL(XX, ...) \
+XX(operation, string, none, operation, __VA_ARGS__)
+
 DECLARE_MODEL(tunnel_comand, TUNNEL_CMD)
 DECLARE_MODEL(tunnel_result, TUNNEL_CMD_RES)
 DECLARE_MODEL(tunnel_load_identity, TNL_LOAD_IDENTITY)
@@ -129,6 +133,7 @@ DECLARE_MODEL(tunnel_get_mfa_codes, TNL_GET_MFA_CODES)
 DECLARE_MODEL(tunnel_get_identity_metrics, TNL_GET_IDENTITY_METRICS)
 DECLARE_MODEL(tunnel_identity_metrics, TNL_IDENTITY_METRICS)
 DECLARE_MODEL(tunnel_command_inline, TUNNEL_CMD_INLINE)
+DECLARE_MODEL(tunnel_service_control, TUNNEL_SERVICE_CONTROL)
 
 #define TUNNEL_EVENTS(XX, ...) \
 XX(ContextEvent, __VA_ARGS__) \

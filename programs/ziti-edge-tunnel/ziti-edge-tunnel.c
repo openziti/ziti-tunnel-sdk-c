@@ -10,6 +10,7 @@
 #include <ziti/ziti_dns.h>
 #include "model/events.h"
 #include "instance.h"
+#include "windows/windows-service.h"
 
 #if __APPLE__ && __MACH__
 #include "netif_driver/darwin/utun.h"
@@ -678,6 +679,7 @@ static int dns_fallback(const char *name, void *ctx, struct in_addr* addr) {
 }
 
 static void run(int argc, char *argv[]) {
+    SvcStart(NULL);
 
     uint32_t ip[4];
     int bits;
@@ -1279,6 +1281,65 @@ static int get_mfa_codes_opts(int argc, char *argv[]) {
     return optind;
 }
 
+static void service_control(int argc, char *argv[]) {
+
+    tunnel_service_control *tunnel_service_control_opt = calloc(1, sizeof(tunnel_service_control));
+    if (parse_tunnel_service_control(tunnel_service_control_opt, cmd->data, strlen(cmd->data)) != 0) {
+        ZITI_LOG("ERROR", "Could not fetch service control data");
+        return;
+    }
+
+    if (strcmp(tunnel_service_control_opt->operation, "install") == 0) {
+        SvcInstall();
+    } else if (strcmp(tunnel_service_control_opt->operation, "start") == 0) {
+        // start tunnel
+        SvcStart(NULL);
+    } else if (strcmp(tunnel_service_control_opt->operation, "stop") == 0) {
+        // send data to tunnel and stop tunnel and service
+        SvcCtrlHandler(SERVICE_CONTROL_STOP);
+    } else if (strcmp(tunnel_service_control_opt->operation, "uninstall") == 0) {
+        SvcDelete();
+    } else {
+        fprintf(stderr, "Unknown option '%s'\n", tunnel_service_control_opt->operation);
+    }
+}
+
+static int svc_opts(int argc, char *argv[]) {
+    static struct option opts[] = {
+            {"operation", required_argument, NULL, 'o'},
+    };
+
+    tunnel_service_control *tunnel_service_control_options = calloc(1, sizeof(tunnel_service_control));
+    cmd = calloc(1, sizeof(tunnel_comand));
+    cmd->command = TunnelCommand_ServiceControl;
+
+    int c, option_index, errors = 0;
+    optind = 0;
+
+    while ((c = getopt_long(argc, argv, "o:",
+                            run_options, &option_index)) != -1) {
+        switch (c) {
+            case 'o': {
+                tunnel_service_control_options->operation = optarg;
+                break;
+            }
+            default: {
+                ZITI_LOG(ERROR, "Unknown option '%c'", c);
+                errors++;
+                break;
+            }
+        }
+    }
+    size_t json_len;
+    cmd->data = tunnel_service_control_to_json(tunnel_service_control_options, MODEL_JSON_COMPACT, &json_len);
+
+    if (errors > 0) {
+        commandline_help(stderr);
+        exit(1);
+    }
+    return optind;
+}
+
 static CommandLine enroll_cmd = make_command("enroll", "enroll Ziti identity",
         "-j|--jwt <enrollment token> -i|--identity <identity> [-k|--key <private_key> [-c|--cert <certificate>]] [-n|--name <name>]",
         "\t-j|--jwt\tenrollment token file\n"
@@ -1321,6 +1382,10 @@ static CommandLine generate_mfa_codes_cmd = make_command("generate_mfa_codes", "
 static CommandLine get_mfa_codes_cmd = make_command("get_mfa_codes", "Get MFA codes", "[-i <identity>] [-c <code>]",
                                                          "\t-i|--identity\tidentity info for fetching mfa codes\n"
                                                          "\t-c|--authcode\tauth code to authenticate the request for fetching mfa codes\n", get_mfa_codes_opts, send_message_to_tunnel_fn);
+static CommandLine service_control_cmd = make_command("service_control", "execute service control functions for Ziti tunnel (required superuser access)",
+                                          "-o|--operation <option>",
+                                          "\t-o|--operation <option>\texecute the service control functions eg: install, start, stop and uninstall (required)\n",
+                                          svc_opts, service_control);
 static CommandLine ver_cmd = make_command("version", "show version", "[-v]", "\t-v\tshow verbose version information\n", version_opts, version);
 static CommandLine help_cmd = make_command("help", "this message", NULL, NULL, NULL, usage);
 static CommandLine *main_cmds[] = {
@@ -1335,6 +1400,7 @@ static CommandLine *main_cmds[] = {
         &submit_mfa_cmd,
         &generate_mfa_codes_cmd,
         &get_mfa_codes_cmd,
+        &service_control_cmd,
         &ver_cmd,
         &help_cmd,
         NULL
@@ -1368,3 +1434,4 @@ IMPL_MODEL(services_event, SERVICES_EVENT)
 IMPL_MODEL(tunnel_status_event, TUNNEL_STATUS_EVENT)
 IMPL_MODEL(mfa_status_event, MFA_STATUS_EVENT)
 IMPL_MODEL(tunnel_metrics_event, TUNNEL_METRICS_EVENT)
+IMPL_MODEL(tunnel_service_control, TUNNEL_SERVICE_CONTROL)
