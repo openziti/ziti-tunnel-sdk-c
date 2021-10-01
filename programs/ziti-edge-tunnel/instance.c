@@ -1,23 +1,23 @@
 /*
-Copyright 2019 Netfoundry, Inc.
+ Copyright 2019-2021 NetFoundry Inc.
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
 
-https://www.apache.org/licenses/LICENSE-2.0
+ https://www.apache.org/licenses/LICENSE-2.0
 
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ */
 
 #include "model/dtos.h"
 #include <ziti/ziti_log.h>
-#include "ziti/sys/queue.h"
 #include <time.h>
+#include "ziti/sys/queue.h"
 
 struct tnl_identity_s {
     tunnel_identity *id;
@@ -30,7 +30,7 @@ static const char* CFG_INTERCEPT_V1 = "intercept.v1";
 static const char* CFG_ZITI_TUNNELER_CLIENT_V1 = "ziti-tunneler-client.v1";
 tunnel_status *tnl_status;
 
-tunnel_identity *find_tunnel_identity(char* identifier) {
+tunnel_identity *find_tunnel_identity(const char* identifier) {
     struct tnl_identity_s *tnl_id;
     LIST_FOREACH(tnl_id, &tnl_identity_list, _next) {
         if (strcmp(identifier, tnl_id->id->Identifier) == 0) break;
@@ -102,8 +102,7 @@ void add_or_remove_services_from_tunnel(tunnel_identity *id, tunnel_service_arra
     while(it != NULL) {
         id->Services[idx++] = model_map_it_value(it);
         it = model_map_it_next(it);
-    };
-
+    }
 }
 
 static tunnel_posture_check *getTunnelPostureCheck(ziti_posture_query *pq){
@@ -369,4 +368,3 @@ IMPL_MODEL(tunnel_port_range, TUNNEL_PORT_RANGE)
 IMPL_MODEL(tunnel_posture_check, TUNNEL_POSTURE_CHECK)
 IMPL_MODEL(tunnel_service, TUNNEL_SERVICE)
 IMPL_MODEL(tunnel_status, TUNNEL_STATUS)
-
