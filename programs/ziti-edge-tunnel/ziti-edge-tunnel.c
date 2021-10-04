@@ -491,9 +491,7 @@ static void broadcast_metrics(uv_timer_t *timer) {
             }
             event.Notification = notification_messages;
 
-            size_t json_len;
-            char *json = notification_event_to_json(&event, MODEL_JSON_COMPACT, &json_len);
-            send_events_message(json, json_len, true);
+            send_events_message(&event, notification_event_to_json, true);
             event.Notification = NULL;
             free_notification_event(&event);
             model_map_clear(&notification_map, (_free_f) free_notification_message);
