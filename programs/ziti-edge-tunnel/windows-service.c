@@ -1,7 +1,7 @@
 #include <windows.h>
 #include <tchar.h>
 #include <strsafe.h>
-#include "windows-service.h"
+#include "windows/windows-service.h"
 
 #pragma comment(lib, "advapi32.lib")
 
@@ -9,6 +9,7 @@ SERVICE_STATUS          gSvcStatus;
 SERVICE_STATUS_HANDLE   gSvcStatusHandle;
 HANDLE                  ghSvcStopEvent = NULL;
 
+//LPCTSTR SVCNAME = "ziti-edge-tunnel";
 //
 // Purpose:
 //   Entry point for the process
@@ -21,16 +22,8 @@ HANDLE                  ghSvcStopEvent = NULL;
 //
 int SvcStart(TCHAR *opt)
 {
-    // If command-line parameter is "install", install the service.
-    // Otherwise, the service is probably being started by the SCM.
-
-    if( lstrcmpi( opt, TEXT("install")) == 0 )
-    {
-        SvcInstall();
-        return 0;
-    }
-
-    // TO_DO: Add any additional services for the process to this table.
+    // the service is probably being started by the SCM.
+    // Add any additional services for the process to this table.
     SERVICE_TABLE_ENTRY DispatchTable[] =
             {
                     { SVCNAME, (LPSERVICE_MAIN_FUNCTION) SvcMain },
@@ -42,7 +35,8 @@ int SvcStart(TCHAR *opt)
 
     if (!StartServiceCtrlDispatcher( DispatchTable ))
     {
-        SvcReportEvent(TEXT("StartServiceCtrlDispatcher"));
+        printf("The service is either started from commandline or stopped by SCM");
+        return 0;
     }
 }
 

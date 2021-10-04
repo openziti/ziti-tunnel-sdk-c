@@ -6,6 +6,7 @@ extern "C" {
 #endif
 
 #if _WIN32
+#include <stdbool.h>
 
 #define SVCNAME TEXT("ziti-edge-tunnel")
 #define DISPLAYSVCNAME TEXT("Ziti Desktop Edge Service")
@@ -19,6 +20,7 @@ extern "C" {
 //
 #define SVC_ERROR ((DWORD)0xC0020001L)
 
+
 int SvcStart(TCHAR *);
 VOID SvcInstall(void);
 VOID WINAPI SvcCtrlHandler( DWORD );
@@ -27,6 +29,9 @@ VOID ReportSvcStatus( DWORD, DWORD, DWORD );
 VOID SvcInit( DWORD, LPTSTR * );
 VOID SvcReportEvent( LPTSTR );
 VOID SvcDelete(void);
+
+bool log_init();
+void windows_log_writer(int , const char *, const char *, size_t);
 
 #endif
 
