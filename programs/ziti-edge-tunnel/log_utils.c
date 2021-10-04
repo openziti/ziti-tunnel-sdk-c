@@ -19,9 +19,9 @@ static char* get_log_filename() {
     sprintf(log_path, "%s/logs", curr_path);
     int check = mkdir(log_path);
     if (!check) {
-        printf("created log path %s", curr_path);
+        printf("\ncreated log path %s", curr_path);
     } else {
-        printf("log path is found %s", curr_path);
+        printf("\nlog path is found %s", curr_path);
     }
 
     char* log_filename = malloc(FILENAME_MAX * sizeof(char));
@@ -36,6 +36,11 @@ bool log_init() {
         return false;
     }
     dup2(fileno(stdout), fileno(stderr));
+
+    printf("\n============================================================================");
+    printf("\nLogger initialization");
+    printf("\n	- log file location: %s", log_filename);
+    printf("\n============================================================================");
     return true;
 }
 
@@ -80,8 +85,8 @@ void windows_log_writer(int level, const char *loc, const char *msg, size_t msgl
              tm->tm_hour, tm->tm_min, tm->tm_sec, now.tv_usec / 1000
     );
 
+    fputc('\n', ziti_tunneler_log);
     fprintf(ziti_tunneler_log, "[%s] %7s %s ", curr_time, parse_level(level), loc);
     fwrite(msg, 1, msglen, ziti_tunneler_log);
-    fputc('\n', ziti_tunneler_log);
 
 }

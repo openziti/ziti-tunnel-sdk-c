@@ -32,6 +32,9 @@ VOID SvcDelete(void);
 
 bool log_init();
 void windows_log_writer(int , const char *, const char *, size_t);
+void service_scm_init(char *config_dir);
+void service_scm_run(int argc, char *argv[]);
+char* get_system_config_path();
 
 #endif
 

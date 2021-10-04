@@ -61,6 +61,8 @@ static const ziti_tunnel_ctrl *CMD_CTRL;
 static long events_channels_count = 8;
 static long current_events_channels = 0;
 
+static bool started_by_scm = false;
+
 #define EVENT_ACTIONS(XX, ...) \
 XX(added, __VA_ARGS__) \
 XX(removed, __VA_ARGS__) \
@@ -1299,12 +1301,6 @@ static void service_control(int argc, char *argv[]) {
 
     if (strcmp(tunnel_service_control_opt->operation, "install") == 0) {
         SvcInstall();
-    } else if (strcmp(tunnel_service_control_opt->operation, "start") == 0) {
-        // start tunnel
-        SvcStart(NULL);
-    } else if (strcmp(tunnel_service_control_opt->operation, "stop") == 0) {
-        // send data to tunnel and stop tunnel and service
-        SvcCtrlHandler(SERVICE_CONTROL_STOP);
     } else if (strcmp(tunnel_service_control_opt->operation, "uninstall") == 0) {
         SvcDelete();
     } else {
@@ -1422,9 +1418,27 @@ static CommandLine main_cmd = make_command_set(
                               "or 'ziti-edge-tunnel <command> -h'",
         NULL, main_cmds);
 
+void service_scm_init(char *config_path) {
+    if (config_path != NULL) {
+        config_dir = config_path;
+        started_by_scm = true;
+    }
+}
+
+void service_scm_run(int argc, char *argv[]) {
+    // start a new thread
+    run(argc, argv);
+}
+
 int main(int argc, char *argv[]) {
 #if _WIN32
     SvcStart(NULL);
+    // if service is started by SCM, SvcStart will return only when it receives the stop request
+    // started_by_scm will be set to true only if scm initializes the config value
+    // if the service is started from cmd line, SvcStart will return immediately and started_by_scm will be set to false. In this case tunnel can be run normally
+    if (started_by_scm) {
+        return 0;
+    }
 #endif
 
     const char *name = strrchr(argv[0], '/');

@@ -9,6 +9,8 @@ SERVICE_STATUS          gSvcStatus;
 SERVICE_STATUS_HANDLE   gSvcStatusHandle;
 HANDLE                  ghSvcStopEvent = NULL;
 
+const char* app_dir = "APPDIR";
+
 //LPCTSTR SVCNAME = "ziti-edge-tunnel";
 //
 // Purpose:
@@ -141,6 +143,8 @@ VOID WINAPI SvcMain( DWORD dwArgc, LPTSTR *lpszArgv )
     ReportSvcStatus( SERVICE_START_PENDING, NO_ERROR, 3000 );
 
     // Perform service-specific initialization and work.
+    char* config_dir = get_system_config_path();
+    service_scm_init(config_dir);
 
     SvcInit( dwArgc, lpszArgv );
 }
@@ -184,7 +188,8 @@ VOID SvcInit( DWORD dwArgc, LPTSTR *lpszArgv)
 
     ReportSvcStatus( SERVICE_RUNNING, NO_ERROR, 0 );
 
-    // TO_DO: Perform work until service stops.
+    // start tunnel
+    service_scm_run(dwArgc, lpszArgv);
 
     while(1)
     {
@@ -366,4 +371,8 @@ VOID SvcDelete()
 
     CloseServiceHandle(schService);
     CloseServiceHandle(schSCManager);
+}
+
+char* get_system_config_path () {
+    return "";
 }
