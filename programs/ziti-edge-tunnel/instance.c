@@ -47,6 +47,7 @@ tunnel_identity *get_tunnel_identity(char* identifier) {
 }
 
 void add_or_remove_services_from_tunnel(tunnel_identity *id, tunnel_service_array added_services, tunnel_service_array removed_services) {
+
     int idx;
     model_map updates = {0};
 
@@ -65,8 +66,6 @@ void add_or_remove_services_from_tunnel(tunnel_identity *id, tunnel_service_arra
             tunnel_service *rem_svc = model_map_get(&updates, svc->Name);
             if (rem_svc != NULL) {
                 model_map_remove(&updates, rem_svc->Name);
-                free_tunnel_service(rem_svc);
-                free(rem_svc);
             }
         }
     }
@@ -111,39 +110,36 @@ static void setTunnelPostureDataTimeout(tunnel_service *tnl_svc, ziti_service *s
     bool hasAccess = false;
     model_map postureCheckMap = {0};
 
-    if (service->posture_query_set != NULL) {
+    ziti_posture_query_set *pqs;
+    const char *id;
+    MODEL_MAP_FOREACH(id, pqs, &service->posture_query_map) {
 
-        for (posture_set_idx = 0; service->posture_query_set[posture_set_idx] != 0; posture_set_idx++) {
-            int posture_query_idx;
+        if (pqs->policy_type == "Bind") {
+            ZITI_LOG(TRACE, "Posture Query set returned a Bind policy: %s [ignored]", pqs->policy_id);
+            continue;
+        } else {
+            ZITI_LOG(TRACE, "Posture Query set returned a %s policy: %s, is_passing %d", pqs->policy_type, pqs->policy_id, pqs->is_passing);
+        }
 
-            ziti_posture_query_set *pqs = service->posture_query_set[posture_set_idx];
-            if (pqs->policy_type == "Bind") {
-                ZITI_LOG(TRACE, "Posture Query set returned a Bind policy: %s [ignored]", pqs->policy_id);
-                continue;
-            } else {
-                ZITI_LOG(TRACE, "Posture Query set returned a %s policy: %s, is_passing %d", pqs->policy_type, pqs->policy_id, pqs->is_passing);
+        if (pqs->is_passing) {
+            hasAccess = true;
+        }
+
+        for (int posture_query_idx = 0; pqs->posture_queries[posture_query_idx]; posture_query_idx++) {
+            ziti_posture_query *pq = pqs->posture_queries[posture_query_idx];
+            ziti_posture_query *tmp = model_map_get(&postureCheckMap, pq->id);
+            if (tmp == NULL) {
+                model_map_set(&postureCheckMap, pq->id, pq);
             }
 
-            if (pqs->is_passing) {
-                hasAccess = true;
+            int timeoutRemaining = *pqs->posture_queries[posture_query_idx]->timeoutRemaining;
+            if ((minTimeoutRemaining == -1) || (timeoutRemaining < minTimeoutRemaining)) {
+                minTimeoutRemaining = timeoutRemaining;
             }
 
-            for (posture_query_idx = 0; service->posture_query_set[posture_set_idx]->posture_queries[posture_query_idx]; posture_query_idx++) {
-                ziti_posture_query *pq = service->posture_query_set[posture_set_idx]->posture_queries[posture_query_idx];
-                ziti_posture_query *tmp = model_map_get(&postureCheckMap, pq->id);
-                if (tmp == NULL) {
-                    model_map_set(&postureCheckMap, pq->id, pq);
-                }
-
-                int timeoutRemaining = *service->posture_query_set[posture_set_idx]->posture_queries[posture_query_idx]->timeoutRemaining;
-                if ((minTimeoutRemaining == -1) || (timeoutRemaining < minTimeoutRemaining)) {
-                    minTimeoutRemaining = timeoutRemaining;
-                }
-
-                int timeout = service->posture_query_set[posture_set_idx]->posture_queries[posture_query_idx]->timeout;
-                if ((minTimeout == -1) || (timeout < minTimeout)) {
-                    minTimeout = timeout;
-                }
+            int timeout = pqs->posture_queries[posture_query_idx]->timeout;
+            if ((minTimeout == -1) || (timeout < minTimeout)) {
+                minTimeout = timeout;
             }
         }
     }
@@ -206,7 +202,7 @@ static void setTunnelServiceAddress(tunnel_service *tnl_svc, ziti_service *servi
         parse_ziti_intercept_cfg_v1(&cfg_v1, cfg_json, strlen(cfg_json));
 
         // set address
-        int idx;
+        int idx = 0;
         for(idx = 0; cfg_v1.addresses[idx]; idx++) {
             // do nothing
         }
@@ -227,7 +223,7 @@ static void setTunnelServiceAddress(tunnel_service *tnl_svc, ziti_service *servi
         for(int port_idx = 0; cfg_v1.port_ranges[port_idx]; port_idx++) {
             tnl_port_range_arr[port_idx] = getTunnelPortRange(cfg_v1.port_ranges[port_idx]);
         }
-    } else if ((cfg_json = ziti_service_get_raw_config(service, CFG_ZITI_TUNNELER_CLIENT_V1)) != NULL) {
+    }  else if ((cfg_json = ziti_service_get_raw_config(service, CFG_ZITI_TUNNELER_CLIENT_V1)) != NULL) {
         ZITI_LOG(TRACE, "ziti-tunneler-client.v1: %s", cfg_json);
         ziti_client_cfg_v1 zt_client_cfg_v1;
         parse_ziti_client_cfg_v1(&zt_client_cfg_v1, cfg_json, strlen(cfg_json));
@@ -258,8 +254,22 @@ static void setTunnelServiceAddress(tunnel_service *tnl_svc, ziti_service *servi
     tnl_svc->Protocols = protocols;
 }
 
+tunnel_service *find_tunnel_service(tunnel_identity* id, char* svc_id) {
+    int idx = 0;
+    tunnel_service *svc = NULL;
+    if (id->Services != NULL) {
+        for (idx =0; id->Services[idx]; idx++) {
+            svc = id->Services[idx];
+            if (strcmp(svc->Id, svc_id) == 0) {
+                break;
+            }
+        }
+    }
+    return svc;
+}
+
 tunnel_service *get_tunnel_service(tunnel_identity* id, ziti_service* zs) {
-    struct tunnel_service_s *svc = malloc(sizeof(struct tunnel_service_s));
+    struct tunnel_service_s *svc = calloc(1, sizeof(struct tunnel_service_s));
     svc->Id = strdup(zs->id);
     svc->Name = strdup(zs->name);
     svc->PostureChecks = NULL;
@@ -267,6 +277,19 @@ tunnel_service *get_tunnel_service(tunnel_identity* id, ziti_service* zs) {
     setTunnelPostureDataTimeout(svc, zs);
     setTunnelServiceAddress(svc, zs);
     return svc;
+}
+
+tunnel_identity_array get_tunnel_identities() {
+    const char *id;
+    tunnel_identity *tnl_id;
+    tunnel_identity_array tnl_id_arr = calloc(model_map_size(&tnl_identity_map) + 1, sizeof(tunnel_identity*));
+
+    int idx = 0;
+    MODEL_MAP_FOREACH(id, tnl_id, &tnl_identity_map) {
+        tnl_id_arr[idx++] = tnl_id;
+    }
+
+    return tnl_id_arr;
 }
 
 tunnel_status *get_tunnel_status() {
@@ -285,16 +308,8 @@ tunnel_status *get_tunnel_status() {
         tnl_status.Duration = (int)(current_time_in_millis - start_time_in_millis);
     }
 
-    const char *id;
-    tunnel_identity *tnl_id;
-    tunnel_identity_array tnl_id_arr = calloc(model_map_size(&tnl_identity_map) + 1, sizeof(tunnel_identity*));
-
-    int idx = 0;
-    MODEL_MAP_FOREACH(id, tnl_id, &tnl_identity_map) {
-        tnl_id_arr[idx++] = tnl_id;
-    }
     if (tnl_status.Identities) free(tnl_status.Identities);
-    tnl_status.Identities = tnl_id_arr;
+    tnl_status.Identities = get_tunnel_identities();
 
     return &tnl_status;
 }
@@ -331,4 +346,3 @@ IMPL_MODEL(tunnel_port_range, TUNNEL_PORT_RANGE)
 IMPL_MODEL(tunnel_posture_check, TUNNEL_POSTURE_CHECK)
 IMPL_MODEL(tunnel_service, TUNNEL_SERVICE)
 IMPL_MODEL(tunnel_status, TUNNEL_STATUS)
-

@@ -47,7 +47,7 @@ extern dns_manager *get_dnsmasq_manager(const char* path);
 static int dns_fallback(const char *name, void *ctx, struct in_addr* addr);
 
 static void send_message_to_tunnel();
-static void send_events_message(const void *message, char* (*to_json_f)(const void *msg, int, size_t*));
+static void send_events_message(const void *message, char* (*to_json_f)(const void *msg, int, size_t*), bool displayEvent);
 
 struct cfg_instance_s {
     char *cfg;
@@ -58,6 +58,8 @@ struct cfg_instance_s {
 static LIST_HEAD(instance_list, cfg_instance_s) load_list;
 
 static long refresh_interval = 10;
+static long refresh_metrics = 5000;
+static long metrics_latency = 5000;
 
 static char *config_dir = NULL;
 
@@ -65,6 +67,9 @@ static uv_pipe_t cmd_server;
 static uv_pipe_t cmd_conn;
 static uv_pipe_t event_server;
 static uv_pipe_t *event_conn;
+
+//timer
+static uv_timer_t metrics_timer;
 
 // singleton
 static const ziti_tunnel_ctrl *CMD_CTRL;
@@ -204,9 +209,8 @@ static void on_events_client(uv_stream_t *s, int status) {
         // send status message immediately
         tunnel_status_event tnl_sts_evt = {0};
         tnl_sts_evt.Op = strdup("status");
-        tunnel_status *stat = get_tunnel_status();
-        tnl_sts_evt.Status = stat;
-        send_events_message(&tnl_sts_evt, tunnel_status_event_to_json);
+        tnl_sts_evt.Status = get_tunnel_status();
+        send_events_message(&tnl_sts_evt, tunnel_status_event_to_json, true);
         tnl_sts_evt.Status = NULL;
         free_tunnel_status_event(&tnl_sts_evt);
     } else {
@@ -227,7 +231,7 @@ void on_write_event(uv_write_t* req, int status) {
     free(req);
 }
 
-static void send_events_message(const void *message, char* (*to_json_f)(const void *msg, int, size_t*)) {
+static void send_events_message(const void *message, char* (*to_json_f)(const void *msg, int, size_t*), bool displayEvent) {
     if (event_conn != NULL) {
         size_t data_len = 0;
         char *json = to_json_f(message, MODEL_JSON_COMPACT, &data_len);
@@ -235,7 +239,9 @@ static void send_events_message(const void *message, char* (*to_json_f)(const vo
             ZITI_LOG(ERROR, "failed to serialize event");
             return;
         }
-        ZITI_LOG(INFO,"Events Message => %s", json);
+        if (displayEvent) {
+            ZITI_LOG(INFO,"Events Message => %s", json);
+        }
 
         uv_buf_t buf = uv_buf_init(json, data_len);
         uv_write_t *wr = calloc(1, sizeof(uv_write_t));
@@ -288,6 +294,95 @@ static int start_event_socket(uv_loop_t *l) {
     return -1;
 }
 
+static void tnl_transfer_rates(const tunnel_identity_metrics *metrics, void *ctx) {
+    tunnel_identity *tnl_id = ctx;
+    tnl_id->Metrics = calloc(1, sizeof(struct tunnel_metrics_s));
+    if (metrics->up != NULL) {
+        tnl_id->Metrics->Up = (int) strtol(metrics->up, NULL, 10);
+    }
+    if (metrics->down != NULL) {
+        tnl_id->Metrics->Down = (int) strtol(metrics->down, NULL, 10);
+    }
+    free_tunnel_identity_metrics((tunnel_identity_metrics*) metrics);
+}
+
+static void on_command_inline_resp(const tunnel_result* result, void *ctx) {
+    tunnel_command_inline *tnl_cmd_inline = ctx;
+
+    if (result->data != NULL && strlen(result->data) > 0) {
+        switch (tnl_cmd_inline->command) {
+            case TunnelCommand_GetMetrics: {
+                if (result->success) {
+                    tunnel_identity_metrics *id_metrics = calloc(1, sizeof(tunnel_identity_metrics));
+                    if (parse_tunnel_identity_metrics(id_metrics, result->data, strlen(result->data)) != 0) {
+                        ZITI_LOG("ERROR", "Could not fetch metrics data");
+                        break;
+                    }
+                    tunnel_identity *tnl_id = find_tunnel_identity(tnl_cmd_inline->identifier);
+                    tnl_transfer_rates(id_metrics, tnl_id);
+                }
+                break;
+            }
+            default: {
+                ZITI_LOG("ERROR", "Tunnel command not supported %d", tnl_cmd_inline->command);
+            }
+        }
+    }
+
+    if (tnl_cmd_inline != NULL) {
+        free_tunnel_command_inline(tnl_cmd_inline);
+    }
+    free_tunnel_result((tunnel_result*) result);
+}
+
+static void send_tunnel_command(tunnel_comand *cmd, void *ctx) {
+    CMD_CTRL->process(cmd, on_command_inline_resp, ctx);
+    free_tunnel_comand(&cmd);
+}
+
+static void broadcast_metrics(uv_timer_t *timer) {
+    tunnel_metrics_event metrics_event = {0};
+    metrics_event.Op = strdup("metrics");
+    metrics_event.Identities = get_tunnel_identities();
+    tunnel_identity *tnl_id;
+    int idx;
+    bool active_identities = false;
+    if (metrics_event.Identities != NULL) {
+        for(idx = 0; metrics_event.Identities[idx]; idx++) {
+            tnl_id = metrics_event.Identities[idx];
+            if (tnl_id->Active && tnl_id->Loaded) {
+                active_identities = true;
+                tunnel_comand *cmd = calloc(1, sizeof(tunnel_comand));
+                cmd->command = TunnelCommand_GetMetrics;
+                tunnel_get_identity_metrics *get_metrics = calloc(1, sizeof(tunnel_get_identity_metrics));
+                get_metrics->identifier = strdup(tnl_id->Identifier);
+                size_t json_len;
+                cmd->data = tunnel_get_identity_metrics_to_json(get_metrics, MODEL_JSON_COMPACT, &json_len);
+
+                tunnel_command_inline *tnl_cmd_inline = calloc(1, sizeof(tunnel_command_inline));
+                tnl_cmd_inline->identifier = strdup(tnl_id->Identifier);
+                tnl_cmd_inline->command = TunnelCommand_GetMetrics;
+                send_tunnel_command(cmd, tnl_cmd_inline);
+
+                free_tunnel_get_identity_metrics(get_metrics);
+            }
+        }
+    }
+
+    if (active_identities)
+    {
+        // do not display the metrics events in the logs as this event will get called every 5 seconds
+        send_events_message(&metrics_event, tunnel_metrics_event_to_json, false);
+    }
+    metrics_event.Identities = NULL;
+    free_tunnel_metrics_event(&metrics_event);
+}
+
+static void start_metrics_timer(uv_loop_t *ziti_loop) {
+    uv_timer_init(ziti_loop, &metrics_timer);
+    uv_timer_start(&metrics_timer, broadcast_metrics, metrics_latency, refresh_metrics);
+}
+
 static void load_identities(uv_work_t *wr) {
     if (config_dir != NULL) {
         uv_fs_t fs;
@@ -328,6 +423,7 @@ static void load_identities_complete(uv_work_t * wr, int status) {
         LIST_REMOVE(inst, _next);
 
         CMD_CTRL->load_identity(NULL, inst->cfg, load_id_cb, inst);
+        start_metrics_timer(wr->loop);
     }
 }
 
@@ -341,9 +437,10 @@ static void on_event(const base_event *ev) {
             id_event.Op = strdup("identity");
             id_event.Action = strdup(event_name(event_added));
             id_event.Id = get_tunnel_identity(ev->identifier);
+            id_event.Id->Loaded = true;
 
             if (zev->code == ZITI_OK) {
-                id_event.Id->Loaded = true;
+                id_event.Id->Active = true; // determine it from controller
                 if (zev->name) {
                     id_event.Id->Name = strdup(zev->name);
                     id_event.Id->ControllerVersion = strdup(zev->version);
@@ -352,7 +449,7 @@ static void on_event(const base_event *ev) {
                 ZITI_LOG(DEBUG, "ztx[%s] controller connected", ev->identifier);
             }
 
-            send_events_message(&id_event, identity_event_to_json);
+            send_events_message(&id_event, identity_event_to_json, true);
             id_event.Id = NULL;
             free_identity_event(&id_event);
 
@@ -372,16 +469,19 @@ static void on_event(const base_event *ev) {
             ziti_service **zs;
             int idx = 0;
             if (svc_ev->removed_services != NULL) {
-                svc_event.RemovedServices = calloc(sizeof(svc_ev->added_services) + 1, sizeof(tunnel_service *));
+                svc_event.RemovedServices = calloc(sizeof(svc_ev->removed_services), sizeof(struct tunnel_service_s));
                 for (zs = svc_ev->removed_services; *zs != NULL; zs++) {
-                    tunnel_service *svc = get_tunnel_service(id, *zs);
+                    tunnel_service *svc = find_tunnel_service(id, (*zs)->id);
+                    if (svc == NULL) {
+                        svc = get_tunnel_service(id, *zs);
+                    }
                     svc_event.RemovedServices[idx++] = svc;
                 }
             }
 
             idx = 0;
             if (svc_ev->added_services != NULL) {
-                svc_event.AddedServices = calloc(sizeof(svc_ev->added_services) + 1, sizeof(tunnel_service *));
+                svc_event.AddedServices = calloc(sizeof(svc_ev->added_services), sizeof(struct tunnel_service_s));
                 for (zs = svc_ev->added_services; *zs != NULL; zs++) {
                     tunnel_service *svc = get_tunnel_service(id, *zs);
                     svc_event.AddedServices[idx++] = svc;
@@ -392,7 +492,7 @@ static void on_event(const base_event *ev) {
                 add_or_remove_services_from_tunnel(id, svc_event.AddedServices, svc_event.RemovedServices);
             }
 
-            send_events_message(&svc_event, services_event_to_json);
+            send_events_message(&svc_event, services_event_to_json, true);
             if (svc_event.AddedServices != NULL) {
                 svc_event.AddedServices = NULL;
             }
@@ -411,7 +511,7 @@ static void on_event(const base_event *ev) {
                     .Id = get_tunnel_identity(ev->identifier),
             };
 
-            send_events_message(&id_event, identity_event_to_json);
+            send_events_message(&id_event, identity_event_to_json, true);
             id_event.Id = NULL;
             free_identity_event(&id_event);
             break;
@@ -437,7 +537,7 @@ static void on_event(const base_event *ev) {
                 mfa_sts_event.Error = strdup(mfa_ev->status);
             }
 
-            send_events_message(&mfa_sts_event, mfa_status_event_to_json);
+            send_events_message(&mfa_sts_event, mfa_status_event_to_json, true);
             free_mfa_status_event(&mfa_sts_event);
             break;
         }
@@ -502,6 +602,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     free(tunneler);
     uv_close((uv_handle_t *) &cmd_server, (uv_close_cb) free);
     uv_close((uv_handle_t *) &event_server, (uv_close_cb) free);
+    uv_timer_stop(&metrics_timer);
     return 0;
 }
 
@@ -1278,3 +1379,4 @@ IMPL_MODEL(identity_event, IDENTITY_EVENT)
 IMPL_MODEL(services_event, SERVICES_EVENT)
 IMPL_MODEL(tunnel_status_event, TUNNEL_STATUS_EVENT)
 IMPL_MODEL(mfa_status_event, MFA_STATUS_EVENT)
+IMPL_MODEL(tunnel_metrics_event, TUNNEL_METRICS_EVENT)
