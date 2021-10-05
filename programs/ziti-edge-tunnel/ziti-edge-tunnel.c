@@ -79,7 +79,6 @@ static long events_channels_count = 8;
 static long current_events_channels = 0;
 
 IMPL_ENUM(event, EVENT_ACTIONS)
-IMPL_ENUM(event_severity, EVENT_SEVERITY)
 
 #if _WIN32
 static char sockfile[] = "\\\\.\\pipe\\ziti-edge-tunnel.sock";
@@ -410,15 +409,15 @@ static notification_message *create_notification_message(tunnel_identity *tnl_id
     notification->Message = malloc(MAXMESSAGELEN);
     if (tnl_id->MfaMaxTimeoutRem == 0) {
         snprintf(notification->Message, MAXMESSAGELEN, "All of the services of identity %s have timed out", tnl_id->Name);
-        notification->Severity = strdup(event_severity_name(event_severity_critical));
+        notification->Severity = event_severity_critical;
     } else if (tnl_id->MfaMinTimeoutRem == 0) {
         snprintf(notification->Message, MAXMESSAGELEN, "Some of the services of identity %s have timed out", tnl_id->Name);
-        notification->Severity = strdup(event_severity_name(event_severity_major));
+        notification->Severity = event_severity_major;
     } else if (tnl_id->MfaMinTimeoutRem <= 20*60) {
         char* message = convert_seconds_to_readable_format(tnl_id->MfaMinTimeoutRem);
         snprintf(notification->Message, MAXMESSAGELEN, "Some of the services of identity %s are timing out in %s", tnl_id->Name, message);
         free(message);
-        notification->Severity = strdup(event_severity_name(event_severity_minor));
+        notification->Severity = event_severity_minor;
     } else {
         // do nothing
     }
@@ -1509,6 +1508,7 @@ int main(int argc, char *argv[]) {
 }
 
 // ******* TUNNEL EVENT BROADCAST MESSAGES
+IMPL_ENUM(event_severity, EVENT_SEVERITY)
 IMPL_MODEL(status_event, STATUS_EVENT)
 IMPL_MODEL(action_event, ACTION_EVENT)
 IMPL_MODEL(identity_event, IDENTITY_EVENT)

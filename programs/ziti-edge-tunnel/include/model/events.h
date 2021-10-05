@@ -63,7 +63,7 @@ XX(Message, string, none, Message, __VA_ARGS__) \
 XX(MfaMinimumTimeout, int, none, MfaMinimumTimeout, __VA_ARGS__) \
 XX(MfaMaximumTimeout, int, none, MfaMaximumTimeout, __VA_ARGS__) \
 XX(MfaTimeDuration, int, none, MfaTimeDuration, __VA_ARGS__) \
-XX(Severity, string, none, Severity, __VA_ARGS__)
+XX(Severity, event_severity, none, Severity, __VA_ARGS__)
 
 #define TUNNEL_NOTIFICATION_EVENT(XX, ...) \
 STATUS_EVENT(XX, __VA_ARGS__) \
@@ -85,6 +85,8 @@ XX(normal, __VA_ARGS__) \
 XX(connected, __VA_ARGS__) \
 XX(disconnected, __VA_ARGS__)
 
+DECLARE_ENUM(event_severity, EVENT_SEVERITY)
+DECLARE_ENUM(event, EVENT_ACTIONS)
 DECLARE_MODEL(status_event, STATUS_EVENT)
 DECLARE_MODEL(action_event, ACTION_EVENT)
 DECLARE_MODEL(tunnel_status_event, TUNNEL_STATUS_EVENT)
@@ -94,8 +96,6 @@ DECLARE_MODEL(mfa_status_event, MFA_STATUS_EVENT)
 DECLARE_MODEL(tunnel_metrics_event, TUNNEL_METRICS_EVENT)
 DECLARE_MODEL(notification_message, TUNNEL_NOTIFICATION_MESSAGE)
 DECLARE_MODEL(notification_event, TUNNEL_NOTIFICATION_EVENT)
-DECLARE_ENUM(event_severity, EVENT_SEVERITY)
-DECLARE_ENUM(event, EVENT_ACTIONS)
 
 #ifdef __cplusplus
 }
