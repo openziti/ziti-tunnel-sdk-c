@@ -69,6 +69,22 @@ XX(Severity, string, none, Severity, __VA_ARGS__)
 STATUS_EVENT(XX, __VA_ARGS__) \
 XX(Notification, notification_message, array, Notification, __VA_ARGS__)
 
+#define EVENT_SEVERITY(XX, ...) \
+XX(critical, __VA_ARGS__) \
+XX(major, __VA_ARGS__) \
+XX(minor, __VA_ARGS__)
+
+#define EVENT_ACTIONS(XX, ...) \
+XX(added, __VA_ARGS__) \
+XX(removed, __VA_ARGS__) \
+XX(updated, __VA_ARGS__) \
+XX(bulk, __VA_ARGS__) \
+XX(error, __VA_ARGS__) \
+XX(changed, __VA_ARGS__) \
+XX(normal, __VA_ARGS__) \
+XX(connected, __VA_ARGS__) \
+XX(disconnected, __VA_ARGS__)
+
 DECLARE_MODEL(status_event, STATUS_EVENT)
 DECLARE_MODEL(action_event, ACTION_EVENT)
 DECLARE_MODEL(tunnel_status_event, TUNNEL_STATUS_EVENT)
@@ -78,6 +94,8 @@ DECLARE_MODEL(mfa_status_event, MFA_STATUS_EVENT)
 DECLARE_MODEL(tunnel_metrics_event, TUNNEL_METRICS_EVENT)
 DECLARE_MODEL(notification_message, TUNNEL_NOTIFICATION_MESSAGE)
 DECLARE_MODEL(notification_event, TUNNEL_NOTIFICATION_EVENT)
+DECLARE_ENUM(event_severity, EVENT_SEVERITY)
+DECLARE_ENUM(event, EVENT_ACTIONS)
 
 #ifdef __cplusplus
 }

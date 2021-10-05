@@ -17,6 +17,7 @@
 #include "model/dtos.h"
 #include <ziti/ziti_log.h>
 #include <time.h>
+#include "model/events.h"
 
 model_map tnl_identity_map = {0};
 static const char* CFG_INTERCEPT_V1 = "intercept.v1";
