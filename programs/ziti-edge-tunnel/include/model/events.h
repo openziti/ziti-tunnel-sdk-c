@@ -1,18 +1,18 @@
 /*
-Copyright 2019 Netfoundry, Inc.
+ Copyright 2019-2021 NetFoundry Inc.
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
 
-https://www.apache.org/licenses/LICENSE-2.0
+ https://www.apache.org/licenses/LICENSE-2.0
 
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ */
 
 #ifndef ZITI_TUNNEL_SDK_C_EVENTS_H
 #define ZITI_TUNNEL_SDK_C_EVENTS_H
@@ -63,12 +63,30 @@ XX(Message, string, none, Message, __VA_ARGS__) \
 XX(MfaMinimumTimeout, int, none, MfaMinimumTimeout, __VA_ARGS__) \
 XX(MfaMaximumTimeout, int, none, MfaMaximumTimeout, __VA_ARGS__) \
 XX(MfaTimeDuration, int, none, MfaTimeDuration, __VA_ARGS__) \
-XX(Severity, string, none, Severity, __VA_ARGS__)
+XX(Severity, event_severity, none, Severity, __VA_ARGS__)
 
 #define TUNNEL_NOTIFICATION_EVENT(XX, ...) \
 STATUS_EVENT(XX, __VA_ARGS__) \
 XX(Notification, notification_message, array, Notification, __VA_ARGS__)
 
+#define EVENT_SEVERITY(XX, ...) \
+XX(critical, __VA_ARGS__) \
+XX(major, __VA_ARGS__) \
+XX(minor, __VA_ARGS__)
+
+#define EVENT_ACTIONS(XX, ...) \
+XX(added, __VA_ARGS__) \
+XX(removed, __VA_ARGS__) \
+XX(updated, __VA_ARGS__) \
+XX(bulk, __VA_ARGS__) \
+XX(error, __VA_ARGS__) \
+XX(changed, __VA_ARGS__) \
+XX(normal, __VA_ARGS__) \
+XX(connected, __VA_ARGS__) \
+XX(disconnected, __VA_ARGS__)
+
+DECLARE_ENUM(event_severity, EVENT_SEVERITY)
+DECLARE_ENUM(event, EVENT_ACTIONS)
 DECLARE_MODEL(status_event, STATUS_EVENT)
 DECLARE_MODEL(action_event, ACTION_EVENT)
 DECLARE_MODEL(tunnel_status_event, TUNNEL_STATUS_EVENT)

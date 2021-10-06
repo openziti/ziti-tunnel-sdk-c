@@ -1,3 +1,19 @@
+/*
+ Copyright 2021 NetFoundry Inc.
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+ https://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ */
+
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -33,7 +49,7 @@ extern dns_manager *get_dnsmasq_manager(const char* path);
 static int dns_fallback(const char *name, void *ctx, struct in_addr* addr);
 
 static void send_message_to_tunnel();
-static void send_events_message(void *message, size_t datalen, bool display_event);
+static void send_events_message(const void *message, char* (*to_json_f)(const void *msg, int, size_t*), bool displayEvent);
 
 struct cfg_instance_s {
     char *cfg;
@@ -75,18 +91,6 @@ static long allowed_channels_count = 8;
 static long current_events_channels = 0;
 static long current_ipc_channels = 0;
 
-#define EVENT_ACTIONS(XX, ...) \
-XX(added, __VA_ARGS__) \
-XX(removed, __VA_ARGS__) \
-XX(updated, __VA_ARGS__) \
-XX(bulk, __VA_ARGS__) \
-XX(error, __VA_ARGS__) \
-XX(changed, __VA_ARGS__) \
-XX(normal, __VA_ARGS__) \
-XX(connected, __VA_ARGS__) \
-XX(disconnected, __VA_ARGS__)
-
-DECLARE_ENUM(event, EVENT_ACTIONS)
 IMPL_ENUM(event, EVENT_ACTIONS)
 
 #if _WIN32
@@ -229,9 +233,7 @@ static void on_events_client(uv_stream_t *s, int status) {
         tunnel_status_event tnl_sts_evt = {0};
         tnl_sts_evt.Op = strdup("status");
         tnl_sts_evt.Status = get_tunnel_status();
-        size_t json_len;
-        char *json = tunnel_status_event_to_json(&tnl_sts_evt, MODEL_JSON_COMPACT, &json_len);
-        send_events_message(json, json_len, true);
+        send_events_message(&tnl_sts_evt, tunnel_status_event_to_json, true);
         tnl_sts_evt.Status = NULL;
         free_tunnel_status_event(&tnl_sts_evt);
     } else {
@@ -256,17 +258,24 @@ void on_write_event(uv_write_t* req, int status) {
     free(req);
 }
 
-static void send_events_message(void *message, size_t data_len, bool display_event) {
-    if (display_event) {
-        ZITI_LOG(TRACE,"Events Message...%s", message);
+static void send_events_message(const void *message, char* (*to_json_f)(const void *msg, int, size_t*), bool displayEvent) {
+    size_t data_len = 0;
+    char *json = to_json_f(message, MODEL_JSON_COMPACT, &data_len);
+    if (json == NULL) {
+        ZITI_LOG(ERROR, "failed to serialize event");
+        return;
     }
+    if (displayEvent) {
+        ZITI_LOG(INFO,"Events Message => %s", json);
+    }
+
     if (!LIST_EMPTY(&event_clients_list)) {
         struct event_conn_s *event_client;
         int events_count = current_events_channels;
         LIST_FOREACH(event_client, &event_clients_list, _next_event) {
             int err = 0;
             if (event_client->event_client_conn != NULL) {
-                uv_buf_t buf = uv_buf_init(strdup(message), data_len);
+                uv_buf_t buf = uv_buf_init(strdup(json), data_len);
                 uv_write_t *wr = calloc(1, sizeof(uv_write_t));
                 wr->data = buf.base;
                 err = uv_write(wr, (uv_stream_t *)event_client->event_client_conn, &buf, 1, on_write_event);
@@ -282,7 +291,6 @@ static void send_events_message(void *message, size_t data_len, bool display_eve
                 }
             }
         }
-        free(message);
         // clean up closed event connection from the list
         if (events_count > current_events_channels) {
             for (int idx = 0; idx < events_count; idx++) {
@@ -298,6 +306,7 @@ static void send_events_message(void *message, size_t data_len, bool display_eve
             }
         }
     }
+    free(json);
 }
 
 static int start_event_socket(uv_loop_t *l) {
@@ -332,11 +341,50 @@ static int start_event_socket(uv_loop_t *l) {
     return -1;
 }
 
-static void tnl_transfer_rates_cb(const tunnel_identity_metrics *metrics, void *ctx) {
+static void tnl_transfer_rates(const tunnel_identity_metrics *metrics, void *ctx) {
     tunnel_identity *tnl_id = ctx;
     tnl_id->Metrics = calloc(1, sizeof(struct tunnel_metrics_s));
-    tnl_id->Metrics->Up = (int) strtol(metrics->up, NULL, 10);
-    tnl_id->Metrics->Down = (int) strtol(metrics->down, NULL, 10);
+    if (metrics->up != NULL) {
+        tnl_id->Metrics->Up = (int) strtol(metrics->up, NULL, 10);
+    }
+    if (metrics->down != NULL) {
+        tnl_id->Metrics->Down = (int) strtol(metrics->down, NULL, 10);
+    }
+    free_tunnel_identity_metrics((tunnel_identity_metrics*) metrics);
+}
+
+static void on_command_inline_resp(const tunnel_result* result, void *ctx) {
+    tunnel_command_inline *tnl_cmd_inline = ctx;
+
+    if (result->data != NULL && strlen(result->data) > 0) {
+        switch (tnl_cmd_inline->command) {
+            case TunnelCommand_GetMetrics: {
+                if (result->success) {
+                    tunnel_identity_metrics *id_metrics = calloc(1, sizeof(tunnel_identity_metrics));
+                    if (parse_tunnel_identity_metrics(id_metrics, result->data, strlen(result->data)) != 0) {
+                        ZITI_LOG("ERROR", "Could not fetch metrics data");
+                        break;
+                    }
+                    tunnel_identity *tnl_id = find_tunnel_identity(tnl_cmd_inline->identifier);
+                    tnl_transfer_rates(id_metrics, tnl_id);
+                }
+                break;
+            }
+            default: {
+                ZITI_LOG("ERROR", "Tunnel command not supported %d", tnl_cmd_inline->command);
+            }
+        }
+    }
+
+    if (tnl_cmd_inline != NULL) {
+        free_tunnel_command_inline(tnl_cmd_inline);
+    }
+    free_tunnel_result((tunnel_result*) result);
+}
+
+static void send_tunnel_command(tunnel_comand *cmd, void *ctx) {
+    CMD_CTRL->process(cmd, on_command_inline_resp, ctx);
+    free_tunnel_comand(&cmd);
 }
 
 
@@ -418,19 +466,21 @@ static notification_message *create_notification_message(tunnel_identity *tnl_id
     notification->Message = malloc(MAXMESSAGELEN);
     if (tnl_id->MfaMaxTimeoutRem == 0) {
         snprintf(notification->Message, MAXMESSAGELEN, "All of the services of identity %s have timed out", tnl_id->Name);
+        notification->Severity = event_severity_critical;
     } else if (tnl_id->MfaMinTimeoutRem == 0) {
         snprintf(notification->Message, MAXMESSAGELEN, "Some of the services of identity %s have timed out", tnl_id->Name);
+        notification->Severity = event_severity_major;
     } else if (tnl_id->MfaMinTimeoutRem <= 20*60) {
         char* message = convert_seconds_to_readable_format(tnl_id->MfaMinTimeoutRem);
         snprintf(notification->Message, MAXMESSAGELEN, "Some of the services of identity %s are timing out in %s", tnl_id->Name, message);
         free(message);
+        notification->Severity = event_severity_minor;
     } else {
         // do nothing
     }
 
     notification->IdentityName = strdup(tnl_id->Name);
     notification->Identifier = strdup(tnl_id->Identifier);
-    notification->Severity = strdup("major");
     uv_timeval64_t now;
     uv_gettimeofday(&now);
     notification->MfaTimeDuration = now.tv_sec - tnl_id->MfaLastUpdatedTime->tv_sec;
@@ -453,7 +503,20 @@ static void broadcast_metrics(uv_timer_t *timer) {
             tnl_id = metrics_event.Identities[idx];
             if (tnl_id->Active && tnl_id->Loaded) {
                 active_identities = true;
-                CMD_CTRL->get_transfer_rates(tnl_id->Identifier, NULL, tnl_transfer_rates_cb, tnl_id);
+
+                tunnel_comand *cmd = calloc(1, sizeof(tunnel_comand));
+                cmd->command = TunnelCommand_GetMetrics;
+                tunnel_get_identity_metrics *get_metrics = calloc(1, sizeof(tunnel_get_identity_metrics));
+                get_metrics->identifier = strdup(tnl_id->Identifier);
+                size_t json_len;
+                cmd->data = tunnel_get_identity_metrics_to_json(get_metrics, MODEL_JSON_COMPACT, &json_len);
+
+                tunnel_command_inline *tnl_cmd_inline = calloc(1, sizeof(tunnel_command_inline));
+                tnl_cmd_inline->identifier = strdup(tnl_id->Identifier);
+                tnl_cmd_inline->command = TunnelCommand_GetMetrics;
+                send_tunnel_command(cmd, tnl_cmd_inline);
+
+                free_tunnel_get_identity_metrics(get_metrics);
 
                 // check timeout
                 if (check_send_notification(tnl_id)) {
@@ -464,7 +527,6 @@ static void broadcast_metrics(uv_timer_t *timer) {
                         ZITI_LOG(INFO, "Notification Message: %s", message->Message);
                     }
                 }
-
             }
         }
         if (model_map_size(&notification_map) > 0) {
@@ -479,9 +541,7 @@ static void broadcast_metrics(uv_timer_t *timer) {
             }
             event.Notification = notification_messages;
 
-            size_t json_len;
-            char *json = notification_event_to_json(&event, MODEL_JSON_COMPACT, &json_len);
-            send_events_message(json, json_len, true);
+            send_events_message(&event, notification_event_to_json, true);
             event.Notification = NULL;
             free_notification_event(&event);
             model_map_clear(&notification_map, (_free_f) free_notification_message);
@@ -490,9 +550,8 @@ static void broadcast_metrics(uv_timer_t *timer) {
 
     if (active_identities)
     {
-        size_t json_len;
-        char *json = tunnel_metrics_event_to_json(&metrics_event, MODEL_JSON_COMPACT, &json_len);
-        send_events_message(json, json_len, false);
+        // do not display the metrics events in the logs as this event will get called every 5 seconds
+        send_events_message(&metrics_event, tunnel_metrics_event_to_json, false);
     }
     metrics_event.Identities = NULL;
     free_tunnel_metrics_event(&metrics_event);
@@ -569,9 +628,7 @@ static void on_event(const base_event *ev) {
                 ZITI_LOG(DEBUG, "ztx[%s] controller connected", ev->identifier);
             }
 
-            size_t json_len;
-            char *json = identity_event_to_json(&id_event, MODEL_JSON_COMPACT, &json_len);
-            send_events_message(json, json_len, true);
+            send_events_message(&id_event, identity_event_to_json, true);
             id_event.Id = NULL;
             free_identity_event(&id_event);
 
@@ -614,9 +671,7 @@ static void on_event(const base_event *ev) {
                 add_or_remove_services_from_tunnel(id, svc_event.AddedServices, svc_event.RemovedServices);
             }
 
-            size_t json_len;
-            char *json = services_event_to_json(&svc_event, MODEL_JSON_COMPACT, &json_len);
-            send_events_message(json, json_len, true);
+            send_events_message(&svc_event, services_event_to_json, true);
             if (svc_event.AddedServices != NULL) {
                 svc_event.AddedServices = NULL;
             }
@@ -635,9 +690,7 @@ static void on_event(const base_event *ev) {
                     .Id = get_tunnel_identity(ev->identifier),
             };
 
-            size_t json_len;
-            char *json = identity_event_to_json(&id_event, MODEL_JSON_COMPACT, &json_len);
-            send_events_message(json, json_len, true);
+            send_events_message(&id_event, identity_event_to_json, true);
             id_event.Id = NULL;
             free_identity_event(&id_event);
             break;
@@ -677,13 +730,10 @@ static void on_event(const base_event *ev) {
                 mfa_sts_event.Error = strdup(mfa_ev->status);
             }
 
-            size_t json_len;
-            char *json = mfa_status_event_to_json(&mfa_sts_event, MODEL_JSON_COMPACT, &json_len);
-            send_events_message(json, json_len, true);
-            
+            send_events_message(&mfa_sts_event, mfa_status_event_to_json, true);
+
             mfa_sts_event.RecoveryCodes = NULL;
             free_mfa_status_event(&mfa_sts_event);
-            // free_mfa_event(mfa_ev);
             break;
         }
 
@@ -1518,6 +1568,7 @@ int main(int argc, char *argv[]) {
 }
 
 // ******* TUNNEL EVENT BROADCAST MESSAGES
+IMPL_ENUM(event_severity, EVENT_SEVERITY)
 IMPL_MODEL(status_event, STATUS_EVENT)
 IMPL_MODEL(action_event, ACTION_EVENT)
 IMPL_MODEL(identity_event, IDENTITY_EVENT)
