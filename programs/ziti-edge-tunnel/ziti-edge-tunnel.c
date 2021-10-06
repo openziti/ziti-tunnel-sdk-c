@@ -63,6 +63,8 @@ static long current_events_channels = 0;
 
 static bool started_by_scm = false;
 
+uv_loop_t *main_ziti_loop;
+
 #define EVENT_ACTIONS(XX, ...) \
 XX(added, __VA_ARGS__) \
 XX(removed, __VA_ARGS__) \
@@ -712,6 +714,7 @@ static void run(int argc, char *argv[]) {
 #endif
 
     uv_loop_t *ziti_loop = uv_default_loop();
+    main_ziti_loop = ziti_loop;
     if (init) {
         ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, windows_log_writer);
     } else {
@@ -1418,21 +1421,57 @@ static CommandLine main_cmd = make_command_set(
                               "or 'ziti-edge-tunnel <command> -h'",
         NULL, main_cmds);
 
-void service_scm_init(char *config_path) {
+void scm_service_init(char *config_path) {
+    started_by_scm = true;
     if (config_path != NULL) {
         config_dir = config_path;
-        started_by_scm = true;
     }
 }
 
-void service_scm_run(int argc, char *argv[]) {
-    // start a new thread
-    run(argc, argv);
+static void start_tunnel_service(uv_async_t *scm_service_runner) {
+    ZITI_LOG(INFO, "About to run tunnel service...");
+    run(0, NULL);
+    uv_close((uv_handle_t *) scm_service_runner, (uv_close_cb) free);
+    stop_windows_service();
+}
+
+/*static void start_tunnel_service(void *n) {
+    ZITI_LOG(INFO, "About to run tunnel service...");
+    run(0, NULL);
+    stop_windows_service();
+}*/
+
+void scm_service_run(int argc, char *argv[]) {
+    ZITI_LOG(INFO, "Control request to start tunnel service received...");
+
+    /*uv_thread_t scm_service;
+    uv_thread_create(&scm_service, start_tunnel_service, NULL);*/
+
+    uv_loop_t *scm_loop = uv_default_loop();
+
+    uv_async_t *scm_service_runner = calloc(1, sizeof(uv_async_t));
+    uv_async_init(scm_loop, scm_service_runner, start_tunnel_service);
+    uv_async_send(scm_service_runner);
+    uv_run(scm_loop, UV_RUN_DEFAULT);
+
+}
+
+void scm_service_stop() {
+    ZITI_LOG(INFO, "Control request to stop tunnel service received...");
+    if (main_ziti_loop != NULL) {
+        uv_stop(main_ziti_loop);
+    }
 }
 
 int main(int argc, char *argv[]) {
 #if _WIN32
     SvcStart(NULL);
+
+    // to remove
+    char *config_path = get_system_config_path();
+    scm_service_init(config_path);
+    scm_service_run(0, NULL);
+
     // if service is started by SCM, SvcStart will return only when it receives the stop request
     // started_by_scm will be set to true only if scm initializes the config value
     // if the service is started from cmd line, SvcStart will return immediately and started_by_scm will be set to false. In this case tunnel can be run normally
