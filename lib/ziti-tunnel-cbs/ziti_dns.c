@@ -1,39 +1,60 @@
 /*
-Copyright 2019 Netfoundry, Inc.
+ Copyright 2019-2021 NetFoundry Inc.
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
 
-https://www.apache.org/licenses/LICENSE-2.0
+ https://www.apache.org/licenses/LICENSE-2.0
 
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ */
 
 #include <ziti/ziti_tunnel.h>
 #include <ziti/ziti_log.h>
 #include <ziti/ziti_dns.h>
 #include <ziti/model_support.h>
+#include "ziti_instance.h"
 
 #define MAX_DNS_NAME 256
 #define MAX_IP_LENGTH 16
 
 typedef struct ziti_dns_client_s {
     io_ctx_t *io_ctx;
+    LIST_HEAD(reqs, dns_req) active_reqs;
 } ziti_dns_client_t;
+
+struct dns_req {
+    char host[255];
+    dns_fallback_cb fallback;
+    void *fb_ctx;
+
+    struct in_addr addr;
+    int code;
+
+    uint8_t resp[512];
+    uint8_t *rp;
+
+    ziti_dns_client_t *clt;
+    LIST_ENTRY(dns_req) _next;
+};
 
 static void* on_dns_client(const void *app_intercept_ctx, io_ctx_t *io);
 static int on_dns_close(void *dns_io_ctx);
-static ssize_t on_dns_req(const void *ziti_io_ctx, void *write_ctx, const uint8_t *q_packet, size_t len);
+static ssize_t on_dns_req(void *ziti_io_ctx, void *write_ctx, const uint8_t *q_packet, size_t len);
 
+
+// hostname or domain
 typedef struct dns_entry_s {
-    char hostname[MAX_DNS_NAME];
+    char name[MAX_DNS_NAME];
     char ip[MAX_IP_LENGTH];
     ip_addr_t addr;
+
+    ziti_intercept_t  *intercept;
 } dns_entry_t;
 
 struct ziti_dns_s {
@@ -47,10 +68,22 @@ struct ziti_dns_s {
     // map[hostname -> dns_entry_t]
     model_map hostnames;
 
+    // map[ip -> dns_entry_t]
+    model_map ip_addresses;
+
+    // map[domain -> dns_entry_t]
+    model_map domains;
+
     dns_fallback_cb fallback_cb;
     void * fallback_ctx;
     uv_loop_t *loop;
+    tunneler_context tnlr;
 } ziti_dns;
+
+
+static uint32_t next_ipv4() {
+   return  htonl(ziti_dns.ip_pool.base | (ziti_dns.ip_pool.counter++ & ziti_dns.ip_pool.counter_mask));
+}
 
 static int seed_dns(const char *dns_cidr) {
     uint32_t ip[4];
@@ -72,6 +105,7 @@ static int seed_dns(const char *dns_cidr) {
 }
 
 int ziti_dns_setup(tunneler_context tnlr, const char *dns_addr, const char *dns_cidr) {
+    ziti_dns.tnlr = tnlr;
     seed_dns(dns_cidr);
 
     intercept_ctx_t *dns_intercept = intercept_ctx_new(tnlr, "ziti:dns-resolver", &ziti_dns);
@@ -104,44 +138,158 @@ void* on_dns_client(const void *app_intercept_ctx, io_ctx_t *io) {
 int on_dns_close(void *dns_io_ctx) {
     ZITI_LOG(TRACE, "DNS client close");
     ziti_dns_client_t *clt = dns_io_ctx;
+    while(!LIST_EMPTY(&clt->active_reqs)) {
+        struct dns_req *req = LIST_FIRST(&clt->active_reqs);
+        LIST_REMOVE(req, _next);
+        req->clt = NULL;
+    }
     ziti_tunneler_close(clt->io_ctx->tnlr_io);
     free(clt->io_ctx);
     free(dns_io_ctx);
 }
 
-const char* ziti_dns_register_hostname(const char *hostname) {
-    // IP address
-    ip_addr_t addr;
-    if (ipaddr_aton(hostname, &addr)) {
-        return hostname;
+static bool check_name(const char *name, char clean_name[MAX_DNS_NAME], bool *is_domain) {
+    const char *hp = name;
+    char *p = clean_name;
+
+    if (*hp == '*' && *(hp + 1) == '.') {
+        *is_domain = true;
+        *p++ = '.';
+        hp += 2;
+    } else {
+        *is_domain = false;
     }
 
-    char cleanhost[MAX_DNS_NAME];
-    const char *hp = hostname;
-    char *p = cleanhost;
     bool need_alphanum = true;
     while (*hp != '\0') {
-        if (!isalnum(*hp) && *hp != '-' && *hp != '.') { return NULL; }
-        if (!isalnum(*hp) && need_alphanum) return NULL;
+        if (!isalnum(*hp) && *hp != '-' && *hp != '.') { return false; }
+        if (!isalnum(*hp) && need_alphanum) return false;
 
         need_alphanum = *hp == '.';
 
         *p++ = (char) tolower(*hp++);
     }
     *p = '\0';
+    return true;
+}
 
-    dns_entry_t *entry = model_map_get(&ziti_dns.hostnames, cleanhost);
-    if (!entry) {
-        entry = calloc(1, sizeof(dns_entry_t));
-        strncpy(entry->hostname, cleanhost, sizeof(cleanhost));
-        entry->addr.type = IPADDR_TYPE_V4;
-        entry->addr.u_addr.ip4.addr = htonl(ziti_dns.ip_pool.base | (ziti_dns.ip_pool.counter++ & ziti_dns.ip_pool.counter_mask));
-        ip4addr_ntoa_r(&entry->addr.u_addr.ip4, entry->ip, sizeof(entry->ip));
+static dns_entry_t* new_ipv4_entry(const char *host) {
+    dns_entry_t *entry = calloc(1, sizeof(dns_entry_t));
+    strncpy(entry->name, host, sizeof(entry->name));
+    entry->addr.type = IPADDR_TYPE_V4;
+    entry->addr.u_addr.ip4.addr = next_ipv4();
+    ip4addr_ntoa_r(&entry->addr.u_addr.ip4, entry->ip, sizeof(entry->ip));
 
-        model_map_set(&ziti_dns.hostnames, cleanhost, entry);
-        ZITI_LOG(INFO, "registered DNS entry %s -> %s", cleanhost, entry->ip);
+    model_map_set(&ziti_dns.hostnames, host, entry);
+    model_map_set(&ziti_dns.ip_addresses, entry->ip, entry);
+    ZITI_LOG(INFO, "registered DNS entry %s -> %s", host, entry->ip);
+
+    return entry;
+}
+
+const char *ziti_dns_reverse_lookup(const char *ip_addr) {
+    dns_entry_t *entry = model_map_get(&ziti_dns.ip_addresses, ip_addr);
+
+    return entry ? entry->name : NULL;
+}
+
+dns_entry_t *ziti_dns_lookup(const char *hostname) {
+    char clean[MAX_DNS_NAME];
+    bool is_wildcard;
+    if (!check_name(hostname, clean, &is_wildcard) || is_wildcard) {
+        ZITI_LOG(ERROR, "invalid host lookup[%s]", hostname);
+        return NULL;
     }
-    return entry->ip;
+
+    dns_entry_t *entry = model_map_get(&ziti_dns.hostnames, clean);
+    if (entry) {
+        return entry;
+    }
+
+    // try domains
+    char *dot = strchr(clean, '.');
+    while (dot != NULL) {
+        entry = model_map_get(&ziti_dns.domains, dot);
+        if (entry) {
+            ZITI_LOG(DEBUG, "matching domain[%s] found for %s", entry->name, hostname);
+            dns_entry_t *host_entry = new_ipv4_entry(clean);
+            host_entry->intercept = entry->intercept;
+            intercept_ctx_t *intercept = ziti_tunnel_find_intercept(ziti_dns.tnlr, entry->intercept);
+            if (intercept) {
+                intercept_ctx_add_address(intercept, host_entry->ip);
+            } else {
+                ZITI_LOG(ERROR, "could not find matching tunnel intercept for intercepted domain[%s]", entry->name);
+            }
+            return host_entry;
+        }
+        dot = strchr(dot + 1, '.');
+    }
+    return NULL;
+}
+
+void ziti_dns_deregister_intercept(void *intercept) {
+    model_map_iter it = model_map_iterator(&ziti_dns.domains);
+    while (it != NULL) {
+        dns_entry_t *e = model_map_it_value(it);
+        if (e->intercept == intercept) {
+            it = model_map_it_remove(it);
+            ZITI_LOG(INFO, "removed wildcard domain[*%s]", e->name);
+            free(e);
+        } else {
+            it = model_map_it_next(it);
+        }
+    }
+
+    it = model_map_iterator(&ziti_dns.hostnames);
+    while (it != NULL) {
+        dns_entry_t *e = model_map_it_value(it);
+        if (e->intercept == intercept) {
+            it = model_map_it_remove(it);
+            model_map_remove(&ziti_dns.ip_addresses, e->ip);
+            ZITI_LOG(INFO, "removed DNS mapping %s -> %s", e->name, e->ip);
+            free(e);
+        } else {
+            it = model_map_it_next(it);
+        }
+    }
+}
+
+const char *ziti_dns_register_hostname(const char *hostname, void *intercept) {
+    // CIDR block
+    if (strchr(hostname, '/')) {
+        return hostname;
+    }
+    // IP address
+    ip_addr_t addr;
+    if (ipaddr_aton(hostname, &addr)) {
+        return hostname;
+    }
+
+    char clean[MAX_DNS_NAME];
+    bool is_domain = false;
+
+    if (!check_name(hostname, clean, &is_domain)) {
+        ZITI_LOG(ERROR, "invalid hostname[%s]", hostname);
+    }
+
+    if (is_domain) {
+        dns_entry_t *domain = model_map_get(&ziti_dns.domains, clean);
+        if (domain == NULL) {
+            ZITI_LOG(INFO, "registered wildcard domain[*%s]", clean);
+            dns_entry_t *entry = calloc(1, sizeof(dns_entry_t));
+            strncpy(entry->name, clean, sizeof(entry->name));
+            entry->intercept = intercept;
+            model_map_set(&ziti_dns.domains, clean, entry);
+        }
+        return NULL;
+    } else {
+        dns_entry_t *entry = model_map_get(&ziti_dns.hostnames, clean);
+        if (!entry) {
+            entry = new_ipv4_entry(clean);
+            entry->intercept = intercept;
+        }
+        return entry->ip;
+    }
 }
 
 static const char DNS_OPT[] = { 0x0, 0x0, 0x29, 0x02, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 };
@@ -163,19 +311,6 @@ static const char DNS_OPT[] = { 0x0, 0x0, 0x29, 0x02, 0x0, 0x0, 0x0, 0x0, 0x0, 0
 
 #define IS_QUERY(flags) ((flags & (1 << 15)) == 0)
 
-struct dns_req {
-    char host[255];
-    dns_fallback_cb fallback;
-    void *fb_ctx;
-
-    struct in_addr addr;
-    int code;
-
-    uint8_t resp[512];
-    uint8_t *rp;
-
-    const ziti_dns_client_t *clt;
-};
 
 static void fallback_work(uv_work_t *work_req) {
     struct dns_req *f_req = work_req->data;
@@ -184,54 +319,59 @@ static void fallback_work(uv_work_t *work_req) {
 
 static void dns_work_complete(uv_work_t *work_req, int status) {
     struct dns_req *req = work_req->data;
+    if (req->clt != NULL) {
+        LIST_REMOVE(req, _next);
 
-    uint8_t *rp = req->rp;
-    DNS_SET_CODE(req->resp, req->code);
-    if (req->code == DNS_NO_ERROR) {
-        ZITI_LOG(TRACE, "found record for host[%s]", req->host);
-        DNS_SET_ARS(req->resp, 1);
+        uint8_t *rp = req->rp;
+        DNS_SET_CODE(req->resp, req->code);
+        if (req->code == DNS_NO_ERROR) {
+            ZITI_LOG(TRACE, "found record for host[%s]", req->host);
+            DNS_SET_ARS(req->resp, 1);
 
-        // name ref
-        *rp++ = 0xc0;
-        *rp++ = 0x0c;
+            // name ref
+            *rp++ = 0xc0;
+            *rp++ = 0x0c;
 
-        // type A
-        *rp++ = 0;
-        *rp++ = 1;
+            // type A
+            *rp++ = 0;
+            *rp++ = 1;
 
-        // class IN
-        *rp++ = 0;
-        *rp++ = 1;
+            // class IN
+            *rp++ = 0;
+            *rp++ = 1;
 
-        // TTL
-        *rp++ = 0;
-        *rp++ = 0;
-        *rp++ = 0;
-        *rp++ = 255;
+            // TTL
+            *rp++ = 0;
+            *rp++ = 0;
+            *rp++ = 0;
+            *rp++ = 255;
 
-        // size 4
-        *rp++ = 0;
-        *rp++ = sizeof(req->addr.s_addr);
+            // size 4
+            *rp++ = 0;
+            *rp++ = sizeof(req->addr.s_addr);
 
-        memcpy(rp, &req->addr.s_addr, sizeof(req->addr.s_addr));
-        rp += sizeof(req->addr.s_addr);
+            memcpy(rp, &req->addr.s_addr, sizeof(req->addr.s_addr));
+            rp += sizeof(req->addr.s_addr);
+        } else {
+            DNS_SET_ARS(req->resp, 0);
+        }
+
+        DNS_SET_AARS(req->resp, 1);
+        memcpy(rp, DNS_OPT, sizeof(DNS_OPT));
+        rp += sizeof(DNS_OPT);
+
+        ziti_tunneler_write(req->clt->io_ctx->tnlr_io, req->resp, rp - req->resp);
     } else {
-        DNS_SET_ARS(req->resp, 0);
+        ZITI_LOG(DEBUG, "DNS request[%s] completed for closed client", req->host);
     }
-
-    DNS_SET_AARS(req->resp, 1);
-    memcpy(rp, DNS_OPT, sizeof(DNS_OPT));
-    rp += sizeof(DNS_OPT);
-
-    ziti_tunneler_write(req->clt->io_ctx->tnlr_io, req->resp, rp - req->resp);
-
     free(req);
     free(work_req);
 }
 
-ssize_t on_dns_req(const void *ziti_io_ctx, void *write_ctx, const uint8_t *q_packet, size_t q_len) {
+ssize_t on_dns_req(void *ziti_io_ctx, void *write_ctx, const uint8_t *q_packet, size_t q_len) {
     struct dns_req *req = calloc(1, sizeof(struct dns_req));
     req->clt = ziti_io_ctx;
+    LIST_INSERT_HEAD(&req->clt->active_reqs, req, _next);
 
     uv_work_t *work_req = calloc(1, sizeof(uv_work_t));
     work_req->data = req;
@@ -280,7 +420,7 @@ ssize_t on_dns_req(const void *ziti_io_ctx, void *write_ctx, const uint8_t *q_pa
 
     ZITI_LOG(TRACE, "received query for %s type(%x) class(%x)", req->host, type, class);
 
-    dns_entry_t *entry = model_map_get(&ziti_dns.hostnames, req->host);
+    dns_entry_t *entry = ziti_dns_lookup(req->host);
     if (!entry && ziti_dns.fallback_cb) {
         req->fb_ctx = ziti_dns.fallback_ctx;
         req->fallback = ziti_dns.fallback_cb;

@@ -1,3 +1,19 @@
+/*
+ Copyright 2021 NetFoundry Inc.
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+ https://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ */
+
 #if _WIN32
 // _WIN32_WINNT needs to be declared and needs to be > 0x600 in order for 
 // some constants used below to be declared
@@ -12,6 +28,7 @@
 #include <ziti/ziti_dns.h>
 #include "ziti/ziti_tunnel_cbs.h"
 #include "ziti_instance.h"
+#include "ziti_hosting.h"
 
 typedef int (*cfg_parse_fn)(void *, const char *, size_t);
 typedef void* (*cfg_alloc_fn)();
@@ -31,7 +48,7 @@ typedef struct cfgtype_desc_s {
     cfg_cmp_fn compare;
 } cfgtype_desc_t;
 
-typedef struct ziti_intercept_s {
+struct ziti_intercept_s {
     char *service_name;
     ziti_context ztx;
     struct cfgtype_desc_s *cfg_desc;
@@ -39,7 +56,7 @@ typedef struct ziti_intercept_s {
         ziti_intercept_cfg_v1 intercept_v1;
         ziti_client_cfg_v1 client_v1;
     } cfg;
-} ziti_intercept_t;
+};
 
 #define CFGTYPE_DESC(name, cfgtype, type) { (name), (cfgtype), \
 (cfg_alloc_fn)alloc_##type,                                    \
@@ -210,6 +227,12 @@ static ssize_t get_app_data_json(char *buf, size_t bufsz, tunneler_io_context io
 
     if (intercepted != NULL) {
         parse_socket_address(intercepted, &app_data.dst_protocol, &app_data.dst_ip, &app_data.dst_port);
+        if (app_data.dst_ip) {
+            const char *dst_hostname = ziti_dns_reverse_lookup(app_data.dst_ip);
+            if (dst_hostname) {
+                app_data.dst_hostname = strdup(dst_hostname);
+            }
+        }
     }
 
     if (client != NULL) {
@@ -402,7 +425,7 @@ intercept_ctx_t *new_intercept_ctx(tunneler_context tnlr_ctx, ziti_intercept_t *
     const char *ip;
     switch (zi_ctx->cfg_desc->cfgtype) {
         case CLIENT_CFG_V1:
-            if((ip = ziti_dns_register_hostname(zi_ctx->cfg.client_v1.hostname)) != NULL) {
+            if((ip = ziti_dns_register_hostname(zi_ctx->cfg.client_v1.hostname, zi_ctx)) != NULL) {
                 intercept_ctx_add_protocol(i_ctx, "udp");
                 intercept_ctx_add_protocol(i_ctx, "tcp");
                 intercept_ctx_add_address(i_ctx, ip);
@@ -416,7 +439,7 @@ intercept_ctx_t *new_intercept_ctx(tunneler_context tnlr_ctx, ziti_intercept_t *
                 intercept_ctx_add_protocol(i_ctx, config->protocols[i]);
             }
             for (i = 0; config->addresses[i] != NULL; i++) {
-                if ((ip = ziti_dns_register_hostname(config->addresses[i])) != NULL)
+                if ((ip = ziti_dns_register_hostname(config->addresses[i], zi_ctx)) != NULL)
                     intercept_ctx_add_address(i_ctx, ip);
             }
             for (i = 0; config->port_ranges[i] != NULL; i++) {
@@ -433,6 +456,7 @@ intercept_ctx_t *new_intercept_ctx(tunneler_context tnlr_ctx, ziti_intercept_t *
 
 static void stop_intercept(struct tunneler_ctx_s *tnlr, struct ziti_instance_s *inst, ziti_intercept_t *zi) {
     model_map_remove(&inst->intercepts, zi->service_name);
+    ziti_dns_deregister_intercept(zi);
     ziti_tunneler_stop_intercepting(tnlr, zi);
     free_ziti_intercept(zi);
 };
@@ -499,8 +523,7 @@ tunneled_service_t *ziti_sdk_c_on_service(ziti_context ziti_ctx, ziti_service *s
         ZITI_LOG(INFO, "service unavailable: %s", service->name);
         ziti_intercept_t *zi_ctx = model_map_remove(&ziti_instance->intercepts, service->name);
         if (zi_ctx) {
-            ziti_tunneler_stop_intercepting(tnlr_ctx, zi_ctx);
-            free(zi_ctx);
+            stop_intercept(tnlr_ctx, ziti_instance, zi_ctx);
         }
     }
 

@@ -1,42 +1,33 @@
 /*
-Copyright 2019 Netfoundry, Inc.
+ Copyright 2019-2021 NetFoundry Inc.
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
 
-https://www.apache.org/licenses/LICENSE-2.0
+ https://www.apache.org/licenses/LICENSE-2.0
 
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ */
 
 #include "model/dtos.h"
 #include <ziti/ziti_log.h>
-#include "ziti/sys/queue.h"
 #include <time.h>
+#include "model/events.h"
 
-struct tnl_identity_s {
-    tunnel_identity *id;
-    tunnel_service_array *tnl_svc_array;
-    LIST_ENTRY(tnl_identity_s) _next;
-};
-
-static LIST_HEAD(tnl_identities, tnl_identity_s) tnl_identity_list = LIST_HEAD_INITIALIZER(&tnl_identity_list);
+model_map tnl_identity_map = {0};
 static const char* CFG_INTERCEPT_V1 = "intercept.v1";
 static const char* CFG_ZITI_TUNNELER_CLIENT_V1 = "ziti-tunneler-client.v1";
-tunnel_status *tnl_status;
+static tunnel_status tnl_status;
 
-tunnel_identity *find_tunnel_identity(char* identifier) {
-    struct tnl_identity_s *tnl_id;
-    LIST_FOREACH(tnl_id, &tnl_identity_list, _next) {
-        if (strcmp(identifier, tnl_id->id->Identifier) == 0) break;
-    }
+tunnel_identity *find_tunnel_identity(const char* identifier) {
+    tunnel_identity *tnl_id = model_map_get(&tnl_identity_map, identifier);
     if (tnl_id != NULL) {
-        return tnl_id->id;
+        return tnl_id;
     } else {
         ZITI_LOG(WARN, "ztx[%s] is not found. It may not be active/connected", identifier);
         return NULL;
@@ -49,12 +40,10 @@ tunnel_identity *get_tunnel_identity(char* identifier) {
     if (id != NULL) {
         return id;
     } else {
-        struct tnl_identity_s *tnl_id = malloc(sizeof(struct tnl_identity_s));
-        tnl_id->id = calloc(1, sizeof(struct tunnel_identity_s));
-        tnl_id->id->Identifier = strdup(identifier);
-        tnl_id->id->Services = NULL;
-        LIST_INSERT_HEAD(&tnl_identity_list, tnl_id, _next);
-        return tnl_id->id;
+        tunnel_identity *tnl_id = calloc(1, sizeof(struct tunnel_identity_s));
+        tnl_id->Identifier = strdup(identifier);
+        model_map_set(&tnl_identity_map, identifier, tnl_id);
+        return tnl_id;
     }
 }
 
@@ -110,9 +99,9 @@ void set_mfa_timeout(tunnel_identity *tnl_id) {
 
 void add_or_remove_services_from_tunnel(tunnel_identity *id, tunnel_service_array added_services, tunnel_service_array removed_services) {
 
+    int idx;
     model_map updates = {0};
 
-    int idx = 0;
     // add services from tunnel id to map
     if (id->Services != NULL) {
         for (idx =0; id->Services[idx]; idx++) {
@@ -152,7 +141,7 @@ void add_or_remove_services_from_tunnel(tunnel_identity *id, tunnel_service_arra
     while(it != NULL) {
         id->Services[idx++] = model_map_it_value(it);
         it = model_map_it_next(it);
-    };
+    }
     set_mfa_timeout(id);
     uv_timeval64_t now;
     uv_gettimeofday(&now);
@@ -161,6 +150,7 @@ void add_or_remove_services_from_tunnel(tunnel_identity *id, tunnel_service_arra
     }
     id->ServiceUpdatedTime->tv_sec = now.tv_sec;
     id->ServiceUpdatedTime->tv_usec = now.tv_usec;
+
 }
 
 static tunnel_posture_check *getTunnelPostureCheck(ziti_posture_query *pq){
@@ -236,10 +226,11 @@ static tunnel_address *to_address(string hostOrIPOrCIDR) {
     tnl_address->IsHost = false;
     tnl_address->Prefix = 0;
 
-    char* ip = {0};
-    int res = uv_inet_pton(AF_INET, strdup(hostOrIPOrCIDR), ip);
-    if (ip != NULL) {
-        tnl_address->IP = ip;
+    struct in_addr ip;
+    int err = uv_inet_pton(AF_INET, hostOrIPOrCIDR, &ip);
+    if (err == 0) {
+        tnl_address->IP = calloc(INET_ADDRSTRLEN+1, sizeof(char));
+        uv_inet_ntop(AF_INET, &ip, tnl_address->IP, INET_ADDRSTRLEN);
         tnl_address->HostName = NULL;
         ZITI_LOG(TRACE, "IP address: %s", ip);
     } else {
@@ -260,61 +251,66 @@ tunnel_port_range *getTunnelPortRange(ziti_port_range *zpr){
 }
 
 static void setTunnelServiceAddress(tunnel_service *tnl_svc, ziti_service *service) {
-    const char* intercept_v1_config = ziti_service_get_raw_config(service, CFG_INTERCEPT_V1);
-    if (intercept_v1_config != NULL) {
-        ZITI_LOG(TRACE, "intercept.v1: %s", intercept_v1_config);
+    const char* cfg_json = ziti_service_get_raw_config(service, CFG_INTERCEPT_V1);
+    tunnel_address_array tnl_addr_arr = NULL;
+    string_array protocols = NULL;
+    tunnel_port_range_array tnl_port_range_arr;
+    if (cfg_json != NULL && strlen(cfg_json) > 0) {
+        ZITI_LOG(TRACE, "intercept.v1: %s", cfg_json);
         ziti_intercept_cfg_v1 cfg_v1;
-        parse_ziti_intercept_cfg_v1(&cfg_v1, intercept_v1_config, strlen(intercept_v1_config));
+        parse_ziti_intercept_cfg_v1(&cfg_v1, cfg_json, strlen(cfg_json));
 
         // set address
-        tnl_svc->Addresses = calloc(sizeof(cfg_v1.addresses) + 1, sizeof(struct tunnel_address_s));
-        int address_idx;
-        for(address_idx=0; cfg_v1.addresses[address_idx]; address_idx++) {
+        int idx = 0;
+        for(idx = 0; cfg_v1.addresses[idx]; idx++) {
+            // do nothing
+        }
+        tnl_addr_arr = calloc(idx+1, sizeof(tunnel_address *));
+        for(int address_idx=0; cfg_v1.addresses[address_idx]; address_idx++) {
             char* addr = cfg_v1.addresses[address_idx];
-            tnl_svc->Addresses[address_idx] = to_address(addr);
+            tnl_addr_arr[address_idx] = to_address(addr);
         }
 
         // set protocols
-        tnl_svc->Protocols = calloc(sizeof(cfg_v1.protocols) +1, sizeof(char*));
-        int proto_idx;
-        for (proto_idx = 0; cfg_v1.protocols[proto_idx]; proto_idx++) {
-            tnl_svc->Protocols[proto_idx++] = cfg_v1.protocols[proto_idx];
-        }
+        protocols = cfg_v1.protocols;
 
         // set ports
-        tnl_svc->Ports = calloc(sizeof(cfg_v1.port_ranges) + 1, sizeof(struct tunnel_port_range_s));
-        int port_idx;
-        for(port_idx=0; cfg_v1.port_ranges[port_idx]; port_idx++) {
-            tnl_svc->Ports[port_idx] = getTunnelPortRange(cfg_v1.port_ranges[port_idx]);
+        for(idx = 0; cfg_v1.port_ranges[idx]; idx++) {
+            // do nothing
         }
-    } else {
-        const char* zt_client_v1_config = ziti_service_get_raw_config(service, CFG_ZITI_TUNNELER_CLIENT_V1);
-        ZITI_LOG(TRACE, "ziti-tunneler-client.v1: %s", zt_client_v1_config);
+        tnl_port_range_arr = calloc(idx+1, sizeof(tunnel_port_range *));
+        for(int port_idx = 0; cfg_v1.port_ranges[port_idx]; port_idx++) {
+            tnl_port_range_arr[port_idx] = getTunnelPortRange(cfg_v1.port_ranges[port_idx]);
+        }
+    }  else if ((cfg_json = ziti_service_get_raw_config(service, CFG_ZITI_TUNNELER_CLIENT_V1)) != NULL) {
+        ZITI_LOG(TRACE, "ziti-tunneler-client.v1: %s", cfg_json);
         ziti_client_cfg_v1 zt_client_cfg_v1;
-        parse_ziti_client_cfg_v1(&zt_client_cfg_v1, zt_client_v1_config, strlen(zt_client_v1_config));
+        parse_ziti_client_cfg_v1(&zt_client_cfg_v1, cfg_json, strlen(cfg_json));
 
         // set tunnel address
-        tnl_svc->Addresses = calloc(2, sizeof(struct tunnel_address_s));
-        tnl_svc->Addresses[0] = to_address(zt_client_cfg_v1.hostname);
+        tnl_addr_arr = calloc(2, sizeof(tunnel_address *));
+        tnl_addr_arr[0] = to_address(zt_client_cfg_v1.hostname);
 
         // set protocols
-        tnl_svc->Protocols = calloc(3, sizeof(char*));
-        int idx=0;
-        tnl_svc->Protocols[idx] = calloc(3, sizeof(char));
-        tnl_svc->Protocols[idx] = strdup("TCP");
-        idx++;
-        tnl_svc->Protocols[idx] = calloc(3, sizeof(char));
-        tnl_svc->Protocols[idx] = strdup("UDP");
+        protocols = calloc(3, sizeof(char *));
+        int idx = 0;
+        protocols[idx++] = strdup("TCP");
+        protocols[idx] = strdup("UDP");
 
         // set port range
         // set ports
-        tnl_svc->Ports = calloc(2, sizeof(struct tunnel_port_range_s));
-        tunnel_port_range *tpr = calloc(1, sizeof(struct tunnel_port_range_s));
+        tnl_port_range_arr = calloc(2, sizeof(tunnel_port_range *));
+        tunnel_port_range *tpr = calloc(1, sizeof(tunnel_port_range));
         tpr->Low = zt_client_cfg_v1.port;
         tpr->High = zt_client_cfg_v1.port;
-        tnl_svc->Ports[0] = tpr;
+        tnl_port_range_arr[0] = tpr;
+    }
+    if (tnl_addr_arr != NULL) {
+        tnl_svc->Addresses = tnl_addr_arr;
+        tnl_svc->Ports = tnl_port_range_arr;
     }
 
+    tnl_svc->Protocols = protocols;
 }
 
 tunnel_service *find_tunnel_service(tunnel_identity* id, char* svc_id) {
@@ -343,25 +339,16 @@ tunnel_service *get_tunnel_service(tunnel_identity* id, ziti_service* zs) {
 }
 
 tunnel_identity_array get_tunnel_identities() {
-    struct tnl_identity_s *tnl_id;
+    const char *id;
+    tunnel_identity *tnl_id;
+    tunnel_identity_array tnl_id_arr = calloc(model_map_size(&tnl_identity_map) + 1, sizeof(tunnel_identity*));
+
     int idx = 0;
-    LIST_FOREACH(tnl_id, &tnl_identity_list, _next) {
-        idx++;
+    MODEL_MAP_FOREACH(id, tnl_id, &tnl_identity_map) {
+        tnl_id_arr[idx++] = tnl_id;
     }
 
-    if (idx > 0) {
-        tunnel_identity_array *tnl_id_arr = calloc(idx, sizeof(struct tunnel_identity_s));
-
-        idx = 0;
-        LIST_FOREACH(tnl_id, &tnl_identity_list, _next) {
-            tnl_id_arr[idx] = tnl_id->id;
-        }
-
-        return tnl_id_arr;
-    } else {
-        return NULL;
-    }
-
+    return tnl_id_arr;
 }
 
 int get_remaining_timeout(int timeout, int timeout_rem, tunnel_identity *tnl_id) {
@@ -432,32 +419,32 @@ void set_mfa_timeout_rem(tunnel_identity *tnl_id) {
 }
 
 tunnel_status *get_tunnel_status() {
-    if (tnl_status == NULL) {
-        tnl_status = calloc(1, sizeof(struct tunnel_status_s));
-        tnl_status->Active = false;
-        tnl_status->Duration = 0;
+    if (tnl_status.StartTime.tv_sec == 0) {
+        tnl_status.Active = false;
+        tnl_status.Duration = 0;
         uv_timeval64_t now;
         uv_gettimeofday(&now);
-        tnl_status->StartTime.tv_sec = now.tv_sec;
-        tnl_status->StartTime.tv_usec = now.tv_usec;
+        tnl_status.StartTime.tv_sec = now.tv_sec;
+        tnl_status.StartTime.tv_usec = now.tv_usec;
     } else {
         uv_timeval64_t now;
         uv_gettimeofday(&now);
-        uint64_t start_time_in_millis = (tnl_status->StartTime.tv_sec * (uint64_t)1000) + (tnl_status->StartTime.tv_usec / 1000);
-        uint64_t current_time_in_millis = (now.tv_sec * (uint64_t)1000) + (now.tv_usec / 1000);
-        tnl_status->Duration = current_time_in_millis - start_time_in_millis;
+        uint64_t start_time_in_millis = (tnl_status.StartTime.tv_sec * 1000) + (tnl_status.StartTime.tv_usec / 1000);
+        uint64_t current_time_in_millis = (now.tv_sec * 1000) + (now.tv_usec / 1000);
+        tnl_status.Duration = (int)(current_time_in_millis - start_time_in_millis);
     }
 
-    tnl_status->Identities = get_tunnel_identities();
+    if (tnl_status.Identities) free(tnl_status.Identities);
+    tnl_status.Identities = get_tunnel_identities();
 
-    if (tnl_status->Identities != NULL) {
-        for (int id_idx = 0; tnl_status->Identities[id_idx] != 0; id_idx++) {
-            set_mfa_timeout_rem(tnl_status->Identities[id_idx]);
-            tnl_status->Identities[id_idx]->Notified = false;
+    if (tnl_status.Identities != NULL) {
+        for (int id_idx = 0; tnl_status.Identities[id_idx] != 0; id_idx++) {
+            set_mfa_timeout_rem(tnl_status.Identities[id_idx]);
+            tnl_status.Identities[id_idx]->Notified = false;
         }
     }
 
-    return tnl_status;
+    return &tnl_status;
 }
 
 void set_mfa_status(char* identifier, bool mfa_enabled, bool mfa_needed) {
@@ -493,4 +480,3 @@ IMPL_MODEL(tunnel_port_range, TUNNEL_PORT_RANGE)
 IMPL_MODEL(tunnel_posture_check, TUNNEL_POSTURE_CHECK)
 IMPL_MODEL(tunnel_service, TUNNEL_SERVICE)
 IMPL_MODEL(tunnel_status, TUNNEL_STATUS)
-

@@ -1,18 +1,18 @@
 /*
-Copyright NetFoundry, Inc.
+ Copyright 2021 NetFoundry Inc.
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
 
-https://www.apache.org/licenses/LICENSE-2.0
+ https://www.apache.org/licenses/LICENSE-2.0
 
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ */
 
 /**
  * @file ziti_tunneler.h
@@ -120,35 +120,7 @@ struct io_ctx_list_entry_s {
 };
 SLIST_HEAD(io_ctx_list_s, io_ctx_list_entry_s);
 
-struct hosted_service_ctx_s {
-    char *       service_name;
-    const void * ziti_ctx;
-    uv_loop_t *  loop;
-    cfg_type_e   cfg_type;
-    const void * cfg;
-    char display_address[64];
-    bool forward_protocol;
-    union {
-        protocol_list_t allowed_protocols;
-        char *protocol;
-    } proto_u;
-    bool forward_address;
-    union {
-        address_list_t allowed_addresses;
-        char *address;
-    } addr_u;
-    bool forward_port;
-    union {
-        port_range_list_t allowed_port_ranges;
-        uint16_t port;
-    } port_u;
-    address_list_t    allowed_source_addresses;
-};
 
-typedef struct tunneled_service_s {
-    intercept_ctx_t *intercept;
-    host_ctx_t      *host;
-} tunneled_service_t;
 
 
 typedef struct tunneler_sdk_options_s {

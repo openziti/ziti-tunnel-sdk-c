@@ -13,7 +13,7 @@ jobs:
     strategy:
       matrix:
         os:
-          - ubuntu-16.04
+          - ubuntu-18.04
           - macOS-latest
         cmake_opts: [ "" ]
         arch: [ x86_64 ]
@@ -25,7 +25,7 @@ jobs:
             toolchain: default.cmake
             arch: [ x86_64 ]
 
-          - os: ubuntu-16.04
+          - os: ubuntu-18.04
             install: crossbuild-essential-armhf
             toolchain: Linux-arm.cmake
             cmake_opts: -DCMAKE_BUILD_TYPE=Release
