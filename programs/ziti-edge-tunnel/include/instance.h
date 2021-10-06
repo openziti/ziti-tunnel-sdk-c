@@ -38,4 +38,6 @@ extern tunnel_status *get_tunnel_status();
 
 extern tunnel_identity_array get_tunnel_identities();
 
+extern int get_remaining_timeout(int timeout, int timeout_rem, tunnel_identity *tnl_id);
+
 #endif //ZITI_TUNNEL_SDK_C_INSTANCE_H

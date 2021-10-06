@@ -40,7 +40,9 @@
 #define setenv(n,v,o) do {if(o || getenv(n) == NULL) _putenv_s(n,v); } while(0)
 #endif
 
-
+#ifndef MAXMESSAGELEN
+#define MAXMESSAGELEN 4096
+#endif
 
 extern dns_manager *get_dnsmasq_manager(const char* path);
 
@@ -76,18 +78,6 @@ static const ziti_tunnel_ctrl *CMD_CTRL;
 static long events_channels_count = 8;
 static long current_events_channels = 0;
 
-#define EVENT_ACTIONS(XX, ...) \
-XX(added, __VA_ARGS__) \
-XX(removed, __VA_ARGS__) \
-XX(updated, __VA_ARGS__) \
-XX(bulk, __VA_ARGS__) \
-XX(error, __VA_ARGS__) \
-XX(changed, __VA_ARGS__) \
-XX(normal, __VA_ARGS__) \
-XX(connected, __VA_ARGS__) \
-XX(disconnected, __VA_ARGS__)
-
-DECLARE_ENUM(event, EVENT_ACTIONS)
 IMPL_ENUM(event, EVENT_ACTIONS)
 
 #if _WIN32
@@ -340,6 +330,109 @@ static void send_tunnel_command(tunnel_comand *cmd, void *ctx) {
     free_tunnel_comand(&cmd);
 }
 
+
+static char* addUnit(int count, char* unit) {
+    char* result = malloc(MAXMESSAGELEN);
+
+    if ((count == 1) || (count == 0)) {
+        snprintf(result, MAXMESSAGELEN, "%d %s", count, unit);
+    } else {
+        snprintf(result, MAXMESSAGELEN, "%d %ss", count, unit);
+    }
+    return result;
+}
+
+static string convert_seconds_to_readable_format(int input) {
+    int seconds = input % (60 * 60 * 24);
+    int hours = ((double) seconds / 60 / 60);
+    seconds = input % (60 * 60);
+    int minutes = ((double) seconds)/ 60;
+    seconds = input % 60;
+    char* result = malloc(MAXMESSAGELEN);
+    char* hours_unit = NULL;
+    char* minutes_unit = NULL;
+    char* seconds_unit = NULL;
+
+    if (hours > 0) {
+        hours_unit = addUnit(hours, "hour");
+        minutes_unit = addUnit(minutes, "minute");
+        seconds_unit = addUnit(seconds, "second");
+        snprintf(result, MAXMESSAGELEN, "%s %s %s", hours_unit, minutes_unit, seconds_unit);
+    } else if (minutes > 0) {
+        minutes_unit = addUnit(minutes, "minute");
+        seconds_unit = addUnit(seconds, "second");
+        snprintf(result, MAXMESSAGELEN, "%s %s", minutes_unit, seconds_unit);
+    } else {
+        seconds_unit = addUnit(seconds, "second");
+        snprintf(result, MAXMESSAGELEN, "%s", seconds_unit);
+    }
+
+    if (hours_unit != NULL) {
+        free(hours_unit);
+    }
+    if (minutes_unit != NULL) {
+        free(minutes_unit);
+    }
+    if (seconds_unit != NULL) {
+        free(seconds_unit);
+    }
+
+    return result;
+}
+
+static bool check_send_notification(tunnel_identity *tnl_id) {
+    if (!tnl_id->MfaEnabled || tnl_id->MfaMinTimeout <= 0 || tnl_id->MinTimeoutRemInSvcEvent <=0) {
+        return false;
+    }
+    if (tnl_id->MfaMinTimeoutRem > 0) {
+        tnl_id->MfaMinTimeoutRem = get_remaining_timeout(tnl_id->MfaMinTimeout, tnl_id->MinTimeoutRemInSvcEvent, tnl_id);
+    }
+    if (tnl_id->MfaMaxTimeoutRem > 0) {
+        tnl_id->MfaMaxTimeoutRem = get_remaining_timeout(tnl_id->MfaMaxTimeout, tnl_id->MaxTimeoutRemInSvcEvent, tnl_id);
+    }
+
+    if (tnl_id->Notified) {
+        // No need to send notification again
+        return false;
+    }
+
+    if (tnl_id->MfaMinTimeoutRem > 20 * 60) {
+        // No services are nearing timeout
+        return false;
+    } else {
+        return true;
+    }
+}
+
+static notification_message *create_notification_message(tunnel_identity *tnl_id) {
+    notification_message *notification = calloc(1, sizeof(struct notification_message_s));
+    notification->Message = malloc(MAXMESSAGELEN);
+    if (tnl_id->MfaMaxTimeoutRem == 0) {
+        snprintf(notification->Message, MAXMESSAGELEN, "All of the services of identity %s have timed out", tnl_id->Name);
+        notification->Severity = event_severity_critical;
+    } else if (tnl_id->MfaMinTimeoutRem == 0) {
+        snprintf(notification->Message, MAXMESSAGELEN, "Some of the services of identity %s have timed out", tnl_id->Name);
+        notification->Severity = event_severity_major;
+    } else if (tnl_id->MfaMinTimeoutRem <= 20*60) {
+        char* message = convert_seconds_to_readable_format(tnl_id->MfaMinTimeoutRem);
+        snprintf(notification->Message, MAXMESSAGELEN, "Some of the services of identity %s are timing out in %s", tnl_id->Name, message);
+        free(message);
+        notification->Severity = event_severity_minor;
+    } else {
+        // do nothing
+    }
+
+    notification->IdentityName = strdup(tnl_id->Name);
+    notification->Identifier = strdup(tnl_id->Identifier);
+    uv_timeval64_t now;
+    uv_gettimeofday(&now);
+    notification->MfaTimeDuration = now.tv_sec - tnl_id->MfaLastUpdatedTime->tv_sec;
+    notification->MfaMinimumTimeout = tnl_id->MfaMinTimeoutRem;
+    notification->MfaMaximumTimeout = tnl_id->MfaMaxTimeoutRem;
+
+    return notification;
+}
+
 static void broadcast_metrics(uv_timer_t *timer) {
     tunnel_metrics_event metrics_event = {0};
     metrics_event.Op = strdup("metrics");
@@ -348,10 +441,12 @@ static void broadcast_metrics(uv_timer_t *timer) {
     int idx;
     bool active_identities = false;
     if (metrics_event.Identities != NULL) {
+        model_map notification_map = {0};
         for(idx = 0; metrics_event.Identities[idx]; idx++) {
             tnl_id = metrics_event.Identities[idx];
             if (tnl_id->Active && tnl_id->Loaded) {
                 active_identities = true;
+
                 tunnel_comand *cmd = calloc(1, sizeof(tunnel_comand));
                 cmd->command = TunnelCommand_GetMetrics;
                 tunnel_get_identity_metrics *get_metrics = calloc(1, sizeof(tunnel_get_identity_metrics));
@@ -365,7 +460,31 @@ static void broadcast_metrics(uv_timer_t *timer) {
                 send_tunnel_command(cmd, tnl_cmd_inline);
 
                 free_tunnel_get_identity_metrics(get_metrics);
+
+                // check timeout
+                if (check_send_notification(tnl_id)) {
+                    notification_message *message = create_notification_message(tnl_id);
+                    model_map_set(&notification_map, tnl_id->Name, message);
+                    tnl_id->Notified = true;
+                }
             }
+        }
+        if (model_map_size(&notification_map) > 0) {
+            notification_event event = {0};
+            event.Op = strdup("notification");
+            notification_message_array notification_messages = calloc(model_map_size(&notification_map) + 1, sizeof(struct notification_message_s));
+            int notification_idx = 0;
+            const char* key;
+            notification_message *message;
+            MODEL_MAP_FOREACH(key, message, &notification_map) {
+                notification_messages[notification_idx++] = message;
+            }
+            event.Notification = notification_messages;
+
+            send_events_message(&event, notification_event_to_json, true);
+            event.Notification = NULL;
+            free_notification_event(&event);
+            model_map_clear(&notification_map, (_free_f) free_notification_message);
         }
     }
 
@@ -528,9 +647,23 @@ static void on_event(const base_event *ev) {
             };
 
             if (mfa_ev->code == ZITI_OK) {
-                // check for auth success
-                set_mfa_status(ev->identifier, true, false);
-                update_mfa_time(ev->identifier);
+                switch (mfa_ev->operation_type) {
+                    case mfa_status_mfa_auth_status:
+                    case mfa_status_enrollment_verification:
+                        set_mfa_status(ev->identifier, true, false);
+                        update_mfa_time(ev->identifier);
+                        break;
+                    case mfa_status_enrollment_remove:
+                        set_mfa_status(ev->identifier, false, false);
+                        break;
+                    case mfa_status_enrollment_challenge:
+                        mfa_sts_event.RecoveryCodes = mfa_ev->recovery_codes;
+                        mfa_sts_event.ProvisioningUrl = strdup(mfa_ev->provisioning_url);
+                        break;
+                    default:
+                        ZITI_LOG(WARN, "ztx[%s] MFA unknown status : %d", ev->identifier, mfa_ev->operation_type);
+                }
+
                 mfa_sts_event.Successful = true;
             } else {
                 mfa_sts_event.Successful = false;
@@ -538,6 +671,8 @@ static void on_event(const base_event *ev) {
             }
 
             send_events_message(&mfa_sts_event, mfa_status_event_to_json, true);
+
+            mfa_sts_event.RecoveryCodes = NULL;
             free_mfa_status_event(&mfa_sts_event);
             break;
         }
@@ -1373,6 +1508,7 @@ int main(int argc, char *argv[]) {
 }
 
 // ******* TUNNEL EVENT BROADCAST MESSAGES
+IMPL_ENUM(event_severity, EVENT_SEVERITY)
 IMPL_MODEL(status_event, STATUS_EVENT)
 IMPL_MODEL(action_event, ACTION_EVENT)
 IMPL_MODEL(identity_event, IDENTITY_EVENT)
@@ -1380,3 +1516,5 @@ IMPL_MODEL(services_event, SERVICES_EVENT)
 IMPL_MODEL(tunnel_status_event, TUNNEL_STATUS_EVENT)
 IMPL_MODEL(mfa_status_event, MFA_STATUS_EVENT)
 IMPL_MODEL(tunnel_metrics_event, TUNNEL_METRICS_EVENT)
+IMPL_MODEL(notification_message, TUNNEL_NOTIFICATION_MESSAGE)
+IMPL_MODEL(notification_event, TUNNEL_NOTIFICATION_EVENT)
