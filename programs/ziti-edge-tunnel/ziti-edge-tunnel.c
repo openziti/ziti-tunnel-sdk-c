@@ -580,9 +580,7 @@ static void on_event(const base_event *ev) {
             id_event.Id = NULL;
             free_identity_event(&id_event);
 
-            size_t controller_json_len;
-            char *controller_json = action_event_to_json(&controller_event, MODEL_JSON_COMPACT, &controller_json_len);
-            send_events_message(controller_json, controller_json_len, true);
+            send_events_message(&controller_event, action_event_to_json, true);
             free_action_event(&controller_event);
 
             break;
@@ -643,7 +641,7 @@ static void on_event(const base_event *ev) {
                     .Identifier = strdup(mfa_ev->identifier),
                     .Successful = false
             };
-            
+
             send_events_message(&mfa_sts_event, mfa_status_event_to_json, true);
             free_mfa_status_event(&mfa_sts_event);
             break;
