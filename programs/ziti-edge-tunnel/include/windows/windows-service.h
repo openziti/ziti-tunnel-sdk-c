@@ -29,11 +29,12 @@ VOID ReportSvcStatus( DWORD, DWORD, DWORD );
 VOID SvcInit( DWORD, LPTSTR * );
 VOID SvcReportEvent( LPTSTR );
 VOID SvcDelete(void);
+DWORD WINAPI ServiceWorkerThread (LPVOID lpParam);
 
 bool log_init();
 void windows_log_writer(int , const char *, const char *, size_t);
 void scm_service_init(char *config_dir);
-void scm_service_run(int argc, char *argv[]);
+void scm_service_run(void *);
 char* get_system_config_path();
 void scm_service_stop();
 void stop_windows_service();

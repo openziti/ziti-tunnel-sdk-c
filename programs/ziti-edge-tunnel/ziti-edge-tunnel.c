@@ -1441,11 +1441,11 @@ static void start_tunnel_service(uv_async_t *scm_service_runner) {
     stop_windows_service();
 }*/
 
-void scm_service_run(int argc, char *argv[]) {
+/* void scm_service_run() {
     ZITI_LOG(INFO, "Control request to start tunnel service received...");
 
-    /*uv_thread_t scm_service;
-    uv_thread_create(&scm_service, start_tunnel_service, NULL);*/
+    //uv_thread_t scm_service;
+    //uv_thread_create(&scm_service, start_tunnel_service, NULL);
 
     uv_loop_t *scm_loop = uv_default_loop();
 
@@ -1454,6 +1454,13 @@ void scm_service_run(int argc, char *argv[]) {
     uv_async_send(scm_service_runner);
     uv_run(scm_loop, UV_RUN_DEFAULT);
 
+} */
+
+void scm_service_run(void *name) {
+    ZITI_LOG(INFO, "About to run tunnel service...");
+    ziti_set_app_info((char *)name, ziti_tunneler_version());
+    run(0, NULL);
+    stop_windows_service();
 }
 
 void scm_service_stop() {
@@ -1464,13 +1471,20 @@ void scm_service_stop() {
 }
 
 int main(int argc, char *argv[]) {
+    const char *name = strrchr(argv[0], '/');
+    if (name == NULL) {
+        name = argv[0];
+    } else {
+        name = name + 1;
+    }
+
 #if _WIN32
     SvcStart(NULL);
 
     // to remove
     char *config_path = get_system_config_path();
     scm_service_init(config_path);
-    scm_service_run(0, NULL);
+    scm_service_run(name);
 
     // if service is started by SCM, SvcStart will return only when it receives the stop request
     // started_by_scm will be set to true only if scm initializes the config value
@@ -1480,12 +1494,6 @@ int main(int argc, char *argv[]) {
     }
 #endif
 
-    const char *name = strrchr(argv[0], '/');
-    if (name == NULL) {
-        name = argv[0];
-    } else {
-        name = name + 1;
-    }
     main_cmd.name = name;
     commandline_run(&main_cmd, argc, argv);
     return 0;

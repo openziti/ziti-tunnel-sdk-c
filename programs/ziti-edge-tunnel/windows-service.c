@@ -187,7 +187,9 @@ VOID SvcInit( DWORD dwArgc, LPTSTR *lpszArgv)
     ReportSvcStatus( SERVICE_RUNNING, NO_ERROR, 0 );
 
     // start tunnel
-    scm_service_run(dwArgc, lpszArgv);
+    CreateThread (NULL, 0, ServiceWorkerThread, lpszArgv, 0, NULL);
+
+    SvcReportEvent(TEXT("Ziti Edge Tunnel Run"));
 
     while(1)
     {
@@ -198,6 +200,14 @@ VOID SvcInit( DWORD dwArgc, LPTSTR *lpszArgv)
         ReportSvcStatus( SERVICE_STOPPED, NO_ERROR, 0 );
         return;
     }
+}
+
+DWORD WINAPI ServiceWorkerThread (LPVOID lpParam)
+{
+    //  Periodically check if the service has been requested to stop
+    scm_service_run(lpParam);
+
+    return ERROR_SUCCESS;
 }
 
 //
