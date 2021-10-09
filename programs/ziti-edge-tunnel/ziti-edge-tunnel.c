@@ -278,6 +278,9 @@ static int start_event_socket(uv_loop_t *l) {
 
 static void tnl_transfer_rates(const tunnel_identity_metrics *metrics, void *ctx) {
     tunnel_identity *tnl_id = ctx;
+    if (tnl_id->Metrics != NULL) {
+        free_tunnel_metrics(tnl_id->Metrics);
+    }
     tnl_id->Metrics = calloc(1, sizeof(struct tunnel_metrics_s)); // todo this is leaked
     if (metrics->up != NULL) {
         tnl_id->Metrics->Up = (int) strtol(metrics->up, NULL, 10);
