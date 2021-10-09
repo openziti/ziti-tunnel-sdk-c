@@ -485,7 +485,7 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
                 break;
             }
 
-            get_transfer_rates(strdup(get_identity_metrics_cmd.identifier), cb, ctx);
+            get_transfer_rates(get_identity_metrics_cmd.identifier, (transfer_rates_cb) cb, ctx);
             free_tunnel_get_identity_metrics(&get_identity_metrics_cmd);
             return 0;
         }
@@ -516,7 +516,7 @@ static void get_transfer_rates(const char *identifier, transfer_rates_cb cb, voi
     struct ziti_instance_s *inst = model_map_get(&instances, identifier);
     double up, down;
     ziti_get_transfer_rates(inst->ztx, &up, &down);
-    tunnel_identity_metrics *id_metrics = calloc(1, sizeof(struct tunnel_identity_metrics_s));
+    tunnel_identity_metrics *id_metrics = calloc(1, sizeof(struct tunnel_identity_metrics_s)); // todo this is leaked
     id_metrics->identifier = strdup(identifier);
     int metrics_len = 6;
     if (up > 0) {
@@ -528,7 +528,7 @@ static void get_transfer_rates(const char *identifier, transfer_rates_cb cb, voi
         snprintf(id_metrics->down, metrics_len, "%.2lf", down);
     }
 
-    tunnel_result *result = calloc(1, sizeof(tunnel_result));
+    tunnel_result *result = calloc(1, sizeof(tunnel_result)); // todo this is leaked
     result->success = true;
     size_t json_len;
     char *json = tunnel_identity_metrics_to_json(id_metrics, MODEL_JSON_COMPACT, &json_len);
