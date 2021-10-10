@@ -146,7 +146,8 @@ static void on_cmd(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
             LIST_REMOVE(del_ipc_client, _next_ipc_cmd);
         }
         uv_close((uv_handle_t *) s, NULL);
-        ZITI_LOG(WARN,"IPC client connection closed, count: %d", --current_ipc_channels);
+        --current_ipc_channels;
+        ZITI_LOG(WARN,"IPC client connection closed, count: %d", current_ipc_channels);
 
     } else {
         ZITI_LOG(INFO, "received cmd <%.*s>", (int) len, b->base);
@@ -171,7 +172,8 @@ static void on_cmd_client(uv_stream_t *s, int status) {
     // only allow a single client
     if (current_ipc_channels < allowed_channels_count) {
         uv_pipe_t *cmd_conn = malloc(sizeof(uv_pipe_t));
-        ZITI_LOG(DEBUG,"Received IPC client connection request, count: %d", ++current_ipc_channels);
+        ++current_ipc_channels;
+        ZITI_LOG(DEBUG,"Received IPC client connection request, count: %d", current_ipc_channels);
         uv_pipe_init(s->loop, cmd_conn, 0);
         uv_accept(s, (uv_stream_t *) cmd_conn);
         uv_read_start((uv_stream_t *) cmd_conn, cmd_alloc, on_cmd);
@@ -225,7 +227,8 @@ static void on_events_client(uv_stream_t *s, int status) {
         uv_pipe_t* event_conn = malloc(sizeof(uv_pipe_t));
         uv_pipe_init(s->loop, event_conn, 0);
         uv_accept(s, (uv_stream_t *) event_conn);
-        ZITI_LOG(DEBUG,"Received events client connection request, count: %d", ++current_events_channels);
+        ++current_events_channels;
+        ZITI_LOG(DEBUG,"Received events client connection request, count: %d", current_events_channels);
         struct event_conn_s *event_client_conn = calloc(1, sizeof(struct event_conn_s));
         event_client_conn->event_client_conn = event_conn;
         LIST_INSERT_HEAD(&event_clients_list, event_client_conn, _next_event);
@@ -250,6 +253,23 @@ static void on_events_client(uv_stream_t *s, int status) {
 void on_write_event(uv_write_t* req, int status) {
     if (status < 0) {
         ZITI_LOG(ERROR,"Could not sent events message. Write error %s\n", uv_err_name(status));
+        if (status == UV_EPIPE) {
+            struct event_conn_s *event_client;
+            LIST_FOREACH(event_client, &event_clients_list, _next_event) {
+                if (event_client->event_client_conn == req->handle) {
+                    break;
+                }
+            }
+            if (event_client) {
+                uv_close((uv_handle_t *) event_client->event_client_conn, (uv_close_cb) free);
+                event_client->event_client_conn = NULL;
+                if (current_events_channels > 0) {
+                    --current_events_channels;
+                    ZITI_LOG(WARN,"Events client connection closed, count : %d", current_events_channels);
+                }
+            }
+
+        }
     } else {
         ZITI_LOG(DEBUG,"Events message is sent.");
     }
@@ -272,8 +292,9 @@ static void send_events_message(const void *message, to_json_fn to_json_f, bool 
 
     if (!LIST_EMPTY(&event_clients_list)) {
         struct event_conn_s *event_client;
-        int events_count = current_events_channels;
+        int events_count = 0;
         LIST_FOREACH(event_client, &event_clients_list, _next_event) {
+            ++events_count;
             int err = 0;
             if (event_client->event_client_conn != NULL) {
                 uv_buf_t buf = uv_buf_init(strdup(json), data_len);
@@ -284,10 +305,11 @@ static void send_events_message(const void *message, to_json_fn to_json_f, bool 
             if (err < 0){
                 ZITI_LOG(ERROR,"Events client write operation failed, received error - %s", uv_err_name(err));
                 if (err == UV_EPIPE) {
+                    uv_close((uv_handle_t *) event_client->event_client_conn, (uv_close_cb) free);
+                    event_client->event_client_conn = NULL;
                     if (current_events_channels > 0) {
-                        ZITI_LOG(WARN,"Events client connection closed, count : %d", --current_events_channels);
-                        uv_close((uv_handle_t *) event_client->event_client_conn, (uv_close_cb) free);
-                        event_client->event_client_conn = NULL;
+                        --current_events_channels;
+                        ZITI_LOG(WARN,"Events client connection closed, count : %d", current_events_channels);
                     }
                 }
             }
