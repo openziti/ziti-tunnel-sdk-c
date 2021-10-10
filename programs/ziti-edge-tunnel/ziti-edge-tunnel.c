@@ -623,6 +623,14 @@ static void on_event(const base_event *ev) {
             }
             free_services_event(&svc_event);
 
+            identity_event id_event = {
+                    .Op = strdup("identity"),
+                    .Action = strdup(event_name(event_updated)),
+                    .Id = get_tunnel_identity(ev->identifier),
+            };
+            send_events_message(&id_event, (to_json_fn) identity_event_to_json, true);
+            id_event.Id = NULL;
+            free_identity_event(&id_event);
             break;
         }
 
@@ -639,7 +647,7 @@ static void on_event(const base_event *ev) {
 
             send_events_message(&mfa_sts_event, (to_json_fn) mfa_status_event_to_json, true);
             free_mfa_status_event(&mfa_sts_event);
-            
+
             break;
         }
 
@@ -659,6 +667,15 @@ static void on_event(const base_event *ev) {
                     case mfa_status_enrollment_verification:
                         set_mfa_status(ev->identifier, true, false);
                         update_mfa_time(ev->identifier);
+
+                        identity_event id_event = {
+                                .Op = strdup("identity"),
+                                .Action = strdup(event_name(event_updated)),
+                                .Id = get_tunnel_identity(ev->identifier),
+                        };
+                        send_events_message(&id_event, (to_json_fn) identity_event_to_json, true);
+                        id_event.Id = NULL;
+                        free_identity_event(&id_event);
                         break;
                     case mfa_status_enrollment_remove:
                         set_mfa_status(ev->identifier, false, false);
