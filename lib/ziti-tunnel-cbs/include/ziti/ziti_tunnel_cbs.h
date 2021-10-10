@@ -223,7 +223,6 @@ struct hosted_io_ctx_s {
 
 typedef void (*event_cb)(const base_event* event);
 typedef void (*command_cb)(const tunnel_result *, void *ctx);
-typedef void (*transfer_rates_cb)(const tunnel_identity_metrics *, void *ctx);
 typedef struct {
     int (*process)(const tunnel_comand *cmd, command_cb cb, void *ctx);
     int (*load_identity)(const char *identifier, const char *path, command_cb, void *ctx);
