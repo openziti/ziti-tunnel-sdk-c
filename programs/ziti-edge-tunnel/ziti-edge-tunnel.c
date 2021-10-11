@@ -295,7 +295,7 @@ static void on_command_inline_resp(const tunnel_result* result, void *ctx) {
         switch (tnl_cmd_inline->command) {
             case TunnelCommand_GetMetrics: {
                 if (result->success) {
-                    tunnel_identity_metrics *id_metrics = calloc(1, sizeof(tunnel_identity_metrics));
+                    tunnel_identity_metrics *id_metrics = calloc(1, sizeof(tunnel_identity_metrics)); // todo this is leaked
                     if (parse_tunnel_identity_metrics(id_metrics, result->data, strlen(result->data)) != 0) {
                         ZITI_LOG(ERROR, "Could not fetch metrics data");
                         break;
@@ -439,14 +439,14 @@ static void broadcast_metrics(uv_timer_t *timer) {
             if (tnl_id->Active && tnl_id->Loaded) {
                 active_identities = true;
 
-                tunnel_comand *cmd = calloc(1, sizeof(tunnel_comand));
+                tunnel_comand *cmd = calloc(1, sizeof(tunnel_comand)); // todo this is leaked
                 cmd->command = TunnelCommand_GetMetrics;
-                tunnel_get_identity_metrics *get_metrics = calloc(1, sizeof(tunnel_get_identity_metrics));
+                tunnel_get_identity_metrics *get_metrics = calloc(1, sizeof(tunnel_get_identity_metrics)); // todo this is leaked
                 get_metrics->identifier = strdup(tnl_id->Identifier);
                 size_t json_len;
                 cmd->data = tunnel_get_identity_metrics_to_json(get_metrics, MODEL_JSON_COMPACT, &json_len);
 
-                tunnel_command_inline *tnl_cmd_inline = calloc(1, sizeof(tunnel_command_inline));
+                tunnel_command_inline *tnl_cmd_inline = calloc(1, sizeof(tunnel_command_inline)); // todo this is leaked
                 tnl_cmd_inline->identifier = strdup(tnl_id->Identifier);
                 tnl_cmd_inline->command = TunnelCommand_GetMetrics;
                 send_tunnel_command(cmd, tnl_cmd_inline);
