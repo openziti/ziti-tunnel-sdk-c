@@ -1,12 +1,13 @@
 #ifndef ZITI_TUNNEL_SDK_C_WINDOWS_SERVICE_H
 #define ZITI_TUNNEL_SDK_C_WINDOWS_SERVICE_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #if _WIN32
 #include <stdbool.h>
+#include <windows.h>
+#include <tchar.h>
+#define STRSAFE_NO_DEPRECATE
+#define STRSAFE_NO_CB_FUNCTIONS
+#include <strsafe.h>
 
 #define SVCNAME TEXT("ziti-edge-tunnel")
 #define DISPLAYSVCNAME TEXT("Ziti Desktop Edge Service")
@@ -31,6 +32,11 @@ VOID SvcReportEvent( LPTSTR );
 VOID SvcDelete(void);
 DWORD WINAPI ServiceWorkerThread (LPVOID lpParam);
 
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 bool log_init();
 void windows_log_writer(int , const char *, const char *, size_t);
 void scm_service_init(char *config_dir);
@@ -39,10 +45,10 @@ char* get_system_config_path();
 void scm_service_stop();
 void stop_windows_service();
 
-#endif
-
 #ifdef __cplusplus
 }
+#endif
+
 #endif
 
 #endif //ZITI_TUNNEL_SDK_C_WINDOWS_SERVICE_H

@@ -534,11 +534,15 @@ static void load_id_cb(const tunnel_result *res, void *ctx) {
 }
 
 static void load_identities_complete(uv_work_t * wr, int status) {
+    bool load_init = false;
     while(!LIST_EMPTY(&load_list)) {
         struct cfg_instance_s *inst = LIST_FIRST(&load_list);
         LIST_REMOVE(inst, _next);
 
+        load_init = true;
         CMD_CTRL->load_identity(NULL, inst->cfg, load_id_cb, inst);
+    }
+    if (load_init) {
         start_metrics_timer(wr->loop);
     }
 }
@@ -1438,7 +1442,7 @@ static void service_control(int argc, char *argv[]) {
 
     tunnel_service_control *tunnel_service_control_opt = calloc(1, sizeof(tunnel_service_control));
     if (parse_tunnel_service_control(tunnel_service_control_opt, cmd->data, strlen(cmd->data)) != 0) {
-        ZITI_LOG("ERROR", "Could not fetch service control data");
+        ZITI_LOG(ERROR, "Could not fetch service control data");
         return;
     }
 
@@ -1595,7 +1599,7 @@ static void start_tunnel_service(uv_async_t *scm_service_runner) {
 
 } */
 
-void scm_service_run(void *name) {
+void scm_service_run(void * name) {
     ZITI_LOG(INFO, "About to run tunnel service...");
     ziti_set_app_info((char *)name, ziti_tunneler_version());
     run(0, NULL);
@@ -1621,9 +1625,10 @@ int main(int argc, char *argv[]) {
     SvcStart(NULL);
 
     // to remove
+    printf("The service is either started from commandline or stopped by SCM");
     char *config_path = get_system_config_path();
     scm_service_init(config_path);
-    scm_service_run(name);
+    scm_service_run((char *)name);
 
     // if service is started by SCM, SvcStart will return only when it receives the stop request
     // started_by_scm will be set to true only if scm initializes the config value

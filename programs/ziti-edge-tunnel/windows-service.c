@@ -1,7 +1,9 @@
+#include "windows/windows-service.h"
 #include <windows.h>
 #include <tchar.h>
+#define STRSAFE_NO_DEPRECATE
+#define STRSAFE_NO_CB_FUNCTIONS
 #include <strsafe.h>
-#include "windows/windows-service.h"
 
 #pragma comment(lib, "advapi32.lib")
 
