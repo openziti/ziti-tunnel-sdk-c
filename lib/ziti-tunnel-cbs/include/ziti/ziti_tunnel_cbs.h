@@ -1,3 +1,19 @@
+/*
+ Copyright 2021 NetFoundry Inc.
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+ https://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ */
+
 #ifndef ZITI_TUNNELER_SDK_ZITI_TUNNEL_CBS_H
 #define ZITI_TUNNELER_SDK_ZITI_TUNNEL_CBS_H
 
@@ -143,6 +159,14 @@ XX(MFAStatusEvent, __VA_ARGS__)
 
 DECLARE_ENUM(TunnelEvent, TUNNEL_EVENTS)
 
+#define MFA_STATUS(XX, ...) \
+XX(mfa_auth_status, __VA_ARGS__) \
+XX(enrollment_verification, __VA_ARGS__) \
+XX(enrollment_remove, __VA_ARGS__) \
+XX(enrollment_challenge, __VA_ARGS__)
+
+DECLARE_ENUM(mfa_status, MFA_STATUS)
+
 #define BASE_EVENT_MODEL(XX, ...) \
 XX(identifier, string, none, identifier, __VA_ARGS__) \
 XX(event_type, TunnelEvent, none, type, __VA_ARGS__)
@@ -166,14 +190,17 @@ BASE_EVENT_MODEL(XX, __VA_ARGS__)               \
 XX(provider, string, none, provider, __VA_ARGS__) \
 XX(status, string, none, status, __VA_ARGS__)   \
 XX(operation, string, none, operation, __VA_ARGS__) \
+XX(operation_type, mfa_status, none, operation_type, __VA_ARGS__ ) \
 XX(provisioning_url, string, none, provisioning_url, __VA_ARGS__) \
-XX(recovery_codes, string, none, recovery_codes, __VA_ARGS__) \
+XX(recovery_codes, string, array, recovery_codes, __VA_ARGS__) \
 XX(code, int, none, code, __VA_ARGS__)
 
 DECLARE_MODEL(base_event, BASE_EVENT_MODEL)
 DECLARE_MODEL(ziti_ctx_event, ZTX_EVENT_MODEL)
 DECLARE_MODEL(mfa_event, MFA_EVENT_MODEL)
 DECLARE_MODEL(service_event, ZTX_SVC_EVENT_MODEL)
+
+typedef struct tunneled_service_s tunneled_service_t;
 
 /** context passed through the tunneler SDK for network i/o */
 typedef struct ziti_io_ctx_s {

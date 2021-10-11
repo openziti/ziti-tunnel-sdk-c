@@ -1,18 +1,18 @@
 /*
-Copyright 2019 Netfoundry, Inc.
+ Copyright 2019-2021 NetFoundry Inc.
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
 
-https://www.apache.org/licenses/LICENSE-2.0
+ https://www.apache.org/licenses/LICENSE-2.0
 
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ */
 
 #ifndef ZITI_TUNNEL_SDK_C_DTOS_H
 #define ZITI_TUNNEL_SDK_C_DTOS_H
@@ -48,9 +48,12 @@ XX(MfaMinTimeout, int, none, MfaMinTimeout, __VA_ARGS__) \
 XX(MfaMaxTimeout, int, none, MfaMaxTimeout, __VA_ARGS__) \
 XX(MfaMinTimeoutRem, int, none, MfaMinTimeoutRem, __VA_ARGS__) \
 XX(MfaMaxTimeoutRem, int, none, MfaMaxTimeoutRem, __VA_ARGS__) \
+XX(MinTimeoutRemInSvcEvent, int, none, MinTimeoutRemInSvcEvent, __VA_ARGS__) \
+XX(MaxTimeoutRemInSvcEvent, int, none, MaxTimeoutRemInSvcEvent, __VA_ARGS__) \
 XX(MfaLastUpdatedTime, timestamp, ptr, MfaLastUpdatedTime, __VA_ARGS__) \
 XX(ServiceUpdatedTime, timestamp, ptr, ServiceUpdatedTime, __VA_ARGS__) \
-XX(Deleted, bool, none, Deleted, __VA_ARGS__)
+XX(Deleted, bool, none, Deleted, __VA_ARGS__) \
+XX(Notified, bool, none, Notified, __VA_ARGS__)
 
 #define TUNNEL_ADDRESS(XX, ...) \
 XX(IsHost, bool, none, IsHost, __VA_ARGS__) \

@@ -1,18 +1,18 @@
 /*
-Copyright 2019-2020 NetFoundry, Inc.
+ Copyright 2019-2021 NetFoundry Inc.
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
 
-https://www.apache.org/licenses/LICENSE-2.0
+ https://www.apache.org/licenses/LICENSE-2.0
 
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ */
 
 // something wrong with lwip_xxxx byteorder functions
 #ifdef _WIN32
@@ -162,7 +162,9 @@ void free_tunneler_io_context(tunneler_io_context *tnlr_io_ctx_p) {
     }
 
     if (*tnlr_io_ctx_p != NULL) {
-        free(*tnlr_io_ctx_p);
+        tunneler_io_context io = *tnlr_io_ctx_p;
+        if (io->service_name != NULL) free(io->service_name);
+        free(io);
         *tnlr_io_ctx_p = NULL;
     }
 }
@@ -419,10 +421,10 @@ ssize_t ziti_tunneler_write(tunneler_io_context tnlr_io_ctx, const void *data, s
 /** called by tunneler application when a ziti connection closes */
 int ziti_tunneler_close(tunneler_io_context tnlr_io_ctx) {
     if (tnlr_io_ctx == NULL) {
-        TNL_LOG(INFO, "null tnlr_io_ctx");
+        TNL_LOG(DEBUG, "null tnlr_io_ctx");
         return 0;
     }
-    TNL_LOG(INFO, "closing connection: client[%s] service[%s]",
+    TNL_LOG(DEBUG, "closing connection: client[%s] service[%s]",
             tnlr_io_ctx->client, tnlr_io_ctx->service_name);
     switch (tnlr_io_ctx->proto) {
         case tun_tcp:
