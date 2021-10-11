@@ -517,7 +517,7 @@ static void get_transfer_rates(const char *identifier, command_cb cb, void *ctx)
     struct ziti_instance_s *inst = model_map_get(&instances, identifier);
     double up, down;
     ziti_get_transfer_rates(inst->ztx, &up, &down);
-    tunnel_identity_metrics *id_metrics = calloc(1, sizeof(struct tunnel_identity_metrics_s)); // todo this is leaked
+    tunnel_identity_metrics *id_metrics = calloc(1, sizeof(struct tunnel_identity_metrics_s));
     id_metrics->identifier = strdup(identifier);
     int metrics_len = 6;
     if (up > 0) {
@@ -529,7 +529,7 @@ static void get_transfer_rates(const char *identifier, command_cb cb, void *ctx)
         snprintf(id_metrics->down, metrics_len, "%.2lf", down);
     }
 
-    tunnel_result *result = calloc(1, sizeof(tunnel_result)); // todo this is leaked
+    tunnel_result *result = calloc(1, sizeof(tunnel_result));
     result->success = true;
     size_t json_len;
     char *json = tunnel_identity_metrics_to_json(id_metrics, MODEL_JSON_COMPACT, &json_len);
@@ -817,10 +817,9 @@ static void on_enable_mfa(ziti_context ztx, int status, ziti_mfa_enrollment *enr
     ev->recovery_codes = malloc((size + 1) * sizeof(char *));
     int idx;
     for (idx=0; enrollment->recovery_codes[idx] !=0; idx++) {
-        ev->recovery_codes[idx] = calloc(strlen(enrollment->recovery_codes[idx]), sizeof(char));
         ev->recovery_codes[idx] = strdup(enrollment->recovery_codes[idx]);
     }
-    ev->recovery_codes[idx] = '\0';
+    ev->recovery_codes[idx] = NULL;
     tunnel_status_event(TunnelEvent_MFAStatusEvent, status, ev, inst);
 
     free(req);
