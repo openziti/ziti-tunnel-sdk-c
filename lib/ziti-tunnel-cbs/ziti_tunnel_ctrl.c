@@ -404,7 +404,7 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
             req->cmd_cb = cb;
             req->cmd_ctx = ctx;
 
-            submit_mfa(inst->ztx, strdup(auth.code), req);
+            submit_mfa(inst->ztx, auth.code, req);
             free_tunnel_submit_mfa(&auth);
             return 0;
         }
@@ -517,7 +517,7 @@ static void get_transfer_rates(const char *identifier, command_cb cb, void *ctx)
     struct ziti_instance_s *inst = model_map_get(&instances, identifier);
     double up, down;
     ziti_get_transfer_rates(inst->ztx, &up, &down);
-    tunnel_identity_metrics *id_metrics = calloc(1, sizeof(struct tunnel_identity_metrics_s)); // todo this is leaked
+    tunnel_identity_metrics *id_metrics = calloc(1, sizeof(tunnel_identity_metrics)); // todo this is leaked
     id_metrics->identifier = strdup(identifier);
     int metrics_len = 6;
     if (up > 0) {
@@ -762,13 +762,16 @@ static void on_submit_mfa(ziti_context ztx, int status, void *ctx) {
     }
 
     struct ziti_instance_s *inst = ziti_app_ctx(ztx);
-    mfa_event *ev = calloc(1, sizeof(struct mfa_event_s));
+    mfa_event *ev = calloc(1, sizeof(mfa_event));
     ev->operation = strdup(mfa_status_name(mfa_status_mfa_auth_status));
     ev->operation_type = mfa_status_mfa_auth_status;
     tunnel_status_event(TunnelEvent_MFAStatusEvent, status, ev, inst);
 
     if (status == ZITI_OK) {
         inst->mfa_req = NULL;
+    }
+    if (req->ctx){
+        free(req->ctx);
     }
     free(req);
 }
