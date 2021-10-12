@@ -779,6 +779,7 @@ static void on_submit_mfa(ziti_context ztx, int status, void *ctx) {
 
 static void submit_mfa(ziti_context ztx, const char *code, void *ctx) {
     ziti_mfa_auth(ztx, code, on_submit_mfa, ctx);
+    free((char *) code);
 }
 
 static void on_enable_mfa(ziti_context ztx, int status, ziti_mfa_enrollment *enrollment, void *ctx) {
