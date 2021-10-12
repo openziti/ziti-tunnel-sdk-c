@@ -232,7 +232,7 @@ static tunnel_address *to_address(string hostOrIPOrCIDR) {
         tnl_address->IP = calloc(INET_ADDRSTRLEN+1, sizeof(char));
         uv_inet_ntop(AF_INET, &ip, tnl_address->IP, INET_ADDRSTRLEN);
         tnl_address->HostName = NULL;
-        ZITI_LOG(TRACE, "IP address: %s", ip);
+        ZITI_LOG(TRACE, "IP address: %s", tnl_address->IP);
     } else {
         tnl_address->IsHost = true;
         tnl_address->IP = NULL;

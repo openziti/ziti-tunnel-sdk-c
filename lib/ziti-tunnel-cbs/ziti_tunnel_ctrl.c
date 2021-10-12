@@ -404,7 +404,7 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
             req->cmd_cb = cb;
             req->cmd_ctx = ctx;
 
-            submit_mfa(inst->ztx, auth.code, req);
+            submit_mfa(inst->ztx, strdup(auth.code), req);
             free_tunnel_submit_mfa(&auth);
             return 0;
         }
@@ -536,6 +536,7 @@ static void get_transfer_rates(const char *identifier, command_cb cb, void *ctx)
     result->data = calloc(json_len, sizeof(char)); // todo leak
     result->data = json;
     free_tunnel_identity_metrics(id_metrics);
+    free(id_metrics);
     cb(result, ctx);
 
 }
@@ -1008,5 +1009,6 @@ IMPL_ENUM(TunnelEvent, TUNNEL_EVENTS)
 IMPL_MODEL(base_event, BASE_EVENT_MODEL)
 IMPL_MODEL(ziti_ctx_event, ZTX_EVENT_MODEL)
 IMPL_MODEL(mfa_event, MFA_EVENT_MODEL)
+IMPL_MODEL(service_event, ZTX_SVC_EVENT_MODEL)
 IMPL_MODEL(tunnel_command_inline, TUNNEL_CMD_INLINE)
 

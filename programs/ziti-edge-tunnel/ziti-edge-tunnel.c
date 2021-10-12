@@ -286,6 +286,7 @@ static void tnl_transfer_rates(const tunnel_identity_metrics *metrics, void *ctx
         tnl_id->Metrics.Down = (int) strtol(metrics->down, NULL, 10);
     }
     free_tunnel_identity_metrics((tunnel_identity_metrics*) metrics);
+    free(metrics);
 }
 
 static void on_command_inline_resp(const tunnel_result* result, void *ctx) {
@@ -299,6 +300,7 @@ static void on_command_inline_resp(const tunnel_result* result, void *ctx) {
                     if (parse_tunnel_identity_metrics(id_metrics, result->data, strlen(result->data)) != 0) {
                         ZITI_LOG(ERROR, "Could not fetch metrics data");
                         free_tunnel_identity_metrics(id_metrics);
+                        free(id_metrics);
                         break;
                     }
                     tunnel_identity *tnl_id = find_tunnel_identity(tnl_cmd_inline->identifier);
@@ -314,13 +316,16 @@ static void on_command_inline_resp(const tunnel_result* result, void *ctx) {
 
     if (tnl_cmd_inline != NULL) {
         free_tunnel_command_inline(tnl_cmd_inline);
+        free(tnl_cmd_inline);
     }
     free_tunnel_result((tunnel_result*) result);
+    free(result);
 }
 
 static void send_tunnel_command(tunnel_comand *cmd, void *ctx) {
     CMD_CTRL->process(cmd, on_command_inline_resp, ctx);
     free_tunnel_comand(cmd);
+    free(cmd);
 }
 
 
@@ -453,6 +458,7 @@ static void broadcast_metrics(uv_timer_t *timer) {
                 send_tunnel_command(cmd, tnl_cmd_inline);
 
                 free_tunnel_get_identity_metrics(get_metrics);
+                free(get_metrics);
 
                 // check timeout
                 if (check_send_notification(tnl_id)) {
@@ -486,6 +492,9 @@ static void broadcast_metrics(uv_timer_t *timer) {
     {
         // do not display the metrics events in the logs as this event will get called every 5 seconds
         send_events_message(&metrics_event, (to_json_fn) tunnel_metrics_event_to_json, false);
+    }
+    if(metrics_event.Identities) {
+        free(metrics_event.Identities);
     }
     metrics_event.Identities = NULL;
     free_tunnel_metrics_event(&metrics_event);
@@ -565,7 +574,6 @@ static void on_event(const base_event *ev) {
             send_events_message(&id_event, (to_json_fn) identity_event_to_json, true);
             id_event.Id = NULL;
             free_identity_event(&id_event);
-
             break;
         }
 
@@ -611,7 +619,6 @@ static void on_event(const base_event *ev) {
                 svc_event.AddedServices = NULL;
             }
             free_services_event(&svc_event);
-
             break;
         }
 
@@ -669,6 +676,8 @@ static void on_event(const base_event *ev) {
 
             mfa_sts_event.RecoveryCodes = NULL;
             free_mfa_status_event(&mfa_sts_event);
+            free_mfa_event((mfa_event*) mfa_ev);
+            free(mfa_ev);
             break;
         }
 
