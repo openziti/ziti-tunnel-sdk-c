@@ -298,6 +298,7 @@ static void on_command_inline_resp(const tunnel_result* result, void *ctx) {
                     tunnel_identity_metrics *id_metrics = calloc(1, sizeof(tunnel_identity_metrics)); // todo this is leaked
                     if (parse_tunnel_identity_metrics(id_metrics, result->data, strlen(result->data)) != 0) {
                         ZITI_LOG(ERROR, "Could not fetch metrics data");
+                        free_tunnel_identity_metrics(id_metrics);
                         break;
                     }
                     tunnel_identity *tnl_id = find_tunnel_identity(tnl_cmd_inline->identifier);
@@ -464,7 +465,7 @@ static void broadcast_metrics(uv_timer_t *timer) {
         if (model_map_size(&notification_map) > 0) {
             notification_event event = {0};
             event.Op = strdup("notification");
-            notification_message_array notification_messages = calloc(model_map_size(&notification_map) + 1, sizeof(struct notification_message_s));
+            notification_message_array notification_messages = calloc(model_map_size(&notification_map) + 1, sizeof(notification_message *));
             int notification_idx = 0;
             const char* key;
             notification_message *message;
@@ -477,6 +478,7 @@ static void broadcast_metrics(uv_timer_t *timer) {
             event.Notification = NULL;
             free_notification_event(&event);
             model_map_clear(&notification_map, (_free_f) free_notification_message);
+            free(notification_messages);
         }
     }
 
@@ -592,7 +594,7 @@ static void on_event(const base_event *ev) {
 
             idx = 0;
             if (svc_ev->added_services != NULL) {
-                svc_event.AddedServices = calloc(sizeof(svc_ev->added_services), sizeof(struct tunnel_service_s));
+                svc_event.AddedServices = calloc(sizeof(svc_ev->added_services), sizeof(tunnel_service *));
                 for (zs = svc_ev->added_services; *zs != NULL; zs++) {
                     tunnel_service *svc = get_tunnel_service(id, *zs);
                     svc_event.AddedServices[idx++] = svc;
@@ -605,7 +607,7 @@ static void on_event(const base_event *ev) {
 
             send_events_message(&svc_event, (to_json_fn) services_event_to_json, true);
             if (svc_event.AddedServices != NULL) {
-                svc_event.AddedServices = NULL;
+                free(svc_event.AddedServices);
             }
             free_services_event(&svc_event);
 
