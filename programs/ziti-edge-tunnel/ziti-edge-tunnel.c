@@ -584,7 +584,7 @@ static void on_event(const base_event *ev) {
             id_event.Id = NULL;
             free_identity_event(&id_event);
 
-            send_events_message(&controller_event, action_event_to_json, true);
+            send_events_message(&controller_event, (to_json_fn) action_event_to_json, true);
             free_action_event(&controller_event);
             break;
         }
