@@ -232,7 +232,7 @@ static tunnel_address *to_address(string hostOrIPOrCIDR) {
         tnl_address->IP = calloc(INET_ADDRSTRLEN+1, sizeof(char));
         uv_inet_ntop(AF_INET, &ip, tnl_address->IP, INET_ADDRSTRLEN);
         tnl_address->HostName = NULL;
-        ZITI_LOG(TRACE, "IP address: %s", ip);
+        ZITI_LOG(TRACE, "IP address: %s", tnl_address->IP);
     } else {
         tnl_address->IsHost = true;
         tnl_address->IP = NULL;
@@ -341,7 +341,7 @@ tunnel_service *get_tunnel_service(tunnel_identity* id, ziti_service* zs) {
 tunnel_identity_array get_tunnel_identities() {
     const char *id;
     tunnel_identity *tnl_id;
-    tunnel_identity_array tnl_id_arr = calloc(model_map_size(&tnl_identity_map) + 1, sizeof(tunnel_identity*)); // todo this is leaked
+    tunnel_identity_array tnl_id_arr = calloc(model_map_size(&tnl_identity_map) + 1, sizeof(tunnel_identity*));
 
     int idx = 0;
     MODEL_MAP_FOREACH(id, tnl_id, &tnl_identity_map) {
