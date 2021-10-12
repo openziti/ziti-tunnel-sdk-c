@@ -42,7 +42,7 @@ XX(Status, string, none, Status, __VA_ARGS__) \
 XX(MfaEnabled, bool, none, MfaEnabled, __VA_ARGS__) \
 XX(MfaNeeded, bool, none, MfaNeeded, __VA_ARGS__) \
 XX(Services, tunnel_service, array, Services, __VA_ARGS__) \
-XX(Metrics, tunnel_metrics, ptr, Metrics, __VA_ARGS__) \
+XX(Metrics, tunnel_metrics, none, Metrics, __VA_ARGS__) \
 XX(Tags, string, array, Tags, __VA_ARGS__) \
 XX(MfaMinTimeout, int, none, MfaMinTimeout, __VA_ARGS__) \
 XX(MfaMaxTimeout, int, none, MfaMaxTimeout, __VA_ARGS__) \

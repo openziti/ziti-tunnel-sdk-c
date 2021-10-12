@@ -14,6 +14,7 @@
  limitations under the License.
  */
 
+#include <string.h>
 #include <ziti/ziti_tunnel_cbs.h>
 #include <ziti/ziti_log.h>
 
@@ -45,7 +46,7 @@ static long refresh_interval = 10;
 
 static int process_cmd(const tunnel_comand *cmd, void (*cb)(const tunnel_result *, void *ctx), void *ctx);
 static int load_identity(const char *identifier, const char *path, command_cb cb, void *ctx);
-static void get_transfer_rates(const char *identifier, transfer_rates_cb cb, void *ctx);
+static void get_transfer_rates(const char *identifier, command_cb cb, void *ctx);
 static struct ziti_instance_s *new_ziti_instance(const char *identifier, const char *path);
 static void load_ziti_async(uv_async_t *ar);
 static void on_sigdump(uv_signal_t *sig, int signum);
@@ -485,7 +486,7 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
                 break;
             }
 
-            get_transfer_rates(get_identity_metrics_cmd.identifier, (transfer_rates_cb) cb, ctx);
+            get_transfer_rates(get_identity_metrics_cmd.identifier, (command_cb) cb, ctx);
             free_tunnel_get_identity_metrics(&get_identity_metrics_cmd);
             return 0;
         }
@@ -512,11 +513,11 @@ static int load_identity(const char *identifier, const char *path, command_cb cb
     return 0;
 }
 
-static void get_transfer_rates(const char *identifier, transfer_rates_cb cb, void *ctx) {
+static void get_transfer_rates(const char *identifier, command_cb cb, void *ctx) {
     struct ziti_instance_s *inst = model_map_get(&instances, identifier);
     double up, down;
     ziti_get_transfer_rates(inst->ztx, &up, &down);
-    tunnel_identity_metrics *id_metrics = calloc(1, sizeof(struct tunnel_identity_metrics_s)); // todo this is leaked
+    tunnel_identity_metrics *id_metrics = calloc(1, sizeof(tunnel_identity_metrics));
     id_metrics->identifier = strdup(identifier);
     int metrics_len = 6;
     if (up > 0) {
@@ -528,14 +529,14 @@ static void get_transfer_rates(const char *identifier, transfer_rates_cb cb, voi
         snprintf(id_metrics->down, metrics_len, "%.2lf", down);
     }
 
-    tunnel_result *result = calloc(1, sizeof(tunnel_result)); // todo this is leaked
-    result->success = true;
+    tunnel_result result = {0};
+    result.success = true;
     size_t json_len;
     char *json = tunnel_identity_metrics_to_json(id_metrics, MODEL_JSON_COMPACT, &json_len);
-    result->data = calloc(json_len, sizeof(char));
-    result->data = json;
+    result.data = json;
     free_tunnel_identity_metrics(id_metrics);
-    cb(result, ctx);
+    free(id_metrics);
+    cb(&result, ctx);
 
 }
 
@@ -761,13 +762,16 @@ static void on_submit_mfa(ziti_context ztx, int status, void *ctx) {
     }
 
     struct ziti_instance_s *inst = ziti_app_ctx(ztx);
-    mfa_event *ev = calloc(1, sizeof(struct mfa_event_s));
+    mfa_event *ev = calloc(1, sizeof(mfa_event));
     ev->operation = strdup(mfa_status_name(mfa_status_mfa_auth_status));
     ev->operation_type = mfa_status_mfa_auth_status;
     tunnel_status_event(TunnelEvent_MFAStatusEvent, status, ev, inst);
 
     if (status == ZITI_OK) {
         inst->mfa_req = NULL;
+    }
+    if (req->ctx){
+        free(req->ctx);
     }
     free(req);
 }
@@ -801,23 +805,23 @@ static void on_enable_mfa(ziti_context ztx, int status, ziti_mfa_enrollment *enr
     }
 
     struct ziti_instance_s *inst = ziti_app_ctx(ztx);
-    mfa_event *ev = calloc(1, sizeof(struct mfa_event_s));
+    mfa_event *ev = calloc(1, sizeof(mfa_event));
     ev->operation = strdup(mfa_status_name(mfa_status_enrollment_challenge));
     ev->operation_type = mfa_status_enrollment_challenge;
+    ev->provisioning_url = calloc(strlen(enrollment->provisioning_url), sizeof(char));
     ev->provisioning_url = strdup(enrollment->provisioning_url);
     char **rc = enrollment->recovery_codes;
-    int code_len = 0;
+    int size = 0;
     while (*rc != NULL) {
-        code_len = code_len + strlen(*rc);
         rc++;
+        size++;
     }
-    ev->recovery_codes = malloc(code_len + 1);
+    ev->recovery_codes = malloc((size + 1) * sizeof(char *));
     int idx;
     for (idx=0; enrollment->recovery_codes[idx] !=0; idx++) {
-        ev->recovery_codes[idx] = calloc(strlen(enrollment->recovery_codes[idx]), sizeof(char));
-        ev->recovery_codes[idx] = enrollment->recovery_codes[idx];
+        ev->recovery_codes[idx] = strdup(enrollment->recovery_codes[idx]);
     }
-    ev->recovery_codes[idx] = '\0';
+    ev->recovery_codes[idx] = NULL;
     tunnel_status_event(TunnelEvent_MFAStatusEvent, status, ev, inst);
 
     free(req);
@@ -842,7 +846,7 @@ static void on_verify_mfa(ziti_context ztx, int status, void *ctx) {
     }
 
     struct ziti_instance_s *inst = ziti_app_ctx(ztx);
-    mfa_event *ev = calloc(1, sizeof(struct mfa_event_s));
+    mfa_event *ev = calloc(1, sizeof(mfa_event));
     ev->operation = strdup(mfa_status_name(mfa_status_enrollment_verification));
     ev->operation_type = mfa_status_enrollment_verification;
     tunnel_status_event(TunnelEvent_MFAStatusEvent, status, ev, inst);
@@ -869,7 +873,7 @@ static void on_remove_mfa(ziti_context ztx, int status, void *ctx) {
     }
 
     struct ziti_instance_s *inst = ziti_app_ctx(ztx);
-    mfa_event *ev = calloc(1, sizeof(struct mfa_event_s));
+    mfa_event *ev = calloc(1, sizeof(mfa_event));
     ev->operation = strdup(mfa_status_name(mfa_status_enrollment_remove));
     ev->operation_type = mfa_status_enrollment_remove;
     tunnel_status_event(TunnelEvent_MFAStatusEvent, status, ev, inst);
@@ -1003,5 +1007,6 @@ IMPL_ENUM(TunnelEvent, TUNNEL_EVENTS)
 IMPL_MODEL(base_event, BASE_EVENT_MODEL)
 IMPL_MODEL(ziti_ctx_event, ZTX_EVENT_MODEL)
 IMPL_MODEL(mfa_event, MFA_EVENT_MODEL)
+IMPL_MODEL(service_event, ZTX_SVC_EVENT_MODEL)
 IMPL_MODEL(tunnel_command_inline, TUNNEL_CMD_INLINE)
 

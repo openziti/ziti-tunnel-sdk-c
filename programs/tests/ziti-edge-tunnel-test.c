@@ -19,7 +19,12 @@
 #include <stdlib.h>
 #include "uv.h"
 
+#if _WIN32
 static char eventsockfile[] = "\\\\.\\pipe\\ziti-edge-tunnel-event.sock";
+#elif __unix__ || unix || ( __APPLE__ && __MACH__ )
+static char eventsockfile[] = "/tmp/ziti-edge-tunnel-event.sock";
+#endif
+
 
 static void cmd_alloc(uv_handle_t *s, size_t sugg, uv_buf_t *b) {
     b->base = malloc(sugg);

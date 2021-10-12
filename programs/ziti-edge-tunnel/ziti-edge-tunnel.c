@@ -107,7 +107,7 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
     ZITI_LOG(INFO, "resp[%d,len=%zd] = %.*s",
             result->success, json_len, (int)json_len, json, result->data);
 
-    if (result->data != NULL){
+    if (result->data) {
         free(result->data);
     }
 
@@ -278,14 +278,14 @@ static int start_event_socket(uv_loop_t *l) {
 
 static void tnl_transfer_rates(const tunnel_identity_metrics *metrics, void *ctx) {
     tunnel_identity *tnl_id = ctx;
-    tnl_id->Metrics = calloc(1, sizeof(struct tunnel_metrics_s)); // todo this is leaked
     if (metrics->up != NULL) {
-        tnl_id->Metrics->Up = (int) strtol(metrics->up, NULL, 10);
+        tnl_id->Metrics.Up = (int) strtol(metrics->up, NULL, 10);
     }
     if (metrics->down != NULL) {
-        tnl_id->Metrics->Down = (int) strtol(metrics->down, NULL, 10);
+        tnl_id->Metrics.Down = (int) strtol(metrics->down, NULL, 10);
     }
     free_tunnel_identity_metrics((tunnel_identity_metrics*) metrics);
+    free(metrics);
 }
 
 static void on_command_inline_resp(const tunnel_result* result, void *ctx) {
@@ -295,9 +295,11 @@ static void on_command_inline_resp(const tunnel_result* result, void *ctx) {
         switch (tnl_cmd_inline->command) {
             case TunnelCommand_GetMetrics: {
                 if (result->success) {
-                    tunnel_identity_metrics *id_metrics = calloc(1, sizeof(tunnel_identity_metrics)); // todo this is leaked
+                    tunnel_identity_metrics *id_metrics = calloc(1, sizeof(tunnel_identity_metrics));
                     if (parse_tunnel_identity_metrics(id_metrics, result->data, strlen(result->data)) != 0) {
                         ZITI_LOG(ERROR, "Could not fetch metrics data");
+                        free_tunnel_identity_metrics(id_metrics);
+                        free(id_metrics);
                         break;
                     }
                     tunnel_identity *tnl_id = find_tunnel_identity(tnl_cmd_inline->identifier);
@@ -313,13 +315,18 @@ static void on_command_inline_resp(const tunnel_result* result, void *ctx) {
 
     if (tnl_cmd_inline != NULL) {
         free_tunnel_command_inline(tnl_cmd_inline);
+        free(tnl_cmd_inline);
     }
-    free_tunnel_result((tunnel_result*) result);
+
+    if (result->data) {
+        free(result->data);
+    }
 }
 
 static void send_tunnel_command(tunnel_comand *cmd, void *ctx) {
     CMD_CTRL->process(cmd, on_command_inline_resp, ctx);
     free_tunnel_comand(cmd);
+    free(cmd);
 }
 
 
@@ -439,19 +446,20 @@ static void broadcast_metrics(uv_timer_t *timer) {
             if (tnl_id->Active && tnl_id->Loaded) {
                 active_identities = true;
 
-                tunnel_comand *cmd = calloc(1, sizeof(tunnel_comand)); // todo this is leaked
+                tunnel_comand *cmd = calloc(1, sizeof(tunnel_comand));
                 cmd->command = TunnelCommand_GetMetrics;
                 tunnel_get_identity_metrics *get_metrics = calloc(1, sizeof(tunnel_get_identity_metrics));
                 get_metrics->identifier = strdup(tnl_id->Identifier);
                 size_t json_len;
                 cmd->data = tunnel_get_identity_metrics_to_json(get_metrics, MODEL_JSON_COMPACT, &json_len);
 
-                tunnel_command_inline *tnl_cmd_inline = calloc(1, sizeof(tunnel_command_inline)); // todo this is leaked
+                tunnel_command_inline *tnl_cmd_inline = calloc(1, sizeof(tunnel_command_inline));
                 tnl_cmd_inline->identifier = strdup(tnl_id->Identifier);
                 tnl_cmd_inline->command = TunnelCommand_GetMetrics;
                 send_tunnel_command(cmd, tnl_cmd_inline);
 
                 free_tunnel_get_identity_metrics(get_metrics);
+                free(get_metrics);
 
                 // check timeout
                 if (check_send_notification(tnl_id)) {
@@ -464,7 +472,7 @@ static void broadcast_metrics(uv_timer_t *timer) {
         if (model_map_size(&notification_map) > 0) {
             notification_event event = {0};
             event.Op = strdup("notification");
-            notification_message_array notification_messages = calloc(model_map_size(&notification_map) + 1, sizeof(struct notification_message_s));
+            notification_message_array notification_messages = calloc(model_map_size(&notification_map) + 1, sizeof(notification_message *));
             int notification_idx = 0;
             const char* key;
             notification_message *message;
@@ -477,6 +485,7 @@ static void broadcast_metrics(uv_timer_t *timer) {
             event.Notification = NULL;
             free_notification_event(&event);
             model_map_clear(&notification_map, (_free_f) free_notification_message);
+            free(notification_messages);
         }
     }
 
@@ -484,6 +493,9 @@ static void broadcast_metrics(uv_timer_t *timer) {
     {
         // do not display the metrics events in the logs as this event will get called every 5 seconds
         send_events_message(&metrics_event, (to_json_fn) tunnel_metrics_event_to_json, false);
+    }
+    if(metrics_event.Identities) {
+        free(metrics_event.Identities);
     }
     metrics_event.Identities = NULL;
     free_tunnel_metrics_event(&metrics_event);
@@ -563,7 +575,6 @@ static void on_event(const base_event *ev) {
             send_events_message(&id_event, (to_json_fn) identity_event_to_json, true);
             id_event.Id = NULL;
             free_identity_event(&id_event);
-
             break;
         }
 
@@ -592,7 +603,7 @@ static void on_event(const base_event *ev) {
 
             idx = 0;
             if (svc_ev->added_services != NULL) {
-                svc_event.AddedServices = calloc(sizeof(svc_ev->added_services), sizeof(struct tunnel_service_s));
+                svc_event.AddedServices = calloc(sizeof(svc_ev->added_services), sizeof(tunnel_service *));
                 for (zs = svc_ev->added_services; *zs != NULL; zs++) {
                     tunnel_service *svc = get_tunnel_service(id, *zs);
                     svc_event.AddedServices[idx++] = svc;
@@ -605,10 +616,10 @@ static void on_event(const base_event *ev) {
 
             send_events_message(&svc_event, (to_json_fn) services_event_to_json, true);
             if (svc_event.AddedServices != NULL) {
+                free(svc_event.AddedServices);
                 svc_event.AddedServices = NULL;
             }
             free_services_event(&svc_event);
-
             break;
         }
 
@@ -666,6 +677,8 @@ static void on_event(const base_event *ev) {
 
             mfa_sts_event.RecoveryCodes = NULL;
             free_mfa_status_event(&mfa_sts_event);
+            free_mfa_event((mfa_event *) mfa_ev);
+            free(mfa_ev);
             break;
         }
 
