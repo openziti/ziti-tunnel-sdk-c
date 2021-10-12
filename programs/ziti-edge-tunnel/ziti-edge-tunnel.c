@@ -317,6 +317,10 @@ static void on_command_inline_resp(const tunnel_result* result, void *ctx) {
         free_tunnel_command_inline(tnl_cmd_inline);
         free(tnl_cmd_inline);
     }
+
+    if (result->data) {
+        free(result->data);
+    }
 }
 
 static void send_tunnel_command(tunnel_comand *cmd, void *ctx) {
