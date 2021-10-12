@@ -107,10 +107,9 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
     ZITI_LOG(INFO, "resp[%d,len=%zd] = %.*s",
             result->success, json_len, (int)json_len, json, result->data);
 
-    if (result->data != NULL){
+    if (result->data) {
         free(result->data);
     }
-    free_tunnel_result((tunnel_result*) result);
 
     if (uv_is_active((const uv_handle_t *) &cmd_conn)) {
         uv_buf_t b = uv_buf_init(json, json_len);
@@ -318,8 +317,6 @@ static void on_command_inline_resp(const tunnel_result* result, void *ctx) {
         free_tunnel_command_inline(tnl_cmd_inline);
         free(tnl_cmd_inline);
     }
-    free_tunnel_result((tunnel_result*) result);
-    free(result);
 }
 
 static void send_tunnel_command(tunnel_comand *cmd, void *ctx) {
@@ -676,7 +673,7 @@ static void on_event(const base_event *ev) {
 
             mfa_sts_event.RecoveryCodes = NULL;
             free_mfa_status_event(&mfa_sts_event);
-            free_mfa_event((mfa_event*) mfa_ev);
+            free_mfa_event((mfa_event *) mfa_ev);
             free(mfa_ev);
             break;
         }

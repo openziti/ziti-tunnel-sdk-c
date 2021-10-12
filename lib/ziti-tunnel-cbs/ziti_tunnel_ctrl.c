@@ -529,14 +529,14 @@ static void get_transfer_rates(const char *identifier, command_cb cb, void *ctx)
         snprintf(id_metrics->down, metrics_len, "%.2lf", down);
     }
 
-    tunnel_result *result = calloc(1, sizeof(tunnel_result));
-    result->success = true;
+    tunnel_result result = {0};
+    result.success = true;
     size_t json_len;
     char *json = tunnel_identity_metrics_to_json(id_metrics, MODEL_JSON_COMPACT, &json_len);
-    result->data = json;
+    result.data = json;
     free_tunnel_identity_metrics(id_metrics);
     free(id_metrics);
-    cb(result, ctx);
+    cb(&result, ctx);
 
 }
 
@@ -805,9 +805,8 @@ static void on_enable_mfa(ziti_context ztx, int status, ziti_mfa_enrollment *enr
     }
 
     struct ziti_instance_s *inst = ziti_app_ctx(ztx);
-    mfa_event *ev = calloc(1, sizeof(struct mfa_event_s));
-    ev->operation = calloc(strlen(mfa_status_name(mfa_status_enrollment_challenge)), sizeof(char));
-    ev->operation = mfa_status_name(mfa_status_enrollment_challenge);
+    mfa_event *ev = calloc(1, sizeof(mfa_event));
+    ev->operation = strdup(mfa_status_name(mfa_status_enrollment_challenge));
     ev->operation_type = mfa_status_enrollment_challenge;
     ev->provisioning_url = calloc(strlen(enrollment->provisioning_url), sizeof(char));
     ev->provisioning_url = strdup(enrollment->provisioning_url);
@@ -847,7 +846,7 @@ static void on_verify_mfa(ziti_context ztx, int status, void *ctx) {
     }
 
     struct ziti_instance_s *inst = ziti_app_ctx(ztx);
-    mfa_event *ev = calloc(1, sizeof(struct mfa_event_s));
+    mfa_event *ev = calloc(1, sizeof(mfa_event));
     ev->operation = strdup(mfa_status_name(mfa_status_enrollment_verification));
     ev->operation_type = mfa_status_enrollment_verification;
     tunnel_status_event(TunnelEvent_MFAStatusEvent, status, ev, inst);
@@ -874,7 +873,7 @@ static void on_remove_mfa(ziti_context ztx, int status, void *ctx) {
     }
 
     struct ziti_instance_s *inst = ziti_app_ctx(ztx);
-    mfa_event *ev = calloc(1, sizeof(struct mfa_event_s));
+    mfa_event *ev = calloc(1, sizeof(mfa_event));
     ev->operation = strdup(mfa_status_name(mfa_status_enrollment_remove));
     ev->operation_type = mfa_status_enrollment_remove;
     tunnel_status_event(TunnelEvent_MFAStatusEvent, status, ev, inst);
