@@ -732,7 +732,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     start_event_socket(ziti_loop);
 
     if (uv_run(ziti_loop, UV_RUN_DEFAULT) != 0) {
-        ZITI_LOG(ERROR, "failed to run event loop");
+        ZITI_LOG(ERROR, "failed to run event loop or the event loop is stopped");
         exit(1);
     }
 
@@ -1570,34 +1570,6 @@ void scm_service_init(char *config_path) {
         config_dir = config_path;
     }
 }
-
-static void start_tunnel_service(uv_async_t *scm_service_runner) {
-    ZITI_LOG(INFO, "About to run tunnel service...");
-    run(0, NULL);
-    uv_close((uv_handle_t *) scm_service_runner, (uv_close_cb) free);
-    stop_windows_service();
-}
-
-/*static void start_tunnel_service(void *n) {
-    ZITI_LOG(INFO, "About to run tunnel service...");
-    run(0, NULL);
-    stop_windows_service();
-}*/
-
-/* void scm_service_run() {
-    ZITI_LOG(INFO, "Control request to start tunnel service received...");
-
-    //uv_thread_t scm_service;
-    //uv_thread_create(&scm_service, start_tunnel_service, NULL);
-
-    uv_loop_t *scm_loop = uv_default_loop();
-
-    uv_async_t *scm_service_runner = calloc(1, sizeof(uv_async_t));
-    uv_async_init(scm_loop, scm_service_runner, start_tunnel_service);
-    uv_async_send(scm_service_runner);
-    uv_run(scm_loop, UV_RUN_DEFAULT);
-
-} */
 
 void scm_service_run(void * name) {
     ZITI_LOG(INFO, "About to run tunnel service...");

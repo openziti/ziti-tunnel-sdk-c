@@ -126,7 +126,7 @@ VOID WINAPI SvcMain( DWORD dwArgc, LPTSTR *lpszArgv )
 
     if( !gSvcStatusHandle )
     {
-        SvcReportEvent(TEXT("RegisterServiceCtrlHandler"));
+        SvcReportEvent(TEXT("RegisterServiceCtrlHandler failed"), EVENTLOG_ERROR_TYPE);
         return;
     }
 
@@ -161,7 +161,7 @@ VOID WINAPI SvcMain( DWORD dwArgc, LPTSTR *lpszArgv )
 //
 VOID SvcInit( DWORD dwArgc, LPTSTR *lpszArgv)
 {
-    // TO_DO: Declare and set any required variables.
+    // Declare and set any required variables.
     //   Be sure to periodically call ReportSvcStatus() with
     //   SERVICE_START_PENDING. If initialization fails, call
     //   ReportSvcStatus with SERVICE_STOPPED.
@@ -188,7 +188,7 @@ VOID SvcInit( DWORD dwArgc, LPTSTR *lpszArgv)
     // start tunnel
     CreateThread (NULL, 0, ServiceWorkerThread, lpszArgv, 0, NULL);
 
-    SvcReportEvent(TEXT("Ziti Edge Tunnel Run"));
+    SvcReportEvent(TEXT("Ziti Edge Tunnel Run"), EVENTLOG_INFORMATION_TYPE);
 
     while(1)
     {
@@ -196,6 +196,7 @@ VOID SvcInit( DWORD dwArgc, LPTSTR *lpszArgv)
 
         WaitForSingleObject(ghSvcStopEvent, INFINITE);
 
+        SvcReportEvent(TEXT("Ziti Edge Tunnel Stopped"), EVENTLOG_INFORMATION_TYPE);
         ReportSvcStatus( SERVICE_STOPPED, NO_ERROR, 0 );
         return;
     }
@@ -296,7 +297,7 @@ VOID WINAPI SvcCtrlHandler( DWORD dwCtrl )
 // Remarks:
 //   The service must have an entry in the Application event log.
 //
-VOID SvcReportEvent(LPTSTR szFunction)
+VOID SvcReportEvent(LPTSTR szMessage, DWORD eventType)
 {
     HANDLE hEventSource;
     LPCTSTR lpszStrings[2];
@@ -306,20 +307,15 @@ VOID SvcReportEvent(LPTSTR szFunction)
 
     if( NULL != hEventSource )
     {
-        DWORD status = GetLastError();
-        if (status == 0) {
-            snprintf(Buffer, 80, TEXT("%s reported status : %d"), szFunction, status);
-        } else {
-            snprintf(Buffer, 80, TEXT("%s is failed with %d"), szFunction, status);
-        }
+        snprintf(Buffer, 80, TEXT("%s, reported status : %d"), szMessage, GetLastError());
 
         lpszStrings[0] = SVCNAME;
         lpszStrings[1] = Buffer;
 
         ReportEvent(hEventSource,        // event log handle
-                    EVENTLOG_ERROR_TYPE, // event type
+                    eventType,           // event type
                     0,                   // event category
-                    SVC_ERROR,           // event identifier
+                    0,                   // event identifier
                     NULL,                // no security identifier
                     2,                   // size of lpszStrings array
                     0,                   // no binary data
