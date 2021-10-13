@@ -1,9 +1,6 @@
 #include "windows/windows-service.h"
 #include <windows.h>
-#include <tchar.h>
-#define STRSAFE_NO_DEPRECATE
-#define STRSAFE_NO_CB_FUNCTIONS
-#include <strsafe.h>
+#include <stdio.h>
 
 #pragma comment(lib, "advapi32.lib")
 
@@ -309,7 +306,12 @@ VOID SvcReportEvent(LPTSTR szFunction)
 
     if( NULL != hEventSource )
     {
-        StringCchPrintf(Buffer, 80, TEXT("%s failed with %d"), szFunction, GetLastError());
+        DWORD status = GetLastError();
+        if (status == 0) {
+            snprintf(Buffer, 80, TEXT("%s reported status : %d"), szFunction, status);
+        } else {
+            snprintf(Buffer, 80, TEXT("%s is failed with %d"), szFunction, status);
+        }
 
         lpszStrings[0] = SVCNAME;
         lpszStrings[1] = Buffer;

@@ -1624,12 +1624,6 @@ int main(int argc, char *argv[]) {
 #if _WIN32
     SvcStart(NULL);
 
-    // to remove
-    printf("The service is either started from commandline or stopped by SCM");
-    char *config_path = get_system_config_path();
-    scm_service_init(config_path);
-    scm_service_run((char *)name);
-
     // if service is started by SCM, SvcStart will return only when it receives the stop request
     // started_by_scm will be set to true only if scm initializes the config value
     // if the service is started from cmd line, SvcStart will return immediately and started_by_scm will be set to false. In this case tunnel can be run normally

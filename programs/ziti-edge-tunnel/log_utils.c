@@ -31,6 +31,7 @@ static char* get_log_filename() {
 
 bool log_init() {
     char* log_filename = get_log_filename();
+    SvcReportEvent(TEXT( log_filename));
     if((ziti_tunneler_log=freopen(log_filename,"a", stdout)) == NULL) {
         printf("Could not open logs file %s", log_filename);
         return false;

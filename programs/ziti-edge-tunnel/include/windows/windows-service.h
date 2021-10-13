@@ -4,10 +4,6 @@
 #if _WIN32
 #include <stdbool.h>
 #include <windows.h>
-#include <tchar.h>
-#define STRSAFE_NO_DEPRECATE
-#define STRSAFE_NO_CB_FUNCTIONS
-#include <strsafe.h>
 
 #define SVCNAME TEXT("ziti-edge-tunnel")
 #define DISPLAYSVCNAME TEXT("Ziti Desktop Edge Service")
@@ -20,7 +16,6 @@
 // An error has occurred (%2).
 //
 #define SVC_ERROR ((DWORD)0xC0020001L)
-
 
 int SvcStart(TCHAR *);
 VOID SvcInstall(void);
