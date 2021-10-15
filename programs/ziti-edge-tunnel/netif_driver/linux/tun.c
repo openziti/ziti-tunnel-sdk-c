@@ -50,6 +50,13 @@
 
 #define RESOLVECTL "resolvectl"
 
+static void dns_update_resolvectl(const char* tun, const char* addr);
+static void dns_update_resolvconf(const char* tun, const char* addr);
+static void dns_update_none(const char* tun, const char* addr){}
+
+static void (*dns_updater)(const char* tun, const char* addr);
+static uv_once_t dns_updater_init;
+
 static struct {
     char tun_name[IFNAMSIZ];
     uint32_t dns_ip;
@@ -127,7 +134,43 @@ static int run_command_ex(bool log_nonzero_ec, const char *cmd, ...) {
     return r;
 }
 
+static void find_dns_updater() {
+    struct dns_cmd {
+        const char *path;
+        void (* update_fn)(const char* tun, const char* addr);
+    };
+
+    static struct dns_cmd dns_cmds[] = {
+            {
+                .path = "/usr/bin/resolvectl",
+                .update_fn = dns_update_resolvectl,
+            },
+            {
+                .path = "/usr/sbin/resolvconf",
+                .update_fn = dns_update_resolvconf
+            },
+            {0}
+    };
+
+    uv_loop_t *l = dns_maintainer.update_timer.loop;
+    for (int idx = 0; dns_cmds[idx].path != NULL; idx++) {
+        uv_fs_t req = {0};
+        if (uv_fs_stat(l, &req, dns_cmds[idx].path, NULL) == 0) {
+            dns_updater = dns_cmds[idx].update_fn;
+            return;
+        }
+    }
+
+    ZITI_LOG(ERROR, "could not find a way to configure system resolver. Ziti DNS functionality will be impaired");
+    dns_updater = dns_update_none;
+}
+
 static void set_dns(uv_work_t *wr) {
+    uv_once(&dns_updater_init, find_dns_updater);
+    dns_updater(dns_maintainer.tun_name, inet_ntoa(*(struct in_addr*)&dns_maintainer.dns_ip));
+}
+
+static void dns_update_resolvectl(const char* tun, const char* addr) {
     run_command(RESOLVECTL " dns %s %s", dns_maintainer.tun_name, inet_ntoa(*(struct in_addr*)&dns_maintainer.dns_ip));
     int s = run_command_ex(false, RESOLVECTL " domain | fgrep -v '%s' | fgrep -q '~.'",
                            dns_maintainer.tun_name);
@@ -137,6 +180,10 @@ static void set_dns(uv_work_t *wr) {
         domain = "~.";
     }
     run_command(RESOLVECTL " domain %s '%s'", dns_maintainer.tun_name, domain);
+}
+
+static void dns_update_resolvconf(const char* tun, const char* addr) {
+    run_command("echo 'nameserver %s' | resolvconf -a %s", addr, tun);
 }
 
 static void after_set_dns(uv_work_t *wr, int status) {
