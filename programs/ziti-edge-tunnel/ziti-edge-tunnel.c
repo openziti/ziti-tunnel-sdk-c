@@ -861,7 +861,11 @@ static void run(int argc, char *argv[]) {
     bool init = false;
 
 #if _WIN32
-    init = log_init(ziti_loop);
+    bool multi_writer = true;
+    if (started_by_scm) {
+        multi_writer = false;
+    }
+    init = log_init(ziti_loop, multi_writer);
 #endif
 
     main_ziti_loop = ziti_loop;

@@ -24,7 +24,7 @@ void stop_log_check();
 struct tm* get_log_start_time();
 char* get_log_file_name();
 
-bool log_init(uv_loop_t *);
+bool log_init(uv_loop_t *, bool);
 void ziti_log_writer(int , const char *, const char *, size_t);
 
 #endif //ZITI_TUNNEL_SDK_C_FILE_ROTATOR_H

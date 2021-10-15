@@ -16,6 +16,7 @@ static FILE *ziti_tunneler_log = NULL;
 static uv_check_t *log_flusher;
 static struct tm *start_time;
 char* log_filename;
+static bool multi_writer = false;
 
 static char* get_log_filename() {
     char curr_path[FILENAME_MAX]; //create string buffer to hold path
@@ -42,19 +43,15 @@ static char* get_log_filename() {
 
 flush_log() {
     if (ziti_tunneler_log != NULL) {
-        //char buffer[4096];
-        size_t bytes;
-        size_t buffer_len = (size_t) 4096;
-        char *buffer = calloc(1, buffer_len + 1);
-        int count = 1;
-        while ((bytes = fread(buffer, count, buffer_len,stdout)) > 0) {
-            fwrite(buffer, count, sizeof(buffer), ziti_tunneler_log);
-        }
         fflush(ziti_tunneler_log);
+    }
+    if (multi_writer) {
+        fflush(stdout);
     }
 }
 
-bool log_init(uv_loop_t *ziti_loop) {
+bool log_init(uv_loop_t *ziti_loop, bool is_multi_writer) {
+    multi_writer = is_multi_writer;
 
     log_flusher = calloc(1, sizeof(uv_check_t));
     uv_check_init(ziti_loop, log_flusher);
@@ -128,9 +125,15 @@ void ziti_log_writer(int level, const char *loc, const char *msg, size_t msglen)
              tm->tm_hour, tm->tm_min, tm->tm_sec, now.tv_usec / 1000
     );
 
-    fputc('\n', ziti_tunneler_log);
-    fprintf(ziti_tunneler_log, "[%s] %7s %s ", curr_time, parse_level(level), loc);
-    fwrite(msg, 1, msglen, ziti_tunneler_log);
+    if ( ziti_tunneler_log != NULL) {
+        fputc('\n', ziti_tunneler_log);
+        fprintf(ziti_tunneler_log, "[%s] %7s %s ", curr_time, parse_level(level), loc);
+        fwrite(msg, 1, msglen, ziti_tunneler_log);
+    }
+
+    if(multi_writer) {
+        printf("\n[%s] %7s %s %.*s", curr_time, parse_level(level), loc, msglen, msg);
+    }
 
 }
 
@@ -139,7 +142,6 @@ bool open_log(char* log_filename) {
         printf("Could not open logs file %s", log_filename);
         return false;
     }
-    dup2(fileno(stdout), fileno(stderr));
     return true;
 }
 
