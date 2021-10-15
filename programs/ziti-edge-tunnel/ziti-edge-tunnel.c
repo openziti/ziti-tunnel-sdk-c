@@ -631,7 +631,9 @@ static void on_event(const base_event *ev) {
 
             send_events_message(&svc_event, (to_json_fn) services_event_to_json, true);
             if (svc_event.AddedServices != NULL) {
+#if !defined(_WIN32)
                 free(svc_event.AddedServices);
+#endif
                 svc_event.AddedServices = NULL;
             }
             free_services_event(&svc_event);
