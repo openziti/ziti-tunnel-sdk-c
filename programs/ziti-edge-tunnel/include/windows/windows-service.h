@@ -4,6 +4,7 @@
 #if _WIN32
 #include <stdbool.h>
 #include <windows.h>
+#include "uv.h"
 
 #define SVCNAME TEXT("ziti-edge-tunnel")
 #define DISPLAYSVCNAME TEXT("Ziti Desktop Edge Service")
@@ -24,8 +25,6 @@ DWORD WINAPI ServiceWorkerThread (LPVOID lpParam);
 extern "C" {
 #endif
 
-bool log_init();
-void windows_log_writer(int , const char *, const char *, size_t);
 void scm_service_init(char *config_dir);
 void scm_service_run(void *);
 char* get_system_config_path();
@@ -36,6 +35,6 @@ void stop_windows_service();
 }
 #endif
 
-#endif
+#endif // _WIN32
 
 #endif //ZITI_TUNNEL_SDK_C_WINDOWS_SERVICE_H

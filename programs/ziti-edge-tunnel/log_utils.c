@@ -5,11 +5,17 @@
 #include <stdbool.h>
 #include <ziti/ziti_log.h>
 #include <time.h>
+#include <file-rotator.h>
+#if _WIN32
 #include "windows/windows-service.h"
+#endif
 
 #define GetCurrentDir _getcwd
 
 static FILE *ziti_tunneler_log = NULL;
+static uv_check_t *log_flusher;
+static struct tm *start_time;
+char* log_filename;
 
 static char* get_log_filename() {
     char curr_path[FILENAME_MAX]; //create string buffer to hold path
@@ -24,25 +30,57 @@ static char* get_log_filename() {
         printf("\nlog path is found %s", curr_path);
     }
 
+    char time_val[32];
+    snprintf(time_val, sizeof(time_val), "%04d%02d%02d0000",
+             1900 + start_time->tm_year, start_time->tm_mon + 1, start_time->tm_mday
+    );
+
     char* log_filename = malloc(FILENAME_MAX * sizeof(char));
-    sprintf(log_filename, "%s/ziti-tunneler.log", log_path);
+    sprintf(log_filename, "%s/ziti-tunneler.log.%s", log_path, time_val);
     return log_filename;
 }
 
-bool log_init() {
-    char* log_filename = get_log_filename();
-    SvcReportEvent(TEXT( log_filename), EVENTLOG_INFORMATION_TYPE);
-    if((ziti_tunneler_log=freopen(log_filename,"a", stdout)) == NULL) {
-        printf("Could not open logs file %s", log_filename);
+flush_log() {
+    if (ziti_tunneler_log != NULL) {
+        //char buffer[4096];
+        size_t bytes;
+        size_t buffer_len = (size_t) 4096;
+        char *buffer = calloc(1, buffer_len + 1);
+        int count = 1;
+        while ((bytes = fread(buffer, count, buffer_len,stdout)) > 0) {
+            fwrite(buffer, count, sizeof(buffer), ziti_tunneler_log);
+        }
+        fflush(ziti_tunneler_log);
+    }
+}
+
+bool log_init(uv_loop_t *ziti_loop) {
+
+    log_flusher = calloc(1, sizeof(uv_check_t));
+    uv_check_init(ziti_loop, log_flusher);
+    uv_check_start(log_flusher, flush_log);
+
+    uv_timeval64_t file_time;
+    uv_gettimeofday(&file_time);
+    start_time = gmtime(&file_time.tv_sec);
+
+    log_filename = get_log_filename(start_time);
+
+    if (!open_log(log_filename)) {
         return false;
     }
-    dup2(fileno(stdout), fileno(stderr));
-
-    printf("\n============================================================================");
-    printf("\nLogger initialization");
-    printf("\n	- log file location: %s", log_filename);
-    printf("\n============================================================================");
+#if _WIN32
+    SvcReportEvent(TEXT(log_filename), EVENTLOG_INFORMATION_TYPE);
+#endif
     return true;
+}
+
+struct tm* get_log_start_time() {
+    return start_time;
+}
+
+char* get_log_file_name(){
+    return log_filename;
 }
 
 static char* parse_level(int level) {
@@ -75,11 +113,15 @@ static char* parse_level(int level) {
     return err_level;
 }
 
-void windows_log_writer(int level, const char *loc, const char *msg, size_t msglen) {
+void ziti_log_writer(int level, const char *loc, const char *msg, size_t msglen) {
     char curr_time[32];
     uv_timeval64_t now;
     uv_gettimeofday(&now);
     struct tm *tm = gmtime(&now.tv_sec);
+
+    if (start_time->tm_mday < tm->tm_mday) {
+        rotate_log();
+    }
 
     snprintf(curr_time, sizeof(curr_time), "%04d-%02d-%02dT%02d:%02d:%02d.%03dZ",
              1900 + tm->tm_year, tm->tm_mon + 1, tm->tm_mday,
@@ -90,4 +132,38 @@ void windows_log_writer(int level, const char *loc, const char *msg, size_t msgl
     fprintf(ziti_tunneler_log, "[%s] %7s %s ", curr_time, parse_level(level), loc);
     fwrite(msg, 1, msglen, ziti_tunneler_log);
 
+}
+
+bool open_log(char* log_filename) {
+    if((ziti_tunneler_log=fopen(log_filename,"a")) == NULL) {
+        printf("Could not open logs file %s", log_filename);
+        return false;
+    }
+    dup2(fileno(stdout), fileno(stderr));
+    return true;
+}
+
+void close_log() {
+    if (ziti_tunneler_log != NULL) {
+        fclose(ziti_tunneler_log);
+        ziti_tunneler_log = NULL;
+    }
+    if (log_filename != NULL) {
+        free(log_filename);
+    }
+}
+
+void stop_log_check() {
+    uv_check_stop(log_flusher);
+}
+
+void rotate_log() {
+    close_log();
+
+    uv_timeval64_t file_time;
+    uv_gettimeofday(&file_time);
+    start_time = gmtime(&file_time.tv_sec);
+    char* log_filename = get_log_filename();
+
+    open_log(log_filename);
 }

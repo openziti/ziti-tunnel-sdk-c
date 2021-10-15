@@ -36,6 +36,8 @@
 #ifndef MAXPATHLEN
 #define MAXPATHLEN _MAX_PATH
 #include "windows/windows-service.h"
+#include <file-rotator.h>
+#include <time.h>
 #endif
 
 #define setenv(n,v,o) do {if(o || getenv(n) == NULL) _putenv_s(n,v); } while(0)
@@ -740,6 +742,10 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     uv_close((uv_handle_t *) &cmd_server, (uv_close_cb) free);
     uv_close((uv_handle_t *) &event_server, (uv_close_cb) free);
     uv_timer_stop(&metrics_timer);
+#if _WIN32
+    close_log();
+    stop_log_check();
+#endif
     return 0;
 }
 
@@ -827,11 +833,6 @@ static int dns_fallback(const char *name, void *ctx, struct in_addr* addr) {
 }
 
 static void run(int argc, char *argv[]) {
-    bool init = false;
-
-#if _WIN32
-    init = log_init();
-#endif
 
     uint32_t ip[4];
     int bits;
@@ -856,11 +857,27 @@ static void run(int argc, char *argv[]) {
     // which causes valgrind to freak out
     signal(SIGPIPE, SIG_IGN);
 #endif
-
     uv_loop_t *ziti_loop = uv_default_loop();
+    bool init = false;
+
+#if _WIN32
+    init = log_init(ziti_loop);
+#endif
+
     main_ziti_loop = ziti_loop;
     if (init) {
-        ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, windows_log_writer);
+        ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, ziti_log_writer);
+        struct tm *start_time = get_log_start_time();
+        char time_val[32];
+        snprintf(time_val, sizeof(time_val), "%04d-%02d-%02d %02d:%02d:%02d",
+                 1900 + start_time->tm_year, start_time->tm_mon + 1, start_time->tm_mday,
+                 start_time->tm_hour, start_time->tm_min, start_time->tm_sec
+        );
+        ZITI_LOG(INFO,"============================================================================");
+        ZITI_LOG(INFO,"Logger initialization");
+        ZITI_LOG(INFO,"	- initialized at   : %s", time_val);
+        ZITI_LOG(INFO,"	- log file location: %s", get_log_file_name());
+        ZITI_LOG(INFO,"============================================================================");
     } else {
         ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
     }
