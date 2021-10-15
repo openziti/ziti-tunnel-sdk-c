@@ -683,6 +683,7 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
             mfa_event ev = {0};
             ev.event_type = TunnelEvents.MFAEvent;
             ev.identifier = instance->identifier;
+            ev.operation = mfa_status_name(mfa_status_auth_challenge);
             CMD_CTX.on_event((const base_event *) &ev);
         }
     }
@@ -778,6 +779,7 @@ static void on_submit_mfa(ziti_context ztx, int status, void *ctx) {
 
 static void submit_mfa(ziti_context ztx, const char *code, void *ctx) {
     ziti_mfa_auth(ztx, code, on_submit_mfa, ctx);
+    free((char *) code);
 }
 
 static void on_enable_mfa(ziti_context ztx, int status, ziti_mfa_enrollment *enrollment, void *ctx) {
