@@ -27,6 +27,7 @@
 #include <stdarg.h>
 
 #include <ziti/ziti_log.h>
+#include <ziti/ziti_dns.h>
 #include <stdbool.h>
 
 #include "tun.h"
@@ -52,7 +53,7 @@
 
 static void dns_update_resolvectl(const char* tun, const char* addr);
 static void dns_update_resolvconf(const char* tun, const char* addr);
-static void dns_update_none(const char* tun, const char* addr){}
+static void dns_update_etc_resolv(const char* tun, const char* addr);
 
 static void (*dns_updater)(const char* tun, const char* addr);
 static uv_once_t dns_updater_init;
@@ -162,7 +163,7 @@ static void find_dns_updater() {
     }
 
     ZITI_LOG(ERROR, "could not find a way to configure system resolver. Ziti DNS functionality will be impaired");
-    dns_updater = dns_update_none;
+    dns_updater = dns_update_etc_resolv;
 }
 
 static void set_dns(uv_work_t *wr) {
@@ -171,7 +172,7 @@ static void set_dns(uv_work_t *wr) {
 }
 
 static void dns_update_resolvectl(const char* tun, const char* addr) {
-    run_command(RESOLVECTL " dns %s %s", dns_maintainer.tun_name, inet_ntoa(*(struct in_addr*)&dns_maintainer.dns_ip));
+    run_command(RESOLVECTL " dns %s %s", tun, addr);
     int s = run_command_ex(false, RESOLVECTL " domain | fgrep -v '%s' | fgrep -q '~.'",
                            dns_maintainer.tun_name);
     char *domain = "";
@@ -184,6 +185,16 @@ static void dns_update_resolvectl(const char* tun, const char* addr) {
 
 static void dns_update_resolvconf(const char* tun, const char* addr) {
     run_command("echo 'nameserver %s' | resolvconf -a %s", addr, tun);
+}
+
+static void dns_update_etc_resolv(const char* tun, const char* addr) {
+    int found = run_command("grep -q '^nameserver %s' /etc/resolv.conf", addr);
+
+    if (found != 0) {
+        run_command("sed -zi 's/^nameserver/nameserver %s\\nnameserver' /etc/resolv.conf", addr);
+    }
+
+    ziti_dns_set_miss_code(5);
 }
 
 static void after_set_dns(uv_work_t *wr, int status) {
