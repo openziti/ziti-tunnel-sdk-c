@@ -521,6 +521,7 @@ static void load_identities(uv_work_t *wr) {
             ZITI_LOG(ERROR, "failed to scan dir[%s]: %d/%s", config_dir, rc, uv_strerror(rc));
             return;
         }
+        ZITI_LOG(TRACE, "scan dir %s, file count: %d", config_dir, rc);
 
         uv_dirent_t file;
         while (uv_fs_scandir_next(&fs, &file) == 0) {
@@ -1658,6 +1659,7 @@ void scm_service_stop() {
     ZITI_LOG(INFO, "Control request to stop tunnel service received...");
     if (main_ziti_loop != NULL) {
         uv_stop(main_ziti_loop);
+        uv_loop_close(main_ziti_loop);
     }
 }
 
