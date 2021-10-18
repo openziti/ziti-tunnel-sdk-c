@@ -167,7 +167,7 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
             .error = NULL,
             .data = NULL,
     };
-    ZITI_LOG(INFO, "processing command[%s] with data[%s]", TunnelCommands.name(cmd->command), cmd->data);
+    ZITI_LOG(DEBUG, "processing command[%s] with data[%s]", TunnelCommands.name(cmd->command), cmd->data);
     switch (cmd->command) {
         case TunnelCommand_LoadIdentity: {
             tunnel_load_identity load;

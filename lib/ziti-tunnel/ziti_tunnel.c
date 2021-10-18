@@ -445,7 +445,7 @@ int ziti_tunneler_close(tunneler_io_context tnlr_io_ctx) {
         tnlr_io_ctx->conn_timer = NULL;
     }
 
-    free(tnlr_io_ctx);
+    free_tunneler_io_context(&tnlr_io_ctx);
     return 0;
 }
 

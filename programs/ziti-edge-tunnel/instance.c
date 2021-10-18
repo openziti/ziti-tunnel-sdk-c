@@ -140,8 +140,9 @@ void add_or_remove_services_from_tunnel(tunnel_identity *id, tunnel_service_arra
     idx=0;
     while(it != NULL) {
         id->Services[idx++] = model_map_it_value(it);
-        it = model_map_it_next(it);
+        it = model_map_it_remove(it);
     }
+    model_map_clear(&updates, NULL);
     set_mfa_timeout(id);
     uv_timeval64_t now;
     uv_gettimeofday(&now);
