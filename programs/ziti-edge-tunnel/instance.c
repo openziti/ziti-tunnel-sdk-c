@@ -142,7 +142,7 @@ void add_or_remove_services_from_tunnel(tunnel_identity *id, tunnel_service_arra
         id->Services[idx++] = model_map_it_value(it);
         it = model_map_it_next(it);
     }
-    id->Services[idx] = NULL;
+
     set_mfa_timeout(id);
     uv_timeval64_t now;
     uv_gettimeofday(&now);
@@ -214,7 +214,6 @@ static void setTunnelPostureDataTimeout(tunnel_service *tnl_svc, ziti_service *s
             tnl_svc->PostureChecks[idx++] = pc;
             itr = model_map_it_next(itr);
         }
-        tnl_svc->PostureChecks[idx] = NULL;
     }
 
     tnl_svc->IsAccessable = hasAccess;
@@ -273,7 +272,6 @@ static void setTunnelServiceAddress(tunnel_service *tnl_svc, ziti_service *servi
             char* addr = cfg_v1.addresses[address_idx];
             tnl_addr_arr[address_idx] = to_address(addr);
         }
-        tnl_addr_arr[address_idx] = NULL;
 
         // set protocols
         protocols = cfg_v1.protocols;
@@ -299,8 +297,7 @@ static void setTunnelServiceAddress(tunnel_service *tnl_svc, ziti_service *servi
         protocols = calloc(3, sizeof(char *));
         int idx = 0;
         protocols[idx++] = strdup("TCP");
-        protocols[idx++] = strdup("UDP");
-        protocols[idx] = NULL;
+        protocols[idx] = strdup("UDP");
 
                 // set port range
         // set ports
@@ -352,7 +349,6 @@ tunnel_identity_array get_tunnel_identities() {
     MODEL_MAP_FOREACH(id, tnl_id, &tnl_identity_map) {
         tnl_id_arr[idx++] = tnl_id;
     }
-    tnl_id_arr[idx] = NULL;
 
     return tnl_id_arr;
 }

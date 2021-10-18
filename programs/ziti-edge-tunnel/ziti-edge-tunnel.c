@@ -611,14 +611,13 @@ static void on_event(const base_event *ev) {
                     svc_array_length++;
                 }
                 svc_event.RemovedServices = calloc(svc_array_length + 1, sizeof(struct tunnel_service_s));
-                for (zs = svc_ev->removed_services; *zs != NULL; zs++) {
-                    tunnel_service *svc = find_tunnel_service(id, (*zs)->id);
+                for (int svc_idx = 0; svc_ev->removed_services[svc_idx]; svc_idx++) {
+                    tunnel_service *svc = find_tunnel_service(id, svc_ev->removed_services[svc_idx]->id);
                     if (svc == NULL) {
-                        svc = get_tunnel_service(id, *zs);
+                        svc = get_tunnel_service(id, svc_ev->removed_services[svc_idx]);
                     }
                     svc_event.RemovedServices[idx++] = svc;
                 }
-                svc_event.RemovedServices[idx] = NULL;
             }
 
             idx = 0;
@@ -628,11 +627,10 @@ static void on_event(const base_event *ev) {
                     svc_array_length++;
                 }
                 svc_event.AddedServices = calloc(svc_array_length + 1, sizeof(tunnel_service *));
-                for (zs = svc_ev->added_services; *zs != NULL; zs++) {
-                    tunnel_service *svc = get_tunnel_service(id, *zs);
+                for (int svc_idx = 0; svc_ev->added_services[svc_idx]; svc_idx++) {
+                    tunnel_service *svc = get_tunnel_service(id, svc_ev->added_services[svc_idx]);
                     svc_event.AddedServices[idx++] = svc;
                 }
-                svc_event.AddedServices[idx] = NULL;
             }
 
             if (svc_ev->removed_services != NULL || svc_ev->added_services != NULL) {
@@ -641,9 +639,9 @@ static void on_event(const base_event *ev) {
 
             send_events_message(&svc_event, (to_json_fn) services_event_to_json, true);
             if (svc_event.AddedServices != NULL) {
-#if !defined(_WIN32)
-                free(svc_event.AddedServices);
-#endif
+                tunnel_service **tnl_svc_arr = svc_event.AddedServices;
+                *tnl_svc_arr = NULL;
+                free(tnl_svc_arr);
                 svc_event.AddedServices = NULL;
             }
             free_services_event(&svc_event);
