@@ -72,6 +72,7 @@ flush_log(uv_check_t *handle) {
 }
 
 bool log_init(uv_loop_t *ziti_loop, bool is_multi_writer) {
+    delete_older_logs(ziti_loop);
     multi_writer = is_multi_writer;
 
     log_flusher = calloc(1, sizeof(uv_check_t));
@@ -214,40 +215,56 @@ void delete_older_logs(uv_loop_t *ziti_loop) {
         ZITI_LOG(TRACE, "log file = %s %d", file.name, file.type);
 
         if (file.type == UV_DIRENT_FILE) {
-            if (memcmp(&file.name, log_filename_base, sizeof(log_filename_base)) == 0) {
+            if (memcmp(file.name, log_filename_base, sizeof(log_filename_base)) == 0) {
                 log_files[rotation_cnt] = strdup(file.name);
                 rotation_cnt++;
             }
         }
     }
 
-    char *old_log= calloc(FILENAME_MAX, sizeof(char));
     char currpath[FILENAME_MAX]; //create string buffer to hold path
     GetCurrentDir( currpath, FILENAME_MAX );
 
     char logpath[FILENAME_MAX];
     sprintf(logpath, "%s/logs", currpath);
-    while (rotation_cnt > rotation_count) {
-        old_log = log_files[0];
-        for(int idx =1; idx < rotation_cnt; idx++) {
-            if (strcmp(*old_log, *log_files[idx]) > 0 ) {
+    int rotation_index = rotation_cnt;
+    while (rotation_index > rotation_count) {
+        char *old_log= calloc(FILENAME_MAX, sizeof(char));
+        int old_idx = -1;
+
+        for(int idx =0; idx < rotation_cnt; idx++) {
+            if (*old_log == NULL && log_files[idx]) {
                 old_log = log_files[idx];
+                old_idx = idx;
+                continue;
+            }
+            if (*old_log == NULL) {
+                continue;
+            }
+            if (strcmp(old_log, log_files[idx]) > 0 ) {
+                old_log = log_files[idx];
+                old_idx = idx;
             }
         }
-        if (old_log != NULL) {
+        if (*old_log != NULL) {
             char* logfile_to_delete = calloc(MAXPATHLEN, sizeof(char*));
             sprintf(logfile_to_delete, "%s/%s", logpath, old_log);
             ZITI_LOG(INFO, "Deleting old log file %s", logfile_to_delete);
             remove(logfile_to_delete);
-            rotation_cnt--;
+            free(logfile_to_delete);
+            rotation_index--;
         }
+        free (old_log);
+        log_files[old_idx] = NULL;
     }
 
     // clean up resources
     uv_fs_req_cleanup(&fs);
-    free (old_log);
-    for(int idx =0; idx < log_files[idx]; idx++){
-        free(log_files[idx]);
+    for(int idx =0; idx < rotation_cnt; idx++){
+        // older files are already deleted and free'd
+        if (log_files[idx]) {
+            free(log_files[idx]);
+        }
     }
     free(log_files);
 }
