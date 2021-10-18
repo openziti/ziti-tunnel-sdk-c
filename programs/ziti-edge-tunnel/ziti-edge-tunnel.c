@@ -46,6 +46,7 @@
 
 extern dns_manager *get_dnsmasq_manager(const char* path);
 
+static int dns_miss_status = DNS_NXDOMAIN;
 static int dns_fallback(const char *name, void *ctx, struct in_addr* addr);
 
 static void send_message_to_tunnel();
@@ -826,8 +827,12 @@ static int run_opts(int argc, char *argv[]) {
     return optind;
 }
 
+void dns_set_miss_status(int status) {
+    dns_miss_status = status;
+}
+
 static int dns_fallback(const char *name, void *ctx, struct in_addr* addr) {
-    return 3; // NXDOMAIN
+    return dns_miss_status;
 }
 
 static void run(int argc, char *argv[]) {
