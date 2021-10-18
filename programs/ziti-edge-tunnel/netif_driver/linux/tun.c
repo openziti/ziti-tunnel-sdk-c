@@ -51,6 +51,8 @@
 
 #define RESOLVECTL "resolvectl"
 
+extern void dns_set_miss_status(int code);
+
 static void dns_update_resolvectl(const char* tun, const char* addr);
 static void dns_update_resolvconf(const char* tun, const char* addr);
 static void dns_update_etc_resolv(const char* tun, const char* addr);
@@ -191,10 +193,10 @@ static void dns_update_etc_resolv(const char* tun, const char* addr) {
     int found = run_command("grep -q '^nameserver %s' /etc/resolv.conf", addr);
 
     if (found != 0) {
-        run_command("sed -zi 's/^nameserver/nameserver %s\\nnameserver' /etc/resolv.conf", addr);
+        run_command("sed -z -i 's/nameserver/nameserver %s\\nnameserver' /etc/resolv.conf", addr);
     }
 
-    ziti_dns_set_miss_code(5);
+    dns_set_miss_status(DNS_REFUSE);
 }
 
 static void after_set_dns(uv_work_t *wr, int status) {

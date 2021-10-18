@@ -23,13 +23,6 @@
 #define MAX_DNS_NAME 256
 #define MAX_IP_LENGTH 16
 
-#define DNS_NO_ERROR 0
-#define DNS_NXDOMAIN 3
-#define DNS_NOT_IMPL 4
-#define DNS_REFUSE   5
-#define DNS_NOTZONE  9
-
-
 typedef struct ziti_dns_client_s {
     io_ctx_t *io_ctx;
     LIST_HEAD(reqs, dns_req) active_reqs;
@@ -87,8 +80,6 @@ struct ziti_dns_s {
     tunneler_context tnlr;
 } ziti_dns;
 
-static int dns_miss_code = DNS_NXDOMAIN;
-
 static uint32_t next_ipv4() {
    return  htonl(ziti_dns.ip_pool.base | (ziti_dns.ip_pool.counter++ & ziti_dns.ip_pool.counter_mask));
 }
@@ -125,10 +116,6 @@ int ziti_dns_setup(tunneler_context tnlr, const char *dns_addr, const char *dns_
 
     ziti_tunneler_intercept(tnlr, dns_intercept);
     return 0;
-}
-
-void ziti_dns_set_miss_code(int code) {
-    dns_miss_code = code;
 }
 
 void ziti_dns_set_fallback(uv_loop_t *loop, dns_fallback_cb fb, void *ctx) {
@@ -441,7 +428,7 @@ ssize_t on_dns_req(void *ziti_io_ctx, void *write_ctx, const uint8_t *q_packet, 
         req->addr.s_addr = entry->addr.u_addr.ip4.addr;
         req->code = DNS_NO_ERROR;
     } else {
-        req->code = dns_miss_code;
+        req->code = DNS_NXDOMAIN;
     }
 
     DONE:

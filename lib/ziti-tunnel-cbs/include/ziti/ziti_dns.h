@@ -18,6 +18,13 @@
 #define ZITI_TUNNEL_SDK_C_ZITI_DNS_H
 
 #include <ziti/ziti_tunnel.h>
+
+#define DNS_NO_ERROR 0
+#define DNS_NXDOMAIN 3
+#define DNS_NOT_IMPL 4
+#define DNS_REFUSE   5
+#define DNS_NOTZONE  9
+
 typedef struct dns_manager_s dns_manager;
 
 typedef int (*dns_fallback_cb)(const char *name, void *ctx, struct in_addr* addr);
@@ -25,7 +32,6 @@ typedef int (*dns_fallback_cb)(const char *name, void *ctx, struct in_addr* addr
 int ziti_dns_setup(tunneler_context tnlr, const char *dns_addr, const char *dns_cidr);
 
 void ziti_dns_set_fallback(struct uv_loop_s *l, dns_fallback_cb fb, void *ctx);
-void ziti_dns_set_miss_code(int code);
 void ziti_dns_set_manager(dns_manager *mgr);
 
 const char *ziti_dns_register_hostname(const char *hostname, void *intercept);
