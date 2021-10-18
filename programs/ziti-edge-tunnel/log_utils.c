@@ -25,7 +25,7 @@
 static FILE *ziti_tunneler_log = NULL;
 static uv_check_t *log_flusher;
 static struct tm *start_time;
-char* log_filename;
+char* log_filename = NULL;
 static bool multi_writer = false;
 static const char* log_filename_base = "ziti-tunneler.log";
 static rotation_count = 7;
@@ -65,24 +65,33 @@ flush_log(uv_check_t *handle) {
     uv_gettimeofday(&now);
     struct tm *tm = gmtime(&now.tv_sec);
 
-    if (start_time->tm_mday < tm->tm_mday) {
-        rotate_log();
-        delete_older_logs(handle->loop);
+    if (handle->data) {
+        struct tm *orig_time = handle->data;
+        if (orig_time->tm_mday < tm->tm_mday) {
+            rotate_log();
+            delete_older_logs(handle->loop);
+        }
     }
+
 }
 
 bool log_init(uv_loop_t *ziti_loop, bool is_multi_writer) {
+
+    uv_timeval64_t file_time;
+    uv_gettimeofday(&file_time);
+    start_time = calloc(1, sizeof(struct tm));
+    struct tm* now_tm = gmtime(&file_time.tv_sec);
+    memcpy(start_time, now_tm, sizeof(struct tm));
+
     delete_older_logs(ziti_loop);
     multi_writer = is_multi_writer;
 
     log_flusher = calloc(1, sizeof(uv_check_t));
     uv_check_init(ziti_loop, log_flusher);
+    log_flusher->data = start_time;
     uv_unref((uv_handle_t *) log_flusher);
     uv_check_start(log_flusher, flush_log);
 
-    uv_timeval64_t file_time;
-    uv_gettimeofday(&file_time);
-    start_time = gmtime(&file_time.tv_sec);
 
     log_filename = get_log_filename(start_time);
 
@@ -171,6 +180,7 @@ void close_log() {
     }
     if (log_filename != NULL) {
         free(log_filename);
+        log_filename = NULL;
     }
 }
 
@@ -183,8 +193,9 @@ void rotate_log() {
 
     uv_timeval64_t file_time;
     uv_gettimeofday(&file_time);
-    start_time = gmtime(&file_time.tv_sec);
-    char* log_filename = get_log_filename();
+    struct tm* orig_time = gmtime(&file_time.tv_sec);
+    memcpy(start_time, orig_time, sizeof(struct tm));
+    log_filename = get_log_filename();
 
     open_log(log_filename);
 }
