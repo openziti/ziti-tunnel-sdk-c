@@ -54,6 +54,7 @@
 extern void dns_set_miss_status(int code);
 
 static void dns_update_resolvectl(const char* tun, const char* addr);
+static void dns_update_systemd_resolve(const char* tun, const char* addr);
 static void dns_update_resolvconf(const char* tun, const char* addr);
 static void dns_update_etc_resolv(const char* tun, const char* addr);
 
@@ -145,12 +146,16 @@ static void find_dns_updater() {
 
     static struct dns_cmd dns_cmds[] = {
             {
-                .path = "/usr/bin/resolvectl",
-                .update_fn = dns_update_resolvectl,
+                    .path = "/usr/bin/resolvectl",
+                    .update_fn = dns_update_resolvectl,
             },
             {
-                .path = "/usr/sbin/resolvconf",
-                .update_fn = dns_update_resolvconf
+                    .path = "/usr/bin/systemd-resolve",
+                    .update_fn = dns_update_systemd_resolve,
+            },
+            {
+                    .path = "/usr/sbin/resolvconf",
+                    .update_fn = dns_update_resolvconf
             },
             {0}
     };
@@ -183,6 +188,17 @@ static void dns_update_resolvectl(const char* tun, const char* addr) {
         domain = "~.";
     }
     run_command(RESOLVECTL " domain %s '%s'", dns_maintainer.tun_name, domain);
+}
+
+static void dns_update_systemd_resolve(const char* tun, const char* addr) {
+    run_command("systemd-resolve -i %s --set-dns=%s", tun, addr);
+    int s = run_command_ex(false, "systemd-resolve --status | fgrep  'DNS Domain' | fgrep -q '~.'");
+    char *domain = "";
+    // set wildcard domain if any other resolvers set it.
+    if (s == 0) {
+        domain = "--set-domain=~.";
+        run_command("systemd-resolve -i %s %s", dns_maintainer.tun_name, domain);
+    }
 }
 
 static void dns_update_resolvconf(const char* tun, const char* addr) {
