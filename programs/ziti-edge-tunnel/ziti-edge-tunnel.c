@@ -605,7 +605,6 @@ static void on_event(const base_event *ev) {
 
             tunnel_identity *id = get_tunnel_identity(ev->identifier);
             ziti_service **zs;
-            int idx = 0;
             if (svc_ev->removed_services != NULL) {
                 int svc_array_length = 0;
                 for (zs = svc_ev->removed_services; *zs != NULL; zs++) {
@@ -617,11 +616,10 @@ static void on_event(const base_event *ev) {
                     if (svc == NULL) {
                         svc = get_tunnel_service(id, svc_ev->removed_services[svc_idx]);
                     }
-                    svc_event.RemovedServices[idx++] = svc;
+                    svc_event.RemovedServices[svc_idx] = svc;
                 }
             }
 
-            idx = 0;
             if (svc_ev->added_services != NULL) {
                 int svc_array_length = 0;
                 for (zs = svc_ev->added_services; *zs != NULL; zs++) {
@@ -630,7 +628,7 @@ static void on_event(const base_event *ev) {
                 svc_event.AddedServices = calloc(svc_array_length + 1, sizeof(tunnel_service *));
                 for (int svc_idx = 0; svc_ev->added_services[svc_idx]; svc_idx++) {
                     tunnel_service *svc = get_tunnel_service(id, svc_ev->added_services[svc_idx]);
-                    svc_event.AddedServices[idx++] = svc;
+                    svc_event.AddedServices[svc_idx] = svc;
                 }
             }
 
