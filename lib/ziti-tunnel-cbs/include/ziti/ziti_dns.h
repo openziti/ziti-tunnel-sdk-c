@@ -18,6 +18,13 @@
 #define ZITI_TUNNEL_SDK_C_ZITI_DNS_H
 
 #include <ziti/ziti_tunnel.h>
+
+#define DNS_NO_ERROR 0
+#define DNS_NXDOMAIN 3
+#define DNS_NOT_IMPL 4
+#define DNS_REFUSE   5
+#define DNS_NOTZONE  9
+
 typedef struct dns_manager_s dns_manager;
 
 typedef int (*dns_fallback_cb)(const char *name, void *ctx, struct in_addr* addr);

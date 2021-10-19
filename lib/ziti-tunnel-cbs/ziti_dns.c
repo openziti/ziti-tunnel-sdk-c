@@ -80,7 +80,6 @@ struct ziti_dns_s {
     tunneler_context tnlr;
 } ziti_dns;
 
-
 static uint32_t next_ipv4() {
    return  htonl(ziti_dns.ip_pool.base | (ziti_dns.ip_pool.counter++ & ziti_dns.ip_pool.counter_mask));
 }
@@ -293,10 +292,6 @@ const char *ziti_dns_register_hostname(const char *hostname, void *intercept) {
 }
 
 static const char DNS_OPT[] = { 0x0, 0x0, 0x29, 0x02, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 };
-
-#define DNS_NO_ERROR 0
-#define DNS_NXDOMAIN 3
-#define DNS_NOT_IMPL 4
 
 
 #define DNS_ID(p) (p[0] << 8 | p[1])
