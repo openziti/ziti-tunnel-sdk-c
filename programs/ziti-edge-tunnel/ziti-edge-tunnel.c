@@ -26,6 +26,8 @@
 #include <ziti/ziti_dns.h>
 #include "model/events.h"
 #include "instance.h"
+#include <file-rotator.h>
+#include <time.h>
 
 #if __APPLE__ && __MACH__
 #include "netif_driver/darwin/utun.h"
@@ -36,8 +38,6 @@
 #ifndef MAXPATHLEN
 #define MAXPATHLEN _MAX_PATH
 #include "windows/windows-service.h"
-#include <file-rotator.h>
-#include <time.h>
 #endif
 
 #define setenv(n,v,o) do {if(o || getenv(n) == NULL) _putenv_s(n,v); } while(0)
@@ -1517,12 +1517,13 @@ static int get_mfa_codes_opts(int argc, char *argv[]) {
 
 static void service_control(int argc, char *argv[]) {
 
+#if _WIN32
+
     tunnel_service_control *tunnel_service_control_opt = calloc(1, sizeof(tunnel_service_control));
     if (parse_tunnel_service_control(tunnel_service_control_opt, cmd->data, strlen(cmd->data)) != 0) {
-        ZITI_LOG(ERROR, "Could not fetch service control data");
+        fprintf(stderr, "Could not fetch service control data");
         return;
     }
-
     if (strcmp(tunnel_service_control_opt->operation, "install") == 0) {
         SvcInstall();
     } else if (strcmp(tunnel_service_control_opt->operation, "uninstall") == 0) {
@@ -1530,6 +1531,9 @@ static void service_control(int argc, char *argv[]) {
     } else {
         fprintf(stderr, "Unknown option '%s'\n", tunnel_service_control_opt->operation);
     }
+#else
+    fprintf(stderr, "SCM is supported only in windows.");
+#endif
 }
 
 static int svc_opts(int argc, char *argv[]) {

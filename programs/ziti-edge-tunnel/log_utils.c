@@ -1,13 +1,30 @@
+/*
+Copyright 2019-2020 NetFoundry, Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+https://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <direct.h>
 #include <stdbool.h>
+#include <string.h>
 #include <ziti/ziti_log.h>
 #include <time.h>
 #include <file-rotator.h>
 #if _WIN32
 #include "windows/windows-service.h"
+#include <direct.h>
 #endif
 
 #define GetCurrentDir _getcwd
@@ -32,15 +49,25 @@ static rotation_count = 7;
 
 static char* get_log_filename() {
     char curr_path[FILENAME_MAX]; //create string buffer to hold path
+#if _WIN32
     GetCurrentDir( curr_path, FILENAME_MAX );
+#else
+    sprintf(curr_path, "%s", "/tmp");
+#endif
 
     char log_path[FILENAME_MAX];
     sprintf(log_path, "%s/logs", curr_path);
-    int check = mkdir(log_path);
-    if (!check) {
-        printf("\ncreated log path %s", curr_path);
+    int check;
+#if _WIN32
+    check = mkdir(log_path);
+#else
+    check = mkdir(log_path, 0500);
+#endif
+    if (check == 0) {
+        printf("\nlog path is at %s", curr_path);
     } else {
-        printf("\nlog path is found %s", curr_path);
+        printf("\nCould not create/view log path %s", curr_path);
+        return NULL;
     }
 
     char time_val[32];
@@ -93,9 +120,9 @@ bool log_init(uv_loop_t *ziti_loop, bool is_multi_writer) {
     uv_check_start(log_flusher, flush_log);
 
 
-    log_filename = get_log_filename(start_time);
+    log_filename = get_log_filename();
 
-    if (!open_log(log_filename)) {
+    if (log_filename == NULL || !open_log(log_filename)) {
         return false;
     }
 #if _WIN32
@@ -202,7 +229,11 @@ void rotate_log() {
 
 void delete_older_logs(uv_loop_t *ziti_loop) {
     char curr_path[FILENAME_MAX]; //create string buffer to hold path
+#if _WIN32
     GetCurrentDir( curr_path, FILENAME_MAX );
+#else
+    sprintf(curr_path, "%s", "/tmp");
+#endif
 
     char log_path[FILENAME_MAX];
     sprintf(log_path, "%s/logs", curr_path);
@@ -234,7 +265,11 @@ void delete_older_logs(uv_loop_t *ziti_loop) {
     }
 
     char currpath[FILENAME_MAX]; //create string buffer to hold path
+#if _WIN32
     GetCurrentDir( currpath, FILENAME_MAX );
+#else
+    sprintf(curr_path, "%s", "/tmp");
+#endif
 
     char logpath[FILENAME_MAX];
     sprintf(logpath, "%s/logs", currpath);
