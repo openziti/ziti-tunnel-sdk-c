@@ -64,10 +64,9 @@ static char* get_log_filename() {
     check = mkdir(log_path, 0500);
 #endif
     if (check == 0) {
-        printf("\nlog path is at %s", curr_path);
+        printf("\nlog path is created at %s", curr_path);
     } else {
-        printf("\nCould not create/view log path %s", curr_path);
-        return NULL;
+        printf("\nlog path is found at %s", curr_path);
     }
 
     char time_val[32];
@@ -122,7 +121,7 @@ bool log_init(uv_loop_t *ziti_loop, bool is_multi_writer) {
 
     log_filename = get_log_filename();
 
-    if (log_filename == NULL || !open_log(log_filename)) {
+    if (!open_log(log_filename)) {
         return false;
     }
 #if _WIN32
