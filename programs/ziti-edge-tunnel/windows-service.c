@@ -206,7 +206,8 @@ DWORD WINAPI ServiceWorkerThread (LPVOID lpParam)
 {
     //  Periodically check if the service has been requested to stop
     scm_service_run(lpParam);
-
+    // when service run returns, stop the service in scm
+    stop_windows_service();
     return ERROR_SUCCESS;
 }
 

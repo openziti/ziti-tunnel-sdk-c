@@ -217,7 +217,7 @@ static void setTunnelPostureDataTimeout(tunnel_service *tnl_svc, ziti_service *s
         tnl_svc->PostureChecks[idx] = NULL;
     }
 
-    tnl_svc->IsAccessable = hasAccess;
+    tnl_svc->IsAccessible = hasAccess;
     tnl_svc->Timeout = minTimeout;
     tnl_svc->TimeoutRemaining = minTimeoutRemaining;
     ZITI_LOG(DEBUG, "service[%s] timeout=%d timeoutRemaining=%d", service->name, minTimeout, minTimeoutRemaining);

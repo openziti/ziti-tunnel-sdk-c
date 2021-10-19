@@ -1652,7 +1652,6 @@ void scm_service_run(void * name) {
     ZITI_LOG(INFO, "About to run tunnel service...");
     ziti_set_app_info((char *)name, ziti_tunneler_version());
     run(0, NULL);
-    stop_windows_service();
 }
 
 void scm_service_stop() {
