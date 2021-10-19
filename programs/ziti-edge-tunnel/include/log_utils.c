@@ -61,7 +61,7 @@ static char* get_log_filename() {
 #if _WIN32
     check = mkdir(log_path);
 #else
-    check = mkdir(log_path, 0500);
+    check = mkdir(log_path, 0755);
 #endif
     if (check == 0) {
         printf("\nlog path is created at %s", curr_path);
