@@ -34,6 +34,8 @@ extern tunnel_service *find_tunnel_service(tunnel_identity* id, char* svc_id);
 
 extern void add_or_remove_services_from_tunnel(tunnel_identity *id, tunnel_service_array added_services, tunnel_service_array removed_services);
 
+extern bool load_tunnel_status(char* config_data);
+
 extern tunnel_status *get_tunnel_status();
 
 extern tunnel_identity_array get_tunnel_identities();

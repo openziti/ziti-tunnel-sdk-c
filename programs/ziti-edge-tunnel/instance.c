@@ -22,7 +22,7 @@
 model_map tnl_identity_map = {0};
 static const char* CFG_INTERCEPT_V1 = "intercept.v1";
 static const char* CFG_ZITI_TUNNELER_CLIENT_V1 = "ziti-tunneler-client.v1";
-static tunnel_status tnl_status;
+static tunnel_status tnl_status = {0};
 
 tunnel_identity *find_tunnel_identity(const char* identifier) {
     tunnel_identity *tnl_id = model_map_get(&tnl_identity_map, identifier);
@@ -424,14 +424,29 @@ void set_mfa_timeout_rem(tunnel_identity *tnl_id) {
 
 }
 
-tunnel_status *get_tunnel_status() {
+void initialize_tunnel_status() {
+    tnl_status.Active = true;
     if (tnl_status.StartTime.tv_sec == 0) {
-        tnl_status.Active = false;
         tnl_status.Duration = 0;
         uv_timeval64_t now;
         uv_gettimeofday(&now);
         tnl_status.StartTime.tv_sec = now.tv_sec;
         tnl_status.StartTime.tv_usec = now.tv_usec;
+    }
+}
+
+bool load_tunnel_status(char* config_data) {
+    if (parse_tunnel_status(&tnl_status, config_data, strlen(config_data)) != 0) {
+        ZITI_LOG(ERROR, "Could not read tunnel status from config data");
+        return false;
+    }
+    initialize_tunnel_status();
+    return true;
+}
+
+tunnel_status *get_tunnel_status() {
+    if (tnl_status.StartTime.tv_sec == 0) {
+        initialize_tunnel_status();
     } else {
         uv_timeval64_t now;
         uv_gettimeofday(&now);

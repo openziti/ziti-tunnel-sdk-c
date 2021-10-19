@@ -26,7 +26,7 @@
 #include <ziti/ziti_dns.h>
 #include "model/events.h"
 #include "instance.h"
-#include <file-rotator.h>
+#include <log-utils.h>
 #include <time.h>
 
 #if __APPLE__ && __MACH__
@@ -776,7 +776,6 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
 
     // generate tunnel status instance and save active state and start time
     tunnel_status *tnl_status = get_tunnel_status();
-    tnl_status->Active = true;
 
     ip_addr_t dns_ip4 = IPADDR4_INIT(dns_ip);
     ziti_dns_setup(tunneler, ipaddr_ntoa(&dns_ip4), ip_range);

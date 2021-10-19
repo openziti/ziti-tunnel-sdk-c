@@ -14,8 +14,8 @@
  limitations under the License.
  */
 
-#ifndef ZITI_TUNNEL_SDK_C_FILE_ROTATOR_H
-#define ZITI_TUNNEL_SDK_C_FILE_ROTATOR_H
+#ifndef ZITI_TUNNEL_SDK_C_LOG_UTILS_H
+#define ZITI_TUNNEL_SDK_C_LOG_UTILS_H
 
 bool open_log(char* log_filename);
 void close_log();
@@ -28,4 +28,4 @@ char* get_log_file_name();
 bool log_init(uv_loop_t *, bool);
 void ziti_log_writer(int , const char *, const char *, size_t);
 
-#endif //ZITI_TUNNEL_SDK_C_FILE_ROTATOR_H
+#endif //ZITI_TUNNEL_SDK_C_LOG_UTILS_H
