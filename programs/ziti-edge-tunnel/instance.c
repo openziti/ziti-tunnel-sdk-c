@@ -142,6 +142,7 @@ void add_or_remove_services_from_tunnel(tunnel_identity *id, tunnel_service_arra
         id->Services[idx++] = model_map_it_value(it);
         it = model_map_it_remove(it);
     }
+
     model_map_clear(&updates, NULL);
     set_mfa_timeout(id);
     uv_timeval64_t now;
@@ -211,7 +212,7 @@ static void setTunnelPostureDataTimeout(tunnel_service *tnl_svc, ziti_service *s
         while (itr != NULL){
             ziti_posture_query *pq = model_map_it_value(itr);
             tunnel_posture_check *pc = getTunnelPostureCheck(pq);
-            tnl_svc->PostureChecks[idx] = pc;
+            tnl_svc->PostureChecks[idx++] = pc;
             itr = model_map_it_next(itr);
         }
     }
@@ -267,7 +268,8 @@ static void setTunnelServiceAddress(tunnel_service *tnl_svc, ziti_service *servi
             // do nothing
         }
         tnl_addr_arr = calloc(idx+1, sizeof(tunnel_address *));
-        for(int address_idx=0; cfg_v1.addresses[address_idx]; address_idx++) {
+        int address_idx;
+        for(address_idx=0; cfg_v1.addresses[address_idx]; address_idx++) {
             char* addr = cfg_v1.addresses[address_idx];
             tnl_addr_arr[address_idx] = to_address(addr);
         }
@@ -298,7 +300,7 @@ static void setTunnelServiceAddress(tunnel_service *tnl_svc, ziti_service *servi
         protocols[idx++] = strdup("TCP");
         protocols[idx] = strdup("UDP");
 
-        // set port range
+                // set port range
         // set ports
         tnl_port_range_arr = calloc(2, sizeof(tunnel_port_range *));
         tunnel_port_range *tpr = calloc(1, sizeof(tunnel_port_range));
