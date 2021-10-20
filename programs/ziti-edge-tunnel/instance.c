@@ -438,6 +438,9 @@ void initialize_tunnel_status() {
     tnl_status.StartTime.tv_sec = now.tv_sec;
     tnl_status.StartTime.tv_usec = now.tv_usec;
 
+    if (tnl_status.Identities == NULL) {
+        return;
+    }
     for(int idx = 0; tnl_status.Identities[idx]; idx++) {
         tunnel_identity *tnl_id = tnl_status.Identities[idx];
         char identifier[FILENAME_MAX];
