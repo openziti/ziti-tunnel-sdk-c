@@ -17,7 +17,7 @@
 #include "model/dtos.h"
 #include <ziti/ziti_log.h>
 #include <time.h>
-#include "model/events.h"
+#include <config-utils.h>
 
 model_map tnl_identity_map = {0};
 static const char* CFG_INTERCEPT_V1 = "intercept.v1";
@@ -34,7 +34,7 @@ tunnel_identity *find_tunnel_identity(const char* identifier) {
     }
 }
 
-tunnel_identity *create_or_get_tunnel_identity(char* identifier) {
+tunnel_identity *create_or_get_tunnel_identity(char* identifier, char* filename) {
     tunnel_identity *id = find_tunnel_identity(identifier);
 
     if (id != NULL) {
@@ -42,6 +42,12 @@ tunnel_identity *create_or_get_tunnel_identity(char* identifier) {
     } else {
         tunnel_identity *tnl_id = calloc(1, sizeof(struct tunnel_identity_s));
         tnl_id->Identifier = strdup(identifier);
+        if (filename != NULL) {
+            char* sub_address = strstr(filename, ".json");
+            int index = (int) (filename - sub_address);
+            tnl_id->FingerPrint = calloc(index + 1, sizeof(char));
+            snprintf(tnl_id->FingerPrint, index, "%s", filename);
+        }
         model_map_set(&tnl_identity_map, identifier, tnl_id);
         return tnl_id;
     }
@@ -432,13 +438,22 @@ void initialize_tunnel_status() {
     tnl_status.StartTime.tv_sec = now.tv_sec;
     tnl_status.StartTime.tv_usec = now.tv_usec;
 
+    for(int idx = 0; tnl_status.Identities[idx]; idx++) {
+        tunnel_identity *tnl_id = tnl_status.Identities[idx];
+        char identifier[FILENAME_MAX];
+        snprintf(identifier, sizeof(identifier), "%s/%s.json", get_identifier_path(), tnl_id->FingerPrint);
+        tnl_id->Identifier = strdup(identifier);
+        model_map_set(&tnl_identity_map, tnl_id->Identifier, tnl_id);
+    }
 }
 
 bool load_tunnel_status(char* config_data) {
     if (parse_tunnel_status(&tnl_status, config_data, strlen(config_data)) != 0) {
+        free(config_data);
         ZITI_LOG(ERROR, "Could not read tunnel status from config data");
         return false;
     }
+    free(config_data);
     initialize_tunnel_status();
     return true;
 }

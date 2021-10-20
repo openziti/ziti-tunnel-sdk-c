@@ -539,6 +539,7 @@ static void load_identities(uv_work_t *wr) {
                 struct cfg_instance_s *inst = calloc(1, sizeof(struct cfg_instance_s));
                 inst->cfg = malloc(MAXPATHLEN);
                 snprintf(inst->cfg, MAXPATHLEN, "%s/%s", config_dir, file.name);
+                create_or_get_tunnel_identity(inst->cfg, file.name);
                 LIST_INSERT_HEAD(&load_list, inst, _next);
             }
         }
@@ -568,7 +569,7 @@ static void load_identities_complete(uv_work_t * wr, int status) {
     if (identity_loaded) {
         start_metrics_timer(wr->loop);
     }
-#if _WIN32
+#if _WIN32 || __linux__
     save_tunnel_status_to_file();
 #endif
 }
@@ -582,12 +583,14 @@ static void on_event(const base_event *ev) {
             identity_event id_event = {0};
             id_event.Op = strdup("identity");
             id_event.Action = strdup(event_name(event_added));
-            id_event.Id = create_or_get_tunnel_identity(ev->identifier);
+            id_event.Id = create_or_get_tunnel_identity(ev->identifier, NULL);
+            id_event.Fingerprint = strdup(id_event.Id->FingerPrint);
             id_event.Id->Loaded = true;
 
             action_event controller_event = {0};
             controller_event.Op = strdup("controller");
             controller_event.Identifier = strdup(ev->identifier);
+            controller_event.Fingerprint = strdup(id_event.Id->FingerPrint);
 
             if (zev->code == ZITI_OK) {
                 id_event.Id->Active = true; // determine it from controller
@@ -621,7 +624,8 @@ static void on_event(const base_event *ev) {
                 .Identifier = strdup(ev->identifier),
             };
 
-            tunnel_identity *id = create_or_get_tunnel_identity(ev->identifier);
+            tunnel_identity *id = create_or_get_tunnel_identity(ev->identifier, NULL);
+            svc_event.Fingerprint = strdup(id->FingerPrint);
             ziti_service **zs;
             int idx = 0;
             if (svc_ev->removed_services != NULL) {
@@ -670,8 +674,9 @@ static void on_event(const base_event *ev) {
             identity_event id_event = {
                     .Op = strdup("identity"),
                     .Action = strdup(event_name(event_updated)),
-                    .Id = create_or_get_tunnel_identity(ev->identifier),
+                    .Id = create_or_get_tunnel_identity(ev->identifier, NULL),
             };
+            id_event.Fingerprint = strdup(id_event.Id->FingerPrint);
             send_events_message(&id_event, (to_json_fn) identity_event_to_json, true);
             id_event.Id = NULL;
             free_identity_event(&id_event);
@@ -688,6 +693,9 @@ static void on_event(const base_event *ev) {
                     .Identifier = strdup(mfa_ev->identifier),
                     .Successful = false
             };
+
+            tunnel_identity *id = create_or_get_tunnel_identity(ev->identifier, NULL);
+            mfa_sts_event.Fingerprint = strdup(id->FingerPrint);
 
             send_events_message(&mfa_sts_event, (to_json_fn) mfa_status_event_to_json, true);
             free_mfa_status_event(&mfa_sts_event);
@@ -715,8 +723,9 @@ static void on_event(const base_event *ev) {
                         identity_event id_event = {
                                 .Op = strdup("identity"),
                                 .Action = strdup(event_name(event_updated)),
-                                .Id = create_or_get_tunnel_identity(ev->identifier),
+                                .Id = create_or_get_tunnel_identity(ev->identifier, NULL),
                         };
+                        id_event.Fingerprint = strdup(id_event.Id->FingerPrint);
                         send_events_message(&id_event, (to_json_fn) identity_event_to_json, true);
                         id_event.Id = NULL;
                         free_identity_event(&id_event);
@@ -737,6 +746,9 @@ static void on_event(const base_event *ev) {
                 mfa_sts_event.Successful = false;
                 mfa_sts_event.Error = strdup(mfa_ev->status);
             }
+
+            tunnel_identity *id = create_or_get_tunnel_identity(ev->identifier, NULL);
+            mfa_sts_event.Fingerprint = strdup(id->FingerPrint);
 
             send_events_message(&mfa_sts_event, (to_json_fn) mfa_status_event_to_json, true);
 
@@ -785,8 +797,12 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     tunneler_context tunneler = ziti_tunneler_init(&tunneler_opts, ziti_loop);
 
     // generate tunnel status instance and save active state and start time
-#if _WIN32
-    load_tunnel_status_from_file();
+#if _WIN32 || __linux__
+    if (config_dir != NULL) {
+        set_identifier_path(config_dir);
+        initialize_instance_config();
+        load_tunnel_status_from_file();
+    }
 #endif
     tunnel_status *tnl_status = get_tunnel_status();
 
@@ -803,8 +819,12 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     start_event_socket(ziti_loop);
 
     if (uv_run(ziti_loop, UV_RUN_DEFAULT) != 0) {
-        ZITI_LOG(ERROR, "failed to run event loop or the event loop is stopped");
-        exit(1);
+        if (started_by_scm) {
+            ZITI_LOG(INFO, "The event loop is stopped, exiting");
+        } else {
+            ZITI_LOG(ERROR, "failed to run event loop");
+            exit(1);
+        }
     }
 
     free(tunneler);

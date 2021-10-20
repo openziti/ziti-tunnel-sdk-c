@@ -27,6 +27,13 @@
 
 static uv_mutex_t mutex;
 
+bool initialize_instance_config() {
+    int mutex_init = uv_mutex_init(&mutex);
+    if (mutex_init != 0) {
+        ZITI_LOG(TRACE, "Could not initialize resources for the config, config file will not be updated");
+    }
+    return mutex_init;
+}
 
 bool load_config_from_file(char* config_file_name) {
     bool loaded = false;
@@ -135,9 +142,9 @@ bool save_tunnel_status_to_file() {
                 fclose(config);
                 ZITI_LOG(TRACE, "Saved current tunnel status into Config file %s", config_file_name);
             }
+            uv_mutex_unlock(&mutex);
+            ZITI_LOG(TRACE, "Cleaning up resources used for the backup of tunnel config file %s", config_file_name);
         }
-        uv_mutex_unlock(&mutex);
-        ZITI_LOG(TRACE, "Cleaning up resources used for the backup of tunnel config file %s", config_file_name);
         free(config_file_name);
         free(config_path);
    }

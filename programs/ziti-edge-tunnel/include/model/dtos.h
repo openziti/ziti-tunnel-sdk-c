@@ -34,6 +34,7 @@ XX(Down, int, none, Down, __VA_ARGS__)
 #define TUNNEL_IDENTITY(XX, ...) \
 XX(Name, string, none, Name, __VA_ARGS__) \
 XX(Identifier, string, none, Identifier, __VA_ARGS__) \
+XX(FingerPrint, string, none, FingerPrint, __VA_ARGS__) \
 XX(Active, bool, none, Active, __VA_ARGS__) \
 XX(Loaded, bool, none, Loaded, __VA_ARGS__) \
 XX(Config, tunnel_config, none, Config, __VA_ARGS__) \
@@ -80,7 +81,7 @@ XX(Addresses, tunnel_address, array, Addresses, __VA_ARGS__) \
 XX(Ports, tunnel_port_range, array, Ports, __VA_ARGS__)  \
 XX(OwnsIntercept, bool, none, OwnsIntercept, __VA_ARGS__) \
 XX(PostureChecks, tunnel_posture_check, array, PostureChecks, __VA_ARGS__) \
-XX(IsAccessible, bool, none, IsAccessible, __VA_ARGS__) \
+XX(IsAccessible, bool, none, IsAccessable, __VA_ARGS__) \
 XX(Timeout, int, none, Timeout, __VA_ARGS__)         \
 XX(TimeoutRemaining, int, none, TimeoutRemaining, __VA_ARGS__)
 

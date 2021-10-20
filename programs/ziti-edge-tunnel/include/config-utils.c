@@ -16,9 +16,10 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include "string.h"
+#include <string.h>
 
 const char* app_data = "APPDATA";
+static char* identifier_path = NULL;
 
 char* get_system_config_path() {
     char* config_path = malloc(FILENAME_MAX * sizeof(char));
@@ -28,6 +29,16 @@ char* get_system_config_path() {
     sprintf(config_path, "%s", "/tmp");
 #endif
     return config_path;
+}
+
+char* get_identifier_path() {
+    return identifier_path;
+}
+
+void set_identifier_path(char* id_path) {
+    if (id_path != NULL) {
+        identifier_path = strdup(id_path);
+    }
 }
 
 char* get_config_file_name(char* config_path) {
