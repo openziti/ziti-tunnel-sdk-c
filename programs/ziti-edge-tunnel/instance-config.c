@@ -110,7 +110,7 @@ bool save_tunnel_status_to_file() {
             } else {
                 char buffer[MIN_BUFFER_LEN];
                 while (fread(buffer, 1, MIN_BUFFER_LEN, config) != NULL) {
-                    fwrite(buffer, 1, MIN_BUFFER_LEN, backup_config);
+                    fwrite(buffer, 1, strlen(buffer), backup_config);
                 }
 
                 fclose(backup_config);
@@ -127,7 +127,7 @@ bool save_tunnel_status_to_file() {
             for (int i =0; i< json_len; i=i+MIN_BUFFER_LEN, tunnel_status_data=tunnel_status_data+MIN_BUFFER_LEN) {
                 char buffer[MIN_BUFFER_LEN];
                 snprintf(buffer, MIN_BUFFER_LEN,"%s", tunnel_status_data);
-                fwrite(buffer, 1, MIN_BUFFER_LEN, config);
+                fwrite(buffer, 1, strlen(buffer), config);
             }
             saved = true;
             fclose(config);
