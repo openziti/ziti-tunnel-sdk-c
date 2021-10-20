@@ -18,5 +18,7 @@
 #define ZITI_TUNNEL_SDK_C_CONFIG_UTILS_H
 
 char* get_system_config_path();
+char* get_config_file_name(char* config_path);
+char* get_backup_config_file_name(char* config_path);
 
 #endif //ZITI_TUNNEL_SDK_C_CONFIG_UTILS_H

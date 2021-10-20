@@ -19,5 +19,6 @@
 
 bool load_tunnel_status_from_file();
 bool save_tunnel_status_to_file();
+void cleanup_instance_config();
 
 #endif //ZITI_TUNNEL_SDK_C_INSTANCE_CONFIG_H

@@ -18,6 +18,7 @@ limitations under the License.
 #include "windows/windows-service.h"
 #include <windows.h>
 #include <stdio.h>
+#include <config-utils.h>
 
 #pragma comment(lib, "advapi32.lib")
 

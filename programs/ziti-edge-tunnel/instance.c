@@ -34,7 +34,7 @@ tunnel_identity *find_tunnel_identity(const char* identifier) {
     }
 }
 
-tunnel_identity *get_tunnel_identity(char* identifier) {
+tunnel_identity *create_or_get_tunnel_identity(char* identifier) {
     tunnel_identity *id = find_tunnel_identity(identifier);
 
     if (id != NULL) {
@@ -426,13 +426,12 @@ void set_mfa_timeout_rem(tunnel_identity *tnl_id) {
 
 void initialize_tunnel_status() {
     tnl_status.Active = true;
-    if (tnl_status.StartTime.tv_sec == 0) {
-        tnl_status.Duration = 0;
-        uv_timeval64_t now;
-        uv_gettimeofday(&now);
-        tnl_status.StartTime.tv_sec = now.tv_sec;
-        tnl_status.StartTime.tv_usec = now.tv_usec;
-    }
+    tnl_status.Duration = 0;
+    uv_timeval64_t now;
+    uv_gettimeofday(&now);
+    tnl_status.StartTime.tv_sec = now.tv_sec;
+    tnl_status.StartTime.tv_usec = now.tv_usec;
+
 }
 
 bool load_tunnel_status(char* config_data) {

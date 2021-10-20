@@ -16,6 +16,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include "string.h"
 
 const char* app_data = "APPDATA";
 
@@ -27,5 +28,26 @@ char* get_system_config_path() {
     sprintf(config_path, "%s", "/tmp");
 #endif
     return config_path;
+}
+
+char* get_config_file_name(char* config_path) {
+    char* config_file_name = calloc(FILENAME_MAX, sizeof(char));
+    if (config_path != NULL) {
+        snprintf(config_file_name, FILENAME_MAX, "%s/config.json", config_path);
+        return config_file_name;
+    } else {
+        return "config.json";
+    }
+
+}
+
+char* get_backup_config_file_name(char* config_path) {
+    char* bkp_config_file_name = calloc(FILENAME_MAX, sizeof(char));
+    if (config_path != NULL) {
+        snprintf(bkp_config_file_name, FILENAME_MAX, "%s/config.json.backup", config_path);
+        return bkp_config_file_name;
+    } else {
+        return "config.json.backup";
+    }
 }
 

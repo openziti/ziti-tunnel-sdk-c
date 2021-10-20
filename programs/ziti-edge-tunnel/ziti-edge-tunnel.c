@@ -29,6 +29,7 @@
 #include "instance-config.h"
 #include <log-utils.h>
 #include <time.h>
+#include <config-utils.h>
 
 #if __APPLE__ && __MACH__
 #include "netif_driver/darwin/utun.h"
@@ -512,6 +513,7 @@ static void broadcast_metrics(uv_timer_t *timer) {
 
 static void start_metrics_timer(uv_loop_t *ziti_loop) {
     uv_timer_init(ziti_loop, &metrics_timer);
+    uv_unref((uv_handle_t *) &metrics_timer);
     uv_timer_start(&metrics_timer, broadcast_metrics, metrics_latency, refresh_metrics);
 }
 
@@ -528,6 +530,10 @@ static void load_identities(uv_work_t *wr) {
         uv_dirent_t file;
         while (uv_fs_scandir_next(&fs, &file) == 0) {
             ZITI_LOG(INFO, "file = %s %d", file.name, file.type);
+
+            if (strcmp(file.name, get_config_file_name(NULL)) == 0 || strcmp(file.name, get_backup_config_file_name(NULL)) == 0 ) {
+                continue;
+            }
 
             if (file.type == UV_DIRENT_FILE) {
                 struct cfg_instance_s *inst = calloc(1, sizeof(struct cfg_instance_s));
@@ -576,7 +582,7 @@ static void on_event(const base_event *ev) {
             identity_event id_event = {0};
             id_event.Op = strdup("identity");
             id_event.Action = strdup(event_name(event_added));
-            id_event.Id = get_tunnel_identity(ev->identifier);
+            id_event.Id = create_or_get_tunnel_identity(ev->identifier);
             id_event.Id->Loaded = true;
 
             action_event controller_event = {0};
@@ -615,7 +621,7 @@ static void on_event(const base_event *ev) {
                 .Identifier = strdup(ev->identifier),
             };
 
-            tunnel_identity *id = get_tunnel_identity(ev->identifier);
+            tunnel_identity *id = create_or_get_tunnel_identity(ev->identifier);
             ziti_service **zs;
             int idx = 0;
             if (svc_ev->removed_services != NULL) {
@@ -664,7 +670,7 @@ static void on_event(const base_event *ev) {
             identity_event id_event = {
                     .Op = strdup("identity"),
                     .Action = strdup(event_name(event_updated)),
-                    .Id = get_tunnel_identity(ev->identifier),
+                    .Id = create_or_get_tunnel_identity(ev->identifier),
             };
             send_events_message(&id_event, (to_json_fn) identity_event_to_json, true);
             id_event.Id = NULL;
@@ -709,7 +715,7 @@ static void on_event(const base_event *ev) {
                         identity_event id_event = {
                                 .Op = strdup("identity"),
                                 .Action = strdup(event_name(event_updated)),
-                                .Id = get_tunnel_identity(ev->identifier),
+                                .Id = create_or_get_tunnel_identity(ev->identifier),
                         };
                         send_events_message(&id_event, (to_json_fn) identity_event_to_json, true);
                         id_event.Id = NULL;
@@ -808,6 +814,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
 #if _WIN32
     close_log();
     stop_log_check();
+    cleanup_instance_config();
 #endif
     return 0;
 }
