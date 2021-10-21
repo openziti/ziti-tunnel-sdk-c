@@ -140,8 +140,10 @@ void add_or_remove_services_from_tunnel(tunnel_identity *id, tunnel_service_arra
     idx=0;
     while(it != NULL) {
         id->Services[idx++] = model_map_it_value(it);
-        it = model_map_it_next(it);
+        it = model_map_it_remove(it);
     }
+
+    model_map_clear(&updates, NULL);
     set_mfa_timeout(id);
     uv_timeval64_t now;
     uv_gettimeofday(&now);
@@ -210,7 +212,7 @@ static void setTunnelPostureDataTimeout(tunnel_service *tnl_svc, ziti_service *s
         while (itr != NULL){
             ziti_posture_query *pq = model_map_it_value(itr);
             tunnel_posture_check *pc = getTunnelPostureCheck(pq);
-            tnl_svc->PostureChecks[idx] = pc;
+            tnl_svc->PostureChecks[idx++] = pc;
             itr = model_map_it_next(itr);
         }
     }
@@ -232,7 +234,7 @@ static tunnel_address *to_address(string hostOrIPOrCIDR) {
         tnl_address->IP = calloc(INET_ADDRSTRLEN+1, sizeof(char));
         uv_inet_ntop(AF_INET, &ip, tnl_address->IP, INET_ADDRSTRLEN);
         tnl_address->HostName = NULL;
-        ZITI_LOG(TRACE, "IP address: %s", ip);
+        ZITI_LOG(TRACE, "IP address: %s", tnl_address->IP);
     } else {
         tnl_address->IsHost = true;
         tnl_address->IP = NULL;
@@ -266,7 +268,8 @@ static void setTunnelServiceAddress(tunnel_service *tnl_svc, ziti_service *servi
             // do nothing
         }
         tnl_addr_arr = calloc(idx+1, sizeof(tunnel_address *));
-        for(int address_idx=0; cfg_v1.addresses[address_idx]; address_idx++) {
+        int address_idx;
+        for(address_idx=0; cfg_v1.addresses[address_idx]; address_idx++) {
             char* addr = cfg_v1.addresses[address_idx];
             tnl_addr_arr[address_idx] = to_address(addr);
         }
@@ -297,7 +300,7 @@ static void setTunnelServiceAddress(tunnel_service *tnl_svc, ziti_service *servi
         protocols[idx++] = strdup("TCP");
         protocols[idx] = strdup("UDP");
 
-        // set port range
+                // set port range
         // set ports
         tnl_port_range_arr = calloc(2, sizeof(tunnel_port_range *));
         tunnel_port_range *tpr = calloc(1, sizeof(tunnel_port_range));
@@ -341,7 +344,7 @@ tunnel_service *get_tunnel_service(tunnel_identity* id, ziti_service* zs) {
 tunnel_identity_array get_tunnel_identities() {
     const char *id;
     tunnel_identity *tnl_id;
-    tunnel_identity_array tnl_id_arr = calloc(model_map_size(&tnl_identity_map) + 1, sizeof(tunnel_identity*)); // todo this is leaked
+    tunnel_identity_array tnl_id_arr = calloc(model_map_size(&tnl_identity_map) + 1, sizeof(tunnel_identity*));
 
     int idx = 0;
     MODEL_MAP_FOREACH(id, tnl_id, &tnl_identity_map) {

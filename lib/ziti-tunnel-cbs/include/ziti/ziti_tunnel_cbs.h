@@ -156,6 +156,7 @@ DECLARE_ENUM(TunnelEvent, TUNNEL_EVENTS)
 
 #define MFA_STATUS(XX, ...) \
 XX(mfa_auth_status, __VA_ARGS__) \
+XX(auth_challenge, __VA_ARGS__)  \
 XX(enrollment_verification, __VA_ARGS__) \
 XX(enrollment_remove, __VA_ARGS__) \
 XX(enrollment_challenge, __VA_ARGS__)

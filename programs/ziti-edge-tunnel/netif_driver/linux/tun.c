@@ -27,6 +27,7 @@
 #include <stdarg.h>
 
 #include <ziti/ziti_log.h>
+#include <ziti/ziti_dns.h>
 #include <stdbool.h>
 
 #include "tun.h"
@@ -49,6 +50,16 @@
 #define CHECK_UV(op) do{ int rc = op; if (rc < 0) ZITI_LOG(ERROR, "uv_err: %d/%s", rc, uv_strerror(rc)); } while(0)
 
 #define RESOLVECTL "resolvectl"
+
+extern void dns_set_miss_status(int code);
+
+static void dns_update_resolvectl(const char* tun, const char* addr);
+static void dns_update_systemd_resolve(const char* tun, const char* addr);
+static void dns_update_resolvconf(const char* tun, const char* addr);
+static void dns_update_etc_resolv(const char* tun, const char* addr);
+
+static void (*dns_updater)(const char* tun, const char* addr);
+static uv_once_t dns_updater_init;
 
 static struct {
     char tun_name[IFNAMSIZ];
@@ -127,8 +138,48 @@ static int run_command_ex(bool log_nonzero_ec, const char *cmd, ...) {
     return r;
 }
 
+static void find_dns_updater() {
+    struct dns_cmd {
+        const char *path;
+        void (* update_fn)(const char* tun, const char* addr);
+    };
+
+    static struct dns_cmd dns_cmds[] = {
+            {
+                    .path = "/usr/bin/resolvectl",
+                    .update_fn = dns_update_resolvectl,
+            },
+            {
+                    .path = "/usr/bin/systemd-resolve",
+                    .update_fn = dns_update_systemd_resolve,
+            },
+            {
+                    .path = "/usr/sbin/resolvconf",
+                    .update_fn = dns_update_resolvconf
+            },
+            {0}
+    };
+
+    uv_loop_t *l = dns_maintainer.update_timer.loop;
+    for (int idx = 0; dns_cmds[idx].path != NULL; idx++) {
+        uv_fs_t req = {0};
+        if (uv_fs_stat(l, &req, dns_cmds[idx].path, NULL) == 0) {
+            dns_updater = dns_cmds[idx].update_fn;
+            return;
+        }
+    }
+
+    ZITI_LOG(ERROR, "could not find a way to configure system resolver. Ziti DNS functionality will be impaired");
+    dns_updater = dns_update_etc_resolv;
+}
+
 static void set_dns(uv_work_t *wr) {
-    run_command(RESOLVECTL " dns %s %s", dns_maintainer.tun_name, inet_ntoa(*(struct in_addr*)&dns_maintainer.dns_ip));
+    uv_once(&dns_updater_init, find_dns_updater);
+    dns_updater(dns_maintainer.tun_name, inet_ntoa(*(struct in_addr*)&dns_maintainer.dns_ip));
+}
+
+static void dns_update_resolvectl(const char* tun, const char* addr) {
+    run_command(RESOLVECTL " dns %s %s", tun, addr);
     int s = run_command_ex(false, RESOLVECTL " domain | fgrep -v '%s' | fgrep -q '~.'",
                            dns_maintainer.tun_name);
     char *domain = "";
@@ -137,6 +188,31 @@ static void set_dns(uv_work_t *wr) {
         domain = "~.";
     }
     run_command(RESOLVECTL " domain %s '%s'", dns_maintainer.tun_name, domain);
+}
+
+static void dns_update_systemd_resolve(const char* tun, const char* addr) {
+    run_command("systemd-resolve -i %s --set-dns=%s", tun, addr);
+    int s = run_command_ex(false, "systemd-resolve --status | fgrep  'DNS Domain' | fgrep -q '~.'");
+    char *domain = "";
+    // set wildcard domain if any other resolvers set it.
+    if (s == 0) {
+        domain = "--set-domain=~.";
+        run_command("systemd-resolve -i %s %s", dns_maintainer.tun_name, domain);
+    }
+}
+
+static void dns_update_resolvconf(const char* tun, const char* addr) {
+    run_command("echo 'nameserver %s' | resolvconf -a %s", addr, tun);
+}
+
+static void dns_update_etc_resolv(const char* tun, const char* addr) {
+    int found = run_command("grep -q '^nameserver %s' /etc/resolv.conf", addr);
+
+    if (found != 0) {
+        run_command("sed -z -i 's/nameserver/nameserver %s\\nnameserver' /etc/resolv.conf", addr);
+    }
+
+    dns_set_miss_status(DNS_REFUSE);
 }
 
 static void after_set_dns(uv_work_t *wr, int status) {
