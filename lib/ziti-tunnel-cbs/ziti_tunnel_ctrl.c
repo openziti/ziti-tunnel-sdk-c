@@ -629,34 +629,39 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
                     .identifier = instance->identifier,
             };
 
-            if (*event->event.service.removed != NULL) {
+            bool send_event = false;
+            if (event->event.service.removed != NULL) {
                 ev.removed_services = event->event.service.removed;
                 for (zs = event->event.service.removed; *zs != NULL; zs++) {
+                    send_event = true;
                     on_service(ztx, *zs, ZITI_SERVICE_UNAVAILABLE, CMD_CTX.tunnel_ctx);
                 }
             }
 
-            if (*event->event.service.added != NULL) {
+            if (event->event.service.added != NULL) {
                 ev.added_services = event->event.service.added;
-
                 for (zs = event->event.service.added; *zs != NULL; zs++) {
+                    send_event = true;
                     on_service(ztx, *zs, ZITI_OK, CMD_CTX.tunnel_ctx);
                 }
             }
 
             // need to send added/removed first because changes clobber both
-            if (ev.removed_services != NULL || ev.added_services != NULL) {
+            if (send_event) {
                 CMD_CTX.on_event((const base_event *) &ev);
             }
 
-            if (*event->event.service.changed != NULL) {
+            if (event->event.service.changed != NULL) {
                 ev.added_services = event->event.service.changed;
                 ev.removed_services = event->event.service.changed;
-
+                send_event = false;
                 for (zs = event->event.service.changed; *zs != NULL; zs++) {
+                    send_event = true;
                     on_service(ztx, *zs, ZITI_OK, CMD_CTX.tunnel_ctx);
                 }
-                CMD_CTX.on_event((const base_event *) &ev);
+                if (send_event) {
+                    CMD_CTX.on_event((const base_event *) &ev);
+                }
             }
 
             break;
