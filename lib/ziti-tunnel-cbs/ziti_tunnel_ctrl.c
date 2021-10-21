@@ -624,32 +624,46 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
 
         case ZitiServiceEvent: {
             ziti_service **zs;
-            service_event ev = {0};
-            if (*event->event.service.removed != NULL) {
+            service_event ev = {
+                    .event_type = TunnelEvents.ServiceEvent,
+                    .identifier = instance->identifier,
+            };
+
+            bool send_event = false;
+            if (event->event.service.removed != NULL) {
                 ev.removed_services = event->event.service.removed;
-            }
-            for (zs = event->event.service.removed; *zs != NULL; zs++) {
-                on_service(ztx, *zs, ZITI_SERVICE_UNAVAILABLE, CMD_CTX.tunnel_ctx);
+                for (zs = event->event.service.removed; *zs != NULL; zs++) {
+                    send_event = true;
+                    on_service(ztx, *zs, ZITI_SERVICE_UNAVAILABLE, CMD_CTX.tunnel_ctx);
+                }
             }
 
-            if (*event->event.service.added != NULL) {
+            if (event->event.service.added != NULL) {
                 ev.added_services = event->event.service.added;
-            }
-            for (zs = event->event.service.added; *zs != NULL; zs++) {
-                on_service(ztx, *zs, ZITI_OK, CMD_CTX.tunnel_ctx);
+                for (zs = event->event.service.added; *zs != NULL; zs++) {
+                    send_event = true;
+                    on_service(ztx, *zs, ZITI_OK, CMD_CTX.tunnel_ctx);
+                }
             }
 
-            if (*event->event.service.changed != NULL) {
+            // need to send added/removed first because changes clobber both
+            if (send_event) {
+                CMD_CTX.on_event((const base_event *) &ev);
+            }
+
+            if (event->event.service.changed != NULL) {
                 ev.added_services = event->event.service.changed;
                 ev.removed_services = event->event.service.changed;
-            }
-            for (zs = event->event.service.changed; *zs != NULL; zs++) {
-                on_service(ztx, *zs, ZITI_OK, CMD_CTX.tunnel_ctx);
+                send_event = false;
+                for (zs = event->event.service.changed; *zs != NULL; zs++) {
+                    send_event = true;
+                    on_service(ztx, *zs, ZITI_OK, CMD_CTX.tunnel_ctx);
+                }
+                if (send_event) {
+                    CMD_CTX.on_event((const base_event *) &ev);
+                }
             }
 
-            ev.event_type = TunnelEvents.ServiceEvent;
-            ev.identifier = instance->identifier;
-            CMD_CTX.on_event((const base_event *) &ev);
             break;
         }
 
