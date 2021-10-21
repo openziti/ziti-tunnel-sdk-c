@@ -411,12 +411,12 @@ static void send_tunnel_command(tunnel_comand *cmd, void *ctx) {
 
 
 static char* addUnit(int count, char* unit) {
-    char* result = malloc(MAXMESSAGELEN);
+    char* result = calloc(MAXMESSAGELEN, sizeof(char));
 
     if ((count == 1) || (count == 0)) {
-        snprintf(result, MAXMESSAGELEN, "%d %s", count, unit);
+        snprintf(result, MAXMESSAGELEN-1, "%d %s", count, unit);
     } else {
-        snprintf(result, MAXMESSAGELEN, "%d %ss", count, unit);
+        snprintf(result, MAXMESSAGELEN-1, "%d %ss", count, unit);
     }
     return result;
 }
@@ -427,7 +427,7 @@ static string convert_seconds_to_readable_format(int input) {
     seconds = input % (60 * 60);
     int minutes = ((double) seconds)/ 60;
     seconds = input % 60;
-    char* result = malloc(MAXMESSAGELEN);
+    char* result = calloc(MAXMESSAGELEN, sizeof(char));
     char* hours_unit = NULL;
     char* minutes_unit = NULL;
     char* seconds_unit = NULL;
@@ -436,14 +436,14 @@ static string convert_seconds_to_readable_format(int input) {
         hours_unit = addUnit(hours, "hour");
         minutes_unit = addUnit(minutes, "minute");
         seconds_unit = addUnit(seconds, "second");
-        snprintf(result, MAXMESSAGELEN, "%s %s %s", hours_unit, minutes_unit, seconds_unit);
+        snprintf(result, MAXMESSAGELEN-1, "%s %s %s", hours_unit, minutes_unit, seconds_unit);
     } else if (minutes > 0) {
         minutes_unit = addUnit(minutes, "minute");
         seconds_unit = addUnit(seconds, "second");
-        snprintf(result, MAXMESSAGELEN, "%s %s", minutes_unit, seconds_unit);
+        snprintf(result, MAXMESSAGELEN-1, "%s %s", minutes_unit, seconds_unit);
     } else {
         seconds_unit = addUnit(seconds, "second");
-        snprintf(result, MAXMESSAGELEN, "%s", seconds_unit);
+        snprintf(result, MAXMESSAGELEN-1, "%s", seconds_unit);
     }
 
     if (hours_unit != NULL) {
@@ -485,16 +485,16 @@ static bool check_send_notification(tunnel_identity *tnl_id) {
 
 static notification_message *create_notification_message(tunnel_identity *tnl_id) {
     notification_message *notification = calloc(1, sizeof(struct notification_message_s));
-    notification->Message = malloc(MAXMESSAGELEN);
+    notification->Message = calloc(MAXMESSAGELEN, sizeof(char));
     if (tnl_id->MfaMaxTimeoutRem == 0) {
-        snprintf(notification->Message, MAXMESSAGELEN, "All of the services of identity %s have timed out", tnl_id->Name);
+        snprintf(notification->Message, MAXMESSAGELEN-1, "All of the services of identity %s have timed out", tnl_id->Name);
         notification->Severity = event_severity_critical;
     } else if (tnl_id->MfaMinTimeoutRem == 0) {
-        snprintf(notification->Message, MAXMESSAGELEN, "Some of the services of identity %s have timed out", tnl_id->Name);
+        snprintf(notification->Message, MAXMESSAGELEN-1, "Some of the services of identity %s have timed out", tnl_id->Name);
         notification->Severity = event_severity_major;
     } else if (tnl_id->MfaMinTimeoutRem <= 20*60) {
         char* message = convert_seconds_to_readable_format(tnl_id->MfaMinTimeoutRem);
-        snprintf(notification->Message, MAXMESSAGELEN, "Some of the services of identity %s are timing out in %s", tnl_id->Name, message);
+        snprintf(notification->Message, MAXMESSAGELEN-1, "Some of the services of identity %s are timing out in %s", tnl_id->Name, message);
         free(message);
         notification->Severity = event_severity_minor;
     } else {
@@ -751,7 +751,6 @@ static void on_event(const base_event *ev) {
 
             send_events_message(&mfa_sts_event, (to_json_fn) mfa_status_event_to_json, true);
             free_mfa_status_event(&mfa_sts_event);
-
             break;
         }
 
