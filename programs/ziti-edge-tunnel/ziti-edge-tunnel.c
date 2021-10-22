@@ -800,7 +800,6 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
         load_tunnel_status_from_file(ziti_loop);
     }
 #endif
-    tunnel_status *tnl_status = get_tunnel_status();
 
     ip_addr_t dns_ip4 = IPADDR4_INIT(dns_ip);
     ziti_dns_setup(tunneler, ipaddr_ntoa(&dns_ip4), ip_range);

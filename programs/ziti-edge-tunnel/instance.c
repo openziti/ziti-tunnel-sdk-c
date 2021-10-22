@@ -18,11 +18,13 @@
 #include <ziti/ziti_log.h>
 #include <time.h>
 #include <config-utils.h>
+#include "model/events.h"
 
 model_map tnl_identity_map = {0};
 static const char* CFG_INTERCEPT_V1 = "intercept.v1";
 static const char* CFG_ZITI_TUNNELER_CLIENT_V1 = "ziti-tunneler-client.v1";
 static tunnel_status tnl_status = {0};
+IMPL_ENUM(instance_status, INSTANCE_STATUS)
 
 tunnel_identity *find_tunnel_identity(const char* identifier) {
     tunnel_identity *tnl_id = model_map_get(&tnl_identity_map, identifier);
@@ -38,20 +40,24 @@ tunnel_identity *create_or_get_tunnel_identity(char* identifier, char* filename)
     tunnel_identity *id = find_tunnel_identity(identifier);
 
     if (id != NULL) {
+        if (filename != NULL) {
+            id->Status = strdup(instance_status_name(instance_status_ok));
+        }
         return id;
     } else {
         tunnel_identity *tnl_id = calloc(1, sizeof(struct tunnel_identity_s));
         tnl_id->Identifier = strdup(identifier);
         if (filename != NULL) {
+            tnl_id->Status = strdup(instance_status_name(instance_status_ok));
+
             char* extension = strstr(filename, ".json");
             int length = (int) (extension - filename);
             tnl_id->FingerPrint = calloc(length + 1, sizeof(char));
-
-            // snprintf is not assigning null char in windows, so assigning null char manually
             char fingerprint[FILENAME_MAX];
             memcpy(fingerprint, filename, length);
             fingerprint[length] = '\0';
             snprintf(tnl_id->FingerPrint, length+1, "%s", fingerprint);
+
             tnl_id->Name = calloc(length + 1, sizeof(char));
             snprintf(tnl_id->Name, length+1, "%s", fingerprint);
         }
@@ -361,7 +367,9 @@ tunnel_identity_array get_tunnel_identities() {
 
     int idx = 0;
     MODEL_MAP_FOREACH(id, tnl_id, &tnl_identity_map) {
-        tnl_id_arr[idx++] = tnl_id;
+        if (tnl_id->Status != NULL && strcmp(tnl_id->Status, instance_status_name(instance_status_ok)) == 0) {
+            tnl_id_arr[idx++] = tnl_id;
+        }
     }
 
     return tnl_id_arr;
