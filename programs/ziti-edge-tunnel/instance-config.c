@@ -116,10 +116,15 @@ bool save_tunnel_status_to_file() {
                 if (backup_config == NULL) {
                     ZITI_LOG(ERROR, "Could not create backup config file %s", bkp_config_file_name);
                 } else {
-                    char buffer[MIN_BUFFER_LEN];
-                    while (fread(buffer, sizeof(char), MIN_BUFFER_LEN-1, config) != NULL) {
-                        buffer[MIN_BUFFER_LEN-1] = '\0';
+                    while (true) {
+                        char buffer[MIN_BUFFER_LEN];
+                        if (fread(buffer, sizeof(char), MIN_BUFFER_LEN-1, config) == NULL) {
+                            break;
+                        }
+                        int index = strlen(buffer);
+                        buffer[index] = '\0';
                         fwrite(buffer, sizeof(char), strlen(buffer), backup_config);
+                        memset(buffer, 0, MIN_BUFFER_LEN);
                     }
 
                     fclose(backup_config);
@@ -136,9 +141,10 @@ bool save_tunnel_status_to_file() {
                 char* tunnel_status_data = tunnel_status;
                 for (int i =0; i< json_len; i=i+MIN_BUFFER_LEN-1, tunnel_status_data=tunnel_status_data+MIN_BUFFER_LEN-1) {
                     char buffer[MIN_BUFFER_LEN];
-                    snprintf(buffer, MIN_BUFFER_LEN-1,"%s", tunnel_status_data);
-                    buffer[MIN_BUFFER_LEN-1] = '\0';
-                    fwrite(buffer, sizeof(char), strlen(buffer), config);
+                    memcpy(buffer, tunnel_status_data, MIN_BUFFER_LEN-1);
+                    int data_length = strlen(buffer);
+                    buffer[data_length] = '\0';
+                    fwrite(buffer, 1, data_length, config);
                 }
                 saved = true;
                 fclose(config);
