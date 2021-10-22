@@ -52,7 +52,6 @@ int SvcStart(TCHAR *opt)
 
     if (!StartServiceCtrlDispatcher( DispatchTable ))
     {
-        printf("The service is either started from commandline or stopped by SCM");
         return 0;
     }
 }

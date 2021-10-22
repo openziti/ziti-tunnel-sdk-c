@@ -60,10 +60,11 @@ bool load_config_from_file(char* config_file_name) {
     return loaded;
 }
 
-bool load_tunnel_status_from_file() {
+bool load_tunnel_status_from_file(uv_loop_t* ziti_loop) {
     char* config_path = get_system_config_path();
 
-    int check = mkdir(config_path);
+    uv_fs_t fs;
+    int check = uv_fs_mkdir(ziti_loop, &fs, config_path, 0, NULL);
     if (check == 0) {
         ZITI_LOG(TRACE,"config path is created at %s", config_path);
     } else {
@@ -118,7 +119,8 @@ bool save_tunnel_status_to_file() {
                 } else {
                     while (true) {
                         char buffer[MIN_BUFFER_LEN];
-                        if (fread(buffer, sizeof(char), MIN_BUFFER_LEN-1, config) == NULL) {
+                        size_t size = fread(buffer, sizeof(char), MIN_BUFFER_LEN-1, config);
+                        if (size <= 0) {
                             break;
                         }
                         int index = strlen(buffer);

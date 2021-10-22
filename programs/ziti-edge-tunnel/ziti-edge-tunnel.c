@@ -797,7 +797,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     if (config_dir != NULL) {
         set_identifier_path(config_dir);
         initialize_instance_config();
-        load_tunnel_status_from_file();
+        load_tunnel_status_from_file(ziti_loop);
     }
 #endif
     tunnel_status *tnl_status = get_tunnel_status();
@@ -1715,6 +1715,7 @@ int main(int argc, char *argv[]) {
     // started_by_scm will be set to true only if scm initializes the config value
     // if the service is started from cmd line, SvcStart will return immediately and started_by_scm will be set to false. In this case tunnel can be run normally
     if (started_by_scm) {
+        printf("The service is stopped by SCM");
         return 0;
     }
 #endif

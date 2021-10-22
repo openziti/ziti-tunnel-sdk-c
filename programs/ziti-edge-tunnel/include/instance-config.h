@@ -17,7 +17,7 @@
 #ifndef ZITI_TUNNEL_SDK_C_INSTANCE_CONFIG_H
 #define ZITI_TUNNEL_SDK_C_INSTANCE_CONFIG_H
 
-bool load_tunnel_status_from_file();
+bool load_tunnel_status_from_file(uv_loop_t *ziti_loop);
 bool save_tunnel_status_to_file();
 bool initialize_instance_config();
 void cleanup_instance_config();
