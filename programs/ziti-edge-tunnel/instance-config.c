@@ -123,10 +123,7 @@ bool save_tunnel_status_to_file() {
                         if (size <= 0) {
                             break;
                         }
-                        // buffer[size] = 0;
                         fwrite(buffer, sizeof(char), strlen(buffer), backup_config);
-                        // memset(buffer, 0, MIN_BUFFER_LEN);
-
                     }
 
                     fclose(backup_config);
@@ -144,8 +141,6 @@ bool save_tunnel_status_to_file() {
                 for (int i =0; i< json_len; i=i+MIN_BUFFER_LEN-1, tunnel_status_data=tunnel_status_data+MIN_BUFFER_LEN-1) {
                     char buffer[MIN_BUFFER_LEN] = {0};
                     memcpy(buffer, tunnel_status_data, (MIN_BUFFER_LEN-1));
-                    // int data_length = strlen(buffer);
-                    // buffer[data_length] = '\0';
                     fwrite(buffer, 1, strlen(buffer), config);
                 }
                 saved = true;
