@@ -24,7 +24,7 @@ extern "C" {
 #endif
 
 #define TUNNEL_CONFIG(XX, ...) \
-XX(ZtAPI, string, none, ZtAPI, __VA_ARGS__) \
+XX(ZtAPI, string, none, ztAPI, __VA_ARGS__) \
 XX(ConfigTypes, string, array, ConfigTypes, __VA_ARGS__)
 
 #define TUNNEL_METRICS(XX, ...) \
@@ -37,7 +37,7 @@ XX(Identifier, string, none, Identifier, __VA_ARGS__) \
 XX(FingerPrint, string, none, FingerPrint, __VA_ARGS__) \
 XX(Active, bool, none, Active, __VA_ARGS__) \
 XX(Loaded, bool, none, Loaded, __VA_ARGS__) \
-XX(Config, tunnel_config, none, Config, __VA_ARGS__) \
+XX(Config, tunnel_config, ptr, Config, __VA_ARGS__) \
 XX(ControllerVersion, string, none, ControllerVersion, __VA_ARGS__) \
 XX(Status, string, none, Status, __VA_ARGS__) \
 XX(MfaEnabled, bool, none, MfaEnabled, __VA_ARGS__) \

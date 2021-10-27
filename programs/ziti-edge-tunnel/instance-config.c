@@ -122,11 +122,13 @@ bool save_tunnel_status_to_file() {
                         size_t size = fread(buffer, sizeof(char), MIN_BUFFER_LEN-1, config);
                         if (size <= 0) {
                             break;
+                        } else {
+                            int index = (int) strlen(buffer);
+                            buffer[index] = '\0';
+                            fwrite(buffer, sizeof(char), strlen(buffer), backup_config);
+                            memset(buffer, 0, MIN_BUFFER_LEN);
                         }
-                        int index = strlen(buffer);
-                        buffer[index] = '\0';
-                        fwrite(buffer, sizeof(char), strlen(buffer), backup_config);
-                        memset(buffer, 0, MIN_BUFFER_LEN);
+
                     }
 
                     fclose(backup_config);
@@ -142,10 +144,10 @@ bool save_tunnel_status_to_file() {
             } else {
                 char* tunnel_status_data = tunnel_status;
                 for (int i =0; i< json_len; i=i+MIN_BUFFER_LEN-1, tunnel_status_data=tunnel_status_data+MIN_BUFFER_LEN-1) {
-                    char buffer[MIN_BUFFER_LEN];
-                    memcpy(buffer, tunnel_status_data, MIN_BUFFER_LEN-1);
+                    char buffer[MIN_BUFFER_LEN] = {0};
+                    memcpy(buffer, tunnel_status_data, (MIN_BUFFER_LEN-1));
                     int data_length = strlen(buffer);
-                    buffer[data_length] = '\0';
+                    // buffer[data_length] = '\0';
                     fwrite(buffer, 1, data_length, config);
                 }
                 saved = true;
@@ -156,6 +158,7 @@ bool save_tunnel_status_to_file() {
             ZITI_LOG(TRACE, "Cleaning up resources used for the backup of tunnel config file %s", config_file_name);
         }
         free(config_file_name);
+        free(bkp_config_file_name);
         free(config_path);
    }
     free(tunnel_status);

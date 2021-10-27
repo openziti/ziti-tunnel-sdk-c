@@ -42,8 +42,8 @@ void set_identifier_path(char* id_path) {
 }
 
 char* get_config_file_name(char* config_path) {
-    char* config_file_name = calloc(FILENAME_MAX, sizeof(char));
     if (config_path != NULL) {
+        char* config_file_name = calloc(FILENAME_MAX, sizeof(char));
         snprintf(config_file_name, FILENAME_MAX, "%s/config.json", config_path);
         return config_file_name;
     } else {
@@ -53,8 +53,8 @@ char* get_config_file_name(char* config_path) {
 }
 
 char* get_backup_config_file_name(char* config_path) {
-    char* bkp_config_file_name = calloc(FILENAME_MAX, sizeof(char));
     if (config_path != NULL) {
+        char* bkp_config_file_name = calloc(FILENAME_MAX, sizeof(char));
         snprintf(bkp_config_file_name, FILENAME_MAX, "%s/config.json.backup", config_path);
         return bkp_config_file_name;
     } else {
