@@ -48,4 +48,6 @@ void set_log_level(char* log_level);
 
 void set_service_version();
 
+char* get_log_level();
+
 #endif //ZITI_TUNNEL_SDK_C_INSTANCE_H

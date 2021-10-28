@@ -559,7 +559,15 @@ void set_ip_info(uint32_t dns_ip, uint32_t tun_ip, int bits) {
 
 void set_log_level(char* log_level) {
     if (tnl_status.LogLevel) free(tnl_status.LogLevel);
-    tnl_status.LogLevel = log_level;
+    tnl_status.LogLevel = strdup(log_level);
+}
+
+char* get_log_level() {
+    if (tnl_status.LogLevel) {
+        return tnl_status.LogLevel;
+    } else {
+        return NULL;
+    }
 }
 
 void set_service_version() {

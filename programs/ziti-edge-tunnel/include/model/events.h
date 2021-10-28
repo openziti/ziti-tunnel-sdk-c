@@ -90,9 +90,19 @@ XX(disconnected, __VA_ARGS__)
 #define INSTANCE_STATUS(XX, ...) \
 XX(ok, __VA_ARGS__)
 
+#define LOG_LEVEL(XX, ...) \
+XX(none, __VA_ARGS__) \
+XX(error, __VA_ARGS__) \
+XX(warn, __VA_ARGS__) \
+XX(info, __VA_ARGS__) \
+XX(debug, __VA_ARGS__) \
+XX(verbose, __VA_ARGS__) \
+XX(trace, __VA_ARGS__)
+
 DECLARE_ENUM(event_severity, EVENT_SEVERITY)
 DECLARE_ENUM(event, EVENT_ACTIONS)
 DECLARE_ENUM(instance_status, INSTANCE_STATUS)
+DECLARE_ENUM(log_level, LOG_LEVEL)
 DECLARE_MODEL(status_event, STATUS_EVENT)
 DECLARE_MODEL(action_event, ACTION_EVENT)
 DECLARE_MODEL(tunnel_status_event, TUNNEL_STATUS_EVENT)

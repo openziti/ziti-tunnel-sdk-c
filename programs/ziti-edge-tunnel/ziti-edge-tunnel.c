@@ -90,6 +90,7 @@ static bool started_by_scm = false;
 uv_loop_t *main_ziti_loop;
 
 IMPL_ENUM(event, EVENT_ACTIONS)
+IMPL_ENUM(log_level, LOG_LEVEL)
 
 #if _WIN32
 static char sockfile[] = "\\\\.\\pipe\\ziti-edge-tunnel.sock";
@@ -955,6 +956,8 @@ static void run(int argc, char *argv[]) {
         multi_writer = false;
     }
     init = log_init(ziti_loop, multi_writer);
+#elif __linux__
+    init = log_init(ziti_loop, false);
 #endif
 
     uint32_t ip[4];
@@ -981,12 +984,17 @@ static void run(int argc, char *argv[]) {
     signal(SIGPIPE, SIG_IGN);
 #endif
 
+    int log_lvl_val = ZITI_LOG_DEFAULT_LEVEL;
 #if _WIN32 || __linux__
     set_ip_info(dns_ip, tun_ip, bits);
+    char* log_lvl = get_log_level();
+    if (log_lvl != NULL) {
+        log_lvl_val = log_level_value_of(log_lvl);
+    }
 #endif
 
     if (init) {
-        ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, ziti_log_writer);
+        ziti_log_init(ziti_loop, log_lvl_val, ziti_log_writer);
         struct tm *start_time = get_log_start_time();
         char time_val[32];
         snprintf(time_val, sizeof(time_val), "%04d-%02d-%02d %02d:%02d:%02d",
@@ -1002,6 +1010,7 @@ static void run(int argc, char *argv[]) {
         ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
     }
 
+    set_log_level(log_level_name(ziti_log_level()));
     ziti_tunnel_set_log_level(ziti_log_level());
     ziti_tunnel_set_logger(ziti_logger);
 
