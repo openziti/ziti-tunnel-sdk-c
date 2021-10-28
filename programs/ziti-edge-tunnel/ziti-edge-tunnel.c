@@ -46,7 +46,7 @@
 
 extern dns_manager *get_dnsmasq_manager(const char* path);
 
-static int dns_miss_status = DNS_NXDOMAIN;
+static int dns_miss_status = DNS_REFUSE;
 static int dns_fallback(const char *name, void *ctx, struct in_addr* addr);
 
 static void send_message_to_tunnel();
@@ -123,6 +123,7 @@ static int sizeof_event_clients_list() {
         }
         if (del_event_client) {
             LIST_REMOVE(del_event_client, _next_event);
+            free(del_event_client);
             current_size--;
         } else {
             // break from for loop
@@ -161,17 +162,12 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
     ZITI_LOG(INFO, "resp[%d,len=%zd] = %.*s",
             result->success, json_len, (int)json_len, json, result->data);
 
-    if (result->data) {
-        free(result->data);
-    }
-
     if (uv_is_active((const uv_handle_t *) ctx)) {
         uv_buf_t b = uv_buf_init(json, json_len);
         uv_write_t *wr = calloc(1, sizeof(uv_write_t));
         wr->data = b.base;
         uv_write(wr, (uv_stream_t *) ctx, &b, 1, on_cmd_write);
     }
-
 }
 
 static void on_cmd(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
@@ -185,8 +181,9 @@ static void on_cmd(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
         }
         if (del_ipc_client) {
             LIST_REMOVE(del_ipc_client, _next_ipc_cmd);
+            free(del_ipc_client);
         }
-        uv_close((uv_handle_t *) s, NULL);
+        uv_close((uv_handle_t *) s, (uv_close_cb) free);
         ZITI_LOG(WARN,"IPC client connection closed, count: %d", sizeof_ipc_clients_list());
 
     } else {
@@ -287,7 +284,8 @@ void on_write_event(uv_write_t* req, int status) {
             if (event_client) {
                 uv_close((uv_handle_t *) event_client->event_client_conn, (uv_close_cb) free);
                 event_client->event_client_conn = NULL;
-                ZITI_LOG(WARN,"Events client connection closed, count : %d", sizeof_event_clients_list());
+                int current_event_connection_count = sizeof_event_clients_list();
+                ZITI_LOG(WARN,"Events client connection closed, count : %d", current_event_connection_count);
 
             }
 
@@ -329,7 +327,8 @@ static void send_events_message(const void *message, to_json_fn to_json_f, bool 
                 if (err == UV_EPIPE) {
                     uv_close((uv_handle_t *) event_client->event_client_conn, (uv_close_cb) free);
                     event_client->event_client_conn = NULL;
-                    ZITI_LOG(WARN,"Events client connection closed, count : %d", sizeof_event_clients_list());
+                    int current_event_connection_count = sizeof_event_clients_list();
+                    ZITI_LOG(WARN,"Events client connection closed, count : %d", current_event_connection_count);
                 }
             }
         }
@@ -427,9 +426,9 @@ static char* addUnit(int count, char* unit) {
 
 static string convert_seconds_to_readable_format(int input) {
     int seconds = input % (60 * 60 * 24);
-    int hours = ((double) seconds / 60 / 60);
+    int hours = (int)((double) seconds / 60 / 60);
     seconds = input % (60 * 60);
-    int minutes = ((double) seconds)/ 60;
+    int minutes = (int)((double) seconds)/ 60;
     seconds = input % 60;
     char* result = calloc(MAXMESSAGELEN, sizeof(char));
     char* hours_unit = NULL;
