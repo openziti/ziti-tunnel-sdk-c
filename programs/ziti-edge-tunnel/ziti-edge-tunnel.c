@@ -46,7 +46,7 @@
 
 extern dns_manager *get_dnsmasq_manager(const char* path);
 
-static int dns_miss_status = DNS_NXDOMAIN;
+static int dns_miss_status = DNS_REFUSE;
 static int dns_fallback(const char *name, void *ctx, struct in_addr* addr);
 
 static void send_message_to_tunnel();
@@ -108,17 +108,12 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
     ZITI_LOG(INFO, "resp[%d,len=%zd] = %.*s",
             result->success, json_len, (int)json_len, json, result->data);
 
-    if (result->data) {
-        free(result->data);
-    }
-
     if (uv_is_active((const uv_handle_t *) &cmd_conn)) {
         uv_buf_t b = uv_buf_init(json, json_len);
         uv_write_t *wr = calloc(1, sizeof(uv_write_t));
         wr->data = b.base;
         uv_write(wr, (uv_stream_t *) &cmd_conn, &b, 1, on_cmd_write);
     }
-
 }
 
 static void on_cmd(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
@@ -344,9 +339,9 @@ static char* addUnit(int count, char* unit) {
 
 static string convert_seconds_to_readable_format(int input) {
     int seconds = input % (60 * 60 * 24);
-    int hours = ((double) seconds / 60 / 60);
+    int hours = (int)((double) seconds / 60 / 60);
     seconds = input % (60 * 60);
-    int minutes = ((double) seconds)/ 60;
+    int minutes = (int)((double) seconds)/ 60;
     seconds = input % 60;
     char* result = malloc(MAXMESSAGELEN);
     char* hours_unit = NULL;
