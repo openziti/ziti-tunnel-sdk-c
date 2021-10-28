@@ -950,14 +950,12 @@ static void run(int argc, char *argv[]) {
 #endif
     bool init = false;
 
-#if _WIN32
+#if _WIN32 || __linux__
     bool multi_writer = true;
     if (started_by_scm) {
         multi_writer = false;
     }
     init = log_init(ziti_loop, multi_writer);
-#elif __linux__
-    init = log_init(ziti_loop, false);
 #endif
 
     uint32_t ip[4];
