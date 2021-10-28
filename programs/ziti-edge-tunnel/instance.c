@@ -19,6 +19,7 @@
 #include <time.h>
 #include <config-utils.h>
 #include "model/events.h"
+#include "lwip/ip_addr.h"
 
 model_map tnl_identity_map = {0};
 static const char* CFG_INTERCEPT_V1 = "intercept.v1";
@@ -444,14 +445,7 @@ void set_mfa_timeout_rem(tunnel_identity *tnl_id) {
 
 }
 
-void initialize_tunnel_status() {
-    tnl_status.Active = true;
-    tnl_status.Duration = 0;
-    uv_timeval64_t now;
-    uv_gettimeofday(&now);
-    tnl_status.StartTime.tv_sec = now.tv_sec;
-    tnl_status.StartTime.tv_usec = now.tv_usec;
-
+void set_identifier_from_identities() {
     if (tnl_status.Identities == NULL) {
         return;
     }
@@ -468,6 +462,16 @@ void initialize_tunnel_status() {
     }
 }
 
+void initialize_tunnel_status() {
+    tnl_status.Active = true;
+    tnl_status.Duration = 0;
+    uv_timeval64_t now;
+    uv_gettimeofday(&now);
+    tnl_status.StartTime.tv_sec = now.tv_sec;
+    tnl_status.StartTime.tv_usec = now.tv_usec;
+
+}
+
 bool load_tunnel_status(char* config_data) {
     if (parse_tunnel_status(&tnl_status, config_data, strlen(config_data)) != 0) {
         free(config_data);
@@ -476,6 +480,7 @@ bool load_tunnel_status(char* config_data) {
     }
     free(config_data);
     initialize_tunnel_status();
+    set_identifier_from_identities();
     return true;
 }
 
@@ -527,6 +532,41 @@ void update_mfa_time(char* identifier) {
     }
 }
 
+void set_ip_info(uint32_t dns_ip, uint32_t tun_ip, int bits) {
+    tnl_status.TunIpv4Mask = bits;
+
+    if (tnl_status.TunIpv4) free(tnl_status.TunIpv4);
+    ip_addr_t tun_ip4 = IPADDR4_INIT(tun_ip);
+    tnl_status.TunIpv4 = strdup(ipaddr_ntoa(&tun_ip4));
+
+    if (tnl_status.IpInfo) {
+        if (tnl_status.IpInfo->Ip) free(tnl_status.IpInfo->Ip);
+        if (tnl_status.IpInfo->DNS) free(tnl_status.IpInfo->DNS);
+        free(tnl_status.IpInfo);
+    }
+    ip_addr_t dns_ip4 = IPADDR4_INIT(dns_ip);
+    tnl_status.IpInfo = calloc(1, sizeof(ip_info));
+    tnl_status.IpInfo->Ip = strdup(ipaddr_ntoa(&dns_ip4));
+    tnl_status.IpInfo->DNS = strdup(ipaddr_ntoa(&dns_ip4));
+    tnl_status.IpInfo->MTU = 65535;
+
+    if (tnl_status.IpInfo->Subnet) free(tnl_status.IpInfo->Subnet);
+    uint32_t netmask = (0xFFFFFFFFUL << (32 - bits)) & 0xFFFFFFFFUL;
+    netmask = htonl(netmask);
+    tnl_status.IpInfo->Subnet = strdup(ipaddr_ntoa(&netmask));
+
+}
+
+void set_log_level(char* log_level) {
+    if (tnl_status.LogLevel) free(tnl_status.LogLevel);
+    tnl_status.LogLevel = log_level;
+}
+
+void set_service_version() {
+    if (tnl_status.ServiceVersion) free(tnl_status.ServiceVersion);
+    tnl_status.ServiceVersion = calloc(1, sizeof(service_version));
+}
+
 // ************** TUNNEL BROADCAST MESSAGES
 IMPL_MODEL(tunnel_identity, TUNNEL_IDENTITY)
 IMPL_MODEL(tunnel_config, TUNNEL_CONFIG)
@@ -536,3 +576,5 @@ IMPL_MODEL(tunnel_port_range, TUNNEL_PORT_RANGE)
 IMPL_MODEL(tunnel_posture_check, TUNNEL_POSTURE_CHECK)
 IMPL_MODEL(tunnel_service, TUNNEL_SERVICE)
 IMPL_MODEL(tunnel_status, TUNNEL_STATUS)
+IMPL_MODEL(ip_info, IP_INFO)
+IMPL_MODEL(service_version, SERVICE_VERSION)

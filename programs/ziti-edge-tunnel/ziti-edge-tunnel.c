@@ -570,6 +570,7 @@ static void load_identities_complete(uv_work_t * wr, int status) {
         start_metrics_timer(wr->loop);
     }
 #if _WIN32 || __linux__
+    // should be the last line in this function as it calls the mutex/lock
     save_tunnel_status_to_file();
 #endif
 }
@@ -814,15 +815,6 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
 
     tunneler_context tunneler = ziti_tunneler_init(&tunneler_opts, ziti_loop);
 
-    // generate tunnel status instance and save active state and start time
-#if _WIN32 || __linux__
-    if (config_dir != NULL) {
-        set_identifier_path(config_dir);
-        initialize_instance_config();
-        load_tunnel_status_from_file(ziti_loop);
-    }
-#endif
-
     ip_addr_t dns_ip4 = IPADDR4_INIT(dns_ip);
     ziti_dns_setup(tunneler, ipaddr_ntoa(&dns_ip4), ip_range);
     ziti_dns_set_fallback(ziti_loop, dns_fallback, NULL);
@@ -944,6 +936,26 @@ static int dns_fallback(const char *name, void *ctx, struct in_addr* addr) {
 }
 
 static void run(int argc, char *argv[]) {
+    uv_loop_t *ziti_loop = uv_default_loop();
+    main_ziti_loop = ziti_loop;
+
+    // generate tunnel status instance and save active state and start time
+#if _WIN32 || __linux__
+    if (config_dir != NULL) {
+        set_identifier_path(config_dir);
+        initialize_instance_config();
+        load_tunnel_status_from_file(ziti_loop);
+    }
+#endif
+    bool init = false;
+
+#if _WIN32
+    bool multi_writer = true;
+    if (started_by_scm) {
+        multi_writer = false;
+    }
+    init = log_init(ziti_loop, multi_writer);
+#endif
 
     uint32_t ip[4];
     int bits;
@@ -968,18 +980,11 @@ static void run(int argc, char *argv[]) {
     // which causes valgrind to freak out
     signal(SIGPIPE, SIG_IGN);
 #endif
-    uv_loop_t *ziti_loop = uv_default_loop();
-    bool init = false;
 
-#if _WIN32
-    bool multi_writer = true;
-    if (started_by_scm) {
-        multi_writer = false;
-    }
-    init = log_init(ziti_loop, multi_writer);
+#if _WIN32 || __linux__
+    set_ip_info(dns_ip, tun_ip, bits);
 #endif
 
-    main_ziti_loop = ziti_loop;
     if (init) {
         ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, ziti_log_writer);
         struct tm *start_time = get_log_start_time();
