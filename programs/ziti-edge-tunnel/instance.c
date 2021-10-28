@@ -53,10 +53,15 @@ tunnel_identity *create_or_get_tunnel_identity(char* identifier, char* filename)
             tnl_id->Status = strdup(instance_status_name(instance_status_ok));
 
             char* extension = strstr(filename, ".json");
-            int length = (int) (extension - filename);
+            int length;
+            if (extension != NULL) {
+                length = (int) (extension - filename);
+            } else {
+                length = strlen(filename);
+            }
             tnl_id->FingerPrint = calloc(length + 1, sizeof(char));
             char fingerprint[FILENAME_MAX];
-            memcpy(fingerprint, filename, length);
+            memcpy(&fingerprint, filename, length);
             fingerprint[length] = '\0';
             snprintf(tnl_id->FingerPrint, length+1, "%s", fingerprint);
 
@@ -580,18 +585,25 @@ void set_service_version() {
     char* version = ziti_tunneler_version();
     if (version != NULL && strlen(version) > 0) {
         char* revision_idx = strstr(version, "-");
-        int ver_length = (int) (revision_idx - version);
+        int ver_length;
+        if (revision_idx != NULL) {
+            ver_length = (int) (revision_idx - version);
+        } else {
+            ver_length = strlen(version);
+        }
 
         tnl_status.ServiceVersion->Version = calloc(ver_length + 1, sizeof(char));
         char service_version[ver_length+1];
-        memcpy(service_version, version, ver_length);
+        memcpy(&service_version, version, ver_length);
         service_version[ver_length] = '\0';
         snprintf(tnl_status.ServiceVersion->Version, ver_length+1, "%s", service_version);
 
-        int rev_length = strlen(version) - ver_length - 1; // to reduce the space used for "-"
-        revision_idx++;
-        tnl_status.ServiceVersion->Revision = calloc(rev_length + 1, sizeof(char));
-        snprintf(tnl_status.ServiceVersion->Revision, rev_length+1, "%s", revision_idx);
+        if (revision_idx != NULL) {
+            int rev_length = strlen(version) - ver_length - 1; // to reduce the space used for "-"
+            revision_idx++;
+            tnl_status.ServiceVersion->Revision = calloc(rev_length + 1, sizeof(char));
+            snprintf(tnl_status.ServiceVersion->Revision, rev_length + 1, "%s", revision_idx);
+        }
 
     }
 
