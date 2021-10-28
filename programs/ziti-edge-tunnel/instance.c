@@ -20,6 +20,7 @@
 #include <config-utils.h>
 #include "model/events.h"
 #include "lwip/ip_addr.h"
+#include "ziti/ziti_tunnel.h"
 
 model_map tnl_identity_map = {0};
 static const char* CFG_INTERCEPT_V1 = "intercept.v1";
@@ -540,8 +541,7 @@ void set_ip_info(uint32_t dns_ip, uint32_t tun_ip, int bits) {
     tnl_status.TunIpv4 = strdup(ipaddr_ntoa(&tun_ip4));
 
     if (tnl_status.IpInfo) {
-        if (tnl_status.IpInfo->Ip) free(tnl_status.IpInfo->Ip);
-        if (tnl_status.IpInfo->DNS) free(tnl_status.IpInfo->DNS);
+        free_ip_info(tnl_status.IpInfo);
         free(tnl_status.IpInfo);
     }
     ip_addr_t dns_ip4 = IPADDR4_INIT(dns_ip);
@@ -571,8 +571,31 @@ char* get_log_level() {
 }
 
 void set_service_version() {
-    if (tnl_status.ServiceVersion) free(tnl_status.ServiceVersion);
+    if (tnl_status.ServiceVersion) {
+        free_service_version(tnl_status.ServiceVersion);
+        free(tnl_status.ServiceVersion);
+    }
     tnl_status.ServiceVersion = calloc(1, sizeof(service_version));
+
+    char* version = ziti_tunneler_version();
+    if (version != NULL && strlen(version) > 0) {
+        char* revision_idx = strstr(version, "-");
+        int ver_length = (int) (revision_idx - version);
+
+        tnl_status.ServiceVersion->Version = calloc(ver_length + 1, sizeof(char));
+        char service_version[ver_length+1];
+        memcpy(service_version, version, ver_length);
+        service_version[ver_length] = '\0';
+        snprintf(tnl_status.ServiceVersion->Version, ver_length+1, "%s", service_version);
+
+        int rev_length = strlen(version) - ver_length - 1; // to reduce the space used for "-"
+        revision_idx++;
+        tnl_status.ServiceVersion->Revision = calloc(rev_length + 1, sizeof(char));
+        snprintf(tnl_status.ServiceVersion->Revision, rev_length+1, "%s", revision_idx);
+
+    }
+
+    tnl_status.ServiceVersion->BuildDate = strdup(ziti_tunneler_build_date());
 }
 
 // ************** TUNNEL BROADCAST MESSAGES

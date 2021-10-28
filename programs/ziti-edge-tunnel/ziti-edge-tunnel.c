@@ -984,14 +984,18 @@ static void run(int argc, char *argv[]) {
     signal(SIGPIPE, SIG_IGN);
 #endif
 
-    int log_lvl_val = ZITI_LOG_DEFAULT_LEVEL;
-#if _WIN32 || __linux__
+    // set ip info into instance
     set_ip_info(dns_ip, tun_ip, bits);
+
+    // set log level from instance/config, if NULL is returned, the default log level will be used
+    int log_lvl_val = ZITI_LOG_DEFAULT_LEVEL;
     char* log_lvl = get_log_level();
     if (log_lvl != NULL) {
         log_lvl_val = log_level_value_of(log_lvl);
     }
-#endif
+
+    // set the service version in instance
+    set_service_version();
 
     if (init) {
         ziti_log_init(ziti_loop, log_lvl_val, ziti_log_writer);

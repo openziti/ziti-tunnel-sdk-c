@@ -170,6 +170,8 @@ extern int ziti_tunneler_close_write(tunneler_io_context tnlr_io_ctx);
 
 extern const char* ziti_tunneler_version();
 
+extern const char* ziti_tunneler_build_date();
+
 extern void ziti_tunnel_set_logger(tunnel_logger_f logger);
 extern void ziti_tunnel_set_log_level(int lvl);
 

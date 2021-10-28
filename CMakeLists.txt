@@ -21,6 +21,22 @@ project(ziti-tunnel-sdk-c
 include(CPack)
 set(CPACK_PACKAGE_VENDOR "NetFoundry")
 
+# capture build date
+if (WIN32)
+    execute_process(
+            COMMAND	powershell get-date -uf '+%a-%m/%d/%Y-%H:%M:%S-%Z'
+            OUTPUT_VARIABLE	BUILD_DATE
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+else()
+    execute_process(
+            COMMAND	date +%a-%m/%d/%Y-%H:%M:%S-%Z
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            OUTPUT_VARIABLE BUILD_DATE
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+endif()
+
 if (MSVC)
     add_compile_options(-Zi)
 else()
