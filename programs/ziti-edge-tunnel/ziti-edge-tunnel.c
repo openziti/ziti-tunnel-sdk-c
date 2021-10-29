@@ -312,9 +312,8 @@ static void send_events_message(const void *message, to_json_fn to_json_f, bool 
 
     if (!LIST_EMPTY(&event_clients_list)) {
         struct event_conn_s *event_client;
-        int events_count = 0;
+        int events_deleted = 0;
         LIST_FOREACH(event_client, &event_clients_list, _next_event) {
-            ++events_count;
             int err = 0;
             if (event_client->event_client_conn != NULL) {
                 uv_buf_t buf = uv_buf_init(strdup(json), data_len);
@@ -327,11 +326,16 @@ static void send_events_message(const void *message, to_json_fn to_json_f, bool 
                 if (err == UV_EPIPE) {
                     uv_close((uv_handle_t *) event_client->event_client_conn, (uv_close_cb) free);
                     event_client->event_client_conn = NULL;
-                    int current_event_connection_count = sizeof_event_clients_list();
-                    ZITI_LOG(WARN,"Events client connection closed, count : %d", current_event_connection_count);
+                    events_deleted++;
+                    ZITI_LOG(WARN,"Events client connection closed");
                 }
             }
         }
+        if (events_deleted > 0) {
+            int current_event_connection_count = sizeof_event_clients_list();
+            ZITI_LOG(WARN,"Events client connection current count : %d", current_event_connection_count);
+        }
+
     }
     free(json);
 }
