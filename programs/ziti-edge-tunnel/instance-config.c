@@ -139,8 +139,12 @@ bool save_tunnel_status_to_file() {
             } else {
                 char* tunnel_status_data = tunnel_status;
                 for (int i =0; i< json_len; i=i+MIN_BUFFER_LEN-1, tunnel_status_data=tunnel_status_data+MIN_BUFFER_LEN-1) {
+                    size_t size = strlen(tunnel_status_data);
+                    if (size >= MIN_BUFFER_LEN) {
+                        size = MIN_BUFFER_LEN - 1;
+                    }
                     char buffer[MIN_BUFFER_LEN] = {0};
-                    memcpy(buffer, tunnel_status_data, (MIN_BUFFER_LEN-1));
+                    memcpy(buffer, tunnel_status_data, size);
                     fwrite(buffer, 1, strlen(buffer), config);
                 }
                 saved = true;
