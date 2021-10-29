@@ -229,7 +229,7 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
                 result.success = true;
             } else {
                 result.success = false;
-                result.error = malloc(sizeof(disable_id.path) + 35);
+                result.error = calloc(1, strlen(disable_id.path) + 35);
                 sprintf(result.error, "ziti instance for id %s is not found", disable_id.path);
             }
 
@@ -521,11 +521,11 @@ static void get_transfer_rates(const char *identifier, command_cb cb, void *ctx)
     id_metrics->identifier = strdup(identifier);
     int metrics_len = 6;
     if (up > 0) {
-        id_metrics->up = malloc((metrics_len + 1) * sizeof(char));
+        id_metrics->up = calloc((metrics_len + 1), sizeof(char));
         snprintf(id_metrics->up, metrics_len, "%.2lf", up);
     }
     if (down > 0) {
-        id_metrics->down = malloc((metrics_len + 1) * sizeof(char));
+        id_metrics->down = calloc((metrics_len + 1), sizeof(char));
         snprintf(id_metrics->down, metrics_len, "%.2lf", down);
     }
 
@@ -824,7 +824,6 @@ static void on_enable_mfa(ziti_context ztx, int status, ziti_mfa_enrollment *enr
     mfa_event *ev = calloc(1, sizeof(mfa_event));
     ev->operation = strdup(mfa_status_name(mfa_status_enrollment_challenge));
     ev->operation_type = mfa_status_enrollment_challenge;
-    ev->provisioning_url = calloc(strlen(enrollment->provisioning_url), sizeof(char));
     ev->provisioning_url = strdup(enrollment->provisioning_url);
     char **rc = enrollment->recovery_codes;
     int size = 0;
@@ -832,12 +831,11 @@ static void on_enable_mfa(ziti_context ztx, int status, ziti_mfa_enrollment *enr
         rc++;
         size++;
     }
-    ev->recovery_codes = malloc((size + 1) * sizeof(char *));
+    ev->recovery_codes = calloc((size + 1), sizeof(char *));
     int idx;
     for (idx=0; enrollment->recovery_codes[idx] !=0; idx++) {
         ev->recovery_codes[idx] = strdup(enrollment->recovery_codes[idx]);
     }
-    ev->recovery_codes[idx] = NULL;
     tunnel_status_event(TunnelEvent_MFAStatusEvent, status, ev, inst);
 
     free(req);
