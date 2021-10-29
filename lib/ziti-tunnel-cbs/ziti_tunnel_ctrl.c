@@ -229,7 +229,7 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
                 result.success = true;
             } else {
                 result.success = false;
-                result.error = calloc(1, sizeof(disable_id.path) + 35);
+                result.error = calloc(1, strlen(disable_id.path) + 35);
                 sprintf(result.error, "ziti instance for id %s is not found", disable_id.path);
             }
 
