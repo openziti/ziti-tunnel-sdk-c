@@ -660,7 +660,9 @@ static void on_event(const base_event *ev) {
                 id_event.Id->Active = true; // determine it from controller
                 if (zev->name) {
                     id_event.Id->Name = strdup(zev->name);
-                    id_event.Id->ControllerVersion = strdup(zev->version);
+                    if (zev->version != NULL) {
+                        id_event.Id->ControllerVersion = strdup(zev->version);
+                    }
                     id_event.Id->Config.ZtAPI = strdup(zev->controller);
                 }
                 controller_event.Action = strdup(event_name(event_connected));
