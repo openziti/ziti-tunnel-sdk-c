@@ -241,7 +241,7 @@ static void setTunnelPostureDataTimeout(tunnel_service *tnl_svc, ziti_service *s
             ziti_posture_query *pq = model_map_it_value(itr);
             tunnel_posture_check *pc = getTunnelPostureCheck(pq);
             tnl_svc->PostureChecks[idx++] = pc;
-            itr = model_map_it_next(itr);
+            itr = model_map_it_remove(itr);
         }
     }
 
@@ -313,6 +313,8 @@ static void setTunnelServiceAddress(tunnel_service *tnl_svc, ziti_service *servi
         for(int port_idx = 0; cfg_v1.port_ranges[port_idx]; port_idx++) {
             tnl_port_range_arr[port_idx] = getTunnelPortRange(cfg_v1.port_ranges[port_idx]);
         }
+        if (cfg_v1.addresses) free(cfg_v1.addresses);
+        if (cfg_v1.port_ranges) free(cfg_v1.port_ranges);
     }  else if ((cfg_json = ziti_service_get_raw_config(service, CFG_ZITI_TUNNELER_CLIENT_V1)) != NULL) {
         ZITI_LOG(TRACE, "ziti-tunneler-client.v1: %s", cfg_json);
         ziti_client_cfg_v1 zt_client_cfg_v1;
