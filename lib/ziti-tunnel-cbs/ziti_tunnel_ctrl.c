@@ -1014,6 +1014,7 @@ IMPL_MODEL(tunnel_mfa_recovery_codes, TNL_MFA_RECOVERY_CODES)
 IMPL_MODEL(tunnel_get_mfa_codes, TNL_GET_MFA_CODES)
 IMPL_MODEL(tunnel_get_identity_metrics, TNL_GET_IDENTITY_METRICS)
 IMPL_MODEL(tunnel_identity_metrics, TNL_IDENTITY_METRICS)
+IMPL_MODEL(tunnel_set_log_level, TUNNEL_SET_LOG_LEVEL)
 
 // ************** TUNNEL Events
 IMPL_ENUM(TunnelEvent, TUNNEL_EVENTS)

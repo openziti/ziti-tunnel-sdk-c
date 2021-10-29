@@ -180,6 +180,47 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
     }
 }
 
+static bool process_tunnel_commands(const tunnel_comand *cmd, command_cb cb, void *ctx) {
+    tunnel_result result = {
+            .success = false,
+            .error = NULL,
+            .data = NULL,
+    };
+    bool cmd_accepted = false;
+    switch (cmd->command) {
+        case TunnelCommand_SetLogLevel: {
+            cmd_accepted = true;
+
+            tunnel_set_log_level tunnel_set_log_level_cmd = {0};
+            if (cmd->data == NULL || parse_tunnel_set_log_level(&tunnel_set_log_level_cmd, cmd->data, strlen(cmd->data)) != 0) {
+                result.error = "invalid command";
+                result.success = false;
+                break;
+            }
+            log_level lvl = log_level_value_of(tunnel_set_log_level_cmd.loglevel);
+            if (lvl != NULL && ziti_log_level() != lvl) {
+                set_log_level(tunnel_set_log_level_cmd.loglevel);
+                ziti_log_set_level(lvl);
+                result.success = true;
+            } else {
+                result.error = "invalid loglevel";
+                result.success = false;
+                break;
+            }
+        }
+    }
+    if (cmd_accepted) {
+        cb(&result, ctx);
+#if _WIN32 || __linux__
+        // should be the last line in this function as it calls the mutex/lock
+        save_tunnel_status_to_file();
+#endif
+        return true;
+    } else {
+        return false;
+    }
+}
+
 static void on_cmd(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
     if (len < 0) {
         ZITI_LOG(WARN, "received from client - %s. Closing connection.", uv_err_name(len));
@@ -201,7 +242,10 @@ static void on_cmd(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
 
         tunnel_comand cmd = {0};
         if (parse_tunnel_comand(&cmd, b->base, len) == 0) {
-            CMD_CTRL->process(&cmd, on_command_resp, s);
+            int status = process_tunnel_commands(&cmd, on_command_resp, s);
+            if (!status) {
+                CMD_CTRL->process(&cmd, on_command_resp, s);
+            }
         } else {
             tunnel_result resp = {
                     .success = false,
@@ -1670,6 +1714,40 @@ static int get_mfa_codes_opts(int argc, char *argv[]) {
     return optind;
 }
 
+static int set_log_level_opts(int argc, char *argv[]) {
+    static struct option opts[] = {
+            {"loglevel", required_argument, NULL, 'l'},
+    };
+    int c, option_index, errors = 0;
+    optind = 0;
+
+    tunnel_set_log_level *log_level_options = calloc(1, sizeof(tunnel_set_log_level));
+    cmd = calloc(1, sizeof(tunnel_comand));
+    cmd->command = TunnelCommand_SetLogLevel;
+
+    while ((c = getopt_long(argc, argv, "l:",
+                            opts, &option_index)) != -1) {
+        switch (c) {
+            case 'l':
+                log_level_options->loglevel = optarg;
+                break;
+            default: {
+                fprintf(stderr, "Unknown option '%c'\n", c);
+                errors++;
+                break;
+            }
+        }
+    }
+    if (errors > 0) {
+        commandline_help(stderr);
+        exit(1);
+    }
+    size_t json_len;
+    cmd->data = tunnel_set_log_level_to_json(log_level_options, MODEL_JSON_COMPACT, &json_len);
+
+    return optind;
+}
+
 static void service_control(int argc, char *argv[]) {
 
 #if _WIN32
@@ -1761,7 +1839,7 @@ static CommandLine remove_mfa_cmd = make_command("remove_mfa", "Removes MFA regi
                                                  "\t-i|--identity\tidentity info for removing mfa\n"
                                                  "\t-c|--authcode\tauth code to verify mfa login\n", remove_mfa_opts, send_message_to_tunnel_fn);
 static CommandLine submit_mfa_cmd = make_command("submit_mfa", "Submit MFA code to authenticate to the controller", "[-i <identity>] [-c <code>]",
-                                                 "\t-i|--identity\tidentity info for removing mfa\n"
+                                                 "\t-i|--identity\tidentity info for submitting mfa\n"
                                                  "\t-c|--authcode\tauth code to authenticate mfa login\n", submit_mfa_opts, send_message_to_tunnel_fn);
 static CommandLine generate_mfa_codes_cmd = make_command("generate_mfa_codes", "Generate MFA codes", "[-i <identity>] [-c <code>]",
                                                  "\t-i|--identity\tidentity info for generating mfa codes\n"
@@ -1769,6 +1847,8 @@ static CommandLine generate_mfa_codes_cmd = make_command("generate_mfa_codes", "
 static CommandLine get_mfa_codes_cmd = make_command("get_mfa_codes", "Get MFA codes", "[-i <identity>] [-c <code>]",
                                                          "\t-i|--identity\tidentity info for fetching mfa codes\n"
                                                          "\t-c|--authcode\tauth code to authenticate the request for fetching mfa codes\n", get_mfa_codes_opts, send_message_to_tunnel_fn);
+static CommandLine set_log_level_cmd = make_command("set_log_level", "Set log level of the tunneler", "-l <level>",
+                                                 "\t-l|--loglevel\tlog level of the tunneler\n", set_log_level_opts, send_message_to_tunnel_fn);
 static CommandLine service_control_cmd = make_command("service_control", "execute service control functions for Ziti tunnel (required superuser access)",
                                           "-o|--operation <option>",
                                           "\t-o|--operation <option>\texecute the service control functions eg: install and uninstall (required)\n",
@@ -1787,6 +1867,7 @@ static CommandLine *main_cmds[] = {
         &submit_mfa_cmd,
         &generate_mfa_codes_cmd,
         &get_mfa_codes_cmd,
+        &set_log_level_cmd,
         &service_control_cmd,
         &ver_cmd,
         &help_cmd,
