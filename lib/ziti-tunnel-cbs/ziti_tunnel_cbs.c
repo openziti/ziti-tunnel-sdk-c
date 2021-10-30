@@ -439,7 +439,7 @@ intercept_ctx_t *new_intercept_ctx(tunneler_context tnlr_ctx, ziti_intercept_t *
                 intercept_ctx_add_protocol(i_ctx, config->protocols[i]);
             }
             for (i = 0; config->addresses[i] != NULL; i++) {
-                if ((ip = ziti_dns_register_hostname(config->addresses[i], zi_ctx)) != NULL)
+                if ((ip = ziti_dns_register_hostname(config->addresses[i], zi_ctx)) == NULL)
                     intercept_ctx_add_address(i_ctx, ip);
             }
             for (i = 0; config->port_ranges[i] != NULL; i++) {
