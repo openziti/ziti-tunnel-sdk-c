@@ -425,7 +425,7 @@ intercept_ctx_t *new_intercept_ctx(tunneler_context tnlr_ctx, ziti_intercept_t *
     const char *ip;
     switch (zi_ctx->cfg_desc->cfgtype) {
         case CLIENT_CFG_V1:
-            if((ip = ziti_dns_register_hostname(zi_ctx->cfg.client_v1.hostname, zi_ctx)) != NULL) {
+            if ((ip = ziti_dns_register_hostname(zi_ctx->cfg.client_v1.hostname, zi_ctx)) != NULL) {
                 intercept_ctx_add_protocol(i_ctx, "udp");
                 intercept_ctx_add_protocol(i_ctx, "tcp");
                 intercept_ctx_add_address(i_ctx, ip);
