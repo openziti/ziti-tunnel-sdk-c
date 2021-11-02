@@ -28,7 +28,10 @@ jobs:
         fetch-depth: '0'
     - name: install tools
       if: matrix.install != ''
-      run: sudo apt install ${{matrix.install}}
+      run: |
+        sudo apt update
+        sudo apt install ${{matrix.install}}
+
     - name: make build dir
       run: cmake -E make_directory ${{runner.workspace}}/build
     - name: configure cmake
