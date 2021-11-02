@@ -612,6 +612,15 @@ void set_service_version() {
     tnl_status.ServiceVersion->BuildDate = strdup(ziti_tunneler_build_date());
 }
 
+void set_tun_ipv4(char* tun_ip, int mask, bool addDns) {
+    if (tnl_status.TunIpv4 != NULL) free(tnl_status.TunIpv4);
+    tnl_status.TunIpv4 = strdup(tun_ip);
+
+    tnl_status.TunIpv4Mask = mask;
+
+    tnl_status.AddDns = addDns;
+}
+
 // ************** TUNNEL BROADCAST MESSAGES
 IMPL_MODEL(tunnel_identity, TUNNEL_IDENTITY)
 IMPL_MODEL(tunnel_config, TUNNEL_CONFIG)

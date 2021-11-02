@@ -20,6 +20,14 @@
 #include <ziti/ziti_model.h>
 #include "model/dtos.h"
 
+#ifndef MINTUNIPV4MASK
+#define MINTUNIPV4MASK 10
+#endif
+
+#ifndef MAXTUNIPV4MASK
+#define MAXTUNIPV4MASK 16
+#endif
+
 extern tunnel_identity *find_tunnel_identity(char* identifier);
 
 extern tunnel_identity *create_or_get_tunnel_identity(char* identifier, char* fingerprint) ;
@@ -49,5 +57,7 @@ void set_log_level(char* log_level);
 void set_service_version();
 
 char* get_log_level();
+
+void set_tun_ipv4(char* tun_ip, int mask, bool addDns);
 
 #endif //ZITI_TUNNEL_SDK_C_INSTANCE_H

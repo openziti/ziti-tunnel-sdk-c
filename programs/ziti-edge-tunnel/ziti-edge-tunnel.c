@@ -205,8 +205,28 @@ static bool process_tunnel_commands(const tunnel_comand *cmd, command_cb cb, voi
             } else {
                 result.error = "invalid loglevel";
                 result.success = false;
+            }
+            break;
+        }
+        case TunnelCommand_UpdateTunIP: {
+            cmd_accepted = true;
+
+            tunnel_tun_ip_v4 tunnel_tun_ip_v4_cmd = {0};
+            if (cmd->data == NULL || parse_tunnel_tun_ip_v4(&tunnel_tun_ip_v4_cmd, cmd->data, strlen(cmd->data)) != 0) {
+                result.error = "invalid command";
+                result.success = false;
                 break;
             }
+            if (tunnel_tun_ip_v4_cmd.mask < MINTUNIPV4MASK || tunnel_tun_ip_v4_cmd.mask > MAXTUNIPV4MASK) {
+                char error_msg[50];
+                snprintf(error_msg, sizeof(error_msg), "ipv4Mask should be between %d and %d", MINTUNIPV4MASK, MAXTUNIPV4MASK);
+                result.error = error_msg;
+                result.success = false;
+                break;
+            }
+            set_tun_ipv4(tunnel_tun_ip_v4_cmd.tunIP, tunnel_tun_ip_v4_cmd.mask, tunnel_tun_ip_v4_cmd.addDns);
+            result.success = true;
+            break;
         }
     }
     if (cmd_accepted) {
@@ -1748,6 +1768,52 @@ static int set_log_level_opts(int argc, char *argv[]) {
     return optind;
 }
 
+static int update_tun_ip_opts(int argc, char *argv[]) {
+    static struct option opts[] = {
+            {"tunip", optional_argument, NULL, 't'},
+            {"mask", optional_argument, NULL, 'm'},
+            {"addDNS", optional_argument, NULL, 'd'},
+    };
+    int c, option_index, errors = 0;
+    optind = 0;
+
+    tunnel_tun_ip_v4 *tun_ip_v4_options = calloc(1, sizeof(tunnel_tun_ip_v4));
+    cmd = calloc(1, sizeof(tunnel_comand));
+    cmd->command = TunnelCommand_UpdateTunIP;
+
+    while ((c = getopt_long(argc, argv, "t:m:d:",
+                            opts, &option_index)) != -1) {
+        switch (c) {
+            case 't':
+                tun_ip_v4_options->tunIP = optarg;
+                break;
+            case 'm':
+                tun_ip_v4_options->mask = (int) strtol(optarg, NULL, 10);;
+                break;
+            case 'd':
+                if (strcmp(optarg, "true") == 0 || strcmp(optarg, "t") == 0 ) {
+                    tun_ip_v4_options->addDns = true;
+                } else {
+                    tun_ip_v4_options->addDns = false;
+                }
+                break;
+            default: {
+                fprintf(stderr, "Unknown option '%c'\n", c);
+                errors++;
+                break;
+            }
+        }
+    }
+    if (errors > 0) {
+        commandline_help(stderr);
+        exit(1);
+    }
+    size_t json_len;
+    cmd->data = tunnel_tun_ip_v4_to_json(tun_ip_v4_options, MODEL_JSON_COMPACT, &json_len);
+
+    return optind;
+}
+
 static void service_control(int argc, char *argv[]) {
 
 #if _WIN32
@@ -1848,7 +1914,11 @@ static CommandLine get_mfa_codes_cmd = make_command("get_mfa_codes", "Get MFA co
                                                          "\t-i|--identity\tidentity info for fetching mfa codes\n"
                                                          "\t-c|--authcode\tauth code to authenticate the request for fetching mfa codes\n", get_mfa_codes_opts, send_message_to_tunnel_fn);
 static CommandLine set_log_level_cmd = make_command("set_log_level", "Set log level of the tunneler", "-l <level>",
-                                                 "\t-l|--loglevel\tlog level of the tunneler\n", set_log_level_opts, send_message_to_tunnel_fn);
+                                                    "\t-l|--loglevel\tlog level of the tunneler\n", set_log_level_opts, send_message_to_tunnel_fn);
+static CommandLine update_tun_ip_cmd = make_command("update_tun_ip", "Update tun ip of the tunneler", "[-t <tunip>] [-m <mask>] [-d <AddDNS>]",
+                                                    "\t-t|--tunip\ttun ipv4 of the tunneler\n"
+                                                    "\t-m|--mask\ttun ipv4 mask of the tunneler\n"
+                                                    "\t-d|--addDNS\tAdd Dns to the tunneler\n", update_tun_ip_opts, send_message_to_tunnel_fn);
 static CommandLine service_control_cmd = make_command("service_control", "execute service control functions for Ziti tunnel (required superuser access)",
                                           "-o|--operation <option>",
                                           "\t-o|--operation <option>\texecute the service control functions eg: install and uninstall (required)\n",
@@ -1868,6 +1938,7 @@ static CommandLine *main_cmds[] = {
         &generate_mfa_codes_cmd,
         &get_mfa_codes_cmd,
         &set_log_level_cmd,
+        &update_tun_ip_cmd,
         &service_control_cmd,
         &ver_cmd,
         &help_cmd,
@@ -1939,3 +2010,5 @@ IMPL_MODEL(tunnel_metrics_event, TUNNEL_METRICS_EVENT)
 IMPL_MODEL(tunnel_service_control, TUNNEL_SERVICE_CONTROL)
 IMPL_MODEL(notification_message, TUNNEL_NOTIFICATION_MESSAGE)
 IMPL_MODEL(notification_event, TUNNEL_NOTIFICATION_EVENT)
+IMPL_MODEL(tunnel_set_log_level, TUNNEL_SET_LOG_LEVEL)
+IMPL_MODEL(tunnel_tun_ip_v4, TUNNEL_TUN_IP_V4)
