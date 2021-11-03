@@ -612,13 +612,22 @@ void set_service_version() {
     tnl_status.ServiceVersion->BuildDate = strdup(ziti_tunneler_build_date());
 }
 
-void set_tun_ipv4(char* tun_ip, int mask, bool addDns) {
+void set_tun_ipv4_into_instance(char* tun_ip, int mask, bool addDns) {
     if (tnl_status.TunIpv4 != NULL) free(tnl_status.TunIpv4);
     tnl_status.TunIpv4 = strdup(tun_ip);
 
     tnl_status.TunIpv4Mask = mask;
 
     tnl_status.AddDns = addDns;
+}
+
+char* get_ip_range_from_config() {
+    char* ip_range = NULL;
+    if (tnl_status.TunIpv4 != NULL && tnl_status.TunIpv4Mask > 0) {
+        ip_range = calloc(30, sizeof(char));
+        snprintf(ip_range, 30 * sizeof(char), "%s/%d",tnl_status.TunIpv4, tnl_status.TunIpv4Mask);
+    }
+    return ip_range;
 }
 
 // ************** TUNNEL BROADCAST MESSAGES

@@ -224,7 +224,7 @@ static bool process_tunnel_commands(const tunnel_comand *cmd, command_cb cb, voi
                 result.success = false;
                 break;
             }
-            set_tun_ipv4(tunnel_tun_ip_v4_cmd.tunIP, tunnel_tun_ip_v4_cmd.mask, tunnel_tun_ip_v4_cmd.addDns);
+            set_tun_ipv4_into_instance(tunnel_tun_ip_v4_cmd.tunIP, tunnel_tun_ip_v4_cmd.mask, tunnel_tun_ip_v4_cmd.addDns);
             result.success = true;
             break;
         }
@@ -1104,6 +1104,10 @@ static void run(int argc, char *argv[]) {
         multi_writer = false;
     }
     init = log_init(ziti_loop, multi_writer);
+#endif
+
+#if _WIN32
+    ip_range = get_ip_range_from_config();
 #endif
 
     uint32_t ip[4];

@@ -58,6 +58,8 @@ void set_service_version();
 
 char* get_log_level();
 
-void set_tun_ipv4(char* tun_ip, int mask, bool addDns);
+void set_tun_ipv4_into_instance(char* tun_ip, int mask, bool addDns);
+
+char* get_ip_range_from_config();
 
 #endif //ZITI_TUNNEL_SDK_C_INSTANCE_H
