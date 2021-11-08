@@ -633,6 +633,10 @@ char* get_ip_range_from_config() {
     return ip_range;
 }
 
+char* get_tun_ip() {
+    return tnl_status.TunIpv4;
+}
+
 // ************** TUNNEL BROADCAST MESSAGES
 IMPL_MODEL(tunnel_identity, TUNNEL_IDENTITY)
 IMPL_MODEL(tunnel_config, TUNNEL_CONFIG)

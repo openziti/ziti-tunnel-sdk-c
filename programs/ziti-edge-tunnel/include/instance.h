@@ -62,4 +62,6 @@ void set_tun_ipv4_into_instance(char* tun_ip, int mask, bool addDns);
 
 char* get_ip_range_from_config();
 
+char* get_tun_ip();
+
 #endif //ZITI_TUNNEL_SDK_C_INSTANCE_H

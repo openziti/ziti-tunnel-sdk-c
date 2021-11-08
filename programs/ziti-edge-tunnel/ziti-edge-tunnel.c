@@ -37,9 +37,11 @@
 #include "netif_driver/linux/tun.h"
 #elif _WIN32
 #include "netif_driver/windows/tun.h"
+#include "windows/windows-service.h"
+#include "windows/windows-scripts.h"
+
 #ifndef MAXPATHLEN
 #define MAXPATHLEN _MAX_PATH
-#include "windows/windows-service.h"
 #endif
 
 #define setenv(n,v,o) do {if(o || getenv(n) == NULL) _putenv_s(n,v); } while(0)
@@ -804,6 +806,8 @@ static void on_event(const base_event *ev) {
             tunnel_identity *id = create_or_get_tunnel_identity(ev->identifier, NULL);
             svc_event.Fingerprint = strdup(id->FingerPrint);
             ziti_service **zs;
+            model_map hostnamesToAdd = {0};
+            model_map hostnamesToRemove = {0};
             if (svc_ev->removed_services != NULL) {
                 int svc_array_length = 0;
                 for (zs = svc_ev->removed_services; *zs != NULL; zs++) {
@@ -815,8 +819,20 @@ static void on_event(const base_event *ev) {
                     if (svc == NULL) {
                         svc = get_tunnel_service(id, svc_ev->removed_services[svc_idx]);
                     }
+                    for (int i = 0; svc->Addresses[i]; i++) {
+                        tunnel_address *addr = svc->Addresses[i];
+                        if (addr->IsHost && model_map_get(&hostnamesToRemove, addr->HostName) == NULL) {
+                            model_map_set(&hostnamesToRemove, addr->HostName, true);
+                        }
+                    }
                     svc_event.RemovedServices[svc_idx] = svc;
                 }
+
+#if _WIN32
+                if (model_map_size(&hostnamesToRemove) > 0) {
+                    remove_nrpt_rules(&hostnamesToRemove);
+                }
+#endif
             }
 
             if (svc_ev->added_services != NULL) {
@@ -828,8 +844,23 @@ static void on_event(const base_event *ev) {
                 for (int svc_idx = 0; svc_ev->added_services[svc_idx]; svc_idx++) {
                     tunnel_service *svc = get_tunnel_service(id, svc_ev->added_services[svc_idx]);
                     svc_event.AddedServices[svc_idx] = svc;
+                    for (int i = 0; svc->Addresses[i]; i++) {
+                        tunnel_address *addr = svc->Addresses[i];
+                        if (addr->IsHost && model_map_get(&hostnamesToAdd, addr->HostName) == NULL) {
+                            model_map_set(&hostnamesToAdd, addr->HostName, true);
+                        }
+                    }
                 }
+
+#if _WIN32
+                if (model_map_size(&hostnamesToAdd) > 0) {
+                    add_nrpt_rules(&hostnamesToAdd, get_tun_ip());
+                }
+#endif
             }
+
+            model_map_clear(&hostnamesToRemove, NULL);
+            model_map_clear(&hostnamesToAdd, NULL);
 
             if (svc_ev->removed_services != NULL || svc_ev->added_services != NULL) {
                 add_or_remove_services_from_tunnel(id, svc_event.AddedServices, svc_event.RemovedServices);
@@ -1088,6 +1119,11 @@ static int dns_fallback(const char *name, void *ctx, struct in_addr* addr) {
     return dns_miss_status;
 }
 
+static void interrupt_handler(int sig) {
+    ZITI_LOG(WARN,"Received signal to interrupt");
+    scm_service_stop();
+}
+
 static void run(int argc, char *argv[]) {
     uv_loop_t *ziti_loop = uv_default_loop();
     main_ziti_loop = ziti_loop;
@@ -1112,6 +1148,7 @@ static void run(int argc, char *argv[]) {
 
 #if _WIN32
     ip_range = get_ip_range_from_config();
+    signal(SIGINT, interrupt_handler);
 #endif
 
     uint32_t ip[4];
@@ -1176,6 +1213,14 @@ static void run(int argc, char *argv[]) {
         ZITI_LOG(ERROR, "failed to initialize default uv loop");
         exit(1);
     }
+
+#if _WIN32
+    remove_all_nrpt_rules();
+    bool nrpt_effective = is_nrpt_policies_effective(get_tun_ip());
+    if (!nrpt_effective) {
+        // enable dns
+    }
+#endif
 
     dns_manager *dns = NULL;
     if (dns_impl && strncmp("dnsmasq", dns_impl, strlen("dnsmasq")) == 0) {
@@ -1979,6 +2024,7 @@ void scm_service_stop() {
         uv_stop(main_ziti_loop);
         uv_loop_close(main_ziti_loop);
     }
+    remove_all_nrpt_rules();
 }
 
 int main(int argc, char *argv[]) {
