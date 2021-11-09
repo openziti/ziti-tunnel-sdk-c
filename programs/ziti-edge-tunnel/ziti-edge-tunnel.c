@@ -830,7 +830,7 @@ static void on_event(const base_event *ev) {
 
 #if _WIN32
                 if (model_map_size(&hostnamesToRemove) > 0) {
-                    remove_nrpt_rules(&hostnamesToRemove);
+                    remove_nrpt_rules(main_ziti_loop, &hostnamesToRemove);
                 }
 #endif
             }
@@ -854,7 +854,7 @@ static void on_event(const base_event *ev) {
 
 #if _WIN32
                 if (model_map_size(&hostnamesToAdd) > 0) {
-                    add_nrpt_rules(&hostnamesToAdd, get_tun_ip());
+                    add_nrpt_rules(main_ziti_loop, &hostnamesToAdd, get_dns_ip());
                 }
 #endif
             }
@@ -1216,7 +1216,7 @@ static void run(int argc, char *argv[]) {
 
 #if _WIN32
     remove_all_nrpt_rules();
-    bool nrpt_effective = is_nrpt_policies_effective(get_tun_ip());
+    bool nrpt_effective = is_nrpt_policies_effective(get_dns_ip());
     if (!nrpt_effective) {
         // enable dns
     }

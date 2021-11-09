@@ -64,4 +64,6 @@ char* get_ip_range_from_config();
 
 char* get_tun_ip();
 
+char* get_dns_ip();
+
 #endif //ZITI_TUNNEL_SDK_C_INSTANCE_H

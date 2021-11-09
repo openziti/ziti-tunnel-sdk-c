@@ -20,7 +20,7 @@
 #include "ziti/ziti_tunnel.h"
 #include "windows/windows-scripts.h"
 
-#define MAX_BUCKET_SIZE 500
+#define MAX_BUCKET_SIZE 512
 
 static char* const namespace_template = "%s@{n='%s';}";
 static char* const exe_name = "ziti-tunnel";
@@ -30,48 +30,101 @@ struct hostname_s {
     LIST_ENTRY(hostname_s) _next;
 };
 
-void chunked_add_nrpt_rules(LIST_HEAD(hostnames_list, hostname_s) *hostnames, char* tun_ip) {
-    char* result = calloc(MAX_POWERSHELL_SCRIPT_LEN, sizeof(char));
-    size_t buf_len = sprintf(result, "$Namespaces = @(");
+static void exit_cb(uv_process_t* process,
+                    int64_t exit_status,
+                    int term_signal) {
+    uv_close((uv_handle_t*)process, NULL);
+}
+
+static void on_alloc_script(uv_handle_t *s, size_t sugg, uv_buf_t *b) {
+    b->base = malloc(sugg);
+    b->len = sugg;
+}
+
+static void on_read_output(uv_stream_t* pipe, ssize_t nread, const uv_buf_t* buf) {
+    if (nread > 0) {
+        ZITI_LOG(TRACE, "received response : %.*s", (int) nread, buf->base);
+    } else if (nread < 0) {
+        ZITI_LOG(ERROR,"Could not read output %s", uv_err_name(nread));
+    }
+    uv_close((uv_handle_t *)pipe, NULL);
+}
+
+static bool exec_process(uv_loop_t *ziti_loop, char* program, char* args[]) {
+    uv_pipe_t out;
+    uv_process_t process;
+    uv_process_options_t options = {0};
+    uv_stdio_container_t stdio[3];
+    options.file = program;
+    options.args = args;
+    options.exit_cb = exit_cb;
+
+    uv_pipe_init(ziti_loop, &out, 0);
+
+    options.stdio = stdio;
+    options.stdio_count = 3;
+    options.stdio[0].flags = UV_IGNORE;
+    options.stdio[1].flags = UV_CREATE_PIPE | UV_WRITABLE_PIPE;
+    options.stdio[1].data.stream = (uv_stream_t*)&out;
+    options.stdio[2].flags = UV_INHERIT_FD;
+    options.stdio[2].data.fd = 2;
+
+    int r = uv_spawn(ziti_loop, &process, &options);
+    if (r != 0) {
+        ZITI_LOG(ERROR, "Could not execute the command due to %s", uv_err_name(r));
+        return false;
+    }
+    /*r = uv_read_start((uv_stream_t*) &out, on_alloc_script, on_read_output);
+    if (r != 0) {
+        ZITI_LOG(ERROR, "Could not read the output from the command due to %s", uv_err_name(r));
+        return false;
+    }*/
+    return true;
+}
+
+void chunked_add_nrpt_rules(uv_loop_t *ziti_loop, LIST_HEAD(hostnames_list, hostname_s) *hostnames, char* tun_ip) {
+    char* script = calloc(MAX_POWERSHELL_SCRIPT_LEN, sizeof(char));
+    size_t buf_len = sprintf(script, "$Namespaces = @(");
     size_t copied = buf_len;
     int domains_size = 0;
 
     while(!LIST_EMPTY(hostnames)) {
         struct hostname_s *hostname = LIST_FIRST(hostnames);
-        buf_len = sprintf(result + copied, namespace_template, "\n", hostname->hostname);
+        buf_len = sprintf(script + copied, namespace_template, "\n", hostname->hostname);
         copied += buf_len;
         domains_size++;
         LIST_REMOVE(hostname, _next);
         free(hostname->hostname);
         free(hostname);
     }
-    buf_len = sprintf(result + copied, "%s\n\n", ")");
+    buf_len = sprintf(script + copied, "%s\n\n", ")");
     copied += buf_len;
 
-    buf_len = sprintf(result + copied, "ForEach ($Namespace in $Namespaces) {\n");
+    buf_len = sprintf(script + copied, "ForEach ($Namespace in $Namespaces) {\n");
     copied += buf_len;
-    buf_len = sprintf(result + copied, "$ns=$Namespace['n']\n");
+    buf_len = sprintf(script + copied, "$ns=$Namespace['n']\n");
     copied += buf_len;
-    buf_len = sprintf(result + copied, "$Rule = @{Namespace=${ns}; NameServers=@('%s'); Comment='Added by %s'; DisplayName='%s:'+${ns}; }\n", tun_ip, exe_name, exe_name);
+    buf_len = sprintf(script + copied, "$Rule = @{Namespace=${ns}; NameServers=@('%s'); Comment='Added by %s'; DisplayName='%s:'+${ns}; }\n", tun_ip, exe_name, exe_name);
     copied += buf_len;
-    buf_len = sprintf(result + copied, "Add-DnsClientNrptRule @Rule\n");
+    buf_len = sprintf(script + copied, "Add-DnsClientNrptRule @Rule\n");
     copied += buf_len;
-    buf_len = sprintf(result + copied, "}\n");
+    buf_len = sprintf(script + copied, "}\n");
     copied += buf_len;
 
     ZITI_LOG(TRACE, "Executing ADD NRPT script containing %d domains. total script size: %d", domains_size, copied);
 
     char cmd[MAX_POWERSHELL_SCRIPT_LEN];
-    snprintf(cmd, sizeof(cmd),"powershell -Command \"%s\"", result);
+    snprintf(cmd, sizeof(cmd),"powershell -Command \"%s\"", script);
 
     ZITI_LOG(TRACE, "executing '%s'", cmd);
-    int rc = system(cmd);
-    if (rc != 0) {
-        ZITI_LOG(WARN, "ADD NRPT script: %d(err=%d)", rc, GetLastError());
+    char* args[] = {"powershell", "-Command", script, NULL};
+    bool result = exec_process(ziti_loop, "powershell", args);
+    if (!result) {
+        ZITI_LOG(WARN, "ADD NRPT script: %d(err=%d)", result, GetLastError());
     }
 }
 
-void add_nrpt_rules(model_map *hostnames, char* tun_ip) {
+void add_nrpt_rules(uv_loop_t *ziti_loop, model_map *hostnames, char* tun_ip) {
 
     if (model_map_size(hostnames) == 0) {
         ZITI_LOG(DEBUG, "No domains specified to add_nrpt_rules, exiting early");
@@ -85,7 +138,7 @@ void add_nrpt_rules(model_map *hostnames, char* tun_ip) {
     while(it != NULL) {
         char* hostname = model_map_it_key(it);
         if (current_size > MAX_BUCKET_SIZE || rule_size > MAX_POWERSHELL_SCRIPT_LEN) {
-            chunked_add_nrpt_rules(&host_names_list, tun_ip);
+            chunked_add_nrpt_rules(ziti_loop, &host_names_list, tun_ip);
             rule_size = strlen(hostname) + namespace_template_padding;
             current_size = 0;
         }
@@ -98,47 +151,48 @@ void add_nrpt_rules(model_map *hostnames, char* tun_ip) {
         it = model_map_it_remove(it);
     }
     if (current_size > 0) {
-        chunked_add_nrpt_rules(&host_names_list, tun_ip);
+        chunked_add_nrpt_rules(ziti_loop, &host_names_list, tun_ip);
     }
 
 }
 
-void chunked_remove_nrpt_rules(LIST_HEAD(hostnames_list, hostname_s) *hostnames) {
-    char* result = calloc(MAX_POWERSHELL_SCRIPT_LEN, sizeof(char));
-    size_t buf_len = sprintf(result, "$toRemove = @(\n");
+void chunked_remove_nrpt_rules(uv_loop_t *ziti_loop, LIST_HEAD(hostnames_list, hostname_s) *hostnames) {
+    char* script = calloc(MAX_POWERSHELL_SCRIPT_LEN, sizeof(char));
+    size_t buf_len = sprintf(script, "$toRemove = @(\n");
     size_t copied = buf_len;
     int domains_size = 0;
 
     while(!LIST_EMPTY(hostnames)) {
         struct hostname_s *hostname = LIST_FIRST(hostnames);
-        buf_len = sprintf(result + copied, namespace_template, "\n", hostname);
+        buf_len = sprintf(script + copied, namespace_template, "\n", hostname);
         copied += buf_len;
         domains_size++;
         LIST_REMOVE(hostname, _next);
     }
-    buf_len = sprintf(result + copied, "%s\n\n", ")");
+    buf_len = sprintf(script + copied, "%s\n\n", ")");
     copied += buf_len;
 
-    buf_len = sprintf(result + copied, "ForEach ($ns in $toRemove){\n");
+    buf_len = sprintf(script + copied, "ForEach ($ns in $toRemove){\n");
     copied += buf_len;
-    buf_len = sprintf(result + copied, "Get-DnsClientNrptRule | where Namespace -eq $ns['n'] | Remove-DnsClientNrptRule -Force -ErrorAction SilentlyContinue\n");
+    buf_len = sprintf(script + copied, "Get-DnsClientNrptRule | where Namespace -eq $ns['n'] | Remove-DnsClientNrptRule -Force -ErrorAction SilentlyContinue\n");
     copied += buf_len;
-    buf_len = sprintf(result + copied, "}\n");
+    buf_len = sprintf(script + copied, "}\n");
     copied += buf_len;
 
     ZITI_LOG(TRACE, "Executing Remove NRPT script containing %d domains. total script size: %d", domains_size, copied);
 
     char cmd[MAX_POWERSHELL_SCRIPT_LEN];
-    snprintf(cmd, sizeof(cmd),"powershell -Command \"%s\"", result);
+    snprintf(cmd, sizeof(cmd),"powershell -Command \"%s\"", script);
 
     ZITI_LOG(TRACE, "executing '%s'", cmd);
-    int rc = system(cmd);
-    if (rc != 0) {
-        ZITI_LOG(WARN, "Remove NRPT script: %d(err=%d)", rc, GetLastError());
+    char* args[] = {"powershell", "-Command", script, NULL};
+    bool result = exec_process(ziti_loop, "powershell", args);
+    if (!result) {
+        ZITI_LOG(WARN, "Remove NRPT script: %s(err=%d)", result, GetLastError());
     }
 }
 
-void remove_nrpt_rules(model_map *hostnames) {
+void remove_nrpt_rules(uv_loop_t *ziti_loop, model_map *hostnames) {
 
     if (model_map_size(hostnames) == 0) {
         ZITI_LOG(DEBUG, "No domains specified to remove_nrpt_rules, exiting early");
@@ -152,7 +206,7 @@ void remove_nrpt_rules(model_map *hostnames) {
     while(it != NULL) {
         char* hostname = model_map_it_key(it);
         if (current_size > MAX_BUCKET_SIZE || rule_size > MAX_POWERSHELL_SCRIPT_LEN) {
-            chunked_remove_nrpt_rules(&host_names_list);
+            chunked_remove_nrpt_rules(ziti_loop, &host_names_list);
             rule_size = strlen(hostname) + namespace_template_padding;
             current_size = 0;
         }
@@ -165,17 +219,17 @@ void remove_nrpt_rules(model_map *hostnames) {
         it = model_map_it_remove(it);
     }
     if (current_size > 0) {
-        chunked_remove_nrpt_rules(&host_names_list);
+        chunked_remove_nrpt_rules(ziti_loop, &host_names_list);
     }
 }
 
 void remove_all_nrpt_rules() {
-    char* result = calloc(MAX_POWERSHELL_SCRIPT_LEN, sizeof(char));
-    size_t buf_len = sprintf(result, "Get-DnsClientNrptRule | Where { $_.Comment.StartsWith('Added by %s') } | Remove-DnsClientNrptRule -ErrorAction SilentlyContinue -Force", exe_name);
+    char* script = calloc(MAX_POWERSHELL_SCRIPT_LEN, sizeof(char));
+    size_t buf_len = sprintf(script, "Get-DnsClientNrptRule | Where { $_.Comment.StartsWith('Added by %s') } | Remove-DnsClientNrptRule -ErrorAction SilentlyContinue -Force", exe_name);
     ZITI_LOG(TRACE, "Removing all nrpt rules. total script size: %d", buf_len);
 
     char cmd[MAX_POWERSHELL_SCRIPT_LEN];
-    snprintf(cmd, sizeof(cmd),"powershell -Command \"%s\"", result);
+    snprintf(cmd, sizeof(cmd),"powershell -Command \"%s\"", script);
 
     ZITI_LOG(TRACE, "executing '%s'", cmd);
     int rc = system(cmd);
@@ -185,12 +239,12 @@ void remove_all_nrpt_rules() {
 }
 
 void remove_single_nrpt_rule(char* nrpt_rule) {
-    char* result = calloc(MAX_POWERSHELL_SCRIPT_LEN, sizeof(char));
-    size_t buf_len = sprintf(result, "Get-DnsClientNrptRule | where Namespace -eq '%s' | Remove-DnsClientNrptRule -Force -ErrorAction SilentlyContinue", nrpt_rule);
+    char* script = calloc(MAX_POWERSHELL_SCRIPT_LEN, sizeof(char));
+    size_t buf_len = sprintf(script, "Get-DnsClientNrptRule | where Namespace -eq '%s' | Remove-DnsClientNrptRule -Force -ErrorAction SilentlyContinue", nrpt_rule);
     ZITI_LOG(TRACE, "Removing nrpt rule. total script size: %d", buf_len);
 
     char cmd[MAX_POWERSHELL_SCRIPT_LEN];
-    snprintf(cmd, sizeof(cmd),"powershell -Command \"%s\"", result);
+    snprintf(cmd, sizeof(cmd),"powershell -Command \"%s\"", script);
 
     ZITI_LOG(TRACE, "executing '%s'", cmd);
     int rc = system(cmd);
@@ -200,13 +254,13 @@ void remove_single_nrpt_rule(char* nrpt_rule) {
 }
 
 bool is_nrpt_policies_effective(char* tns_ip) {
-    char* result = calloc(MAX_POWERSHELL_SCRIPT_LEN, sizeof(char));
-    size_t buf_len = sprintf(result, "Add-DnsClientNrptRule -Namespace '.ziti.test' -NameServers '%s' -Comment 'Added by ziti-tunnel' -DisplayName 'ziti-tunnel:.ziti.test'\n"
+    char* script = calloc(MAX_POWERSHELL_SCRIPT_LEN, sizeof(char));
+    size_t buf_len = sprintf(script, "Add-DnsClientNrptRule -Namespace '.ziti.test' -NameServers '%s' -Comment 'Added by ziti-tunnel' -DisplayName 'ziti-tunnel:.ziti.test'\n"
                                      "Get-DnsClientNrptPolicy -Effective | Select-Object Namespace -Unique | Where-Object Namespace -Eq '.ziti.test'",tns_ip);
     ZITI_LOG(TRACE, "Removing all nrpt rules. total script size: %d", buf_len);
 
     char cmd[MAX_POWERSHELL_SCRIPT_LEN];
-    snprintf(cmd, sizeof(cmd),"powershell -Command \"%s\"", result);
+    snprintf(cmd, sizeof(cmd),"powershell -Command \"%s\"", script);
 
     ZITI_LOG(TRACE, "executing '%s'", cmd);
     int rc = system(cmd);
