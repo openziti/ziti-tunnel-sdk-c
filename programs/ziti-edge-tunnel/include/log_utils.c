@@ -74,8 +74,8 @@ static char* get_log_filename() {
              1900 + start_time->tm_year, start_time->tm_mon + 1, start_time->tm_mday
     );
 
-    char* log_filename = malloc(FILENAME_MAX * sizeof(char));
-    sprintf(log_filename, "%s/%s.%s", log_path, strdup(log_filename_base), time_val);
+    char* log_filename = calloc(FILENAME_MAX, sizeof(char));
+    sprintf(log_filename, "%s/%s.%s", log_path, log_filename_base, time_val);
     return log_filename;
 }
 
@@ -139,7 +139,7 @@ char* get_log_file_name(){
 }
 
 static char* parse_level(int level) {
-    const char* err_level = malloc(7 * sizeof(char));
+    const char* err_level;
     switch(level) {
         case 0:
             err_level = "FATAL";
