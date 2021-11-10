@@ -24,7 +24,13 @@
 extern "C" {
 #endif
 
+enum tunnel_conn_type {
+    data_conn_type,
+    resolve_conn_type
+};
+
 #define TUNNELER_APP_DATA_MODEL(XX, ...) \
+XX(conn_type, int, none, conn_type, __VA_ARGS__) \
 XX(dst_protocol, string, none, dst_protocol, __VA_ARGS__)\
 XX(dst_hostname, string, none, dst_hostname, __VA_ARGS__)\
 XX(dst_ip, string, none, dst_ip, __VA_ARGS__)\

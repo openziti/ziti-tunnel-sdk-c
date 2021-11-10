@@ -20,7 +20,8 @@
 
 #ifndef ZITI_TUNNEL_SDK_C_ZITI_HOSTING_H
 #define ZITI_TUNNEL_SDK_C_ZITI_HOSTING_H
-
+#include <sys/queue.h>
+#include <ziti/ziti_tunnel.h>
 // allowed address is one of:
 // - ip subnet address
 // - DNS name or wildcard
@@ -64,5 +65,7 @@ struct tunneled_service_s {
     intercept_ctx_t *intercept;
     host_ctx_t      *host;
 };
+
+void accept_resolver_conn(ziti_connection conn, allowed_hostnames_t *allowed);
 
 #endif //ZITI_TUNNEL_SDK_C_ZITI_HOSTING_H
