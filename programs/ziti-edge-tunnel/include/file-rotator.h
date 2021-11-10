@@ -17,6 +17,10 @@
 #ifndef ZITI_TUNNEL_SDK_C_FILE_ROTATOR_H
 #define ZITI_TUNNEL_SDK_C_FILE_ROTATOR_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 bool open_log(char* log_filename);
 void close_log();
 void rotate_log();
@@ -27,5 +31,9 @@ char* get_log_file_name();
 
 bool log_init(uv_loop_t *, bool);
 void ziti_log_writer(int , const char *, const char *, size_t);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif //ZITI_TUNNEL_SDK_C_FILE_ROTATOR_H
