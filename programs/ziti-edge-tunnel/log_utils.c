@@ -98,8 +98,6 @@ bool log_init(uv_loop_t *ziti_loop, bool is_multi_writer) {
     uv_timeval64_t file_time;
     uv_gettimeofday(&file_time);
     start_time = calloc(1, sizeof(struct tm));
-    /*struct tm* now_tm = gmtime(&file_time.tv_sec);
-    memcpy(start_time, now_tm, sizeof(struct tm));*/
 #if _WIN32
     _gmtime32_s(start_time, &file_time.tv_sec);
 #else
@@ -219,8 +217,6 @@ void rotate_log() {
 
     uv_timeval64_t file_time;
     uv_gettimeofday(&file_time);
-    /*struct tm* orig_time = gmtime(&file_time.tv_sec);
-    memcpy(start_time, orig_time, sizeof(struct tm));*/
 #if _WIN32
     _gmtime32_s(start_time, &file_time.tv_sec);
 #else
