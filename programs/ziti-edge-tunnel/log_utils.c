@@ -257,7 +257,7 @@ void delete_older_logs(uv_loop_t *ziti_loop) {
         ZITI_LOG(TRACE, "log file = %s %d", file.name, file.type);
 
         if (file.type == UV_DIRENT_FILE) {
-            if (memcmp(file.name, log_filename_base, strlen(log_filename_base)) == 0) {
+            if (strncmp(file.name, log_filename_base, strlen(log_filename_base)) == 0) {
                 log_files[rotation_cnt] = strdup(file.name);
                 rotation_cnt++;
             }
