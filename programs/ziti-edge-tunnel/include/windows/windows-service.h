@@ -10,6 +10,10 @@
 #define DISPLAYSVCNAME TEXT("Ziti Desktop Edge Service")
 #define SVCDESCRIPTION TEXT("Access your Networks Secured by Ziti")
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 int SvcStart(TCHAR *);
 VOID SvcInstall(void);
 VOID WINAPI SvcCtrlHandler( DWORD );
@@ -19,11 +23,6 @@ VOID SvcInit( DWORD, LPTSTR * );
 VOID SvcReportEvent( LPTSTR, DWORD );
 VOID SvcDelete(void);
 DWORD WINAPI ServiceWorkerThread (LPVOID lpParam);
-
-
-#ifdef __cplusplus
-extern "C" {
-#endif
 
 void scm_service_init(char *config_dir);
 void scm_service_run(void *);
