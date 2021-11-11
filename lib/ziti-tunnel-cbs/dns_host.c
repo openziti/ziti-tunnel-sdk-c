@@ -18,6 +18,14 @@
 #include <resolv.h>
 #include "ziti_hosting.h"
 
+#ifndef PACKETSZ
+# ifdef NS_PACKETSZ
+#  define PACKETSZ NS_PACKETSZ
+# else
+#  define PACKETSZ 512
+# endif // NS_PACKETSZ
+#endif // PACKETSZ
+
 typedef struct dns_host_conn_s {
     struct __res_state resolver;
     allowed_hostnames_t allowed_domains;
@@ -117,7 +125,7 @@ static ssize_t on_dns_req(ziti_connection conn, uint8_t *data, ssize_t datalen) 
     if (is_allowed(q->name, dns)) {
 
         uint8_t resp_msg[PACKETSZ];
-        int rc = res_nquery(&dns->resolver, q->name, C_IN, q->type, resp_msg, PACKETSZ);
+        int rc = res_nquery(&dns->resolver, q->name, ns_c_in, q->type, resp_msg, PACKETSZ);
         if (rc < 0) {
             resp.status = ns_r_servfail;
         } else {
