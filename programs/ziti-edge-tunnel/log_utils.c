@@ -81,6 +81,7 @@ void flush_log(uv_check_t *handle) {
         struct tm *orig_time = handle->data;
         if (orig_time->tm_mday < tm->tm_mday) {
             rotate_log();
+            handle->data = start_time;
             delete_older_logs(handle->loop);
         }
     }
@@ -211,6 +212,11 @@ void rotate_log() {
 
     uv_timeval64_t file_time;
     uv_gettimeofday(&file_time);
+    if (start_time) {
+        free(start_time);
+        start_time = NULL;
+    }
+    start_time = calloc(1, sizeof(struct tm));
 #if _WIN32
     _gmtime64_s(start_time, &file_time.tv_sec);
 #else
@@ -250,7 +256,7 @@ void delete_older_logs(uv_loop_t *ziti_loop) {
     uv_dirent_t file;
     int rotation_cnt = 0;
     while (uv_fs_scandir_next(&fs, &file) == 0) {
-        ZITI_LOG(TRACE, "log file = %s %d", file.name, file.type);
+        ZITI_LOG(TRACE, "file/folder = %s %d", file.name, file.type);
 
         if (file.type == UV_DIRENT_FILE) {
             if (strncmp(file.name, log_filename_base, strlen(log_filename_base)) == 0) {
