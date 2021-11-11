@@ -36,9 +36,6 @@
 #elif _WIN32
 #include "netif_driver/windows/tun.h"
 #include "windows/windows-service.h"
-#ifndef MAXPATHLEN
-#define MAXPATHLEN MAX_PATH
-#endif
 
 #define setenv(n,v,o) do {if(o || getenv(n) == NULL) _putenv_s(n,v); } while(0)
 #endif

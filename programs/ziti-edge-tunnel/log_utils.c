@@ -27,12 +27,6 @@
 #include <direct.h>
 #endif
 
-#if _WIN32
-#define MAXPATHLEN MAX_PATH
-#else
-#define MAXPATHLEN PATH_MAX
-#endif
-
 static FILE *ziti_tunneler_log = NULL;
 static uv_check_t *log_flusher;
 static struct tm *start_time;
@@ -41,7 +35,7 @@ static bool multi_writer = false;
 static const char* log_filename_base = "ziti-tunneler.log";
 static int rotation_count = 7;
 
-static char* get_log_filename() {
+static char* create_log_filename() {
     char curr_path[FILENAME_MAX]; //create string buffer to hold path
 #if _WIN32
     _getcwd( curr_path, FILENAME_MAX );
@@ -66,9 +60,9 @@ static char* get_log_filename() {
     char time_val[32];
     strftime(time_val, sizeof(time_val), "%Y%m%d0000", start_time);
 
-    char* log_filename = calloc(FILENAME_MAX, sizeof(char));
-    sprintf(log_filename, "%s/%s.%s", log_path, log_filename_base, time_val);
-    return log_filename;
+    char* temp_log_filename = calloc(FILENAME_MAX, sizeof(char));
+    sprintf(temp_log_filename, "%s/%s.%s", log_path, log_filename_base, time_val);
+    return temp_log_filename;
 }
 
 void flush_log(uv_check_t *handle) {
@@ -99,7 +93,7 @@ bool log_init(uv_loop_t *ziti_loop, bool is_multi_writer) {
     uv_gettimeofday(&file_time);
     start_time = calloc(1, sizeof(struct tm));
 #if _WIN32
-    _gmtime32_s(start_time, &file_time.tv_sec);
+    _gmtime64_s(start_time, &file_time.tv_sec);
 #else
     gmtime_r(&file_time.tv_sec, start_time);
 #endif
@@ -114,7 +108,7 @@ bool log_init(uv_loop_t *ziti_loop, bool is_multi_writer) {
     uv_check_start(log_flusher, flush_log);
 
 
-    log_filename = get_log_filename();
+    log_filename = create_log_filename();
 
     if (!open_log(log_filename)) {
         return false;
@@ -218,11 +212,11 @@ void rotate_log() {
     uv_timeval64_t file_time;
     uv_gettimeofday(&file_time);
 #if _WIN32
-    _gmtime32_s(start_time, &file_time.tv_sec);
+    _gmtime64_s(start_time, &file_time.tv_sec);
 #else
     gmtime_r(&file_time.tv_sec, start_time);
 #endif
-    log_filename = get_log_filename();
+    log_filename = create_log_filename();
 
     open_log(log_filename);
 }
@@ -240,7 +234,9 @@ void delete_older_logs(uv_loop_t *ziti_loop) {
 
     uv_fs_t fs;
     int rc = uv_fs_scandir(ziti_loop, &fs, log_path, 0, NULL);
-    if (rc < 7) {
+    // we wanted to retain last 7 days logs, so this function will return, if there are less than or equal to 7 elements in this folder
+    // if there are more than 7 files/folder, it will continue. Only files starting with the given log base file name will be considered while cleaning up
+    if (rc <= 7) {
         if (rc < 0) {
             ZITI_LOG(ERROR, "failed to scan dir[%s]: %d/%s", log_path, rc, uv_strerror(rc));
         } else {
@@ -292,6 +288,7 @@ void delete_older_logs(uv_loop_t *ziti_loop) {
             remove(logfile_to_delete);
             rotation_index--;
             free (old_log);
+            old_log = NULL;
             log_files[old_idx] = NULL;
         }
     }

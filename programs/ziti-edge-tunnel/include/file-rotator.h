@@ -17,6 +17,12 @@
 #ifndef ZITI_TUNNEL_SDK_C_FILE_ROTATOR_H
 #define ZITI_TUNNEL_SDK_C_FILE_ROTATOR_H
 
+#if _WIN32
+#define MAXPATHLEN MAX_PATH
+#else
+#define MAXPATHLEN PATH_MAX
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
