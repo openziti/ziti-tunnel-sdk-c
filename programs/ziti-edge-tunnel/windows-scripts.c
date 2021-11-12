@@ -34,12 +34,12 @@ static void exit_cb(uv_process_t* process,
                     int64_t exit_status,
                     int term_signal) {
     ZITI_LOG(TRACE, "Process exited with status %d, signal %d", exit_status, term_signal);
-    uv_close((uv_handle_t*)process, NULL);
+    uv_close((uv_handle_t*)process, (uv_close_cb) free);
 }
 
 static bool exec_process(uv_loop_t *ziti_loop, char* program, char* args[]) {
     uv_pipe_t out;
-    uv_process_t process;
+    uv_process_t* process = calloc(1, sizeof(uv_process_t));
     uv_process_options_t options = {0};
     uv_stdio_container_t stdio[3];
     options.file = program;
@@ -56,12 +56,12 @@ static bool exec_process(uv_loop_t *ziti_loop, char* program, char* args[]) {
     options.stdio[2].flags = UV_INHERIT_FD;
     options.stdio[2].data.fd = 2;
 
-    int r = uv_spawn(ziti_loop, &process, &options);
+    int r = uv_spawn(ziti_loop, process, &options);
     if (r != 0) {
         ZITI_LOG(ERROR, "Could not execute the command due to %s", uv_err_name(r));
         return false;
     }
-    uv_unref((uv_handle_t*) &process);
+    uv_unref((uv_handle_t*) process);
     return true;
 }
 
@@ -69,20 +69,17 @@ static char* exec_process_fetch_result(char* program) {
     FILE *fp;
     char path[BUFFER_SIZE];
 
-    /* Open the command for reading. */
     fp = popen(program, "r");
     if (fp == NULL) {
-        printf("Failed to run command\n" );
+        ZITI_LOG(ERROR,"Failed to run command %s", strerror(errno));
         return NULL;
     }
     char* result = calloc(MAXBUFFERLEN, sizeof(char));
 
-    /* Read the output a line at a time - output it. */
     while (fgets(path, sizeof(path), fp) != NULL) {
         strcat(result, path);
     }
 
-    /* close */
     pclose(fp);
 
     return result;
@@ -119,7 +116,7 @@ void chunked_add_nrpt_rules(uv_loop_t *ziti_loop, LIST_HEAD(hostnames_list, host
 
     ZITI_LOG(TRACE, "Executing ADD NRPT script containing %d domains. total script size: %d", domains_size, copied);
 
-    char cmd[MAX_POWERSHELL_SCRIPT_LEN];
+    char cmd[MAX_POWERSHELL_COMMAND_LEN];
     snprintf(cmd, sizeof(cmd),"powershell -Command \"%s\"", script);
 
     ZITI_LOG(TRACE, "executing '%s'", cmd);
@@ -128,6 +125,7 @@ void chunked_add_nrpt_rules(uv_loop_t *ziti_loop, LIST_HEAD(hostnames_list, host
     if (!result) {
         ZITI_LOG(WARN, "ADD NRPT script: %d(err=%d)", result, GetLastError());
     }
+    free(script);
 }
 
 void add_nrpt_rules(uv_loop_t *ziti_loop, model_map *hostnames, char* tun_ip) {
@@ -143,7 +141,7 @@ void add_nrpt_rules(uv_loop_t *ziti_loop, model_map *hostnames, char* tun_ip) {
     model_map_iter it = model_map_iterator(hostnames);
     while(it != NULL) {
         char* hostname = model_map_it_key(it);
-        if (current_size > MAX_BUCKET_SIZE || rule_size > MAX_POWERSHELL_SCRIPT_LEN) {
+        if (current_size > MAX_BUCKET_SIZE || rule_size > MAX_POWERSHELL_COMMAND_LEN) {
             chunked_add_nrpt_rules(ziti_loop, &host_names_list, tun_ip);
             rule_size = strlen(hostname) + namespace_template_padding;
             current_size = 0;
@@ -187,7 +185,7 @@ void chunked_remove_nrpt_rules(uv_loop_t *ziti_loop, LIST_HEAD(hostnames_list, h
 
     ZITI_LOG(TRACE, "Executing Remove NRPT script containing %d domains. total script size: %d", domains_size, copied);
 
-    char cmd[MAX_POWERSHELL_SCRIPT_LEN];
+    char cmd[MAX_POWERSHELL_COMMAND_LEN];
     snprintf(cmd, sizeof(cmd),"powershell -Command \"%s\"", script);
 
     ZITI_LOG(TRACE, "executing '%s'", cmd);
@@ -196,6 +194,7 @@ void chunked_remove_nrpt_rules(uv_loop_t *ziti_loop, LIST_HEAD(hostnames_list, h
     if (!result) {
         ZITI_LOG(WARN, "Remove NRPT script: %s(err=%d)", result, GetLastError());
     }
+    free(script);
 }
 
 void remove_nrpt_rules(uv_loop_t *ziti_loop, model_map *hostnames) {
@@ -211,7 +210,7 @@ void remove_nrpt_rules(uv_loop_t *ziti_loop, model_map *hostnames) {
     model_map_iter it = model_map_iterator(hostnames);
     while(it != NULL) {
         char* hostname = model_map_it_key(it);
-        if (current_size > MAX_BUCKET_SIZE || rule_size > MAX_POWERSHELL_SCRIPT_LEN) {
+        if (current_size > MAX_BUCKET_SIZE || rule_size > MAX_POWERSHELL_COMMAND_LEN) {
             chunked_remove_nrpt_rules(ziti_loop, &host_names_list);
             rule_size = strlen(hostname) + namespace_template_padding;
             current_size = 0;
@@ -230,49 +229,41 @@ void remove_nrpt_rules(uv_loop_t *ziti_loop, model_map *hostnames) {
 }
 
 void remove_all_nrpt_rules() {
-    char* script = calloc(MAX_POWERSHELL_SCRIPT_LEN, sizeof(char));
-    size_t buf_len = sprintf(script, "Get-DnsClientNrptRule | Where { $_.Comment.StartsWith('Added by %s') } | Remove-DnsClientNrptRule -ErrorAction SilentlyContinue -Force", exe_name);
+    char remove_cmd[MAX_POWERSHELL_COMMAND_LEN];
+    size_t buf_len = sprintf(remove_cmd, "powershell -Command \"Get-DnsClientNrptRule | Where { $_.Comment.StartsWith('Added by %s') } | Remove-DnsClientNrptRule -ErrorAction SilentlyContinue -Force\"", exe_name);
     ZITI_LOG(TRACE, "Removing all nrpt rules. total script size: %d", buf_len);
 
-    char cmd[MAX_POWERSHELL_SCRIPT_LEN];
-    snprintf(cmd, sizeof(cmd),"powershell -Command \"%s\"", script);
-
-    ZITI_LOG(TRACE, "executing '%s'", cmd);
-    int rc = system(cmd);
+    ZITI_LOG(TRACE, "executing '%s'", remove_cmd);
+    int rc = system(remove_cmd);
     if (rc != 0) {
         ZITI_LOG(WARN, "Remove all NRPT script: %d(err=%d)", rc, GetLastError());
     }
 }
 
 void remove_single_nrpt_rule(char* nrpt_rule) {
-    char* script = calloc(MAX_POWERSHELL_SCRIPT_LEN, sizeof(char));
-    size_t buf_len = sprintf(script, "Get-DnsClientNrptRule | where Namespace -eq '%s' | Remove-DnsClientNrptRule -Force -ErrorAction SilentlyContinue", nrpt_rule);
+    char remove_cmd[MAX_POWERSHELL_COMMAND_LEN];
+    size_t buf_len = sprintf(remove_cmd, "powershell -Command \"Get-DnsClientNrptRule | where Namespace -eq '%s' | Remove-DnsClientNrptRule -Force -ErrorAction SilentlyContinue\"", nrpt_rule);
     ZITI_LOG(TRACE, "Removing nrpt rule. total script size: %d", buf_len);
 
-    char cmd[MAX_POWERSHELL_SCRIPT_LEN];
-    snprintf(cmd, sizeof(cmd),"powershell -Command \"%s\"", script);
-
-    ZITI_LOG(TRACE, "executing '%s'", cmd);
-    int rc = system(cmd);
+    ZITI_LOG(TRACE, "executing '%s'", remove_cmd);
+    int rc = system(remove_cmd);
     if (rc != 0) {
         ZITI_LOG(WARN, "Delete single NRPT rule: %d(err=%d)", rc, GetLastError());
     }
 }
 
-bool is_nrpt_policies_effective(uv_loop_t *ziti_loop, char* tns_ip) {
-    char script_add[MAX_POWERSHELL_SCRIPT_LEN];
-    size_t buf_len = sprintf(script_add, "Add-DnsClientNrptRule -Namespace '.ziti.test' -NameServers '%s' -Comment 'Added by ziti-tunnel' -DisplayName 'ziti-tunnel:.ziti.test'",tns_ip);
+bool is_nrpt_policies_effective(char* tns_ip) {
+    char add_cmd[MAX_POWERSHELL_COMMAND_LEN];
+    size_t buf_len = sprintf(add_cmd, "powershell -Command \"Add-DnsClientNrptRule -Namespace '.ziti.test' -NameServers '%s' -Comment 'Added by ziti-tunnel' -DisplayName 'ziti-tunnel:.ziti.test'\"",tns_ip);
     ZITI_LOG(TRACE, "add test nrpt rule. total script size: %d", buf_len);
 
-    char cmd[MAX_POWERSHELL_SCRIPT_LEN];
-    snprintf(cmd, sizeof(cmd),"powershell -Command \"%s\"", script_add);
-    int rc = system(cmd);
+    int rc = system(add_cmd);
     if (rc != 0) {
         ZITI_LOG(WARN, "Add test NRPT rule: %d(err=%d)", rc, GetLastError());
         return false;
     }
 
-    char get_cmd[MAX_POWERSHELL_SCRIPT_LEN] = "powershell -Command \"Get-DnsClientNrptPolicy -Effective | Select-Object Namespace -Unique | Where-Object Namespace -Eq '.ziti.test'\"";
+    char get_cmd[MAX_POWERSHELL_COMMAND_LEN] = "powershell -Command \"Get-DnsClientNrptPolicy -Effective | Select-Object Namespace -Unique | Where-Object Namespace -Eq '.ziti.test'\"";
     char* result = exec_process_fetch_result(get_cmd);
     if (result == NULL) {
         ZITI_LOG(WARN, "get test nrpt rule script: (err=%d)", GetLastError());
@@ -282,10 +273,7 @@ bool is_nrpt_policies_effective(uv_loop_t *ziti_loop, char* tns_ip) {
         char *token;
         boolean policy_found = false;
 
-        /* get the first token */
         token = strtok(result, delim);
-
-        /* walk through other tokens */
         while( token != NULL ) {
             if (strcmp(token, ".ziti.test") == 0) {
                 policy_found = true;
@@ -293,6 +281,8 @@ bool is_nrpt_policies_effective(uv_loop_t *ziti_loop, char* tns_ip) {
             }
             token = strtok(NULL, delim);
         }
+        free(result);
+
         if (policy_found) {
             ZITI_LOG(INFO, "NRPT policies are effective in this system");
             remove_single_nrpt_rule(".ziti.test");
