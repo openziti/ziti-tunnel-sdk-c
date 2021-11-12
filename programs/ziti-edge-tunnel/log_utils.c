@@ -180,9 +180,9 @@ void ziti_log_writer(int level, const char *loc, const char *msg, size_t msglen)
 
 }
 
-bool open_log(char* log_filename) {
-    if((ziti_tunneler_log=fopen(log_filename,"a")) == NULL) {
-        printf("Could not open logs file %s, due to %s", log_filename, strerror(errno));
+bool open_log(char* filename) {
+    if((ziti_tunneler_log=fopen(filename,"a")) == NULL) {
+        printf("Could not open logs file %s, due to %s", filename, strerror(errno));
         return false;
     }
     return true;
