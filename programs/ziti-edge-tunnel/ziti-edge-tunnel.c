@@ -1216,7 +1216,7 @@ static void run(int argc, char *argv[]) {
 
 #if _WIN32
     remove_all_nrpt_rules();
-    bool nrpt_effective = is_nrpt_policies_effective(get_dns_ip());
+    bool nrpt_effective = is_nrpt_policies_effective(ziti_loop, get_dns_ip());
     if (!nrpt_effective) {
         // enable dns
     }

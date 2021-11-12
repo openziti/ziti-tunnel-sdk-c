@@ -485,6 +485,11 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
                 result.success = false;
                 break;
             }
+            if (inst->ztx == NULL) {
+                result.error = "ziti context is not loaded";
+                result.success = false;
+                break;
+            }
 
             get_transfer_rates(get_identity_metrics_cmd.identifier, (command_cb) cb, ctx);
             free_tunnel_get_identity_metrics(&get_identity_metrics_cmd);
@@ -515,6 +520,9 @@ static int load_identity(const char *identifier, const char *path, command_cb cb
 
 static void get_transfer_rates(const char *identifier, command_cb cb, void *ctx) {
     struct ziti_instance_s *inst = model_map_get(&instances, identifier);
+    if (inst->ztx == NULL) {
+        return;
+    }
     double up, down;
     ziti_get_transfer_rates(inst->ztx, &up, &down);
     tunnel_identity_metrics *id_metrics = calloc(1, sizeof(tunnel_identity_metrics));
