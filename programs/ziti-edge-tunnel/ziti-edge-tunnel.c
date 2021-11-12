@@ -26,6 +26,8 @@
 #include <ziti/ziti_dns.h>
 #include "model/events.h"
 #include "instance.h"
+#include <file-rotator.h>
+#include <time.h>
 
 #if __APPLE__ && __MACH__
 #include "netif_driver/darwin/utun.h"
@@ -33,9 +35,7 @@
 #include "netif_driver/linux/tun.h"
 #elif _WIN32
 #include "netif_driver/windows/tun.h"
-#ifndef MAXPATHLEN
-#define MAXPATHLEN _MAX_PATH
-#endif
+#include "windows/windows-service.h"
 
 #define setenv(n,v,o) do {if(o || getenv(n) == NULL) _putenv_s(n,v); } while(0)
 #endif
@@ -89,6 +89,10 @@ static uv_timer_t metrics_timer;
 
 // singleton
 static const ziti_tunnel_ctrl *CMD_CTRL;
+
+static bool started_by_scm = false;
+
+uv_loop_t *main_ziti_loop;
 
 IMPL_ENUM(event, EVENT_ACTIONS)
 
@@ -604,6 +608,7 @@ static void load_identities(uv_work_t *wr) {
             ZITI_LOG(ERROR, "failed to scan dir[%s]: %d/%s", config_dir, rc, uv_strerror(rc));
             return;
         }
+        ZITI_LOG(TRACE, "scan dir %s, file count: %d", config_dir, rc);
 
         uv_dirent_t file;
         while (uv_fs_scandir_next(&fs, &file) == 0) {
@@ -869,7 +874,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     start_event_socket(ziti_loop);
 
     if (uv_run(ziti_loop, UV_RUN_DEFAULT) != 0) {
-        ZITI_LOG(ERROR, "failed to run event loop");
+        ZITI_LOG(ERROR, "failed to run event loop or the event loop is stopped");
         exit(1);
     }
 
@@ -877,6 +882,10 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     uv_close((uv_handle_t *) &cmd_server, (uv_close_cb) free);
     uv_close((uv_handle_t *) &event_server, (uv_close_cb) free);
     uv_timer_stop(&metrics_timer);
+#if _WIN32
+    close_log();
+    stop_log_check();
+#endif
     return 0;
 }
 
@@ -992,9 +1001,31 @@ static void run(int argc, char *argv[]) {
     // which causes valgrind to freak out
     signal(SIGPIPE, SIG_IGN);
 #endif
-
     uv_loop_t *ziti_loop = uv_default_loop();
-    ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
+    bool init = false;
+
+#if _WIN32
+    bool multi_writer = true;
+    if (started_by_scm) {
+        multi_writer = false;
+    }
+    init = log_init(ziti_loop, multi_writer);
+#endif
+
+    main_ziti_loop = ziti_loop;
+    if (init) {
+        ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, ziti_log_writer);
+        struct tm *start_time = get_log_start_time();
+        char time_val[32];
+        strftime(time_val, sizeof(time_val), "%a %b %d %Y, %X %p", start_time);
+        ZITI_LOG(INFO,"============================================================================");
+        ZITI_LOG(INFO,"Logger initialization");
+        ZITI_LOG(INFO,"	- initialized at   : %s", time_val);
+        ZITI_LOG(INFO,"	- log file location: %s", get_log_file_name());
+        ZITI_LOG(INFO,"============================================================================");
+    } else {
+        ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
+    }
 
     ziti_tunnel_set_log_level(ziti_log_level());
     ziti_tunnel_set_logger(ziti_logger);
@@ -1569,6 +1600,62 @@ static int get_mfa_codes_opts(int argc, char *argv[]) {
     return optind;
 }
 
+#if _WIN32
+
+static void service_control(int argc, char *argv[]) {
+
+    tunnel_service_control *tunnel_service_control_opt = calloc(1, sizeof(tunnel_service_control));
+    if (parse_tunnel_service_control(tunnel_service_control_opt, cmd->data, strlen(cmd->data)) != 0) {
+        fprintf(stderr, "Could not fetch service control data");
+        return;
+    }
+    if (strcmp(tunnel_service_control_opt->operation, "install") == 0) {
+        SvcInstall();
+    } else if (strcmp(tunnel_service_control_opt->operation, "uninstall") == 0) {
+        SvcDelete();
+    } else {
+        fprintf(stderr, "Unknown option '%s'\n", tunnel_service_control_opt->operation);
+    }
+
+}
+#endif
+
+static int svc_opts(int argc, char *argv[]) {
+    static struct option svc_opts[] = {
+            {"operation", required_argument, NULL, 'o'},
+    };
+
+    tunnel_service_control *tunnel_service_control_options = calloc(1, sizeof(tunnel_service_control));
+    cmd = calloc(1, sizeof(tunnel_comand));
+    cmd->command = TunnelCommand_ServiceControl;
+
+    int c, option_index, errors = 0;
+    optind = 0;
+
+    while ((c = getopt_long(argc, argv, "o:",
+                            svc_opts, &option_index)) != -1) {
+        switch (c) {
+            case 'o': {
+                tunnel_service_control_options->operation = optarg;
+                break;
+            }
+            default: {
+                ZITI_LOG(ERROR, "Unknown option '%c'", c);
+                errors++;
+                break;
+            }
+        }
+    }
+    size_t json_len;
+    cmd->data = tunnel_service_control_to_json(tunnel_service_control_options, MODEL_JSON_COMPACT, &json_len);
+
+    if (errors > 0) {
+        commandline_help(stderr);
+        exit(1);
+    }
+    return optind;
+}
+
 static CommandLine enroll_cmd = make_command("enroll", "enroll Ziti identity",
         "-j|--jwt <enrollment token> -i|--identity <identity> [-k|--key <private_key> [-c|--cert <certificate>]] [-n|--name <name>]",
         "\t-j|--jwt\tenrollment token file\n"
@@ -1611,6 +1698,12 @@ static CommandLine generate_mfa_codes_cmd = make_command("generate_mfa_codes", "
 static CommandLine get_mfa_codes_cmd = make_command("get_mfa_codes", "Get MFA codes", "[-i <identity>] [-c <code>]",
                                                          "\t-i|--identity\tidentity info for fetching mfa codes\n"
                                                          "\t-c|--authcode\tauth code to authenticate the request for fetching mfa codes\n", get_mfa_codes_opts, send_message_to_tunnel_fn);
+#if _WIN32
+static CommandLine service_control_cmd = make_command("service_control", "execute service control functions for Ziti tunnel (required superuser access)",
+                                          "-o|--operation <option>",
+                                          "\t-o|--operation <option>\texecute the service control functions eg: install and uninstall (required)\n",
+                                          svc_opts, service_control);
+#endif
 static CommandLine ver_cmd = make_command("version", "show version", "[-v]", "\t-v\tshow verbose version information\n", version_opts, version);
 static CommandLine help_cmd = make_command("help", "this message", NULL, NULL, NULL, usage);
 static CommandLine *main_cmds[] = {
@@ -1625,6 +1718,9 @@ static CommandLine *main_cmds[] = {
         &submit_mfa_cmd,
         &generate_mfa_codes_cmd,
         &get_mfa_codes_cmd,
+#if _WIN32
+        &service_control_cmd,
+#endif
         &ver_cmd,
         &help_cmd,
         NULL
@@ -1637,6 +1733,27 @@ static CommandLine main_cmd = make_command_set(
                               "or 'ziti-edge-tunnel <command> -h'",
         NULL, main_cmds);
 
+void scm_service_init(char *config_path) {
+    started_by_scm = true;
+    if (config_path != NULL) {
+        config_dir = config_path;
+    }
+}
+
+void scm_service_run(void * name) {
+    ZITI_LOG(INFO, "About to run tunnel service...");
+    ziti_set_app_info((char *)name, ziti_tunneler_version());
+    run(0, NULL);
+}
+
+void scm_service_stop() {
+    ZITI_LOG(INFO, "Control request to stop tunnel service received...");
+    if (main_ziti_loop != NULL) {
+        uv_stop(main_ziti_loop);
+        uv_loop_close(main_ziti_loop);
+    }
+}
+
 int main(int argc, char *argv[]) {
     const char *name = strrchr(argv[0], '/');
     if (name == NULL) {
@@ -1644,6 +1761,18 @@ int main(int argc, char *argv[]) {
     } else {
         name = name + 1;
     }
+
+#if _WIN32
+    SvcStart(NULL);
+
+    // if service is started by SCM, SvcStart will return only when it receives the stop request
+    // started_by_scm will be set to true only if scm initializes the config value
+    // if the service is started from cmd line, SvcStart will return immediately and started_by_scm will be set to false. In this case tunnel can be run normally
+    if (started_by_scm) {
+        return 0;
+    }
+#endif
+
     main_cmd.name = name;
     commandline_run(&main_cmd, argc, argv);
     return 0;
@@ -1658,5 +1787,6 @@ IMPL_MODEL(services_event, SERVICES_EVENT)
 IMPL_MODEL(tunnel_status_event, TUNNEL_STATUS_EVENT)
 IMPL_MODEL(mfa_status_event, MFA_STATUS_EVENT)
 IMPL_MODEL(tunnel_metrics_event, TUNNEL_METRICS_EVENT)
+IMPL_MODEL(tunnel_service_control, TUNNEL_SERVICE_CONTROL)
 IMPL_MODEL(notification_message, TUNNEL_NOTIFICATION_MESSAGE)
 IMPL_MODEL(notification_event, TUNNEL_NOTIFICATION_EVENT)
