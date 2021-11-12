@@ -20,7 +20,6 @@
 
 #ifndef ZITI_TUNNEL_SDK_C_ZITI_HOSTING_H
 #define ZITI_TUNNEL_SDK_C_ZITI_HOSTING_H
-#include <sys/queue.h>
 #include <ziti/ziti_tunnel.h>
 // allowed address is one of:
 // - ip subnet address
