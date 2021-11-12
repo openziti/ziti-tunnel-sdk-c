@@ -38,7 +38,6 @@ static void exit_cb(uv_process_t* process,
 }
 
 static bool exec_process(uv_loop_t *ziti_loop, char* program, char* args[]) {
-    uv_pipe_t out;
     uv_process_t* process = calloc(1, sizeof(uv_process_t));
     uv_process_options_t options = {0};
     uv_stdio_container_t stdio[3];
@@ -46,13 +45,11 @@ static bool exec_process(uv_loop_t *ziti_loop, char* program, char* args[]) {
     options.args = args;
     options.exit_cb = exit_cb;
 
-    uv_pipe_init(ziti_loop, &out, 0);
-
     options.stdio = stdio;
     options.stdio_count = 3;
     options.stdio[0].flags = UV_IGNORE;
-    options.stdio[1].flags = UV_CREATE_PIPE | UV_WRITABLE_PIPE;
-    options.stdio[1].data.stream = (uv_stream_t*)&out;
+    options.stdio[1].flags = UV_INHERIT_FD;
+    options.stdio[1].data.fd = 1;
     options.stdio[2].flags = UV_INHERIT_FD;
     options.stdio[2].data.fd = 2;
 

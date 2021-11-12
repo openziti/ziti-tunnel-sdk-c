@@ -1119,17 +1119,19 @@ static int dns_fallback(const char *name, void *ctx, struct in_addr* addr) {
     return dns_miss_status;
 }
 
+#if _WIN32
 static void interrupt_handler(int sig) {
     ZITI_LOG(WARN,"Received signal to interrupt");
     scm_service_stop();
 }
+#endif
 
 static void run(int argc, char *argv[]) {
     uv_loop_t *ziti_loop = uv_default_loop();
     main_ziti_loop = ziti_loop;
 
     // generate tunnel status instance and save active state and start time
-#if _WIN32 || __linux__
+#if _WIN32
     if (config_dir != NULL) {
         set_identifier_path(config_dir);
         initialize_instance_config();
@@ -1138,7 +1140,7 @@ static void run(int argc, char *argv[]) {
 #endif
     bool init = false;
 
-#if _WIN32 || __linux__
+#if _WIN32
     bool multi_writer = true;
     if (started_by_scm) {
         multi_writer = false;
@@ -2005,6 +2007,7 @@ static CommandLine main_cmd = make_command_set(
                               "or 'ziti-edge-tunnel <command> -h'",
         NULL, main_cmds);
 
+#if _WIN32
 void scm_service_init(char *config_path) {
     started_by_scm = true;
     if (config_path != NULL) {
@@ -2026,6 +2029,7 @@ void scm_service_stop() {
     }
     remove_all_nrpt_rules();
 }
+#endif
 
 int main(int argc, char *argv[]) {
     const char *name = strrchr(argv[0], '/');
