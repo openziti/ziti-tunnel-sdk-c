@@ -37,10 +37,7 @@
 #include "netif_driver/linux/tun.h"
 #elif _WIN32
 #include "netif_driver/windows/tun.h"
-#ifndef MAXPATHLEN
-#define MAXPATHLEN _MAX_PATH
 #include "windows/windows-service.h"
-#endif
 
 #define setenv(n,v,o) do {if(o || getenv(n) == NULL) _putenv_s(n,v); } while(0)
 #endif
@@ -1072,10 +1069,7 @@ static void run(int argc, char *argv[]) {
         ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, ziti_log_writer);
         struct tm *start_time = get_log_start_time();
         char time_val[32];
-        snprintf(time_val, sizeof(time_val), "%04d-%02d-%02d %02d:%02d:%02d",
-                 1900 + start_time->tm_year, start_time->tm_mon + 1, start_time->tm_mday,
-                 start_time->tm_hour, start_time->tm_min, start_time->tm_sec
-        );
+        strftime(time_val, sizeof(time_val), "%a %b %d %Y, %X %p", start_time);
         ZITI_LOG(INFO,"============================================================================");
         ZITI_LOG(INFO,"Logger initialization");
         ZITI_LOG(INFO,"	- initialized at   : %s", time_val);
@@ -1658,9 +1652,9 @@ static int get_mfa_codes_opts(int argc, char *argv[]) {
     return optind;
 }
 
-static void service_control(int argc, char *argv[]) {
-
 #if _WIN32
+
+static void service_control(int argc, char *argv[]) {
 
     tunnel_service_control *tunnel_service_control_opt = calloc(1, sizeof(tunnel_service_control));
     if (parse_tunnel_service_control(tunnel_service_control_opt, cmd->data, strlen(cmd->data)) != 0) {
@@ -1674,10 +1668,9 @@ static void service_control(int argc, char *argv[]) {
     } else {
         fprintf(stderr, "Unknown option '%s'\n", tunnel_service_control_opt->operation);
     }
-#else
-    fprintf(stderr, "SCM is supported only in windows.");
-#endif
+
 }
+#endif
 
 static int svc_opts(int argc, char *argv[]) {
     static struct option svc_opts[] = {
@@ -1757,10 +1750,12 @@ static CommandLine generate_mfa_codes_cmd = make_command("generate_mfa_codes", "
 static CommandLine get_mfa_codes_cmd = make_command("get_mfa_codes", "Get MFA codes", "[-i <identity>] [-c <code>]",
                                                          "\t-i|--identity\tidentity info for fetching mfa codes\n"
                                                          "\t-c|--authcode\tauth code to authenticate the request for fetching mfa codes\n", get_mfa_codes_opts, send_message_to_tunnel_fn);
+#if _WIN32
 static CommandLine service_control_cmd = make_command("service_control", "execute service control functions for Ziti tunnel (required superuser access)",
                                           "-o|--operation <option>",
                                           "\t-o|--operation <option>\texecute the service control functions eg: install and uninstall (required)\n",
                                           svc_opts, service_control);
+#endif
 static CommandLine ver_cmd = make_command("version", "show version", "[-v]", "\t-v\tshow verbose version information\n", version_opts, version);
 static CommandLine help_cmd = make_command("help", "this message", NULL, NULL, NULL, usage);
 static CommandLine *main_cmds[] = {
@@ -1775,7 +1770,9 @@ static CommandLine *main_cmds[] = {
         &submit_mfa_cmd,
         &generate_mfa_codes_cmd,
         &get_mfa_codes_cmd,
+#if _WIN32
         &service_control_cmd,
+#endif
         &ver_cmd,
         &help_cmd,
         NULL

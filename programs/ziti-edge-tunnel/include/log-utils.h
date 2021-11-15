@@ -17,6 +17,16 @@
 #ifndef ZITI_TUNNEL_SDK_C_LOG_UTILS_H
 #define ZITI_TUNNEL_SDK_C_LOG_UTILS_H
 
+#if _WIN32
+#define MAXPATHLEN MAX_PATH
+#else
+#define MAXPATHLEN PATH_MAX
+#endif
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 bool open_log(char* log_filename);
 void close_log();
 void rotate_log();
@@ -27,5 +37,9 @@ char* get_log_file_name();
 
 bool log_init(uv_loop_t *, bool);
 void ziti_log_writer(int , const char *, const char *, size_t);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif //ZITI_TUNNEL_SDK_C_LOG_UTILS_H

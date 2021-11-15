@@ -20,6 +20,10 @@
 #include <ziti/ziti_model.h>
 #include "model/dtos.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 extern tunnel_identity *find_tunnel_identity(char* identifier);
 
 extern tunnel_identity *create_or_get_tunnel_identity(char* identifier, char* fingerprint) ;
@@ -41,5 +45,9 @@ extern tunnel_status *get_tunnel_status();
 extern tunnel_identity_array get_tunnel_identities();
 
 extern int get_remaining_timeout(int timeout, int timeout_rem, tunnel_identity *tnl_id);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif //ZITI_TUNNEL_SDK_C_INSTANCE_H
