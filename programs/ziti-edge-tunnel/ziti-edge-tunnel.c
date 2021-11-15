@@ -655,7 +655,7 @@ static void load_identities_complete(uv_work_t * wr, int status) {
     if (identity_loaded) {
         start_metrics_timer(wr->loop);
     }
-#if _WIN32 || __linux__
+#if _WIN32
     save_tunnel_status_to_file();
 #endif
 }
@@ -900,7 +900,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     tunneler_context tunneler = ziti_tunneler_init(&tunneler_opts, ziti_loop);
 
     // generate tunnel status instance and save active state and start time
-#if _WIN32 || __linux__
+#if _WIN32
     if (config_dir != NULL) {
         set_identifier_path(config_dir);
         initialize_instance_config();
