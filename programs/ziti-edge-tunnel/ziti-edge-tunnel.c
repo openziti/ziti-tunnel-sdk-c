@@ -617,9 +617,11 @@ static void load_identities(uv_work_t *wr) {
         while (uv_fs_scandir_next(&fs, &file) == 0) {
             ZITI_LOG(INFO, "file = %s %d", file.name, file.type);
 
+#if _WIN32
             if (strcmp(file.name, get_config_file_name(NULL)) == 0 || strcmp(file.name, get_backup_config_file_name(NULL)) == 0 ) {
                 continue;
             }
+#endif
 
             if (file.type == UV_DIRENT_FILE) {
                 struct cfg_instance_s *inst = calloc(1, sizeof(struct cfg_instance_s));
@@ -1054,17 +1056,17 @@ static void run(int argc, char *argv[]) {
     signal(SIGPIPE, SIG_IGN);
 #endif
     uv_loop_t *ziti_loop = uv_default_loop();
-    bool init = false;
 
 #if _WIN32
+    bool init = false;
+    main_ziti_loop = ziti_loop;
+
     bool multi_writer = true;
     if (started_by_scm) {
         multi_writer = false;
     }
     init = log_init(ziti_loop, multi_writer);
-#endif
 
-    main_ziti_loop = ziti_loop;
     if (init) {
         ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, ziti_log_writer);
         struct tm *start_time = get_log_start_time();
@@ -1078,6 +1080,9 @@ static void run(int argc, char *argv[]) {
     } else {
         ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
     }
+#else
+    ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
+#endif
 
     ziti_tunnel_set_log_level(ziti_log_level());
     ziti_tunnel_set_logger(ziti_logger);
