@@ -821,10 +821,12 @@ static void on_event(const base_event *ev) {
                         svc = get_tunnel_service(id, svc_ev->removed_services[svc_idx]);
                     }
 #if _WIN32
-                    for (int i = 0; svc->Addresses[i]; i++) {
-                        tunnel_address *addr = svc->Addresses[i];
-                        if (addr->IsHost && model_map_get(&hostnamesToRemove, addr->HostName) == NULL) {
-                            model_map_set(&hostnamesToRemove, addr->HostName, true);
+                    if (svc->Addresses != NULL) {
+                        for (int i = 0; svc->Addresses[i]; i++) {
+                            tunnel_address *addr = svc->Addresses[i];
+                            if (addr->IsHost && model_map_get(&hostnamesToRemove, addr->HostName) == NULL) {
+                                model_map_set(&hostnamesToRemove, addr->HostName, true);
+                            }
                         }
                     }
 #endif
@@ -849,10 +851,12 @@ static void on_event(const base_event *ev) {
                     tunnel_service *svc = get_tunnel_service(id, svc_ev->added_services[svc_idx]);
                     svc_event.AddedServices[svc_idx] = svc;
 #if _WIN32
-                    for (int i = 0; svc->Addresses[i]; i++) {
-                        tunnel_address *addr = svc->Addresses[i];
-                        if (addr->IsHost && model_map_get(&hostnamesToAdd, addr->HostName) == NULL) {
-                            model_map_set(&hostnamesToAdd, addr->HostName, true);
+                    if (svc->Addresses != NULL) {
+                        for (int i = 0; svc->Addresses[i]; i++) {
+                            tunnel_address *addr = svc->Addresses[i];
+                            if (addr->IsHost && model_map_get(&hostnamesToAdd, addr->HostName) == NULL) {
+                                model_map_set(&hostnamesToAdd, addr->HostName, true);
+                            }
                         }
                     }
 #endif
@@ -1031,10 +1035,10 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     uv_close((uv_handle_t *) &event_server, (uv_close_cb) free);
     uv_timer_stop(&metrics_timer);
 #if _WIN32
+    ZITI_LOG(INFO,"normal shutdown complete");
+    cleanup_instance_config();
     close_log();
     stop_log_check();
-    cleanup_instance_config();
-    remove_all_nrpt_rules();
 #endif
     return 0;
 }
@@ -1215,7 +1219,7 @@ static void run(int argc, char *argv[]) {
         struct tm *start_time = get_log_start_time();
         char time_val[32];
         strftime(time_val, sizeof(time_val), "%a %b %d %Y, %X %p", start_time);
-        ZITI_LOG(INFO,"============================================================================");
+        ZITI_LOG(INFO,"============================ service begins ================================");
         ZITI_LOG(INFO,"Logger initialization");
         ZITI_LOG(INFO,"	- initialized at   : %s", time_val);
         ZITI_LOG(INFO,"	- log file location: %s", get_log_file_name());
@@ -2062,6 +2066,8 @@ void scm_service_run(void * name) {
 
 void scm_service_stop() {
     ZITI_LOG(INFO, "Control request to stop tunnel service received...");
+    remove_all_nrpt_rules();
+    ZITI_LOG(INFO,"============================ service ends ==================================");
     if (main_ziti_loop != NULL) {
         uv_stop(main_ziti_loop);
         uv_loop_close(main_ziti_loop);
