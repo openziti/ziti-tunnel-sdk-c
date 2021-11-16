@@ -37,10 +37,7 @@
 #include "netif_driver/linux/tun.h"
 #elif _WIN32
 #include "netif_driver/windows/tun.h"
-#ifndef MAXPATHLEN
-#define MAXPATHLEN _MAX_PATH
 #include "windows/windows-service.h"
-#endif
 
 #define setenv(n,v,o) do {if(o || getenv(n) == NULL) _putenv_s(n,v); } while(0)
 #endif
@@ -685,9 +682,11 @@ static void load_identities(uv_work_t *wr) {
         while (uv_fs_scandir_next(&fs, &file) == 0) {
             ZITI_LOG(INFO, "file = %s %d", file.name, file.type);
 
+#if _WIN32
             if (strcmp(file.name, get_config_file_name(NULL)) == 0 || strcmp(file.name, get_backup_config_file_name(NULL)) == 0 ) {
                 continue;
             }
+#endif
 
             if (file.type == UV_DIRENT_FILE) {
                 struct cfg_instance_s *inst = calloc(1, sizeof(struct cfg_instance_s));
@@ -723,7 +722,7 @@ static void load_identities_complete(uv_work_t * wr, int status) {
     if (identity_loaded) {
         start_metrics_timer(wr->loop);
     }
-#if _WIN32 || __linux__
+#if _WIN32
     // should be the last line in this function as it calls the mutex/lock
     save_tunnel_status_to_file();
 #endif
@@ -1141,6 +1140,7 @@ static void run(int argc, char *argv[]) {
     signal(SIGPIPE, SIG_IGN);
 #endif
 
+#if _WIN32
     // set ip info into instance
     set_ip_info(dns_ip, tun_ip, bits);
 
@@ -1158,10 +1158,7 @@ static void run(int argc, char *argv[]) {
         ziti_log_init(ziti_loop, log_lvl_val, ziti_log_writer);
         struct tm *start_time = get_log_start_time();
         char time_val[32];
-        snprintf(time_val, sizeof(time_val), "%04d-%02d-%02d %02d:%02d:%02d",
-                 1900 + start_time->tm_year, start_time->tm_mon + 1, start_time->tm_mday,
-                 start_time->tm_hour, start_time->tm_min, start_time->tm_sec
-        );
+        strftime(time_val, sizeof(time_val), "%a %b %d %Y, %X %p", start_time);
         ZITI_LOG(INFO,"============================================================================");
         ZITI_LOG(INFO,"Logger initialization");
         ZITI_LOG(INFO,"	- initialized at   : %s", time_val);
@@ -1170,6 +1167,9 @@ static void run(int argc, char *argv[]) {
     } else {
         ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
     }
+#else
+    ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
+#endif
 
     set_log_level(log_level_name(ziti_log_level()));
     ziti_tunnel_set_log_level(ziti_log_level());
@@ -1745,6 +1745,8 @@ static int get_mfa_codes_opts(int argc, char *argv[]) {
     return optind;
 }
 
+#if _WIN32
+
 static int set_log_level_opts(int argc, char *argv[]) {
     static struct option opts[] = {
             {"loglevel", required_argument, NULL, 'l'},
@@ -1827,8 +1829,6 @@ static int update_tun_ip_opts(int argc, char *argv[]) {
 
 static void service_control(int argc, char *argv[]) {
 
-#if _WIN32
-
     tunnel_service_control *tunnel_service_control_opt = calloc(1, sizeof(tunnel_service_control));
     if (parse_tunnel_service_control(tunnel_service_control_opt, cmd->data, strlen(cmd->data)) != 0) {
         fprintf(stderr, "Could not fetch service control data");
@@ -1841,9 +1841,7 @@ static void service_control(int argc, char *argv[]) {
     } else {
         fprintf(stderr, "Unknown option '%s'\n", tunnel_service_control_opt->operation);
     }
-#else
-    fprintf(stderr, "SCM is supported only in windows.");
-#endif
+
 }
 
 static int svc_opts(int argc, char *argv[]) {
@@ -1881,6 +1879,7 @@ static int svc_opts(int argc, char *argv[]) {
     }
     return optind;
 }
+#endif
 
 static CommandLine enroll_cmd = make_command("enroll", "enroll Ziti identity",
         "-j|--jwt <enrollment token> -i|--identity <identity> [-k|--key <private_key> [-c|--cert <certificate>]] [-n|--name <name>]",
@@ -1924,6 +1923,7 @@ static CommandLine generate_mfa_codes_cmd = make_command("generate_mfa_codes", "
 static CommandLine get_mfa_codes_cmd = make_command("get_mfa_codes", "Get MFA codes", "[-i <identity>] [-c <code>]",
                                                          "\t-i|--identity\tidentity info for fetching mfa codes\n"
                                                          "\t-c|--authcode\tauth code to authenticate the request for fetching mfa codes\n", get_mfa_codes_opts, send_message_to_tunnel_fn);
+#if _WIN32
 static CommandLine set_log_level_cmd = make_command("set_log_level", "Set log level of the tunneler", "-l <level>",
                                                     "\t-l|--loglevel\tlog level of the tunneler\n", set_log_level_opts, send_message_to_tunnel_fn);
 static CommandLine update_tun_ip_cmd = make_command("update_tun_ip", "Update tun ip of the tunneler", "[-t <tunip>] [-m <mask>] [-d <AddDNS>]",
@@ -1934,6 +1934,7 @@ static CommandLine service_control_cmd = make_command("service_control", "execut
                                           "-o|--operation <option>",
                                           "\t-o|--operation <option>\texecute the service control functions eg: install and uninstall (required)\n",
                                           svc_opts, service_control);
+#endif
 static CommandLine ver_cmd = make_command("version", "show version", "[-v]", "\t-v\tshow verbose version information\n", version_opts, version);
 static CommandLine help_cmd = make_command("help", "this message", NULL, NULL, NULL, usage);
 static CommandLine *main_cmds[] = {
@@ -1948,9 +1949,11 @@ static CommandLine *main_cmds[] = {
         &submit_mfa_cmd,
         &generate_mfa_codes_cmd,
         &get_mfa_codes_cmd,
+#if _WIN32
         &set_log_level_cmd,
         &update_tun_ip_cmd,
         &service_control_cmd,
+#endif
         &ver_cmd,
         &help_cmd,
         NULL
@@ -1962,6 +1965,8 @@ static CommandLine main_cmd = make_command_set(
         "<command> [<args>]", "to get help for specific command run 'ziti-edge-tunnel help <command>' "
                               "or 'ziti-edge-tunnel <command> -h'",
         NULL, main_cmds);
+
+#if _WIN32
 
 void scm_service_init(char *config_path) {
     started_by_scm = true;
@@ -1983,6 +1988,8 @@ void scm_service_stop() {
         uv_loop_close(main_ziti_loop);
     }
 }
+
+#endif
 
 int main(int argc, char *argv[]) {
     const char *name = strrchr(argv[0], '/');

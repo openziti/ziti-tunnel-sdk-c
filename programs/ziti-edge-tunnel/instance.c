@@ -50,8 +50,6 @@ tunnel_identity *create_or_get_tunnel_identity(char* identifier, char* filename)
         tunnel_identity *tnl_id = calloc(1, sizeof(struct tunnel_identity_s));
         tnl_id->Identifier = strdup(identifier);
         if (filename != NULL) {
-            tnl_id->Status = strdup(instance_status_name(instance_status_ok));
-
             char* extension = strstr(filename, ".json");
             int length;
             if (extension != NULL) {
@@ -69,6 +67,8 @@ tunnel_identity *create_or_get_tunnel_identity(char* identifier, char* filename)
                 tnl_id->Name = calloc(length + 1, sizeof(char));
                 snprintf(tnl_id->Name, length+1, "%s", fingerprint);
             }
+            tnl_id->Status = strdup(instance_status_name(instance_status_ok));
+
         }
         model_map_set(&tnl_identity_map, identifier, tnl_id);
         return tnl_id;
@@ -460,6 +460,7 @@ void set_identifier_from_identities() {
     if (tnl_status.Identities == NULL) {
         return;
     }
+#if _WIN32
     for(int idx = 0; tnl_status.Identities[idx]; idx++) {
         tunnel_identity *tnl_id = tnl_status.Identities[idx];
         if (tnl_id->Identifier == NULL && tnl_id->FingerPrint != NULL) {
@@ -471,6 +472,7 @@ void set_identifier_from_identities() {
             model_map_set(&tnl_identity_map, tnl_id->Identifier, tnl_id);
         }
     }
+#endif
 }
 
 void initialize_tunnel_status() {

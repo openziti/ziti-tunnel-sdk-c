@@ -27,30 +27,18 @@
 #include <direct.h>
 #endif
 
-#define GetCurrentDir _getcwd
-
-#ifndef MAXPATHLEN
-#ifdef _MAX_PATH
-#define MAXPATHLEN _MAX_PATH
-#elif _WIN32
-#define MAXPATHLEN 260
-#else
-#define MAXPATHLEN 4096
-#endif
-#endif
-
 static FILE *ziti_tunneler_log = NULL;
 static uv_check_t *log_flusher;
 static struct tm *start_time;
-char* log_filename = NULL;
+char* log_filename;
 static bool multi_writer = false;
 static const char* log_filename_base = "ziti-tunneler.log";
-static rotation_count = 7;
+static int rotation_count = 7;
 
-static char* get_log_filename() {
+static char* create_log_filename() {
     char curr_path[FILENAME_MAX]; //create string buffer to hold path
 #if _WIN32
-    GetCurrentDir( curr_path, FILENAME_MAX );
+    _getcwd( curr_path, FILENAME_MAX );
 #else
     sprintf(curr_path, "%s", "/tmp");
 #endif
@@ -70,16 +58,14 @@ static char* get_log_filename() {
     }
 
     char time_val[32];
-    snprintf(time_val, sizeof(time_val), "%04d%02d%02d0000",
-             1900 + start_time->tm_year, start_time->tm_mon + 1, start_time->tm_mday
-    );
+    strftime(time_val, sizeof(time_val), "%Y%m%d0000", start_time);
 
-    char* log_filename = malloc(FILENAME_MAX * sizeof(char));
-    sprintf(log_filename, "%s/%s.%s", log_path, log_filename_base, time_val);
-    return log_filename;
+    char* temp_log_filename = calloc(FILENAME_MAX, sizeof(char));
+    sprintf(temp_log_filename, "%s/%s.%s", log_path, log_filename_base, time_val);
+    return temp_log_filename;
 }
 
-flush_log(uv_check_t *handle) {
+void flush_log(uv_check_t *handle) {
     if (ziti_tunneler_log != NULL) {
         fflush(ziti_tunneler_log);
     }
@@ -95,6 +81,7 @@ flush_log(uv_check_t *handle) {
         struct tm *orig_time = handle->data;
         if (orig_time->tm_mday < tm->tm_mday) {
             rotate_log();
+            handle->data = start_time;
             delete_older_logs(handle->loop);
         }
     }
@@ -106,8 +93,11 @@ bool log_init(uv_loop_t *ziti_loop, bool is_multi_writer) {
     uv_timeval64_t file_time;
     uv_gettimeofday(&file_time);
     start_time = calloc(1, sizeof(struct tm));
-    struct tm* now_tm = gmtime(&file_time.tv_sec);
-    memcpy(start_time, now_tm, sizeof(struct tm));
+#if _WIN32
+    _gmtime64_s(start_time, &file_time.tv_sec);
+#else
+    gmtime_r(&file_time.tv_sec, start_time);
+#endif
 
     delete_older_logs(ziti_loop);
     multi_writer = is_multi_writer;
@@ -119,7 +109,7 @@ bool log_init(uv_loop_t *ziti_loop, bool is_multi_writer) {
     uv_check_start(log_flusher, flush_log);
 
 
-    log_filename = get_log_filename();
+    log_filename = create_log_filename();
 
     if (!open_log(log_filename)) {
         return false;
@@ -138,7 +128,7 @@ char* get_log_file_name(){
     return log_filename;
 }
 
-static char* parse_level(int level) {
+static const char* parse_level(int level) {
     const char* err_level;
     switch(level) {
         case 0:
@@ -180,8 +170,7 @@ void ziti_log_writer(int level, const char *loc, const char *msg, size_t msglen)
     );
 
     if ( ziti_tunneler_log != NULL) {
-        fputc('\n', ziti_tunneler_log);
-        fprintf(ziti_tunneler_log, "[%s] %7s %s ", curr_time, parse_level(level), loc);
+        fprintf(ziti_tunneler_log, "\n[%s] %7s %s ", curr_time, parse_level(level), loc);
         fwrite(msg, 1, msglen, ziti_tunneler_log);
     }
 
@@ -191,9 +180,9 @@ void ziti_log_writer(int level, const char *loc, const char *msg, size_t msglen)
 
 }
 
-bool open_log(char* log_filename) {
-    if((ziti_tunneler_log=fopen(log_filename,"a")) == NULL) {
-        printf("Could not open logs file %s", log_filename);
+bool open_log(char* filename) {
+    if((ziti_tunneler_log=fopen(filename,"a")) == NULL) {
+        printf("Could not open logs file %s, due to %s", filename, strerror(errno));
         return false;
     }
     return true;
@@ -211,7 +200,11 @@ void close_log() {
 }
 
 void stop_log_check() {
-    uv_check_stop(log_flusher);
+    if (log_flusher != NULL) {
+        uv_check_stop(log_flusher);
+        free(log_flusher->data);
+        free(log_flusher);
+    }
 }
 
 void rotate_log() {
@@ -219,9 +212,17 @@ void rotate_log() {
 
     uv_timeval64_t file_time;
     uv_gettimeofday(&file_time);
-    struct tm* orig_time = gmtime(&file_time.tv_sec);
-    memcpy(start_time, orig_time, sizeof(struct tm));
-    log_filename = get_log_filename();
+    if (start_time) {
+        free(start_time);
+        start_time = NULL;
+    }
+    start_time = calloc(1, sizeof(struct tm));
+#if _WIN32
+    _gmtime64_s(start_time, &file_time.tv_sec);
+#else
+    gmtime_r(&file_time.tv_sec, start_time);
+#endif
+    log_filename = create_log_filename();
 
     open_log(log_filename);
 }
@@ -229,7 +230,7 @@ void rotate_log() {
 void delete_older_logs(uv_loop_t *ziti_loop) {
     char curr_path[FILENAME_MAX]; //create string buffer to hold path
 #if _WIN32
-    GetCurrentDir( curr_path, FILENAME_MAX );
+    _getcwd( curr_path, FILENAME_MAX );
 #else
     sprintf(curr_path, "%s", "/tmp");
 #endif
@@ -239,7 +240,9 @@ void delete_older_logs(uv_loop_t *ziti_loop) {
 
     uv_fs_t fs;
     int rc = uv_fs_scandir(ziti_loop, &fs, log_path, 0, NULL);
-    if (rc < 7) {
+    // we wanted to retain last 7 days logs, so this function will return, if there are less than or equal to 7 elements in this folder
+    // if there are more than 7 files/folder, it will continue. Only files starting with the given log base file name will be considered while cleaning up
+    if (rc <= 7) {
         if (rc < 0) {
             ZITI_LOG(ERROR, "failed to scan dir[%s]: %d/%s", log_path, rc, uv_strerror(rc));
         } else {
@@ -253,37 +256,30 @@ void delete_older_logs(uv_loop_t *ziti_loop) {
     uv_dirent_t file;
     int rotation_cnt = 0;
     while (uv_fs_scandir_next(&fs, &file) == 0) {
-        ZITI_LOG(TRACE, "log file = %s %d", file.name, file.type);
+        ZITI_LOG(TRACE, "file/folder = %s %d", file.name, file.type);
 
         if (file.type == UV_DIRENT_FILE) {
-            if (memcmp(file.name, log_filename_base, sizeof(log_filename_base)) == 0) {
+            if (strncmp(file.name, log_filename_base, strlen(log_filename_base)) == 0) {
                 log_files[rotation_cnt] = strdup(file.name);
                 rotation_cnt++;
             }
         }
     }
 
-    char currpath[FILENAME_MAX]; //create string buffer to hold path
-#if _WIN32
-    GetCurrentDir( currpath, FILENAME_MAX );
-#else
-    sprintf(curr_path, "%s", "/tmp");
-#endif
-
     char logpath[FILENAME_MAX];
-    sprintf(logpath, "%s/logs", currpath);
+    sprintf(logpath, "%s/logs", curr_path);
     int rotation_index = rotation_cnt;
     while (rotation_index > rotation_count) {
-        char *old_log= calloc(FILENAME_MAX, sizeof(char));
+        char *old_log = NULL;
         int old_idx = -1;
 
         for(int idx =0; idx < rotation_cnt; idx++) {
-            if (*old_log == NULL && log_files[idx]) {
+            if (old_log == NULL && log_files[idx]) {
                 old_log = log_files[idx];
                 old_idx = idx;
                 continue;
             }
-            if (*old_log == NULL) {
+            if (old_log == NULL) {
                 continue;
             }
             if (strcmp(old_log, log_files[idx]) > 0 ) {
@@ -291,16 +287,16 @@ void delete_older_logs(uv_loop_t *ziti_loop) {
                 old_idx = idx;
             }
         }
-        if (*old_log != NULL) {
-            char* logfile_to_delete = calloc(MAXPATHLEN, sizeof(char*));
+        if (old_log != NULL) {
+            char logfile_to_delete[MAXPATHLEN];
             sprintf(logfile_to_delete, "%s/%s", logpath, old_log);
             ZITI_LOG(INFO, "Deleting old log file %s", logfile_to_delete);
             remove(logfile_to_delete);
-            free(logfile_to_delete);
             rotation_index--;
+            free (old_log);
+            old_log = NULL;
+            log_files[old_idx] = NULL;
         }
-        free (old_log);
-        log_files[old_idx] = NULL;
     }
 
     // clean up resources

@@ -25,9 +25,9 @@ if (MSVC)
     set(getopt libwinc)
 endif()
 
-set(ZITI_INSTANCE_COMMON include/model/events.h include/model/dtos.h instance.c include/instance.h log_utils.c config-utils.c include/log-utils.h instance-config.c include/config-utils.h include/instance-config.h)
+set(ZITI_INSTANCE_COMMON include/model/events.h include/model/dtos.h instance.c include/instance.h)
 if (WIN32)
-    set(ZITI_INSTANCE_OS windows-service.c include/windows/windows-service.h)
+    set(ZITI_INSTANCE_OS windows-service.c include/windows/windows-service.h log_utils.c include/log-utils.h config-utils.c include/config-utils.h instance-config.c include/instance-config.h)
 endif ()
 
 add_executable(ziti-edge-tunnel ziti-edge-tunnel.c ${NETIF_DRIVER_SOURCE} dnsmasq_manager.c ${ZITI_INSTANCE_COMMON} ${ZITI_INSTANCE_OS})
