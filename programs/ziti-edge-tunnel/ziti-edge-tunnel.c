@@ -228,7 +228,7 @@ static bool process_tunnel_commands(const tunnel_comand *cmd, command_cb cb, voi
     }
     if (cmd_accepted) {
         cb(&result, ctx);
-#if _WIN32 || __linux__
+#if _WIN32
         // should be the last line in this function as it calls the mutex/lock
         save_tunnel_status_to_file();
 #endif
@@ -1090,26 +1090,22 @@ static int dns_fallback(const char *name, void *ctx, struct in_addr* addr) {
 static void run(int argc, char *argv[]) {
     uv_loop_t *ziti_loop = uv_default_loop();
     main_ziti_loop = ziti_loop;
+    bool init = false;
 
     // generate tunnel status instance and save active state and start time
-#if _WIN32 || __linux__
+#if _WIN32
     if (config_dir != NULL) {
         set_identifier_path(config_dir);
         initialize_instance_config();
         load_tunnel_status_from_file(ziti_loop);
     }
-#endif
-    bool init = false;
 
-#if _WIN32 || __linux__
     bool multi_writer = true;
     if (started_by_scm) {
         multi_writer = false;
     }
     init = log_init(ziti_loop, multi_writer);
-#endif
 
-#if _WIN32
     char *ip_range_temp = get_ip_range_from_config();
     if (ip_range_temp != NULL) {
         ip_range = ip_range_temp;
