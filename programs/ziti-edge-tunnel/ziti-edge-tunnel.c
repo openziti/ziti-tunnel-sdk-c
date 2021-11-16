@@ -1245,6 +1245,7 @@ static void run(int argc, char *argv[]) {
             it = model_map_it_remove(it);
         }
         model_map_clear(domains, (_free_f) free);
+        free(domains);
         add_nrpt_rules(ziti_loop, &normalized_domains, get_dns_ip());
     }
 #endif
