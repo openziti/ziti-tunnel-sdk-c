@@ -94,6 +94,7 @@ static uv_timer_t metrics_timer;
 static const ziti_tunnel_ctrl *CMD_CTRL;
 
 static bool started_by_scm = false;
+static bool tunnel_interrupted = false;
 
 uv_loop_t *main_ziti_loop;
 
@@ -1017,6 +1018,8 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     if (uv_run(ziti_loop, UV_RUN_DEFAULT) != 0) {
         if (started_by_scm) {
             ZITI_LOG(INFO, "The event loop is stopped, exiting");
+        } else if (tunnel_interrupted) {
+            ZITI_LOG(ERROR, "tunnel interrupted");
         } else {
             ZITI_LOG(ERROR, "failed to run event loop");
             exit(1);
@@ -1031,6 +1034,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     close_log();
     stop_log_check();
     cleanup_instance_config();
+    remove_all_nrpt_rules();
 #endif
     return 0;
 }
@@ -1125,6 +1129,7 @@ static int dns_fallback(const char *name, void *ctx, struct in_addr* addr) {
 #if _WIN32
 static void interrupt_handler(int sig) {
     ZITI_LOG(WARN,"Received signal to interrupt");
+    tunnel_interrupted = true;
     scm_service_stop();
 }
 #endif
@@ -1218,6 +1223,7 @@ static void run(int argc, char *argv[]) {
     } else {
         ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
     }
+    ZITI_LOG(INFO,"Loading identity files from %s", config_dir);
 #else
     ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
 #endif
@@ -2060,7 +2066,6 @@ void scm_service_stop() {
         uv_stop(main_ziti_loop);
         uv_loop_close(main_ziti_loop);
     }
-    remove_all_nrpt_rules();
 }
 #endif
 

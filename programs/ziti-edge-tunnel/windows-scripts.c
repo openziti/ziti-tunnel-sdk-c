@@ -115,7 +115,7 @@ void chunked_add_nrpt_rules(uv_loop_t *ziti_loop, LIST_HEAD(hostnames_list, host
     char cmd[MAX_POWERSHELL_COMMAND_LEN];
     snprintf(cmd, sizeof(cmd),"powershell -Command \"%s\"", script);
 
-    ZITI_LOG(TRACE, "executing '%s'", cmd);
+    ZITI_LOG(INFO, "Executing ADD NRPT script : '%s'", cmd);
     char* args[] = {"powershell", "-Command", script, NULL};
     bool result = exec_process(ziti_loop, args[0], args);
     if (!result) {
@@ -184,7 +184,7 @@ void chunked_remove_nrpt_rules(uv_loop_t *ziti_loop, LIST_HEAD(hostnames_list, h
     char cmd[MAX_POWERSHELL_COMMAND_LEN];
     snprintf(cmd, sizeof(cmd),"powershell -Command \"%s\"", script);
 
-    ZITI_LOG(TRACE, "executing '%s'", cmd);
+    ZITI_LOG(INFO, "Executing Remove NRPT script: '%s'", cmd);
     char* args[] = {"powershell", "-Command", script, NULL};
     bool result = exec_process(ziti_loop, args[0], args);
     if (!result) {
@@ -229,7 +229,7 @@ void remove_all_nrpt_rules() {
     size_t buf_len = sprintf(remove_cmd, "powershell -Command \"Get-DnsClientNrptRule | Where { $_.Comment.StartsWith('Added by %s') } | Remove-DnsClientNrptRule -ErrorAction SilentlyContinue -Force\"", exe_name);
     ZITI_LOG(TRACE, "Removing all nrpt rules. total script size: %d", buf_len);
 
-    ZITI_LOG(TRACE, "executing '%s'", remove_cmd);
+    ZITI_LOG(INFO, "Removing all nrpt rules: '%s'", remove_cmd);
     int rc = system(remove_cmd);
     if (rc != 0) {
         ZITI_LOG(WARN, "Remove all NRPT script: %d(err=%d)", rc, GetLastError());
@@ -293,6 +293,8 @@ bool is_nrpt_policies_effective(char* tns_ip) {
 
 model_map *get_connection_specific_domains() {
     char get_cmd[MAX_POWERSHELL_COMMAND_LEN] = "powershell -Command \"Get-DnsClient | Select-Object ConnectionSpecificSuffix -Unique | ForEach-Object { $_.ConnectionSpecificSuffix }; (Get-DnsClientGlobalSetting).SuffixSearchList\"";
+    ZITI_LOG(INFO, "Getting Connection specific Domains '%s'", get_cmd);
+
     char* result = exec_process_fetch_result(get_cmd);
     model_map *conn_sp_domains = calloc(1, sizeof(model_map));
     if (result == NULL) {
