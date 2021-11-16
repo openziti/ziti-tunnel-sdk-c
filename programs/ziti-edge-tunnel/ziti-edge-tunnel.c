@@ -1126,6 +1126,18 @@ static void interrupt_handler(int sig) {
 }
 #endif
 
+static char* normalize_host(char* hostname) {
+    size_t len = strlen(hostname);
+    // remove the . from the end of the hostname
+    if (hostname[len-2] == ".") {
+        hostname[len-2] = '\0';
+    }
+    char* hostname_new = calloc(len+1, sizeof(char));
+    // add . in the beginning of the hostname
+    sprintf(hostname_new,".%s", hostname);
+    return hostname_new;
+}
+
 static void run(int argc, char *argv[]) {
     uv_loop_t *ziti_loop = uv_default_loop();
     main_ziti_loop = ziti_loop;
@@ -1221,6 +1233,19 @@ static void run(int argc, char *argv[]) {
     bool nrpt_effective = is_nrpt_policies_effective(get_dns_ip());
     if (!nrpt_effective) {
         // enable dns
+    } else {
+        model_map *domains = get_connection_specific_domains();
+        const char *key;
+        bool status;
+        model_map normalized_domains = {0};
+        model_map_iter it = model_map_iterator(domains);
+        while (it != NULL) {
+            char *key = model_map_it_key(it);
+            model_map_set(&normalized_domains, normalize_host(key), true);
+            it = model_map_it_remove(it);
+        }
+        model_map_clear(domains, (_free_f) free);
+        add_nrpt_rules(ziti_loop, &normalized_domains, get_dns_ip());
     }
 #endif
 

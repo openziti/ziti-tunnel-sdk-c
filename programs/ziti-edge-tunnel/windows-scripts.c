@@ -13,7 +13,6 @@
  See the License for the specific language governing permissions and
  limitations under the License.
  */
-#if _WIN32
 
 #include <ziti/ziti_log.h>
 #include <model/dtos.h>
@@ -263,7 +262,7 @@ bool is_nrpt_policies_effective(char* tns_ip) {
     char get_cmd[MAX_POWERSHELL_COMMAND_LEN] = "powershell -Command \"Get-DnsClientNrptPolicy -Effective | Select-Object Namespace -Unique | Where-Object Namespace -Eq '.ziti.test'\"";
     char* result = exec_process_fetch_result(get_cmd);
     if (result == NULL) {
-        ZITI_LOG(WARN, "get test nrpt rule script: (err=%d)", GetLastError());
+        ZITI_LOG(WARN, "get test nrpt rule script failed");
         return false;
     } else {
         char delim[] = "\r\n";
@@ -292,4 +291,22 @@ bool is_nrpt_policies_effective(char* tns_ip) {
     }
 }
 
-#endif
+model_map *get_connection_specific_domains() {
+    char get_cmd[MAX_POWERSHELL_COMMAND_LEN] = "powershell -Command \"Get-DnsClient | Select-Object ConnectionSpecificSuffix -Unique | ForEach-Object { $_.ConnectionSpecificSuffix }; (Get-DnsClientGlobalSetting).SuffixSearchList\"";
+    char* result = exec_process_fetch_result(get_cmd);
+    model_map *conn_sp_domains = calloc(1, sizeof(model_map));
+    if (result == NULL) {
+        ZITI_LOG(WARN, "get test nrpt rule script failed");
+        return conn_sp_domains;
+    } else {
+        char delim[] = "\r\n";
+        char *token = strtok(result, delim);
+        while( token != NULL ) {
+            model_map_set(conn_sp_domains, token, true);
+            token = strtok(NULL, delim);
+        }
+        free(result);
+
+        return conn_sp_domains;
+    }
+}
