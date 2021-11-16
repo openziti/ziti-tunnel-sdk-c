@@ -28,6 +28,10 @@
 #define MAXTUNIPV4MASK 16
 #endif
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 extern tunnel_identity *find_tunnel_identity(char* identifier);
 
 extern tunnel_identity *create_or_get_tunnel_identity(char* identifier, char* fingerprint) ;
@@ -65,5 +69,9 @@ char* get_ip_range_from_config();
 char* get_tun_ip();
 
 char* get_dns_ip();
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif //ZITI_TUNNEL_SDK_C_INSTANCE_H
