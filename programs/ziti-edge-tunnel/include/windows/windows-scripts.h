@@ -17,8 +17,6 @@
 #ifndef ZITI_TUNNEL_SDK_C_WINDOWS_SCRIPTS_H
 #define ZITI_TUNNEL_SDK_C_WINDOWS_SCRIPTS_H
 
-#if _WIN32
-
 #define MAX_POWERSHELL_COMMAND_LEN 8192
 #define MAX_POWERSHELL_SCRIPT_LEN 7500 //represents how long the powershell script can be. as of apr 2021 the limit was 8k (8192). leaves a little room for the rest of the script
 #ifndef MAXBUFFERLEN
@@ -33,7 +31,5 @@ void remove_nrpt_rules(uv_loop_t *ziti_loop, model_map *hostnames);
 void remove_all_nrpt_rules();
 bool is_nrpt_policies_effective(char* tns_ip);
 model_map *get_connection_specific_domains();
-
-#endif
 
 #endif //ZITI_TUNNEL_SDK_C_WINDOWS_SCRIPTS_H
