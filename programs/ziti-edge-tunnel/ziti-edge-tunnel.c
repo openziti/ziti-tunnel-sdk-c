@@ -806,8 +806,10 @@ static void on_event(const base_event *ev) {
             tunnel_identity *id = create_or_get_tunnel_identity(ev->identifier, NULL);
             svc_event.Fingerprint = strdup(id->FingerPrint);
             ziti_service **zs;
+#if _WIN32
             model_map hostnamesToAdd = {0};
             model_map hostnamesToRemove = {0};
+#endif
             if (svc_ev->removed_services != NULL) {
                 int svc_array_length = 0;
                 for (zs = svc_ev->removed_services; *zs != NULL; zs++) {
@@ -819,12 +821,14 @@ static void on_event(const base_event *ev) {
                     if (svc == NULL) {
                         svc = get_tunnel_service(id, svc_ev->removed_services[svc_idx]);
                     }
+#if _WIN32
                     for (int i = 0; svc->Addresses[i]; i++) {
                         tunnel_address *addr = svc->Addresses[i];
                         if (addr->IsHost && model_map_get(&hostnamesToRemove, addr->HostName) == NULL) {
                             model_map_set(&hostnamesToRemove, addr->HostName, true);
                         }
                     }
+#endif
                     svc_event.RemovedServices[svc_idx] = svc;
                 }
 
@@ -832,6 +836,7 @@ static void on_event(const base_event *ev) {
                 if (model_map_size(&hostnamesToRemove) > 0) {
                     remove_nrpt_rules(main_ziti_loop, &hostnamesToRemove);
                 }
+                model_map_clear(&hostnamesToRemove, NULL);
 #endif
             }
 
@@ -844,23 +849,23 @@ static void on_event(const base_event *ev) {
                 for (int svc_idx = 0; svc_ev->added_services[svc_idx]; svc_idx++) {
                     tunnel_service *svc = get_tunnel_service(id, svc_ev->added_services[svc_idx]);
                     svc_event.AddedServices[svc_idx] = svc;
+#if _WIN32
                     for (int i = 0; svc->Addresses[i]; i++) {
                         tunnel_address *addr = svc->Addresses[i];
                         if (addr->IsHost && model_map_get(&hostnamesToAdd, addr->HostName) == NULL) {
                             model_map_set(&hostnamesToAdd, addr->HostName, true);
                         }
                     }
+#endif
                 }
 
 #if _WIN32
                 if (model_map_size(&hostnamesToAdd) > 0) {
                     add_nrpt_rules(main_ziti_loop, &hostnamesToAdd, get_dns_ip());
                 }
+                model_map_clear(&hostnamesToAdd, NULL);
 #endif
             }
-
-            model_map_clear(&hostnamesToRemove, NULL);
-            model_map_clear(&hostnamesToAdd, NULL);
 
             if (svc_ev->removed_services != NULL || svc_ev->added_services != NULL) {
                 add_or_remove_services_from_tunnel(id, svc_event.AddedServices, svc_event.RemovedServices);
