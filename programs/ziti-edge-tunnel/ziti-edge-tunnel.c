@@ -1111,7 +1111,10 @@ static void run(int argc, char *argv[]) {
 #endif
 
 #if _WIN32
-    ip_range = get_ip_range_from_config();
+    char *ip_range_temp = get_ip_range_from_config();
+    if (ip_range_temp != NULL) {
+        ip_range = ip_range_temp;
+    }
 #endif
 
     uint32_t ip[4];
