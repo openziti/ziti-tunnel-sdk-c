@@ -64,7 +64,7 @@ bool load_tunnel_status_from_file(uv_loop_t* ziti_loop) {
     char* config_path = get_system_config_path();
 
     uv_fs_t fs;
-    int check = uv_fs_mkdir(ziti_loop, &fs, config_path, 0, NULL);
+    int check = uv_fs_mkdir(ziti_loop, &fs, config_path, 0755, NULL);
     if (check == 0) {
         ZITI_LOG(TRACE,"config path is created at %s", config_path);
     } else {
@@ -140,7 +140,7 @@ bool save_tunnel_status_to_file() {
                 char* tunnel_status_data = tunnel_status;
                 for (int i =0; i< json_len; i=i+MIN_BUFFER_LEN-1, tunnel_status_data=tunnel_status_data+MIN_BUFFER_LEN-1) {
                     char buffer[MIN_BUFFER_LEN] = {0};
-                    memcpy(buffer, tunnel_status_data, (MIN_BUFFER_LEN-1));
+                    strncpy(buffer, tunnel_status_data, (MIN_BUFFER_LEN-1));
                     fwrite(buffer, 1, strlen(buffer), config);
                 }
                 saved = true;

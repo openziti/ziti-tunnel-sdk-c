@@ -17,6 +17,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <pwd.h>
+#include <unistd.h>
 
 const char* app_data = "APPDATA";
 static char* identifier_path = NULL;
@@ -25,8 +27,18 @@ char* get_system_config_path() {
     char* config_path = malloc(FILENAME_MAX * sizeof(char));
 #if _WIN32
     sprintf(config_path, "%s/NetFoundry", getenv(app_data));
+#elif __linux__
+    char* homedir;
+    if ((homedir = getenv("HOME")) == NULL) {
+        homedir = getpwuid(getuid())->pw_dir;
+    }
+    if (homedir != NULL) {
+        sprintf(config_path, "%s/.ziti", homedir);
+    } else {
+        sprintf(config_path, "/tmp");
+    }
 #else
-    sprintf(config_path, "%s", "/tmp");
+    sprintf(config_path, "/tmp");
 #endif
     return config_path;
 }

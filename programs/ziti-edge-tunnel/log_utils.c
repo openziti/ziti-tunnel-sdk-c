@@ -40,7 +40,7 @@ static char* create_log_filename() {
 #if _WIN32
     _getcwd( curr_path, FILENAME_MAX );
 #else
-    sprintf(curr_path, "%s", "/tmp");
+    sprintf(curr_path, "/tmp");
 #endif
 
     char log_path[FILENAME_MAX];
