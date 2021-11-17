@@ -451,6 +451,10 @@ static void tnl_transfer_rates(const tunnel_identity_metrics *metrics, void *ctx
 static void on_command_inline_resp(const tunnel_result* result, void *ctx) {
     tunnel_command_inline *tnl_cmd_inline = ctx;
 
+    if (tnl_cmd_inline == NULL) {
+        return;
+    }
+
     if (result->data != NULL && strlen(result->data) > 0) {
         switch (tnl_cmd_inline->command) {
             case TunnelCommand_GetMetrics: {
@@ -2066,7 +2070,14 @@ void scm_service_run(void * name) {
 
 void scm_service_stop() {
     ZITI_LOG(INFO, "Control request to stop tunnel service received...");
+
+    // ziti dump to log file / stdout
+    tunnel_comand *cmd = calloc(1, sizeof(tunnel_comand));
+    cmd->command = TunnelCommand_ZitiDump;
+    send_tunnel_command(cmd, NULL);
+
     remove_all_nrpt_rules();
+
     ZITI_LOG(INFO,"============================ service ends ==================================");
     if (main_ziti_loop != NULL) {
         uv_stop(main_ziti_loop);
