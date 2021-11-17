@@ -50,19 +50,23 @@ tunnel_identity *create_or_get_tunnel_identity(char* identifier, char* filename)
         if (filename != NULL) {
             char* extension = strstr(filename, ".json");
 
+            int length;
             if (extension != NULL) {
-                int length = (int) (extension - filename);
-                tnl_id->FingerPrint = calloc(length + 1, sizeof(char));
-                char fingerprint[FILENAME_MAX];
-                memcpy(fingerprint, filename, length);
-                fingerprint[length] = '\0';
-                snprintf(tnl_id->FingerPrint, length+1, "%s", fingerprint);
-
-                if (tnl_id->Name == NULL) {
-                    tnl_id->Name = calloc(length + 1, sizeof(char));
-                    snprintf(tnl_id->Name, length+1, "%s", fingerprint);
-                }
+                length = (int) (extension - filename);
+            } else {
+                length = strlen(filename);
             }
+            tnl_id->FingerPrint = calloc(length + 1, sizeof(char));
+            char fingerprint[FILENAME_MAX];
+            memcpy(fingerprint, filename, length);
+            fingerprint[length] = '\0';
+            snprintf(tnl_id->FingerPrint, length+1, "%s", fingerprint);
+
+            if (tnl_id->Name == NULL) {
+                tnl_id->Name = calloc(length + 1, sizeof(char));
+                snprintf(tnl_id->Name, length+1, "%s", fingerprint);
+            }
+
             tnl_id->Status = strdup(instance_status_name(instance_status_ok));
 
         }

@@ -17,8 +17,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#if __linux__
 #include <pwd.h>
 #include <unistd.h>
+#endif
 
 const char* app_data = "APPDATA";
 static char* identifier_path = NULL;
