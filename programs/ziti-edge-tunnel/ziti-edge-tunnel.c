@@ -30,7 +30,10 @@
 #if __APPLE__ && __MACH__
 #include "netif_driver/darwin/utun.h"
 #elif __linux__
-#include "netif_driver/linux/tun.h"
+//TODO resolve
+// netif_handle_s conflict
+//#include "netif_driver/linux/tun.h"
+#include "netif_driver/linux_geneve/geneve.h"
 #elif _WIN32
 #include "netif_driver/windows/tun.h"
 #ifndef MAXPATHLEN
@@ -80,6 +83,7 @@ static long refresh_metrics = 5000;
 static long metrics_latency = 5000;
 
 static char *config_dir = NULL;
+static char *driver_name = NULL;
 
 static uv_pipe_t cmd_server;
 static uv_pipe_t event_server;
@@ -823,25 +827,30 @@ static void on_event(const base_event *ev) {
 }
 
 static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, const char *ip_range, dns_manager *dns) {
-    netif_driver tun;
-    char tun_error[64];
+    netif_driver driver;
+    char driver_error[64];
 #if __APPLE__ && __MACH__
-    tun = utun_open(tun_error, sizeof(tun_error), ip_range);
+    driver = utun_open(driver_error, sizeof(driver_error), ip_range);
 #elif __linux__
-    tun = tun_open(ziti_loop, tun_ip, dns_ip, ip_range, tun_error, sizeof(tun_error));
+    if ( driver_name != NULL && (strcmp(driver_name, "geneve") == 0)) {
+        driver = geneve_open(ziti_loop, driver_error, sizeof(driver_error));
+    }
+    else {
+        driver = tun_open(ziti_loop, tun_ip, dns_ip, ip_range, driver_error, sizeof(driver_error));
+    }
 #elif _WIN32
-    tun = tun_open(ziti_loop, tun_ip, dns_ip, ip_range, tun_error, sizeof(tun_error));
+    driver = tun_open(ziti_loop, tun_ip, dns_ip, ip_range, driver_error, sizeof(driver_error));
 #else
 #error "ziti-edge-tunnel is not supported on this system"
 #endif
 
-    if (tun == NULL) {
-        ZITI_LOG(ERROR, "failed to open network interface: %s", tun_error);
+    if (driver == NULL) {
+        ZITI_LOG(ERROR, "failed to open network interface: %s", driver_error);
         return 1;
     }
 
     tunneler_sdk_options tunneler_opts = {
-            .netif_driver = tun,
+            .netif_driver = driver,
             .ziti_dial = ziti_sdk_c_dial,
             .ziti_close = ziti_sdk_c_close,
             .ziti_close_write = ziti_sdk_c_close_write,
@@ -910,6 +919,7 @@ static struct option run_options[] = {
         { "refresh", required_argument, NULL, 'r'},
         { "dns-ip-range", required_argument, NULL, 'd'},
         { "dns", required_argument, NULL, 'n'},
+        { "packet-source", required_argument, NULL, 'p'},
 };
 
 static const char* ip_range = "100.64.0.0/10";
@@ -921,7 +931,7 @@ static int run_opts(int argc, char *argv[]) {
     int c, option_index, errors = 0;
     optind = 0;
 
-    while ((c = getopt_long(argc, argv, "i:I:v:r:d:n:",
+    while ((c = getopt_long(argc, argv, "i:I:v:r:d:n:p:",
                             run_options, &option_index)) != -1) {
         switch (c) {
             case 'i': {
@@ -944,6 +954,9 @@ static int run_opts(int argc, char *argv[]) {
                 break;
             case 'n': // DNS manager implementation
                 dns_impl = optarg;
+                break;
+            case 'p': // overlay protocol type
+                driver_name = optarg;
                 break;
             default: {
                 ZITI_LOG(ERROR, "Unknown option '%c'", c);
@@ -1578,14 +1591,15 @@ static CommandLine enroll_cmd = make_command("enroll", "enroll Ziti identity",
         "\t-n|--name\tidentity name\n",
         parse_enroll_opts, enroll);
 static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required superuser access)",
-                                          "-i <id.file> [-r N] [-v N] [-d|--dns-ip-range N.N.N.N/n] [-n|--dns <internal|dnsmasq=<dnsmasq hosts dir>>]",
+                                          "-i <id.file> [-r N] [-v N] [-d|--dns-ip-range N.N.N.N/n] [-n|--dns <internal|dnsmasq=<dnsmasq hosts dir>>] [-o|--overlay-name <protocol name>]",
                                           "\t-i|--identity <identity>\trun with provided identity file (required)\n"
                                           "\t-I|--identity-dir <dir>\tload identities from provided directory\n"
                                           "\t-v|--verbose N\tset log level, higher level -- more verbose (default 3)\n"
                                           "\t-r|--refresh N\tset service polling interval in seconds (default 10)\n"
                                           "\t-d|--dns-ip-range <ip range>\tspecify CIDR block in which service DNS names"
                                           " are assigned in N.N.N.N/n format (default 100.64.0.0/10)\n"
-                                          "\t-n|--dns <internal|dnsmasq=<dnsmasq opts>> DNS configuration setting (default internal)\n",
+                                          "\t-n|--dns <internal|dnsmasq=<dnsmasq opts>> DNS configuration setting (default internal)\n"
+                                          "\t-p|--packet-source <drive name>\tspecify the driver name that packets will be sourced from , e.g. geneve (default tun)\n",
         run_opts, run);
 static CommandLine dump_cmd = make_command("dump", "dump the identities information", "[-i <identity>] [-p <dir>]",
                                            "\t-i|--identity\tdump identity info\n"
