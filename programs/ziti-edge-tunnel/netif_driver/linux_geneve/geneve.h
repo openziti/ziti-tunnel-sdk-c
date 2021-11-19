@@ -22,9 +22,14 @@
 #include <linux/byteorder/little_endian.h>
 #include <linux/types.h>
 
+struct geneve_flow_s {
+    uint8_t id[18];
+    uv_udp_t udp_handle_out;
+};
+
 struct netif_handle_s {
     model_map flow_ids;
-    uv_udp_t udp_handle;
+    uv_udp_t udp_handle_in;
 };
 
 extern netif_driver geneve_open(struct uv_loop_s *loop, char *error, size_t error_len);

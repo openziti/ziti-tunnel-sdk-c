@@ -39,7 +39,7 @@
 #define BUFFER_SIZE 64 * 1024
 
 static int geneve_close(netif_handle geneve) {
-    uv_udp_recv_stop(&geneve->udp_handle);
+    uv_udp_recv_stop(&geneve->udp_handle_in);
     uv_close((uv_handle_t *) geneve, NULL);
 }
 
@@ -72,12 +72,12 @@ void geneve_udp_read(uv_udp_t *req, ssize_t nread, const uv_buf_t *buf, const st
       catch errors
       Initializing map and driver, handle
      */
-    uint8_t *flow_id = malloc(18*sizeof(uint8_t));
+    struct geneve_flow_s *flow_info = malloc(sizeof(struct geneve_flow_s));
     uint8_t *flow_key = malloc(12*sizeof(uint8_t));
     netif_driver_t *driver = req->data;
     netif_handle geneve = driver->handle;
     /*
-       TODO
+     TODO
        based on fixed Geneve overhead of 40 bytes.
        perhaps more based on Geneve overhead length and key in on the 12 bytes of the first options field
        after the fixed 8 byte initial header fields.
@@ -95,14 +95,19 @@ void geneve_udp_read(uv_udp_t *req, ssize_t nread, const uv_buf_t *buf, const st
       Fill in the details of the flow_id array plus Geneve Peer IP and Port, Geneve Overhead byte # 12 through 19
       plus bytes copied from sockaddr *addr struct passed into the function
      */
-    memcpy(&flow_id[0], &buf->base[12], 8*sizeof(uint8_t));
-    memcpy(&flow_id[8], &buf->base[36], 4*sizeof(uint8_t));
-    memcpy(&flow_id[12], &geneve_peer_address->sin_addr.s_addr, 4*sizeof(uint8_t));
-    memcpy(&flow_id[16], &geneve_peer_address->sin_port, 2*sizeof(uint8_t));
-    model_map_set(&geneve->flow_ids, (char*) flow_key, flow_id);
+    memcpy(&flow_info->id[0], &buf->base[12], 8*sizeof(uint8_t));
+    memcpy(&flow_info->id[8], &buf->base[36], 4*sizeof(uint8_t));
+    memcpy(&flow_info->id[12], &geneve_peer_address->sin_addr.s_addr, 4*sizeof(uint8_t));
+    memcpy(&flow_info->id[16], &geneve_peer_address->sin_port, 2*sizeof(uint8_t));
+    /*
+     *TODO check if exists with model_map_get
+     */
+    model_map_set(&geneve->flow_ids, (char*) flow_key, flow_info->id);
     fprintf(stderr, "\nflow_key: ");for (int i = 0;i < 12;++i) {fprintf(stderr, "%x ", flow_key[i]);}
-    fprintf(stderr, "\nflow_id: ");for (int i = 0;i < 14;++i) {fprintf(stderr, "%x ", flow_id[i]);}
+    fprintf(stderr, "\nflow_id: ");for (int i = 0;i < 14;++i) {fprintf(stderr, "%x ", flow_info->id[i]);}
     fprintf(stderr, "\n");
+    size_t map_size = model_map_size(&geneve->flow_ids);
+    fprintf(stderr, "flow map size is %d\n", (int)map_size);
     on_packet(buf->base + 40, nread - 40, netif_default);
     free(buf->base);
 }
@@ -160,7 +165,8 @@ ssize_t geneve_write(netif_handle geneve, const void *buf, size_t len) {
             }
     };
     // Send the geneve packet out
-    uv_udp_send(&send_req, &geneve->udp_handle, geneve_packet, 2, (const struct sockaddr*) &send_address, NULL);
+
+    uv_udp_send(&send_req, &geneve->udp_handle_in, geneve_packet, 2, (const struct sockaddr*) &send_address, NULL);
 }
 
 netif_driver geneve_open(uv_loop_t *loop, char *error, size_t error_len) {
@@ -169,25 +175,25 @@ netif_driver geneve_open(uv_loop_t *loop, char *error, size_t error_len) {
     struct sockaddr_in geneve_addr;
     const char *ip_bind = "0.0.0.0";
     int port_bind = GENEVE_UDP_PORT;
-    // retrieve ip and port from sockaddr_in
+    /* retrieve ip and port from sockaddr_in */
     uv_ip4_addr(ip_bind, port_bind, &geneve_addr);
     fprintf(stderr, "Geneve Port open %s:%d\n", inet_ntoa(geneve_addr.sin_addr), htons (geneve_addr.sin_port));
-    //Add geneve socket to event loop
-    if (uv_udp_init(loop, &geneve->udp_handle)) {
+    /* Add geneve socket to event loop */
+    if (uv_udp_init(loop, &geneve->udp_handle_in)) {
         snprintf(error, error_len, "Failed to initialize uv UDP handle for geneve\n");
         return NULL;
     }
     // Initialized memory for the driver struct
     struct netif_driver_s *driver = calloc(1, sizeof(struct netif_driver_s));
 
-    if (uv_udp_bind(&geneve->udp_handle, (const struct sockaddr *) &geneve_addr, UV_UDP_REUSEADDR)) {
+    if (uv_udp_bind(&geneve->udp_handle_in, (const struct sockaddr *) &geneve_addr, UV_UDP_REUSEADDR)) {
         snprintf(error, error_len, "Could not add netlink socket to uv geneve\n");
         return NULL;
     }
-    //udp handle to pass pointer to on_packet
-    geneve->udp_handle.data = driver;
+    /* udp handle to pass pointer to on_packet */
+    geneve->udp_handle_in.data = driver;
 
-    if (uv_udp_recv_start(&geneve->udp_handle, my_alloc_cb, geneve_udp_read)) {
+    if (uv_udp_recv_start(&geneve->udp_handle_in, my_alloc_cb, geneve_udp_read)) {
         snprintf(error, error_len, "Could not start receiving netlink packets for geneve\n");
         return NULL;
     }
