@@ -54,6 +54,8 @@ extern tunnel_identity_array get_tunnel_identities();
 
 extern int get_remaining_timeout(int timeout, int timeout_rem, tunnel_identity *tnl_id);
 
+void delete_identity_from_instance(char* identifier);
+
 void set_ip_info(uint32_t dns_ip, uint32_t tun_ip, int bits);
 
 void set_log_level(char* log_level);
@@ -65,8 +67,6 @@ char* get_log_level();
 void set_tun_ipv4_into_instance(char* tun_ip, int mask, bool addDns);
 
 char* get_ip_range_from_config();
-
-char* get_tun_ip();
 
 char* get_dns_ip();
 

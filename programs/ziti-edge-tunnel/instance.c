@@ -617,6 +617,13 @@ void set_service_version() {
     tnl_status.ServiceVersion->BuildDate = strdup(ziti_tunneler_build_date());
 }
 
+void delete_identity_from_instance(char* identifier) {
+    tunnel_identity *id = model_map_get(&tnl_identity_map, identifier);
+    model_map_remove(&tnl_identity_map, identifier);
+    free_tunnel_identity(id);
+    free(id);
+}
+
 void set_tun_ipv4_into_instance(char* tun_ip, int mask, bool addDns) {
     if (tnl_status.TunIpv4 != NULL) free(tnl_status.TunIpv4);
     tnl_status.TunIpv4 = strdup(tun_ip);
@@ -633,10 +640,6 @@ char* get_ip_range_from_config() {
         snprintf(ip_range, 30 * sizeof(char), "%s/%d",tnl_status.TunIpv4, tnl_status.TunIpv4Mask);
     }
     return ip_range;
-}
-
-char* get_tun_ip() {
-    return tnl_status.TunIpv4;
 }
 
 char* get_dns_ip() {

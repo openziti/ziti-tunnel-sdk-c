@@ -171,6 +171,29 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
     ZITI_LOG(INFO, "resp[%d,len=%zd] = %.*s",
             result->success, json_len, (int)json_len, json, result->data);
 
+    if (result->success && result->data != NULL) {
+        tunnel_comand tnl_res_cmd = {0};
+        if (parse_tunnel_comand(&tnl_res_cmd, result->data, strlen(result->data)) == 0) {
+            switch (tnl_res_cmd.command) {
+                case TunnelCommand_RemoveIdentity: {
+                    tunnel_delete_identity tnl_delete_id = {0};
+                    if (tnl_res_cmd.data != NULL && parse_tunnel_delete_identity(&tnl_delete_id, tnl_res_cmd.data, strlen(tnl_res_cmd.data)) == 0) {
+                        delete_identity_from_instance(tnl_delete_id.identifier);
+                        // delete identity file
+                        remove(tnl_delete_id.identifier);
+                        ZITI_LOG(INFO, "Identity file %s is deleted",tnl_delete_id.identifier);
+                    }
+                    free_tunnel_delete_identity(&tnl_delete_id);
+                    break;
+                }
+                case TunnelCommand_Unknown: {
+                    break;
+                }
+            }
+        }
+        free_tunnel_comand(&tnl_res_cmd);
+    }
+
     if (uv_is_active((const uv_handle_t *) ctx)) {
         uv_buf_t b = uv_buf_init(json, json_len);
         uv_write_t *wr = calloc(1, sizeof(uv_write_t));
@@ -1563,7 +1586,7 @@ static int disable_identity_opts(int argc, char *argv[]) {
                             opts, &option_index)) != -1) {
         switch (c) {
             case 'i':
-                disable_identity_options->path = realpath(optarg, NULL);
+                disable_identity_options->identifier = optarg;
                 break;
             default: {
                 fprintf(stderr, "Unknown option '%c'\n", c);
@@ -1985,6 +2008,40 @@ static int get_status_opts(int argc, char *argv[]) {
     return optind;
 }
 
+static int delete_identity_opts(int argc, char *argv[]) {
+    static struct option opts[] = {
+            {"identity", required_argument, NULL, 'i'},
+    };
+    int c, option_index, errors = 0;
+    optind = 0;
+
+    tunnel_delete_identity *delete_identity_options = calloc(1, sizeof(tunnel_delete_identity));
+    cmd = calloc(1, sizeof(tunnel_comand));
+    cmd->command = TunnelCommand_RemoveIdentity;
+
+    while ((c = getopt_long(argc, argv, "i:",
+                            opts, &option_index)) != -1) {
+        switch (c) {
+            case 'i':
+                delete_identity_options->identifier = optarg;
+                break;
+            default: {
+                fprintf(stderr, "Unknown option '%c'\n", c);
+                errors++;
+                break;
+            }
+        }
+    }
+    if (errors > 0) {
+        commandline_help(stderr);
+        exit(1);
+    }
+    size_t json_len;
+    cmd->data = tunnel_delete_identity_to_json(delete_identity_options, MODEL_JSON_COMPACT, &json_len);
+
+    return optind;
+}
+
 static CommandLine enroll_cmd = make_command("enroll", "enroll Ziti identity",
         "-j|--jwt <enrollment token> -i|--identity <identity> [-k|--key <private_key> [-c|--cert <certificate>]] [-n|--name <name>]",
         "\t-j|--jwt\tenrollment token file\n"
@@ -2028,7 +2085,8 @@ static CommandLine get_mfa_codes_cmd = make_command("get_mfa_codes", "Get MFA co
                                                          "\t-i|--identity\tidentity info for fetching mfa codes\n"
                                                          "\t-c|--authcode\tauth code to authenticate the request for fetching mfa codes\n", get_mfa_codes_opts, send_message_to_tunnel_fn);
 static CommandLine get_status_cmd = make_command("tunnel_status", "Get Tunnel Status", "", "", get_status_opts, send_message_to_tunnel_fn);
-
+static CommandLine delete_id_cmd = make_command("delete", "delete the identities information", "[-i <identity>]",
+                                                 "\t-i|--identity\tidentity info that needs to be deleted\n", delete_identity_opts, send_message_to_tunnel_fn);
 #if _WIN32
 static CommandLine set_log_level_cmd = make_command("set_log_level", "Set log level of the tunneler", "-l <level>",
                                                     "\t-l|--loglevel\tlog level of the tunneler\n", set_log_level_opts, send_message_to_tunnel_fn);
@@ -2056,6 +2114,7 @@ static CommandLine *main_cmds[] = {
         &generate_mfa_codes_cmd,
         &get_mfa_codes_cmd,
         &get_status_cmd,
+        &delete_id_cmd,
 #if _WIN32
         &set_log_level_cmd,
         &update_tun_ip_cmd,
