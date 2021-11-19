@@ -50,7 +50,8 @@ XX(GetMFACodes, __VA_ARGS__) \
 XX(GetMetrics, __VA_ARGS__) \
 XX(SetLogLevel, __VA_ARGS__) \
 XX(UpdateTunIP, __VA_ARGS__) \
-XX(ServiceControl, __VA_ARGS__)
+XX(ServiceControl, __VA_ARGS__) \
+XX(Status, __VA_ARGS__)
 
 DECLARE_ENUM(TunnelCommand, TUNNEL_COMMANDS)
 

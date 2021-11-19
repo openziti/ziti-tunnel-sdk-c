@@ -179,19 +179,19 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
     }
 }
 
-static bool process_tunnel_commands(const tunnel_comand *cmd, command_cb cb, void *ctx) {
+static bool process_tunnel_commands(const tunnel_comand *tnl_cmd, command_cb cb, void *ctx) {
     tunnel_result result = {
             .success = false,
             .error = NULL,
             .data = NULL,
     };
     bool cmd_accepted = false;
-    switch (cmd->command) {
+    switch (tnl_cmd->command) {
         case TunnelCommand_SetLogLevel: {
             cmd_accepted = true;
 
             tunnel_set_log_level tunnel_set_log_level_cmd = {0};
-            if (cmd->data == NULL || parse_tunnel_set_log_level(&tunnel_set_log_level_cmd, cmd->data, strlen(cmd->data)) != 0) {
+            if (tnl_cmd->data == NULL || parse_tunnel_set_log_level(&tunnel_set_log_level_cmd, tnl_cmd->data, strlen(tnl_cmd->data)) != 0) {
                 result.error = "invalid command";
                 result.success = false;
                 break;
@@ -211,7 +211,7 @@ static bool process_tunnel_commands(const tunnel_comand *cmd, command_cb cb, voi
             cmd_accepted = true;
 
             tunnel_tun_ip_v4 tunnel_tun_ip_v4_cmd = {0};
-            if (cmd->data == NULL || parse_tunnel_tun_ip_v4(&tunnel_tun_ip_v4_cmd, cmd->data, strlen(cmd->data)) != 0) {
+            if (tnl_cmd->data == NULL || parse_tunnel_tun_ip_v4(&tunnel_tun_ip_v4_cmd, tnl_cmd->data, strlen(tnl_cmd->data)) != 0) {
                 result.error = "invalid command";
                 result.success = false;
                 break;
@@ -225,6 +225,14 @@ static bool process_tunnel_commands(const tunnel_comand *cmd, command_cb cb, voi
             }
             set_tun_ipv4_into_instance(tunnel_tun_ip_v4_cmd.tunIP, tunnel_tun_ip_v4_cmd.mask, tunnel_tun_ip_v4_cmd.addDns);
             result.success = true;
+            break;
+        }
+        case TunnelCommand_Status: {
+            cmd_accepted = true;
+            tunnel_status* status = get_tunnel_status();
+            result.success = true;
+            size_t json_len;
+            result.data = tunnel_status_to_json(status, MODEL_JSON_COMPACT, &json_len);
             break;
         }
     }
@@ -259,11 +267,11 @@ static void on_cmd(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
     } else {
         ZITI_LOG(INFO, "received cmd <%.*s>", (int) len, b->base);
 
-        tunnel_comand cmd = {0};
-        if (parse_tunnel_comand(&cmd, b->base, len) == 0) {
-            int status = process_tunnel_commands(&cmd, on_command_resp, s);
+        tunnel_comand tnl_cmd = {0};
+        if (parse_tunnel_comand(&tnl_cmd, b->base, len) == 0) {
+            int status = process_tunnel_commands(&tnl_cmd, on_command_resp, s);
             if (!status) {
-                CMD_CTRL->process(&cmd, on_command_resp, s);
+                CMD_CTRL->process(&tnl_cmd, on_command_resp, s);
             }
         } else {
             tunnel_result resp = {
@@ -272,7 +280,7 @@ static void on_cmd(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
             };
             on_command_resp(&resp, s);
         }
-        free_tunnel_comand(&cmd);
+        free_tunnel_comand(&tnl_cmd);
     }
 
     free(b->base);
@@ -487,10 +495,10 @@ static void on_command_inline_resp(const tunnel_result* result, void *ctx) {
     }
 }
 
-static void send_tunnel_command(tunnel_comand *cmd, void *ctx) {
-    CMD_CTRL->process(cmd, on_command_inline_resp, ctx);
-    free_tunnel_comand(cmd);
-    free(cmd);
+static void send_tunnel_command(tunnel_comand *tnl_cmd, void *ctx) {
+    CMD_CTRL->process(tnl_cmd, on_command_inline_resp, ctx);
+    free_tunnel_comand(tnl_cmd);
+    free(tnl_cmd);
 }
 
 
@@ -610,17 +618,17 @@ static void broadcast_metrics(uv_timer_t *timer) {
             if (tnl_id->Active && tnl_id->Loaded) {
                 active_identities = true;
 
-                tunnel_comand *cmd = calloc(1, sizeof(tunnel_comand));
-                cmd->command = TunnelCommand_GetMetrics;
+                tunnel_comand *tnl_cmd = calloc(1, sizeof(tunnel_comand));
+                tnl_cmd->command = TunnelCommand_GetMetrics;
                 tunnel_get_identity_metrics *get_metrics = calloc(1, sizeof(tunnel_get_identity_metrics));
                 get_metrics->identifier = strdup(tnl_id->Identifier);
                 size_t json_len;
-                cmd->data = tunnel_get_identity_metrics_to_json(get_metrics, MODEL_JSON_COMPACT, &json_len);
+                tnl_cmd->data = tunnel_get_identity_metrics_to_json(get_metrics, MODEL_JSON_COMPACT, &json_len);
 
                 tunnel_command_inline *tnl_cmd_inline = calloc(1, sizeof(tunnel_command_inline));
                 tnl_cmd_inline->identifier = strdup(tnl_id->Identifier);
                 tnl_cmd_inline->command = TunnelCommand_GetMetrics;
-                send_tunnel_command(cmd, tnl_cmd_inline);
+                send_tunnel_command(tnl_cmd, tnl_cmd_inline);
 
                 free_tunnel_get_identity_metrics(get_metrics);
                 free(get_metrics);
@@ -1968,6 +1976,15 @@ static int svc_opts(int argc, char *argv[]) {
 }
 #endif
 
+static int get_status_opts(int argc, char *argv[]) {
+    optind = 0;
+
+    cmd = calloc(1, sizeof(tunnel_comand));
+    cmd->command = TunnelCommand_Status;
+
+    return optind;
+}
+
 static CommandLine enroll_cmd = make_command("enroll", "enroll Ziti identity",
         "-j|--jwt <enrollment token> -i|--identity <identity> [-k|--key <private_key> [-c|--cert <certificate>]] [-n|--name <name>]",
         "\t-j|--jwt\tenrollment token file\n"
@@ -2010,6 +2027,8 @@ static CommandLine generate_mfa_codes_cmd = make_command("generate_mfa_codes", "
 static CommandLine get_mfa_codes_cmd = make_command("get_mfa_codes", "Get MFA codes", "[-i <identity>] [-c <code>]",
                                                          "\t-i|--identity\tidentity info for fetching mfa codes\n"
                                                          "\t-c|--authcode\tauth code to authenticate the request for fetching mfa codes\n", get_mfa_codes_opts, send_message_to_tunnel_fn);
+static CommandLine get_status_cmd = make_command("tunnel_status", "Get Tunnel Status", "", "", get_status_opts, send_message_to_tunnel_fn);
+
 #if _WIN32
 static CommandLine set_log_level_cmd = make_command("set_log_level", "Set log level of the tunneler", "-l <level>",
                                                     "\t-l|--loglevel\tlog level of the tunneler\n", set_log_level_opts, send_message_to_tunnel_fn);
@@ -2036,6 +2055,7 @@ static CommandLine *main_cmds[] = {
         &submit_mfa_cmd,
         &generate_mfa_codes_cmd,
         &get_mfa_codes_cmd,
+        &get_status_cmd,
 #if _WIN32
         &set_log_level_cmd,
         &update_tun_ip_cmd,
@@ -2072,9 +2092,9 @@ void scm_service_stop() {
     ZITI_LOG(INFO, "Control request to stop tunnel service received...");
 
     // ziti dump to log file / stdout
-    tunnel_comand *cmd = calloc(1, sizeof(tunnel_comand));
-    cmd->command = TunnelCommand_ZitiDump;
-    send_tunnel_command(cmd, NULL);
+    tunnel_comand *tnl_cmd = calloc(1, sizeof(tunnel_comand));
+    tnl_cmd->command = TunnelCommand_ZitiDump;
+    send_tunnel_command(tnl_cmd, NULL);
 
     remove_all_nrpt_rules();
 
