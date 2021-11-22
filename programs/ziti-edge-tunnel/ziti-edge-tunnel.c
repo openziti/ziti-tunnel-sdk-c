@@ -261,6 +261,9 @@ static bool process_tunnel_commands(const tunnel_comand *tnl_cmd, command_cb cb,
     }
     if (cmd_accepted) {
         cb(&result, ctx);
+        if (result.data) {
+            free(result.data);
+        }
 #if _WIN32
         // should be the last line in this function as it calls the mutex/lock
         save_tunnel_status_to_file();
