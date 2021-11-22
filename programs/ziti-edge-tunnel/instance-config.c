@@ -106,50 +106,36 @@ bool save_tunnel_status_to_file() {
         char* config_file_name = get_config_file_name(config_path);
         char* bkp_config_file_name = get_backup_config_file_name(config_path);
 
-        int stat = uv_mutex_trylock(&mutex);
-        if (stat == 0) {
-            //copy config to backup file
-            FILE* config = fopen(config_file_name, "r");
-            if (config == NULL) {
-                ZITI_LOG(ERROR, "Could not open config file %s", config_file_name);
-            } else {
-                FILE* backup_config = fopen(bkp_config_file_name, "w");
-                if (backup_config == NULL) {
-                    ZITI_LOG(ERROR, "Could not create backup config file %s", bkp_config_file_name);
-                } else {
-                    while (true) {
-                        char buffer[MIN_BUFFER_LEN] = {0};
-                        int size = (int) fread(buffer, sizeof(char), MIN_BUFFER_LEN-1, config);
-                        if (size <= 0) {
-                            break;
-                        }
-                        fwrite(buffer, sizeof(char), strlen(buffer), backup_config);
-                    }
-
-                    fclose(backup_config);
-                    ZITI_LOG(TRACE, "Copied Config file to Backup config file %s", bkp_config_file_name);
-                }
-                fclose(config);
-            }
-
-            // write tunnel status to the config file
-            config = fopen(config_file_name, "w");
-            if (config == NULL) {
-                ZITI_LOG(ERROR, "Could not open config file %s to store the tunnel status data", config_file_name);
-            } else {
-                char* tunnel_status_data = tunnel_status;
-                for (int i =0; i< json_len; i=i+MIN_BUFFER_LEN-1, tunnel_status_data=tunnel_status_data+MIN_BUFFER_LEN-1) {
-                    char buffer[MIN_BUFFER_LEN] = {0};
-                    strncpy(buffer, tunnel_status_data, (MIN_BUFFER_LEN-1));
-                    fwrite(buffer, 1, strlen(buffer), config);
-                }
-                saved = true;
-                fclose(config);
-                ZITI_LOG(TRACE, "Saved current tunnel status into Config file %s", config_file_name);
-            }
-            uv_mutex_unlock(&mutex);
-            ZITI_LOG(TRACE, "Cleaning up resources used for the backup of tunnel config file %s", config_file_name);
+        uv_mutex_lock(&mutex);
+        //copy config to backup file
+        int rem = remove(bkp_config_file_name);
+        if (rem == 0) {
+            ZITI_LOG(DEBUG, "Deleted backup config file %s", bkp_config_file_name);
         }
+        if (rename(config_file_name, bkp_config_file_name) == 0) {
+            ZITI_LOG(DEBUG, "Copied config file to backup config file %s", bkp_config_file_name);
+        } else {
+            ZITI_LOG(DEBUG, "Could not copy config file [%s] to backup config file, the config might not exists at the moment", config_file_name);
+        }
+
+        // write tunnel status to the config file
+        FILE* config = fopen(config_file_name, "w");
+        if (config == NULL) {
+            ZITI_LOG(ERROR, "Could not open config file %s to store the tunnel status data", config_file_name);
+        } else {
+            char* tunnel_status_data = tunnel_status;
+            for (int i =0; i< json_len; i=i+MIN_BUFFER_LEN-1, tunnel_status_data=tunnel_status_data+MIN_BUFFER_LEN-1) {
+                char buffer[MIN_BUFFER_LEN] = {0};
+                strncpy(buffer, tunnel_status_data, (MIN_BUFFER_LEN-1));
+                fwrite(buffer, 1, strlen(buffer), config);
+            }
+            saved = true;
+            fclose(config);
+            ZITI_LOG(DEBUG, "Saved current tunnel status into Config file %s", config_file_name);
+        }
+        uv_mutex_unlock(&mutex);
+        ZITI_LOG(TRACE, "Cleaning up resources used for the backup of tunnel config file %s", config_file_name);
+
         free(config_file_name);
         free(bkp_config_file_name);
         free(config_path);
