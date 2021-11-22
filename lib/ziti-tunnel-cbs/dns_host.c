@@ -216,23 +216,20 @@ static ssize_t on_dns_req(ziti_connection conn, uint8_t *data, ssize_t datalen) 
     dns_host_conn_t *dns = ziti_conn_data(conn);
 
     ZITI_LOG(DEBUG, "resolve_req: %.*s", (int)datalen, data);
-    dns_question *q = alloc_dns_question();
-    parse_dns_question(q, (const char*)data, datalen);
-
-    dns_message resp = {0};
-    resp.question = calloc(2, sizeof(dns_question*));
-    resp.question[0] = q;
+    dns_message msg = {0};
+    parse_dns_message(&msg, (const char*) data, datalen);
+    dns_question *q = msg.question[0];
 
     if (is_allowed(q->name, dns)) {
-        do_query(q, &resp, &dns->resolver);
+        do_query(q, &msg, &dns->resolver);
     } else {
-        resp.status = ns_r_refused;
+        msg.status = ns_r_refused;
     }
 
     size_t msg_len = 0;
-    char *json = dns_message_to_json(&resp, 0, &msg_len);
+    char *json = dns_message_to_json(&msg, 0, &msg_len);
     ziti_write(conn, json, msg_len, on_write, json);
-    free_dns_message(&resp);
+    free_dns_message(&msg);
     return datalen;
 }
 
