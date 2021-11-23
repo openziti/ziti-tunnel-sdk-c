@@ -1141,8 +1141,8 @@ static void interrupt_handler(int sig) {
 static char* normalize_host(char* hostname) {
     size_t len = strlen(hostname);
     // remove the . from the end of the hostname
-    if (hostname[len-2] == ".") {
-        hostname[len-2] = '\0';
+    if (hostname[len-1] == ".") {
+        hostname[len-1] = '\0';
     }
     char* hostname_new = calloc(len+1, sizeof(char));
     // add . in the beginning of the hostname
