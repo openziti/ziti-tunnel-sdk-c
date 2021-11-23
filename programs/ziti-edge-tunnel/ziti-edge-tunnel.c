@@ -195,10 +195,13 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
     }
 
     if (uv_is_active((const uv_handle_t *) ctx)) {
-        uv_buf_t b = uv_buf_init(json, json_len);
+        uv_buf_t buf;
+        buf.base = calloc(json_len + 1, sizeof(char));
+        snprintf(buf.base, json_len + 1, "%s\n", json);
+        buf.len = json_len + 1;
         uv_write_t *wr = calloc(1, sizeof(uv_write_t));
-        wr->data = b.base;
-        uv_write(wr, (uv_stream_t *) ctx, &b, 1, on_cmd_write);
+        wr->data = buf.base;
+        uv_write(wr, (uv_stream_t *) ctx, &buf, 1, on_cmd_write);
     }
 }
 
