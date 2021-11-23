@@ -423,7 +423,10 @@ static void send_events_message(const void *message, to_json_fn to_json_f, bool 
         LIST_FOREACH(event_client, &event_clients_list, _next_event) {
             int err = 0;
             if (event_client->event_client_conn != NULL) {
-                uv_buf_t buf = uv_buf_init(strdup(json), data_len);
+                uv_buf_t buf;
+                buf.base = calloc(data_len + 1, sizeof(char));
+                snprintf(buf.base, data_len + 1, "%s\n", json);
+                buf.len = data_len + 1;
                 uv_write_t *wr = calloc(1, sizeof(uv_write_t));
                 wr->data = buf.base;
                 err = uv_write(wr, (uv_stream_t *)event_client->event_client_conn, &buf, 1, on_write_event);
