@@ -24,7 +24,13 @@
 extern "C" {
 #endif
 
+enum tunnel_conn_type {
+    data_conn_type,
+    resolve_conn_type
+};
+
 #define TUNNELER_APP_DATA_MODEL(XX, ...) \
+XX(conn_type, int, none, conn_type, __VA_ARGS__) \
 XX(dst_protocol, string, none, dst_protocol, __VA_ARGS__)\
 XX(dst_hostname, string, none, dst_hostname, __VA_ARGS__)\
 XX(dst_ip, string, none, dst_ip, __VA_ARGS__)\
@@ -47,7 +53,8 @@ XX(VerifyMFA, __VA_ARGS__)  \
 XX(RemoveMFA, __VA_ARGS__)  \
 XX(GenerateMFACodes, __VA_ARGS__) \
 XX(GetMFACodes, __VA_ARGS__) \
-XX(GetMetrics, __VA_ARGS__)
+XX(GetMetrics, __VA_ARGS__) \
+XX(ServiceControl, __VA_ARGS__)
 
 DECLARE_ENUM(TunnelCommand, TUNNEL_COMMANDS)
 
@@ -127,6 +134,9 @@ XX(down, string, none, down, __VA_ARGS__)
 XX(identifier, string, none, id, __VA_ARGS__) \
 XX(command, TunnelCommand, none, command, __VA_ARGS__)
 
+#define TUNNEL_SERVICE_CONTROL(XX, ...) \
+XX(operation, string, none, operation, __VA_ARGS__)
+
 DECLARE_MODEL(tunnel_comand, TUNNEL_CMD)
 DECLARE_MODEL(tunnel_result, TUNNEL_CMD_RES)
 DECLARE_MODEL(tunnel_load_identity, TNL_LOAD_IDENTITY)
@@ -145,6 +155,7 @@ DECLARE_MODEL(tunnel_get_mfa_codes, TNL_GET_MFA_CODES)
 DECLARE_MODEL(tunnel_get_identity_metrics, TNL_GET_IDENTITY_METRICS)
 DECLARE_MODEL(tunnel_identity_metrics, TNL_IDENTITY_METRICS)
 DECLARE_MODEL(tunnel_command_inline, TUNNEL_CMD_INLINE)
+DECLARE_MODEL(tunnel_service_control, TUNNEL_SERVICE_CONTROL)
 
 #define TUNNEL_EVENTS(XX, ...) \
 XX(ContextEvent, __VA_ARGS__) \
@@ -156,6 +167,7 @@ DECLARE_ENUM(TunnelEvent, TUNNEL_EVENTS)
 
 #define MFA_STATUS(XX, ...) \
 XX(mfa_auth_status, __VA_ARGS__) \
+XX(auth_challenge, __VA_ARGS__)  \
 XX(enrollment_verification, __VA_ARGS__) \
 XX(enrollment_remove, __VA_ARGS__) \
 XX(enrollment_challenge, __VA_ARGS__)

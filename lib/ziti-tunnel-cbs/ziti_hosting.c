@@ -557,6 +557,12 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
         }
     }
 
+    if (app_data.conn_type == resolve_conn_type) {
+        accept_resolver_conn(clt, &service_ctx->addr_u.allowed_hostnames);
+        free_tunneler_app_data(&app_data);
+        return;
+    }
+
     struct addrinfo_params_s dial_ai_params;
     memset(&dial_ai_params, 0, sizeof(dial_ai_params));
     int s = addrinfo_from_host_ctx(&dial_ai_params, service_ctx, &app_data);

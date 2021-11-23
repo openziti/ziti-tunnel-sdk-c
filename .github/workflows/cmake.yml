@@ -11,6 +11,7 @@ jobs:
   build:
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os:
           - ubuntu-18.04
@@ -40,7 +41,10 @@ jobs:
 
       - name: install toolchain
         if: matrix.install != ''
-        run: sudo apt install ${{ matrix.install }}
+        run: |
+          sudo apt update
+          sudo apt install ${{ matrix.install }}
+
 
       - name: configure cmake
         run: cmake ${{matrix.cmake_opts}} -DCMAKE_TOOLCHAIN_FILE=${{github.workspace}}/toolchains/${{matrix.toolchain}} -S ${{ github.workspace }} -B ${{runner.workspace}}/build

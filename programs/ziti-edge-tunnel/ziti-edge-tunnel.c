@@ -26,6 +26,8 @@
 #include <ziti/ziti_dns.h>
 #include "model/events.h"
 #include "instance.h"
+#include <file-rotator.h>
+#include <time.h>
 
 #if __APPLE__ && __MACH__
 #include "netif_driver/darwin/utun.h"
@@ -33,9 +35,7 @@
 #include "netif_driver/linux/tun.h"
 #elif _WIN32
 #include "netif_driver/windows/tun.h"
-#ifndef MAXPATHLEN
-#define MAXPATHLEN _MAX_PATH
-#endif
+#include "windows/windows-service.h"
 
 #define setenv(n,v,o) do {if(o || getenv(n) == NULL) _putenv_s(n,v); } while(0)
 #endif
@@ -46,6 +46,7 @@
 
 extern dns_manager *get_dnsmasq_manager(const char* path);
 
+static int dns_miss_status = DNS_REFUSE;
 static int dns_fallback(const char *name, void *ctx, struct in_addr* addr);
 
 static void send_message_to_tunnel();
@@ -60,6 +61,20 @@ struct cfg_instance_s {
 // temporary list to pass info between parse and run
 static LIST_HEAD(instance_list, cfg_instance_s) load_list;
 
+struct event_conn_s {
+    uv_pipe_t *event_client_conn;
+    LIST_ENTRY(event_conn_s) _next_event;
+};
+// list to store the event connections
+static LIST_HEAD(events_list, event_conn_s) event_clients_list = LIST_HEAD_INITIALIZER(event_clients_list);
+
+struct ipc_conn_s {
+    uv_pipe_t *ipc_client_conn;
+    LIST_ENTRY(ipc_conn_s) _next_ipc_cmd;
+};
+// list to store the ipc connections
+static LIST_HEAD(ipc_list, ipc_conn_s) ipc_clients_list = LIST_HEAD_INITIALIZER(ipc_clients_list);
+
 static long refresh_interval = 10;
 static long refresh_metrics = 5000;
 static long metrics_latency = 5000;
@@ -67,17 +82,17 @@ static long metrics_latency = 5000;
 static char *config_dir = NULL;
 
 static uv_pipe_t cmd_server;
-static uv_pipe_t cmd_conn;
 static uv_pipe_t event_server;
-static uv_pipe_t *event_conn;
 
 //timer
 static uv_timer_t metrics_timer;
 
 // singleton
 static const ziti_tunnel_ctrl *CMD_CTRL;
-static long events_channels_count = 8;
-static long current_events_channels = 0;
+
+static bool started_by_scm = false;
+
+uv_loop_t *main_ziti_loop;
 
 IMPL_ENUM(event, EVENT_ACTIONS)
 
@@ -88,6 +103,50 @@ static char eventsockfile[] = "\\\\.\\pipe\\ziti-edge-tunnel-event.sock";
 static char sockfile[] = "/tmp/ziti-edge-tunnel.sock";
 static char eventsockfile[] = "/tmp/ziti-edge-tunnel-event.sock";
 #endif
+
+static int sizeof_event_clients_list() {
+    struct event_conn_s *event_client;
+    int size = 0;
+    LIST_FOREACH(event_client, &event_clients_list, _next_event) {
+        size++;
+    }
+
+    if (size == 0) {
+        return size;
+    }
+
+    int current_size = size;
+
+    // clean up closed event connection from the list
+    for (int idx = 0; idx < size; idx++) {
+        struct event_conn_s *del_event_client = NULL;
+        LIST_FOREACH(del_event_client, &event_clients_list, _next_event) {
+            if (del_event_client->event_client_conn == NULL) {
+                break;
+            }
+        }
+        if (del_event_client) {
+            LIST_REMOVE(del_event_client, _next_event);
+            free(del_event_client);
+            current_size--;
+        } else {
+            // break from for loop
+            break;
+        }
+    }
+
+    return current_size;
+
+}
+
+static int sizeof_ipc_clients_list() {
+    struct ipc_conn_s *ipc_client;
+    int size = 0;
+    LIST_FOREACH(ipc_client, &ipc_clients_list, _next_ipc_cmd) {
+        size++;
+    }
+    return size;
+}
 
 static void cmd_alloc(uv_handle_t *s, size_t sugg, uv_buf_t *b) {
     b->base = malloc(sugg);
@@ -107,35 +166,42 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
     ZITI_LOG(INFO, "resp[%d,len=%zd] = %.*s",
             result->success, json_len, (int)json_len, json, result->data);
 
-    if (result->data) {
-        free(result->data);
-    }
-
-    if (uv_is_active((const uv_handle_t *) &cmd_conn)) {
+    if (uv_is_active((const uv_handle_t *) ctx)) {
         uv_buf_t b = uv_buf_init(json, json_len);
         uv_write_t *wr = calloc(1, sizeof(uv_write_t));
         wr->data = b.base;
-        uv_write(wr, (uv_stream_t *) &cmd_conn, &b, 1, on_cmd_write);
+        uv_write(wr, (uv_stream_t *) ctx, &b, 1, on_cmd_write);
     }
-
 }
 
 static void on_cmd(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
     if (len < 0) {
         ZITI_LOG(WARN, "received from client - %s. Closing connection.", uv_err_name(len));
-        uv_close((uv_handle_t *) s, NULL);
+        struct ipc_conn_s *del_ipc_client = NULL;
+        LIST_FOREACH(del_ipc_client, &ipc_clients_list, _next_ipc_cmd) {
+            if((uv_stream_t *)del_ipc_client->ipc_client_conn == s) {
+                break;
+            }
+        }
+        if (del_ipc_client) {
+            LIST_REMOVE(del_ipc_client, _next_ipc_cmd);
+            free(del_ipc_client);
+        }
+        uv_close((uv_handle_t *) s, (uv_close_cb) free);
+        ZITI_LOG(WARN,"IPC client connection closed, count: %d", sizeof_ipc_clients_list());
+
     } else {
         ZITI_LOG(INFO, "received cmd <%.*s>", (int) len, b->base);
 
         tunnel_comand cmd = {0};
         if (parse_tunnel_comand(&cmd, b->base, len) == 0) {
-            CMD_CTRL->process(&cmd, on_command_resp, NULL);
+            CMD_CTRL->process(&cmd, on_command_resp, s);
         } else {
             tunnel_result resp = {
                     .success = false,
                     .error = "failed to parse command"
             };
-            on_command_resp(&resp, NULL);
+            on_command_resp(&resp, s);
         }
         free_tunnel_comand(&cmd);
     }
@@ -144,17 +210,15 @@ static void on_cmd(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
 }
 
 static void on_cmd_client(uv_stream_t *s, int status) {
-    // only allow a single client
-    if (!uv_is_active((const uv_handle_t *) &cmd_conn)) {
-        uv_pipe_init(s->loop, &cmd_conn, 0);
-        uv_accept(s, (uv_stream_t *) &cmd_conn);
-        uv_read_start((uv_stream_t *) &cmd_conn, cmd_alloc, on_cmd);
-    } else {
-        uv_pipe_t *tmp = malloc(sizeof(uv_pipe_t));
-        uv_pipe_init(s->loop, tmp, 0);
-        uv_accept(s, (uv_stream_t *) tmp);
-        uv_close((uv_handle_t *) tmp, (uv_close_cb) free);
-    }
+    int current_ipc_channels = sizeof_ipc_clients_list();
+    uv_pipe_t *cmd_conn = malloc(sizeof(uv_pipe_t));
+    uv_pipe_init(s->loop, cmd_conn, 0);
+    uv_accept(s, (uv_stream_t *) cmd_conn);
+    uv_read_start((uv_stream_t *) cmd_conn, cmd_alloc, on_cmd);
+    struct ipc_conn_s *ipc_conn = calloc(1, sizeof(struct ipc_conn_s));
+    ipc_conn->ipc_client_conn = cmd_conn;
+    LIST_INSERT_HEAD(&ipc_clients_list, ipc_conn, _next_ipc_cmd);
+    ZITI_LOG(DEBUG,"Received IPC client connection request, count: %d", ++current_ipc_channels);
 }
 
 static int start_cmd_socket(uv_loop_t *l) {
@@ -191,28 +255,45 @@ static int start_cmd_socket(uv_loop_t *l) {
 
 
 static void on_events_client(uv_stream_t *s, int status) {
-    if (current_events_channels < events_channels_count) {
-        event_conn = malloc(sizeof(uv_pipe_t));
-        uv_pipe_init(s->loop, event_conn, 0);
-        uv_accept(s, (uv_stream_t *) event_conn);
-        ZITI_LOG(DEBUG,"Received events connection request %d", ++current_events_channels);
+    int current_events_channels = sizeof_event_clients_list();
+    uv_pipe_t* event_conn = malloc(sizeof(uv_pipe_t));
+    uv_pipe_init(s->loop, event_conn, 0);
+    uv_accept(s, (uv_stream_t *) event_conn);
+    struct event_conn_s *event_client_conn = calloc(1, sizeof(struct event_conn_s));
+    event_client_conn->event_client_conn = event_conn;
+    LIST_INSERT_HEAD(&event_clients_list, event_client_conn, _next_event);
+    ZITI_LOG(DEBUG,"Received events client connection request, count: %d", ++current_events_channels);
 
-        // send status message immediately
-        tunnel_status_event tnl_sts_evt = {0};
-        tnl_sts_evt.Op = strdup("status");
-        tnl_sts_evt.Status = get_tunnel_status();
-        send_events_message(&tnl_sts_evt, (to_json_fn) tunnel_status_event_to_json, true);
-        tnl_sts_evt.Status = NULL;
-        free_tunnel_status_event(&tnl_sts_evt);
-    } else {
-        ZITI_LOG(WARN, "Maximum events connection requests exceeded");
-    }
+    // send status message immediately
+    tunnel_status_event tnl_sts_evt = {0};
+    tnl_sts_evt.Op = strdup("status");
+    tnl_sts_evt.Status = get_tunnel_status();
+    send_events_message(&tnl_sts_evt, (to_json_fn) tunnel_status_event_to_json, true);
+    tnl_sts_evt.Status = NULL;
+    free_tunnel_status_event(&tnl_sts_evt);
+
 }
 
 
 void on_write_event(uv_write_t* req, int status) {
     if (status < 0) {
         ZITI_LOG(ERROR,"Could not sent events message. Write error %s\n", uv_err_name(status));
+        if (status == UV_EPIPE) {
+            struct event_conn_s *event_client;
+            LIST_FOREACH(event_client, &event_clients_list, _next_event) {
+                if (event_client->event_client_conn == req->handle) {
+                    break;
+                }
+            }
+            if (event_client) {
+                uv_close((uv_handle_t *) event_client->event_client_conn, (uv_close_cb) free);
+                event_client->event_client_conn = NULL;
+                int current_event_connection_count = sizeof_event_clients_list();
+                ZITI_LOG(WARN,"Events client connection closed, count : %d", current_event_connection_count);
+
+            }
+
+        }
     } else {
         ZITI_LOG(DEBUG,"Events message is sent.");
     }
@@ -223,34 +304,44 @@ void on_write_event(uv_write_t* req, int status) {
 }
 
 static void send_events_message(const void *message, to_json_fn to_json_f, bool displayEvent) {
-    if (event_conn != NULL) {
-        size_t data_len = 0;
-        char *json = to_json_f(message, MODEL_JSON_COMPACT, &data_len);
-        if (json == NULL) {
-            ZITI_LOG(ERROR, "failed to serialize event");
-            return;
-        }
-        if (displayEvent) {
-            ZITI_LOG(INFO,"Events Message => %s", json);
-        }
+    size_t data_len = 0;
+    char *json = to_json_f(message, MODEL_JSON_COMPACT, &data_len);
+    if (json == NULL) {
+        ZITI_LOG(ERROR, "failed to serialize event");
+        return;
+    }
+    if (displayEvent) {
+        ZITI_LOG(INFO,"Events Message => %s", json);
+    }
 
-        uv_buf_t buf = uv_buf_init(json, data_len);
-        uv_write_t *wr = calloc(1, sizeof(uv_write_t));
-        wr->data = buf.base;
-        int err = uv_write(wr, (uv_stream_t *) event_conn, &buf, 1, on_write_event);
-        if (err < 0){
-            ZITI_LOG(ERROR,"Events client write operation failed, received error - %s", uv_err_name(err));
-            if (err == UV_EPIPE) {
-                if (current_events_channels > 0) {
-                    ZITI_LOG(WARN,"Events client closed connection");
-                    --current_events_channels;
-                    uv_close((uv_handle_t *) event_conn, (uv_close_cb) free);
-                    event_conn = NULL;
-                    //remove from event conn list
+    if (!LIST_EMPTY(&event_clients_list)) {
+        struct event_conn_s *event_client;
+        int events_deleted = 0;
+        LIST_FOREACH(event_client, &event_clients_list, _next_event) {
+            int err = 0;
+            if (event_client->event_client_conn != NULL) {
+                uv_buf_t buf = uv_buf_init(strdup(json), data_len);
+                uv_write_t *wr = calloc(1, sizeof(uv_write_t));
+                wr->data = buf.base;
+                err = uv_write(wr, (uv_stream_t *)event_client->event_client_conn, &buf, 1, on_write_event);
+            }
+            if (err < 0){
+                ZITI_LOG(ERROR,"Events client write operation failed, received error - %s", uv_err_name(err));
+                if (err == UV_EPIPE) {
+                    uv_close((uv_handle_t *) event_client->event_client_conn, (uv_close_cb) free);
+                    event_client->event_client_conn = NULL;
+                    events_deleted++;
+                    ZITI_LOG(WARN,"Events client connection closed");
                 }
             }
         }
+        if (events_deleted > 0) {
+            int current_event_connection_count = sizeof_event_clients_list();
+            ZITI_LOG(WARN,"Events client connection current count : %d", current_event_connection_count);
+        }
+
     }
+    free(json);
 }
 
 static int start_event_socket(uv_loop_t *l) {
@@ -331,7 +422,7 @@ static void send_tunnel_command(tunnel_comand *cmd, void *ctx) {
 
 
 static char* addUnit(int count, char* unit) {
-    char* result = malloc(MAXMESSAGELEN);
+    char* result = calloc(MAXMESSAGELEN, sizeof(char));
 
     if ((count == 1) || (count == 0)) {
         snprintf(result, MAXMESSAGELEN, "%d %s", count, unit);
@@ -343,11 +434,11 @@ static char* addUnit(int count, char* unit) {
 
 static string convert_seconds_to_readable_format(int input) {
     int seconds = input % (60 * 60 * 24);
-    int hours = ((double) seconds / 60 / 60);
+    int hours = (int)((double) seconds / 60 / 60);
     seconds = input % (60 * 60);
-    int minutes = ((double) seconds)/ 60;
+    int minutes = (int)((double) seconds)/ 60;
     seconds = input % 60;
-    char* result = malloc(MAXMESSAGELEN);
+    char* result = calloc(MAXMESSAGELEN, sizeof(char));
     char* hours_unit = NULL;
     char* minutes_unit = NULL;
     char* seconds_unit = NULL;
@@ -405,7 +496,7 @@ static bool check_send_notification(tunnel_identity *tnl_id) {
 
 static notification_message *create_notification_message(tunnel_identity *tnl_id) {
     notification_message *notification = calloc(1, sizeof(struct notification_message_s));
-    notification->Message = malloc(MAXMESSAGELEN);
+    notification->Message = calloc(MAXMESSAGELEN, sizeof(char));
     if (tnl_id->MfaMaxTimeoutRem == 0) {
         snprintf(notification->Message, MAXMESSAGELEN, "All of the services of identity %s have timed out", tnl_id->Name);
         notification->Severity = event_severity_critical;
@@ -464,8 +555,11 @@ static void broadcast_metrics(uv_timer_t *timer) {
                 // check timeout
                 if (check_send_notification(tnl_id)) {
                     notification_message *message = create_notification_message(tnl_id);
-                    model_map_set(&notification_map, tnl_id->Name, message);
-                    tnl_id->Notified = true;
+                    if (strlen(message->Message) > 0) {
+                        model_map_set(&notification_map, tnl_id->Name, message);
+                        tnl_id->Notified = true;
+                        ZITI_LOG(INFO, "Notification Message: %s", message->Message);
+                    }
                 }
             }
         }
@@ -514,6 +608,7 @@ static void load_identities(uv_work_t *wr) {
             ZITI_LOG(ERROR, "failed to scan dir[%s]: %d/%s", config_dir, rc, uv_strerror(rc));
             return;
         }
+        ZITI_LOG(TRACE, "scan dir %s, file count: %d", config_dir, rc);
 
         uv_dirent_t file;
         while (uv_fs_scandir_next(&fs, &file) == 0) {
@@ -541,11 +636,15 @@ static void load_id_cb(const tunnel_result *res, void *ctx) {
 }
 
 static void load_identities_complete(uv_work_t * wr, int status) {
+    bool identity_loaded = false;
     while(!LIST_EMPTY(&load_list)) {
         struct cfg_instance_s *inst = LIST_FIRST(&load_list);
         LIST_REMOVE(inst, _next);
 
         CMD_CTRL->load_identity(NULL, inst->cfg, load_id_cb, inst);
+        identity_loaded = true;
+    }
+    if (identity_loaded) {
         start_metrics_timer(wr->loop);
     }
 }
@@ -562,19 +661,32 @@ static void on_event(const base_event *ev) {
             id_event.Id = get_tunnel_identity(ev->identifier);
             id_event.Id->Loaded = true;
 
+            action_event controller_event = {0};
+            controller_event.Op = strdup("controller");
+            controller_event.Identifier = strdup(ev->identifier);
+
             if (zev->code == ZITI_OK) {
                 id_event.Id->Active = true; // determine it from controller
                 if (zev->name) {
                     id_event.Id->Name = strdup(zev->name);
-                    id_event.Id->ControllerVersion = strdup(zev->version);
+                    if (zev->version != NULL) {
+                        id_event.Id->ControllerVersion = strdup(zev->version);
+                    }
                     id_event.Id->Config.ZtAPI = strdup(zev->controller);
                 }
+                controller_event.Action = strdup(event_name(event_connected));
                 ZITI_LOG(DEBUG, "ztx[%s] controller connected", ev->identifier);
+            } else {
+                controller_event.Action = strdup(event_name(event_disconnected));
+                ZITI_LOG(ERROR, "ztx[%s] failed to connect to controller due to %s", ev->identifier, zev->status);
             }
 
             send_events_message(&id_event, (to_json_fn) identity_event_to_json, true);
             id_event.Id = NULL;
             free_identity_event(&id_event);
+
+            send_events_message(&controller_event, (to_json_fn) action_event_to_json, true);
+            free_action_event(&controller_event);
             break;
         }
 
@@ -589,24 +701,30 @@ static void on_event(const base_event *ev) {
 
             tunnel_identity *id = get_tunnel_identity(ev->identifier);
             ziti_service **zs;
-            int idx = 0;
             if (svc_ev->removed_services != NULL) {
-                svc_event.RemovedServices = calloc(sizeof(svc_ev->removed_services), sizeof(struct tunnel_service_s));
+                int svc_array_length = 0;
                 for (zs = svc_ev->removed_services; *zs != NULL; zs++) {
-                    tunnel_service *svc = find_tunnel_service(id, (*zs)->id);
+                    svc_array_length++;
+                }
+                svc_event.RemovedServices = calloc(svc_array_length + 1, sizeof(struct tunnel_service_s));
+                for (int svc_idx = 0; svc_ev->removed_services[svc_idx]; svc_idx++) {
+                    tunnel_service *svc = find_tunnel_service(id, svc_ev->removed_services[svc_idx]->id);
                     if (svc == NULL) {
-                        svc = get_tunnel_service(id, *zs);
+                        svc = get_tunnel_service(id, svc_ev->removed_services[svc_idx]);
                     }
-                    svc_event.RemovedServices[idx++] = svc;
+                    svc_event.RemovedServices[svc_idx] = svc;
                 }
             }
 
-            idx = 0;
             if (svc_ev->added_services != NULL) {
-                svc_event.AddedServices = calloc(sizeof(svc_ev->added_services), sizeof(tunnel_service *));
+                int svc_array_length = 0;
                 for (zs = svc_ev->added_services; *zs != NULL; zs++) {
-                    tunnel_service *svc = get_tunnel_service(id, *zs);
-                    svc_event.AddedServices[idx++] = svc;
+                    svc_array_length++;
+                }
+                svc_event.AddedServices = calloc(svc_array_length + 1, sizeof(tunnel_service *));
+                for (int svc_idx = 0; svc_ev->added_services[svc_idx]; svc_idx++) {
+                    tunnel_service *svc = get_tunnel_service(id, svc_ev->added_services[svc_idx]);
+                    svc_event.AddedServices[svc_idx] = svc;
                 }
             }
 
@@ -616,10 +734,21 @@ static void on_event(const base_event *ev) {
 
             send_events_message(&svc_event, (to_json_fn) services_event_to_json, true);
             if (svc_event.AddedServices != NULL) {
-                free(svc_event.AddedServices);
+                tunnel_service **tnl_svc_arr = svc_event.AddedServices;
+                *tnl_svc_arr = NULL;
+                free(tnl_svc_arr);
                 svc_event.AddedServices = NULL;
             }
             free_services_event(&svc_event);
+
+            identity_event id_event = {
+                    .Op = strdup("identity"),
+                    .Action = strdup(event_name(event_updated)),
+                    .Id = get_tunnel_identity(ev->identifier),
+            };
+            send_events_message(&id_event, (to_json_fn) identity_event_to_json, true);
+            id_event.Id = NULL;
+            free_identity_event(&id_event);
             break;
         }
 
@@ -627,15 +756,15 @@ static void on_event(const base_event *ev) {
             const mfa_event *mfa_ev = (mfa_event *) ev;
             ZITI_LOG(INFO, "ztx[%s] is requesting MFA code", ev->identifier);
             set_mfa_status(ev->identifier, true, true);
-            identity_event id_event = {
-                    .Op = strdup("identity"),
-                    .Action = strdup(event_name(event_added)),
-                    .Id = get_tunnel_identity(ev->identifier),
+            mfa_status_event mfa_sts_event = {
+                    .Op = strdup("mfa"),
+                    .Action = strdup(mfa_ev->operation),
+                    .Identifier = strdup(mfa_ev->identifier),
+                    .Successful = false
             };
 
-            send_events_message(&id_event, (to_json_fn) identity_event_to_json, true);
-            id_event.Id = NULL;
-            free_identity_event(&id_event);
+            send_events_message(&mfa_sts_event, (to_json_fn) mfa_status_event_to_json, true);
+            free_mfa_status_event(&mfa_sts_event);
             break;
         }
 
@@ -655,6 +784,15 @@ static void on_event(const base_event *ev) {
                     case mfa_status_enrollment_verification:
                         set_mfa_status(ev->identifier, true, false);
                         update_mfa_time(ev->identifier);
+
+                        identity_event id_event = {
+                                .Op = strdup("identity"),
+                                .Action = strdup(event_name(event_updated)),
+                                .Id = get_tunnel_identity(ev->identifier),
+                        };
+                        send_events_message(&id_event, (to_json_fn) identity_event_to_json, true);
+                        id_event.Id = NULL;
+                        free_identity_event(&id_event);
                         break;
                     case mfa_status_enrollment_remove:
                         set_mfa_status(ev->identifier, false, false);
@@ -736,7 +874,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     start_event_socket(ziti_loop);
 
     if (uv_run(ziti_loop, UV_RUN_DEFAULT) != 0) {
-        ZITI_LOG(ERROR, "failed to run event loop");
+        ZITI_LOG(ERROR, "failed to run event loop or the event loop is stopped");
         exit(1);
     }
 
@@ -744,6 +882,10 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     uv_close((uv_handle_t *) &cmd_server, (uv_close_cb) free);
     uv_close((uv_handle_t *) &event_server, (uv_close_cb) free);
     uv_timer_stop(&metrics_timer);
+#if _WIN32
+    close_log();
+    stop_log_check();
+#endif
     return 0;
 }
 
@@ -826,8 +968,12 @@ static int run_opts(int argc, char *argv[]) {
     return optind;
 }
 
+void dns_set_miss_status(int status) {
+    dns_miss_status = status;
+}
+
 static int dns_fallback(const char *name, void *ctx, struct in_addr* addr) {
-    return 3; // NXDOMAIN
+    return dns_miss_status;
 }
 
 static void run(int argc, char *argv[]) {
@@ -855,9 +1001,31 @@ static void run(int argc, char *argv[]) {
     // which causes valgrind to freak out
     signal(SIGPIPE, SIG_IGN);
 #endif
-
     uv_loop_t *ziti_loop = uv_default_loop();
-    ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
+    bool init = false;
+
+#if _WIN32
+    bool multi_writer = true;
+    if (started_by_scm) {
+        multi_writer = false;
+    }
+    init = log_init(ziti_loop, multi_writer);
+#endif
+
+    main_ziti_loop = ziti_loop;
+    if (init) {
+        ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, ziti_log_writer);
+        struct tm *start_time = get_log_start_time();
+        char time_val[32];
+        strftime(time_val, sizeof(time_val), "%a %b %d %Y, %X %p", start_time);
+        ZITI_LOG(INFO,"============================================================================");
+        ZITI_LOG(INFO,"Logger initialization");
+        ZITI_LOG(INFO,"	- initialized at   : %s", time_val);
+        ZITI_LOG(INFO,"	- log file location: %s", get_log_file_name());
+        ZITI_LOG(INFO,"============================================================================");
+    } else {
+        ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
+    }
 
     ziti_tunnel_set_log_level(ziti_log_level());
     ziti_tunnel_set_logger(ziti_logger);
@@ -1432,6 +1600,62 @@ static int get_mfa_codes_opts(int argc, char *argv[]) {
     return optind;
 }
 
+#if _WIN32
+
+static void service_control(int argc, char *argv[]) {
+
+    tunnel_service_control *tunnel_service_control_opt = calloc(1, sizeof(tunnel_service_control));
+    if (parse_tunnel_service_control(tunnel_service_control_opt, cmd->data, strlen(cmd->data)) != 0) {
+        fprintf(stderr, "Could not fetch service control data");
+        return;
+    }
+    if (strcmp(tunnel_service_control_opt->operation, "install") == 0) {
+        SvcInstall();
+    } else if (strcmp(tunnel_service_control_opt->operation, "uninstall") == 0) {
+        SvcDelete();
+    } else {
+        fprintf(stderr, "Unknown option '%s'\n", tunnel_service_control_opt->operation);
+    }
+
+}
+#endif
+
+static int svc_opts(int argc, char *argv[]) {
+    static struct option svc_opts[] = {
+            {"operation", required_argument, NULL, 'o'},
+    };
+
+    tunnel_service_control *tunnel_service_control_options = calloc(1, sizeof(tunnel_service_control));
+    cmd = calloc(1, sizeof(tunnel_comand));
+    cmd->command = TunnelCommand_ServiceControl;
+
+    int c, option_index, errors = 0;
+    optind = 0;
+
+    while ((c = getopt_long(argc, argv, "o:",
+                            svc_opts, &option_index)) != -1) {
+        switch (c) {
+            case 'o': {
+                tunnel_service_control_options->operation = optarg;
+                break;
+            }
+            default: {
+                ZITI_LOG(ERROR, "Unknown option '%c'", c);
+                errors++;
+                break;
+            }
+        }
+    }
+    size_t json_len;
+    cmd->data = tunnel_service_control_to_json(tunnel_service_control_options, MODEL_JSON_COMPACT, &json_len);
+
+    if (errors > 0) {
+        commandline_help(stderr);
+        exit(1);
+    }
+    return optind;
+}
+
 static CommandLine enroll_cmd = make_command("enroll", "enroll Ziti identity",
         "-j|--jwt <enrollment token> -i|--identity <identity> [-k|--key <private_key> [-c|--cert <certificate>]] [-n|--name <name>]",
         "\t-j|--jwt\tenrollment token file\n"
@@ -1474,6 +1698,12 @@ static CommandLine generate_mfa_codes_cmd = make_command("generate_mfa_codes", "
 static CommandLine get_mfa_codes_cmd = make_command("get_mfa_codes", "Get MFA codes", "[-i <identity>] [-c <code>]",
                                                          "\t-i|--identity\tidentity info for fetching mfa codes\n"
                                                          "\t-c|--authcode\tauth code to authenticate the request for fetching mfa codes\n", get_mfa_codes_opts, send_message_to_tunnel_fn);
+#if _WIN32
+static CommandLine service_control_cmd = make_command("service_control", "execute service control functions for Ziti tunnel (required superuser access)",
+                                          "-o|--operation <option>",
+                                          "\t-o|--operation <option>\texecute the service control functions eg: install and uninstall (required)\n",
+                                          svc_opts, service_control);
+#endif
 static CommandLine ver_cmd = make_command("version", "show version", "[-v]", "\t-v\tshow verbose version information\n", version_opts, version);
 static CommandLine help_cmd = make_command("help", "this message", NULL, NULL, NULL, usage);
 static CommandLine *main_cmds[] = {
@@ -1488,6 +1718,9 @@ static CommandLine *main_cmds[] = {
         &submit_mfa_cmd,
         &generate_mfa_codes_cmd,
         &get_mfa_codes_cmd,
+#if _WIN32
+        &service_control_cmd,
+#endif
         &ver_cmd,
         &help_cmd,
         NULL
@@ -1500,6 +1733,27 @@ static CommandLine main_cmd = make_command_set(
                               "or 'ziti-edge-tunnel <command> -h'",
         NULL, main_cmds);
 
+void scm_service_init(char *config_path) {
+    started_by_scm = true;
+    if (config_path != NULL) {
+        config_dir = config_path;
+    }
+}
+
+void scm_service_run(void * name) {
+    ZITI_LOG(INFO, "About to run tunnel service...");
+    ziti_set_app_info((char *)name, ziti_tunneler_version());
+    run(0, NULL);
+}
+
+void scm_service_stop() {
+    ZITI_LOG(INFO, "Control request to stop tunnel service received...");
+    if (main_ziti_loop != NULL) {
+        uv_stop(main_ziti_loop);
+        uv_loop_close(main_ziti_loop);
+    }
+}
+
 int main(int argc, char *argv[]) {
     const char *name = strrchr(argv[0], '/');
     if (name == NULL) {
@@ -1507,6 +1761,18 @@ int main(int argc, char *argv[]) {
     } else {
         name = name + 1;
     }
+
+#if _WIN32
+    SvcStart(NULL);
+
+    // if service is started by SCM, SvcStart will return only when it receives the stop request
+    // started_by_scm will be set to true only if scm initializes the config value
+    // if the service is started from cmd line, SvcStart will return immediately and started_by_scm will be set to false. In this case tunnel can be run normally
+    if (started_by_scm) {
+        return 0;
+    }
+#endif
+
     main_cmd.name = name;
     commandline_run(&main_cmd, argc, argv);
     return 0;
@@ -1521,5 +1787,6 @@ IMPL_MODEL(services_event, SERVICES_EVENT)
 IMPL_MODEL(tunnel_status_event, TUNNEL_STATUS_EVENT)
 IMPL_MODEL(mfa_status_event, MFA_STATUS_EVENT)
 IMPL_MODEL(tunnel_metrics_event, TUNNEL_METRICS_EVENT)
+IMPL_MODEL(tunnel_service_control, TUNNEL_SERVICE_CONTROL)
 IMPL_MODEL(notification_message, TUNNEL_NOTIFICATION_MESSAGE)
 IMPL_MODEL(notification_event, TUNNEL_NOTIFICATION_EVENT)

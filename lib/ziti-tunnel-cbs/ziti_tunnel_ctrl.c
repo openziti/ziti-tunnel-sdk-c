@@ -167,7 +167,7 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
             .error = NULL,
             .data = NULL,
     };
-    ZITI_LOG(INFO, "processing command[%s] with data[%s]", TunnelCommands.name(cmd->command), cmd->data);
+    ZITI_LOG(DEBUG, "processing command[%s] with data[%s]", TunnelCommands.name(cmd->command), cmd->data);
     switch (cmd->command) {
         case TunnelCommand_LoadIdentity: {
             tunnel_load_identity load;
@@ -229,7 +229,7 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
                 result.success = true;
             } else {
                 result.success = false;
-                result.error = malloc(sizeof(disable_id.path) + 35);
+                result.error = calloc(1, strlen(disable_id.path) + 35);
                 sprintf(result.error, "ziti instance for id %s is not found", disable_id.path);
             }
 
@@ -521,11 +521,11 @@ static void get_transfer_rates(const char *identifier, command_cb cb, void *ctx)
     id_metrics->identifier = strdup(identifier);
     int metrics_len = 6;
     if (up > 0) {
-        id_metrics->up = malloc((metrics_len + 1) * sizeof(char));
+        id_metrics->up = calloc((metrics_len + 1), sizeof(char));
         snprintf(id_metrics->up, metrics_len, "%.2lf", up);
     }
     if (down > 0) {
-        id_metrics->down = malloc((metrics_len + 1) * sizeof(char));
+        id_metrics->down = calloc((metrics_len + 1), sizeof(char));
         snprintf(id_metrics->down, metrics_len, "%.2lf", down);
     }
 
@@ -624,32 +624,46 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
 
         case ZitiServiceEvent: {
             ziti_service **zs;
-            service_event ev = {0};
-            if (*event->event.service.removed != NULL) {
+            service_event ev = {
+                    .event_type = TunnelEvents.ServiceEvent,
+                    .identifier = instance->identifier,
+            };
+
+            bool send_event = false;
+            if (event->event.service.removed != NULL) {
                 ev.removed_services = event->event.service.removed;
-            }
-            for (zs = event->event.service.removed; *zs != NULL; zs++) {
-                on_service(ztx, *zs, ZITI_SERVICE_UNAVAILABLE, CMD_CTX.tunnel_ctx);
+                for (zs = event->event.service.removed; *zs != NULL; zs++) {
+                    send_event = true;
+                    on_service(ztx, *zs, ZITI_SERVICE_UNAVAILABLE, CMD_CTX.tunnel_ctx);
+                }
             }
 
-            if (*event->event.service.added != NULL) {
+            if (event->event.service.added != NULL) {
                 ev.added_services = event->event.service.added;
-            }
-            for (zs = event->event.service.added; *zs != NULL; zs++) {
-                on_service(ztx, *zs, ZITI_OK, CMD_CTX.tunnel_ctx);
+                for (zs = event->event.service.added; *zs != NULL; zs++) {
+                    send_event = true;
+                    on_service(ztx, *zs, ZITI_OK, CMD_CTX.tunnel_ctx);
+                }
             }
 
-            if (*event->event.service.changed != NULL) {
+            // need to send added/removed first because changes clobber both
+            if (send_event) {
+                CMD_CTX.on_event((const base_event *) &ev);
+            }
+
+            if (event->event.service.changed != NULL) {
                 ev.added_services = event->event.service.changed;
                 ev.removed_services = event->event.service.changed;
-            }
-            for (zs = event->event.service.changed; *zs != NULL; zs++) {
-                on_service(ztx, *zs, ZITI_OK, CMD_CTX.tunnel_ctx);
+                send_event = false;
+                for (zs = event->event.service.changed; *zs != NULL; zs++) {
+                    send_event = true;
+                    on_service(ztx, *zs, ZITI_OK, CMD_CTX.tunnel_ctx);
+                }
+                if (send_event) {
+                    CMD_CTX.on_event((const base_event *) &ev);
+                }
             }
 
-            ev.event_type = TunnelEvents.ServiceEvent;
-            ev.identifier = instance->identifier;
-            CMD_CTX.on_event((const base_event *) &ev);
             break;
         }
 
@@ -683,6 +697,7 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
             mfa_event ev = {0};
             ev.event_type = TunnelEvents.MFAEvent;
             ev.identifier = instance->identifier;
+            ev.operation = mfa_status_name(mfa_status_auth_challenge);
             CMD_CTX.on_event((const base_event *) &ev);
         }
     }
@@ -778,6 +793,7 @@ static void on_submit_mfa(ziti_context ztx, int status, void *ctx) {
 
 static void submit_mfa(ziti_context ztx, const char *code, void *ctx) {
     ziti_mfa_auth(ztx, code, on_submit_mfa, ctx);
+    free((char *) code);
 }
 
 static void on_enable_mfa(ziti_context ztx, int status, ziti_mfa_enrollment *enrollment, void *ctx) {
@@ -808,7 +824,6 @@ static void on_enable_mfa(ziti_context ztx, int status, ziti_mfa_enrollment *enr
     mfa_event *ev = calloc(1, sizeof(mfa_event));
     ev->operation = strdup(mfa_status_name(mfa_status_enrollment_challenge));
     ev->operation_type = mfa_status_enrollment_challenge;
-    ev->provisioning_url = calloc(strlen(enrollment->provisioning_url), sizeof(char));
     ev->provisioning_url = strdup(enrollment->provisioning_url);
     char **rc = enrollment->recovery_codes;
     int size = 0;
@@ -816,12 +831,11 @@ static void on_enable_mfa(ziti_context ztx, int status, ziti_mfa_enrollment *enr
         rc++;
         size++;
     }
-    ev->recovery_codes = malloc((size + 1) * sizeof(char *));
+    ev->recovery_codes = calloc((size + 1), sizeof(char *));
     int idx;
     for (idx=0; enrollment->recovery_codes[idx] !=0; idx++) {
         ev->recovery_codes[idx] = strdup(enrollment->recovery_codes[idx]);
     }
-    ev->recovery_codes[idx] = NULL;
     tunnel_status_event(TunnelEvent_MFAStatusEvent, status, ev, inst);
 
     free(req);

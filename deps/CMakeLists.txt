@@ -13,7 +13,7 @@ FetchContent_MakeAvailable(ziti-sdk-c)
 endif()
 
 FetchContent_Declare(lwip
-        GIT_REPOSITORY https://git.savannah.nongnu.org/git/lwip.git
+        GIT_REPOSITORY https://github.com/lwip-tcpip/lwip.git
         GIT_TAG STABLE-2_1_0_RELEASE
         )
 FetchContent_GetProperties(lwip)
@@ -22,7 +22,7 @@ if(NOT lwip_POPULATED)
 endif()
 
 FetchContent_Declare(lwip-contrib
-        GIT_REPOSITORY https://git.savannah.nongnu.org/git/lwip/lwip-contrib.git
+        GIT_REPOSITORY https://github.com/netfoundry/lwip-contrib.git
         GIT_TAG STABLE-2_1_0_RELEASE
         )
 FetchContent_GetProperties(lwip-contrib)
