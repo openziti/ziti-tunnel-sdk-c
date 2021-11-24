@@ -171,11 +171,14 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
     ZITI_LOG(INFO, "resp[%d,len=%zd] = %.*s",
             result->success, json_len, (int)json_len, json, result->data);
 
-    if (result->success && result->data != NULL) {
+    if (result->data != NULL) {
         tunnel_comand tnl_res_cmd = {0};
         if (parse_tunnel_comand(&tnl_res_cmd, result->data, strlen(result->data)) == 0) {
             switch (tnl_res_cmd.command) {
                 case TunnelCommand_RemoveIdentity: {
+                    if (!result->success) {
+                        break;
+                    }
                     tunnel_delete_identity tnl_delete_id = {0};
                     if (tnl_res_cmd.data != NULL && parse_tunnel_delete_identity(&tnl_delete_id, tnl_res_cmd.data, strlen(tnl_res_cmd.data)) == 0) {
                         if (tnl_delete_id.identifier == NULL) {
@@ -188,6 +191,13 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
                         ZITI_LOG(INFO, "Identity file %s is deleted",tnl_delete_id.identifier);
                     }
                     free_tunnel_delete_identity(&tnl_delete_id);
+                    break;
+                }
+                case TunnelCommand_IdentityOnOff: {
+#if _WIN32
+                    // should be the last line in this function as it calls the mutex/lock
+                    save_tunnel_status_to_file();
+#endif
                     break;
                 }
                 case TunnelCommand_Unknown: {
@@ -244,6 +254,7 @@ static bool process_tunnel_commands(const tunnel_comand *tnl_cmd, command_cb cb,
             if (tnl_cmd->data == NULL || parse_tunnel_tun_ip_v4(&tunnel_tun_ip_v4_cmd, tnl_cmd->data, strlen(tnl_cmd->data)) != 0) {
                 result.error = "invalid command";
                 result.success = false;
+                free_tunnel_tun_ip_v4(&tunnel_tun_ip_v4_cmd);
                 break;
             }
             if (tunnel_tun_ip_v4_cmd.mask < MINTUNIPV4MASK || tunnel_tun_ip_v4_cmd.mask > MAXTUNIPV4MASK) {
@@ -251,6 +262,13 @@ static bool process_tunnel_commands(const tunnel_comand *tnl_cmd, command_cb cb,
                 snprintf(error_msg, sizeof(error_msg), "ipv4Mask should be between %d and %d", MINTUNIPV4MASK, MAXTUNIPV4MASK);
                 result.error = error_msg;
                 result.success = false;
+                free_tunnel_tun_ip_v4(&tunnel_tun_ip_v4_cmd);
+                break;
+            }
+            if (tunnel_tun_ip_v4_cmd.tunIP == NULL) {
+                result.error = "Tun IP is null";
+                result.success = false;
+                free_tunnel_tun_ip_v4(&tunnel_tun_ip_v4_cmd);
                 break;
             }
             set_tun_ipv4_into_instance(tunnel_tun_ip_v4_cmd.tunIP, tunnel_tun_ip_v4_cmd.mask, tunnel_tun_ip_v4_cmd.addDns);
@@ -1584,22 +1602,22 @@ static void send_message_to_tunnel_fn(int argc, char *argv[]) {
     send_message_to_tunnel();
 }
 
-static int disable_identity_opts(int argc, char *argv[]) {
+static int on_off_identity_opts(int argc, char *argv[]) {
     static struct option opts[] = {
             {"identity", required_argument, NULL, 'i'},
     };
     int c, option_index, errors = 0;
     optind = 0;
 
-    tunnel_disable_identity *disable_identity_options = calloc(1, sizeof(tunnel_disable_identity));
+    tunnel_on_off_identity *on_off_identity_options = calloc(1, sizeof(tunnel_on_off_identity));
     cmd = calloc(1, sizeof(tunnel_comand));
-    cmd->command = TunnelCommand_DisableIdentity;
+    cmd->command = TunnelCommand_IdentityOnOff;
 
     while ((c = getopt_long(argc, argv, "i:",
                             opts, &option_index)) != -1) {
         switch (c) {
             case 'i':
-                disable_identity_options->identifier = optarg;
+                on_off_identity_options->identifier = optarg;
                 break;
             default: {
                 fprintf(stderr, "Unknown option '%c'\n", c);
@@ -1613,7 +1631,7 @@ static int disable_identity_opts(int argc, char *argv[]) {
         exit(1);
     }
     size_t json_len;
-    cmd->data = tunnel_disable_identity_to_json(disable_identity_options, MODEL_JSON_COMPACT, &json_len);
+    cmd->data = tunnel_on_off_identity_to_json(on_off_identity_options, MODEL_JSON_COMPACT, &json_len);
 
     return optind;
 }
@@ -2076,8 +2094,9 @@ static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required supe
 static CommandLine dump_cmd = make_command("dump", "dump the identities information", "[-i <identity>] [-p <dir>]",
                                            "\t-i|--identity\tdump identity info\n"
                                            "\t-p|--dump_path\tdump into path\n", dump_opts, send_message_to_tunnel_fn);
-static CommandLine disable_id_cmd = make_command("disable", "disable the identities information", "[-i <identity>]",
-                                           "\t-i|--identity\tidentity info that needs to be disabled\n", disable_identity_opts, send_message_to_tunnel_fn);
+static CommandLine on_off_id_cmd = make_command("on_off_identity", "enable/disable the identities information", "[-i <identity>] [-o <onoff>]",
+                                           "\t-i|--identity\tidentity info that needs to be enabled/disabled\n"
+                                                "\t-o|--onoff\tenable/disable the identity\n", on_off_identity_opts, send_message_to_tunnel_fn);
 static CommandLine enable_id_cmd = make_command("enable", "enable the identities information", "[-i <identity>]",
                                                  "\t-i|--identity\tidentity info that needs to be enabled\n", enable_identity_opts, send_message_to_tunnel_fn);
 static CommandLine enable_mfa_cmd = make_command("enable_mfa", "Enable MFA function fetches the totp url from the controller", "[-i <identity>]",
@@ -2117,7 +2136,7 @@ static CommandLine help_cmd = make_command("help", "this message", NULL, NULL, N
 static CommandLine *main_cmds[] = {
         &enroll_cmd,
         &run_cmd,
-        &disable_id_cmd,
+        &on_off_id_cmd,
         &enable_id_cmd,
         &dump_cmd,
         &enable_mfa_cmd,

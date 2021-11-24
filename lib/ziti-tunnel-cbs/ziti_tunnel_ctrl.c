@@ -160,6 +160,15 @@ static void disconnect_identity(ziti_context ziti_ctx, void *tnlr_ctx) {
     ziti_shutdown(ziti_ctx);
 }
 
+bool is_null(const void * field, char* message, tunnel_result* result) {
+    if (field == NULL) {
+        result->error = message;
+        result->success = false;
+        return true;
+    } else {
+        return false;
+    }
+}
 
 static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
     tunnel_result result = {
@@ -208,33 +217,42 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
             return 0;
         }
 
-        case TunnelCommand_DisableIdentity: {
-            tunnel_disable_identity disable_id = {0};
-            if (cmd->data == NULL || parse_tunnel_disable_identity(&disable_id, cmd->data, strlen(cmd->data)) != 0) {
+        case TunnelCommand_IdentityOnOff: {
+            tunnel_on_off_identity on_off_id = {0};
+            if (cmd->data == NULL || parse_tunnel_on_off_identity(&on_off_id, cmd->data, strlen(cmd->data)) != 0) {
                 result.success = false;
                 result.error = "invalid command";
-                free_tunnel_disable_identity(&disable_id);
+                free_tunnel_on_off_identity(&on_off_id);
                 break;
             }
-            struct ziti_instance_s *inst = model_map_get(&instances, disable_id.identifier);
-            if (inst == NULL) {
-                result.error = "ziti context not found";
-                result.success = false;
-                free_tunnel_disable_identity(&disable_id);
+            if (is_null(on_off_id.identifier, "Identifier info is not found in the request", &result)) {
+                free_tunnel_on_off_identity(&on_off_id);
                 break;
             }
-            if (inst) {
-                disconnect_identity(inst->ztx, CMD_CTX.tunnel_ctx);
-                model_map_remove(&instances, disable_id.identifier);
-                result.success = true;
+
+            struct ziti_instance_s *inst = model_map_get(&instances, on_off_id.identifier);
+            if (is_null(inst, "ziti context not found", &result)) {
+                free_tunnel_on_off_identity(&on_off_id);
+                break;
+            }
+
+            if (on_off_id.onOff) {
+                load_identity(on_off_id.identifier, on_off_id.identifier, cb, ctx);
+                free_tunnel_on_off_identity(&on_off_id);
+                return 0;
             } else {
-                result.success = false;
-                result.error = calloc(1, strlen(disable_id.identifier) + 35);
-                sprintf(result.error, "ziti instance for id %s is not found", disable_id.identifier);
+                if (is_null(inst->ztx, "ziti context is not loaded", &result)) {
+                    free_tunnel_on_off_identity(&on_off_id);
+                    break;
+                }
+                disconnect_identity(inst->ztx, CMD_CTX.tunnel_ctx);
+                model_map_remove(&instances, on_off_id.identifier);
+                result.success = true;
+                result.data = tunnel_comand_to_json(cmd, MODEL_JSON_COMPACT, NULL);
             }
 
             cb(&result, ctx);
-            free_tunnel_disable_identity(&disable_id);
+            free_tunnel_on_off_identity(&on_off_id);
             return 0;
         }
 
@@ -285,17 +303,14 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
                 free_tunnel_enable_mfa(&enable_mfa_cmd);
                 break;
             }
-
-            struct ziti_instance_s *inst = model_map_get(&instances, enable_mfa_cmd.identifier);
-            if (inst == NULL) {
-                result.error = "ziti context not found";
-                result.success = false;
+            if (is_null(enable_mfa_cmd.identifier, "Identifier info is not found in the request", &result)) {
                 free_tunnel_enable_mfa(&enable_mfa_cmd);
                 break;
             }
-            if (inst->ztx == NULL) {
-                result.error = "ziti context is not loaded";
-                result.success = false;
+
+            struct ziti_instance_s *inst = model_map_get(&instances, enable_mfa_cmd.identifier);
+            if (is_null(inst, "ziti context not found", &result) || is_null(inst->ztx, "ziti context is not loaded", &result)) {
+                free_tunnel_enable_mfa(&enable_mfa_cmd);
                 break;
             }
 
@@ -318,17 +333,14 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
                 free_tunnel_verify_mfa(&verify_mfa_cmd);
                 break;
             }
-
-            struct ziti_instance_s *inst = model_map_get(&instances, verify_mfa_cmd.identifier);
-            if (inst == NULL) {
-                result.error = "ziti context not found";
-                result.success = false;
+            if (is_null(verify_mfa_cmd.identifier, "Identifier info is not found in the request", &result) || is_null(verify_mfa_cmd.code, "Authentication code is null", &result)) {
                 free_tunnel_verify_mfa(&verify_mfa_cmd);
                 break;
             }
-            if (inst->ztx == NULL) {
-                result.error = "ziti context is not loaded";
-                result.success = false;
+
+            struct ziti_instance_s *inst = model_map_get(&instances, verify_mfa_cmd.identifier);
+            if (is_null(inst, "ziti context not found", &result) || is_null(inst->ztx, "ziti context is not loaded", &result)) {
+                free_tunnel_verify_mfa(&verify_mfa_cmd);
                 break;
             }
 
@@ -351,17 +363,14 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
                 free_tunnel_remove_mfa(&remove_mfa_cmd);
                 break;
             }
-
-            struct ziti_instance_s *inst = model_map_get(&instances, remove_mfa_cmd.identifier);
-            if (inst == NULL) {
-                result.error = "ziti context not found";
-                result.success = false;
+            if (is_null(remove_mfa_cmd.identifier, "Identifier info is not found in the request", &result) || is_null(remove_mfa_cmd.code, "Authentication code is null", &result)) {
                 free_tunnel_remove_mfa(&remove_mfa_cmd);
                 break;
             }
-            if (inst->ztx == NULL) {
-                result.error = "ziti context is not loaded";
-                result.success = false;
+
+            struct ziti_instance_s *inst = model_map_get(&instances, remove_mfa_cmd.identifier);
+            if (is_null(inst, "ziti context not found", &result) || is_null(inst->ztx, "ziti context is not loaded", &result)) {
+                free_tunnel_remove_mfa(&remove_mfa_cmd);
                 break;
             }
 
@@ -385,17 +394,14 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
                 free_tunnel_submit_mfa(&auth);
                 break;
             }
-
-            struct ziti_instance_s *inst = model_map_get(&instances, auth.identifier);
-            if (inst == NULL) {
-                result.error = "ziti context not found";
-                result.success = false;
+            if (is_null(auth.identifier, "Identifier info is not found in the request", &result) || is_null(auth.code, "Authentication code is null", &result)) {
                 free_tunnel_submit_mfa(&auth);
                 break;
             }
-            if (inst->ztx == NULL) {
-                result.error = "ziti context is not loaded";
-                result.success = false;
+
+            struct ziti_instance_s *inst = model_map_get(&instances, auth.identifier);
+            if (is_null(inst, "ziti context not found", &result) || is_null(inst->ztx, "ziti context is not loaded", &result)) {
+                free_tunnel_submit_mfa(&auth);
                 break;
             }
 
@@ -417,17 +423,14 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
                 free_tunnel_generate_mfa_codes(&generate_mfa_codes_cmd);
                 break;
             }
-
-            struct ziti_instance_s *inst = model_map_get(&instances, generate_mfa_codes_cmd.identifier);
-            if (inst == NULL) {
-                result.error = "ziti context not found";
-                result.success = false;
+            if (is_null(generate_mfa_codes_cmd.identifier, "Identifier info is not found in the request", &result) || is_null(generate_mfa_codes_cmd.code, "Authentication code is null", &result)) {
                 free_tunnel_generate_mfa_codes(&generate_mfa_codes_cmd);
                 break;
             }
-            if (inst->ztx == NULL) {
-                result.error = "ziti context is not loaded";
-                result.success = false;
+
+            struct ziti_instance_s *inst = model_map_get(&instances, generate_mfa_codes_cmd.identifier);
+            if (is_null(inst, "ziti context not found", &result) || is_null(inst->ztx, "ziti context is not loaded", &result)) {
+                free_tunnel_generate_mfa_codes(&generate_mfa_codes_cmd);
                 break;
             }
 
@@ -446,18 +449,17 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
             if (cmd->data == NULL || parse_tunnel_get_mfa_codes(&get_mfa_codes_cmd, cmd->data, strlen(cmd->data)) != 0) {
                 result.error = "invalid command";
                 result.success = false;
+                free_tunnel_get_mfa_codes(&get_mfa_codes_cmd);
+                break;
+            }
+            if (is_null(get_mfa_codes_cmd.identifier, "Identifier info is not found in the request", &result) || is_null(get_mfa_codes_cmd.code, "Authentication code is null", &result)) {
+                free_tunnel_get_mfa_codes(&get_mfa_codes_cmd);
                 break;
             }
 
             struct ziti_instance_s *inst = model_map_get(&instances, get_mfa_codes_cmd.identifier);
-            if (inst == NULL) {
-                result.error = "ziti context not found";
-                result.success = false;
-                break;
-            }
-            if (inst->ztx == NULL) {
-                result.error = "ziti context is not loaded";
-                result.success = false;
+            if (is_null(inst, "ziti context not found", &result) || is_null(inst->ztx, "ziti context is not loaded", &result)) {
+                free_tunnel_get_mfa_codes(&get_mfa_codes_cmd);
                 break;
             }
 
@@ -476,18 +478,17 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
             if (cmd->data == NULL || parse_tunnel_get_identity_metrics(&get_identity_metrics_cmd, cmd->data, strlen(cmd->data)) != 0) {
                 result.error = "invalid command";
                 result.success = false;
+                free_tunnel_get_identity_metrics(&get_identity_metrics_cmd);
+                break;
+            }
+            if (is_null(get_identity_metrics_cmd.identifier, "Identifier info is not found in the request", &result)) {
+                free_tunnel_get_identity_metrics(&get_identity_metrics_cmd);
                 break;
             }
 
             struct ziti_instance_s *inst = model_map_get(&instances, get_identity_metrics_cmd.identifier);
-            if (inst == NULL) {
-                result.error = "ziti context not found";
-                result.success = false;
-                break;
-            }
-            if (inst->ztx == NULL) {
-                result.error = "ziti context is not loaded";
-                result.success = false;
+            if (is_null(inst, "ziti context not found", &result) || is_null(inst->ztx, "ziti context is not loaded", &result)) {
+                free_tunnel_get_identity_metrics(&get_identity_metrics_cmd);
                 break;
             }
 
@@ -504,26 +505,23 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
                 free_tunnel_delete_identity(&delete_id);
                 break;
             }
-            struct ziti_instance_s *inst = model_map_get(&instances, delete_id.identifier);
-
-            if (inst == NULL) {
-                result.error = "ziti context not found";
-                result.success = false;
+            if (is_null(delete_id.identifier, "Identifier info is not found in the remove identity request", &result)) {
                 free_tunnel_delete_identity(&delete_id);
                 break;
             }
-            if (inst) {
-                if (inst->ztx && ziti_get_identity(inst->ztx)) {
-                    disconnect_identity(inst->ztx, CMD_CTX.tunnel_ctx);
-                }
-                model_map_remove(&instances, delete_id.identifier);
-                result.success = true;
-                result.data = tunnel_comand_to_json(cmd, MODEL_JSON_COMPACT, NULL);
-            } else {
-                result.success = false;
-                result.error = calloc(1, strlen(delete_id.identifier) + 35);
-                sprintf(result.error, "ziti instance for id %s is not found", delete_id.identifier);
+            struct ziti_instance_s *inst = model_map_get(&instances, delete_id.identifier);
+
+            if (is_null(inst, "ziti context not found", &result) || is_null(inst->ztx, "ziti context is not loaded", &result)) {
+                free_tunnel_delete_identity(&delete_id);
+                break;
             }
+
+            if (inst->ztx && ziti_get_identity(inst->ztx)) {
+                disconnect_identity(inst->ztx, CMD_CTX.tunnel_ctx);
+            }
+            model_map_remove(&instances, delete_id.identifier);
+            result.success = true;
+            result.data = tunnel_comand_to_json(cmd, MODEL_JSON_COMPACT, NULL);
 
             free_tunnel_delete_identity(&delete_id);
             break;
@@ -1043,7 +1041,7 @@ IMPL_MODEL(tunnel_load_identity, TNL_LOAD_IDENTITY)
 
 IMPL_MODEL(tunnel_identity_info, TNL_IDENTITY_INFO)
 IMPL_MODEL(tunnel_identity_list, TNL_IDENTITY_LIST)
-IMPL_MODEL(tunnel_disable_identity, TNL_DISABLE_IDENTITY)
+IMPL_MODEL(tunnel_on_off_identity, TNL_ON_OFF_IDENTITY)
 IMPL_MODEL(tunnel_ziti_dump, TNL_ZITI_DUMP)
 IMPL_MODEL(tunnel_enable_mfa, TNL_ENABLE_MFA)
 IMPL_MODEL(tunnel_mfa_enrol_res, TNL_MFA_ENROL_RES)
