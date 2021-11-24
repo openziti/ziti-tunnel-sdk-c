@@ -178,6 +178,10 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
                 case TunnelCommand_RemoveIdentity: {
                     tunnel_delete_identity tnl_delete_id = {0};
                     if (tnl_res_cmd.data != NULL && parse_tunnel_delete_identity(&tnl_delete_id, tnl_res_cmd.data, strlen(tnl_res_cmd.data)) == 0) {
+                        if (tnl_delete_id.identifier == NULL) {
+                            ZITI_LOG(ERROR, "Identity filename is not found in the remove identity request, not deleting the identity file");
+                            break;
+                        }
                         delete_identity_from_instance(tnl_delete_id.identifier);
                         // delete identity file
                         remove(tnl_delete_id.identifier);

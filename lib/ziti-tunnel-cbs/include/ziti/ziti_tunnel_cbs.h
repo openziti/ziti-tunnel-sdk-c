@@ -57,8 +57,8 @@ XX(RemoveIdentity, __VA_ARGS__)
 DECLARE_ENUM(TunnelCommand, TUNNEL_COMMANDS)
 
 #define TUNNEL_CMD(XX, ...) \
-XX(command, TunnelCommand, none, command, __VA_ARGS__) \
-XX(data, json, none, data, __VA_ARGS__)
+XX(command, TunnelCommand, none, Function, __VA_ARGS__) \
+XX(data, json, none, Payload, __VA_ARGS__)
 
 #define TUNNEL_CMD_RES(XX, ...) \
 XX(success, bool, none, success, __VA_ARGS__) \
@@ -133,7 +133,7 @@ XX(identifier, string, none, id, __VA_ARGS__) \
 XX(command, TunnelCommand, none, command, __VA_ARGS__)
 
 #define TNL_DELETE_IDENTITY(XX, ...) \
-XX(identifier, string, none, identifier, __VA_ARGS__)
+XX(identifier, string, none, Identifier, __VA_ARGS__)
 
 #define TUNNEL_SET_LOG_LEVEL(XX, ...) \
 XX(loglevel, string, none, Level, __VA_ARGS__)
