@@ -661,7 +661,7 @@ char* get_dns_ip() {
     return tnl_status.IpInfo->DNS;
 }
 
-void set_ziti_status(boolean enabled, char* identifier) {
+void set_ziti_status(bool enabled, char* identifier) {
     tunnel_identity *id = model_map_get(&tnl_identity_map, identifier);
     if (id == NULL) {
         return;

@@ -64,7 +64,7 @@ void set_service_version();
 
 char* get_log_level();
 
-void set_ziti_status(boolean enabled, char* identifier);
+void set_ziti_status(bool enabled, char* identifier);
 
 void set_tun_ipv4_into_instance(char* tun_ip, int mask, bool addDns);
 
