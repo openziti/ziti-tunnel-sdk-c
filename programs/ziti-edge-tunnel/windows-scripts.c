@@ -235,6 +235,8 @@ void remove_all_nrpt_rules() {
     int rc = system(remove_cmd);
     if (rc != 0) {
         ZITI_LOG(WARN, "Remove all NRPT script: %d(err=%d)", rc, GetLastError());
+    } else {
+        ZITI_LOG(DEBUG, "Removed all nrpt rules");
     }
 }
 

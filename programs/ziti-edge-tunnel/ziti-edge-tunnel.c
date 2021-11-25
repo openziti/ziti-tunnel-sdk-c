@@ -97,6 +97,7 @@ static bool started_by_scm = false;
 static bool tunnel_interrupted = false;
 
 uv_loop_t *main_ziti_loop;
+netif_driver tun;
 
 IMPL_ENUM(event, EVENT_ACTIONS)
 IMPL_ENUM(log_level, LOG_LEVEL)
@@ -186,6 +187,10 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
                         // delete identity file
                         remove(tnl_delete_id.identifier);
                         ZITI_LOG(INFO, "Identity file %s is deleted",tnl_delete_id.identifier);
+#if _WIN32
+                        // should be the last line in this function as it calls the mutex/lock
+                        save_tunnel_status_to_file();
+#endif
                     }
                     free_tunnel_delete_identity(&tnl_delete_id);
                     break;
@@ -1047,7 +1052,6 @@ static void on_event(const base_event *ev) {
 }
 
 static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, const char *ip_range, dns_manager *dns) {
-    netif_driver tun;
     char tun_error[64];
 #if __APPLE__ && __MACH__
     tun = utun_open(tun_error, sizeof(tun_error), ip_range);
@@ -1090,7 +1094,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
 
     if (uv_run(ziti_loop, UV_RUN_DEFAULT) != 0) {
         if (started_by_scm) {
-            ZITI_LOG(INFO, "The event loop is stopped, exiting");
+            ZITI_LOG(INFO, "The event loop is stopped, normal shutdown complete");
         } else if (tunnel_interrupted) {
             ZITI_LOG(ERROR, "tunnel interrupted");
         } else {
@@ -1102,12 +1106,8 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     free(tunneler);
     uv_close((uv_handle_t *) &cmd_server, (uv_close_cb) free);
     uv_close((uv_handle_t *) &event_server, (uv_close_cb) free);
-    uv_timer_stop(&metrics_timer);
 #if _WIN32
-    ZITI_LOG(INFO,"normal shutdown complete");
-    cleanup_instance_config();
     close_log();
-    stop_log_check();
 #endif
     return 0;
 }
@@ -2191,6 +2191,11 @@ void scm_service_stop() {
     send_tunnel_command(tnl_cmd, NULL);
 
     remove_all_nrpt_rules();
+
+    // ZITI_LOG(INFO, "Closing ziti tun adapter...");
+    // tun_close(tun);
+
+    cleanup_instance_config();
 
     ZITI_LOG(INFO,"============================ service ends ==================================");
     if (main_ziti_loop != NULL) {
