@@ -176,9 +176,6 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
         if (parse_tunnel_comand(&tnl_res_cmd, result->data, strlen(result->data)) == 0) {
             switch (tnl_res_cmd.command) {
                 case TunnelCommand_RemoveIdentity: {
-                    if (!result->success) {
-                        break;
-                    }
                     tunnel_delete_identity tnl_delete_id = {0};
                     if (tnl_res_cmd.data != NULL && parse_tunnel_delete_identity(&tnl_delete_id, tnl_res_cmd.data, strlen(tnl_res_cmd.data)) == 0) {
                         if (tnl_delete_id.identifier == NULL) {
@@ -194,6 +191,12 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
                     break;
                 }
                 case TunnelCommand_IdentityOnOff: {
+                    tunnel_on_off_identity on_off_id = {0};
+                    if (tnl_res_cmd.data == NULL || parse_tunnel_on_off_identity(&on_off_id, tnl_res_cmd.data, strlen(tnl_res_cmd.data)) != 0) {
+                        free_tunnel_on_off_identity(&on_off_id);
+                        break;
+                    }
+                    set_ziti_status(on_off_id.onOff, on_off_id.identifier);
 #if _WIN32
                     // should be the last line in this function as it calls the mutex/lock
                     save_tunnel_status_to_file();

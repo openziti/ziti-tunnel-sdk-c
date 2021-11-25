@@ -619,6 +619,9 @@ void set_service_version() {
 
 void delete_identity_from_instance(char* identifier) {
     tunnel_identity *id = model_map_get(&tnl_identity_map, identifier);
+    if (id == NULL) {
+        return;
+    }
     model_map_remove(&tnl_identity_map, identifier);
     free_tunnel_identity(id);
     free(id);
@@ -644,6 +647,14 @@ char* get_ip_range_from_config() {
 
 char* get_dns_ip() {
     return tnl_status.IpInfo->DNS;
+}
+
+void set_ziti_status(boolean enabled, char* identifier) {
+    tunnel_identity *id = model_map_get(&tnl_identity_map, identifier);
+    if (id == NULL) {
+        return;
+    }
+    id->Active = enabled;
 }
 
 // ************** TUNNEL BROADCAST MESSAGES

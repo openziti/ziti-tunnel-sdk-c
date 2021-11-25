@@ -231,25 +231,14 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
             }
 
             struct ziti_instance_s *inst = model_map_get(&instances, on_off_id.identifier);
-            if (is_null(inst, "ziti context not found", &result)) {
+            if (is_null(inst, "ziti context not found", &result) || is_null(inst->ztx, "ziti context is not loaded", &result)) {
                 free_tunnel_on_off_identity(&on_off_id);
                 break;
             }
 
-            if (on_off_id.onOff) {
-                load_identity(on_off_id.identifier, on_off_id.identifier, cb, ctx);
-                free_tunnel_on_off_identity(&on_off_id);
-                return 0;
-            } else {
-                if (is_null(inst->ztx, "ziti context is not loaded", &result)) {
-                    free_tunnel_on_off_identity(&on_off_id);
-                    break;
-                }
-                disconnect_identity(inst->ztx, CMD_CTX.tunnel_ctx);
-                model_map_remove(&instances, on_off_id.identifier);
-                result.success = true;
-                result.data = tunnel_comand_to_json(cmd, MODEL_JSON_COMPACT, NULL);
-            }
+            ziti_set_enabled(inst->ztx, on_off_id.onOff);
+            result.data = tunnel_comand_to_json(cmd, MODEL_JSON_COMPACT, NULL);
+            result.success = true;
 
             cb(&result, ctx);
             free_tunnel_on_off_identity(&on_off_id);
