@@ -413,6 +413,6 @@ void stop_windows_service() {
     ReportSvcStatus(gSvcStatus.dwCurrentState, NO_ERROR, 0);
 }
 
-DWORD get_process_path(DWORD  nBufferLength, LPTSTR lpBuffer) {
-    return GetCurrentDirectory(nBufferLength, lpBuffer);
+DWORD get_process_path(LPTSTR lpBuffer, DWORD  nBufferLength) {
+    return GetModuleFileName(0, lpBuffer, nBufferLength);
 }

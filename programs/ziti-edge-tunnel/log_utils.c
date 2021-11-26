@@ -25,6 +25,7 @@
 #if _WIN32
 #include "windows/windows-service.h"
 #include <direct.h>
+#include <libgen.h>
 #endif
 
 static FILE *ziti_tunneler_log = NULL;
@@ -36,25 +37,27 @@ static const char* log_filename_base = "ziti-tunneler.log";
 static int rotation_count = 7;
 
 static char* create_log_filename() {
-    char curr_path[FILENAME_MAX]; //create string buffer to hold path
+    char process_full_path[FILENAME_MAX]; //create string buffer to hold path
 #if _WIN32
-    get_process_path(FILENAME_MAX, curr_path);
+    get_process_path(process_full_path, FILENAME_MAX);
 #else
     sprintf(curr_path, "%s", "/tmp");
 #endif
 
     char log_path[FILENAME_MAX];
-    sprintf(log_path, "%s/logs", curr_path);
+    sprintf(log_path, "%s/logs", dirname(process_full_path));
     int check;
 #if _WIN32
+    mkdir(log_path);
+    strcat(log_path, "/service");
     check = mkdir(log_path);
 #else
-    check = mkdir(log_path, 0755);
+    mkdir(log_path, 0755);
 #endif
     if (check == 0) {
-        printf("\nlog path is created at %s", curr_path);
+        printf("\nlog path is created at %s", log_path);
     } else {
-        printf("\nlog path is found at %s", curr_path);
+        printf("\nlog path is found at %s", log_path);
     }
 
     char time_val[32];
