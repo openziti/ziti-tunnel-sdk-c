@@ -260,6 +260,9 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
             const char *key;
             struct ziti_instance_s *inst;
             MODEL_MAP_FOREACH(key, inst, &instances) {
+                if (inst->ztx == NULL) {
+                    continue;
+                }
                 const ziti_identity *identity = ziti_get_identity(inst->ztx);
                 if (dump.identifier != NULL && strcmp(dump.identifier, inst->identifier) != 0) {
                     continue;
