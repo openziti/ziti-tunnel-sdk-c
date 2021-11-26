@@ -412,3 +412,7 @@ void stop_windows_service() {
     SetEvent(ghSvcStopEvent);
     ReportSvcStatus(gSvcStatus.dwCurrentState, NO_ERROR, 0);
 }
+
+DWORD get_process_path(DWORD  nBufferLength, LPTSTR lpBuffer) {
+    return GetCurrentDirectory(nBufferLength, lpBuffer);
+}

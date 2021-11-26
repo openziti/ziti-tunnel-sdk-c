@@ -29,6 +29,8 @@ void scm_service_run(void *);
 void scm_service_stop();
 void stop_windows_service();
 
+DWORD get_process_path(DWORD, LPTSTR);
+
 #ifdef __cplusplus
 }
 #endif

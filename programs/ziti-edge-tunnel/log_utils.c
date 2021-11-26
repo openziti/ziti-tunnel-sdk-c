@@ -38,7 +38,7 @@ static int rotation_count = 7;
 static char* create_log_filename() {
     char curr_path[FILENAME_MAX]; //create string buffer to hold path
 #if _WIN32
-    _getcwd( curr_path, FILENAME_MAX );
+    get_process_path(FILENAME_MAX, curr_path);
 #else
     sprintf(curr_path, "%s", "/tmp");
 #endif
