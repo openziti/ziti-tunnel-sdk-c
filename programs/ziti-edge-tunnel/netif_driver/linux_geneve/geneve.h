@@ -23,22 +23,29 @@
 #include <linux/types.h>
 
 struct geneve_flow_s {
-    uint8_t id[18];
+    uint8_t id[40];
     uv_udp_t udp_handle_out;
+    struct sockaddr_in send_address;
+    struct sockaddr_in bind_address;
 };
 
 struct netif_handle_s {
     model_map flow_ids;
     uv_udp_t udp_handle_in;
+    struct uv_loop_s *loop;
+    struct geneve_flow_s *flow_info;
 };
 
 extern netif_driver geneve_open(struct uv_loop_s *loop, char *error, size_t error_len);
 
 /*
- * Geneve Overhead structure
+ * Geneve Header Struct
  */
-#define GENEVE_UDP_PORT	6081
-#define GENEVE_VER      0
+#define GENEVE_UDP_PORT         6081
+#define GENEVE_VER              0
+#define IP_LOCAL_BIND           "0.0.0.0"
+#define AWS_GNV_HDR_OPT_LEN     32
+#define AWS_GNV_HDR_LEN         40
 
 /* Geneve Header:
  *  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -71,10 +78,10 @@ struct geneve_opt {
     uint8_t	r3:1;
     uint8_t	length:5;
 #endif
-    uint8_t	opt_data[4];
+    uint8_t	opt_data[8];
 };
 
-struct genevehdr {
+struct geneve_hdr {
 #ifdef __LITTLE_ENDIAN
     uint8_t opt_len:6;
 	uint8_t ver:2;
@@ -91,7 +98,7 @@ struct genevehdr {
     __be16 proto_type;
     uint8_t  vni[3];
     uint8_t  rsvd2;
-    struct geneve_opt options[1];
+    struct geneve_opt options[3];
 };
 
 #endif //ZITI_TUNNELER_SDK_GENEVE_H
