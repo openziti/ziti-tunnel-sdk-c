@@ -63,7 +63,7 @@ struct netif_handle_s {
 
 static int tun_setup_read(netif_handle tun, uv_loop_t *loop, packet_cb on_packet, void *netif);
 static ssize_t tun_write(netif_handle tun, const void *buf, size_t len);
-
+int tun_close(struct netif_handle_s *tun);
 static int tun_add_route(netif_handle tun, const char *dest);
 static int tun_del_route(netif_handle tun, const char *dest);
 int set_dns(netif_handle tun, uint32_t dns_ip);
