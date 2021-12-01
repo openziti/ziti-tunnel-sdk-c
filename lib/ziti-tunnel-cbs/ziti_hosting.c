@@ -711,7 +711,12 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
 
     done:
     if (err) {
-        hosted_server_close(io_ctx);
+        if (io_ctx == NULL) {
+            // if we get an error before creating io_ctx, just close incoming connection
+            ziti_close(clt, ziti_conn_close_cb);
+        } else {
+            hosted_server_close(io_ctx);
+        }
     }
     if (clt_ctx->app_data != NULL) {
         free_tunneler_app_data(&app_data);

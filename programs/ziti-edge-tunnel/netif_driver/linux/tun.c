@@ -209,7 +209,7 @@ static void dns_update_etc_resolv(const char* tun, const char* addr) {
     int found = run_command("grep -q '^nameserver %s' /etc/resolv.conf", addr);
 
     if (found != 0) {
-        run_command("sed -z -i 's/nameserver/nameserver %s\\nnameserver' /etc/resolv.conf", addr);
+        run_command("sed -z -i 's/nameserver/nameserver %s\\nnameserver/' /etc/resolv.conf", addr);
     }
 
     dns_set_miss_status(DNS_REFUSE);
