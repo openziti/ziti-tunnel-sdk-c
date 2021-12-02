@@ -34,9 +34,6 @@ SERVICE_STATUS          gSvcStatus;
 SERVICE_STATUS_HANDLE   gSvcStatusHandle;
 HANDLE                  ghSvcStopEvent = NULL;
 HPOWERNOTIFY hPowernotify;
-// LPHANDLER_FUNCTION_EX LphandlerFunctionEx;
-// DEV_BROADCAST_DEVICEINTERFACE NotificationFilter;
-// HDEVNOTIFY hDeviceNotify;
 
 //LPCTSTR SVCNAME = "ziti-edge-tunnel";
 //
@@ -233,8 +230,8 @@ VOID SvcInit( DWORD dwArgc, LPTSTR *lpszArgv)
     ReportSvcStatus( SERVICE_RUNNING, NO_ERROR, 0 );
 
     // The process should be in running state before registering for the session events
-    HWND current_process = GetCurrentProcess();
-    WINBOOL sessionRegistered = WTSRegisterSessionNotification(current_process, NOTIFY_FOR_THIS_SESSION);
+    // HWND current_process = GetCurrentProcess();
+    WINBOOL sessionRegistered = WTSRegisterSessionNotification((HWND) gSvcStatusHandle, NOTIFY_FOR_THIS_SESSION);
     if (sessionRegistered) {
         SvcReportEvent(TEXT("Ziti Edge Tunnel registered for session events"), EVENTLOG_INFORMATION_TYPE);
     } else {
