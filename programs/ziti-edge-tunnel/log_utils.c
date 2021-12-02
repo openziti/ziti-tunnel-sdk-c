@@ -37,15 +37,17 @@ static const char* log_filename_base = "ziti-tunneler.log";
 static int rotation_count = 7;
 
 static char* create_log_filename() {
-    char process_full_path[FILENAME_MAX]; //create string buffer to hold path
+    char process_dir[FILENAME_MAX]; //create string buffer to hold path
 #if _WIN32
+    char process_full_path[FILENAME_MAX];
     get_process_path(process_full_path, FILENAME_MAX);
+    sprintf(process_dir, "%s", dirname(process_full_path));
 #else
-    sprintf(curr_path, "%s", "/tmp");
+    sprintf(process_dir, "%s", "/tmp");
 #endif
 
     char log_path[FILENAME_MAX];
-    sprintf(log_path, "%s/logs", dirname(process_full_path));
+    sprintf(log_path, "%s/logs", process_dir);
     int check;
 #if _WIN32
     mkdir(log_path);

@@ -612,7 +612,7 @@ void set_service_version() {
         }
 
         tnl_status.ServiceVersion->Version = calloc(ver_length + 1, sizeof(char));
-        char service_version[ver_length+1];
+        char service_version[ver_length + 1];
         memcpy(&service_version, version, ver_length);
         service_version[ver_length] = '\0';
         snprintf(tnl_status.ServiceVersion->Version, ver_length+1, "%s", service_version);
