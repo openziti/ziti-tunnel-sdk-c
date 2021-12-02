@@ -228,6 +228,11 @@ VOID SvcInit( DWORD dwArgc, LPTSTR *lpszArgv)
         SvcReportEvent(TEXT("Ziti Edge Tunnel registered for power events"), EVENTLOG_INFORMATION_TYPE);
     }
 
+    // Report running status when initialization is complete.
+
+    ReportSvcStatus( SERVICE_RUNNING, NO_ERROR, 0 );
+
+    // The process should be in running state before registering for the session events
     HWND current_process = GetCurrentProcess();
     WINBOOL sessionRegistered = WTSRegisterSessionNotification(current_process, NOTIFY_FOR_THIS_SESSION);
     if (sessionRegistered) {
@@ -235,10 +240,6 @@ VOID SvcInit( DWORD dwArgc, LPTSTR *lpszArgv)
     } else {
         SvcReportEvent(TEXT("Ziti Edge Tunnel could not register for session events"), EVENTLOG_INFORMATION_TYPE);
     }
-
-    // Report running status when initialization is complete.
-
-    ReportSvcStatus( SERVICE_RUNNING, NO_ERROR, 0 );
 
     // start tunnel
     CreateThread (NULL, 0, ServiceWorkerThread, lpszArgv, 0, NULL);
@@ -253,7 +254,7 @@ VOID SvcInit( DWORD dwArgc, LPTSTR *lpszArgv)
 
         SvcReportEvent(TEXT("Ziti Edge Tunnel Stopped"), EVENTLOG_INFORMATION_TYPE);
         ReportSvcStatus( SERVICE_STOPPED, NO_ERROR, 0 );
-        // PowerUnregisterSuspendResumeNotification(notify);
+        UnregisterSuspendResumeNotification(hPowernotify);
         return;
     }
 }
