@@ -14,16 +14,29 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-#include "windows/windows-service.h"
-#include <windows.h>
+#include <windows/windows-service.h>
 #include <stdio.h>
 #include <config-utils.h>
+#include <windows/windows-events.h>
+
+#include <winuser.h>
+#include <powrprof.h>
+#include <windows/powrprofex.h>
+#include <wtsapi32.h>
+#include <winsock2.h>
+#include <windows.h>
 
 #pragma comment(lib, "advapi32.lib")
+#pragma comment(lib, "Powrprof.lib")
+#pragma comment(lib, "Wtsapi32.lib")
 
 SERVICE_STATUS          gSvcStatus;
 SERVICE_STATUS_HANDLE   gSvcStatusHandle;
 HANDLE                  ghSvcStopEvent = NULL;
+HPOWERNOTIFY hPowernotify;
+// LPHANDLER_FUNCTION_EX LphandlerFunctionEx;
+// DEV_BROADCAST_DEVICEINTERFACE NotificationFilter;
+// HDEVNOTIFY hDeviceNotify;
 
 //LPCTSTR SVCNAME = "ziti-edge-tunnel";
 //
@@ -136,9 +149,12 @@ VOID WINAPI SvcMain( DWORD dwArgc, LPTSTR *lpszArgv )
 {
     // Register the handler function for the service
 
-    gSvcStatusHandle = RegisterServiceCtrlHandler(
+    /*gSvcStatusHandle = RegisterServiceCtrlHandler(
             SVCNAME,
-            SvcCtrlHandler);
+            SvcCtrlHandler);*/
+    gSvcStatusHandle = RegisterServiceCtrlHandlerEx(
+            SVCNAME,
+            LphandlerFunctionEx, NULL);
 
     if( !gSvcStatusHandle )
     {
@@ -197,6 +213,29 @@ VOID SvcInit( DWORD dwArgc, LPTSTR *lpszArgv)
         return;
     }
 
+    // register for power events
+    DEVICE_NOTIFY_SUBSCRIBE_PARAMETERS parameters = { DeviceNotifyCallbackRoutine, NULL };
+
+    /*PowerRegisterSuspendResumeNotification(DEVICE_NOTIFY_CALLBACK, &parameters, &notify);*/
+
+    hPowernotify = RegisterSuspendResumeNotification(
+            &parameters,
+            DEVICE_NOTIFY_CALLBACK
+    );
+    if (NULL == hPowernotify) {
+        SvcReportEvent(TEXT("Ziti Edge Tunnel could not register power events"), EVENTLOG_INFORMATION_TYPE);
+    } else {
+        SvcReportEvent(TEXT("Ziti Edge Tunnel registered for power events"), EVENTLOG_INFORMATION_TYPE);
+    }
+
+    HWND current_process = GetCurrentProcess();
+    WINBOOL sessionRegistered = WTSRegisterSessionNotification(current_process, NOTIFY_FOR_THIS_SESSION);
+    if (sessionRegistered) {
+        SvcReportEvent(TEXT("Ziti Edge Tunnel registered for session events"), EVENTLOG_INFORMATION_TYPE);
+    } else {
+        SvcReportEvent(TEXT("Ziti Edge Tunnel could not register for session events"), EVENTLOG_INFORMATION_TYPE);
+    }
+
     // Report running status when initialization is complete.
 
     ReportSvcStatus( SERVICE_RUNNING, NO_ERROR, 0 );
@@ -214,6 +253,7 @@ VOID SvcInit( DWORD dwArgc, LPTSTR *lpszArgv)
 
         SvcReportEvent(TEXT("Ziti Edge Tunnel Stopped"), EVENTLOG_INFORMATION_TYPE);
         ReportSvcStatus( SERVICE_STOPPED, NO_ERROR, 0 );
+        // PowerUnregisterSuspendResumeNotification(notify);
         return;
     }
 }
@@ -415,4 +455,36 @@ void stop_windows_service() {
 
 DWORD get_process_path(LPTSTR lpBuffer, DWORD  nBufferLength) {
     return GetModuleFileName(0, lpBuffer, nBufferLength);
+}
+
+DWORD LphandlerFunctionEx(
+ DWORD dwControl,
+ DWORD dwEventType,
+ LPVOID lpEventData,
+ LPVOID lpContext
+) {
+
+    switch (dwControl) {
+        case SERVICE_CONTROL_STOP:
+            ReportSvcStatus(SERVICE_STOP_PENDING, NO_ERROR, 0);
+
+            // stops the running tunnel service
+            scm_service_stop();
+            // stops the windows service in scm
+            stop_windows_service();
+
+            return 0;
+
+        case SERVICE_CONTROL_POWEREVENT:
+            if (dwEventType == PBT_APMRESUMEAUTOMATIC || dwEventType == PBT_APMRESUMESUSPEND) {
+                SvcReportEvent(TEXT("Ziti Edge Tunnel received power resume event"), EVENTLOG_INFORMATION_TYPE);
+            }
+            break;
+
+        case SERVICE_CONTROL_SESSIONCHANGE:
+            if (dwEventType == WTS_SESSION_UNLOCK) {
+                SvcReportEvent(TEXT("Ziti Edge Tunnel received session unlock event"), EVENTLOG_INFORMATION_TYPE);
+            }
+            break;
+    }
 }

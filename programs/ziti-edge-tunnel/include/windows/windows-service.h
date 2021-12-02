@@ -3,6 +3,7 @@
 
 #if _WIN32
 #include <stdbool.h>
+#include <winsock2.h>
 #include <windows.h>
 #include "uv.h"
 
@@ -23,6 +24,12 @@ VOID SvcInit( DWORD, LPTSTR * );
 VOID SvcReportEvent( LPTSTR, DWORD );
 VOID SvcDelete(void);
 DWORD WINAPI ServiceWorkerThread (LPVOID lpParam);
+DWORD LphandlerFunctionEx(
+        DWORD dwControl,
+        DWORD dwEventType,
+        LPVOID lpEventData,
+        LPVOID lpContext
+);
 
 void scm_service_init(char *config_dir);
 void scm_service_run(void *);

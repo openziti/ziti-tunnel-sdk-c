@@ -227,6 +227,15 @@ netif_driver tun_open(struct uv_loop_s *loop, uint32_t tun_ip, uint32_t dns_ip, 
     return driver;
 }
 
+void tun_enable_dns(struct netif_handle_s *tun) {
+    // DNS_INTERFACE_SETTINGS Settings = {0};
+    GUID adapterGuid;
+    IIDFromString(ZITI_TUN_GUID, &adapterGuid);
+    // SetInterfaceDnsSettings(&adapterGuid, &Settings);
+    // free(Settings);
+
+}
+
 int tun_close(struct netif_handle_s *tun) {
     if (tun == NULL) {
         return 0;
