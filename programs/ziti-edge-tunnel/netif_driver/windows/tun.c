@@ -89,7 +89,6 @@ static WINTUN_RECEIVE_PACKET_FUNC WintunReceivePacket;
 static WINTUN_RELEASE_RECEIVE_PACKET_FUNC WintunReleaseReceivePacket;
 static WINTUN_ALLOCATE_SEND_PACKET_FUNC WintunAllocateSendPacket;
 static WINTUN_SEND_PACKET_FUNC WintunSendPacket;
-static WINTUN_DELETE_ADAPTER_FUNC WintunDeleteAdapter;
 
 static uv_once_t wintunInit;
 static HMODULE WINTUN;
@@ -120,8 +119,7 @@ static void InitializeWintun(void)
     X(WintunReceivePacket, WINTUN_RECEIVE_PACKET_FUNC) ||
     X(WintunReleaseReceivePacket, WINTUN_RELEASE_RECEIVE_PACKET_FUNC) ||
     X(WintunAllocateSendPacket, WINTUN_ALLOCATE_SEND_PACKET_FUNC) ||
-    X(WintunSendPacket, WINTUN_SEND_PACKET_FUNC) ||
-    X(WintunDeleteAdapter, WINTUN_DELETE_ADAPTER_FUNC))
+    X(WintunSendPacket, WINTUN_SEND_PACKET_FUNC))
 #undef X
     {
         DWORD LastError = GetLastError();
