@@ -15,13 +15,11 @@ limitations under the License.
 */
 
 
-#ifndef ZITI_TUNNEL_SDK_C_WINDOWS_EVENTS_H
-#define ZITI_TUNNEL_SDK_C_WINDOWS_EVENTS_H
+#ifndef ZITI_TUNNEL_SDK_C_SERVICE_UTILS_H
+#define ZITI_TUNNEL_SDK_C_SERVICE_UTILS_H
 
-ULONG DeviceNotifyCallbackRoutine(
-        PVOID Context,
-        ULONG Type,
-        PVOID Setting
-);
+#include <stdbool.h>
 
-#endif //ZITI_TUNNEL_SDK_C_WINDOWS_EVENTS_H
+void endpoint_status_change(bool woken, bool unlocked);
+
+#endif //ZITI_TUNNEL_SDK_C_SERVICE_UTILS_H

@@ -30,6 +30,7 @@
 #include <log-utils.h>
 #include <time.h>
 #include <config-utils.h>
+#include <service-utils.h>
 
 #if __APPLE__ && __MACH__
 #include "netif_driver/darwin/utun.h"
@@ -2170,6 +2171,36 @@ static CommandLine main_cmd = make_command_set(
         NULL, main_cmds);
 
 #if _WIN32
+
+void endpoint_status_change(bool woken, bool unlocked) {
+    if (woken) {
+        ZITI_LOG(INFO,"Received power resume event");
+    }
+    if (unlocked) {
+        ZITI_LOG(INFO,"Received session unlocked event");
+    }
+
+    // send status message immediately
+    tunnel_status_event tnl_sts_evt = {0};
+    tnl_sts_evt.Op = strdup("status");
+    tnl_sts_evt.Status = get_tunnel_status();
+    send_events_message(&tnl_sts_evt, (to_json_fn) tunnel_status_event_to_json, true);
+    tnl_sts_evt.Status = NULL;
+    free_tunnel_status_event(&tnl_sts_evt);
+
+    // send endpoint status to the controller
+    tunnel_comand *tnl_cmd = calloc(1, sizeof(tunnel_comand));
+    tnl_cmd->command = TunnelCommand_StatusChange;
+    tunnel_status_change *status_change = calloc(1, sizeof(tunnel_status_change));
+    status_change->woken = woken;
+    status_change->unlocked = unlocked;
+    size_t json_len;
+    tnl_cmd->data = tunnel_status_change_to_json(status_change, MODEL_JSON_COMPACT, &json_len);
+    send_tunnel_command(tnl_cmd, NULL);
+    free_tunnel_status_change(status_change);
+    free(status_change);
+
+}
 
 void scm_service_init(char *config_path) {
     started_by_scm = true;

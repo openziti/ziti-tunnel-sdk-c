@@ -25,11 +25,9 @@ if (MSVC)
     set(getopt libwinc)
 endif()
 
-set (libs)
 set(ZITI_INSTANCE_COMMON include/model/events.h include/model/dtos.h instance.c include/instance.h)
 if (WIN32)
-    set(ZITI_INSTANCE_OS windows-service.c include/windows/windows-service.h include/windows/windows-scripts.h windows-scripts.c log_utils.c include/log-utils.h config-utils.c include/config-utils.h instance-config.c include/instance-config.h include/windows/windows-events.h windows-events.c include/windows/powrprofex.h)
-    list (APPEND libs Wtsapi32)
+    set(ZITI_INSTANCE_OS windows-service.c include/windows/windows-service.h include/windows/windows-scripts.h windows-scripts.c log_utils.c include/log-utils.h config-utils.c include/config-utils.h instance-config.c include/instance-config.h include/service-utils.h)
 endif ()
 
 add_executable(ziti-edge-tunnel ziti-edge-tunnel.c ${NETIF_DRIVER_SOURCE} dnsmasq_manager.c ${ZITI_INSTANCE_COMMON} ${ZITI_INSTANCE_OS})
@@ -48,7 +46,6 @@ target_link_libraries(ziti-edge-tunnel
         PUBLIC ziti ziti-tunnel-sdk-c ziti-tunnel-cbs-c
         PUBLIC lwipcore ${lwip_sys_lib} ziti-tunnel-sdk-c ${tun_lib}
         PUBLIC subcommand ${getopt}
-        PUBLIC ${libs}
         )
 
 BUNDLE_COMP(ziti-edge-tunnel)

@@ -519,8 +519,31 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
             break;
         }
 
-        case TunnelCommand_Unknown:
+        case TunnelCommand_StatusChange: {
+            tunnel_status_change tunnel_status_change_cmd = {0};
+            if (cmd->data == NULL ||
+                parse_tunnel_status_change(&tunnel_status_change_cmd, cmd->data, strlen(cmd->data)) != 0) {
+                result.error = "invalid command";
+                result.success = false;
+                free_tunnel_status_change(&tunnel_status_change_cmd);
+                break;
+            }
+            const char *key;
+            struct ziti_instance_s *inst;
+            MODEL_MAP_FOREACH(key, inst, &instances) {
+                if (inst->ztx == NULL) {
+                    continue;
+                }
+                ziti_endpoint_state_change(inst->ztx, tunnel_status_change_cmd.woken, tunnel_status_change_cmd.unlocked);
+                ZITI_LOG(DEBUG, "Endpoint status change function is invoked for %s with woken %d and unlocked %d", inst->identifier, tunnel_status_change_cmd.woken, tunnel_status_change_cmd.unlocked);
+            }
+            result.success = true;
+            free_tunnel_status_change(&tunnel_status_change_cmd);
             break;
+        }
+
+        case TunnelCommand_Unknown:
+        break;
     }
 
     cb(&result, ctx);
@@ -1046,6 +1069,7 @@ IMPL_MODEL(tunnel_get_mfa_codes, TNL_GET_MFA_CODES)
 IMPL_MODEL(tunnel_get_identity_metrics, TNL_GET_IDENTITY_METRICS)
 IMPL_MODEL(tunnel_identity_metrics, TNL_IDENTITY_METRICS)
 IMPL_MODEL(tunnel_delete_identity, TNL_DELETE_IDENTITY)
+IMPL_MODEL(tunnel_status_change, TUNNEL_STATUS_CHANGE)
 
 // ************** TUNNEL Events
 IMPL_ENUM(TunnelEvent, TUNNEL_EVENTS)

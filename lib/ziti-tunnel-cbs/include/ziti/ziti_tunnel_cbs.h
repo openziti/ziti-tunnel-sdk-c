@@ -52,7 +52,8 @@ XX(SetLogLevel, __VA_ARGS__) \
 XX(UpdateTunIP, __VA_ARGS__) \
 XX(ServiceControl, __VA_ARGS__) \
 XX(Status, __VA_ARGS__) \
-XX(RemoveIdentity, __VA_ARGS__)
+XX(RemoveIdentity, __VA_ARGS__) \
+XX(StatusChange, __VA_ARGS__)
 
 DECLARE_ENUM(TunnelCommand, TUNNEL_COMMANDS)
 
@@ -147,6 +148,10 @@ XX(addDns, bool, none, AddDns, __VA_ARGS__)
 #define TUNNEL_SERVICE_CONTROL(XX, ...) \
 XX(operation, string, none, operation, __VA_ARGS__)
 
+#define TUNNEL_STATUS_CHANGE(XX, ...) \
+XX(woken, bool, none, woke, __VA_ARGS__) \
+XX(unlocked, bool, none, unlocked, __VA_ARGS__)
+
 DECLARE_MODEL(tunnel_comand, TUNNEL_CMD)
 DECLARE_MODEL(tunnel_result, TUNNEL_CMD_RES)
 DECLARE_MODEL(tunnel_load_identity, TNL_LOAD_IDENTITY)
@@ -169,7 +174,7 @@ DECLARE_MODEL(tunnel_set_log_level, TUNNEL_SET_LOG_LEVEL)
 DECLARE_MODEL(tunnel_tun_ip_v4, TUNNEL_TUN_IP_V4)
 DECLARE_MODEL(tunnel_service_control, TUNNEL_SERVICE_CONTROL)
 DECLARE_MODEL(tunnel_delete_identity, TNL_DELETE_IDENTITY)
-
+DECLARE_MODEL(tunnel_status_change, TUNNEL_STATUS_CHANGE)
 
 #define TUNNEL_EVENTS(XX, ...) \
 XX(ContextEvent, __VA_ARGS__) \
