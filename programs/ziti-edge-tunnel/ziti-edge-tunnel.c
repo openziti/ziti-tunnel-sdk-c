@@ -219,7 +219,7 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
     if (uv_is_active((const uv_handle_t *) ctx)) {
         uv_buf_t buf;
         buf.base = calloc(json_len + 2, sizeof(char));
-        snprintf(buf.base, json_len + 2, "%s\r\n", json);
+        snprintf(buf.base, json_len + 2, "%s\n", json);
         buf.len = json_len + 2;
         uv_write_t *wr = calloc(1, sizeof(uv_write_t));
         wr->data = buf.base;
@@ -458,7 +458,7 @@ static void send_events_message(const void *message, to_json_fn to_json_f, bool 
             if (event_client->event_client_conn != NULL) {
                 uv_buf_t buf;
                 buf.base = calloc(data_len + 2, sizeof(char));
-                snprintf(buf.base, data_len + 2, "%s\r\n", json);
+                snprintf(buf.base, data_len + 2, "%s\n", json);
                 buf.len = data_len + 2;
                 uv_write_t *wr = calloc(1, sizeof(uv_write_t));
                 wr->data = buf.base;
