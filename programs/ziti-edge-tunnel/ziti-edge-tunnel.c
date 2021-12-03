@@ -2194,10 +2194,11 @@ void scm_service_stop() {
 
     remove_all_nrpt_rules();
 
-    if (tun != NULL) {
+    // tun close needs to be fixed
+    /*if (tun != NULL && tun->handle != NULL) {
         ZITI_LOG(INFO, "Closing ziti tun adapter...");
-        tun_close(tun->handle);
-    }
+        tun->close(tun->handle);
+    }*/
 
     cleanup_instance_config();
 
