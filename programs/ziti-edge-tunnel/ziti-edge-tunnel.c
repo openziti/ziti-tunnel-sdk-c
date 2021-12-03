@@ -218,9 +218,10 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
 
     if (uv_is_active((const uv_handle_t *) ctx)) {
         uv_buf_t buf;
-        buf.base = calloc(json_len + 2, sizeof(char));
-        snprintf(buf.base, json_len + 2, "%s\r\n", json);
-        buf.len = json_len + 2;
+        size_t data_len = json_len + sizeof("\n");
+        buf.base = calloc(data_len, sizeof(char));
+        snprintf(buf.base, data_len, "%s\n", json);
+        buf.len = data_len;
         uv_write_t *wr = calloc(1, sizeof(uv_write_t));
         wr->data = buf.base;
         uv_write(wr, (uv_stream_t *) ctx, &buf, 1, on_cmd_write);
@@ -457,9 +458,10 @@ static void send_events_message(const void *message, to_json_fn to_json_f, bool 
             int err = 0;
             if (event_client->event_client_conn != NULL) {
                 uv_buf_t buf;
-                buf.base = calloc(data_len + 2, sizeof(char));
-                snprintf(buf.base, data_len + 2, "%s\r\n", json);
-                buf.len = data_len + 2;
+                data_len = data_len + sizeof("\n");
+                buf.base = calloc(data_len, sizeof(char));
+                snprintf(buf.base, data_len, "%s\n", json);
+                buf.len = data_len;
                 uv_write_t *wr = calloc(1, sizeof(uv_write_t));
                 wr->data = buf.base;
                 err = uv_write(wr, (uv_stream_t *)event_client->event_client_conn, &buf, 1, on_write_event);
@@ -2192,10 +2194,11 @@ void scm_service_stop() {
 
     remove_all_nrpt_rules();
 
-    if (tun != NULL) {
+    // tun close needs to be fixed
+    /*if (tun != NULL && tun->handle != NULL) {
         ZITI_LOG(INFO, "Closing ziti tun adapter...");
         tun->close(tun->handle);
-    }
+    }*/
 
     cleanup_instance_config();
 
