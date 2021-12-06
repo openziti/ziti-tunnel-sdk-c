@@ -617,11 +617,9 @@ static void load_identities(uv_work_t *wr) {
         while (uv_fs_scandir_next(&fs, &file) == 0) {
             ZITI_LOG(INFO, "file = %s %d", file.name, file.type);
 
-#if _WIN32
             if (strcmp(file.name, get_config_file_name(NULL)) == 0 || strcmp(file.name, get_backup_config_file_name(NULL)) == 0 ) {
                 continue;
             }
-#endif
 
             if (file.type == UV_DIRENT_FILE) {
                 struct cfg_instance_s *inst = calloc(1, sizeof(struct cfg_instance_s));

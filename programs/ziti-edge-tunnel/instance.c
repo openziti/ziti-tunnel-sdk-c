@@ -468,7 +468,6 @@ void initialize_tunnel_status() {
     if (tnl_status.Identities == NULL) {
         return;
     }
-#if _WIN32
     for(int idx = 0; tnl_status.Identities[idx]; idx++) {
         tunnel_identity *tnl_id = tnl_status.Identities[idx];
         if (tnl_id->Identifier == NULL && tnl_id->FingerPrint != NULL) {
@@ -480,7 +479,6 @@ void initialize_tunnel_status() {
             model_map_set(&tnl_identity_map, tnl_id->Identifier, tnl_id);
         }
     }
-#endif
 }
 
 bool load_tunnel_status(char* config_data) {
