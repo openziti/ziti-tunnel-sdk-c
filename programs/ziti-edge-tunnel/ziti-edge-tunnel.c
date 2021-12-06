@@ -657,9 +657,8 @@ static void load_identities_complete(uv_work_t * wr, int status) {
     if (identity_loaded) {
         start_metrics_timer(wr->loop);
     }
-#if _WIN32
+
     save_tunnel_status_to_file();
-#endif
 }
 
 static void on_event(const base_event *ev) {
@@ -902,13 +901,11 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     tunneler_context tunneler = ziti_tunneler_init(&tunneler_opts, ziti_loop);
 
     // generate tunnel status instance and save active state and start time
-#if _WIN32
     if (config_dir != NULL) {
         set_identifier_path(config_dir);
         initialize_instance_config();
         load_tunnel_status_from_file(ziti_loop);
     }
-#endif
 
     ip_addr_t dns_ip4 = IPADDR4_INIT(dns_ip);
     ziti_dns_setup(tunneler, ipaddr_ntoa(&dns_ip4), ip_range);
@@ -938,8 +935,8 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
 #if _WIN32
     close_log();
     stop_log_check();
-    cleanup_instance_config();
 #endif
+    cleanup_instance_config();
     return 0;
 }
 
