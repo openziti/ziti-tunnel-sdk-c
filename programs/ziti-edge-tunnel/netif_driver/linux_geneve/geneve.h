@@ -23,17 +23,32 @@
 #include <linux/types.h>
 
 struct geneve_flow_s {
-    uint8_t id[40];
+    u8_t id[40];
     uv_udp_t udp_handle_out;
     struct sockaddr_in send_address;
     struct sockaddr_in bind_address;
+    bool flow_done_in;
 };
 
 struct netif_handle_s {
     model_map flow_ids;
     uv_udp_t udp_handle_in;
     struct uv_loop_s *loop;
-    struct geneve_flow_s *flow_info;
+};
+
+struct inner_ip_hdr_info {
+    ip_addr_t src;
+    ip_addr_t dst;
+    u16_t src_p;
+    u16_t dst_p;
+    u8_t flags;
+};
+
+struct geneve_packet {
+    uv_buf_t buf[2];
+    struct geneve_flow_s *received_flow;
+    char received_flow_key[25];
+    bool flow_done_out;
 };
 
 extern netif_driver geneve_open(struct uv_loop_s *loop, char *error, size_t error_len);
