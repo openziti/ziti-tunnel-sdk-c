@@ -30,15 +30,7 @@ char* get_system_config_path() {
 #if _WIN32
     sprintf(config_path, "%s/NetFoundry", getenv(app_data));
 #elif __linux__
-    char* homedir;
-    if ((homedir = getenv("HOME")) == NULL) {
-        homedir = getpwuid(getuid())->pw_dir;
-    }
-    if (homedir != NULL) {
-        sprintf(config_path, "%s/.ziti", homedir);
-    } else {
-        sprintf(config_path, "/tmp");
-    }
+    sprintf(config_path, "/var/lib/ziti");
 #else
     sprintf(config_path, "/tmp");
 #endif
