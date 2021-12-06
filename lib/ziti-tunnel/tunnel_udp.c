@@ -105,7 +105,6 @@ void tunneler_udp_dial_completed(struct io_ctx_s *io, bool ok) {
 /** called by lwip when a udp datagram arrives. return 1 to indicate that the IP packet was consumed. */
 u8_t recv_udp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_addr_t *addr) {
     tunneler_context tnlr_ctx = tnlr_ctx_arg;
-    struct udp_pcb *con_pcb, *prev;
 
     u16_t iphdr_hlen;
     ip_addr_t src, dst;
@@ -143,16 +142,22 @@ u8_t recv_udp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
             ipaddr_ntoa(&src), src_p, ipaddr_ntoa(&dst), dst_p);
 
     /* first see if this datagram belongs to an active connection */
-    for (con_pcb = udp_pcbs, prev = NULL; con_pcb != NULL; con_pcb = con_pcb->next) {
-        if (con_pcb->remote_port == src_p && ip_addr_cmp(&con_pcb->remote_ip, &src)) {
+    for (struct udp_pcb *con_pcb = udp_pcbs, *prev = NULL; con_pcb != NULL; con_pcb = con_pcb->next) {
+        if (con_pcb->remote_port == src_p &&
+            con_pcb->local_port == dst_p &&
+            ip_addr_cmp(&con_pcb->remote_ip, &src) &&
+            ip_addr_cmp(&con_pcb->local_ip, &dst)) {
             if (prev != NULL) {
                 /* move the pcb to the front of udp_pcbs so that is found faster next time */
                 prev->next = con_pcb->next;
                 con_pcb->next = udp_pcbs;
                 udp_pcbs = con_pcb;
+            } else {
+                UDP_STATS_INC(udp.cachehit);
             }
             return 0; // let lwip process the datagram
         }
+        prev = con_pcb;
     }
 
     /* is the dest address being intercepted? */
