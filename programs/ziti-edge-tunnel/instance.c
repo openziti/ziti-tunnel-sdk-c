@@ -474,9 +474,9 @@ void initialize_tunnel_status() {
             char identifier[FILENAME_MAX];
             snprintf(identifier, sizeof(identifier), "%s/%s.json", get_identifier_path(), tnl_id->FingerPrint);
             tnl_id->Identifier = strdup(identifier);
-            tnl_id->Status = instance_status_Unknown;
         }
         if (tnl_id->Identifier != NULL) {
+            tnl_id->Status = instance_status_Unknown;
             model_map_set(&tnl_identity_map, tnl_id->Identifier, tnl_id);
         }
     }
