@@ -382,7 +382,7 @@ tunnel_identity_array get_tunnel_identities() {
 
     int idx = 0;
     MODEL_MAP_FOREACH(id, tnl_id, &tnl_identity_map) {
-        if (tnl_id->Status != NULL && tnl_id->Status ==instance_status_ok) {
+        if (tnl_id->Status == instance_status_ok) {
             tnl_id_arr[idx++] = tnl_id;
         }
     }
@@ -474,7 +474,7 @@ void initialize_tunnel_status() {
             char identifier[FILENAME_MAX];
             snprintf(identifier, sizeof(identifier), "%s/%s.json", get_identifier_path(), tnl_id->FingerPrint);
             tnl_id->Identifier = strdup(identifier);
-            tnl_id->Status = NULL;
+            tnl_id->Status = instance_status_Unknown;
         }
         if (tnl_id->Identifier != NULL) {
             model_map_set(&tnl_identity_map, tnl_id->Identifier, tnl_id);
