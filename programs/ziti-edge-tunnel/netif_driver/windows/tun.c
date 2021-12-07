@@ -171,23 +171,9 @@ netif_driver tun_open(struct uv_loop_s *loop, uint32_t tun_ip, uint32_t dns_ip, 
 
     NotifyIpInterfaceChange(AF_INET, if_change_cb, tun, TRUE, &if_change_handle);
 
-    MIB_UNICASTIPADDRESS_ROW AddressRow;
-    InitializeUnicastIpAddressEntry(&AddressRow);
-    AddressRow.InterfaceLuid = tun->luid;
-    AddressRow.Address.Ipv4.sin_family = AF_INET;
-    AddressRow.Address.Ipv4.sin_addr.S_un.S_addr = tun_ip;
-    AddressRow.OnLinkPrefixLength = 16;
-    DWORD err = CreateUnicastIpAddressEntry(&AddressRow);
-    if (err != ERROR_SUCCESS && err != ERROR_OBJECT_ALREADY_EXISTS)
-    {
-        snprintf(error, error_len, "Failed to set IP address: %d", err);
-        tun_close(tun);
-        return NULL;
-    }
-
     tun->session = WintunStartSession(tun->adapter, WINTUN_MAX_RING_CAPACITY);
     if (!tun->session) {
-        err = GetLastError();
+        DWORD err = GetLastError();
         snprintf(error, error_len, "Failed to start session: %d", err);
         return NULL;
     }
@@ -198,6 +184,28 @@ netif_driver tun_open(struct uv_loop_s *loop, uint32_t tun_ip, uint32_t dns_ip, 
             snprintf(error, error_len, "failed to allocate netif_device_s");
             tun_close(tun);
         }
+        return NULL;
+    }
+
+    MIB_UNICASTIPADDRESS_ROW AddressRow;
+    InitializeUnicastIpAddressEntry(&AddressRow);
+    AddressRow.InterfaceLuid = tun->luid;
+    AddressRow.Address.Ipv4.sin_family = AF_INET;
+    AddressRow.Address.Ipv4.sin_addr.S_un.S_addr = tun_ip;
+
+    if (cidr) {
+        int bits;
+        uint32_t ip[4];
+        sscanf(cidr, "%d.%d.%d.%d/%d", &ip[0], &ip[1], &ip[2], &ip[3], &bits);
+        AddressRow.OnLinkPrefixLength = bits;
+    } else {
+        AddressRow.OnLinkPrefixLength = 16;
+    }
+    DWORD err = CreateUnicastIpAddressEntry(&AddressRow);
+    if (err != ERROR_SUCCESS && err != ERROR_OBJECT_ALREADY_EXISTS)
+    {
+        snprintf(error, error_len, "Failed to set IP address: %d", err);
+        tun_close(tun);
         return NULL;
     }
 
@@ -213,24 +221,11 @@ netif_driver tun_open(struct uv_loop_s *loop, uint32_t tun_ip, uint32_t dns_ip, 
     uv_unref((uv_handle_t *) &tun->route_timer);
     uv_timer_start(&tun->route_timer, refresh_routes, ROUTE_REFRESH, ROUTE_REFRESH);
 
-    if (dns_ip) {
-        set_dns(tun, dns_ip);
-    }
-
     if (cidr) {
         tun_add_route(tun, cidr);
     }
 
     return driver;
-}
-
-void tun_enable_dns(struct netif_handle_s *tun) {
-    // DNS_INTERFACE_SETTINGS Settings = {0};
-    GUID adapterGuid;
-    IIDFromString(ZITI_TUN_GUID, &adapterGuid);
-    // SetInterfaceDnsSettings(&adapterGuid, &Settings);
-    // free(Settings);
-
 }
 
 int tun_close(struct netif_handle_s *tun) {

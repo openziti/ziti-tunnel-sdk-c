@@ -17,7 +17,6 @@ extern "C" {
 
 int SvcStart(TCHAR *);
 VOID SvcInstall(void);
-VOID WINAPI SvcCtrlHandler( DWORD );
 VOID WINAPI SvcMain( DWORD, LPTSTR * );
 VOID ReportSvcStatus( DWORD, DWORD, DWORD );
 VOID SvcInit( DWORD, LPTSTR * );

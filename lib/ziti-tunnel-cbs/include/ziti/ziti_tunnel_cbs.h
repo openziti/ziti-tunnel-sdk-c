@@ -49,7 +49,7 @@ XX(GenerateMFACodes, __VA_ARGS__) \
 XX(GetMFACodes, __VA_ARGS__) \
 XX(GetMetrics, __VA_ARGS__) \
 XX(SetLogLevel, __VA_ARGS__) \
-XX(UpdateTunIP, __VA_ARGS__) \
+XX(UpdateTunIpv4, __VA_ARGS__) \
 XX(ServiceControl, __VA_ARGS__) \
 XX(Status, __VA_ARGS__) \
 XX(RemoveIdentity, __VA_ARGS__) \

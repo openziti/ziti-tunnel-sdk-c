@@ -98,7 +98,7 @@ static bool started_by_scm = false;
 static bool tunnel_interrupted = false;
 
 uv_loop_t *main_ziti_loop;
-netif_driver tun;
+static netif_driver tun;
 
 IMPL_ENUM(event, EVENT_ACTIONS)
 IMPL_ENUM(log_level, LOG_LEVEL)
@@ -257,7 +257,7 @@ static bool process_tunnel_commands(const tunnel_comand *tnl_cmd, command_cb cb,
             }
             break;
         }
-        case TunnelCommand_UpdateTunIP: {
+        case TunnelCommand_UpdateTunIpv4: {
             cmd_accepted = true;
 
             tunnel_tun_ip_v4 tunnel_tun_ip_v4_cmd = {0};
@@ -1054,6 +1054,18 @@ static void on_event(const base_event *ev) {
     }
 }
 
+static char* normalize_host(char* hostname) {
+    size_t len = strlen(hostname);
+    // remove the . from the end of the hostname
+    if (hostname[len-2] == ".") {
+        hostname[len-2] = '\0';
+    }
+    char* hostname_new = calloc(len+1, sizeof(char));
+    // add . in the beginning of the hostname
+    sprintf(hostname_new,".%s", hostname);
+    return hostname_new;
+}
+
 static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, const char *ip_range, dns_manager *dns) {
     char tun_error[64];
 #if __APPLE__ && __MACH__
@@ -1062,6 +1074,27 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     tun = tun_open(ziti_loop, tun_ip, dns_ip, ip_range, tun_error, sizeof(tun_error));
 #elif _WIN32
     tun = tun_open(ziti_loop, tun_ip, dns_ip, ip_range, tun_error, sizeof(tun_error));
+
+    bool nrpt_effective = is_nrpt_policies_effective(get_dns_ip());
+    if (!nrpt_effective || get_add_dns_flag()) {
+        ZITI_LOG(INFO, "Enable DNS for %s", get_dns_ip());
+        set_dns(tun->handle, dns_ip);
+    }
+    if (nrpt_effective) {
+        model_map *domains = get_connection_specific_domains();
+        const char *key;
+        bool status;
+        model_map normalized_domains = {0};
+        model_map_iter it = model_map_iterator(domains);
+        while (it != NULL) {
+            char *key = model_map_it_key(it);
+            model_map_set(&normalized_domains, normalize_host(key), true);
+            it = model_map_it_remove(it);
+        }
+        model_map_clear(domains, (_free_f) free);
+        free(domains);
+        add_nrpt_rules(ziti_loop, &normalized_domains, get_dns_ip());
+    }
 #else
 #error "ziti-edge-tunnel is not supported on this system"
 #endif
@@ -1110,6 +1143,11 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     uv_close((uv_handle_t *) &cmd_server, (uv_close_cb) free);
     uv_close((uv_handle_t *) &event_server, (uv_close_cb) free);
 #if _WIN32
+    if (tun != NULL && tun->handle != NULL) {
+        ZITI_LOG(INFO, "Closing Ziti tun adapter...");
+        tun->close(tun->handle);
+        ZITI_LOG(INFO, "Deleted Ziti tun adapter...");
+    }
     close_log();
 #endif
     return 0;
@@ -1210,18 +1248,6 @@ static void interrupt_handler(int sig) {
 }
 #endif
 
-static char* normalize_host(char* hostname) {
-    size_t len = strlen(hostname);
-    // remove the . from the end of the hostname
-    if (hostname[len-2] == ".") {
-        hostname[len-2] = '\0';
-    }
-    char* hostname_new = calloc(len+1, sizeof(char));
-    // add . in the beginning of the hostname
-    sprintf(hostname_new,".%s", hostname);
-    return hostname_new;
-}
-
 static void run(int argc, char *argv[]) {
     uv_loop_t *ziti_loop = uv_default_loop();
     main_ziti_loop = ziti_loop;
@@ -1273,6 +1299,8 @@ static void run(int argc, char *argv[]) {
 #endif
 
 #if _WIN32
+    remove_all_nrpt_rules();
+
     // set ip info into instance
     set_ip_info(dns_ip, tun_ip, bits);
 
@@ -1312,28 +1340,6 @@ static void run(int argc, char *argv[]) {
         ZITI_LOG(ERROR, "failed to initialize default uv loop");
         exit(1);
     }
-
-#if _WIN32
-    remove_all_nrpt_rules();
-    bool nrpt_effective = is_nrpt_policies_effective(get_dns_ip());
-    if (!nrpt_effective) {
-        // enable dns
-    } else {
-        model_map *domains = get_connection_specific_domains();
-        const char *key;
-        bool status;
-        model_map normalized_domains = {0};
-        model_map_iter it = model_map_iterator(domains);
-        while (it != NULL) {
-            char *key = model_map_it_key(it);
-            model_map_set(&normalized_domains, normalize_host(key), true);
-            it = model_map_it_remove(it);
-        }
-        model_map_clear(domains, (_free_f) free);
-        free(domains);
-        add_nrpt_rules(ziti_loop, &normalized_domains, get_dns_ip());
-    }
-#endif
 
     dns_manager *dns = NULL;
     if (dns_impl && strncmp("dnsmasq", dns_impl, strlen("dnsmasq")) == 0) {
@@ -1947,7 +1953,7 @@ static int update_tun_ip_opts(int argc, char *argv[]) {
 
     tunnel_tun_ip_v4 *tun_ip_v4_options = calloc(1, sizeof(tunnel_tun_ip_v4));
     cmd = calloc(1, sizeof(tunnel_comand));
-    cmd->command = TunnelCommand_UpdateTunIP;
+    cmd->command = TunnelCommand_UpdateTunIpv4;
 
     while ((c = getopt_long(argc, argv, "t:m:d:",
                             opts, &option_index)) != -1) {
@@ -2224,12 +2230,6 @@ void scm_service_stop() {
     send_tunnel_command(tnl_cmd, NULL);
 
     remove_all_nrpt_rules();
-
-    // tun close needs to be fixed
-    /*if (tun != NULL && tun->handle != NULL) {
-        ZITI_LOG(INFO, "Closing ziti tun adapter...");
-        tun->close(tun->handle);
-    }*/
 
     cleanup_instance_config();
 
