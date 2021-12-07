@@ -5,7 +5,6 @@
 #include <stdbool.h>
 #include <winsock2.h>
 #include <windows.h>
-#include "uv.h"
 
 #define SVCNAME TEXT("ziti-edge-tunnel")
 #define DISPLAYSVCNAME TEXT("Ziti Desktop Edge Service")
