@@ -157,7 +157,7 @@ static void ziti_dump_to_file(void *ctx, char* outputFile) {
 static void disconnect_identity(ziti_context ziti_ctx, void *tnlr_ctx) {
     ZITI_LOG(INFO, "Disconnecting Identity %s", ziti_get_identity(ziti_ctx)->name);
     remove_intercepts(ziti_ctx, tnlr_ctx);
-    ziti_shutdown(ziti_ctx);
+    // ziti_shutdown(ziti_ctx); // causes the crash
 }
 
 bool is_null(const void * field, char* message, tunnel_result* result) {
