@@ -59,7 +59,8 @@ XX(UpdateTunIpv4, __VA_ARGS__) \
 XX(ServiceControl, __VA_ARGS__) \
 XX(Status, __VA_ARGS__) \
 XX(RemoveIdentity, __VA_ARGS__) \
-XX(StatusChange, __VA_ARGS__)
+XX(StatusChange, __VA_ARGS__)   \
+XX(AddIdentity, __VA_ARGS__)
 
 DECLARE_ENUM(TunnelCommand, TUNNEL_COMMANDS)
 
@@ -158,6 +159,10 @@ XX(operation, string, none, operation, __VA_ARGS__)
 XX(woken, bool, none, woke, __VA_ARGS__) \
 XX(unlocked, bool, none, unlocked, __VA_ARGS__)
 
+#define TUNNEL_ADD_IDENTITY(XX, ...) \
+XX(jwtFileName, string, none, JwtFileName, __VA_ARGS__) \
+XX(jwtContent, string, none, JwtContent, __VA_ARGS__)
+
 DECLARE_MODEL(tunnel_comand, TUNNEL_CMD)
 DECLARE_MODEL(tunnel_result, TUNNEL_CMD_RES)
 DECLARE_MODEL(tunnel_load_identity, TNL_LOAD_IDENTITY)
@@ -181,6 +186,7 @@ DECLARE_MODEL(tunnel_tun_ip_v4, TUNNEL_TUN_IP_V4)
 DECLARE_MODEL(tunnel_service_control, TUNNEL_SERVICE_CONTROL)
 DECLARE_MODEL(tunnel_delete_identity, TNL_DELETE_IDENTITY)
 DECLARE_MODEL(tunnel_status_change, TUNNEL_STATUS_CHANGE)
+DECLARE_MODEL(tunnel_add_identity, TUNNEL_ADD_IDENTITY)
 
 #define TUNNEL_EVENTS(XX, ...) \
 XX(ContextEvent, __VA_ARGS__) \
@@ -291,6 +297,15 @@ tunneled_service_t *ziti_sdk_c_on_service(ziti_context ziti_ctx, ziti_service *s
 void remove_intercepts(ziti_context ziti_ctx, void *tnlr_ctx);
 
 const ziti_tunnel_ctrl* ziti_tunnel_init_cmd(uv_loop_t *loop, tunneler_context, event_cb);
+
+struct add_identity_request_s {
+    string identifier;
+    string identifier_file_name;
+    string jwt_content;
+    void *add_id_ctx;
+    command_cb cmd_cb;
+    void *cmd_ctx;
+};
 
 #ifdef __cplusplus
 }

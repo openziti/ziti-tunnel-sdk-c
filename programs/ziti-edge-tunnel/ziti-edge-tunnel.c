@@ -56,6 +56,7 @@ static int dns_fallback(const char *name, void *ctx, struct in_addr* addr);
 static void send_message_to_tunnel();
 typedef char * (*to_json_fn)(const void * msg, int flags, size_t *len);
 static void send_events_message(const void *message, to_json_fn to_json_f, bool displayEvent);
+static void send_tunnel_command(tunnel_comand *tnl_cmd, void *ctx);
 
 struct cfg_instance_s {
     char *cfg;
@@ -229,6 +230,64 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
     }
 }
 
+void tunnel_enroll_cb(ziti_config *cfg, int status, char *err, void *ctx) {
+    struct add_identity_request_s *add_id_req = ctx;
+
+    tunnel_result result = {
+            .success = false,
+            .error = NULL,
+            .data = NULL,
+    };
+
+    if (status != ZITI_OK) {
+        ZITI_LOG(ERROR, "enrollment failed: %s(%d)", err, status);
+        result.error = "enrollment failed";
+        add_id_req->cmd_cb(&result, add_id_req->cmd_ctx);
+        return;
+    }
+
+    FILE *f = add_id_req->add_id_ctx;
+
+    size_t len;
+    char *cfg_json = ziti_config_to_json(cfg, 0, &len);
+
+    if (fwrite(cfg_json, 1, len, f) != len) {
+        ZITI_LOG(ERROR, "failed to write config file");
+        fclose(f);
+        result.error = "failed to write config file";
+        add_id_req->cmd_cb(&result,  add_id_req->cmd_ctx);
+        return;
+    }
+
+    free(cfg_json);
+    fflush(f);
+    fclose(f);
+
+    create_or_get_tunnel_identity(add_id_req->identifier, add_id_req->identifier_file_name);
+
+    // send load identity command to the controller
+    tunnel_comand *tnl_cmd = calloc(1, sizeof(tunnel_comand));
+    tnl_cmd->command = TunnelCommand_LoadIdentity;
+    tunnel_load_identity *load_identity_options = calloc(1, sizeof(tunnel_load_identity));
+    load_identity_options->identifier = strdup(add_id_req->identifier);
+    load_identity_options->path = strdup(add_id_req->identifier);
+    size_t json_len;
+    tnl_cmd->data = tunnel_load_identity_to_json(load_identity_options, MODEL_JSON_COMPACT, &json_len);
+    send_tunnel_command(tnl_cmd, add_id_req->cmd_ctx);
+    free_tunnel_load_identity(load_identity_options);
+    free(load_identity_options);
+}
+
+static void enroll_ziti_async(uv_async_t *ar) {
+    struct add_identity_request_s *add_id_req = ar->data;
+
+    ziti_enroll_opts enroll_opts = {0};
+    enroll_opts.enroll_name = add_id_req->identifier;
+    enroll_opts.jwt_content = add_id_req->jwt_content;
+
+    ziti_enroll(&enroll_opts, ar->loop, tunnel_enroll_cb, add_id_req);
+}
+
 static bool process_tunnel_commands(const tunnel_comand *tnl_cmd, command_cb cb, void *ctx) {
     tunnel_result result = {
             .success = false,
@@ -292,6 +351,56 @@ static bool process_tunnel_commands(const tunnel_comand *tnl_cmd, command_cb cb,
             size_t json_len;
             result.data = tunnel_status_to_json(status, MODEL_JSON_COMPACT, &json_len);
             break;
+        }
+
+        case TunnelCommand_AddIdentity : {
+            cmd_accepted = true;
+            tunnel_add_identity tunnel_add_identity_cmd = {0};
+            if (tnl_cmd->data == NULL ||
+                parse_tunnel_add_identity(&tunnel_add_identity_cmd, tnl_cmd->data, strlen(tnl_cmd->data)) != 0) {
+                result.error = "invalid command";
+                result.success = false;
+                free_tunnel_add_identity(&tunnel_add_identity_cmd);
+                break;
+            }
+
+            char* extension = strstr(tunnel_add_identity_cmd.jwtFileName, ".jwt");
+            int length;
+            if (extension != NULL) {
+                length = (int) (extension - tunnel_add_identity_cmd.jwtFileName);
+            } else {
+                length = strlen(tunnel_add_identity_cmd.jwtFileName);
+            }
+            char new_identifier[FILENAME_MAX];
+            char new_identifier_name[FILENAME_MAX];
+            memcpy(&new_identifier_name, tunnel_add_identity_cmd.jwtFileName, length);
+            new_identifier_name[length] = '\0';
+            sprintf(new_identifier, "%s/%s.json", config_dir, new_identifier_name);
+            FILE *outfile;
+            if ((outfile = fopen(new_identifier, "wb")) == NULL) {
+                ZITI_LOG(ERROR, "failed to open file %s: %s(%d)", new_identifier, strerror(errno), errno);
+                result.error = "invalid file name";
+                result.success = false;
+                free_tunnel_add_identity(&tunnel_add_identity_cmd);
+                break;
+            }
+
+            struct add_identity_request_s *add_id_req = calloc(1, sizeof(struct add_identity_request_s));
+            add_id_req->cmd_ctx = ctx;
+            add_id_req->cmd_cb = cb;
+            add_id_req->add_id_ctx = outfile;
+            add_id_req->identifier = strdup(new_identifier);
+            add_id_req->identifier_file_name = strdup(new_identifier_name);
+            add_id_req->jwt_content = strdup(tunnel_add_identity_cmd.jwtContent);
+
+            uv_stream_t *s = ctx;
+            uv_async_t *ar = calloc(1, sizeof(uv_async_t));
+            ar->data = add_id_req;
+            uv_async_init(s->loop, ar, enroll_ziti_async);
+            uv_async_send(ar);
+
+            free_tunnel_add_identity(&tunnel_add_identity_cmd);
+            return true;
         }
     }
     if (cmd_accepted) {
@@ -509,6 +618,7 @@ static int start_event_socket(uv_loop_t *l) {
     return -1;
 }
 
+
 static void tnl_transfer_rates(const tunnel_identity_metrics *metrics, void *ctx) {
     tunnel_identity *tnl_id = ctx;
     if (metrics->up != NULL) {
@@ -561,11 +671,16 @@ static void on_command_inline_resp(const tunnel_result* result, void *ctx) {
 }
 
 static void send_tunnel_command(tunnel_comand *tnl_cmd, void *ctx) {
-    CMD_CTRL->process(tnl_cmd, on_command_inline_resp, ctx);
+    CMD_CTRL->process(tnl_cmd, on_command_resp, ctx);
     free_tunnel_comand(tnl_cmd);
     free(tnl_cmd);
 }
 
+static void send_tunnel_command_inline(tunnel_comand *tnl_cmd, void *ctx) {
+    CMD_CTRL->process(tnl_cmd, on_command_inline_resp, ctx);
+    free_tunnel_comand(tnl_cmd);
+    free(tnl_cmd);
+}
 
 static char* addUnit(int count, char* unit) {
     char* result = calloc(MAXMESSAGELEN, sizeof(char));
@@ -693,7 +808,7 @@ static void broadcast_metrics(uv_timer_t *timer) {
                 tunnel_command_inline *tnl_cmd_inline = calloc(1, sizeof(tunnel_command_inline));
                 tnl_cmd_inline->identifier = strdup(tnl_id->Identifier);
                 tnl_cmd_inline->command = TunnelCommand_GetMetrics;
-                send_tunnel_command(tnl_cmd, tnl_cmd_inline);
+                send_tunnel_command_inline(tnl_cmd, tnl_cmd_inline);
 
                 free_tunnel_get_identity_metrics(get_metrics);
                 free(get_metrics);
@@ -2202,7 +2317,7 @@ void endpoint_status_change(bool woken, bool unlocked) {
     status_change->unlocked = unlocked;
     size_t json_len;
     tnl_cmd->data = tunnel_status_change_to_json(status_change, MODEL_JSON_COMPACT, &json_len);
-    send_tunnel_command(tnl_cmd, NULL);
+    send_tunnel_command_inline(tnl_cmd, NULL);
     free_tunnel_status_change(status_change);
     free(status_change);
 
@@ -2227,7 +2342,7 @@ void scm_service_stop() {
     // ziti dump to log file / stdout
     tunnel_comand *tnl_cmd = calloc(1, sizeof(tunnel_comand));
     tnl_cmd->command = TunnelCommand_ZitiDump;
-    send_tunnel_command(tnl_cmd, NULL);
+    send_tunnel_command_inline(tnl_cmd, NULL);
 
     remove_all_nrpt_rules();
 
@@ -2280,3 +2395,4 @@ IMPL_MODEL(notification_message, TUNNEL_NOTIFICATION_MESSAGE)
 IMPL_MODEL(notification_event, TUNNEL_NOTIFICATION_EVENT)
 IMPL_MODEL(tunnel_set_log_level, TUNNEL_SET_LOG_LEVEL)
 IMPL_MODEL(tunnel_tun_ip_v4, TUNNEL_TUN_IP_V4)
+IMPL_MODEL(tunnel_add_identity, TUNNEL_ADD_IDENTITY)
