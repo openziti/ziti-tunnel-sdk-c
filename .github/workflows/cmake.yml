@@ -15,7 +15,7 @@ jobs:
       matrix:
         os:
           - ubuntu-18.04
-          - macOS-latest
+          - macOS-10.15
         cmake_opts: [ "" ]
         arch: [ x86_64 ]
         toolchain: [ default.cmake ]
@@ -31,6 +31,12 @@ jobs:
             toolchain: Linux-arm.cmake
             cmake_opts: -DCMAKE_BUILD_TYPE=Release
             arch: arm
+
+          - os: ubuntu-18.04
+            install: crossbuild-essential-arm64
+            toolchain: Linux-arm64.cmake
+            cmake_opts: -DCMAKE_BUILD_TYPE=Release
+            arch: arm64
 
     steps:
       - uses: actions/checkout@v2
