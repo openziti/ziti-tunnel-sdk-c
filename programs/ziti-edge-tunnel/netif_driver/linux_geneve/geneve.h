@@ -28,6 +28,9 @@ struct geneve_flow_s {
     struct sockaddr_in send_address;
     struct sockaddr_in bind_address;
     bool flow_done_in;
+    bool flow_done_out;
+    uv_timer_t *conn_timer;
+    uint32_t idle_timeout;
 };
 
 struct netif_handle_s {
@@ -37,6 +40,7 @@ struct netif_handle_s {
 };
 
 struct inner_ip_hdr_info {
+    char proto_type;
     ip_addr_t src;
     ip_addr_t dst;
     u16_t src_p;
@@ -47,8 +51,7 @@ struct inner_ip_hdr_info {
 struct geneve_packet {
     uv_buf_t buf[2];
     struct geneve_flow_s *received_flow;
-    char received_flow_key[25];
-    bool flow_done_out;
+    char received_flow_key[27];
 };
 
 extern netif_driver geneve_open(struct uv_loop_s *loop, char *error, size_t error_len);
