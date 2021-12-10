@@ -10,7 +10,7 @@ jobs:
       matrix:
         os:
           - ubuntu-18.04
-          - macOS-latest
+          - macOS-10.15
           - windows-latest
         toolchain: [ default.cmake ]
         arch: [ x86_64 ]
@@ -21,6 +21,12 @@ jobs:
             arch: arm
             toolchain: Linux-arm.cmake
             install: crossbuild-essential-armhf
+
+          - os: ubuntu-18.04
+            install: crossbuild-essential-arm64
+            toolchain: Linux-arm64.cmake
+            cmake_opts: -DCMAKE_BUILD_TYPE=Release
+            arch: arm64
 
     steps:
     - uses: actions/checkout@v2
@@ -81,6 +87,16 @@ jobs:
         upload_url: ${{ steps.get_release.outputs.upload_url }}
         asset_path: ${{runner.workspace}}/downloads/Linux-arm/ziti-edge-tunnel-Linux_arm.zip
         asset_name: ziti-edge-tunnel-Linux_arm.zip
+        asset_content_type: application/octet-stream
+
+    - name: upload Linux ARM64
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.get_release.outputs.upload_url }}
+        asset_path: ${{runner.workspace}}/downloads/Linux-arm64/ziti-edge-tunnel-Linux_aarch64.zip
+        asset_name: ziti-edge-tunnel-Linux_arm64.zip
         asset_content_type: application/octet-stream
 
     - name: upload MacOS

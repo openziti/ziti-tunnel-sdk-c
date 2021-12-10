@@ -32,6 +32,12 @@ jobs:
             cmake_opts: -DCMAKE_BUILD_TYPE=Release
             arch: arm
 
+          - os: ubuntu-18.04
+            install: crossbuild-essential-arm64
+            toolchain: Linux-arm64.cmake
+            cmake_opts: -DCMAKE_BUILD_TYPE=Release
+            arch: arm64
+
     steps:
       - uses: actions/checkout@v2
         with:
