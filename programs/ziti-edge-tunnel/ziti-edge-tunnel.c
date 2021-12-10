@@ -207,13 +207,12 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
                             remove_nrpt_rules(main_ziti_loop, &hostnamesToRemove);
                         }
                         model_map_clear(&hostnamesToRemove, NULL);
-                        // should be the last line in this function as it calls the mutex/lock
-                        save_tunnel_status_to_file();
 #endif
                     }
                     delete_identity_from_instance(tnl_delete_id.identifier);
                     free_tunnel_delete_identity(&tnl_delete_id);
-
+                    // should be the last line in this function as it calls the mutex/lock
+                    save_tunnel_status_to_file();
                     break;
                 }
                 case TunnelCommand_IdentityOnOff: {
