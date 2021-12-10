@@ -265,11 +265,11 @@ void geneve_udp_read(uv_udp_t *req, ssize_t nread, const uv_buf_t *buf, const st
         if (i_hdr->flags & (TCP_FIN | TCP_RST)) {
             /* this is  a FIN/FIN ACK/FIN ACK PSH/RST segment, set  flow_done_in to true for closure */
             flow_info->flow_done_in = true;
-        }
-        if (flow_info->flow_done_out && flow_info->flow_done_in) {
             //flow_info->conn_timer = calloc(1, sizeof(uv_timer_t));
             //flow_info->conn_timer->data = flow_info;
             //uv_timer_init(geneve->loop, flow_info->conn_timer);
+        }
+        if (flow_info->flow_done_out && flow_info->flow_done_in) {
             uv_close((uv_handle_t *) &flow_info->udp_handle_out, NULL);
             model_map_remove(&geneve->flow_ids, flow_key);
             size_t map_size = model_map_size(&geneve->flow_ids);
