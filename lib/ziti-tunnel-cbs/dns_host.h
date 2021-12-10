@@ -49,7 +49,6 @@ typedef struct __res_state resolver_t;
 
 #endif
 
-
 #include <ziti/model_support.h>
 
 #define DNS_Q_MODEL(XX, ...) \
@@ -75,6 +74,36 @@ XX(comment, string, none, comment, __VA_ARGS__)
 extern "C" {
 #endif
 
+typedef struct dns_flags_s {
+    union {
+        uint16_t raw;
+        struct {
+            uint8_t is_response: 1;
+            uint8_t opcode: 4;
+            uint8_t aa: 1;
+            uint8_t tc: 1;
+            uint8_t rd: 1;
+            uint8_t ra: 1;
+            uint8_t z: 3;
+            uint8_t rcode: 4;
+        };
+    };
+} dns_flags_t;
+
+typedef struct dns_wire_hdr_s {
+    uint16_t id;
+
+    union {
+        uint16_t _flags;
+        dns_flags_t flags;
+    };
+
+    uint16_t qcount;
+    uint16_t acount;
+    uint16_t nscount;
+    uint16_t arcount;
+} dns_wire_hdr_t;
+
 DECLARE_MODEL(dns_question, DNS_Q_MODEL)
 
 DECLARE_MODEL(dns_answer, DNS_A_MODEL)
@@ -84,6 +113,8 @@ DECLARE_MODEL(dns_message, DNS_MSG_MODEL)
 void dns_host_init();
 
 void do_query(const dns_question *q, dns_message *resp, resolver_t *resolver);
+
+int parse_dns_req(dns_message *msg, const unsigned char* buf, size_t buflen);
 
 #ifdef __cplusplus
 }

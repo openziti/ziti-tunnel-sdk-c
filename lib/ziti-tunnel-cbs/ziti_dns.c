@@ -18,6 +18,8 @@
 #include <ziti/ziti_log.h>
 #include <ziti/ziti_dns.h>
 #include <ziti/model_support.h>
+#include "ziti_instance.h"
+#include "dns_host.h"
 
 #define MAX_DNS_NAME 256
 #define MAX_IP_LENGTH 16
@@ -32,6 +34,7 @@ enum ns_q_type {
 
 typedef struct ziti_dns_client_s {
     io_ctx_t *io_ctx;
+    bool is_tcp;
     LIST_HEAD(reqs, dns_req) active_reqs;
 } ziti_dns_client_t;
 
@@ -57,6 +60,7 @@ struct dns_req {
 };
 
 static void* on_dns_client(const void *app_intercept_ctx, io_ctx_t *io);
+static void* on_dns_tcp_client(const void *app_intercept_ctx, io_ctx_t *io);
 static int on_dns_close(void *dns_io_ctx);
 static ssize_t on_dns_req(void *ziti_io_ctx, void *write_ctx, const uint8_t *q_packet, size_t len);
 static void query_upstream(struct dns_req *req);
@@ -159,9 +163,14 @@ int ziti_dns_setup(tunneler_context tnlr, const char *dns_addr, const char *dns_
     intercept_ctx_add_address(dns_intercept, dns_addr);
     intercept_ctx_add_port_range(dns_intercept, 53, 53);
     intercept_ctx_add_protocol(dns_intercept, "udp");
-
     intercept_ctx_override_cbs(dns_intercept, on_dns_client, on_dns_req, on_dns_close, on_dns_close);
+    ziti_tunneler_intercept(tnlr, dns_intercept);
 
+    dns_intercept = intercept_ctx_new(tnlr, "ziti:dns-resolver-tcp", &ziti_dns);
+    intercept_ctx_add_address(dns_intercept, dns_addr);
+    intercept_ctx_add_port_range(dns_intercept, 53, 53);
+    intercept_ctx_add_protocol(dns_intercept, "tcp");
+    intercept_ctx_override_cbs(dns_intercept, on_dns_tcp_client, on_dns_req, on_dns_close, on_dns_close);
     ziti_tunneler_intercept(tnlr, dns_intercept);
     return 0;
 }
@@ -189,6 +198,17 @@ int ziti_dns_set_upstream(uv_loop_t *l, const char *host, uint16_t port) {
     CHECK_UV(uv_udp_recv_start(&ziti_dns.upstream, udp_alloc, on_upstream_packet));
     ZITI_LOG(INFO, "DNS upstream is set to %s:%d", host, port);
     return 0;
+}
+
+void* on_dns_tcp_client(const void *app_intercept_ctx, io_ctx_t *io) {
+    ZITI_LOG(INFO, "new DNS TCP client");
+    ziti_dns_client_t *clt = calloc(1, sizeof(ziti_dns_client_t));
+    io->ziti_io = clt;
+    clt->io_ctx = io;
+    clt->is_tcp = true;
+    ziti_tunneler_set_idle_timeout(io, 5000); // 5 seconds
+    ziti_tunneler_dial_completed(io, true);
+    return clt;
 }
 
 void* on_dns_client(const void *app_intercept_ctx, io_ctx_t *io) {
@@ -433,6 +453,25 @@ static void format_resp(struct dns_req *req) {
 }
 
 ssize_t on_dns_req(void *ziti_io_ctx, void *write_ctx, const uint8_t *q_packet, size_t q_len) {
+    ziti_dns_client_t *clt = ziti_io_ctx;
+    const uint8_t *dns_packet = q_packet;
+    size_t dns_packet_len = q_len;
+
+    if (clt->is_tcp) {
+        // check if we got enough
+        uint16_t len = ntohs(*(uint16_t*)q_packet);
+        if (len + 2 > q_len) {
+            // incomplete
+            return 0;
+        }
+
+        dns_packet_len = len;
+        dns_packet = q_packet + 2;
+    }
+
+    dns_message msg = {0};
+    parse_dns_req(&msg, dns_packet, dns_packet_len);
+
     struct dns_req *req = calloc(1, sizeof(struct dns_req));
     req->clt = ziti_io_ctx;
     LIST_INSERT_HEAD(&req->clt->active_reqs, req, _next);
