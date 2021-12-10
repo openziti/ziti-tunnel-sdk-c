@@ -551,7 +551,7 @@ void on_write_event(uv_write_t* req, int status) {
 }
 
 static void send_events_message(const void *message, to_json_fn to_json_f, tunnel_identity *id, bool displayEvent) {
-    if(id != NULL ) { // status != ok
+    if(id != NULL && id->Status != instance_status_ok) {
         ZITI_LOG(DEBUG,"Not sending events message - id (%s : %s) has no identifier file", id->Identifier, id->Name);
     }
     size_t data_len = 0;
@@ -798,7 +798,7 @@ static void broadcast_metrics(uv_timer_t *timer) {
         model_map notification_map = {0};
         for(idx = 0; metrics_event.Identities[idx]; idx++) {
             tnl_id = metrics_event.Identities[idx];
-            if (tnl_id->Active && tnl_id->Loaded) { // tnl_id->Status check
+            if (tnl_id->Active && tnl_id->Loaded && tnl_id->Status == instance_status_ok) {
                 active_identities = true;
 
                 tunnel_comand *tnl_cmd = calloc(1, sizeof(tunnel_comand));
@@ -879,11 +879,9 @@ static void load_identities(uv_work_t *wr) {
         while (uv_fs_scandir_next(&fs, &file) == 0) {
             ZITI_LOG(INFO, "file = %s %d", file.name, file.type);
 
-#if _WIN32
             if (strcmp(file.name, get_config_file_name(NULL)) == 0 || strcmp(file.name, get_backup_config_file_name(NULL)) == 0 ) {
                 continue;
             }
-#endif
 
             if (file.type == UV_DIRENT_FILE) {
                 struct cfg_instance_s *inst = calloc(1, sizeof(struct cfg_instance_s));
@@ -919,10 +917,9 @@ static void load_identities_complete(uv_work_t * wr, int status) {
     if (identity_loaded) {
         start_metrics_timer(wr->loop);
     }
-#if _WIN32
+
     // should be the last line in this function as it calls the mutex/lock
     save_tunnel_status_to_file();
-#endif
 }
 
 static void on_event(const base_event *ev) {
@@ -1374,13 +1371,13 @@ static void run(int argc, char *argv[]) {
     bool init = false;
 
     // generate tunnel status instance and save active state and start time
-#if _WIN32
     if (config_dir != NULL) {
         set_identifier_path(config_dir);
         initialize_instance_config();
         load_tunnel_status_from_file(ziti_loop);
     }
 
+#if _WIN32
     bool multi_writer = true;
     if (started_by_scm) {
         multi_writer = false;
@@ -1388,11 +1385,12 @@ static void run(int argc, char *argv[]) {
     init = log_init(ziti_loop, multi_writer);
 
     signal(SIGINT, interrupt_handler);
+#endif
+
     char *ip_range_temp = get_ip_range_from_config();
     if (ip_range_temp != NULL) {
         ip_range = ip_range_temp;
     }
-#endif
 
     uint32_t ip[4];
     int bits;

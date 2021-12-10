@@ -47,7 +47,7 @@ tunnel_identity *create_or_get_tunnel_identity(char* identifier, char* filename)
 
     if (id != NULL) {
         if (filename != NULL) {
-            id->Status = strdup(instance_status_name(instance_status_ok));
+            id->Status = instance_status_ok;
         }
         return id;
     } else {
@@ -55,6 +55,7 @@ tunnel_identity *create_or_get_tunnel_identity(char* identifier, char* filename)
         tnl_id->Identifier = strdup(identifier);
         if (filename != NULL) {
             char* extension = strstr(filename, ".json");
+
             int length;
             if (extension != NULL) {
                 length = (int) (extension - filename);
@@ -71,7 +72,8 @@ tunnel_identity *create_or_get_tunnel_identity(char* identifier, char* filename)
                 tnl_id->Name = calloc(length + 1, sizeof(char));
                 snprintf(tnl_id->Name, length+1, "%s", fingerprint);
             }
-            tnl_id->Status = strdup(instance_status_name(instance_status_ok));
+
+            tnl_id->Status = instance_status_ok;
 
         }
         model_map_set(&tnl_identity_map, identifier, tnl_id);
@@ -385,7 +387,7 @@ tunnel_identity_array get_tunnel_identities() {
 
     int idx = 0;
     MODEL_MAP_FOREACH(id, tnl_id, &tnl_identity_map) {
-        if (tnl_id->Status != NULL && strcmp(tnl_id->Status, instance_status_name(instance_status_ok)) == 0) { // status check
+        if (tnl_id->Status == instance_status_ok) {
             tnl_id_arr[idx++] = tnl_id;
         }
     }
@@ -467,7 +469,6 @@ void set_identifier_from_identities() {
     if (tnl_status.Identities == NULL) {
         return;
     }
-#if _WIN32
     for(int idx = 0; tnl_status.Identities[idx]; idx++) {
         tunnel_identity *tnl_id = tnl_status.Identities[idx];
         if (tnl_id->Identifier == NULL && tnl_id->FingerPrint != NULL) {
@@ -476,15 +477,11 @@ void set_identifier_from_identities() {
             tnl_id->Identifier = strdup(identifier);
         }
         if (tnl_id->Identifier != NULL) {
+            // set this field to unknown during initialization
+            tnl_id->Status = instance_status_Unknown;
             model_map_set(&tnl_identity_map, tnl_id->Identifier, tnl_id);
-            // set this field to null during initialization
-            if (tnl_id->Status) {
-                free(tnl_id->Status);
-                tnl_id->Status = NULL;
-            }
         }
     }
-#endif
 }
 
 void initialize_tunnel_status() {
