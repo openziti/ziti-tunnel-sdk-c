@@ -385,7 +385,7 @@ tunnel_identity_array get_tunnel_identities() {
 
     int idx = 0;
     MODEL_MAP_FOREACH(id, tnl_id, &tnl_identity_map) {
-        if (tnl_id->Status != NULL && strcmp(tnl_id->Status, instance_status_name(instance_status_ok)) == 0) {
+        if (tnl_id->Status != NULL && strcmp(tnl_id->Status, instance_status_name(instance_status_ok)) == 0) { // status check
             tnl_id_arr[idx++] = tnl_id;
         }
     }
@@ -635,6 +635,7 @@ void delete_identity_from_instance(char* identifier) {
         return;
     }
     model_map_remove(&tnl_identity_map, identifier);
+    ZITI_LOG(DEBUG, "ztx[%s] is removed from the tunnel identity list", identifier);
     free_tunnel_identity(id);
     free(id);
 }

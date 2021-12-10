@@ -55,7 +55,7 @@ static int dns_fallback(const char *name, void *ctx, struct in_addr* addr);
 
 static void send_message_to_tunnel();
 typedef char * (*to_json_fn)(const void * msg, int flags, size_t *len);
-static void send_events_message(const void *message, to_json_fn to_json_f, bool displayEvent);
+static void send_events_message(const void *message, to_json_fn to_json_f, tunnel_identity *id, bool displayEvent);
 static void send_tunnel_command(tunnel_comand *tnl_cmd, void *ctx);
 
 struct cfg_instance_s {
@@ -515,7 +515,7 @@ static void on_events_client(uv_stream_t *s, int status) {
     tunnel_status_event tnl_sts_evt = {0};
     tnl_sts_evt.Op = strdup("status");
     tnl_sts_evt.Status = get_tunnel_status();
-    send_events_message(&tnl_sts_evt, (to_json_fn) tunnel_status_event_to_json, true);
+    send_events_message(&tnl_sts_evt, (to_json_fn) tunnel_status_event_to_json, NULL, true);
     tnl_sts_evt.Status = NULL;
     free_tunnel_status_event(&tnl_sts_evt);
 
@@ -550,7 +550,10 @@ void on_write_event(uv_write_t* req, int status) {
     free(req);
 }
 
-static void send_events_message(const void *message, to_json_fn to_json_f, bool displayEvent) {
+static void send_events_message(const void *message, to_json_fn to_json_f, tunnel_identity *id, bool displayEvent) {
+    if(id != NULL ) { // status != ok
+        ZITI_LOG(DEBUG,"Not sending events message - id (%s : %s) has no identifier file", id->Identifier, id->Name);
+    }
     size_t data_len = 0;
     char *json = to_json_f(message, MODEL_JSON_COMPACT, &data_len);
     if (json == NULL) {
@@ -558,7 +561,7 @@ static void send_events_message(const void *message, to_json_fn to_json_f, bool 
         return;
     }
     if (displayEvent) {
-        ZITI_LOG(INFO,"Events Message => %s", json);
+        ZITI_LOG(DEBUG,"Events Message => %s", json);
     }
 
     if (!LIST_EMPTY(&event_clients_list)) {
@@ -795,7 +798,7 @@ static void broadcast_metrics(uv_timer_t *timer) {
         model_map notification_map = {0};
         for(idx = 0; metrics_event.Identities[idx]; idx++) {
             tnl_id = metrics_event.Identities[idx];
-            if (tnl_id->Active && tnl_id->Loaded) {
+            if (tnl_id->Active && tnl_id->Loaded) { // tnl_id->Status check
                 active_identities = true;
 
                 tunnel_comand *tnl_cmd = calloc(1, sizeof(tunnel_comand));
@@ -836,7 +839,7 @@ static void broadcast_metrics(uv_timer_t *timer) {
             }
             event.Notification = notification_messages;
 
-            send_events_message(&event, (to_json_fn) notification_event_to_json, true);
+            send_events_message(&event, (to_json_fn) notification_event_to_json, NULL, true);
             event.Notification = NULL;
             free_notification_event(&event);
             model_map_clear(&notification_map, (_free_f) free_notification_message);
@@ -847,7 +850,7 @@ static void broadcast_metrics(uv_timer_t *timer) {
     if (active_identities)
     {
         // do not display the metrics events in the logs as this event will get called every 5 seconds
-        send_events_message(&metrics_event, (to_json_fn) tunnel_metrics_event_to_json, false);
+        send_events_message(&metrics_event, (to_json_fn) tunnel_metrics_event_to_json, NULL, false);
     }
     if(metrics_event.Identities) {
         free(metrics_event.Identities);
@@ -940,6 +943,8 @@ static void on_event(const base_event *ev) {
             controller_event.Identifier = strdup(ev->identifier);
             controller_event.Fingerprint = strdup(id_event.Id->FingerPrint);
 
+            tunnel_identity *id = id_event.Id;
+
             if (zev->code == ZITI_OK) {
                 id_event.Id->Active = true; // determine it from controller
                 if (zev->name) {
@@ -976,11 +981,11 @@ static void on_event(const base_event *ev) {
                 ZITI_LOG(ERROR, "ztx[%s] failed to connect to controller due to %s", ev->identifier, zev->status);
             }
 
-            send_events_message(&id_event, (to_json_fn) identity_event_to_json, true);
+            send_events_message(&id_event, (to_json_fn) identity_event_to_json, id, true);
             id_event.Id = NULL;
             free_identity_event(&id_event);
 
-            send_events_message(&controller_event, (to_json_fn) action_event_to_json, true);
+            send_events_message(&controller_event, (to_json_fn) action_event_to_json, id, true);
             free_action_event(&controller_event);
             break;
         }
@@ -1066,7 +1071,7 @@ static void on_event(const base_event *ev) {
                 add_or_remove_services_from_tunnel(id, svc_event.AddedServices, svc_event.RemovedServices);
             }
 
-            send_events_message(&svc_event, (to_json_fn) services_event_to_json, true);
+            send_events_message(&svc_event, (to_json_fn) services_event_to_json, id, true);
             if (svc_event.AddedServices != NULL) {
                 tunnel_service **tnl_svc_arr = svc_event.AddedServices;
                 *tnl_svc_arr = NULL;
@@ -1081,7 +1086,7 @@ static void on_event(const base_event *ev) {
                     .Id = create_or_get_tunnel_identity(ev->identifier, NULL),
             };
             id_event.Fingerprint = strdup(id_event.Id->FingerPrint);
-            send_events_message(&id_event, (to_json_fn) identity_event_to_json, true);
+            send_events_message(&id_event, (to_json_fn) identity_event_to_json, id, true);
             id_event.Id = NULL;
             free_identity_event(&id_event);
             break;
@@ -1101,7 +1106,7 @@ static void on_event(const base_event *ev) {
             tunnel_identity *id = create_or_get_tunnel_identity(ev->identifier, NULL);
             mfa_sts_event.Fingerprint = strdup(id->FingerPrint);
 
-            send_events_message(&mfa_sts_event, (to_json_fn) mfa_status_event_to_json, true);
+            send_events_message(&mfa_sts_event, (to_json_fn) mfa_status_event_to_json, id, true);
             free_mfa_status_event(&mfa_sts_event);
             break;
         }
@@ -1129,7 +1134,7 @@ static void on_event(const base_event *ev) {
                                 .Id = create_or_get_tunnel_identity(ev->identifier, NULL),
                         };
                         id_event.Fingerprint = strdup(id_event.Id->FingerPrint);
-                        send_events_message(&id_event, (to_json_fn) identity_event_to_json, true);
+                        send_events_message(&id_event, (to_json_fn) identity_event_to_json, id_event.Id, true);
                         id_event.Id = NULL;
                         free_identity_event(&id_event);
                         break;
@@ -1153,7 +1158,7 @@ static void on_event(const base_event *ev) {
             tunnel_identity *id = create_or_get_tunnel_identity(ev->identifier, NULL);
             mfa_sts_event.Fingerprint = strdup(id->FingerPrint);
 
-            send_events_message(&mfa_sts_event, (to_json_fn) mfa_status_event_to_json, true);
+            send_events_message(&mfa_sts_event, (to_json_fn) mfa_status_event_to_json, id, true);
 
             mfa_sts_event.RecoveryCodes = NULL;
             free_mfa_status_event(&mfa_sts_event);
@@ -2305,7 +2310,7 @@ void endpoint_status_change(bool woken, bool unlocked) {
     tunnel_status_event tnl_sts_evt = {0};
     tnl_sts_evt.Op = strdup("status");
     tnl_sts_evt.Status = get_tunnel_status();
-    send_events_message(&tnl_sts_evt, (to_json_fn) tunnel_status_event_to_json, true);
+    send_events_message(&tnl_sts_evt, (to_json_fn) tunnel_status_event_to_json, NULL, true);
     tnl_sts_evt.Status = NULL;
     free_tunnel_status_event(&tnl_sts_evt);
 
