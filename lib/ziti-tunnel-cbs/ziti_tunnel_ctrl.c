@@ -171,7 +171,7 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
     switch (cmd->command) {
         case TunnelCommand_LoadIdentity: {
             tunnel_load_identity load;
-            if (cmd->data == NULL || parse_tunnel_load_identity(&load, cmd->data, strlen(cmd->data)) != 0) {
+            if (cmd->data == NULL || parse_tunnel_load_identity(&load, cmd->data, strlen(cmd->data)) < 0) {
                 result.success = false;
                 result.error = "invalid command";
                 break;
@@ -210,7 +210,7 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
 
         case TunnelCommand_DisableIdentity: {
             tunnel_disable_identity disable_id = {0};
-            if (cmd->data == NULL || parse_tunnel_disable_identity(&disable_id, cmd->data, strlen(cmd->data)) != 0) {
+            if (cmd->data == NULL || parse_tunnel_disable_identity(&disable_id, cmd->data, strlen(cmd->data)) < 0) {
                 result.success = false;
                 result.error = "invalid command";
                 free_tunnel_disable_identity(&disable_id);
@@ -244,7 +244,7 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
             #endif
             ZITI_LOG(INFO, "ziti dump started ");
             tunnel_ziti_dump dump = {0};
-            if (cmd->data != NULL && parse_tunnel_ziti_dump(&dump, cmd->data, strlen(cmd->data)) != 0) {
+            if (cmd->data != NULL && parse_tunnel_ziti_dump(&dump, cmd->data, strlen(cmd->data)) < 0) {
                 result.success = false;
                 result.error = "invalid command";
                 free_tunnel_ziti_dump(&dump);
@@ -279,7 +279,7 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
 
         case TunnelCommand_EnableMFA: {
             tunnel_enable_mfa enable_mfa_cmd = {0};
-            if (cmd->data != NULL && parse_tunnel_enable_mfa(&enable_mfa_cmd, cmd->data, strlen(cmd->data)) != 0) {
+            if (cmd->data != NULL && parse_tunnel_enable_mfa(&enable_mfa_cmd, cmd->data, strlen(cmd->data)) < 0) {
                 result.success = false;
                 result.error = "invalid command";
                 free_tunnel_enable_mfa(&enable_mfa_cmd);
@@ -312,7 +312,7 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
 
         case TunnelCommand_VerifyMFA: {
             tunnel_verify_mfa verify_mfa_cmd = {0};
-            if (cmd->data != NULL && parse_tunnel_verify_mfa(&verify_mfa_cmd, cmd->data, strlen(cmd->data)) != 0) {
+            if (cmd->data != NULL && parse_tunnel_verify_mfa(&verify_mfa_cmd, cmd->data, strlen(cmd->data)) < 0) {
                 result.success = false;
                 result.error = "invalid command";
                 free_tunnel_verify_mfa(&verify_mfa_cmd);
@@ -345,7 +345,7 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
 
         case TunnelCommand_RemoveMFA: {
             tunnel_remove_mfa remove_mfa_cmd = {0};
-            if (cmd->data != NULL && parse_tunnel_remove_mfa(&remove_mfa_cmd, cmd->data, strlen(cmd->data)) != 0) {
+            if (cmd->data != NULL && parse_tunnel_remove_mfa(&remove_mfa_cmd, cmd->data, strlen(cmd->data)) < 0) {
                 result.success = false;
                 result.error = "invalid command";
                 free_tunnel_remove_mfa(&remove_mfa_cmd);
@@ -379,7 +379,7 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
         default: result.error = "command not implemented";
         case TunnelCommand_SubmitMFA: {
             tunnel_submit_mfa auth = {0};
-            if (cmd->data == NULL || parse_tunnel_submit_mfa(&auth, cmd->data, strlen(cmd->data)) != 0) {
+            if (cmd->data == NULL || parse_tunnel_submit_mfa(&auth, cmd->data, strlen(cmd->data)) < 0) {
                 result.error = "invalid command";
                 result.success = false;
                 free_tunnel_submit_mfa(&auth);
@@ -411,7 +411,7 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
 
         case TunnelCommand_GenerateMFACodes: {
             tunnel_generate_mfa_codes generate_mfa_codes_cmd = {0};
-            if (cmd->data == NULL || parse_tunnel_generate_mfa_codes(&generate_mfa_codes_cmd, cmd->data, strlen(cmd->data)) != 0) {
+            if (cmd->data == NULL || parse_tunnel_generate_mfa_codes(&generate_mfa_codes_cmd, cmd->data, strlen(cmd->data)) < 0) {
                 result.error = "invalid command";
                 result.success = false;
                 free_tunnel_generate_mfa_codes(&generate_mfa_codes_cmd);
@@ -443,7 +443,7 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
 
         case TunnelCommand_GetMFACodes: {
             tunnel_get_mfa_codes get_mfa_codes_cmd = {0};
-            if (cmd->data == NULL || parse_tunnel_get_mfa_codes(&get_mfa_codes_cmd, cmd->data, strlen(cmd->data)) != 0) {
+            if (cmd->data == NULL || parse_tunnel_get_mfa_codes(&get_mfa_codes_cmd, cmd->data, strlen(cmd->data)) < 0) {
                 result.error = "invalid command";
                 result.success = false;
                 break;
@@ -473,7 +473,7 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
 
         case TunnelCommand_GetMetrics: {
             tunnel_get_identity_metrics get_identity_metrics_cmd = {0};
-            if (cmd->data == NULL || parse_tunnel_get_identity_metrics(&get_identity_metrics_cmd, cmd->data, strlen(cmd->data)) != 0) {
+            if (cmd->data == NULL || parse_tunnel_get_identity_metrics(&get_identity_metrics_cmd, cmd->data, strlen(cmd->data)) < 0) {
                 result.error = "invalid command";
                 result.success = false;
                 break;
