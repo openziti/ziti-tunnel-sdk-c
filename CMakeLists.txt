@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.14)
 if(NOT ZITI_SDK_C_BRANCH)
     #allow using a different branch of the CSDK easily
-    set(ZITI_SDK_C_BRANCH "0.26.10")
+    set(ZITI_SDK_C_BRANCH "0.26.12")
 endif()
 
 option(TUNNEL_SDK_ONLY "build only ziti-tunnel-sdk (without ziti)" OFF)
@@ -61,11 +61,11 @@ set(CMAKE_INSTALL_INCLUDEDIR include)
 endif()
 
 # lwip macro defaults. override on command line or in parent cmakelists.
-set(LWIP_MEM_SIZE 524288 CACHE STRING "LWIP MEM_SIZE option")
-set(LWIP_PBUF_POOL_SIZE 512 CACHE STRING "LWIP PBUF_POOL_SIZE option")
-set(UDP_MAX_CONNECTIONS 64 CACHE STRING "LWIP MEMP_NUM_UDP_PCB option")
-set(TCP_MAX_QUEUED_SEGMENTS 1024 CACHE STRING "LWIP MEMP_NUM_TCP_SEG option")
-set(TCP_MAX_CONNECTIONS 256 CACHE STRING "LWIP MEMP_NUM_TCP_PCB option")
+set(LWIP_MEM_SIZE 1048576 CACHE STRING "LWIP MEM_SIZE option")
+set(LWIP_PBUF_POOL_SIZE 1024 CACHE STRING "LWIP PBUF_POOL_SIZE option")
+set(UDP_MAX_CONNECTIONS 512 CACHE STRING "LWIP MEMP_NUM_UDP_PCB option")
+set(TCP_MAX_QUEUED_SEGMENTS 2048 CACHE STRING "LWIP MEMP_NUM_TCP_SEG option")
+set(TCP_MAX_CONNECTIONS 512 CACHE STRING "LWIP MEMP_NUM_TCP_PCB option")
 
 target_compile_definitions(lwipcore
     PUBLIC MEM_SIZE=${LWIP_MEM_SIZE}
