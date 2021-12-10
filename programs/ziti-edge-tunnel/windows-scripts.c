@@ -165,10 +165,12 @@ void chunked_remove_nrpt_rules(uv_loop_t *ziti_loop, LIST_HEAD(hostnames_list, h
 
     while(!LIST_EMPTY(hostnames)) {
         struct hostname_s *hostname = LIST_FIRST(hostnames);
-        buf_len = sprintf(script + copied, namespace_template, "\n", hostname);
+        buf_len = sprintf(script + copied, namespace_template, "\n", hostname->hostname);
         copied += buf_len;
         domains_size++;
         LIST_REMOVE(hostname, _next);
+        free(hostname->hostname);
+        free(hostname);
     }
     buf_len = sprintf(script + copied, "%s\n\n", ")");
     copied += buf_len;
@@ -215,7 +217,7 @@ void remove_nrpt_rules(uv_loop_t *ziti_loop, model_map *hostnames) {
         }
 
         struct hostname_s *hostname_data = calloc(1, sizeof (struct hostname_s));
-        hostname_data->hostname = hostname;
+        hostname_data->hostname = strdup(hostname);
         LIST_INSERT_HEAD(&host_names_list, hostname_data, _next);
         current_size++;
         rule_size += strlen(hostname) + namespace_template_padding;

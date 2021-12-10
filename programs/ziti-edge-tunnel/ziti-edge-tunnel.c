@@ -185,16 +185,35 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
                             ZITI_LOG(ERROR, "Identity filename is not found in the remove identity request, not deleting the identity file");
                             break;
                         }
-                        delete_identity_from_instance(tnl_delete_id.identifier);
                         // delete identity file
                         remove(tnl_delete_id.identifier);
                         ZITI_LOG(INFO, "Identity file %s is deleted",tnl_delete_id.identifier);
 #if _WIN32
+                        model_map hostnamesToRemove = {0};
+                        tunnel_identity *id = create_or_get_tunnel_identity(tnl_delete_id.identifier, NULL);
+                        for (int index=0 ; id->Services[index]; index++ ) {
+                            tunnel_service *tnl_svc = id->Services[index];
+                            if (tnl_svc->Addresses != NULL) {
+                                for (int i = 0; tnl_svc->Addresses[i]; i++) {
+                                    tunnel_address *addr = tnl_svc->Addresses[i];
+                                    if (addr->IsHost && model_map_get(&hostnamesToRemove, addr->HostName) == NULL) {
+                                        model_map_set(&hostnamesToRemove, addr->HostName, true);
+                                    }
+                                }
+                            }
+                        }
+
+                        if (model_map_size(&hostnamesToRemove) > 0) {
+                            remove_nrpt_rules(main_ziti_loop, &hostnamesToRemove);
+                        }
+                        model_map_clear(&hostnamesToRemove, NULL);
                         // should be the last line in this function as it calls the mutex/lock
                         save_tunnel_status_to_file();
 #endif
                     }
+                    delete_identity_from_instance(tnl_delete_id.identifier);
                     free_tunnel_delete_identity(&tnl_delete_id);
+
                     break;
                 }
                 case TunnelCommand_IdentityOnOff: {
@@ -551,8 +570,9 @@ void on_write_event(uv_write_t* req, int status) {
 }
 
 static void send_events_message(const void *message, to_json_fn to_json_f, tunnel_identity *id, bool displayEvent) {
-    if(id != NULL && id->Status != instance_status_ok) {
+    if (id != NULL && id->Status != instance_status_ok) {
         ZITI_LOG(DEBUG,"Not sending events message - id (%s : %s) has no identifier file", id->Identifier, id->Name);
+        return;
     }
     size_t data_len = 0;
     char *json = to_json_f(message, MODEL_JSON_COMPACT, &data_len);
