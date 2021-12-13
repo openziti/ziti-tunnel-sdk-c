@@ -194,7 +194,7 @@ static void on_cmd(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
         ZITI_LOG(INFO, "received cmd <%.*s>", (int) len, b->base);
 
         tunnel_comand cmd = {0};
-        if (parse_tunnel_comand(&cmd, b->base, len) == 0) {
+        if (parse_tunnel_comand(&cmd, b->base, len) > 0) {
             CMD_CTRL->process(&cmd, on_command_resp, s);
         } else {
             tunnel_result resp = {
@@ -387,7 +387,7 @@ static void on_command_inline_resp(const tunnel_result* result, void *ctx) {
             case TunnelCommand_GetMetrics: {
                 if (result->success) {
                     tunnel_identity_metrics *id_metrics = calloc(1, sizeof(tunnel_identity_metrics));
-                    if (parse_tunnel_identity_metrics(id_metrics, result->data, strlen(result->data)) != 0) {
+                    if (parse_tunnel_identity_metrics(id_metrics, result->data, strlen(result->data)) < 0) {
                         ZITI_LOG(ERROR, "Could not fetch metrics data");
                         free_tunnel_identity_metrics(id_metrics);
                         free(id_metrics);
@@ -1605,7 +1605,7 @@ static int get_mfa_codes_opts(int argc, char *argv[]) {
 static void service_control(int argc, char *argv[]) {
 
     tunnel_service_control *tunnel_service_control_opt = calloc(1, sizeof(tunnel_service_control));
-    if (parse_tunnel_service_control(tunnel_service_control_opt, cmd->data, strlen(cmd->data)) != 0) {
+    if (parse_tunnel_service_control(tunnel_service_control_opt, cmd->data, strlen(cmd->data)) < 0) {
         fprintf(stderr, "Could not fetch service control data");
         return;
     }
