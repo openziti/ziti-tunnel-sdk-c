@@ -176,11 +176,11 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
 
     if (result->data != NULL) {
         tunnel_comand tnl_res_cmd = {0};
-        if (parse_tunnel_comand(&tnl_res_cmd, result->data, strlen(result->data)) == 0) {
+        if (parse_tunnel_comand(&tnl_res_cmd, result->data, strlen(result->data)) > 0) {
             switch (tnl_res_cmd.command) {
                 case TunnelCommand_RemoveIdentity: {
                     tunnel_delete_identity tnl_delete_id = {0};
-                    if (tnl_res_cmd.data != NULL && parse_tunnel_delete_identity(&tnl_delete_id, tnl_res_cmd.data, strlen(tnl_res_cmd.data)) == 0) {
+                    if (tnl_res_cmd.data != NULL && parse_tunnel_delete_identity(&tnl_delete_id, tnl_res_cmd.data, strlen(tnl_res_cmd.data)) > 0) {
                         if (tnl_delete_id.identifier == NULL) {
                             ZITI_LOG(ERROR, "Identity filename is not found in the remove identity request, not deleting the identity file");
                             break;
@@ -217,7 +217,7 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
                 }
                 case TunnelCommand_IdentityOnOff: {
                     tunnel_on_off_identity on_off_id = {0};
-                    if (tnl_res_cmd.data == NULL || parse_tunnel_on_off_identity(&on_off_id, tnl_res_cmd.data, strlen(tnl_res_cmd.data)) != 0) {
+                    if (tnl_res_cmd.data == NULL || parse_tunnel_on_off_identity(&on_off_id, tnl_res_cmd.data, strlen(tnl_res_cmd.data)) < 0) {
                         free_tunnel_on_off_identity(&on_off_id);
                         break;
                     }
@@ -318,7 +318,7 @@ static bool process_tunnel_commands(const tunnel_comand *tnl_cmd, command_cb cb,
             cmd_accepted = true;
 
             tunnel_set_log_level tunnel_set_log_level_cmd = {0};
-            if (tnl_cmd->data == NULL || parse_tunnel_set_log_level(&tunnel_set_log_level_cmd, tnl_cmd->data, strlen(tnl_cmd->data)) != 0) {
+            if (tnl_cmd->data == NULL || parse_tunnel_set_log_level(&tunnel_set_log_level_cmd, tnl_cmd->data, strlen(tnl_cmd->data)) < 0) {
                 result.error = "invalid command";
                 result.success = false;
                 break;
@@ -338,7 +338,7 @@ static bool process_tunnel_commands(const tunnel_comand *tnl_cmd, command_cb cb,
             cmd_accepted = true;
 
             tunnel_tun_ip_v4 tunnel_tun_ip_v4_cmd = {0};
-            if (tnl_cmd->data == NULL || parse_tunnel_tun_ip_v4(&tunnel_tun_ip_v4_cmd, tnl_cmd->data, strlen(tnl_cmd->data)) != 0) {
+            if (tnl_cmd->data == NULL || parse_tunnel_tun_ip_v4(&tunnel_tun_ip_v4_cmd, tnl_cmd->data, strlen(tnl_cmd->data)) < 0) {
                 result.error = "invalid command";
                 result.success = false;
                 free_tunnel_tun_ip_v4(&tunnel_tun_ip_v4_cmd);
@@ -375,7 +375,7 @@ static bool process_tunnel_commands(const tunnel_comand *tnl_cmd, command_cb cb,
             cmd_accepted = true;
             tunnel_add_identity tunnel_add_identity_cmd = {0};
             if (tnl_cmd->data == NULL ||
-                parse_tunnel_add_identity(&tunnel_add_identity_cmd, tnl_cmd->data, strlen(tnl_cmd->data)) != 0) {
+                parse_tunnel_add_identity(&tunnel_add_identity_cmd, tnl_cmd->data, strlen(tnl_cmd->data)) < 0) {
                 result.error = "invalid command";
                 result.success = false;
                 free_tunnel_add_identity(&tunnel_add_identity_cmd);

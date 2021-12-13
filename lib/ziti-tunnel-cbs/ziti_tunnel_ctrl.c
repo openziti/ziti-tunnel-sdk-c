@@ -491,7 +491,7 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
 
         case TunnelCommand_RemoveIdentity: {
             tunnel_delete_identity delete_id = {0};
-            if (cmd->data == NULL || parse_tunnel_delete_identity(&delete_id, cmd->data, strlen(cmd->data)) != 0) {
+            if (cmd->data == NULL || parse_tunnel_delete_identity(&delete_id, cmd->data, strlen(cmd->data)) < 0) {
                 result.success = false;
                 result.error = "invalid command";
                 free_tunnel_delete_identity(&delete_id);
@@ -522,7 +522,7 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
         case TunnelCommand_StatusChange: {
             tunnel_status_change tunnel_status_change_cmd = {0};
             if (cmd->data == NULL ||
-                parse_tunnel_status_change(&tunnel_status_change_cmd, cmd->data, strlen(cmd->data)) != 0) {
+                parse_tunnel_status_change(&tunnel_status_change_cmd, cmd->data, strlen(cmd->data)) < 0) {
                 result.error = "invalid command";
                 result.success = false;
                 free_tunnel_status_change(&tunnel_status_change_cmd);
