@@ -33,7 +33,7 @@ tunnel_identity *find_tunnel_identity(const char* identifier) {
     if (tnl_id != NULL) {
         return tnl_id;
     } else {
-        ZITI_LOG(WARN, "ztx[%s] is not found. It may not be active/connected", identifier);
+        ZITI_LOG(WARN, "Identifier ztx[%s] is not loaded yet or already removed.", identifier);
         return NULL;
     }
 }

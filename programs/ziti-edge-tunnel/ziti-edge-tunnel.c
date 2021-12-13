@@ -55,7 +55,7 @@ static int dns_fallback(const char *name, void *ctx, struct in_addr* addr);
 
 static void send_message_to_tunnel();
 typedef char * (*to_json_fn)(const void * msg, int flags, size_t *len);
-static void send_events_message(const void *message, to_json_fn to_json_f, tunnel_identity *id, bool displayEvent);
+static void send_events_message(const void *message, to_json_fn to_json_f, bool displayEvent);
 static void send_tunnel_command(tunnel_comand *tnl_cmd, void *ctx);
 
 struct cfg_instance_s {
@@ -176,11 +176,11 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
 
     if (result->data != NULL) {
         tunnel_comand tnl_res_cmd = {0};
-        if (parse_tunnel_comand(&tnl_res_cmd, result->data, strlen(result->data)) > 0) {
+        if (parse_tunnel_comand(&tnl_res_cmd, result->data, strlen(result->data)) >= 0) {
             switch (tnl_res_cmd.command) {
                 case TunnelCommand_RemoveIdentity: {
                     tunnel_delete_identity tnl_delete_id = {0};
-                    if (tnl_res_cmd.data != NULL && parse_tunnel_delete_identity(&tnl_delete_id, tnl_res_cmd.data, strlen(tnl_res_cmd.data)) > 0) {
+                    if (tnl_res_cmd.data != NULL && parse_tunnel_delete_identity(&tnl_delete_id, tnl_res_cmd.data, strlen(tnl_res_cmd.data)) >= 0) {
                         if (tnl_delete_id.identifier == NULL) {
                             ZITI_LOG(ERROR, "Identity filename is not found in the remove identity request, not deleting the identity file");
                             break;
@@ -458,7 +458,7 @@ static void on_cmd(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
         ZITI_LOG(INFO, "received cmd <%.*s>", (int) len, b->base);
 
         tunnel_comand tnl_cmd = {0};
-        if (parse_tunnel_comand(&tnl_cmd, b->base, len) > 0) {
+        if (parse_tunnel_comand(&tnl_cmd, b->base, len) >= 0) {
             int status = process_tunnel_commands(&tnl_cmd, on_command_resp, s);
             if (!status) {
                 CMD_CTRL->process(&tnl_cmd, on_command_resp, s);
@@ -535,7 +535,7 @@ static void on_events_client(uv_stream_t *s, int status) {
     tunnel_status_event tnl_sts_evt = {0};
     tnl_sts_evt.Op = strdup("status");
     tnl_sts_evt.Status = get_tunnel_status();
-    send_events_message(&tnl_sts_evt, (to_json_fn) tunnel_status_event_to_json, NULL, true);
+    send_events_message(&tnl_sts_evt, (to_json_fn) tunnel_status_event_to_json, true);
     tnl_sts_evt.Status = NULL;
     free_tunnel_status_event(&tnl_sts_evt);
 
@@ -570,11 +570,7 @@ void on_write_event(uv_write_t* req, int status) {
     free(req);
 }
 
-static void send_events_message(const void *message, to_json_fn to_json_f, tunnel_identity *id, bool displayEvent) {
-    if (id != NULL && id->Status != instance_status_ok) {
-        ZITI_LOG(DEBUG,"Not sending events message - id (%s : %s) has no identifier file", id->Identifier, id->Name);
-        return;
-    }
+static void send_events_message(const void *message, to_json_fn to_json_f, bool displayEvent) {
     size_t data_len = 0;
     char *json = to_json_f(message, MODEL_JSON_COMPACT, &data_len);
     if (json == NULL) {
@@ -860,7 +856,7 @@ static void broadcast_metrics(uv_timer_t *timer) {
             }
             event.Notification = notification_messages;
 
-            send_events_message(&event, (to_json_fn) notification_event_to_json, NULL, true);
+            send_events_message(&event, (to_json_fn) notification_event_to_json, true);
             event.Notification = NULL;
             free_notification_event(&event);
             model_map_clear(&notification_map, (_free_f) free_notification_message);
@@ -871,7 +867,7 @@ static void broadcast_metrics(uv_timer_t *timer) {
     if (active_identities)
     {
         // do not display the metrics events in the logs as this event will get called every 5 seconds
-        send_events_message(&metrics_event, (to_json_fn) tunnel_metrics_event_to_json, NULL, false);
+        send_events_message(&metrics_event, (to_json_fn) tunnel_metrics_event_to_json, false);
     }
     if(metrics_event.Identities) {
         free(metrics_event.Identities);
@@ -947,12 +943,16 @@ static void on_event(const base_event *ev) {
     switch (ev->event_type) {
         case TunnelEvent_ContextEvent: {
             const ziti_ctx_event *zev = (ziti_ctx_event *) ev;
-            ZITI_LOG(INFO, "ztx[%s] status is %s", ev->identifier, zev->status);
+            ZITI_LOG(INFO, "ztx[%s] context event : status is %s", ev->identifier, zev->status);
+            tunnel_identity *id = find_tunnel_identity(ev->identifier);
+            if (id == NULL) {
+                break;
+            }
 
             identity_event id_event = {0};
             id_event.Op = strdup("identity");
             id_event.Action = strdup(event_name(event_added));
-            id_event.Id = create_or_get_tunnel_identity(ev->identifier, NULL);
+            id_event.Id = id;
             id_event.Fingerprint = strdup(id_event.Id->FingerPrint);
             id_event.Id->Loaded = true;
 
@@ -960,8 +960,6 @@ static void on_event(const base_event *ev) {
             controller_event.Op = strdup("controller");
             controller_event.Identifier = strdup(ev->identifier);
             controller_event.Fingerprint = strdup(id_event.Id->FingerPrint);
-
-            tunnel_identity *id = id_event.Id;
 
             if (zev->code == ZITI_OK) {
                 id_event.Id->Active = true; // determine it from controller
@@ -999,11 +997,11 @@ static void on_event(const base_event *ev) {
                 ZITI_LOG(ERROR, "ztx[%s] failed to connect to controller due to %s", ev->identifier, zev->status);
             }
 
-            send_events_message(&id_event, (to_json_fn) identity_event_to_json, id, true);
+            send_events_message(&id_event, (to_json_fn) identity_event_to_json, true);
             id_event.Id = NULL;
             free_identity_event(&id_event);
 
-            send_events_message(&controller_event, (to_json_fn) action_event_to_json, id, true);
+            send_events_message(&controller_event, (to_json_fn) action_event_to_json, true);
             free_action_event(&controller_event);
             break;
         }
@@ -1011,14 +1009,17 @@ static void on_event(const base_event *ev) {
         case TunnelEvent_ServiceEvent: {
             const service_event *svc_ev = (service_event *) ev;
             ZITI_LOG(INFO, "ztx[%s] service event", ev->identifier);
+            tunnel_identity *id = find_tunnel_identity(ev->identifier);
+            if (id == NULL) {
+                break;
+            }
+
             services_event svc_event = {
                 .Op = strdup("bulkservice"),
                 .Action = strdup(event_name(event_updated)),
                 .Identifier = strdup(ev->identifier),
+                .Fingerprint = strdup(id->FingerPrint)
             };
-
-            tunnel_identity *id = create_or_get_tunnel_identity(ev->identifier, NULL);
-            svc_event.Fingerprint = strdup(id->FingerPrint);
             ziti_service **zs;
 #if _WIN32
             model_map hostnamesToAdd = {0};
@@ -1089,7 +1090,7 @@ static void on_event(const base_event *ev) {
                 add_or_remove_services_from_tunnel(id, svc_event.AddedServices, svc_event.RemovedServices);
             }
 
-            send_events_message(&svc_event, (to_json_fn) services_event_to_json, id, true);
+            send_events_message(&svc_event, (to_json_fn) services_event_to_json, true);
             if (svc_event.AddedServices != NULL) {
                 tunnel_service **tnl_svc_arr = svc_event.AddedServices;
                 *tnl_svc_arr = NULL;
@@ -1104,7 +1105,7 @@ static void on_event(const base_event *ev) {
                     .Id = create_or_get_tunnel_identity(ev->identifier, NULL),
             };
             id_event.Fingerprint = strdup(id_event.Id->FingerPrint);
-            send_events_message(&id_event, (to_json_fn) identity_event_to_json, id, true);
+            send_events_message(&id_event, (to_json_fn) identity_event_to_json, true);
             id_event.Id = NULL;
             free_identity_event(&id_event);
             break;
@@ -1113,18 +1114,20 @@ static void on_event(const base_event *ev) {
         case TunnelEvent_MFAEvent: {
             const mfa_event *mfa_ev = (mfa_event *) ev;
             ZITI_LOG(INFO, "ztx[%s] is requesting MFA code", ev->identifier);
+            tunnel_identity *id = find_tunnel_identity(ev->identifier);
+            if (id == NULL) {
+                break;
+            }
             set_mfa_status(ev->identifier, true, true);
             mfa_status_event mfa_sts_event = {
                     .Op = strdup("mfa"),
                     .Action = strdup(mfa_ev->operation),
                     .Identifier = strdup(mfa_ev->identifier),
-                    .Successful = false
+                    .Successful = false,
+                    .Fingerprint = strdup(id->FingerPrint)
             };
 
-            tunnel_identity *id = create_or_get_tunnel_identity(ev->identifier, NULL);
-            mfa_sts_event.Fingerprint = strdup(id->FingerPrint);
-
-            send_events_message(&mfa_sts_event, (to_json_fn) mfa_status_event_to_json, id, true);
+            send_events_message(&mfa_sts_event, (to_json_fn) mfa_status_event_to_json, true);
             free_mfa_status_event(&mfa_sts_event);
             break;
         }
@@ -1152,7 +1155,7 @@ static void on_event(const base_event *ev) {
                                 .Id = create_or_get_tunnel_identity(ev->identifier, NULL),
                         };
                         id_event.Fingerprint = strdup(id_event.Id->FingerPrint);
-                        send_events_message(&id_event, (to_json_fn) identity_event_to_json, id_event.Id, true);
+                        send_events_message(&id_event, (to_json_fn) identity_event_to_json, true);
                         id_event.Id = NULL;
                         free_identity_event(&id_event);
                         break;
@@ -1176,7 +1179,7 @@ static void on_event(const base_event *ev) {
             tunnel_identity *id = create_or_get_tunnel_identity(ev->identifier, NULL);
             mfa_sts_event.Fingerprint = strdup(id->FingerPrint);
 
-            send_events_message(&mfa_sts_event, (to_json_fn) mfa_status_event_to_json, id, true);
+            send_events_message(&mfa_sts_event, (to_json_fn) mfa_status_event_to_json, true);
 
             mfa_sts_event.RecoveryCodes = NULL;
             free_mfa_status_event(&mfa_sts_event);
@@ -2224,6 +2227,46 @@ static int delete_identity_opts(int argc, char *argv[]) {
     return optind;
 }
 
+
+static int add_identity_opts(int argc, char *argv[]) {
+    static struct option opts[] = {
+            {"identity", required_argument, NULL, 'i'},
+            {"jwt", required_argument, NULL, 'j'},
+    };
+    int c, option_index, errors = 0;
+    optind = 0;
+
+    tunnel_add_identity *tunnel_add_identity_opt = calloc(1, sizeof(tunnel_add_identity));
+    cmd = calloc(1, sizeof(tunnel_comand));
+    cmd->command = TunnelCommand_AddIdentity;
+
+    while ((c = getopt_long(argc, argv, "i:j:",
+                            opts, &option_index)) != -1) {
+        switch (c) {
+            case 'i':
+                tunnel_add_identity_opt->jwtFileName = optarg;
+                break;
+            case 'j':
+                tunnel_add_identity_opt->jwtContent = optarg;
+                break;
+            default: {
+                fprintf(stderr, "Unknown option '%c'\n", c);
+                errors++;
+                break;
+            }
+        }
+    }
+    if (errors > 0) {
+        commandline_help(stderr);
+        exit(1);
+    }
+    size_t json_len;
+    cmd->data = tunnel_add_identity_to_json(tunnel_add_identity_opt, MODEL_JSON_COMPACT, &json_len);
+
+    return optind;
+}
+
+
 static CommandLine enroll_cmd = make_command("enroll", "enroll Ziti identity",
         "-j|--jwt <enrollment token> -i|--identity <identity> [-k|--key <private_key> [-c|--cert <certificate>]] [-n|--name <name>]",
         "\t-j|--jwt\tenrollment token file\n"
@@ -2270,6 +2313,9 @@ static CommandLine get_mfa_codes_cmd = make_command("get_mfa_codes", "Get MFA co
 static CommandLine get_status_cmd = make_command("tunnel_status", "Get Tunnel Status", "", "", get_status_opts, send_message_to_tunnel_fn);
 static CommandLine delete_id_cmd = make_command("delete", "delete the identities information", "[-i <identity>]",
                                                  "\t-i|--identity\tidentity info that needs to be deleted\n", delete_identity_opts, send_message_to_tunnel_fn);
+static CommandLine add_id_cmd = make_command("add", "enroll and load the identities information", "[-i <identity>]",
+                                                "\t-i|--identity\tidentity info that needs to be enabled\n"
+                                                "\t-j|--jwt\tjwt content that needs to be enrolled\n", add_identity_opts, send_message_to_tunnel_fn);
 #if _WIN32
 static CommandLine set_log_level_cmd = make_command("set_log_level", "Set log level of the tunneler", "-l <level>",
                                                     "\t-l|--loglevel\tlog level of the tunneler\n", set_log_level_opts, send_message_to_tunnel_fn);
@@ -2298,6 +2344,7 @@ static CommandLine *main_cmds[] = {
         &get_mfa_codes_cmd,
         &get_status_cmd,
         &delete_id_cmd,
+        &add_id_cmd,
 #if _WIN32
         &set_log_level_cmd,
         &update_tun_ip_cmd,
