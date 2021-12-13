@@ -2379,7 +2379,7 @@ void endpoint_status_change(bool woken, bool unlocked) {
     tunnel_status_event tnl_sts_evt = {0};
     tnl_sts_evt.Op = strdup("status");
     tnl_sts_evt.Status = get_tunnel_status();
-    send_events_message(&tnl_sts_evt, (to_json_fn) tunnel_status_event_to_json, NULL, true);
+    send_events_message(&tnl_sts_evt, (to_json_fn) tunnel_status_event_to_json, true);
     tnl_sts_evt.Status = NULL;
     free_tunnel_status_event(&tnl_sts_evt);
 
