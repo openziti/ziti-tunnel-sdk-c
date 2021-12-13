@@ -298,12 +298,15 @@ void tunnel_enroll_cb(ziti_config *cfg, int status, char *err, void *ctx) {
 
 static void enroll_ziti_async(uv_async_t *ar) {
     struct add_identity_request_s *add_id_req = ar->data;
+    uv_loop_t *enroll_loop = ar->loop;
+
+    uv_close((uv_handle_t *) ar, (uv_close_cb) free);
 
     ziti_enroll_opts enroll_opts = {0};
     enroll_opts.enroll_name = add_id_req->identifier;
     enroll_opts.jwt_content = add_id_req->jwt_content;
 
-    ziti_enroll(&enroll_opts, ar->loop, tunnel_enroll_cb, add_id_req);
+    ziti_enroll(&enroll_opts, enroll_loop, tunnel_enroll_cb, add_id_req);
 }
 
 static bool process_tunnel_commands(const tunnel_comand *tnl_cmd, command_cb cb, void *ctx) {
