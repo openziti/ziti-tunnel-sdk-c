@@ -423,13 +423,15 @@ static bool process_tunnel_commands(const tunnel_comand *tnl_cmd, command_cb cb,
     }
     if (cmd_accepted) {
         cb(&result, ctx);
+#if _WIN32
+        if (result.success) {
+            // should be the last line in this function as it calls the mutex/lock
+            save_tunnel_status_to_file();
+        }
+#endif
         if (result.data) {
             free(result.data);
         }
-#if _WIN32
-        // should be the last line in this function as it calls the mutex/lock
-        save_tunnel_status_to_file();
-#endif
         return true;
     } else {
         return false;
