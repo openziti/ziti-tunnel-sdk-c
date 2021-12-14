@@ -26,8 +26,8 @@
 #define BUFFER_SIZE 1024
 #endif
 
-void add_nrpt_rules(uv_loop_t *ziti_loop, model_map *hostnames, char* tun_ip);
-void remove_nrpt_rules(uv_loop_t *ziti_loop, model_map *hostnames);
+void add_nrpt_rules(uv_async_t *ar);
+void remove_nrpt_rules(uv_async_t *ar);
 void remove_all_nrpt_rules();
 bool is_nrpt_policies_effective(char* tns_ip);
 model_map *get_connection_specific_domains();

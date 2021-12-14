@@ -125,7 +125,13 @@ void chunked_add_nrpt_rules(uv_loop_t *ziti_loop, LIST_HEAD(hostnames_list, host
     free(script);
 }
 
-void add_nrpt_rules(uv_loop_t *ziti_loop, model_map *hostnames, char* tun_ip) {
+void add_nrpt_rules(uv_async_t *ar) {
+    struct add_service_nrpt_req *add_svc_req_data = ar->data;
+    model_map *hostnames = add_svc_req_data->hostnames;
+    char* dns_ip = add_svc_req_data->dns_ip;
+    uv_loop_t *nrpt_loop = ar->loop;
+
+    uv_close((uv_handle_t *) ar, (uv_close_cb) free);
 
     if (model_map_size(hostnames) == 0) {
         ZITI_LOG(DEBUG, "No domains specified to add_nrpt_rules, exiting early");
@@ -139,7 +145,7 @@ void add_nrpt_rules(uv_loop_t *ziti_loop, model_map *hostnames, char* tun_ip) {
     while(it != NULL) {
         char* hostname = model_map_it_key(it);
         if (current_size > MAX_BUCKET_SIZE || rule_size > MAX_POWERSHELL_SCRIPT_LEN) {
-            chunked_add_nrpt_rules(ziti_loop, &host_names_list, tun_ip);
+            chunked_add_nrpt_rules(nrpt_loop, &host_names_list, dns_ip);
             rule_size = strlen(hostname) + namespace_template_padding;
             current_size = 0;
         }
@@ -152,9 +158,11 @@ void add_nrpt_rules(uv_loop_t *ziti_loop, model_map *hostnames, char* tun_ip) {
         it = model_map_it_remove(it);
     }
     if (current_size > 0) {
-        chunked_add_nrpt_rules(ziti_loop, &host_names_list, tun_ip);
+        chunked_add_nrpt_rules(nrpt_loop, &host_names_list, dns_ip);
     }
-
+    add_svc_req_data->dns_ip = NULL;
+    free(hostnames);
+    free(add_svc_req_data);
 }
 
 void chunked_remove_nrpt_rules(uv_loop_t *ziti_loop, LIST_HEAD(hostnames_list, hostname_s) *hostnames) {
@@ -195,7 +203,11 @@ void chunked_remove_nrpt_rules(uv_loop_t *ziti_loop, LIST_HEAD(hostnames_list, h
     free(script);
 }
 
-void remove_nrpt_rules(uv_loop_t *ziti_loop, model_map *hostnames) {
+void remove_nrpt_rules(uv_async_t *ar) {
+    model_map *hostnames = ar->data;
+    uv_loop_t *nrpt_loop = ar->loop;
+
+    uv_close((uv_handle_t *) ar, (uv_close_cb) free);
 
     if (model_map_size(hostnames) == 0) {
         ZITI_LOG(DEBUG, "No domains specified to remove_nrpt_rules, exiting early");
@@ -209,7 +221,7 @@ void remove_nrpt_rules(uv_loop_t *ziti_loop, model_map *hostnames) {
     while(it != NULL) {
         char* hostname = model_map_it_key(it);
         if (current_size > MAX_BUCKET_SIZE || rule_size > MAX_POWERSHELL_COMMAND_LEN) {
-            chunked_remove_nrpt_rules(ziti_loop, &host_names_list);
+            chunked_remove_nrpt_rules(nrpt_loop, &host_names_list);
             rule_size = strlen(hostname) + namespace_template_padding;
             current_size = 0;
         }
@@ -222,8 +234,9 @@ void remove_nrpt_rules(uv_loop_t *ziti_loop, model_map *hostnames) {
         it = model_map_it_remove(it);
     }
     if (current_size > 0) {
-        chunked_remove_nrpt_rules(ziti_loop, &host_names_list);
+        chunked_remove_nrpt_rules(nrpt_loop, &host_names_list);
     }
+    free(hostnames);
 }
 
 void remove_all_nrpt_rules() {

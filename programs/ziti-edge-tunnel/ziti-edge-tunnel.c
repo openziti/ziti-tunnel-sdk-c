@@ -806,8 +806,8 @@ static void on_event(const base_event *ev) {
             svc_event.Fingerprint = strdup(id->FingerPrint);
             ziti_service **zs;
 #if _WIN32
-            model_map hostnamesToAdd = {0};
-            model_map hostnamesToRemove = {0};
+            model_map *hostnamesToAdd = calloc(1, sizeof(model_map));
+            model_map *hostnamesToRemove = calloc(1, sizeof(model_map));;
 #endif
             if (svc_ev->removed_services != NULL) {
                 int svc_array_length = 0;
@@ -824,8 +824,8 @@ static void on_event(const base_event *ev) {
                     if (svc->Addresses != NULL) {
                         for (int i = 0; svc->Addresses[i]; i++) {
                             tunnel_address *addr = svc->Addresses[i];
-                            if (addr->IsHost && model_map_get(&hostnamesToRemove, addr->HostName) == NULL) {
-                                model_map_set(&hostnamesToRemove, addr->HostName, true);
+                            if (addr->IsHost && model_map_get(hostnamesToRemove, addr->HostName) == NULL) {
+                                model_map_set(hostnamesToRemove, addr->HostName, true);
                             }
                         }
                     }
@@ -834,10 +834,12 @@ static void on_event(const base_event *ev) {
                 }
 
 #if _WIN32
-                if (model_map_size(&hostnamesToRemove) > 0) {
-                    remove_nrpt_rules(main_ziti_loop, &hostnamesToRemove);
+                if (model_map_size(hostnamesToRemove) > 0) {
+                    uv_async_t *ar = calloc(1, sizeof(uv_async_t));
+                    ar->data = hostnamesToRemove;
+                    uv_async_init(main_ziti_loop, ar, remove_nrpt_rules);
+                    uv_async_send(ar);
                 }
-                model_map_clear(&hostnamesToRemove, NULL);
 #endif
             }
 
@@ -854,8 +856,8 @@ static void on_event(const base_event *ev) {
                     if (svc->Addresses != NULL) {
                         for (int i = 0; svc->Addresses[i]; i++) {
                             tunnel_address *addr = svc->Addresses[i];
-                            if (addr->IsHost && model_map_get(&hostnamesToAdd, addr->HostName) == NULL) {
-                                model_map_set(&hostnamesToAdd, addr->HostName, true);
+                            if (addr->IsHost && model_map_get(hostnamesToAdd, addr->HostName) == NULL) {
+                                model_map_set(hostnamesToAdd, addr->HostName, true);
                             }
                         }
                     }
@@ -863,10 +865,16 @@ static void on_event(const base_event *ev) {
                 }
 
 #if _WIN32
-                if (model_map_size(&hostnamesToAdd) > 0) {
-                    add_nrpt_rules(main_ziti_loop, &hostnamesToAdd, get_dns_ip());
+                if (model_map_size(hostnamesToAdd) > 0) {
+                    struct add_service_nrpt_req *add_svc_req_data = calloc(1, sizeof(struct add_service_nrpt_req));
+                    add_svc_req_data->hostnames = hostnamesToAdd;
+                    add_svc_req_data->dns_ip = get_dns_ip();
+
+                    uv_async_t *ar = calloc(1, sizeof(uv_async_t));
+                    ar->data = add_svc_req_data;
+                    uv_async_init(main_ziti_loop, ar, add_nrpt_rules);
+                    uv_async_send(ar);
                 }
-                model_map_clear(&hostnamesToAdd, NULL);
 #endif
             }
 
@@ -1251,16 +1259,23 @@ static void run(int argc, char *argv[]) {
         model_map *domains = get_connection_specific_domains();
         const char *key;
         bool status;
-        model_map normalized_domains = {0};
+        model_map *normalized_domains = calloc(1, sizeof(model_map));
         model_map_iter it = model_map_iterator(domains);
         while (it != NULL) {
             char *key = model_map_it_key(it);
-            model_map_set(&normalized_domains, normalize_host(key), true);
+            model_map_set(normalized_domains, normalize_host(key), true);
             it = model_map_it_remove(it);
         }
         model_map_clear(domains, (_free_f) free);
         free(domains);
-        add_nrpt_rules(ziti_loop, &normalized_domains, get_dns_ip());
+        struct add_service_nrpt_req *add_svc_req_data = calloc(1, sizeof(struct add_service_nrpt_req));
+        add_svc_req_data->hostnames = normalized_domains;
+        add_svc_req_data->dns_ip = get_dns_ip();
+
+        uv_async_t *ar = calloc(1, sizeof(uv_async_t));
+        ar->data = add_svc_req_data;
+        uv_async_init(main_ziti_loop, ar, add_nrpt_rules);
+        uv_async_send(ar);
     }
 #endif
 
