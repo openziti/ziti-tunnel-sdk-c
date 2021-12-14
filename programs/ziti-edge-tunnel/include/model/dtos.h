@@ -114,6 +114,11 @@ XX(ok, __VA_ARGS__)
 
 DECLARE_ENUM(instance_status, INSTANCE_STATUS)
 
+struct add_service_nrpt_req {
+    model_map *hostnames;
+    char* dns_ip;
+};
+
 DECLARE_MODEL(tunnel_config, TUNNEL_CONFIG)
 DECLARE_MODEL(tunnel_metrics, TUNNEL_METRICS)
 DECLARE_MODEL(tunnel_address, TUNNEL_ADDRESS)
