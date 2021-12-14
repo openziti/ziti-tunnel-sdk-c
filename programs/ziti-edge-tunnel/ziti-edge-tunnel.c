@@ -1242,6 +1242,36 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
         return 1;
     }
 
+#if _WIN32
+    bool nrpt_effective = is_nrpt_policies_effective(get_dns_ip());
+    if (!nrpt_effective || get_add_dns_flag()) {
+        ZITI_LOG(INFO, "Enable DNS for %s", get_dns_ip());
+        set_dns(tun->handle, dns_ip);
+    }
+    if (nrpt_effective) {
+        model_map *domains = get_connection_specific_domains();
+        const char *key;
+        bool status;
+        model_map *normalized_domains = calloc(1, sizeof(model_map));
+        model_map_iter it = model_map_iterator(domains);
+        while (it != NULL) {
+            char *key = model_map_it_key(it);
+            model_map_set(normalized_domains, normalize_host(key), true);
+            it = model_map_it_remove(it);
+        }
+        model_map_clear(domains, (_free_f) free);
+        free(domains);
+        struct add_service_nrpt_req *add_svc_req_data = calloc(1, sizeof(struct add_service_nrpt_req));
+        add_svc_req_data->hostnames = normalized_domains;
+        add_svc_req_data->dns_ip = get_dns_ip();
+
+        uv_async_t *ar = calloc(1, sizeof(uv_async_t));
+        ar->data = add_svc_req_data;
+        uv_async_init(main_ziti_loop, ar, add_nrpt_rules);
+        uv_async_send(ar);
+    }
+#endif
+
     tunneler_sdk_options tunneler_opts = {
             .netif_driver = tun,
             .ziti_dial = ziti_sdk_c_dial,
@@ -1479,36 +1509,6 @@ static void run(int argc, char *argv[]) {
         ZITI_LOG(ERROR, "failed to initialize default uv loop");
         exit(1);
     }
-
-#if _WIN32
-    bool nrpt_effective = is_nrpt_policies_effective(get_dns_ip());
-    if (!nrpt_effective || get_add_dns_flag()) {
-        ZITI_LOG(INFO, "Enable DNS for %s", get_dns_ip());
-        set_dns(tun->handle, dns_ip);
-    }
-    if (nrpt_effective) {
-        model_map *domains = get_connection_specific_domains();
-        const char *key;
-        bool status;
-        model_map *normalized_domains = calloc(1, sizeof(model_map));
-        model_map_iter it = model_map_iterator(domains);
-        while (it != NULL) {
-            char *key = model_map_it_key(it);
-            model_map_set(normalized_domains, normalize_host(key), true);
-            it = model_map_it_remove(it);
-        }
-        model_map_clear(domains, (_free_f) free);
-        free(domains);
-        struct add_service_nrpt_req *add_svc_req_data = calloc(1, sizeof(struct add_service_nrpt_req));
-        add_svc_req_data->hostnames = normalized_domains;
-        add_svc_req_data->dns_ip = get_dns_ip();
-
-        uv_async_t *ar = calloc(1, sizeof(uv_async_t));
-        ar->data = add_svc_req_data;
-        uv_async_init(main_ziti_loop, ar, add_nrpt_rules);
-        uv_async_send(ar);
-    }
-#endif
 
     dns_manager *dns = NULL;
     if (dns_impl && strncmp("dnsmasq", dns_impl, strlen("dnsmasq")) == 0) {
