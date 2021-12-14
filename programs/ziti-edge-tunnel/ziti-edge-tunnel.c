@@ -1011,7 +1011,7 @@ static void on_event(const base_event *ev) {
 
         case TunnelEvent_ServiceEvent: {
             const service_event *svc_ev = (service_event *) ev;
-            ZITI_LOG(INFO, "ztx[%s] service event", ev->identifier);
+            ZITI_LOG(INFO, "=============== ztx[%s] service event ===============", ev->identifier);
             tunnel_identity *id = find_tunnel_identity(ev->identifier);
             if (id == NULL) {
                 break;
