@@ -114,6 +114,12 @@ struct add_service_nrpt_req {
     char* dns_ip;
 };
 
+struct modify_service_nrpt_req {
+    model_map *hostnamesToRemove;
+    model_map *hostnamesToAdd;
+    char* dns_ip;
+};
+
 DECLARE_MODEL(tunnel_config, TUNNEL_CONFIG)
 DECLARE_MODEL(tunnel_metrics, TUNNEL_METRICS)
 DECLARE_MODEL(tunnel_address, TUNNEL_ADDRESS)
