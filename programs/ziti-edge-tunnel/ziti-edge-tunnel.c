@@ -57,6 +57,9 @@ static void send_message_to_tunnel();
 typedef char * (*to_json_fn)(const void * msg, int flags, size_t *len);
 static void send_events_message(const void *message, to_json_fn to_json_f, bool displayEvent);
 static void send_tunnel_command(tunnel_comand *tnl_cmd, void *ctx);
+#if _WIN32
+static void move_config_from_backup(uv_loop_t *loop);
+#endif
 
 struct cfg_instance_s {
     char *cfg;
@@ -1503,6 +1506,7 @@ static void run(int argc, char *argv[]) {
     } else {
         ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
     }
+    move_config_from_backup(ziti_loop);
     ZITI_LOG(INFO,"Loading identity files from %s", config_dir);
 #else
     ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
@@ -2458,6 +2462,63 @@ void scm_service_stop() {
         uv_stop(main_ziti_loop);
         uv_loop_close(main_ziti_loop);
     }
+}
+
+static void move_config_from_backup(uv_loop_t *loop) {
+    char **backup_folders = calloc(3, sizeof(char*));
+    char **bkp_temp = backup_folders;
+    *bkp_temp = "Windows.~BT\\Windows\\System32\\config\\systemprofile\\AppData\\Roaming\\NetFoundry";
+    bkp_temp++;
+    *bkp_temp = "Windows.old\\Windows\\System32\\config\\systemprofile\\AppData\\Roaming\\NetFoundry";
+    bkp_temp++;
+    *bkp_temp = '\0';
+
+    char* system_drive = getenv("SystemDrive");
+
+    for (int i =0; backup_folders[i]; i++) {
+        char* config_dir_bkp = calloc(FILENAME_MAX, sizeof(char));
+        sprintf(config_dir_bkp, "%s\\%s", system_drive, backup_folders[i]);
+        uv_fs_t fs;
+        int rc = uv_fs_access(loop, &fs, config_dir_bkp, 0, NULL);
+        if (rc < 0) {
+            uv_fs_req_cleanup(&fs);
+            continue;
+        }
+        rc = uv_fs_scandir(loop, &fs, config_dir_bkp, 0, NULL);
+        if (rc < 0) {
+            ZITI_LOG(ERROR, "failed to scan dir[%s]: %d/%s", config_dir_bkp, rc, uv_strerror(rc));
+            uv_fs_req_cleanup(&fs);
+            continue;
+        } else if (rc == 0) {
+            uv_fs_req_cleanup(&fs);
+            continue;
+        }
+        ZITI_LOG(TRACE, "scan dir %s, file count: %d", config_dir_bkp, rc);
+
+        uv_dirent_t file;
+        while (uv_fs_scandir_next(&fs, &file) == 0) {
+            if (file.type == UV_DIRENT_FILE) {
+                char old_file[FILENAME_MAX];
+                sprintf(old_file, "%s\\%s", config_dir_bkp, file.name);
+                char new_file[FILENAME_MAX];
+                sprintf(new_file, "%s\\%s", config_dir, file.name);
+                uv_fs_t fs_cpy;
+                rc = uv_fs_copyfile(loop, &fs_cpy, old_file, new_file, 0, NULL);
+                if (rc == 0) {
+                    ZITI_LOG(INFO, "Restored old identity from the backup path - %s to new path - %s", old_file , new_file);
+                    ZITI_LOG(INFO, "Removing old identity from the backup path - %s", old_file);
+                    remove(old_file);
+                } else {
+                    ZITI_LOG(ERROR, "failed to copy backup identity file[%s]: %d/%s", old_file, rc, uv_strerror(rc));
+                }
+                uv_fs_req_cleanup(&fs_cpy);
+            }
+        }
+        free(config_dir_bkp);
+        config_dir_bkp = NULL;
+        uv_fs_req_cleanup(&fs);
+    }
+    free(backup_folders);
 }
 #endif
 
