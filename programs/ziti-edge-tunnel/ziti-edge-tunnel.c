@@ -1056,15 +1056,6 @@ static void on_event(const base_event *ev) {
 #endif
                     svc_event.RemovedServices[svc_idx] = svc;
                 }
-
-#if _WIN32
-                if (model_map_size(hostnamesToRemove) > 0) {
-                    uv_async_t *ar = calloc(1, sizeof(uv_async_t));
-                    ar->data = hostnamesToRemove;
-                    uv_async_init(main_ziti_loop, ar, remove_nrpt_rules);
-                    uv_async_send(ar);
-                }
-#endif
             }
 
             if (svc_ev->added_services != NULL) {
@@ -1087,20 +1078,36 @@ static void on_event(const base_event *ev) {
                     }
 #endif
                 }
+            }
+
 
 #if _WIN32
-                if (model_map_size(hostnamesToAdd) > 0) {
-                    struct add_service_nrpt_req *add_svc_req_data = calloc(1, sizeof(struct add_service_nrpt_req));
-                    add_svc_req_data->hostnames = hostnamesToAdd;
-                    add_svc_req_data->dns_ip = get_dns_ip();
+            if (model_map_size(hostnamesToAdd) > 0 && model_map_size(hostnamesToRemove) > 0) {
+                struct modify_service_nrpt_req *modify_svc_req_data = calloc(1, sizeof(struct modify_service_nrpt_req));
+                modify_svc_req_data->hostnamesToRemove = hostnamesToRemove;
+                modify_svc_req_data->hostnamesToAdd = hostnamesToAdd;
+                modify_svc_req_data->dns_ip = get_dns_ip();
 
-                    uv_async_t *ar = calloc(1, sizeof(uv_async_t));
-                    ar->data = add_svc_req_data;
-                    uv_async_init(main_ziti_loop, ar, add_nrpt_rules);
-                    uv_async_send(ar);
-                }
-#endif
+                uv_async_t *ar = calloc(1, sizeof(uv_async_t));
+                ar->data = modify_svc_req_data;
+                uv_async_init(main_ziti_loop, ar, remove_and_add_nrpt_rules);
+                uv_async_send(ar);
+            } else if (model_map_size(hostnamesToAdd) > 0) {
+                struct add_service_nrpt_req *add_svc_req_data = calloc(1, sizeof(struct add_service_nrpt_req));
+                add_svc_req_data->hostnames = hostnamesToAdd;
+                add_svc_req_data->dns_ip = get_dns_ip();
+
+                uv_async_t *ar = calloc(1, sizeof(uv_async_t));
+                ar->data = add_svc_req_data;
+                uv_async_init(main_ziti_loop, ar, add_nrpt_rules);
+                uv_async_send(ar);
+            } else if (model_map_size(hostnamesToRemove) > 0) {
+                uv_async_t *ar = calloc(1, sizeof(uv_async_t));
+                ar->data = hostnamesToRemove;
+                uv_async_init(main_ziti_loop, ar, remove_nrpt_rules);
+                uv_async_send(ar);
             }
+#endif
 
             if (svc_ev->removed_services != NULL || svc_ev->added_services != NULL) {
                 add_or_remove_services_from_tunnel(id, svc_event.AddedServices, svc_event.RemovedServices);
