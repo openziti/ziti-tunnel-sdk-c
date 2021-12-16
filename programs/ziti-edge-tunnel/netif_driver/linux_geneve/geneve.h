@@ -16,10 +16,8 @@
 #ifndef ZITI_TUNNELER_SDK_GENEVE_H
 #define ZITI_TUNNELER_SDK_GENEVE_H
 
-#include <net/if.h>
 #include <ziti/netif_driver.h>
 #include <ziti/ziti_model.h>
-#include <linux/byteorder/little_endian.h>
 #include <linux/types.h>
 
 struct geneve_flow_s {
@@ -27,14 +25,13 @@ struct geneve_flow_s {
     uv_udp_t udp_handle_out;
     struct sockaddr_in send_address;
     struct sockaddr_in bind_address;
-    bool flow_done_in;
-    bool flow_done_out;
-    uv_timer_t *conn_timer;
+    uv_timer_t conn_timer;
     uint32_t idle_timeout;
+    char search_flow_key[27];
 };
 
 struct netif_handle_s {
-    model_map flow_ids;
+    model_map flow_list;
     uv_udp_t udp_handle_in;
     struct uv_loop_s *loop;
 };
@@ -48,12 +45,7 @@ struct inner_ip_hdr_info {
     u8_t flags;
 };
 
-struct geneve_packet {
-    uv_buf_t buf[2];
-    struct geneve_flow_s *received_flow;
-    char received_flow_key[27];
-};
-
+//extern int ziti_tunneler_driver_cb(netif_driver driver_ctx);
 extern netif_driver geneve_open(struct uv_loop_s *loop, char *error, size_t error_len);
 
 /*

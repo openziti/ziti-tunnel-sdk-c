@@ -14,36 +14,41 @@
  limitations under the License.
  */
 
-#include <sys/ioctl.h>
-#include <sys/wait.h>
-//#include <linux/if.h>
 #include <linux/if_tun.h>
-#include <linux/netlink.h>
-#include <linux/rtnetlink.h>
-#include <fcntl.h>
-#include <string.h>
 #include <stdlib.h>
-#include <unistd.h>
-#include <stdarg.h>
 #include <netif_shim.h>
-
 #include <ziti/ziti_log.h>
-#include <ziti/ziti_dns.h>
-#include <stdbool.h>
-#include <lwip/inet_chksum.h>
-#include <lwip/ip4_addr.h>
-#include <lwip/ip4.h>
 #include <lwip/udp.h>
 #include "lwip/priv/tcp_priv.h"
-
 #include "geneve.h"
 
 /* max ipv4 MTU */
 #define BUFFER_SIZE 9000
 
+
 static int geneve_close(netif_handle geneve) {
     uv_udp_recv_stop(&geneve->udp_handle_in);
     uv_close((uv_handle_t *) geneve, NULL);
+}
+
+struct geneve_packet_s {
+    uv_buf_t buf[2];
+    struct geneve_flow_s *matched_flow_value;
+};
+
+struct geneve_timeout_ctx_s {
+    netif_handle geneve;
+    struct geneve_flow_s *flow_info;
+};
+
+static void geneve_timeout_cb(uv_timer_t *geneve) {
+    struct geneve_timeout_ctx_s *gt_ctx = geneve->data;
+    uv_close((uv_handle_t *) &gt_ctx->flow_info->udp_handle_out, NULL);
+    model_map_remove(&gt_ctx->geneve->flow_list, gt_ctx->flow_info->search_flow_key);
+    size_t map_size = model_map_size(&gt_ctx->geneve->flow_list);
+    ZITI_LOG(DEBUG, "The record with key %s has been deleted from the flow table,"
+                    " and the table size is at %zu now.", gt_ctx->flow_info->search_flow_key, map_size);
+    free(gt_ctx);
 }
 
 static void read_alloc_cb(uv_handle_t* handle, size_t suggested_size, uv_buf_t* buf) {
@@ -55,7 +60,7 @@ static void read_alloc_cb(uv_handle_t* handle, size_t suggested_size, uv_buf_t* 
 static void write_status_cb(uv_udp_send_t *req, int status) {
 
     ZITI_LOG(INFO, "Geneve write completed and status %d", status);
-    struct geneve_packet *g_pkt = req->data;
+    struct geneve_packet_s *g_pkt = req->data;
     free(g_pkt->buf[0].base);
     free(g_pkt->buf[1].base);
     free(g_pkt);
@@ -101,7 +106,7 @@ static void geneve_overhead_pack(struct geneve_hdr *g_hdr, const void *buf, uint
 }
 
 static void parse_ipheader(struct inner_ip_hdr_info *i_hdr, const void *buf) {
-
+    /* TODO Can the TSDK provide this function*/
     /* Initialize IP variables */
     u16_t iphdr_hlen;
     char ip_version = IPH_V((struct ip_hdr *)(buf));
@@ -219,63 +224,56 @@ void geneve_udp_read(uv_udp_t *req, ssize_t nread, const uv_buf_t *buf, const st
     memcpy(&flow_key_byte[11], &i_hdr->src_p, 2 * sizeof(uint8_t));
 
     /* Convert to string */
-    char flow_key[27];
+    char search_flow_key[27];
     for (int i = 0; i < 13; i++) {
-        sprintf(&flow_key[i*2], "%02x", flow_key_byte[i]);
+        sprintf(&search_flow_key[i*2], "%02x", flow_key_byte[i]);
     }
-    flow_key[26] = '\0';
-    ZITI_LOG(DEBUG, "flow key is %s\n", flow_key);
+    search_flow_key[26] = '\0';
+    ZITI_LOG(DEBUG, "flow key is %s", search_flow_key);
 
     /* Check if key exists, no need for new entry or outbound handle */
-    struct geneve_flow_s *flow_info = model_map_get(&geneve->flow_ids, flow_key);
+    struct geneve_flow_s *flow_info = model_map_get(&geneve->flow_list, search_flow_key);
     if (flow_info == NULL) {
 
-        if ((i_hdr->proto_type == IPPROTO_TCP) && !(i_hdr->flags & TCP_SYN)) {
-            ZITI_LOG(DEBUG, "This is not a syn packet, the tcp flow %s is not active.\n", flow_key);
-            return;
-        }
         /* Initialize flow struct */
         flow_info = calloc(1, sizeof(struct geneve_flow_s));
 
-        /* Fill in values for flow struct */;
+        /* Fill in values for flow_info struct */;
         flow_info->send_address = *(struct sockaddr_in *) addr;
         flow_info->send_address.sin_port = lwip_htons(GENEVE_UDP_PORT);
         flow_info->bind_address = *(struct sockaddr_in *) addr;
         inet_aton(IP_LOCAL_BIND, &flow_info->bind_address.sin_addr);
         memcpy(&flow_info->id[0], &buf->base[0], 40 * sizeof(uint8_t));
+        memcpy(&flow_info->search_flow_key, search_flow_key, 27);
 
-        /* Copy Geneve header info into flow_ids map */
-        model_map_set(&geneve->flow_ids, flow_key, flow_info);
+        /* Initialize flow timer */
+        flow_info->idle_timeout = 120000;
+        uv_timer_init(geneve->loop, &flow_info->conn_timer);
+        struct geneve_timeout_ctx_s *gt_ctx = calloc(1, sizeof(struct geneve_timeout_ctx_s));
+        flow_info->conn_timer.data = gt_ctx;
+        gt_ctx->geneve = geneve;
+        gt_ctx->flow_info = flow_info;
 
-        size_t map_size = model_map_size(&geneve->flow_ids);
-        ZITI_LOG(DEBUG, "flow map size when adding new key is %zu\n", map_size);
+        /* Copy Geneve header info into flow_list map */
+        model_map_set(&geneve->flow_list, search_flow_key, flow_info);
+        size_t map_size = model_map_size(&geneve->flow_list);
+        ZITI_LOG(DEBUG, "The record with key %s has been added from the flow table,"
+                        " and the table size is at %zu now.", search_flow_key,map_size);
 
-        ZITI_LOG(DEBUG, "Geneve (2) Send Address %s:%d\n", inet_ntoa(flow_info->send_address.sin_addr), htons ( flow_info->send_address.sin_port));
-        ZITI_LOG(DEBUG, "Geneve (2) Bind Address %s:%d\n", inet_ntoa(flow_info->bind_address.sin_addr), htons ( flow_info->bind_address.sin_port));
+        ZITI_LOG(DEBUG, "Geneve (2) Send Address %s:%d", inet_ntoa(flow_info->send_address.sin_addr), htons ( flow_info->send_address.sin_port));
+        ZITI_LOG(DEBUG, "Geneve (2) Bind Address %s:%d", inet_ntoa(flow_info->bind_address.sin_addr), htons ( flow_info->bind_address.sin_port));
 
         /* Initialize outbound handle */
         if (uv_udp_init(geneve->loop, &flow_info->udp_handle_out)) {
-            ZITI_LOG(ERROR, "Failed to initialize uv UDP handle out for geneve\n");
+            ZITI_LOG(ERROR, "Failed to initialize uv UDP handle out for geneve");
         }
-        if (uv_udp_bind(&flow_info->udp_handle_out, (const struct sockaddr *) &flow_info->bind_address,
-                        UV_UDP_REUSEADDR)) {
+        if (uv_udp_bind(&flow_info->udp_handle_out, (const struct sockaddr *) &flow_info->bind_address,UV_UDP_REUSEADDR)) {
             ZITI_LOG(ERROR, "Could not add netlink socket to uv UDP handle out for geneve");
         }
-    } else {
-        if (i_hdr->flags & (TCP_FIN | TCP_RST)) {
-            /* this is  a FIN/FIN ACK/FIN ACK PSH/RST segment, set  flow_done_in to true for closure */
-            flow_info->flow_done_in = true;
-            //flow_info->conn_timer = calloc(1, sizeof(uv_timer_t));
-            //flow_info->conn_timer->data = flow_info;
-            //uv_timer_init(geneve->loop, flow_info->conn_timer);
-        }
-        if (flow_info->flow_done_out && flow_info->flow_done_in) {
-            uv_close((uv_handle_t *) &flow_info->udp_handle_out, NULL);
-            model_map_remove(&geneve->flow_ids, flow_key);
-            size_t map_size = model_map_size(&geneve->flow_ids);
-            ZITI_LOG(DEBUG, "flow map size deleted by 1 ans is at %zu\n", map_size);
-        }
     }
+
+    /* Restart the flow timer */
+    uv_timer_start(&flow_info->conn_timer, geneve_timeout_cb, flow_info->idle_timeout, 0);
 
     /* Let lwip process the packet */
     on_packet(buf->base + 40, nread - 40, netif_default);
@@ -283,7 +281,7 @@ void geneve_udp_read(uv_udp_t *req, ssize_t nread, const uv_buf_t *buf, const st
     free(i_hdr);
 }
 
-ssize_t geneve_write(netif_handle geneve, const void *buf, size_t len) {
+void geneve_write(netif_handle geneve, const void *buf, size_t len) {
 
     /* read flow map  with received key to get flow details to build the geneve header */
     u8_t received_flow_key_byte[13];
@@ -291,19 +289,23 @@ ssize_t geneve_write(netif_handle geneve, const void *buf, size_t len) {
     memcpy(&received_flow_key_byte[1], &buf[12], 12*sizeof(uint8_t));
 
     /* Convert to string */
-    struct geneve_packet *g_pkt = calloc(1, sizeof(struct geneve_packet));
+    struct geneve_packet_s *g_pkt = calloc(1, sizeof(struct geneve_packet_s));
+    char search_flow_key[27];
     for (int i = 0; i < 13; i++) {
-        sprintf(&g_pkt->received_flow_key[i*2], "%02x", received_flow_key_byte[i]);
+        sprintf(&search_flow_key[i*2], "%02x", received_flow_key_byte[i]);
     }
-    g_pkt->received_flow_key[26] = '\0';
-    ZITI_LOG(DEBUG, "flow key is %s\n", g_pkt->received_flow_key);
+    search_flow_key[26] = '\0';
+    ZITI_LOG(DEBUG, "The received search flow key is %s", search_flow_key);
 
     /* Retrieve flow_info based on the received key */
-    g_pkt->received_flow = model_map_get(&geneve->flow_ids, g_pkt->received_flow_key);
-    if (g_pkt->received_flow != NULL) {
+    g_pkt->matched_flow_value = model_map_get(&geneve->flow_list, search_flow_key);
+    if (g_pkt->matched_flow_value != NULL) {
+
         /* Build the geneve header */
         struct geneve_hdr *g_hdr = calloc(1, sizeof(struct geneve_hdr));
-        geneve_overhead_pack(g_hdr, buf, g_pkt->received_flow->id);
+        geneve_overhead_pack(g_hdr, buf, g_pkt->matched_flow_value->id);
+        size_t map_size = model_map_size(&geneve->flow_list);
+        ZITI_LOG(DEBUG, "The flow table size is %zu", map_size);
 
         /* Combine 2 buffs into one contiguous geneve packet (header plus ip4 payload) to be sent out */
         g_pkt->buf[0].base = (char*) g_hdr;
@@ -312,36 +314,22 @@ ssize_t geneve_write(netif_handle geneve, const void *buf, size_t len) {
         memcpy(g_pkt->buf[1].base, buf, len);
         g_pkt->buf[1].len = len;
 
-        /* check for fin ack / rst to close handle out and delete map entry for that session */
-        struct inner_ip_hdr_info *i_hdr = calloc(1, sizeof(struct inner_ip_hdr_info));
-        parse_ipheader(i_hdr, buf);
-        if (i_hdr != NULL) {
-            ZITI_LOG(DEBUG, "flag in header is %X\n", i_hdr->flags);
-            if (i_hdr->flags & (TCP_FIN | TCP_RST)) {
-                /* this is  a FIN/RST segment, close the current session */
-                g_pkt->received_flow->flow_done_out = true;
-            }
-        }
-        free(i_hdr);
-        size_t map_size = model_map_size(&geneve->flow_ids);
-        ZITI_LOG(DEBUG, "flow map size is %zu\n", map_size);
-
-        /* Initializing req to use in the call back funtion */
+        /* Initializing req to use in the callback function */
         uv_udp_send_t *send_req = malloc(sizeof(uv_udp_send_t));
         send_req->data = g_pkt;
 
         /* Send the geneve packet out */
-        ZITI_LOG(DEBUG, "Geneve (2) Send Address %s:%d\n", inet_ntoa( g_pkt->received_flow->send_address.sin_addr), htons ( g_pkt->received_flow->send_address.sin_port));
-        ZITI_LOG(DEBUG, "Geneve (2) Bind Address %s:%d\n", inet_ntoa( g_pkt->received_flow->bind_address.sin_addr), htons ( g_pkt->received_flow->bind_address.sin_port));
-        uv_udp_send(send_req, &g_pkt->received_flow->udp_handle_out, g_pkt->buf, 2, (const struct sockaddr*) &g_pkt->received_flow->send_address, write_status_cb);
-        if (g_pkt->received_flow->flow_done_out && g_pkt->received_flow->flow_done_in) {
-            uv_close((uv_handle_t *) &g_pkt->received_flow->udp_handle_out, NULL);
-            model_map_remove(&geneve->flow_ids, g_pkt->received_flow_key);
-            map_size = model_map_size(&geneve->flow_ids);
-            ZITI_LOG(DEBUG, "flow map size deleted by 1 ans is at %zu\n", map_size);
-        }
+        ZITI_LOG(DEBUG, "Geneve (2) Send Address %s:%d", inet_ntoa( g_pkt->matched_flow_value->send_address.sin_addr), htons (g_pkt->matched_flow_value->send_address.sin_port));
+        ZITI_LOG(DEBUG, "Geneve (2) Bind Address %s:%d", inet_ntoa( g_pkt->matched_flow_value->bind_address.sin_addr), htons (g_pkt->matched_flow_value->bind_address.sin_port));
+
+        /* Restart the flow timer */
+        uv_timer_start(&g_pkt->matched_flow_value->conn_timer, geneve_timeout_cb, g_pkt->matched_flow_value->idle_timeout, 0);
+
+        /* send the geneve response back */
+        uv_udp_send(send_req, &g_pkt->matched_flow_value->udp_handle_out, g_pkt->buf, 2, (const struct sockaddr*) &g_pkt->matched_flow_value->send_address, write_status_cb);
+
     } else {
-        ZITI_LOG(ERROR, "flow key %s does not exist \n", g_pkt->received_flow_key);
+        ZITI_LOG(ERROR, "The receive flow key %s does not exist.", search_flow_key);
         free(g_pkt);
     }
 }
@@ -354,27 +342,28 @@ netif_driver geneve_open(uv_loop_t *loop, char *error, size_t error_len) {
     //const char *ip_bind = "0.0.0.0";
     /* retrieve ip and port from sockaddr_in */
     uv_ip4_addr(IP_LOCAL_BIND, GENEVE_UDP_PORT, &geneve_addr);
-    fprintf(stderr, "Geneve Port open %s:%d\n", inet_ntoa(geneve_addr.sin_addr), htons (geneve_addr.sin_port));
+    fprintf(stderr, "Geneve Port open %s:%d", inet_ntoa(geneve_addr.sin_addr), htons (geneve_addr.sin_port));
     /* Add geneve socket to event loop */
     if (uv_udp_init(geneve->loop, &geneve->udp_handle_in)) {
-        snprintf(error, error_len, "Failed to initialize uv UDP handle in for geneve\n");
+        snprintf(error, error_len, "Failed to initialize uv UDP handle in for geneve");
         return NULL;
     }
     // Initialized memory for the driver struct
     struct netif_driver_s *driver = calloc(1, sizeof(struct netif_driver_s));
 
     if (uv_udp_bind(&geneve->udp_handle_in, (const struct sockaddr *) &geneve_addr, UV_UDP_REUSEADDR)) {
-        snprintf(error, error_len, "Could not add netlink socket to uv geneve\n");
+        snprintf(error, error_len, "Could not add netlink socket to uv geneve");
         return NULL;
     }
     /* udp handle to pass pointer to on_packet */
     geneve->udp_handle_in.data = driver;
 
     if (uv_udp_recv_start(&geneve->udp_handle_in, read_alloc_cb, geneve_udp_read)) {
-        snprintf(error, error_len, "Could not start receiving netlink packets for geneve\n");
+        snprintf(error, error_len, "Could not start receiving netlink packets for geneve");
         return NULL;
     }
 
+    /* Initialize driver call backs */
     driver->handle = geneve;
     driver->write = geneve_write;
     driver->close = geneve_close;
