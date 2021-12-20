@@ -54,7 +54,11 @@ bool load_config_from_file(char* config_file_name) {
         }
         fclose(config_file);
     } else {
-        ZITI_LOG(INFO, "The config file %s does not exist. This is normal if this is a new install or if the config file was removed manually", config_file_name);
+        if (errno != 0) {
+            ZITI_LOG(ERROR, "The config file %s cannot be opened due to %s. This is normal if this is a new install or if the config file was removed manually", strerror(errno), config_file_name);
+        } else {
+            ZITI_LOG(INFO, "The config file %s does not exist. This is normal if this is a new install or if the config file was removed manually", config_file_name);
+        }
     }
     return loaded;
 }
