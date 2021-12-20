@@ -336,7 +336,7 @@ static bool process_tunnel_commands(const tunnel_comand *tnl_cmd, command_cb cb,
             }
             log_level lvl = log_level_value_of(tunnel_set_log_level_cmd.loglevel);
             if (lvl != NULL && ziti_log_level() != lvl) {
-                set_log_level(tunnel_set_log_level_cmd.loglevel);
+                set_log_level(lvl);
                 ziti_log_set_level(lvl);
                 result.success = true;
             } else {
@@ -1255,8 +1255,18 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
 #if _WIN32
     bool nrpt_effective = is_nrpt_policies_effective(get_dns_ip());
     if (!nrpt_effective || get_add_dns_flag()) {
-        ZITI_LOG(INFO, "Enable DNS for %s", get_dns_ip());
+        if (get_add_dns_flag()) {
+            ZITI_LOG(INFO, "DNS is enabled for the TUN interface, because apply Dns flag in the config file is true");
+        }
+        if (!nrpt_effective && !get_add_dns_flag()) {
+            ZITI_LOG(INFO, "DNS is enabled for the TUN interface, because Ziti policies test result in this client is false");
+        }
         set_dns(tun->handle, dns_ip);
+        ZITI_LOG(INFO, "Setting interface metric to 5");
+        update_interface_metric(ziti_loop, get_tun_name(tun->handle), 5);
+    } else {
+        ZITI_LOG(INFO, "Setting interface metric to 255");
+        update_interface_metric(ziti_loop, get_tun_name(tun->handle), 255);
     }
     if (nrpt_effective) {
         model_map *domains = get_connection_specific_domains();
@@ -1485,9 +1495,9 @@ static void run(int argc, char *argv[]) {
 
     // set log level from instance/config, if NULL is returned, the default log level will be used
     int log_lvl_val = ZITI_LOG_DEFAULT_LEVEL;
-    char* log_lvl = get_log_level();
-    if (log_lvl != NULL) {
-        log_lvl_val = log_level_value_of(log_lvl);
+    int log_lvl = get_log_level();
+    if (log_lvl != log_lvl_val) {
+        log_lvl_val = log_lvl;
     }
 
     // set the service version in instance
@@ -1512,7 +1522,7 @@ static void run(int argc, char *argv[]) {
     ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
 #endif
 
-    set_log_level(log_level_name(ziti_log_level()));
+    set_log_level(ziti_log_level());
     ziti_tunnel_set_log_level(ziti_log_level());
     ziti_tunnel_set_logger(ziti_logger);
 

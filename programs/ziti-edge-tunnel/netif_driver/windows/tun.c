@@ -467,3 +467,7 @@ int set_dns(netif_handle tun, uint32_t dns_ip) {
     }
     return rc;
 }
+
+char* get_tun_name(netif_handle tun) {
+    return tun->name;
+}

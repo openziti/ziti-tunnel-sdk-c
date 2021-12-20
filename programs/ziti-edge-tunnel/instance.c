@@ -491,11 +491,13 @@ void initialize_tunnel_status() {
     uv_gettimeofday(&now);
     tnl_status.StartTime.tv_sec = now.tv_sec;
     tnl_status.StartTime.tv_usec = now.tv_usec;
-
+    if (tnl_status.LogLevel == log_level_Unknown) {
+        tnl_status.LogLevel = log_level_info;
+    }
 }
 
 bool load_tunnel_status(char* config_data) {
-    if (parse_tunnel_status(&tnl_status, config_data, strlen(config_data)) != 0) {
+    if (parse_tunnel_status(&tnl_status, config_data, strlen(config_data)) < 0) {
         free(config_data);
         ZITI_LOG(ERROR, "Could not read tunnel status from config data");
         return false;
@@ -578,16 +580,15 @@ void set_ip_info(uint32_t dns_ip, uint32_t tun_ip, int bits) {
 
 }
 
-void set_log_level(char* log_level) {
-    if (tnl_status.LogLevel) free(tnl_status.LogLevel);
-    tnl_status.LogLevel = strdup(log_level);
+void set_log_level(int log_level) {
+    tnl_status.LogLevel = log_level;
 }
 
-char* get_log_level() {
+int get_log_level() {
     if (tnl_status.LogLevel) {
         return tnl_status.LogLevel;
     } else {
-        return NULL;
+        return log_level_Unknown;
     }
 }
 
