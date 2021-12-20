@@ -40,8 +40,7 @@ bool load_config_from_file(char* config_file_name) {
 
     FILE* config_file = fopen(config_file_name, "r");
     if (config_file != NULL) {
-        char *config_buffer = malloc(MAX_BUFFER_LEN * sizeof(char));
-        *config_buffer = NULL;
+        char config_buffer[MAX_BUFFER_LEN];
         char line[512];
         while ((fgets(line, sizeof(line), config_file)) != NULL) {
             strcat(config_buffer, line);
@@ -66,9 +65,13 @@ bool load_tunnel_status_from_file(uv_loop_t* ziti_loop) {
     uv_fs_t fs;
     int check = uv_fs_mkdir(ziti_loop, &fs, config_path, 0755, NULL);
     if (check == 0) {
-        ZITI_LOG(TRACE,"config path is created at %s", config_path);
+        ZITI_LOG(TRACE, "config path is created at %s", config_path);
+        return false;
+    } else if (check == UV_EEXIST) {
+        ZITI_LOG(TRACE, "config path exists at %s", config_path);
     } else {
-        ZITI_LOG(TRACE,"config path is found at %s", config_path);
+        ZITI_LOG(ERROR, "error creating %s: %s", config_path, uv_strerror(check));
+        return false;
     }
     bool loaded = false;
 
@@ -115,7 +118,7 @@ bool save_tunnel_status_to_file() {
         if (rename(config_file_name, bkp_config_file_name) == 0) {
             ZITI_LOG(DEBUG, "Copied config file to backup config file %s", bkp_config_file_name);
         } else {
-            ZITI_LOG(DEBUG, "Could not copy config file [%s] to backup config file, the config might not exists at the moment", config_file_name);
+            ZITI_LOG(ERROR, "Could not copy config file [%s] to backup config file, the config might not exists at the moment", config_file_name);
         }
 
         // write tunnel status to the config file

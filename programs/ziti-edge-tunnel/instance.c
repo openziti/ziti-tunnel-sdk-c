@@ -50,9 +50,9 @@ tunnel_identity *create_or_get_tunnel_identity(char* identifier, char* filename)
         if (filename != NULL) {
             char* extension = strstr(filename, ".json");
 
-            int length;
+            size_t length;
             if (extension != NULL) {
-                length = (int) (extension - filename);
+                length = extension - filename;
             } else {
                 length = strlen(filename);
             }
@@ -483,12 +483,11 @@ void initialize_tunnel_status() {
 }
 
 bool load_tunnel_status(char* config_data) {
-    if (parse_tunnel_status(&tnl_status, config_data, strlen(config_data)) != 0) {
+    if (parse_tunnel_status(&tnl_status, config_data, strlen(config_data)) < 0) {
         free(config_data);
         ZITI_LOG(ERROR, "Could not read tunnel status from config data");
         return false;
     }
-    free(config_data);
     initialize_tunnel_status();
     return true;
 }
