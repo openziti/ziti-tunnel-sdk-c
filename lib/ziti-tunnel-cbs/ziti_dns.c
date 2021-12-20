@@ -137,7 +137,7 @@ void ziti_dns_set_fallback(uv_loop_t *loop, dns_fallback_cb fb, void *ctx) {
 }
 
 void* on_dns_client(const void *app_intercept_ctx, io_ctx_t *io) {
-    ZITI_LOG(INFO, "new DNS client");
+    ZITI_LOG(DEBUG, "new DNS client");
     ziti_dns_client_t *clt = calloc(1, sizeof(ziti_dns_client_t));
     io->ziti_io = clt;
     clt->io_ctx = io;
@@ -157,6 +157,7 @@ int on_dns_close(void *dns_io_ctx) {
     ziti_tunneler_close(clt->io_ctx->tnlr_io);
     free(clt->io_ctx);
     free(dns_io_ctx);
+    return 0;
 }
 
 static bool check_name(const char *name, char clean_name[MAX_DNS_NAME], bool *is_domain) {
