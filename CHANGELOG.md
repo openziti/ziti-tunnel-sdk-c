@@ -1,3 +1,10 @@
+# Release v0.18.0
+
+## What's new
+
+* add script and document building of `ziti-edge-tunnel` with OpenWRT (see [instructions](docs/openwrt/BUILDING.md))
+
+
 # Release v0.17.21
 
 ## What's new
