@@ -36,7 +36,7 @@ static bool multi_writer = false;
 static const char* log_filename_base = "ziti-tunneler.log";
 static int rotation_count = 7;
 
-static char* create_log_filename() {
+static char* get_log_path() {
     char process_dir[FILENAME_MAX]; //create string buffer to hold path
 #if _WIN32
     char process_full_path[FILENAME_MAX];
@@ -46,7 +46,7 @@ static char* create_log_filename() {
     sprintf(process_dir, "%s", "/tmp");
 #endif
 
-    char log_path[FILENAME_MAX];
+    char* log_path = calloc(FILENAME_MAX, sizeof(char));
     sprintf(log_path, "%s/logs", process_dir);
     int check;
 #if _WIN32
@@ -61,12 +61,18 @@ static char* create_log_filename() {
     } else {
         printf("\nlog path is found at %s", log_path);
     }
+    return log_path;
+}
+
+static char* create_log_filename() {
+    char* log_path = get_log_path();
 
     char time_val[32];
     strftime(time_val, sizeof(time_val), "%Y%m%d0000", start_time);
 
     char* temp_log_filename = calloc(FILENAME_MAX, sizeof(char));
-    sprintf(temp_log_filename, "%s/%s.%s", log_path, log_filename_base, time_val);
+    sprintf(temp_log_filename, "%s/%s.%s.log", log_path, log_filename_base, time_val);
+    free(log_path);
     return temp_log_filename;
 }
 
@@ -233,17 +239,8 @@ void rotate_log() {
 }
 
 void delete_older_logs(uv_loop_t *ziti_loop) {
-    char process_dir[FILENAME_MAX]; //create string buffer to hold path
-#if _WIN32
-    char process_full_path[FILENAME_MAX];
-    get_process_path(process_full_path, FILENAME_MAX);
-    sprintf(process_dir, "%s", dirname(process_full_path));
-#else
-    sprintf(process_dir, "%s", "/tmp");
-#endif
 
-    char log_path[FILENAME_MAX];
-    sprintf(log_path, "%s/logs", process_dir);
+    char* log_path = get_log_path();
 
     uv_fs_t fs;
     int rc = uv_fs_scandir(ziti_loop, &fs, log_path, 0, NULL);
@@ -253,9 +250,10 @@ void delete_older_logs(uv_loop_t *ziti_loop) {
         if (rc < 0) {
             ZITI_LOG(ERROR, "failed to scan dir[%s]: %d/%s", log_path, rc, uv_strerror(rc));
         } else {
-            ZITI_LOG(TRACE, "Log files count in [%s] is %d, not deleting log files.", log_path, rc);
+            ZITI_LOG(TRACE, "Files count in [%s] is %d, not deleting log files.", log_path, rc);
             uv_fs_req_cleanup(&fs);
         }
+        free(log_path);
         return;
     }
 
@@ -263,7 +261,7 @@ void delete_older_logs(uv_loop_t *ziti_loop) {
     uv_dirent_t file;
     int rotation_cnt = 0;
     while (uv_fs_scandir_next(&fs, &file) == 0) {
-        ZITI_LOG(TRACE, "file/folder in %s = %s %d", process_dir, file.name, file.type);
+        ZITI_LOG(TRACE, "file/folder in %s = %s %d", log_path, file.name, file.type);
 
         if (file.type == UV_DIRENT_FILE) {
             if (strncmp(file.name, log_filename_base, strlen(log_filename_base)) == 0) {
@@ -273,8 +271,6 @@ void delete_older_logs(uv_loop_t *ziti_loop) {
         }
     }
 
-    char logpath[FILENAME_MAX];
-    sprintf(logpath, "%s/logs", process_dir);
     int rotation_index = rotation_cnt;
     while (rotation_index > rotation_count) {
         char *old_log = NULL;
@@ -296,7 +292,7 @@ void delete_older_logs(uv_loop_t *ziti_loop) {
         }
         if (old_log != NULL) {
             char logfile_to_delete[MAXPATHLEN];
-            sprintf(logfile_to_delete, "%s/%s", logpath, old_log);
+            sprintf(logfile_to_delete, "%s/%s", log_path, old_log);
             ZITI_LOG(INFO, "Deleting old log file %s", logfile_to_delete);
             remove(logfile_to_delete);
             rotation_index--;
@@ -314,5 +310,6 @@ void delete_older_logs(uv_loop_t *ziti_loop) {
             free(log_files[idx]);
         }
     }
+    free(log_path);
     free(log_files);
 }

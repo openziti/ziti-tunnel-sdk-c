@@ -74,6 +74,8 @@ char* get_dns_ip();
 
 bool get_add_dns_flag();
 
+char *get_tunnel_config(size_t *json_len);
+
 #ifdef __cplusplus
 }
 #endif
