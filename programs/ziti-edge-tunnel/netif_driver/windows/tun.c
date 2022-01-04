@@ -69,6 +69,7 @@ int set_dns(netif_handle tun, uint32_t dns_ip);
 static int tun_exclude_rt(netif_handle dev, uv_loop_t *loop, const char *dest);
 static void if_change_cb(PVOID CallerContext, PMIB_IPINTERFACE_ROW Row, MIB_NOTIFICATION_TYPE NotificationType);
 static void refresh_routes(uv_timer_t *timer);
+static void cleanup_adapters();
 static HANDLE if_change_handle;
 
 static WINTUN_CREATE_ADAPTER_FUNC WintunCreateAdapter;
@@ -151,6 +152,8 @@ netif_driver tun_open(struct uv_loop_s *loop, uint32_t tun_ip, uint32_t dns_ip, 
         }
         return NULL;
     }
+    cleanup_adapters();
+
     BOOL rr;
     GUID adapterGuid;
     IIDFromString(ZITI_TUN_GUID, &adapterGuid);
@@ -471,3 +474,22 @@ int set_dns(netif_handle tun, uint32_t dns_ip) {
 char* get_tun_name(netif_handle tun) {
     return tun->name;
 }
+
+static BOOL CALLBACK
+tun_delete_cb(_In_ WINTUN_ADAPTER_HANDLE adapter, _In_ LPARAM param) {
+    wchar_t name[32];
+    WintunGetAdapterName(adapter, name);
+    wchar_t tun_name[32] = ZITI_TUN;
+    if (strncmp(name, tun_name, strlen(tun_name)) == 0) {
+        WintunDeleteAdapter(adapter, true, NULL);
+        ZITI_LOG(INFO, "Deleted wintun adapter %s", name);
+    }
+    // the call back should always return value greater than zero, so the cleanup function continue
+    return 1;
+}
+
+static void cleanup_adapters() {
+    ZITI_LOG(INFO, "Cleaning up orphan wintun adapters");
+    WintunEnumAdapters(L"Ziti", tun_delete_cb, 0);
+}
+
