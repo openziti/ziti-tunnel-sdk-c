@@ -482,7 +482,7 @@ tun_delete_cb(_In_ WINTUN_ADAPTER_HANDLE adapter, _In_ LPARAM param) {
     wchar_t tun_name[32] = ZITI_TUN;
     if (strncmp(name, tun_name, strlen(tun_name)) == 0) {
         WintunDeleteAdapter(adapter, true, NULL);
-        ZITI_LOG(INFO, "Deleted wintun adapter %s", name);
+        ZITI_LOG(INFO, "Deleted wintun adapter %ls", name);
     }
     // the call back should always return value greater than zero, so the cleanup function continue
     return 1;

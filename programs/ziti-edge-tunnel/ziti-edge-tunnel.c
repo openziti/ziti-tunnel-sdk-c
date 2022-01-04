@@ -1047,6 +1047,7 @@ static void on_event(const base_event *ev) {
                     if (svc == NULL) {
                         svc = get_tunnel_service(id, svc_ev->removed_services[svc_idx]);
                     }
+                    ZITI_LOG(INFO, "=============== service event (removed) - %s:%s ===============", svc->Name, svc->Id);
 #if _WIN32
                     if (svc->Addresses != NULL) {
                         for (int i = 0; svc->Addresses[i]; i++) {
@@ -1070,6 +1071,7 @@ static void on_event(const base_event *ev) {
                 for (int svc_idx = 0; svc_ev->added_services[svc_idx]; svc_idx++) {
                     tunnel_service *svc = get_tunnel_service(id, svc_ev->added_services[svc_idx]);
                     svc_event.AddedServices[svc_idx] = svc;
+                    ZITI_LOG(INFO, "=============== service event (added) - %s:%s ===============", svc->Name, svc->Id);
 #if _WIN32
                     if (svc->Addresses != NULL) {
                         for (int i = 0; svc->Addresses[i]; i++) {
