@@ -681,7 +681,7 @@ static void on_event(const base_event *ev) {
                 id_event.Id->Active = true; // determine it from controller
                 if (zev->name) {
                     if (id_event.Id->Name != NULL && strcmp(id_event.Id->Name, zev->name) != 0) {
-                        if (id_event.Id->Name) free(id_event.Id->Name);
+                        free(id_event.Id->Name);
                         id_event.Id->Name = strdup(zev->name);
                     } else if (id_event.Id->Name == NULL) {
                         id_event.Id->Name = strdup(zev->name);
@@ -689,7 +689,7 @@ static void on_event(const base_event *ev) {
                 }
                 if (zev->version) {
                     if (id_event.Id->ControllerVersion != NULL && strcmp(id_event.Id->ControllerVersion, zev->version) != 0) {
-                        if(id_event.Id->ControllerVersion) free(id_event.Id->ControllerVersion);
+                        free(id_event.Id->ControllerVersion);
                         id_event.Id->ControllerVersion = strdup(zev->version);
                     } else if (id_event.Id->ControllerVersion == NULL) {
                         id_event.Id->ControllerVersion = strdup(zev->version);
@@ -697,7 +697,7 @@ static void on_event(const base_event *ev) {
                 }
                 if (zev->controller) {
                     if (id_event.Id->Config != NULL && id_event.Id->Config->ZtAPI != NULL && strcmp(id_event.Id->Config->ZtAPI, zev->controller) != 0) {
-                        if(id_event.Id->Config->ZtAPI) free(id_event.Id->Config->ZtAPI);
+                        free(id_event.Id->Config->ZtAPI);
                         id_event.Id->Config->ZtAPI = strdup(zev->controller);
                     } else if (id_event.Id->Config == NULL) {
                         id_event.Id->Config = calloc(1, sizeof(tunnel_config));

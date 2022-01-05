@@ -92,7 +92,8 @@ XX(StartTime, timestamp, none,StartTime, __VA_ARGS__) \
 XX(Identities, tunnel_identity, array, Identities, __VA_ARGS__)
 
 #define INSTANCE_STATUS(XX, ...) \
-XX(ok, __VA_ARGS__)
+XX(ok, __VA_ARGS__) \
+XX(initialized, __VA_ARGS__)
 
 DECLARE_ENUM(instance_status, INSTANCE_STATUS)
 

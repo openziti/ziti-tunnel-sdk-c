@@ -62,10 +62,8 @@ tunnel_identity *create_or_get_tunnel_identity(char* identifier, char* filename)
             fingerprint[length] = '\0';
             snprintf(tnl_id->FingerPrint, length+1, "%s", fingerprint);
 
-            if (tnl_id->Name == NULL) {
-                tnl_id->Name = calloc(length + 1, sizeof(char));
-                snprintf(tnl_id->Name, length+1, "%s", fingerprint);
-            }
+            tnl_id->Name = calloc(length + 1, sizeof(char));
+            snprintf(tnl_id->Name, length+1, "%s", fingerprint);
 
             tnl_id->Status = instance_status_ok;
 
@@ -476,7 +474,7 @@ void initialize_tunnel_status() {
             tnl_id->Identifier = strdup(identifier);
         }
         if (tnl_id->Identifier != NULL) {
-            tnl_id->Status = instance_status_Unknown;
+            tnl_id->Status = instance_status_initialized;
             model_map_set(&tnl_identity_map, tnl_id->Identifier, tnl_id);
         }
     }

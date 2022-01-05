@@ -26,13 +26,16 @@
 #define MIN_BUFFER_LEN 512
 
 static uv_mutex_t mutex;
+static bool mutex_initialized = false;
 
-bool initialize_instance_config() {
+void initialize_instance_config() {
     int mutex_init = uv_mutex_init(&mutex);
     if (mutex_init != 0) {
-        ZITI_LOG(TRACE, "Could not initialize resources for the config, config file will not be updated");
+        ZITI_LOG(WARN, "Could not initialize lock for the config, config file may not be updated correctly");
+        mutex_initialized = false;
+    } else {
+        mutex_initialized = true;
     }
-    return mutex_init;
 }
 
 bool load_config_from_file(char* config_file_name) {
@@ -70,7 +73,6 @@ bool load_tunnel_status_from_file(uv_loop_t* ziti_loop) {
     int check = uv_fs_mkdir(ziti_loop, &fs, config_path, 0755, NULL);
     if (check == 0) {
         ZITI_LOG(TRACE, "config path is created at %s", config_path);
-        return false;
     } else if (check == UV_EEXIST) {
         ZITI_LOG(TRACE, "config path exists at %s", config_path);
     } else {
@@ -113,7 +115,9 @@ bool save_tunnel_status_to_file() {
         char* config_file_name = get_config_file_name(config_path);
         char* bkp_config_file_name = get_backup_config_file_name(config_path);
 
-        uv_mutex_lock(&mutex);
+        if (mutex_initialized) {
+            uv_mutex_lock(&mutex);
+        }
         //copy config to backup file
         int rem = remove(bkp_config_file_name);
         if (rem == 0) {
@@ -140,7 +144,9 @@ bool save_tunnel_status_to_file() {
             fclose(config);
             ZITI_LOG(DEBUG, "Saved current tunnel status into Config file %s", config_file_name);
         }
-        uv_mutex_unlock(&mutex);
+        if (mutex_initialized) {
+            uv_mutex_unlock(&mutex);
+        }
         ZITI_LOG(TRACE, "Cleaning up resources used for the backup of tunnel config file %s", config_file_name);
 
         free(config_file_name);
@@ -154,5 +160,7 @@ bool save_tunnel_status_to_file() {
 void cleanup_instance_config() {
     ZITI_LOG(TRACE, "Backing up current tunnel status");
     save_tunnel_status_to_file();
-    uv_mutex_destroy(&mutex);
+    if (mutex_initialized) {
+        uv_mutex_destroy(&mutex);
+    }
 }
