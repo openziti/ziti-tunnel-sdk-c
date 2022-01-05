@@ -214,10 +214,10 @@ void geneve_udp_read(uv_udp_t *req, ssize_t nread, const uv_buf_t *buf, const st
     /*
        build flow key with the order expected in return packet i.e.:
        [0]      Transport Type          <- TCP/UDP
-       [1:4]    Return Source Ip        <- Received Destination Ip
-       [5:8]    Return Destination Ip   <- Received Source Ip
-       [9:10]   Return Source Port      <- Received Destination Port
-       [11:12]  Return Destination Port <- Received Source Port
+       [1:4]    Return Source Ip        <- Intercepted Destination Ip
+       [5:8]    Return Destination Ip   <- Intercepted Source Ip
+       [9:10]   Return Source Port      <- Intercepted Destination Port
+       [11:12]  Return Destination Port <- Intercepted Source Port
      */
     u8_t flow_key_byte[13];
     memcpy(&flow_key_byte[0], &i_hdr->proto_type, 1 * sizeof(uint8_t));
