@@ -299,11 +299,18 @@ static void setTunnelServiceAddress(tunnel_service *tnl_svc, ziti_service *servi
         int address_idx;
         for(address_idx=0; cfg_v1.addresses[address_idx]; address_idx++) {
             char* addr = cfg_v1.addresses[address_idx];
-            tnl_addr_arr[address_idx] = to_address(addr);
+            tnl_addr_arr[address_idx] = to_address(strdup(addr));
         }
 
+        for(idx = 0; cfg_v1.protocols[idx]; idx++) {
+            // do nothing
+        }
         // set protocols
-        protocols = cfg_v1.protocols;
+        protocols = calloc(idx+1, sizeof(char*));
+        int protocol_idx;
+        for(protocol_idx=0; cfg_v1.addresses[protocol_idx]; protocol_idx++) {
+            protocols[protocol_idx] = cfg_v1.addresses[protocol_idx];
+        }
 
         // set ports
         for(idx = 0; cfg_v1.port_ranges[idx]; idx++) {
@@ -313,8 +320,7 @@ static void setTunnelServiceAddress(tunnel_service *tnl_svc, ziti_service *servi
         for(int port_idx = 0; cfg_v1.port_ranges[port_idx]; port_idx++) {
             tnl_port_range_arr[port_idx] = getTunnelPortRange(cfg_v1.port_ranges[port_idx]);
         }
-        if (cfg_v1.addresses) free(cfg_v1.addresses);
-        if (cfg_v1.port_ranges) free(cfg_v1.port_ranges);
+        free_ziti_intercept_cfg_v1(&cfg_v1);
     }  else if ((cfg_json = ziti_service_get_raw_config(service, CFG_ZITI_TUNNELER_CLIENT_V1)) != NULL) {
         ZITI_LOG(TRACE, "ziti-tunneler-client.v1: %s", cfg_json);
         ziti_client_cfg_v1 zt_client_cfg_v1;
@@ -322,7 +328,7 @@ static void setTunnelServiceAddress(tunnel_service *tnl_svc, ziti_service *servi
 
         // set tunnel address
         tnl_addr_arr = calloc(2, sizeof(tunnel_address *));
-        tnl_addr_arr[0] = to_address(zt_client_cfg_v1.hostname);
+        tnl_addr_arr[0] = to_address(strdup(zt_client_cfg_v1.hostname));
 
         // set protocols
         protocols = calloc(3, sizeof(char *));
@@ -337,6 +343,8 @@ static void setTunnelServiceAddress(tunnel_service *tnl_svc, ziti_service *servi
         tpr->Low = zt_client_cfg_v1.port;
         tpr->High = zt_client_cfg_v1.port;
         tnl_port_range_arr[0] = tpr;
+
+        free_ziti_client_cfg_v1(&zt_client_cfg_v1);
     }
     if (tnl_addr_arr != NULL) {
         tnl_svc->Addresses = tnl_addr_arr;
@@ -557,10 +565,10 @@ void set_ip_info(uint32_t dns_ip, uint32_t tun_ip, int bits) {
     tnl_status.IpInfo->DNS = strdup(ipaddr_ntoa(&dns_ip4));
     tnl_status.IpInfo->MTU = 65535;
 
-    if (tnl_status.IpInfo->Subnet) free(tnl_status.IpInfo->Subnet);
     uint32_t netmask = (0xFFFFFFFFUL << (32 - bits)) & 0xFFFFFFFFUL;
     netmask = htonl(netmask);
-    tnl_status.IpInfo->Subnet = strdup(ipaddr_ntoa(&netmask));
+    ip_addr_t netmask_ipv4 = IPADDR4_INIT(netmask);
+    tnl_status.IpInfo->Subnet = strdup(ipaddr_ntoa(&netmask_ipv4));
 
 }
 
