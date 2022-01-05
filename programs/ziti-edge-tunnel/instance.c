@@ -26,7 +26,6 @@ model_map tnl_identity_map = {0};
 static const char* CFG_INTERCEPT_V1 = "intercept.v1";
 static const char* CFG_ZITI_TUNNELER_CLIENT_V1 = "ziti-tunneler-client.v1";
 static tunnel_status tnl_status = {0};
-IMPL_ENUM(instance_status, INSTANCE_STATUS)
 
 tunnel_identity *find_tunnel_identity(const char* identifier) {
     tunnel_identity *tnl_id = model_map_get(&tnl_identity_map, identifier);
@@ -43,7 +42,7 @@ tunnel_identity *create_or_get_tunnel_identity(char* identifier, char* filename)
 
     if (id != NULL) {
         if (filename != NULL) {
-            id->Status = instance_status_ok;
+            id->Status = true;
         }
         return id;
     } else {
@@ -66,7 +65,7 @@ tunnel_identity *create_or_get_tunnel_identity(char* identifier, char* filename)
             tnl_id->Name = calloc(length + 1, sizeof(char));
             snprintf(tnl_id->Name, length+1, "%s", fingerprint);
 
-            tnl_id->Status = instance_status_ok;
+            tnl_id->Status = true;
 
         }
         model_map_set(&tnl_identity_map, identifier, tnl_id);
@@ -388,7 +387,7 @@ tunnel_identity_array get_tunnel_identities() {
 
     int idx = 0;
     MODEL_MAP_FOREACH(id, tnl_id, &tnl_identity_map) {
-        if (tnl_id->Status == instance_status_ok) {
+        if (tnl_id->Status) {
             tnl_id_arr[idx++] = tnl_id;
         }
     }
@@ -475,7 +474,7 @@ void set_identifier_from_identities() {
             tnl_id->Identifier = strdup(identifier);
         }
         if (tnl_id->Identifier != NULL) {
-            tnl_id->Status = instance_status_initialized;
+            tnl_id->Status = false;
             model_map_set(&tnl_identity_map, tnl_id->Identifier, tnl_id);
         }
     }
@@ -493,7 +492,6 @@ void initialize_tunnel_status() {
 
 bool load_tunnel_status(char* config_data) {
     if (parse_tunnel_status(&tnl_status, config_data, strlen(config_data)) < 0) {
-        free(config_data);
         ZITI_LOG(ERROR, "Could not read tunnel status from config data");
         return false;
     }
