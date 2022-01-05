@@ -25,7 +25,6 @@ DWORD WINAPI ServiceWorkerThread (LPVOID lpParam);
 
 void scm_service_init(char *config_dir);
 void scm_service_run(void *);
-char* get_system_config_path();
 void scm_service_stop();
 void stop_windows_service();
 

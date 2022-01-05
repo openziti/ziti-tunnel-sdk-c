@@ -26,8 +26,10 @@
 #include <ziti/ziti_dns.h>
 #include "model/events.h"
 #include "instance.h"
-#include <file-rotator.h>
+#include "instance-config.h"
+#include <log-utils.h>
 #include <time.h>
+#include <config-utils.h>
 
 #if __APPLE__ && __MACH__
 #include "netif_driver/darwin/utun.h"
@@ -597,6 +599,7 @@ static void broadcast_metrics(uv_timer_t *timer) {
 
 static void start_metrics_timer(uv_loop_t *ziti_loop) {
     uv_timer_init(ziti_loop, &metrics_timer);
+    uv_unref((uv_handle_t *) &metrics_timer);
     uv_timer_start(&metrics_timer, broadcast_metrics, metrics_latency, refresh_metrics);
 }
 
@@ -614,10 +617,15 @@ static void load_identities(uv_work_t *wr) {
         while (uv_fs_scandir_next(&fs, &file) == 0) {
             ZITI_LOG(INFO, "file = %s %d", file.name, file.type);
 
+            if (strcmp(file.name, get_config_file_name(NULL)) == 0 || strcmp(file.name, get_backup_config_file_name(NULL)) == 0 ) {
+                continue;
+            }
+
             if (file.type == UV_DIRENT_FILE) {
                 struct cfg_instance_s *inst = calloc(1, sizeof(struct cfg_instance_s));
                 inst->cfg = malloc(MAXPATHLEN);
                 snprintf(inst->cfg, MAXPATHLEN, "%s/%s", config_dir, file.name);
+                create_or_get_tunnel_identity(inst->cfg, file.name);
                 LIST_INSERT_HEAD(&load_list, inst, _next);
             }
         }
@@ -647,6 +655,8 @@ static void load_identities_complete(uv_work_t * wr, int status) {
     if (identity_loaded) {
         start_metrics_timer(wr->loop);
     }
+
+    save_tunnel_status_to_file();
 }
 
 static void on_event(const base_event *ev) {
@@ -658,21 +668,43 @@ static void on_event(const base_event *ev) {
             identity_event id_event = {0};
             id_event.Op = strdup("identity");
             id_event.Action = strdup(event_name(event_added));
-            id_event.Id = get_tunnel_identity(ev->identifier);
+            id_event.Id = create_or_get_tunnel_identity(ev->identifier, NULL);
+            id_event.Fingerprint = strdup(id_event.Id->FingerPrint);
             id_event.Id->Loaded = true;
 
             action_event controller_event = {0};
             controller_event.Op = strdup("controller");
             controller_event.Identifier = strdup(ev->identifier);
+            controller_event.Fingerprint = strdup(id_event.Id->FingerPrint);
 
             if (zev->code == ZITI_OK) {
                 id_event.Id->Active = true; // determine it from controller
                 if (zev->name) {
-                    id_event.Id->Name = strdup(zev->name);
-                    if (zev->version != NULL) {
+                    if (id_event.Id->Name != NULL && strcmp(id_event.Id->Name, zev->name) != 0) {
+                        free(id_event.Id->Name);
+                        id_event.Id->Name = strdup(zev->name);
+                    } else if (id_event.Id->Name == NULL) {
+                        id_event.Id->Name = strdup(zev->name);
+                    }
+                }
+                if (zev->version) {
+                    if (id_event.Id->ControllerVersion != NULL && strcmp(id_event.Id->ControllerVersion, zev->version) != 0) {
+                        free(id_event.Id->ControllerVersion);
+                        id_event.Id->ControllerVersion = strdup(zev->version);
+                    } else if (id_event.Id->ControllerVersion == NULL) {
                         id_event.Id->ControllerVersion = strdup(zev->version);
                     }
-                    id_event.Id->Config.ZtAPI = strdup(zev->controller);
+                }
+                if (zev->controller) {
+                    if (id_event.Id->Config != NULL && id_event.Id->Config->ZtAPI != NULL && strcmp(id_event.Id->Config->ZtAPI, zev->controller) != 0) {
+                        free(id_event.Id->Config->ZtAPI);
+                        id_event.Id->Config->ZtAPI = strdup(zev->controller);
+                    } else if (id_event.Id->Config == NULL) {
+                        id_event.Id->Config = calloc(1, sizeof(tunnel_config));
+                        id_event.Id->Config->ZtAPI = strdup(zev->controller);
+                    } else if (id_event.Id->Config->ZtAPI == NULL) {
+                        id_event.Id->Config->ZtAPI = strdup(zev->controller);
+                    }
                 }
                 controller_event.Action = strdup(event_name(event_connected));
                 ZITI_LOG(DEBUG, "ztx[%s] controller connected", ev->identifier);
@@ -699,7 +731,8 @@ static void on_event(const base_event *ev) {
                 .Identifier = strdup(ev->identifier),
             };
 
-            tunnel_identity *id = get_tunnel_identity(ev->identifier);
+            tunnel_identity *id = create_or_get_tunnel_identity(ev->identifier, NULL);
+            svc_event.Fingerprint = strdup(id->FingerPrint);
             ziti_service **zs;
             if (svc_ev->removed_services != NULL) {
                 int svc_array_length = 0;
@@ -744,8 +777,9 @@ static void on_event(const base_event *ev) {
             identity_event id_event = {
                     .Op = strdup("identity"),
                     .Action = strdup(event_name(event_updated)),
-                    .Id = get_tunnel_identity(ev->identifier),
+                    .Id = create_or_get_tunnel_identity(ev->identifier, NULL),
             };
+            id_event.Fingerprint = strdup(id_event.Id->FingerPrint);
             send_events_message(&id_event, (to_json_fn) identity_event_to_json, true);
             id_event.Id = NULL;
             free_identity_event(&id_event);
@@ -762,6 +796,9 @@ static void on_event(const base_event *ev) {
                     .Identifier = strdup(mfa_ev->identifier),
                     .Successful = false
             };
+
+            tunnel_identity *id = create_or_get_tunnel_identity(ev->identifier, NULL);
+            mfa_sts_event.Fingerprint = strdup(id->FingerPrint);
 
             send_events_message(&mfa_sts_event, (to_json_fn) mfa_status_event_to_json, true);
             free_mfa_status_event(&mfa_sts_event);
@@ -788,8 +825,9 @@ static void on_event(const base_event *ev) {
                         identity_event id_event = {
                                 .Op = strdup("identity"),
                                 .Action = strdup(event_name(event_updated)),
-                                .Id = get_tunnel_identity(ev->identifier),
+                                .Id = create_or_get_tunnel_identity(ev->identifier, NULL),
                         };
+                        id_event.Fingerprint = strdup(id_event.Id->FingerPrint);
                         send_events_message(&id_event, (to_json_fn) identity_event_to_json, true);
                         id_event.Id = NULL;
                         free_identity_event(&id_event);
@@ -810,6 +848,9 @@ static void on_event(const base_event *ev) {
                 mfa_sts_event.Successful = false;
                 mfa_sts_event.Error = strdup(mfa_ev->status);
             }
+
+            tunnel_identity *id = create_or_get_tunnel_identity(ev->identifier, NULL);
+            mfa_sts_event.Fingerprint = strdup(id->FingerPrint);
 
             send_events_message(&mfa_sts_event, (to_json_fn) mfa_status_event_to_json, true);
 
@@ -858,8 +899,11 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     tunneler_context tunneler = ziti_tunneler_init(&tunneler_opts, ziti_loop);
 
     // generate tunnel status instance and save active state and start time
-    tunnel_status *tnl_status = get_tunnel_status();
-    tnl_status->Active = true;
+    if (config_dir != NULL) {
+        set_identifier_path(config_dir);
+        initialize_instance_config();
+        load_tunnel_status_from_file(ziti_loop);
+    }
 
     ip_addr_t dns_ip4 = IPADDR4_INIT(dns_ip);
     ziti_dns_setup(tunneler, ipaddr_ntoa(&dns_ip4), ip_range);
@@ -874,8 +918,12 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     start_event_socket(ziti_loop);
 
     if (uv_run(ziti_loop, UV_RUN_DEFAULT) != 0) {
-        ZITI_LOG(ERROR, "failed to run event loop or the event loop is stopped");
-        exit(1);
+        if (started_by_scm) {
+            ZITI_LOG(INFO, "The event loop is stopped, exiting");
+        } else {
+            ZITI_LOG(ERROR, "failed to run event loop");
+            exit(1);
+        }
     }
 
     free(tunneler);
@@ -886,6 +934,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     close_log();
     stop_log_check();
 #endif
+    cleanup_instance_config();
     return 0;
 }
 
@@ -1002,17 +1051,17 @@ static void run(int argc, char *argv[]) {
     signal(SIGPIPE, SIG_IGN);
 #endif
     uv_loop_t *ziti_loop = uv_default_loop();
-    bool init = false;
 
 #if _WIN32
+    bool init = false;
+    main_ziti_loop = ziti_loop;
+
     bool multi_writer = true;
     if (started_by_scm) {
         multi_writer = false;
     }
     init = log_init(ziti_loop, multi_writer);
-#endif
 
-    main_ziti_loop = ziti_loop;
     if (init) {
         ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, ziti_log_writer);
         struct tm *start_time = get_log_start_time();
@@ -1026,6 +1075,9 @@ static void run(int argc, char *argv[]) {
     } else {
         ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
     }
+#else
+    ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
+#endif
 
     ziti_tunnel_set_log_level(ziti_log_level());
     ziti_tunnel_set_logger(ziti_logger);
@@ -1769,6 +1821,7 @@ int main(int argc, char *argv[]) {
     // started_by_scm will be set to true only if scm initializes the config value
     // if the service is started from cmd line, SvcStart will return immediately and started_by_scm will be set to false. In this case tunnel can be run normally
     if (started_by_scm) {
+        printf("The service is stopped by SCM");
         return 0;
     }
 #endif

@@ -26,7 +26,7 @@ extern "C" {
 
 extern tunnel_identity *find_tunnel_identity(char* identifier);
 
-extern tunnel_identity *get_tunnel_identity(char* identifier);
+extern tunnel_identity *create_or_get_tunnel_identity(char* identifier, char* fingerprint) ;
 
 extern void set_mfa_status(char* identifier, bool mfa_enabled, bool mfa_needed);
 
@@ -37,6 +37,8 @@ extern tunnel_service *get_tunnel_service(tunnel_identity* identifier, ziti_serv
 extern tunnel_service *find_tunnel_service(tunnel_identity* id, char* svc_id);
 
 extern void add_or_remove_services_from_tunnel(tunnel_identity *id, tunnel_service_array added_services, tunnel_service_array removed_services);
+
+extern bool load_tunnel_status(char* config_data);
 
 extern tunnel_status *get_tunnel_status();
 

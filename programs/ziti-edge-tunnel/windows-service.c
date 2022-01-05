@@ -17,6 +17,7 @@ limitations under the License.
 #include "windows/windows-service.h"
 #include <windows.h>
 #include <stdio.h>
+#include <config-utils.h>
 
 #pragma comment(lib, "advapi32.lib")
 
@@ -50,7 +51,6 @@ int SvcStart(TCHAR *opt)
 
     if (!StartServiceCtrlDispatcher( DispatchTable ))
     {
-        printf("The service is either started from commandline or stopped by SCM");
         return 0;
     }
 }

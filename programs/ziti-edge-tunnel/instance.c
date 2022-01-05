@@ -17,12 +17,13 @@
 #include "model/dtos.h"
 #include <ziti/ziti_log.h>
 #include <time.h>
+#include <config-utils.h>
 #include "model/events.h"
 
 model_map tnl_identity_map = {0};
 static const char* CFG_INTERCEPT_V1 = "intercept.v1";
 static const char* CFG_ZITI_TUNNELER_CLIENT_V1 = "ziti-tunneler-client.v1";
-static tunnel_status tnl_status;
+static tunnel_status tnl_status = {0};
 
 tunnel_identity *find_tunnel_identity(const char* identifier) {
     tunnel_identity *tnl_id = model_map_get(&tnl_identity_map, identifier);
@@ -34,14 +35,38 @@ tunnel_identity *find_tunnel_identity(const char* identifier) {
     }
 }
 
-tunnel_identity *get_tunnel_identity(char* identifier) {
+tunnel_identity *create_or_get_tunnel_identity(char* identifier, char* filename) {
     tunnel_identity *id = find_tunnel_identity(identifier);
 
     if (id != NULL) {
+        if (filename != NULL) {
+            id->Status = true;
+        }
         return id;
     } else {
         tunnel_identity *tnl_id = calloc(1, sizeof(struct tunnel_identity_s));
         tnl_id->Identifier = strdup(identifier);
+        if (filename != NULL) {
+            char* extension = strstr(filename, ".json");
+
+            size_t length;
+            if (extension != NULL) {
+                length = extension - filename;
+            } else {
+                length = strlen(filename);
+            }
+            tnl_id->FingerPrint = calloc(length + 1, sizeof(char));
+            char fingerprint[FILENAME_MAX];
+            memcpy(fingerprint, filename, length);
+            fingerprint[length] = '\0';
+            snprintf(tnl_id->FingerPrint, length+1, "%s", fingerprint);
+
+            tnl_id->Name = calloc(length + 1, sizeof(char));
+            snprintf(tnl_id->Name, length+1, "%s", fingerprint);
+
+            tnl_id->Status = true;
+
+        }
         model_map_set(&tnl_identity_map, identifier, tnl_id);
         return tnl_id;
     }
@@ -354,7 +379,9 @@ tunnel_identity_array get_tunnel_identities() {
 
     int idx = 0;
     MODEL_MAP_FOREACH(id, tnl_id, &tnl_identity_map) {
-        tnl_id_arr[idx++] = tnl_id;
+        if (tnl_id->Status) {
+            tnl_id_arr[idx++] = tnl_id;
+        }
     }
 
     return tnl_id_arr;
@@ -427,14 +454,43 @@ void set_mfa_timeout_rem(tunnel_identity *tnl_id) {
 
 }
 
+void initialize_tunnel_status() {
+    tnl_status.Active = true;
+    tnl_status.Duration = 0;
+    uv_timeval64_t now;
+    uv_gettimeofday(&now);
+    tnl_status.StartTime.tv_sec = now.tv_sec;
+    tnl_status.StartTime.tv_usec = now.tv_usec;
+
+    if (tnl_status.Identities == NULL) {
+        return;
+    }
+    for(int idx = 0; tnl_status.Identities[idx]; idx++) {
+        tunnel_identity *tnl_id = tnl_status.Identities[idx];
+        if (tnl_id->Identifier == NULL && tnl_id->FingerPrint != NULL) {
+            char identifier[FILENAME_MAX];
+            snprintf(identifier, sizeof(identifier), "%s/%s.json", get_identifier_path(), tnl_id->FingerPrint);
+            tnl_id->Identifier = strdup(identifier);
+        }
+        if (tnl_id->Identifier != NULL) {
+            tnl_id->Status = false;
+            model_map_set(&tnl_identity_map, tnl_id->Identifier, tnl_id);
+        }
+    }
+}
+
+bool load_tunnel_status(char* config_data) {
+    if (parse_tunnel_status(&tnl_status, config_data, strlen(config_data)) < 0) {
+        ZITI_LOG(ERROR, "Could not read tunnel status from config data");
+        return false;
+    }
+    initialize_tunnel_status();
+    return true;
+}
+
 tunnel_status *get_tunnel_status() {
     if (tnl_status.StartTime.tv_sec == 0) {
-        tnl_status.Active = false;
-        tnl_status.Duration = 0;
-        uv_timeval64_t now;
-        uv_gettimeofday(&now);
-        tnl_status.StartTime.tv_sec = now.tv_sec;
-        tnl_status.StartTime.tv_usec = now.tv_usec;
+        initialize_tunnel_status();
     } else {
         uv_timeval64_t now;
         uv_gettimeofday(&now);

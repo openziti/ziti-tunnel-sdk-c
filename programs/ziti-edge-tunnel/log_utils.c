@@ -21,7 +21,7 @@
 #include <string.h>
 #include <ziti/ziti_log.h>
 #include <time.h>
-#include <file-rotator.h>
+#include <log-utils.h>
 #if _WIN32
 #include "windows/windows-service.h"
 #include <direct.h>
@@ -40,7 +40,7 @@ static char* create_log_filename() {
 #if _WIN32
     _getcwd( curr_path, FILENAME_MAX );
 #else
-    sprintf(curr_path, "%s", "/tmp");
+    sprintf(curr_path, "/tmp");
 #endif
 
     char log_path[FILENAME_MAX];

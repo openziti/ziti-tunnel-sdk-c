@@ -14,8 +14,8 @@
  limitations under the License.
  */
 
-#ifndef ZITI_TUNNEL_SDK_C_FILE_ROTATOR_H
-#define ZITI_TUNNEL_SDK_C_FILE_ROTATOR_H
+#ifndef ZITI_TUNNEL_SDK_C_LOG_UTILS_H
+#define ZITI_TUNNEL_SDK_C_LOG_UTILS_H
 
 #if _WIN32
 #define MAXPATHLEN MAX_PATH
@@ -42,4 +42,4 @@ void ziti_log_writer(int , const char *, const char *, size_t);
 }
 #endif
 
-#endif //ZITI_TUNNEL_SDK_C_FILE_ROTATOR_H
+#endif //ZITI_TUNNEL_SDK_C_LOG_UTILS_H
