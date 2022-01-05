@@ -23,6 +23,7 @@
 struct geneve_flow_s {
     u8_t id[40];
     uv_udp_t udp_handle_out;
+    /* TODO Convert these to geneneric sockaddr for both ipv4 and ipv6 addresses */
     struct sockaddr_in send_address;
     struct sockaddr_in bind_address;
     uv_timer_t conn_timer;
@@ -45,7 +46,6 @@ struct inner_ip_hdr_info {
     u8_t flags;
 };
 
-//extern int ziti_tunneler_driver_cb(netif_driver driver_ctx);
 extern netif_driver geneve_open(struct uv_loop_s *loop, char *error, size_t error_len);
 
 /*
