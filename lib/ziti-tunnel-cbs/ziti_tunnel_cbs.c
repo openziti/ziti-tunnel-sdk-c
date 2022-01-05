@@ -398,7 +398,7 @@ ziti_intercept_t *new_ziti_intercept(ziti_context ztx, ziti_service *service, zi
     for (int i = 0; i < sizeof(intercept_cfgtypes) / sizeof(cfgtype_desc_t); i++) {
         cfgtype_desc_t *cfgtype = &intercept_cfgtypes[i];
         const char *cfg_json = ziti_service_get_raw_config(service, cfgtype->name);
-        if (cfg_json != 0 && cfgtype->parse(&zi_ctx->cfg, cfg_json, strlen(cfg_json)) == 0) {
+        if (cfg_json != 0 && cfgtype->parse(&zi_ctx->cfg, cfg_json, strlen(cfg_json)) > 0) {
             zi_ctx->cfg_desc = cfgtype;
 
             if (curr_i && cfgtype == curr_i->cfg_desc && cfgtype->compare(&zi_ctx->cfg, &curr_i->cfg) == 0) {
@@ -425,7 +425,7 @@ intercept_ctx_t *new_intercept_ctx(tunneler_context tnlr_ctx, ziti_intercept_t *
     const char *ip;
     switch (zi_ctx->cfg_desc->cfgtype) {
         case CLIENT_CFG_V1:
-            if((ip = ziti_dns_register_hostname(zi_ctx->cfg.client_v1.hostname, zi_ctx)) != NULL) {
+            if ((ip = ziti_dns_register_hostname(zi_ctx->cfg.client_v1.hostname, zi_ctx)) != NULL) {
                 intercept_ctx_add_protocol(i_ctx, "udp");
                 intercept_ctx_add_protocol(i_ctx, "tcp");
                 intercept_ctx_add_address(i_ctx, ip);

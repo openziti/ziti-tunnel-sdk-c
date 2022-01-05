@@ -37,10 +37,7 @@
 #include "netif_driver/linux/tun.h"
 #elif _WIN32
 #include "netif_driver/windows/tun.h"
-#ifndef MAXPATHLEN
-#define MAXPATHLEN _MAX_PATH
 #include "windows/windows-service.h"
-#endif
 
 #define setenv(n,v,o) do {if(o || getenv(n) == NULL) _putenv_s(n,v); } while(0)
 #endif
@@ -200,7 +197,7 @@ static void on_cmd(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
         ZITI_LOG(INFO, "received cmd <%.*s>", (int) len, b->base);
 
         tunnel_comand cmd = {0};
-        if (parse_tunnel_comand(&cmd, b->base, len) == 0) {
+        if (parse_tunnel_comand(&cmd, b->base, len) > 0) {
             CMD_CTRL->process(&cmd, on_command_resp, s);
         } else {
             tunnel_result resp = {
@@ -322,9 +319,8 @@ static void send_events_message(const void *message, to_json_fn to_json_f, bool 
 
     if (!LIST_EMPTY(&event_clients_list)) {
         struct event_conn_s *event_client;
-        int events_count = 0;
+        int events_deleted = 0;
         LIST_FOREACH(event_client, &event_clients_list, _next_event) {
-            ++events_count;
             int err = 0;
             if (event_client->event_client_conn != NULL) {
                 uv_buf_t buf = uv_buf_init(strdup(json), data_len);
@@ -337,11 +333,16 @@ static void send_events_message(const void *message, to_json_fn to_json_f, bool 
                 if (err == UV_EPIPE) {
                     uv_close((uv_handle_t *) event_client->event_client_conn, (uv_close_cb) free);
                     event_client->event_client_conn = NULL;
-                    int current_event_connection_count = sizeof_event_clients_list();
-                    ZITI_LOG(WARN,"Events client connection closed, count : %d", current_event_connection_count);
+                    events_deleted++;
+                    ZITI_LOG(WARN,"Events client connection closed");
                 }
             }
         }
+        if (events_deleted > 0) {
+            int current_event_connection_count = sizeof_event_clients_list();
+            ZITI_LOG(WARN,"Events client connection current count : %d", current_event_connection_count);
+        }
+
     }
     free(json);
 }
@@ -389,7 +390,7 @@ static void on_command_inline_resp(const tunnel_result* result, void *ctx) {
             case TunnelCommand_GetMetrics: {
                 if (result->success) {
                     tunnel_identity_metrics *id_metrics = calloc(1, sizeof(tunnel_identity_metrics));
-                    if (parse_tunnel_identity_metrics(id_metrics, result->data, strlen(result->data)) != 0) {
+                    if (parse_tunnel_identity_metrics(id_metrics, result->data, strlen(result->data)) < 0) {
                         ZITI_LOG(ERROR, "Could not fetch metrics data");
                         free_tunnel_identity_metrics(id_metrics);
                         free(id_metrics);
@@ -655,10 +656,8 @@ static void load_identities_complete(uv_work_t * wr, int status) {
     if (identity_loaded) {
         start_metrics_timer(wr->loop);
     }
-#if _WIN32 || __linux__
-    // should be the last line in this function as it calls the mutex/lock
+
     save_tunnel_status_to_file();
-#endif
 }
 
 static void on_event(const base_event *ev) {
@@ -683,7 +682,7 @@ static void on_event(const base_event *ev) {
                 id_event.Id->Active = true; // determine it from controller
                 if (zev->name) {
                     if (id_event.Id->Name != NULL && strcmp(id_event.Id->Name, zev->name) != 0) {
-                        if (id_event.Id->Name) free(id_event.Id->Name);
+                        free(id_event.Id->Name);
                         id_event.Id->Name = strdup(zev->name);
                     } else if (id_event.Id->Name == NULL) {
                         id_event.Id->Name = strdup(zev->name);
@@ -691,7 +690,7 @@ static void on_event(const base_event *ev) {
                 }
                 if (zev->version) {
                     if (id_event.Id->ControllerVersion != NULL && strcmp(id_event.Id->ControllerVersion, zev->version) != 0) {
-                        if(id_event.Id->ControllerVersion) free(id_event.Id->ControllerVersion);
+                        free(id_event.Id->ControllerVersion);
                         id_event.Id->ControllerVersion = strdup(zev->version);
                     } else if (id_event.Id->ControllerVersion == NULL) {
                         id_event.Id->ControllerVersion = strdup(zev->version);
@@ -699,7 +698,7 @@ static void on_event(const base_event *ev) {
                 }
                 if (zev->controller) {
                     if (id_event.Id->Config != NULL && id_event.Id->Config->ZtAPI != NULL && strcmp(id_event.Id->Config->ZtAPI, zev->controller) != 0) {
-                        if(id_event.Id->Config->ZtAPI) free(id_event.Id->Config->ZtAPI);
+                        free(id_event.Id->Config->ZtAPI);
                         id_event.Id->Config->ZtAPI = strdup(zev->controller);
                     } else if (id_event.Id->Config == NULL) {
                         id_event.Id->Config = calloc(1, sizeof(tunnel_config));
@@ -928,8 +927,8 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
 #if _WIN32
     close_log();
     stop_log_check();
-    cleanup_instance_config();
 #endif
+    cleanup_instance_config();
     return 0;
 }
 
@@ -1079,14 +1078,12 @@ static void run(int argc, char *argv[]) {
     // set the service version in instance
     set_service_version();
 
+#if _WIN32
     if (init) {
         ziti_log_init(ziti_loop, log_lvl_val, ziti_log_writer);
         struct tm *start_time = get_log_start_time();
         char time_val[32];
-        snprintf(time_val, sizeof(time_val), "%04d-%02d-%02d %02d:%02d:%02d",
-                 1900 + start_time->tm_year, start_time->tm_mon + 1, start_time->tm_mday,
-                 start_time->tm_hour, start_time->tm_min, start_time->tm_sec
-        );
+        strftime(time_val, sizeof(time_val), "%a %b %d %Y, %X %p", start_time);
         ZITI_LOG(INFO,"============================================================================");
         ZITI_LOG(INFO,"Logger initialization");
         ZITI_LOG(INFO,"	- initialized at   : %s", time_val);
@@ -1095,6 +1092,9 @@ static void run(int argc, char *argv[]) {
     } else {
         ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
     }
+#else
+    ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
+#endif
 
     set_log_level(log_level_name(ziti_log_level()));
     ziti_tunnel_set_log_level(ziti_log_level());
@@ -1670,12 +1670,12 @@ static int get_mfa_codes_opts(int argc, char *argv[]) {
     return optind;
 }
 
-static void service_control(int argc, char *argv[]) {
-
 #if _WIN32
 
+static void service_control(int argc, char *argv[]) {
+
     tunnel_service_control *tunnel_service_control_opt = calloc(1, sizeof(tunnel_service_control));
-    if (parse_tunnel_service_control(tunnel_service_control_opt, cmd->data, strlen(cmd->data)) != 0) {
+    if (parse_tunnel_service_control(tunnel_service_control_opt, cmd->data, strlen(cmd->data)) < 0) {
         fprintf(stderr, "Could not fetch service control data");
         return;
     }
@@ -1686,10 +1686,9 @@ static void service_control(int argc, char *argv[]) {
     } else {
         fprintf(stderr, "Unknown option '%s'\n", tunnel_service_control_opt->operation);
     }
-#else
-    fprintf(stderr, "SCM is supported only in windows.");
-#endif
+
 }
+#endif
 
 static int svc_opts(int argc, char *argv[]) {
     static struct option svc_opts[] = {
@@ -1769,10 +1768,12 @@ static CommandLine generate_mfa_codes_cmd = make_command("generate_mfa_codes", "
 static CommandLine get_mfa_codes_cmd = make_command("get_mfa_codes", "Get MFA codes", "[-i <identity>] [-c <code>]",
                                                          "\t-i|--identity\tidentity info for fetching mfa codes\n"
                                                          "\t-c|--authcode\tauth code to authenticate the request for fetching mfa codes\n", get_mfa_codes_opts, send_message_to_tunnel_fn);
+#if _WIN32
 static CommandLine service_control_cmd = make_command("service_control", "execute service control functions for Ziti tunnel (required superuser access)",
                                           "-o|--operation <option>",
                                           "\t-o|--operation <option>\texecute the service control functions eg: install and uninstall (required)\n",
                                           svc_opts, service_control);
+#endif
 static CommandLine ver_cmd = make_command("version", "show version", "[-v]", "\t-v\tshow verbose version information\n", version_opts, version);
 static CommandLine help_cmd = make_command("help", "this message", NULL, NULL, NULL, usage);
 static CommandLine *main_cmds[] = {
@@ -1787,7 +1788,9 @@ static CommandLine *main_cmds[] = {
         &submit_mfa_cmd,
         &generate_mfa_codes_cmd,
         &get_mfa_codes_cmd,
+#if _WIN32
         &service_control_cmd,
+#endif
         &ver_cmd,
         &help_cmd,
         NULL

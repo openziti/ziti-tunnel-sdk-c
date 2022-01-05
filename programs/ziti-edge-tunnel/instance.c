@@ -43,19 +43,17 @@ tunnel_identity *create_or_get_tunnel_identity(char* identifier, char* filename)
 
     if (id != NULL) {
         if (filename != NULL) {
-            id->Status = strdup(instance_status_name(instance_status_ok));
+            id->Status = instance_status_ok;
         }
         return id;
     } else {
         tunnel_identity *tnl_id = calloc(1, sizeof(struct tunnel_identity_s));
         tnl_id->Identifier = strdup(identifier);
         if (filename != NULL) {
-            tnl_id->Status = strdup(instance_status_name(instance_status_ok));
-
             char* extension = strstr(filename, ".json");
-            int length;
+            size_t length;
             if (extension != NULL) {
-                length = (int) (extension - filename);
+                length = extension - filename;
             } else {
                 length = strlen(filename);
             }
@@ -65,10 +63,11 @@ tunnel_identity *create_or_get_tunnel_identity(char* identifier, char* filename)
             fingerprint[length] = '\0';
             snprintf(tnl_id->FingerPrint, length+1, "%s", fingerprint);
 
-            if (tnl_id->Name == NULL) {
-                tnl_id->Name = calloc(length + 1, sizeof(char));
-                snprintf(tnl_id->Name, length+1, "%s", fingerprint);
-            }
+            tnl_id->Name = calloc(length + 1, sizeof(char));
+            snprintf(tnl_id->Name, length+1, "%s", fingerprint);
+
+            tnl_id->Status = instance_status_ok;
+
         }
         model_map_set(&tnl_identity_map, identifier, tnl_id);
         return tnl_id;
@@ -246,6 +245,8 @@ static void setTunnelPostureDataTimeout(tunnel_service *tnl_svc, ziti_service *s
     }
 
     tnl_svc->IsAccessible = hasAccess;
+    model_map_clear(&postureCheckMap, NULL);
+
     tnl_svc->Timeout = minTimeout;
     tnl_svc->TimeoutRemaining = minTimeoutRemaining;
     ZITI_LOG(DEBUG, "service[%s] timeout=%d timeoutRemaining=%d", service->name, minTimeout, minTimeoutRemaining);
@@ -266,7 +267,7 @@ static tunnel_address *to_address(string hostOrIPOrCIDR) {
     } else {
         tnl_address->IsHost = true;
         tnl_address->IP = NULL;
-        tnl_address->HostName = hostOrIPOrCIDR;
+        tnl_address->HostName = strdup(hostOrIPOrCIDR);
         ZITI_LOG(TRACE, "Hostname: %s", hostOrIPOrCIDR);
     }
     // find CIDR
@@ -287,7 +288,7 @@ static void setTunnelServiceAddress(tunnel_service *tnl_svc, ziti_service *servi
     tunnel_port_range_array tnl_port_range_arr;
     if (cfg_json != NULL && strlen(cfg_json) > 0) {
         ZITI_LOG(TRACE, "intercept.v1: %s", cfg_json);
-        ziti_intercept_cfg_v1 cfg_v1;
+        ziti_intercept_cfg_v1 cfg_v1 = {0};
         parse_ziti_intercept_cfg_v1(&cfg_v1, cfg_json, strlen(cfg_json));
 
         // set address
@@ -320,10 +321,11 @@ static void setTunnelServiceAddress(tunnel_service *tnl_svc, ziti_service *servi
         for(int port_idx = 0; cfg_v1.port_ranges[port_idx]; port_idx++) {
             tnl_port_range_arr[port_idx] = getTunnelPortRange(cfg_v1.port_ranges[port_idx]);
         }
+
         free_ziti_intercept_cfg_v1(&cfg_v1);
     }  else if ((cfg_json = ziti_service_get_raw_config(service, CFG_ZITI_TUNNELER_CLIENT_V1)) != NULL) {
         ZITI_LOG(TRACE, "ziti-tunneler-client.v1: %s", cfg_json);
-        ziti_client_cfg_v1 zt_client_cfg_v1;
+        ziti_client_cfg_v1 zt_client_cfg_v1 = {0};
         parse_ziti_client_cfg_v1(&zt_client_cfg_v1, cfg_json, strlen(cfg_json));
 
         // set tunnel address
@@ -336,7 +338,7 @@ static void setTunnelServiceAddress(tunnel_service *tnl_svc, ziti_service *servi
         protocols[idx++] = strdup("TCP");
         protocols[idx] = strdup("UDP");
 
-                // set port range
+        // set port range
         // set ports
         tnl_port_range_arr = calloc(2, sizeof(tunnel_port_range *));
         tunnel_port_range *tpr = calloc(1, sizeof(tunnel_port_range));
@@ -386,7 +388,7 @@ tunnel_identity_array get_tunnel_identities() {
 
     int idx = 0;
     MODEL_MAP_FOREACH(id, tnl_id, &tnl_identity_map) {
-        if (tnl_id->Status != NULL && strcmp(tnl_id->Status, instance_status_name(instance_status_ok)) == 0) {
+        if (tnl_id->Status == instance_status_ok) {
             tnl_id_arr[idx++] = tnl_id;
         }
     }
@@ -473,6 +475,7 @@ void set_identifier_from_identities() {
             tnl_id->Identifier = strdup(identifier);
         }
         if (tnl_id->Identifier != NULL) {
+            tnl_id->Status = instance_status_initialized;
             model_map_set(&tnl_identity_map, tnl_id->Identifier, tnl_id);
         }
     }
@@ -489,12 +492,11 @@ void initialize_tunnel_status() {
 }
 
 bool load_tunnel_status(char* config_data) {
-    if (parse_tunnel_status(&tnl_status, config_data, strlen(config_data)) != 0) {
+    if (parse_tunnel_status(&tnl_status, config_data, strlen(config_data)) < 0) {
         free(config_data);
         ZITI_LOG(ERROR, "Could not read tunnel status from config data");
         return false;
     }
-    free(config_data);
     initialize_tunnel_status();
     set_identifier_from_identities();
     return true;

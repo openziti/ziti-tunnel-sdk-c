@@ -14,7 +14,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-#if _WIN32
 #include "windows/windows-service.h"
 #include <windows.h>
 #include <stdio.h>
@@ -413,4 +412,3 @@ void stop_windows_service() {
     SetEvent(ghSvcStopEvent);
     ReportSvcStatus(gSvcStatus.dwCurrentState, NO_ERROR, 0);
 }
-#endif
