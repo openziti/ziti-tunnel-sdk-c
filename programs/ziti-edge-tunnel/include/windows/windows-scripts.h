@@ -33,5 +33,6 @@ bool is_nrpt_policies_effective(char* tns_ip);
 model_map *get_connection_specific_domains();
 void remove_and_add_nrpt_rules(uv_async_t *ar);
 void update_interface_metric(uv_loop_t *ziti_loop, char* tun_name, int metric);
+void update_symlink(uv_loop_t *symlink_loop, char* symlink, char* filename);
 
 #endif //ZITI_TUNNEL_SDK_C_WINDOWS_SCRIPTS_H

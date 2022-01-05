@@ -379,3 +379,25 @@ void update_interface_metric(uv_loop_t *ziti_loop, char* tun_name, int metric) {
     }
     free(script);
 }
+
+void update_symlink(uv_loop_t *symlink_loop, char* symlink, char* filename) {
+    char* script = calloc(MAX_POWERSHELL_SCRIPT_LEN, sizeof(char));
+    size_t buf_len = sprintf(script, "Get-Item -Path \"%s\" | Remove-Item\n", symlink);
+    size_t copied = buf_len;
+    buf_len = sprintf(script + copied, "New-Item -Itemtype SymbolicLink -Path \"%s\" -Target \"%s\"", symlink, filename);
+    copied += buf_len;
+
+    ZITI_LOG(TRACE, "Updating symlink using script. total script size: %d", copied);
+
+    char cmd[MAX_POWERSHELL_COMMAND_LEN];
+    snprintf(cmd, sizeof(cmd),"powershell -Command \"%s\"", script);
+
+    ZITI_LOG(DEBUG, "Executing update symlink script :");
+    ZITI_LOG(DEBUG, "%s", cmd);
+    char* args[] = {"powershell", "-Command", script, NULL};
+    bool result = exec_process(symlink_loop, args[0], args);
+    if (!result) {
+        ZITI_LOG(WARN, "Update symlink script: %d(err=%d)", result, GetLastError());
+    }
+    free(script);
+}
