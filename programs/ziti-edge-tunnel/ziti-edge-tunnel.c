@@ -1033,7 +1033,7 @@ static void run(int argc, char *argv[]) {
 #endif
     bool init = false;
 
-#if _WIN32 || __linux__
+#if _WIN32
     bool multi_writer = true;
     if (started_by_scm) {
         multi_writer = false;
