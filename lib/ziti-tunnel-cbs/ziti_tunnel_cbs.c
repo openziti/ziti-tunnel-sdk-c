@@ -398,7 +398,7 @@ ziti_intercept_t *new_ziti_intercept(ziti_context ztx, ziti_service *service, zi
     for (int i = 0; i < sizeof(intercept_cfgtypes) / sizeof(cfgtype_desc_t); i++) {
         cfgtype_desc_t *cfgtype = &intercept_cfgtypes[i];
         const char *cfg_json = ziti_service_get_raw_config(service, cfgtype->name);
-        if (cfg_json != 0 && cfgtype->parse(&zi_ctx->cfg, cfg_json, strlen(cfg_json)) == 0) {
+        if (cfg_json != 0 && cfgtype->parse(&zi_ctx->cfg, cfg_json, strlen(cfg_json)) > 0) {
             zi_ctx->cfg_desc = cfgtype;
 
             if (curr_i && cfgtype == curr_i->cfg_desc && cfgtype->compare(&zi_ctx->cfg, &curr_i->cfg) == 0) {

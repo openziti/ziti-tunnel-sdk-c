@@ -258,7 +258,7 @@ static void on_cmd(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
         ZITI_LOG(INFO, "received cmd <%.*s>", (int) len, b->base);
 
         tunnel_comand cmd = {0};
-        if (parse_tunnel_comand(&cmd, b->base, len) == 0) {
+        if (parse_tunnel_comand(&cmd, b->base, len) > 0) {
             int status = process_tunnel_commands(&cmd, on_command_resp, s);
             if (!status) {
                 CMD_CTRL->process(&cmd, on_command_resp, s);
@@ -454,7 +454,7 @@ static void on_command_inline_resp(const tunnel_result* result, void *ctx) {
             case TunnelCommand_GetMetrics: {
                 if (result->success) {
                     tunnel_identity_metrics *id_metrics = calloc(1, sizeof(tunnel_identity_metrics));
-                    if (parse_tunnel_identity_metrics(id_metrics, result->data, strlen(result->data)) != 0) {
+                    if (parse_tunnel_identity_metrics(id_metrics, result->data, strlen(result->data)) < 0) {
                         ZITI_LOG(ERROR, "Could not fetch metrics data");
                         free_tunnel_identity_metrics(id_metrics);
                         free(id_metrics);
@@ -682,11 +682,9 @@ static void load_identities(uv_work_t *wr) {
         while (uv_fs_scandir_next(&fs, &file) == 0) {
             ZITI_LOG(INFO, "file = %s %d", file.name, file.type);
 
-#if _WIN32
             if (strcmp(file.name, get_config_file_name(NULL)) == 0 || strcmp(file.name, get_backup_config_file_name(NULL)) == 0 ) {
                 continue;
             }
-#endif
 
             if (file.type == UV_DIRENT_FILE) {
                 struct cfg_instance_s *inst = calloc(1, sizeof(struct cfg_instance_s));
@@ -722,10 +720,8 @@ static void load_identities_complete(uv_work_t * wr, int status) {
     if (identity_loaded) {
         start_metrics_timer(wr->loop);
     }
-#if _WIN32
     // should be the last line in this function as it calls the mutex/lock
     save_tunnel_status_to_file();
-#endif
 }
 
 static void on_event(const base_event *ev) {
@@ -750,7 +746,7 @@ static void on_event(const base_event *ev) {
                 id_event.Id->Active = true; // determine it from controller
                 if (zev->name) {
                     if (id_event.Id->Name != NULL && strcmp(id_event.Id->Name, zev->name) != 0) {
-                        if (id_event.Id->Name) free(id_event.Id->Name);
+                        free(id_event.Id->Name);
                         id_event.Id->Name = strdup(zev->name);
                     } else if (id_event.Id->Name == NULL) {
                         id_event.Id->Name = strdup(zev->name);
@@ -758,7 +754,7 @@ static void on_event(const base_event *ev) {
                 }
                 if (zev->version) {
                     if (id_event.Id->ControllerVersion != NULL && strcmp(id_event.Id->ControllerVersion, zev->version) != 0) {
-                        if(id_event.Id->ControllerVersion) free(id_event.Id->ControllerVersion);
+                        free(id_event.Id->ControllerVersion);
                         id_event.Id->ControllerVersion = strdup(zev->version);
                     } else if (id_event.Id->ControllerVersion == NULL) {
                         id_event.Id->ControllerVersion = strdup(zev->version);
@@ -766,7 +762,7 @@ static void on_event(const base_event *ev) {
                 }
                 if (zev->controller) {
                     if (id_event.Id->Config != NULL && id_event.Id->Config->ZtAPI != NULL && strcmp(id_event.Id->Config->ZtAPI, zev->controller) != 0) {
-                        if(id_event.Id->Config->ZtAPI) free(id_event.Id->Config->ZtAPI);
+                        free(id_event.Id->Config->ZtAPI);
                         id_event.Id->Config->ZtAPI = strdup(zev->controller);
                     } else if (id_event.Id->Config == NULL) {
                         id_event.Id->Config = calloc(1, sizeof(tunnel_config));
@@ -995,8 +991,8 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
 #if _WIN32
     close_log();
     stop_log_check();
-    cleanup_instance_config();
 #endif
+    cleanup_instance_config();
     return 0;
 }
 
@@ -1105,12 +1101,12 @@ static void run(int argc, char *argv[]) {
         multi_writer = false;
     }
     init = log_init(ziti_loop, multi_writer);
+#endif
 
     char *ip_range_temp = get_ip_range_from_config();
     if (ip_range_temp != NULL) {
         ip_range = ip_range_temp;
     }
-#endif
 
     uint32_t ip[4];
     int bits;
@@ -1136,7 +1132,6 @@ static void run(int argc, char *argv[]) {
     signal(SIGPIPE, SIG_IGN);
 #endif
 
-#if _WIN32
     // set ip info into instance
     set_ip_info(dns_ip, tun_ip, bits);
 
@@ -1150,6 +1145,7 @@ static void run(int argc, char *argv[]) {
     // set the service version in instance
     set_service_version();
 
+#if _WIN32
     if (init) {
         ziti_log_init(ziti_loop, log_lvl_val, ziti_log_writer);
         struct tm *start_time = get_log_start_time();
@@ -1826,7 +1822,7 @@ static int update_tun_ip_opts(int argc, char *argv[]) {
 static void service_control(int argc, char *argv[]) {
 
     tunnel_service_control *tunnel_service_control_opt = calloc(1, sizeof(tunnel_service_control));
-    if (parse_tunnel_service_control(tunnel_service_control_opt, cmd->data, strlen(cmd->data)) != 0) {
+    if (parse_tunnel_service_control(tunnel_service_control_opt, cmd->data, strlen(cmd->data)) < 0) {
         fprintf(stderr, "Could not fetch service control data");
         return;
     }
