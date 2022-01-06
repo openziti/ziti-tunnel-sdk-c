@@ -141,7 +141,7 @@ XX(loglevel, string, none, Level, __VA_ARGS__)
 
 #define TUNNEL_TUN_IP_V4(XX, ...) \
 XX(tunIP, string, none, TunIPv4, __VA_ARGS__) \
-XX(mask, int, none, TunIPv4Mask, __VA_ARGS__) \
+XX(prefixLength, int, none, TunIPv4Mask, __VA_ARGS__) \
 XX(addDns, bool, none, AddDns, __VA_ARGS__)
 
 #define TUNNEL_SERVICE_CONTROL(XX, ...) \

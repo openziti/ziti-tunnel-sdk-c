@@ -214,14 +214,14 @@ static bool process_tunnel_commands(const tunnel_comand *cmd, command_cb cb, voi
                 result.success = false;
                 break;
             }
-            if (tunnel_tun_ip_v4_cmd.mask < MINTUNIPV4MASK || tunnel_tun_ip_v4_cmd.mask > MAXTUNIPV4MASK) {
+            if (tunnel_tun_ip_v4_cmd.prefixLength < MINTUNIPV4PREFIXLENGTH || tunnel_tun_ip_v4_cmd.prefixLength > MAXTUNIPV4PREFIXLENGTH) {
                 char error_msg[50];
-                snprintf(error_msg, sizeof(error_msg), "ipv4Mask should be between %d and %d", MINTUNIPV4MASK, MAXTUNIPV4MASK);
+                snprintf(error_msg, sizeof(error_msg), "prefix length should be between %d and %d", MINTUNIPV4PREFIXLENGTH, MAXTUNIPV4PREFIXLENGTH);
                 result.error = error_msg;
                 result.success = false;
                 break;
             }
-            set_tun_ipv4_into_instance(tunnel_tun_ip_v4_cmd.tunIP, tunnel_tun_ip_v4_cmd.mask, tunnel_tun_ip_v4_cmd.addDns);
+            set_tun_ipv4_into_instance(tunnel_tun_ip_v4_cmd.tunIP, tunnel_tun_ip_v4_cmd.prefixLength, tunnel_tun_ip_v4_cmd.addDns);
             result.success = true;
             break;
         }
@@ -1793,7 +1793,7 @@ static int update_tun_ip_opts(int argc, char *argv[]) {
                 tun_ip_v4_options->tunIP = optarg;
                 break;
             case 'm':
-                tun_ip_v4_options->mask = (int) strtol(optarg, NULL, 10);;
+                tun_ip_v4_options->prefixLength = (int) strtol(optarg, NULL, 10);;
                 break;
             case 'd':
                 if (strcmp(optarg, "true") == 0 || strcmp(optarg, "t") == 0 ) {

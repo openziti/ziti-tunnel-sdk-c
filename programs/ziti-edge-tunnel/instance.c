@@ -323,7 +323,7 @@ static void setTunnelServiceAddress(tunnel_service *tnl_svc, ziti_service *servi
         free_ziti_intercept_cfg_v1(&cfg_v1);
     }  else if ((cfg_json = ziti_service_get_raw_config(service, CFG_ZITI_TUNNELER_CLIENT_V1)) != NULL) {
         ZITI_LOG(TRACE, "ziti-tunneler-client.v1: %s", cfg_json);
-        ziti_client_cfg_v1 zt_client_cfg_v1 = {0};
+        ziti_client_cfg_v1 zt_client_cfg_v1;
         parse_ziti_client_cfg_v1(&zt_client_cfg_v1, cfg_json, strlen(cfg_json));
 
         // set tunnel address

@@ -20,12 +20,12 @@
 #include <ziti/ziti_model.h>
 #include "model/dtos.h"
 
-#ifndef MINTUNIPV4MASK
-#define MINTUNIPV4MASK 10
+#ifndef MINTUNIPV4PREFIXLENGTH
+#define MINTUNIPV4PREFIXLENGTH 10
 #endif
 
-#ifndef MAXTUNIPV4MASK
-#define MAXTUNIPV4MASK 16
+#ifndef MAXTUNIPV4PREFIXLENGTH
+#define MAXTUNIPV4PREFIXLENGTH 16
 #endif
 
 #ifdef __cplusplus
