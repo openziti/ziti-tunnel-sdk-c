@@ -298,7 +298,7 @@ static void setTunnelServiceAddress(tunnel_service *tnl_svc, ziti_service *servi
         int address_idx;
         for(address_idx=0; cfg_v1.addresses[address_idx]; address_idx++) {
             char* addr = cfg_v1.addresses[address_idx];
-            tnl_addr_arr[address_idx] = to_address(strdup(addr));
+            tnl_addr_arr[address_idx] = to_address(addr);
         }
 
         for(idx = 0; cfg_v1.protocols[idx]; idx++) {
@@ -328,7 +328,7 @@ static void setTunnelServiceAddress(tunnel_service *tnl_svc, ziti_service *servi
 
         // set tunnel address
         tnl_addr_arr = calloc(2, sizeof(tunnel_address *));
-        tnl_addr_arr[0] = to_address(strdup(zt_client_cfg_v1.hostname));
+        tnl_addr_arr[0] = to_address(zt_client_cfg_v1.hostname);
 
         // set protocols
         protocols = calloc(3, sizeof(char *));

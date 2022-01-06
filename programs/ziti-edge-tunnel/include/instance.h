@@ -25,7 +25,7 @@
 #endif
 
 #ifndef MAXTUNIPV4PREFIXLENGTH
-#define MAXTUNIPV4PREFIXLENGTH 16
+#define MAXTUNIPV4PREFIXLENGTH 18
 #endif
 
 #ifdef __cplusplus
