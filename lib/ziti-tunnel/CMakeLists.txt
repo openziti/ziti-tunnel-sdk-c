@@ -7,6 +7,7 @@ set_property(TARGET ziti-tunnel-sdk-c PROPERTY C_STANDARD 11)
 
 target_compile_definitions(ziti-tunnel-sdk-c
         PRIVATE GIT_VERSION=${GIT_VERSION}
+        PRIVATE BUILD_DATE=${BUILD_DATE}
         PRIVATE ZITI_LOG_PREFIX=${PROJECT_NAME}
         )
 

@@ -97,6 +97,7 @@ static bool started_by_scm = false;
 uv_loop_t *main_ziti_loop;
 
 IMPL_ENUM(event, EVENT_ACTIONS)
+IMPL_ENUM(log_level, LOG_LEVEL)
 
 #if _WIN32
 static char sockfile[] = "\\\\.\\pipe\\ziti-edge-tunnel.sock";
@@ -669,13 +670,17 @@ static void on_event(const base_event *ev) {
             id_event.Op = strdup("identity");
             id_event.Action = strdup(event_name(event_added));
             id_event.Id = create_or_get_tunnel_identity(ev->identifier, NULL);
-            id_event.Fingerprint = strdup(id_event.Id->FingerPrint);
+            if (id_event.Id->FingerPrint) {
+                id_event.Fingerprint = strdup(id_event.Id->FingerPrint);
+            }
             id_event.Id->Loaded = true;
 
             action_event controller_event = {0};
             controller_event.Op = strdup("controller");
             controller_event.Identifier = strdup(ev->identifier);
-            controller_event.Fingerprint = strdup(id_event.Id->FingerPrint);
+            if (id_event.Id->FingerPrint) {
+                controller_event.Fingerprint = strdup(id_event.Id->FingerPrint);
+            }
 
             if (zev->code == ZITI_OK) {
                 id_event.Id->Active = true; // determine it from controller
@@ -732,7 +737,9 @@ static void on_event(const base_event *ev) {
             };
 
             tunnel_identity *id = create_or_get_tunnel_identity(ev->identifier, NULL);
-            svc_event.Fingerprint = strdup(id->FingerPrint);
+            if (id->FingerPrint) {
+                svc_event.Fingerprint = strdup(id->FingerPrint);
+            }
             ziti_service **zs;
             if (svc_ev->removed_services != NULL) {
                 int svc_array_length = 0;
@@ -779,7 +786,9 @@ static void on_event(const base_event *ev) {
                     .Action = strdup(event_name(event_updated)),
                     .Id = create_or_get_tunnel_identity(ev->identifier, NULL),
             };
-            id_event.Fingerprint = strdup(id_event.Id->FingerPrint);
+            if (id_event.Id->FingerPrint) {
+                id_event.Fingerprint = strdup(id_event.Id->FingerPrint);
+            }
             send_events_message(&id_event, (to_json_fn) identity_event_to_json, true);
             id_event.Id = NULL;
             free_identity_event(&id_event);
@@ -798,7 +807,9 @@ static void on_event(const base_event *ev) {
             };
 
             tunnel_identity *id = create_or_get_tunnel_identity(ev->identifier, NULL);
-            mfa_sts_event.Fingerprint = strdup(id->FingerPrint);
+            if (id->FingerPrint) {
+                mfa_sts_event.Fingerprint = strdup(id->FingerPrint);
+            }
 
             send_events_message(&mfa_sts_event, (to_json_fn) mfa_status_event_to_json, true);
             free_mfa_status_event(&mfa_sts_event);
@@ -827,7 +838,9 @@ static void on_event(const base_event *ev) {
                                 .Action = strdup(event_name(event_updated)),
                                 .Id = create_or_get_tunnel_identity(ev->identifier, NULL),
                         };
-                        id_event.Fingerprint = strdup(id_event.Id->FingerPrint);
+                        if (id_event.Id->FingerPrint) {
+                            id_event.Fingerprint = strdup(id_event.Id->FingerPrint);
+                        }
                         send_events_message(&id_event, (to_json_fn) identity_event_to_json, true);
                         id_event.Id = NULL;
                         free_identity_event(&id_event);
@@ -850,7 +863,9 @@ static void on_event(const base_event *ev) {
             }
 
             tunnel_identity *id = create_or_get_tunnel_identity(ev->identifier, NULL);
-            mfa_sts_event.Fingerprint = strdup(id->FingerPrint);
+            if (id->FingerPrint) {
+                mfa_sts_event.Fingerprint = strdup(id->FingerPrint);
+            }
 
             send_events_message(&mfa_sts_event, (to_json_fn) mfa_status_event_to_json, true);
 
@@ -897,13 +912,6 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     };
 
     tunneler_context tunneler = ziti_tunneler_init(&tunneler_opts, ziti_loop);
-
-    // generate tunnel status instance and save active state and start time
-    if (config_dir != NULL) {
-        set_identifier_path(config_dir);
-        initialize_instance_config();
-        load_tunnel_status_from_file(ziti_loop);
-    }
 
     ip_addr_t dns_ip4 = IPADDR4_INIT(dns_ip);
     ziti_dns_setup(tunneler, ipaddr_ntoa(&dns_ip4), ip_range);
@@ -1026,6 +1034,26 @@ static int dns_fallback(const char *name, void *ctx, struct in_addr* addr) {
 }
 
 static void run(int argc, char *argv[]) {
+    uv_loop_t *ziti_loop = uv_default_loop();
+    main_ziti_loop = ziti_loop;
+
+    // generate tunnel status instance and save active state and start time
+#if _WIN32 || __linux__
+    if (config_dir != NULL) {
+        set_identifier_path(config_dir);
+        initialize_instance_config();
+        load_tunnel_status_from_file(ziti_loop);
+    }
+#endif
+    bool init = false;
+
+#if _WIN32
+    bool multi_writer = true;
+    if (started_by_scm) {
+        multi_writer = false;
+    }
+    init = log_init(ziti_loop, multi_writer);
+#endif
 
     uint32_t ip[4];
     int bits;
@@ -1050,20 +1078,23 @@ static void run(int argc, char *argv[]) {
     // which causes valgrind to freak out
     signal(SIGPIPE, SIG_IGN);
 #endif
-    uv_loop_t *ziti_loop = uv_default_loop();
+
+    // set ip info into instance
+    set_ip_info(dns_ip, tun_ip, bits);
+
+    // set log level from instance/config, if NULL is returned, the default log level will be used
+    int log_lvl_val = ZITI_LOG_DEFAULT_LEVEL;
+    char* log_lvl = get_log_level();
+    if (log_lvl != NULL) {
+        log_lvl_val = log_level_value_of(log_lvl);
+    }
+
+    // set the service version in instance
+    set_service_version();
 
 #if _WIN32
-    bool init = false;
-    main_ziti_loop = ziti_loop;
-
-    bool multi_writer = true;
-    if (started_by_scm) {
-        multi_writer = false;
-    }
-    init = log_init(ziti_loop, multi_writer);
-
     if (init) {
-        ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, ziti_log_writer);
+        ziti_log_init(ziti_loop, log_lvl_val, ziti_log_writer);
         struct tm *start_time = get_log_start_time();
         char time_val[32];
         strftime(time_val, sizeof(time_val), "%a %b %d %Y, %X %p", start_time);
@@ -1079,6 +1110,7 @@ static void run(int argc, char *argv[]) {
     ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
 #endif
 
+    set_log_level(log_level_name(ziti_log_level()));
     ziti_tunnel_set_log_level(ziti_log_level());
     ziti_tunnel_set_logger(ziti_logger);
 

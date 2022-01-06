@@ -558,3 +558,7 @@ static void run_packet_loop(uv_loop_t *loop, tunneler_context tnlr_ctx) {
 const char* ziti_tunneler_version() {
     return str(GIT_VERSION);
 }
+
+const char* ziti_tunneler_build_date() {
+    return str(BUILD_DATE);
+}
