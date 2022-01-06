@@ -670,13 +670,17 @@ static void on_event(const base_event *ev) {
             id_event.Op = strdup("identity");
             id_event.Action = strdup(event_name(event_added));
             id_event.Id = create_or_get_tunnel_identity(ev->identifier, NULL);
-            id_event.Fingerprint = strdup(id_event.Id->FingerPrint);
+            if (id_event.Id->FingerPrint) {
+                id_event.Fingerprint = strdup(id_event.Id->FingerPrint);
+            }
             id_event.Id->Loaded = true;
 
             action_event controller_event = {0};
             controller_event.Op = strdup("controller");
             controller_event.Identifier = strdup(ev->identifier);
-            controller_event.Fingerprint = strdup(id_event.Id->FingerPrint);
+            if (id_event.Id->FingerPrint) {
+                controller_event.Fingerprint = strdup(id_event.Id->FingerPrint);
+            }
 
             if (zev->code == ZITI_OK) {
                 id_event.Id->Active = true; // determine it from controller
@@ -733,7 +737,9 @@ static void on_event(const base_event *ev) {
             };
 
             tunnel_identity *id = create_or_get_tunnel_identity(ev->identifier, NULL);
-            svc_event.Fingerprint = strdup(id->FingerPrint);
+            if (id->FingerPrint) {
+                svc_event.Fingerprint = strdup(id->FingerPrint);
+            }
             ziti_service **zs;
             if (svc_ev->removed_services != NULL) {
                 int svc_array_length = 0;
@@ -780,7 +786,9 @@ static void on_event(const base_event *ev) {
                     .Action = strdup(event_name(event_updated)),
                     .Id = create_or_get_tunnel_identity(ev->identifier, NULL),
             };
-            id_event.Fingerprint = strdup(id_event.Id->FingerPrint);
+            if (id_event.Id->FingerPrint) {
+                id_event.Fingerprint = strdup(id_event.Id->FingerPrint);
+            }
             send_events_message(&id_event, (to_json_fn) identity_event_to_json, true);
             id_event.Id = NULL;
             free_identity_event(&id_event);
@@ -799,7 +807,9 @@ static void on_event(const base_event *ev) {
             };
 
             tunnel_identity *id = create_or_get_tunnel_identity(ev->identifier, NULL);
-            mfa_sts_event.Fingerprint = strdup(id->FingerPrint);
+            if (id->FingerPrint) {
+                mfa_sts_event.Fingerprint = strdup(id->FingerPrint);
+            }
 
             send_events_message(&mfa_sts_event, (to_json_fn) mfa_status_event_to_json, true);
             free_mfa_status_event(&mfa_sts_event);
@@ -828,7 +838,9 @@ static void on_event(const base_event *ev) {
                                 .Action = strdup(event_name(event_updated)),
                                 .Id = create_or_get_tunnel_identity(ev->identifier, NULL),
                         };
-                        id_event.Fingerprint = strdup(id_event.Id->FingerPrint);
+                        if (id_event.Id->FingerPrint) {
+                            id_event.Fingerprint = strdup(id_event.Id->FingerPrint);
+                        }
                         send_events_message(&id_event, (to_json_fn) identity_event_to_json, true);
                         id_event.Id = NULL;
                         free_identity_event(&id_event);
@@ -851,7 +863,9 @@ static void on_event(const base_event *ev) {
             }
 
             tunnel_identity *id = create_or_get_tunnel_identity(ev->identifier, NULL);
-            mfa_sts_event.Fingerprint = strdup(id->FingerPrint);
+            if (id->FingerPrint) {
+                mfa_sts_event.Fingerprint = strdup(id->FingerPrint);
+            }
 
             send_events_message(&mfa_sts_event, (to_json_fn) mfa_status_event_to_json, true);
 
