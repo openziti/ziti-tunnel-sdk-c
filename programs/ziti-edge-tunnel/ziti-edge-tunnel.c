@@ -228,10 +228,8 @@ static bool process_tunnel_commands(const tunnel_comand *cmd, command_cb cb, voi
     }
     if (cmd_accepted) {
         cb(&result, ctx);
-#if _WIN32
         // should be the last line in this function as it calls the mutex/lock
         save_tunnel_status_to_file();
-#endif
         return true;
     } else {
         return false;
@@ -1089,13 +1087,13 @@ static void run(int argc, char *argv[]) {
     bool init = false;
 
     // generate tunnel status instance and save active state and start time
-#if _WIN32
     if (config_dir != NULL) {
         set_identifier_path(config_dir);
         initialize_instance_config();
         load_tunnel_status_from_file(ziti_loop);
     }
 
+#if _WIN32
     bool multi_writer = true;
     if (started_by_scm) {
         multi_writer = false;
@@ -1737,8 +1735,6 @@ static int get_mfa_codes_opts(int argc, char *argv[]) {
     return optind;
 }
 
-#if _WIN32
-
 static int set_log_level_opts(int argc, char *argv[]) {
     static struct option opts[] = {
             {"loglevel", required_argument, NULL, 'l'},
@@ -1819,6 +1815,7 @@ static int update_tun_ip_opts(int argc, char *argv[]) {
     return optind;
 }
 
+#if _WIN32
 static void service_control(int argc, char *argv[]) {
 
     tunnel_service_control *tunnel_service_control_opt = calloc(1, sizeof(tunnel_service_control));
@@ -1941,9 +1938,9 @@ static CommandLine *main_cmds[] = {
         &submit_mfa_cmd,
         &generate_mfa_codes_cmd,
         &get_mfa_codes_cmd,
-#if _WIN32
         &set_log_level_cmd,
         &update_tun_ip_cmd,
+#if _WIN32
         &service_control_cmd,
 #endif
         &ver_cmd,
