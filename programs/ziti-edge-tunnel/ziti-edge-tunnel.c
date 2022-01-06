@@ -189,15 +189,20 @@ static bool process_tunnel_commands(const tunnel_comand *cmd, command_cb cb, voi
             cmd_accepted = true;
 
             tunnel_set_log_level tunnel_set_log_level_cmd = {0};
-            if (cmd->data == NULL || parse_tunnel_set_log_level(&tunnel_set_log_level_cmd, cmd->data, strlen(cmd->data)) != 0) {
+            if (cmd->data == NULL || parse_tunnel_set_log_level(&tunnel_set_log_level_cmd, cmd->data, strlen(cmd->data)) < 0) {
                 result.error = "invalid command";
                 result.success = false;
                 break;
             }
             log_level lvl = log_level_value_of(tunnel_set_log_level_cmd.loglevel);
-            if (lvl != NULL && ziti_log_level() != lvl) {
-                set_log_level(tunnel_set_log_level_cmd.loglevel);
-                ziti_log_set_level(lvl);
+            if (lvl != NULL) {
+                if (ziti_log_level() != lvl) {
+                    set_log_level(tunnel_set_log_level_cmd.loglevel);
+                    ziti_log_set_level(lvl);
+                    ZITI_LOG(INFO, "Log level is set to %s", tunnel_set_log_level_cmd.loglevel);
+                } else {
+                    ZITI_LOG(INFO, "Log level is already set to %s", tunnel_set_log_level_cmd.loglevel);
+                }
                 result.success = true;
             } else {
                 result.error = "invalid loglevel";
@@ -209,7 +214,7 @@ static bool process_tunnel_commands(const tunnel_comand *cmd, command_cb cb, voi
             cmd_accepted = true;
 
             tunnel_tun_ip_v4 tunnel_tun_ip_v4_cmd = {0};
-            if (cmd->data == NULL || parse_tunnel_tun_ip_v4(&tunnel_tun_ip_v4_cmd, cmd->data, strlen(cmd->data)) != 0) {
+            if (cmd->data == NULL || parse_tunnel_tun_ip_v4(&tunnel_tun_ip_v4_cmd, cmd->data, strlen(cmd->data)) < 0) {
                 result.error = "invalid command";
                 result.success = false;
                 break;
