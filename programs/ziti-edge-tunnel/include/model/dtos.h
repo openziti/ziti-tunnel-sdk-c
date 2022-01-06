@@ -88,8 +88,26 @@ XX(TimeoutRemaining, int, none, TimeoutRemaining, __VA_ARGS__)
 #define TUNNEL_STATUS(XX, ...) \
 XX(Active, bool, none, Active, __VA_ARGS__) \
 XX(Duration, int, none, Duration, __VA_ARGS__) \
-XX(StartTime, timestamp, none,StartTime, __VA_ARGS__) \
-XX(Identities, tunnel_identity, array, Identities, __VA_ARGS__)
+XX(StartTime, timestamp, none, StartTime, __VA_ARGS__) \
+XX(Identities, tunnel_identity, array, Identities, __VA_ARGS__) \
+XX(IpInfo, ip_info, ptr, IpInfo, __VA_ARGS__) \
+XX(LogLevel, string, none, LogLevel, __VA_ARGS__) \
+XX(ServiceVersion, service_version, ptr, ServiceVersion, __VA_ARGS__) \
+XX(TunIpv4, string, none, TunIpv4, __VA_ARGS__) \
+XX(TunIpv4Mask, int, none, TunIpv4Mask, __VA_ARGS__) \
+XX(Status, string, none, Status, __VA_ARGS__) \
+XX(AddDns, bool, none, AddDns, __VA_ARGS__)
+
+#define IP_INFO(XX, ...) \
+XX(Ip, string, none, Ip, __VA_ARGS__) \
+XX(Subnet, string, none, Subnet, __VA_ARGS__) \
+XX(MTU, int, none, MTU, __VA_ARGS__) \
+XX(DNS, string, none, DNS, __VA_ARGS__)
+
+#define SERVICE_VERSION(XX, ...) \
+XX(Version, string, none, Version, __VA_ARGS__) \
+XX(Revision, string, none, Revision, __VA_ARGS__) \
+XX(BuildDate, string, none, BuildDate, __VA_ARGS__)
 
 DECLARE_MODEL(tunnel_config, TUNNEL_CONFIG)
 DECLARE_MODEL(tunnel_metrics, TUNNEL_METRICS)
@@ -98,6 +116,8 @@ DECLARE_MODEL(tunnel_port_range, TUNNEL_PORT_RANGE)
 DECLARE_MODEL(tunnel_posture_check, TUNNEL_POSTURE_CHECK)
 DECLARE_MODEL(tunnel_service, TUNNEL_SERVICE)
 DECLARE_MODEL(tunnel_identity, TUNNEL_IDENTITY)
+DECLARE_MODEL(ip_info, IP_INFO)
+DECLARE_MODEL(service_version, SERVICE_VERSION)
 DECLARE_MODEL(tunnel_status, TUNNEL_STATUS)
 
 #ifdef __cplusplus

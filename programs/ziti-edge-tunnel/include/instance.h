@@ -46,6 +46,14 @@ extern tunnel_identity_array get_tunnel_identities();
 
 extern int get_remaining_timeout(int timeout, int timeout_rem, tunnel_identity *tnl_id);
 
+void set_ip_info(uint32_t dns_ip, uint32_t tun_ip, int bits);
+
+void set_log_level(char* log_level);
+
+void set_service_version();
+
+char* get_log_level();
+
 #ifdef __cplusplus
 }
 #endif
