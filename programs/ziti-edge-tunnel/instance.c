@@ -311,8 +311,8 @@ static void setTunnelServiceAddress(tunnel_service *tnl_svc, ziti_service *servi
         // set protocols
         protocols = calloc(idx+1, sizeof(char*));
         int protocol_idx;
-        for(protocol_idx=0; cfg_v1.addresses[protocol_idx]; protocol_idx++) {
-            protocols[protocol_idx] = strdup(cfg_v1.addresses[protocol_idx]);
+        for(protocol_idx=0; cfg_v1.protocols[protocol_idx]; protocol_idx++) {
+            protocols[protocol_idx] = strdup(cfg_v1.protocols[protocol_idx]);
         }
 
         // set ports
