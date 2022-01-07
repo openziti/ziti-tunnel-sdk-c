@@ -182,7 +182,7 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
         if (parse_tunnel_comand(&tnl_res_cmd, result->data, strlen(result->data)) >= 0) {
             switch (tnl_res_cmd.command) {
                 case TunnelCommand_RemoveIdentity: {
-                    tunnel_delete_identity tnl_delete_id = {0};
+                    tunnel_delete_identity tnl_delete_id;
                     if (tnl_res_cmd.data != NULL && parse_tunnel_delete_identity(&tnl_delete_id, tnl_res_cmd.data, strlen(tnl_res_cmd.data)) >= 0) {
                         if (tnl_delete_id.identifier == NULL) {
                             ZITI_LOG(ERROR, "Identity filename is not found in the remove identity request, not deleting the identity file");
@@ -221,16 +221,14 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
                     break;
                 }
                 case TunnelCommand_IdentityOnOff: {
-                    tunnel_on_off_identity on_off_id = {0};
+                    tunnel_on_off_identity on_off_id;
                     if (tnl_res_cmd.data == NULL || parse_tunnel_on_off_identity(&on_off_id, tnl_res_cmd.data, strlen(tnl_res_cmd.data)) < 0) {
                         free_tunnel_on_off_identity(&on_off_id);
                         break;
                     }
                     set_ziti_status(on_off_id.onOff, on_off_id.identifier);
-#if _WIN32
                     // should be the last line in this function as it calls the mutex/lock
                     save_tunnel_status_to_file();
-#endif
                     break;
                 }
                 case TunnelCommand_Unknown: {
@@ -328,16 +326,21 @@ static bool process_tunnel_commands(const tunnel_comand *tnl_cmd, command_cb cb,
         case TunnelCommand_SetLogLevel: {
             cmd_accepted = true;
 
-            tunnel_set_log_level tunnel_set_log_level_cmd = {0};
+            tunnel_set_log_level tunnel_set_log_level_cmd;
             if (tnl_cmd->data == NULL || parse_tunnel_set_log_level(&tunnel_set_log_level_cmd, tnl_cmd->data, strlen(tnl_cmd->data)) < 0) {
                 result.error = "invalid command";
                 result.success = false;
                 break;
             }
             log_level lvl = log_level_value_of(tunnel_set_log_level_cmd.loglevel);
-            if (lvl != NULL && ziti_log_level() != lvl) {
-                set_log_level(lvl);
-                ziti_log_set_level(lvl);
+            if (lvl != NULL) {
+                if (ziti_log_level() != lvl) {
+                    set_log_level(tunnel_set_log_level_cmd.loglevel);
+                    ziti_log_set_level(lvl);
+                    ZITI_LOG(INFO, "Log level is set to %s", tunnel_set_log_level_cmd.loglevel);
+                } else {
+                    ZITI_LOG(INFO, "Log level is already set to %s", tunnel_set_log_level_cmd.loglevel);
+                }
                 result.success = true;
             } else {
                 result.error = "invalid loglevel";
@@ -355,9 +358,9 @@ static bool process_tunnel_commands(const tunnel_comand *tnl_cmd, command_cb cb,
                 free_tunnel_tun_ip_v4(&tunnel_tun_ip_v4_cmd);
                 break;
             }
-            if (tunnel_tun_ip_v4_cmd.mask < MINTUNIPV4MASK || tunnel_tun_ip_v4_cmd.mask > MAXTUNIPV4MASK) {
+            if (tunnel_tun_ip_v4_cmd.prefixLength < MINTUNIPV4PREFIXLENGTH || tunnel_tun_ip_v4_cmd.prefixLength > MAXTUNIPV4PREFIXLENGTH) {
                 char error_msg[50];
-                snprintf(error_msg, sizeof(error_msg), "ipv4Mask should be between %d and %d", MINTUNIPV4MASK, MAXTUNIPV4MASK);
+                snprintf(error_msg, sizeof(error_msg), "prefix length should be between %d and %d", MINTUNIPV4PREFIXLENGTH, MAXTUNIPV4PREFIXLENGTH);
                 result.error = error_msg;
                 result.success = false;
                 free_tunnel_tun_ip_v4(&tunnel_tun_ip_v4_cmd);
@@ -369,7 +372,7 @@ static bool process_tunnel_commands(const tunnel_comand *tnl_cmd, command_cb cb,
                 free_tunnel_tun_ip_v4(&tunnel_tun_ip_v4_cmd);
                 break;
             }
-            set_tun_ipv4_into_instance(tunnel_tun_ip_v4_cmd.tunIP, tunnel_tun_ip_v4_cmd.mask, tunnel_tun_ip_v4_cmd.addDns);
+            set_tun_ipv4_into_instance(tunnel_tun_ip_v4_cmd.tunIP, tunnel_tun_ip_v4_cmd.prefixLength, tunnel_tun_ip_v4_cmd.addDns);
             result.success = true;
             break;
         }
@@ -434,12 +437,10 @@ static bool process_tunnel_commands(const tunnel_comand *tnl_cmd, command_cb cb,
     }
     if (cmd_accepted) {
         cb(&result, ctx);
-#if _WIN32
         if (result.success) {
             // should be the last line in this function as it calls the mutex/lock
             save_tunnel_status_to_file();
         }
-#endif
         if (result.data) {
             free(result.data);
         }
@@ -468,7 +469,7 @@ static void on_cmd(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
     } else {
         ZITI_LOG(INFO, "received cmd <%.*s>", (int) len, b->base);
 
-        tunnel_comand tnl_cmd = {0};
+        tunnel_comand tnl_cmd;
         if (parse_tunnel_comand(&tnl_cmd, b->base, len) >= 0) {
             int status = process_tunnel_commands(&tnl_cmd, on_command_resp, s);
             if (!status) {
@@ -2114,8 +2115,6 @@ static int get_mfa_codes_opts(int argc, char *argv[]) {
     return optind;
 }
 
-#if _WIN32
-
 static int set_log_level_opts(int argc, char *argv[]) {
     static struct option opts[] = {
             {"loglevel", required_argument, NULL, 'l'},
@@ -2153,7 +2152,7 @@ static int set_log_level_opts(int argc, char *argv[]) {
 static int update_tun_ip_opts(int argc, char *argv[]) {
     static struct option opts[] = {
             {"tunip", optional_argument, NULL, 't'},
-            {"mask", optional_argument, NULL, 'm'},
+            {"prefixlength", optional_argument, NULL, 'p'},
             {"addDNS", optional_argument, NULL, 'd'},
     };
     int c, option_index, errors = 0;
@@ -2163,14 +2162,14 @@ static int update_tun_ip_opts(int argc, char *argv[]) {
     cmd = calloc(1, sizeof(tunnel_comand));
     cmd->command = TunnelCommand_UpdateTunIpv4;
 
-    while ((c = getopt_long(argc, argv, "t:m:d:",
+    while ((c = getopt_long(argc, argv, "t:p:d:",
                             opts, &option_index)) != -1) {
         switch (c) {
             case 't':
                 tun_ip_v4_options->tunIP = optarg;
                 break;
-            case 'm':
-                tun_ip_v4_options->mask = (int) strtol(optarg, NULL, 10);;
+            case 'p':
+                tun_ip_v4_options->prefixLength = (int) strtol(optarg, NULL, 10);;
                 break;
             case 'd':
                 if (strcmp(optarg, "true") == 0 || strcmp(optarg, "t") == 0 ) {
@@ -2196,6 +2195,7 @@ static int update_tun_ip_opts(int argc, char *argv[]) {
     return optind;
 }
 
+#if _WIN32
 static void service_control(int argc, char *argv[]) {
 
     tunnel_service_control *tunnel_service_control_opt = calloc(1, sizeof(tunnel_service_control));
@@ -2382,13 +2382,13 @@ static CommandLine delete_id_cmd = make_command("delete", "delete the identities
 static CommandLine add_id_cmd = make_command("add", "enroll and load the identities information", "[-i <identity>]",
                                                 "\t-i|--identity\tidentity info that needs to be enabled\n"
                                                 "\t-j|--jwt\tjwt content that needs to be enrolled\n", add_identity_opts, send_message_to_tunnel_fn);
-#if _WIN32
 static CommandLine set_log_level_cmd = make_command("set_log_level", "Set log level of the tunneler", "-l <level>",
                                                     "\t-l|--loglevel\tlog level of the tunneler\n", set_log_level_opts, send_message_to_tunnel_fn);
-static CommandLine update_tun_ip_cmd = make_command("update_tun_ip", "Update tun ip of the tunneler", "[-t <tunip>] [-m <mask>] [-d <AddDNS>]",
+static CommandLine update_tun_ip_cmd = make_command("update_tun_ip", "Update tun ip of the tunneler", "[-t <tunip>] [-p <prefixlength>] [-d <AddDNS>]",
                                                     "\t-t|--tunip\ttun ipv4 of the tunneler\n"
-                                                    "\t-m|--mask\ttun ipv4 mask of the tunneler\n"
+                                                    "\t-p|--prefixlength\ttun ipv4 prefix length of the tunneler\n"
                                                     "\t-d|--addDNS\tAdd Dns to the tunneler\n", update_tun_ip_opts, send_message_to_tunnel_fn);
+#if _WIN32
 static CommandLine service_control_cmd = make_command("service_control", "execute service control functions for Ziti tunnel (required superuser access)",
                                           "-o|--operation <option>",
                                           "\t-o|--operation <option>\texecute the service control functions eg: install and uninstall (required)\n",
@@ -2411,9 +2411,9 @@ static CommandLine *main_cmds[] = {
         &get_status_cmd,
         &delete_id_cmd,
         &add_id_cmd,
-#if _WIN32
         &set_log_level_cmd,
         &update_tun_ip_cmd,
+#if _WIN32
         &service_control_cmd,
 #endif
         &ver_cmd,

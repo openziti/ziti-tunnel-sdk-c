@@ -302,7 +302,7 @@ static void setTunnelServiceAddress(tunnel_service *tnl_svc, ziti_service *servi
         int address_idx;
         for(address_idx=0; cfg_v1.addresses[address_idx]; address_idx++) {
             char* addr = cfg_v1.addresses[address_idx];
-            tnl_addr_arr[address_idx] = to_address(strdup(addr));
+            tnl_addr_arr[address_idx] = to_address(addr);
         }
 
         for(idx = 0; cfg_v1.protocols[idx]; idx++) {
@@ -312,7 +312,7 @@ static void setTunnelServiceAddress(tunnel_service *tnl_svc, ziti_service *servi
         protocols = calloc(idx+1, sizeof(char*));
         int protocol_idx;
         for(protocol_idx=0; cfg_v1.addresses[protocol_idx]; protocol_idx++) {
-            protocols[protocol_idx] = cfg_v1.addresses[protocol_idx];
+            protocols[protocol_idx] = strdup(cfg_v1.addresses[protocol_idx]);
         }
 
         // set ports
@@ -327,12 +327,12 @@ static void setTunnelServiceAddress(tunnel_service *tnl_svc, ziti_service *servi
         free_ziti_intercept_cfg_v1(&cfg_v1);
     }  else if ((cfg_json = ziti_service_get_raw_config(service, CFG_ZITI_TUNNELER_CLIENT_V1)) != NULL) {
         ZITI_LOG(TRACE, "ziti-tunneler-client.v1: %s", cfg_json);
-        ziti_client_cfg_v1 zt_client_cfg_v1 = {0};
+        ziti_client_cfg_v1 zt_client_cfg_v1;
         parse_ziti_client_cfg_v1(&zt_client_cfg_v1, cfg_json, strlen(cfg_json));
 
         // set tunnel address
         tnl_addr_arr = calloc(2, sizeof(tunnel_address *));
-        tnl_addr_arr[0] = to_address(strdup(zt_client_cfg_v1.hostname));
+        tnl_addr_arr[0] = to_address(zt_client_cfg_v1.hostname);
 
         // set protocols
         protocols = calloc(3, sizeof(char *));
