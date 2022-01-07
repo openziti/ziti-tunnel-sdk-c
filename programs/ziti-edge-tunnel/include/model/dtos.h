@@ -39,7 +39,7 @@ XX(Active, bool, none, Active, __VA_ARGS__) \
 XX(Loaded, bool, none, Loaded, __VA_ARGS__) \
 XX(Config, tunnel_config, ptr, Config, __VA_ARGS__) \
 XX(ControllerVersion, string, none, ControllerVersion, __VA_ARGS__) \
-XX(Status, instance_status, none, Status, __VA_ARGS__) \
+XX(Status, bool, none, Status, __VA_ARGS__) \
 XX(MfaEnabled, bool, none, MfaEnabled, __VA_ARGS__) \
 XX(MfaNeeded, bool, none, MfaNeeded, __VA_ARGS__) \
 XX(Services, tunnel_service, array, Services, __VA_ARGS__) \

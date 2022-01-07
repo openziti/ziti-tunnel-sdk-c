@@ -964,19 +964,23 @@ static void on_event(const base_event *ev) {
             id_event.Op = strdup("identity");
             id_event.Action = strdup(event_name(event_added));
             id_event.Id = id;
-            id_event.Fingerprint = strdup(id_event.Id->FingerPrint);
+            if (id_event.Id->FingerPrint) {
+                id_event.Fingerprint = strdup(id_event.Id->FingerPrint);
+            }
             id_event.Id->Loaded = true;
 
             action_event controller_event = {0};
             controller_event.Op = strdup("controller");
             controller_event.Identifier = strdup(ev->identifier);
-            controller_event.Fingerprint = strdup(id_event.Id->FingerPrint);
+            if (id_event.Id->FingerPrint) {
+                controller_event.Fingerprint = strdup(id_event.Id->FingerPrint);
+            }
 
             if (zev->code == ZITI_OK) {
                 id_event.Id->Active = true; // determine it from controller
                 if (zev->name) {
                     if (id_event.Id->Name != NULL && strcmp(id_event.Id->Name, zev->name) != 0) {
-                        if (id_event.Id->Name) free(id_event.Id->Name);
+                        free(id_event.Id->Name);
                         id_event.Id->Name = strdup(zev->name);
                     } else if (id_event.Id->Name == NULL) {
                         id_event.Id->Name = strdup(zev->name);
@@ -984,7 +988,7 @@ static void on_event(const base_event *ev) {
                 }
                 if (zev->version) {
                     if (id_event.Id->ControllerVersion != NULL && strcmp(id_event.Id->ControllerVersion, zev->version) != 0) {
-                        if(id_event.Id->ControllerVersion) free(id_event.Id->ControllerVersion);
+                        free(id_event.Id->ControllerVersion);
                         id_event.Id->ControllerVersion = strdup(zev->version);
                     } else if (id_event.Id->ControllerVersion == NULL) {
                         id_event.Id->ControllerVersion = strdup(zev->version);
@@ -992,7 +996,7 @@ static void on_event(const base_event *ev) {
                 }
                 if (zev->controller) {
                     if (id_event.Id->Config != NULL && id_event.Id->Config->ZtAPI != NULL && strcmp(id_event.Id->Config->ZtAPI, zev->controller) != 0) {
-                        if(id_event.Id->Config->ZtAPI) free(id_event.Id->Config->ZtAPI);
+                        free(id_event.Id->Config->ZtAPI);
                         id_event.Id->Config->ZtAPI = strdup(zev->controller);
                     } else if (id_event.Id->Config == NULL) {
                         id_event.Id->Config = calloc(1, sizeof(tunnel_config));
@@ -1028,9 +1032,12 @@ static void on_event(const base_event *ev) {
             services_event svc_event = {
                 .Op = strdup("bulkservice"),
                 .Action = strdup(event_name(event_updated)),
-                .Identifier = strdup(ev->identifier),
-                .Fingerprint = strdup(id->FingerPrint)
+                .Identifier = strdup(ev->identifier)
             };
+
+            if (id->FingerPrint) {
+                svc_event.Fingerprint = strdup(id->FingerPrint);
+            }
             ziti_service **zs;
 #if _WIN32
             model_map *hostnamesToAdd = calloc(1, sizeof(model_map));
@@ -1132,7 +1139,9 @@ static void on_event(const base_event *ev) {
                     .Action = strdup(event_name(event_updated)),
                     .Id = create_or_get_tunnel_identity(ev->identifier, NULL),
             };
-            id_event.Fingerprint = strdup(id_event.Id->FingerPrint);
+            if (id_event.Id->FingerPrint) {
+                id_event.Fingerprint = strdup(id_event.Id->FingerPrint);
+            }
             send_events_message(&id_event, (to_json_fn) identity_event_to_json, true);
             id_event.Id = NULL;
             free_identity_event(&id_event);
@@ -1151,9 +1160,12 @@ static void on_event(const base_event *ev) {
                     .Op = strdup("mfa"),
                     .Action = strdup(mfa_ev->operation),
                     .Identifier = strdup(mfa_ev->identifier),
-                    .Successful = false,
-                    .Fingerprint = strdup(id->FingerPrint)
+                    .Successful = false
             };
+
+            if (id->FingerPrint) {
+                mfa_sts_event.Fingerprint = strdup(id->FingerPrint);
+            }
 
             send_events_message(&mfa_sts_event, (to_json_fn) mfa_status_event_to_json, true);
             free_mfa_status_event(&mfa_sts_event);
@@ -1182,7 +1194,9 @@ static void on_event(const base_event *ev) {
                                 .Action = strdup(event_name(event_updated)),
                                 .Id = create_or_get_tunnel_identity(ev->identifier, NULL),
                         };
-                        id_event.Fingerprint = strdup(id_event.Id->FingerPrint);
+                        if (id_event.Id->FingerPrint) {
+                            id_event.Fingerprint = strdup(id_event.Id->FingerPrint);
+                        }
                         send_events_message(&id_event, (to_json_fn) identity_event_to_json, true);
                         id_event.Id = NULL;
                         free_identity_event(&id_event);
@@ -1205,7 +1219,9 @@ static void on_event(const base_event *ev) {
             }
 
             tunnel_identity *id = create_or_get_tunnel_identity(ev->identifier, NULL);
-            mfa_sts_event.Fingerprint = strdup(id->FingerPrint);
+            if (id->FingerPrint) {
+                mfa_sts_event.Fingerprint = strdup(id->FingerPrint);
+            }
 
             send_events_message(&mfa_sts_event, (to_json_fn) mfa_status_event_to_json, true);
 
@@ -1451,6 +1467,8 @@ static void run(int argc, char *argv[]) {
     }
 
 #if _WIN32
+    remove_all_nrpt_rules();
+
     bool multi_writer = true;
     if (started_by_scm) {
         multi_writer = false;
@@ -1489,9 +1507,6 @@ static void run(int argc, char *argv[]) {
     signal(SIGPIPE, SIG_IGN);
 #endif
 
-#if _WIN32
-    remove_all_nrpt_rules();
-
     // set ip info into instance
     set_ip_info(dns_ip, tun_ip, bits);
 
@@ -1505,6 +1520,7 @@ static void run(int argc, char *argv[]) {
     // set the service version in instance
     set_service_version();
 
+#if _WIN32
     if (init) {
         ziti_log_init(ziti_loop, log_lvl_val, ziti_log_writer);
         struct tm *start_time = get_log_start_time();
