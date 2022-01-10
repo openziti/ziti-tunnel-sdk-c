@@ -485,6 +485,11 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
                 result.success = false;
                 break;
             }
+            if (inst->ztx == NULL) {
+                result.error = "ziti context is not loaded";
+                result.success = false;
+                break;
+            }
 
             get_transfer_rates(get_identity_metrics_cmd.identifier, (command_cb) cb, ctx);
             free_tunnel_get_identity_metrics(&get_identity_metrics_cmd);
