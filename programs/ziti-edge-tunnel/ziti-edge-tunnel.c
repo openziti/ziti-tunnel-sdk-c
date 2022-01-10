@@ -303,8 +303,13 @@ static void on_cmd(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
 
         tunnel_comand cmd = {0};
         if (parse_tunnel_comand(&cmd, b->base, len) > 0) {
+            // process_tunnel_commands is used to update the log level and the tun ip information in the config file through IPC command.
+            // So when the user restarts the tunnel, the new values will be taken.
+            // The config file can be modified only from ziti-edge-tunnel.c file.
             int status = process_tunnel_commands(&cmd, on_command_resp, s);
             if (!status) {
+                // process_cmd will delegate the requests to ziti_tunnel_ctrl.c , which is used to perform the operations against the controller.
+                // config.file cannot be modified or read from that class
                 CMD_CTRL->process(&cmd, on_command_resp, s);
             }
         } else {
