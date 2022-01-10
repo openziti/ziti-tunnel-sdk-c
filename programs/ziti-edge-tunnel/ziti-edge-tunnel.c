@@ -224,6 +224,47 @@ static bool process_tunnel_commands(const tunnel_comand *cmd, command_cb cb, voi
                 result.success = false;
                 break;
             }
+            char* tun_ip_str = strdup(tunnel_tun_ip_v4_cmd.tunIP);
+            // make a copy so we can free it later - validating ip address input
+            char* tun_ip_cpy = tun_ip_str;
+            char* ip_ptr = strtok(tun_ip_str, "."); //cut the string using dot delimiter
+            if (ip_ptr == NULL) {
+                result.error = "Invalid IP address";
+                result.success = false;
+                break;
+            }
+            int dots = 0;
+            bool validationStatus = true;
+            while (ip_ptr) {
+                bool isInt = true;
+                char* ip_str = ip_ptr;
+                while (*ip_str) {
+                    if(!isdigit(*ip_str)){ //if the character is not a number, break
+                        isInt = false;
+                        validationStatus = false;
+                        break;
+                    }
+                    ip_str++; //point to next character
+                }
+                if (!isInt) {
+                    break;
+                }
+                int num = atoi(ip_ptr); //convert substring to number
+                if (num >= 0 && num <= 255) {
+                    ip_ptr = strtok(NULL, "."); //cut the next part of the string
+                    if (ip_ptr != NULL)
+                        dots++; //increase the dot count
+                } else {
+                    validationStatus = false;
+                    break;
+                }
+            }
+            free(tun_ip_cpy);
+            if (dots != 3 || !validationStatus) {
+                result.error = "Invalid IP address";
+                result.success = false;
+                break;
+            }
             set_tun_ipv4_into_instance(tunnel_tun_ip_v4_cmd.tunIP, tunnel_tun_ip_v4_cmd.prefixLength, tunnel_tun_ip_v4_cmd.addDns);
             result.success = true;
             break;
@@ -231,8 +272,10 @@ static bool process_tunnel_commands(const tunnel_comand *cmd, command_cb cb, voi
     }
     if (cmd_accepted) {
         cb(&result, ctx);
-        // should be the last line in this function as it calls the mutex/lock
-        save_tunnel_status_to_file();
+        if (result.success) {
+            // should be the last line in this function as it calls the mutex/lock
+            save_tunnel_status_to_file();
+        }
         return true;
     } else {
         return false;
