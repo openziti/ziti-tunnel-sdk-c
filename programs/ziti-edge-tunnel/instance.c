@@ -32,7 +32,7 @@ tunnel_identity *find_tunnel_identity(const char* identifier) {
     if (tnl_id != NULL) {
         return tnl_id;
     } else {
-        ZITI_LOG(WARN, "Identifier ztx[%s] is not loaded yet or already removed.", identifier);
+        ZITI_LOG(WARN, "Identity ztx[%s] is not loaded yet or already removed.", identifier);
         return NULL;
     }
 }
@@ -548,7 +548,7 @@ void update_mfa_time(char* identifier) {
 }
 
 void set_ip_info(uint32_t dns_ip, uint32_t tun_ip, int bits) {
-    tnl_status.TunIpv4Mask = bits;
+    tnl_status.TunPrefixLength = bits;
 
     if (tnl_status.TunIpv4) free(tnl_status.TunIpv4);
     ip_addr_t tun_ip4 = IPADDR4_INIT(tun_ip);
@@ -619,20 +619,20 @@ void set_service_version() {
     tnl_status.ServiceVersion->BuildDate = strdup(ziti_tunneler_build_date());
 }
 
-void set_tun_ipv4_into_instance(char* tun_ip, int mask, bool addDns) {
+void set_tun_ipv4_into_instance(char* tun_ip, int prefixLength, bool addDns) {
     if (tnl_status.TunIpv4 != NULL) free(tnl_status.TunIpv4);
     tnl_status.TunIpv4 = strdup(tun_ip);
 
-    tnl_status.TunIpv4Mask = mask;
+    tnl_status.TunPrefixLength = prefixLength;
 
     tnl_status.AddDns = addDns;
 }
 
 char* get_ip_range_from_config() {
     char* ip_range = NULL;
-    if (tnl_status.TunIpv4 != NULL && tnl_status.TunIpv4Mask > 0) {
+    if (tnl_status.TunIpv4 != NULL && tnl_status.TunPrefixLength > 0) {
         ip_range = calloc(30, sizeof(char));
-        snprintf(ip_range, 30 * sizeof(char), "%s/%d",tnl_status.TunIpv4, tnl_status.TunIpv4Mask);
+        snprintf(ip_range, 30 * sizeof(char), "%s/%d",tnl_status.TunIpv4, tnl_status.TunPrefixLength);
     }
     return ip_range;
 }

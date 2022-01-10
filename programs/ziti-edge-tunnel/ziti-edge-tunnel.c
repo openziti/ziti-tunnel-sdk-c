@@ -195,7 +195,7 @@ static bool process_tunnel_commands(const tunnel_comand *cmd, command_cb cb, voi
                 break;
             }
             log_level lvl = log_level_value_of(tunnel_set_log_level_cmd.loglevel);
-            if (lvl != NULL) {
+            if (lvl != log_level_Unknown) {
                 if (ziti_log_level() != lvl) {
                     set_log_level(tunnel_set_log_level_cmd.loglevel);
                     ziti_log_set_level(lvl);
@@ -219,10 +219,8 @@ static bool process_tunnel_commands(const tunnel_comand *cmd, command_cb cb, voi
                 result.success = false;
                 break;
             }
-            if (tunnel_tun_ip_v4_cmd.prefixLength < MINTUNIPV4PREFIXLENGTH || tunnel_tun_ip_v4_cmd.prefixLength > MAXTUNIPV4PREFIXLENGTH) {
-                char error_msg[50];
-                snprintf(error_msg, sizeof(error_msg), "prefix length should be between %d and %d", MINTUNIPV4PREFIXLENGTH, MAXTUNIPV4PREFIXLENGTH);
-                result.error = error_msg;
+            if (tunnel_tun_ip_v4_cmd.prefixLength < MINTUNPREFIXLENGTH || tunnel_tun_ip_v4_cmd.prefixLength > MAXTUNPREFIXLENGTH) {
+                result.error = "prefix length should be between 10 and 18";
                 result.success = false;
                 break;
             }
