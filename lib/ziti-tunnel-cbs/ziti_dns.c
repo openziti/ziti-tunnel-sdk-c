@@ -23,6 +23,14 @@
 #define MAX_DNS_NAME 256
 #define MAX_IP_LENGTH 16
 
+enum ns_q_type {
+    NS_T_A = 1,
+    NS_T_AAAA = 28,
+    NS_T_MX = 15,
+    NS_T_TXT = 16,
+    NS_T_SRV = 33,
+};
+
 typedef struct ziti_dns_client_s {
     io_ctx_t *io_ctx;
     LIST_HEAD(reqs, dns_req) active_reqs;
@@ -30,11 +38,15 @@ typedef struct ziti_dns_client_s {
 
 struct dns_req {
     char host[255];
+    uint16_t q_class;
+    uint16_t q_type;
+
     dns_fallback_cb fallback;
     void *fb_ctx;
 
     struct in_addr addr;
     int code;
+    int rr_count;
 
     uint8_t resp[512];
     uint8_t *rp;
@@ -294,17 +306,17 @@ const char *ziti_dns_register_hostname(const char *hostname, void *intercept) {
 static const char DNS_OPT[] = { 0x0, 0x0, 0x29, 0x02, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 };
 
 
-#define DNS_ID(p) (p[0] << 8 | p[1])
-#define DNS_FLAGS(p) (p[2] << 8 | p[3])
-#define DNS_QRS(p) (p[4] << 8 | p[5])
-#define DNS_QR(p) (p + 12)
+#define DNS_ID(p) ((p)[0] << 8 | (p)[1])
+#define DNS_FLAGS(p) ((p)[2] << 8 | (p)[3])
+#define DNS_QRS(p) ((p)[4] << 8 | (p)[5])
+#define DNS_QR(p) ((p) + 12)
 
-#define DNS_SET_CODE(p,c) (p[3] = p[3] | (c & 0xf))
-#define DNS_SET_ANS(p) (p[2] = p[2] | 0x80)
-#define DNS_SET_ARS(p,n) do{ p[6] = n >> 8; p[7] = n & 0xff; } while(0)
-#define DNS_SET_AARS(p,n) do{ p[10] = n >> 8; p[11] = n & 0xff; } while(0)
+#define DNS_SET_CODE(p,c) ((p)[3] = (p)[3] | ((c) & 0xf))
+#define DNS_SET_ANS(p) ((p)[2] = (p)[2] | 0x80)
+#define DNS_SET_ARS(p,n) do{ (p)[6] = (n) >> 8; (p)[7] = (n) & 0xff; } while(0)
+#define DNS_SET_AARS(p,n) do{ (p)[10] = (n) >> 8; (p)[11] = (n) & 0xff; } while(0)
 
-#define IS_QUERY(flags) ((flags & (1 << 15)) == 0)
+#define IS_QUERY(flags) (((flags) & (1 << 15)) == 0)
 
 
 static void fallback_work(uv_work_t *work_req) {
@@ -319,7 +331,7 @@ static void dns_work_complete(uv_work_t *work_req, int status) {
 
         uint8_t *rp = req->rp;
         DNS_SET_CODE(req->resp, req->code);
-        if (req->code == DNS_NO_ERROR) {
+        if (req->code == DNS_NO_ERROR && req->rr_count > 0) {
             ZITI_LOG(TRACE, "found record for host[%s]", req->host);
             DNS_SET_ARS(req->resp, 1);
 
@@ -400,7 +412,7 @@ ssize_t on_dns_req(void *ziti_io_ctx, void *write_ctx, const uint8_t *q_packet, 
         q++;
         for (int i = 0; i < seg_len; i++) {
             *rp++ = *q;
-            *hp++ = tolower(*q++);
+            *hp++ = (char)tolower(*q++);
         }
         *hp++ = '.';
     }
@@ -408,27 +420,51 @@ ssize_t on_dns_req(void *ziti_io_ctx, void *write_ctx, const uint8_t *q_packet, 
     *hp = '\0';
     *rp++ = *q++;
 
-    uint16_t type = (q[0] << 8) | (q[1]); *rp++ = *q++; *rp++ = *q++;
-    uint16_t class = (q[0] << 8) | q[1]; *rp++ = *q++; *rp++ = *q++;
+    req->q_type = (q[0] << 8) | (q[1]); *rp++ = *q++; *rp++ = *q++;
+    req->q_class = (q[0] << 8) | q[1]; *rp++ = *q++; *rp++ = *q++;
+
+    ZITI_LOG(TRACE, "received query for %s type(%x) class(%x)", req->host, req->q_type, req->q_class);
+    if (req->q_class != 1) {
+        DNS_SET_ARS(req->resp, 0);
+        DNS_SET_AARS(req->resp, 0);
+        DNS_SET_CODE(req->resp, DNS_NOT_IMPL);
+        req->code = DNS_NOT_IMPL;
+
+        goto DONE;
+    }
 
     req->rp = rp;
 
-    ZITI_LOG(TRACE, "received query for %s type(%x) class(%x)", req->host, type, class);
+    if (req->q_type == NS_T_A || req->q_type == NS_T_AAAA) {
+        dns_entry_t *entry = ziti_dns_lookup(req->host);
+        if (!entry && ziti_dns.fallback_cb) {
+            req->fb_ctx = ziti_dns.fallback_ctx;
+            req->fallback = ziti_dns.fallback_cb;
 
-    dns_entry_t *entry = ziti_dns_lookup(req->host);
-    if (!entry && ziti_dns.fallback_cb) {
-        req->fb_ctx = ziti_dns.fallback_ctx;
-        req->fallback = ziti_dns.fallback_cb;
+            ziti_tunneler_ack(write_ctx);
+            uv_queue_work(ziti_dns.loop, work_req, fallback_work, dns_work_complete);
+            return q_len;
+        }
 
-        ziti_tunneler_ack(write_ctx);
-        return uv_queue_work(ziti_dns.loop, work_req, fallback_work, dns_work_complete);
-    }
-
-    if (entry) {
-        req->addr.s_addr = entry->addr.u_addr.ip4.addr;
-        req->code = DNS_NO_ERROR;
+        if (entry) {
+            req->code = DNS_NO_ERROR;
+            if (req->q_type == NS_T_A) {
+                req->rr_count = 1;
+                req->addr.s_addr = entry->addr.u_addr.ip4.addr;
+            } else {
+                DNS_SET_ARS(req->resp, 0);
+                DNS_SET_AARS(req->resp, 0);
+                DNS_SET_CODE(req->resp, DNS_NO_ERROR);
+                req->rr_count = 0;
+            }
+        } else {
+            req->code = DNS_NXDOMAIN;
+        }
     } else {
-        req->code = DNS_NXDOMAIN;
+        // future proxy lookup for (MX, TXT, SRV)
+        DNS_SET_ARS(req->resp, 0);
+        DNS_SET_AARS(req->resp, 0);
+        DNS_SET_CODE(req->resp, DNS_NO_ERROR);
     }
 
     DONE:

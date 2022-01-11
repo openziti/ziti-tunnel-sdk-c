@@ -39,7 +39,7 @@ XX(Active, bool, none, Active, __VA_ARGS__) \
 XX(Loaded, bool, none, Loaded, __VA_ARGS__) \
 XX(Config, tunnel_config, ptr, Config, __VA_ARGS__) \
 XX(ControllerVersion, string, none, ControllerVersion, __VA_ARGS__) \
-XX(Status, string, none, Status, __VA_ARGS__) \
+XX(Status, bool, none, Status, __VA_ARGS__) \
 XX(MfaEnabled, bool, none, MfaEnabled, __VA_ARGS__) \
 XX(MfaNeeded, bool, none, MfaNeeded, __VA_ARGS__) \
 XX(Services, tunnel_service, array, Services, __VA_ARGS__) \
@@ -81,7 +81,7 @@ XX(Addresses, tunnel_address, array, Addresses, __VA_ARGS__) \
 XX(Ports, tunnel_port_range, array, Ports, __VA_ARGS__)  \
 XX(OwnsIntercept, bool, none, OwnsIntercept, __VA_ARGS__) \
 XX(PostureChecks, tunnel_posture_check, array, PostureChecks, __VA_ARGS__) \
-XX(IsAccessible, bool, none, IsAccessable, __VA_ARGS__) \
+XX(IsAccessible, bool, none, IsAccessible, __VA_ARGS__) \
 XX(Timeout, int, none, Timeout, __VA_ARGS__)         \
 XX(TimeoutRemaining, int, none, TimeoutRemaining, __VA_ARGS__)
 
@@ -94,7 +94,7 @@ XX(IpInfo, ip_info, ptr, IpInfo, __VA_ARGS__) \
 XX(LogLevel, string, none, LogLevel, __VA_ARGS__) \
 XX(ServiceVersion, service_version, ptr, ServiceVersion, __VA_ARGS__) \
 XX(TunIpv4, string, none, TunIpv4, __VA_ARGS__) \
-XX(TunIpv4Mask, int, none, TunIpv4Mask, __VA_ARGS__) \
+XX(TunPrefixLength, int, none, TunIpv4Mask, __VA_ARGS__) \
 XX(Status, string, none, Status, __VA_ARGS__) \
 XX(AddDns, bool, none, AddDns, __VA_ARGS__)
 
