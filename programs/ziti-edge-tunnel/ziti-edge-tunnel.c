@@ -1448,10 +1448,10 @@ void on_write(uv_write_t* req, int status) {
     free(req);
 }
 
-void send_message_to_pipe(uv_connect_t *connect, void *message, size_t datalen) {
-    printf("Message...%s\n", message);
+void send_message_to_pipe(uv_connect_t *connect) {
+    printf("Message...%s\n", connect->data);
     uv_write_t *req = (uv_write_t*) malloc(sizeof(uv_write_t));
-    uv_buf_t buf = uv_buf_init(message, datalen);
+    uv_buf_t buf = uv_buf_init(connect->data, strlen(connect->data));
     uv_write((uv_write_t*) req, connect->handle, &buf, 1,    on_write);
 }
 
@@ -1464,12 +1464,7 @@ void on_connect(uv_connect_t* connect, int status){
         if (res != 0) {
             printf("UV read error %s\n", uv_err_name(res));
         }
-
-        size_t json_len;
-        char* json = tunnel_comand_to_json(cmd, MODEL_JSON_COMPACT, &json_len);
-        send_message_to_pipe(connect, json, json_len);
-        free(json);
-        free_tunnel_comand(cmd);
+        send_message_to_pipe(connect);
     }
 }
 
@@ -1487,9 +1482,10 @@ static uv_loop_t* connect_and_send_cmd(char sockfile[],uv_connect_t* connect, uv
     return loop;
 }
 
-static void send_message_to_tunnel() {
+static void send_message_to_tunnel(char* message) {
     uv_pipe_t client_handle;
     uv_connect_t* connect = (uv_connect_t*)malloc(sizeof(uv_connect_t));
+    connect->data = strdup(message);
 
     uv_loop_t* loop = connect_and_send_cmd(sockfile, connect, &client_handle);
 
@@ -1505,7 +1501,10 @@ static void send_message_to_tunnel() {
 }
 
 static void send_message_to_tunnel_fn(int argc, char *argv[]) {
-    send_message_to_tunnel();
+    char* json = tunnel_comand_to_json(cmd, MODEL_JSON_COMPACT, NULL);
+    send_message_to_tunnel(json);
+    free_tunnel_comand(cmd);
+    free(json);
 }
 
 static int disable_identity_opts(int argc, char *argv[]) {
