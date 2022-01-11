@@ -260,6 +260,7 @@ void tunnel_enroll_cb(ziti_config *cfg, int status, char *err, void *ctx) {
             .success = false,
             .error = NULL,
             .data = NULL,
+            .code = IPC_ERROR,
     };
 
     if (status != ZITI_OK) {
@@ -322,6 +323,7 @@ static bool process_tunnel_commands(const tunnel_comand *tnl_cmd, command_cb cb,
             .success = false,
             .error = NULL,
             .data = NULL,
+            .code = IPC_ERROR,
     };
     bool cmd_accepted = false;
     switch (tnl_cmd->command) {
@@ -344,6 +346,7 @@ static bool process_tunnel_commands(const tunnel_comand *tnl_cmd, command_cb cb,
                     ZITI_LOG(INFO, "Log level is already set to %s", tunnel_set_log_level_cmd.loglevel);
                 }
                 result.success = true;
+                result.code = IPC_SUCCESS;
             } else {
                 result.error = "invalid loglevel";
                 result.success = false;
@@ -376,12 +379,14 @@ static bool process_tunnel_commands(const tunnel_comand *tnl_cmd, command_cb cb,
             }
             set_tun_ipv4_into_instance(tunnel_tun_ip_v4_cmd.tunIP, tunnel_tun_ip_v4_cmd.prefixLength, tunnel_tun_ip_v4_cmd.addDns);
             result.success = true;
+            result.code = IPC_SUCCESS;
             break;
         }
         case TunnelCommand_Status: {
             cmd_accepted = true;
             tunnel_status* status = get_tunnel_status();
             result.success = true;
+            result.code = IPC_SUCCESS;
             size_t json_len;
             result.data = tunnel_status_to_json(status, MODEL_JSON_COMPACT, &json_len);
             break;
@@ -480,7 +485,8 @@ static void on_cmd(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
         } else {
             tunnel_result resp = {
                     .success = false,
-                    .error = "failed to parse command"
+                    .error = "failed to parse command",
+                    .code = IPC_ERROR,
             };
             on_command_resp(&resp, s);
         }

@@ -69,9 +69,10 @@ XX(command, TunnelCommand, none, Function, __VA_ARGS__) \
 XX(data, json, none, Payload, __VA_ARGS__)
 
 #define TUNNEL_CMD_RES(XX, ...) \
-XX(success, bool, none, success, __VA_ARGS__) \
-XX(error, string, none, error, __VA_ARGS__)\
-XX(data, json, none, data, __VA_ARGS__)
+XX(success, bool, none, Success, __VA_ARGS__) \
+XX(error, string, none, Error, __VA_ARGS__)\
+XX(data, json, none, Message, __VA_ARGS__) \
+XX(code, int, none, Code, __VA_ARGS__)
 
 #define TNL_LOAD_IDENTITY(XX, ...) \
 XX(identifier, string, none, identifier, __VA_ARGS__)\
@@ -306,6 +307,14 @@ struct add_identity_request_s {
     command_cb cmd_cb;
     void *cmd_ctx;
 };
+
+#ifndef IPC_SUCCESS
+#define IPC_SUCCESS 0
+#endif
+#ifndef IPC_ERROR
+#define IPC_ERROR 500
+#endif
+
 
 #ifdef __cplusplus
 }
