@@ -204,6 +204,7 @@ void stop_log_check() {
         uv_check_stop(log_flusher);
         free(log_flusher->data);
         free(log_flusher);
+        log_flusher = NULL;
     }
 }
 

@@ -54,6 +54,8 @@ XX(RemoveMFA, __VA_ARGS__)  \
 XX(GenerateMFACodes, __VA_ARGS__) \
 XX(GetMFACodes, __VA_ARGS__) \
 XX(GetMetrics, __VA_ARGS__) \
+XX(SetLogLevel, __VA_ARGS__) \
+XX(UpdateTunIP, __VA_ARGS__) \
 XX(ServiceControl, __VA_ARGS__)
 
 DECLARE_ENUM(TunnelCommand, TUNNEL_COMMANDS)
@@ -134,10 +136,18 @@ XX(down, string, none, down, __VA_ARGS__)
 XX(identifier, string, none, id, __VA_ARGS__) \
 XX(command, TunnelCommand, none, command, __VA_ARGS__)
 
+#define TUNNEL_SET_LOG_LEVEL(XX, ...) \
+XX(loglevel, string, none, Level, __VA_ARGS__)
+
+#define TUNNEL_TUN_IP_V4(XX, ...) \
+XX(tunIP, string, none, TunIPv4, __VA_ARGS__) \
+XX(prefixLength, int, none, TunPrefixLength, __VA_ARGS__) \
+XX(addDns, bool, none, AddDns, __VA_ARGS__)
+
 #define TUNNEL_SERVICE_CONTROL(XX, ...) \
 XX(operation, string, none, operation, __VA_ARGS__)
 
-DECLARE_MODEL(tunnel_comand, TUNNEL_CMD)
+DECLARE_MODEL(tunnel_command, TUNNEL_CMD)
 DECLARE_MODEL(tunnel_result, TUNNEL_CMD_RES)
 DECLARE_MODEL(tunnel_load_identity, TNL_LOAD_IDENTITY)
 DECLARE_MODEL(tunnel_identity_info, TNL_IDENTITY_INFO)
@@ -155,12 +165,14 @@ DECLARE_MODEL(tunnel_get_mfa_codes, TNL_GET_MFA_CODES)
 DECLARE_MODEL(tunnel_get_identity_metrics, TNL_GET_IDENTITY_METRICS)
 DECLARE_MODEL(tunnel_identity_metrics, TNL_IDENTITY_METRICS)
 DECLARE_MODEL(tunnel_command_inline, TUNNEL_CMD_INLINE)
+DECLARE_MODEL(tunnel_set_log_level, TUNNEL_SET_LOG_LEVEL)
+DECLARE_MODEL(tunnel_tun_ip_v4, TUNNEL_TUN_IP_V4)
 DECLARE_MODEL(tunnel_service_control, TUNNEL_SERVICE_CONTROL)
 
 #define TUNNEL_EVENTS(XX, ...) \
 XX(ContextEvent, __VA_ARGS__) \
-XX(ServiceEvent, __VA_ARGS__)  \
-XX(MFAEvent, __VA_ARGS__)      \
+XX(ServiceEvent, __VA_ARGS__) \
+XX(MFAEvent, __VA_ARGS__) \
 XX(MFAStatusEvent, __VA_ARGS__)
 
 DECLARE_ENUM(TunnelEvent, TUNNEL_EVENTS)
@@ -235,7 +247,7 @@ struct hosted_io_ctx_s {
 typedef void (*event_cb)(const base_event* event);
 typedef void (*command_cb)(const tunnel_result *, void *ctx);
 typedef struct {
-    int (*process)(const tunnel_comand *cmd, command_cb cb, void *ctx);
+    int (*process)(const tunnel_command *cmd, command_cb cb, void *ctx);
     int (*load_identity)(const char *identifier, const char *path, command_cb, void *ctx);
     // do not use, temporary accessor
     ziti_context (*get_ziti)(const char *identifier);

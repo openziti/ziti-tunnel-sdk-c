@@ -20,6 +20,14 @@
 #include <ziti/ziti_model.h>
 #include "model/dtos.h"
 
+#ifndef MINTUNPREFIXLENGTH
+#define MINTUNPREFIXLENGTH 10
+#endif
+
+#ifndef MAXTUNPREFIXLENGTH
+#define MAXTUNPREFIXLENGTH 18
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -53,6 +61,10 @@ void set_log_level(char* log_level);
 void set_service_version();
 
 char* get_log_level();
+
+void set_tun_ipv4_into_instance(char* tun_ip, int prefixLength, bool addDns);
+
+char* get_ip_range_from_config();
 
 #ifdef __cplusplus
 }

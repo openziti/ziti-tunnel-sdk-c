@@ -32,7 +32,7 @@ tunnel_identity *find_tunnel_identity(const char* identifier) {
     if (tnl_id != NULL) {
         return tnl_id;
     } else {
-        ZITI_LOG(WARN, "ztx[%s] is not found. It may not be active/connected", identifier);
+        ZITI_LOG(WARN, "Identity ztx[%s] is not loaded yet or already removed.", identifier);
         return NULL;
     }
 }
@@ -242,10 +242,9 @@ static void setTunnelPostureDataTimeout(tunnel_service *tnl_svc, ziti_service *s
             itr = model_map_it_remove(itr);
         }
     }
-
-    tnl_svc->IsAccessible = hasAccess;
     model_map_clear(&postureCheckMap, NULL);
 
+    tnl_svc->IsAccessible = hasAccess;
     tnl_svc->Timeout = minTimeout;
     tnl_svc->TimeoutRemaining = minTimeoutRemaining;
     ZITI_LOG(DEBUG, "service[%s] timeout=%d timeoutRemaining=%d", service->name, minTimeout, minTimeoutRemaining);
@@ -299,7 +298,7 @@ static void setTunnelServiceAddress(tunnel_service *tnl_svc, ziti_service *servi
         int address_idx;
         for(address_idx=0; cfg_v1.addresses[address_idx]; address_idx++) {
             char* addr = cfg_v1.addresses[address_idx];
-            tnl_addr_arr[address_idx] = to_address(strdup(addr));
+            tnl_addr_arr[address_idx] = to_address(addr);
         }
 
         for(idx = 0; cfg_v1.protocols[idx]; idx++) {
@@ -324,12 +323,12 @@ static void setTunnelServiceAddress(tunnel_service *tnl_svc, ziti_service *servi
         free_ziti_intercept_cfg_v1(&cfg_v1);
     }  else if ((cfg_json = ziti_service_get_raw_config(service, CFG_ZITI_TUNNELER_CLIENT_V1)) != NULL) {
         ZITI_LOG(TRACE, "ziti-tunneler-client.v1: %s", cfg_json);
-        ziti_client_cfg_v1 zt_client_cfg_v1 = {0};
+        ziti_client_cfg_v1 zt_client_cfg_v1;
         parse_ziti_client_cfg_v1(&zt_client_cfg_v1, cfg_json, strlen(cfg_json));
 
         // set tunnel address
         tnl_addr_arr = calloc(2, sizeof(tunnel_address *));
-        tnl_addr_arr[0] = to_address(strdup(zt_client_cfg_v1.hostname));
+        tnl_addr_arr[0] = to_address(zt_client_cfg_v1.hostname);
 
         // set protocols
         protocols = calloc(3, sizeof(char *));
@@ -549,7 +548,7 @@ void update_mfa_time(char* identifier) {
 }
 
 void set_ip_info(uint32_t dns_ip, uint32_t tun_ip, int bits) {
-    tnl_status.TunIpv4Mask = bits;
+    tnl_status.TunPrefixLength = bits;
 
     if (tnl_status.TunIpv4) free(tnl_status.TunIpv4);
     ip_addr_t tun_ip4 = IPADDR4_INIT(tun_ip);
@@ -618,6 +617,24 @@ void set_service_version() {
     }
 
     tnl_status.ServiceVersion->BuildDate = strdup(ziti_tunneler_build_date());
+}
+
+void set_tun_ipv4_into_instance(char* tun_ip, int prefixLength, bool addDns) {
+    if (tnl_status.TunIpv4 != NULL) free(tnl_status.TunIpv4);
+    tnl_status.TunIpv4 = strdup(tun_ip);
+
+    tnl_status.TunPrefixLength = prefixLength;
+
+    tnl_status.AddDns = addDns;
+}
+
+char* get_ip_range_from_config() {
+    char* ip_range = NULL;
+    if (tnl_status.TunIpv4 != NULL && tnl_status.TunPrefixLength > 0) {
+        ip_range = calloc(30, sizeof(char));
+        snprintf(ip_range, 30 * sizeof(char), "%s/%d",tnl_status.TunIpv4, tnl_status.TunPrefixLength);
+    }
+    return ip_range;
 }
 
 // ************** TUNNEL BROADCAST MESSAGES
