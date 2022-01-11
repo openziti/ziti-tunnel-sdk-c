@@ -192,25 +192,27 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
                         remove(tnl_delete_id.identifier);
                         ZITI_LOG(INFO, "Identity file %s is deleted",tnl_delete_id.identifier);
 #if _WIN32
-                        model_map *hostnamesToRemove = calloc(1, sizeof(model_map));
                         tunnel_identity *id = create_or_get_tunnel_identity(tnl_delete_id.identifier, NULL);
-                        for (int index=0 ; id->Services[index]; index++ ) {
-                            tunnel_service *tnl_svc = id->Services[index];
-                            if (tnl_svc->Addresses != NULL) {
-                                for (int i = 0; tnl_svc->Addresses[i]; i++) {
-                                    tunnel_address *addr = tnl_svc->Addresses[i];
-                                    if (addr->IsHost && model_map_get(hostnamesToRemove, addr->HostName) == NULL) {
-                                        model_map_set(hostnamesToRemove, addr->HostName, true);
+                        if (id->Services) {
+                            model_map *hostnamesToRemove = calloc(1, sizeof(model_map));
+                            for (int index=0 ; id->Services[index]; index++ ) {
+                                tunnel_service *tnl_svc = id->Services[index];
+                                if (tnl_svc->Addresses != NULL) {
+                                    for (int i = 0; tnl_svc->Addresses[i]; i++) {
+                                        tunnel_address *addr = tnl_svc->Addresses[i];
+                                        if (addr->IsHost && model_map_get(hostnamesToRemove, addr->HostName) == NULL) {
+                                            model_map_set(hostnamesToRemove, addr->HostName, true);
+                                        }
                                     }
                                 }
                             }
-                        }
 
-                        if (model_map_size(hostnamesToRemove) > 0) {
-                            uv_async_t *ar = calloc(1, sizeof(uv_async_t));
-                            ar->data = hostnamesToRemove;
-                            uv_async_init(main_ziti_loop, ar, remove_nrpt_rules);
-                            uv_async_send(ar);
+                            if (model_map_size(hostnamesToRemove) > 0) {
+                                uv_async_t *ar = calloc(1, sizeof(uv_async_t));
+                                ar->data = hostnamesToRemove;
+                                uv_async_init(main_ziti_loop, ar, remove_nrpt_rules);
+                                uv_async_send(ar);
+                            }
                         }
 #endif
                     }
@@ -2380,7 +2382,7 @@ static CommandLine get_status_cmd = make_command("tunnel_status", "Get Tunnel St
 static CommandLine delete_id_cmd = make_command("delete", "delete the identities information", "[-i <identity>]",
                                                  "\t-i|--identity\tidentity info that needs to be deleted\n", delete_identity_opts, send_message_to_tunnel_fn);
 static CommandLine add_id_cmd = make_command("add", "enroll and load the identities information", "[-i <identity>]",
-                                                "\t-i|--identity\tidentity info that needs to be enabled\n"
+                                                "\t-i|--identity\tidentity filename or jwt filename (without path)\n"
                                                 "\t-j|--jwt\tjwt content that needs to be enrolled\n", add_identity_opts, send_message_to_tunnel_fn);
 static CommandLine set_log_level_cmd = make_command("set_log_level", "Set log level of the tunneler", "-l <level>",
                                                     "\t-l|--loglevel\tlog level of the tunneler\n", set_log_level_opts, send_message_to_tunnel_fn);
