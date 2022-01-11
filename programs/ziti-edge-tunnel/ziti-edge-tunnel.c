@@ -177,7 +177,7 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
     }
 }
 
-static bool process_tunnel_commands(const tunnel_comand *cmd, command_cb cb, void *ctx) {
+static bool process_tunnel_commands(const tunnel_command *cmd, command_cb cb, void *ctx) {
     tunnel_result result = {
             .success = false,
             .error = NULL,
@@ -301,8 +301,8 @@ static void on_cmd(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
     } else {
         ZITI_LOG(INFO, "received cmd <%.*s>", (int) len, b->base);
 
-        tunnel_comand cmd = {0};
-        if (parse_tunnel_comand(&cmd, b->base, len) > 0) {
+        tunnel_command cmd = {0};
+        if (parse_tunnel_command(&cmd, b->base, len) > 0) {
             // process_tunnel_commands is used to update the log level and the tun ip information in the config file through IPC command.
             // So when the user restarts the tunnel, the new values will be taken.
             // The config file can be modified only from ziti-edge-tunnel.c file.
@@ -319,7 +319,7 @@ static void on_cmd(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
             };
             on_command_resp(&resp, s);
         }
-        free_tunnel_comand(&cmd);
+        free_tunnel_command(&cmd);
     }
 
     free(b->base);
@@ -530,9 +530,9 @@ static void on_command_inline_resp(const tunnel_result* result, void *ctx) {
     }
 }
 
-static void send_tunnel_command(tunnel_comand *cmd, void *ctx) {
+static void send_tunnel_command(tunnel_command *cmd, void *ctx) {
     CMD_CTRL->process(cmd, on_command_inline_resp, ctx);
-    free_tunnel_comand(cmd);
+    free_tunnel_command(cmd);
     free(cmd);
 }
 
@@ -653,7 +653,7 @@ static void broadcast_metrics(uv_timer_t *timer) {
             if (tnl_id->Active && tnl_id->Loaded) {
                 active_identities = true;
 
-                tunnel_comand *cmd = calloc(1, sizeof(tunnel_comand));
+                tunnel_command *cmd = calloc(1, sizeof(tunnel_command));
                 cmd->command = TunnelCommand_GetMetrics;
                 tunnel_get_identity_metrics *get_metrics = calloc(1, sizeof(tunnel_get_identity_metrics));
                 get_metrics->identifier = strdup(tnl_id->Identifier);
@@ -1386,7 +1386,7 @@ static void enroll(int argc, char *argv[]) {
     uv_run(l, UV_RUN_DEFAULT);
 }
 
-static tunnel_comand *cmd;
+static tunnel_command *cmd;
 
 static int dump_opts(int argc, char *argv[]) {
     static struct option opts[] = {
@@ -1397,7 +1397,7 @@ static int dump_opts(int argc, char *argv[]) {
     optind = 0;
 
     tunnel_ziti_dump *dump_options = calloc(1, sizeof(tunnel_ziti_dump));
-    cmd = calloc(1, sizeof(tunnel_comand));
+    cmd = calloc(1, sizeof(tunnel_command));
     cmd->command = TunnelCommand_ZitiDump;
 
     while ((c = getopt_long(argc, argv, "i:p:",
@@ -1501,9 +1501,11 @@ static void send_message_to_tunnel(char* message) {
 }
 
 static void send_message_to_tunnel_fn(int argc, char *argv[]) {
-    char* json = tunnel_comand_to_json(cmd, MODEL_JSON_COMPACT, NULL);
+    char* json = tunnel_command_to_json(cmd, MODEL_JSON_COMPACT, NULL);
     send_message_to_tunnel(json);
-    free_tunnel_comand(cmd);
+    free_tunnel_command(cmd);
+    free(cmd);
+    cmd = NULL;
     free(json);
 }
 
@@ -1515,7 +1517,7 @@ static int disable_identity_opts(int argc, char *argv[]) {
     optind = 0;
 
     tunnel_disable_identity *disable_identity_options = calloc(1, sizeof(tunnel_disable_identity));
-    cmd = calloc(1, sizeof(tunnel_comand));
+    cmd = calloc(1, sizeof(tunnel_command));
     cmd->command = TunnelCommand_DisableIdentity;
 
     while ((c = getopt_long(argc, argv, "i:",
@@ -1549,7 +1551,7 @@ static int enable_identity_opts(int argc, char *argv[]) {
     optind = 0;
 
     tunnel_load_identity *load_identity_options = calloc(1, sizeof(tunnel_load_identity));
-    cmd = calloc(1, sizeof(tunnel_comand));
+    cmd = calloc(1, sizeof(tunnel_command));
     cmd->command = TunnelCommand_LoadIdentity;
 
     while ((c = getopt_long(argc, argv, "i:",
@@ -1583,7 +1585,7 @@ static int enable_mfa_opts(int argc, char *argv[]) {
     optind = 0;
 
     tunnel_enable_mfa *enable_mfa_options = calloc(1, sizeof(tunnel_enable_mfa));
-    cmd = calloc(1, sizeof(tunnel_comand));
+    cmd = calloc(1, sizeof(tunnel_command));
     cmd->command = TunnelCommand_EnableMFA;
 
     while ((c = getopt_long(argc, argv, "i:",
@@ -1618,7 +1620,7 @@ static int verify_mfa_opts(int argc, char *argv[]) {
     optind = 0;
 
     tunnel_verify_mfa *verify_mfa_options = calloc(1, sizeof(tunnel_verify_mfa));
-    cmd = calloc(1, sizeof(tunnel_comand));
+    cmd = calloc(1, sizeof(tunnel_command));
     cmd->command = TunnelCommand_VerifyMFA;
 
     while ((c = getopt_long(argc, argv, "i:c:",
@@ -1656,7 +1658,7 @@ static int remove_mfa_opts(int argc, char *argv[]) {
     optind = 0;
 
     tunnel_remove_mfa *remove_mfa_options = calloc(1, sizeof(tunnel_remove_mfa));
-    cmd = calloc(1, sizeof(tunnel_comand));
+    cmd = calloc(1, sizeof(tunnel_command));
     cmd->command = TunnelCommand_RemoveMFA;
 
     while ((c = getopt_long(argc, argv, "i:c:",
@@ -1694,7 +1696,7 @@ static int submit_mfa_opts(int argc, char *argv[]) {
     optind = 0;
 
     tunnel_submit_mfa *submit_mfa_options = calloc(1, sizeof(tunnel_submit_mfa));
-    cmd = calloc(1, sizeof(tunnel_comand));
+    cmd = calloc(1, sizeof(tunnel_command));
     cmd->command = TunnelCommand_SubmitMFA;
 
     while ((c = getopt_long(argc, argv, "i:c:",
@@ -1732,7 +1734,7 @@ static int generate_mfa_codes_opts(int argc, char *argv[]) {
     optind = 0;
 
     tunnel_generate_mfa_codes *mfa_codes_options = calloc(1, sizeof(tunnel_generate_mfa_codes));
-    cmd = calloc(1, sizeof(tunnel_comand));
+    cmd = calloc(1, sizeof(tunnel_command));
     cmd->command = TunnelCommand_GenerateMFACodes;
 
     while ((c = getopt_long(argc, argv, "i:c:",
@@ -1770,7 +1772,7 @@ static int get_mfa_codes_opts(int argc, char *argv[]) {
     optind = 0;
 
     tunnel_get_mfa_codes *get_mfa_codes_options = calloc(1, sizeof(tunnel_get_mfa_codes));
-    cmd = calloc(1, sizeof(tunnel_comand));
+    cmd = calloc(1, sizeof(tunnel_command));
     cmd->command = TunnelCommand_GetMFACodes;
 
     while ((c = getopt_long(argc, argv, "i:c:",
@@ -1807,7 +1809,7 @@ static int set_log_level_opts(int argc, char *argv[]) {
     optind = 0;
 
     tunnel_set_log_level *log_level_options = calloc(1, sizeof(tunnel_set_log_level));
-    cmd = calloc(1, sizeof(tunnel_comand));
+    cmd = calloc(1, sizeof(tunnel_command));
     cmd->command = TunnelCommand_SetLogLevel;
 
     while ((c = getopt_long(argc, argv, "l:",
@@ -1843,7 +1845,7 @@ static int update_tun_ip_opts(int argc, char *argv[]) {
     optind = 0;
 
     tunnel_tun_ip_v4 *tun_ip_v4_options = calloc(1, sizeof(tunnel_tun_ip_v4));
-    cmd = calloc(1, sizeof(tunnel_comand));
+    cmd = calloc(1, sizeof(tunnel_command));
     cmd->command = TunnelCommand_UpdateTunIP;
 
     while ((c = getopt_long(argc, argv, "t:p:d:",
@@ -1903,7 +1905,7 @@ static int svc_opts(int argc, char *argv[]) {
     };
 
     tunnel_service_control *tunnel_service_control_options = calloc(1, sizeof(tunnel_service_control));
-    cmd = calloc(1, sizeof(tunnel_comand));
+    cmd = calloc(1, sizeof(tunnel_command));
     cmd->command = TunnelCommand_ServiceControl;
 
     int c, option_index, errors = 0;

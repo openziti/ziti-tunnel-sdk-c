@@ -44,7 +44,7 @@ static const char * cfg_types[] = { "ziti-tunneler-client.v1", "intercept.v1", "
 
 static long refresh_interval = 10;
 
-static int process_cmd(const tunnel_comand *cmd, void (*cb)(const tunnel_result *, void *ctx), void *ctx);
+static int process_cmd(const tunnel_command *cmd, void (*cb)(const tunnel_result *, void *ctx), void *ctx);
 static int load_identity(const char *identifier, const char *path, command_cb cb, void *ctx);
 static void get_transfer_rates(const char *identifier, command_cb cb, void *ctx);
 static struct ziti_instance_s *new_ziti_instance(const char *identifier, const char *path);
@@ -161,7 +161,7 @@ static void disconnect_identity(ziti_context ziti_ctx, void *tnlr_ctx) {
 }
 
 
-static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
+static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
     tunnel_result result = {
             .success = false,
             .error = NULL,
@@ -1001,7 +1001,7 @@ static void on_sigdump(uv_signal_t *sig, int signum) {
 
 IMPL_ENUM(TunnelCommand, TUNNEL_COMMANDS)
 
-IMPL_MODEL(tunnel_comand, TUNNEL_CMD)
+IMPL_MODEL(tunnel_command, TUNNEL_CMD)
 IMPL_MODEL(tunnel_result, TUNNEL_CMD_RES)
 IMPL_MODEL(tunnel_load_identity, TNL_LOAD_IDENTITY)
 
