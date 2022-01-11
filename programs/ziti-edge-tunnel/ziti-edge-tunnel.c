@@ -1244,9 +1244,10 @@ static void run(int argc, char *argv[]) {
         multi_writer = false;
     }
     init = log_init(ziti_loop, multi_writer);
-#endif
 
     signal(SIGINT, interrupt_handler);
+#endif
+
     char *ip_range_temp = get_ip_range_from_config();
     if (ip_range_temp != NULL) {
         ip_range = ip_range_temp;
