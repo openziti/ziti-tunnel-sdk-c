@@ -1374,16 +1374,21 @@ static void enroll(int argc, char *argv[]) {
         exit(-1);
     }
 
+    #include <fcntl.h>
+    #include <errno.h>
     FILE *outfile;
-    if ((outfile = fopen(config_file, "wb")) == NULL) {
-        ZITI_LOG(ERROR, "failed to open file %s: %s(%d)", config_file, strerror(errno), errno);
-        exit(-1);
-
+    outfile = open(config_file, O_CREAT | O_WRONLY | O_EXCL, S_IRUSR | S_IWUSR);
+    if (outfile < 0) {
+        if (errno == EEXIST) {
+            ZITI_LOG(ERROR, "refusing to overwrite existing config file %s: %s(%d)", config_file, strerror(errno), errno);
+            exit(-1);
+        }
+    } else {
+        if ((outfile = fdopen(config_file, "wb")) == NULL) {
+            ZITI_LOG(ERROR, "failed to open file %s: %s(%d)", config_file, strerror(errno), errno);
+            exit(-1);
+        }
     }
-    uv_loop_t *l = uv_loop_new();
-    ziti_enroll(&enroll_opts, l, enroll_cb, outfile);
-
-    uv_run(l, UV_RUN_DEFAULT);
 }
 
 static tunnel_command *cmd;
