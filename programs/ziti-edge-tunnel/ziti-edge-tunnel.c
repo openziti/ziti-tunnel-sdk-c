@@ -1384,7 +1384,7 @@ static void enroll(int argc, char *argv[]) {
             exit(-1);
         }
     } else {
-        if ((outfile = fdopen(config_file, "wb")) == NULL) {
+        if ((outfile = fopen(config_file, "wb")) == NULL) {
             ZITI_LOG(ERROR, "failed to open file %s: %s(%d)", config_file, strerror(errno), errno);
             exit(-1);
         }
