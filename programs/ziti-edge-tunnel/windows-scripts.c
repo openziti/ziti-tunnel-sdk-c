@@ -28,6 +28,7 @@ struct hostname_s {
     char *hostname;
     LIST_ENTRY(hostname_s) _next;
 };
+typedef LIST_HEAD(hostname_list_s, hostname_s) hostname_list_t;
 
 static void exit_cb(uv_process_t* process,
                     int64_t exit_status,
@@ -36,7 +37,7 @@ static void exit_cb(uv_process_t* process,
     uv_close((uv_handle_t*)process, (uv_close_cb) free);
 }
 
-static bool exec_process(uv_loop_t *ziti_loop, char* program, char* args[]) {
+static bool exec_process(uv_loop_t *ziti_loop, const char* program, const char* args[]) {
     uv_process_t* process = calloc(1, sizeof(uv_process_t));
     uv_process_options_t options = {0};
     uv_stdio_container_t stdio[3];
@@ -81,7 +82,7 @@ static char* exec_process_fetch_result(char* program) {
     return result;
 }
 
-void chunked_add_nrpt_rules(uv_loop_t *ziti_loop, LIST_HEAD(hostnames_list, hostname_s) *hostnames, char* tun_ip) {
+void chunked_add_nrpt_rules(uv_loop_t *ziti_loop, hostname_list_t *hostnames, char* tun_ip) {
     char* script = calloc(MAX_POWERSHELL_SCRIPT_LEN, sizeof(char));
     size_t buf_len = sprintf(script, "$Namespaces = @(");
     size_t copied = buf_len;
@@ -133,12 +134,12 @@ void add_nrpt_rules_script(uv_loop_t *nrpt_loop, struct add_service_nrpt_req *ad
         return;
     }
     int namespace_template_padding = strlen(namespace_template);
-    LIST_HEAD(hostnames_list, hostname_s) host_names_list = LIST_HEAD_INITIALIZER(host_names_list);
+    hostname_list_t host_names_list = LIST_HEAD_INITIALIZER(host_names_list);
     int current_size = 0;
     int rule_size = 0;
     model_map_iter it = model_map_iterator(hostnames);
     while(it != NULL) {
-        char* hostname = model_map_it_key(it);
+        const char* hostname = model_map_it_key(it);
         if (current_size > MAX_BUCKET_SIZE || rule_size > MAX_POWERSHELL_SCRIPT_LEN) {
             chunked_add_nrpt_rules(nrpt_loop, &host_names_list, dns_ip);
             rule_size = strlen(hostname) + namespace_template_padding;
@@ -171,7 +172,7 @@ void add_nrpt_rules(uv_async_t *ar) {
     add_nrpt_rules_script(nrpt_loop, add_svc_req_data);
 }
 
-void chunked_remove_nrpt_rules(uv_loop_t *ziti_loop, LIST_HEAD(hostnames_list, hostname_s) *hostnames) {
+void chunked_remove_nrpt_rules(uv_loop_t *ziti_loop, hostname_list_t *hostnames) {
     char* script = calloc(MAX_POWERSHELL_SCRIPT_LEN, sizeof(char));
     size_t buf_len = sprintf(script, "$toRemove = @(\n");
     size_t copied = buf_len;
@@ -217,12 +218,12 @@ void remove_nrpt_rules_script(uv_loop_t *nrpt_loop, model_map *hostnames) {
         return;
     }
     int namespace_template_padding = strlen(namespace_template);
-    LIST_HEAD(hostnames_list, hostname_s) host_names_list = LIST_HEAD_INITIALIZER(host_names_list);
+    hostname_list_t host_names_list = LIST_HEAD_INITIALIZER(host_names_list);
     int current_size = 0;
     int rule_size = 0;
     model_map_iter it = model_map_iterator(hostnames);
     while(it != NULL) {
-        char* hostname = model_map_it_key(it);
+        const char* hostname = model_map_it_key(it);
         if (current_size > MAX_BUCKET_SIZE || rule_size > MAX_POWERSHELL_COMMAND_LEN) {
             chunked_remove_nrpt_rules(nrpt_loop, &host_names_list);
             rule_size = strlen(hostname) + namespace_template_padding;
@@ -304,7 +305,7 @@ bool is_nrpt_policies_effective(char* tns_ip) {
         return false;
     }
 
-    char get_cmd[MAX_POWERSHELL_COMMAND_LEN] = "powershell -Command \"Get-DnsClientNrptPolicy -Effective | Select-Object Namespace -Unique | Where-Object Namespace -Eq '.ziti.test'\"";
+    const char* get_cmd = "powershell -Command \"Get-DnsClientNrptPolicy -Effective | Select-Object Namespace -Unique | Where-Object Namespace -Eq '.ziti.test'\"";
     char* result = exec_process_fetch_result(get_cmd);
     if (result == NULL) {
         ZITI_LOG(WARN, "get test nrpt rule script failed");
@@ -337,7 +338,7 @@ bool is_nrpt_policies_effective(char* tns_ip) {
 }
 
 model_map *get_connection_specific_domains() {
-    char get_cmd[MAX_POWERSHELL_COMMAND_LEN] = "powershell -Command \"Get-DnsClient | Select-Object ConnectionSpecificSuffix -Unique | ForEach-Object { $_.ConnectionSpecificSuffix }; (Get-DnsClientGlobalSetting).SuffixSearchList\"";
+    const char* get_cmd = "powershell -Command \"Get-DnsClient | Select-Object ConnectionSpecificSuffix -Unique | ForEach-Object { $_.ConnectionSpecificSuffix }; (Get-DnsClientGlobalSetting).SuffixSearchList\"";
     ZITI_LOG(INFO, "Getting Connection specific Domains '%s'", get_cmd);
 
     char* result = exec_process_fetch_result(get_cmd);
