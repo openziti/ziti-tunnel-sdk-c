@@ -1388,6 +1388,10 @@ static void enroll(int argc, char *argv[]) {
             ZITI_LOG(ERROR, "failed to open file %s: %s(%d)", config_file, strerror(errno), errno);
             exit(-1);
         }
+        uv_loop_t *l = uv_loop_new();
+        ziti_enroll(&enroll_opts, l, enroll_cb, outfile);
+
+        uv_run(l, UV_RUN_DEFAULT);
     }
 }
 
