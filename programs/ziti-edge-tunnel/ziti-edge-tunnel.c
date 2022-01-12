@@ -341,6 +341,7 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
                 if (ziti_log_level() != lvl) {
                     set_log_level(tunnel_set_log_level_cmd.loglevel);
                     ziti_log_set_level(lvl);
+                    ziti_tunnel_set_log_level(lvl);
                     ZITI_LOG(INFO, "Log level is set to %s", tunnel_set_log_level_cmd.loglevel);
                 } else {
                     ZITI_LOG(INFO, "Log level is already set to %s", tunnel_set_log_level_cmd.loglevel);
