@@ -240,7 +240,7 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
             }
 
             ziti_set_enabled(inst->ztx, on_off_id.onOff);
-            result.data = tunnel_comand_to_json(cmd, MODEL_JSON_COMPACT, NULL);
+            result.data = tunnel_command_to_json(cmd, MODEL_JSON_COMPACT, NULL);
             result.success = true;
             result.code = IPC_SUCCESS;
 
@@ -519,7 +519,7 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
             model_map_remove(&instances, delete_id.identifier);
             result.success = true;
             result.code = IPC_SUCCESS;
-            result.data = tunnel_comand_to_json(cmd, MODEL_JSON_COMPACT, NULL);
+            result.data = tunnel_command_to_json(cmd, MODEL_JSON_COMPACT, NULL);
 
             free_tunnel_delete_identity(&delete_id);
             break;
