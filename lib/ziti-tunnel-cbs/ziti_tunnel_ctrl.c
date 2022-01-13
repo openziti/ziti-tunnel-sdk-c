@@ -502,6 +502,8 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
                 free_tunnel_delete_identity(&delete_id);
                 break;
             }
+            result.data = tunnel_command_to_json(cmd, MODEL_JSON_COMPACT, NULL);
+
             if (is_null(delete_id.identifier, "Identifier info is not found in the remove identity request", &result)) {
                 free_tunnel_delete_identity(&delete_id);
                 break;
@@ -519,7 +521,6 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
             model_map_remove(&instances, delete_id.identifier);
             result.success = true;
             result.code = IPC_SUCCESS;
-            result.data = tunnel_command_to_json(cmd, MODEL_JSON_COMPACT, NULL);
 
             free_tunnel_delete_identity(&delete_id);
             break;
