@@ -99,12 +99,22 @@ static char* exec_process_fetch_result(char* program) {
 void chunked_add_nrpt_rules(uv_loop_t *ziti_loop, hostname_list_t *hostnames, char* tun_ip) {
     char* script = calloc(MAX_POWERSHELL_SCRIPT_LEN, sizeof(char));
     size_t buf_len = snprintf(script, MAX_POWERSHELL_SCRIPT_LEN, "$Namespaces = @(");
+    if (!is_buffer_available(buf_len, MAX_POWERSHELL_SCRIPT_LEN, script)) {
+        free(script);
+        script = NULL;
+        return;
+    }
     size_t copied = buf_len;
     int domains_size = 0;
 
     while(!LIST_EMPTY(hostnames)) {
         struct hostname_s *hostname = LIST_FIRST(hostnames);
         buf_len = snprintf(script + copied, (MAX_POWERSHELL_SCRIPT_LEN - copied), namespace_template, "\n", hostname->hostname);
+        if (!is_buffer_available(buf_len, (MAX_POWERSHELL_SCRIPT_LEN - copied), script)) {
+            free(script);
+            script = NULL;
+            return;
+        }
         copied += buf_len;
         domains_size++;
         LIST_REMOVE(hostname, _next);
@@ -112,15 +122,40 @@ void chunked_add_nrpt_rules(uv_loop_t *ziti_loop, hostname_list_t *hostnames, ch
         free(hostname);
     }
     buf_len = snprintf(script + copied, (MAX_POWERSHELL_SCRIPT_LEN - copied), ")\n\n");
+    if (!is_buffer_available(buf_len, (MAX_POWERSHELL_SCRIPT_LEN - copied), script)) {
+        free(script);
+        script = NULL;
+        return;
+    }
     copied += buf_len;
 
     buf_len = snprintf(script + copied, (MAX_POWERSHELL_SCRIPT_LEN - copied), "ForEach ($Namespace in $Namespaces) {\n");
+    if (!is_buffer_available(buf_len, (MAX_POWERSHELL_SCRIPT_LEN - copied), script)) {
+        free(script);
+        script = NULL;
+        return;
+    }
     copied += buf_len;
     buf_len = snprintf(script + copied, (MAX_POWERSHELL_SCRIPT_LEN - copied), "$ns=$Namespace['n']\n");
+    if (!is_buffer_available(buf_len, (MAX_POWERSHELL_SCRIPT_LEN - copied), script)) {
+        free(script);
+        script = NULL;
+        return;
+    }
     copied += buf_len;
     buf_len = snprintf(script + copied, (MAX_POWERSHELL_SCRIPT_LEN - copied), "$Rule = @{Namespace=${ns}; NameServers=@('%s'); Comment='Added by %s'; DisplayName='%s:'+${ns}; }\n", tun_ip, exe_name, exe_name);
+    if (!is_buffer_available(buf_len, (MAX_POWERSHELL_SCRIPT_LEN - copied), script)) {
+        free(script);
+        script = NULL;
+        return;
+    }
     copied += buf_len;
     buf_len = snprintf(script + copied, (MAX_POWERSHELL_SCRIPT_LEN - copied), "Add-DnsClientNrptRule @Rule\n");
+    if (!is_buffer_available(buf_len, (MAX_POWERSHELL_SCRIPT_LEN - copied), script)) {
+        free(script);
+        script = NULL;
+        return;
+    }
     copied += buf_len;
     buf_len = snprintf(script + copied, (MAX_POWERSHELL_SCRIPT_LEN - copied), "}\n");
     if (!is_buffer_available(buf_len, (MAX_POWERSHELL_SCRIPT_LEN - copied), script)) {
@@ -197,6 +232,11 @@ void add_nrpt_rules(uv_async_t *ar) {
 void chunked_remove_nrpt_rules(uv_loop_t *ziti_loop, hostname_list_t *hostnames) {
     char* script = calloc(MAX_POWERSHELL_SCRIPT_LEN, sizeof(char));
     size_t buf_len = snprintf(script, MAX_POWERSHELL_SCRIPT_LEN, "$toRemove = @(\n");
+    if (!is_buffer_available(buf_len, MAX_POWERSHELL_SCRIPT_LEN, script)) {
+        free(script);
+        script = NULL;
+        return;
+    }
     size_t copied = buf_len;
     int domains_size = 0;
 
@@ -208,11 +248,26 @@ void chunked_remove_nrpt_rules(uv_loop_t *ziti_loop, hostname_list_t *hostnames)
         LIST_REMOVE(hostname, _next);
     }
     buf_len = snprintf(script + copied, (MAX_POWERSHELL_SCRIPT_LEN - copied), "%s\n\n", ")");
+    if (!is_buffer_available(buf_len, (MAX_POWERSHELL_SCRIPT_LEN - copied), script)) {
+        free(script);
+        script = NULL;
+        return;
+    }
     copied += buf_len;
 
     buf_len = snprintf(script + copied, (MAX_POWERSHELL_SCRIPT_LEN - copied), "ForEach ($ns in $toRemove){\n");
+    if (!is_buffer_available(buf_len, (MAX_POWERSHELL_SCRIPT_LEN - copied), script)) {
+        free(script);
+        script = NULL;
+        return;
+    }
     copied += buf_len;
     buf_len = snprintf(script + copied, (MAX_POWERSHELL_SCRIPT_LEN - copied), "Get-DnsClientNrptRule | where Namespace -eq $ns['n'] | Remove-DnsClientNrptRule -Force -ErrorAction SilentlyContinue\n");
+    if (!is_buffer_available(buf_len, (MAX_POWERSHELL_SCRIPT_LEN - copied), script)) {
+        free(script);
+        script = NULL;
+        return;
+    }
     copied += buf_len;
     buf_len = snprintf(script + copied, (MAX_POWERSHELL_SCRIPT_LEN - copied), "}\n");
     if (!is_buffer_available(buf_len, (MAX_POWERSHELL_SCRIPT_LEN - copied), script)) {
