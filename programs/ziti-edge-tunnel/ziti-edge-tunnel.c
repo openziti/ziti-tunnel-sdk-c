@@ -339,7 +339,7 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
             log_level lvl = log_level_value_of(tunnel_set_log_level_cmd.loglevel);
             if (lvl != log_level_Unknown) {
                 if (ziti_log_level() != lvl) {
-                    set_log_level(tunnel_set_log_level_cmd.loglevel);
+                    set_log_level(lvl);
                     ziti_log_set_level(lvl);
                     ziti_tunnel_set_log_level(lvl);
                     ZITI_LOG(INFO, "Log level is set to %s", tunnel_set_log_level_cmd.loglevel);
