@@ -55,6 +55,7 @@ bool load_config_from_file(char* config_file_name) {
                 ZITI_LOG(WARN, "Config file %s cannot be read, will be overwritten", config_file_name);
             }
         }
+        config_buffer[0] = '\0';
         fclose(config_file);
     } else {
         if (errno != 0) {
