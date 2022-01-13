@@ -277,16 +277,31 @@ static int tun_exclude_rt(netif_handle dev, uv_loop_t *l, const char *addr) {
     char def_route[128];
     FILE *def_rt = popen("ip route show default", "r");
     int def_rt_size = (int)fread(def_route, 1, sizeof(def_route), def_rt);
+
+    // only look at first line
+    char *p = strchr(def_route, '\n');
+    if (p != NULL) {
+        *p = 0;
+    }
+
     ZITI_LOG(DEBUG, "default route is '%.*s'", def_rt_size, def_route);
     pclose(def_rt);
 
-    char *p = strstr(def_route, "via ");
-    if (p == NULL) return -1;
+    const char *type = NULL;
+    if ((p = strstr(def_route, "via ")) != NULL) {
+        type = "via";
+    } else if ((p = strstr(def_route, "dev ")) != NULL) {
+        type = "dev";
+    } else {
+        ZITI_LOG(WARN, "could not find default route");
+        return -1;
+    }
+
     char *gw = p + 4;
     char *endgw = strchr(gw, ' ');
     int gw_len = (int)(endgw - gw);
 
-    return run_command("ip route replace %s via %.*s", addr, gw_len, gw);
+    return run_command("ip route replace %s %s %.*s", addr, type, gw_len, gw);
 }
 
 netif_driver tun_open(uv_loop_t *loop, uint32_t tun_ip, uint32_t dns_ip, const char *dns_block, char *error, size_t error_len) {
