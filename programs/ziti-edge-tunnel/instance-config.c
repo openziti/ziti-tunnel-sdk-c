@@ -51,6 +51,7 @@ bool load_config_from_file(char* config_file_name) {
 
         if (strlen(config_buffer) > 0) {
             loaded = load_tunnel_status(config_buffer);
+            config_buffer[0] = '\0';
             if (!loaded) {
                 ZITI_LOG(WARN, "Config file %s cannot be read, will be overwritten", config_file_name);
             }

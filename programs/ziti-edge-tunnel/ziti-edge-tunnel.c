@@ -880,7 +880,7 @@ static void broadcast_metrics(uv_timer_t *timer) {
         model_map notification_map = {0};
         for(idx = 0; metrics_event.Identities[idx]; idx++) {
             tnl_id = metrics_event.Identities[idx];
-            if (tnl_id->Active && tnl_id->Loaded && tnl_id->Status == instance_status_ok) {
+            if (tnl_id->Active && tnl_id->Loaded && tnl_id->IdFileStatus) {
                 active_identities = true;
 
                 tunnel_command *tnl_cmd = calloc(1, sizeof(tunnel_command));

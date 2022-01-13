@@ -71,7 +71,7 @@ XX(data, json, none, Payload, __VA_ARGS__)
 #define TUNNEL_CMD_RES(XX, ...) \
 XX(success, bool, none, Success, __VA_ARGS__) \
 XX(error, string, none, Error, __VA_ARGS__)\
-XX(data, json, none, Message, __VA_ARGS__) \
+XX(data, json, none, Data, __VA_ARGS__) \
 XX(code, int, none, Code, __VA_ARGS__)
 
 #define TNL_LOAD_IDENTITY(XX, ...) \

@@ -46,7 +46,7 @@ tunnel_identity *create_or_get_tunnel_identity(char* identifier, char* filename)
 
     if (id != NULL) {
         if (filename != NULL) {
-            id->Status = true;
+            id->IdFileStatus = true;
         }
         return id;
     } else {
@@ -69,7 +69,7 @@ tunnel_identity *create_or_get_tunnel_identity(char* identifier, char* filename)
             tnl_id->Name = calloc(length + 1, sizeof(char));
             snprintf(tnl_id->Name, length+1, "%s", fingerprint);
 
-            tnl_id->Status = true;
+            tnl_id->IdFileStatus = true;
 
         }
         model_map_set(&tnl_identity_map, identifier, tnl_id);
@@ -390,7 +390,7 @@ tunnel_identity_array get_tunnel_identities() {
 
     int idx = 0;
     MODEL_MAP_FOREACH(id, tnl_id, &tnl_identity_map) {
-        if (tnl_id->Status) {
+        if (tnl_id->IdFileStatus) {
             tnl_id_arr[idx++] = tnl_id;
         }
     }
@@ -480,7 +480,7 @@ void set_identifier_from_identities() {
             tnl_id->Identifier = strdup(identifier);
         }
         if (tnl_id->Identifier != NULL) {
-            tnl_id->Status = false;
+            tnl_id->IdFileStatus = false;
             model_map_set(&tnl_identity_map, tnl_id->Identifier, tnl_id);
         }
     }
@@ -496,11 +496,32 @@ void initialize_tunnel_status() {
     if (tnl_status.LogLevel == log_level_Unknown) {
         tnl_status.LogLevel = log_level_info;
     }
+
+    if (tnl_status.Identities) {
+        for (int id_idx = 0; tnl_status.Identities[id_idx] != 0; id_idx++) {
+            free_tunnel_identity(tnl_status.Identities[id_idx]);
+        }
+        free(tnl_status.Identities);
+        tnl_status.Identities = NULL;
+    }
+    if (tnl_status.IpInfo) {
+        free_ip_info(tnl_status.IpInfo);
+        tnl_status.IpInfo = NULL;
+    }
+    if (tnl_status.TunIpv4) {
+        free(tnl_status.TunIpv4);
+        tnl_status.TunIpv4 = NULL;
+    }
+    if (tnl_status.ServiceVersion) {
+        free_service_version(tnl_status.ServiceVersion);
+        tnl_status.ServiceVersion = NULL;
+    }
 }
 
 bool load_tunnel_status(char* config_data) {
     if (parse_tunnel_status(&tnl_status, config_data, strlen(config_data)) < 0) {
         ZITI_LOG(ERROR, "Could not read tunnel status from config data");
+        initialize_tunnel_status();
         return false;
     }
     initialize_tunnel_status();
@@ -569,7 +590,6 @@ char *get_tunnel_config(size_t *json_len) {
     tnl_config.TunPrefixLength = tnl_sts->TunPrefixLength;
     tnl_config.LogLevel = tnl_sts->LogLevel;
     tnl_config.AddDns = tnl_sts->AddDns;
-    tnl_config.Status = tnl_sts->Status;
 
     char* tunnel_config_json = tunnel_status_to_json(&tnl_config, 0, json_len);
 
@@ -584,7 +604,6 @@ char *get_tunnel_config(size_t *json_len) {
     tnl_config.IpInfo = NULL;
     tnl_config.ServiceVersion = NULL;
     tnl_config.TunIpv4 = NULL;
-    tnl_config.Status = NULL;
     free_tunnel_status(&tnl_config);
 
     return tunnel_config_json;
