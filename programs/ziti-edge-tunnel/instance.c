@@ -496,32 +496,32 @@ void initialize_tunnel_status() {
     if (tnl_status.LogLevel == log_level_Unknown) {
         tnl_status.LogLevel = log_level_info;
     }
-
-    if (tnl_status.Identities) {
-        for (int id_idx = 0; tnl_status.Identities[id_idx] != 0; id_idx++) {
-            free_tunnel_identity(tnl_status.Identities[id_idx]);
-        }
-        free(tnl_status.Identities);
-        tnl_status.Identities = NULL;
-    }
-    if (tnl_status.IpInfo) {
-        free_ip_info(tnl_status.IpInfo);
-        tnl_status.IpInfo = NULL;
-    }
-    if (tnl_status.TunIpv4) {
-        free(tnl_status.TunIpv4);
-        tnl_status.TunIpv4 = NULL;
-    }
-    if (tnl_status.ServiceVersion) {
-        free_service_version(tnl_status.ServiceVersion);
-        tnl_status.ServiceVersion = NULL;
-    }
 }
 
 bool load_tunnel_status(char* config_data) {
     if (parse_tunnel_status(&tnl_status, config_data, strlen(config_data)) < 0) {
         ZITI_LOG(ERROR, "Could not read tunnel status from config data");
         initialize_tunnel_status();
+        // clean up the data fields, because the tunnel status may be partially filled during parsing
+        if (tnl_status.Identities) {
+            for (int id_idx = 0; tnl_status.Identities[id_idx] != 0; id_idx++) {
+                free_tunnel_identity(tnl_status.Identities[id_idx]);
+            }
+            free(tnl_status.Identities);
+            tnl_status.Identities = NULL;
+        }
+        if (tnl_status.IpInfo) {
+            free_ip_info(tnl_status.IpInfo);
+            tnl_status.IpInfo = NULL;
+        }
+        if (tnl_status.TunIpv4) {
+            free(tnl_status.TunIpv4);
+            tnl_status.TunIpv4 = NULL;
+        }
+        if (tnl_status.ServiceVersion) {
+            free_service_version(tnl_status.ServiceVersion);
+            tnl_status.ServiceVersion = NULL;
+        }
         return false;
     }
     initialize_tunnel_status();
