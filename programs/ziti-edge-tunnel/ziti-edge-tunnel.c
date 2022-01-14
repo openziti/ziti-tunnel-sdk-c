@@ -38,6 +38,7 @@
 #elif _WIN32
 #include "netif_driver/windows/tun.h"
 #include "windows/windows-service.h"
+#include "windows/windows-scripts.h"
 
 #define setenv(n,v,o) do {if(o || getenv(n) == NULL) _putenv_s(n,v); } while(0)
 #endif
@@ -93,6 +94,7 @@ static uv_timer_t metrics_timer;
 static const ziti_tunnel_ctrl *CMD_CTRL;
 
 static bool started_by_scm = false;
+static bool tunnel_interrupted = false;
 
 uv_loop_t *main_ziti_loop;
 
@@ -854,6 +856,10 @@ static void on_event(const base_event *ev) {
                 svc_event.Fingerprint = strdup(id->FingerPrint);
             }
             ziti_service **zs;
+#if _WIN32
+            model_map *hostnamesToAdd = calloc(1, sizeof(model_map));
+            model_map *hostnamesToRemove = calloc(1, sizeof(model_map));;
+#endif
             if (svc_ev->removed_services != NULL) {
                 int svc_array_length = 0;
                 for (zs = svc_ev->removed_services; *zs != NULL; zs++) {
@@ -865,6 +871,16 @@ static void on_event(const base_event *ev) {
                     if (svc == NULL) {
                         svc = get_tunnel_service(id, svc_ev->removed_services[svc_idx]);
                     }
+#if _WIN32
+                    if (svc->Addresses != NULL) {
+                        for (int i = 0; svc->Addresses[i]; i++) {
+                            tunnel_address *addr = svc->Addresses[i];
+                            if (addr->IsHost && model_map_get(hostnamesToRemove, addr->HostName) == NULL) {
+                                model_map_set(hostnamesToRemove, addr->HostName, true);
+                            }
+                        }
+                    }
+#endif
                     svc_event.RemovedServices[svc_idx] = svc;
                 }
             }
@@ -878,8 +894,47 @@ static void on_event(const base_event *ev) {
                 for (int svc_idx = 0; svc_ev->added_services[svc_idx]; svc_idx++) {
                     tunnel_service *svc = get_tunnel_service(id, svc_ev->added_services[svc_idx]);
                     svc_event.AddedServices[svc_idx] = svc;
+#if _WIN32
+                    if (svc->Addresses != NULL) {
+                        for (int i = 0; svc->Addresses[i]; i++) {
+                            tunnel_address *addr = svc->Addresses[i];
+                            if (addr->IsHost && model_map_get(hostnamesToAdd, addr->HostName) == NULL) {
+                                model_map_set(hostnamesToAdd, addr->HostName, true);
+                            }
+                        }
+                    }
+#endif
                 }
             }
+
+
+#if _WIN32
+            if (model_map_size(hostnamesToAdd) > 0 && model_map_size(hostnamesToRemove) > 0) {
+                struct modify_service_nrpt_req *modify_svc_req_data = calloc(1, sizeof(struct modify_service_nrpt_req));
+                modify_svc_req_data->hostnamesToRemove = hostnamesToRemove;
+                modify_svc_req_data->hostnamesToAdd = hostnamesToAdd;
+                modify_svc_req_data->dns_ip = get_dns_ip();
+
+                uv_async_t *ar = calloc(1, sizeof(uv_async_t));
+                ar->data = modify_svc_req_data;
+                uv_async_init(main_ziti_loop, ar, remove_and_add_nrpt_rules);
+                uv_async_send(ar);
+            } else if (model_map_size(hostnamesToAdd) > 0) {
+                struct add_service_nrpt_req *add_svc_req_data = calloc(1, sizeof(struct add_service_nrpt_req));
+                add_svc_req_data->hostnames = hostnamesToAdd;
+                add_svc_req_data->dns_ip = get_dns_ip();
+
+                uv_async_t *ar = calloc(1, sizeof(uv_async_t));
+                ar->data = add_svc_req_data;
+                uv_async_init(main_ziti_loop, ar, add_nrpt_rules);
+                uv_async_send(ar);
+            } else if (model_map_size(hostnamesToRemove) > 0) {
+                uv_async_t *ar = calloc(1, sizeof(uv_async_t));
+                ar->data = hostnamesToRemove;
+                uv_async_init(main_ziti_loop, ar, remove_nrpt_rules);
+                uv_async_send(ar);
+            }
+#endif
 
             if (svc_ev->removed_services != NULL || svc_ev->added_services != NULL) {
                 add_or_remove_services_from_tunnel(id, svc_event.AddedServices, svc_event.RemovedServices);
@@ -1041,6 +1096,8 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     if (uv_run(ziti_loop, UV_RUN_DEFAULT) != 0) {
         if (started_by_scm) {
             ZITI_LOG(INFO, "The event loop is stopped, exiting");
+        } else if (tunnel_interrupted) {
+            ZITI_LOG(ERROR, "tunnel interrupted");
         } else {
             ZITI_LOG(ERROR, "failed to run event loop");
             exit(1);
@@ -1052,6 +1109,8 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     uv_close((uv_handle_t *) &event_server, (uv_close_cb) free);
     uv_timer_stop(&metrics_timer);
 #if _WIN32
+    ZITI_LOG(INFO,"normal shutdown complete");
+    cleanup_instance_config();
     close_log();
     stop_log_check();
 #endif
@@ -1146,6 +1205,27 @@ static int dns_fallback(const char *name, void *ctx, struct in_addr* addr) {
     return dns_miss_status;
 }
 
+#if _WIN32
+static void interrupt_handler(int sig) {
+    ZITI_LOG(WARN,"Received signal to interrupt");
+    tunnel_interrupted = true;
+    scm_service_stop();
+}
+#endif
+
+static char* normalize_host(char* hostname) {
+    size_t len = strlen(hostname);
+    char* hostname_new = calloc(len+1, sizeof(char));
+    // add . in the beginning of the hostname
+    if (hostname[len-1] == ".") {
+        // remove the . from the end of the hostname
+        snprintf(hostname_new, len * sizeof(char), ".%s", hostname);
+    } else {
+        sprintf(hostname_new,".%s", hostname);
+    }
+    return hostname_new;
+}
+
 static void run(int argc, char *argv[]) {
     uv_loop_t *ziti_loop = uv_default_loop();
     main_ziti_loop = ziti_loop;
@@ -1164,6 +1244,8 @@ static void run(int argc, char *argv[]) {
         multi_writer = false;
     }
     init = log_init(ziti_loop, multi_writer);
+
+    signal(SIGINT, interrupt_handler);
 #endif
 
     char *ip_range_temp = get_ip_range_from_config();
@@ -1214,7 +1296,7 @@ static void run(int argc, char *argv[]) {
         struct tm *start_time = get_log_start_time();
         char time_val[32];
         strftime(time_val, sizeof(time_val), "%a %b %d %Y, %X %p", start_time);
-        ZITI_LOG(INFO,"============================================================================");
+        ZITI_LOG(INFO,"============================ service begins ================================");
         ZITI_LOG(INFO,"Logger initialization");
         ZITI_LOG(INFO,"	- initialized at   : %s", time_val);
         ZITI_LOG(INFO,"	- log file location: %s", get_log_file_name());
@@ -1222,6 +1304,7 @@ static void run(int argc, char *argv[]) {
     } else {
         ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
     }
+    ZITI_LOG(INFO,"Loading identity files from %s", config_dir);
 #else
     ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
 #endif
@@ -1234,6 +1317,35 @@ static void run(int argc, char *argv[]) {
         ZITI_LOG(ERROR, "failed to initialize default uv loop");
         exit(1);
     }
+
+#if _WIN32
+    remove_all_nrpt_rules();
+    bool nrpt_effective = is_nrpt_policies_effective(get_dns_ip());
+    if (!nrpt_effective) {
+        // enable dns
+    } else {
+        model_map *domains = get_connection_specific_domains();
+        const char *key;
+        bool status;
+        model_map *normalized_domains = calloc(1, sizeof(model_map));
+        model_map_iter it = model_map_iterator(domains);
+        while (it != NULL) {
+            char *key = model_map_it_key(it);
+            model_map_set(normalized_domains, normalize_host(key), true);
+            it = model_map_it_remove(it);
+        }
+        model_map_clear(domains, (_free_f) free);
+        free(domains);
+        struct add_service_nrpt_req *add_svc_req_data = calloc(1, sizeof(struct add_service_nrpt_req));
+        add_svc_req_data->hostnames = normalized_domains;
+        add_svc_req_data->dns_ip = get_dns_ip();
+
+        uv_async_t *ar = calloc(1, sizeof(uv_async_t));
+        ar->data = add_svc_req_data;
+        uv_async_init(main_ziti_loop, ar, add_nrpt_rules);
+        uv_async_send(ar);
+    }
+#endif
 
     dns_manager *dns = NULL;
     if (dns_impl && strncmp("dnsmasq", dns_impl, strlen("dnsmasq")) == 0) {
@@ -2038,12 +2150,13 @@ void scm_service_run(void * name) {
 
 void scm_service_stop() {
     ZITI_LOG(INFO, "Control request to stop tunnel service received...");
+    remove_all_nrpt_rules();
+    ZITI_LOG(INFO,"============================ service ends ==================================");
     if (main_ziti_loop != NULL) {
         uv_stop(main_ziti_loop);
         uv_loop_close(main_ziti_loop);
     }
 }
-
 #endif
 
 int main(int argc, char *argv[]) {

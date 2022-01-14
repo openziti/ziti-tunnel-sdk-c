@@ -66,6 +66,10 @@ void set_tun_ipv4_into_instance(char* tun_ip, int prefixLength, bool addDns);
 
 char* get_ip_range_from_config();
 
+char* get_tun_ip();
+
+char* get_dns_ip();
+
 #ifdef __cplusplus
 }
 #endif

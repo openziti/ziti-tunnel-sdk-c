@@ -55,6 +55,7 @@ bool load_config_from_file(char* config_file_name) {
                 ZITI_LOG(WARN, "Config file %s cannot be read, will be overwritten", config_file_name);
             }
         }
+        config_buffer[0] = '\0';
         fclose(config_file);
     } else {
         if (errno != 0) {
@@ -83,6 +84,7 @@ bool load_tunnel_status_from_file(uv_loop_t* ziti_loop) {
 
     char* config_file_name = get_config_file_name(config_path);
     char* bkp_config_file_name = get_backup_config_file_name(config_path);
+    ZITI_LOG(INFO,"Loading config file from %s", config_file_name);
 
     // try to load tunnel status from config file
     loaded = load_config_from_file(config_file_name);
