@@ -4,7 +4,7 @@ FROM debian:bullseye-slim
 # reproducible builds for downstream forks for Ziti contributors 
 #
 # usage
-# run with top-level of tunneler SDK repo mounted on /mnt
+# docker run with top-level of tunneler SDK repo mounted as writeable volume on /mnt
 
 ARG uid=1000
 ARG gid=1000
@@ -12,7 +12,7 @@ ENV TZ=Etc/UTC
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get -y update
 # multi-platform stuff
-RUN apt-get -y install gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf gcc-aarch64-linux-gnu
+RUN apt-get -y install gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf gcc-aarch64-linux-gnu crossbuild-essential-arm64
 # tunneler SDK stuff
 RUN apt-get -y install git doxygen graphviz python3 cmake wget build-essential
 

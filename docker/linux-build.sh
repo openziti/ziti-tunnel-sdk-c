@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
 #
-# build the Linux artifacts for amd64, arm, arm64
+# build the Linux artifacts for amd64, arm64
 #
 # runs one background job per desired architecture unless there are too few CPUs
 #
 # 
 
 set -o pipefail -e -u
+set -x
 
 DIRNAME=$(dirname $0)
 REPO_DIR=${DIRNAME}/..            # parent of the top-level dir where this script lives
-CMAKE_BUILD_DIR=${REPO_DIR}/build # adjacent the top-level dir where this script lives
 
 # if no architectures supplied then default list of three
 if (( ${#} )); then
     typeset -a JOBS=(${@})
 else
-    typeset -a JOBS=(amd64 arm arm64)
+    typeset -a JOBS=(amd64 arm64)
 fi
 
 PROC_COUNT=$(nproc --all)
@@ -28,26 +28,37 @@ if (( ${#JOBS[@]} > 1 && ${PROCS_PER_JOB} )); then
     # initialize an associative array in which to map background PIDs to the ARCH being built
     typeset -A BUILDS
 else
-    BACKGROUND=""   # run normally in foreground
-    PROCS_PER_JOB=0 # invokes gox default to use all CPUs-1
+    BACKGROUND=""               # run normally in foreground
+    PROCS_PER_JOB=${PROC_COUNT} # use all available CPUs
 fi
 
-[[ -d ${CMAKE_BUILD_DIR} ]] && rm -rf ${CMAKE_BUILD_DIR}
-mkdir ${CMAKE_BUILD_DIR}
-cd ${CMAKE_BUILD_DIR}
-
 for ARCH in ${JOBS[@]}; do
-    CMAKE_CMD="
-      cmake ${REPO_DIR} && cmake --build ${CMAKE_BUILD_DIR}
-    "
-case ${ARCH} in
-        amd64)  eval ${CMAKE_CMD} ${BACKGROUND}
+    CMAKE_BUILD_DIR=${REPO_DIR}/build-${ARCH} # adjacent the top-level dir where this script lives
+    [[ -d ${CMAKE_BUILD_DIR} ]] && rm -rf ${CMAKE_BUILD_DIR}
+    mkdir ${CMAKE_BUILD_DIR}
+#    cd ${CMAKE_BUILD_DIR}
+    case ${ARCH} in
+        amd64)  eval cmake \
+                    -DCMAKE_TOOLCHAIN_FILE=${REPO_DIR}/toolchains/default.cmake \
+                    -S ${REPO_DIR} \
+                    -B ${CMAKE_BUILD_DIR}
+                eval cmake \
+                    --build ${CMAKE_BUILD_DIR} \
+                    --target bundle \
+                    --parallel ${PROCS_PER_JOB} \
+                    --verbose ${BACKGROUND}
                 (( ${PROCS_PER_JOB} )) && BUILDS[${!}]=${ARCH}  # if greater than zero procs per job then map background pid->arch
         ;;
-        arm)    eval CC=arm-linux-gnueabihf-gcc ${CMAKE_CMD} ${BACKGROUND}
-                (( ${PROCS_PER_JOB} )) && BUILDS[${!}]=${ARCH}
-        ;;
-        arm64)  eval CC=aarch64-linux-gnu-gcc ${CMAKE_CMD} ${BACKGROUND}
+        arm64)  eval cmake \
+                    -DCMAKE_BUILD_TYPE=Release \
+                    -DCMAKE_TOOLCHAIN_FILE=${REPO_DIR}/toolchains/Linux-arm64.cmake \
+                    -S ${REPO_DIR} \
+                    -B ${CMAKE_BUILD_DIR}
+                eval cmake \
+                    --build ${CMAKE_BUILD_DIR} \
+                    --target bundle \
+                    --parallel ${PROCS_PER_JOB} \
+                    --verbose ${BACKGROUND}
                 (( ${PROCS_PER_JOB} )) && BUILDS[${!}]=${ARCH}
         ;;
         *)      echo "ERROR: invalid architecture '${ARCH}', must be one of amd64, arm, arm64" >&2

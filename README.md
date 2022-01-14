@@ -130,10 +130,10 @@ The purpose of this container is to document the process of building locally the
 
 ### Build the Container Image
 
-You only need to build the container image once unless you change the Dockerfile or `./linux-build.sh` (the container's entrypoint).
+You only need to build the container image once unless you change the Dockerfile or `./docker/linux-build.sh` (the container's entrypoint).
 
 ```bash
-# build a container image named "ziti-edge-tunnel-builder" with the Dockerfile in the top-level of this repo
+# build a container image named "ziti-edge-tunnel-builder" with the Dockerfile
 docker build \
     --tag=ziti-edge-tunnel-builder \
     --file=./docker/Dockerfile.linux-build \
@@ -141,7 +141,7 @@ docker build \
     --build-arg gid=$GID .
 ```
 
-### Run the Container to Build Executables for the Desired Architectures
+### Run the Container to Build Executables for the Desired Architecture(s)
 
 Executing the following `docker run` command will:
 1. Mount the top-level of this repo on the container's `/mnt`
