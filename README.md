@@ -124,3 +124,45 @@ Once the Ziti Tunneler SDK is initialized with a network device and ziti-sdk
 callbacks, a tunneler application only needs to indiciate which service(s)
 that should be  
 
+## Multi-Platform Linux Builder Container
+
+The purpose of this container is to document the process of building locally the Linux executables in the same way as the GitHub Actions workflow (CI). By default, this produces executables for each supported platform architecture: amd64, arm64. You may instead build for a particular architecture only by specifying the architecture as a parameter to the `docker run` command as shown below.
+
+### Build the Container Image
+
+You only need to build the container image once unless you change the Dockerfile or `./linux-build.sh` (the container's entrypoint).
+
+```bash
+# build a container image named "ziti-edge-tunnel-builder" with the Dockerfile in the top-level of this repo
+docker build \
+    --tag=ziti-edge-tunnel-builder \
+    --file=./docker/Dockerfile.linux-build \
+    --build-arg uid=$UID \
+    --build-arg gid=$GID .
+```
+
+### Run the Container to Build Executables for the Desired Architectures
+
+Executing the following `docker run` command will:
+1. Mount the top-level of this repo on the container's `/mnt`
+2. Run `/mnt/docker/linux-build.sh ${@}` inside the container
+3. Deposit built executables in `/mnt/build` which is a top-level dir in this repo after running the container
+
+```bash
+# build for all architectures: amd64 arm64
+docker run \
+    --rm \
+    --name=ziti-edge-tunnel-builder \
+    --volume=$PWD:/mnt \
+    ziti-edge-tunnel-builder
+
+# build only amd64 
+docker run \
+    --rm \
+    --name=ziti-edge-tunnel-builder \
+    --volume=$PWD:/mnt \
+    ziti-edge-tunnel-builder \
+        amd64
+```
+
+You will find the built artifacts in `./build/programs/ziti-edge-tunnel/ziti-edge-tunnel`.
