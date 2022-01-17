@@ -208,7 +208,9 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
                             ar->data = hostnamesToRemove;
                             uv_async_init(main_ziti_loop, ar, remove_nrpt_rules);
                             uv_async_send(ar);
-                        }
+                        } else {
+                            free(hostnamesToRemove);
+                        };
 #endif
                     }
                     delete_identity_from_instance(tnl_delete_id.identifier);
@@ -1166,6 +1168,12 @@ static void on_event(const base_event *ev) {
                 ar->data = hostnamesToRemove;
                 uv_async_init(main_ziti_loop, ar, remove_nrpt_rules);
                 uv_async_send(ar);
+            }
+            if (model_map_size(hostnamesToAdd) == 0) {
+                free(hostnamesToAdd);
+            }
+            if (model_map_size(hostnamesToRemove) == 0) {
+                free(hostnamesToRemove);
             }
 #endif
 
