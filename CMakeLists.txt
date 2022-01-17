@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.14)
 if(NOT ZITI_SDK_C_BRANCH)
     #allow using a different branch of the CSDK easily
-    set(ZITI_SDK_C_BRANCH "0.26.11")
+    set(ZITI_SDK_C_BRANCH "0.26.18")
 endif()
 
 option(TUNNEL_SDK_ONLY "build only ziti-tunnel-sdk (without ziti)" OFF)

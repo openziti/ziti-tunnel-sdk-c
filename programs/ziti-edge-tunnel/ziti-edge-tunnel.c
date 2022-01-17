@@ -52,7 +52,7 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
     size_t json_len;
     char *json = tunnel_result_to_json(result, MODEL_JSON_COMPACT, &json_len);
     ZITI_LOG(INFO, "resp[%d,len=%zd] = %.*s",
-            result->success, json_len, (int)json_len, json, result->data);
+            result->success, json_len, (int)json_len, json);
 
     if (uv_is_active((const uv_handle_t *) &cmd_conn)) {
         uv_buf_t b = uv_buf_init(json, json_len);
