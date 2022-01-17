@@ -24,7 +24,13 @@
 extern "C" {
 #endif
 
+enum tunnel_conn_type {
+    data_conn_type,
+    resolve_conn_type
+};
+
 #define TUNNELER_APP_DATA_MODEL(XX, ...) \
+XX(conn_type, int, none, conn_type, __VA_ARGS__) \
 XX(dst_protocol, string, none, dst_protocol, __VA_ARGS__)\
 XX(dst_hostname, string, none, dst_hostname, __VA_ARGS__)\
 XX(dst_ip, string, none, dst_ip, __VA_ARGS__)\
@@ -140,13 +146,13 @@ XX(loglevel, string, none, Level, __VA_ARGS__)
 
 #define TUNNEL_TUN_IP_V4(XX, ...) \
 XX(tunIP, string, none, TunIPv4, __VA_ARGS__) \
-XX(mask, int, none, TunIPv4Mask, __VA_ARGS__) \
+XX(prefixLength, int, none, TunPrefixLength, __VA_ARGS__) \
 XX(addDns, bool, none, AddDns, __VA_ARGS__)
 
 #define TUNNEL_SERVICE_CONTROL(XX, ...) \
 XX(operation, string, none, operation, __VA_ARGS__)
 
-DECLARE_MODEL(tunnel_comand, TUNNEL_CMD)
+DECLARE_MODEL(tunnel_command, TUNNEL_CMD)
 DECLARE_MODEL(tunnel_result, TUNNEL_CMD_RES)
 DECLARE_MODEL(tunnel_load_identity, TNL_LOAD_IDENTITY)
 DECLARE_MODEL(tunnel_identity_info, TNL_IDENTITY_INFO)
@@ -248,7 +254,7 @@ struct hosted_io_ctx_s {
 typedef void (*event_cb)(const base_event* event);
 typedef void (*command_cb)(const tunnel_result *, void *ctx);
 typedef struct {
-    int (*process)(const tunnel_comand *cmd, command_cb cb, void *ctx);
+    int (*process)(const tunnel_command *cmd, command_cb cb, void *ctx);
     int (*load_identity)(const char *identifier, const char *path, command_cb, void *ctx);
     // do not use, temporary accessor
     ziti_context (*get_ziti)(const char *identifier);

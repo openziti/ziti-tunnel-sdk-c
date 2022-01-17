@@ -17,6 +17,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#if __linux__
+#include <pwd.h>
+#include <unistd.h>
+#endif
 
 const char* app_data = "APPDATA";
 static char* identifier_path = NULL;
@@ -25,8 +29,10 @@ char* get_system_config_path() {
     char* config_path = malloc(FILENAME_MAX * sizeof(char));
 #if _WIN32
     sprintf(config_path, "%s/NetFoundry", getenv(app_data));
+#elif __linux__
+    sprintf(config_path, "/var/lib/ziti");
 #else
-    sprintf(config_path, "%s", "/tmp");
+    sprintf(config_path, "/tmp");
 #endif
     return config_path;
 }
