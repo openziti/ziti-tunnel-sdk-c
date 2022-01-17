@@ -480,13 +480,9 @@ void set_identifier_from_identities() {
             tnl_id->Identifier = strdup(identifier);
         }
         if (tnl_id->Identifier != NULL) {
+            // set this field to false during initialization
             tnl_id->Status = false;
             model_map_set(&tnl_identity_map, tnl_id->Identifier, tnl_id);
-            // set this field to null during initialization
-            if (tnl_id->Status) {
-                free(tnl_id->Status);
-                tnl_id->Status = NULL;
-            }
         }
     }
 }
