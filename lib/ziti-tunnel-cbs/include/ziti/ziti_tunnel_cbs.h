@@ -76,7 +76,7 @@ XX(identifier, string, none, identifier, __VA_ARGS__)\
 XX(path, string, none, path, __VA_ARGS__)
 
 #define TNL_DISABLE_IDENTITY(XX, ...) \
-XX(identifier, string, none, id, __VA_ARGS__)
+XX(identifier, string, none, identifier, __VA_ARGS__)
 
 #define TNL_IDENTITY_INFO(XX, ...) \
 XX(name, string, none, name, __VA_ARGS__) \
@@ -88,11 +88,11 @@ XX(id, string, none, id, __VA_ARGS__)
 XX(identities, tunnel_identity_info, array, identities, __VA_ARGS__)
 
 #define TNL_ZITI_DUMP(XX, ...) \
-XX(identifier, string, none, id, __VA_ARGS__) \
+XX(identifier, string, none, identifier, __VA_ARGS__) \
 XX(dump_path, string, none, dump_path, __VA_ARGS__)
 
 #define TNL_ENABLE_MFA(XX, ...) \
-XX(identifier, string, none, id, __VA_ARGS__)
+XX(identifier, string, none, identifier, __VA_ARGS__)
 
 #define TNL_MFA_ENROL_RES(XX,...) \
 XX(identifier, string, none, identifier, __VA_ARGS__) \
@@ -111,31 +111,31 @@ XX(identifier, string, none, identifier, __VA_ARGS__) \
 XX(code, string, none, code, __VA_ARGS__)
 
 #define TNL_REMOVE_MFA(XX, ...) \
-XX(identifier, string, none, id, __VA_ARGS__) \
+XX(identifier, string, none, identifier, __VA_ARGS__) \
 XX(code, string, none, code, __VA_ARGS__)
 
 #define TNL_GENERATE_MFA_CODES(XX, ...) \
-XX(identifier, string, none, id, __VA_ARGS__) \
+XX(identifier, string, none, identifier, __VA_ARGS__) \
 XX(code, string, none, code, __VA_ARGS__)
 
 #define TNL_MFA_RECOVERY_CODES(XX, ...) \
-XX(identifier, string, none, id, __VA_ARGS__) \
+XX(identifier, string, none, identifier, __VA_ARGS__) \
 XX(recovery_codes, string, array, recovery_codes, __VA_ARGS__)
 
 #define TNL_GET_MFA_CODES(XX, ...) \
-XX(identifier, string, none, id, __VA_ARGS__) \
+XX(identifier, string, none, identifier, __VA_ARGS__) \
 XX(code, string, none, code, __VA_ARGS__)
 
 #define TNL_GET_IDENTITY_METRICS(XX, ...) \
-XX(identifier, string, none, id, __VA_ARGS__)
+XX(identifier, string, none, identifier, __VA_ARGS__)
 
 #define TNL_IDENTITY_METRICS(XX, ...) \
-XX(identifier, string, none, id, __VA_ARGS__) \
+XX(identifier, string, none, identifier, __VA_ARGS__) \
 XX(up, string, none, up, __VA_ARGS__) \
 XX(down, string, none, down, __VA_ARGS__)
 
 #define TUNNEL_CMD_INLINE(XX, ...) \
-XX(identifier, string, none, id, __VA_ARGS__) \
+XX(identifier, string, none, identifier, __VA_ARGS__) \
 XX(command, TunnelCommand, none, command, __VA_ARGS__)
 
 #define TNL_DELETE_IDENTITY(XX, ...) \
