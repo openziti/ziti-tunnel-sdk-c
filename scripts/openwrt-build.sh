@@ -32,7 +32,7 @@ done
 
 staging_dir=$openwrt_sdk/staging_dir
 
-if [ -z "$target"]; then
+if [ -z "$target" ]; then
 eval $(grep '^CONFIG_TARGET_ARCH_PACKAGES=' $openwrt_sdk/.config)
 echo "OpenWRT SDK is configured for $CONFIG_TARGET_ARCH_PACKAGES"
 target=$CONFIG_TARGET_ARCH_PACKAGES
