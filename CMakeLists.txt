@@ -20,6 +20,7 @@ project(ziti-tunnel-sdk-c
         LANGUAGES C CXX)
 include(CPack)
 set(CPACK_PACKAGE_VENDOR "NetFoundry")
+set(CMAKE_C_STANDARD 99)
 
 # capture build date
 if (WIN32)
