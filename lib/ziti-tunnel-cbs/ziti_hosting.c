@@ -548,13 +548,19 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
     if (clt_ctx->app_data != NULL) {
         ZITI_LOG(DEBUG, "hosted_service[%s], client[%s]: received app_data_json='%.*s'", service_ctx->service_name,
                  client_identity, (int)clt_ctx->app_data_sz, clt_ctx->app_data);
-        if (parse_tunneler_app_data(&app_data, (char *)clt_ctx->app_data, clt_ctx->app_data_sz) != 0) {
+        if (parse_tunneler_app_data(&app_data, (char *)clt_ctx->app_data, clt_ctx->app_data_sz) < 0) {
             ZITI_LOG(ERROR, "hosted_service[%s], client[%s]: failed to parse app_data_json '%.*s'",
                      service_ctx->service_name,
                      client_identity, (int)clt_ctx->app_data_sz, clt_ctx->app_data);
             err = true;
             goto done;
         }
+    }
+
+    if (app_data.conn_type == resolve_conn_type) {
+        accept_resolver_conn(clt, &service_ctx->addr_u.allowed_hostnames);
+        free_tunneler_app_data(&app_data);
+        return;
     }
 
     struct addrinfo_params_s dial_ai_params;
@@ -705,7 +711,12 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
 
     done:
     if (err) {
-        hosted_server_close(io_ctx);
+        if (io_ctx == NULL) {
+            // if we get an error before creating io_ctx, just close incoming connection
+            ziti_close(clt, ziti_conn_close_cb);
+        } else {
+            hosted_server_close(io_ctx);
+        }
     }
     if (clt_ctx->app_data != NULL) {
         free_tunneler_app_data(&app_data);

@@ -87,9 +87,6 @@ XX(normal, __VA_ARGS__) \
 XX(connected, __VA_ARGS__) \
 XX(disconnected, __VA_ARGS__)
 
-#define INSTANCE_STATUS(XX, ...) \
-XX(ok, __VA_ARGS__)
-
 #define LOG_LEVEL(XX, ...) \
 XX(none, __VA_ARGS__) \
 XX(error, __VA_ARGS__) \
@@ -101,7 +98,6 @@ XX(trace, __VA_ARGS__)
 
 DECLARE_ENUM(event_severity, EVENT_SEVERITY)
 DECLARE_ENUM(event, EVENT_ACTIONS)
-DECLARE_ENUM(instance_status, INSTANCE_STATUS)
 DECLARE_ENUM(log_level, LOG_LEVEL)
 DECLARE_MODEL(status_event, STATUS_EVENT)
 DECLARE_MODEL(action_event, ACTION_EVENT)

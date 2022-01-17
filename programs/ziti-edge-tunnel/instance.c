@@ -26,14 +26,13 @@ model_map tnl_identity_map = {0};
 static const char* CFG_INTERCEPT_V1 = "intercept.v1";
 static const char* CFG_ZITI_TUNNELER_CLIENT_V1 = "ziti-tunneler-client.v1";
 static tunnel_status tnl_status = {0};
-IMPL_ENUM(instance_status, INSTANCE_STATUS)
 
 tunnel_identity *find_tunnel_identity(const char* identifier) {
     tunnel_identity *tnl_id = model_map_get(&tnl_identity_map, identifier);
     if (tnl_id != NULL) {
         return tnl_id;
     } else {
-        ZITI_LOG(WARN, "ztx[%s] is not found. It may not be active/connected", identifier);
+        ZITI_LOG(WARN, "Identity ztx[%s] is not loaded yet or already removed.", identifier);
         return NULL;
     }
 }
@@ -47,7 +46,7 @@ tunnel_identity *create_or_get_tunnel_identity(char* identifier, char* filename)
 
     if (id != NULL) {
         if (filename != NULL) {
-            id->Status = strdup(instance_status_name(instance_status_ok));
+            id->Status = true;
         }
         return id;
     } else {
@@ -55,9 +54,9 @@ tunnel_identity *create_or_get_tunnel_identity(char* identifier, char* filename)
         tnl_id->Identifier = strdup(identifier);
         if (filename != NULL) {
             char* extension = strstr(filename, ".json");
-            int length;
+            size_t length;
             if (extension != NULL) {
-                length = (int) (extension - filename);
+                length = extension - filename;
             } else {
                 length = strlen(filename);
             }
@@ -67,11 +66,10 @@ tunnel_identity *create_or_get_tunnel_identity(char* identifier, char* filename)
             fingerprint[length] = '\0';
             snprintf(tnl_id->FingerPrint, length+1, "%s", fingerprint);
 
-            if (tnl_id->Name == NULL) {
-                tnl_id->Name = calloc(length + 1, sizeof(char));
-                snprintf(tnl_id->Name, length+1, "%s", fingerprint);
-            }
-            tnl_id->Status = strdup(instance_status_name(instance_status_ok));
+            tnl_id->Name = calloc(length + 1, sizeof(char));
+            snprintf(tnl_id->Name, length+1, "%s", fingerprint);
+
+            tnl_id->Status = true;
 
         }
         model_map_set(&tnl_identity_map, identifier, tnl_id);
@@ -307,8 +305,15 @@ static void setTunnelServiceAddress(tunnel_service *tnl_svc, ziti_service *servi
             tnl_addr_arr[address_idx] = to_address(addr);
         }
 
+        for(idx = 0; cfg_v1.protocols[idx]; idx++) {
+            // do nothing
+        }
         // set protocols
-        protocols = cfg_v1.protocols;
+        protocols = calloc(idx+1, sizeof(char*));
+        int protocol_idx;
+        for(protocol_idx=0; cfg_v1.protocols[protocol_idx]; protocol_idx++) {
+            protocols[protocol_idx] = strdup(cfg_v1.protocols[protocol_idx]);
+        }
 
         // set ports
         for(idx = 0; cfg_v1.port_ranges[idx]; idx++) {
@@ -318,11 +323,11 @@ static void setTunnelServiceAddress(tunnel_service *tnl_svc, ziti_service *servi
         for(int port_idx = 0; cfg_v1.port_ranges[port_idx]; port_idx++) {
             tnl_port_range_arr[port_idx] = getTunnelPortRange(cfg_v1.port_ranges[port_idx]);
         }
-        cfg_v1.protocols = NULL;
+
         free_ziti_intercept_cfg_v1(&cfg_v1);
     }  else if ((cfg_json = ziti_service_get_raw_config(service, CFG_ZITI_TUNNELER_CLIENT_V1)) != NULL) {
         ZITI_LOG(TRACE, "ziti-tunneler-client.v1: %s", cfg_json);
-        ziti_client_cfg_v1 zt_client_cfg_v1 = {0};
+        ziti_client_cfg_v1 zt_client_cfg_v1;
         parse_ziti_client_cfg_v1(&zt_client_cfg_v1, cfg_json, strlen(cfg_json));
 
         // set tunnel address
@@ -385,7 +390,7 @@ tunnel_identity_array get_tunnel_identities() {
 
     int idx = 0;
     MODEL_MAP_FOREACH(id, tnl_id, &tnl_identity_map) {
-        if (tnl_id->Status != NULL && strcmp(tnl_id->Status, instance_status_name(instance_status_ok)) == 0) {
+        if (tnl_id->Status) {
             tnl_id_arr[idx++] = tnl_id;
         }
     }
@@ -467,7 +472,6 @@ void set_identifier_from_identities() {
     if (tnl_status.Identities == NULL) {
         return;
     }
-#if _WIN32
     for(int idx = 0; tnl_status.Identities[idx]; idx++) {
         tunnel_identity *tnl_id = tnl_status.Identities[idx];
         if (tnl_id->Identifier == NULL && tnl_id->FingerPrint != NULL) {
@@ -476,6 +480,7 @@ void set_identifier_from_identities() {
             tnl_id->Identifier = strdup(identifier);
         }
         if (tnl_id->Identifier != NULL) {
+            tnl_id->Status = false;
             model_map_set(&tnl_identity_map, tnl_id->Identifier, tnl_id);
             // set this field to null during initialization
             if (tnl_id->Status) {
@@ -484,7 +489,6 @@ void set_identifier_from_identities() {
             }
         }
     }
-#endif
 }
 
 void initialize_tunnel_status() {
@@ -498,12 +502,10 @@ void initialize_tunnel_status() {
 }
 
 bool load_tunnel_status(char* config_data) {
-    if (parse_tunnel_status(&tnl_status, config_data, strlen(config_data)) != 0) {
-        free(config_data);
+    if (parse_tunnel_status(&tnl_status, config_data, strlen(config_data)) < 0) {
         ZITI_LOG(ERROR, "Could not read tunnel status from config data");
         return false;
     }
-    free(config_data);
     initialize_tunnel_status();
     set_identifier_from_identities();
     return true;
@@ -558,7 +560,7 @@ void update_mfa_time(char* identifier) {
 }
 
 void set_ip_info(uint32_t dns_ip, uint32_t tun_ip, int bits) {
-    tnl_status.TunIpv4Mask = bits;
+    tnl_status.TunPrefixLength = bits;
 
     if (tnl_status.TunIpv4) free(tnl_status.TunIpv4);
     ip_addr_t tun_ip4 = IPADDR4_INIT(tun_ip);
@@ -574,10 +576,10 @@ void set_ip_info(uint32_t dns_ip, uint32_t tun_ip, int bits) {
     tnl_status.IpInfo->DNS = strdup(ipaddr_ntoa(&dns_ip4));
     tnl_status.IpInfo->MTU = 65535;
 
-    if (tnl_status.IpInfo->Subnet) free(tnl_status.IpInfo->Subnet);
     uint32_t netmask = (0xFFFFFFFFUL << (32 - bits)) & 0xFFFFFFFFUL;
     netmask = htonl(netmask);
-    tnl_status.IpInfo->Subnet = strdup(ipaddr_ntoa(&netmask));
+    ip_addr_t netmask_ipv4 = IPADDR4_INIT(netmask);
+    tnl_status.IpInfo->Subnet = strdup(ipaddr_ntoa(&netmask_ipv4));
 
 }
 
@@ -639,20 +641,20 @@ void delete_identity_from_instance(char* identifier) {
     free(id);
 }
 
-void set_tun_ipv4_into_instance(char* tun_ip, int mask, bool addDns) {
+void set_tun_ipv4_into_instance(char* tun_ip, int prefixLength, bool addDns) {
     if (tnl_status.TunIpv4 != NULL) free(tnl_status.TunIpv4);
     tnl_status.TunIpv4 = strdup(tun_ip);
 
-    tnl_status.TunIpv4Mask = mask;
+    tnl_status.TunPrefixLength = prefixLength;
 
     tnl_status.AddDns = addDns;
 }
 
 char* get_ip_range_from_config() {
     char* ip_range = NULL;
-    if (tnl_status.TunIpv4 != NULL && tnl_status.TunIpv4Mask > 0) {
+    if (tnl_status.TunIpv4 != NULL && tnl_status.TunPrefixLength > 0) {
         ip_range = calloc(30, sizeof(char));
-        snprintf(ip_range, 30 * sizeof(char), "%s/%d",tnl_status.TunIpv4, tnl_status.TunIpv4Mask);
+        snprintf(ip_range, 30 * sizeof(char), "%s/%d",tnl_status.TunIpv4, tnl_status.TunPrefixLength);
     }
     return ip_range;
 }
