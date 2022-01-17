@@ -222,15 +222,10 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
                 result.success = false;
                 free_tunnel_disable_identity(&disable_id);
                 break;
-            }
-            if (inst) {
+            } else {
                 disconnect_identity(inst->ztx, CMD_CTX.tunnel_ctx);
                 model_map_remove(&instances, disable_id.identifier);
                 result.success = true;
-            } else {
-                result.success = false;
-                result.error = calloc(1, strlen(disable_id.identifier) + 35);
-                sprintf(result.error, "ziti instance for id %s is not found", disable_id.identifier);
             }
 
             cb(&result, ctx);
@@ -498,7 +493,7 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
 
         case TunnelCommand_RemoveIdentity: {
             tunnel_delete_identity delete_id = {0};
-            if (cmd->data == NULL || parse_tunnel_delete_identity(&delete_id, cmd->data, strlen(cmd->data)) != 0) {
+            if (cmd->data == NULL || parse_tunnel_delete_identity(&delete_id, cmd->data, strlen(cmd->data)) < 0) {
                 result.success = false;
                 result.error = "invalid command";
                 free_tunnel_delete_identity(&delete_id);
@@ -511,18 +506,13 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
                 result.success = false;
                 free_tunnel_delete_identity(&delete_id);
                 break;
-            }
-            if (inst) {
+            } else {
                 if (inst->ztx && ziti_get_identity(inst->ztx)) {
                     disconnect_identity(inst->ztx, CMD_CTX.tunnel_ctx);
                 }
                 model_map_remove(&instances, delete_id.identifier);
                 result.success = true;
                 result.data = tunnel_command_to_json(cmd, MODEL_JSON_COMPACT, NULL);
-            } else {
-                result.success = false;
-                result.error = calloc(1, strlen(delete_id.identifier) + 35);
-                sprintf(result.error, "ziti instance for id %s is not found", delete_id.identifier);
             }
 
             free_tunnel_delete_identity(&delete_id);
