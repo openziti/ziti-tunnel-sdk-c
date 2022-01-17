@@ -44,7 +44,7 @@ static const char * cfg_types[] = { "ziti-tunneler-client.v1", "intercept.v1", "
 
 static long refresh_interval = 10;
 
-static int process_cmd(const tunnel_comand *cmd, void (*cb)(const tunnel_result *, void *ctx), void *ctx);
+static int process_cmd(const tunnel_command *cmd, void (*cb)(const tunnel_result *, void *ctx), void *ctx);
 static int load_identity(const char *identifier, const char *path, command_cb cb, void *ctx);
 static void get_transfer_rates(const char *identifier, command_cb cb, void *ctx);
 static struct ziti_instance_s *new_ziti_instance(const char *identifier, const char *path);
@@ -170,7 +170,7 @@ bool is_null(const void * field, char* message, tunnel_result* result) {
     }
 }
 
-static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
+static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
     tunnel_result result = {
             .success = false,
             .error = NULL,
@@ -237,7 +237,7 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
             }
 
             ziti_set_enabled(inst->ztx, on_off_id.onOff);
-            result.data = tunnel_comand_to_json(cmd, MODEL_JSON_COMPACT, NULL);
+            result.data = tunnel_command_to_json(cmd, MODEL_JSON_COMPACT, NULL);
             result.success = true;
 
             cb(&result, ctx);
@@ -508,12 +508,12 @@ static int process_cmd(const tunnel_comand *cmd, command_cb cb, void *ctx) {
                 break;
             }
 
-            if (inst->ztx && ziti_get_identity(inst->ztx)) {
+            if (ziti_get_identity(inst->ztx)) {
                 disconnect_identity(inst->ztx, CMD_CTX.tunnel_ctx);
             }
             model_map_remove(&instances, delete_id.identifier);
             result.success = true;
-            result.data = tunnel_comand_to_json(cmd, MODEL_JSON_COMPACT, NULL);
+            result.data = tunnel_command_to_json(cmd, MODEL_JSON_COMPACT, NULL);
 
             free_tunnel_delete_identity(&delete_id);
             break;
@@ -1050,7 +1050,7 @@ static void on_sigdump(uv_signal_t *sig, int signum) {
 
 IMPL_ENUM(TunnelCommand, TUNNEL_COMMANDS)
 
-IMPL_MODEL(tunnel_comand, TUNNEL_CMD)
+IMPL_MODEL(tunnel_command, TUNNEL_CMD)
 IMPL_MODEL(tunnel_result, TUNNEL_CMD_RES)
 IMPL_MODEL(tunnel_load_identity, TNL_LOAD_IDENTITY)
 

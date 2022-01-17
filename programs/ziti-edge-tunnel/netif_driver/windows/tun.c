@@ -61,6 +61,7 @@ struct netif_handle_s {
     uv_timer_t route_timer;
 };
 
+static int tun_close(struct netif_handle_s *tun);
 static int tun_setup_read(netif_handle tun, uv_loop_t *loop, packet_cb on_packet, void *netif);
 static ssize_t tun_write(netif_handle tun, const void *buf, size_t len);
 static int tun_add_route(netif_handle tun, const char *dest);
@@ -228,7 +229,7 @@ netif_driver tun_open(struct uv_loop_s *loop, uint32_t tun_ip, uint32_t dns_ip, 
     return driver;
 }
 
-int tun_close(struct netif_handle_s *tun) {
+static int tun_close(struct netif_handle_s *tun) {
     if (tun == NULL) {
         return 0;
     }
