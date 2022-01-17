@@ -346,7 +346,9 @@ void remove_all_nrpt_rules() {
     ZITI_LOG(DEBUG, "Executing Remove all nrpt rules: '%s'", remove_cmd);
     int rc = system(remove_cmd);
     if (rc != 0) {
-        ZITI_LOG(WARN, "Remove all NRPT rules: %d(err=%d)", rc, GetLastError());
+        ZITI_LOG(WARN, "Remove all NRPT script: %d(err=%d)", rc, GetLastError());
+    } else {
+        ZITI_LOG(DEBUG, "Removed all nrpt rules");
     }
 }
 

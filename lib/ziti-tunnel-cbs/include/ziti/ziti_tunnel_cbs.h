@@ -46,7 +46,7 @@ DECLARE_MODEL(tunneler_app_data, TUNNELER_APP_DATA_MODEL)
 XX(ZitiDump, __VA_ARGS__)    \
 XX(LoadIdentity, __VA_ARGS__)   \
 XX(ListIdentities, __VA_ARGS__) \
-XX(DisableIdentity, __VA_ARGS__) \
+XX(IdentityOnOff, __VA_ARGS__) \
 XX(EnableMFA, __VA_ARGS__)  \
 XX(SubmitMFA, __VA_ARGS__)  \
 XX(VerifyMFA, __VA_ARGS__)  \
@@ -63,83 +63,84 @@ XX(RemoveIdentity, __VA_ARGS__)
 DECLARE_ENUM(TunnelCommand, TUNNEL_COMMANDS)
 
 #define TUNNEL_CMD(XX, ...) \
-XX(command, TunnelCommand, none, command, __VA_ARGS__) \
-XX(data, json, none, data, __VA_ARGS__)
+XX(command, TunnelCommand, none, Command, __VA_ARGS__) \
+XX(data, json, none, Data, __VA_ARGS__)
 
 #define TUNNEL_CMD_RES(XX, ...) \
-XX(success, bool, none, success, __VA_ARGS__) \
-XX(error, string, none, error, __VA_ARGS__)\
-XX(data, json, none, data, __VA_ARGS__)
+XX(success, bool, none, Success, __VA_ARGS__) \
+XX(error, string, none, Error, __VA_ARGS__)\
+XX(data, json, none, Data, __VA_ARGS__)
 
 #define TNL_LOAD_IDENTITY(XX, ...) \
-XX(identifier, string, none, identifier, __VA_ARGS__)\
-XX(path, string, none, path, __VA_ARGS__)
+XX(identifier, string, none, Identifier, __VA_ARGS__)\
+XX(path, string, none, Path, __VA_ARGS__)
 
-#define TNL_DISABLE_IDENTITY(XX, ...) \
-XX(identifier, string, none, identifier, __VA_ARGS__)
+#define TNL_ON_OFF_IDENTITY(XX, ...) \
+XX(identifier, string, none, Identifier, __VA_ARGS__) \
+XX(onOff, bool, none, OnOff, __VA_ARGS__)
 
 #define TNL_IDENTITY_INFO(XX, ...) \
-XX(name, string, none, name, __VA_ARGS__) \
-XX(config, string, none, config, __VA_ARGS__) \
-XX(network, string, none, network, __VA_ARGS__) \
-XX(id, string, none, id, __VA_ARGS__)
+XX(name, string, none, Name, __VA_ARGS__) \
+XX(config, string, none, Config, __VA_ARGS__) \
+XX(network, string, none, Network, __VA_ARGS__) \
+XX(id, string, none, Id, __VA_ARGS__)
 
 #define TNL_IDENTITY_LIST(XX, ...) \
-XX(identities, tunnel_identity_info, array, identities, __VA_ARGS__)
+XX(identities, tunnel_identity_info, array, Identities, __VA_ARGS__)
 
 #define TNL_ZITI_DUMP(XX, ...) \
-XX(identifier, string, none, identifier, __VA_ARGS__) \
-XX(dump_path, string, none, dump_path, __VA_ARGS__)
+XX(identifier, string, none, Identifier, __VA_ARGS__) \
+XX(dump_path, string, none, DumpPath, __VA_ARGS__)
 
 #define TNL_ENABLE_MFA(XX, ...) \
-XX(identifier, string, none, identifier, __VA_ARGS__)
+XX(identifier, string, none, Identifier, __VA_ARGS__)
 
 #define TNL_MFA_ENROL_RES(XX,...) \
-XX(identifier, string, none, identifier, __VA_ARGS__) \
-XX(is_verified, bool, none, is_verified, __VA_ARGS__) \
-XX(provisioning_url, string, none, provisioning_url, __VA_ARGS__) \
-XX(recovery_codes, string, array, recovery_codes, __VA_ARGS__)
+XX(identifier, string, none, Identifier, __VA_ARGS__) \
+XX(is_verified, bool, none, IsVerified, __VA_ARGS__) \
+XX(provisioning_url, string, none, ProvisioningUrl, __VA_ARGS__) \
+XX(recovery_codes, string, array, RecoveryCodes, __VA_ARGS__)
 
 // MFA auth command
 #define TNL_SUBMIT_MFA(XX, ...) \
-XX(identifier, string, none, identifier, __VA_ARGS__) \
-XX(code, string, none, code, __VA_ARGS__)
+XX(identifier, string, none, Identifier, __VA_ARGS__) \
+XX(code, string, none, Code, __VA_ARGS__)
 
 // MFA auth command
 #define TNL_VERIFY_MFA(XX, ...) \
-XX(identifier, string, none, identifier, __VA_ARGS__) \
-XX(code, string, none, code, __VA_ARGS__)
+XX(identifier, string, none, Identifier, __VA_ARGS__) \
+XX(code, string, none, Code, __VA_ARGS__)
 
 #define TNL_REMOVE_MFA(XX, ...) \
-XX(identifier, string, none, identifier, __VA_ARGS__) \
-XX(code, string, none, code, __VA_ARGS__)
+XX(identifier, string, none, Identifier, __VA_ARGS__) \
+XX(code, string, none, Code, __VA_ARGS__)
 
 #define TNL_GENERATE_MFA_CODES(XX, ...) \
-XX(identifier, string, none, identifier, __VA_ARGS__) \
-XX(code, string, none, code, __VA_ARGS__)
+XX(identifier, string, none, Identifier, __VA_ARGS__) \
+XX(code, string, none, Code, __VA_ARGS__)
 
 #define TNL_MFA_RECOVERY_CODES(XX, ...) \
-XX(identifier, string, none, identifier, __VA_ARGS__) \
-XX(recovery_codes, string, array, recovery_codes, __VA_ARGS__)
+XX(identifier, string, none, Identifier, __VA_ARGS__) \
+XX(recovery_codes, string, array, RecoveryCodes, __VA_ARGS__)
 
 #define TNL_GET_MFA_CODES(XX, ...) \
-XX(identifier, string, none, identifier, __VA_ARGS__) \
-XX(code, string, none, code, __VA_ARGS__)
+XX(identifier, string, none, Identifier, __VA_ARGS__) \
+XX(code, string, none, Code, __VA_ARGS__)
 
 #define TNL_GET_IDENTITY_METRICS(XX, ...) \
-XX(identifier, string, none, identifier, __VA_ARGS__)
+XX(identifier, string, none, Identifier, __VA_ARGS__)
 
 #define TNL_IDENTITY_METRICS(XX, ...) \
-XX(identifier, string, none, identifier, __VA_ARGS__) \
-XX(up, string, none, up, __VA_ARGS__) \
-XX(down, string, none, down, __VA_ARGS__)
+XX(identifier, string, none, Identifier, __VA_ARGS__) \
+XX(up, string, none, Up, __VA_ARGS__) \
+XX(down, string, none, Down, __VA_ARGS__)
 
 #define TUNNEL_CMD_INLINE(XX, ...) \
-XX(identifier, string, none, identifier, __VA_ARGS__) \
-XX(command, TunnelCommand, none, command, __VA_ARGS__)
+XX(identifier, string, none, Identifier, __VA_ARGS__) \
+XX(command, TunnelCommand, none, Command, __VA_ARGS__)
 
 #define TNL_DELETE_IDENTITY(XX, ...) \
-XX(identifier, string, none, identifier, __VA_ARGS__)
+XX(identifier, string, none, Identifier, __VA_ARGS__)
 
 #define TUNNEL_SET_LOG_LEVEL(XX, ...) \
 XX(loglevel, string, none, Level, __VA_ARGS__)
@@ -158,7 +159,7 @@ DECLARE_MODEL(tunnel_load_identity, TNL_LOAD_IDENTITY)
 DECLARE_MODEL(tunnel_identity_info, TNL_IDENTITY_INFO)
 DECLARE_MODEL(tunnel_identity_list, TNL_IDENTITY_LIST)
 DECLARE_MODEL(tunnel_ziti_dump, TNL_ZITI_DUMP)
-DECLARE_MODEL(tunnel_disable_identity, TNL_DISABLE_IDENTITY)
+DECLARE_MODEL(tunnel_on_off_identity, TNL_ON_OFF_IDENTITY)
 DECLARE_MODEL(tunnel_enable_mfa, TNL_ENABLE_MFA)
 DECLARE_MODEL(tunnel_mfa_enrol_res, TNL_MFA_ENROL_RES)
 DECLARE_MODEL(tunnel_submit_mfa, TNL_SUBMIT_MFA)

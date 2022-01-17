@@ -97,6 +97,7 @@ static bool started_by_scm = false;
 static bool tunnel_interrupted = false;
 
 uv_loop_t *main_ziti_loop;
+netif_driver tun;
 
 IMPL_ENUM(event, EVENT_ACTIONS)
 IMPL_ENUM(log_level, LOG_LEVEL)
@@ -178,12 +179,33 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
                 case TunnelCommand_RemoveIdentity: {
                     tunnel_delete_identity tnl_delete_id = {0};
                     if (tnl_res_cmd.data != NULL && parse_tunnel_delete_identity(&tnl_delete_id, tnl_res_cmd.data, strlen(tnl_res_cmd.data)) > 0) {
+                        if (tnl_delete_id.identifier == NULL) {
+                            ZITI_LOG(ERROR, "Identity filename is not found in the remove identity request, not deleting the identity file");
+                            break;
+                        }
                         delete_identity_from_instance(tnl_delete_id.identifier);
                         // delete identity file
                         remove(tnl_delete_id.identifier);
                         ZITI_LOG(INFO, "Identity file %s is deleted",tnl_delete_id.identifier);
+#if _WIN32
+                        // should be the last line in this function as it calls the mutex/lock
+                        save_tunnel_status_to_file();
+#endif
                     }
                     free_tunnel_delete_identity(&tnl_delete_id);
+                    break;
+                }
+                case TunnelCommand_IdentityOnOff: {
+                    tunnel_on_off_identity on_off_id = {0};
+                    if (tnl_res_cmd.data == NULL || parse_tunnel_on_off_identity(&on_off_id, tnl_res_cmd.data, strlen(tnl_res_cmd.data)) != 0) {
+                        free_tunnel_on_off_identity(&on_off_id);
+                        break;
+                    }
+                    set_ziti_status(on_off_id.onOff, on_off_id.identifier);
+#if _WIN32
+                    // should be the last line in this function as it calls the mutex/lock
+                    save_tunnel_status_to_file();
+#endif
                     break;
                 }
                 case TunnelCommand_Unknown: {
@@ -196,9 +218,10 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
 
     if (uv_is_active((const uv_handle_t *) ctx)) {
         uv_buf_t buf;
-        buf.base = calloc(json_len + 1, sizeof(char));
-        snprintf(buf.base, json_len + 1, "%s\n", json);
-        buf.len = json_len + 1;
+        size_t data_len = json_len + sizeof("\n");
+        buf.base = calloc(data_len, sizeof(char));
+        snprintf(buf.base, data_len, "%s\n", json);
+        buf.len = data_len;
         uv_write_t *wr = calloc(1, sizeof(uv_write_t));
         wr->data = buf.base;
         uv_write(wr, (uv_stream_t *) ctx, &buf, 1, on_cmd_write);
@@ -245,6 +268,7 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
             if (tnl_cmd->data == NULL || parse_tunnel_tun_ip_v4(&tunnel_tun_ip_v4_cmd, tnl_cmd->data, strlen(tnl_cmd->data)) < 0) {
                 result.error = "invalid command";
                 result.success = false;
+                free_tunnel_tun_ip_v4(&tunnel_tun_ip_v4_cmd);
                 break;
             }
             if (tunnel_tun_ip_v4_cmd.prefixLength < MINTUNPREFIXLENGTH || tunnel_tun_ip_v4_cmd.prefixLength > MAXTUNPREFIXLENGTH) {
@@ -291,6 +315,13 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
             if (dots != 3 || !validationStatus) {
                 result.error = "Invalid IP address";
                 result.success = false;
+                free_tunnel_tun_ip_v4(&tunnel_tun_ip_v4_cmd);
+                break;
+            }
+            if (tunnel_tun_ip_v4_cmd.tunIP == NULL) {
+                result.error = "Tun IP is null";
+                result.success = false;
+                free_tunnel_tun_ip_v4(&tunnel_tun_ip_v4_cmd);
                 break;
             }
             set_tun_ipv4_into_instance(tunnel_tun_ip_v4_cmd.tunIP, tunnel_tun_ip_v4_cmd.prefixLength, tunnel_tun_ip_v4_cmd.addDns);
@@ -478,9 +509,10 @@ static void send_events_message(const void *message, to_json_fn to_json_f, bool 
             int err = 0;
             if (event_client->event_client_conn != NULL) {
                 uv_buf_t buf;
-                buf.base = calloc(data_len + 1, sizeof(char));
-                snprintf(buf.base, data_len + 1, "%s\n", json);
-                buf.len = data_len + 1;
+                data_len = data_len + sizeof("\n");
+                buf.base = calloc(data_len, sizeof(char));
+                snprintf(buf.base, data_len, "%s\n", json);
+                buf.len = data_len;
                 uv_write_t *wr = calloc(1, sizeof(uv_write_t));
                 wr->data = buf.base;
                 err = uv_write(wr, (uv_stream_t *)event_client->event_client_conn, &buf, 1, on_write_event);
@@ -1098,7 +1130,6 @@ static void on_event(const base_event *ev) {
 }
 
 static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, const char *ip_range, dns_manager *dns) {
-    netif_driver tun;
     char tun_error[64];
 #if __APPLE__ && __MACH__
     tun = utun_open(tun_error, sizeof(tun_error), ip_range);
@@ -1141,7 +1172,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
 
     if (uv_run(ziti_loop, UV_RUN_DEFAULT) != 0) {
         if (started_by_scm) {
-            ZITI_LOG(INFO, "The event loop is stopped, exiting");
+            ZITI_LOG(INFO, "The event loop is stopped, normal shutdown complete");
         } else if (tunnel_interrupted) {
             ZITI_LOG(ERROR, "tunnel interrupted");
         } else {
@@ -1153,12 +1184,8 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     free(tunneler);
     uv_close((uv_handle_t *) &cmd_server, (uv_close_cb) free);
     uv_close((uv_handle_t *) &event_server, (uv_close_cb) free);
-    uv_timer_stop(&metrics_timer);
 #if _WIN32
-    ZITI_LOG(INFO,"normal shutdown complete");
-    cleanup_instance_config();
     close_log();
-    stop_log_check();
 #endif
     cleanup_instance_config();
     return 0;
@@ -1667,22 +1694,22 @@ static void send_message_to_tunnel_fn(int argc, char *argv[]) {
     free(json);
 }
 
-static int disable_identity_opts(int argc, char *argv[]) {
+static int on_off_identity_opts(int argc, char *argv[]) {
     static struct option opts[] = {
             {"identity", required_argument, NULL, 'i'},
     };
     int c, option_index, errors = 0;
     optind = 0;
 
-    tunnel_disable_identity *disable_identity_options = calloc(1, sizeof(tunnel_disable_identity));
+    tunnel_on_off_identity *on_off_identity_options = calloc(1, sizeof(tunnel_on_off_identity));
     cmd = calloc(1, sizeof(tunnel_command));
-    cmd->command = TunnelCommand_DisableIdentity;
+    cmd->command = TunnelCommand_IdentityOnOff;
 
     while ((c = getopt_long(argc, argv, "i:",
                             opts, &option_index)) != -1) {
         switch (c) {
             case 'i':
-                disable_identity_options->identifier = optarg;
+                on_off_identity_options->identifier = optarg;
                 break;
             default: {
                 fprintf(stderr, "Unknown option '%c'\n", c);
@@ -1696,7 +1723,7 @@ static int disable_identity_opts(int argc, char *argv[]) {
         exit(1);
     }
     size_t json_len;
-    cmd->data = tunnel_disable_identity_to_json(disable_identity_options, MODEL_JSON_COMPACT, &json_len);
+    cmd->data = tunnel_on_off_identity_to_json(on_off_identity_options, MODEL_JSON_COMPACT, &json_len);
 
     return optind;
 }
@@ -2158,8 +2185,9 @@ static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required supe
 static CommandLine dump_cmd = make_command("dump", "dump the identities information", "[-i <identity>] [-p <dir>]",
                                            "\t-i|--identity\tdump identity info\n"
                                            "\t-p|--dump_path\tdump into path\n", dump_opts, send_message_to_tunnel_fn);
-static CommandLine disable_id_cmd = make_command("disable", "disable the identities information", "[-i <identity>]",
-                                           "\t-i|--identity\tidentity info that needs to be disabled\n", disable_identity_opts, send_message_to_tunnel_fn);
+static CommandLine on_off_id_cmd = make_command("on_off_identity", "enable/disable the identities information", "[-i <identity>] [-o <onoff>]",
+                                           "\t-i|--identity\tidentity info that needs to be enabled/disabled\n"
+                                                "\t-o|--onoff\tenable/disable the identity\n", on_off_identity_opts, send_message_to_tunnel_fn);
 static CommandLine enable_id_cmd = make_command("enable", "enable the identities information", "[-i <identity>]",
                                                  "\t-i|--identity\tidentity info that needs to be enabled\n", enable_identity_opts, send_message_to_tunnel_fn);
 static CommandLine enable_mfa_cmd = make_command("enable_mfa", "Enable MFA function fetches the totp url from the controller", "[-i <identity>]",
@@ -2199,7 +2227,7 @@ static CommandLine help_cmd = make_command("help", "this message", NULL, NULL, N
 static CommandLine *main_cmds[] = {
         &enroll_cmd,
         &run_cmd,
-        &disable_id_cmd,
+        &on_off_id_cmd,
         &enable_id_cmd,
         &dump_cmd,
         &enable_mfa_cmd,
@@ -2251,6 +2279,14 @@ void scm_service_stop() {
     send_tunnel_command(tnl_cmd, NULL);
 
     remove_all_nrpt_rules();
+
+    // tun close needs to be fixed - https://github.com/openziti/ziti-tunnel-sdk-c/issues/275
+    /*if (tun != NULL && tun->handle != NULL) {
+        ZITI_LOG(INFO, "Closing ziti tun adapter...");
+        tun->close(tun->handle);
+    }*/
+
+    cleanup_instance_config();
 
     ZITI_LOG(INFO,"============================ service ends ==================================");
     if (main_ziti_loop != NULL) {
