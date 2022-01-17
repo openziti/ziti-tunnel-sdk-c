@@ -216,21 +216,16 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
                 free_tunnel_disable_identity(&disable_id);
                 break;
             }
-            struct ziti_instance_s *inst = model_map_get(&instances, disable_id.path);
+            struct ziti_instance_s *inst = model_map_get(&instances, disable_id.identifier);
             if (inst == NULL) {
                 result.error = "ziti context not found";
                 result.success = false;
                 free_tunnel_disable_identity(&disable_id);
                 break;
-            }
-            if (inst) {
-                disconnect_identity(inst->ztx, CMD_CTX.tunnel_ctx);
-                model_map_remove(&instances, disable_id.path);
-                result.success = true;
             } else {
-                result.success = false;
-                result.error = calloc(1, strlen(disable_id.path) + 35);
-                sprintf(result.error, "ziti instance for id %s is not found", disable_id.path);
+                disconnect_identity(inst->ztx, CMD_CTX.tunnel_ctx);
+                model_map_remove(&instances, disable_id.identifier);
+                result.success = true;
             }
 
             cb(&result, ctx);
@@ -494,6 +489,34 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
             get_transfer_rates(get_identity_metrics_cmd.identifier, (command_cb) cb, ctx);
             free_tunnel_get_identity_metrics(&get_identity_metrics_cmd);
             return 0;
+        }
+
+        case TunnelCommand_RemoveIdentity: {
+            tunnel_delete_identity delete_id = {0};
+            if (cmd->data == NULL || parse_tunnel_delete_identity(&delete_id, cmd->data, strlen(cmd->data)) < 0) {
+                result.success = false;
+                result.error = "invalid command";
+                free_tunnel_delete_identity(&delete_id);
+                break;
+            }
+            struct ziti_instance_s *inst = model_map_get(&instances, delete_id.identifier);
+
+            if (inst == NULL) {
+                result.error = "ziti context not found";
+                result.success = false;
+                free_tunnel_delete_identity(&delete_id);
+                break;
+            } else {
+                if (inst->ztx && ziti_get_identity(inst->ztx)) {
+                    disconnect_identity(inst->ztx, CMD_CTX.tunnel_ctx);
+                }
+                model_map_remove(&instances, delete_id.identifier);
+                result.success = true;
+                result.data = tunnel_command_to_json(cmd, MODEL_JSON_COMPACT, NULL);
+            }
+
+            free_tunnel_delete_identity(&delete_id);
+            break;
         }
 
         case TunnelCommand_Unknown:
@@ -1022,6 +1045,7 @@ IMPL_MODEL(tunnel_mfa_recovery_codes, TNL_MFA_RECOVERY_CODES)
 IMPL_MODEL(tunnel_get_mfa_codes, TNL_GET_MFA_CODES)
 IMPL_MODEL(tunnel_get_identity_metrics, TNL_GET_IDENTITY_METRICS)
 IMPL_MODEL(tunnel_identity_metrics, TNL_IDENTITY_METRICS)
+IMPL_MODEL(tunnel_delete_identity, TNL_DELETE_IDENTITY)
 
 // ************** TUNNEL Events
 IMPL_ENUM(TunnelEvent, TUNNEL_EVENTS)
