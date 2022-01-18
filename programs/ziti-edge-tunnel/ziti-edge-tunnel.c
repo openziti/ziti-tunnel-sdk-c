@@ -1354,9 +1354,6 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
         uv_async_init(main_ziti_loop, ar, add_nrpt_rules);
         uv_async_send(ar);
     }
-
-#else
-#error "ziti-edge-tunnel is not supported on this system"
 #endif
 
     tunneler_sdk_options tunneler_opts = {
