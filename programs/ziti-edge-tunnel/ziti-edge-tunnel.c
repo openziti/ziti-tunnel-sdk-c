@@ -1354,6 +1354,9 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
         uv_async_init(main_ziti_loop, ar, add_nrpt_rules);
         uv_async_send(ar);
     }
+
+#else
+#error "ziti-edge-tunnel is not supported on this system"
 #endif
 
     tunneler_sdk_options tunneler_opts = {
@@ -1395,11 +1398,6 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     uv_close((uv_handle_t *) &cmd_server, (uv_close_cb) free);
     uv_close((uv_handle_t *) &event_server, (uv_close_cb) free);
 #if _WIN32
-    if (tun != NULL && tun->handle != NULL) {
-        ZITI_LOG(INFO, "Closing Ziti tun adapter...");
-        tun->close(tun->handle);
-        ZITI_LOG(INFO, "Deleted Ziti tun adapter...");
-    }
     close_log();
 #endif
     return 0;
@@ -2527,6 +2525,12 @@ void scm_service_stop() {
     send_tunnel_command_inline(tnl_cmd, NULL);
 
     remove_all_nrpt_rules();
+
+    // tun close needs to be fixed - https://github.com/openziti/ziti-tunnel-sdk-c/issues/275
+    /*if (tun != NULL && tun->handle != NULL) {
+        ZITI_LOG(INFO, "Closing ziti tun adapter...");
+        tun->close(tun->handle);
+    }*/
 
     cleanup_instance_config();
 
