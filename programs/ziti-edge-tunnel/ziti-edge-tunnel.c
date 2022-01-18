@@ -212,17 +212,23 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
                                 ar->data = hostnamesToRemove;
                                 uv_async_init(main_ziti_loop, ar, remove_nrpt_rules);
                                 uv_async_send(ar);
+                            } else {
+                                free(hostnamesToRemove);
                             }
                         }
 #endif
+                        delete_identity_from_instance(tnl_delete_id.identifier);
+                        free_tunnel_delete_identity(&tnl_delete_id);
+                        // should be the last line in this function as it calls the mutex/lock
+                        save_tunnel_status_to_file();
                     }
-                    delete_identity_from_instance(tnl_delete_id.identifier);
-                    free_tunnel_delete_identity(&tnl_delete_id);
-                    // should be the last line in this function as it calls the mutex/lock
-                    save_tunnel_status_to_file();
+
                     break;
                 }
                 case TunnelCommand_IdentityOnOff: {
+                    if (!result->success) {
+                        break;
+                    }
                     tunnel_on_off_identity on_off_id;
                     if (tnl_res_cmd.data == NULL || parse_tunnel_on_off_identity(&on_off_id, tnl_res_cmd.data, strlen(tnl_res_cmd.data)) < 0) {
                         free_tunnel_on_off_identity(&on_off_id);
@@ -517,7 +523,7 @@ static void on_cmd(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
         ZITI_LOG(INFO, "received cmd <%.*s>", (int) len, b->base);
 
         tunnel_command tnl_cmd = {0};
-        if (parse_tunnel_command(&tnl_cmd, b->base, len) > 0) {
+        if (parse_tunnel_command(&tnl_cmd, b->base, len) >= 0) {
             // process_tunnel_commands is used to update the log level and the tun ip information in the config file through IPC command.
             // So when the user restarts the tunnel, the new values will be taken.
             // The config file can be modified only from ziti-edge-tunnel.c file.
@@ -1173,6 +1179,12 @@ static void on_event(const base_event *ev) {
                 uv_async_init(main_ziti_loop, ar, remove_nrpt_rules);
                 uv_async_send(ar);
             }
+            if (model_map_size(hostnamesToAdd) == 0) {
+                free(hostnamesToAdd);
+            }
+            if (model_map_size(hostnamesToRemove) == 0) {
+                free(hostnamesToRemove);
+            }
 #endif
 
             if (svc_ev->removed_services != NULL || svc_ev->added_services != NULL) {
@@ -1403,11 +1415,6 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     uv_close((uv_handle_t *) &cmd_server, (uv_close_cb) free);
     uv_close((uv_handle_t *) &event_server, (uv_close_cb) free);
 #if _WIN32
-    if (tun != NULL && tun->handle != NULL) {
-        ZITI_LOG(INFO, "Closing Ziti tun adapter...");
-        tun->close(tun->handle);
-        ZITI_LOG(INFO, "Deleted Ziti tun adapter...");
-    }
     close_log();
 #endif
     return 0;
@@ -2536,6 +2543,12 @@ void scm_service_stop() {
     send_tunnel_command_inline(tnl_cmd, NULL);
 
     remove_all_nrpt_rules();
+
+    // tun close needs to be fixed - https://github.com/openziti/ziti-tunnel-sdk-c/issues/275
+    /*if (tun != NULL && tun->handle != NULL) {
+        ZITI_LOG(INFO, "Closing ziti tun adapter...");
+        tun->close(tun->handle);
+    }*/
 
     cleanup_instance_config();
 

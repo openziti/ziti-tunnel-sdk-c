@@ -54,6 +54,7 @@ tunnel_identity *create_or_get_tunnel_identity(char* identifier, char* filename)
         tnl_id->Identifier = strdup(identifier);
         if (filename != NULL) {
             char* extension = strstr(filename, ".json");
+
             size_t length;
             if (extension != NULL) {
                 length = extension - filename;
@@ -66,8 +67,10 @@ tunnel_identity *create_or_get_tunnel_identity(char* identifier, char* filename)
             fingerprint[length] = '\0';
             snprintf(tnl_id->FingerPrint, length+1, "%s", fingerprint);
 
-            tnl_id->Name = calloc(length + 1, sizeof(char));
-            snprintf(tnl_id->Name, length+1, "%s", fingerprint);
+            if (tnl_id->Name == NULL) {
+                tnl_id->Name = calloc(length + 1, sizeof(char));
+                snprintf(tnl_id->Name, length+1, "%s", fingerprint);
+            }
 
             tnl_id->IdFileStatus = true;
 
@@ -480,6 +483,7 @@ void set_identifier_from_identities() {
             tnl_id->Identifier = strdup(identifier);
         }
         if (tnl_id->Identifier != NULL) {
+            // set this field to false during initialization
             tnl_id->IdFileStatus = false;
             model_map_set(&tnl_identity_map, tnl_id->Identifier, tnl_id);
         }

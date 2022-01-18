@@ -116,11 +116,6 @@ XX(Version, string, none, Version, __VA_ARGS__) \
 XX(Revision, string, none, Revision, __VA_ARGS__) \
 XX(BuildDate, string, none, BuildDate, __VA_ARGS__)
 
-#define INSTANCE_STATUS(XX, ...) \
-XX(ok, __VA_ARGS__)
-
-DECLARE_ENUM(instance_status, INSTANCE_STATUS)
-
 struct add_service_nrpt_req {
     model_map *hostnames;
     char* dns_ip;
