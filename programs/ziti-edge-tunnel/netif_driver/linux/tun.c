@@ -276,6 +276,10 @@ static void init_dns_maintainer(uv_loop_t *loop, const char *tun_name, uint32_t 
 static int tun_exclude_rt(netif_handle dev, uv_loop_t *l, const char *addr) {
     char def_route[128];
     FILE *def_rt = popen("ip route show default", "r");
+    if (def_rt == NULL) {
+        ZITI_LOG(WARN, "ip route cmd failed[%d:%s]", errno, strerror(errno));
+        return -1;
+    }
     int def_rt_size = (int)fread(def_route, 1, sizeof(def_route), def_rt);
 
     // only look at first line
