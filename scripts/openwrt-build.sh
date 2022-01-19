@@ -52,7 +52,8 @@ target_dir="${targets[0]}"
 echo
 echo "Using $(basename $toolchain_dir) to build"
 echo
-
+toolchain_dir=$(realpath ${toolchain_dir})
+target_dir=$(realpath ${target_dir})
 . $toolchain_dir/info.mk
 toolchain_info=(${TARGET_CROSS//-/ })
 
