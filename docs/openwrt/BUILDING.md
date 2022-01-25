@@ -17,12 +17,12 @@ download [source code](https://github.com/openziti/ziti-tunnel-sdk-c/releases)
 ## Build `ziti-edge-tunnel`
 Create your build directory. It could anywhere.
 in the example below:
-* `ZITI_SDK_DIR` is the location of `ziti-tunneler-sdk-c` source
+* `ZITI_TUN_SRC_DIR` is the location of `ziti-tunneler-sdk-c` source
 * `OPENWRT_DIR` is the location of OpenWRT SDK
 
 ```shell
 $ mkdir /tmp/my-ziti-build
 $ cd /tmp/my-ziti-build
-$ ${ZITI_SDK_DIR}/script/openwrt-build.sh -s ${OPENWRT_DIR}
+$ ${ZITI_TUN_SRC_DIR}/script/openwrt-build.sh -s ${OPENWRT_DIR}
 ```
 
