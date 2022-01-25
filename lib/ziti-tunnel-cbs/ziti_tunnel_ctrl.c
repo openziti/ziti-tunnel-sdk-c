@@ -32,6 +32,8 @@
 #define HOST_NAME_MAX 254
 #endif
 
+#define ZITI_LOG_MODULE "tunnel-cbs"
+
 // temporary list to pass info between parse and run
 // static LIST_HEAD(instance_list, ziti_instance_s) instance_init_list;
 
