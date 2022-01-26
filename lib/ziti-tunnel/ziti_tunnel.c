@@ -96,19 +96,18 @@ void ziti_tunneler_exclude_route(tunneler_context tnlr_ctx, const char *dst) {
             uv_ip4_name((const struct sockaddr_in*)addrinfo->ai_addr, exrt->route, MAX_ROUTE_LEN);
             // make sure the address isn't local
             for (int i = 0; i < num_if_addrs; i++) {
-                uv_getnameinfo_t ni_req = {0};
                 struct sockaddr *a = (struct sockaddr *)&if_addrs[i].address;
-                if (a->sa_family == AF_INET || a->sa_family == AF_INET6) {
-                    err = uv_getnameinfo(tnlr_ctx->loop, &ni_req, NULL, a, NI_NUMERICHOST);
-                    if (err == 0) {
-                        TNL_LOG(TRACE, "found ifaddr %s", ni_req.host);
-                        if (strcmp(ni_req.host, exrt->route) == 0) {
-                            TNL_LOG(DEBUG, "%s is a local address on %s; not excluding route", exrt->route, if_addrs[i].name);
-                            goto done;
-                        }
-                    } else {
-                        TNL_LOG(WARN, "uv_getnameinfo failed: %s", uv_strerror(err));
+                if (a->sa_family == AF_INET && addrinfo->ai_family == AF_INET) {
+                    struct sockaddr_in *if_addr = (struct sockaddr_in *) a;
+                    struct sockaddr_in *if_mask = (struct sockaddr_in *) &if_addrs[i].netmask;
+                    struct sockaddr_in *ex_addr = (struct sockaddr_in *) addrinfo->ai_addr;
+                    if ((if_addr->sin_addr.s_addr & if_mask->sin_addr.s_addr) ==
+                        (ex_addr->sin_addr.s_addr & if_mask->sin_addr.s_addr)) {
+                        TNL_LOG(DEBUG, "%s is a local address on %s; not excluding route", exrt->route, if_addrs[i].name);
+                        goto done;
                     }
+                } else if (a->sa_family == AF_INET6) {
+                    TNL_LOG(TRACE, "ipv6 address compare not implemented");
                 }
             }
             LIST_INSERT_HEAD(&tnlr_ctx->excluded_rts, exrt, _next);
