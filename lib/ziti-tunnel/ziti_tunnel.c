@@ -88,7 +88,7 @@ void ziti_tunneler_exclude_route(tunneler_context tnlr_ctx, const char *dst) {
         TNL_LOG(DEBUG, "excluding %s from tunneler intercept", dst);
 
         uv_getaddrinfo_t resolve_req = {0};
-        uv_getaddrinfo(tnlr_ctx->loop, &resolve_req, NULL, dst, "80", NULL);
+        uv_getaddrinfo(tnlr_ctx->loop, &resolve_req, NULL, dst, NULL, NULL);
 
         struct addrinfo *addrinfo = resolve_req.addrinfo;
         while (addrinfo != NULL) {
