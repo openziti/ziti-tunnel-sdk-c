@@ -15,7 +15,7 @@ enum {
 };
 
 #define TNL_LOG(level, fmt, ...) do { \
-if (tunnel_logger && level <= tunnel_log_level) { tunnel_logger(level, __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__); }\
+if (tunnel_logger && level <= tunnel_log_level) { tunnel_logger(level, "tunneler", __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__); }\
 } while(0)
 
 extern int tunnel_log_level;
