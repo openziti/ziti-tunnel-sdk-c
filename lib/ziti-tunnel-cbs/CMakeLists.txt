@@ -16,6 +16,10 @@ target_link_libraries(ziti-tunnel-cbs-c
         PUBLIC ziti-tunnel-sdk-c
         )
 
+target_compile_definitions(ziti-tunnel-cbs-c
+        PRIVATE ZITI_LOG_MODULE="tunnel-cbs"
+        )
+
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
         DESTINATION ${CMAKE_INSTALL_PREFIX}/include)
 

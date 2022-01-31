@@ -49,7 +49,7 @@ const char * get_intercepted_address(const struct tunneler_io_ctx_s * tnlr_io);
 const char * get_client_address(const struct tunneler_io_ctx_s * tnlr_io);
 typedef struct hosted_io_ctx_s *hosted_io_context;
 
-typedef void (*tunnel_logger_f)(int level, const char *file, unsigned int line, const char *func, const char *fmt, ...);
+typedef void (*tunnel_logger_f)(int level, const char *module, const char *file, unsigned int line, const char *func, const char *fmt, ...);
 
 typedef enum {
     CLIENT_CFG_V1,    // ziti-tunnel-client.v1
