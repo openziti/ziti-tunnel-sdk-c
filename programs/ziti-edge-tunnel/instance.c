@@ -54,6 +54,7 @@ tunnel_identity *create_or_get_tunnel_identity(char* identifier, char* filename)
         tnl_id->Identifier = strdup(identifier);
         if (filename != NULL) {
             char* extension = strstr(filename, ".json");
+
             size_t length;
             if (extension != NULL) {
                 length = extension - filename;
@@ -66,8 +67,10 @@ tunnel_identity *create_or_get_tunnel_identity(char* identifier, char* filename)
             fingerprint[length] = '\0';
             snprintf(tnl_id->FingerPrint, length+1, "%s", fingerprint);
 
-            tnl_id->Name = calloc(length + 1, sizeof(char));
-            snprintf(tnl_id->Name, length+1, "%s", fingerprint);
+            if (tnl_id->Name == NULL) {
+                tnl_id->Name = calloc(length + 1, sizeof(char));
+                snprintf(tnl_id->Name, length+1, "%s", fingerprint);
+            }
 
             tnl_id->Status = true;
 
@@ -633,6 +636,7 @@ void delete_identity_from_instance(char* identifier) {
         return;
     }
     model_map_remove(&tnl_identity_map, identifier);
+    ZITI_LOG(DEBUG, "ztx[%s] is removed from the tunnel identity list", identifier);
     free_tunnel_identity(id);
     free(id);
 }

@@ -523,7 +523,7 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
         case TunnelCommand_StatusChange: {
             tunnel_status_change tunnel_status_change_cmd = {0};
             if (cmd->data == NULL ||
-                parse_tunnel_status_change(&tunnel_status_change_cmd, cmd->data, strlen(cmd->data)) != 0) {
+                parse_tunnel_status_change(&tunnel_status_change_cmd, cmd->data, strlen(cmd->data)) < 0) {
                 result.error = "invalid command";
                 result.success = false;
                 free_tunnel_status_change(&tunnel_status_change_cmd);

@@ -188,6 +188,8 @@ void add_nrpt_rules_script(uv_loop_t *nrpt_loop, struct add_service_nrpt_req *ad
     char* dns_ip = add_svc_req_data->dns_ip;
     if (hostnames == NULL || model_map_size(hostnames) == 0) {
         ZITI_LOG(DEBUG, "No domains specified to add_nrpt_rules, exiting early");
+        free(hostnames);
+        free(add_svc_req_data);
         return;
     }
     int namespace_template_padding = strlen(namespace_template);
@@ -246,6 +248,8 @@ void chunked_remove_nrpt_rules(uv_loop_t *ziti_loop, hostname_list_t *hostnames)
         copied += buf_len;
         domains_size++;
         LIST_REMOVE(hostname, _next);
+        free(hostname->hostname);
+        free(hostname);
     }
     buf_len = snprintf(script + copied, (MAX_POWERSHELL_SCRIPT_LEN - copied), "%s\n\n", ")");
     if (!is_buffer_available(buf_len, (MAX_POWERSHELL_SCRIPT_LEN - copied), script)) {
@@ -316,7 +320,7 @@ void remove_nrpt_rules_script(uv_loop_t *nrpt_loop, model_map *hostnames) {
         }
 
         struct hostname_s *hostname_data = calloc(1, sizeof (struct hostname_s));
-        hostname_data->hostname = hostname;
+        hostname_data->hostname = strdup(hostname);
         LIST_INSERT_HEAD(&host_names_list, hostname_data, _next);
         current_size++;
         rule_size += strlen(hostname) + namespace_template_padding;

@@ -88,7 +88,6 @@ XX(connected, __VA_ARGS__) \
 XX(disconnected, __VA_ARGS__)
 
 #define LOG_LEVEL(XX, ...) \
-XX(none, __VA_ARGS__) \
 XX(error, __VA_ARGS__) \
 XX(warn, __VA_ARGS__) \
 XX(info, __VA_ARGS__) \
