@@ -18,12 +18,6 @@
 #include "ziti_hosting.h"
 #include "dns_host.h"
 
-#if _WIN32
-#include <windns.h>
-#else
-#include <resolv.h>
-#endif
-
 #ifndef PACKETSZ
 # ifdef NS_PACKETSZ
 #  define PACKETSZ NS_PACKETSZ
