@@ -19,7 +19,7 @@ if (tunnel_logger && level <= tunnel_log_level) { tunnel_logger(level, __FILE__,
 } while(0)
 
 extern int tunnel_log_level;
-typedef void (*tunnel_logger_f)(int level, const char *file, unsigned int line, const char *func, const char *fmt, ...);
+typedef void (*tunnel_logger_f)(int level, const char *module, const char *file, unsigned int line, const char *func, const char *fmt, ...);
 extern tunnel_logger_f tunnel_logger;
 
 typedef struct tunneler_ctx_s {
