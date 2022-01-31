@@ -4,9 +4,6 @@
 * add script and document building of `ziti-edge-tunnel` with OpenWRT (see [instructions](docs/openwrt/BUILDING.md))
 * config.json and config.json.backup files will be created in the identity path. This file will have the configuration details like identifier name, endpoint name, Active status etc.
 
-## Fixed
-* Builds produce by CI may fail with SIGILL(Illegal instruction) on some machines (fixed in ziti-sdk v0.26.16).
-
 # Release v0.17.20
 
 ## What's new
