@@ -14,6 +14,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL Darwin OR CMAKE_SYSTEM_NAME STREQUAL Linux)
     target_compile_definitions(ziti-edge-tunnel
             PRIVATE GIT_VERSION=${GIT_VERSION}
             PRIVATE ZITI_LOG_PREFIX=${PROJECT_NAME}
+            PRIVATE ZITI_LOG_MODULE="ziti-edge-tunnel"
             )
 
     target_link_libraries(ziti-edge-tunnel
