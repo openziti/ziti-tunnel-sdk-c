@@ -110,9 +110,24 @@ static int seed_dns(const char *dns_cidr) {
         mask |= (ip[i] & 0xFFU);
     }
 
-    ziti_dns.ip_pool.base = mask;
-    ziti_dns.ip_pool.counter = 10;
     ziti_dns.ip_pool.counter_mask = ~( (uint32_t)-1 << (32 - (uint32_t)bits));
+    ziti_dns.ip_pool.base = mask & ~ziti_dns.ip_pool.counter_mask;
+
+    ziti_dns.ip_pool.counter = 10;
+
+    union ip_bits {
+        uint8_t b[4];
+        uint32_t ip;
+    } min_ip, max_ip;
+
+    min_ip.ip = htonl(ziti_dns.ip_pool.base);
+    max_ip.ip = htonl(ziti_dns.ip_pool.base | ziti_dns.ip_pool.counter_mask);
+    ZITI_LOG(INFO, "DNS configured with range %d.%d.%d.%d - %d.%d.%d.%d",
+             min_ip.b[0],min_ip.b[1],min_ip.b[2],min_ip.b[3],
+             max_ip.b[0],max_ip.b[1],max_ip.b[2],max_ip.b[3]
+             );
+
+    return 0;
 }
 
 int ziti_dns_setup(tunneler_context tnlr, const char *dns_addr, const char *dns_cidr) {
