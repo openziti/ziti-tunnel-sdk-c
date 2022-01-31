@@ -22,6 +22,8 @@
 #define ZITI_TUNNELER_SDK_DNS_HOST_H
 
 #if _WIN32
+#include <windns.h>
+
 #define ns_rr DNS_RECORDA
 #define ns_msg void
 
@@ -39,6 +41,12 @@ typedef struct {
 #else
 #include <resolv.h>
 typedef struct __res_state resolver_t;
+#  if __RES < 19991006
+#     define res_ninit(c) res_init()
+#     define res_nclose(c) do{}while(0)
+#     define res_nquery(res, name, c, t, resp, sz) res_query(name, c, t, resp, sz)
+#endif
+
 #endif
 
 
