@@ -343,6 +343,7 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
                 break;
             }
             log_level lvl = log_level_value_of(tunnel_set_log_level_cmd.loglevel);
+
             if (lvl != log_level_Unknown) {
                 if (ziti_log_level() != lvl) {
                     set_log_level(lvl);
@@ -1307,9 +1308,9 @@ static void on_event(const base_event *ev) {
 
 static char* normalize_host(char* hostname) {
     size_t len = strlen(hostname);
-    char* hostname_new = calloc(len+1, sizeof(char));
+    char* hostname_new = calloc(len+2, sizeof(char));
     // add . in the beginning of the hostname
-    if (hostname[len-1] == ".") {
+    if (hostname[len-1] == '.') {
         // remove the . from the end of the hostname
         snprintf(hostname_new, len * sizeof(char), ".%s", hostname);
     } else {
@@ -1325,7 +1326,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
 #elif __linux__
     tun = tun_open(ziti_loop, tun_ip, dns_ip, ip_range, tun_error, sizeof(tun_error));
 #elif _WIN32
-    tun = tun_open(ziti_loop, tun_ip, dns_ip, ip_range, tun_error, sizeof(tun_error));
+    tun = tun_open(ziti_loop, tun_ip, ip_range, tun_error, sizeof(tun_error));
 
 #else
 #error "ziti-edge-tunnel is not supported on this system"
@@ -1360,7 +1361,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
         model_map_iter it = model_map_iterator(domains);
         while (it != NULL) {
             char *key = model_map_it_key(it);
-            model_map_set(normalized_domains, normalize_host(key), true);
+            model_map_set(normalized_domains, normalize_host(key), NULL);
             it = model_map_it_remove(it);
         }
         model_map_clear(domains, (_free_f) free);

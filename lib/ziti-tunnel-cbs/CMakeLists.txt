@@ -14,6 +14,10 @@ add_library(ziti-tunnel-cbs-c STATIC
         dns_host.c
         dns_host.h)
 
+target_compile_definitions(ziti-tunnel-cbs-c
+        PRIVATE ZITI_LOG_MODULE="tunnel-cbs"
+        )
+
 target_include_directories(ziti-tunnel-cbs-c
         PUBLIC include
         )
