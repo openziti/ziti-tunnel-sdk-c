@@ -132,7 +132,7 @@ static void InitializeWintun(void)
     WINTUN = Wintun;
 }
 
-netif_driver tun_open(struct uv_loop_s *loop, uint32_t tun_ip, uint32_t dns_ip, const char *cidr, char *error, size_t error_len) {
+netif_driver tun_open(struct uv_loop_s *loop, uint32_t tun_ip, const char *cidr, char *error, size_t error_len) {
     if (error != NULL) {
         memset(error, 0, error_len * sizeof(char));
     }

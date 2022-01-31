@@ -157,6 +157,7 @@ static void ziti_dump_to_file(void *ctx, char* outputFile) {
 static void disconnect_identity(ziti_context ziti_ctx, void *tnlr_ctx) {
     ZITI_LOG(INFO, "Disconnecting Identity %s", ziti_get_identity(ziti_ctx)->name);
     remove_intercepts(ziti_ctx, tnlr_ctx);
+    // https://github.com/openziti/ziti-tunnel-sdk-c/issues/275 - not able to close tun gracefully, probably because of the crash from this statement
     // ziti_shutdown(ziti_ctx); // causes the crash
 }
 
@@ -542,8 +543,10 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
             break;
         }
 
-        case TunnelCommand_Unknown:
-        break;
+        case TunnelCommand_Unknown: {
+            ZITI_LOG(VERBOSE, "Unknown tunnel command received");
+            break;
+        }
     }
 
     cb(&result, ctx);
