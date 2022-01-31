@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.14)
 if(NOT ZITI_SDK_C_BRANCH)
     #allow using a different branch of the CSDK easily
-    set(ZITI_SDK_C_BRANCH "0.26.13")
+    set(ZITI_SDK_C_BRANCH "0.26.20")
 endif()
 
 option(TUNNEL_SDK_ONLY "build only ziti-tunnel-sdk (without ziti)" OFF)
@@ -20,6 +20,7 @@ project(ziti-tunnel-sdk-c
         LANGUAGES C CXX)
 include(CPack)
 set(CPACK_PACKAGE_VENDOR "NetFoundry")
+set(CMAKE_C_STANDARD 99)
 
 # capture build date
 if (WIN32)

@@ -43,7 +43,7 @@ static char* create_log_filename() {
     get_process_path(process_full_path, FILENAME_MAX);
     sprintf(process_dir, "%s", dirname(process_full_path));
 #else
-    sprintf(process_dir, "%s", "/tmp");
+    sprintf(process_dir, "/tmp");
 #endif
 
     char log_path[FILENAME_MAX];
@@ -209,6 +209,7 @@ void stop_log_check() {
         uv_check_stop(log_flusher);
         free(log_flusher->data);
         free(log_flusher);
+        log_flusher = NULL;
     }
 }
 

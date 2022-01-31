@@ -51,7 +51,7 @@ typedef struct hosted_io_ctx_s *hosted_io_context;
 typedef struct hosted_service_ctx_s host_ctx_t;
 typedef struct io_ctx_s io_ctx_t;
 
-typedef void (*tunnel_logger_f)(int level, const char *file, unsigned int line, const char *func, const char *fmt, ...);
+typedef void (*tunnel_logger_f)(int level, const char *module, const char *file, unsigned int line, const char *func, const char *fmt, ...);
 
 typedef enum {
     CLIENT_CFG_V1,    // ziti-tunnel-client.v1

@@ -21,9 +21,7 @@
 #ifndef ZITI_TUNNEL_SDK_C_TUN_H
 #define ZITI_TUNNEL_SDK_C_TUN_H
 
-extern int tun_close(struct netif_handle_s *tun);
-
-extern netif_driver tun_open(struct uv_loop_s *loop, uint32_t tun_ip, uint32_t dns_ip, const char *cidr, char *error, size_t error_len);
+extern netif_driver tun_open(struct uv_loop_s *loop, uint32_t tun_ip, const char *cidr, char *error, size_t error_len);
 
 extern int set_dns(netif_handle tun, uint32_t dns_ip);
 
