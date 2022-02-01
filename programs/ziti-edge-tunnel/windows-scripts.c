@@ -20,6 +20,7 @@
 #include "windows/windows-scripts.h"
 
 #define MAX_BUCKET_SIZE 512
+#define MIN_BUFFER_LEN 512
 
 static char* const namespace_template = "%s@{n='%s';}";
 static char* const exe_name = "ziti-tunnel";
@@ -199,13 +200,13 @@ void add_nrpt_rules_script(uv_loop_t *nrpt_loop, struct add_or_edit_service_nrpt
     int namespace_template_padding = strlen(namespace_template);
     hostname_list_t host_names_list = LIST_HEAD_INITIALIZER(host_names_list);
     int current_size = 0;
-    int rule_size = 0;
+    int rule_size = MIN_BUFFER_LEN;
     model_map_iter it = model_map_iterator(hostnames);
     while(it != NULL) {
         const char* hostname = model_map_it_key(it);
         if (current_size > MAX_BUCKET_SIZE || rule_size > MAX_POWERSHELL_SCRIPT_LEN) {
             chunked_add_nrpt_rules(nrpt_loop, &host_names_list, dns_ip);
-            rule_size = strlen(hostname) + namespace_template_padding;
+            rule_size = MIN_BUFFER_LEN;
             current_size = 0;
         }
 
@@ -315,13 +316,13 @@ void remove_nrpt_rules_script(uv_loop_t *nrpt_loop, model_map *hostnames) {
     int namespace_template_padding = strlen(namespace_template);
     hostname_list_t host_names_list = LIST_HEAD_INITIALIZER(host_names_list);
     int current_size = 0;
-    int rule_size = 0;
+    int rule_size = MIN_BUFFER_LEN;
     model_map_iter it = model_map_iterator(hostnames);
     while(it != NULL) {
         const char* hostname = model_map_it_key(it);
-        if (current_size > MAX_BUCKET_SIZE || rule_size > MAX_POWERSHELL_COMMAND_LEN) {
+        if (current_size > MAX_BUCKET_SIZE || rule_size > MAX_POWERSHELL_SCRIPT_LEN) {
             chunked_remove_nrpt_rules(nrpt_loop, &host_names_list);
-            rule_size = strlen(hostname) + namespace_template_padding;
+            rule_size = MIN_BUFFER_LEN;
             current_size = 0;
         }
 
@@ -465,13 +466,13 @@ void remove_and_add_nrpt_rules_script(uv_loop_t *nrpt_loop, struct add_or_edit_s
     int namespace_template_padding = strlen(namespace_template);
     hostname_list_t host_names_list = LIST_HEAD_INITIALIZER(host_names_list);
     int current_size = 0;
-    int rule_size = 0;
+    int rule_size = MIN_BUFFER_LEN;
     model_map_iter it = model_map_iterator(hostnames);
     while(it != NULL) {
         const char* hostname = model_map_it_key(it);
-        if (current_size > MAX_BUCKET_SIZE || rule_size > MAX_POWERSHELL_COMMAND_LEN) {
+        if (current_size > MAX_BUCKET_SIZE || rule_size > MAX_POWERSHELL_SCRIPT_LEN) {
             chunked_remove_and_add_nrpt_rules(nrpt_loop, &host_names_list, dns_ip);
-            rule_size = strlen(hostname) + namespace_template_padding;
+            rule_size = MIN_BUFFER_LEN;
             current_size = 0;
         }
 
