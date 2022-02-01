@@ -715,11 +715,15 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
         }
 
         case ZitiAPIEvent: {
-            api_update_req *req = calloc(1, sizeof(api_update_req));
-            req->wr.data = req;
-            req->ztx = ztx;
-            req->new_url = strdup(event->event.api.new_ctrl_address);
-            uv_queue_work(CMD_CTX.loop, &req->wr, update_config, update_config_done);
+            if (event->event.api.new_ctrl_address) {
+                api_update_req *req = calloc(1, sizeof(api_update_req));
+                req->wr.data = req;
+                req->ztx = ztx;
+                req->new_url = strdup(event->event.api.new_ctrl_address);
+                uv_queue_work(CMD_CTX.loop, &req->wr, update_config, update_config_done);
+            } else {
+                ZITI_LOG(WARN, "unexpected API event: new_ctrl_address is missing");
+            }
             break;
         }
 
