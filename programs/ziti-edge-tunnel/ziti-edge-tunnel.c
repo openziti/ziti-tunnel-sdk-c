@@ -191,13 +191,15 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
 #if _WIN32
                         model_map *hostnamesToRemove = calloc(1, sizeof(model_map));
                         tunnel_identity *id = create_or_get_tunnel_identity(tnl_delete_id.identifier, NULL);
-                        for (int index=0 ; id->Services[index]; index++ ) {
-                            tunnel_service *tnl_svc = id->Services[index];
-                            if (tnl_svc->Addresses != NULL) {
-                                for (int i = 0; tnl_svc->Addresses[i]; i++) {
-                                    tunnel_address *addr = tnl_svc->Addresses[i];
-                                    if (addr->IsHost && model_map_get(hostnamesToRemove, addr->HostName) == NULL) {
-                                        model_map_set(hostnamesToRemove, addr->HostName, true);
+                        if (id->Services) {
+                            for (int index=0 ; id->Services[index]; index++ ) {
+                                tunnel_service *tnl_svc = id->Services[index];
+                                if (tnl_svc->Addresses != NULL) {
+                                    for (int i = 0; tnl_svc->Addresses[i]; i++) {
+                                        tunnel_address *addr = tnl_svc->Addresses[i];
+                                        if (addr->IsHost && model_map_get(hostnamesToRemove, addr->HostName) == NULL) {
+                                            model_map_set(hostnamesToRemove, addr->HostName, true);
+                                        }
                                     }
                                 }
                             }
@@ -437,16 +439,22 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
             }
 
             char* extension = strstr(tunnel_add_identity_cmd.jwtFileName, ".jwt");
-            int length;
+            size_t length;
             if (extension != NULL) {
-                length = (int) (extension - tunnel_add_identity_cmd.jwtFileName);
+                length = extension - tunnel_add_identity_cmd.jwtFileName;
             } else {
                 length = strlen(tunnel_add_identity_cmd.jwtFileName);
             }
-            char new_identifier[FILENAME_MAX];
-            char new_identifier_name[FILENAME_MAX];
-            memcpy(&new_identifier_name, tunnel_add_identity_cmd.jwtFileName, length);
-            new_identifier_name[length] = '\0';
+            char new_identifier[FILENAME_MAX] = {0};
+            char new_identifier_name[FILENAME_MAX] = {0};
+            if ((strlen(config_dir) + length + 6) >  FILENAME_MAX - 1 ) {
+                ZITI_LOG(ERROR, "failed to create file %s/%s.json, The length of the file name is longer than %d", config_dir, tunnel_add_identity_cmd.jwtFileName, FILENAME_MAX);
+                result.error = "invalid file name";
+                result.success = false;
+                free_tunnel_add_identity(&tunnel_add_identity_cmd);
+                break;
+            }
+            strncpy(new_identifier_name, tunnel_add_identity_cmd.jwtFileName, length);
             sprintf(new_identifier, "%s/%s.json", config_dir, new_identifier_name);
             FILE *outfile;
             if ((outfile = fopen(new_identifier, "wb")) == NULL) {
@@ -754,7 +762,7 @@ static void on_command_inline_resp(const tunnel_result* result, void *ctx) {
 }
 
 static void send_tunnel_command(tunnel_command *tnl_cmd, void *ctx) {
-    CMD_CTRL->process(tnl_cmd, on_command_inline_resp, ctx);
+    CMD_CTRL->process(tnl_cmd, on_command_resp, ctx);
     free_tunnel_command(tnl_cmd);
     free(tnl_cmd);
 }
