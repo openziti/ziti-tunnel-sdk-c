@@ -93,7 +93,7 @@ struct ziti_dns_s {
 } ziti_dns;
 
 static uint32_t next_ipv4() {
-   return  htonl(ziti_dns.ip_pool.base | (ziti_dns.ip_pool.counter++ & ziti_dns.ip_pool.counter_mask));
+   return  htonl(ziti_dns.ip_pool.base + (ziti_dns.ip_pool.counter++ & ziti_dns.ip_pool.counter_mask));
 }
 
 static int seed_dns(const char *dns_cidr) {
