@@ -32,6 +32,8 @@
 #define HOST_NAME_MAX 254
 #endif
 
+#define FREE(x) do { if(x) free(x); x = NULL; } while(0)
+
 // temporary list to pass info between parse and run
 // static LIST_HEAD(instance_list, ziti_instance_s) instance_init_list;
 
@@ -59,12 +61,22 @@ static void generate_mfa_codes(ziti_context ztx, char *code, void *ctx);
 static void get_mfa_codes(ziti_context ztx, char *code, void *ctx);
 static void tunnel_status_event(TunnelEvent event, int status, void *event_data, void *ctx);
 static ziti_context get_ziti(const char *identifier);
+static void update_config(uv_work_t *wr);
+static void update_config_done(uv_work_t *wr, int err);
 
 struct tunnel_cb_s {
     void *ctx;
     command_cb cmd_cb;
     void *cmd_ctx;
 };
+
+typedef struct api_update_req_s {
+    uv_work_t wr;
+    ziti_context ztx;
+    char *new_url;
+    int err;
+    const char *errmsg;
+} api_update_req;
 
 static uv_signal_t sigusr1;
 
@@ -549,7 +561,7 @@ static struct ziti_instance_s *new_ziti_instance(const char *identifier, const c
     inst->identifier = strdup(identifier ? identifier : path);
     inst->opts.config = realpath(path, NULL);
     inst->opts.config_types = cfg_types;
-    inst->opts.events = ZitiContextEvent|ZitiServiceEvent|ZitiRouterEvent|ZitiMfaAuthEvent;
+    inst->opts.events = -1;
     inst->opts.event_cb = on_ziti_event;
     inst->opts.refresh_interval = refresh_interval; /* default refresh */
     //inst->opts.aq_mfa_cb = on_mfa_query;
@@ -699,7 +711,25 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
             ev.identifier = instance->identifier;
             ev.operation = mfa_status_name(mfa_status_auth_challenge);
             CMD_CTX.on_event((const base_event *) &ev);
+            break;
         }
+
+        case ZitiAPIEvent: {
+            if (event->event.api.new_ctrl_address) {
+                api_update_req *req = calloc(1, sizeof(api_update_req));
+                req->wr.data = req;
+                req->ztx = ztx;
+                req->new_url = strdup(event->event.api.new_ctrl_address);
+                uv_queue_work(CMD_CTX.loop, &req->wr, update_config, update_config_done);
+            } else {
+                ZITI_LOG(WARN, "unexpected API event: new_ctrl_address is missing");
+            }
+            break;
+        }
+
+        default:
+            ZITI_LOG(WARN, "unhandled event type[%d]", event->type);
+
     }
 }
 
@@ -992,6 +1022,73 @@ static void on_sigdump(uv_signal_t *sig, int signum) {
     CHECK(cleanup, fflush(dumpfile));
     cleanup:
     fclose(dumpfile);
+}
+
+#define CHECK_UV(desc, op) do{ \
+int rc = op;             \
+if (rc < 0) {           \
+req->err = rc;           \
+req->errmsg = uv_strerror(rc); \
+ZITI_LOG(ERROR, "op[" desc "] failed: %d(%s)", req->err, req->errmsg); \
+goto DONE;               \
+}} while(0)
+
+static void update_config(uv_work_t *wr) {
+    api_update_req *req = wr->data;
+    struct ziti_instance_s *inst = ziti_app_ctx(req->ztx);
+    const char *config_file = inst->opts.config;
+    size_t cfg_len;
+    char *cfg_buf = NULL;
+    uv_file f;
+
+    uv_fs_t fs_req;
+    CHECK_UV("check exiting config", uv_fs_stat(wr->loop, &fs_req, config_file, NULL));
+    cfg_len = fs_req.statbuf.st_size;
+
+    cfg_buf = malloc(cfg_len);
+    uint64_t cfg_mode = fs_req.statbuf.st_mode;
+    CHECK_UV("open existing config", f = uv_fs_open(wr->loop, &fs_req, config_file, UV_FS_O_RDONLY, 0, NULL));
+    uv_buf_t buf = uv_buf_init(cfg_buf, cfg_len);
+    CHECK_UV("read existing config", uv_fs_read(wr->loop, &fs_req, f, &buf, 1, 0, NULL));
+    CHECK_UV("close existing config", uv_fs_close(wr->loop, &fs_req, f, NULL));
+
+    ziti_config cfg = {0};
+    if (parse_ziti_config(&cfg, cfg_buf, fs_req.statbuf.st_size) < 0) {
+        ZITI_LOG(ERROR, "failed to parse config file[%s]", config_file);
+        req->err = -1;
+        req->errmsg = "failed to parse existing config";
+        goto DONE;
+    }
+    FREE(cfg_buf);
+
+    free(cfg.controller_url);
+    cfg.controller_url = req->new_url;
+    req->new_url = NULL;
+
+    char backup[FILENAME_MAX];
+
+    snprintf(backup, sizeof(backup), "%s.bak", config_file);
+    CHECK_UV("create backup", uv_fs_rename(wr->loop, &fs_req, config_file, backup, NULL));
+
+    CHECK_UV("open new config", f = uv_fs_open(wr->loop, &fs_req, config_file, UV_FS_O_WRONLY | UV_FS_O_CREAT, (int)cfg_mode, NULL));
+    cfg_buf = ziti_config_to_json(&cfg, 0, &cfg_len);
+    buf = uv_buf_init(cfg_buf, cfg_len);
+    CHECK_UV("write new config", uv_fs_write(wr->loop, &fs_req, f, &buf, 1, 0, NULL));
+    CHECK_UV("close new config", uv_fs_close(wr->loop, &fs_req, f, NULL));
+
+    DONE:
+    free_ziti_config(&cfg);
+    FREE(cfg_buf);
+}
+
+static void update_config_done(uv_work_t *wr, int err) {
+    api_update_req *req = wr->data;
+    if (req->err != 0) {
+        ZITI_LOG(ERROR, "failed to update config file: %d(%s)", req->err, req->errmsg);
+    } else {
+        ZITI_LOG(ERROR, "updated config file with new URL");
+    }
+    free(req);
 }
 
 IMPL_ENUM(TunnelCommand, TUNNEL_COMMANDS)
