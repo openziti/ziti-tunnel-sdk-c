@@ -190,7 +190,9 @@ void add_nrpt_rules_script(uv_loop_t *nrpt_loop, struct add_service_nrpt_req *ad
     char* dns_ip = add_svc_req_data->dns_ip;
     if (hostnames == NULL || model_map_size(hostnames) == 0) {
         ZITI_LOG(DEBUG, "No domains specified to add_nrpt_rules, exiting early");
-        free(hostnames);
+        if (hostnames != NULL) {
+            free(hostnames);
+        }
         free(add_svc_req_data);
         return;
     }
