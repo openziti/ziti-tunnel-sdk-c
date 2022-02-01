@@ -434,7 +434,7 @@ void chunked_remove_and_add_nrpt_rules(uv_loop_t *ziti_loop, hostname_list_t *ho
     }
     copied += buf_len;
 
-    ZITI_LOG(TRACE, "Removing %d domains using NRPT script. total script size: %d", domains_size, copied);
+    ZITI_LOG(TRACE, "Removing and adding %d domains using NRPT script. total script size: %d", domains_size, copied);
 
     char cmd[MAX_POWERSHELL_COMMAND_LEN];
     buf_len = snprintf(cmd, sizeof(cmd),"powershell -Command \"%s\"", script);
@@ -444,14 +444,14 @@ void chunked_remove_and_add_nrpt_rules(uv_loop_t *ziti_loop, hostname_list_t *ho
         return;
     }
 
-    ZITI_LOG(DEBUG, "Executing Remove domains NRPT script: ");
+    ZITI_LOG(DEBUG, "Executing Remove and add domains NRPT script: ");
     ZITI_LOG(DEBUG, "%s", cmd);
     const char* args[] = {"powershell", "-Command", script, NULL};
     bool result = exec_process(ziti_loop, args[0], args);
     if (!result) {
-        ZITI_LOG(WARN, "Remove domains NRPT script: %s(err=%d)", result, GetLastError());
+        ZITI_LOG(WARN, "Remove and add domains NRPT script: %s(err=%d)", result, GetLastError());
     } else {
-        ZITI_LOG(DEBUG, "Removed domains using NRPT script");
+        ZITI_LOG(DEBUG, "Removed and added domains using NRPT script");
     }
     free(script);
 }
