@@ -14,10 +14,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-#include "windows/windows-service.h"
-#include <windows.h>
+#include <windows/windows-service.h>
 #include <stdio.h>
 #include <config-utils.h>
+
+#include <winuser.h>
+#include <service-utils.h>
+#include <windows.h>
 
 #pragma comment(lib, "advapi32.lib")
 
@@ -136,9 +139,9 @@ VOID WINAPI SvcMain( DWORD dwArgc, LPTSTR *lpszArgv )
 {
     // Register the handler function for the service
 
-    gSvcStatusHandle = RegisterServiceCtrlHandler(
+    gSvcStatusHandle = RegisterServiceCtrlHandlerEx(
             SVCNAME,
-            SvcCtrlHandler);
+            LphandlerFunctionEx, NULL);
 
     if( !gSvcStatusHandle )
     {
@@ -254,7 +257,9 @@ VOID ReportSvcStatus( DWORD dwCurrentState,
 
     if (dwCurrentState == SERVICE_START_PENDING)
         gSvcStatus.dwControlsAccepted = 0;
-    else gSvcStatus.dwControlsAccepted = SERVICE_ACCEPT_STOP;
+    else {
+        gSvcStatus.dwControlsAccepted = SERVICE_ACCEPT_SESSIONCHANGE | SERVICE_ACCEPT_POWEREVENT | SERVICE_ACCEPT_STOP | SERVICE_ACCEPT_SHUTDOWN;
+    }
 
     if ( (dwCurrentState == SERVICE_RUNNING) ||
          (dwCurrentState == SERVICE_STOPPED) )
@@ -265,41 +270,6 @@ VOID ReportSvcStatus( DWORD dwCurrentState,
     SetServiceStatus( gSvcStatusHandle, &gSvcStatus );
 }
 
-//
-// Purpose:
-//   Called by SCM whenever a control code is sent to the service
-//   using the ControlService function.
-//
-// Parameters:
-//   dwCtrl - control code
-//
-// Return value:
-//   None
-//
-VOID WINAPI SvcCtrlHandler( DWORD dwCtrl )
-{
-    // Handle the requested control code.
-
-    switch(dwCtrl)
-    {
-        case SERVICE_CONTROL_STOP:
-            ReportSvcStatus(SERVICE_STOP_PENDING, NO_ERROR, 0);
-
-            // stops the running tunnel service
-            scm_service_stop();
-            // stops the windows service in scm
-            stop_windows_service();
-
-            return;
-
-        case SERVICE_CONTROL_INTERROGATE:
-            break;
-
-        default:
-            break;
-    }
-
-}
 
 //
 // Purpose:
@@ -415,4 +385,47 @@ void stop_windows_service() {
 
 DWORD get_process_path(LPTSTR lpBuffer, DWORD  nBufferLength) {
     return GetModuleFileName(0, lpBuffer, nBufferLength);
+}
+
+//
+// Purpose:
+//   Called by SCM whenever a control code is sent to the service
+//   using the ControlService function.
+//
+// Parameters:
+//   dwCtrl - control code
+//
+// Return value:
+//   None
+//
+DWORD LphandlerFunctionEx(
+ DWORD dwControl,
+ DWORD dwEventType,
+ LPVOID lpEventData,
+ LPVOID lpContext
+) {
+
+    switch (dwControl) {
+        case SERVICE_CONTROL_STOP:
+            ReportSvcStatus(SERVICE_STOP_PENDING, NO_ERROR, 0);
+
+            // stops the running tunnel service
+            scm_service_stop();
+            // stops the windows service in scm
+            stop_windows_service();
+
+            return 0;
+
+        case SERVICE_CONTROL_POWEREVENT:
+            if (dwEventType == PBT_APMRESUMEAUTOMATIC || dwEventType == PBT_APMRESUMESUSPEND) {
+                endpoint_status_change(true, false);
+            }
+            break;
+
+        case SERVICE_CONTROL_SESSIONCHANGE:
+            if (dwEventType == WTS_SESSION_UNLOCK) {
+                endpoint_status_change(false, true);
+            }
+            break;
+    }
 }

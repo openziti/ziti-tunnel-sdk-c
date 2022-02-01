@@ -157,7 +157,8 @@ static void ziti_dump_to_file(void *ctx, char* outputFile) {
 static void disconnect_identity(ziti_context ziti_ctx, void *tnlr_ctx) {
     ZITI_LOG(INFO, "Disconnecting Identity %s", ziti_get_identity(ziti_ctx)->name);
     remove_intercepts(ziti_ctx, tnlr_ctx);
-    ziti_shutdown(ziti_ctx);
+    // https://github.com/openziti/ziti-tunnel-sdk-c/issues/275 - not able to close tun gracefully, probably because of the crash from this statement
+    // ziti_shutdown(ziti_ctx); // causes the crash
 }
 
 bool is_null(const void * field, char* message, tunnel_result* result) {
@@ -519,8 +520,33 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
             break;
         }
 
-        case TunnelCommand_Unknown:
+        case TunnelCommand_StatusChange: {
+            tunnel_status_change tunnel_status_change_cmd = {0};
+            if (cmd->data == NULL ||
+                parse_tunnel_status_change(&tunnel_status_change_cmd, cmd->data, strlen(cmd->data)) < 0) {
+                result.error = "invalid command";
+                result.success = false;
+                free_tunnel_status_change(&tunnel_status_change_cmd);
+                break;
+            }
+            const char *key;
+            struct ziti_instance_s *inst;
+            MODEL_MAP_FOREACH(key, inst, &instances) {
+                if (inst->ztx == NULL) {
+                    continue;
+                }
+                ziti_endpoint_state_change(inst->ztx, tunnel_status_change_cmd.woken, tunnel_status_change_cmd.unlocked);
+                ZITI_LOG(DEBUG, "Endpoint status change function is invoked for %s with woken %d and unlocked %d", inst->identifier, tunnel_status_change_cmd.woken, tunnel_status_change_cmd.unlocked);
+            }
+            result.success = true;
+            free_tunnel_status_change(&tunnel_status_change_cmd);
             break;
+        }
+
+        case TunnelCommand_Unknown: {
+            ZITI_LOG(VERBOSE, "Unknown tunnel command received");
+            break;
+        }
     }
 
     cb(&result, ctx);
@@ -1046,6 +1072,7 @@ IMPL_MODEL(tunnel_get_mfa_codes, TNL_GET_MFA_CODES)
 IMPL_MODEL(tunnel_get_identity_metrics, TNL_GET_IDENTITY_METRICS)
 IMPL_MODEL(tunnel_identity_metrics, TNL_IDENTITY_METRICS)
 IMPL_MODEL(tunnel_delete_identity, TNL_DELETE_IDENTITY)
+IMPL_MODEL(tunnel_status_change, TUNNEL_STATUS_CHANGE)
 
 // ************** TUNNEL Events
 IMPL_ENUM(TunnelEvent, TUNNEL_EVENTS)

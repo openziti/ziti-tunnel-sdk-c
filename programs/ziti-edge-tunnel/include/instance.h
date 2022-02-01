@@ -72,6 +72,8 @@ char* get_ip_range_from_config();
 
 char* get_dns_ip();
 
+bool get_add_dns_flag();
+
 #ifdef __cplusplus
 }
 #endif
