@@ -56,9 +56,9 @@ static int dns_fallback(const char *name, void *ctx, struct in_addr* addr);
 static void send_message_to_tunnel();
 typedef char * (*to_json_fn)(const void * msg, int flags, size_t *len);
 static void send_events_message(const void *message, to_json_fn to_json_f, bool displayEvent);
-static void send_tunnel_command(tunnel_comand *tnl_cmd, void *ctx);
+static void send_tunnel_command(tunnel_command *tnl_cmd, void *ctx);
 #if _WIN32
-static void move_config_from_backup(uv_loop_t *loop);
+static void move_config_from_previous_windows_backup(uv_loop_t *loop);
 #endif
 
 struct cfg_instance_s {
@@ -177,9 +177,9 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
     ZITI_LOG(INFO, "resp[%d,len=%zd] = %.*s",
             result->success, json_len, (int)json_len, json, result->data);
 
-    if (result->data != NULL) {
-        tunnel_comand tnl_res_cmd = {0};
-        if (parse_tunnel_comand(&tnl_res_cmd, result->data, strlen(result->data)) >= 0) {
+    if (result->success && result->data != NULL) {
+        tunnel_command tnl_res_cmd = {0};
+        if (parse_tunnel_command(&tnl_res_cmd, result->data, strlen(result->data)) >= 0) {
             switch (tnl_res_cmd.command) {
                 case TunnelCommand_RemoveIdentity: {
                     tunnel_delete_identity tnl_delete_id;
@@ -212,8 +212,11 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
                                 ar->data = hostnamesToRemove;
                                 uv_async_init(main_ziti_loop, ar, remove_nrpt_rules);
                                 uv_async_send(ar);
-                            }
+                            } else {
+                                free(hostnamesToRemove);
+                            };
                         }
+
 #endif
                     }
                     delete_identity_from_instance(tnl_delete_id.identifier);
@@ -238,7 +241,7 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
                 }
             }
         }
-        free_tunnel_comand(&tnl_res_cmd);
+        free_tunnel_command(&tnl_res_cmd);
     }
 
     if (uv_is_active((const uv_handle_t *) ctx)) {
@@ -291,7 +294,7 @@ void tunnel_enroll_cb(ziti_config *cfg, int status, char *err, void *ctx) {
     create_or_get_tunnel_identity(add_id_req->identifier, add_id_req->identifier_file_name);
 
     // send load identity command to the controller
-    tunnel_comand *tnl_cmd = calloc(1, sizeof(tunnel_comand));
+    tunnel_command *tnl_cmd = calloc(1, sizeof(tunnel_command));
     tnl_cmd->command = TunnelCommand_LoadIdentity;
     tunnel_load_identity *load_identity_options = calloc(1, sizeof(tunnel_load_identity));
     load_identity_options->identifier = strdup(add_id_req->identifier);
@@ -317,7 +320,7 @@ static void enroll_ziti_async(uv_async_t *ar) {
     ziti_enroll(&enroll_opts, enroll_loop, tunnel_enroll_cb, add_id_req);
 }
 
-static bool process_tunnel_commands(const tunnel_comand *tnl_cmd, command_cb cb, void *ctx) {
+static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void *ctx) {
     tunnel_result result = {
             .success = false,
             .error = NULL,
@@ -328,17 +331,20 @@ static bool process_tunnel_commands(const tunnel_comand *tnl_cmd, command_cb cb,
         case TunnelCommand_SetLogLevel: {
             cmd_accepted = true;
 
-            tunnel_set_log_level tunnel_set_log_level_cmd;
+            tunnel_set_log_level tunnel_set_log_level_cmd = {0};
             if (tnl_cmd->data == NULL || parse_tunnel_set_log_level(&tunnel_set_log_level_cmd, tnl_cmd->data, strlen(tnl_cmd->data)) < 0) {
                 result.error = "invalid command";
                 result.success = false;
                 break;
             }
             log_level lvl = log_level_value_of(tunnel_set_log_level_cmd.loglevel);
-            if (lvl != NULL) {
+            // int lvl = get_debug_level(tunnel_set_log_level_cmd.loglevel); // can be used only after c-sdk PR is merged
+
+            if (lvl != -1) {
                 if (ziti_log_level() != lvl) {
-                    set_log_level(tunnel_set_log_level_cmd.loglevel);
+                    set_log_level(lvl);
                     ziti_log_set_level(lvl);
+                    ziti_tunnel_set_log_level(lvl);
                     ZITI_LOG(INFO, "Log level is set to %s", tunnel_set_log_level_cmd.loglevel);
                 } else {
                     ZITI_LOG(INFO, "Log level is already set to %s", tunnel_set_log_level_cmd.loglevel);
@@ -360,10 +366,49 @@ static bool process_tunnel_commands(const tunnel_comand *tnl_cmd, command_cb cb,
                 free_tunnel_tun_ip_v4(&tunnel_tun_ip_v4_cmd);
                 break;
             }
-            if (tunnel_tun_ip_v4_cmd.prefixLength < MINTUNIPV4PREFIXLENGTH || tunnel_tun_ip_v4_cmd.prefixLength > MAXTUNIPV4PREFIXLENGTH) {
-                char error_msg[50];
-                snprintf(error_msg, sizeof(error_msg), "prefix length should be between %d and %d", MINTUNIPV4PREFIXLENGTH, MAXTUNIPV4PREFIXLENGTH);
-                result.error = error_msg;
+            if (tunnel_tun_ip_v4_cmd.prefixLength < MINTUNPREFIXLENGTH || tunnel_tun_ip_v4_cmd.prefixLength > MAXTUNPREFIXLENGTH) {
+                result.error = "prefix length should be between 10 and 18";
+                result.success = false;
+                break;
+            }
+            char* tun_ip_str = strdup(tunnel_tun_ip_v4_cmd.tunIP);
+            // make a copy so we can free it later - validating ip address input
+            char* tun_ip_cpy = tun_ip_str;
+            char* ip_ptr = strtok(tun_ip_str, "."); //cut the string using dot delimiter
+            if (ip_ptr == NULL) {
+                result.error = "Invalid IP address";
+                result.success = false;
+                break;
+            }
+            int dots = 0;
+            bool validationStatus = true;
+            while (ip_ptr) {
+                bool isInt = true;
+                char* ip_str = ip_ptr;
+                while (*ip_str) {
+                    if(!isdigit(*ip_str)){ //if the character is not a number, break
+                        isInt = false;
+                        validationStatus = false;
+                        break;
+                    }
+                    ip_str++; //point to next character
+                }
+                if (!isInt) {
+                    break;
+                }
+                int num = atoi(ip_ptr); //convert substring to number
+                if (num >= 0 && num <= 255) {
+                    ip_ptr = strtok(NULL, "."); //cut the next part of the string
+                    if (ip_ptr != NULL)
+                        dots++; //increase the dot count
+                } else {
+                    validationStatus = false;
+                    break;
+                }
+            }
+            free(tun_ip_cpy);
+            if (dots != 3 || !validationStatus) {
+                result.error = "Invalid IP address";
                 result.success = false;
                 free_tunnel_tun_ip_v4(&tunnel_tun_ip_v4_cmd);
                 break;
@@ -399,16 +444,22 @@ static bool process_tunnel_commands(const tunnel_comand *tnl_cmd, command_cb cb,
             }
 
             char* extension = strstr(tunnel_add_identity_cmd.jwtFileName, ".jwt");
-            int length;
+            size_t length;
             if (extension != NULL) {
-                length = (int) (extension - tunnel_add_identity_cmd.jwtFileName);
+                length = extension - tunnel_add_identity_cmd.jwtFileName;
             } else {
                 length = strlen(tunnel_add_identity_cmd.jwtFileName);
             }
-            char new_identifier[FILENAME_MAX];
-            char new_identifier_name[FILENAME_MAX];
-            memcpy(&new_identifier_name, tunnel_add_identity_cmd.jwtFileName, length);
-            new_identifier_name[length] = '\0';
+            char new_identifier[FILENAME_MAX] = {0};
+            char new_identifier_name[FILENAME_MAX] = {0};
+            if ((strlen(config_dir) + length + 6) >  FILENAME_MAX - 1 ) {
+                ZITI_LOG(ERROR, "failed to create file %s/%s.json, The length of the file name is longer than %d", config_dir, tunnel_add_identity_cmd.jwtFileName, FILENAME_MAX);
+                result.error = "invalid file name";
+                result.success = false;
+                free_tunnel_add_identity(&tunnel_add_identity_cmd);
+                break;
+            }
+            strncpy(new_identifier_name, tunnel_add_identity_cmd.jwtFileName, length);
             sprintf(new_identifier, "%s/%s.json", config_dir, new_identifier_name);
             FILE *outfile;
             if ((outfile = fopen(new_identifier, "wb")) == NULL) {
@@ -471,10 +522,15 @@ static void on_cmd(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
     } else {
         ZITI_LOG(INFO, "received cmd <%.*s>", (int) len, b->base);
 
-        tunnel_comand tnl_cmd;
-        if (parse_tunnel_comand(&tnl_cmd, b->base, len) >= 0) {
+        tunnel_command tnl_cmd = {0};
+        if (parse_tunnel_command(&tnl_cmd, b->base, len) >= 0) {
+            // process_tunnel_commands is used to update the log level and the tun ip information in the config file through IPC command.
+            // So when the user restarts the tunnel, the new values will be taken.
+            // The config file can be modified only from ziti-edge-tunnel.c file.
             int status = process_tunnel_commands(&tnl_cmd, on_command_resp, s);
             if (!status) {
+                // process_cmd will delegate the requests to ziti_tunnel_ctrl.c , which is used to perform the operations against the controller.
+                // config.file cannot be modified or read from that class
                 CMD_CTRL->process(&tnl_cmd, on_command_resp, s);
             }
         } else {
@@ -484,7 +540,7 @@ static void on_cmd(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
             };
             on_command_resp(&resp, s);
         }
-        free_tunnel_comand(&tnl_cmd);
+        free_tunnel_command(&tnl_cmd);
     }
 
     free(b->base);
@@ -704,15 +760,15 @@ static void on_command_inline_resp(const tunnel_result* result, void *ctx) {
     }
 }
 
-static void send_tunnel_command(tunnel_comand *tnl_cmd, void *ctx) {
+static void send_tunnel_command(tunnel_command *tnl_cmd, void *ctx) {
     CMD_CTRL->process(tnl_cmd, on_command_resp, ctx);
-    free_tunnel_comand(tnl_cmd);
+    free_tunnel_command(tnl_cmd);
     free(tnl_cmd);
 }
 
-static void send_tunnel_command_inline(tunnel_comand *tnl_cmd, void *ctx) {
+static void send_tunnel_command_inline(tunnel_command *tnl_cmd, void *ctx) {
     CMD_CTRL->process(tnl_cmd, on_command_inline_resp, ctx);
-    free_tunnel_comand(tnl_cmd);
+    free_tunnel_command(tnl_cmd);
     free(tnl_cmd);
 }
 
@@ -829,10 +885,10 @@ static void broadcast_metrics(uv_timer_t *timer) {
         model_map notification_map = {0};
         for(idx = 0; metrics_event.Identities[idx]; idx++) {
             tnl_id = metrics_event.Identities[idx];
-            if (tnl_id->Active && tnl_id->Loaded && tnl_id->Status == instance_status_ok) {
+            if (tnl_id->Active && tnl_id->Loaded && tnl_id->Status) {
                 active_identities = true;
 
-                tunnel_comand *tnl_cmd = calloc(1, sizeof(tunnel_comand));
+                tunnel_command *tnl_cmd = calloc(1, sizeof(tunnel_command));
                 tnl_cmd->command = TunnelCommand_GetMetrics;
                 tunnel_get_identity_metrics *get_metrics = calloc(1, sizeof(tunnel_get_identity_metrics));
                 get_metrics->identifier = strdup(tnl_id->Identifier);
@@ -1122,6 +1178,12 @@ static void on_event(const base_event *ev) {
                 uv_async_init(main_ziti_loop, ar, remove_nrpt_rules);
                 uv_async_send(ar);
             }
+            if (model_map_size(hostnamesToAdd) == 0) {
+                free(hostnamesToAdd);
+            }
+            if (model_map_size(hostnamesToRemove) == 0) {
+                free(hostnamesToRemove);
+            }
 #endif
 
             if (svc_ev->removed_services != NULL || svc_ev->added_services != NULL) {
@@ -1244,9 +1306,9 @@ static void on_event(const base_event *ev) {
 
 static char* normalize_host(char* hostname) {
     size_t len = strlen(hostname);
-    char* hostname_new = calloc(len+1, sizeof(char));
+    char* hostname_new = calloc(len+2, sizeof(char));
     // add . in the beginning of the hostname
-    if (hostname[len-1] == ".") {
+    if (hostname[len-1] == '.') {
         // remove the . from the end of the hostname
         snprintf(hostname_new, len * sizeof(char), ".%s", hostname);
     } else {
@@ -1262,7 +1324,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
 #elif __linux__
     tun = tun_open(ziti_loop, tun_ip, dns_ip, ip_range, tun_error, sizeof(tun_error));
 #elif _WIN32
-    tun = tun_open(ziti_loop, tun_ip, dns_ip, ip_range, tun_error, sizeof(tun_error));
+    tun = tun_open(ziti_loop, tun_ip, ip_range, tun_error, sizeof(tun_error));
 
 #else
 #error "ziti-edge-tunnel is not supported on this system"
@@ -1297,7 +1359,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
         model_map_iter it = model_map_iterator(domains);
         while (it != NULL) {
             char *key = model_map_it_key(it);
-            model_map_set(normalized_domains, normalize_host(key), true);
+            model_map_set(normalized_domains, normalize_host(key), NULL);
             it = model_map_it_remove(it);
         }
         model_map_clear(domains, (_free_f) free);
@@ -1349,14 +1411,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     }
 
     free(tunneler);
-    uv_close((uv_handle_t *) &cmd_server, (uv_close_cb) free);
-    uv_close((uv_handle_t *) &event_server, (uv_close_cb) free);
 #if _WIN32
-    if (tun != NULL && tun->handle != NULL) {
-        ZITI_LOG(INFO, "Closing Ziti tun adapter...");
-        tun->close(tun->handle);
-        ZITI_LOG(INFO, "Deleted Ziti tun adapter...");
-    }
     close_log();
 #endif
     return 0;
@@ -1537,7 +1592,7 @@ static void run(int argc, char *argv[]) {
     } else {
         ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
     }
-    move_config_from_backup(ziti_loop);
+    move_config_from_previous_windows_backup(ziti_loop);
     ZITI_LOG(INFO,"Loading identity files from %s", config_dir);
 #else
     ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
@@ -1703,7 +1758,7 @@ static void enroll(int argc, char *argv[]) {
     uv_run(l, UV_RUN_DEFAULT);
 }
 
-static tunnel_comand *cmd;
+static tunnel_command *cmd;
 
 static int dump_opts(int argc, char *argv[]) {
     static struct option opts[] = {
@@ -1714,7 +1769,7 @@ static int dump_opts(int argc, char *argv[]) {
     optind = 0;
 
     tunnel_ziti_dump *dump_options = calloc(1, sizeof(tunnel_ziti_dump));
-    cmd = calloc(1, sizeof(tunnel_comand));
+    cmd = calloc(1, sizeof(tunnel_command));
     cmd->command = TunnelCommand_ZitiDump;
 
     while ((c = getopt_long(argc, argv, "i:p:",
@@ -1765,10 +1820,10 @@ void on_write(uv_write_t* req, int status) {
     free(req);
 }
 
-void send_message_to_pipe(uv_connect_t *connect, void *message, size_t datalen) {
-    printf("Message...%s\n", message);
+void send_message_to_pipe(uv_connect_t *connect) {
+    printf("Message...%s\n", connect->data);
     uv_write_t *req = (uv_write_t*) malloc(sizeof(uv_write_t));
-    uv_buf_t buf = uv_buf_init(message, datalen);
+    uv_buf_t buf = uv_buf_init(connect->data, strlen(connect->data));
     uv_write((uv_write_t*) req, connect->handle, &buf, 1,    on_write);
 }
 
@@ -1781,12 +1836,7 @@ void on_connect(uv_connect_t* connect, int status){
         if (res != 0) {
             printf("UV read error %s\n", uv_err_name(res));
         }
-
-        size_t json_len;
-        char* json = tunnel_comand_to_json(cmd, MODEL_JSON_COMPACT, &json_len);
-        send_message_to_pipe(connect, json, json_len);
-        free(json);
-        free_tunnel_comand(cmd);
+        send_message_to_pipe(connect);
     }
 }
 
@@ -1804,9 +1854,10 @@ static uv_loop_t* connect_and_send_cmd(char sockfile[],uv_connect_t* connect, uv
     return loop;
 }
 
-static void send_message_to_tunnel() {
+static void send_message_to_tunnel(char* message) {
     uv_pipe_t client_handle;
     uv_connect_t* connect = (uv_connect_t*)malloc(sizeof(uv_connect_t));
+    connect->data = strdup(message);
 
     uv_loop_t* loop = connect_and_send_cmd(sockfile, connect, &client_handle);
 
@@ -1822,7 +1873,12 @@ static void send_message_to_tunnel() {
 }
 
 static void send_message_to_tunnel_fn(int argc, char *argv[]) {
-    send_message_to_tunnel();
+    char* json = tunnel_command_to_json(cmd, MODEL_JSON_COMPACT, NULL);
+    send_message_to_tunnel(json);
+    free_tunnel_command(cmd);
+    free(cmd);
+    cmd = NULL;
+    free(json);
 }
 
 static int on_off_identity_opts(int argc, char *argv[]) {
@@ -1833,7 +1889,7 @@ static int on_off_identity_opts(int argc, char *argv[]) {
     optind = 0;
 
     tunnel_on_off_identity *on_off_identity_options = calloc(1, sizeof(tunnel_on_off_identity));
-    cmd = calloc(1, sizeof(tunnel_comand));
+    cmd = calloc(1, sizeof(tunnel_command));
     cmd->command = TunnelCommand_IdentityOnOff;
 
     while ((c = getopt_long(argc, argv, "i:",
@@ -1867,7 +1923,7 @@ static int enable_identity_opts(int argc, char *argv[]) {
     optind = 0;
 
     tunnel_load_identity *load_identity_options = calloc(1, sizeof(tunnel_load_identity));
-    cmd = calloc(1, sizeof(tunnel_comand));
+    cmd = calloc(1, sizeof(tunnel_command));
     cmd->command = TunnelCommand_LoadIdentity;
 
     while ((c = getopt_long(argc, argv, "i:",
@@ -1901,7 +1957,7 @@ static int enable_mfa_opts(int argc, char *argv[]) {
     optind = 0;
 
     tunnel_enable_mfa *enable_mfa_options = calloc(1, sizeof(tunnel_enable_mfa));
-    cmd = calloc(1, sizeof(tunnel_comand));
+    cmd = calloc(1, sizeof(tunnel_command));
     cmd->command = TunnelCommand_EnableMFA;
 
     while ((c = getopt_long(argc, argv, "i:",
@@ -1936,7 +1992,7 @@ static int verify_mfa_opts(int argc, char *argv[]) {
     optind = 0;
 
     tunnel_verify_mfa *verify_mfa_options = calloc(1, sizeof(tunnel_verify_mfa));
-    cmd = calloc(1, sizeof(tunnel_comand));
+    cmd = calloc(1, sizeof(tunnel_command));
     cmd->command = TunnelCommand_VerifyMFA;
 
     while ((c = getopt_long(argc, argv, "i:c:",
@@ -1974,7 +2030,7 @@ static int remove_mfa_opts(int argc, char *argv[]) {
     optind = 0;
 
     tunnel_remove_mfa *remove_mfa_options = calloc(1, sizeof(tunnel_remove_mfa));
-    cmd = calloc(1, sizeof(tunnel_comand));
+    cmd = calloc(1, sizeof(tunnel_command));
     cmd->command = TunnelCommand_RemoveMFA;
 
     while ((c = getopt_long(argc, argv, "i:c:",
@@ -2012,7 +2068,7 @@ static int submit_mfa_opts(int argc, char *argv[]) {
     optind = 0;
 
     tunnel_submit_mfa *submit_mfa_options = calloc(1, sizeof(tunnel_submit_mfa));
-    cmd = calloc(1, sizeof(tunnel_comand));
+    cmd = calloc(1, sizeof(tunnel_command));
     cmd->command = TunnelCommand_SubmitMFA;
 
     while ((c = getopt_long(argc, argv, "i:c:",
@@ -2050,7 +2106,7 @@ static int generate_mfa_codes_opts(int argc, char *argv[]) {
     optind = 0;
 
     tunnel_generate_mfa_codes *mfa_codes_options = calloc(1, sizeof(tunnel_generate_mfa_codes));
-    cmd = calloc(1, sizeof(tunnel_comand));
+    cmd = calloc(1, sizeof(tunnel_command));
     cmd->command = TunnelCommand_GenerateMFACodes;
 
     while ((c = getopt_long(argc, argv, "i:c:",
@@ -2088,7 +2144,7 @@ static int get_mfa_codes_opts(int argc, char *argv[]) {
     optind = 0;
 
     tunnel_get_mfa_codes *get_mfa_codes_options = calloc(1, sizeof(tunnel_get_mfa_codes));
-    cmd = calloc(1, sizeof(tunnel_comand));
+    cmd = calloc(1, sizeof(tunnel_command));
     cmd->command = TunnelCommand_GetMFACodes;
 
     while ((c = getopt_long(argc, argv, "i:c:",
@@ -2125,7 +2181,7 @@ static int set_log_level_opts(int argc, char *argv[]) {
     optind = 0;
 
     tunnel_set_log_level *log_level_options = calloc(1, sizeof(tunnel_set_log_level));
-    cmd = calloc(1, sizeof(tunnel_comand));
+    cmd = calloc(1, sizeof(tunnel_command));
     cmd->command = TunnelCommand_SetLogLevel;
 
     while ((c = getopt_long(argc, argv, "l:",
@@ -2161,7 +2217,7 @@ static int update_tun_ip_opts(int argc, char *argv[]) {
     optind = 0;
 
     tunnel_tun_ip_v4 *tun_ip_v4_options = calloc(1, sizeof(tunnel_tun_ip_v4));
-    cmd = calloc(1, sizeof(tunnel_comand));
+    cmd = calloc(1, sizeof(tunnel_command));
     cmd->command = TunnelCommand_UpdateTunIpv4;
 
     while ((c = getopt_long(argc, argv, "t:p:d:",
@@ -2221,7 +2277,7 @@ static int svc_opts(int argc, char *argv[]) {
     };
 
     tunnel_service_control *tunnel_service_control_options = calloc(1, sizeof(tunnel_service_control));
-    cmd = calloc(1, sizeof(tunnel_comand));
+    cmd = calloc(1, sizeof(tunnel_command));
     cmd->command = TunnelCommand_ServiceControl;
 
     int c, option_index, errors = 0;
@@ -2255,7 +2311,7 @@ static int svc_opts(int argc, char *argv[]) {
 static int get_status_opts(int argc, char *argv[]) {
     optind = 0;
 
-    cmd = calloc(1, sizeof(tunnel_comand));
+    cmd = calloc(1, sizeof(tunnel_command));
     cmd->command = TunnelCommand_Status;
 
     return optind;
@@ -2269,7 +2325,7 @@ static int delete_identity_opts(int argc, char *argv[]) {
     optind = 0;
 
     tunnel_delete_identity *delete_identity_options = calloc(1, sizeof(tunnel_delete_identity));
-    cmd = calloc(1, sizeof(tunnel_comand));
+    cmd = calloc(1, sizeof(tunnel_command));
     cmd->command = TunnelCommand_RemoveIdentity;
 
     while ((c = getopt_long(argc, argv, "i:",
@@ -2305,7 +2361,7 @@ static int add_identity_opts(int argc, char *argv[]) {
     optind = 0;
 
     tunnel_add_identity *tunnel_add_identity_opt = calloc(1, sizeof(tunnel_add_identity));
-    cmd = calloc(1, sizeof(tunnel_comand));
+    cmd = calloc(1, sizeof(tunnel_command));
     cmd->command = TunnelCommand_AddIdentity;
 
     while ((c = getopt_long(argc, argv, "i:j:",
@@ -2449,7 +2505,7 @@ void endpoint_status_change(bool woken, bool unlocked) {
     free_tunnel_status_event(&tnl_sts_evt);
 
     // send endpoint status to the controller
-    tunnel_comand *tnl_cmd = calloc(1, sizeof(tunnel_comand));
+    tunnel_command *tnl_cmd = calloc(1, sizeof(tunnel_command));
     tnl_cmd->command = TunnelCommand_StatusChange;
     tunnel_status_change *status_change = calloc(1, sizeof(tunnel_status_change));
     status_change->woken = woken;
@@ -2479,11 +2535,17 @@ void scm_service_stop() {
     ZITI_LOG(INFO, "Control request to stop tunnel service received...");
 
     // ziti dump to log file / stdout
-    tunnel_comand *tnl_cmd = calloc(1, sizeof(tunnel_comand));
+    tunnel_command *tnl_cmd = calloc(1, sizeof(tunnel_command));
     tnl_cmd->command = TunnelCommand_ZitiDump;
     send_tunnel_command_inline(tnl_cmd, NULL);
 
     remove_all_nrpt_rules();
+
+    // tun close needs to be fixed - https://github.com/openziti/ziti-tunnel-sdk-c/issues/275
+    /*if (tun != NULL && tun->handle != NULL) {
+        ZITI_LOG(INFO, "Closing ziti tun adapter...");
+        tun->close(tun->handle);
+    }*/
 
     cleanup_instance_config();
 
@@ -2494,14 +2556,12 @@ void scm_service_stop() {
     }
 }
 
-static void move_config_from_backup(uv_loop_t *loop) {
-    char **backup_folders = calloc(3, sizeof(char*));
-    char **bkp_temp = backup_folders;
-    *bkp_temp = "Windows.~BT\\Windows\\System32\\config\\systemprofile\\AppData\\Roaming\\NetFoundry";
-    bkp_temp++;
-    *bkp_temp = "Windows.old\\Windows\\System32\\config\\systemprofile\\AppData\\Roaming\\NetFoundry";
-    bkp_temp++;
-    *bkp_temp = '\0';
+static void move_config_from_previous_windows_backup(uv_loop_t *loop) {
+    char *backup_folders[] = {
+        "Windows.~BT\\Windows\\System32\\config\\systemprofile\\AppData\\Roaming\\NetFoundry",
+        "Windows.old\\Windows\\System32\\config\\systemprofile\\AppData\\Roaming\\NetFoundry",
+        NULL
+    };
 
     char* system_drive = getenv("SystemDrive");
 
@@ -2529,9 +2589,9 @@ static void move_config_from_backup(uv_loop_t *loop) {
         while (uv_fs_scandir_next(&fs, &file) == 0) {
             if (file.type == UV_DIRENT_FILE) {
                 char old_file[FILENAME_MAX];
-                sprintf(old_file, "%s\\%s", config_dir_bkp, file.name);
+                snprintf(old_file, FILENAME_MAX, "%s\\%s", config_dir_bkp, file.name);
                 char new_file[FILENAME_MAX];
-                sprintf(new_file, "%s\\%s", config_dir, file.name);
+                snprintf(new_file, FILENAME_MAX, "%s\\%s", config_dir, file.name);
                 uv_fs_t fs_cpy;
                 rc = uv_fs_copyfile(loop, &fs_cpy, old_file, new_file, 0, NULL);
                 if (rc == 0) {
@@ -2548,7 +2608,6 @@ static void move_config_from_backup(uv_loop_t *loop) {
         config_dir_bkp = NULL;
         uv_fs_req_cleanup(&fs);
     }
-    free(backup_folders);
 }
 #endif
 

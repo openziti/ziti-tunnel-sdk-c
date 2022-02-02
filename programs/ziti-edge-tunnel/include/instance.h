@@ -20,12 +20,12 @@
 #include <ziti/ziti_model.h>
 #include "model/dtos.h"
 
-#ifndef MINTUNIPV4PREFIXLENGTH
-#define MINTUNIPV4PREFIXLENGTH 10
+#ifndef MINTUNPREFIXLENGTH
+#define MINTUNPREFIXLENGTH 10
 #endif
 
-#ifndef MAXTUNIPV4PREFIXLENGTH
-#define MAXTUNIPV4PREFIXLENGTH 18
+#ifndef MAXTUNPREFIXLENGTH
+#define MAXTUNPREFIXLENGTH 18
 #endif
 
 #ifdef __cplusplus
@@ -62,11 +62,11 @@ void set_log_level(int log_level);
 
 void set_service_version();
 
-char* get_log_level();
+int get_log_level();
 
 void set_ziti_status(bool enabled, char* identifier);
 
-void set_tun_ipv4_into_instance(char* tun_ip, int mask, bool addDns);
+void set_tun_ipv4_into_instance(char* tun_ip, int prefixLength, bool addDns);
 
 char* get_ip_range_from_config();
 

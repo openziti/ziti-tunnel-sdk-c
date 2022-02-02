@@ -65,34 +65,34 @@ XX(AddIdentity, __VA_ARGS__)
 DECLARE_ENUM(TunnelCommand, TUNNEL_COMMANDS)
 
 #define TUNNEL_CMD(XX, ...) \
-XX(command, TunnelCommand, none, Function, __VA_ARGS__) \
-XX(data, json, none, Payload, __VA_ARGS__)
+XX(command, TunnelCommand, none, Command, __VA_ARGS__) \
+XX(data, json, none, Data, __VA_ARGS__)
 
 #define TUNNEL_CMD_RES(XX, ...) \
-XX(success, bool, none, success, __VA_ARGS__) \
-XX(error, string, none, error, __VA_ARGS__)\
-XX(data, json, none, data, __VA_ARGS__)
+XX(success, bool, none, Success, __VA_ARGS__) \
+XX(error, string, none, Error, __VA_ARGS__)\
+XX(data, json, none, Data, __VA_ARGS__)
 
 #define TNL_LOAD_IDENTITY(XX, ...) \
-XX(identifier, string, none, identifier, __VA_ARGS__)\
-XX(path, string, none, path, __VA_ARGS__)
+XX(identifier, string, none, Identifier, __VA_ARGS__)\
+XX(path, string, none, Path, __VA_ARGS__)
 
 #define TNL_ON_OFF_IDENTITY(XX, ...) \
 XX(identifier, string, none, Identifier, __VA_ARGS__) \
 XX(onOff, bool, none, OnOff, __VA_ARGS__)
 
 #define TNL_IDENTITY_INFO(XX, ...) \
-XX(name, string, none, name, __VA_ARGS__) \
-XX(config, string, none, config, __VA_ARGS__) \
-XX(network, string, none, network, __VA_ARGS__) \
-XX(id, string, none, id, __VA_ARGS__)
+XX(name, string, none, Name, __VA_ARGS__) \
+XX(config, string, none, Config, __VA_ARGS__) \
+XX(network, string, none, Network, __VA_ARGS__) \
+XX(id, string, none, Id, __VA_ARGS__)
 
 #define TNL_IDENTITY_LIST(XX, ...) \
-XX(identities, tunnel_identity_info, array, identities, __VA_ARGS__)
+XX(identities, tunnel_identity_info, array, Identities, __VA_ARGS__)
 
 #define TNL_ZITI_DUMP(XX, ...) \
-XX(identifier, string, none, id, __VA_ARGS__) \
-XX(dump_path, string, none, dump_path, __VA_ARGS__)
+XX(identifier, string, none, Identifier, __VA_ARGS__) \
+XX(dump_path, string, none, DumpPath, __VA_ARGS__)
 
 #define TNL_ENABLE_MFA(XX, ...) \
 XX(identifier, string, none, Identifier, __VA_ARGS__)
@@ -130,16 +130,16 @@ XX(identifier, string, none, Identifier, __VA_ARGS__) \
 XX(code, string, none, Code, __VA_ARGS__)
 
 #define TNL_GET_IDENTITY_METRICS(XX, ...) \
-XX(identifier, string, none, id, __VA_ARGS__)
+XX(identifier, string, none, Identifier, __VA_ARGS__)
 
 #define TNL_IDENTITY_METRICS(XX, ...) \
-XX(identifier, string, none, id, __VA_ARGS__) \
-XX(up, string, none, up, __VA_ARGS__) \
-XX(down, string, none, down, __VA_ARGS__)
+XX(identifier, string, none, Identifier, __VA_ARGS__) \
+XX(up, string, none, Up, __VA_ARGS__) \
+XX(down, string, none, Down, __VA_ARGS__)
 
 #define TUNNEL_CMD_INLINE(XX, ...) \
-XX(identifier, string, none, id, __VA_ARGS__) \
-XX(command, TunnelCommand, none, command, __VA_ARGS__)
+XX(identifier, string, none, Identifier, __VA_ARGS__) \
+XX(command, TunnelCommand, none, Command, __VA_ARGS__)
 
 #define TNL_DELETE_IDENTITY(XX, ...) \
 XX(identifier, string, none, Identifier, __VA_ARGS__)
@@ -149,21 +149,21 @@ XX(loglevel, string, none, Level, __VA_ARGS__)
 
 #define TUNNEL_TUN_IP_V4(XX, ...) \
 XX(tunIP, string, none, TunIPv4, __VA_ARGS__) \
-XX(prefixLength, int, none, TunIPv4Mask, __VA_ARGS__) \
+XX(prefixLength, int, none, TunPrefixLength, __VA_ARGS__) \
 XX(addDns, bool, none, AddDns, __VA_ARGS__)
 
 #define TUNNEL_SERVICE_CONTROL(XX, ...) \
-XX(operation, string, none, operation, __VA_ARGS__)
+XX(operation, string, none, Operation, __VA_ARGS__)
 
 #define TUNNEL_STATUS_CHANGE(XX, ...) \
-XX(woken, bool, none, woke, __VA_ARGS__) \
-XX(unlocked, bool, none, unlocked, __VA_ARGS__)
+XX(woken, bool, none, Woke, __VA_ARGS__) \
+XX(unlocked, bool, none, Unlocked, __VA_ARGS__)
 
 #define TUNNEL_ADD_IDENTITY(XX, ...) \
 XX(jwtFileName, string, none, JwtFileName, __VA_ARGS__) \
 XX(jwtContent, string, none, JwtContent, __VA_ARGS__)
 
-DECLARE_MODEL(tunnel_comand, TUNNEL_CMD)
+DECLARE_MODEL(tunnel_command, TUNNEL_CMD)
 DECLARE_MODEL(tunnel_result, TUNNEL_CMD_RES)
 DECLARE_MODEL(tunnel_load_identity, TNL_LOAD_IDENTITY)
 DECLARE_MODEL(tunnel_identity_info, TNL_IDENTITY_INFO)
@@ -266,7 +266,7 @@ struct hosted_io_ctx_s {
 typedef void (*event_cb)(const base_event* event);
 typedef void (*command_cb)(const tunnel_result *, void *ctx);
 typedef struct {
-    int (*process)(const tunnel_comand *cmd, command_cb cb, void *ctx);
+    int (*process)(const tunnel_command *cmd, command_cb cb, void *ctx);
     int (*load_identity)(const char *identifier, const char *path, command_cb, void *ctx);
     // do not use, temporary accessor
     ziti_context (*get_ziti)(const char *identifier);

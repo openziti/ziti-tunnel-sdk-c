@@ -47,7 +47,7 @@ static char* get_log_path() {
     get_process_path(process_full_path, FILENAME_MAX);
     sprintf(process_dir, "%s", dirname(process_full_path));
 #else
-    sprintf(process_dir, "%s", "/tmp");
+    sprintf(process_dir, "/tmp");
 #endif
 
     char* log_path = calloc(FILENAME_MAX, sizeof(char));
