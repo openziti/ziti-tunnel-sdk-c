@@ -62,7 +62,7 @@ void set_log_level(int log_level);
 
 void set_service_version();
 
-char* get_log_level();
+int get_log_level();
 
 void set_ziti_status(bool enabled, char* identifier);
 

@@ -58,7 +58,7 @@ typedef char * (*to_json_fn)(const void * msg, int flags, size_t *len);
 static void send_events_message(const void *message, to_json_fn to_json_f, bool displayEvent);
 static void send_tunnel_command(tunnel_command *tnl_cmd, void *ctx);
 #if _WIN32
-static void move_config_from_backup(uv_loop_t *loop);
+static void move_config_from_previous_windows_backup(uv_loop_t *loop);
 #endif
 
 struct cfg_instance_s {
@@ -339,11 +339,13 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
                 break;
             }
             log_level lvl = log_level_value_of(tunnel_set_log_level_cmd.loglevel);
+            // int lvl = get_debug_level(tunnel_set_log_level_cmd.loglevel); // can be used only after c-sdk PR is merged
 
-            if (lvl != log_level_Unknown) {
+            if (lvl != -1) {
                 if (ziti_log_level() != lvl) {
-                    set_log_level(tunnel_set_log_level_cmd.loglevel);
+                    set_log_level(lvl);
                     ziti_log_set_level(lvl);
+                    ziti_tunnel_set_log_level(lvl);
                     ZITI_LOG(INFO, "Log level is set to %s", tunnel_set_log_level_cmd.loglevel);
                 } else {
                     ZITI_LOG(INFO, "Log level is already set to %s", tunnel_set_log_level_cmd.loglevel);
@@ -1414,8 +1416,6 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     }
 
     free(tunneler);
-    uv_close((uv_handle_t *) &cmd_server, (uv_close_cb) free);
-    uv_close((uv_handle_t *) &event_server, (uv_close_cb) free);
 #if _WIN32
     close_log();
 #endif
@@ -1597,7 +1597,7 @@ static void run(int argc, char *argv[]) {
     } else {
         ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
     }
-    move_config_from_backup(ziti_loop);
+    move_config_from_previous_windows_backup(ziti_loop);
     ZITI_LOG(INFO,"Loading identity files from %s", config_dir);
 #else
     ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
@@ -2561,14 +2561,12 @@ void scm_service_stop() {
     }
 }
 
-static void move_config_from_backup(uv_loop_t *loop) {
-    char **backup_folders = calloc(3, sizeof(char*));
-    char **bkp_temp = backup_folders;
-    *bkp_temp = "Windows.~BT\\Windows\\System32\\config\\systemprofile\\AppData\\Roaming\\NetFoundry";
-    bkp_temp++;
-    *bkp_temp = "Windows.old\\Windows\\System32\\config\\systemprofile\\AppData\\Roaming\\NetFoundry";
-    bkp_temp++;
-    *bkp_temp = '\0';
+static void move_config_from_previous_windows_backup(uv_loop_t *loop) {
+    char *backup_folders[] = {
+        "Windows.~BT\\Windows\\System32\\config\\systemprofile\\AppData\\Roaming\\NetFoundry",
+        "Windows.old\\Windows\\System32\\config\\systemprofile\\AppData\\Roaming\\NetFoundry",
+        NULL
+    };
 
     char* system_drive = getenv("SystemDrive");
 
@@ -2596,9 +2594,9 @@ static void move_config_from_backup(uv_loop_t *loop) {
         while (uv_fs_scandir_next(&fs, &file) == 0) {
             if (file.type == UV_DIRENT_FILE) {
                 char old_file[FILENAME_MAX];
-                sprintf(old_file, "%s\\%s", config_dir_bkp, file.name);
+                snprintf(old_file, FILENAME_MAX, "%s\\%s", config_dir_bkp, file.name);
                 char new_file[FILENAME_MAX];
-                sprintf(new_file, "%s\\%s", config_dir, file.name);
+                snprintf(new_file, FILENAME_MAX, "%s\\%s", config_dir, file.name);
                 uv_fs_t fs_cpy;
                 rc = uv_fs_copyfile(loop, &fs_cpy, old_file, new_file, 0, NULL);
                 if (rc == 0) {
@@ -2615,7 +2613,6 @@ static void move_config_from_backup(uv_loop_t *loop) {
         config_dir_bkp = NULL;
         uv_fs_req_cleanup(&fs);
     }
-    free(backup_folders);
 }
 #endif
 
