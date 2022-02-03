@@ -429,7 +429,7 @@ ssize_t on_dns_req(void *ziti_io_ctx, void *write_ctx, const uint8_t *q_packet, 
         DNS_SET_AARS(req->resp, 0);
         DNS_SET_CODE(req->resp, DNS_NOT_IMPL);
         req->code = DNS_NOT_IMPL;
-
+        complete_dns_req(req);
         goto DONE;
     }
 
