@@ -31,7 +31,8 @@ typedef int (*dns_fallback_cb)(const char *name, void *ctx, struct in_addr* addr
 
 int ziti_dns_setup(tunneler_context tnlr, const char *dns_addr, const char *dns_cidr);
 
-void ziti_dns_set_fallback(struct uv_loop_s *l, dns_fallback_cb fb, void *ctx);
+void ziti_dns_set_upstream(uv_loop_t *l, const char *host, uint16_t port);
+
 void ziti_dns_set_manager(dns_manager *mgr);
 
 const char *ziti_dns_register_hostname(const char *hostname, void *intercept);

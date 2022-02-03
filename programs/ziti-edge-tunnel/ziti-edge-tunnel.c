@@ -863,7 +863,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
 
     ip_addr_t dns_ip4 = IPADDR4_INIT(dns_ip);
     ziti_dns_setup(tunneler, ipaddr_ntoa(&dns_ip4), ip_range);
-    ziti_dns_set_fallback(ziti_loop, dns_fallback, NULL);
+    ziti_dns_set_upstream(ziti_loop, "1.1.1.1", 0); // TODO upstream DNS option and/or look up local config
 
     CMD_CTRL = ziti_tunnel_init_cmd(ziti_loop, tunneler, on_event);
 
