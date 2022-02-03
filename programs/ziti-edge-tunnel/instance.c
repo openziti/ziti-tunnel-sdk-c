@@ -584,15 +584,26 @@ void set_ip_info(uint32_t dns_ip, uint32_t tun_ip, int bits) {
 
 }
 
-void set_log_level(int log_level) {
-    tnl_status.LogLevel = log_level;
+void set_log_level(char* log_level) {
+    if (tnl_status.LogLevel) {
+        free(tnl_status.LogLevel);
+    }
+    size_t len = strlen(log_level) + 1;
+    tnl_status.LogLevel = calloc(len, sizeof(char));
+    char log_lvl[len];
+    int i = 0;
+    while (*log_level != '\0') {
+        log_lvl[i++] = (char) tolower(*log_level++);
+    }
+    log_lvl[i] = '\0';
+    snprintf(tnl_status.LogLevel, len, "%s", log_lvl);
 }
 
-int get_log_level() {
+const char* get_log_level() {
     if (tnl_status.LogLevel) {
         return tnl_status.LogLevel;
     } else {
-        return log_level_Unknown;
+        return NULL;
     }
 }
 
