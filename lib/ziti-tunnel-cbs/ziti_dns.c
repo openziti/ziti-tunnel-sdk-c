@@ -502,8 +502,6 @@ static void on_upstream_send(uv_udp_send_t *sr, int rc) {
     struct dns_req *req = sr->data;
     if (rc < 0) {
         ZITI_LOG(WARN, "failed to query[%04x] upstream DNS server: %d(%s)", req->id, rc, uv_strerror(rc));
-    } else {
-        ZITI_LOG(TRACE, "sent query[%04x] upstream", req->id);
     }
     free(sr);
 }
@@ -524,9 +522,9 @@ static void udp_alloc(uv_handle_t *h, unsigned long reqlen, uv_buf_t *b) {
 }
 
 static void on_upstream_packet(uv_udp_t *h, ssize_t rc, const uv_buf_t *buf, const struct sockaddr* addr, unsigned int flags) {
-    uint16_t id = DNS_ID(buf->base);
-    struct dns_req *req = model_map_getl(&ziti_dns.requests, (long)id);
     if (rc > 0) {
+        uint16_t id = DNS_ID(buf->base);
+        struct dns_req *req = model_map_getl(&ziti_dns.requests, id);
         if (req == NULL) {
             ZITI_LOG(WARN, "got response for unknown query[%04x] (rc=%zd)", id, rc);
         } else {
