@@ -1839,6 +1839,7 @@ static void on_response(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
         fprintf(stderr,"Read Response error %s\n", uv_err_name(len));
     }
     uv_read_stop(s);
+    free(b->base);
     uv_close((uv_handle_t *)s, NULL);
 }
 
@@ -1848,6 +1849,9 @@ void on_write(uv_write_t* req, int status) {
     } else {
         puts("Message sent to the tunnel.");
     }
+    if (req->data) {
+        free(req->data);
+    }
     free(req);
 }
 
@@ -1856,11 +1860,13 @@ void send_message_to_pipe(uv_connect_t *connect) {
     uv_write_t *req = (uv_write_t*) malloc(sizeof(uv_write_t));
     uv_buf_t buf = uv_buf_init(connect->data, strlen(connect->data));
     uv_write((uv_write_t*) req, connect->handle, &buf, 1,    on_write);
+    free(connect);
 }
 
 void on_connect(uv_connect_t* connect, int status){
     if (status < 0) {
         puts("failed to connect!");
+        free(connect);
     } else {
         puts("connected!");
         int res = uv_read_start((uv_stream_t *) connect->handle, cmd_alloc, on_response);
@@ -1888,7 +1894,7 @@ static uv_loop_t* connect_and_send_cmd(char sockfile[],uv_connect_t* connect, uv
 static void send_message_to_tunnel(char* message) {
     uv_pipe_t client_handle;
     uv_connect_t* connect = (uv_connect_t*)malloc(sizeof(uv_connect_t));
-    connect->data = strdup(message);
+    connect->data = message;
 
     uv_loop_t* loop = connect_and_send_cmd(sockfile, connect, &client_handle);
 
@@ -2417,6 +2423,7 @@ static int add_identity_opts(int argc, char *argv[]) {
     }
     size_t json_len;
     cmd->data = tunnel_add_identity_to_json(tunnel_add_identity_opt, MODEL_JSON_COMPACT, &json_len);
+    free(tunnel_add_identity_opt);
 
     return optind;
 }
