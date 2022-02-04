@@ -339,10 +339,10 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
                 break;
             }
 
-            if (stricmp(ziti_log_level_label(), tunnel_set_log_level_cmd.loglevel) != 0) {
+            if (strcasecmp(ziti_log_level_label(), tunnel_set_log_level_cmd.loglevel) != 0) {
                 ziti_log_set_level_by_label(tunnel_set_log_level_cmd.loglevel);
                 ziti_tunnel_set_log_level(ziti_log_level());
-                set_log_level(tunnel_set_log_level_cmd.loglevel);
+                set_log_level(ziti_log_level_label());
                 ZITI_LOG(INFO, "Log level is set to %s", tunnel_set_log_level_cmd.loglevel);
             } else {
                 ZITI_LOG(INFO, "Log level is already set to %s", tunnel_set_log_level_cmd.loglevel);
