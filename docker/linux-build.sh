@@ -38,27 +38,29 @@ for ARCH in ${JOBS[@]}; do
     mkdir ${CMAKE_BUILD_DIR}
 #    cd ${CMAKE_BUILD_DIR}
     case ${ARCH} in
-        amd64)  eval cmake \
+        amd64)  { eval cmake \
                     -DCMAKE_TOOLCHAIN_FILE=${REPO_DIR}/toolchains/default.cmake \
                     -S ${REPO_DIR} \
-                    -B ${CMAKE_BUILD_DIR}
-                eval cmake \
+                    -B ${CMAKE_BUILD_DIR} \
+                && eval cmake \
                     --build ${CMAKE_BUILD_DIR} \
                     --target bundle \
                     --parallel ${PROCS_PER_JOB} \
-                    --verbose ${BACKGROUND}
+                    --verbose;
+                } ${BACKGROUND}
                 (( ${PROCS_PER_JOB} )) && BUILDS[${!}]=${ARCH}  # if greater than zero procs per job then map background pid->arch
         ;;
-        arm64)  eval cmake \
+        arm64)  { eval cmake \
                     -DCMAKE_BUILD_TYPE=Release \
                     -DCMAKE_TOOLCHAIN_FILE=${REPO_DIR}/toolchains/Linux-arm64.cmake \
                     -S ${REPO_DIR} \
-                    -B ${CMAKE_BUILD_DIR}
-                eval cmake \
+                    -B ${CMAKE_BUILD_DIR} \
+                && eval cmake \
                     --build ${CMAKE_BUILD_DIR} \
                     --target bundle \
                     --parallel ${PROCS_PER_JOB} \
-                    --verbose ${BACKGROUND}
+                    --verbose;
+                } ${BACKGROUND}
                 (( ${PROCS_PER_JOB} )) && BUILDS[${!}]=${ARCH}
         ;;
         *)      echo "ERROR: invalid architecture '${ARCH}', must be one of amd64, arm, arm64" >&2
