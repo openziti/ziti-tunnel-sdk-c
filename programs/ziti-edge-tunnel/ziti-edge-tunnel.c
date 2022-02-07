@@ -1827,6 +1827,7 @@ static int dump_opts(int argc, char *argv[]) {
     cmd->data = tunnel_ziti_dump_to_json(dump_options, MODEL_JSON_COMPACT, &json_len);
     if (dump_options != NULL) {
         free_tunnel_ziti_dump(dump_options);
+        free(dump_options);
     }
 
     return optind;
@@ -1848,9 +1849,6 @@ void on_write(uv_write_t* req, int status) {
         fprintf(stderr,"Could not sent message to the tunnel. Write error %s\n", uv_err_name(status));
     } else {
         puts("Message sent to the tunnel.");
-    }
-    if (req->data) {
-        free(req->data);
     }
     free(req);
 }
@@ -1920,7 +1918,7 @@ static void send_message_to_tunnel_fn(int argc, char *argv[]) {
 
 static int on_off_identity_opts(int argc, char *argv[]) {
     static struct option opts[] = {
-            {"identity", required_argument, NULL, 'i'},
+            {"identity", required_argument, NULL, 'i:o:'},
     };
     int c, option_index, errors = 0;
     optind = 0;
@@ -1929,12 +1927,20 @@ static int on_off_identity_opts(int argc, char *argv[]) {
     cmd = calloc(1, sizeof(tunnel_command));
     cmd->command = TunnelCommand_IdentityOnOff;
 
-    while ((c = getopt_long(argc, argv, "i:",
+    while ((c = getopt_long(argc, argv, "i:o:",
                             opts, &option_index)) != -1) {
         switch (c) {
             case 'i':
                 on_off_identity_options->identifier = optarg;
                 break;
+            case 'o': {
+                if (strcasecmp(optarg, "true") == 0 || strcmp(optarg, "t") == 0) {
+                    on_off_identity_options->onOff = true;
+                } else {
+                    on_off_identity_options->onOff = false;
+                }
+                break;
+            }
             default: {
                 fprintf(stderr, "Unknown option '%c'\n", c);
                 errors++;
@@ -1948,6 +1954,7 @@ static int on_off_identity_opts(int argc, char *argv[]) {
     }
     size_t json_len;
     cmd->data = tunnel_on_off_identity_to_json(on_off_identity_options, MODEL_JSON_COMPACT, &json_len);
+    free(on_off_identity_options);
 
     return optind;
 }
@@ -1982,6 +1989,8 @@ static int enable_identity_opts(int argc, char *argv[]) {
     }
     size_t json_len;
     cmd->data = tunnel_load_identity_to_json(load_identity_options, MODEL_JSON_COMPACT, &json_len);
+    free_tunnel_load_identity(load_identity_options);
+    free(load_identity_options);
 
     return optind;
 }
@@ -2016,6 +2025,7 @@ static int enable_mfa_opts(int argc, char *argv[]) {
     }
     size_t json_len;
     cmd->data = tunnel_enable_mfa_to_json(enable_mfa_options, MODEL_JSON_COMPACT, &json_len);
+    free(enable_mfa_options);
 
     return optind;
 }
@@ -2054,6 +2064,7 @@ static int verify_mfa_opts(int argc, char *argv[]) {
     }
     size_t json_len;
     cmd->data = tunnel_verify_mfa_to_json(verify_mfa_options, MODEL_JSON_COMPACT, &json_len);
+    free(verify_mfa_options);
 
     return optind;
 }
@@ -2092,6 +2103,7 @@ static int remove_mfa_opts(int argc, char *argv[]) {
     }
     size_t json_len;
     cmd->data = tunnel_remove_mfa_to_json(remove_mfa_options, MODEL_JSON_COMPACT, &json_len);
+    free(remove_mfa_options);
 
     return optind;
 }
@@ -2130,6 +2142,7 @@ static int submit_mfa_opts(int argc, char *argv[]) {
     }
     size_t json_len;
     cmd->data = tunnel_submit_mfa_to_json(submit_mfa_options, MODEL_JSON_COMPACT, &json_len);
+    free(submit_mfa_options);
 
     return optind;
 }
@@ -2168,6 +2181,7 @@ static int generate_mfa_codes_opts(int argc, char *argv[]) {
     }
     size_t json_len;
     cmd->data = tunnel_generate_mfa_codes_to_json(mfa_codes_options, MODEL_JSON_COMPACT, &json_len);
+    free(mfa_codes_options);
 
     return optind;
 }
@@ -2206,6 +2220,7 @@ static int get_mfa_codes_opts(int argc, char *argv[]) {
     }
     size_t json_len;
     cmd->data = tunnel_get_mfa_codes_to_json(get_mfa_codes_options, MODEL_JSON_COMPACT, &json_len);
+    free(get_mfa_codes_options);
 
     return optind;
 }
@@ -2240,6 +2255,7 @@ static int set_log_level_opts(int argc, char *argv[]) {
     }
     size_t json_len;
     cmd->data = tunnel_set_log_level_to_json(log_level_options, MODEL_JSON_COMPACT, &json_len);
+    free(log_level_options);
 
     return optind;
 }
@@ -2286,6 +2302,7 @@ static int update_tun_ip_opts(int argc, char *argv[]) {
     }
     size_t json_len;
     cmd->data = tunnel_tun_ip_v4_to_json(tun_ip_v4_options, MODEL_JSON_COMPACT, &json_len);
+    free(tun_ip_v4_options);
 
     return optind;
 }
@@ -2384,6 +2401,7 @@ static int delete_identity_opts(int argc, char *argv[]) {
     }
     size_t json_len;
     cmd->data = tunnel_delete_identity_to_json(delete_identity_options, MODEL_JSON_COMPACT, &json_len);
+    free(delete_identity_options);
 
     return optind;
 }
