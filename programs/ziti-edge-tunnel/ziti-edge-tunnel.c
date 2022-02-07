@@ -48,10 +48,7 @@
 #define HOST_NAME_MAX 254
 #endif
 
-extern dns_manager *get_dnsmasq_manager(const char* path);
-
 static int dns_miss_status = DNS_REFUSE;
-static int dns_fallback(const char *name, void *ctx, struct in_addr* addr);
 
 static void send_message_to_tunnel();
 typedef char * (*to_json_fn)(const void * msg, int flags, size_t *len);

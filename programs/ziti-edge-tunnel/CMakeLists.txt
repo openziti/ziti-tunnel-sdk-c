@@ -30,7 +30,7 @@ if (WIN32)
     set(ZITI_INSTANCE_OS windows-service.c include/windows/windows-service.h)
 endif ()
 
-add_executable(ziti-edge-tunnel ziti-edge-tunnel.c ${NETIF_DRIVER_SOURCE} dnsmasq_manager.c ${ZITI_INSTANCE_COMMON} ${ZITI_INSTANCE_OS})
+add_executable(ziti-edge-tunnel ziti-edge-tunnel.c ${NETIF_DRIVER_SOURCE} ${ZITI_INSTANCE_COMMON} ${ZITI_INSTANCE_OS})
 set_property(TARGET ziti-edge-tunnel PROPERTY C_STANDARD 11)
 
 target_include_directories(ziti-edge-tunnel
