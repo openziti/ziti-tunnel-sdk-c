@@ -175,7 +175,7 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
     size_t json_len;
     char *json = tunnel_result_to_json(result, MODEL_JSON_COMPACT, &json_len);
     ZITI_LOG(INFO, "resp[%d,len=%zd] = %.*s",
-            result->success, json_len, (int)json_len, json, result->data);
+            result->success, json_len, (int)json_len, json);
 
     if (result->data != NULL) {
         tunnel_command tnl_res_cmd = {0};
@@ -1111,7 +1111,7 @@ static void on_event(const base_event *ev) {
 #if _WIN32
             model_map *hostnamesToAdd = calloc(1, sizeof(model_map));
             model_map *hostnamesToEdit = calloc(1, sizeof(model_map));
-            model_map *hostnamesToRemove = calloc(1, sizeof(model_map));;
+            model_map *hostnamesToRemove = calloc(1, sizeof(model_map));
 #endif
             if (svc_ev->removed_services != NULL) {
                 int svc_array_length = 0;
@@ -1384,7 +1384,6 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     }
     if (nrpt_effective) {
         model_map *domains = get_connection_specific_domains();
-        const char *key;
         bool status;
         model_map *normalized_domains = calloc(1, sizeof(model_map));
         model_map_iter it = model_map_iterator(domains);
@@ -1875,7 +1874,7 @@ void on_connect(uv_connect_t* connect, int status){
     }
 }
 
-static uv_loop_t* connect_and_send_cmd(char sockfile[],uv_connect_t* connect, uv_pipe_t* client_handle) {
+static uv_loop_t* connect_and_send_cmd(char pipesockfile[],uv_connect_t* connect, uv_pipe_t* client_handle) {
     uv_loop_t* loop = uv_default_loop();
 
     int res = uv_pipe_init(loop, client_handle, 0);
@@ -1884,7 +1883,7 @@ static uv_loop_t* connect_and_send_cmd(char sockfile[],uv_connect_t* connect, uv
         return NULL;
     }
 
-    uv_pipe_connect(connect, client_handle, sockfile, on_connect);
+    uv_pipe_connect(connect, client_handle, pipesockfile, on_connect);
 
     return loop;
 }
@@ -2280,7 +2279,7 @@ static int update_tun_ip_opts(int argc, char *argv[]) {
                 tun_ip_v4_options->tunIP = optarg;
                 break;
             case 'p':
-                tun_ip_v4_options->prefixLength = (int) strtol(optarg, NULL, 10);;
+                tun_ip_v4_options->prefixLength = (int) strtol(optarg, NULL, 10);
                 break;
             case 'd':
                 if (strcmp(optarg, "true") == 0 || strcmp(optarg, "t") == 0 ) {
