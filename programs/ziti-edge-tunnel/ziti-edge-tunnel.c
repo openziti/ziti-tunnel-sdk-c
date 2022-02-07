@@ -44,6 +44,10 @@
 #define MAXMESSAGELEN 4096
 #endif
 
+#ifndef HOST_NAME_MAX
+#define HOST_NAME_MAX 254
+#endif
+
 extern dns_manager *get_dnsmasq_manager(const char* path);
 
 static int dns_miss_status = DNS_REFUSE;
