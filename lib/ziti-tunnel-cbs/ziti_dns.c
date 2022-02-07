@@ -151,12 +151,17 @@ int ziti_dns_setup(tunneler_context tnlr, const char *dns_addr, const char *dns_
     return 0;
 }
 
-void ziti_dns_set_upstream(uv_loop_t *l, const char *host, uint16_t port) {
+#define CHECK_UV(op) do{ int rc = (op); if (rc < 0) {\
+ZITI_LOG(ERROR, "failed [" #op "]: %d(%s)", rc, uv_strerror(rc)); \
+return rc;} \
+}while(0)
+
+int ziti_dns_set_upstream(uv_loop_t *l, const char *host, uint16_t port) {
     if (uv_is_active((const uv_handle_t *) &ziti_dns.upstream)) {
         uv_udp_recv_stop(&ziti_dns.upstream);
-        uv_udp_connect(&ziti_dns.upstream, NULL);
+        CHECK_UV(uv_udp_connect(&ziti_dns.upstream, NULL));
     } else {
-        uv_udp_init(l, &ziti_dns.upstream);
+        CHECK_UV(uv_udp_init(l, &ziti_dns.upstream));
     }
 
     if (port == 0) port = 53;
@@ -164,9 +169,11 @@ void ziti_dns_set_upstream(uv_loop_t *l, const char *host, uint16_t port) {
     char port_str[6];
     snprintf(port_str, sizeof(port_str), "%d", port);
     uv_getaddrinfo_t req = {0};
-    uv_getaddrinfo(l, &req, NULL, host, port_str, NULL);
-    uv_udp_connect(&ziti_dns.upstream, req.addrinfo->ai_addr);
-    uv_udp_recv_start(&ziti_dns.upstream, udp_alloc, on_upstream_packet);
+    CHECK_UV(uv_getaddrinfo(l, &req, NULL, host, port_str, NULL));
+    CHECK_UV(uv_udp_connect(&ziti_dns.upstream, req.addrinfo->ai_addr));
+    CHECK_UV(uv_udp_recv_start(&ziti_dns.upstream, udp_alloc, on_upstream_packet));
+    ZITI_LOG(INFO, "DNS upstream is set to %s:%d", host, port);
+    return 0;
 }
 
 void* on_dns_client(const void *app_intercept_ctx, io_ctx_t *io) {
