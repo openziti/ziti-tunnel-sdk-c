@@ -18,7 +18,6 @@
 #include <ziti/ziti_log.h>
 #include <time.h>
 #include <config-utils.h>
-#include "model/events.h"
 #include "lwip/ip_addr.h"
 #include "ziti/ziti_tunnel.h"
 
@@ -206,7 +205,7 @@ static void setTunnelPostureDataTimeout(tunnel_service *tnl_svc, ziti_service *s
     const char *key;
     MODEL_MAP_FOREACH(key, pqs, &service->posture_query_map) {
 
-        if (pqs->policy_type == "Bind") {
+        if (strcmp(pqs->policy_type, "Bind") == 0) {
             ZITI_LOG(TRACE, "Posture Query set returned a Bind policy: %s [ignored]", pqs->policy_id);
             continue;
         } else {
@@ -562,7 +561,7 @@ char *get_tunnel_config(size_t *json_len) {
     tnl_config.Duration = tnl_sts->Duration;
     tnl_config.StartTime = tnl_sts->StartTime;
 
-    tunnel_identity_array tnl_id_arr_config = '\0';
+    tunnel_identity_array tnl_id_arr_config = NULL;
 
     for (int i =0; tnl_sts->Identities[i]; i++) {
         if (i == 0) {
@@ -583,7 +582,7 @@ char *get_tunnel_config(size_t *json_len) {
         tnl_id_arr_config[i] = id_new;
     }
 
-    if (tnl_id_arr_config != '\0') {
+    if (tnl_id_arr_config != NULL) {
         tnl_config.Identities = tnl_id_arr_config;
     }
     tnl_config.IpInfo = tnl_sts->IpInfo;
@@ -596,7 +595,7 @@ char *get_tunnel_config(size_t *json_len) {
     char* tunnel_config_json = tunnel_status_to_json(&tnl_config, 0, json_len);
 
     //free up space
-    if (tnl_id_arr_config != '\0') {
+    if (tnl_id_arr_config != NULL) {
         for(int i=0; tnl_config.Identities[i]; i++){
             free(tnl_config.Identities[i]);
         }
@@ -659,15 +658,26 @@ void set_ip_info(uint32_t dns_ip, uint32_t tun_ip, int bits) {
 
 }
 
-void set_log_level(int log_level) {
-    tnl_status.LogLevel = log_level;
+void set_log_level(char* log_level) {
+    if (tnl_status.LogLevel) {
+        free(tnl_status.LogLevel);
+    }
+    size_t len = strlen(log_level) + 1;
+    tnl_status.LogLevel = calloc(len, sizeof(char));
+    char log_lvl[len];
+    int i = 0;
+    while (*log_level != '\0') {
+        log_lvl[i++] = (char) tolower(*log_level++);
+    }
+    log_lvl[i] = '\0';
+    snprintf(tnl_status.LogLevel, len, "%s", log_lvl);
 }
 
-int get_log_level() {
+const char* get_log_level() {
     if (tnl_status.LogLevel) {
         return tnl_status.LogLevel;
     } else {
-        return log_level_Unknown;
+        return NULL;
     }
 }
 

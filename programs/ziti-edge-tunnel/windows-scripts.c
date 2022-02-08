@@ -38,7 +38,7 @@ static void exit_cb(uv_process_t* process,
     uv_close((uv_handle_t*)process, (uv_close_cb) free);
 }
 
-static bool is_buffer_available(int buf_len, int max_size, char* script) {
+static bool is_buffer_available(size_t buf_len, size_t max_size, char* script) {
     if (buf_len >= max_size) {
         ZITI_LOG(ERROR,"Not enough buffer space to hold the data. Partial data fetched : %s", script);
         return false;
@@ -166,7 +166,7 @@ void chunked_add_nrpt_rules(uv_loop_t *ziti_loop, hostname_list_t *hostnames, ch
     }
     copied += buf_len;
 
-    ZITI_LOG(TRACE, "Adding %d domains using NRPT script. Total script size: %d", domains_size, copied);
+    ZITI_LOG(TRACE, "Adding %d domains using NRPT script. Total script size: %zd", domains_size, copied);
 
     char cmd[MAX_POWERSHELL_COMMAND_LEN];
     buf_len = snprintf(cmd, sizeof(cmd),"powershell -Command \"%s\"", script);
@@ -286,7 +286,7 @@ void chunked_remove_nrpt_rules(uv_loop_t *ziti_loop, hostname_list_t *hostnames)
     }
     copied += buf_len;
 
-    ZITI_LOG(TRACE, "Removing %d domains using NRPT script. total script size: %d", domains_size, copied);
+    ZITI_LOG(TRACE, "Removing %d domains using NRPT script. total script size: %zd", domains_size, copied);
 
     char cmd[MAX_POWERSHELL_COMMAND_LEN];
     buf_len = snprintf(cmd, sizeof(cmd),"powershell -Command \"%s\"", script);
@@ -352,7 +352,7 @@ void remove_nrpt_rules(uv_async_t *ar) {
 void remove_all_nrpt_rules() {
     char remove_cmd[MAX_POWERSHELL_COMMAND_LEN];
     size_t buf_len = sprintf(remove_cmd, "powershell -Command \"Get-DnsClientNrptRule | Where { $_.Comment.StartsWith('Added by %s') } | Remove-DnsClientNrptRule -ErrorAction SilentlyContinue -Force\"", exe_name);
-    ZITI_LOG(TRACE, "Removing all nrpt rules. total script size: %d", buf_len);
+    ZITI_LOG(TRACE, "Removing all nrpt rules. total script size: %zd", buf_len);
 
     ZITI_LOG(DEBUG, "Executing Remove all nrpt rules: '%s'", remove_cmd);
     int rc = system(remove_cmd);
@@ -502,7 +502,7 @@ void remove_and_add_nrpt_rules(uv_async_t *ar) {
 void remove_single_nrpt_rule(char* nrpt_rule) {
     char remove_cmd[MAX_POWERSHELL_COMMAND_LEN];
     size_t buf_len = sprintf(remove_cmd, "powershell -Command \"Get-DnsClientNrptRule | where Namespace -eq '%s' | Remove-DnsClientNrptRule -Force -ErrorAction SilentlyContinue\"", nrpt_rule);
-    ZITI_LOG(TRACE, "Removing nrpt rule. total script size: %d", buf_len);
+    ZITI_LOG(TRACE, "Removing nrpt rule. total script size: %zd", buf_len);
 
     ZITI_LOG(DEBUG, "Executing Remove nrpt rule: %s", remove_cmd);
     int rc = system(remove_cmd);
@@ -516,7 +516,7 @@ void remove_single_nrpt_rule(char* nrpt_rule) {
 bool is_nrpt_policies_effective(char* tns_ip) {
     char add_cmd[MAX_POWERSHELL_COMMAND_LEN];
     size_t buf_len = sprintf(add_cmd, "powershell -Command \"Add-DnsClientNrptRule -Namespace '.ziti.test' -NameServers '%s' -Comment 'Added by ziti-tunnel' -DisplayName 'ziti-tunnel:.ziti.test'\"",tns_ip);
-    ZITI_LOG(TRACE, "add test nrpt rule. total script size: %d", buf_len);
+    ZITI_LOG(TRACE, "add test nrpt rule. total script size: %zd", buf_len);
 
     ZITI_LOG(DEBUG, "Executing add test nrpt rule. %s", add_cmd);
     int rc = system(add_cmd);
@@ -586,7 +586,7 @@ void update_interface_metric(uv_loop_t *ziti_loop, char* tun_name, int metric) {
     buf_len = sprintf(script + copied, "Set-NetIPInterface -InterfaceIndex $i.ifIndex -InterfaceMetric %d", metric);
     copied += buf_len;
 
-    ZITI_LOG(TRACE, "Updating Interface metric using script. total script size: %d", copied);
+    ZITI_LOG(TRACE, "Updating Interface metric using script. total script size: %zd", copied);
 
     char cmd[MAX_POWERSHELL_COMMAND_LEN];
     snprintf(cmd, sizeof(cmd),"powershell -Command \"%s\"", script);
@@ -610,7 +610,7 @@ void update_symlink(uv_loop_t *symlink_loop, char* symlink, char* filename) {
     buf_len = sprintf(script + copied, "New-Item -Itemtype SymbolicLink -Path \"%s\" -Target \"%s\"", symlink, filename);
     copied += buf_len;
 
-    ZITI_LOG(TRACE, "Updating symlink using script. total script size: %d", copied);
+    ZITI_LOG(TRACE, "Updating symlink using script. total script size: %zd", copied);
 
     char cmd[MAX_POWERSHELL_COMMAND_LEN];
     snprintf(cmd, sizeof(cmd),"powershell -Command \"%s\"", script);

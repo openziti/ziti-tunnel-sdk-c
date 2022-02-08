@@ -175,7 +175,7 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
     size_t json_len;
     char *json = tunnel_result_to_json(result, MODEL_JSON_COMPACT, &json_len);
     ZITI_LOG(INFO, "resp[%d,len=%zd] = %.*s",
-            result->success, json_len, (int)json_len, json, result->data);
+            result->success, json_len, (int)json_len, json);
 
     if (result->data != NULL) {
         tunnel_command tnl_res_cmd = {0};
@@ -343,24 +343,18 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
                 result.success = false;
                 break;
             }
-            log_level lvl = log_level_value_of(tunnel_set_log_level_cmd.loglevel);
-            // int lvl = get_debug_level(tunnel_set_log_level_cmd.loglevel); // can be used only after c-sdk PR is merged
 
-            if (lvl != -1) {
-                if (ziti_log_level() != lvl) {
-                    set_log_level(lvl);
-                    ziti_log_set_level(lvl);
-                    ziti_tunnel_set_log_level(lvl);
-                    ZITI_LOG(INFO, "Log level is set to %s", tunnel_set_log_level_cmd.loglevel);
-                } else {
-                    ZITI_LOG(INFO, "Log level is already set to %s", tunnel_set_log_level_cmd.loglevel);
-                }
-                result.success = true;
-                result.code = IPC_SUCCESS;
+            if (strcasecmp(ziti_log_level_label(), tunnel_set_log_level_cmd.loglevel) != 0) {
+                ziti_log_set_level_by_label(tunnel_set_log_level_cmd.loglevel);
+                ziti_tunnel_set_log_level(ziti_log_level());
+                set_log_level(ziti_log_level_label());
+                ZITI_LOG(INFO, "Log level is set to %s", tunnel_set_log_level_cmd.loglevel);
             } else {
-                result.error = "invalid loglevel";
-                result.success = false;
+                ZITI_LOG(INFO, "Log level is already set to %s", tunnel_set_log_level_cmd.loglevel);
             }
+            result.success = true;
+            result.code = IPC_SUCCESS;
+
             break;
         }
         case TunnelCommand_UpdateTunIpv4: {
@@ -1092,7 +1086,7 @@ static void on_event(const base_event *ev) {
 
         case TunnelEvent_ServiceEvent: {
             const service_event *svc_ev = (service_event *) ev;
-            ZITI_LOG(INFO, "=============== ztx[%s] service event ===============", ev->identifier);
+            ZITI_LOG(VERBOSE, "=============== ztx[%s] service event ===============", ev->identifier);
             tunnel_identity *id = find_tunnel_identity(ev->identifier);
             if (id == NULL) {
                 break;
@@ -1111,7 +1105,7 @@ static void on_event(const base_event *ev) {
 #if _WIN32
             model_map *hostnamesToAdd = calloc(1, sizeof(model_map));
             model_map *hostnamesToEdit = calloc(1, sizeof(model_map));
-            model_map *hostnamesToRemove = calloc(1, sizeof(model_map));;
+            model_map *hostnamesToRemove = calloc(1, sizeof(model_map));
 #endif
             if (svc_ev->removed_services != NULL) {
                 int svc_array_length = 0;
@@ -1599,19 +1593,12 @@ static void run(int argc, char *argv[]) {
     // set ip info into instance
     set_ip_info(dns_ip, tun_ip, bits);
 
-    // set log level from instance/config, if NULL is returned, the default log level will be used
-    int log_lvl_val = ZITI_LOG_DEFAULT_LEVEL;
-    int log_lvl = get_log_level();
-    if (log_lvl != log_lvl_val) {
-        log_lvl_val = log_lvl;
-    }
-
     // set the service version in instance
     set_service_version();
 
 #if _WIN32
     if (init) {
-        ziti_log_init(ziti_loop, log_lvl_val, ziti_log_writer);
+        ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, ziti_log_writer);
         struct tm *start_time = get_log_start_time();
         char time_val[32];
         strftime(time_val, sizeof(time_val), "%a %b %d %Y, %X %p", start_time);
@@ -1629,8 +1616,13 @@ static void run(int argc, char *argv[]) {
     ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
 #endif
 
-    set_log_level(ziti_log_level());
+    // set log level from instance/config, if NULL is returned, the default log level will be used
+    char* log_lvl = get_log_level();
+    if (log_lvl != NULL) {
+        ziti_log_set_level_by_label(log_lvl);
+    }
     ziti_tunnel_set_log_level(ziti_log_level());
+    set_log_level(ziti_log_level_label());
     ziti_tunnel_set_logger(ziti_logger);
 
     if (ziti_loop == NULL) {
@@ -1871,7 +1863,7 @@ void on_connect(uv_connect_t* connect, int status){
     }
 }
 
-static uv_loop_t* connect_and_send_cmd(char sockfile[],uv_connect_t* connect, uv_pipe_t* client_handle) {
+static uv_loop_t* connect_and_send_cmd(char pipesockfile[],uv_connect_t* connect, uv_pipe_t* client_handle) {
     uv_loop_t* loop = uv_default_loop();
 
     int res = uv_pipe_init(loop, client_handle, 0);
@@ -1880,7 +1872,7 @@ static uv_loop_t* connect_and_send_cmd(char sockfile[],uv_connect_t* connect, uv
         return NULL;
     }
 
-    uv_pipe_connect(connect, client_handle, sockfile, on_connect);
+    uv_pipe_connect(connect, client_handle, pipesockfile, on_connect);
 
     return loop;
 }
@@ -2258,7 +2250,7 @@ static int update_tun_ip_opts(int argc, char *argv[]) {
                 tun_ip_v4_options->tunIP = optarg;
                 break;
             case 'p':
-                tun_ip_v4_options->prefixLength = (int) strtol(optarg, NULL, 10);;
+                tun_ip_v4_options->prefixLength = (int) strtol(optarg, NULL, 10);
                 break;
             case 'd':
                 if (strcmp(optarg, "true") == 0 || strcmp(optarg, "t") == 0 ) {
@@ -2469,7 +2461,7 @@ static CommandLine get_status_cmd = make_command("tunnel_status", "Get Tunnel St
 static CommandLine delete_id_cmd = make_command("delete", "delete the identities information", "[-i <identity>]",
                                                  "\t-i|--identity\tidentity info that needs to be deleted\n", delete_identity_opts, send_message_to_tunnel_fn);
 static CommandLine add_id_cmd = make_command("add", "enroll and load the identities information", "[-i <identity>]",
-                                                "\t-i|--identity\tidentity filename or jwt filename (without path)\n"
+                                                "\t-i|--identity\tjwt filename - with or without the extension (without path), used to name the identity file\n"
                                                 "\t-j|--jwt\tjwt content that needs to be enrolled\n", add_identity_opts, send_message_to_tunnel_fn);
 static CommandLine set_log_level_cmd = make_command("set_log_level", "Set log level of the tunneler", "-l <level>",
                                                     "\t-l|--loglevel\tlog level of the tunneler\n", set_log_level_opts, send_message_to_tunnel_fn);
