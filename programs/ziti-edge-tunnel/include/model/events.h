@@ -87,17 +87,8 @@ XX(normal, __VA_ARGS__) \
 XX(connected, __VA_ARGS__) \
 XX(disconnected, __VA_ARGS__)
 
-#define LOG_LEVEL(XX, ...) \
-XX(error, __VA_ARGS__) \
-XX(warn, __VA_ARGS__) \
-XX(info, __VA_ARGS__) \
-XX(debug, __VA_ARGS__) \
-XX(verbose, __VA_ARGS__) \
-XX(trace, __VA_ARGS__)
-
 DECLARE_ENUM(event_severity, EVENT_SEVERITY)
 DECLARE_ENUM(event, EVENT_ACTIONS)
-DECLARE_ENUM(log_level, LOG_LEVEL)
 DECLARE_MODEL(status_event, STATUS_EVENT)
 DECLARE_MODEL(action_event, ACTION_EVENT)
 DECLARE_MODEL(tunnel_status_event, TUNNEL_STATUS_EVENT)

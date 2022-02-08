@@ -497,7 +497,9 @@ void initialize_tunnel_status() {
     uv_gettimeofday(&now);
     tnl_status.StartTime.tv_sec = now.tv_sec;
     tnl_status.StartTime.tv_usec = now.tv_usec;
-
+    if (tnl_status.LogLevel == log_level_Unknown) {
+        tnl_status.LogLevel = log_level_info;
+    }
 }
 
 bool load_tunnel_status(char* config_data) {
@@ -583,11 +585,21 @@ void set_ip_info(uint32_t dns_ip, uint32_t tun_ip, int bits) {
 }
 
 void set_log_level(char* log_level) {
-    if (tnl_status.LogLevel) free(tnl_status.LogLevel);
-    tnl_status.LogLevel = strdup(log_level);
+    if (tnl_status.LogLevel) {
+        free(tnl_status.LogLevel);
+    }
+    size_t len = strlen(log_level) + 1;
+    tnl_status.LogLevel = calloc(len, sizeof(char));
+    char log_lvl[len];
+    int i = 0;
+    while (*log_level != '\0') {
+        log_lvl[i++] = (char) tolower(*log_level++);
+    }
+    log_lvl[i] = '\0';
+    snprintf(tnl_status.LogLevel, len, "%s", log_lvl);
 }
 
-char* get_log_level() {
+const char* get_log_level() {
     if (tnl_status.LogLevel) {
         return tnl_status.LogLevel;
     } else {

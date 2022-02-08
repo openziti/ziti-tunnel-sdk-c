@@ -449,3 +449,25 @@ model_map *get_connection_specific_domains() {
         return conn_sp_domains;
     }
 }
+
+void update_interface_metric(uv_loop_t *ziti_loop, char* tun_name, int metric) {
+    char* script = calloc(MAX_POWERSHELL_SCRIPT_LEN, sizeof(char));
+    size_t buf_len = sprintf(script, "$i=Get-NetIPInterface | Where -FilterScript {$_.InterfaceAlias -Eq \"%ls\"}\n", tun_name);
+    size_t copied = buf_len;
+    buf_len = sprintf(script + copied, "Set-NetIPInterface -InterfaceIndex $i.ifIndex -InterfaceMetric %d", metric);
+    copied += buf_len;
+
+    ZITI_LOG(TRACE, "Updating Interface metric using script. total script size: %d", copied);
+
+    char cmd[MAX_POWERSHELL_COMMAND_LEN];
+    snprintf(cmd, sizeof(cmd),"powershell -Command \"%s\"", script);
+
+    ZITI_LOG(DEBUG, "Executing Update Interface metric script :");
+    ZITI_LOG(DEBUG, "%s", cmd);
+    char* args[] = {"powershell", "-Command", script, NULL};
+    bool result = exec_process(ziti_loop, args[0], args);
+    if (!result) {
+        ZITI_LOG(WARN, "Update Interface metric script: %d(err=%d)", result, GetLastError());
+    }
+    free(script);
+}

@@ -57,6 +57,9 @@ static void send_message_to_tunnel();
 typedef char * (*to_json_fn)(const void * msg, int flags, size_t *len);
 static void send_events_message(const void *message, to_json_fn to_json_f, bool displayEvent);
 static void send_tunnel_command(tunnel_command *tnl_cmd, void *ctx);
+#if _WIN32
+static void move_config_from_previous_windows_backup(uv_loop_t *loop);
+#endif
 
 struct cfg_instance_s {
     char *cfg;
@@ -335,20 +338,17 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
                 result.success = false;
                 break;
             }
-            log_level lvl = log_level_value_of(tunnel_set_log_level_cmd.loglevel);
-            if (lvl != log_level_Unknown) {
-                if (ziti_log_level() != lvl) {
-                    set_log_level(tunnel_set_log_level_cmd.loglevel);
-                    ziti_log_set_level(lvl);
-                    ZITI_LOG(INFO, "Log level is set to %s", tunnel_set_log_level_cmd.loglevel);
-                } else {
-                    ZITI_LOG(INFO, "Log level is already set to %s", tunnel_set_log_level_cmd.loglevel);
-                }
-                result.success = true;
+
+            if (strcasecmp(ziti_log_level_label(), tunnel_set_log_level_cmd.loglevel) != 0) {
+                ziti_log_set_level_by_label(tunnel_set_log_level_cmd.loglevel);
+                ziti_tunnel_set_log_level(ziti_log_level());
+                set_log_level(ziti_log_level_label());
+                ZITI_LOG(INFO, "Log level is set to %s", tunnel_set_log_level_cmd.loglevel);
             } else {
-                result.error = "invalid loglevel";
-                result.success = false;
+                ZITI_LOG(INFO, "Log level is already set to %s", tunnel_set_log_level_cmd.loglevel);
             }
+            result.success = true;
+
             break;
         }
         case TunnelCommand_UpdateTunIpv4: {
@@ -1101,7 +1101,7 @@ static void on_event(const base_event *ev) {
             ziti_service **zs;
 #if _WIN32
             model_map *hostnamesToAdd = calloc(1, sizeof(model_map));
-            model_map *hostnamesToRemove = calloc(1, sizeof(model_map));;
+            model_map *hostnamesToRemove = calloc(1, sizeof(model_map));
 #endif
             if (svc_ev->removed_services != NULL) {
                 int svc_array_length = 0;
@@ -1337,8 +1337,18 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
 #if _WIN32
     bool nrpt_effective = is_nrpt_policies_effective(get_dns_ip());
     if (!nrpt_effective || get_add_dns_flag()) {
-        ZITI_LOG(INFO, "Enable DNS for %s", get_dns_ip());
+        if (get_add_dns_flag()) {
+            ZITI_LOG(INFO, "DNS is enabled for the TUN interface, because apply Dns flag in the config file is true");
+        }
+        if (!nrpt_effective && !get_add_dns_flag()) {
+            ZITI_LOG(INFO, "DNS is enabled for the TUN interface, because Ziti policies test result in this client is false");
+        }
         set_dns(tun->handle, dns_ip);
+        ZITI_LOG(INFO, "Setting interface metric to 5");
+        update_interface_metric(ziti_loop, get_tun_name(tun->handle), 5);
+    } else {
+        ZITI_LOG(INFO, "Setting interface metric to 255");
+        update_interface_metric(ziti_loop, get_tun_name(tun->handle), 255);
     }
     if (nrpt_effective) {
         model_map *domains = get_connection_specific_domains();
@@ -1400,8 +1410,6 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     }
 
     free(tunneler);
-    uv_close((uv_handle_t *) &cmd_server, (uv_close_cb) free);
-    uv_close((uv_handle_t *) &event_server, (uv_close_cb) free);
 #if _WIN32
     close_log();
 #endif
@@ -1559,19 +1567,12 @@ static void run(int argc, char *argv[]) {
     // set ip info into instance
     set_ip_info(dns_ip, tun_ip, bits);
 
-    // set log level from instance/config, if NULL is returned, the default log level will be used
-    int log_lvl_val = ZITI_LOG_DEFAULT_LEVEL;
-    char* log_lvl = get_log_level();
-    if (log_lvl != NULL) {
-        log_lvl_val = log_level_value_of(log_lvl);
-    }
-
     // set the service version in instance
     set_service_version();
 
 #if _WIN32
     if (init) {
-        ziti_log_init(ziti_loop, log_lvl_val, ziti_log_writer);
+        ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, ziti_log_writer);
         struct tm *start_time = get_log_start_time();
         char time_val[32];
         strftime(time_val, sizeof(time_val), "%a %b %d %Y, %X %p", start_time);
@@ -1583,13 +1584,19 @@ static void run(int argc, char *argv[]) {
     } else {
         ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
     }
+    move_config_from_previous_windows_backup(ziti_loop);
     ZITI_LOG(INFO,"Loading identity files from %s", config_dir);
 #else
     ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
 #endif
 
-    set_log_level(log_level_name(ziti_log_level()));
+    // set log level from instance/config, if NULL is returned, the default log level will be used
+    char* log_lvl = get_log_level();
+    if (log_lvl != NULL) {
+        ziti_log_set_level_by_label(log_lvl);
+    }
     ziti_tunnel_set_log_level(ziti_log_level());
+    set_log_level(ziti_log_level_label());
     ziti_tunnel_set_logger(ziti_logger);
 
     if (ziti_loop == NULL) {
@@ -2543,6 +2550,60 @@ void scm_service_stop() {
     if (main_ziti_loop != NULL) {
         uv_stop(main_ziti_loop);
         uv_loop_close(main_ziti_loop);
+    }
+}
+
+static void move_config_from_previous_windows_backup(uv_loop_t *loop) {
+    char *backup_folders[] = {
+        "Windows.~BT\\Windows\\System32\\config\\systemprofile\\AppData\\Roaming\\NetFoundry",
+        "Windows.old\\Windows\\System32\\config\\systemprofile\\AppData\\Roaming\\NetFoundry",
+        NULL
+    };
+
+    char* system_drive = getenv("SystemDrive");
+
+    for (int i =0; backup_folders[i]; i++) {
+        char* config_dir_bkp = calloc(FILENAME_MAX, sizeof(char));
+        sprintf(config_dir_bkp, "%s\\%s", system_drive, backup_folders[i]);
+        uv_fs_t fs;
+        int rc = uv_fs_access(loop, &fs, config_dir_bkp, 0, NULL);
+        if (rc < 0) {
+            uv_fs_req_cleanup(&fs);
+            continue;
+        }
+        rc = uv_fs_scandir(loop, &fs, config_dir_bkp, 0, NULL);
+        if (rc < 0) {
+            ZITI_LOG(ERROR, "failed to scan dir[%s]: %d/%s", config_dir_bkp, rc, uv_strerror(rc));
+            uv_fs_req_cleanup(&fs);
+            continue;
+        } else if (rc == 0) {
+            uv_fs_req_cleanup(&fs);
+            continue;
+        }
+        ZITI_LOG(TRACE, "scan dir %s, file count: %d", config_dir_bkp, rc);
+
+        uv_dirent_t file;
+        while (uv_fs_scandir_next(&fs, &file) == 0) {
+            if (file.type == UV_DIRENT_FILE) {
+                char old_file[FILENAME_MAX];
+                snprintf(old_file, FILENAME_MAX, "%s\\%s", config_dir_bkp, file.name);
+                char new_file[FILENAME_MAX];
+                snprintf(new_file, FILENAME_MAX, "%s\\%s", config_dir, file.name);
+                uv_fs_t fs_cpy;
+                rc = uv_fs_copyfile(loop, &fs_cpy, old_file, new_file, 0, NULL);
+                if (rc == 0) {
+                    ZITI_LOG(INFO, "Restored old identity from the backup path - %s to new path - %s", old_file , new_file);
+                    ZITI_LOG(INFO, "Removing old identity from the backup path - %s", old_file);
+                    remove(old_file);
+                } else {
+                    ZITI_LOG(ERROR, "failed to copy backup identity file[%s]: %d/%s", old_file, rc, uv_strerror(rc));
+                }
+                uv_fs_req_cleanup(&fs_cpy);
+            }
+        }
+        free(config_dir_bkp);
+        config_dir_bkp = NULL;
+        uv_fs_req_cleanup(&fs);
     }
 }
 #endif
