@@ -99,7 +99,7 @@ XX(Duration, int, none, Duration, __VA_ARGS__) \
 XX(StartTime, timestamp, none, StartTime, __VA_ARGS__) \
 XX(Identities, tunnel_identity, array, Identities, __VA_ARGS__) \
 XX(IpInfo, ip_info, ptr, IpInfo, __VA_ARGS__) \
-XX(LogLevel, log_level, none, LogLevel, __VA_ARGS__) \
+XX(LogLevel, string, none, LogLevel, __VA_ARGS__) \
 XX(ServiceVersion, service_version, ptr, ServiceVersion, __VA_ARGS__) \
 XX(TunIpv4, string, none, TunIpv4, __VA_ARGS__) \
 XX(TunPrefixLength, int, none, TunIpv4Mask, __VA_ARGS__) \

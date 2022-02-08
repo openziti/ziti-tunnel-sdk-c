@@ -337,23 +337,17 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
                 result.success = false;
                 break;
             }
-            log_level lvl = log_level_value_of(tunnel_set_log_level_cmd.loglevel);
-            // int lvl = get_debug_level(tunnel_set_log_level_cmd.loglevel); // can be used only after c-sdk PR is merged
 
-            if (lvl != -1) {
-                if (ziti_log_level() != lvl) {
-                    set_log_level(lvl);
-                    ziti_log_set_level(lvl);
-                    ziti_tunnel_set_log_level(lvl);
-                    ZITI_LOG(INFO, "Log level is set to %s", tunnel_set_log_level_cmd.loglevel);
-                } else {
-                    ZITI_LOG(INFO, "Log level is already set to %s", tunnel_set_log_level_cmd.loglevel);
-                }
-                result.success = true;
+            if (strcasecmp(ziti_log_level_label(), tunnel_set_log_level_cmd.loglevel) != 0) {
+                ziti_log_set_level_by_label(tunnel_set_log_level_cmd.loglevel);
+                ziti_tunnel_set_log_level(ziti_log_level());
+                set_log_level(ziti_log_level_label());
+                ZITI_LOG(INFO, "Log level is set to %s", tunnel_set_log_level_cmd.loglevel);
             } else {
-                result.error = "invalid loglevel";
-                result.success = false;
+                ZITI_LOG(INFO, "Log level is already set to %s", tunnel_set_log_level_cmd.loglevel);
             }
+            result.success = true;
+
             break;
         }
         case TunnelCommand_UpdateTunIpv4: {
@@ -1100,7 +1094,7 @@ static void on_event(const base_event *ev) {
             ziti_service **zs;
 #if _WIN32
             model_map *hostnamesToAdd = calloc(1, sizeof(model_map));
-            model_map *hostnamesToRemove = calloc(1, sizeof(model_map));;
+            model_map *hostnamesToRemove = calloc(1, sizeof(model_map));
 #endif
             if (svc_ev->removed_services != NULL) {
                 int svc_array_length = 0;
@@ -1568,19 +1562,12 @@ static void run(int argc, char *argv[]) {
     // set ip info into instance
     set_ip_info(dns_ip, tun_ip, bits);
 
-    // set log level from instance/config, if NULL is returned, the default log level will be used
-    int log_lvl_val = ZITI_LOG_DEFAULT_LEVEL;
-    int log_lvl = get_log_level();
-    if (log_lvl != log_lvl_val) {
-        log_lvl_val = log_lvl;
-    }
-
     // set the service version in instance
     set_service_version();
 
 #if _WIN32
     if (init) {
-        ziti_log_init(ziti_loop, log_lvl_val, ziti_log_writer);
+        ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, ziti_log_writer);
         struct tm *start_time = get_log_start_time();
         char time_val[32];
         strftime(time_val, sizeof(time_val), "%a %b %d %Y, %X %p", start_time);
@@ -1598,8 +1585,13 @@ static void run(int argc, char *argv[]) {
     ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
 #endif
 
-    set_log_level(ziti_log_level());
+    // set log level from instance/config, if NULL is returned, the default log level will be used
+    char* log_lvl = get_log_level();
+    if (log_lvl != NULL) {
+        ziti_log_set_level_by_label(log_lvl);
+    }
     ziti_tunnel_set_log_level(ziti_log_level());
+    set_log_level(ziti_log_level_label());
     ziti_tunnel_set_logger(ziti_logger);
 
     if (ziti_loop == NULL) {
