@@ -175,7 +175,7 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
     size_t json_len;
     char *json = tunnel_result_to_json(result, MODEL_JSON_COMPACT, &json_len);
     ZITI_LOG(INFO, "resp[%d,len=%zd] = %.*s",
-            result->success, json_len, (int)json_len, json, result->data);
+            result->success, json_len, (int)json_len, json);
 
     if (result->success && result->data != NULL) {
         tunnel_command tnl_res_cmd = {0};
@@ -214,7 +214,7 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
                                 uv_async_send(ar);
                             } else {
                                 free(hostnamesToRemove);
-                            };
+                            }
                         }
 
 #endif
@@ -1076,7 +1076,7 @@ static void on_event(const base_event *ev) {
 
         case TunnelEvent_ServiceEvent: {
             const service_event *svc_ev = (service_event *) ev;
-            ZITI_LOG(INFO, "=============== ztx[%s] service event ===============", ev->identifier);
+            ZITI_LOG(VERBOSE, "=============== ztx[%s] service event ===============", ev->identifier);
             tunnel_identity *id = find_tunnel_identity(ev->identifier);
             if (id == NULL) {
                 break;
@@ -1832,7 +1832,7 @@ void on_connect(uv_connect_t* connect, int status){
     }
 }
 
-static uv_loop_t* connect_and_send_cmd(char sockfile[],uv_connect_t* connect, uv_pipe_t* client_handle) {
+static uv_loop_t* connect_and_send_cmd(char pipesockfile[],uv_connect_t* connect, uv_pipe_t* client_handle) {
     uv_loop_t* loop = uv_default_loop();
 
     int res = uv_pipe_init(loop, client_handle, 0);
@@ -1841,7 +1841,7 @@ static uv_loop_t* connect_and_send_cmd(char sockfile[],uv_connect_t* connect, uv
         return NULL;
     }
 
-    uv_pipe_connect(connect, client_handle, sockfile, on_connect);
+    uv_pipe_connect(connect, client_handle, pipesockfile, on_connect);
 
     return loop;
 }
@@ -2219,7 +2219,7 @@ static int update_tun_ip_opts(int argc, char *argv[]) {
                 tun_ip_v4_options->tunIP = optarg;
                 break;
             case 'p':
-                tun_ip_v4_options->prefixLength = (int) strtol(optarg, NULL, 10);;
+                tun_ip_v4_options->prefixLength = (int) strtol(optarg, NULL, 10);
                 break;
             case 'd':
                 if (strcmp(optarg, "true") == 0 || strcmp(optarg, "t") == 0 ) {
@@ -2430,7 +2430,7 @@ static CommandLine get_status_cmd = make_command("tunnel_status", "Get Tunnel St
 static CommandLine delete_id_cmd = make_command("delete", "delete the identities information", "[-i <identity>]",
                                                  "\t-i|--identity\tidentity info that needs to be deleted\n", delete_identity_opts, send_message_to_tunnel_fn);
 static CommandLine add_id_cmd = make_command("add", "enroll and load the identities information", "[-i <identity>]",
-                                                "\t-i|--identity\tidentity filename or jwt filename (without path)\n"
+                                                "\t-i|--identity\tjwt filename - with or without the extension (without path), used to name the identity file\n"
                                                 "\t-j|--jwt\tjwt content that needs to be enrolled\n", add_identity_opts, send_message_to_tunnel_fn);
 static CommandLine set_log_level_cmd = make_command("set_log_level", "Set log level of the tunneler", "-l <level>",
                                                     "\t-l|--loglevel\tlog level of the tunneler\n", set_log_level_opts, send_message_to_tunnel_fn);
