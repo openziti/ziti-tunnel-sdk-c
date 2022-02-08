@@ -51,7 +51,7 @@ static char* get_log_path() {
 #endif
 
     char* log_path = calloc(FILENAME_MAX, sizeof(char));
-    sprintf(log_path, "%s/logs", process_dir);
+    snprintf(log_path, FILENAME_MAX, "%s/logs", process_dir);
     int check;
 #if _WIN32
     mkdir(log_path);
@@ -71,7 +71,7 @@ static char* get_log_path() {
 char* get_base_filename() {
     char* log_path = get_log_path();
     char* temp_log_filename = calloc(FILENAME_MAX, sizeof(char));
-    sprintf(temp_log_filename, "%s/%s", log_path, log_filename_base);
+    snprintf(temp_log_filename, FILENAME_MAX, "%s/%s", log_path, log_filename_base);
     free(log_path);
     return temp_log_filename;
 }
@@ -334,7 +334,7 @@ static void delete_older_logs(uv_async_t *ar) {
         }
         if (old_log != NULL) {
             char logfile_to_delete[MAXPATHLEN];
-            sprintf(logfile_to_delete, "%s/%s", log_path, old_log);
+            snprintf(logfile_to_delete, MAXPATHLEN, "%s/%s", log_path, old_log);
             ZITI_LOG(INFO, "Deleting old log file %s", logfile_to_delete);
             remove(logfile_to_delete);
             rotation_index--;
