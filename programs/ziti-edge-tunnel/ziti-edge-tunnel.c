@@ -105,7 +105,6 @@ uv_loop_t *main_ziti_loop;
 static netif_driver tun;
 
 IMPL_ENUM(event, EVENT_ACTIONS)
-IMPL_ENUM(log_level, LOG_LEVEL)
 
 #if _WIN32
 static char sockfile[] = "\\\\.\\pipe\\ziti-edge-tunnel.sock";
@@ -2430,7 +2429,7 @@ static CommandLine get_status_cmd = make_command("tunnel_status", "Get Tunnel St
 static CommandLine delete_id_cmd = make_command("delete", "delete the identities information", "[-i <identity>]",
                                                  "\t-i|--identity\tidentity info that needs to be deleted\n", delete_identity_opts, send_message_to_tunnel_fn);
 static CommandLine add_id_cmd = make_command("add", "enroll and load the identities information", "[-i <identity>]",
-                                                "\t-i|--identity\tfile name which is used to name the identity file\n"
+                                                "\t-i|--identity\tfile name for the identity file that will be generated\n"
                                                 "\t-j|--jwt\tjwt content that needs to be enrolled\n", add_identity_opts, send_message_to_tunnel_fn);
 static CommandLine set_log_level_cmd = make_command("set_log_level", "Set log level of the tunneler", "-l <level>",
                                                     "\t-l|--loglevel\tlog level of the tunneler\n", set_log_level_opts, send_message_to_tunnel_fn);

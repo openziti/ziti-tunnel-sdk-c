@@ -494,8 +494,8 @@ void initialize_tunnel_status() {
     uv_gettimeofday(&now);
     tnl_status.StartTime.tv_sec = now.tv_sec;
     tnl_status.StartTime.tv_usec = now.tv_usec;
-    if (tnl_status.LogLevel == log_level_Unknown) {
-        tnl_status.LogLevel = log_level_info;
+    if (tnl_status.LogLevel == NULL) {
+        tnl_status.LogLevel = "info";
     }
 }
 
@@ -568,7 +568,7 @@ char *get_tunnel_config(size_t *json_len) {
     tnl_config.ServiceVersion = tnl_sts->ServiceVersion;
     tnl_config.TunIpv4 = tnl_sts->TunIpv4;
     tnl_config.TunPrefixLength = tnl_sts->TunPrefixLength;
-    tnl_config.LogLevel = tnl_sts->LogLevel;
+    tnl_config.LogLevel = strdup(tnl_sts->LogLevel);
     tnl_config.AddDns = tnl_sts->AddDns;
     tnl_config.Status = tnl_sts->Status;
 
