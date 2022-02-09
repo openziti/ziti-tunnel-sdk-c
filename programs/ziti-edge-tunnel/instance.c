@@ -640,6 +640,9 @@ void set_ip_info(uint32_t dns_ip, uint32_t tun_ip, int bits) {
 }
 
 void set_log_level(char* log_level) {
+    if (log_level == NULL) {
+        return;
+    }
     if (tnl_status.LogLevel) {
         free(tnl_status.LogLevel);
     }
