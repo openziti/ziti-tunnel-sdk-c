@@ -105,7 +105,6 @@ uv_loop_t *main_ziti_loop;
 static netif_driver tun;
 
 IMPL_ENUM(event, EVENT_ACTIONS)
-IMPL_ENUM(log_level, LOG_LEVEL)
 
 #if _WIN32
 static char sockfile[] = "\\\\.\\pipe\\ziti-edge-tunnel.sock";
@@ -304,6 +303,7 @@ void tunnel_enroll_cb(ziti_config *cfg, int status, char *err, void *ctx) {
     tunnel_load_identity *load_identity_options = calloc(1, sizeof(tunnel_load_identity));
     load_identity_options->identifier = strdup(add_id_req->identifier);
     load_identity_options->path = strdup(add_id_req->identifier);
+    load_identity_options->apiPageSize = get_api_page_size();
     size_t json_len;
     tnl_cmd->data = tunnel_load_identity_to_json(load_identity_options, MODEL_JSON_COMPACT, &json_len);
     send_tunnel_command(tnl_cmd, add_id_req->cmd_ctx);
@@ -1002,7 +1002,7 @@ static void load_identities_complete(uv_work_t * wr, int status) {
         struct cfg_instance_s *inst = LIST_FIRST(&load_list);
         LIST_REMOVE(inst, _next);
 
-        CMD_CTRL->load_identity(NULL, inst->cfg, load_id_cb, inst);
+        CMD_CTRL->load_identity(NULL, inst->cfg, get_api_page_size(), load_id_cb, inst);
         identity_loaded = true;
     }
     if (identity_loaded) {
@@ -1616,7 +1616,7 @@ static void run(int argc, char *argv[]) {
 #endif
 
     // set log level from instance/config, if NULL is returned, the default log level will be used
-    char* log_lvl = get_log_level();
+    const char* log_lvl = get_log_level();
     if (log_lvl != NULL) {
         ziti_log_set_level_by_label(log_lvl);
     }

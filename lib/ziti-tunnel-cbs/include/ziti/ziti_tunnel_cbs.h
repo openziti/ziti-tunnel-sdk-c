@@ -76,7 +76,8 @@ XX(code, int, none, Code, __VA_ARGS__)
 
 #define TNL_LOAD_IDENTITY(XX, ...) \
 XX(identifier, string, none, Identifier, __VA_ARGS__)\
-XX(path, string, none, Path, __VA_ARGS__)
+XX(path, string, none, Path, __VA_ARGS__) \
+XX(apiPageSize, int, none, ApiPageSize, __VA_ARGS__)
 
 #define TNL_ON_OFF_IDENTITY(XX, ...) \
 XX(identifier, string, none, Identifier, __VA_ARGS__) \
@@ -268,7 +269,7 @@ typedef void (*event_cb)(const base_event* event);
 typedef void (*command_cb)(const tunnel_result *, void *ctx);
 typedef struct {
     int (*process)(const tunnel_command *cmd, command_cb cb, void *ctx);
-    int (*load_identity)(const char *identifier, const char *path, command_cb, void *ctx);
+    int (*load_identity)(const char *identifier, const char *path, int api_page_size, command_cb, void *ctx);
     // do not use, temporary accessor
     ziti_context (*get_ziti)(const char *identifier);
 } ziti_tunnel_ctrl;
