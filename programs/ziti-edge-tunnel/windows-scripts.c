@@ -179,6 +179,8 @@ void chunked_add_nrpt_rules(uv_loop_t *ziti_loop, hostname_list_t *hostnames, ch
     bool result = exec_process(ziti_loop, args[0], args);
     if (!result) {
         ZITI_LOG(WARN, "Add domains NRPT script: %d(err=%d)", result, GetLastError());
+    } else {
+        ZITI_LOG(DEBUG, "Added domains using NRPT script");
     }
     free(script);
 }
@@ -246,7 +248,7 @@ void chunked_remove_nrpt_rules(uv_loop_t *ziti_loop, hostname_list_t *hostnames)
 
     while(!LIST_EMPTY(hostnames)) {
         struct hostname_s *hostname = LIST_FIRST(hostnames);
-        buf_len = snprintf(script + copied, (MAX_POWERSHELL_SCRIPT_LEN - copied), namespace_template, "\n", hostname);
+        buf_len = snprintf(script + copied, (MAX_POWERSHELL_SCRIPT_LEN - copied), namespace_template, "\n", hostname->hostname);
         copied += buf_len;
         domains_size++;
         LIST_REMOVE(hostname, _next);
@@ -299,6 +301,8 @@ void chunked_remove_nrpt_rules(uv_loop_t *ziti_loop, hostname_list_t *hostnames)
     bool result = exec_process(ziti_loop, args[0], args);
     if (!result) {
         ZITI_LOG(WARN, "Remove domains NRPT script: %s(err=%d)", result, GetLastError());
+    } else {
+        ZITI_LOG(DEBUG, "Removed domains using NRPT script");
     }
     free(script);
 }
@@ -364,12 +368,14 @@ void remove_and_add_nrpt_rules(uv_async_t *ar) {
     uv_loop_t *nrpt_loop = ar->loop;
 
     struct add_service_nrpt_req *add_svc_req_data = calloc(1, sizeof(struct add_service_nrpt_req));
+    add_svc_req_data->hostnames = modify_svc_req_data->hostnamesToAdd;
+    add_svc_req_data->dns_ip = modify_svc_req_data->dns_ip;
 
     uv_close((uv_handle_t *) ar, (uv_close_cb) free);
 
     remove_nrpt_rules_script(nrpt_loop, modify_svc_req_data->hostnamesToRemove);
     add_nrpt_rules_script(nrpt_loop, add_svc_req_data);
-
+    free(modify_svc_req_data);
 }
 
 void remove_single_nrpt_rule(char* nrpt_rule) {
@@ -381,6 +387,8 @@ void remove_single_nrpt_rule(char* nrpt_rule) {
     int rc = system(remove_cmd);
     if (rc != 0) {
         ZITI_LOG(WARN, "Delete single NRPT rule: %d(err=%d)", rc, GetLastError());
+    } else {
+        ZITI_LOG(DEBUG, "Removed nrpt rules");
     }
 }
 
@@ -468,6 +476,8 @@ void update_interface_metric(uv_loop_t *ziti_loop, char* tun_name, int metric) {
     bool result = exec_process(ziti_loop, args[0], args);
     if (!result) {
         ZITI_LOG(WARN, "Update Interface metric script: %d(err=%d)", result, GetLastError());
+    } else {
+        ZITI_LOG(DEBUG, "Updated Interface metric");
     }
     free(script);
 }
@@ -490,6 +500,8 @@ void update_symlink(uv_loop_t *symlink_loop, char* symlink, char* filename) {
     bool result = exec_process(symlink_loop, args[0], args);
     if (!result) {
         ZITI_LOG(WARN, "Update symlink script: %d(err=%d)", result, GetLastError());
+    } else {
+        ZITI_LOG(DEBUG, "Updated symlink script");
     }
     free(script);
 }

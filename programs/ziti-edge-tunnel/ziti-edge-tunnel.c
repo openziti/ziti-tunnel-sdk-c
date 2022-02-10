@@ -176,7 +176,7 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
     ZITI_LOG(INFO, "resp[%d,len=%zd] = %.*s",
             result->success, json_len, (int)json_len, json);
 
-    if (result->success && result->data != NULL) {
+    if (result->data != NULL) {
         tunnel_command tnl_res_cmd = {0};
         if (parse_tunnel_command(&tnl_res_cmd, result->data, strlen(result->data)) >= 0) {
             switch (tnl_res_cmd.command) {
@@ -217,14 +217,18 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
                         }
 
 #endif
+                        delete_identity_from_instance(tnl_delete_id.identifier);
+                        free_tunnel_delete_identity(&tnl_delete_id);
+                        // should be the last line in this function as it calls the mutex/lock
+                        save_tunnel_status_to_file();
                     }
-                    delete_identity_from_instance(tnl_delete_id.identifier);
-                    free_tunnel_delete_identity(&tnl_delete_id);
-                    // should be the last line in this function as it calls the mutex/lock
-                    save_tunnel_status_to_file();
+
                     break;
                 }
                 case TunnelCommand_IdentityOnOff: {
+                    if (!result->success) {
+                        break;
+                    }
                     tunnel_on_off_identity on_off_id;
                     if (tnl_res_cmd.data == NULL || parse_tunnel_on_off_identity(&on_off_id, tnl_res_cmd.data, strlen(tnl_res_cmd.data)) < 0) {
                         free_tunnel_on_off_identity(&on_off_id);
@@ -262,6 +266,7 @@ void tunnel_enroll_cb(ziti_config *cfg, int status, char *err, void *ctx) {
             .success = false,
             .error = NULL,
             .data = NULL,
+            .code = IPC_ERROR,
     };
 
     if (status != ZITI_OK) {
@@ -324,6 +329,7 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
             .success = false,
             .error = NULL,
             .data = NULL,
+            .code = IPC_ERROR,
     };
     bool cmd_accepted = false;
     switch (tnl_cmd->command) {
@@ -346,6 +352,7 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
                 ZITI_LOG(INFO, "Log level is already set to %s", tunnel_set_log_level_cmd.loglevel);
             }
             result.success = true;
+            result.code = IPC_SUCCESS;
 
             break;
         }
@@ -414,12 +421,14 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
             }
             set_tun_ipv4_into_instance(tunnel_tun_ip_v4_cmd.tunIP, tunnel_tun_ip_v4_cmd.prefixLength, tunnel_tun_ip_v4_cmd.addDns);
             result.success = true;
+            result.code = IPC_SUCCESS;
             break;
         }
         case TunnelCommand_Status: {
             cmd_accepted = true;
             tunnel_status* status = get_tunnel_status();
             result.success = true;
+            result.code = IPC_SUCCESS;
             size_t json_len;
             result.data = tunnel_status_to_json(status, MODEL_JSON_COMPACT, &json_len);
             break;
@@ -529,7 +538,8 @@ static void on_cmd(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
         } else {
             tunnel_result resp = {
                     .success = false,
-                    .error = "failed to parse command"
+                    .error = "failed to parse command",
+                    .code = IPC_ERROR,
             };
             on_command_resp(&resp, s);
         }
@@ -878,7 +888,7 @@ static void broadcast_metrics(uv_timer_t *timer) {
         model_map notification_map = {0};
         for(idx = 0; metrics_event.Identities[idx]; idx++) {
             tnl_id = metrics_event.Identities[idx];
-            if (tnl_id->Active && tnl_id->Loaded && tnl_id->Status) {
+            if (tnl_id->Active && tnl_id->Loaded && tnl_id->IdFileStatus) {
                 active_identities = true;
 
                 tunnel_command *tnl_cmd = calloc(1, sizeof(tunnel_command));

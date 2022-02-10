@@ -165,6 +165,7 @@ bool is_null(const void * field, char* message, tunnel_result* result) {
     if (field == NULL) {
         result->error = message;
         result->success = false;
+        result->code = IPC_ERROR;
         return true;
     } else {
         return false;
@@ -176,6 +177,7 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
             .success = false,
             .error = NULL,
             .data = NULL,
+            .code = IPC_ERROR,
     };
     ZITI_LOG(DEBUG, "processing command[%s] with data[%s]", TunnelCommands.name(cmd->command), cmd->data);
     switch (cmd->command) {
@@ -210,6 +212,7 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
 
             result.data = tunnel_identity_list_to_json(&id_list, MODEL_JSON_COMPACT, NULL);
             result.success = true;
+            result.code = IPC_SUCCESS;
 
             cb(&result, ctx);
 
@@ -240,6 +243,7 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
             ziti_set_enabled(inst->ztx, on_off_id.onOff);
             result.data = tunnel_command_to_json(cmd, MODEL_JSON_COMPACT, NULL);
             result.success = true;
+            result.code = IPC_SUCCESS;
 
             cb(&result, ctx);
             free_tunnel_on_off_identity(&on_off_id);
@@ -276,6 +280,7 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
                     ziti_dump_to_file(inst->ztx, dump_file);
                 }
                 result.success = true;
+                result.code = IPC_SUCCESS;
             }
             if (!result.success) {
                 char errorMsg[1024];
@@ -498,6 +503,8 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
                 free_tunnel_delete_identity(&delete_id);
                 break;
             }
+            result.data = tunnel_command_to_json(cmd, MODEL_JSON_COMPACT, NULL);
+
             if (is_null(delete_id.identifier, "Identifier info is not found in the remove identity request", &result)) {
                 free_tunnel_delete_identity(&delete_id);
                 break;
@@ -514,7 +521,7 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
             }
             model_map_remove(&instances, delete_id.identifier);
             result.success = true;
-            result.data = tunnel_command_to_json(cmd, MODEL_JSON_COMPACT, NULL);
+            result.code = IPC_SUCCESS;
 
             free_tunnel_delete_identity(&delete_id);
             break;
@@ -588,6 +595,7 @@ static void get_transfer_rates(const char *identifier, command_cb cb, void *ctx)
 
     tunnel_result result = {0};
     result.success = true;
+    result.code = IPC_SUCCESS;
     size_t json_len;
     char *json = tunnel_identity_metrics_to_json(id_metrics, MODEL_JSON_COMPACT, &json_len);
     result.data = json;
@@ -766,6 +774,7 @@ static void load_ziti_async(uv_async_t *ar) {
     tunnel_result result = {
             .success = true,
             .error = NULL,
+            .code = IPC_SUCCESS,
     };
 
     char *config_path = realpath(inst->opts.config, NULL);
@@ -774,6 +783,7 @@ static void load_ziti_async(uv_async_t *ar) {
         ZITI_LOG(WARN, "ziti context already loaded for %s", inst->opts.config);
         result.success = false;
         result.error = "context already loaded";
+        result.code = IPC_ERROR;
     } else {
         ZITI_LOG(INFO, "loading ziti instance from %s", config_path);
         inst->opts.app_ctx = inst;
@@ -782,6 +792,7 @@ static void load_ziti_async(uv_async_t *ar) {
         } else {
             result.success = false;
             result.error = "failed to initialize ziti";
+            result.code = IPC_ERROR;
         }
     }
 
@@ -825,8 +836,10 @@ static void on_submit_mfa(ziti_context ztx, int status, void *ctx) {
     if (status != ZITI_OK) {
         result.success = false;
         result.error = (char*)ziti_errorstr(status);
+        result.code = IPC_ERROR;
     } else {
         result.success = true;
+        result.code = IPC_SUCCESS;
     }
 
     if (req->cmd_cb) {
@@ -860,8 +873,10 @@ static void on_enable_mfa(ziti_context ztx, int status, ziti_mfa_enrollment *enr
     if (status != ZITI_OK) {
         result.success = false;
         result.error = (char*)ziti_errorstr(status);
+        result.code = IPC_ERROR;
     } else {
         result.success = true;
+        result.code = IPC_SUCCESS;
 
         tunnel_mfa_enrol_res enrol_res = {0};
         enrol_res.identifier = strdup(req->ctx);
@@ -909,8 +924,10 @@ static void on_verify_mfa(ziti_context ztx, int status, void *ctx) {
     if (status != ZITI_OK) {
         result.success = false;
         result.error = (char*)ziti_errorstr(status);
+        result.code = IPC_ERROR;
     } else {
         result.success = true;
+        result.code = IPC_SUCCESS;
     }
     if (req->cmd_cb) {
         req->cmd_cb(&result, req->cmd_ctx);
@@ -936,8 +953,10 @@ static void on_remove_mfa(ziti_context ztx, int status, void *ctx) {
     if (status != ZITI_OK) {
         result.success = false;
         result.error = (char*)ziti_errorstr(status);
+        result.code = IPC_ERROR;
     } else {
         result.success = true;
+        result.code = IPC_SUCCESS;
     }
     if (req->cmd_cb) {
         req->cmd_cb(&result, req->cmd_ctx);
@@ -962,8 +981,10 @@ static void on_mfa_recovery_codes(ziti_context ztx, int status, char **recovery_
     if (status != ZITI_OK) {
         result.success = false;
         result.error = (char*)ziti_errorstr(status);
+        result.code = IPC_ERROR;
     } else {
         result.success = true;
+        result.code = IPC_SUCCESS;
 
         tunnel_mfa_recovery_codes mfa_recovery_codes = {0};
         mfa_recovery_codes.identifier = req->ctx;
