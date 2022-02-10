@@ -58,7 +58,7 @@ void delete_identity_from_instance(char* identifier);
 
 void set_ip_info(uint32_t dns_ip, uint32_t tun_ip, int bits);
 
-void set_log_level(int log_level);
+void set_log_level(char* log_level);
 
 void set_service_version();
 
@@ -73,6 +73,8 @@ char* get_ip_range_from_config();
 char* get_dns_ip();
 
 bool get_add_dns_flag();
+
+char *get_tunnel_config(size_t *json_len);
 
 #ifdef __cplusplus
 }

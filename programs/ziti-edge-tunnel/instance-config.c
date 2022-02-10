@@ -106,9 +106,8 @@ bool load_tunnel_status_from_file(uv_loop_t* ziti_loop) {
 }
 
 bool save_tunnel_status_to_file() {
-    tunnel_status* stat = get_tunnel_status();
     size_t json_len;
-    char* tunnel_status = tunnel_status_to_json(stat, 0, &json_len);
+    char* tunnel_status = get_tunnel_config(&json_len);
     bool saved = false;
 
     if (json_len > 0) {

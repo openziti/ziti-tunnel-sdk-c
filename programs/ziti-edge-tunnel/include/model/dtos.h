@@ -85,14 +85,6 @@ XX(IsAccessible, bool, none, IsAccessible, __VA_ARGS__) \
 XX(Timeout, int, none, Timeout, __VA_ARGS__)         \
 XX(TimeoutRemaining, int, none, TimeoutRemaining, __VA_ARGS__)
 
-#define LOG_LEVEL(XX, ...) \
-XX(error, __VA_ARGS__) \
-XX(warn, __VA_ARGS__) \
-XX(info, __VA_ARGS__) \
-XX(debug, __VA_ARGS__) \
-XX(verbose, __VA_ARGS__) \
-XX(trace, __VA_ARGS__)
-
 #define TUNNEL_STATUS(XX, ...) \
 XX(Active, bool, none, Active, __VA_ARGS__) \
 XX(Duration, int, none, Duration, __VA_ARGS__) \
@@ -137,7 +129,6 @@ DECLARE_MODEL(tunnel_service, TUNNEL_SERVICE)
 DECLARE_MODEL(tunnel_identity, TUNNEL_IDENTITY)
 DECLARE_MODEL(ip_info, IP_INFO)
 DECLARE_MODEL(service_version, SERVICE_VERSION)
-DECLARE_ENUM(log_level, LOG_LEVEL)
 DECLARE_MODEL(tunnel_status, TUNNEL_STATUS)
 
 #ifdef __cplusplus

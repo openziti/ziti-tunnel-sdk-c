@@ -29,8 +29,7 @@ extern "C" {
 
 bool open_log(char* log_filename);
 void close_log();
-void rotate_log();
-void delete_older_logs(uv_loop_t *);
+bool rotate_log();
 void stop_log_check();
 struct tm* get_log_start_time();
 char* get_log_file_name();

@@ -105,7 +105,6 @@ uv_loop_t *main_ziti_loop;
 static netif_driver tun;
 
 IMPL_ENUM(event, EVENT_ACTIONS)
-IMPL_ENUM(log_level, LOG_LEVEL)
 
 #if _WIN32
 static char sockfile[] = "\\\\.\\pipe\\ziti-edge-tunnel.sock";
@@ -175,14 +174,14 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
     size_t json_len;
     char *json = tunnel_result_to_json(result, MODEL_JSON_COMPACT, &json_len);
     ZITI_LOG(INFO, "resp[%d,len=%zd] = %.*s",
-            result->success, json_len, (int)json_len, json, result->data);
+            result->success, json_len, (int)json_len, json);
 
     if (result->success && result->data != NULL) {
         tunnel_command tnl_res_cmd = {0};
         if (parse_tunnel_command(&tnl_res_cmd, result->data, strlen(result->data)) >= 0) {
             switch (tnl_res_cmd.command) {
                 case TunnelCommand_RemoveIdentity: {
-                    tunnel_delete_identity tnl_delete_id = {0};
+                    tunnel_delete_identity tnl_delete_id;
                     if (tnl_res_cmd.data != NULL && parse_tunnel_delete_identity(&tnl_delete_id, tnl_res_cmd.data, strlen(tnl_res_cmd.data)) >= 0) {
                         if (tnl_delete_id.identifier == NULL) {
                             ZITI_LOG(ERROR, "Identity filename is not found in the remove identity request, not deleting the identity file");
@@ -192,9 +191,9 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
                         remove(tnl_delete_id.identifier);
                         ZITI_LOG(INFO, "Identity file %s is deleted",tnl_delete_id.identifier);
 #if _WIN32
-                        model_map *hostnamesToRemove = calloc(1, sizeof(model_map));
                         tunnel_identity *id = create_or_get_tunnel_identity(tnl_delete_id.identifier, NULL);
                         if (id->Services) {
+                            model_map *hostnamesToRemove = calloc(1, sizeof(model_map));
                             for (int index=0 ; id->Services[index]; index++ ) {
                                 tunnel_service *tnl_svc = id->Services[index];
                                 if (tnl_svc->Addresses != NULL) {
@@ -206,16 +205,17 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
                                     }
                                 }
                             }
+
+                            if (model_map_size(hostnamesToRemove) > 0) {
+                                uv_async_t *ar = calloc(1, sizeof(uv_async_t));
+                                ar->data = hostnamesToRemove;
+                                uv_async_init(main_ziti_loop, ar, remove_nrpt_rules);
+                                uv_async_send(ar);
+                            } else {
+                                free(hostnamesToRemove);
+                            }
                         }
 
-                        if (model_map_size(hostnamesToRemove) > 0) {
-                            uv_async_t *ar = calloc(1, sizeof(uv_async_t));
-                            ar->data = hostnamesToRemove;
-                            uv_async_init(main_ziti_loop, ar, remove_nrpt_rules);
-                            uv_async_send(ar);
-                        } else {
-                            free(hostnamesToRemove);
-                        };
 #endif
                     }
                     delete_identity_from_instance(tnl_delete_id.identifier);
@@ -225,16 +225,14 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
                     break;
                 }
                 case TunnelCommand_IdentityOnOff: {
-                    tunnel_on_off_identity on_off_id = {0};
+                    tunnel_on_off_identity on_off_id;
                     if (tnl_res_cmd.data == NULL || parse_tunnel_on_off_identity(&on_off_id, tnl_res_cmd.data, strlen(tnl_res_cmd.data)) < 0) {
                         free_tunnel_on_off_identity(&on_off_id);
                         break;
                     }
                     set_ziti_status(on_off_id.onOff, on_off_id.identifier);
-#if _WIN32
                     // should be the last line in this function as it calls the mutex/lock
                     save_tunnel_status_to_file();
-#endif
                     break;
                 }
                 case TunnelCommand_Unknown: {
@@ -485,18 +483,12 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
     }
     if (cmd_accepted) {
         cb(&result, ctx);
-#if _WIN32
         if (result.success) {
             // should be the last line in this function as it calls the mutex/lock
             save_tunnel_status_to_file();
         }
-#endif
         if (result.data) {
             free(result.data);
-        }
-        if (result.success) {
-            // should be the last line in this function as it calls the mutex/lock
-            save_tunnel_status_to_file();
         }
         return true;
     } else {
@@ -1083,7 +1075,7 @@ static void on_event(const base_event *ev) {
 
         case TunnelEvent_ServiceEvent: {
             const service_event *svc_ev = (service_event *) ev;
-            ZITI_LOG(INFO, "=============== ztx[%s] service event ===============", ev->identifier);
+            ZITI_LOG(VERBOSE, "=============== ztx[%s] service event ===============", ev->identifier);
             tunnel_identity *id = find_tunnel_identity(ev->identifier);
             if (id == NULL) {
                 break;
@@ -1114,6 +1106,7 @@ static void on_event(const base_event *ev) {
                     if (svc == NULL) {
                         svc = get_tunnel_service(id, svc_ev->removed_services[svc_idx]);
                     }
+                    ZITI_LOG(INFO, "=============== service event (removed) - %s:%s ===============", svc->Name, svc->Id);
 #if _WIN32
                     if (svc->Addresses != NULL) {
                         for (int i = 0; svc->Addresses[i]; i++) {
@@ -1137,6 +1130,7 @@ static void on_event(const base_event *ev) {
                 for (int svc_idx = 0; svc_ev->added_services[svc_idx]; svc_idx++) {
                     tunnel_service *svc = get_tunnel_service(id, svc_ev->added_services[svc_idx]);
                     svc_event.AddedServices[svc_idx] = svc;
+                    ZITI_LOG(INFO, "=============== service event (added) - %s:%s ===============", svc->Name, svc->Id);
 #if _WIN32
                     if (svc->Addresses != NULL) {
                         for (int i = 0; svc->Addresses[i]; i++) {
@@ -1837,7 +1831,7 @@ void on_connect(uv_connect_t* connect, int status){
     }
 }
 
-static uv_loop_t* connect_and_send_cmd(char sockfile[],uv_connect_t* connect, uv_pipe_t* client_handle) {
+static uv_loop_t* connect_and_send_cmd(char pipesockfile[],uv_connect_t* connect, uv_pipe_t* client_handle) {
     uv_loop_t* loop = uv_default_loop();
 
     int res = uv_pipe_init(loop, client_handle, 0);
@@ -1846,7 +1840,7 @@ static uv_loop_t* connect_and_send_cmd(char sockfile[],uv_connect_t* connect, uv
         return NULL;
     }
 
-    uv_pipe_connect(connect, client_handle, sockfile, on_connect);
+    uv_pipe_connect(connect, client_handle, pipesockfile, on_connect);
 
     return loop;
 }
@@ -2224,7 +2218,7 @@ static int update_tun_ip_opts(int argc, char *argv[]) {
                 tun_ip_v4_options->tunIP = optarg;
                 break;
             case 'p':
-                tun_ip_v4_options->prefixLength = (int) strtol(optarg, NULL, 10);;
+                tun_ip_v4_options->prefixLength = (int) strtol(optarg, NULL, 10);
                 break;
             case 'd':
                 if (strcmp(optarg, "true") == 0 || strcmp(optarg, "t") == 0 ) {
@@ -2435,7 +2429,7 @@ static CommandLine get_status_cmd = make_command("tunnel_status", "Get Tunnel St
 static CommandLine delete_id_cmd = make_command("delete", "delete the identities information", "[-i <identity>]",
                                                  "\t-i|--identity\tidentity info that needs to be deleted\n", delete_identity_opts, send_message_to_tunnel_fn);
 static CommandLine add_id_cmd = make_command("add", "enroll and load the identities information", "[-i <identity>]",
-                                                "\t-i|--identity\tidentity info that needs to be enabled\n"
+                                                "\t-i|--identity\tfile name for the identity file that will be generated\n"
                                                 "\t-j|--jwt\tjwt content that needs to be enrolled\n", add_identity_opts, send_message_to_tunnel_fn);
 static CommandLine set_log_level_cmd = make_command("set_log_level", "Set log level of the tunneler", "-l <level>",
                                                     "\t-l|--loglevel\tlog level of the tunneler\n", set_log_level_opts, send_message_to_tunnel_fn);

@@ -18,7 +18,6 @@
 #include <ziti/ziti_log.h>
 #include <time.h>
 #include <config-utils.h>
-#include "model/events.h"
 #include "lwip/ip_addr.h"
 #include "ziti/ziti_tunnel.h"
 
@@ -67,10 +66,8 @@ tunnel_identity *create_or_get_tunnel_identity(char* identifier, char* filename)
             fingerprint[length] = '\0';
             snprintf(tnl_id->FingerPrint, length+1, "%s", fingerprint);
 
-            if (tnl_id->Name == NULL) {
-                tnl_id->Name = calloc(length + 1, sizeof(char));
-                snprintf(tnl_id->Name, length+1, "%s", fingerprint);
-            }
+            tnl_id->Name = calloc(length + 1, sizeof(char));
+            snprintf(tnl_id->Name, length+1, "%s", fingerprint);
 
             tnl_id->Status = true;
 
@@ -208,7 +205,7 @@ static void setTunnelPostureDataTimeout(tunnel_service *tnl_svc, ziti_service *s
     const char *key;
     MODEL_MAP_FOREACH(key, pqs, &service->posture_query_map) {
 
-        if (pqs->policy_type == "Bind") {
+        if (strcmp(pqs->policy_type, "Bind") == 0) {
             ZITI_LOG(TRACE, "Posture Query set returned a Bind policy: %s [ignored]", pqs->policy_id);
             continue;
         } else {
@@ -497,8 +494,8 @@ void initialize_tunnel_status() {
     uv_gettimeofday(&now);
     tnl_status.StartTime.tv_sec = now.tv_sec;
     tnl_status.StartTime.tv_usec = now.tv_usec;
-    if (tnl_status.LogLevel == log_level_Unknown) {
-        tnl_status.LogLevel = log_level_info;
+    if (tnl_status.LogLevel == NULL) {
+        tnl_status.LogLevel = "info";
     }
 }
 
@@ -534,6 +531,64 @@ tunnel_status *get_tunnel_status() {
     }
 
     return &tnl_status;
+}
+
+char *get_tunnel_config(size_t *json_len) {
+    tunnel_status tnl_config = {0};
+    tunnel_status *tnl_sts = get_tunnel_status();
+    tnl_config.Active = tnl_sts->Active;
+    tnl_config.Duration = tnl_sts->Duration;
+    tnl_config.StartTime = tnl_sts->StartTime;
+
+    tunnel_identity_array tnl_id_arr_config = NULL;
+
+    for (int i =0; tnl_sts->Identities[i]; i++) {
+        if (i == 0) {
+            tnl_id_arr_config = calloc(model_map_size(&tnl_identity_map) + 1, sizeof(tunnel_identity*));
+        }
+
+        tunnel_identity* id = tnl_sts->Identities[i];
+        tunnel_identity *id_new = calloc(1, sizeof(tunnel_identity));
+        id_new->Identifier = id->Identifier;
+        id_new->FingerPrint = id->FingerPrint;
+        id_new->Name = id->Name;
+        id_new->MfaEnabled = id->MfaEnabled;
+        id_new->MfaNeeded = id->MfaNeeded;
+        id_new->Active = id->Active;
+        id_new->Loaded = id->Loaded;
+        id_new->Config = id-> Config;
+        id_new->ControllerVersion = id->ControllerVersion;
+        tnl_id_arr_config[i] = id_new;
+    }
+
+    if (tnl_id_arr_config != NULL) {
+        tnl_config.Identities = tnl_id_arr_config;
+    }
+    tnl_config.IpInfo = tnl_sts->IpInfo;
+    tnl_config.ServiceVersion = tnl_sts->ServiceVersion;
+    tnl_config.TunIpv4 = tnl_sts->TunIpv4;
+    tnl_config.TunPrefixLength = tnl_sts->TunPrefixLength;
+    tnl_config.LogLevel = strdup(tnl_sts->LogLevel);
+    tnl_config.AddDns = tnl_sts->AddDns;
+    tnl_config.Status = tnl_sts->Status;
+
+    char* tunnel_config_json = tunnel_status_to_json(&tnl_config, 0, json_len);
+
+    //free up space
+    if (tnl_id_arr_config != NULL) {
+        for(int i=0; tnl_config.Identities[i]; i++){
+            free(tnl_config.Identities[i]);
+        }
+        free(tnl_config.Identities);
+        tnl_config.Identities = NULL;
+    }
+    tnl_config.IpInfo = NULL;
+    tnl_config.ServiceVersion = NULL;
+    tnl_config.TunIpv4 = NULL;
+    tnl_config.Status = NULL;
+    free_tunnel_status(&tnl_config);
+
+    return tunnel_config_json;
 }
 
 void set_mfa_status(char* identifier, bool mfa_enabled, bool mfa_needed) {
@@ -585,6 +640,9 @@ void set_ip_info(uint32_t dns_ip, uint32_t tun_ip, int bits) {
 }
 
 void set_log_level(char* log_level) {
+    if (log_level == NULL) {
+        return;
+    }
     if (tnl_status.LogLevel) {
         free(tnl_status.LogLevel);
     }
