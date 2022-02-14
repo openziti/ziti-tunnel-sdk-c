@@ -201,7 +201,7 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
                                     for (int i = 0; tnl_svc->Addresses[i]; i++) {
                                         tunnel_address *addr = tnl_svc->Addresses[i];
                                         if (addr->IsHost && model_map_get(hostnamesToRemove, addr->HostName) == NULL) {
-                                            model_map_set(hostnamesToRemove, addr->HostName, true);
+                                            model_map_set(hostnamesToRemove, addr->HostName, "TRUE");
                                         }
                                     }
                                 }
@@ -1124,7 +1124,7 @@ static void on_event(const base_event *ev) {
                         for (int i = 0; svc->Addresses[i]; i++) {
                             tunnel_address *addr = svc->Addresses[i];
                             if (addr->IsHost && model_map_get(hostnamesToRemove, addr->HostName) == NULL) {
-                                model_map_set(hostnamesToRemove, addr->HostName, true);
+                                model_map_set(hostnamesToRemove, addr->HostName, "TRUE");
                             }
                         }
                     }
@@ -1149,9 +1149,9 @@ static void on_event(const base_event *ev) {
                             tunnel_address *addr = svc->Addresses[i];
                             if (addr->IsHost && model_map_get(hostnamesToAdd, addr->HostName) == NULL) {
                                 if (model_map_get(hostnamesToRemove, addr->HostName) != NULL) {
-                                    model_map_set(hostnamesToEdit, addr->HostName, true);
+                                    model_map_set(hostnamesToEdit, addr->HostName, "TRUE");
                                 } else {
-                                    model_map_set(hostnamesToAdd, addr->HostName, true);
+                                    model_map_set(hostnamesToAdd, addr->HostName, "TRUE");
                                 }
                             }
                         }
@@ -1166,7 +1166,7 @@ static void on_event(const base_event *ev) {
             if (model_map_size(hostnamesToEdit) > 0) {
                 model_map_iter it = model_map_iterator(hostnamesToRemove);
                 while (it != NULL) {
-                    char *key = model_map_it_key(it);
+                    const char *key = model_map_it_key(it);
                     if (model_map_get(hostnamesToEdit, key) != NULL) {
                         it = model_map_it_remove(it);
                     } else {
@@ -1378,12 +1378,11 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     }
     if (nrpt_effective) {
         model_map *domains = get_connection_specific_domains();
-        const char *key;
         bool status;
         model_map *normalized_domains = calloc(1, sizeof(model_map));
         model_map_iter it = model_map_iterator(domains);
         while (it != NULL) {
-            char *key = model_map_it_key(it);
+            const char *key = model_map_it_key(it);
             model_map_set(normalized_domains, normalize_host(key), NULL);
             it = model_map_it_remove(it);
         }
