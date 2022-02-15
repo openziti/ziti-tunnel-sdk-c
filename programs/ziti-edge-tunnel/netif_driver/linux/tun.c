@@ -199,6 +199,7 @@ static void dns_update_systemd_resolve(const char* tun, const char* addr) {
         domain = "--set-domain=~.";
         run_command("systemd-resolve -i %s %s", dns_maintainer.tun_name, domain);
     }
+    run_command("systemd-resolve --flush-caches");
 }
 
 static void dns_update_resolvconf(const char* tun, const char* addr) {
