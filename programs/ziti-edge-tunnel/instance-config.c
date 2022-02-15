@@ -118,7 +118,23 @@ bool save_tunnel_status_to_file() {
         char* bkp_config_file_name = get_backup_config_file_name(config_path);
 
         if (mutex_initialized) {
-            uv_mutex_lock(&mutex);
+            int res = -1;
+            int try_count = 0;
+            do {
+                res = uv_mutex_trylock(&mutex);
+                if (res == 0) {
+                    break;
+                }
+                try_count++;
+                if (try_count < 5) {
+                    ZITI_LOG(WARN, "Could not save the config file %s, due to lock error, will try again", config_file_name);
+                }
+                uv_sleep(200);
+            } while (res != 0 && try_count < 5);
+            if (res != 0) {
+                ZITI_LOG(ERROR, "Could not save the config file %s after 5 attempts due to lock error.", config_file_name);
+                return saved;
+            }
         }
         //copy config to backup file
         int rem = remove(bkp_config_file_name);
