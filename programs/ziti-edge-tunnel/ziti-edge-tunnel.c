@@ -656,7 +656,7 @@ void on_write_event(uv_write_t* req, int status) {
 
         }
     } else {
-        ZITI_LOG(DEBUG,"Events message is sent.");
+        ZITI_LOG(TRACE,"Events message is sent.");
     }
     if (req->data) {
         free(req->data);
