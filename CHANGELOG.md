@@ -1,3 +1,12 @@
+# Release v0.17.23
+
+## What's new
+
+* Tunneler SDK: Recursive DNS support -- DNS queries not matched by Ziti services are forwarded to upstream server (if configured)
+* `ziti-edge-tunnel`
+  * add `-u|--dns-upstream` option for setting DNS upstream server
+  * `-n/--dns` option is removed
+
 # Release v0.17.21
 
 ## What's new

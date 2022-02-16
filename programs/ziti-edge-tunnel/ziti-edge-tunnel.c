@@ -48,10 +48,11 @@
 #define MAXMESSAGELEN 4096
 #endif
 
-extern dns_manager *get_dnsmasq_manager(const char* path);
+#ifndef HOST_NAME_MAX
+#define HOST_NAME_MAX 254
+#endif
 
 static int dns_miss_status = DNS_REFUSE;
-static int dns_fallback(const char *name, void *ctx, struct in_addr* addr);
 
 static void send_message_to_tunnel();
 typedef char * (*to_json_fn)(const void * msg, int flags, size_t *len);
@@ -200,7 +201,7 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
                                     for (int i = 0; tnl_svc->Addresses[i]; i++) {
                                         tunnel_address *addr = tnl_svc->Addresses[i];
                                         if (addr->IsHost && model_map_get(hostnamesToRemove, addr->HostName) == NULL) {
-                                            model_map_set(hostnamesToRemove, addr->HostName, true);
+                                            model_map_set(hostnamesToRemove, addr->HostName, "TRUE");
                                         }
                                     }
                                 }
@@ -1143,7 +1144,7 @@ static void on_event(const base_event *ev) {
                         for (int i = 0; svc->Addresses[i]; i++) {
                             tunnel_address *addr = svc->Addresses[i];
                             if (addr->IsHost && model_map_get(hostnamesToRemove, addr->HostName) == NULL) {
-                                model_map_set(hostnamesToRemove, addr->HostName, true);
+                                model_map_set(hostnamesToRemove, addr->HostName, "TRUE");
                             }
                         }
                     }
@@ -1168,9 +1169,9 @@ static void on_event(const base_event *ev) {
                             tunnel_address *addr = svc->Addresses[i];
                             if (addr->IsHost && model_map_get(hostnamesToAdd, addr->HostName) == NULL) {
                                 if (model_map_get(hostnamesToRemove, addr->HostName) != NULL) {
-                                    model_map_set(hostnamesToEdit, addr->HostName, true);
+                                    model_map_set(hostnamesToEdit, addr->HostName, "TRUE");
                                 } else {
-                                    model_map_set(hostnamesToAdd, addr->HostName, true);
+                                    model_map_set(hostnamesToAdd, addr->HostName, "TRUE");
                                 }
                             }
                         }
@@ -1185,7 +1186,7 @@ static void on_event(const base_event *ev) {
             if (model_map_size(hostnamesToEdit) > 0) {
                 model_map_iter it = model_map_iterator(hostnamesToRemove);
                 while (it != NULL) {
-                    char *key = model_map_it_key(it);
+                    const char *key = model_map_it_key(it);
                     if (model_map_get(hostnamesToEdit, key) != NULL) {
                         it = model_map_it_remove(it);
                     } else {
@@ -1361,7 +1362,8 @@ static char* normalize_host(char* hostname) {
     return hostname_new;
 }
 
-static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, const char *ip_range, dns_manager *dns) {
+static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, const char *ip_range, const char *dns_upstream) {
+    netif_driver tun;
     char tun_error[64];
 #if __APPLE__ && __MACH__
     tun = utun_open(tun_error, sizeof(tun_error), ip_range);
@@ -1401,7 +1403,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
         model_map *normalized_domains = calloc(1, sizeof(model_map));
         model_map_iter it = model_map_iterator(domains);
         while (it != NULL) {
-            char *key = model_map_it_key(it);
+            const char *key = model_map_it_key(it);
             model_map_set(normalized_domains, normalize_host(key), NULL);
             it = model_map_it_remove(it);
         }
@@ -1432,7 +1434,20 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
 
     ip_addr_t dns_ip4 = IPADDR4_INIT(dns_ip);
     ziti_dns_setup(tunneler, ipaddr_ntoa(&dns_ip4), ip_range);
-    ziti_dns_set_fallback(ziti_loop, dns_fallback, NULL);
+    if (dns_upstream) {
+        char *col = strchr(dns_upstream, ':');
+        if (col) {
+            char host[HOST_NAME_MAX];
+            snprintf(host, sizeof(host), "%.*s", (int)(col - dns_upstream), dns_upstream);
+            int port = atoi(col + 1);
+            if (port < 0 || port > UINT16_MAX) {
+                ZITI_LOG(ERROR, "invalid upstream DNS server port: %d", port);
+            }
+            ziti_dns_set_upstream(ziti_loop, host, port);
+        } else {
+            ziti_dns_set_upstream(ziti_loop, dns_upstream, 0);
+        }
+    }
 
 #if _WIN32
     // set the service to running state
@@ -1494,11 +1509,12 @@ static struct option run_options[] = {
         { "verbose", required_argument, NULL, 'v'},
         { "refresh", required_argument, NULL, 'r'},
         { "dns-ip-range", required_argument, NULL, 'd'},
-        { "dns", required_argument, NULL, 'n'},
+        { "dns-upstream", required_argument, NULL, 'u'},
 };
 
 static const char* ip_range = "100.64.0.0/10";
 static const char* dns_impl = NULL;
+static const char* dns_upstream = NULL;
 
 static int run_opts(int argc, char *argv[]) {
     ziti_set_app_info(main_cmd.name, ziti_tunneler_version());
@@ -1506,7 +1522,7 @@ static int run_opts(int argc, char *argv[]) {
     int c, option_index, errors = 0;
     optind = 0;
 
-    while ((c = getopt_long(argc, argv, "i:I:v:r:d:n:",
+    while ((c = getopt_long(argc, argv, "i:I:v:r:d:u:",
                             run_options, &option_index)) != -1) {
         switch (c) {
             case 'i': {
@@ -1527,8 +1543,8 @@ static int run_opts(int argc, char *argv[]) {
             case 'd': // ip range
                 ip_range = optarg;
                 break;
-            case 'n': // DNS manager implementation
-                dns_impl = optarg;
+            case 'u':
+                dns_upstream = optarg;
                 break;
             default: {
                 ZITI_LOG(ERROR, "Unknown option '%c'", c);
@@ -1653,20 +1669,7 @@ static void run(int argc, char *argv[]) {
         exit(1);
     }
 
-    dns_manager *dns = NULL;
-    if (dns_impl && strncmp("dnsmasq", dns_impl, strlen("dnsmasq")) == 0) {
-        char *col = strchr(dns_impl, ':');
-        if (col == NULL) {
-            ZITI_LOG(ERROR, "DNS dnsmasq option should be `--dns=dnsmasq:<hosts-dir>");
-            exit(1);
-        }
-        dns = get_dnsmasq_manager(col + 1);
-    } else if (dns_impl) {
-        ZITI_LOG(ERROR, "DNS setting '%s' is not supported", dns_impl);
-        exit(1);
-    }
-
-    rc = run_tunnel(ziti_loop, tun_ip, dns_ip, ip_range, dns);
+    rc = run_tunnel(ziti_loop, tun_ip, dns_ip, ip_range, dns_upstream);
     exit(rc);
 }
 
@@ -2511,7 +2514,7 @@ static CommandLine get_status_cmd = make_command("tunnel_status", "Get Tunnel St
 static CommandLine delete_id_cmd = make_command("delete", "delete the identities information", "[-i <identity>]",
                                                  "\t-i|--identity\tidentity info that needs to be deleted\n", delete_identity_opts, send_message_to_tunnel_fn);
 static CommandLine add_id_cmd = make_command("add", "enroll and load the identities information", "[-i <identity>]",
-                                                "\t-i|--identity\tjwt filename - with or without the extension (without path), used to name the identity file\n"
+                                                "\t-i|--identity\tfile name for the identity file that will be generated\n"
                                                 "\t-j|--jwt\tjwt content that needs to be enrolled\n", add_identity_opts, send_message_to_tunnel_fn);
 static CommandLine set_log_level_cmd = make_command("set_log_level", "Set log level of the tunneler", "-l <level>",
                                                     "\t-l|--loglevel\tlog level of the tunneler\n", set_log_level_opts, send_message_to_tunnel_fn);
