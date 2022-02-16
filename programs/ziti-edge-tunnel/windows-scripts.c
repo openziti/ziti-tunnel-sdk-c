@@ -388,7 +388,7 @@ void chunked_remove_and_add_nrpt_rules(uv_loop_t *ziti_loop, hostname_list_t *ho
     }
     copied += buf_len;
 
-    ZITI_LOG(TRACE, "Removing and adding %d domains using NRPT script. total script size: %d", domains_size, copied);
+    ZITI_LOG(TRACE, "Removing and adding %d domains using NRPT script. total script size: %zd", domains_size, copied);
 
     char cmd[MAX_POWERSHELL_COMMAND_LEN];
     buf_len = snprintf(cmd, sizeof(cmd),"powershell -Command \"%s\"", script);

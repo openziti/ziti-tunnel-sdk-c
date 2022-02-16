@@ -925,19 +925,22 @@ static void on_enable_mfa(ziti_context ztx, int status, ziti_mfa_enrollment *enr
     struct ziti_instance_s *inst = ziti_app_ctx(ztx);
     mfa_event *ev = calloc(1, sizeof(mfa_event));
     ev->operation = strdup(mfa_status_name(mfa_status_enrollment_challenge));
-    ev->operation_type = mfa_status_enrollment_challenge;
-    ev->provisioning_url = strdup(enrollment->provisioning_url);
-    char **rc = enrollment->recovery_codes;
-    int size = 0;
-    while (*rc != NULL) {
-        rc++;
-        size++;
+    if (status == ZITI_OK) {
+        ev->operation_type = mfa_status_enrollment_challenge;
+        ev->provisioning_url = strdup(enrollment->provisioning_url);
+        char **rc = enrollment->recovery_codes;
+        int size = 0;
+        while (*rc != NULL) {
+            rc++;
+            size++;
+        }
+        ev->recovery_codes = calloc((size + 1), sizeof(char *));
+        int idx;
+        for (idx=0; enrollment->recovery_codes[idx] !=0; idx++) {
+            ev->recovery_codes[idx] = strdup(enrollment->recovery_codes[idx]);
+        }
     }
-    ev->recovery_codes = calloc((size + 1), sizeof(char *));
-    int idx;
-    for (idx=0; enrollment->recovery_codes[idx] !=0; idx++) {
-        ev->recovery_codes[idx] = strdup(enrollment->recovery_codes[idx]);
-    }
+
     tunnel_status_event(TunnelEvent_MFAStatusEvent, status, ev, inst);
 
     free(req);
