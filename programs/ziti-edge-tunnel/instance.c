@@ -500,6 +500,9 @@ void initialize_tunnel_status() {
     if (tnl_status.ApiPageSize < MIN_API_PAGESIZE) {
         tnl_status.ApiPageSize = DEFAULT_API_PAGESIZE;
     }
+    if (tnl_status.LogLevel == NULL) {
+        tnl_status.LogLevel = "info";
+    }
 }
 
 bool load_tunnel_status(char* config_data) {
@@ -663,6 +666,9 @@ void set_ip_info(uint32_t dns_ip, uint32_t tun_ip, int bits) {
 }
 
 void set_log_level(char* log_level) {
+    if (log_level == NULL) {
+        return;
+    }
     if (tnl_status.LogLevel) {
         free(tnl_status.LogLevel);
         tnl_status.LogLevel = NULL;

@@ -309,13 +309,8 @@ struct add_identity_request_s {
     void *cmd_ctx;
 };
 
-#ifndef IPC_SUCCESS
 #define IPC_SUCCESS 0
-#endif
-#ifndef IPC_ERROR
 #define IPC_ERROR 500
-#endif
-
 
 #ifdef __cplusplus
 }
