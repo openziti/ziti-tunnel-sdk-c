@@ -47,7 +47,7 @@ static const char * cfg_types[] = { "ziti-tunneler-client.v1", "intercept.v1", "
 static long refresh_interval = 10;
 
 static int process_cmd(const tunnel_command *cmd, void (*cb)(const tunnel_result *, void *ctx), void *ctx);
-static int load_identity(const char *identifier, const char *path, command_cb cb, void *ctx);
+static int load_identity(const char *identifier, const char *path, int api_page_size, command_cb cb, void *ctx);
 static void get_transfer_rates(const char *identifier, command_cb cb, void *ctx);
 static struct ziti_instance_s *new_ziti_instance(const char *identifier, const char *path);
 static void load_ziti_async(uv_async_t *ar);
@@ -201,7 +201,7 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
                 break;
             }
             const char *id = load.identifier ? load.identifier : load.path;
-            load_identity(id, load.path, cb, ctx);
+            load_identity(id, load.path, load.apiPageSize, cb, ctx);
             return 0;
         }
 
@@ -572,12 +572,15 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
     return 0;
 }
 
-static int load_identity(const char *identifier, const char *path, command_cb cb, void *ctx) {
+static int load_identity(const char *identifier, const char *path, int api_page_size, command_cb cb, void *ctx) {
 
     struct ziti_instance_s *inst = new_ziti_instance(identifier, path);
     inst->load_cb = cb;
     inst->load_ctx = ctx;
     inst->opts.config = strdup(path);
+    if (api_page_size > 0) {
+        inst->opts.api_page_size = api_page_size;
+    }
 
     uv_async_t *ar = calloc(1, sizeof(uv_async_t));
     ar->data = inst;

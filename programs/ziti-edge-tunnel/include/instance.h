@@ -76,6 +76,8 @@ bool get_add_dns_flag();
 
 char *get_tunnel_config(size_t *json_len);
 
+int get_api_page_size();
+
 #ifdef __cplusplus
 }
 #endif

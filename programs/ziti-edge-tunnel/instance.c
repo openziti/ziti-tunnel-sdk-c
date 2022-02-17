@@ -21,6 +21,9 @@
 #include "lwip/ip_addr.h"
 #include "ziti/ziti_tunnel.h"
 
+#define MIN_API_PAGESIZE 10
+#define DEFAULT_API_PAGESIZE 25
+
 model_map tnl_identity_map = {0};
 static const char* CFG_INTERCEPT_V1 = "intercept.v1";
 static const char* CFG_ZITI_TUNNELER_CLIENT_V1 = "ziti-tunneler-client.v1";
@@ -494,6 +497,9 @@ void initialize_tunnel_status() {
     uv_gettimeofday(&now);
     tnl_status.StartTime.tv_sec = now.tv_sec;
     tnl_status.StartTime.tv_usec = now.tv_usec;
+    if (tnl_status.ApiPageSize < MIN_API_PAGESIZE) {
+        tnl_status.ApiPageSize = DEFAULT_API_PAGESIZE;
+    }
     if (tnl_status.LogLevel == NULL) {
         tnl_status.LogLevel = "info";
     }
@@ -591,6 +597,7 @@ char *get_tunnel_config(size_t *json_len) {
     tnl_config.TunPrefixLength = tnl_sts->TunPrefixLength;
     tnl_config.LogLevel = strdup(tnl_sts->LogLevel);
     tnl_config.AddDns = tnl_sts->AddDns;
+    tnl_config.ApiPageSize = tnl_sts->ApiPageSize;
 
     char* tunnel_config_json = tunnel_status_to_json(&tnl_config, 0, json_len);
 
@@ -664,6 +671,7 @@ void set_log_level(char* log_level) {
     }
     if (tnl_status.LogLevel) {
         free(tnl_status.LogLevel);
+        tnl_status.LogLevel = NULL;
     }
     size_t len = strlen(log_level) + 1;
     tnl_status.LogLevel = calloc(len, sizeof(char));
@@ -762,6 +770,10 @@ void set_ziti_status(bool enabled, char* identifier) {
         return;
     }
     id->Active = enabled;
+}
+
+int get_api_page_size() {
+    return tnl_status.ApiPageSize;
 }
 
 // ************** TUNNEL BROADCAST MESSAGES

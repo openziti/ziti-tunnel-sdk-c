@@ -95,7 +95,8 @@ XX(LogLevel, string, none, LogLevel, __VA_ARGS__) \
 XX(ServiceVersion, service_version, ptr, ServiceVersion, __VA_ARGS__) \
 XX(TunIpv4, string, none, TunIpv4, __VA_ARGS__) \
 XX(TunPrefixLength, int, none, TunIpv4Mask, __VA_ARGS__) \
-XX(AddDns, bool, none, AddDns, __VA_ARGS__)
+XX(AddDns, bool, none, AddDns, __VA_ARGS__) \
+XX(ApiPageSize, int, none, ApiPageSize, __VA_ARGS__)
 
 #define IP_INFO(XX, ...) \
 XX(Ip, string, none, Ip, __VA_ARGS__) \
