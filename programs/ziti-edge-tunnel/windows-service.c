@@ -225,10 +225,10 @@ VOID SvcInit( DWORD dwArgc, LPTSTR *lpszArgv)
 
     while(1)
     {
-        // If the service receive a running event with in 5 minutes, set the service to running state
+        // If the service receive a running event with in 150 seconds, set the service to running state
         // otherwise stop the service
 
-        if (WaitForSingleObject(ghSvcRunningEvent, 300000) == WAIT_OBJECT_0) {
+        if (WaitForSingleObject(ghSvcRunningEvent, 150000) == WAIT_OBJECT_0) {
             ReportSvcStatus( SERVICE_RUNNING, NO_ERROR, 0 );
             SvcReportEvent(TEXT("Ziti Edge Tunnel Run"), EVENTLOG_INFORMATION_TYPE);
             break;
