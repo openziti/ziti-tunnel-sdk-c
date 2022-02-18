@@ -1430,6 +1430,11 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
         }
     }
 
+#if _WIN32
+    // set the service to running state
+    scm_running_event();
+#endif
+
     CMD_CTRL = ziti_tunnel_init_cmd(ziti_loop, tunneler, on_event);
 
     uv_work_t *loader = calloc(1, sizeof(uv_work_t));

@@ -31,6 +31,7 @@ DWORD LphandlerFunctionEx(
 
 void scm_service_init(char *config_dir);
 void scm_service_run(void *);
+void scm_running_event();
 void scm_service_stop();
 void stop_windows_service();
 

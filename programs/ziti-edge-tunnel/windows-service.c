@@ -27,6 +27,7 @@ limitations under the License.
 SERVICE_STATUS          gSvcStatus;
 SERVICE_STATUS_HANDLE   gSvcStatusHandle;
 HANDLE                  ghSvcStopEvent = NULL;
+HANDLE                  ghSvcRunningEvent = NULL;
 
 //LPCTSTR SVCNAME = "ziti-edge-tunnel";
 //
@@ -200,14 +201,43 @@ VOID SvcInit( DWORD dwArgc, LPTSTR *lpszArgv)
         return;
     }
 
-    // Report running status when initialization is complete.
-
-    ReportSvcStatus( SERVICE_RUNNING, NO_ERROR, 0 );
-
     // start tunnel
     CreateThread (NULL, 0, ServiceWorkerThread, lpszArgv, 0, NULL);
 
-    SvcReportEvent(TEXT("Ziti Edge Tunnel Run"), EVENTLOG_INFORMATION_TYPE);
+    // Check whether the service is started
+
+    // Create an event. The control handler function, SvcCtrlHandler,
+    // signals this event when it receives the running control code.
+
+    ghSvcRunningEvent = CreateEvent(
+            NULL,    // default security attributes
+            TRUE,    // manual reset event
+            FALSE,   // not signaled
+            NULL);   // no name
+
+    if ( ghSvcRunningEvent == NULL)
+    {
+        ReportSvcStatus( SERVICE_STOPPED, GetLastError(), 0 );
+        return;
+    }
+
+    // Report running status when initialization is complete.
+
+    while(1)
+    {
+        // If the service receive a running event with in 150 seconds, set the service to running state
+        // otherwise stop the service
+
+        if (WaitForSingleObject(ghSvcRunningEvent, 150000) == WAIT_OBJECT_0) {
+            ReportSvcStatus( SERVICE_RUNNING, NO_ERROR, 0 );
+            SvcReportEvent(TEXT("Ziti Edge Tunnel Run"), EVENTLOG_INFORMATION_TYPE);
+            break;
+        } else {
+            SvcReportEvent(TEXT("Ziti Edge Tunnel Stopped"), EVENTLOG_INFORMATION_TYPE);
+            ReportSvcStatus( SERVICE_STOPPED, NO_ERROR, 0 );
+            return;
+        }
+    }
 
     while(1)
     {
@@ -366,6 +396,21 @@ VOID SvcDelete()
 
     CloseServiceHandle(schService);
     CloseServiceHandle(schSCManager);
+}
+
+
+//
+// Purpose:
+//   Sets the service to running state from the application
+//
+// Parameters:
+//   None
+//
+// Return value:
+//   None
+//
+void scm_running_event() {
+    SetEvent(ghSvcRunningEvent);
 }
 
 //
