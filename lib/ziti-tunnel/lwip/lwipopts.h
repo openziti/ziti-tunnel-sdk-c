@@ -41,6 +41,11 @@
 
 #define LWIP_SINGLE_NETIF 1               /* avoid some lwip "routing" logic */
 
+#define LWIP_TCP_KEEPALIVE 1
+#define TCP_KEEPIDLE_DEFAULT 30000       /* 30 seconds of idle before starting to send KEEPALIVE packets */
+#define TCP_KEEPINTVL_DEFAULT 10000      /* 10 seconds interval between KEEPALIVE packets */
+#define TCP_KEEPCNT_DEFAULT 3            /* number of missed KEEPALIVE ACKs to consider the client dead */
+
 // APIs
 #define LWIP_RAW 1
 #define LWIP_NETCONN 0
