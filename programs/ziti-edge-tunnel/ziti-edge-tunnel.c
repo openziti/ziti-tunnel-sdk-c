@@ -44,10 +44,11 @@
 #define MAXMESSAGELEN 4096
 #endif
 
-extern dns_manager *get_dnsmasq_manager(const char* path);
+#ifndef HOST_NAME_MAX
+#define HOST_NAME_MAX 254
+#endif
 
 static int dns_miss_status = DNS_REFUSE;
-static int dns_fallback(const char *name, void *ctx, struct in_addr* addr);
 
 static void send_message_to_tunnel();
 typedef char * (*to_json_fn)(const void * msg, int flags, size_t *len);
@@ -827,7 +828,7 @@ static void on_event(const base_event *ev) {
     }
 }
 
-static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, const char *ip_range, dns_manager *dns) {
+static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, const char *ip_range, const char *dns_upstream) {
     netif_driver tun;
     char tun_error[64];
 #if __APPLE__ && __MACH__
@@ -863,7 +864,20 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
 
     ip_addr_t dns_ip4 = IPADDR4_INIT(dns_ip);
     ziti_dns_setup(tunneler, ipaddr_ntoa(&dns_ip4), ip_range);
-    ziti_dns_set_fallback(ziti_loop, dns_fallback, NULL);
+    if (dns_upstream) {
+        char *col = strchr(dns_upstream, ':');
+        if (col) {
+            char host[HOST_NAME_MAX];
+            snprintf(host, sizeof(host), "%.*s", (int)(col - dns_upstream), dns_upstream);
+            int port = atoi(col + 1);
+            if (port < 0 || port > UINT16_MAX) {
+                ZITI_LOG(ERROR, "invalid upstream DNS server port: %d", port);
+            }
+            ziti_dns_set_upstream(ziti_loop, host, port);
+        } else {
+            ziti_dns_set_upstream(ziti_loop, dns_upstream, 0);
+        }
+    }
 
     CMD_CTRL = ziti_tunnel_init_cmd(ziti_loop, tunneler, on_event);
 
@@ -918,11 +932,12 @@ static struct option run_options[] = {
         { "verbose", required_argument, NULL, 'v'},
         { "refresh", required_argument, NULL, 'r'},
         { "dns-ip-range", required_argument, NULL, 'd'},
-        { "dns", required_argument, NULL, 'n'},
+        { "dns-upstream", required_argument, NULL, 'u'},
 };
 
 static const char* ip_range = "100.64.0.0/10";
 static const char* dns_impl = NULL;
+static const char* dns_upstream = NULL;
 
 static int run_opts(int argc, char *argv[]) {
     ziti_set_app_info(main_cmd.name, ziti_tunneler_version());
@@ -930,7 +945,7 @@ static int run_opts(int argc, char *argv[]) {
     int c, option_index, errors = 0;
     optind = 0;
 
-    while ((c = getopt_long(argc, argv, "i:I:v:r:d:n:",
+    while ((c = getopt_long(argc, argv, "i:I:v:r:d:u:",
                             run_options, &option_index)) != -1) {
         switch (c) {
             case 'i': {
@@ -951,8 +966,8 @@ static int run_opts(int argc, char *argv[]) {
             case 'd': // ip range
                 ip_range = optarg;
                 break;
-            case 'n': // DNS manager implementation
-                dns_impl = optarg;
+            case 'u':
+                dns_upstream = optarg;
                 break;
             default: {
                 ZITI_LOG(ERROR, "Unknown option '%c'", c);
@@ -1035,20 +1050,7 @@ static void run(int argc, char *argv[]) {
         exit(1);
     }
 
-    dns_manager *dns = NULL;
-    if (dns_impl && strncmp("dnsmasq", dns_impl, strlen("dnsmasq")) == 0) {
-        char *col = strchr(dns_impl, ':');
-        if (col == NULL) {
-            ZITI_LOG(ERROR, "DNS dnsmasq option should be `--dns=dnsmasq:<hosts-dir>");
-            exit(1);
-        }
-        dns = get_dnsmasq_manager(col + 1);
-    } else if (dns_impl) {
-        ZITI_LOG(ERROR, "DNS setting '%s' is not supported", dns_impl);
-        exit(1);
-    }
-
-    rc = run_tunnel(ziti_loop, tun_ip, dns_ip, ip_range, dns);
+    rc = run_tunnel(ziti_loop, tun_ip, dns_ip, ip_range, dns_upstream);
     exit(rc);
 }
 
