@@ -30,7 +30,7 @@ static unsigned int sem_value = 1;
 static int sem_initialized = -1;
 
 void initialize_instance_config() {
-    int sem_initialized = uv_sem_init(&sem, sem_value);
+    sem_initialized = uv_sem_init(&sem, sem_value);
     if (sem_initialized < 0) {
         ZITI_LOG(WARN, "Could not initialize lock for the config, config file may not be updated");
     }
