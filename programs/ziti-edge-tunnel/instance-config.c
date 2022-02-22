@@ -27,11 +27,11 @@
 
 static uv_sem_t sem;
 static unsigned int sem_value = 1;
-static int sem_init;
+static int sem_initialized;
 
 void initialize_instance_config() {
-    int sem_init = uv_sem_init(&sem, sem_value);
-    if (sem_init < 0) {
+    int sem_initialized = uv_sem_init(&sem, sem_value);
+    if (sem_initialized < 0) {
         ZITI_LOG(WARN, "Could not initialize lock for the config, config file may not be updated");
     }
 }
@@ -115,10 +115,10 @@ bool save_tunnel_status_to_file() {
         char* config_file_name = get_config_file_name(config_path);
         char* bkp_config_file_name = get_backup_config_file_name(config_path);
 
-        if (sem_init == 0) {
+        if (sem_initialized == 0) {
             uv_sem_wait(&sem);
         } else {
-            ZITI_LOG(ERROR, "Could not save the config file due to semaphore lock not initialized error.", config_file_name);
+            ZITI_LOG(ERROR, "Could not save the config file [%s] due to semaphore lock not initialized error.", config_file_name);
             free(config_file_name);
             free(bkp_config_file_name);
             free(config_path);
@@ -155,7 +155,7 @@ bool save_tunnel_status_to_file() {
             fclose(config);
             ZITI_LOG(DEBUG, "Saved current tunnel status into Config file %s", config_file_name);
         }
-        if (sem_init == 0) {
+        if (sem_initialized == 0) {
             uv_sem_post(&sem);
         }
         ZITI_LOG(TRACE, "Cleaning up resources used for the backup of tunnel config file %s", config_file_name);
@@ -171,7 +171,7 @@ bool save_tunnel_status_to_file() {
 void cleanup_instance_config() {
     ZITI_LOG(TRACE, "Backing up current tunnel status");
     save_tunnel_status_to_file();
-    if (sem_init == 0) {
+    if (sem_initialized == 0) {
         uv_sem_destroy(&sem);
     }
 }
