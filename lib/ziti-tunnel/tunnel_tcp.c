@@ -253,6 +253,7 @@ void tunneler_tcp_dial_completed(struct io_ctx_s *io, bool ok) {
 
     struct tcp_pcb *pcb = io->tnlr_io->tcp;
     tcp_arg(pcb, io);
+    ip_set_option(pcb, SOF_KEEPALIVE);
     tcp_recv(pcb, on_tcp_client_data);
     tcp_err(pcb, on_tcp_client_err);
 
