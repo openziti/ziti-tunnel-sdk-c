@@ -191,7 +191,7 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
             .data = NULL,
             .code = IPC_ERROR,
     };
-    ZITI_LOG(DEBUG, "processing command[%s] with data[%s]", TunnelCommands.name(cmd->command), cmd->data);
+    ZITI_LOG(TRACE, "processing command[%s] with data[%s]", TunnelCommands.name(cmd->command), cmd->data);
     switch (cmd->command) {
         case TunnelCommand_LoadIdentity: {
             tunnel_load_identity load;
