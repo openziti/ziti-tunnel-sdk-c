@@ -1024,6 +1024,9 @@ static void load_identities_complete(uv_work_t * wr, int status) {
 
         CMD_CTRL->load_identity(NULL, inst->cfg, get_api_page_size(), load_id_cb, inst);
         identity_loaded = true;
+        if (config_dir == NULL) {
+            create_or_get_tunnel_identity(inst->cfg, inst->cfg);
+        }
     }
     if (identity_loaded) {
         start_metrics_timer(wr->loop);
@@ -1456,6 +1459,10 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
 
     CMD_CTRL = ziti_tunnel_init_cmd(ziti_loop, tunneler, on_event);
 
+    if (config_dir != NULL) {
+        ZITI_LOG(INFO,"Loading identity files from %s", config_dir);
+    }
+
     uv_work_t *loader = calloc(1, sizeof(uv_work_t));
     uv_queue_work(ziti_loop, loader, load_identities, load_identities_complete);
 
@@ -1650,7 +1657,6 @@ static void run(int argc, char *argv[]) {
         ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
     }
     move_config_from_previous_windows_backup(ziti_loop);
-    ZITI_LOG(INFO,"Loading identity files from %s", config_dir);
 #else
     ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
 #endif

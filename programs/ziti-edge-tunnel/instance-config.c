@@ -27,7 +27,7 @@
 
 static uv_sem_t sem;
 static unsigned int sem_value = 1;
-static int sem_initialized;
+static int sem_initialized = -1;
 
 void initialize_instance_config() {
     int sem_initialized = uv_sem_init(&sem, sem_value);
