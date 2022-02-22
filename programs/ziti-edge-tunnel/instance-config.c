@@ -25,16 +25,14 @@
 #define MAX_BUFFER_LEN 1024 * 1024
 #define MIN_BUFFER_LEN 512
 
-static uv_mutex_t mutex;
-static bool mutex_initialized = false;
+static uv_sem_t sem;
+static unsigned int sem_value = 1;
+static int sem_initialized = -1;
 
 void initialize_instance_config() {
-    int mutex_init = uv_mutex_init(&mutex);
-    if (mutex_init != 0) {
-        ZITI_LOG(WARN, "Could not initialize lock for the config, config file may not be updated correctly");
-        mutex_initialized = false;
-    } else {
-        mutex_initialized = true;
+    sem_initialized = uv_sem_init(&sem, sem_value);
+    if (sem_initialized < 0) {
+        ZITI_LOG(WARN, "Could not initialize lock for the config, config file may not be updated");
     }
 }
 
@@ -117,8 +115,15 @@ bool save_tunnel_status_to_file() {
         char* config_file_name = get_config_file_name(config_path);
         char* bkp_config_file_name = get_backup_config_file_name(config_path);
 
-        if (mutex_initialized) {
-            uv_mutex_lock(&mutex);
+        if (sem_initialized == 0) {
+            uv_sem_wait(&sem);
+        } else {
+            ZITI_LOG(ERROR, "Could not save the config file [%s] due to semaphore lock not initialized error.", config_file_name);
+            free(config_file_name);
+            free(bkp_config_file_name);
+            free(config_path);
+            free(tunnel_status);
+            return saved;
         }
         //copy config to backup file
         int rem = remove(bkp_config_file_name);
@@ -150,8 +155,8 @@ bool save_tunnel_status_to_file() {
             fclose(config);
             ZITI_LOG(DEBUG, "Saved current tunnel status into Config file %s", config_file_name);
         }
-        if (mutex_initialized) {
-            uv_mutex_unlock(&mutex);
+        if (sem_initialized == 0) {
+            uv_sem_post(&sem);
         }
         ZITI_LOG(TRACE, "Cleaning up resources used for the backup of tunnel config file %s", config_file_name);
 
@@ -166,7 +171,7 @@ bool save_tunnel_status_to_file() {
 void cleanup_instance_config() {
     ZITI_LOG(TRACE, "Backing up current tunnel status");
     save_tunnel_status_to_file();
-    if (mutex_initialized) {
-        uv_mutex_destroy(&mutex);
+    if (sem_initialized == 0) {
+        uv_sem_destroy(&sem);
     }
 }
