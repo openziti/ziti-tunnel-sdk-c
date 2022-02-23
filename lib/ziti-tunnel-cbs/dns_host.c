@@ -33,10 +33,10 @@ typedef struct dns_host_conn_s {
 } dns_host_conn_t;
 
 
-typedef int (*rr_fmt)(const ns_msg *, const ns_rr*, char *buf, size_t max);
-static int fmt_srv(const ns_msg *, const ns_rr*, char *buf, size_t max);
-static int fmt_mx(const ns_msg *, const ns_rr*, char *buf, size_t max);
-static int fmt_txt(const ns_msg *, const ns_rr*, char *buf, size_t max);
+typedef int (*rr_fmt)(const ns_msg *, const ns_rr*, dns_answer *ans, size_t max);
+static int fmt_srv(const ns_msg *, const ns_rr*, dns_answer *ans, size_t max);
+static int fmt_mx(const ns_msg *, const ns_rr*, dns_answer *ans, size_t max);
+static int fmt_txt(const ns_msg *, const ns_rr*, dns_answer *ans, size_t max);
 
 static model_map rr_formatters;
 
@@ -119,27 +119,28 @@ void do_query(const dns_question *q, dns_message *resp, resolver_t *resolver) {
                 a->type = type;
                 a->ttl = (int)rr->dwTtl;
                 a->data = malloc(PACKETSZ);
-                fmt(NULL, rr, a->data, PACKETSZ);
+                fmt(NULL, rr, a, PACKETSZ);
                 resp->answer[idx++] = a;
             }
         }
     }
 }
 
-static int fmt_srv(const ns_msg* msg, const ns_rr* rr, char *buf, size_t max) {
-    int pri = rr->Data.SRV.wPriority;
-    int wei = rr->Data.SRV.wWeight;
-    int port = rr->Data.SRV.wPort;
+static int fmt_srv(const ns_msg* msg, const ns_rr* rr, dns_answer *ans, size_t max) {
+    ans->priority = rr->Data.SRV.wPriority;
+    ans->weight = rr->Data.SRV.wWeight;
+    ans->port = rr->Data.SRV.wPort;
 
-    return snprintf(buf, max, "%d %d %d %s", pri, wei, port, rr->Data.SRV.pNameTarget);
+    return snprintf(ans->data, max, "%s", rr->Data.SRV.pNameTarget);
 }
 
-static int fmt_mx(const ns_msg * msg, const ns_rr* rr, char *buf, size_t max) {
-    return snprintf(buf, max, "%d %s", rr->Data.MX.wPreference, rr->Data.MX.pNameExchange);
+static int fmt_mx(const ns_msg * msg, const ns_rr* rr, dns_answer *ans, size_t max) {
+    ans->priority = rr->Data.MX.wPreference;
+    return snprintf(ans->data, max, "%s", rr->Data.MX.pNameExchange);
 }
 
-static int fmt_txt(const ns_msg *msg, const ns_rr* rr, char *buf, size_t max) {
-    return snprintf(buf, max, "%s", rr->Data.TXT.pStringArray[0]);
+static int fmt_txt(const ns_msg *msg, const ns_rr* rr, dns_answer *ans, size_t max) {
+    return snprintf(ans->data, max, "%s", rr->Data.TXT.pStringArray[0]);
 }
 
 #else
@@ -166,7 +167,7 @@ void do_query(const dns_question *q, dns_message *resp, resolver_t *resolver) {
                     a->ttl = ns_rr_ttl(rr);
                     a->type = ns_rr_type(rr);
                     a->data = malloc(PACKETSZ);
-                    fmt(&ans, &rr, a->data, PACKETSZ);
+                    fmt(&ans, &rr, a, PACKETSZ);
                     resp->answer[a_idx++] = a;
                 }
             }
@@ -174,30 +175,31 @@ void do_query(const dns_question *q, dns_message *resp, resolver_t *resolver) {
     }
 }
 
-static int fmt_srv(const ns_msg* msg, const ns_rr* rr, char *buf, size_t max) {
+static int fmt_srv(const ns_msg* msg, const ns_rr* rr, dns_answer *ans, size_t max) {
     uint16_t *ptr = (uint16_t *) ns_rr_rdata(*rr);
-    int pri = ntohs(*ptr);
-    int wei = ntohs(*(ptr + 1));
-    int port = ntohs(*(ptr + 2));
+    ans->priority = ntohs(*ptr);
+    ans->weight = ntohs(*(ptr + 1));
+    ans->port = ntohs(*(ptr + 2));
 
-    int off = snprintf(buf, max, "%d %d %d ", pri, wei, port);
-    return off + ns_name_uncompress(ns_msg_base(*msg), ns_msg_end(*msg), (uint8_t *)(ptr + 3), (buf + off), max - off);
+    return ns_name_uncompress(ns_msg_base(*msg), ns_msg_end(*msg), (uint8_t *)(ptr + 3), ans->data, max);
 }
 
-static int fmt_mx(const ns_msg * msg, const ns_rr* rr, char *buf, size_t max) {
+static int fmt_mx(const ns_msg * msg, const ns_rr* rr, dns_answer *ans, size_t max) {
     uint16_t *ptr = (uint16_t *) ns_rr_rdata(*rr);
-    int pri = ntohs(*ptr);
-    int off = snprintf(buf, max, "%d ", pri);
-    return off + ns_name_uncompress(ns_msg_base(*msg), ns_msg_end(*msg), (uint8_t *)(ptr + 1), (buf + off), max - off);
+    ans->priority = ntohs(*ptr);
+    return ns_name_uncompress(ns_msg_base(*msg), ns_msg_end(*msg), (uint8_t *)(ptr + 1), ans->data, max);
 }
 
-static int fmt_txt(const ns_msg *msg, const ns_rr* rr, char *buf, size_t max) {
+static int fmt_txt(const ns_msg *msg, const ns_rr* rr, dns_answer *ans, size_t max) {
     const uint8_t *ptr = ns_rr_rdata(*rr);
-    int len = ns_rr_rdlen(*rr);
+    unsigned int len = ns_rr_rdlen(*rr);
+    if (len > max) {
+        len = (unsigned int)max;
+    }
     len--;
-    memcpy(buf, ptr+1, len);
-    buf[len] = 0;
-    return len;
+    memcpy(ans->data, ptr+1, len);
+    ans->data[len] = 0;
+    return (int)len;
 }
 
 #endif

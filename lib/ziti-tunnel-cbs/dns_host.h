@@ -52,13 +52,16 @@ typedef struct __res_state resolver_t;
 
 #include <ziti/model_support.h>
 
-#define DNS_Q_MODEL(XX,...) \
+#define DNS_Q_MODEL(XX, ...) \
 XX(name, string, none, name, __VA_ARGS__) \
 XX(type, int, none, type, __VA_ARGS__)
 
-#define DNS_A_MODEL(XX,...) \
+#define DNS_A_MODEL(XX, ...) \
 DNS_Q_MODEL(XX, __VA_ARGS__) \
 XX(ttl, int, none, ttl, __VA_ARGS__) \
+XX(priority, int, none, priority, __VA_ARGS__) \
+XX(weight, int, none, weight, __VA_ARGS__)     \
+XX(port, int, none, port, __VA_ARGS__)    \
 XX(data, string, none, data, __VA_ARGS__)
 
 #define DNS_MSG_MODEL(XX,...) \

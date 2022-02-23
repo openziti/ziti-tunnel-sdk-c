@@ -557,7 +557,7 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
         }
     }
 
-    if (app_data.conn_type == resolve_conn_type) {
+    if (app_data.conn_type == TunnelConnectionTypes.resolver) {
         accept_resolver_conn(clt, &service_ctx->addr_u.allowed_hostnames);
         free_tunneler_app_data(&app_data);
         return;

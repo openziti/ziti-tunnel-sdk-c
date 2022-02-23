@@ -35,6 +35,7 @@ typedef void* (*cfg_alloc_fn)();
 typedef void (*cfg_free_fn)(void *);
 typedef int (*cfg_cmp_fn)(const void *, const void*);
 
+IMPL_ENUM(TunnelConnectionType, TUNNELER_CONN_TYPE_ENUM)
 IMPL_MODEL(tunneler_app_data, TUNNELER_APP_DATA_MODEL)
 
 static void ziti_conn_close_cb(ziti_connection zc);
