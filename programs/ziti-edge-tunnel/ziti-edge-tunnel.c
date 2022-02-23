@@ -2570,13 +2570,12 @@ static CommandLine main_cmd = make_command_set(
 
 #if _WIN32
 
-void endpoint_status_change(bool woken, bool unlocked) {
-    if (woken) {
-        ZITI_LOG(INFO,"Received power resume event");
-    }
-    if (unlocked) {
-        ZITI_LOG(INFO,"Received session unlocked event");
-    }
+void endpoint_status_change_function(uv_async_t *ar) {
+    ZITI_LOG(VERBOSE, "invoking endpoint status change command");
+    uv_loop_t *ziti_loop = ar->loop;
+    tunnel_status_change *status_change = ar->data;
+
+    uv_close((uv_handle_t *) ar, (uv_close_cb) free);
 
     // send status message immediately
     tunnel_status_event tnl_sts_evt = {0};
@@ -2589,15 +2588,30 @@ void endpoint_status_change(bool woken, bool unlocked) {
     // send endpoint status to the controller
     tunnel_command *tnl_cmd = calloc(1, sizeof(tunnel_command));
     tnl_cmd->command = TunnelCommand_StatusChange;
-    tunnel_status_change *status_change = calloc(1, sizeof(tunnel_status_change));
-    status_change->woken = woken;
-    status_change->unlocked = unlocked;
     size_t json_len;
     tnl_cmd->data = tunnel_status_change_to_json(status_change, MODEL_JSON_COMPACT, &json_len);
     send_tunnel_command_inline(tnl_cmd, NULL);
     free_tunnel_status_change(status_change);
     free(status_change);
 
+}
+
+void endpoint_status_change(bool woken, bool unlocked) {
+    if (woken) {
+        ZITI_LOG(INFO,"Received power resume event");
+    }
+    if (unlocked) {
+        ZITI_LOG(INFO,"Received session unlocked event");
+    }
+
+    tunnel_status_change *status_change = calloc(1, sizeof(tunnel_status_change));
+    status_change->woken = woken;
+    status_change->unlocked = unlocked;
+
+    uv_async_t *ar = calloc(1, sizeof(uv_async_t));
+    ar->data = status_change;
+    uv_async_init(main_ziti_loop, ar, endpoint_status_change_function);
+    uv_async_send(ar);
 }
 
 void scm_service_init(char *config_path) {
