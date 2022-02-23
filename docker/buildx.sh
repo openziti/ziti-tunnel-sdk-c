@@ -29,6 +29,8 @@ VARIABLES
 OPTIONS
     -r REPO           container image repository e.g. netfoundry/ziti-edge-tunnel
     -c                don't check out v\${ZITI_VERSION} (use Git working copy)
+    -l                additionally tag ziti-edge-tunnel:latest
+    -f                clobber Docker registry tag if it exists
 
 
 EXAMPLES
@@ -46,8 +48,9 @@ EOF
 
 #BASENAME=$(basename $0) || exit $?
 DIRNAME=$(dirname "$0") || exit $?
+EXIT=0
 
-while getopts :r:chl OPT;do
+while getopts :r:chlf OPT;do
     case $OPT in
         r)  CONTAINER_REPO=$OPTARG 
             ;;
@@ -56,6 +59,8 @@ while getopts :r:chl OPT;do
         h) _usage; exit 0   # not an error
             ;;
         l)  FLAGS+=$OPT     # also tag and push latest
+            ;;
+        f)  FLAGS+=$OPT
             ;;
         \?|*) _usage 1      # error
             ;;
@@ -88,14 +93,21 @@ fi
 
 docker run --rm --privileged docker/binfmt:a7996909642ee92942dcd6cff44b9b95f08dad64
 grep -E -q 'enabled' /proc/sys/fs/binfmt_misc/qemu-arm
-docker run --rm --platform linux/arm64/v8 arm64v8/alpine uname -a |grep -Eq 'aarch64 Linux'
-docker run --rm --platform linux/arm/v7 arm32v7/alpine uname -a|grep -Eq 'armv7l Linux'
+docker run --rm --platform linux/arm64/v8 arm64v8/alpine uname -a | grep -Eq 'aarch64 Linux'
+docker run --rm --platform linux/arm/v7 arm32v7/alpine uname -a | grep -Eq 'armv7l Linux'
 docker buildx create --use --name=ziti-builder 2>/dev/null || docker buildx use --default ziti-builder
 
-eval docker buildx build "${DIRNAME}" \
-    --platform="linux/amd64,linux/arm/v7,linux/arm64" \
-    --build-arg=ZITI_VERSION="${ZITI_VERSION}" \
-    "${TAG_PARAMS}" \
-    --push
-
+# if 
+if [[ ${FLAGS:-} =~ f ]] || ! curl -sSLf https://registry.hub.docker.com/v2/repositories/netfoundry/ziti-edge-tunnel/tags/${ZITI_VERSION} &>/dev/null; then
+    eval docker buildx build "${DIRNAME}" \
+        --platform="linux/amd64,linux/arm/v7,linux/arm64" \
+        --build-arg=ZITI_VERSION="${ZITI_VERSION}" \
+        "${TAG_PARAMS}" \
+        --push
+else
+    echo "ERROR: Docker tag ziti-edge-tunnel:${ZITI_VERSION} already exists. Carefully send option -f to clobber Docker image tag." >&2
+    EXIT=1
+fi
 docker buildx stop ziti-builder
+
+exit $EXIT
