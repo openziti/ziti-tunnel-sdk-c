@@ -552,6 +552,24 @@ static void run_packet_loop(uv_loop_t *loop, tunneler_context tnlr_ctx) {
     uv_timer_start(&tnlr_ctx->lwip_timer_req, check_lwip_timeouts, 0, 10);
 }
 
+void execute_tnl_after_cb(uv_work_t *wr, int status) {
+    tunneler_cmd_request *tnl_cmd_req = wr->data;
+    tnl_cmd_req->tnl_cmd_cb(tnl_cmd_req->ctx);
+}
+
+void execute_tnl_cb(uv_work_t *wr) {
+    TNL_LOG(TRACE, "Tunneler work queue called");
+}
+
+void ziti_tunneler_call_function(uv_loop_t *loop, ziti_tunneler_call_cb tnl_call_cb, void *ctx) {
+    tunneler_cmd_request *tnl_cmd_req = calloc(1, sizeof(tunneler_cmd_request));
+    tnl_cmd_req->tnl_cmd_cb = tnl_call_cb;
+    tnl_cmd_req->ctx = ctx;
+    uv_work_t *loader = calloc(1, sizeof(uv_work_t));
+    loader->data = tnl_cmd_req;
+    uv_queue_work(loop, loader, execute_tnl_cb, execute_tnl_after_cb);
+}
+
 #define _str(x) #x
 #define str(x) _str(x)
 const char* ziti_tunneler_version() {

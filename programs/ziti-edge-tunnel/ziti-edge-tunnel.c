@@ -58,6 +58,9 @@ static void send_message_to_tunnel();
 typedef char * (*to_json_fn)(const void * msg, int flags, size_t *len);
 static void send_events_message(const void *message, to_json_fn to_json_f, bool displayEvent);
 static void send_tunnel_command(tunnel_command *tnl_cmd, void *ctx);
+static void send_tunnel_command_inline(tunnel_command *tnl_cmd, void *ctx);
+int (*tunneler_cmd_cb)(void *ctx);
+
 #if _WIN32
 static void move_config_from_previous_windows_backup(uv_loop_t *loop);
 #endif
@@ -2570,12 +2573,9 @@ static CommandLine main_cmd = make_command_set(
 
 #if _WIN32
 
-void endpoint_status_change_function(uv_async_t *ar) {
+void endpoint_status_change_function(void *ctx) {
     ZITI_LOG(VERBOSE, "invoking endpoint status change command");
-    uv_loop_t *ziti_loop = ar->loop;
-    tunnel_status_change *status_change = ar->data;
-
-    uv_close((uv_handle_t *) ar, (uv_close_cb) free);
+    tunnel_status_change *status_change = ctx;
 
     // send status message immediately
     tunnel_status_event tnl_sts_evt = {0};
@@ -2608,10 +2608,7 @@ void endpoint_status_change(bool woken, bool unlocked) {
     status_change->woken = woken;
     status_change->unlocked = unlocked;
 
-    uv_async_t *ar = calloc(1, sizeof(uv_async_t));
-    ar->data = status_change;
-    uv_async_init(main_ziti_loop, ar, endpoint_status_change_function);
-    uv_async_send(ar);
+    ziti_tunneler_call_function(main_ziti_loop, endpoint_status_change_function, status_change);
 }
 
 void scm_service_init(char *config_path) {

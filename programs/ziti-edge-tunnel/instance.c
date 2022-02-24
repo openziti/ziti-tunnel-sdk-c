@@ -28,9 +28,6 @@ model_map tnl_identity_map = {0};
 static const char* CFG_INTERCEPT_V1 = "intercept.v1";
 static const char* CFG_ZITI_TUNNELER_CLIENT_V1 = "ziti-tunneler-client.v1";
 static tunnel_status tnl_status = {0};
-static int sem_initialized = -1;
-static uv_sem_t sem;
-static unsigned int sem_value = 1;
 
 tunnel_identity *find_tunnel_identity(const char* identifier) {
     tunnel_identity *tnl_id = model_map_get(&tnl_identity_map, identifier);
@@ -507,10 +504,6 @@ void initialize_tunnel_status() {
         tnl_status.LogLevel = "info";
     }
 
-    sem_initialized = uv_sem_init(&sem, sem_value);
-    if (sem_initialized < 0) {
-        ZITI_LOG(WARN, "Could not initialize lock for the tun status");
-    }
 }
 
 bool load_tunnel_status(char* config_data) {
@@ -555,15 +548,6 @@ tunnel_status *get_tunnel_status() {
         tnl_status.Duration = (int)(current_time_in_millis - start_time_in_millis);
     }
 
-    if (sem_initialized == 0) {
-        uv_sem_wait(&sem);
-    } else {
-        ZITI_LOG(WARN, "Could not initialize lock due to technical error, cached tunnel status will be returned");
-        if (tnl_status.Identities == NULL) {
-            tnl_status.Identities = get_tunnel_identities();
-        }
-        return &tnl_status;
-    }
     if (tnl_status.Identities) free(tnl_status.Identities);
     tnl_status.Identities = get_tunnel_identities();
 
@@ -572,9 +556,6 @@ tunnel_status *get_tunnel_status() {
             set_mfa_timeout_rem(tnl_status.Identities[id_idx]);
             tnl_status.Identities[id_idx]->Notified = false;
         }
-    }
-    if (sem_initialized == 0) {
-        uv_sem_post(&sem);
     }
 
     return &tnl_status;
