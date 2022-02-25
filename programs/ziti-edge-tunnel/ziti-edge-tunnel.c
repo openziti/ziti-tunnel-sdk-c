@@ -2607,6 +2607,7 @@ void endpoint_status_change(bool woken, bool unlocked) {
     status_change->woken = woken;
     status_change->unlocked = unlocked;
 
+
     ziti_tunneler_call_function(main_ziti_loop, endpoint_status_change_function, status_change);
 }
 
@@ -2617,9 +2618,9 @@ void scm_service_init(char *config_path) {
     }
 }
 
-void scm_service_run(void * name) {
+void scm_service_run(const char *name) {
     ZITI_LOG(INFO, "About to run tunnel service...");
-    ziti_set_app_info((char *)name, ziti_tunneler_version());
+    ziti_set_app_info(name, ziti_tunneler_version());
     run(0, NULL);
 }
 
@@ -2708,7 +2709,7 @@ int main(int argc, char *argv[]) {
     }
 
 #if _WIN32
-    SvcStart(NULL);
+    SvcStart();
 
     // if service is started by SCM, SvcStart will return only when it receives the stop request
     // started_by_scm will be set to true only if scm initializes the config value
