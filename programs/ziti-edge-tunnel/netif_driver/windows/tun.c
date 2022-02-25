@@ -494,3 +494,18 @@ static void cleanup_adapters(wchar_t *tun_name) {
     WintunEnumAdapters(L"Ziti", tun_delete_cb, tun_name);
 }
 
+int tun_kill() {
+    uv_once(&wintunInit, InitializeWintun);
+    if (WINTUN == NULL) {
+        ZITI_LOG(DEBUG, "Failed to load wintun.dll");
+        return NULL;
+    }
+    BOOL rr;
+    WINTUN_ADAPTER_HANDLE adapter = WintunOpenAdapter(L"Ziti", ZITI_TUN);
+    if (adapter) {
+        ZITI_LOG(DEBUG, "Closing wintun adapter");
+        WintunDeleteAdapter(adapter, true, NULL);
+        WintunFreeAdapter(adapter);
+        ZITI_LOG(DEBUG, "Closed wintun adapter");
+    }
+}
