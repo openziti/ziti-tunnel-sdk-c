@@ -946,6 +946,9 @@ static void on_enable_mfa(ziti_context ztx, int status, ziti_mfa_enrollment *enr
 
     tunnel_status_event(TunnelEvent_MFAStatusEvent, status, ev, inst);
 
+    if (req->ctx) {
+        free(req->ctx);
+    }
     free(req);
 }
 
@@ -975,6 +978,9 @@ static void on_verify_mfa(ziti_context ztx, int status, void *ctx) {
     ev->operation_type = mfa_status_enrollment_verification;
     tunnel_status_event(TunnelEvent_MFAStatusEvent, status, ev, inst);
 
+    if (req->ctx) {
+        free(req->ctx);
+    }
     free(req);
 }
 
@@ -1004,6 +1010,9 @@ static void on_remove_mfa(ziti_context ztx, int status, void *ctx) {
     ev->operation_type = mfa_status_enrollment_remove;
     tunnel_status_event(TunnelEvent_MFAStatusEvent, status, ev, inst);
 
+    if (req->ctx) {
+        free(req->ctx);
+    }
     free(req);
 }
 
@@ -1023,14 +1032,19 @@ static void on_mfa_recovery_codes(ziti_context ztx, int status, char **recovery_
         result.code = IPC_SUCCESS;
 
         tunnel_mfa_recovery_codes mfa_recovery_codes = {0};
-        mfa_recovery_codes.identifier = req->ctx;
+        mfa_recovery_codes.identifier = strdup(req->ctx);
         mfa_recovery_codes.recovery_codes = recovery_codes;
 
         size_t json_len;
         result.data = tunnel_mfa_recovery_codes_to_json(&mfa_recovery_codes, MODEL_JSON_COMPACT, &json_len);
+        mfa_recovery_codes.recovery_codes = NULL;
+        free_tunnel_mfa_recovery_codes(&mfa_recovery_codes);
     }
     if (req->cmd_cb) {
         req->cmd_cb(&result, req->cmd_ctx);
+    }
+    if (req->ctx) {
+        free(req->ctx);
     }
     free(req);
 }
