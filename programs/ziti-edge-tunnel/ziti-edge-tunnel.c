@@ -2594,8 +2594,7 @@ void endpoint_status_change(bool woken, bool unlocked) {
     status_change->woken = woken;
     status_change->unlocked = unlocked;
 
-
-    ziti_tunneler_call_function(main_ziti_loop, endpoint_status_change_function, status_change);
+    ziti_tunnel_async_send(NULL, endpoint_status_change_function, status_change);
 }
 
 void scm_service_init(char *config_path) {

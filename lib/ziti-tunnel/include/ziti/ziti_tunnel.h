@@ -94,7 +94,6 @@ typedef void * (*ziti_sdk_dial_cb)(const void *app_intercept_ctx, io_ctx_t *io);
 typedef int (*ziti_sdk_close_cb)(void *ziti_io_ctx);
 typedef ssize_t (*ziti_sdk_write_cb)(const void *ziti_io_ctx, void *write_ctx, const void *data, size_t len);
 typedef host_ctx_t * (*ziti_sdk_host_cb)(void *ziti_ctx, uv_loop_t *loop, const char *service_name, cfg_type_e cfg_type, const void *cfg);
-typedef void (*ziti_tunneler_call_cb)(uv_loop_t *loop, void *ctx);
 
 /** data needed to intercept packets and dial the associated ziti service */
 typedef struct intercept_ctx_s  intercept_ctx_t;
@@ -132,11 +131,6 @@ typedef struct tunneler_sdk_options_s {
     ziti_sdk_write_cb   ziti_write;
     ziti_sdk_host_cb    ziti_host;
 } tunneler_sdk_options;
-
-typedef struct tunneler_cmd_request_s {
-    ziti_tunneler_call_cb tnl_cmd_cb;
-    void *ctx;
-} tunneler_cmd_request;
 
 extern address_t *parse_address(const char *ip_or_cidr);
 extern port_range_t *parse_port_range(uint16_t low, uint16_t high);
@@ -181,7 +175,8 @@ extern const char* ziti_tunneler_build_date();
 extern void ziti_tunnel_set_logger(tunnel_logger_f logger);
 extern void ziti_tunnel_set_log_level(int lvl);
 
-extern void ziti_tunneler_call_function(uv_loop_t *loop, ziti_tunneler_call_cb tnl_call_cb, void *ctx);
+typedef void (*ziti_tunnel_async_fn)(void *ctx);
+extern void ziti_tunnel_async_send(tunneler_context tctx, ziti_tunnel_async_fn f, void *arg);
 
 #ifdef __cplusplus
 }
