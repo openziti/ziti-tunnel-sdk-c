@@ -2631,7 +2631,6 @@ void scm_service_stop() {
         uv_stop(main_ziti_loop);
         uv_loop_close(main_ziti_loop);
     }
-
 }
 
 static void move_config_from_previous_windows_backup(uv_loop_t *loop) {
