@@ -55,6 +55,13 @@ static void run_packet_loop(uv_loop_t *loop, tunneler_context tnlr_ctx);
 
 STAILQ_HEAD(tlnr_ctx_list_s, tunneler_ctx_s) tnlr_ctx_list_head = STAILQ_HEAD_INITIALIZER(tnlr_ctx_list_head);
 
+// todo expose tunneler_context to modules that need `ziti_tunnel_async_send` (e.g. windows-scripts) so these can be removed
+static uv_once_t default_loop_sem_init_once = UV_ONCE_INIT;
+static uv_sem_t default_loop_sem;
+static void default_loop_sem_init(void) {
+    uv_sem_init(&default_loop_sem, 0);
+}
+
 tunneler_context ziti_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop) {
     TNL_LOG(INFO, "Ziti Tunneler SDK (%s)", ziti_tunneler_version());
 
@@ -69,6 +76,8 @@ tunneler_context ziti_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop)
         return NULL;
     }
     ctx->loop = loop;
+    uv_sem_init(ctx->sem, 0);
+    uv_once(&default_loop_sem_init_once, default_loop_sem_init);
     memcpy(&ctx->opts, opts, sizeof(ctx->opts));
     LIST_INIT(&ctx->intercepts);
     run_packet_loop(loop, ctx);
@@ -552,22 +561,53 @@ static void run_packet_loop(uv_loop_t *loop, tunneler_context tnlr_ctx) {
     uv_timer_start(&tnlr_ctx->lwip_timer_req, check_lwip_timeouts, 0, 10);
 }
 
-void execute_tnl_after_cb(uv_work_t *wr, int status) {
-    tunneler_cmd_request *tnl_cmd_req = wr->data;
-    tnl_cmd_req->tnl_cmd_cb(tnl_cmd_req->ctx);
+typedef struct ziti_tunnel_async_call_s {
+    ziti_tunnel_async_fn f;
+    void *               arg;
+} ziti_tunnel_async_call_t;
+
+static void async_close_cb(uv_handle_t *async) {
+    if (async->data != NULL) {
+        free(async->data);
+    }
+    free(async);
 }
 
-void execute_tnl_cb(uv_work_t *wr) {
-    TNL_LOG(TRACE, "Tunneler work queue called");
+/** invoke a caller-supplied function with argument. this is called by libuv on the loop thread */
+static void ziti_tunnel_async_wrapper(uv_async_t *async) {
+    ziti_tunnel_async_call_t *call = async->data;
+    if (call != NULL && call->f != NULL) {
+        call->f(call->arg);
+    }
+    uv_close((uv_handle_t *)async, async_close_cb);
 }
 
-void ziti_tunneler_call_function(uv_loop_t *loop, ziti_tunneler_call_cb tnl_call_cb, void *ctx) {
-    tunneler_cmd_request *tnl_cmd_req = calloc(1, sizeof(tunneler_cmd_request));
-    tnl_cmd_req->tnl_cmd_cb = tnl_call_cb;
-    tnl_cmd_req->ctx = ctx;
-    uv_work_t *loader = calloc(1, sizeof(uv_work_t));
-    loader->data = tnl_cmd_req;
-    uv_queue_work(loop, loader, execute_tnl_cb, execute_tnl_after_cb);
+/** sets up a function call on the specified loop */
+void ziti_tunnel_async_send(tunneler_context tctx, ziti_tunnel_async_fn f, void *arg) {
+    uv_loop_t *loop = uv_default_loop();
+    uv_sem_t *sem = &default_loop_sem;
+    if (tctx != NULL) {
+        loop = tctx->loop;
+        sem = tctx->sem;
+    }
+
+    ziti_tunnel_async_call_t *call = calloc(1, sizeof(ziti_tunnel_async_call_t));
+    call->f = f;
+    call->arg = arg;
+
+    uv_async_t *async = calloc(1, sizeof(uv_async_t));
+
+    uv_sem_wait(sem);
+    int e = uv_async_init(loop, async, ziti_tunnel_async_wrapper);
+    uv_sem_post(sem);
+    if (e != 0) {
+        TNL_LOG(ERROR, "uv_async_init error: %s", uv_err_name(e));
+        free(call);
+        free(async);
+        return;
+    }
+
+    uv_async_send(async);
 }
 
 #define _str(x) #x
