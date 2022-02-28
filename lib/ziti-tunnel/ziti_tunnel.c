@@ -577,7 +577,7 @@ static void async_close_cb(uv_handle_t *async) {
 static void ziti_tunnel_async_wrapper(uv_async_t *async) {
     ziti_tunnel_async_call_t *call = async->data;
     if (call != NULL && call->f != NULL) {
-        call->f(call->arg);
+        call->f(async->loop, call->arg);
     }
     uv_close((uv_handle_t *)async, async_close_cb);
 }

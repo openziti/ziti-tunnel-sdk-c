@@ -175,7 +175,7 @@ extern const char* ziti_tunneler_build_date();
 extern void ziti_tunnel_set_logger(tunnel_logger_f logger);
 extern void ziti_tunnel_set_log_level(int lvl);
 
-typedef void (*ziti_tunnel_async_fn)(void *ctx);
+typedef void (*ziti_tunnel_async_fn)(uv_loop_t *loop, void *ctx);
 extern void ziti_tunnel_async_send(tunneler_context tctx, ziti_tunnel_async_fn f, void *arg);
 
 #ifdef __cplusplus
