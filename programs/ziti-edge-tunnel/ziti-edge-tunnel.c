@@ -2628,6 +2628,7 @@ void scm_service_stop_event(uv_async_t *ar) {
 
     cleanup_instance_config();
 
+    // wintun session close causes the seg fault, if you try to close it at this point. https://github.com/openziti/ziti-tunnel-sdk-c/issues/301
     tun_kill();
 
     ZITI_LOG(INFO,"============================ service ends ==================================");
