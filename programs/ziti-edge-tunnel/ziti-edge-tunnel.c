@@ -507,6 +507,7 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
                 scm_service_stop();
             }
             free_tunnel_service_control(&tunnel_service_control_opts);
+            break;
         }
 #endif
     }
@@ -2612,8 +2613,11 @@ void scm_service_run(void * name) {
     run(0, NULL);
 }
 
-void scm_service_stop() {
-    ZITI_LOG(INFO, "Control request to stop tunnel service received...");
+
+void scm_service_stop_event(uv_async_t *ar) {
+    ZITI_LOG(INFO, "Processing stop tunnel service request");
+
+    uv_close((uv_handle_t *) ar, (uv_close_cb) free);
 
     // ziti dump to log file / stdout
     tunnel_command *tnl_cmd = calloc(1, sizeof(tunnel_command));
@@ -2622,15 +2626,29 @@ void scm_service_stop() {
 
     remove_all_nrpt_rules();
 
-    tun_kill();
-
     cleanup_instance_config();
 
+    tun_kill();
+
     ZITI_LOG(INFO,"============================ service ends ==================================");
+
     if (main_ziti_loop != NULL) {
         uv_stop(main_ziti_loop);
         uv_loop_close(main_ziti_loop);
     }
+
+    // stops the windows service in scm
+    stop_windows_service();
+
+}
+
+void scm_service_stop() {
+    ZITI_LOG(INFO, "Control request to stop tunnel service received...");
+
+    uv_async_t *ar = calloc(1, sizeof(uv_async_t));
+    uv_async_init(main_ziti_loop, ar, scm_service_stop_event);
+    uv_async_send(ar);
+
 }
 
 static void move_config_from_previous_windows_backup(uv_loop_t *loop) {

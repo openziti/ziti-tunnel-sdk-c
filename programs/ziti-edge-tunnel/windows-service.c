@@ -456,8 +456,6 @@ DWORD LphandlerFunctionEx(
 
             // stops the running tunnel service
             scm_service_stop();
-            // stops the windows service in scm
-            stop_windows_service();
 
             return 0;
 
