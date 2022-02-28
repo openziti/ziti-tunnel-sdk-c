@@ -208,13 +208,10 @@ void add_nrpt_rules_script(uv_loop_t *nrpt_loop, struct add_or_edit_service_nrpt
     free(add_svc_req_data);
 }
 
-void add_nrpt_rules(uv_async_t *ar) {
+void add_nrpt_rules(uv_loop_t *nrpt_loop, void *ctx) {
     ZITI_LOG(VERBOSE, "Add nrpt rules");
 
-    struct add_or_edit_service_nrpt_req *add_svc_req_data = ar->data;
-    uv_loop_t *nrpt_loop = ar->loop;
-
-    uv_close((uv_handle_t *) ar, (uv_close_cb) free);
+    struct add_or_edit_service_nrpt_req *add_svc_req_data = ctx;
 
     add_nrpt_rules_script(nrpt_loop, add_svc_req_data);
 }
@@ -309,12 +306,9 @@ void remove_nrpt_rules_script(uv_loop_t *nrpt_loop, model_map *hostnames) {
     free(hostnames);
 }
 
-void remove_nrpt_rules(uv_async_t *ar) {
+void remove_nrpt_rules(uv_loop_t *nrpt_loop, void *ctx) {
     ZITI_LOG(VERBOSE, "Remove nrpt rules");
-    model_map *hostnames = ar->data;
-    uv_loop_t *nrpt_loop = ar->loop;
-
-    uv_close((uv_handle_t *) ar, (uv_close_cb) free);
+    model_map *hostnames = ctx;
 
     remove_nrpt_rules_script(nrpt_loop, hostnames);
 }
@@ -440,12 +434,9 @@ void remove_and_add_nrpt_rules_script(uv_loop_t *nrpt_loop, struct add_or_edit_s
     free(hostnames);
 }
 
-void remove_and_add_nrpt_rules(uv_async_t *ar) {
+void remove_and_add_nrpt_rules(uv_loop_t *nrpt_loop, void *ctx) {
     ZITI_LOG(VERBOSE, "Remove and add nrpt rules");
-    struct add_or_edit_service_nrpt_req *add_or_edit_svc_req_data = ar->data;
-    uv_loop_t *nrpt_loop = ar->loop;
-
-    uv_close((uv_handle_t *) ar, (uv_close_cb) free);
+    struct add_or_edit_service_nrpt_req *add_or_edit_svc_req_data = ctx;
 
     remove_and_add_nrpt_rules_script(nrpt_loop, add_or_edit_svc_req_data);
 }

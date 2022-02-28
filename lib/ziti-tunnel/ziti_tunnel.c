@@ -554,7 +554,7 @@ static void run_packet_loop(uv_loop_t *loop, tunneler_context tnlr_ctx) {
 
 void execute_tnl_after_cb(uv_work_t *wr, int status) {
     tunneler_cmd_request *tnl_cmd_req = wr->data;
-    tnl_cmd_req->tnl_cmd_cb(tnl_cmd_req->ctx);
+    tnl_cmd_req->tnl_cmd_cb(wr->loop, tnl_cmd_req->ctx);
 }
 
 void execute_tnl_cb(uv_work_t *wr) {

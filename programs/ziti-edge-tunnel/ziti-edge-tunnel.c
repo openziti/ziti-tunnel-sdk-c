@@ -59,7 +59,6 @@ typedef char * (*to_json_fn)(const void * msg, int flags, size_t *len);
 static void send_events_message(const void *message, to_json_fn to_json_f, bool displayEvent);
 static void send_tunnel_command(tunnel_command *tnl_cmd, void *ctx);
 static void send_tunnel_command_inline(tunnel_command *tnl_cmd, void *ctx);
-int (*tunneler_cmd_cb)(void *ctx);
 
 #if _WIN32
 static void move_config_from_previous_windows_backup(uv_loop_t *loop);
@@ -210,10 +209,7 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
                             }
 
                             if (model_map_size(hostnamesToRemove) > 0) {
-                                uv_async_t *ar = calloc(1, sizeof(uv_async_t));
-                                ar->data = hostnamesToRemove;
-                                uv_async_init(main_ziti_loop, ar, remove_nrpt_rules);
-                                uv_async_send(ar);
+                                ziti_tunneler_call_function(main_ziti_loop, remove_nrpt_rules, hostnamesToRemove);
                             } else {
                                 free(hostnamesToRemove);
                             }
@@ -1205,26 +1201,19 @@ static void on_event(const base_event *ev) {
                 edit_svc_req_data->hostnames = hostnamesToEdit;
                 edit_svc_req_data->dns_ip = get_dns_ip();
 
-                uv_async_t *ar = calloc(1, sizeof(uv_async_t));
-                ar->data = edit_svc_req_data;
-                uv_async_init(main_ziti_loop, ar, remove_and_add_nrpt_rules);
-                uv_async_send(ar);
+                ziti_tunneler_call_function(main_ziti_loop, remove_and_add_nrpt_rules, edit_svc_req_data);
+
             }
             if (model_map_size(hostnamesToAdd) > 0) {
                 struct add_or_edit_service_nrpt_req *add_svc_req_data = calloc(1, sizeof(struct add_or_edit_service_nrpt_req));
                 add_svc_req_data->hostnames = hostnamesToAdd;
                 add_svc_req_data->dns_ip = get_dns_ip();
 
-                uv_async_t *ar = calloc(1, sizeof(uv_async_t));
-                ar->data = add_svc_req_data;
-                uv_async_init(main_ziti_loop, ar, add_nrpt_rules);
-                uv_async_send(ar);
+                ziti_tunneler_call_function(main_ziti_loop, add_nrpt_rules, add_svc_req_data);
+
             }
             if (model_map_size(hostnamesToRemove) > 0) {
-                uv_async_t *ar = calloc(1, sizeof(uv_async_t));
-                ar->data = hostnamesToRemove;
-                uv_async_init(main_ziti_loop, ar, remove_nrpt_rules);
-                uv_async_send(ar);
+                ziti_tunneler_call_function(main_ziti_loop, remove_nrpt_rules, hostnamesToRemove);
             }
             if (model_map_size(hostnamesToAdd) == 0) {
                 free(hostnamesToAdd);
@@ -1419,10 +1408,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
         add_svc_req_data->hostnames = normalized_domains;
         add_svc_req_data->dns_ip = get_dns_ip();
 
-        uv_async_t *ar = calloc(1, sizeof(uv_async_t));
-        ar->data = add_svc_req_data;
-        uv_async_init(main_ziti_loop, ar, add_nrpt_rules);
-        uv_async_send(ar);
+        ziti_tunneler_call_function(main_ziti_loop, add_nrpt_rules, add_svc_req_data);
     }
 #endif
 
@@ -2573,7 +2559,7 @@ static CommandLine main_cmd = make_command_set(
 
 #if _WIN32
 
-void endpoint_status_change_function(void *ctx) {
+void endpoint_status_change_function(uv_loop_t *loop, void *ctx) {
     ZITI_LOG(VERBOSE, "invoking endpoint status change command");
     tunnel_status_change *status_change = ctx;
 
