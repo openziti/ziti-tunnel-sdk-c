@@ -30,6 +30,7 @@ int ziti_dns_setup(tunneler_context tnlr, const char *dns_addr, const char *dns_
 int ziti_dns_set_upstream(uv_loop_t *l, const char *host, uint16_t port);
 
 const char *ziti_dns_register_hostname(const char *hostname, void *intercept);
+const char *ziti_dns_reverse_lookup_domain(const ip_addr_t *addr);
 const char *ziti_dns_reverse_lookup(const char *ip_addr);
 
 void ziti_dns_deregister_intercept(void *intercept);

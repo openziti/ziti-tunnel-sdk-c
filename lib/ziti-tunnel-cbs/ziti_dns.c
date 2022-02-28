@@ -18,7 +18,6 @@
 #include <ziti/ziti_log.h>
 #include <ziti/ziti_dns.h>
 #include <ziti/model_support.h>
-#include "ziti_instance.h"
 
 #define MAX_DNS_NAME 256
 #define MAX_IP_LENGTH 16
@@ -65,13 +64,26 @@ static void udp_alloc(uv_handle_t *h, unsigned long reqlen, uv_buf_t *b);
 static void on_upstream_packet(uv_udp_t *h, ssize_t rc, const uv_buf_t *buf, const struct sockaddr* addr, unsigned int flags);
 static void complete_dns_req(struct dns_req *req);
 
+typedef struct dns_domain_s {
+    char name[MAX_DNS_NAME];
+
+    // TODO future
+//    model_map resolv_cache;
+//    ziti_connection resolv_proxy;
+//    bool connected;
+
+} dns_domain_t;
+
+static void free_domain(dns_domain_t *domain);
+
+
 // hostname or domain
 typedef struct dns_entry_s {
     char name[MAX_DNS_NAME];
     char ip[MAX_IP_LENGTH];
     ip_addr_t addr;
+    dns_domain_t *domain;
 
-    ziti_intercept_t  *intercept;
 } dns_entry_t;
 
 struct ziti_dns_s {
@@ -85,10 +97,10 @@ struct ziti_dns_s {
     // map[hostname -> dns_entry_t]
     model_map hostnames;
 
-    // map[ip -> dns_entry_t]
+    // map[ip_addr_t -> dns_entry_t]
     model_map ip_addresses;
 
-    // map[domain -> dns_entry_t]
+    // map[domain -> dns_domain_t]
     model_map domains;
 
     uv_loop_t *loop;
@@ -206,6 +218,7 @@ static bool check_name(const char *name, char clean_name[MAX_DNS_NAME], bool *is
 
     if (*hp == '*' && *(hp + 1) == '.') {
         *is_domain = true;
+        *p++ = '*';
         *p++ = '.';
         hp += 2;
     } else {
@@ -233,14 +246,26 @@ static dns_entry_t* new_ipv4_entry(const char *host) {
     ip4addr_ntoa_r(&entry->addr.u_addr.ip4, entry->ip, sizeof(entry->ip));
 
     model_map_set(&ziti_dns.hostnames, host, entry);
-    model_map_set(&ziti_dns.ip_addresses, entry->ip, entry);
+    model_map_set_key(&ziti_dns.ip_addresses, &entry->addr, sizeof(entry->addr), entry);
     ZITI_LOG(INFO, "registered DNS entry %s -> %s", host, entry->ip);
 
     return entry;
 }
 
+const char *ziti_dns_reverse_lookup_domain(const ip_addr_t *addr) {
+    ZITI_LOG(INFO, "matching %s", ipaddr_ntoa(addr));
+
+     dns_entry_t *entry = model_map_get_key(&ziti_dns.ip_addresses, addr, sizeof(*addr));
+     if (entry && entry->domain) {
+         return entry->domain->name;
+     }
+     return NULL;
+}
+
 const char *ziti_dns_reverse_lookup(const char *ip_addr) {
-    dns_entry_t *entry = model_map_get(&ziti_dns.ip_addresses, ip_addr);
+    ip_addr_t addr = {0};
+    ipaddr_aton(ip_addr, &addr);
+    dns_entry_t *entry = model_map_get_key(&ziti_dns.ip_addresses, &addr, sizeof(addr));
 
     return entry ? entry->name : NULL;
 }
@@ -261,17 +286,11 @@ dns_entry_t *ziti_dns_lookup(const char *hostname) {
     // try domains
     char *dot = strchr(clean, '.');
     while (dot != NULL) {
-        entry = model_map_get(&ziti_dns.domains, dot);
-        if (entry) {
-            ZITI_LOG(DEBUG, "matching domain[%s] found for %s", entry->name, hostname);
+        dns_domain_t *domain = model_map_get(&ziti_dns.domains, dot + 1);
+        if (domain) {
+            ZITI_LOG(DEBUG, "matching domain[%s] found for %s", domain->name, hostname);
             dns_entry_t *host_entry = new_ipv4_entry(clean);
-            host_entry->intercept = entry->intercept;
-            intercept_ctx_t *intercept = ziti_tunnel_find_intercept(ziti_dns.tnlr, entry->intercept);
-            if (intercept) {
-                intercept_ctx_add_address(intercept, host_entry->ip);
-            } else {
-                ZITI_LOG(ERROR, "could not find matching tunnel intercept for intercepted domain[%s]", entry->name);
-            }
+            host_entry->domain = domain;
             return host_entry;
         }
         dot = strchr(dot + 1, '.');
@@ -280,30 +299,11 @@ dns_entry_t *ziti_dns_lookup(const char *hostname) {
 }
 
 void ziti_dns_deregister_intercept(void *intercept) {
-    model_map_iter it = model_map_iterator(&ziti_dns.domains);
-    while (it != NULL) {
-        dns_entry_t *e = model_map_it_value(it);
-        if (e->intercept == intercept) {
-            it = model_map_it_remove(it);
-            ZITI_LOG(INFO, "removed wildcard domain[*%s]", e->name);
-            free(e);
-        } else {
-            it = model_map_it_next(it);
-        }
-    }
-
-    it = model_map_iterator(&ziti_dns.hostnames);
-    while (it != NULL) {
-        dns_entry_t *e = model_map_it_value(it);
-        if (e->intercept == intercept) {
-            it = model_map_it_remove(it);
-            model_map_remove(&ziti_dns.ip_addresses, e->ip);
-            ZITI_LOG(INFO, "removed DNS mapping %s -> %s", e->name, e->ip);
-            free(e);
-        } else {
-            it = model_map_it_next(it);
-        }
-    }
+    // TODO
+    // this needs to be reworked
+    // domains and hosts can belong to multiple intercepts(services)
+    // the naive implementation was dangerous
+    // just leave them be for now
 }
 
 const char *ziti_dns_register_hostname(const char *hostname, void *intercept) {
@@ -325,20 +325,20 @@ const char *ziti_dns_register_hostname(const char *hostname, void *intercept) {
     }
 
     if (is_domain) {
-        dns_entry_t *domain = model_map_get(&ziti_dns.domains, clean);
+        dns_domain_t *domain = model_map_get(&ziti_dns.domains, clean + 2);
         if (domain == NULL) {
-            ZITI_LOG(INFO, "registered wildcard domain[*%s]", clean);
-            dns_entry_t *entry = calloc(1, sizeof(dns_entry_t));
-            strncpy(entry->name, clean, sizeof(entry->name));
-            entry->intercept = intercept;
-            model_map_set(&ziti_dns.domains, clean, entry);
+            ZITI_LOG(INFO, "registered wildcard domain[%s]", clean);
+            domain = calloc(1, sizeof(dns_domain_t));
+            strncpy(domain->name, clean, sizeof(domain->name));
+            model_map_set(&ziti_dns.domains, clean + 2, domain);
+        } else {
+            ZITI_LOG(INFO, "duplicate domain");
         }
         return NULL;
     } else {
         dns_entry_t *entry = model_map_get(&ziti_dns.hostnames, clean);
         if (!entry) {
             entry = new_ipv4_entry(clean);
-            entry->intercept = intercept;
         }
         return entry->ip;
     }
@@ -558,4 +558,10 @@ static void complete_dns_req(struct dns_req *req) {
     }
 
     free(req);
+}
+
+static void free_domain(dns_domain_t *domain) {
+//    model_map_clear(&domain->resolv_cache, NULL);
+//    ziti_close(domain->resolv_proxy, NULL);
+    free(domain);
 }
