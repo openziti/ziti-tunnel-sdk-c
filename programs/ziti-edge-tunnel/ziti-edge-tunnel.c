@@ -209,7 +209,7 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
                             }
 
                             if (model_map_size(hostnamesToRemove) > 0) {
-                                ziti_tunneler_call_function(main_ziti_loop, remove_nrpt_rules, hostnamesToRemove);
+                                remove_nrpt_rules(main_ziti_loop, hostnamesToRemove);
                             } else {
                                 free(hostnamesToRemove);
                             }
@@ -311,17 +311,14 @@ void tunnel_enroll_cb(ziti_config *cfg, int status, char *err, void *ctx) {
     free(add_id_req);
 }
 
-static void enroll_ziti_async(uv_async_t *ar) {
-    struct add_identity_request_s *add_id_req = ar->data;
-    uv_loop_t *enroll_loop = ar->loop;
-
-    uv_close((uv_handle_t *) ar, (uv_close_cb) free);
+static void enroll_ziti_async(uv_loop_t *loop, void *arg) {
+    struct add_identity_request_s *add_id_req = arg;
 
     ziti_enroll_opts enroll_opts = {0};
     enroll_opts.enroll_name = add_id_req->identifier;
     enroll_opts.jwt_content = add_id_req->jwt_content;
 
-    ziti_enroll(&enroll_opts, enroll_loop, tunnel_enroll_cb, add_id_req);
+    ziti_enroll(&enroll_opts, loop, tunnel_enroll_cb, add_id_req);
 }
 
 static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void *ctx) {
@@ -480,12 +477,7 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
             add_id_req->identifier_file_name = strdup(new_identifier_name);
             add_id_req->jwt_content = strdup(tunnel_add_identity_cmd.jwtContent);
 
-            uv_stream_t *s = ctx;
-            uv_async_t *ar = calloc(1, sizeof(uv_async_t));
-            ar->data = add_id_req;
-            uv_async_init(s->loop, ar, enroll_ziti_async);
-            uv_async_send(ar);
-
+            ziti_tunnel_async_send(NULL, enroll_ziti_async, add_id_req);
             free_tunnel_add_identity(&tunnel_add_identity_cmd);
             return true;
         }
@@ -1200,20 +1192,16 @@ static void on_event(const base_event *ev) {
                 struct add_or_edit_service_nrpt_req *edit_svc_req_data = calloc(1, sizeof(struct add_or_edit_service_nrpt_req));
                 edit_svc_req_data->hostnames = hostnamesToEdit;
                 edit_svc_req_data->dns_ip = get_dns_ip();
-
-                ziti_tunneler_call_function(main_ziti_loop, remove_and_add_nrpt_rules, edit_svc_req_data);
-
+                remove_and_add_nrpt_rules(main_ziti_loop, edit_svc_req_data);
             }
             if (model_map_size(hostnamesToAdd) > 0) {
                 struct add_or_edit_service_nrpt_req *add_svc_req_data = calloc(1, sizeof(struct add_or_edit_service_nrpt_req));
                 add_svc_req_data->hostnames = hostnamesToAdd;
                 add_svc_req_data->dns_ip = get_dns_ip();
-
-                ziti_tunneler_call_function(main_ziti_loop, add_nrpt_rules, add_svc_req_data);
-
+                add_nrpt_rules(main_ziti_loop, add_svc_req_data);
             }
             if (model_map_size(hostnamesToRemove) > 0) {
-                ziti_tunneler_call_function(main_ziti_loop, remove_nrpt_rules, hostnamesToRemove);
+                remove_nrpt_rules(main_ziti_loop, hostnamesToRemove);
             }
             if (model_map_size(hostnamesToAdd) == 0) {
                 free(hostnamesToAdd);
@@ -1408,7 +1396,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
         add_svc_req_data->hostnames = normalized_domains;
         add_svc_req_data->dns_ip = get_dns_ip();
 
-        ziti_tunneler_call_function(main_ziti_loop, add_nrpt_rules, add_svc_req_data);
+        add_nrpt_rules(main_ziti_loop, add_svc_req_data);
     }
 #endif
 
@@ -2594,7 +2582,7 @@ void endpoint_status_change(bool woken, bool unlocked) {
     status_change->woken = woken;
     status_change->unlocked = unlocked;
 
-    ziti_tunneler_call_function(main_ziti_loop, endpoint_status_change_function, status_change);
+    ziti_tunnel_async_send(NULL, endpoint_status_change_function, status_change);
 }
 
 void scm_service_init(char *config_path) {
@@ -2604,17 +2592,15 @@ void scm_service_init(char *config_path) {
     }
 }
 
-void scm_service_run(void * name) {
+void scm_service_run(const char *name) {
     ZITI_LOG(INFO, "About to run tunnel service...");
-    ziti_set_app_info((char *)name, ziti_tunneler_version());
+    ziti_set_app_info(name, ziti_tunneler_version());
     run(0, NULL);
 }
 
 
-void scm_service_stop_event(uv_async_t *ar) {
+void scm_service_stop_event(uv_loop_t *loop, void *arg) {
     ZITI_LOG(INFO, "Processing stop tunnel service request");
-
-    uv_close((uv_handle_t *) ar, (uv_close_cb) free);
 
     // ziti dump to log file / stdout
     tunnel_command *tnl_cmd = calloc(1, sizeof(tunnel_command));
@@ -2642,11 +2628,7 @@ void scm_service_stop_event(uv_async_t *ar) {
 
 void scm_service_stop() {
     ZITI_LOG(INFO, "Control request to stop tunnel service received...");
-
-    uv_async_t *ar = calloc(1, sizeof(uv_async_t));
-    uv_async_init(main_ziti_loop, ar, scm_service_stop_event);
-    uv_async_send(ar);
-
+    ziti_tunnel_async_send(NULL, scm_service_stop_event, NULL);
 }
 
 static void move_config_from_previous_windows_backup(uv_loop_t *loop) {
@@ -2713,7 +2695,7 @@ int main(int argc, char *argv[]) {
     }
 
 #if _WIN32
-    SvcStart(NULL);
+    SvcStart();
 
     // if service is started by SCM, SvcStart will return only when it receives the stop request
     // started_by_scm will be set to true only if scm initializes the config value

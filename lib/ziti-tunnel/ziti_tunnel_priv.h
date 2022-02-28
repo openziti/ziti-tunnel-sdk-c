@@ -71,6 +71,7 @@ typedef struct tunneler_ctx_s {
     struct raw_pcb *tcp;
     struct raw_pcb *udp;
     uv_loop_t      *loop;
+    uv_sem_t     sem;
     uv_poll_t    netif_poll_req;
     uv_timer_t   lwip_timer_req;
     LIST_HEAD(intercept_ctx_list_s, intercept_ctx_s) intercepts;
