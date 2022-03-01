@@ -67,6 +67,7 @@ static void complete_dns_req(struct dns_req *req);
 typedef struct dns_domain_s {
     char name[MAX_DNS_NAME];
 
+    model_map intercepts; // set[intercept]
     // TODO future
 //    model_map resolv_cache;
 //    ziti_connection resolv_proxy;
@@ -83,6 +84,8 @@ typedef struct dns_entry_s {
     char ip[MAX_IP_LENGTH];
     ip_addr_t addr;
     dns_domain_t *domain;
+
+    model_map intercepts;
 
 } dns_entry_t;
 
@@ -298,12 +301,40 @@ dns_entry_t *ziti_dns_lookup(const char *hostname) {
     return NULL;
 }
 
+
 void ziti_dns_deregister_intercept(void *intercept) {
-    // TODO
-    // this needs to be reworked
-    // domains and hosts can belong to multiple intercepts(services)
-    // the naive implementation was dangerous
-    // just leave them be for now
+    model_map_iter it = model_map_iterator(&ziti_dns.domains);
+    while (it != NULL) {
+        dns_domain_t *domain = model_map_it_value(it);
+        model_map_remove_key(&domain->intercepts, &intercept, sizeof(intercept));
+        it = model_map_it_next(it);
+    }
+
+    it = model_map_iterator(&ziti_dns.hostnames);
+    while (it != NULL) {
+        dns_entry_t *e = model_map_it_value(it);
+        model_map_remove_key(&e->intercepts, &intercept, sizeof(intercept));
+        if (model_map_size(&e->intercepts) == 0 && (e->domain == NULL || model_map_size(&e->domain->intercepts) == 0)) {
+            it = model_map_it_remove(it);
+            model_map_remove(&ziti_dns.ip_addresses, e->ip);
+            ZITI_LOG(INFO, "removed DNS mapping %s -> %s", e->name, e->ip);
+            free(e);
+        } else {
+            it = model_map_it_next(it);
+        }
+    }
+
+    it = model_map_iterator(&ziti_dns.domains);
+    while (it != NULL) {
+        dns_domain_t *domain = model_map_it_value(it);
+        if (model_map_size(&domain->intercepts) == 0) {
+            it = model_map_it_remove(it);
+            ZITI_LOG(INFO, "removed wildcard domain[*%s]", domain->name);
+            free_domain(domain);
+        } else {
+            it = model_map_it_next(it);
+        }
+    }
 }
 
 const char *ziti_dns_register_hostname(const char *hostname, void *intercept) {
@@ -331,15 +362,15 @@ const char *ziti_dns_register_hostname(const char *hostname, void *intercept) {
             domain = calloc(1, sizeof(dns_domain_t));
             strncpy(domain->name, clean, sizeof(domain->name));
             model_map_set(&ziti_dns.domains, clean + 2, domain);
-        } else {
-            ZITI_LOG(INFO, "duplicate domain");
         }
+        model_map_set_key(&domain->intercepts, &intercept, sizeof(intercept), intercept);
         return NULL;
     } else {
         dns_entry_t *entry = model_map_get(&ziti_dns.hostnames, clean);
         if (!entry) {
             entry = new_ipv4_entry(clean);
         }
+        model_map_set_key(&entry->intercepts, &intercept, sizeof(intercept), intercept);
         return entry->ip;
     }
 }
