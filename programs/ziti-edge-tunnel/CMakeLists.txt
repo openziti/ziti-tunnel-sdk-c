@@ -4,7 +4,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL Darwin)
     set(NETIF_DRIVER_SOURCE netif_driver/darwin/utun.c)
 endif()
 if(CMAKE_SYSTEM_NAME STREQUAL Linux)
-    set(NETIF_DRIVER_SOURCE netif_driver/linux/tun.c)
+    set(NETIF_DRIVER_SOURCE netif_driver/linux/tun.c netif_driver/linux/resolvers.c netif_driver/linux/utils.c)
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL Windows)
@@ -32,6 +32,27 @@ endif ()
 
 add_executable(ziti-edge-tunnel ziti-edge-tunnel.c ${NETIF_DRIVER_SOURCE} ${ZITI_INSTANCE_COMMON} ${ZITI_INSTANCE_OS})
 set_property(TARGET ziti-edge-tunnel PROPERTY C_STANDARD 11)
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    option(DISABLE_LIBSYSTEMD_FEATURE "libsystemd library integration toggle" OFF)
+    message("DISABLE_LIBSYSTEMD_FEATURE: ${DISABLE_LIBSYSTEMD_FEATURE}")
+
+    if (DISABLE_LIBSYSTEMD_FEATURE)
+        target_compile_definitions(ziti-edge-tunnel PRIVATE EXCLUDE_LIBSYSTEMD_RESOLVER)
+    else()
+        find_package(PkgConfig REQUIRED)
+        pkg_check_modules(LIBSYSTEMD IMPORTED_TARGET "libsystemd")
+
+        if(LIBSYSTEMD_FOUND)
+            message(INFO "LIBSYSTEMD_VERSION: ${LIBSYSTEMD_VERSION}")
+            if(LIBSYSTEMD_VERSION VERSION_LESS "229")
+                message(FATAL_ERROR "Unsupported version of libsystemd detected. To disable libsystmd feature, set DISABLE_LIBSYSTEMD_FEATURE=ON.")
+            endif()
+        else()
+            message(FATAL_ERROR "libsystemd not found. To disable libsytemd feature, set DISABLE_LIBSYSTEMD_FEATURE=ON")
+        endif()
+    endif()
+endif()
 
 target_include_directories(ziti-edge-tunnel
         PRIVATE include

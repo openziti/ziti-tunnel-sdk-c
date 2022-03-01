@@ -28,9 +28,10 @@
 
 #include <ziti/ziti_log.h>
 #include <ziti/ziti_dns.h>
-#include <stdbool.h>
 
+#include "resolvers.h"
 #include "tun.h"
+#include "utils.h"
 
 #ifndef DEVTUN
 #define DEVTUN "/dev/net/tun"
@@ -55,8 +56,6 @@ extern void dns_set_miss_status(int code);
 
 static void dns_update_resolvectl(const char* tun, const char* addr);
 static void dns_update_systemd_resolve(const char* tun, const char* addr);
-static void dns_update_resolvconf(const char* tun, const char* addr);
-static void dns_update_etc_resolv(const char* tun, const char* addr);
 
 static void (*dns_updater)(const char* tun, const char* addr);
 static uv_once_t dns_updater_init;
@@ -110,35 +109,38 @@ int tun_delete_route(netif_handle tun, const char *dest) {
     return s;
 }
 
-static int run_command_va(bool log_nonzero_ec, const char* cmd, va_list args) {
-    char cmdline[1024];
-    vsprintf(cmdline, cmd, args);
-
-    int rc = system(cmdline);
-    if (rc != 0 && log_nonzero_ec) {
-        ZITI_LOG(ERROR, "cmd{%s} failed: %d/%d/%s\n", cmdline, rc, errno, strerror(errno));
+static void dns_update_resolvectl(const char* tun, const char* addr) {
+    run_command(RESOLVECTL " dns %s %s", tun, addr);
+    int s = run_command_ex(false, RESOLVECTL " domain | fgrep -v '%s' | fgrep -q '~.'",
+                           dns_maintainer.tun_name);
+    char *domain = "";
+    // set wildcard domain if any other resolvers set it.
+    if (s == 0) {
+        domain = "~.";
     }
-    ZITI_LOG(DEBUG, "system(%s) returned %d", cmdline, rc);
-    return WEXITSTATUS(rc);
+    run_command(RESOLVECTL " domain %s '%s'", dns_maintainer.tun_name, domain);
 }
 
-static int run_command(const char *cmd, ...) {
-    va_list args;
-    va_start(args, cmd);
-    int r = run_command_va(true, cmd, args);
-    va_end(args);
-    return r;
-}
-
-static int run_command_ex(bool log_nonzero_ec, const char *cmd, ...) {
-    va_list args;
-    va_start(args, cmd);
-    int r = run_command_va(log_nonzero_ec, cmd, args);
-    va_end(args);
-    return r;
+static void dns_update_systemd_resolve(const char* tun, const char* addr) {
+    run_command("systemd-resolve -i %s --set-dns=%s", tun, addr);
+    int s = run_command_ex(false, "systemd-resolve --status | fgrep  'DNS Domain' | fgrep -q '~.'");
+    char *domain = "";
+    // set wildcard domain if any other resolvers set it.
+    if (s == 0) {
+        domain = "--set-domain=~.";
+        run_command("systemd-resolve -i %s %s", dns_maintainer.tun_name, domain);
+    }
+    run_command("systemd-resolve --flush-caches");
 }
 
 static void find_dns_updater() {
+#ifndef EXCLUDE_LIBSYSTEMD_RESOLVER
+    if(try_systemd_resolved()) {
+        dns_updater = dns_update_systemd_resolved;
+        return;
+    }
+#endif
+
     struct dns_cmd {
         const char *path;
         void (* update_fn)(const char* tun, const char* addr);
@@ -171,49 +173,12 @@ static void find_dns_updater() {
 
     ZITI_LOG(ERROR, "could not find a way to configure system resolver. Ziti DNS functionality will be impaired");
     dns_updater = dns_update_etc_resolv;
+    dns_set_miss_status(DNS_REFUSE);
 }
 
 static void set_dns(uv_work_t *wr) {
     uv_once(&dns_updater_init, find_dns_updater);
     dns_updater(dns_maintainer.tun_name, inet_ntoa(*(struct in_addr*)&dns_maintainer.dns_ip));
-}
-
-static void dns_update_resolvectl(const char* tun, const char* addr) {
-    run_command(RESOLVECTL " dns %s %s", tun, addr);
-    int s = run_command_ex(false, RESOLVECTL " domain | fgrep -v '%s' | fgrep -q '~.'",
-                           dns_maintainer.tun_name);
-    char *domain = "";
-    // set wildcard domain if any other resolvers set it.
-    if (s == 0) {
-        domain = "~.";
-    }
-    run_command(RESOLVECTL " domain %s '%s'", dns_maintainer.tun_name, domain);
-}
-
-static void dns_update_systemd_resolve(const char* tun, const char* addr) {
-    run_command("systemd-resolve -i %s --set-dns=%s", tun, addr);
-    int s = run_command_ex(false, "systemd-resolve --status | fgrep  'DNS Domain' | fgrep -q '~.'");
-    char *domain = "";
-    // set wildcard domain if any other resolvers set it.
-    if (s == 0) {
-        domain = "--set-domain=~.";
-        run_command("systemd-resolve -i %s %s", dns_maintainer.tun_name, domain);
-    }
-    run_command("systemd-resolve --flush-caches");
-}
-
-static void dns_update_resolvconf(const char* tun, const char* addr) {
-    run_command("echo 'nameserver %s' | resolvconf -a %s", addr, tun);
-}
-
-static void dns_update_etc_resolv(const char* tun, const char* addr) {
-    int found = run_command("grep -q '^nameserver %s' /etc/resolv.conf", addr);
-
-    if (found != 0) {
-        run_command("sed -z -i 's/nameserver/nameserver %s\\nnameserver/' /etc/resolv.conf", addr);
-    }
-
-    dns_set_miss_status(DNS_REFUSE);
 }
 
 static void after_set_dns(uv_work_t *wr, int status) {
