@@ -50,7 +50,7 @@ static int process_cmd(const tunnel_command *cmd, void (*cb)(const tunnel_result
 static int load_identity(const char *identifier, const char *path, int api_page_size, command_cb cb, void *ctx);
 static void get_transfer_rates(const char *identifier, command_cb cb, void *ctx);
 static struct ziti_instance_s *new_ziti_instance(const char *identifier, const char *path);
-static void load_ziti_async(uv_async_t *ar);
+static void load_ziti_async(uv_loop_t *loop, void *arg);
 static void on_sigdump(uv_signal_t *sig, int signum);
 static void enable_mfa(ziti_context ztx, void *ctx);
 static void verify_mfa(ziti_context ztx, char *code, void *ctx);
@@ -582,10 +582,7 @@ static int load_identity(const char *identifier, const char *path, int api_page_
         inst->opts.api_page_size = api_page_size;
     }
 
-    uv_async_t *ar = calloc(1, sizeof(uv_async_t));
-    ar->data = inst;
-    uv_async_init(CMD_CTX.loop, ar, load_ziti_async);
-    uv_async_send(ar);
+    ziti_tunnel_async_send(NULL, load_ziti_async, inst);
     return 0;
 }
 
@@ -801,8 +798,8 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
     }
 }
 
-static void load_ziti_async(uv_async_t *ar) {
-    struct ziti_instance_s *inst = ar->data;
+static void load_ziti_async(uv_loop_t *loop, void *arg) {
+    struct ziti_instance_s *inst = arg;
 
     tunnel_result result = {
             .success = true,
@@ -820,7 +817,7 @@ static void load_ziti_async(uv_async_t *ar) {
     } else {
         ZITI_LOG(INFO, "loading ziti instance from %s", config_path);
         inst->opts.app_ctx = inst;
-        if (ziti_init_opts(&inst->opts, ar->loop) == ZITI_OK) {
+        if (ziti_init_opts(&inst->opts, loop) == ZITI_OK) {
             model_map_set(&instances, inst->identifier, inst);
         } else {
             result.success = false;
@@ -838,7 +835,6 @@ static void load_ziti_async(uv_async_t *ar) {
     }
 
     free(config_path);
-    uv_close((uv_handle_t *) ar, (uv_close_cb) free);
 }
 
 /*
