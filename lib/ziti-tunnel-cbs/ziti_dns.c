@@ -256,8 +256,6 @@ static dns_entry_t* new_ipv4_entry(const char *host) {
 }
 
 const char *ziti_dns_reverse_lookup_domain(const ip_addr_t *addr) {
-    ZITI_LOG(INFO, "matching %s", ipaddr_ntoa(addr));
-
      dns_entry_t *entry = model_map_get_key(&ziti_dns.ip_addresses, addr, sizeof(*addr));
      if (entry && entry->domain) {
          return entry->domain->name;
@@ -277,7 +275,7 @@ dns_entry_t *ziti_dns_lookup(const char *hostname) {
     char clean[MAX_DNS_NAME];
     bool is_wildcard;
     if (!check_name(hostname, clean, &is_wildcard) || is_wildcard) {
-        ZITI_LOG(ERROR, "invalid host lookup[%s]", hostname);
+        ZITI_LOG(WARN, "invalid host lookup[%s]", hostname);
         return NULL;
     }
 
