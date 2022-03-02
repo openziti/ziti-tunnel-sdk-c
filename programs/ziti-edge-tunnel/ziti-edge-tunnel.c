@@ -209,7 +209,7 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
                             }
 
                             if (model_map_size(hostnamesToRemove) > 0) {
-                                ziti_tunnel_async_send(NULL, remove_nrpt_rules, hostnamesToRemove);
+                                remove_nrpt_rules(main_ziti_loop, hostnamesToRemove);
                             } else {
                                 free(hostnamesToRemove);
                             }
