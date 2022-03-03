@@ -22,6 +22,8 @@ limitations under the License.
 #include <service-utils.h>
 #include <windows.h>
 
+#include "ziti/ziti_tunnel.h"
+
 #pragma comment(lib, "advapi32.lib")
 
 SERVICE_STATUS          gSvcStatus;
@@ -454,7 +456,7 @@ DWORD LphandlerFunctionEx(
             ReportSvcStatus(SERVICE_STOP_PENDING, NO_ERROR, 0);
 
             // stops the running tunnel service
-            scm_service_stop();
+            ziti_tunnel_async_send(NULL, scm_service_stop, NULL);
 
             return 0;
 

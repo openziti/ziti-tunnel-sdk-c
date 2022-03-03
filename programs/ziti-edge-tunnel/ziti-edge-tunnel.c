@@ -477,7 +477,7 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
             add_id_req->identifier_file_name = strdup(new_identifier_name);
             add_id_req->jwt_content = strdup(tunnel_add_identity_cmd.jwtContent);
 
-            ziti_tunnel_async_send(NULL, enroll_ziti_async, add_id_req);
+            enroll_ziti_async(main_ziti_loop, add_id_req);
             free_tunnel_add_identity(&tunnel_add_identity_cmd);
             return true;
         }
@@ -2628,7 +2628,7 @@ void scm_service_stop_event(uv_loop_t *loop, void *arg) {
 
 void scm_service_stop() {
     ZITI_LOG(INFO, "Control request to stop tunnel service received...");
-    ziti_tunnel_async_send(NULL, scm_service_stop_event, NULL);
+    scm_service_stop_event(main_ziti_loop, NULL);
 }
 
 static void move_config_from_previous_windows_backup(uv_loop_t *loop) {

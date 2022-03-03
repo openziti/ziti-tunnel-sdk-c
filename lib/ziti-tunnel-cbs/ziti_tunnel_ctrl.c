@@ -582,7 +582,7 @@ static int load_identity(const char *identifier, const char *path, int api_page_
         inst->opts.api_page_size = api_page_size;
     }
 
-    ziti_tunnel_async_send(NULL, load_ziti_async, inst);
+    load_ziti_async(CMD_CTX.loop, inst);
     return 0;
 }
 
