@@ -385,7 +385,9 @@ u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     io->close_fn = intercept_ctx->close_fn ? intercept_ctx->close_fn : tnlr_ctx->opts.ziti_close;
 
     snprintf(io->tnlr_io->intercepted, sizeof(io->tnlr_io->intercepted), "tcp:%s:%d", ipaddr_ntoa(&dst), dst_p);
-    TNL_LOG(INFO, "intercepted address[%s] client[%s] service[%s]", io->tnlr_io->intercepted, io->tnlr_io->client,
+    // be less vocal about intercepted packets for internally defined services
+    int lvl = (io->write_fn == tnlr_ctx->opts.ziti_write) ? INFO : DEBUG;
+    TNL_LOG(lvl, "intercepted address[%s] client[%s] service[%s]", io->tnlr_io->intercepted, io->tnlr_io->client,
             intercept_ctx->service_name);
     void *ziti_io_ctx = zdial(intercept_ctx->app_intercept_ctx, io);
     if (ziti_io_ctx == NULL) {

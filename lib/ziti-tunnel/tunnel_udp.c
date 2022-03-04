@@ -247,7 +247,9 @@ u8_t recv_udp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     io->close_fn = intercept_ctx->close_fn ? intercept_ctx->close_fn : tnlr_ctx->opts.ziti_close;
     io->tnlr_io->idle_timeout = UDP_TIMEOUT;
 
-    TNL_LOG(INFO, "intercepted address[%s] client[%s] service[%s]", io->tnlr_io->intercepted, io->tnlr_io->client,
+    // be less vocal about intercepted packets for internally defined services
+    int lvl = (io->write_fn == tnlr_ctx->opts.ziti_write) ? INFO : DEBUG;
+    TNL_LOG(lvl, "intercepted address[%s] client[%s] service[%s]", io->tnlr_io->intercepted, io->tnlr_io->client,
             intercept_ctx->service_name);
 
     udp_recv(npcb, on_udp_client_data_enqueue, io);
