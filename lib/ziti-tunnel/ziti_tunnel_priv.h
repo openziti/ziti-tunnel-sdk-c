@@ -47,6 +47,7 @@ struct intercept_ctx_s {
     tunneler_context tnlr_ctx;
     char *service_name;
     void *app_intercept_ctx;
+    int log_level; // TNL_LOG level to use when logging intercepted packets
 
     protocol_list_t protocols;
     address_list_t addresses;
