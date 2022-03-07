@@ -59,6 +59,7 @@ typedef char * (*to_json_fn)(const void * msg, int flags, size_t *len);
 static void send_events_message(const void *message, to_json_fn to_json_f, bool displayEvent);
 static void send_tunnel_command(tunnel_command *tnl_cmd, void *ctx);
 static void send_tunnel_command_inline(tunnel_command *tnl_cmd, void *ctx);
+static void scm_service_stop_event(uv_loop_t *loop, void *arg);
 
 #if _WIN32
 static void move_config_from_previous_windows_backup(uv_loop_t *loop);
@@ -496,7 +497,7 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
             result.success = true;
             result.code = IPC_SUCCESS;
             if (tunnel_service_control_opts.operation != NULL && strcmp(tunnel_service_control_opts.operation, "stop") == 0) {
-                scm_service_stop();
+                scm_service_stop_event(main_ziti_loop, NULL);
             }
             free_tunnel_service_control(&tunnel_service_control_opts);
             break;
@@ -1574,7 +1575,7 @@ static int dns_fallback(const char *name, void *ctx, struct in_addr* addr) {
 static void interrupt_handler(int sig) {
     ZITI_LOG(WARN,"Received signal to interrupt");
     tunnel_interrupted = true;
-    scm_service_stop();
+    scm_service_stop_event(main_ziti_loop, NULL);
 }
 #endif
 
