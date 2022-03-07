@@ -97,6 +97,10 @@ const ziti_tunnel_ctrl* ziti_tunnel_init_cmd(uv_loop_t *loop, tunneler_context t
     return &CMD_CTX.ctrl;
 }
 
+#if _WIN32
+#define realpath(rel, abs) _fullpath(abs, rel, MAX_PATH)
+#endif
+
 IMPL_ENUM(mfa_status, MFA_STATUS)
 
 static ziti_context get_ziti(const char *identifier) {
@@ -281,18 +285,35 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
                     continue;
                 }
                 const ziti_identity *identity = ziti_get_identity(inst->ztx);
+                if (identity == NULL) {
+                    continue;
+                }
                 if (dump.identifier != NULL && strcmp(dump.identifier, inst->identifier) != 0) {
                     continue;
                 }
+                bool success = true;
                 if (dump.dump_path == NULL) {
                     ziti_dump_to_log(inst->ztx);
                 } else {
                     char dump_file[MAXPATHLEN];
-                    snprintf(dump_file, sizeof(dump_file), "%s/%s.ziti", dump.dump_path, identity->name);
-                    ziti_dump_to_file(inst->ztx, dump_file);
+                    char* dump_path = realpath(dump.dump_path, NULL);
+
+                    if (dump_path != NULL) {
+                        snprintf(dump_file, sizeof(dump_file), "%s/%s.ziti", dump_path, identity->name);
+                        ziti_dump_to_file(inst->ztx, dump_file);
+                    } else {
+                        ZITI_LOG(WARN, "Could not generate the ziti dump file, because the path is not found");
+                        success = false;
+                    }
                 }
-                result.success = true;
-                result.code = IPC_SUCCESS;
+                if (success) {
+                    result.success = true;
+                    result.code = IPC_SUCCESS;
+                } else {
+                    result.success = false;
+                    result.code = IPC_ERROR;
+                }
+
             }
             if (!result.success) {
                 char errorMsg[1024];
@@ -619,10 +640,6 @@ static void get_transfer_rates(const char *identifier, command_cb cb, void *ctx)
     cb(&result, ctx);
 
 }
-
-#if _WIN32
-#define realpath(rel, abs) _fullpath(abs, rel, MAX_PATH)
-#endif
 
 static struct ziti_instance_s *new_ziti_instance(const char *identifier, const char *path) {
     struct ziti_instance_s *inst = calloc(1, sizeof(struct ziti_instance_s));
