@@ -105,6 +105,7 @@ static bool started_by_scm = false;
 static bool tunnel_interrupted = false;
 
 uv_loop_t *main_ziti_loop;
+tunneler_context tunneler;
 
 IMPL_ENUM(event, EVENT_ACTIONS)
 
@@ -209,7 +210,7 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
                             }
 
                             if (model_map_size(hostnamesToRemove) > 0) {
-                                remove_nrpt_rules(main_ziti_loop, hostnamesToRemove);
+                                ziti_tunnel_async_send(tunneler, remove_nrpt_rules, hostnamesToRemove);
                             } else {
                                 free(hostnamesToRemove);
                             }
@@ -499,6 +500,23 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
             }
             free_tunnel_service_control(&tunnel_service_control_opts);
             break;
+        }
+        case TunnelCommand_StatusChange: {
+            cmd_accepted = true;
+            tunnel_status_change tunnel_status_change_opts = {0};
+            if (tnl_cmd->data == NULL ||
+                parse_tunnel_status_change(&tunnel_status_change_opts, tnl_cmd->data, strlen(tnl_cmd->data)) < 0) {
+                result.error = "invalid command";
+                result.success = false;
+                free_tunnel_status_change(&tunnel_status_change_opts);
+                break;
+            }
+            result.success = true;
+            result.code = IPC_SUCCESS;
+
+            endpoint_status_change(tunnel_status_change_opts.woken, tunnel_status_change_opts.unlocked);
+
+            free_tunnel_status_change(&tunnel_status_change_opts);
         }
 #endif
     }
@@ -1192,16 +1210,16 @@ static void on_event(const base_event *ev) {
                 struct add_or_edit_service_nrpt_req *edit_svc_req_data = calloc(1, sizeof(struct add_or_edit_service_nrpt_req));
                 edit_svc_req_data->hostnames = hostnamesToEdit;
                 edit_svc_req_data->dns_ip = get_dns_ip();
-                remove_and_add_nrpt_rules(main_ziti_loop, edit_svc_req_data);
+                ziti_tunnel_async_send(tunneler, remove_and_add_nrpt_rules, edit_svc_req_data);
             }
             if (model_map_size(hostnamesToAdd) > 0) {
                 struct add_or_edit_service_nrpt_req *add_svc_req_data = calloc(1, sizeof(struct add_or_edit_service_nrpt_req));
                 add_svc_req_data->hostnames = hostnamesToAdd;
                 add_svc_req_data->dns_ip = get_dns_ip();
-                add_nrpt_rules(main_ziti_loop, add_svc_req_data);
+                ziti_tunnel_async_send(tunneler, add_nrpt_rules, add_svc_req_data);
             }
             if (model_map_size(hostnamesToRemove) > 0) {
-                remove_nrpt_rules(main_ziti_loop, hostnamesToRemove);
+                ziti_tunnel_async_send(tunneler, remove_nrpt_rules, hostnamesToRemove);
             }
             if (model_map_size(hostnamesToAdd) == 0) {
                 free(hostnamesToAdd);
@@ -1410,7 +1428,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
 
     };
 
-    tunneler_context tunneler = ziti_tunneler_init(&tunneler_opts, ziti_loop);
+    tunneler = ziti_tunneler_init(&tunneler_opts, ziti_loop);
 
     ip_addr_t dns_ip4 = IPADDR4_INIT(dns_ip);
     ziti_dns_setup(tunneler, ipaddr_ntoa(&dns_ip4), ip_range);
@@ -2308,6 +2326,53 @@ static int update_tun_ip_opts(int argc, char *argv[]) {
     return optind;
 }
 
+static int endpoint_status_change_opts(int argc, char *argv[]) {
+    static struct option opts[] = {
+            {"wake", optional_argument, NULL, 'w'},
+            {"unlock", optional_argument, NULL, 'u'},
+    };
+    int c, option_index, errors = 0;
+    optind = 0;
+
+    tunnel_status_change *tunnel_status_change_opts = calloc(1, sizeof(tunnel_status_change));
+    cmd = calloc(1, sizeof(tunnel_command));
+    cmd->command = TunnelCommand_StatusChange;
+
+    while ((c = getopt_long(argc, argv, "w:u:",
+                            opts, &option_index)) != -1) {
+        switch (c) {
+            case 'w':
+                if (strcmp(optarg, "true") == 0 || strcmp(optarg, "t") == 0 ) {
+                    tunnel_status_change_opts->woken = true;
+                } else {
+                    tunnel_status_change_opts->woken = false;
+                }
+                break;
+            case 'u':
+                if (strcmp(optarg, "true") == 0 || strcmp(optarg, "t") == 0 ) {
+                    tunnel_status_change_opts->unlocked = true;
+                } else {
+                    tunnel_status_change_opts->unlocked = false;
+                }
+                break;
+            default: {
+                fprintf(stderr, "Unknown option '%c'\n", c);
+                errors++;
+                break;
+            }
+        }
+    }
+    if (errors > 0) {
+        commandline_help(stderr);
+        exit(1);
+    }
+    size_t json_len;
+    cmd->data = tunnel_status_change_to_json(tunnel_status_change_opts, MODEL_JSON_COMPACT, &json_len);
+    free(tunnel_status_change_opts);
+
+    return optind;
+}
+
 #if _WIN32
 static void service_control(int argc, char *argv[]) {
 
@@ -2505,6 +2570,9 @@ static CommandLine update_tun_ip_cmd = make_command("update_tun_ip", "Update tun
                                                     "\t-t|--tunip\ttun ipv4 of the tunneler\n"
                                                     "\t-p|--prefixlength\ttun ipv4 prefix length of the tunneler\n"
                                                     "\t-d|--addDNS\tAdd Dns to the tunneler\n", update_tun_ip_opts, send_message_to_tunnel_fn);
+static CommandLine ep_status_change_cmd = make_command("endpoint_sts_change", "send endpoint status change message to the tunneler", "[-w <wake>] [-u <unlock>]",
+                                                    "\t-w|--wake\twake the tunneler\n"
+                                                    "\t-u|--unlock\tunlock the tunneler\n", endpoint_status_change_opts, send_message_to_tunnel_fn);
 #if _WIN32
 static CommandLine service_control_cmd = make_command("service_control", "execute service control functions for Ziti tunnel (required superuser access)",
                                           "-o|--operation <option>",
@@ -2532,6 +2600,7 @@ static CommandLine *main_cmds[] = {
         &update_tun_ip_cmd,
 #if _WIN32
         &service_control_cmd,
+        &ep_status_change_cmd,
 #endif
         &ver_cmd,
         &help_cmd,
@@ -2628,7 +2697,7 @@ void scm_service_stop_event(uv_loop_t *loop, void *arg) {
 
 void scm_service_stop() {
     ZITI_LOG(INFO, "Control request to stop tunnel service received...");
-    scm_service_stop_event(main_ziti_loop, NULL);
+    ziti_tunnel_async_send(NULL, scm_service_stop_event, NULL);
 }
 
 static void move_config_from_previous_windows_backup(uv_loop_t *loop) {
