@@ -139,6 +139,8 @@ u8_t recv_udp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
 
     u16_t iphdr_hlen;
     ip_addr_t src, dst;
+    memset(&src, 0, sizeof(src));
+    memset(&dst, 0, sizeof(dst));
     char ip_version = IPH_V((struct ip_hdr *)(p->payload));
 
     /* figure out where the tcp header is in the pbuf. don't modify
