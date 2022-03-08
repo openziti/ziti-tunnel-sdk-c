@@ -59,6 +59,7 @@ int parse_dns_req(dns_message *msg, const unsigned char* buf, size_t buflen) {
     int qcount = ntohs(*((uint16_t*)buf + 2));
     if (qcount != 1) return -1;
 
+    msg->recursive = flags.rd;
     msg->question = calloc(2, sizeof(dns_question*));
     msg->question[0] = calloc(1, sizeof(dns_question));
     parse_dns_q(msg->question[0], buf + 12, buflen - 12);

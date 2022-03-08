@@ -45,13 +45,9 @@ struct dns_req {
     size_t resp_len;
     uint8_t resp[512];
 
-    char host[255];
-    uint16_t q_class;
-    uint16_t q_type;
+    dns_message msg;
 
     struct in_addr addr;
-    int code;
-    int rr_count;
 
     uint8_t *rp;
 
@@ -60,13 +56,13 @@ struct dns_req {
 };
 
 static void* on_dns_client(const void *app_intercept_ctx, io_ctx_t *io);
-static void* on_dns_tcp_client(const void *app_intercept_ctx, io_ctx_t *io);
 static int on_dns_close(void *dns_io_ctx);
 static ssize_t on_dns_req(void *ziti_io_ctx, void *write_ctx, const uint8_t *q_packet, size_t len);
 static void query_upstream(struct dns_req *req);
 static void udp_alloc(uv_handle_t *h, unsigned long reqlen, uv_buf_t *b);
 static void on_upstream_packet(uv_udp_t *h, ssize_t rc, const uv_buf_t *buf, const struct sockaddr* addr, unsigned int flags);
 static void complete_dns_req(struct dns_req *req);
+static void free_dns_req(struct dns_req *req);
 
 typedef struct dns_domain_s {
     char name[MAX_DNS_NAME];
@@ -166,12 +162,6 @@ int ziti_dns_setup(tunneler_context tnlr, const char *dns_addr, const char *dns_
     intercept_ctx_override_cbs(dns_intercept, on_dns_client, on_dns_req, on_dns_close, on_dns_close);
     ziti_tunneler_intercept(tnlr, dns_intercept);
 
-    dns_intercept = intercept_ctx_new(tnlr, "ziti:dns-resolver-tcp", &ziti_dns);
-    intercept_ctx_add_address(dns_intercept, dns_addr);
-    intercept_ctx_add_port_range(dns_intercept, 53, 53);
-    intercept_ctx_add_protocol(dns_intercept, "tcp");
-    intercept_ctx_override_cbs(dns_intercept, on_dns_tcp_client, on_dns_req, on_dns_close, on_dns_close);
-    ziti_tunneler_intercept(tnlr, dns_intercept);
     return 0;
 }
 
@@ -200,16 +190,6 @@ int ziti_dns_set_upstream(uv_loop_t *l, const char *host, uint16_t port) {
     return 0;
 }
 
-void* on_dns_tcp_client(const void *app_intercept_ctx, io_ctx_t *io) {
-    ZITI_LOG(INFO, "new DNS TCP client");
-    ziti_dns_client_t *clt = calloc(1, sizeof(ziti_dns_client_t));
-    io->ziti_io = clt;
-    clt->io_ctx = io;
-    clt->is_tcp = true;
-    ziti_tunneler_set_idle_timeout(io, 5000); // 5 seconds
-    ziti_tunneler_dial_completed(io, true);
-    return clt;
-}
 
 void* on_dns_client(const void *app_intercept_ctx, io_ctx_t *io) {
     ZITI_LOG(DEBUG, "new DNS client");
@@ -291,6 +271,16 @@ const char *ziti_dns_reverse_lookup(const char *ip_addr) {
     return entry ? entry->name : NULL;
 }
 
+static dns_domain_t* find_domain(const char *hostname) {
+    char *dot = strchr(hostname, '.');
+    dns_domain_t *domain = NULL;
+    while (dot != NULL && domain == NULL) {
+        domain = model_map_get(&ziti_dns.domains, dot + 1);
+        dot = strchr(dot + 1, '.');
+    }
+    return domain;
+}
+
 dns_entry_t *ziti_dns_lookup(const char *hostname) {
     char clean[MAX_DNS_NAME];
     bool is_wildcard;
@@ -304,19 +294,15 @@ dns_entry_t *ziti_dns_lookup(const char *hostname) {
         return entry;
     }
 
+    dns_domain_t *domain = find_domain(clean);
     // try domains
-    char *dot = strchr(clean, '.');
-    while (dot != NULL) {
-        dns_domain_t *domain = model_map_get(&ziti_dns.domains, dot + 1);
-        if (domain) {
-            ZITI_LOG(DEBUG, "matching domain[%s] found for %s", domain->name, hostname);
-            dns_entry_t *host_entry = new_ipv4_entry(clean);
-            host_entry->domain = domain;
-            return host_entry;
-        }
-        dot = strchr(dot + 1, '.');
+    if (domain) {
+        ZITI_LOG(DEBUG, "matching domain[%s] found for %s", domain->name, hostname);
+        entry = new_ipv4_entry(clean);
+        entry->domain = domain;
     }
-    return NULL;
+
+    return entry;
 }
 
 
@@ -408,166 +394,180 @@ static const char DNS_OPT[] = { 0x0, 0x0, 0x29, 0x02, 0x0, 0x0, 0x0, 0x0, 0x0, 0
 #define DNS_SET_ARS(p,n) do{ (p)[6] = (n) >> 8; (p)[7] = (n) & 0xff; } while(0)
 #define DNS_SET_AARS(p,n) do{ (p)[10] = (n) >> 8; (p)[11] = (n) & 0xff; } while(0)
 
+#define SET_U8(p,v) *(p)++ = (v) & 0xff
+#define SET_U16(p,v) (*(p)++ = ((v) >> 8) & 0xff),*(p)++ = (v) & 0xff
+#define SET_U32(p,v) (*(p)++ = ((v) >> 24) & 0xff), \
+(*(p)++ = ((v)>>16) & 0xff),                          \
+(*(p)++ = ((v) >> 8) & 0xff),                       \
+*(p)++ = (v) & 0xff
+
 #define IS_QUERY(flags) (((flags) & (1 << 15)) == 0)
+
+static uint8_t* format_name(uint8_t* p, const char* name) {
+    char *np = name;
+    do {
+        char *dot = strchr(np, '.');
+        uint8_t len = dot ? dot - np : strlen(np);
+
+        *p++ = len;
+        memcpy(p, np, len);
+        p += len;
+
+        if (dot == NULL) {
+            *p++ = 0;
+            break;
+        } else {
+            np = dot + 1;
+        }
+    } while(1);
+    return p;
+}
 
 static void format_resp(struct dns_req *req) {
 
-    uint8_t *rp = req->rp;
-    DNS_SET_CODE(req->resp, req->code);
-    if (req->code == DNS_NO_ERROR && req->rr_count > 0) {
-        ZITI_LOG(TRACE, "found record for host[%s]", req->host);
-        DNS_SET_ARS(req->resp, 1);
-
-        // name ref
-        *rp++ = 0xc0;
-        *rp++ = 0x0c;
-
-        // type A
-        *rp++ = 0;
-        *rp++ = 1;
-
-        // class IN
-        *rp++ = 0;
-        *rp++ = 1;
-
-        // TTL
-        *rp++ = 0;
-        *rp++ = 0;
-        *rp++ = 0;
-        *rp++ = 255;
-
-        // size 4
-        *rp++ = 0;
-        *rp++ = sizeof(req->addr.s_addr);
-
-        memcpy(rp, &req->addr.s_addr, sizeof(req->addr.s_addr));
-        rp += sizeof(req->addr.s_addr);
-    } else {
-        DNS_SET_ARS(req->resp, 0);
+    // copy header from request
+    memcpy(req->resp, req->req, 12); // DNS header
+    DNS_SET_ANS(req->resp);
+    DNS_SET_CODE(req->resp, req->msg.status);
+    bool recursion_avail = uv_is_active((const uv_handle_t *) &ziti_dns.upstream);
+    if (recursion_avail) {
+        DNS_SET_RA(req->resp);
     }
 
-    DNS_SET_AARS(req->resp, 1);
+    size_t query_section_len = strlen(req->msg.question[0]->name) + 2 + 4;
+    memcpy(req->resp + 12, req->req + 12, query_section_len);
+
+    uint8_t *rp = req->resp + 12 + query_section_len;
+
+    if (req->msg.status == DNS_NO_ERROR && req->msg.answer != NULL) {
+        int ans_count = 0;
+        for (int i = 0; req->msg.answer[i] != NULL; i++) {
+            ans_count++;
+            dns_answer *a = req->msg.answer[i];
+            // name ref
+            *rp++ = 0xc0;
+            *rp++ = 0x0c;
+
+            ZITI_LOG(INFO, "found record[%s] for query[%d:%s]", a->data, req->msg.question[0]->type, req->msg.question[0]->name);
+
+            SET_U16(rp, a->type);
+            SET_U16(rp, 1); // class IN
+            SET_U32(rp, a->ttl);
+
+            switch (a->type) {
+                case NS_T_A: {
+                    SET_U16(rp, sizeof(req->addr.s_addr));
+                    memcpy(rp, &req->addr.s_addr, sizeof(req->addr.s_addr));
+                    rp += sizeof(req->addr.s_addr);
+                    break;
+                }
+
+                case NS_T_TXT: {
+                    uint16_t txtlen = strlen(a->data);
+                    uint16_t datalen = 1 + txtlen;
+                    SET_U16(rp, datalen);
+                    SET_U8(rp, txtlen);
+                    memcpy(rp, a->data, txtlen);
+                    rp += txtlen;
+                    break;
+                }
+                case NS_T_MX: {
+                    uint16_t datalen = strlen(a->data) + 2 + 2;
+                    SET_U16(rp, datalen);
+                    SET_U16(rp, a->priority);
+                    rp = format_name(rp, a->data);
+                    break;
+                }
+                case NS_T_SRV: {
+                    uint16_t datalen = strlen(a->data) + 2 + 6;
+                    SET_U16(rp, datalen);
+                    SET_U16(rp, a->priority);
+                    SET_U16(rp, a->weight);
+                    SET_U16(rp, a->port);
+                    rp = format_name(rp, a->data);
+                    break;
+                }
+                default:
+                    ZITI_LOG(WARN, "unhandled response type[%d]", a->type);
+            }
+        }
+        DNS_SET_AARS(req->resp, ans_count);
+    }
+
     memcpy(rp, DNS_OPT, sizeof(DNS_OPT));
     rp += sizeof(DNS_OPT);
     req->resp_len = rp - req->resp;
 }
+
+static void process_host_req(struct dns_req *req) {
+    dns_entry_t *entry = ziti_dns_lookup(req->msg.question[0]->name);
+    if (entry) {
+        req->msg.status = DNS_NO_ERROR;
+
+        if (req->msg.question[0]->type == NS_T_A) {
+            req->addr.s_addr = entry->addr.u_addr.ip4.addr;
+
+            dns_answer *a = calloc(1, sizeof(dns_answer));
+            a->ttl = 60;
+            a->type = NS_T_A;
+            a->data = strdup(entry->ip);
+            req->msg.answer = calloc(2, sizeof(dns_answer *));
+            req->msg.answer[0] = a;
+        }
+
+        format_resp(req);
+        complete_dns_req(req);
+    } else {
+        query_upstream(req);
+    }
+}
+
+static void proxy_domain_req(struct dns_req *req, dns_domain_t *domain) {
+
+}
+
 
 ssize_t on_dns_req(void *ziti_io_ctx, void *write_ctx, const uint8_t *q_packet, size_t q_len) {
     ziti_dns_client_t *clt = ziti_io_ctx;
     const uint8_t *dns_packet = q_packet;
     size_t dns_packet_len = q_len;
 
-    if (clt->is_tcp) {
-        // check if we got enough
-        uint16_t len = ntohs(*(uint16_t*)q_packet);
-        if (len + 2 > q_len) {
-            // incomplete
-            return 0;
-        }
-
-        dns_packet_len = len;
-        dns_packet = q_packet + 2;
-    }
-
-    dns_message msg = {0};
-    parse_dns_req(&msg, dns_packet, dns_packet_len);
-
     struct dns_req *req = calloc(1, sizeof(struct dns_req));
     req->clt = ziti_io_ctx;
-    LIST_INSERT_HEAD(&req->clt->active_reqs, req, _next);
 
-    bool recursion_avail = uv_is_active((const uv_handle_t *) &ziti_dns.upstream);
-
-    uint16_t flags = DNS_FLAGS(q_packet);
-    uint16_t qrrs = DNS_QRS(q_packet);
-    int recursive = DNS_RD(q_packet);
-
-    req->id = DNS_ID(q_packet);
     req->req_len = q_len;
     memcpy(req->req, q_packet, q_len);
+
+    if (parse_dns_req(&req->msg, dns_packet, dns_packet_len) != 0) {
+        ZITI_LOG(ERROR, "failed to parse DNS message");
+        free_dns_req(req);
+        ziti_tunneler_close(write_ctx);
+        return q_len;
+    }
+    req->id = req->msg.id;
+
+    ZITI_LOG(TRACE, "received DNS query q_len=%zd id[%04x] recursive[%s] type[%d] name[%s]", q_len, req->id,
+             req->msg.recursive ? "true" : "false",
+             req->msg.question[0]->type,
+             req->msg.question[0]->name);
+
+    LIST_INSERT_HEAD(&req->clt->active_reqs, req, _next);
     model_map_setl(&ziti_dns.requests, (long)req->id, req);
-    ZITI_LOG(TRACE, "received DNS query q_len=%zd id[%04x] flags[%04x] recursive[%s]", q_len, req->id, flags, recursive ? "true" : "false");
 
-    memcpy(req->resp, q_packet, 12); // DNS header
-    DNS_SET_ANS(req->resp);
-    if (recursion_avail) {
-        DNS_SET_RA(req->resp);
-    }
-    DNS_SET_ARS(req->resp, 0);
-    DNS_SET_AARS(req->resp, 0);
-    DNS_SET_CODE(req->resp, DNS_NO_ERROR);
+    // route request
+    dns_question *q = req->msg.question[0];
 
-    uint8_t *rp = req->resp + 12;
-
-    if (!IS_QUERY(flags) || qrrs != 1) {
-        DNS_SET_ARS(req->resp, 0);
-        DNS_SET_AARS(req->resp, 0);
-        DNS_SET_CODE(req->resp, DNS_NOT_IMPL);
-        req->code = DNS_NOT_IMPL;
-        complete_dns_req(req);
-        goto DONE;
-    }
-
-    char *hp = req->host;
-    const uint8_t *q = DNS_QR(q_packet);
-
-    // read query section -- copy into response and construct hostname
-    while (*q != 0) {
-        int seg_len = *q;
-
-        *rp++ = seg_len;
-        q++;
-        for (int i = 0; i < seg_len; i++) {
-            *rp++ = *q;
-            *hp++ = (char)tolower(*q++);
-        }
-        *hp++ = '.';
-    }
-    hp--;
-    *hp = '\0';
-    *rp++ = *q++;
-
-    req->q_type = (q[0] << 8) | (q[1]); *rp++ = *q++; *rp++ = *q++;
-    req->q_class = (q[0] << 8) | q[1]; *rp++ = *q++; *rp++ = *q++;
-
-    ZITI_LOG(TRACE, "received query for %s type(%x) class(%x)", req->host, req->q_type, req->q_class);
-    if (req->q_class != 1) {
-        DNS_SET_ARS(req->resp, 0);
-        DNS_SET_AARS(req->resp, 0);
-        DNS_SET_CODE(req->resp, DNS_NOT_IMPL);
-        req->code = DNS_NOT_IMPL;
-        complete_dns_req(req);
-        goto DONE;
-    }
-
-    req->rp = rp;
-
-    if (req->q_type == NS_T_A || req->q_type == NS_T_AAAA) {
-        dns_entry_t *entry = ziti_dns_lookup(req->host);
-        if (entry) {
-            req->code = DNS_NO_ERROR;
-            if (req->q_type == NS_T_A) {
-                req->rr_count = 1;
-                req->addr.s_addr = entry->addr.u_addr.ip4.addr;
-            } else {
-                DNS_SET_ARS(req->resp, 0);
-                DNS_SET_AARS(req->resp, 0);
-                DNS_SET_CODE(req->resp, DNS_NO_ERROR);
-                req->rr_count = 0;
-            }
-            format_resp(req);
-        } else  {
-            if (recursive && recursion_avail) {
-                query_upstream(req);
-                goto DONE;
-            }
+    if (q->type == NS_T_A || q->type == NS_T_AAAA) {
+        process_host_req(req);
+    } else {
+        dns_domain_t *domain = find_domain(q->name);
+        if (domain) {
+            proxy_domain_req(req, domain);
+        } else {
+            query_upstream(req);
         }
     }
 
-    // future proxy lookup for (MX, TXT, SRV)
-    complete_dns_req(req);
-
-    DONE:
     ziti_tunneler_ack(write_ctx);
 
     return (ssize_t)q_len;
@@ -582,12 +582,20 @@ static void on_upstream_send(uv_udp_send_t *sr, int rc) {
 }
 
 void query_upstream(struct dns_req *req) {
-    int rc;
-    uv_udp_send_t *sr = calloc(1, sizeof(uv_udp_send_t));
-    sr->data = req;
-    uv_buf_t buf = uv_buf_init((char*)req->req, req->req_len);
-    if ((rc = uv_udp_send(sr, &ziti_dns.upstream, &buf, 1, NULL, on_upstream_send)) != 0) {
-        ZITI_LOG(WARN, "failed to query[%04x] upstream DNS server: %d(%s)", req->id, rc, uv_strerror(rc));
+    bool avail = uv_is_active((const uv_handle_t *) &ziti_dns.upstream);
+
+    if (avail) {
+        int rc;
+        uv_udp_send_t *sr = calloc(1, sizeof(uv_udp_send_t));
+        sr->data = req;
+        uv_buf_t buf = uv_buf_init((char *) req->req, req->req_len);
+        if ((rc = uv_udp_send(sr, &ziti_dns.upstream, &buf, 1, NULL, on_upstream_send)) != 0) {
+            ZITI_LOG(WARN, "failed to query[%04x] upstream DNS server: %d(%s)", req->id, rc, uv_strerror(rc));
+        }
+    } else {
+        req->msg.status = DNS_REFUSE;
+        format_resp(req);
+        complete_dns_req(req);
     }
 }
 
@@ -615,6 +623,10 @@ static void on_upstream_packet(uv_udp_t *h, ssize_t rc, const uv_buf_t *buf, con
     }
     free(buf->base);
 }
+static void free_dns_req(struct dns_req *req) {
+    free_dns_message(&req->msg);
+    free(req);
+}
 
 static void complete_dns_req(struct dns_req *req) {
     model_map_removel(&ziti_dns.requests, req->id);
@@ -624,8 +636,7 @@ static void complete_dns_req(struct dns_req *req) {
     } else {
         ZITI_LOG(WARN, "query[%04x] is stale", req->id);
     }
-
-    free(req);
+    free_dns_req(req);
 }
 
 static void free_domain(dns_domain_t *domain) {
