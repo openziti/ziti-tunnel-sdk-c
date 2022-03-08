@@ -531,6 +531,7 @@ void initialize_tunnel_status() {
     if (tnl_status.LogLevel == NULL) {
         tnl_status.LogLevel = "info";
     }
+
 }
 
 bool load_tunnel_status(char* config_data) {

@@ -27,4 +27,6 @@ extern int set_dns(netif_handle tun, uint32_t dns_ip);
 
 extern char* get_tun_name(netif_handle tun);
 
+extern int tun_kill();
+
 #endif //ZITI_TUNNEL_SDK_C_TUN_H

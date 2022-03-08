@@ -97,8 +97,10 @@ typedef host_ctx_t * (*ziti_sdk_host_cb)(void *ziti_ctx, uv_loop_t *loop, const 
 
 /** data needed to intercept packets and dial the associated ziti service */
 typedef struct intercept_ctx_s  intercept_ctx_t;
-extern intercept_ctx_t* intercept_ctx_new(tunneler_context tnlt_ctx, const char *app_id, void *app_intercept_ctx);
+typedef bool (*intercept_match_addr_fn)(ip_addr_t *addr, void *app_intercept_ctx);
 
+extern intercept_ctx_t* intercept_ctx_new(tunneler_context tnlt_ctx, const char *app_id, void *app_intercept_ctx);
+extern void intercept_ctx_set_match_addr(intercept_ctx_t *intercept, intercept_match_addr_fn pred);
 extern void intercept_ctx_add_protocol(intercept_ctx_t *ctx, const char *protocol);
 /** parse address string as hostname|ip|cidr and add result to list of intercepted addresses */
 extern address_t *intercept_ctx_add_address(intercept_ctx_t *i_ctx, const char *address);
@@ -174,6 +176,9 @@ extern const char* ziti_tunneler_build_date();
 
 extern void ziti_tunnel_set_logger(tunnel_logger_f logger);
 extern void ziti_tunnel_set_log_level(int lvl);
+
+typedef void (*ziti_tunnel_async_fn)(uv_loop_t *loop, void *ctx);
+extern void ziti_tunnel_async_send(tunneler_context tctx, ziti_tunnel_async_fn f, void *arg);
 
 #ifdef __cplusplus
 }

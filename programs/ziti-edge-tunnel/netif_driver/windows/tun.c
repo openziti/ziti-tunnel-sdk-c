@@ -496,3 +496,13 @@ static void cleanup_adapters(wchar_t *tun_name) {
     WintunEnumAdapters(L"Ziti", tun_delete_cb, tun_name);
 }
 
+// close session causes the segmentation fault when the adapter is running
+int tun_kill() {
+    WINTUN_ADAPTER_HANDLE adapter = WintunOpenAdapter(L"Ziti", ZITI_TUN);
+    if (adapter) {
+        ZITI_LOG(DEBUG, "Closing wintun adapter");
+        WintunDeleteAdapter(adapter, true, NULL);
+        WintunFreeAdapter(adapter);
+        ZITI_LOG(DEBUG, "Closed wintun adapter");
+    }
+}

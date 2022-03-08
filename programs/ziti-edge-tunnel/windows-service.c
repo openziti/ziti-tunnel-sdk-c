@@ -22,6 +22,8 @@ limitations under the License.
 #include <service-utils.h>
 #include <windows.h>
 
+#include "ziti/ziti_tunnel.h"
+
 #pragma comment(lib, "advapi32.lib")
 
 SERVICE_STATUS          gSvcStatus;
@@ -40,7 +42,7 @@ HANDLE                  ghSvcRunningEvent = NULL;
 // Return value:
 //   None, defaults to 0 (zero)
 //
-int SvcStart(TCHAR *opt)
+VOID SvcStart(VOID)
 {
     // the service is probably being started by the SCM.
     // Add any additional services for the process to this table.
@@ -55,7 +57,7 @@ int SvcStart(TCHAR *opt)
 
     if (!StartServiceCtrlDispatcher( DispatchTable ))
     {
-        return 0;
+        printf("StartServiceCtrlDispatcher failed (%ld)\n", GetLastError());
     }
 }
 
@@ -77,7 +79,7 @@ VOID SvcInstall()
 
     if( !GetModuleFileName( NULL, szPath, MAX_PATH ) )
     {
-        printf("Cannot install service (%d)\n", GetLastError());
+        printf("Cannot install service (%ld)\n", GetLastError());
         return;
     }
 
@@ -90,7 +92,7 @@ VOID SvcInstall()
 
     if (NULL == schSCManager)
     {
-        printf("OpenSCManager failed (%d)\n", GetLastError());
+        printf("OpenSCManager failed (%ld)\n", GetLastError());
         return;
     }
 
@@ -113,7 +115,7 @@ VOID SvcInstall()
 
     if (schService == NULL)
     {
-        printf("CreateService failed (%d)\n", GetLastError());
+        printf("CreateService failed (%ld)\n", GetLastError());
         CloseServiceHandle(schSCManager);
         return;
     }
@@ -202,7 +204,7 @@ VOID SvcInit( DWORD dwArgc, LPTSTR *lpszArgv)
     }
 
     // start tunnel
-    CreateThread (NULL, 0, ServiceWorkerThread, lpszArgv, 0, NULL);
+    CreateThread (NULL, 0, ServiceWorkerThread, lpszArgv[0], 0, NULL);
 
     // Check whether the service is started
 
@@ -324,7 +326,7 @@ VOID SvcReportEvent(LPTSTR szMessage, DWORD eventType)
 
     if( NULL != hEventSource )
     {
-        snprintf(Buffer, 80, TEXT("%s, reported status : %d"), szMessage, GetLastError());
+        snprintf(Buffer, 80, TEXT("%s, reported status : %ld"), szMessage, GetLastError());
 
         lpszStrings[0] = SVCNAME;
         lpszStrings[1] = Buffer;
@@ -357,7 +359,6 @@ VOID SvcDelete()
 {
     SC_HANDLE schSCManager;
     SC_HANDLE schService;
-    SERVICE_STATUS ssStatus;
 
     // Get a handle to the SCM database.
 
@@ -368,7 +369,7 @@ VOID SvcDelete()
 
     if (NULL == schSCManager)
     {
-        printf("OpenSCManager failed (%d)\n", GetLastError());
+        printf("OpenSCManager failed (%ld)\n", GetLastError());
         return;
     }
 
@@ -381,7 +382,7 @@ VOID SvcDelete()
 
     if (schService == NULL)
     {
-        printf("OpenService failed (%d)\n", GetLastError());
+        printf("OpenService failed (%ld)\n", GetLastError());
         CloseServiceHandle(schSCManager);
         return;
     }
@@ -390,7 +391,7 @@ VOID SvcDelete()
 
     if (! DeleteService(schService) )
     {
-        printf("DeleteService failed (%d)\n", GetLastError());
+        printf("DeleteService failed (%ld)\n", GetLastError());
     }
     else printf("Service deleted successfully\n");
 
@@ -456,8 +457,6 @@ DWORD LphandlerFunctionEx(
 
             // stops the running tunnel service
             scm_service_stop();
-            // stops the windows service in scm
-            stop_windows_service();
 
             return 0;
 
@@ -472,5 +471,11 @@ DWORD LphandlerFunctionEx(
                 endpoint_status_change(false, true);
             }
             break;
+
+        default:
+            //printf("unhandled control code from SCM (%ld)\n", dwControl);
+            break;
     }
+
+    return 0;
 }
