@@ -456,7 +456,7 @@ DWORD LphandlerFunctionEx(
             ReportSvcStatus(SERVICE_STOP_PENDING, NO_ERROR, 0);
 
             // stops the running tunnel service
-            ziti_tunnel_async_send(NULL, scm_service_stop, NULL);
+            scm_service_stop();
 
             return 0;
 
