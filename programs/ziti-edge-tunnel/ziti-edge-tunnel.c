@@ -1345,6 +1345,35 @@ static void on_event(const base_event *ev) {
             break;
         }
 
+        case TunnelEvent_APIEvent: {
+            const api_event *api_ev = (api_event *) ev;
+            ZITI_LOG(INFO, "ztx[%s] API Event with controller address : %s", api_ev->identifier, api_ev->ctrl_address);
+            tunnel_identity *id = find_tunnel_identity(ev->identifier);
+            if (id == NULL) {
+                break;
+            }
+
+            identity_event id_event = {0};
+            id_event.Op = strdup("identity");
+            id_event.Action = strdup(event_name(event_updated));
+            id_event.Id = id;
+            if (id_event.Id->FingerPrint) {
+                id_event.Fingerprint = strdup(id_event.Id->FingerPrint);
+            }
+            id_event.Id->Loaded = true;
+            if (api_ev->ctrl_address) {
+                if (id_event.Id->Config != NULL && id_event.Id->Config->ZtAPI != NULL &&
+                    strcmp(id_event.Id->Config->ZtAPI, api_ev->ctrl_address) != 0) {
+                    free(id_event.Id->Config->ZtAPI);
+                    id_event.Id->Config->ZtAPI = strdup(api_ev->ctrl_address);
+                }
+            }
+            send_events_message(&id_event, (to_json_fn) identity_event_to_json, true);
+            id_event.Id = NULL;
+            free_identity_event(&id_event);
+            break;
+        }
+
         case TunnelEvent_Unknown:
         default:
             ZITI_LOG(WARN, "unhandled event received: %d", ev->event_type);
