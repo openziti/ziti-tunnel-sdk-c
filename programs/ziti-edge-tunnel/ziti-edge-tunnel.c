@@ -685,7 +685,7 @@ static void send_events_message(const void *message, to_json_fn to_json_f, bool 
                 data_len = data_len + sizeof("\n");
                 buf.base = calloc(data_len, sizeof(char));
                 snprintf(buf.base, data_len, "%s\n", json);
-                buf.len = data_len;
+                buf.len = strlen(buf.base);
                 uv_write_t *wr = calloc(1, sizeof(uv_write_t));
                 wr->data = buf.base;
                 err = uv_write(wr, (uv_stream_t *)event_client->event_client_conn, &buf, 1, on_write_event);
