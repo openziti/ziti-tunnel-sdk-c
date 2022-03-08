@@ -45,12 +45,6 @@ const char *SRC_IP_KEY = "src_ip";
 const char *SRC_PORT_KEY = "src_port";
 const char *SOURCE_IP_KEY = "source_ip";
 
-struct resolve_req {
-    ip_addr_t addr;
-    u16_t port;
-    tunneler_context tnlr_ctx;
-};
-
 static void run_packet_loop(uv_loop_t *loop, tunneler_context tnlr_ctx);
 
 STAILQ_HEAD(tlnr_ctx_list_s, tunneler_ctx_s) tnlr_ctx_list_head = STAILQ_HEAD_INITIALIZER(tnlr_ctx_list_head);
@@ -222,6 +216,10 @@ intercept_ctx_t* intercept_ctx_new(tunneler_context tnlr_ctx, const char *app_id
     STAILQ_INIT(&ictx->port_ranges);
 
     return ictx;
+}
+
+void intercept_ctx_set_match_addr(intercept_ctx_t *intercept, intercept_match_addr_fn pred) {
+    intercept->match_addr = pred;
 }
 
 void intercept_ctx_add_protocol(intercept_ctx_t *ctx, const char *protocol) {
