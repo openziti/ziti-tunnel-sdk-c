@@ -901,7 +901,7 @@ static notification_message *create_notification_message(tunnel_identity *tnl_id
 static void broadcast_metrics(uv_timer_t *timer) {
     tunnel_metrics_event metrics_event = {0};
     metrics_event.Op = strdup("metrics");
-    metrics_event.Identities = get_tunnel_identities();
+    metrics_event.Identities = get_tunnel_identities_for_metrics();
     tunnel_identity *tnl_id;
     int idx;
     bool active_identities = false;
