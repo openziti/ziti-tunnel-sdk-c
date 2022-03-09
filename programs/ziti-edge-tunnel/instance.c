@@ -424,6 +424,7 @@ tunnel_identity_array get_tunnel_identities_for_metrics() {
         id_new->IdFileStatus = id->IdFileStatus;
         tnl_id_arr[i] = id_new;
     }
+    free(arr);
 
     return tnl_id_arr;
 
