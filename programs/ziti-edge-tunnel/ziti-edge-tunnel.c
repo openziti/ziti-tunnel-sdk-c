@@ -250,10 +250,10 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
 
     if (uv_is_active((const uv_handle_t *) ctx)) {
         uv_buf_t buf;
-        size_t data_len = json_len + sizeof("\n");
+        size_t data_len = json_len + strlen("\n") + 1;
         buf.base = calloc(data_len, sizeof(char));
         snprintf(buf.base, data_len, "%s\n", json);
-        buf.len = data_len;
+        buf.len = strlen(buf.base);
         uv_write_t *wr = calloc(1, sizeof(uv_write_t));
         wr->data = buf.base;
         uv_write(wr, (uv_stream_t *) ctx, &buf, 1, on_cmd_write);
@@ -692,10 +692,10 @@ static void send_events_message(const void *message, to_json_fn to_json_f, bool 
             int err = 0;
             if (event_client->event_client_conn != NULL) {
                 uv_buf_t buf;
-                data_len = data_len + sizeof("\n");
+                data_len = data_len + strlen("\n") + 1;
                 buf.base = calloc(data_len, sizeof(char));
                 snprintf(buf.base, data_len, "%s\n", json);
-                buf.len = data_len;
+                buf.len = strlen(buf.base);
                 uv_write_t *wr = calloc(1, sizeof(uv_write_t));
                 wr->data = buf.base;
                 err = uv_write(wr, (uv_stream_t *)event_client->event_client_conn, &buf, 1, on_write_event);
@@ -911,7 +911,7 @@ static notification_message *create_notification_message(tunnel_identity *tnl_id
 static void broadcast_metrics(uv_timer_t *timer) {
     tunnel_metrics_event metrics_event = {0};
     metrics_event.Op = strdup("metrics");
-    metrics_event.Identities = get_tunnel_identities();
+    metrics_event.Identities = get_tunnel_identities_for_metrics();
     tunnel_identity *tnl_id;
     int idx;
     bool active_identities = false;
