@@ -9,6 +9,7 @@
 #define SVCNAME TEXT("ziti-edge-tunnel")
 #define DISPLAYSVCNAME TEXT("Ziti Desktop Edge Service")
 #define SVCDESCRIPTION TEXT("Access your Networks Secured by Ziti")
+#define APPNAME TEXT("Ziti Desktop Edge for Windows")
 
 #ifdef __cplusplus
 extern "C" {
@@ -30,7 +31,7 @@ DWORD LphandlerFunctionEx(
 );
 
 void scm_service_init(char *config_dir);
-void scm_service_run(void *);
+void scm_service_run(const char *);
 void scm_running_event();
 void scm_service_stop();
 void stop_windows_service();
