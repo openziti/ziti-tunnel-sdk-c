@@ -2563,7 +2563,7 @@ static CommandLine *main_cmds[] = {
 };
 
 static CommandLine main_cmd = make_command_set(
-        APPNAME,
+        NULL,
         "Ziti Tunnel App",
         "<command> [<args>]", "to get help for specific command run 'ziti-edge-tunnel help <command>' "
                               "or 'ziti-edge-tunnel <command> -h'",
