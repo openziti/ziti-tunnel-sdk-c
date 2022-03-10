@@ -581,3 +581,16 @@ static void ziti_conn_close_cb(ziti_connection zc) {
     ziti_conn_set_data(zc, NULL);
     ZITI_LOG(VERBOSE, "nulled data for ziti_conn[%p]", zc);
 }
+
+#define RESOLVE_APP_DATA "{\"connType\":\"resolver\"}"
+ziti_connection intercept_resolve_connect(ziti_intercept_t *intercept, void *ctx, ziti_conn_cb conn_cb, ziti_data_cb data_cb) {
+    ziti_connection conn;
+    ziti_conn_init(intercept->ztx, &conn, ctx);
+    ziti_dial_opts opts = {
+            .app_data = RESOLVE_APP_DATA,
+            .app_data_sz = strlen(RESOLVE_APP_DATA)
+    };
+
+    ziti_dial_with_options(conn, intercept->service_name, &opts, conn_cb, data_cb);
+    return conn;
+}
