@@ -1,21 +1,23 @@
 # CentOS 7:
 
-CentOS 7 ships with older versions of glibc, cmake and gcc that make it difficult to compile this project and its dependencies. Building on CentOS involves providing newer packages built by the upstream projects, or though an available Software Collection Library(SCL).
+CentOS 7 ships with older versions of glibc, cmake and gcc that make it difficult to compile this project and its dependencies. Building on CentOS involves providing newer packages built by the upstream projects, or through an available Software Collection Library(SCL).
 
 ## Example: Building the `ziti-edge-tunnel` binary:
 
 
 ```bash
-#We'll install CMake to this prefix, so let's make sure it's in the PATH
-export PATH="/opt/cmake:${PATH}"
+#We'll install CMake to this prefix, and let's make sure it's in the PATH
+export CMAKE_PREFIX_INSTALL="/opt/cmake"
+
+export PATH="${CMAKE_PREFIX_INSTALL}:${PATH}"
 
 # Install project CMake required version
-curl -L https://cmake.org/files/v3.14/cmake-3.14.0-Linux-x86_64.sh -o ./cmake.sh
+curl -L https://cmake.org/files/v3.22/cmake-3.22.3-linux-x86_64.sh -o ./cmake.sh
 
 chmod +x cmake.sh
 
-mkdir /opt/cmake
-./cmake.sh --skip-license --prefix=/opt/cmake
+mkdir -p "${CMAKE_PREFIX_INSTALL}"
+./cmake.sh --skip-license --prefix="${CMAKE_PREFIX_INSTALL}"
 rm cmake.sh
 
 # Install dependencies and SCL repository
