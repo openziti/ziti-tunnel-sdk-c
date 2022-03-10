@@ -91,20 +91,6 @@ typedef struct dns_flags_s {
     };
 } dns_flags_t;
 
-typedef struct dns_wire_hdr_s {
-    uint16_t id;
-
-    union {
-        uint16_t _flags;
-        dns_flags_t flags;
-    };
-
-    uint16_t qcount;
-    uint16_t acount;
-    uint16_t nscount;
-    uint16_t arcount;
-} dns_wire_hdr_t;
-
 DECLARE_MODEL(dns_question, DNS_Q_MODEL)
 
 DECLARE_MODEL(dns_answer, DNS_A_MODEL)
