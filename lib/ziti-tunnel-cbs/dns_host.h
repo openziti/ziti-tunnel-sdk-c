@@ -49,6 +49,7 @@ typedef struct __res_state resolver_t;
 
 #endif
 
+#include <stdint.h>
 #include <ziti/model_support.h>
 
 #define DNS_Q_MODEL(XX, ...) \

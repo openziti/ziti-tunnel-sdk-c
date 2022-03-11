@@ -20,6 +20,9 @@
 #define _WIN32_WINNT  _WIN32_WINNT_WIN6
  // Windows Server 2008
 #include <ws2tcpip.h>
+#ifndef strcasecmp
+#define strcasecmp(a,b) stricmp(a,b)
+#endif
 #endif
 
 #include <stdio.h>
