@@ -472,20 +472,25 @@ static void format_resp(struct dns_req *req) {
                     break;
                 }
                 case NS_T_MX: {
-                    uint16_t datalen = strlen(a->data) + 1 + 2;
-                    SET_U16(rp, datalen);
+                    uint8_t *hold = rp;
+                    rp += 2;
+//                    uint16_t datalen = strlen(a->data) + 1 + 2;
+//                    SET_U16(rp, datalen);
                     SET_U16(rp, a->priority);
                     rp = format_name(rp, a->data);
+                    uint16_t datalen = rp - hold - 2;
+                    SET_U16(hold, datalen);
                     break;
                 }
                 case NS_T_SRV: {
-                    size_t len = strlen(a->data);
-                    uint16_t datalen = len + 6 + 1;
-                    SET_U16(rp, datalen);
+                    uint8_t *hold = rp;
+                    rp += 2;
                     SET_U16(rp, a->priority);
                     SET_U16(rp, a->weight);
                     SET_U16(rp, a->port);
                     rp = format_name(rp, a->data);
+                    uint16_t datalen = rp - hold - 2;
+                    SET_U16(hold, datalen);
                     break;
                 }
                 default:
