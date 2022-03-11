@@ -1524,6 +1524,7 @@ static const char* dns_impl = NULL;
 static const char* dns_upstream = NULL;
 
 static int run_opts(int argc, char *argv[]) {
+    printf("About to run tunnel service... %s", main_cmd.name);
     ziti_set_app_info(main_cmd.name, ziti_tunneler_version());
 
     int c, option_index, errors = 0;
@@ -2607,9 +2608,9 @@ void scm_service_init(char *config_path) {
     }
 }
 
-void scm_service_run(void * name) {
-    ZITI_LOG(INFO, "About to run tunnel service...");
-    ziti_set_app_info((char *)name, ziti_tunneler_version());
+void scm_service_run(const char *name) {
+    ZITI_LOG(INFO, "About to run tunnel service... %s", name);
+    ziti_set_app_info(name, ziti_tunneler_version());
     run(0, NULL);
 }
 
