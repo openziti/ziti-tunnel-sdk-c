@@ -993,6 +993,10 @@ static void load_identities(uv_work_t *wr) {
             if (strcmp(file.name, get_config_file_name(NULL)) == 0 || strcmp(file.name, get_backup_config_file_name(NULL)) == 0 ) {
                 continue;
             }
+            char* extension = strstr(file.name, ".bak");
+            if (extension != NULL) {
+                continue;
+            }
 
             if (file.type == UV_DIRENT_FILE) {
                 struct cfg_instance_s *inst = calloc(1, sizeof(struct cfg_instance_s));
@@ -1361,14 +1365,21 @@ static void on_event(const base_event *ev) {
                 id_event.Fingerprint = strdup(id_event.Id->FingerPrint);
             }
             id_event.Id->Loaded = true;
+            bool updated = false;
             if (api_ev->ctrl_address) {
-                if (id_event.Id->Config != NULL && id_event.Id->Config->ZtAPI != NULL &&
-                    strcmp(id_event.Id->Config->ZtAPI, api_ev->ctrl_address) != 0) {
+                if (id_event.Id->Config == NULL) {
+                    id_event.Id->Config = calloc(1, sizeof(tunnel_config));
+                    id_event.Id->Config->ZtAPI = strdup(api_ev->ctrl_address);
+                    updated = true;
+                } else if (id_event.Id->Config->ZtAPI != NULL && strcmp(id_event.Id->Config->ZtAPI, api_ev->ctrl_address) != 0) {
                     free(id_event.Id->Config->ZtAPI);
                     id_event.Id->Config->ZtAPI = strdup(api_ev->ctrl_address);
+                    updated = true;
                 }
             }
-            send_events_message(&id_event, (to_json_fn) identity_event_to_json, true);
+            if (updated) {
+                send_events_message(&id_event, (to_json_fn) identity_event_to_json, true);
+            }
             id_event.Id = NULL;
             free_identity_event(&id_event);
             break;
