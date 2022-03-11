@@ -22,6 +22,7 @@
 #define ZITI_TUNNELER_SDK_DNS_HOST_H
 
 #if _WIN32
+#include <windef.h>
 #include <windns.h>
 
 #define ns_rr DNS_RECORDA
