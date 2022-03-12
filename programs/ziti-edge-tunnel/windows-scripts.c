@@ -97,6 +97,16 @@ static char* exec_process_fetch_result(char* program) {
     return result;
 }
 
+// a function to remove the leading star from a "hostname" when specified from as an intercept
+char *normalize_hostname(char *hostname) {
+    if(hostname) {
+        if (hostname[0] == '*') {
+            return &hostname[1];
+        }
+    }
+    return hostname;
+}
+
 void chunked_add_nrpt_rules(uv_loop_t *ziti_loop, hostname_list_t *hostnames, char* tun_ip) {
     char script[MAX_POWERSHELL_SCRIPT_LEN] = { 0 };
     size_t buf_len = snprintf(script, MAX_POWERSHELL_SCRIPT_LEN, "$Namespaces = @(");
@@ -108,7 +118,7 @@ void chunked_add_nrpt_rules(uv_loop_t *ziti_loop, hostname_list_t *hostnames, ch
 
     while(!LIST_EMPTY(hostnames)) {
         struct hostname_s *hostname = LIST_FIRST(hostnames);
-        buf_len = snprintf(script + copied, (MAX_POWERSHELL_SCRIPT_LEN - copied), namespace_template, "\n", hostname->hostname);
+        buf_len = snprintf(script + copied, (MAX_POWERSHELL_SCRIPT_LEN - copied), namespace_template, "\n", normalize_hostname(hostname->hostname));
         if (!is_buffer_available(buf_len, (MAX_POWERSHELL_SCRIPT_LEN - copied), script)) {
             return;
         }
@@ -230,7 +240,7 @@ void chunked_remove_nrpt_rules(uv_loop_t *ziti_loop, hostname_list_t *hostnames)
 
     while(!LIST_EMPTY(hostnames)) {
         struct hostname_s *hostname = LIST_FIRST(hostnames);
-        buf_len = snprintf(script + copied, (MAX_POWERSHELL_SCRIPT_LEN - copied), namespace_template, "\n", hostname->hostname);
+        buf_len = snprintf(script + copied, (MAX_POWERSHELL_SCRIPT_LEN - copied), namespace_template, "\n", normalize_hostname(hostname->hostname));
         copied += buf_len;
         domains_size++;
         LIST_REMOVE(hostname, _next);
@@ -344,7 +354,7 @@ void chunked_remove_and_add_nrpt_rules(uv_loop_t *ziti_loop, hostname_list_t *ho
 
     while(!LIST_EMPTY(hostnames)) {
         struct hostname_s *hostname = LIST_FIRST(hostnames);
-        buf_len = snprintf(script + copied, (MAX_POWERSHELL_SCRIPT_LEN - copied), namespace_template, "\n", hostname->hostname);
+        buf_len = snprintf(script + copied, (MAX_POWERSHELL_SCRIPT_LEN - copied), namespace_template, "\n", normalize_hostname(hostname->hostname));
         copied += buf_len;
         domains_size++;
         LIST_REMOVE(hostname, _next);
