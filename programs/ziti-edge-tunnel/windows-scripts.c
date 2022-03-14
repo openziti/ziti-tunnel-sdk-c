@@ -100,6 +100,7 @@ static char* exec_process_fetch_result(char* program) {
 void chunked_add_nrpt_rules(uv_loop_t *ziti_loop, hostname_list_t *hostnames, char* tun_ip) {
     char script[MAX_POWERSHELL_SCRIPT_LEN] = { 0 };
     size_t buf_len = snprintf(script, MAX_POWERSHELL_SCRIPT_LEN, "$Namespaces = @(");
+    ZITI_LOG(ERROR, "xxxxxxxxxxxxxxxxxxxxxxxx Add Nrpt logs xxxxxxxxxxxxxxxxxxxxxxxx");
     if (!is_buffer_available(buf_len, MAX_POWERSHELL_SCRIPT_LEN, script)) {
         return;
     }

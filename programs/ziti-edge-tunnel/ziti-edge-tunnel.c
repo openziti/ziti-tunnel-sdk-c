@@ -211,7 +211,8 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
                             }
 
                             if (model_map_size(hostnamesToRemove) > 0) {
-                                ziti_tunnel_async_send(tunneler, remove_nrpt_rules, hostnamesToRemove);
+                                // ziti_tunnel_async_send(tunneler, remove_nrpt_rules, hostnamesToRemove);
+                                remove_nrpt_rules(main_ziti_loop, hostnamesToRemove);
                             } else {
                                 free(hostnamesToRemove);
                             }
@@ -1211,16 +1212,19 @@ static void on_event(const base_event *ev) {
                 struct add_or_edit_service_nrpt_req *edit_svc_req_data = calloc(1, sizeof(struct add_or_edit_service_nrpt_req));
                 edit_svc_req_data->hostnames = hostnamesToEdit;
                 edit_svc_req_data->dns_ip = get_dns_ip();
-                ziti_tunnel_async_send(tunneler, remove_and_add_nrpt_rules, edit_svc_req_data);
+                // ziti_tunnel_async_send(tunneler, remove_and_add_nrpt_rules, edit_svc_req_data);
+                remove_and_add_nrpt_rules(main_ziti_loop, edit_svc_req_data);
             }
             if (model_map_size(hostnamesToAdd) > 0) {
                 struct add_or_edit_service_nrpt_req *add_svc_req_data = calloc(1, sizeof(struct add_or_edit_service_nrpt_req));
                 add_svc_req_data->hostnames = hostnamesToAdd;
                 add_svc_req_data->dns_ip = get_dns_ip();
-                ziti_tunnel_async_send(tunneler, add_nrpt_rules, add_svc_req_data);
+                // ziti_tunnel_async_send(tunneler, add_nrpt_rules, add_svc_req_data);
+                add_nrpt_rules(main_ziti_loop, add_svc_req_data);
             }
             if (model_map_size(hostnamesToRemove) > 0) {
-                ziti_tunnel_async_send(tunneler, remove_nrpt_rules, hostnamesToRemove);
+                // ziti_tunnel_async_send(tunneler, remove_nrpt_rules, hostnamesToRemove);
+                remove_nrpt_rules(main_ziti_loop, hostnamesToRemove);
             }
             if (model_map_size(hostnamesToAdd) == 0) {
                 free(hostnamesToAdd);
