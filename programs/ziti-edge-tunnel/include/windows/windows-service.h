@@ -6,7 +6,7 @@
 #include <winsock2.h>
 #include <windows.h>
 
-#define SVCNAME TEXT("ziti-edge-tunnel")
+#define SVCNAME TEXT("ziti")
 #define DISPLAYSVCNAME TEXT("Ziti Desktop Edge Service")
 #define SVCDESCRIPTION TEXT("Access your Networks Secured by Ziti")
 

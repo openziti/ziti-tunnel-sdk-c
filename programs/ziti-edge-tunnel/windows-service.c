@@ -31,7 +31,7 @@ SERVICE_STATUS_HANDLE   gSvcStatusHandle;
 HANDLE                  ghSvcStopEvent = NULL;
 HANDLE                  ghSvcRunningEvent = NULL;
 
-//LPCTSTR SVCNAME = "ziti-edge-tunnel";
+//LPCTSTR SVCNAME = "ziti";
 //
 // Purpose:
 //   Entry point for the process
