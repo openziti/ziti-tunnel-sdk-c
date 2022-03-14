@@ -23,7 +23,7 @@
 #define MIN_BUFFER_LEN 512
 
 static char* const namespace_template = "%s@{n='%s';}";
-static char* const exe_name = "ziti-tunnel";
+static char* const exe_name = "ziti-edge-tunnel";
 
 struct hostname_s {
     char *hostname;
@@ -457,7 +457,7 @@ void remove_single_nrpt_rule(char* nrpt_rule) {
 
 bool is_nrpt_policies_effective(char* tns_ip) {
     char add_cmd[MAX_POWERSHELL_COMMAND_LEN];
-    size_t buf_len = sprintf(add_cmd, "powershell -Command \"Add-DnsClientNrptRule -Namespace '.ziti.test' -NameServers '%s' -Comment 'Added by ziti-tunnel' -DisplayName 'ziti-tunnel:.ziti.test'\"",tns_ip);
+    size_t buf_len = sprintf(add_cmd, "powershell -Command \"Add-DnsClientNrptRule -Namespace '.ziti.test' -NameServers '%s' -Comment 'Added by ziti-edge-tunnel' -DisplayName 'ziti-edge-tunnel:.ziti.test'\"",tns_ip);
     ZITI_LOG(TRACE, "add test nrpt rule. total script size: %zd", buf_len);
 
     ZITI_LOG(DEBUG, "Executing add test nrpt rule. %s", add_cmd);
