@@ -98,7 +98,7 @@ static char* exec_process_fetch_result(char* program) {
 }
 
 // a function to remove the leading star from a "hostname" when specified from as an intercept
-char *normalize_hostname(char *hostname) {
+const char *normalize_hostname(char *hostname) {
     if(hostname) {
         if (hostname[0] == '*') {
             return &hostname[1];
