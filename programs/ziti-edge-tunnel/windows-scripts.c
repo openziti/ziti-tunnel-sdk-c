@@ -175,9 +175,6 @@ void add_nrpt_rules_script(uv_loop_t *nrpt_loop, struct add_or_edit_service_nrpt
     char* dns_ip = add_svc_req_data->dns_ip;
     if (hostnames == NULL || model_map_size(hostnames) == 0) {
         ZITI_LOG(DEBUG, "No domains specified to add_nrpt_rules, exiting early");
-        if (hostnames != NULL) {
-            free(hostnames);
-        }
         free(add_svc_req_data);
         return;
     }
@@ -205,7 +202,6 @@ void add_nrpt_rules_script(uv_loop_t *nrpt_loop, struct add_or_edit_service_nrpt
         chunked_add_nrpt_rules(nrpt_loop, &host_names_list, dns_ip);
     }
     add_svc_req_data->dns_ip = NULL;
-    free(hostnames);
     free(add_svc_req_data);
 }
 
@@ -304,7 +300,6 @@ void remove_nrpt_rules_script(uv_loop_t *nrpt_loop, model_map *hostnames) {
     if (current_size > 0) {
         chunked_remove_nrpt_rules(nrpt_loop, &host_names_list);
     }
-    free(hostnames);
 }
 
 void remove_nrpt_rules(uv_loop_t *nrpt_loop, void *ctx) {
