@@ -9,6 +9,7 @@
 #define SVCNAME TEXT("ziti")
 #define DISPLAYSVCNAME TEXT("Ziti Desktop Edge Service")
 #define SVCDESCRIPTION TEXT("Access your Networks Secured by Ziti")
+#define APPNAME TEXT("Ziti Desktop Edge for Windows")
 
 #ifdef __cplusplus
 extern "C" {

@@ -803,6 +803,12 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
                 req->ztx = ztx;
                 req->new_url = strdup(event->event.api.new_ctrl_address);
                 uv_queue_work(CMD_CTX.loop, &req->wr, update_config, update_config_done);
+                api_event ev = {0};
+                ev.event_type = TunnelEvents.APIEvent;
+                ev.identifier = instance->identifier;
+                ev.ctrl_address = event->event.api.new_ctrl_address;
+
+                CMD_CTX.on_event((const base_event *) &ev);
             } else {
                 ZITI_LOG(WARN, "unexpected API event: new_ctrl_address is missing");
             }
@@ -1232,5 +1238,6 @@ IMPL_MODEL(base_event, BASE_EVENT_MODEL)
 IMPL_MODEL(ziti_ctx_event, ZTX_EVENT_MODEL)
 IMPL_MODEL(mfa_event, MFA_EVENT_MODEL)
 IMPL_MODEL(service_event, ZTX_SVC_EVENT_MODEL)
+IMPL_MODEL(api_event, API_EVENT_MODEL)
 IMPL_MODEL(tunnel_command_inline, TUNNEL_CMD_INLINE)
 
