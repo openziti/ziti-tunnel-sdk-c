@@ -256,7 +256,7 @@ VOID SvcInit( DWORD dwArgc, LPTSTR *lpszArgv)
 DWORD WINAPI ServiceWorkerThread (LPVOID lpParam)
 {
     //  Periodically check if the service has been requested to stop
-    scm_service_run(lpParam);
+    scm_service_run(APPNAME);
     // when service stops and returns, stop the service in scm
     stop_windows_service();
     return ERROR_SUCCESS;
