@@ -1206,16 +1206,10 @@ static void on_event(const base_event *ev) {
                 }
             }
             if (model_map_size(&hostnamesToEdit) > 0) {
-                struct add_or_edit_service_nrpt_req *edit_svc_req_data = calloc(1, sizeof(struct add_or_edit_service_nrpt_req));
-                edit_svc_req_data->hostnames = &hostnamesToEdit;
-                edit_svc_req_data->dns_ip = get_dns_ip();
-                remove_and_add_nrpt_rules(main_ziti_loop, edit_svc_req_data);
+                remove_and_add_nrpt_rules(main_ziti_loop, &hostnamesToEdit, get_dns_ip());
             }
             if (model_map_size(&hostnamesToAdd) > 0) {
-                struct add_or_edit_service_nrpt_req *add_svc_req_data = calloc(1, sizeof(struct add_or_edit_service_nrpt_req));
-                add_svc_req_data->hostnames = &hostnamesToAdd;
-                add_svc_req_data->dns_ip = get_dns_ip();
-                add_nrpt_rules(main_ziti_loop, add_svc_req_data);
+                add_nrpt_rules(main_ziti_loop, &hostnamesToAdd, get_dns_ip());
             }
             if (model_map_size(&hostnamesToRemove) > 0) {
                 remove_nrpt_rules(main_ziti_loop, &hostnamesToRemove);
@@ -1401,11 +1395,8 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
         }
         model_map_clear(domains, (_free_f) free);
         free(domains);
-        struct add_or_edit_service_nrpt_req *add_svc_req_data = calloc(1, sizeof(struct add_or_edit_service_nrpt_req));
-        add_svc_req_data->hostnames = normalized_domains;
-        add_svc_req_data->dns_ip = get_dns_ip();
 
-        add_nrpt_rules(main_ziti_loop, add_svc_req_data);
+        add_nrpt_rules(main_ziti_loop, normalized_domains, get_dns_ip());
     }
 #endif
 

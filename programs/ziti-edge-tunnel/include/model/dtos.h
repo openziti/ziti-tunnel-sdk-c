@@ -109,11 +109,6 @@ XX(Version, string, none, Version, __VA_ARGS__) \
 XX(Revision, string, none, Revision, __VA_ARGS__) \
 XX(BuildDate, string, none, BuildDate, __VA_ARGS__)
 
-struct add_or_edit_service_nrpt_req {
-    const model_map *hostnames;
-    const char* dns_ip;
-};
-
 DECLARE_MODEL(tunnel_config, TUNNEL_CONFIG)
 DECLARE_MODEL(tunnel_metrics, TUNNEL_METRICS)
 DECLARE_MODEL(tunnel_address, TUNNEL_ADDRESS)
