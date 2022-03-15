@@ -26,6 +26,8 @@
 #define BUFFER_SIZE 1024
 #endif
 
+#include "ziti/model_support.h"
+
 void add_nrpt_rules(uv_async_t *ar);
 void remove_nrpt_rules(uv_async_t *ar);
 void remove_all_nrpt_rules();

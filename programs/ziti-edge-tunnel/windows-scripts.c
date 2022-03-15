@@ -75,7 +75,7 @@ static char* exec_process_fetch_result(char* program) {
     FILE *fp;
     char path[BUFFER_SIZE];
 
-    fp = popen(program, "r");
+    fp = _popen(program, "r");
     if (fp == NULL) {
         ZITI_LOG(ERROR,"Failed to run command %s", strerror(errno));
         return NULL;
@@ -92,7 +92,7 @@ static char* exec_process_fetch_result(char* program) {
         }
     }
 
-    pclose(fp);
+    _pclose(fp);
 
     return result;
 }

@@ -20,6 +20,13 @@
 #include "ziti/ziti_tunnel.h"
 #include "ziti/ziti.h"
 
+
+#if _WIN32
+#ifndef strcasecmp
+#define strcasecmp(a,b) stricmp(a,b)
+#endif
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
