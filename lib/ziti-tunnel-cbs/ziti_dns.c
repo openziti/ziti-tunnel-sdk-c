@@ -379,7 +379,7 @@ const char *ziti_dns_register_hostname(const char *hostname, void *intercept) {
 
 static const char DNS_OPT[] = { 0x0, 0x0, 0x29, 0x02, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 };
 
-
+#define DNS_HEADER_LEN 12
 #define DNS_ID(p) ((uint8_t)(p)[0] << 8 | (uint8_t)(p)[1])
 #define DNS_FLAGS(p) ((p)[2] << 8 | (p)[3])
 #define DNS_QRS(p) ((p)[4] << 8 | (p)[5])
@@ -402,9 +402,9 @@ static const char DNS_OPT[] = { 0x0, 0x0, 0x29, 0x02, 0x0, 0x0, 0x0, 0x0, 0x0, 0
 #define IS_QUERY(flags) (((flags) & (1 << 15)) == 0)
 
 static uint8_t* format_name(uint8_t* p, const char* name) {
-    char *np = name;
+    const char *np = name;
     do {
-        char *dot = strchr(np, '.');
+        const char *dot = strchr(np, '.');
         uint8_t len = dot ? dot - np : strlen(np);
 
         *p++ = len;
@@ -426,7 +426,7 @@ static uint8_t* format_name(uint8_t* p, const char* name) {
 static void format_resp(struct dns_req *req) {
 
     // copy header from request
-    memcpy(req->resp, req->req, 12); // DNS header
+    memcpy(req->resp, req->req, DNS_HEADER_LEN); // DNS header
     DNS_SET_ANS(req->resp);
     DNS_SET_CODE(req->resp, req->msg.status);
     bool recursion_avail = uv_is_active((const uv_handle_t *) &ziti_dns.upstream);
@@ -435,9 +435,9 @@ static void format_resp(struct dns_req *req) {
     }
 
     size_t query_section_len = strlen(req->msg.question[0]->name) + 2 + 4;
-    memcpy(req->resp + 12, req->req + 12, query_section_len);
+    memcpy(req->resp + DNS_HEADER_LEN, req->req + DNS_HEADER_LEN, query_section_len);
 
-    uint8_t *rp = req->resp + 12 + query_section_len;
+    uint8_t *rp = req->resp + DNS_HEADER_LEN + query_section_len;
 
     if (req->msg.status == DNS_NO_ERROR && req->msg.answer != NULL) {
         int ans_count = 0;
