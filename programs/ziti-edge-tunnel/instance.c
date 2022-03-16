@@ -368,11 +368,11 @@ tunnel_service *find_tunnel_service(tunnel_identity* id, char* svc_id) {
         for (idx =0; id->Services[idx]; idx++) {
             svc = id->Services[idx];
             if (strcmp(svc->Id, svc_id) == 0) {
-                break;
+                return svc;
             }
         }
     }
-    return svc;
+    return NULL;
 }
 
 tunnel_service *get_tunnel_service(tunnel_identity* id, ziti_service* zs) {
