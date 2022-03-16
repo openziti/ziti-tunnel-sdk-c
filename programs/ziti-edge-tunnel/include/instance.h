@@ -78,6 +78,8 @@ char *get_tunnel_config(size_t *json_len);
 
 int get_api_page_size();
 
+tunnel_identity_array get_tunnel_identities_for_metrics();
+
 #ifdef __cplusplus
 }
 #endif

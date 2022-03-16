@@ -401,6 +401,35 @@ tunnel_identity_array get_tunnel_identities() {
     return tnl_id_arr;
 }
 
+tunnel_identity_array get_tunnel_identities_for_metrics() {
+
+    tunnel_identity_array arr = get_tunnel_identities();
+    tunnel_identity_array tnl_id_arr = NULL;
+
+    for (int i =0; arr[i]; i++) {
+        if (i == 0) {
+            tnl_id_arr = calloc(model_map_size(&tnl_identity_map) + 1, sizeof(tunnel_identity*));
+        }
+
+        tunnel_identity* id = arr[i];
+        tunnel_identity *id_new = calloc(1, sizeof(tunnel_identity));
+        id_new->Identifier = id->Identifier;
+        id_new->FingerPrint = id->FingerPrint;
+        id_new->Name = id->Name;
+        id_new->MfaEnabled = id->MfaEnabled;
+        id_new->MfaNeeded = id->MfaNeeded;
+        id_new->Active = id->Active;
+        id_new->Loaded = id->Loaded;
+        id_new->Metrics = id->Metrics;
+        id_new->IdFileStatus = id->IdFileStatus;
+        tnl_id_arr[i] = id_new;
+    }
+    free(arr);
+
+    return tnl_id_arr;
+
+}
+
 int get_remaining_timeout(int timeout, int timeout_rem, tunnel_identity *tnl_id) {
 
     if (timeout <= 0 || timeout_rem <= 0 || tnl_id->MfaLastUpdatedTime == NULL || tnl_id->ServiceUpdatedTime == NULL) {
@@ -503,6 +532,7 @@ void initialize_tunnel_status() {
     if (tnl_status.LogLevel == NULL) {
         tnl_status.LogLevel = "info";
     }
+
 }
 
 bool load_tunnel_status(char* config_data) {
