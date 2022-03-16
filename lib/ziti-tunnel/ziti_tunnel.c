@@ -583,8 +583,10 @@ static void ziti_tunnel_async_wrapper(uv_async_t *async) {
 /** sets up a function call on the specified loop */
 void ziti_tunnel_async_send(tunneler_context tctx, ziti_tunnel_async_fn f, void *arg) {
     uv_loop_t *loop = uv_default_loop();
+    uv_sem_t *sem = &default_loop_sem;
     if (tctx != NULL) {
         loop = tctx->loop;
+        sem = &tctx->sem;
     }
 
     ziti_tunnel_async_call_t *call = calloc(1, sizeof(ziti_tunnel_async_call_t));
@@ -594,17 +596,9 @@ void ziti_tunnel_async_send(tunneler_context tctx, ziti_tunnel_async_fn f, void 
     uv_async_t *async = calloc(1, sizeof(uv_async_t));
     async->data = call;
 
-    if (tctx != NULL) {
-        uv_sem_wait(&tctx->sem);
-    } else {
-        uv_sem_wait(&default_loop_sem);
-    }
+    uv_sem_wait(sem);
     int e = uv_async_init(loop, async, ziti_tunnel_async_wrapper);
-    if (tctx != NULL) {
-        uv_sem_post(&tctx->sem);
-    } else {
-        uv_sem_post(&default_loop_sem);
-    }
+    uv_sem_wait(sem);
     if (e != 0) {
         TNL_LOG(ERR, "uv_async_init error: %s", uv_err_name(e));
         free(call);
