@@ -50,7 +50,7 @@ static int process_cmd(const tunnel_command *cmd, void (*cb)(const tunnel_result
 static int load_identity(const char *identifier, const char *path, int api_page_size, command_cb cb, void *ctx);
 static void get_transfer_rates(const char *identifier, command_cb cb, void *ctx);
 static struct ziti_instance_s *new_ziti_instance(const char *identifier, const char *path);
-static void load_ziti_async(uv_async_t *ar);
+static void load_ziti_async(uv_loop_t *loop, void *arg);
 static void on_sigdump(uv_signal_t *sig, int signum);
 static void enable_mfa(ziti_context ztx, void *ctx);
 static void verify_mfa(ziti_context ztx, char *code, void *ctx);
@@ -603,10 +603,7 @@ static int load_identity(const char *identifier, const char *path, int api_page_
         inst->opts.api_page_size = api_page_size;
     }
 
-    uv_async_t *ar = calloc(1, sizeof(uv_async_t));
-    ar->data = inst;
-    uv_async_init(CMD_CTX.loop, ar, load_ziti_async);
-    uv_async_send(ar);
+    load_ziti_async(CMD_CTX.loop, inst);
     return 0;
 }
 
@@ -806,6 +803,12 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
                 req->ztx = ztx;
                 req->new_url = strdup(event->event.api.new_ctrl_address);
                 uv_queue_work(CMD_CTX.loop, &req->wr, update_config, update_config_done);
+                api_event ev = {0};
+                ev.event_type = TunnelEvents.APIEvent;
+                ev.identifier = instance->identifier;
+                ev.ctrl_address = event->event.api.new_ctrl_address;
+
+                CMD_CTX.on_event((const base_event *) &ev);
             } else {
                 ZITI_LOG(WARN, "unexpected API event: new_ctrl_address is missing");
             }
@@ -818,8 +821,8 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
     }
 }
 
-static void load_ziti_async(uv_async_t *ar) {
-    struct ziti_instance_s *inst = ar->data;
+static void load_ziti_async(uv_loop_t *loop, void *arg) {
+    struct ziti_instance_s *inst = arg;
 
     tunnel_result result = {
             .success = true,
@@ -837,7 +840,7 @@ static void load_ziti_async(uv_async_t *ar) {
     } else {
         ZITI_LOG(INFO, "loading ziti instance from %s", config_path);
         inst->opts.app_ctx = inst;
-        if (ziti_init_opts(&inst->opts, ar->loop) == ZITI_OK) {
+        if (ziti_init_opts(&inst->opts, loop) == ZITI_OK) {
             model_map_set(&instances, inst->identifier, inst);
         } else {
             result.success = false;
@@ -855,7 +858,6 @@ static void load_ziti_async(uv_async_t *ar) {
     }
 
     free(config_path);
-    uv_close((uv_handle_t *) ar, (uv_close_cb) free);
 }
 
 /*
@@ -963,6 +965,9 @@ static void on_enable_mfa(ziti_context ztx, int status, ziti_mfa_enrollment *enr
 
     tunnel_status_event(TunnelEvent_MFAStatusEvent, status, ev, inst);
 
+    if (req->ctx) {
+        free(req->ctx);
+    }
     free(req);
 }
 
@@ -992,6 +997,9 @@ static void on_verify_mfa(ziti_context ztx, int status, void *ctx) {
     ev->operation_type = mfa_status_enrollment_verification;
     tunnel_status_event(TunnelEvent_MFAStatusEvent, status, ev, inst);
 
+    if (req->ctx) {
+        free(req->ctx);
+    }
     free(req);
 }
 
@@ -1021,6 +1029,9 @@ static void on_remove_mfa(ziti_context ztx, int status, void *ctx) {
     ev->operation_type = mfa_status_enrollment_remove;
     tunnel_status_event(TunnelEvent_MFAStatusEvent, status, ev, inst);
 
+    if (req->ctx) {
+        free(req->ctx);
+    }
     free(req);
 }
 
@@ -1040,14 +1051,19 @@ static void on_mfa_recovery_codes(ziti_context ztx, int status, char **recovery_
         result.code = IPC_SUCCESS;
 
         tunnel_mfa_recovery_codes mfa_recovery_codes = {0};
-        mfa_recovery_codes.identifier = req->ctx;
+        mfa_recovery_codes.identifier = strdup(req->ctx);
         mfa_recovery_codes.recovery_codes = recovery_codes;
 
         size_t json_len;
         result.data = tunnel_mfa_recovery_codes_to_json(&mfa_recovery_codes, MODEL_JSON_COMPACT, &json_len);
+        mfa_recovery_codes.recovery_codes = NULL;
+        free_tunnel_mfa_recovery_codes(&mfa_recovery_codes);
     }
     if (req->cmd_cb) {
         req->cmd_cb(&result, req->cmd_ctx);
+    }
+    if (req->ctx) {
+        free(req->ctx);
     }
     free(req);
 }
@@ -1222,5 +1238,6 @@ IMPL_MODEL(base_event, BASE_EVENT_MODEL)
 IMPL_MODEL(ziti_ctx_event, ZTX_EVENT_MODEL)
 IMPL_MODEL(mfa_event, MFA_EVENT_MODEL)
 IMPL_MODEL(service_event, ZTX_SVC_EVENT_MODEL)
+IMPL_MODEL(api_event, API_EVENT_MODEL)
 IMPL_MODEL(tunnel_command_inline, TUNNEL_CMD_INLINE)
 

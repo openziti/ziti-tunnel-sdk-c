@@ -484,6 +484,8 @@ tun_delete_cb(_In_ WINTUN_ADAPTER_HANDLE adapter, _In_ LPARAM param) {
     if (wcsncmp(name, tun_name, wcslen(tun_name)) == 0) {
         WintunDeleteAdapter(adapter, true, NULL);
         ZITI_LOG(INFO, "Deleted wintun adapter %ls", name);
+    } else {
+        ZITI_LOG(INFO, "Not deleting wintun adapter %ls, name didn't match %ls", name, tun_name);
     }
     // the call back should always return value greater than zero, so the cleanup function will continue
     return 1;
@@ -494,3 +496,13 @@ static void cleanup_adapters(wchar_t *tun_name) {
     WintunEnumAdapters(L"Ziti", tun_delete_cb, tun_name);
 }
 
+// close session causes the segmentation fault when the adapter is running
+int tun_kill() {
+    WINTUN_ADAPTER_HANDLE adapter = WintunOpenAdapter(L"Ziti", ZITI_TUN);
+    if (adapter) {
+        ZITI_LOG(DEBUG, "Closing wintun adapter");
+        WintunDeleteAdapter(adapter, true, NULL);
+        WintunFreeAdapter(adapter);
+        ZITI_LOG(DEBUG, "Closed wintun adapter");
+    }
+}
