@@ -23,11 +23,9 @@
 #include <time.h>
 #include <log-utils.h>
 #if _WIN32
-#include "ziti/ziti.h"
 #include "windows/windows-service.h"
 #include "windows/windows-scripts.h"
 #include <direct.h>
-#include <libgen.h>
 #endif
 
 static void delete_older_logs(uv_async_t *ar);
@@ -44,8 +42,11 @@ static char* get_log_path() {
     char process_dir[FILENAME_MAX]; //create string buffer to hold path
 #if _WIN32
     char process_full_path[FILENAME_MAX];
+    char drive[_MAX_DRIVE];
+    char dir[_MAX_DIR];
     get_process_path(process_full_path, FILENAME_MAX);
-    sprintf(process_dir, "%s", dirname(process_full_path));
+    _splitpath_s(process_full_path, drive, sizeof(drive), dir, sizeof(dir), NULL, 0, NULL, 0);
+    _makepath_s(process_dir, sizeof(process_dir), drive, dir, NULL, NULL);
 #else
     sprintf(process_dir, "/tmp");
 #endif

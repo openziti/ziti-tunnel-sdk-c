@@ -368,11 +368,11 @@ tunnel_service *find_tunnel_service(tunnel_identity* id, char* svc_id) {
         for (idx =0; id->Services[idx]; idx++) {
             svc = id->Services[idx];
             if (strcmp(svc->Id, svc_id) == 0) {
-                break;
+                return svc;
             }
         }
     }
-    return svc;
+    return NULL;
 }
 
 tunnel_service *get_tunnel_service(tunnel_identity* id, ziti_service* zs) {
@@ -703,15 +703,10 @@ void set_log_level(char* log_level) {
         free(tnl_status.LogLevel);
         tnl_status.LogLevel = NULL;
     }
-    size_t len = strlen(log_level) + 1;
-    tnl_status.LogLevel = calloc(len, sizeof(char));
-    char log_lvl[len];
-    int i = 0;
-    while (*log_level != '\0') {
-        log_lvl[i++] = (char) tolower(*log_level++);
+    tnl_status.LogLevel = strdup(log_level);
+    for (int i = 0; tnl_status.LogLevel[i] != '\0'; i++) {
+        tnl_status.LogLevel[i] = (char)tolower(tnl_status.LogLevel[i]);
     }
-    log_lvl[i] = '\0';
-    snprintf(tnl_status.LogLevel, len, "%s", log_lvl);
 }
 
 const char* get_log_level() {
@@ -729,29 +724,14 @@ void set_service_version() {
     }
     tnl_status.ServiceVersion = calloc(1, sizeof(service_version));
 
-    char* version = ziti_tunneler_version();
-    if (version != NULL && strlen(version) > 0) {
-        char* revision_idx = strstr(version, "-");
-        int ver_length;
+    const char *version = ziti_tunneler_version();
+    if (version != NULL) {
+        tnl_status.ServiceVersion->Version = strdup(version);
+        char *revision_idx = strstr(version, "-");
         if (revision_idx != NULL) {
-            ver_length = (int) (revision_idx - version);
-        } else {
-            ver_length = strlen(version);
+            tnl_status.ServiceVersion->Version[revision_idx - version] = '\0';
+            tnl_status.ServiceVersion->Revision = strdup(revision_idx + 1);
         }
-
-        tnl_status.ServiceVersion->Version = calloc(ver_length + 1, sizeof(char));
-        char service_version[ver_length + 1];
-        memcpy(&service_version, version, ver_length);
-        service_version[ver_length] = '\0';
-        snprintf(tnl_status.ServiceVersion->Version, ver_length+1, "%s", service_version);
-
-        if (revision_idx != NULL) {
-            int rev_length = strlen(version) - ver_length - 1; // to reduce the space used for "-"
-            revision_idx++;
-            tnl_status.ServiceVersion->Revision = calloc(rev_length + 1, sizeof(char));
-            snprintf(tnl_status.ServiceVersion->Revision, rev_length + 1, "%s", revision_idx);
-        }
-
     }
 
     tnl_status.ServiceVersion->BuildDate = strdup(ziti_tunneler_build_date());

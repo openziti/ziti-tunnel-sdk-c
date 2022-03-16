@@ -26,6 +26,8 @@
 #define BUFFER_SIZE 1024
 #endif
 
+#include "ziti/model_support.h"
+
 void add_nrpt_rules(uv_loop_t *nrpt_loop, model_map *hostnames, const char* dns_ip);
 void remove_nrpt_rules(uv_loop_t *nrpt_loop, model_map *hostnames);
 void remove_all_nrpt_rules();
