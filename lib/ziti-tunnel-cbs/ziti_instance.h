@@ -53,4 +53,6 @@ struct ziti_instance_s {
 
 typedef struct ziti_intercept_s ziti_intercept_t;
 
+ziti_connection intercept_resolve_connect(ziti_intercept_t *intercept, void *ctx, ziti_conn_cb conn_cb, ziti_data_cb data_cb);
+
 #endif //ZITI_TUNNEL_SDK_C_ZITI_INSTANCE_H
