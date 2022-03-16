@@ -202,7 +202,6 @@ intercept_ctx_t* intercept_ctx_new(tunneler_context tnlr_ctx, const char *app_id
     ictx->tnlr_ctx = tnlr_ctx;
     ictx->service_name = strdup(app_id);
     ictx->app_intercept_ctx = app_intercept_ctx;
-    ictx->log_level = INFO;
     STAILQ_INIT(&ictx->protocols);
     STAILQ_INIT(&ictx->addresses);
     STAILQ_INIT(&ictx->port_ranges);
@@ -212,14 +211,6 @@ intercept_ctx_t* intercept_ctx_new(tunneler_context tnlr_ctx, const char *app_id
 
 void intercept_ctx_set_match_addr(intercept_ctx_t *intercept, intercept_match_addr_fn pred) {
     intercept->match_addr = pred;
-}
-
-void intercept_ctx_set_log_level(intercept_ctx_t *intercept, int level) {
-    intercept->log_level = level;
-}
-
-int intercept_ctx_get_log_level(intercept_ctx_t *intercept) {
-    return intercept->log_level;
 }
 
 void intercept_ctx_add_protocol(intercept_ctx_t *ctx, const char *protocol) {
