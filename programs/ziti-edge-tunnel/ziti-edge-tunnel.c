@@ -197,23 +197,21 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
 #if _WIN32
                         tunnel_identity *id = create_or_get_tunnel_identity(tnl_delete_id.identifier, NULL);
                         if (id->Services) {
-                            model_map *hostnamesToRemove = calloc(1, sizeof(model_map));
+                            model_map hostnamesToRemove = {0};
                             for (int index=0 ; id->Services[index]; index++ ) {
                                 tunnel_service *tnl_svc = id->Services[index];
                                 if (tnl_svc->Addresses != NULL) {
                                     for (int i = 0; tnl_svc->Addresses[i]; i++) {
                                         tunnel_address *addr = tnl_svc->Addresses[i];
-                                        if (addr->IsHost && model_map_get(hostnamesToRemove, addr->HostName) == NULL) {
-                                            model_map_set(hostnamesToRemove, addr->HostName, "TRUE");
+                                        if (addr->IsHost && model_map_get(&hostnamesToRemove, addr->HostName) == NULL) {
+                                            model_map_set(&hostnamesToRemove, addr->HostName, "TRUE");
                                         }
                                     }
                                 }
                             }
 
-                            if (model_map_size(hostnamesToRemove) > 0) {
-                                ziti_tunnel_async_send(tunneler, remove_nrpt_rules, hostnamesToRemove);
-                            } else {
-                                free(hostnamesToRemove);
+                            if (model_map_size(&hostnamesToRemove) > 0) {
+                                remove_nrpt_rules(main_ziti_loop, &hostnamesToRemove);
                             }
                         }
 
@@ -1140,9 +1138,9 @@ static void on_event(const base_event *ev) {
             }
             ziti_service **zs;
 #if _WIN32
-            model_map *hostnamesToAdd = calloc(1, sizeof(model_map));
-            model_map *hostnamesToEdit = calloc(1, sizeof(model_map));
-            model_map *hostnamesToRemove = calloc(1, sizeof(model_map));
+            model_map hostnamesToAdd = {0};
+            model_map hostnamesToEdit = {0};
+            model_map hostnamesToRemove = {0};
 #endif
             if (svc_ev->removed_services != NULL) {
                 int svc_array_length = 0;
@@ -1160,8 +1158,8 @@ static void on_event(const base_event *ev) {
                     if (svc->Addresses != NULL) {
                         for (int i = 0; svc->Addresses[i]; i++) {
                             tunnel_address *addr = svc->Addresses[i];
-                            if (addr->IsHost && model_map_get(hostnamesToRemove, addr->HostName) == NULL) {
-                                model_map_set(hostnamesToRemove, addr->HostName, "TRUE");
+                            if (addr->IsHost && model_map_get(&hostnamesToRemove, addr->HostName) == NULL) {
+                                model_map_set(&hostnamesToRemove, addr->HostName, "TRUE");
                             }
                         }
                     }
@@ -1184,11 +1182,11 @@ static void on_event(const base_event *ev) {
                     if (svc->Addresses != NULL) {
                         for (int i = 0; svc->Addresses[i]; i++) {
                             tunnel_address *addr = svc->Addresses[i];
-                            if (addr->IsHost && model_map_get(hostnamesToAdd, addr->HostName) == NULL) {
-                                if (model_map_get(hostnamesToRemove, addr->HostName) != NULL) {
-                                    model_map_set(hostnamesToEdit, addr->HostName, "TRUE");
+                            if (addr->IsHost && model_map_get(&hostnamesToAdd, addr->HostName) == NULL) {
+                                if (model_map_get(&hostnamesToRemove, addr->HostName) != NULL) {
+                                    model_map_set(&hostnamesToEdit, addr->HostName, "TRUE");
                                 } else {
-                                    model_map_set(hostnamesToAdd, addr->HostName, "TRUE");
+                                    model_map_set(&hostnamesToAdd, addr->HostName, "TRUE");
                                 }
                             }
                         }
@@ -1200,41 +1198,27 @@ static void on_event(const base_event *ev) {
 
 #if _WIN32
             // remove the hostnames from hostnamesToRemove, if they are present in hostnamesToEdit
-            if (model_map_size(hostnamesToEdit) > 0) {
-                model_map_iter it = model_map_iterator(hostnamesToRemove);
+            if (model_map_size(&hostnamesToEdit) > 0) {
+                model_map_iter it = model_map_iterator(&hostnamesToRemove);
                 while (it != NULL) {
                     const char *key = model_map_it_key(it);
-                    if (model_map_get(hostnamesToEdit, key) != NULL) {
+                    if (model_map_get(&hostnamesToEdit, key) != NULL) {
                         it = model_map_it_remove(it);
                     } else {
                         it = model_map_it_next(it);
                     }
                 }
             }
-            if (model_map_size(hostnamesToEdit) > 0) {
-                struct add_or_edit_service_nrpt_req *edit_svc_req_data = calloc(1, sizeof(struct add_or_edit_service_nrpt_req));
-                edit_svc_req_data->hostnames = hostnamesToEdit;
-                edit_svc_req_data->dns_ip = get_dns_ip();
-                ziti_tunnel_async_send(tunneler, remove_and_add_nrpt_rules, edit_svc_req_data);
+            if (model_map_size(&hostnamesToEdit) > 0) {
+                remove_and_add_nrpt_rules(main_ziti_loop, &hostnamesToEdit, get_dns_ip());
             }
-            if (model_map_size(hostnamesToAdd) > 0) {
-                struct add_or_edit_service_nrpt_req *add_svc_req_data = calloc(1, sizeof(struct add_or_edit_service_nrpt_req));
-                add_svc_req_data->hostnames = hostnamesToAdd;
-                add_svc_req_data->dns_ip = get_dns_ip();
-                ziti_tunnel_async_send(tunneler, add_nrpt_rules, add_svc_req_data);
+            if (model_map_size(&hostnamesToAdd) > 0) {
+                add_nrpt_rules(main_ziti_loop, &hostnamesToAdd, get_dns_ip());
             }
-            if (model_map_size(hostnamesToRemove) > 0) {
-                ziti_tunnel_async_send(tunneler, remove_nrpt_rules, hostnamesToRemove);
+            if (model_map_size(&hostnamesToRemove) > 0) {
+                remove_nrpt_rules(main_ziti_loop, &hostnamesToRemove);
             }
-            if (model_map_size(hostnamesToAdd) == 0) {
-                free(hostnamesToAdd);
-            }
-            if (model_map_size(hostnamesToEdit) == 0) {
-                free(hostnamesToEdit);
-            }
-            if (model_map_size(hostnamesToRemove) == 0) {
-                free(hostnamesToRemove);
-            }
+
 #endif
 
             if (svc_ev->removed_services != NULL || svc_ev->added_services != NULL) {
@@ -1442,20 +1426,17 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     if (nrpt_effective) {
         model_map *domains = get_connection_specific_domains();
         bool status;
-        model_map *normalized_domains = calloc(1, sizeof(model_map));
+        model_map normalized_domains = {0};
         model_map_iter it = model_map_iterator(domains);
         while (it != NULL) {
             const char *key = model_map_it_key(it);
-            model_map_set(normalized_domains, normalize_host(key), NULL);
+            model_map_set(&normalized_domains, normalize_host(key), NULL);
             it = model_map_it_remove(it);
         }
         model_map_clear(domains, (_free_f) free);
         free(domains);
-        struct add_or_edit_service_nrpt_req *add_svc_req_data = calloc(1, sizeof(struct add_or_edit_service_nrpt_req));
-        add_svc_req_data->hostnames = normalized_domains;
-        add_svc_req_data->dns_ip = get_dns_ip();
 
-        add_nrpt_rules(main_ziti_loop, add_svc_req_data);
+        add_nrpt_rules(main_ziti_loop, &normalized_domains, get_dns_ip());
     }
 #endif
 
