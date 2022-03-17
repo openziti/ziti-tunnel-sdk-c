@@ -2690,7 +2690,6 @@ void scm_service_run(const char *name) {
     run(0, NULL);
 }
 
-
 void scm_service_stop_event(uv_loop_t *loop, void *arg) {
     ZITI_LOG(INFO, "Processing stop tunnel service request");
 
@@ -2709,8 +2708,13 @@ void scm_service_stop_event(uv_loop_t *loop, void *arg) {
     ZITI_LOG(INFO,"============================ service ends ==================================");
 
     if (main_ziti_loop != NULL) {
+
         uv_stop(main_ziti_loop);
-        uv_loop_close(main_ziti_loop);
+        int result = uv_loop_close(main_ziti_loop);
+        if (result == UV_EBUSY)
+        {
+            ZITI_LOG(INFO, "loop is busy, exiting...");
+        }
     }
 
     // stops the windows service in scm
@@ -2720,7 +2724,7 @@ void scm_service_stop_event(uv_loop_t *loop, void *arg) {
 
 void scm_service_stop() {
     ZITI_LOG(INFO, "Control request to stop tunnel service received...");
-    ziti_tunnel_async_send(NULL, scm_service_stop_event, NULL);
+    scm_service_stop_event(NULL, NULL);
 }
 
 static void move_config_from_previous_windows_backup(uv_loop_t *loop) {

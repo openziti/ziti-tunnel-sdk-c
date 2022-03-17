@@ -257,8 +257,6 @@ DWORD WINAPI ServiceWorkerThread (LPVOID lpParam)
 {
     //  Periodically check if the service has been requested to stop
     scm_service_run(APPNAME);
-    // when service stops and returns, stop the service in scm
-    stop_windows_service();
     return ERROR_SUCCESS;
 }
 
@@ -426,7 +424,6 @@ void scm_running_event() {
 //
 void stop_windows_service() {
     SetEvent(ghSvcStopEvent);
-    ReportSvcStatus(gSvcStatus.dwCurrentState, NO_ERROR, 0);
 }
 
 DWORD get_process_path(LPTSTR lpBuffer, DWORD  nBufferLength) {
@@ -453,7 +450,7 @@ DWORD LphandlerFunctionEx(
 
     switch (dwControl) {
         case SERVICE_CONTROL_STOP:
-            ReportSvcStatus(SERVICE_STOP_PENDING, NO_ERROR, 0);
+            ReportSvcStatus(SERVICE_STOP_PENDING, NO_ERROR, 60000);
 
             // stops the running tunnel service
             scm_service_stop();
