@@ -22,6 +22,7 @@
 #define ZITI_TUNNELER_SDK_DNS_HOST_H
 
 #if _WIN32
+#include <windef.h>
 #include <windns.h>
 
 #define ns_rr DNS_RECORDA
@@ -49,21 +50,25 @@ typedef struct __res_state resolver_t;
 
 #endif
 
-
+#include <stdint.h>
 #include <ziti/model_support.h>
 
-#define DNS_Q_MODEL(XX,...) \
+#define DNS_Q_MODEL(XX, ...) \
 XX(name, string, none, name, __VA_ARGS__) \
 XX(type, int, none, type, __VA_ARGS__)
 
-#define DNS_A_MODEL(XX,...) \
+#define DNS_A_MODEL(XX, ...) \
 DNS_Q_MODEL(XX, __VA_ARGS__) \
 XX(ttl, int, none, ttl, __VA_ARGS__) \
+XX(priority, int, none, priority, __VA_ARGS__) \
+XX(weight, int, none, weight, __VA_ARGS__)     \
+XX(port, int, none, port, __VA_ARGS__)    \
 XX(data, string, none, data, __VA_ARGS__)
 
 #define DNS_MSG_MODEL(XX,...) \
 XX(status, int, none, status, __VA_ARGS__) \
-XX(id, int, none, id, __VA_ARGS__) \
+XX(id, int, none, id, __VA_ARGS__)         \
+XX(recursive, int, none, recursive, __VA_ARGS__) \
 XX(question, dns_question, array, question, __VA_ARGS__) \
 XX(answer, dns_answer, array, answer, __VA_ARGS__)       \
 XX(comment, string, none, comment, __VA_ARGS__)
@@ -71,6 +76,22 @@ XX(comment, string, none, comment, __VA_ARGS__)
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+typedef struct dns_flags_s {
+    union {
+        uint16_t raw;
+        struct {
+            uint8_t is_response: 1;
+            uint8_t opcode: 4;
+            uint8_t aa: 1;
+            uint8_t tc: 1;
+            uint8_t rd: 1;
+            uint8_t ra: 1;
+            uint8_t z: 3;
+            uint8_t rcode: 4;
+        };
+    };
+} dns_flags_t;
 
 DECLARE_MODEL(dns_question, DNS_Q_MODEL)
 
@@ -81,6 +102,8 @@ DECLARE_MODEL(dns_message, DNS_MSG_MODEL)
 void dns_host_init();
 
 void do_query(const dns_question *q, dns_message *resp, resolver_t *resolver);
+
+int parse_dns_req(dns_message *msg, const unsigned char* buf, size_t buflen);
 
 #ifdef __cplusplus
 }

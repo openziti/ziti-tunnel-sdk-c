@@ -31,13 +31,18 @@
 extern "C" {
 #endif
 
+#define TUNNELER_CONN_TYPE_ENUM(XX,...) \
+XX(data, __VA_ARGS__)                    \
+XX(resolver, __VA_ARGS__)
+
+
 enum tunnel_conn_type {
     data_conn_type,
     resolve_conn_type
 };
 
 #define TUNNELER_APP_DATA_MODEL(XX, ...) \
-XX(conn_type, int, none, conn_type, __VA_ARGS__) \
+XX(conn_type, TunnelConnectionType, none, connType, __VA_ARGS__) \
 XX(dst_protocol, string, none, dst_protocol, __VA_ARGS__)\
 XX(dst_hostname, string, none, dst_hostname, __VA_ARGS__)\
 XX(dst_ip, string, none, dst_ip, __VA_ARGS__)\
@@ -46,6 +51,8 @@ XX(src_protocol, string, none, src_protocol, __VA_ARGS__)\
 XX(src_ip, string, none, src_ip, __VA_ARGS__)\
 XX(src_port, string, none, src_port, __VA_ARGS__)\
 XX(source_addr, string, none, source_addr, __VA_ARGS__)
+
+DECLARE_ENUM(TunnelConnectionType, TUNNELER_CONN_TYPE_ENUM)
 
 DECLARE_MODEL(tunneler_app_data, TUNNELER_APP_DATA_MODEL)
 
