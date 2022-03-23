@@ -9,3 +9,5 @@ install/
 
 .vscode/
 Pipfile
+
+/_deps/
