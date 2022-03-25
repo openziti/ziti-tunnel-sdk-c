@@ -47,7 +47,7 @@ jobs:
       - name: make build dir
         run: cmake -E make_directory ${{runner.workspace}}/build
 
-      - name: install Debian crossbuild toolchain
+      - name: install toolchain
         if: ${{ matrix.install != null }}
         run: |
           sudo apt -y update
