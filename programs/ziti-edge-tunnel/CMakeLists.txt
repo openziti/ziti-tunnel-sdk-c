@@ -44,7 +44,6 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         pkg_check_modules(LIBSYSTEMD IMPORTED_TARGET "libsystemd")
 
         if(LIBSYSTEMD_FOUND)
-            message(INFO "LIBSYSTEMD_VERSION: ${LIBSYSTEMD_VERSION}")
             if(LIBSYSTEMD_VERSION VERSION_LESS "229")
                 message(FATAL_ERROR "Unsupported version of libsystemd detected. To disable libsystmd feature, set DISABLE_LIBSYSTEMD_FEATURE=ON.")
             endif()
