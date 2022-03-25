@@ -96,12 +96,6 @@ jobs:
           cat /etc/*-release
           ls -horAS ./build/programs/ziti-edge-tunnel/
 
-      - name: run binary artifact
-        if: ${{ matrix.distro.name != 'redhat' }} # TODO: error while loading shared libraries: libatomic.so.1
-        run: |
-          cat /etc/*-release
-          ./build/programs/ziti-edge-tunnel/ziti-edge-tunnel version
-
       - name: install package artifact in runner container if Ubuntu 14.04
         if: ${{ matrix.distro.name == 'ubuntu' && matrix.distro.version == '14.04' }}
         run: |
@@ -116,6 +110,11 @@ jobs:
         if: ${{ matrix.distro.name == 'redhat' }}
         run: |
           yum -y install ./build/ziti-edge-tunnel-*.rpm
+
+      - name: run binary artifact
+        run: |
+          cat /etc/*-release
+          ziti-edge-tunnel version
 
       # - name: upload ziti-edge-tunnel binary
       #   uses: actions/upload-artifact@v3
