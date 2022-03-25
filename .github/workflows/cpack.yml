@@ -117,7 +117,7 @@ jobs:
         run: |
           set -x
           cat /etc/*-release
-          ldd ./build/programs/ziti-edge-tunnel/ziti-edge-tunnel)
+          ldd ./build/programs/ziti-edge-tunnel/ziti-edge-tunnel
           ./build/programs/ziti-edge-tunnel/ziti-edge-tunnel version --verbose
 
       # - name: upload ziti-edge-tunnel binary
