@@ -42,7 +42,7 @@ jobs:
         if: ${{ matrix.distro.name == 'ubuntu' }}
         run: |
           apt -y update
-          apt-get -y install software-properties-common
+          apt-get -y install software-properties-common which
           add-apt-repository -y ppa:git-core/ppa
           apt -y update
           apt -y install git
@@ -52,13 +52,14 @@ jobs:
         if: ${{ matrix.distro.name == 'redhat' && matrix.distro.version == '8' }}
         run: |
           dnf -y update
-          dnf -y install git
+          dnf -y install git which
           git --version
 
       - name: install Modern Git in runner container if RedHat 7
         if: ${{ matrix.distro.name == 'redhat' && matrix.distro.version == '7' }}
         run: |
-          yum -y install centos-release-scl
+          yum -y update
+          yum -y install centos-release-scl which
           yum -y install rh-git218
           source scl_source enable rh-git218 && git --version
           cat << 'EOF' >| /root/git.sh
@@ -109,12 +110,15 @@ jobs:
       - name: install package artifact in runner container if RedHat
         if: ${{ matrix.distro.name == 'redhat' }}
         run: |
+          set -x
           yum -y install ./build/ziti-edge-tunnel-*.rpm
 
       - name: run binary artifact
         run: |
+          set -x
           cat /etc/*-release
-          ziti-edge-tunnel version
+          ldd $(which ziti-edge-tunnel)
+          ziti-edge-tunnel version --verbose
 
       # - name: upload ziti-edge-tunnel binary
       #   uses: actions/upload-artifact@v3
