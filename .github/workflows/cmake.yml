@@ -54,6 +54,7 @@ jobs:
       - name: install libsystemd if Ubuntu
         if: ${{ startsWith(matrix.os, 'ubuntu') }}
         run: |
+          sudo apt update
           sudo apt -y install libsystemd-dev
 
       - name: configure cmake
