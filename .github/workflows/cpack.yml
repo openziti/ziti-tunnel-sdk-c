@@ -42,7 +42,7 @@ jobs:
         if: ${{ matrix.distro.name == 'ubuntu' }}
         run: |
           apt -y update
-          apt-get -y install software-properties-common which
+          apt-get -y install software-properties-common
           add-apt-repository -y ppa:git-core/ppa
           apt -y update
           apt -y install git
@@ -52,14 +52,14 @@ jobs:
         if: ${{ matrix.distro.name == 'redhat' && matrix.distro.version == '8' }}
         run: |
           dnf -y update
-          dnf -y install git which
+          dnf -y install git
           git --version
 
       - name: install Modern Git in runner container if RedHat 7
         if: ${{ matrix.distro.name == 'redhat' && matrix.distro.version == '7' }}
         run: |
           yum -y update
-          yum -y install centos-release-scl which
+          yum -y install centos-release-scl
           yum -y install rh-git218
           source scl_source enable rh-git218 && git --version
           cat << 'EOF' >| /root/git.sh
