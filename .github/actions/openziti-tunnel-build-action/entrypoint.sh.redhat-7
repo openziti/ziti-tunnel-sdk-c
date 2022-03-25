@@ -15,7 +15,7 @@ cmake -E make_directory ./build
     # allow unset for scl_source scripts
     set +u
     cmake -E make_directory ./build  
-    source scl_source enable devtoolset-10 \
+    source scl_source enable devtoolset-11 \
         && cmake \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_TOOLCHAIN_FILE=./toolchains/default.cmake \
@@ -23,7 +23,7 @@ cmake -E make_directory ./build
             -DDISABLE_LIBSYSTEMD_FEATURE=ON \
             -S . \
             -B ./build
-    source scl_source enable devtoolset-10 \
+    source scl_source enable devtoolset-11 \
         && cmake \
             --build ./build \
             --target package \

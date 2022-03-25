@@ -27,7 +27,7 @@ yum install -y "@Development Tools" python3 zlib-devel centos-release-scl
 yum install -y graphviz doxygen
 
 # Install suitable versions of GCC and Headers
-yum install -y devtoolset-10 devtoolset-10-libatomic-devel
+yum install -y devtoolset-11 devtoolset-11-libatomic-devel
 
 # Perform shallow clone with desired ziti-edge-tunnel version
 git clone https://github.com/openziti/ziti-tunnel-sdk-c.git --branch v0.17.24 --depth 1
@@ -35,7 +35,7 @@ git clone https://github.com/openziti/ziti-tunnel-sdk-c.git --branch v0.17.24 --
 cd ziti-tunnel-sdk-c
 
 # Activate SCL collection and build
-scl enable devtoolset-10 bash
+scl enable devtoolset-11 bash
 
 cmake -E make_directory ./build
 

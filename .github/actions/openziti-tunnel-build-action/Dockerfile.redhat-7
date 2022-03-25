@@ -21,8 +21,8 @@ RUN yum -y install \
         python3 \
         zlib-devel \
     &&  yum -y install \
-        devtoolset-10 \
-        devtoolset-10-libatomic-devel \
+        devtoolset-11 \
+        devtoolset-11-libatomic-devel \
     &&  yum clean all
 
 RUN curl -L https://cmake.org/files/v${CMAKE_VERSION%.*}/cmake-${CMAKE_VERSION}-linux-x86_64.sh -o cmake.sh \
