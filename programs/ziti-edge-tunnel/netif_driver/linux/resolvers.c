@@ -282,7 +282,7 @@ bool try_systemd_resolved(void) {
         ZITI_LOG(DEBUG, "Connected to system DBus");
         r = sd_bus_is_acquired_name(bus, RESOLVED_DBUS_NAME);
         if (r < 0) {
-            ZITI_LOG(ERROR, "Bus name: %s is not an acquired. Falling back to legacy resolvers...", RESOLVED_DBUS_NAME);
+            ZITI_LOG(ERROR, "Did not find DBus acquired bus name: %s. Falling back to legacy resolvers...", RESOLVED_DBUS_NAME);
             return false;
         }
         if (r == 0) {
@@ -309,7 +309,7 @@ void dns_update_systemd_resolved(const char* tun, const char* addr) {
     r = inet_pton(AF_INET, addr, &inaddr);
 
     if (r != 1) {
-        ZITI_LOG(ERROR, "Failed to translate dns address");
+        ZITI_LOG(ERROR, "Failed to translate dns address. Received: %s", addr);
         return;
     } else {
         sscanf(addr, "%hhu.%hhu.%hhu.%hhu", &ay[0], &ay[1], &ay[2], &ay[3]);
