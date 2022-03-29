@@ -18,6 +18,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #ifndef EXCLUDE_LIBSYSTEMD_RESOLVER
+#include <stdarg.h>
 #include <systemd/sd-bus-protocol.h>
 #include <systemd/sd-daemon.h>
 #include <systemd/sd-bus.h>
@@ -43,31 +44,25 @@
 
 #define _cleanup_(f) __attribute__((cleanup(f)))
 #define TRY_DL(dl_func) do{if ((dl_func) != 0) goto dl_error;} while(0)
+#define RET_ON_FAIL(bool_func) do{if (!(bool_func)) return;} while(0)
 
-static int detect_systemd_resolved_acquired_name(sd_bus *bus);
+static int sd_bus_is_acquired_name(sd_bus *bus, const char* bus_name);
 static int detect_systemd_resolved_routing_domain_wildcard(sd_bus *bus, int32_t ifindex);
-static bool set_systemd_resolved_link_dns(sd_bus *bus, int32_t ifindex, const char* tun, const char* dns_addr);
-static bool set_systemd_resolved_link_dnssec(sd_bus *bus, int32_t ifindex, const char*tun);
-static bool set_systemd_resolved_link_domain(sd_bus *bus, int32_t ifindex, const char* tun);
+static bool set_systemd_resolved_link_setting(sd_bus *bus, const char* tun, const char* method, const char* method_type, ...);
 
 // libsystemd prototypes
 static uv_once_t guard;
 static uv_lib_t libsystemd_h;
 static bool libsystemd_dl_success = true;
 static int (*sd_booted_f)(void);
-static int (*sd_bus_call_f)(sd_bus *bus, sd_bus_message *m, uint64_t usec, sd_bus_error *ret_error, sd_bus_message **reply);
 static int (*sd_bus_call_method_f)(sd_bus *bus, const char *destination, const char *path, const char *interface, const char *member, sd_bus_error *ret_error, sd_bus_message **reply, const char *types, ...);
+static int (*sd_bus_call_methodv_f)(sd_bus *bus, const char *destination, const char *path, const char *interface, const char *member, sd_bus_error *ret_error, sd_bus_message **reply, const char *types, va_list ap);
 static void (*sd_bus_error_free_f)(sd_bus_error *e);
 static sd_bus *(*sd_bus_flush_close_unref_f)(sd_bus *bus);
 static int (*sd_bus_get_property_f)(sd_bus *bus, const char *destination, const char *path, const char *interface, const char *member, sd_bus_error *ret_error, sd_bus_message **reply, const char *type);
 static int (*sd_bus_is_bus_client_f)(sd_bus *bus);
-static int (*sd_bus_message_append_f)(sd_bus_message *m, const char *types, ...);
-static int (*sd_bus_message_append_array_f)(sd_bus_message *m, char type, void *ptr, size_t size);
-static int (*sd_bus_message_close_container_f)(sd_bus_message *m);
 static int (*sd_bus_message_enter_container_f)(sd_bus_message *m, char type, const char *contents);
 static int (*sd_bus_message_exit_container_f)(sd_bus_message *m);
-static int (*sd_bus_message_new_method_call_f)(sd_bus *bus, sd_bus_message **m, const char *destination, const char *path, const char *interface, const char *member);
-static int (*sd_bus_message_open_container_f)(sd_bus_message *m, char type, const char *contents);
 static int (*sd_bus_message_read_f)(sd_bus_message *m, const char *types, ...);
 static int (*sd_bus_message_read_strv_f)(sd_bus_message *m, char ***l);
 static sd_bus_message *(*sd_bus_message_unref_f)(sd_bus_message *m);
@@ -77,19 +72,14 @@ static void init_libsystemd() {
     ZITI_LOG(INFO, "Initializing libsystemd");
     TRY_DL(uv_dlopen("libsystemd.so.0", &libsystemd_h));
     TRY_DL(uv_dlsym(&libsystemd_h, "sd_booted", (void **) &sd_booted_f));
-    TRY_DL(uv_dlsym(&libsystemd_h, "sd_bus_call", (void **) &sd_bus_call_f));
     TRY_DL(uv_dlsym(&libsystemd_h, "sd_bus_call_method", (void **) &sd_bus_call_method_f));
+    TRY_DL(uv_dlsym(&libsystemd_h, "sd_bus_call_methodv", (void **) &sd_bus_call_methodv_f));
     TRY_DL(uv_dlsym(&libsystemd_h, "sd_bus_error_free", (void **) &sd_bus_error_free_f));
     TRY_DL(uv_dlsym(&libsystemd_h, "sd_bus_flush_close_unref", (void **) &sd_bus_flush_close_unref_f));
     TRY_DL(uv_dlsym(&libsystemd_h, "sd_bus_get_property", (void **) &sd_bus_get_property_f));
     TRY_DL(uv_dlsym(&libsystemd_h, "sd_bus_is_bus_client", (void **) &sd_bus_is_bus_client_f));
-    TRY_DL(uv_dlsym(&libsystemd_h, "sd_bus_message_append", (void **) &sd_bus_message_append_f));
-    TRY_DL(uv_dlsym(&libsystemd_h, "sd_bus_message_append_array", (void **) &sd_bus_message_append_array_f));
-    TRY_DL(uv_dlsym(&libsystemd_h, "sd_bus_message_close_container", (void **) &sd_bus_message_close_container_f));
     TRY_DL(uv_dlsym(&libsystemd_h, "sd_bus_message_enter_container", (void **) &sd_bus_message_enter_container_f));
     TRY_DL(uv_dlsym(&libsystemd_h, "sd_bus_message_exit_container", (void **) &sd_bus_message_exit_container_f));
-    TRY_DL(uv_dlsym(&libsystemd_h, "sd_bus_message_new_method_call", (void **) &sd_bus_message_new_method_call_f));
-    TRY_DL(uv_dlsym(&libsystemd_h, "sd_bus_message_open_container", (void **) &sd_bus_message_open_container_f));
     TRY_DL(uv_dlsym(&libsystemd_h, "sd_bus_message_read", (void **) &sd_bus_message_read_f));
     TRY_DL(uv_dlsym(&libsystemd_h, "sd_bus_message_read_strv", (void **) &sd_bus_message_read_strv_f));
     TRY_DL(uv_dlsym(&libsystemd_h, "sd_bus_message_unref", (void **) &sd_bus_message_unref_f));
@@ -127,7 +117,7 @@ static void sd_bus_error_free_wrapper(sd_bus_error *e) {
     sd_bus_error_free_f(e);
 }
 
-static int detect_systemd_resolved_acquired_name(sd_bus *bus) {
+static int sd_bus_is_acquired_name(sd_bus *bus, const char* bus_name) {
     int r;
     _cleanup_(sd_bus_message_unrefp_f) sd_bus_message *reply = NULL;
     _cleanup_(sd_bus_error_free_wrapper) sd_bus_error error = SD_BUS_ERROR_NULL;
@@ -160,7 +150,7 @@ static int detect_systemd_resolved_acquired_name(sd_bus *bus) {
     int found = 1;
 
     for (i=0; acquired[i] != NULL; i++) {
-        if (strcmp(acquired[i], RESOLVED_DBUS_NAME) == 0) {
+        if (strcmp(acquired[i], bus_name) == 0) {
             ZITI_LOG(DEBUG, "systemd-resolve DBus name found: %s", acquired[i]);
         found = 0;
         break;
@@ -238,99 +228,35 @@ static int detect_systemd_resolved_routing_domain_wildcard(sd_bus *bus, int32_t 
     return routing_only_wildcard_set;
 }
 
-static bool set_systemd_resolved_link_domain(sd_bus *bus, int32_t ifindex, const char* tun) {
+static bool set_systemd_resolved_link_setting(sd_bus *bus, const char* tun, const char* method, const char* method_type, ...) {
     _cleanup_(sd_bus_message_unrefp_f) sd_bus_message *reply = NULL;
     _cleanup_(sd_bus_error_free_wrapper) sd_bus_error error = SD_BUS_ERROR_NULL;
 
     int r;
+    va_list ap;
 
-    r = sd_bus_call_method_f(
+    va_start(ap, method_type);
+
+    r = sd_bus_call_methodv_f(
             bus,
             RESOLVED_DBUS_NAME,
             RESOLVED_DBUS_PATH,
             RESOLVED_DBUS_MANAGER_INTERFACE,
-            "SetLinkDomains",
+            method,
             &error,
             &reply,
-            "ia(sb)",
-            ifindex,
-            1,
-            ".",
-            true);
+            method_type,
+            ap);
+
+    va_end(ap);
 
     if (r < 0) {
-        ZITI_LOG(ERROR, "Could not set link domain (%s): (%s, %s)", tun, error.name, error.message);
+        ZITI_LOG(ERROR, "Failure in method invocaiton: %s for link: (%s): (%s, %s)",
+                 method, tun, error.name, error.message);
         return false;
     }
 
-    return true;
-}
-
-static bool set_systemd_resolved_link_dnssec(sd_bus *bus, int32_t ifindex, const char*tun) {
-    _cleanup_(sd_bus_message_unrefp_f) sd_bus_message *reply = NULL;
-    _cleanup_(sd_bus_error_free_wrapper) sd_bus_error error = SD_BUS_ERROR_NULL;
-
-    int r;
-
-    r = sd_bus_call_method_f(
-            bus,
-            RESOLVED_DBUS_NAME,
-            RESOLVED_DBUS_PATH,
-            RESOLVED_DBUS_MANAGER_INTERFACE,
-            "SetLinkDNSSEC",
-            &error,
-            &reply,
-            "is",
-            ifindex,
-            "no");
-    if (r < 0) {
-        ZITI_LOG(ERROR, "Failed to set link DNSSEC property (%s): (%s, %s)", tun, error.name, error.message);
-        return false;
-    }
-
-    return true;
-}
-
-static bool set_systemd_resolved_link_dns(sd_bus *bus, int32_t ifindex, const char* tun, const char* dns_addr) {
-    _cleanup_(sd_bus_message_unrefp_f) sd_bus_message *message = NULL;
-    _cleanup_(sd_bus_message_unrefp_f) sd_bus_message *reply = NULL;
-    _cleanup_(sd_bus_error_free_wrapper) sd_bus_error error = SD_BUS_ERROR_NULL;
-
-    int r;
-
-    struct in_addr inaddr;
-    r = inet_pton(AF_INET, dns_addr, &inaddr);
-    if (r != 1) {
-        ZITI_LOG(ERROR, "Failed to translate dns address");
-        return false;
-    }
-
-    r = sd_bus_message_new_method_call_f(
-        bus,
-        &message,
-        RESOLVED_DBUS_NAME,
-        RESOLVED_DBUS_PATH,
-        RESOLVED_DBUS_MANAGER_INTERFACE,
-        "SetLinkDNS");
-
-    if (r < 0) {
-        ZITI_LOG(ERROR, "Failed to create bus message: %s", strerror(-r));
-        return false;
-    }
-
-    sd_bus_message_append_f(message, "i", ifindex);
-    sd_bus_message_open_container_f(message, SD_BUS_TYPE_ARRAY, "(iay)");
-    sd_bus_message_open_container_f(message, SD_BUS_TYPE_STRUCT, "iay");
-    sd_bus_message_append_f(message, "i", AF_INET);
-    sd_bus_message_append_array_f(message, SD_BUS_TYPE_BYTE, &inaddr, sizeof(inaddr));
-    sd_bus_message_close_container_f(message);
-    sd_bus_message_close_container_f(message);
-
-    r = sd_bus_call_f(bus, message, 0, &error, &reply);
-    if (r < 0) {
-        ZITI_LOG(ERROR, "Could not set link DNS (%s). DBus error: (%s, %s)", tun, error.name,error.message);
-        return false;
-    }
+    ZITI_LOG(DEBUG, "Success in method invocation: %s for link: (%s)", method, tun);
 
     return true;
 }
@@ -354,9 +280,9 @@ bool try_systemd_resolved(void) {
     r = sd_bus_open_system_f(&bus);
     if ((r >= 0) && (sd_bus_is_bus_client_f(bus) > 0)) {
         ZITI_LOG(DEBUG, "Connected to system DBus");
-        r = detect_systemd_resolved_acquired_name(bus);
+        r = sd_bus_is_acquired_name(bus, RESOLVED_DBUS_NAME);
         if (r < 0) {
-            ZITI_LOG(ERROR, "Error in systemd-resolved resolver detection. Falling back to legacy resolvers...");
+            ZITI_LOG(ERROR, "Bus name: %s is not an acquired. Falling back to legacy resolvers...", RESOLVED_DBUS_NAME);
             return false;
         }
         if (r == 0) {
@@ -372,9 +298,22 @@ bool try_systemd_resolved(void) {
 
 void dns_update_systemd_resolved(const char* tun, const char* addr) {
     int r;
+    struct in_addr inaddr;
     int ifindex;
 
     _cleanup_(sd_bus_flush_close_unrefp_f) sd_bus *bus = NULL;
+
+    // dbus 'ay' encodes 'array of bytes'
+    unsigned char ay[4];
+
+    r = inet_pton(AF_INET, addr, &inaddr);
+
+    if (r != 1) {
+        ZITI_LOG(ERROR, "Failed to translate dns address");
+        return;
+    } else {
+        sscanf(addr, "%hhu.%hhu.%hhu.%hhu", &ay[0], &ay[1], &ay[2], &ay[3]);
+    }
 
     r = sd_bus_open_system_f(&bus);
     if (r < 0) {
@@ -387,15 +326,12 @@ void dns_update_systemd_resolved(const char* tun, const char* addr) {
         return;
     }
 
-    if (!set_systemd_resolved_link_dnssec(bus, ifindex, tun)) {
-        ZITI_LOG(ERROR, "Could not set DNSSEC for link: %s", tun);
-        return;
-    }
-
-    if (!set_systemd_resolved_link_dns(bus, ifindex, tun, addr)) {
-        ZITI_LOG(ERROR, "Could not set dns for link: %s", tun);
-        return;
-    }
+    RET_ON_FAIL(set_systemd_resolved_link_setting(bus, tun, "SetLinkDefaultRoute", "ib", ifindex, true));
+    RET_ON_FAIL(set_systemd_resolved_link_setting(bus, tun, "SetLinkLLMNR", "is", ifindex, "no"));
+    RET_ON_FAIL(set_systemd_resolved_link_setting(bus, tun, "SetLinkMulticastDNS", "is", ifindex, "no"));
+    RET_ON_FAIL(set_systemd_resolved_link_setting(bus, tun, "SetLinkDNSOverTLS", "is", ifindex, "no"));
+    RET_ON_FAIL(set_systemd_resolved_link_setting(bus, tun, "SetLinkDNSSEC", "is", ifindex, "no"));
+    RET_ON_FAIL(set_systemd_resolved_link_setting(bus, tun, "SetLinkDNS", "ia(iay)", ifindex, 1, AF_INET, 4, ay[0], ay[1], ay[2], ay[3]));
 
     r = detect_systemd_resolved_routing_domain_wildcard(bus, ifindex);
     if (r < 0) {
@@ -405,10 +341,7 @@ void dns_update_systemd_resolved(const char* tun, const char* addr) {
 
     if (r == 0) {
         ZITI_LOG(INFO, "Setting wilcard routing only domain on interface: %s", tun);
-        if (!set_systemd_resolved_link_domain(bus, ifindex, tun)) {
-            ZITI_LOG(ERROR, "Could not set domain for link: %s", tun);
-            return;
-        }
+        RET_ON_FAIL(set_systemd_resolved_link_setting(bus, tun, "SetLinkDomains", "ia(sb)", ifindex, 1, ".", true));
     }
 }
 #endif
