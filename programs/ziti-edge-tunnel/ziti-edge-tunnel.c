@@ -1498,9 +1498,11 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     }
 
     free(tunneler);
+    /*
 #if _WIN32
     close_log();
 #endif
+    */
     return 0;
 }
 
@@ -2690,8 +2692,7 @@ void scm_service_run(const char *name) {
     run(0, NULL);
 }
 
-
-void scm_service_stop_event(uv_loop_t *loop, void *arg) {
+void stop_tunnel_and_cleanup() {
     ZITI_LOG(INFO, "Processing stop tunnel service request");
 
     // ziti dump to log file / stdout
@@ -2707,6 +2708,10 @@ void scm_service_stop_event(uv_loop_t *loop, void *arg) {
     tun_kill();
 
     ZITI_LOG(INFO,"============================ service ends ==================================");
+}
+
+void scm_service_stop_event(uv_loop_t *loop, void *arg) {
+    stop_tunnel_and_cleanup();
 
     if (main_ziti_loop != NULL) {
         uv_stop(main_ziti_loop);
@@ -2714,13 +2719,15 @@ void scm_service_stop_event(uv_loop_t *loop, void *arg) {
     }
 
     // stops the windows service in scm
-    stop_windows_service();
+    stop_windows_service(false);
 
 }
 
 void scm_service_stop() {
     ZITI_LOG(INFO, "Control request to stop tunnel service received...");
-    ziti_tunnel_async_send(NULL, scm_service_stop_event, NULL);
+    stop_tunnel_and_cleanup();
+    close_log();
+
 }
 
 static void move_config_from_previous_windows_backup(uv_loop_t *loop) {

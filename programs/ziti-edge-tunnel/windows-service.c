@@ -30,6 +30,7 @@ SERVICE_STATUS          gSvcStatus;
 SERVICE_STATUS_HANDLE   gSvcStatusHandle;
 HANDLE                  ghSvcStopEvent = NULL;
 HANDLE                  ghSvcRunningEvent = NULL;
+BOOLEAN                 cleanupRequired = false;
 
 //LPCTSTR SVCNAME = "ziti";
 //
@@ -225,32 +226,30 @@ VOID SvcInit( DWORD dwArgc, LPTSTR *lpszArgv)
 
     // Report running status when initialization is complete.
 
-    while(1)
-    {
-        // If the service receive a running event with in 150 seconds, set the service to running state
-        // otherwise stop the service
+    // If the service receive a running event with in 150 seconds, set the service to running state
+    // otherwise stop the service
 
-        if (WaitForSingleObject(ghSvcRunningEvent, 150000) == WAIT_OBJECT_0) {
-            ReportSvcStatus( SERVICE_RUNNING, NO_ERROR, 0 );
-            SvcReportEvent(TEXT("Ziti Edge Tunnel Run"), EVENTLOG_INFORMATION_TYPE);
-            break;
-        } else {
-            SvcReportEvent(TEXT("Ziti Edge Tunnel Stopped"), EVENTLOG_INFORMATION_TYPE);
-            ReportSvcStatus( SERVICE_STOPPED, NO_ERROR, 0 );
-            return;
-        }
-    }
-
-    while(1)
-    {
-        // Check whether to stop the service.
-
-        WaitForSingleObject(ghSvcStopEvent, INFINITE);
-
+    if (WaitForSingleObject(ghSvcRunningEvent, 150000) == WAIT_OBJECT_0) {
+        ReportSvcStatus( SERVICE_RUNNING, NO_ERROR, 0 );
+        SvcReportEvent(TEXT("Ziti Edge Tunnel Run"), EVENTLOG_INFORMATION_TYPE);
+    } else {
         SvcReportEvent(TEXT("Ziti Edge Tunnel Stopped"), EVENTLOG_INFORMATION_TYPE);
         ReportSvcStatus( SERVICE_STOPPED, NO_ERROR, 0 );
         return;
     }
+
+    // Check whether to stop the service.
+
+    WaitForSingleObject(ghSvcStopEvent, INFINITE);
+
+    if (cleanupRequired) {
+        // stops the running tunnel service
+        scm_service_stop();
+    }
+
+    SvcReportEvent(TEXT("Ziti Edge Tunnel Stopped"), EVENTLOG_INFORMATION_TYPE);
+    ReportSvcStatus( SERVICE_STOPPED, NO_ERROR, 0 );
+    return;
 }
 
 DWORD WINAPI ServiceWorkerThread (LPVOID lpParam)
@@ -258,7 +257,7 @@ DWORD WINAPI ServiceWorkerThread (LPVOID lpParam)
     //  Periodically check if the service has been requested to stop
     scm_service_run(APPNAME);
     // when service stops and returns, stop the service in scm
-    stop_windows_service();
+    stop_windows_service(true);
     return ERROR_SUCCESS;
 }
 
@@ -424,9 +423,9 @@ void scm_running_event() {
 // Return value:
 //   None
 //
-void stop_windows_service() {
+void stop_windows_service(bool cleanup) {
+    cleanupRequired = cleanup;
     SetEvent(ghSvcStopEvent);
-    ReportSvcStatus(gSvcStatus.dwCurrentState, NO_ERROR, 0);
 }
 
 DWORD get_process_path(LPTSTR lpBuffer, DWORD  nBufferLength) {
@@ -455,8 +454,8 @@ DWORD LphandlerFunctionEx(
         case SERVICE_CONTROL_STOP:
             ReportSvcStatus(SERVICE_STOP_PENDING, NO_ERROR, 0);
 
-            // stops the running tunnel service
-            scm_service_stop();
+            // send a stop event
+            stop_windows_service(true);
 
             return 0;
 
