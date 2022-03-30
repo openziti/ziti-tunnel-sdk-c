@@ -22,15 +22,13 @@ limitations under the License.
 #include <service-utils.h>
 #include <windows.h>
 
-#include "ziti/ziti_tunnel.h"
-
 #pragma comment(lib, "advapi32.lib")
 
 SERVICE_STATUS          gSvcStatus;
 SERVICE_STATUS_HANDLE   gSvcStatusHandle;
 HANDLE                  ghSvcStopEvent = NULL;
 HANDLE                  ghSvcRunningEvent = NULL;
-BOOLEAN                 cleanupRequired = false;
+HANDLE                  ghMutex;
 
 //LPCTSTR SVCNAME = "ziti";
 //
@@ -242,10 +240,7 @@ VOID SvcInit( DWORD dwArgc, LPTSTR *lpszArgv)
 
     WaitForSingleObject(ghSvcStopEvent, INFINITE);
 
-    if (cleanupRequired) {
-        // stops the running tunnel service
-        scm_service_stop();
-    }
+    scm_service_stop();
 
     SvcReportEvent(TEXT("Ziti Edge Tunnel Stopped"), EVENTLOG_INFORMATION_TYPE);
     ReportSvcStatus( SERVICE_STOPPED, NO_ERROR, 0 );
@@ -257,7 +252,7 @@ DWORD WINAPI ServiceWorkerThread (LPVOID lpParam)
     //  Periodically check if the service has been requested to stop
     scm_service_run(APPNAME);
     // when service stops and returns, stop the service in scm
-    stop_windows_service(true);
+    stop_windows_service();
     return ERROR_SUCCESS;
 }
 
@@ -423,9 +418,8 @@ void scm_running_event() {
 // Return value:
 //   None
 //
-void stop_windows_service(bool cleanup) {
-    cleanupRequired = cleanup;
-    SetEvent(ghSvcStopEvent);
+bool stop_windows_service() {
+    return SetEvent(ghSvcStopEvent);
 }
 
 DWORD get_process_path(LPTSTR lpBuffer, DWORD  nBufferLength) {
