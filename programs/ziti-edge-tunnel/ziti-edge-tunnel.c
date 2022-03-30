@@ -2717,6 +2717,7 @@ void stop_tunnel_and_cleanup() {
 }
 
 void scm_service_stop_event(uv_loop_t *loop, void *arg) {
+
     stop_tunnel_and_cleanup();
 
     if (arg != NULL && arg == "interrupted" && loop != NULL) {
@@ -2726,6 +2727,7 @@ void scm_service_stop_event(uv_loop_t *loop, void *arg) {
 
 }
 
+// called by scm thread, it should not call any uv operations, because all uv operations except uv_async_send are not thread safe
 void scm_service_stop() {
     stop_tunnel_and_cleanup();
     close_log();
