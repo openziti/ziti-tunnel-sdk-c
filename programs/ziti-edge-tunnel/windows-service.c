@@ -28,7 +28,6 @@ SERVICE_STATUS          gSvcStatus;
 SERVICE_STATUS_HANDLE   gSvcStatusHandle;
 HANDLE                  ghSvcStopEvent = NULL;
 HANDLE                  ghSvcRunningEvent = NULL;
-HANDLE                  ghMutex;
 
 //LPCTSTR SVCNAME = "ziti";
 //
