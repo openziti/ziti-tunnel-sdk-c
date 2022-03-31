@@ -60,6 +60,7 @@ static void send_events_message(const void *message, to_json_fn to_json_f, bool 
 static void send_tunnel_command(tunnel_command *tnl_cmd, void *ctx);
 static void send_tunnel_command_inline(tunnel_command *tnl_cmd, void *ctx);
 static void scm_service_stop_event(uv_loop_t *loop, void *arg);
+static void stop_tunnel_and_cleanup();
 
 #if _WIN32
 static void move_config_from_previous_windows_backup(uv_loop_t *loop);
@@ -499,7 +500,7 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
                 // stops the windows service in scm
                 if (!stop_windows_service()) {
                     ZITI_LOG(INFO, "Could not send stop signal to scm, Tunnel must not be started as service");
-                    scm_service_stop();
+                    stop_tunnel_and_cleanup();
                 }
             }
             free_tunnel_service_control(&tunnel_service_control_opts);
@@ -2698,53 +2699,37 @@ void scm_service_run(const char *name) {
 }
 
 void stop_tunnel_and_cleanup() {
-    ZITI_LOG(INFO, "xx Control request to stop tunnel service received...");
+    ZITI_LOG(INFO, "Control request to stop tunnel service received...");
 
     // ziti dump to log file / stdout
     tunnel_command *tnl_cmd = calloc(1, sizeof(tunnel_command));
     tnl_cmd->command = TunnelCommand_ZitiDump;
     send_tunnel_command_inline(tnl_cmd, NULL);
 
-    ZITI_LOG(INFO,"xx removing nrpt rules");
+    ZITI_LOG(INFO,"removing nrpt rules");
     remove_all_nrpt_rules();
 
-    ZITI_LOG(INFO,"xx cleaning instance config ");
+    ZITI_LOG(INFO,"cleaning instance config ");
     cleanup_instance_config();
 
-    ZITI_LOG(INFO,"xx closing/cleaning tun");
+    ZITI_LOG(INFO,"closing/cleaning tun");
     tun_kill();
-    ZITI_LOG(INFO,"xx tun closed/cleaned");
-}
-
-static uv_timer_t log_close_timer;
-static uv_timer_t release_lock_timer;
-
-void wait_for_flush(uv_timer_t *handle) {
-    free(handle); //probably doesn't matter since we are exiting
+    ZITI_LOG(INFO,"tun closed/cleaned");
     uv_cond_signal(&stop_cond); //release the wait condition held in scm_service_stop
 }
-void close_log_on_timer(uv_timer_t *handle) {
-    free(handle); //probably doesn't matter since we are exiting
-    close_log();
-}
+
 void scm_service_stop_event(uv_loop_t *loop, void *arg) {
+    //function used to get back onto the loop
     stop_tunnel_and_cleanup();
-
-    uv_timer_init(loop, &log_close_timer);
-    uv_timer_start(&log_close_timer, close_log_on_timer, 1000, 0);
-
-    uv_timer_init(loop, &release_lock_timer);
-    uv_timer_start(&release_lock_timer, wait_for_flush, 5000, 0);
-    ZITI_LOG(DEBUG,"xx waiting for shutdown...");
 }
 
 // called by scm thread, it should not call any uv operations, because all uv operations except uv_async_send are not thread safe
 void scm_service_stop() {
-    ZITI_LOG(INFO,"xx stopping via service");
+    ZITI_LOG(INFO,"stopping via service");
     uv_mutex_lock(&stop_mutex);
-    ZITI_LOG(DEBUG,"xx mutex established. sending stop event");
+    ZITI_LOG(DEBUG,"mutex established. sending stop event");
     ziti_tunnel_async_send(tunneler, scm_service_stop_event, "interrupted");
-    ZITI_LOG(INFO,"xx service stop waiting on condition...");
+    ZITI_LOG(INFO,"service stop waiting on condition...");
     uv_cond_wait(&stop_cond, &stop_mutex);
     uv_mutex_unlock(&stop_mutex);
 }
