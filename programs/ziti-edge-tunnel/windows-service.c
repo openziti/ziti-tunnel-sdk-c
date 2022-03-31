@@ -244,7 +244,6 @@ VOID SvcInit( DWORD dwArgc, LPTSTR *lpszArgv)
 
     SvcReportEvent(TEXT("Ziti Edge Tunnel Stopped"), EVENTLOG_INFORMATION_TYPE);
     ReportSvcStatus( SERVICE_STOPPED, NO_ERROR, 0 );
-    return;
 }
 
 DWORD WINAPI ServiceWorkerThread (LPVOID lpParam)
