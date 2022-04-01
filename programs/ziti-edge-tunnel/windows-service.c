@@ -239,6 +239,8 @@ VOID SvcInit( DWORD dwArgc, LPTSTR *lpszArgv)
 
     WaitForSingleObject(ghSvcStopEvent, INFINITE);
 
+    ReportSvcStatus(SERVICE_STOP_PENDING, NO_ERROR, 0);
+
     scm_service_stop();
 
     SvcReportEvent(TEXT("Ziti Edge Tunnel Stopped"), EVENTLOG_INFORMATION_TYPE);

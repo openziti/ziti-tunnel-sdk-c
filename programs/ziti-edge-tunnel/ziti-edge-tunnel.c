@@ -2734,7 +2734,7 @@ void scm_service_stop() {
     ZITI_LOG(INFO,"stopping via service");
     uv_mutex_lock(&stop_mutex);
     ZITI_LOG(DEBUG,"mutex established. sending stop event");
-    ziti_tunnel_async_send(tunneler, scm_service_stop_event, "interrupted");
+    ziti_tunnel_async_send(tunneler, scm_service_stop_event, NULL);
     ZITI_LOG(INFO,"service stop waiting on condition...");
     uv_cond_wait(&stop_cond, &stop_mutex);
     uv_mutex_unlock(&stop_mutex);
