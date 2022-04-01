@@ -2715,7 +2715,9 @@ void stop_tunnel_and_cleanup() {
     ZITI_LOG(INFO,"closing/cleaning tun");
     tun_kill();
     ZITI_LOG(INFO,"tun closed/cleaned");
+    uv_mutex_lock(&stop_mutex);
     uv_cond_signal(&stop_cond); //release the wait condition held in scm_service_stop
+    uv_mutex_unlock(&stop_mutex);
     ZITI_LOG(INFO,"============================ service ends ==================================");
 }
 
@@ -2736,6 +2738,7 @@ void scm_service_stop() {
     ziti_tunnel_async_send(tunneler, scm_service_stop_event, NULL);
     ZITI_LOG(INFO,"service stop waiting on condition...");
     uv_cond_wait(&stop_cond, &stop_mutex);
+    ZITI_LOG(INFO,"service received a signal to continue...");
     uv_mutex_unlock(&stop_mutex);
     close_log();
 }
