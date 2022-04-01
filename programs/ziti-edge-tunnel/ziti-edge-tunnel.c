@@ -499,8 +499,8 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
             if (tunnel_service_control_opts.operation != NULL && strcmp(tunnel_service_control_opts.operation, "stop") == 0) {
                 // stops the windows service in scm
                 if (!stop_windows_service()) {
-                    ZITI_LOG(INFO, "Could not send stop signal to scm, Tunnel must not be started as service");
-                    stop_tunnel_and_cleanup();
+                    ZITI_LOG(INFO, "Could not send stop signal to scm, Tunnel must not have been started as service");
+                    ziti_tunnel_async_send(tunneler, scm_service_stop_event, "interrupted");
                 }
             }
             free_tunnel_service_control(&tunnel_service_control_opts);
@@ -2716,11 +2716,16 @@ void stop_tunnel_and_cleanup() {
     tun_kill();
     ZITI_LOG(INFO,"tun closed/cleaned");
     uv_cond_signal(&stop_cond); //release the wait condition held in scm_service_stop
+    ZITI_LOG(INFO,"============================ service ends ==================================");
 }
 
 void scm_service_stop_event(uv_loop_t *loop, void *arg) {
     //function used to get back onto the loop
     stop_tunnel_and_cleanup();
+    if (arg != NULL && arg == "interrupted" && loop != NULL) {
+        uv_stop(loop);
+        uv_loop_close(loop);
+    }
 }
 
 // called by scm thread, it should not call any uv operations, because all uv operations except uv_async_send are not thread safe
@@ -2728,10 +2733,11 @@ void scm_service_stop() {
     ZITI_LOG(INFO,"stopping via service");
     uv_mutex_lock(&stop_mutex);
     ZITI_LOG(DEBUG,"mutex established. sending stop event");
-    ziti_tunnel_async_send(tunneler, scm_service_stop_event, "interrupted");
+    ziti_tunnel_async_send(tunneler, scm_service_stop_event, NULL);
     ZITI_LOG(INFO,"service stop waiting on condition...");
     uv_cond_wait(&stop_cond, &stop_mutex);
     uv_mutex_unlock(&stop_mutex);
+    close_log();
 }
 
 static void move_config_from_previous_windows_backup(uv_loop_t *loop) {
