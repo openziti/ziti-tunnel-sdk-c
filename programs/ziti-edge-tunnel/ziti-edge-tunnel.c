@@ -2715,12 +2715,18 @@ void stop_tunnel_and_cleanup() {
     ZITI_LOG(INFO,"closing/cleaning tun");
     tun_kill();
     ZITI_LOG(INFO,"tun closed/cleaned");
+    ZITI_LOG(INFO,"============================ service ends ==================================");
     uv_cond_signal(&stop_cond); //release the wait condition held in scm_service_stop
 }
 
 void scm_service_stop_event(uv_loop_t *loop, void *arg) {
     //function used to get back onto the loop
     stop_tunnel_and_cleanup();
+
+    if (arg != NULL && arg == "interrupted" && loop != NULL) {
+        uv_stop(loop);
+        uv_loop_close(loop);
+    }
 }
 
 // called by scm thread, it should not call any uv operations, because all uv operations except uv_async_send are not thread safe

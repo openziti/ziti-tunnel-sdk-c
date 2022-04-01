@@ -169,7 +169,7 @@ bool save_tunnel_status_to_file() {
 }
 
 void cleanup_instance_config() {
-    ZITI_LOG(DEBUG,"Backing up current tunnel status ");
+    ZITI_LOG(DEBUG,"Backing up current tunnel status");
     save_tunnel_status_to_file();
     ZITI_LOG(DEBUG,"save_tunnel_status_to_file done ");
     if (sem_initialized == 0) {
