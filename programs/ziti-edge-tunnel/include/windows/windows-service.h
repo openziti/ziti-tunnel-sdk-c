@@ -34,7 +34,7 @@ void scm_service_init(char *config_dir);
 void scm_service_run(const char *);
 void scm_running_event();
 void scm_service_stop();
-void stop_windows_service();
+bool stop_windows_service();
 
 DWORD get_process_path(LPTSTR, DWORD);
 

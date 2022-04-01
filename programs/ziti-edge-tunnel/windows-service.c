@@ -22,8 +22,6 @@ limitations under the License.
 #include <service-utils.h>
 #include <windows.h>
 
-#include "ziti/ziti_tunnel.h"
-
 #pragma comment(lib, "advapi32.lib")
 
 SERVICE_STATUS          gSvcStatus;
@@ -225,32 +223,27 @@ VOID SvcInit( DWORD dwArgc, LPTSTR *lpszArgv)
 
     // Report running status when initialization is complete.
 
-    while(1)
-    {
-        // If the service receive a running event with in 150 seconds, set the service to running state
-        // otherwise stop the service
+    // If the service receive a running event with in 150 seconds, set the service to running state
+    // otherwise stop the service
 
-        if (WaitForSingleObject(ghSvcRunningEvent, 150000) == WAIT_OBJECT_0) {
-            ReportSvcStatus( SERVICE_RUNNING, NO_ERROR, 0 );
-            SvcReportEvent(TEXT("Ziti Edge Tunnel Run"), EVENTLOG_INFORMATION_TYPE);
-            break;
-        } else {
-            SvcReportEvent(TEXT("Ziti Edge Tunnel Stopped"), EVENTLOG_INFORMATION_TYPE);
-            ReportSvcStatus( SERVICE_STOPPED, NO_ERROR, 0 );
-            return;
-        }
-    }
-
-    while(1)
-    {
-        // Check whether to stop the service.
-
-        WaitForSingleObject(ghSvcStopEvent, INFINITE);
-
+    if (WaitForSingleObject(ghSvcRunningEvent, 150000) == WAIT_OBJECT_0) {
+        ReportSvcStatus( SERVICE_RUNNING, NO_ERROR, 0 );
+        SvcReportEvent(TEXT("Ziti Edge Tunnel Run"), EVENTLOG_INFORMATION_TYPE);
+    } else {
         SvcReportEvent(TEXT("Ziti Edge Tunnel Stopped"), EVENTLOG_INFORMATION_TYPE);
         ReportSvcStatus( SERVICE_STOPPED, NO_ERROR, 0 );
         return;
     }
+
+    // Check whether to stop the service.
+
+    WaitForSingleObject(ghSvcStopEvent, INFINITE);
+
+    scm_service_stop();
+
+    SvcReportEvent(TEXT("Ziti Edge Tunnel Stopped"), EVENTLOG_INFORMATION_TYPE);
+    ReportSvcStatus( SERVICE_STOPPED, NO_ERROR, 0 );
+    return;
 }
 
 DWORD WINAPI ServiceWorkerThread (LPVOID lpParam)
@@ -424,9 +417,8 @@ void scm_running_event() {
 // Return value:
 //   None
 //
-void stop_windows_service() {
-    SetEvent(ghSvcStopEvent);
-    ReportSvcStatus(gSvcStatus.dwCurrentState, NO_ERROR, 0);
+bool stop_windows_service() {
+    return SetEvent(ghSvcStopEvent);
 }
 
 DWORD get_process_path(LPTSTR lpBuffer, DWORD  nBufferLength) {
@@ -455,8 +447,8 @@ DWORD LphandlerFunctionEx(
         case SERVICE_CONTROL_STOP:
             ReportSvcStatus(SERVICE_STOP_PENDING, NO_ERROR, 0);
 
-            // stops the running tunnel service
-            scm_service_stop();
+            // send a stop event
+            stop_windows_service(true);
 
             return 0;
 
