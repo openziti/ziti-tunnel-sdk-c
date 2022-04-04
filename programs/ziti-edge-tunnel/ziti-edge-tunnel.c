@@ -60,6 +60,7 @@ static void send_events_message(const void *message, to_json_fn to_json_f, bool 
 static void send_tunnel_command(tunnel_command *tnl_cmd, void *ctx);
 static void send_tunnel_command_inline(tunnel_command *tnl_cmd, void *ctx);
 static void scm_service_stop_event(uv_loop_t *loop, void *arg);
+static void stop_tunnel_and_cleanup();
 
 #if _WIN32
 static void move_config_from_previous_windows_backup(uv_loop_t *loop);
@@ -108,7 +109,7 @@ static bool tunnel_interrupted = false;
 uv_loop_t *main_ziti_loop;
 tunneler_context tunneler;
 static uv_mutex_t stop_mutex;
-
+static uv_cond_t stop_cond;
 IMPL_ENUM(event, EVENT_ACTIONS)
 
 #if _WIN32
@@ -499,7 +500,8 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
                 // stops the windows service in scm
                 if (!stop_windows_service()) {
                     ZITI_LOG(INFO, "Could not send stop signal to scm, Tunnel must not be started as service");
-                    scm_service_stop();
+                    stop_tunnel_and_cleanup();
+                    uv_stop(main_ziti_loop);
                 }
             }
             free_tunnel_service_control(&tunnel_service_control_opts);
@@ -1610,6 +1612,7 @@ static void run(int argc, char *argv[]) {
     uv_loop_t *ziti_loop = uv_default_loop();
     main_ziti_loop = ziti_loop;
     bool init = false;
+    uv_cond_init(&stop_cond);
     uv_mutex_init(&stop_mutex);
 
     // generate tunnel status instance and save active state and start time
@@ -2697,7 +2700,6 @@ void scm_service_run(const char *name) {
 }
 
 void stop_tunnel_and_cleanup() {
-    uv_mutex_lock(&stop_mutex);
     ZITI_LOG(INFO, "Control request to stop tunnel service received...");
 
     // ziti dump to log file / stdout
@@ -2705,32 +2707,38 @@ void stop_tunnel_and_cleanup() {
     tnl_cmd->command = TunnelCommand_ZitiDump;
     send_tunnel_command_inline(tnl_cmd, NULL);
 
+    ZITI_LOG(INFO,"removing nrpt rules");
     remove_all_nrpt_rules();
 
+    ZITI_LOG(INFO,"cleaning instance config ");
     cleanup_instance_config();
 
-    // wintun session close causes the seg fault, if you try to close it at this point. https://github.com/openziti/ziti-tunnel-sdk-c/issues/301
+    ZITI_LOG(INFO,"closing/cleaning tun");
     tun_kill();
-
+    ZITI_LOG(INFO,"tun closed/cleaned");
     ZITI_LOG(INFO,"============================ service ends ==================================");
-    uv_mutex_unlock(&stop_mutex);
+    uv_cond_signal(&stop_cond); //release the wait condition held in scm_service_stop
 }
 
 void scm_service_stop_event(uv_loop_t *loop, void *arg) {
-
+    //function used to get back onto the loop
     stop_tunnel_and_cleanup();
 
     if (arg != NULL && arg == "interrupted" && loop != NULL) {
         uv_stop(loop);
         uv_loop_close(loop);
     }
-
 }
 
 // called by scm thread, it should not call any uv operations, because all uv operations except uv_async_send are not thread safe
 void scm_service_stop() {
-    stop_tunnel_and_cleanup();
-    close_log();
+    ZITI_LOG(INFO,"stopping via service");
+    uv_mutex_lock(&stop_mutex);
+    ZITI_LOG(DEBUG,"mutex established. sending stop event");
+    ziti_tunnel_async_send(tunneler, scm_service_stop_event, NULL);
+    ZITI_LOG(INFO,"service stop waiting on condition...");
+    uv_cond_wait(&stop_cond, &stop_mutex);
+    uv_mutex_unlock(&stop_mutex);
 }
 
 static void move_config_from_previous_windows_backup(uv_loop_t *loop) {
