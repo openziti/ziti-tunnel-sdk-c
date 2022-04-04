@@ -501,6 +501,7 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
                 if (!stop_windows_service()) {
                     ZITI_LOG(INFO, "Could not send stop signal to scm, Tunnel must not be started as service");
                     stop_tunnel_and_cleanup();
+                    uv_stop(main_ziti_loop);
                 }
             }
             free_tunnel_service_control(&tunnel_service_control_opts);
