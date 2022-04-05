@@ -1008,8 +1008,8 @@ static void load_identities(uv_work_t *wr) {
             if (strcmp(file.name, get_config_file_name(NULL)) == 0 || strcmp(file.name, get_backup_config_file_name(NULL)) == 0 ) {
                 continue;
             }
-            char* extension = strstr(file.name, ".bak");
-            if (extension != NULL) {
+            // ignore back up files
+            if ((strstr(file.name, ".bak") != NULL) || (strstr(file.name, ".original") != NULL)) {
                 continue;
             }
 
