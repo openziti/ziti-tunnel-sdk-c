@@ -3,6 +3,14 @@
 #include "tunnel_udp.h"
 #include "ziti_tunnel_priv.h"
 
+#define UDP_TIMEOUT 30
+
+// initiate orderly shutdown
+static void udp_timeout_cb(uv_timer_t *t) {
+    struct io_ctx_s *io = t->data;
+    io->tnlr_io->tnlr_ctx->opts.ziti_close(io->ziti_io);
+}
+
 static void to_ziti(struct io_ctx_s *io, struct pbuf *p) {
     if (io == NULL) {
         TNL_LOG(ERR, "null io");
@@ -11,6 +19,8 @@ static void to_ziti(struct io_ctx_s *io, struct pbuf *p) {
         }
         return;
     }
+
+    uv_timer_start(io->tnlr_io->udp.conn_timer, udp_timeout_cb, UDP_TIMEOUT, 0);
 
     struct pbuf *recv_data = NULL;
     if (io->tnlr_io->udp.queued != NULL) {
@@ -96,6 +106,10 @@ void tunneler_udp_dial_completed(struct io_ctx_s *io, bool ok) {
 
     /* send any data that was queued while waiting for the dial to complete */
     if (ok) {
+        io->tnlr_io->udp.conn_timer = calloc(1, sizeof(uv_timer_t));
+        io->tnlr_io->udp.conn_timer->data = io;
+        uv_timer_init(io->tnlr_io->tnlr_ctx->loop, io->tnlr_io->udp.conn_timer);
+
         to_ziti(io, NULL);
     } else {
         ziti_tunneler_close(io->tnlr_io);
@@ -239,6 +253,8 @@ ssize_t tunneler_udp_write(struct udp_pcb *pcb, const void *data, size_t len) {
     if (err != ERR_OK) {
         return -1;
     }
+    struct io_ctx_s *io = pcb->recv_arg;
+    uv_timer_start(io->tnlr_io->udp.conn_timer, udp_timeout_cb, UDP_TIMEOUT, 0);
     return len;
 }
 

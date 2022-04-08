@@ -55,6 +55,7 @@ struct tunneler_io_ctx_s {
         struct {
             struct udp_pcb *pcb;
             struct pbuf *queued;
+            uv_timer_t *conn_timer;
         } udp;
     };
 };

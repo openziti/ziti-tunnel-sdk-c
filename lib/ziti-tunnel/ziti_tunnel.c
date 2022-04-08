@@ -420,6 +420,10 @@ int ziti_tunneler_close(tunneler_io_context tnlr_io_ctx) {
         case tun_udp:
             tunneler_udp_close(tnlr_io_ctx->udp.pcb);
             tnlr_io_ctx->udp.pcb = NULL;
+            if (tnlr_io_ctx->udp.conn_timer) {
+                uv_close((uv_handle_t *) tnlr_io_ctx->udp.conn_timer, (uv_close_cb) free);
+                tnlr_io_ctx->udp.conn_timer = NULL;
+            }
             break;
         default:
             TNL_LOG(ERR, "unknown proto %d", tnlr_io_ctx->proto);
