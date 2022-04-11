@@ -9,3 +9,7 @@ install/
 
 .vscode/
 Pipfile
+
+.cache/
+/tags*
+compile_commands.json

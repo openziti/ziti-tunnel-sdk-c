@@ -45,12 +45,17 @@ jobs:
       - name: make build dir
         run: cmake -E make_directory ${{runner.workspace}}/build
 
-      - name: install toolchain
+      - name: install crossbuild toolchain
         if: matrix.install != ''
         run: |
           sudo apt update
           sudo apt install ${{ matrix.install }}
 
+      - name: install libsystemd if Ubuntu
+        if: ${{ startsWith(matrix.os, 'ubuntu') }}
+        run: |
+          sudo apt update
+          sudo apt -y install libsystemd-dev
 
       - name: configure cmake
         run: cmake ${{matrix.cmake_opts}} -DCMAKE_TOOLCHAIN_FILE=${{github.workspace}}/toolchains/${{matrix.toolchain}} -S ${{ github.workspace }} -B ${{runner.workspace}}/build
