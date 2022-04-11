@@ -48,6 +48,10 @@
 #define MAXMESSAGELEN 4096
 #endif
 
+#ifndef MAXIPCCOMMANDLEN
+#define MAXIPCCOMMANDLEN 4096 * 4
+#endif
+
 #ifndef HOST_NAME_MAX
 #define HOST_NAME_MAX 254
 #endif
@@ -611,6 +615,7 @@ static void on_cmd(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
         char lastChar = b->base[len-1];
         if (lastChar == '\n') {
             char* new_buff = ipc_cmd_buffered(&ipc_cmd_ctx);
+            ZITI_LOG(TRACE, "buffered cmd <%.*s>", (int) (strlen(new_buff) + 1), new_buff);
             process_ipc_command(s, strlen(new_buff) + 1, new_buff);
             free(new_buff);
         }
@@ -1446,7 +1451,7 @@ static char* ipc_cmd_buffered(ipc_cmd_ctx_t *ipc_cmd_ctx_new) {
     STAILQ_INIT(&ipc_cmd_ctx->ipc_cmd_queue);
     struct ipc_cmd_s *ipc_cmd;
 
-    char buff[MAXMESSAGELEN] = {0};
+    char buff[MAXIPCCOMMANDLEN] = {0};
     ssize_t buff_len = 0;
     while (!STAILQ_EMPTY(&cmd_q)) {
         ipc_cmd = STAILQ_FIRST(&cmd_q);
