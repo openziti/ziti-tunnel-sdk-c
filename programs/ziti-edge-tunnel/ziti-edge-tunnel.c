@@ -42,14 +42,15 @@
 #include "windows/windows-scripts.h"
 
 #define setenv(n,v,o) do {if(o || getenv(n) == NULL) _putenv_s(n,v); } while(0)
+
+#ifndef MAXIPCCOMMANDLEN
+#define MAXIPCCOMMANDLEN 4096 * 4
+#endif
+
 #endif
 
 #ifndef MAXMESSAGELEN
 #define MAXMESSAGELEN 4096
-#endif
-
-#ifndef MAXIPCCOMMANDLEN
-#define MAXIPCCOMMANDLEN 4096 * 4
 #endif
 
 #ifndef HOST_NAME_MAX
