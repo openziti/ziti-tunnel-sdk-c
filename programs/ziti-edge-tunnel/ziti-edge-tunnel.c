@@ -1996,8 +1996,11 @@ void on_write(uv_write_t* req, int status) {
 void send_message_to_pipe(uv_connect_t *connect) {
     printf("Message...%s\n", connect->data);
     uv_write_t *req = (uv_write_t*) malloc(sizeof(uv_write_t));
-    uv_buf_t buf = uv_buf_init(connect->data, strlen(connect->data));
+    char* data = calloc(strlen(connect->data) + 2, sizeof(char));
+    sprintf(data, "%s\n", connect->data);
+    uv_buf_t buf = uv_buf_init(data, strlen(data));
     uv_write((uv_write_t*) req, connect->handle, &buf, 1,    on_write);
+    free(connect->data);
     free(connect);
 }
 
