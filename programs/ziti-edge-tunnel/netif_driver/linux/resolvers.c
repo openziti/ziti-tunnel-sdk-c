@@ -210,7 +210,6 @@ static int detect_systemd_resolved_routing_domain_wildcard(sd_bus *bus, int32_t 
             (domain.is_routing_only == 1)) {
             ZITI_LOG(DEBUG, "systemd-resolved routing only domain wildcard found");
             routing_only_wildcard_set = 0;
-            break;
         }
     }
 
