@@ -1,0 +1,20 @@
+ln -sf @CPACK_BIN_DIR@/@CPACK_PACKAGE_NAME@ /usr/bin/@CPACK_PACKAGE_NAME@
+ln -sf @CPACK_SHARE_DIR@/@SYSTEMD_UNIT_FILE_NAME@ /etc/systemd/system/@SYSTEMD_UNIT_FILE_NAME@
+
+# Copied from https://github.com/Debian/debhelper/blob/master/autoscripts/postinst-systemd-dont-enable
+if [ "$1" = "configure" ] || [ "$1" = "abort-upgrade" ] || [ "$1" = "abort-deconfigure" ] || [ "$1" = "abort-remove" ] ; then
+	if deb-systemd-helper debian-installed @SYSTEMD_UNIT_FILE_NAME@; then
+		# This will only remove masks created by d-s-h on package removal.
+		deb-systemd-helper unmask @SYSTEMD_UNIT_FILE_NAME@ >/dev/null || true
+
+		if deb-systemd-helper --quiet was-enabled @SYSTEMD_UNIT_FILE_NAME@; then
+			# Create new symlinks, if any.
+			deb-systemd-helper enable @SYSTEMD_UNIT_FILE_NAME@ >/dev/null || true
+		fi
+	fi
+
+	# Update the statefile to add new symlinks (if any), which need to be cleaned
+	# up on purge. Also remove old symlinks.
+	deb-systemd-helper update-state @SYSTEMD_UNIT_FILE_NAME@ >/dev/null || true
+fi
+# End copied section
