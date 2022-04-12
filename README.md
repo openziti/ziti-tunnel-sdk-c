@@ -57,6 +57,24 @@ RestartSec=3
 WantedBy=multi-user.target
 ```
 
+#### How does ziti-edge-tunnel configure nameservers?
+
+`ziti-edge-tunnel run` provides a built-in nameserver that will answer queries
+that exactly match authorized OpenZiti services' intercept domain names, and will respond
+with a hard-fail `NXDOMAIN` code if the query does not match an authorized
+service.
+
+Optionally, you may enable DNS recursion by specifying an upstream
+nameserver to answer queries for other domain names that are not services' intercept domain
+names: `ziti-edge-tunnel run --dns-upstream 208.67.222.222`.
+
+`ziti-edge-tunnel` implements the `systemd` dbus socket and will try to use it
+to configure the OS's resolvers with `systemd-resolved`. If that's not possible
+for any reason then `ziti-edge-tunnel run` will fall back to shell commands
+like `resolvectl`. If those too do not succeed then `ziti-edge-tunnel run` will
+attempt to modify `/etc/resolv.conf` directly to install the built-in
+nameserver as the primary resolver.
+
 ## What is the Ziti Tunneler SDK?
 
 The Ziti Tunneler SDK provides functionality that is common to Ziti Tunnelers across
