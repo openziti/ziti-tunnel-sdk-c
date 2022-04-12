@@ -1,0 +1,9 @@
+name: 'OpenZiti Tunneler Build Action'
+description: 'Builds ziti-edge-tunnel binary and install package for Linux'
+author: 'NetFoundry'
+outputs:
+  package_type:
+    description: lowercase filename suffix of the install package built by this action
+runs:
+  using: 'docker'
+  image: 'Dockerfile'

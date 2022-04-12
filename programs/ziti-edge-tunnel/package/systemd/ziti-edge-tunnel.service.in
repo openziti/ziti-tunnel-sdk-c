@@ -1,0 +1,14 @@
+[Unit]
+Description=Ziti Edge Tunnel
+After=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=@CPACK_ETC_DIR@/@SYSTEMD_SERVICE_NAME@.env
+ExecStartPre=@CPACK_BIN_DIR@/@SYSTEMD_SERVICE_NAME@.sh
+ExecStart=@CPACK_BIN_DIR@/@SYSTEMD_SERVICE_NAME@ run --verbose=${ZITI_VERBOSE} --dns-ip-range=${ZITI_DNS_IP_RANGE} --identity-dir=${ZITI_IDENTITY_DIR}
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

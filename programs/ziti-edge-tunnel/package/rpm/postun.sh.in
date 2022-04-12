@@ -1,0 +1,9 @@
+SYSTEMD_SERVICE_NAME=@SYSTEMD_SERVICE_NAME@
+SYSTEMD_UNIT_FILE_NAME=@SYSTEMD_UNIT_FILE_NAME@
+
+systemctl daemon-reload >/dev/null 2>&1 || :
+%systemd_postun_with_restart ${SYSTEMD_SERVICE_NAME}
+
+if [ $1 -eq 0 ]; then
+    rm %{_unitdir}/${SYSTEMD_UNIT_FILE_NAME}
+fi

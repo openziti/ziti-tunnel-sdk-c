@@ -1,0 +1,1 @@
+%systemd_preun @SYSTEMD_SERVICE_NAME@
