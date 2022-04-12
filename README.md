@@ -75,6 +75,13 @@ like `resolvectl`. If those too do not succeed then `ziti-edge-tunnel run` will
 attempt to modify `/etc/resolv.conf` directly to install the built-in
 nameserver as the primary resolver.
 
+`process_host_req()` in [`/lib/ziti-tunnel-cbs/ziti_dns.c`](/lib/ziti-tunnel-cbs/ziti_dns.c) looks up the queried
+hostname in the internal map. If the entry exists it returns the answer and
+sets query status to `NO_ERROR`. If it does not exist in the map, it sends the
+query to an upstream DNS server if available, and otherwise sets the query status to
+`REFUSE`. This implies to the caller they *should* keep trying to resolve the
+domain name with other nameservers.
+
 ## What is the Ziti Tunneler SDK?
 
 The Ziti Tunneler SDK provides functionality that is common to Ziti Tunnelers across
