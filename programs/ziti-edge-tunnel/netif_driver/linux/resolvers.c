@@ -204,13 +204,16 @@ static int detect_systemd_resolved_routing_domain_wildcard(sd_bus *bus, int32_t 
 
     int routing_only_wildcard_set = 1;
 
-    while ((r = sd_bus_message_read_f(reply, "(isb)", &domain.ifindex, &domain.name, &domain.is_routing_only)) > 0){
-        if ((domain.ifindex != ifindex) &&
-            (strcmp(domain.name, ".") == 0) &&
-            (domain.is_routing_only == 1)) {
-            ZITI_LOG(DEBUG, "systemd-resolved routing only domain wildcard found");
+    while ((r = sd_bus_message_read_f(reply, "(isb)", &domain.ifindex, &domain.name, &domain.is_routing_only)) > 0) {
+        // Don't break out of loop when we find the route-only wildcard is set on a separate interface.
+        // We must exhaust all container members before exiting the container.
+        if ((domain.ifindex != ifindex) && (strcmp(domain.name, ".") == 0) && (domain.is_routing_only == 1)) {
             routing_only_wildcard_set = 0;
         }
+    }
+
+    if (routing_only_wildcard_set == 0) {
+        ZITI_LOG(DEBUG, "systemd-resolved routing only domain wildcard found");
     }
 
     if (r < 0) {
@@ -350,7 +353,7 @@ void dns_update_resolvconf(const char* tun, const char* addr) {
 }
 
 void dns_update_etc_resolv(const char* tun, const char* addr) {
-    if (run_command("grep -q '^nameserver %s' /etc/resolv.conf", addr) != 0){
+    if (run_command("grep -q '^nameserver %s' /etc/resolv.conf", addr) != 0) {
         run_command("sed -z -i 's/nameserver/nameserver %s\\nnameserver/' /etc/resolv.conf", addr);
     }
 }
