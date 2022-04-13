@@ -98,21 +98,21 @@ static void init_libsystemd() {
     return;
 }
 
-// Added to work around proprocessor time symbols missing
+// Added to work around preprocessor time symbols missing
 static void sd_bus_flush_close_unrefp_f(sd_bus **p) {
     if (*p) {
         sd_bus_flush_close_unref_f(*p);
     }
 }
 
-// Added to work around proprocessor time symbols missing
+// Added to work around preprocessor time symbols missing
 static void sd_bus_message_unrefp_f(sd_bus_message **p) {
     if (*p) {
         sd_bus_message_unref_f(*p);
     }
 }
 
-// Added to work around proprocessor time symbols missing
+// Added to work around preprocessor time symbols missing
 static void sd_bus_error_free_wrapper(sd_bus_error *e) {
     sd_bus_error_free_f(e);
 }
@@ -134,7 +134,7 @@ static int sd_bus_is_acquired_name(sd_bus *bus, const char* bus_name) {
             NULL);
 
     if (r < 0) {
-        ZITI_LOG(ERROR, "Could not retreive DBus bus names: (%s, %s)", error.name, error.message);
+        ZITI_LOG(ERROR, "Could not retrieve DBus bus names: (%s, %s)", error.name, error.message);
         return r;
     }
 
@@ -151,7 +151,7 @@ static int sd_bus_is_acquired_name(sd_bus *bus, const char* bus_name) {
 
     for (i=0; acquired[i] != NULL; i++) {
         if (strcmp(acquired[i], bus_name) == 0) {
-            ZITI_LOG(DEBUG, "systemd-resolve DBus name found: %s", acquired[i]);
+            ZITI_LOG(DEBUG, "systemd-resolved DBus name found: %s", acquired[i]);
         found = 0;
         break;
         }
@@ -253,7 +253,7 @@ static bool set_systemd_resolved_link_setting(sd_bus *bus, const char* tun, cons
     va_end(ap);
 
     if (r < 0) {
-        ZITI_LOG(ERROR, "Failure in method invocaiton: %s for link: (%s): (%s, %s)",
+        ZITI_LOG(ERROR, "Failure in method invocation: %s for link: (%s): (%s, %s)",
                  method, tun, error.name, error.message);
         return false;
     }
@@ -342,7 +342,7 @@ void dns_update_systemd_resolved(const char* tun, const char* addr) {
     }
 
     if (r == 0) {
-        ZITI_LOG(INFO, "Setting wilcard routing only domain on interface: %s", tun);
+        ZITI_LOG(INFO, "Setting wildcard routing only domain on interface: %s", tun);
         RET_ON_FAIL(set_systemd_resolved_link_setting(bus, tun, "SetLinkDomains", "ia(sb)", ifindex, 1, ".", true));
     }
 }
