@@ -43,10 +43,10 @@
 
 #define setenv(n,v,o) do {if(o || getenv(n) == NULL) _putenv_s(n,v); } while(0)
 
-#ifndef MAXIPCCOMMANDLEN
-#define MAXIPCCOMMANDLEN 4096 * 4
 #endif
 
+#ifndef MAXIPCCOMMANDLEN
+#define MAXIPCCOMMANDLEN 4096 * 4
 #endif
 
 #ifndef MAXMESSAGELEN
