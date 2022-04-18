@@ -74,7 +74,6 @@ static void move_config_from_previous_windows_backup(uv_loop_t *loop);
 #define LAST_CHAR_IPC_CMD '\0'
 #endif
 
-#if LAST_CHAR_IPC_CMD != '\0'
 struct ipc_cmd_s {
     char *cmd_data;
     int len;
@@ -89,7 +88,6 @@ typedef struct ipc_cmd_ctx_s {
 } ipc_cmd_ctx_t;
 
 static ipc_cmd_ctx_t *ipc_cmd_ctx;
-#endif
 
 static char* ipc_cmd_buffered(ipc_cmd_ctx_t *ipc_cmd_ctx_new);
 
@@ -1446,7 +1444,6 @@ static char* normalize_host(char* hostname) {
     return hostname_new;
 }
 
-#if _WIN32
 static char* ipc_cmd_buffered(ipc_cmd_ctx_t *ipc_cmd_ctx_new) {
 
     ipc_cmd_q cmd_q;
@@ -1485,7 +1482,6 @@ static char* ipc_cmd_buffered(ipc_cmd_ctx_t *ipc_cmd_ctx_new) {
     return buf_new;
 
 }
-#endif
 
 static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, const char *ip_range, const char *dns_upstream) {
     netif_driver tun;
