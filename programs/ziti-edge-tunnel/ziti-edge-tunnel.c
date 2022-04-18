@@ -69,7 +69,29 @@ static void stop_tunnel_and_cleanup();
 
 #if _WIN32
 static void move_config_from_previous_windows_backup(uv_loop_t *loop);
+#define LAST_CHAR_IPC_CMD '\n'
+#else
+#define LAST_CHAR_IPC_CMD '\0'
 #endif
+
+#if LAST_CHAR_IPC_CMD != '\0'
+struct ipc_cmd_s {
+    char *cmd_data;
+    int len;
+    STAILQ_ENTRY(ipc_cmd_s) _next;
+};
+
+typedef STAILQ_HEAD(cmd_q, ipc_cmd_s) ipc_cmd_q;
+
+typedef struct ipc_cmd_ctx_s {
+    ipc_cmd_q ipc_cmd_queue;
+    uv_mutex_t cmd_lock;
+} ipc_cmd_ctx_t;
+
+static ipc_cmd_ctx_t *ipc_cmd_ctx;
+#endif
+
+static char* ipc_cmd_buffered(ipc_cmd_ctx_t *ipc_cmd_ctx_new);
 
 struct cfg_instance_s {
     char *cfg;
@@ -123,25 +145,6 @@ static char eventsockfile[] = "\\\\.\\pipe\\ziti-edge-tunnel-event.sock";
 #elif __unix__ || unix || ( __APPLE__ && __MACH__ )
 static char sockfile[] = "/tmp/ziti-edge-tunnel.sock";
 static char eventsockfile[] = "/tmp/ziti-edge-tunnel-event.sock";
-#endif
-
-#if _WIN32
-struct ipc_cmd_s {
-    char *cmd_data;
-    int len;
-    STAILQ_ENTRY(ipc_cmd_s) _next;
-};
-
-typedef STAILQ_HEAD(cmd_q, ipc_cmd_s) ipc_cmd_q;
-
-typedef struct ipc_cmd_ctx_s {
-    ipc_cmd_q ipc_cmd_queue;
-    uv_mutex_t cmd_lock;
-} ipc_cmd_ctx_t;
-
-static ipc_cmd_ctx_t *ipc_cmd_ctx;
-
-static char* ipc_cmd_buffered(ipc_cmd_ctx_t *ipc_cmd_ctx_new);
 #endif
 
 static int sizeof_event_clients_list() {
@@ -565,6 +568,15 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
     }
 }
 
+static void queue_ipc_command(ipc_cmd_ctx_t *ipc_command_ctx, ssize_t len, char* base) {
+    struct ipc_cmd_s *cmd_new = calloc(1, sizeof(struct ipc_cmd_s));
+    cmd_new->cmd_data = strdup(base);
+    cmd_new->len = len;
+    uv_mutex_trylock(&ipc_command_ctx->cmd_lock);
+    STAILQ_INSERT_TAIL(&ipc_command_ctx->ipc_cmd_queue, cmd_new, _next);
+    uv_mutex_unlock(&ipc_command_ctx->cmd_lock);
+}
+
 static void process_ipc_command(uv_stream_t *s, ssize_t len, char* base) {
     tunnel_command tnl_cmd = {0};
     if (parse_tunnel_command(&tnl_cmd, base, len) >= 0) {
@@ -606,22 +618,17 @@ static void on_cmd(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
 
     } else {
         ZITI_LOG(INFO, "received cmd <%.*s>", (int) len, b->base);
-#if _WIN32
-        struct ipc_cmd_s *cmd_new = calloc(1, sizeof(struct ipc_cmd_s));
-        cmd_new->cmd_data = strdup(b->base);
-        cmd_new->len = len;
-        uv_mutex_trylock(&ipc_cmd_ctx->cmd_lock);
-        STAILQ_INSERT_TAIL(&ipc_cmd_ctx->ipc_cmd_queue, cmd_new, _next);
-        uv_mutex_unlock(&ipc_cmd_ctx->cmd_lock);
-        char lastChar = b->base[len-1];
-        if (lastChar == '\n') {
-            char* new_buff = ipc_cmd_buffered(&ipc_cmd_ctx);
+
+#if LAST_CHAR_IPC_CMD == '\0'
+        process_ipc_command(s, len, b->base);
+#else
+        queue_ipc_command(ipc_cmd_ctx, len, b->base);
+        if (b->base[len-1] == LAST_CHAR_IPC_CMD) {
+            char* new_buff = ipc_cmd_buffered(ipc_cmd_ctx);
             ZITI_LOG(TRACE, "buffered cmd <%.*s>", (int) (strlen(new_buff) + 1), new_buff);
             process_ipc_command(s, strlen(new_buff) + 1, new_buff);
             free(new_buff);
         }
-#else
-        process_ipc_command(s, len, b->base);
 #endif
 
     }
@@ -1085,11 +1092,11 @@ static void load_identities_complete(uv_work_t * wr, int status) {
         struct cfg_instance_s *inst = LIST_FIRST(&load_list);
         LIST_REMOVE(inst, _next);
 
-        CMD_CTRL->load_identity(NULL, inst->cfg, get_api_page_size(), load_id_cb, inst);
-        identity_loaded = true;
         if (config_dir == NULL) {
             create_or_get_tunnel_identity(inst->cfg, inst->cfg);
         }
+        CMD_CTRL->load_identity(NULL, inst->cfg, get_api_page_size(), load_id_cb, inst);
+        identity_loaded = true;
     }
     if (identity_loaded) {
         start_metrics_timer(wr->loop);
@@ -1445,11 +1452,11 @@ static char* ipc_cmd_buffered(ipc_cmd_ctx_t *ipc_cmd_ctx_new) {
     ipc_cmd_q cmd_q;
     STAILQ_INIT(&cmd_q);
 
-    uv_mutex_trylock(&ipc_cmd_ctx->cmd_lock);
-    cmd_q = ipc_cmd_ctx->ipc_cmd_queue;
-    uv_mutex_unlock(&ipc_cmd_ctx->cmd_lock);
+    uv_mutex_trylock(&ipc_cmd_ctx_new->cmd_lock);
+    cmd_q = ipc_cmd_ctx_new->ipc_cmd_queue;
+    uv_mutex_unlock(&ipc_cmd_ctx_new->cmd_lock);
 
-    STAILQ_INIT(&ipc_cmd_ctx->ipc_cmd_queue);
+    STAILQ_INIT(&ipc_cmd_ctx_new->ipc_cmd_queue);
     struct ipc_cmd_s *ipc_cmd;
 
     char buff[MAXIPCCOMMANDLEN] = {0};
@@ -1467,7 +1474,7 @@ static char* ipc_cmd_buffered(ipc_cmd_ctx_t *ipc_cmd_ctx_new) {
         free(ipc_cmd);
 
         char lastChar = buff[buff_len - 1];
-        if (lastChar == '\n') {
+        if (lastChar == LAST_CHAR_IPC_CMD) {
             // end of the ipc command
             break;
         }
