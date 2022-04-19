@@ -24,7 +24,7 @@ jobs:
           - os: windows-latest
             cmake_opts: -G "MinGW Makefiles" -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}\install
             toolchain: default.cmake
-            arch: [ x86_64 ]
+            arch: x86_64
 
           - os: ubuntu-18.04
             install: crossbuild-essential-armhf
@@ -39,25 +39,44 @@ jobs:
             arch: arm64
 
     steps:
-      - uses: actions/checkout@v2
+      - name: checkout workspace
+        uses: actions/checkout@v3
         with:
           fetch-depth: 0
+
       - name: make build dir
         run: cmake -E make_directory ${{runner.workspace}}/build
 
       - name: install toolchain
-        if: matrix.install != ''
+        if: ${{ matrix.install != null }}
         run: |
-          sudo apt update
-          sudo apt install ${{ matrix.install }}
+          sudo apt -y update
+          sudo apt -y install ${{ matrix.install }}
 
+      - name: install libsystemd if Ubuntu
+        if: ${{ startsWith(matrix.os, 'ubuntu') }}
+        run: |
+          sudo apt -y update
+          sudo apt -y install libsystemd-dev
 
       - name: configure cmake
-        run: cmake ${{matrix.cmake_opts}} -DCMAKE_TOOLCHAIN_FILE=${{github.workspace}}/toolchains/${{matrix.toolchain}} -S ${{ github.workspace }} -B ${{runner.workspace}}/build
-      - name: build
-        run: cmake --build ${{runner.workspace}}/build --target bundle --verbose
+        run: cmake ${{matrix.cmake_opts}} -DCMAKE_TOOLCHAIN_FILE=${{github.workspace}}/toolchains/${{matrix.toolchain}} -S ${{ github.workspace }} -B ${{github.workspace}}/build
 
-      - uses: actions/upload-artifact@v2
+      - name: build ziti-edge-tunnel bundle target
+        run: cmake --build ${{github.workspace}}/build --target bundle --verbose
+
+      - name: list bundle artifacts
+        run: ls -R
+        working-directory: ${{ github.workspace }}/build/bundle/
+
+      - name: list program artifacts
+        run: ls -R
+        working-directory: ${{ github.workspace }}/build/programs/ziti-edge-tunnel/
+
+      - name: upload bundle artifacts
+        uses: actions/upload-artifact@v3
         with:
           name: ${{ runner.os }}-${{ matrix.arch }}
-          path: ${{ runner.workspace }}/build/bundle/*.zip
+          path: |
+            ./build/bundle/ziti-edge-tunnel-*.zip
+          if-no-files-found: error

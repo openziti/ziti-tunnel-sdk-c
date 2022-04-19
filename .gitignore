@@ -11,3 +11,8 @@ install/
 
 .vscode/
 Pipfile
+
+/_deps/
+.cache/
+/tags*
+compile_commands.json

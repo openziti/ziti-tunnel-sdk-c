@@ -1,0 +1,136 @@
+name: CI package
+
+on: 
+  workflow_dispatch:
+
+jobs:
+  package:
+    runs-on: ubuntu-20.04
+    # optionally override entire container image:tag string
+    container: ${{ matrix.distro.container || format('{0}:{1}', matrix.distro.name, matrix.distro.version) }} 
+    # only override container image name and tag is distro version
+    #container: ${{ matrix.distro.container || matrix.distro.name }}:${{ matrix.distro.version }}
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [ x86_64 ] # TODO: migrate the Linux builds for arm, arm64 too
+        distro:
+          - name: ubuntu
+            version: "20.04"
+            type: deb
+          - name: ubuntu
+            version: "18.04"
+            type: deb
+          - name: ubuntu
+            version: "16.04"
+            type: deb
+          - name: ubuntu
+            version: "14.04"
+            type: deb
+          - name: redhat
+            version: "7"
+            type: rpm
+            container: quay.io/centos/centos:7
+          - name: redhat
+            version: "8"
+            type: rpm
+            container: quay.io/rockylinux/rockylinux:8
+    steps:
+      # only 20.04 has >= 2.18, which is required by actions/checkout to clone
+      # which enables cmake version discovery
+      - name: install Modern Git in runner container if Ubuntu
+        if: ${{ matrix.distro.name == 'ubuntu' }}
+        run: |
+          apt -y update
+          apt-get -y install software-properties-common
+          add-apt-repository -y ppa:git-core/ppa
+          apt -y update
+          apt -y install git
+          git --version
+
+      - name: install Modern Git in runner container if RedHat 8
+        if: ${{ matrix.distro.name == 'redhat' && matrix.distro.version == '8' }}
+        run: |
+          dnf -y update
+          dnf -y install git
+          git --version
+
+      - name: install Modern Git in runner container if RedHat 7
+        if: ${{ matrix.distro.name == 'redhat' && matrix.distro.version == '7' }}
+        run: |
+          yum -y update
+          yum -y install centos-release-scl
+          yum -y install rh-git218
+          source scl_source enable rh-git218 && git --version
+          cat << 'EOF' >| /root/git.sh
+          #!/bin/bash
+          source scl_source enable rh-git218 && git "${@}"
+          EOF
+          chmod +x /root/git.sh
+          update-alternatives --install /usr/bin/git git /root/git.sh 50
+
+      - name: checkout workspace
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: configure build action for distro version
+        env:
+          DISTRO_LABEL: ${{ format('{0}-{1}', matrix.distro.name, matrix.distro.version) }}
+        shell: bash
+        run: |
+          for FILE in Dockerfile entrypoint.sh; do
+            mv -v ./.github/actions/openziti-tunnel-build-action/${DISTRO_LABEL}/${FILE} \
+                  ./.github/actions/openziti-tunnel-build-action/${FILE}
+          done
+
+      - name: build binary and package
+        uses: ./.github/actions/openziti-tunnel-build-action
+
+      - name: list build artifacts
+        run: |
+          cat /etc/*-release
+          ls -horAS ./build/
+
+      - name: list program artifacts
+        run: |
+          cat /etc/*-release
+          ls -horAS ./build/programs/ziti-edge-tunnel/
+
+      - name: install package artifact in runner container if Ubuntu 14.04
+        if: ${{ matrix.distro.name == 'ubuntu' && matrix.distro.version == '14.04' }}
+        run: |
+          yes|dpkg --install ./build/ziti-edge-tunnel-*.deb || apt-get --yes --fix-broken install
+
+      - name: install package artifact in runner container if Ubuntu >= 16.04
+        if: ${{ matrix.distro.name == 'ubuntu' && matrix.distro.version != '14.04' }}
+        run: |
+          apt -y install ./build/ziti-edge-tunnel-*.deb
+
+      - name: install package artifact in runner container if RedHat
+        if: ${{ matrix.distro.name == 'redhat' }}
+        run: |
+          set -x
+          yum -y install ./build/ziti-edge-tunnel-*.rpm
+
+      - name: run binary artifact
+        run: |
+          set -x
+          cat /etc/*-release
+          ldd ./build/programs/ziti-edge-tunnel/ziti-edge-tunnel
+          ./build/programs/ziti-edge-tunnel/ziti-edge-tunnel version --verbose
+
+      # - name: upload ziti-edge-tunnel binary
+      #   uses: actions/upload-artifact@v3
+      #   with:
+      #     name: ${{ matrix.distro.name }}-${{ matrix.distro.version }}-${{ matrix.arch }}-bin
+      #     path: |
+      #       ./build/programs/ziti-edge-tunnel/ziti-edge-tunnel
+      #     if-no-files-found: error
+
+      - name: upload package artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ matrix.distro.name }}-${{ matrix.distro.version }}-${{ matrix.arch }}-${{ matrix.distro.type }}
+          path: ./build/ziti-edge-tunnel-*.${{ matrix.distro.type }}
+          if-no-files-found: error

@@ -1,0 +1,24 @@
+# Copied from https://github.com/Debian/debhelper/blob/master/autoscripts/postrm-systemd
+if [ "$1" = "remove" ]; then
+	if [ -x "/usr/bin/deb-systemd-helper" ]; then
+		deb-systemd-helper mask @SYSTEMD_UNIT_FILE_NAME@ >/dev/null || true
+	fi
+fi
+
+if [ "$1" = "purge" ]; then
+	if [ -x "/usr/bin/deb-systemd-helper" ]; then
+		deb-systemd-helper purge @SYSTEMD_UNIT_FILE_NAME@ >/dev/null || true
+		deb-systemd-helper unmask @SYSTEMD_UNIT_FILE_NAME@ >/dev/null || true
+	fi
+fi
+# End copied seciton
+
+[ -L /etc/systemd/system/@SYSTEMD_UNIT_FILE_NAME@ ] && unlink /etc/systemd/system/@SYSTEMD_UNIT_FILE_NAME@
+
+# Copied from https://github.com/Debian/debhelper/blob/master/autoscripts/postrm-systemd-restart-only
+if [ -d /run/systemd/system ]; then
+	systemctl --system daemon-reload >/dev/null || true
+fi
+# End copied section
+
+[ -L /usr/bin/@CPACK_PACKAGE_NAME@ ] && unlink /usr/bin/@CPACK_PACKAGE_NAME@

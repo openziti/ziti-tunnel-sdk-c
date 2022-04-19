@@ -1,0 +1,17 @@
+SYSTEMD_SERVICE_NAME=@SYSTEMD_SERVICE_NAME@
+SYSTEMD_UNIT_FILE_NAME=@SYSTEMD_UNIT_FILE_NAME@
+if [ $1 -eq 1 ]; then
+    [ -d @CPACK_ETC_DIR@ ] || %{__mkdir} @CPACK_ETC_DIR@
+    %{__install} -m 644 @CPACK_SHARE_DIR@/$SYSTEMD_UNIT_FILE_NAME %{_unitdir}/$SYSTEMD_UNIT_FILE_NAME
+fi
+
+%systemd_post $SYSTEMD_SERVICE_NAME
+
+if [ $1 -eq 1 ]; then
+    ssize=$(tput cols)
+    printf %"$ssize"s |tr " " "-"  
+    echo "$SYSTEMD_SERVICE_NAME was installed..."
+    echo "First install an OpenZiti identity or enroll token in: @ZITI_IDENTITY_DIR@"
+    echo "then start or restart this systemd service unit."
+    printf %"$ssize"s |tr " " "-"  
+fi
