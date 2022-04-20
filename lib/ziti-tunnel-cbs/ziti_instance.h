@@ -39,18 +39,6 @@ struct mfa_request_s {
     // LIST_ENTRY(mfa_request_s) _next;
 };
 
-struct ziti_instance_s {
-    char *identifier;
-    ziti_options opts;
-    command_cb load_cb;
-    void *load_ctx;
-
-    ziti_context ztx;
-    struct mfa_request_s *mfa_req;
-    model_map intercepts;
-    LIST_ENTRY(ziti_instance_s) _next;
-};
-
 typedef struct ziti_intercept_s ziti_intercept_t;
 
 ziti_connection intercept_resolve_connect(ziti_intercept_t *intercept, void *ctx, ziti_conn_cb conn_cb, ziti_data_cb data_cb);

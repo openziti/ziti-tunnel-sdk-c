@@ -168,7 +168,8 @@ DECLARE_MODEL(tunnel_service_control, TUNNEL_SERVICE_CONTROL)
 XX(ContextEvent, __VA_ARGS__) \
 XX(ServiceEvent, __VA_ARGS__)  \
 XX(MFAEvent, __VA_ARGS__)      \
-XX(MFAStatusEvent, __VA_ARGS__)
+XX(MFAStatusEvent, __VA_ARGS__) \
+XX(APIEvent, __VA_ARGS__)
 
 DECLARE_ENUM(TunnelEvent, TUNNEL_EVENTS)
 
@@ -209,10 +210,15 @@ XX(provisioning_url, string, none, provisioning_url, __VA_ARGS__) \
 XX(recovery_codes, string, array, recovery_codes, __VA_ARGS__) \
 XX(code, int, none, code, __VA_ARGS__)
 
+#define ZTX_API_EVENT_MODEL(XX, ...)  \
+BASE_EVENT_MODEL(XX, __VA_ARGS__)  \
+XX(new_ctrl_address, string, none, new_ctrl_address, __VA_ARGS__)
+
 DECLARE_MODEL(base_event, BASE_EVENT_MODEL)
 DECLARE_MODEL(ziti_ctx_event, ZTX_EVENT_MODEL)
 DECLARE_MODEL(mfa_event, MFA_EVENT_MODEL)
 DECLARE_MODEL(service_event, ZTX_SVC_EVENT_MODEL)
+DECLARE_MODEL(api_event, ZTX_API_EVENT_MODEL)
 
 typedef struct tunneled_service_s tunneled_service_t;
 
@@ -273,6 +279,22 @@ tunneled_service_t *ziti_sdk_c_on_service(ziti_context ziti_ctx, ziti_service *s
 void remove_intercepts(ziti_context ziti_ctx, void *tnlr_ctx);
 
 const ziti_tunnel_ctrl* ziti_tunnel_init_cmd(uv_loop_t *loop, tunneler_context, event_cb);
+
+struct ziti_instance_s {
+    char *identifier;
+    ziti_options opts;
+    command_cb load_cb;
+    void *load_ctx;
+
+    ziti_context ztx;
+    struct mfa_request_s *mfa_req;
+    model_map intercepts;
+    LIST_ENTRY(ziti_instance_s) _next;
+};
+
+struct ziti_instance_s *new_ziti_instance_ex(const char *identifier);
+void set_ziti_instance(const char *identifier, struct ziti_instance_s *inst);
+void remove_ziti_instance(const char *identifier);
 
 #ifdef __cplusplus
 }

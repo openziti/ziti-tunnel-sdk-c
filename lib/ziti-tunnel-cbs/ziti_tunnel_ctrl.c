@@ -558,15 +558,30 @@ static void get_transfer_rates(const char *identifier, command_cb cb, void *ctx)
 
 static struct ziti_instance_s *new_ziti_instance(const char *identifier, const char *path) {
     struct ziti_instance_s *inst = calloc(1, sizeof(struct ziti_instance_s));
+
     inst->identifier = strdup(identifier ? identifier : path);
-    inst->opts.config = realpath(path, NULL);
+    if (path) {
+        inst->opts.config = realpath(path, NULL);
+    }
     inst->opts.config_types = cfg_types;
     inst->opts.events = -1;
     inst->opts.event_cb = on_ziti_event;
     inst->opts.refresh_interval = refresh_interval; /* default refresh */
-    //inst->opts.aq_mfa_cb = on_mfa_query;
     inst->opts.app_ctx = inst;
+
     return inst;
+}
+
+struct ziti_instance_s *new_ziti_instance_ex(const char *identifier) {
+    return new_ziti_instance(identifier, NULL);
+}
+
+void set_ziti_instance(const char *identifier, struct ziti_instance_s *inst) {
+    model_map_set(&instances, identifier, inst);
+}
+
+void remove_ziti_instance(const char *identifier) {
+    model_map_remove(&instances, identifier);
 }
 
 /** callback from ziti SDK when a new service becomes available to our identity */
@@ -716,11 +731,19 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
 
         case ZitiAPIEvent: {
             if (event->event.api.new_ctrl_address) {
-                api_update_req *req = calloc(1, sizeof(api_update_req));
-                req->wr.data = req;
-                req->ztx = ztx;
-                req->new_url = strdup(event->event.api.new_ctrl_address);
-                uv_queue_work(CMD_CTX.loop, &req->wr, update_config, update_config_done);
+                if (instance->opts.config) {
+                    api_update_req *req = calloc(1, sizeof(api_update_req));
+                    req->wr.data = req;
+                    req->ztx = ztx;
+                    req->new_url = strdup(event->event.api.new_ctrl_address);
+                    uv_queue_work(CMD_CTX.loop, &req->wr, update_config, update_config_done);
+                }
+
+                api_event ev = {0};
+                ev.event_type = TunnelEvents.APIEvent;
+                ev.identifier = instance->identifier;
+                ev.new_ctrl_address = event->event.api.new_ctrl_address;
+                CMD_CTX.on_event((const base_event *) &ev);
             } else {
                 ZITI_LOG(WARN, "unexpected API event: new_ctrl_address is missing");
             }
@@ -1119,5 +1142,6 @@ IMPL_MODEL(base_event, BASE_EVENT_MODEL)
 IMPL_MODEL(ziti_ctx_event, ZTX_EVENT_MODEL)
 IMPL_MODEL(mfa_event, MFA_EVENT_MODEL)
 IMPL_MODEL(service_event, ZTX_SVC_EVENT_MODEL)
+IMPL_MODEL(api_event, ZTX_API_EVENT_MODEL)
 IMPL_MODEL(tunnel_command_inline, TUNNEL_CMD_INLINE)
 
