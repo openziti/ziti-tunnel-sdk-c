@@ -84,7 +84,7 @@ macro(BUNDLE_COMP comp)
     add_custom_target(${comp}-bundle
         BYPRODUCTS ${CMAKE_BINARY_DIR}/bundle/${comp}-${CMAKE_SYSTEM_NAME}_${CMAKE_SYSTEM_PROCESSOR}.zip
         DEPENDS ${comp}
-        COMMAND 7z a ${CMAKE_BINARY_DIR}/bundle/${comp}-${CPACK_SYSTEM_NAME}_${CMAKE_SYSTEM_PROCESSOR}.zip ${comp}${CMAKE_EXECUTABLE_SUFFIX} ${${comp}_BUNDLE_COMPS})
+        COMMAND ${CMAKE_COMMAND} -E tar "cf" "${CMAKE_BINARY_DIR}/bundle/${comp}-${CMAKE_SYSTEM_NAME}_${CMAKE_SYSTEM_PROCESSOR}.zip" --format=zip -- ${comp}${CMAKE_EXECUTABLE_SUFFIX} ${${comp}_BUNDLE_COMPS})
     add_dependencies(bundle ${comp}-bundle)
 endmacro()
 
