@@ -20,7 +20,7 @@ if(NOT GIT_VERSION AND GIT_FOUND)
         OUTPUT_STRIP_TRAILING_WHITESPACE
         )
     if(GIT_ERROR_CODE)
-        message(SEND_ERROR "Error trying to get GIT_VERSION: \"${GIT_VERSION}\" and GIT_ERROR_CODE: \"${GIT_ERROR_CODE}\".")
+        message(WARNING "Error trying to get GIT_VERSION: \"${GIT_VERSION}\" and GIT_ERROR_CODE: \"${GIT_ERROR_CODE}\".")
     else()
         message(DEBUG "Found Git version \"${GIT_VERSION}\" without error code.")
     endif()
