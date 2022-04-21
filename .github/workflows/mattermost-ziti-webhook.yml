@@ -16,7 +16,7 @@ jobs:
     runs-on: macos-latest
     name: POST Webhook
     steps:
-    - uses: openziti/ziti-webhook-action@main
+    - uses: openziti/ziti-webhook-action@v1
       env:
         ZITI_MATTERMOST_IDENTITY: ${{ secrets.ZITI_MATTERMOST_IDENTITY }}
       if: ${{ github.actor!= 'dependabot[bot]' && github.repository_owner == 'openziti' && github.event_name != 'pull_request' && env.ZITI_MATTERMOST_IDENTITY != null }}
