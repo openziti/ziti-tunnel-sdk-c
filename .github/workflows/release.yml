@@ -77,7 +77,7 @@ jobs:
         if-no-files-found: error
 
   release:
-    name: Create Release
+    name: Download Release Artifacts
     runs-on: ubuntu-latest
     needs: [ build ]
     steps:
@@ -85,6 +85,9 @@ jobs:
       uses: actions/download-artifact@v2
       with:
         path: ${{ runner.workspace }}/downloads/
+
+    - name: List Release Artifacts
+      run: ls -horAS ${{runner.workspace}}/downloads/
 
     - name: Release
       id: get_release
@@ -97,9 +100,9 @@ jobs:
         prerelease: false
         fail_on_unmatched_files: true
         files: |
-          downloads/Linux-x86_64/ziti-edge-tunnel-Linux_x86_64.zip
-          downloads/Linux-arm/ziti-edge-tunnel-Linux_arm.zip
-          downloads/macOS-x86_64/ziti-edge-tunnel-Darwin_x86_64.zip
+          ${{ runner.workspace }}/downloads/Linux-x86_64/ziti-edge-tunnel-Linux_x86_64.zip
+          ${{ runner.workspace }}/downloads/Linux-arm/ziti-edge-tunnel-Linux_arm.zip
+          ${{ runner.workspace }}/downloads/macOS-x86_64/ziti-edge-tunnel-Darwin_x86_64.zip
 
     # These final two steps are only necessary because we prefer a different
     # release artifact name than is created by CMake, and so we could change
@@ -111,7 +114,7 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.get_release.outputs.upload_url }}
-        asset_path: ${{runner.workspace}}/downloads/Linux-arm64/ziti-edge-tunnel-Linux_aarch64.zip
+        asset_path: ${{ runner.workspace }}/downloads/Linux-arm64/ziti-edge-tunnel-Linux_aarch64.zip
         asset_name: ziti-edge-tunnel-Linux_arm64.zip
         asset_content_type: application/octet-stream
 
@@ -121,6 +124,6 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.get_release.outputs.upload_url }}
-        asset_path: downloads/Windows-x86_64/ziti-edge-tunnel-win64_AMD64.zip
+        asset_path: ${{ runner.workspace }}/downloads/Windows-x86_64/ziti-edge-tunnel-win64_AMD64.zip
         asset_name: ziti-edge-tunnel-Windows_x86_64.zip
         asset_content_type: application/octet-stream
