@@ -1341,7 +1341,7 @@ static void on_event(const base_event *ev) {
 
         case TunnelEvent_APIEvent: {
             const api_event *api_ev = (api_event *) ev;
-            ZITI_LOG(INFO, "ztx[%s] API Event with controller address : %s", api_ev->identifier, api_ev->ctrl_address);
+            ZITI_LOG(INFO, "ztx[%s] API Event with controller address : %s", api_ev->identifier, api_ev->new_ctrl_address);
             tunnel_identity *id = find_tunnel_identity(ev->identifier);
             if (id == NULL) {
                 break;
@@ -1356,14 +1356,14 @@ static void on_event(const base_event *ev) {
             }
             id_event.Id->Loaded = true;
             bool updated = false;
-            if (api_ev->ctrl_address) {
+            if (api_ev->new_ctrl_address) {
                 if (id_event.Id->Config == NULL) {
                     id_event.Id->Config = calloc(1, sizeof(tunnel_config));
-                    id_event.Id->Config->ZtAPI = strdup(api_ev->ctrl_address);
+                    id_event.Id->Config->ZtAPI = strdup(api_ev->new_ctrl_address);
                     updated = true;
-                } else if (id_event.Id->Config->ZtAPI != NULL && strcmp(id_event.Id->Config->ZtAPI, api_ev->ctrl_address) != 0) {
+                } else if (id_event.Id->Config->ZtAPI != NULL && strcmp(id_event.Id->Config->ZtAPI, api_ev->new_ctrl_address) != 0) {
                     free(id_event.Id->Config->ZtAPI);
-                    id_event.Id->Config->ZtAPI = strdup(api_ev->ctrl_address);
+                    id_event.Id->Config->ZtAPI = strdup(api_ev->new_ctrl_address);
                     updated = true;
                 }
             }
