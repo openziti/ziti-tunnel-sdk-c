@@ -149,7 +149,7 @@ static int ziti_dump_to_file_op(void* fp, const char *fmt,  ...) {
 
 static void ziti_dump_to_file(void *ctx, char* outputFile) {
     FILE *fp;
-    fp = fopen(outputFile, "a+");
+    fp = fopen(outputFile, "w+");
     if(fp == NULL)
     {
         ZITI_LOG(ERROR, "ziti dump to file failed. Unable to Read / Write / Create File");
@@ -160,7 +160,7 @@ static void ziti_dump_to_file(void *ctx, char* outputFile) {
 
     char time_str[32];
     struct tm* start_tm = gmtime(&dump_time.tv_sec);
-    strftime(time_str, sizeof(time_str), "%FT%T", start_tm);
+    strftime(time_str, sizeof(time_str), "%a %b %d %Y, %X %p", start_tm);
 
     fprintf(fp, "Ziti Dump starting: %s\n",time_str);
 
