@@ -8,6 +8,10 @@ endif()
 option(TUNNEL_SDK_ONLY "build only ziti-tunnel-sdk (without ziti)" OFF)
 message("tunnel only = ${TUNNEL_SDK_ONLY}")
 
+# if EXCLUDE_PROGRAMS then don't descend into programs/ziti-edge-tunnel
+option(EXCLUDE_PROGRAMS "exclude building the programs directory" OFF)
+message("exclude programs = ${EXCLUDE_PROGRAMS}")
+
 find_package(Git)
 if(NOT GIT_VERSION AND GIT_FOUND)
     message("Found Git executable \"${GIT_EXECUTABLE}\".")
@@ -115,7 +119,9 @@ add_subdirectory(lib/ziti-tunnel)
 
 if(NOT TUNNEL_SDK_ONLY)
 add_subdirectory(lib/ziti-tunnel-cbs)
-add_subdirectory(programs)
+    if(NOT EXCLUDE_PROGRAMS)
+        add_subdirectory(programs)
+    endif()
 endif()
 
 if (WIN32)
