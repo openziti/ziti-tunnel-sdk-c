@@ -20,6 +20,13 @@
 #include "ziti/ziti_tunnel.h"
 #include "ziti/ziti.h"
 
+
+#if _WIN32
+#ifndef strcasecmp
+#define strcasecmp(a,b) stricmp(a,b)
+#endif
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -53,7 +60,7 @@ DECLARE_MODEL(tunneler_app_data, TUNNELER_APP_DATA_MODEL)
 XX(ZitiDump, __VA_ARGS__)    \
 XX(LoadIdentity, __VA_ARGS__)   \
 XX(ListIdentities, __VA_ARGS__) \
-XX(DisableIdentity, __VA_ARGS__) \
+XX(IdentityOnOff, __VA_ARGS__) \
 XX(EnableMFA, __VA_ARGS__)  \
 XX(SubmitMFA, __VA_ARGS__)  \
 XX(VerifyMFA, __VA_ARGS__)  \
@@ -61,96 +68,124 @@ XX(RemoveMFA, __VA_ARGS__)  \
 XX(GenerateMFACodes, __VA_ARGS__) \
 XX(GetMFACodes, __VA_ARGS__) \
 XX(GetMetrics, __VA_ARGS__) \
-XX(ServiceControl, __VA_ARGS__)
+XX(SetLogLevel, __VA_ARGS__) \
+XX(UpdateTunIpv4, __VA_ARGS__) \
+XX(ServiceControl, __VA_ARGS__) \
+XX(Status, __VA_ARGS__) \
+XX(RemoveIdentity, __VA_ARGS__) \
+XX(StatusChange, __VA_ARGS__)   \
+XX(AddIdentity, __VA_ARGS__)
 
 DECLARE_ENUM(TunnelCommand, TUNNEL_COMMANDS)
 
 #define TUNNEL_CMD(XX, ...) \
-XX(command, TunnelCommand, none, command, __VA_ARGS__) \
-XX(data, json, none, data, __VA_ARGS__)
+XX(command, TunnelCommand, none, Command, __VA_ARGS__) \
+XX(data, json, none, Data, __VA_ARGS__)
 
 #define TUNNEL_CMD_RES(XX, ...) \
-XX(success, bool, none, success, __VA_ARGS__) \
-XX(error, string, none, error, __VA_ARGS__)\
-XX(data, json, none, data, __VA_ARGS__)
+XX(success, bool, none, Success, __VA_ARGS__) \
+XX(error, string, none, Error, __VA_ARGS__)\
+XX(data, json, none, Data, __VA_ARGS__) \
+XX(code, int, none, Code, __VA_ARGS__)
 
 #define TNL_LOAD_IDENTITY(XX, ...) \
-XX(identifier, string, none, identifier, __VA_ARGS__)\
-XX(path, string, none, path, __VA_ARGS__)
+XX(identifier, string, none, Identifier, __VA_ARGS__)\
+XX(path, string, none, Path, __VA_ARGS__) \
+XX(apiPageSize, int, none, ApiPageSize, __VA_ARGS__)
 
-#define TNL_DISABLE_IDENTITY(XX, ...) \
-XX(path, string, none, path, __VA_ARGS__)
+#define TNL_ON_OFF_IDENTITY(XX, ...) \
+XX(identifier, string, none, Identifier, __VA_ARGS__) \
+XX(onOff, bool, none, OnOff, __VA_ARGS__)
 
 #define TNL_IDENTITY_INFO(XX, ...) \
-XX(name, string, none, name, __VA_ARGS__) \
-XX(config, string, none, config, __VA_ARGS__) \
-XX(network, string, none, network, __VA_ARGS__) \
-XX(id, string, none, id, __VA_ARGS__)
+XX(name, string, none, Name, __VA_ARGS__) \
+XX(config, string, none, Config, __VA_ARGS__) \
+XX(network, string, none, Network, __VA_ARGS__) \
+XX(id, string, none, Id, __VA_ARGS__)
 
 #define TNL_IDENTITY_LIST(XX, ...) \
-XX(identities, tunnel_identity_info, array, identities, __VA_ARGS__)
+XX(identities, tunnel_identity_info, array, Identities, __VA_ARGS__)
 
 #define TNL_ZITI_DUMP(XX, ...) \
-XX(identifier, string, none, id, __VA_ARGS__) \
-XX(dump_path, string, none, dump_path, __VA_ARGS__)
+XX(identifier, string, none, Identifier, __VA_ARGS__) \
+XX(dump_path, string, none, DumpPath, __VA_ARGS__)
 
 #define TNL_ENABLE_MFA(XX, ...) \
-XX(identifier, string, none, id, __VA_ARGS__)
+XX(identifier, string, none, Identifier, __VA_ARGS__)
 
 #define TNL_MFA_ENROL_RES(XX,...) \
-XX(identifier, string, none, identifier, __VA_ARGS__) \
-XX(is_verified, bool, none, is_verified, __VA_ARGS__) \
-XX(provisioning_url, string, none, provisioning_url, __VA_ARGS__) \
-XX(recovery_codes, string, array, recovery_codes, __VA_ARGS__)
+XX(identifier, string, none, Identifier, __VA_ARGS__) \
+XX(is_verified, bool, none, IsVerified, __VA_ARGS__) \
+XX(provisioning_url, string, none, ProvisioningUrl, __VA_ARGS__) \
+XX(recovery_codes, string, array, RecoveryCodes, __VA_ARGS__)
 
 // MFA auth command
 #define TNL_SUBMIT_MFA(XX, ...) \
-XX(identifier, string, none, identifier, __VA_ARGS__) \
-XX(code, string, none, code, __VA_ARGS__)
+XX(identifier, string, none, Identifier, __VA_ARGS__) \
+XX(code, string, none, Code, __VA_ARGS__)
 
 // MFA auth command
 #define TNL_VERIFY_MFA(XX, ...) \
-XX(identifier, string, none, identifier, __VA_ARGS__) \
-XX(code, string, none, code, __VA_ARGS__)
+XX(identifier, string, none, Identifier, __VA_ARGS__) \
+XX(code, string, none, Code, __VA_ARGS__)
 
 #define TNL_REMOVE_MFA(XX, ...) \
-XX(identifier, string, none, id, __VA_ARGS__) \
-XX(code, string, none, code, __VA_ARGS__)
+XX(identifier, string, none, Identifier, __VA_ARGS__) \
+XX(code, string, none, Code, __VA_ARGS__)
 
 #define TNL_GENERATE_MFA_CODES(XX, ...) \
-XX(identifier, string, none, id, __VA_ARGS__) \
-XX(code, string, none, code, __VA_ARGS__)
+XX(identifier, string, none, Identifier, __VA_ARGS__) \
+XX(code, string, none, Code, __VA_ARGS__)
 
 #define TNL_MFA_RECOVERY_CODES(XX, ...) \
-XX(identifier, string, none, id, __VA_ARGS__) \
-XX(recovery_codes, string, array, recovery_codes, __VA_ARGS__)
+XX(identifier, string, none, Identifier, __VA_ARGS__) \
+XX(recovery_codes, string, array, RecoveryCodes, __VA_ARGS__)
 
 #define TNL_GET_MFA_CODES(XX, ...) \
-XX(identifier, string, none, id, __VA_ARGS__) \
-XX(code, string, none, code, __VA_ARGS__)
+XX(identifier, string, none, Identifier, __VA_ARGS__) \
+XX(code, string, none, Code, __VA_ARGS__)
 
 #define TNL_GET_IDENTITY_METRICS(XX, ...) \
-XX(identifier, string, none, id, __VA_ARGS__)
+XX(identifier, string, none, Identifier, __VA_ARGS__)
 
 #define TNL_IDENTITY_METRICS(XX, ...) \
-XX(identifier, string, none, id, __VA_ARGS__) \
-XX(up, string, none, up, __VA_ARGS__) \
-XX(down, string, none, down, __VA_ARGS__)
+XX(identifier, string, none, Identifier, __VA_ARGS__) \
+XX(up, string, none, Up, __VA_ARGS__) \
+XX(down, string, none, Down, __VA_ARGS__)
 
 #define TUNNEL_CMD_INLINE(XX, ...) \
-XX(identifier, string, none, id, __VA_ARGS__) \
-XX(command, TunnelCommand, none, command, __VA_ARGS__)
+XX(identifier, string, none, Identifier, __VA_ARGS__) \
+XX(command, TunnelCommand, none, Command, __VA_ARGS__)
+
+#define TNL_DELETE_IDENTITY(XX, ...) \
+XX(identifier, string, none, Identifier, __VA_ARGS__)
+
+#define TUNNEL_SET_LOG_LEVEL(XX, ...) \
+XX(loglevel, string, none, Level, __VA_ARGS__)
+
+#define TUNNEL_TUN_IP_V4(XX, ...) \
+XX(tunIP, string, none, TunIPv4, __VA_ARGS__) \
+XX(prefixLength, int, none, TunPrefixLength, __VA_ARGS__) \
+XX(addDns, bool, none, AddDns, __VA_ARGS__)
 
 #define TUNNEL_SERVICE_CONTROL(XX, ...) \
-XX(operation, string, none, operation, __VA_ARGS__)
+XX(operation, string, none, Operation, __VA_ARGS__)
 
-DECLARE_MODEL(tunnel_comand, TUNNEL_CMD)
+#define TUNNEL_STATUS_CHANGE(XX, ...) \
+XX(woken, bool, none, Woke, __VA_ARGS__) \
+XX(unlocked, bool, none, Unlocked, __VA_ARGS__)
+
+#define TUNNEL_ADD_IDENTITY(XX, ...) \
+XX(jwtFileName, string, none, JwtFileName, __VA_ARGS__) \
+XX(jwtContent, string, none, JwtContent, __VA_ARGS__)
+
+DECLARE_MODEL(tunnel_command, TUNNEL_CMD)
 DECLARE_MODEL(tunnel_result, TUNNEL_CMD_RES)
 DECLARE_MODEL(tunnel_load_identity, TNL_LOAD_IDENTITY)
 DECLARE_MODEL(tunnel_identity_info, TNL_IDENTITY_INFO)
 DECLARE_MODEL(tunnel_identity_list, TNL_IDENTITY_LIST)
 DECLARE_MODEL(tunnel_ziti_dump, TNL_ZITI_DUMP)
-DECLARE_MODEL(tunnel_disable_identity, TNL_DISABLE_IDENTITY)
+DECLARE_MODEL(tunnel_on_off_identity, TNL_ON_OFF_IDENTITY)
 DECLARE_MODEL(tunnel_enable_mfa, TNL_ENABLE_MFA)
 DECLARE_MODEL(tunnel_mfa_enrol_res, TNL_MFA_ENROL_RES)
 DECLARE_MODEL(tunnel_submit_mfa, TNL_SUBMIT_MFA)
@@ -162,7 +197,12 @@ DECLARE_MODEL(tunnel_get_mfa_codes, TNL_GET_MFA_CODES)
 DECLARE_MODEL(tunnel_get_identity_metrics, TNL_GET_IDENTITY_METRICS)
 DECLARE_MODEL(tunnel_identity_metrics, TNL_IDENTITY_METRICS)
 DECLARE_MODEL(tunnel_command_inline, TUNNEL_CMD_INLINE)
+DECLARE_MODEL(tunnel_set_log_level, TUNNEL_SET_LOG_LEVEL)
+DECLARE_MODEL(tunnel_tun_ip_v4, TUNNEL_TUN_IP_V4)
 DECLARE_MODEL(tunnel_service_control, TUNNEL_SERVICE_CONTROL)
+DECLARE_MODEL(tunnel_delete_identity, TNL_DELETE_IDENTITY)
+DECLARE_MODEL(tunnel_status_change, TUNNEL_STATUS_CHANGE)
+DECLARE_MODEL(tunnel_add_identity, TUNNEL_ADD_IDENTITY)
 
 #define TUNNEL_EVENTS(XX, ...) \
 XX(ContextEvent, __VA_ARGS__) \
@@ -248,8 +288,8 @@ struct hosted_io_ctx_s {
 typedef void (*event_cb)(const base_event* event);
 typedef void (*command_cb)(const tunnel_result *, void *ctx);
 typedef struct {
-    int (*process)(const tunnel_comand *cmd, command_cb cb, void *ctx);
-    int (*load_identity)(const char *identifier, const char *path, command_cb, void *ctx);
+    int (*process)(const tunnel_command *cmd, command_cb cb, void *ctx);
+    int (*load_identity)(const char *identifier, const char *path, int api_page_size, command_cb, void *ctx);
     // do not use, temporary accessor
     ziti_context (*get_ziti)(const char *identifier);
 } ziti_tunnel_ctrl;
@@ -279,6 +319,18 @@ tunneled_service_t *ziti_sdk_c_on_service(ziti_context ziti_ctx, ziti_service *s
 void remove_intercepts(ziti_context ziti_ctx, void *tnlr_ctx);
 
 const ziti_tunnel_ctrl* ziti_tunnel_init_cmd(uv_loop_t *loop, tunneler_context, event_cb);
+
+struct add_identity_request_s {
+    string identifier;
+    string identifier_file_name;
+    string jwt_content;
+    void *add_id_ctx;
+    command_cb cmd_cb;
+    void *cmd_ctx;
+};
+
+#define IPC_SUCCESS 0
+#define IPC_ERROR 500
 
 struct ziti_instance_s {
     char *identifier;

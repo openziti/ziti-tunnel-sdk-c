@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.14)
 if(NOT ZITI_SDK_C_BRANCH)
     #allow using a different branch of the CSDK easily
-    set(ZITI_SDK_C_BRANCH "0.27.2")
+    set(ZITI_SDK_C_BRANCH "0.27.3")
 endif()
 
 # if TUNNEL_SDK_ONLY then don't descend into programs/ziti-edge-tunnel
@@ -72,6 +72,22 @@ if(NOT BUILD_DIST_PACKAGES)
 endif()
 
 set(CMAKE_C_STANDARD 99)
+
+# capture build date
+if (WIN32)
+    execute_process(
+            COMMAND	powershell get-date -uf '+%a-%m/%d/%Y-%H:%M:%S-%Z'
+            OUTPUT_VARIABLE	BUILD_DATE
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+else()
+    execute_process(
+            COMMAND	date +%a-%m/%d/%Y-%H:%M:%S-%Z
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            OUTPUT_VARIABLE BUILD_DATE
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+endif()
 
 if (MSVC)
     add_compile_options(-Zi)

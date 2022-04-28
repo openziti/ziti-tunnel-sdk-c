@@ -14,32 +14,13 @@
  limitations under the License.
  */
 
-#ifndef ZITI_TUNNEL_SDK_C_FILE_ROTATOR_H
-#define ZITI_TUNNEL_SDK_C_FILE_ROTATOR_H
+#ifndef ZITI_TUNNEL_SDK_C_CONFIG_UTILS_H
+#define ZITI_TUNNEL_SDK_C_CONFIG_UTILS_H
 
-#if _WIN32
-#define MAXPATHLEN MAX_PATH
-#else
-#define MAXPATHLEN PATH_MAX
-#endif
+char* get_system_config_path();
+void set_identifier_path(char* id_dir);
+char* get_identifier_path();
+char* get_config_file_name(char* config_path);
+char* get_backup_config_file_name(char* config_path);
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-bool open_log(char* log_filename);
-void close_log();
-void rotate_log();
-void delete_older_logs(uv_loop_t *);
-void stop_log_check();
-struct tm* get_log_start_time();
-char* get_log_file_name();
-
-bool log_init(uv_loop_t *, bool);
-void ziti_log_writer(int , const char *, const char *, size_t);
-
-#ifdef __cplusplus
-}
-#endif
-
-#endif //ZITI_TUNNEL_SDK_C_FILE_ROTATOR_H
+#endif //ZITI_TUNNEL_SDK_C_CONFIG_UTILS_H

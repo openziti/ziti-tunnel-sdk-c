@@ -14,19 +14,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-#include <stdio.h>
-#include <stdlib.h>
 
-const char* app_data = "APPDATA";
+#ifndef ZITI_TUNNEL_SDK_C_SERVICE_UTILS_H
+#define ZITI_TUNNEL_SDK_C_SERVICE_UTILS_H
 
-char* get_system_config_path() {
-    char* config_path = malloc(FILENAME_MAX * sizeof(char));
-#if _WIN32
-    sprintf(config_path, "%s/NetFoundry", getenv(app_data));
-#else
-    sprintf(config_path, "%s", "/tmp");
-#endif
+#include <stdbool.h>
 
-    return config_path;
-}
+void endpoint_status_change(bool woken, bool unlocked);
 
+#endif //ZITI_TUNNEL_SDK_C_SERVICE_UTILS_H

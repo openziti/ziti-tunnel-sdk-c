@@ -30,7 +30,8 @@ XX(Op, string, none, Op, __VA_ARGS__)
 #define ACTION_EVENT(XX, ...) \
 STATUS_EVENT(XX, __VA_ARGS__) \
 XX(Action, string, none, Action, __VA_ARGS__) \
-XX(Identifier, string, none, Identifier, __VA_ARGS__)
+XX(Identifier, string, none, Identifier, __VA_ARGS__) \
+XX(Fingerprint, string, none, Fingerprint, __VA_ARGS__)
 
 #define TUNNEL_STATUS_EVENT(XX, ...) \
 STATUS_EVENT(XX, __VA_ARGS__) \
@@ -59,6 +60,7 @@ XX(Identities, tunnel_identity, array, Identities, __VA_ARGS__)
 #define TUNNEL_NOTIFICATION_MESSAGE(XX, ...) \
 XX(IdentityName, string, none, IdentityName, __VA_ARGS__) \
 XX(Identifier, string, none, Identifier, __VA_ARGS__) \
+XX(Fingerprint, string, none, Identifier, __VA_ARGS__) \
 XX(Message, string, none, Message, __VA_ARGS__) \
 XX(MfaMinimumTimeout, int, none, MfaMinimumTimeout, __VA_ARGS__) \
 XX(MfaMaximumTimeout, int, none, MfaMaximumTimeout, __VA_ARGS__) \

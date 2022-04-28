@@ -3,31 +3,40 @@
 
 #if _WIN32
 #include <stdbool.h>
+#include <winsock2.h>
 #include <windows.h>
 
-#define SVCNAME TEXT("ziti-edge-tunnel")
+#define SVCNAME TEXT("ziti")
 #define DISPLAYSVCNAME TEXT("Ziti Desktop Edge Service")
 #define SVCDESCRIPTION TEXT("Access your Networks Secured by Ziti")
+#define APPNAME TEXT("Ziti Desktop Edge for Windows")
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-int SvcStart(TCHAR *);
+VOID SvcStart(VOID);
 VOID SvcInstall(void);
-VOID WINAPI SvcCtrlHandler( DWORD );
 VOID WINAPI SvcMain( DWORD, LPTSTR * );
 VOID ReportSvcStatus( DWORD, DWORD, DWORD );
 VOID SvcInit( DWORD, LPTSTR * );
 VOID SvcReportEvent( LPTSTR, DWORD );
 VOID SvcDelete(void);
 DWORD WINAPI ServiceWorkerThread (LPVOID lpParam);
+DWORD LphandlerFunctionEx(
+        DWORD dwControl,
+        DWORD dwEventType,
+        LPVOID lpEventData,
+        LPVOID lpContext
+);
 
 void scm_service_init(char *config_dir);
-void scm_service_run(void *);
-char* get_system_config_path();
+void scm_service_run(const char *);
+void scm_running_event();
 void scm_service_stop();
-void stop_windows_service();
+bool stop_windows_service();
+
+DWORD get_process_path(LPTSTR, DWORD);
 
 #ifdef __cplusplus
 }

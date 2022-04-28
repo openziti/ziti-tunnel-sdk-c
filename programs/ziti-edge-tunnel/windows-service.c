@@ -14,17 +14,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-#include "windows/windows-service.h"
-#include <windows.h>
+#include <windows/windows-service.h>
 #include <stdio.h>
+#include <config-utils.h>
+
+#include <winuser.h>
+#include <service-utils.h>
+#include <windows.h>
 
 #pragma comment(lib, "advapi32.lib")
 
 SERVICE_STATUS          gSvcStatus;
 SERVICE_STATUS_HANDLE   gSvcStatusHandle;
 HANDLE                  ghSvcStopEvent = NULL;
+HANDLE                  ghSvcRunningEvent = NULL;
 
-//LPCTSTR SVCNAME = "ziti-edge-tunnel";
+//LPCTSTR SVCNAME = "ziti";
 //
 // Purpose:
 //   Entry point for the process
@@ -35,7 +40,7 @@ HANDLE                  ghSvcStopEvent = NULL;
 // Return value:
 //   None, defaults to 0 (zero)
 //
-int SvcStart(TCHAR *opt)
+VOID SvcStart(VOID)
 {
     // the service is probably being started by the SCM.
     // Add any additional services for the process to this table.
@@ -50,8 +55,7 @@ int SvcStart(TCHAR *opt)
 
     if (!StartServiceCtrlDispatcher( DispatchTable ))
     {
-        printf("The service is either started from commandline or stopped by SCM");
-        return 0;
+        printf("StartServiceCtrlDispatcher failed (%ld)\n", GetLastError());
     }
 }
 
@@ -73,7 +77,7 @@ VOID SvcInstall()
 
     if( !GetModuleFileName( NULL, szPath, MAX_PATH ) )
     {
-        printf("Cannot install service (%d)\n", GetLastError());
+        printf("Cannot install service (%ld)\n", GetLastError());
         return;
     }
 
@@ -86,7 +90,7 @@ VOID SvcInstall()
 
     if (NULL == schSCManager)
     {
-        printf("OpenSCManager failed (%d)\n", GetLastError());
+        printf("OpenSCManager failed (%ld)\n", GetLastError());
         return;
     }
 
@@ -109,7 +113,7 @@ VOID SvcInstall()
 
     if (schService == NULL)
     {
-        printf("CreateService failed (%d)\n", GetLastError());
+        printf("CreateService failed (%ld)\n", GetLastError());
         CloseServiceHandle(schSCManager);
         return;
     }
@@ -136,9 +140,9 @@ VOID WINAPI SvcMain( DWORD dwArgc, LPTSTR *lpszArgv )
 {
     // Register the handler function for the service
 
-    gSvcStatusHandle = RegisterServiceCtrlHandler(
+    gSvcStatusHandle = RegisterServiceCtrlHandlerEx(
             SVCNAME,
-            SvcCtrlHandler);
+            LphandlerFunctionEx, NULL);
 
     if( !gSvcStatusHandle )
     {
@@ -197,31 +201,56 @@ VOID SvcInit( DWORD dwArgc, LPTSTR *lpszArgv)
         return;
     }
 
+    // start tunnel
+    CreateThread (NULL, 0, ServiceWorkerThread, lpszArgv[0], 0, NULL);
+
+    // Check whether the service is started
+
+    // Create an event. The control handler function, SvcCtrlHandler,
+    // signals this event when it receives the running control code.
+
+    ghSvcRunningEvent = CreateEvent(
+            NULL,    // default security attributes
+            TRUE,    // manual reset event
+            FALSE,   // not signaled
+            NULL);   // no name
+
+    if ( ghSvcRunningEvent == NULL)
+    {
+        ReportSvcStatus( SERVICE_STOPPED, GetLastError(), 0 );
+        return;
+    }
+
     // Report running status when initialization is complete.
 
-    ReportSvcStatus( SERVICE_RUNNING, NO_ERROR, 0 );
+    // If the service receive a running event with in 150 seconds, set the service to running state
+    // otherwise stop the service
 
-    // start tunnel
-    CreateThread (NULL, 0, ServiceWorkerThread, lpszArgv, 0, NULL);
-
-    SvcReportEvent(TEXT("Ziti Edge Tunnel Run"), EVENTLOG_INFORMATION_TYPE);
-
-    while(1)
-    {
-        // Check whether to stop the service.
-
-        WaitForSingleObject(ghSvcStopEvent, INFINITE);
-
+    if (WaitForSingleObject(ghSvcRunningEvent, 150000) == WAIT_OBJECT_0) {
+        ReportSvcStatus( SERVICE_RUNNING, NO_ERROR, 0 );
+        SvcReportEvent(TEXT("Ziti Edge Tunnel Run"), EVENTLOG_INFORMATION_TYPE);
+    } else {
         SvcReportEvent(TEXT("Ziti Edge Tunnel Stopped"), EVENTLOG_INFORMATION_TYPE);
         ReportSvcStatus( SERVICE_STOPPED, NO_ERROR, 0 );
         return;
     }
+
+    // Check whether to stop the service.
+
+    WaitForSingleObject(ghSvcStopEvent, INFINITE);
+
+    ReportSvcStatus(SERVICE_STOP_PENDING, NO_ERROR, 0);
+
+    scm_service_stop();
+
+    SvcReportEvent(TEXT("Ziti Edge Tunnel Stopped"), EVENTLOG_INFORMATION_TYPE);
+    ReportSvcStatus( SERVICE_STOPPED, NO_ERROR, 0 );
 }
 
 DWORD WINAPI ServiceWorkerThread (LPVOID lpParam)
 {
     //  Periodically check if the service has been requested to stop
-    scm_service_run(lpParam);
+    scm_service_run(APPNAME);
     // when service stops and returns, stop the service in scm
     stop_windows_service();
     return ERROR_SUCCESS;
@@ -254,7 +283,9 @@ VOID ReportSvcStatus( DWORD dwCurrentState,
 
     if (dwCurrentState == SERVICE_START_PENDING)
         gSvcStatus.dwControlsAccepted = 0;
-    else gSvcStatus.dwControlsAccepted = SERVICE_ACCEPT_STOP;
+    else {
+        gSvcStatus.dwControlsAccepted = SERVICE_ACCEPT_SESSIONCHANGE | SERVICE_ACCEPT_POWEREVENT | SERVICE_ACCEPT_STOP | SERVICE_ACCEPT_SHUTDOWN;
+    }
 
     if ( (dwCurrentState == SERVICE_RUNNING) ||
          (dwCurrentState == SERVICE_STOPPED) )
@@ -265,41 +296,6 @@ VOID ReportSvcStatus( DWORD dwCurrentState,
     SetServiceStatus( gSvcStatusHandle, &gSvcStatus );
 }
 
-//
-// Purpose:
-//   Called by SCM whenever a control code is sent to the service
-//   using the ControlService function.
-//
-// Parameters:
-//   dwCtrl - control code
-//
-// Return value:
-//   None
-//
-VOID WINAPI SvcCtrlHandler( DWORD dwCtrl )
-{
-    // Handle the requested control code.
-
-    switch(dwCtrl)
-    {
-        case SERVICE_CONTROL_STOP:
-            ReportSvcStatus(SERVICE_STOP_PENDING, NO_ERROR, 0);
-
-            // stops the running tunnel service
-            scm_service_stop();
-            // stops the windows service in scm
-            stop_windows_service();
-
-            return;
-
-        case SERVICE_CONTROL_INTERROGATE:
-            break;
-
-        default:
-            break;
-    }
-
-}
 
 //
 // Purpose:
@@ -324,7 +320,7 @@ VOID SvcReportEvent(LPTSTR szMessage, DWORD eventType)
 
     if( NULL != hEventSource )
     {
-        snprintf(Buffer, 80, TEXT("%s, reported status : %d"), szMessage, GetLastError());
+        snprintf(Buffer, 80, TEXT("%s, reported status : %ld"), szMessage, GetLastError());
 
         lpszStrings[0] = SVCNAME;
         lpszStrings[1] = Buffer;
@@ -357,7 +353,6 @@ VOID SvcDelete()
 {
     SC_HANDLE schSCManager;
     SC_HANDLE schService;
-    SERVICE_STATUS ssStatus;
 
     // Get a handle to the SCM database.
 
@@ -368,7 +363,7 @@ VOID SvcDelete()
 
     if (NULL == schSCManager)
     {
-        printf("OpenSCManager failed (%d)\n", GetLastError());
+        printf("OpenSCManager failed (%ld)\n", GetLastError());
         return;
     }
 
@@ -381,7 +376,7 @@ VOID SvcDelete()
 
     if (schService == NULL)
     {
-        printf("OpenService failed (%d)\n", GetLastError());
+        printf("OpenService failed (%ld)\n", GetLastError());
         CloseServiceHandle(schSCManager);
         return;
     }
@@ -390,12 +385,27 @@ VOID SvcDelete()
 
     if (! DeleteService(schService) )
     {
-        printf("DeleteService failed (%d)\n", GetLastError());
+        printf("DeleteService failed (%ld)\n", GetLastError());
     }
     else printf("Service deleted successfully\n");
 
     CloseServiceHandle(schService);
     CloseServiceHandle(schSCManager);
+}
+
+
+//
+// Purpose:
+//   Sets the service to running state from the application
+//
+// Parameters:
+//   None
+//
+// Return value:
+//   None
+//
+void scm_running_event() {
+    SetEvent(ghSvcRunningEvent);
 }
 
 //
@@ -408,7 +418,57 @@ VOID SvcDelete()
 // Return value:
 //   None
 //
-void stop_windows_service() {
-    SetEvent(ghSvcStopEvent);
-    ReportSvcStatus(gSvcStatus.dwCurrentState, NO_ERROR, 0);
+bool stop_windows_service() {
+    return SetEvent(ghSvcStopEvent);
+}
+
+DWORD get_process_path(LPTSTR lpBuffer, DWORD  nBufferLength) {
+    return GetModuleFileName(0, lpBuffer, nBufferLength);
+}
+
+//
+// Purpose:
+//   Called by SCM whenever a control code is sent to the service
+//   using the ControlService function.
+//
+// Parameters:
+//   dwCtrl - control code
+//
+// Return value:
+//   None
+//
+DWORD LphandlerFunctionEx(
+ DWORD dwControl,
+ DWORD dwEventType,
+ LPVOID lpEventData,
+ LPVOID lpContext
+) {
+
+    switch (dwControl) {
+        case SERVICE_CONTROL_STOP:
+            ReportSvcStatus(SERVICE_STOP_PENDING, NO_ERROR, 0);
+
+            // send a stop event
+            stop_windows_service(true);
+
+            return 0;
+
+        case SERVICE_CONTROL_POWEREVENT:
+            if (dwEventType == PBT_APMRESUMEAUTOMATIC || dwEventType == PBT_APMRESUMESUSPEND) {
+                endpoint_status_change(true, false);
+            }
+            break;
+
+        case SERVICE_CONTROL_SESSIONCHANGE:
+            if (dwEventType == WTS_SESSION_UNLOCK) {
+                endpoint_status_change(false, true);
+            }
+            break;
+
+        default:
+            //printf("unhandled control code from SCM (%ld)\n", dwControl);
+            break;
+    }
+
+    return 0;
 }

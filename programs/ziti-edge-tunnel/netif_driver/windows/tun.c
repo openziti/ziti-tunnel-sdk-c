@@ -64,13 +64,13 @@ struct netif_handle_s {
 static int tun_close(struct netif_handle_s *tun);
 static int tun_setup_read(netif_handle tun, uv_loop_t *loop, packet_cb on_packet, void *netif);
 static ssize_t tun_write(netif_handle tun, const void *buf, size_t len);
-
 static int tun_add_route(netif_handle tun, const char *dest);
 static int tun_del_route(netif_handle tun, const char *dest);
 int set_dns(netif_handle tun, uint32_t dns_ip);
 static int tun_exclude_rt(netif_handle dev, uv_loop_t *loop, const char *dest);
 static void if_change_cb(PVOID CallerContext, PMIB_IPINTERFACE_ROW Row, MIB_NOTIFICATION_TYPE NotificationType);
 static void refresh_routes(uv_timer_t *timer);
+static void cleanup_adapters(wchar_t *tun_name);
 static HANDLE if_change_handle;
 
 static WINTUN_CREATE_ADAPTER_FUNC WintunCreateAdapter;
@@ -133,7 +133,7 @@ static void InitializeWintun(void)
     WINTUN = Wintun;
 }
 
-netif_driver tun_open(struct uv_loop_s *loop, uint32_t tun_ip, uint32_t dns_ip, const char *cidr, char *error, size_t error_len) {
+netif_driver tun_open(struct uv_loop_s *loop, uint32_t tun_ip, const char *cidr, char *error, size_t error_len) {
     if (error != NULL) {
         memset(error, 0, error_len * sizeof(char));
     }
@@ -153,6 +153,8 @@ netif_driver tun_open(struct uv_loop_s *loop, uint32_t tun_ip, uint32_t dns_ip, 
         }
         return NULL;
     }
+    cleanup_adapters(ZITI_TUN);
+
     BOOL rr;
     GUID adapterGuid;
     IIDFromString(ZITI_TUN_GUID, &adapterGuid);
@@ -173,23 +175,9 @@ netif_driver tun_open(struct uv_loop_s *loop, uint32_t tun_ip, uint32_t dns_ip, 
 
     NotifyIpInterfaceChange(AF_INET, if_change_cb, tun, TRUE, &if_change_handle);
 
-    MIB_UNICASTIPADDRESS_ROW AddressRow;
-    InitializeUnicastIpAddressEntry(&AddressRow);
-    AddressRow.InterfaceLuid = tun->luid;
-    AddressRow.Address.Ipv4.sin_family = AF_INET;
-    AddressRow.Address.Ipv4.sin_addr.S_un.S_addr = tun_ip;
-    AddressRow.OnLinkPrefixLength = 16;
-    DWORD err = CreateUnicastIpAddressEntry(&AddressRow);
-    if (err != ERROR_SUCCESS && err != ERROR_OBJECT_ALREADY_EXISTS)
-    {
-        snprintf(error, error_len, "Failed to set IP address: %d", err);
-        tun_close(tun);
-        return NULL;
-    }
-
     tun->session = WintunStartSession(tun->adapter, WINTUN_MAX_RING_CAPACITY);
     if (!tun->session) {
-        err = GetLastError();
+        DWORD err = GetLastError();
         snprintf(error, error_len, "Failed to start session: %d", err);
         return NULL;
     }
@@ -200,6 +188,28 @@ netif_driver tun_open(struct uv_loop_s *loop, uint32_t tun_ip, uint32_t dns_ip, 
             snprintf(error, error_len, "failed to allocate netif_device_s");
             tun_close(tun);
         }
+        return NULL;
+    }
+
+    MIB_UNICASTIPADDRESS_ROW AddressRow;
+    InitializeUnicastIpAddressEntry(&AddressRow);
+    AddressRow.InterfaceLuid = tun->luid;
+    AddressRow.Address.Ipv4.sin_family = AF_INET;
+    AddressRow.Address.Ipv4.sin_addr.S_un.S_addr = tun_ip;
+
+    if (cidr) {
+        int bits;
+        uint32_t ip[4];
+        sscanf(cidr, "%d.%d.%d.%d/%d", &ip[0], &ip[1], &ip[2], &ip[3], &bits);
+        AddressRow.OnLinkPrefixLength = bits;
+    } else {
+        AddressRow.OnLinkPrefixLength = 16;
+    }
+    DWORD err = CreateUnicastIpAddressEntry(&AddressRow);
+    if (err != ERROR_SUCCESS && err != ERROR_OBJECT_ALREADY_EXISTS)
+    {
+        snprintf(error, error_len, "Failed to set IP address: %d", err);
+        tun_close(tun);
         return NULL;
     }
 
@@ -214,10 +224,6 @@ netif_driver tun_open(struct uv_loop_s *loop, uint32_t tun_ip, uint32_t dns_ip, 
     tun->route_timer.data = tun;
     uv_unref((uv_handle_t *) &tun->route_timer);
     uv_timer_start(&tun->route_timer, refresh_routes, ROUTE_REFRESH, ROUTE_REFRESH);
-
-    if (dns_ip) {
-        set_dns(tun, dns_ip);
-    }
 
     if (cidr) {
         tun_add_route(tun, cidr);
@@ -237,6 +243,7 @@ static int tun_close(struct netif_handle_s *tun) {
     }
 
     if (tun->adapter) {
+        WintunDeleteAdapter(tun->adapter, true, NULL);
         WintunFreeAdapter(tun->adapter);
         tun->adapter = NULL;
     }
@@ -463,4 +470,39 @@ int set_dns(netif_handle tun, uint32_t dns_ip) {
         ZITI_LOG(WARN, "set DNS: %d(err=%d)", rc, GetLastError());
     }
     return rc;
+}
+
+char* get_tun_name(netif_handle tun) {
+    return tun->name;
+}
+
+static BOOL CALLBACK
+tun_delete_cb(_In_ WINTUN_ADAPTER_HANDLE adapter, _In_ LPARAM param) {
+    wchar_t name[32];
+    WintunGetAdapterName(adapter, name);
+    wchar_t *tun_name = param;
+    if (wcsncmp(name, tun_name, wcslen(tun_name)) == 0) {
+        WintunDeleteAdapter(adapter, true, NULL);
+        ZITI_LOG(INFO, "Deleted wintun adapter %ls", name);
+    } else {
+        ZITI_LOG(INFO, "Not deleting wintun adapter %ls, name didn't match %ls", name, tun_name);
+    }
+    // the call back should always return value greater than zero, so the cleanup function will continue
+    return 1;
+}
+
+static void cleanup_adapters(wchar_t *tun_name) {
+    ZITI_LOG(INFO, "Cleaning up orphan wintun adapters");
+    WintunEnumAdapters(L"Ziti", tun_delete_cb, tun_name);
+}
+
+// close session causes the segmentation fault when the adapter is running
+int tun_kill() {
+    WINTUN_ADAPTER_HANDLE adapter = WintunOpenAdapter(L"Ziti", ZITI_TUN);
+    if (adapter) {
+        ZITI_LOG(DEBUG, "Closing wintun adapter");
+        WintunDeleteAdapter(adapter, true, NULL);
+        WintunFreeAdapter(adapter);
+        ZITI_LOG(DEBUG, "Closed wintun adapter");
+    }
 }

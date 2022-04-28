@@ -1,6 +1,8 @@
 .DS_Store
 
 /.idea/
+.vs
+gcc
 
 build-*/
 build/

@@ -1,5 +1,5 @@
 /*
- Copyright 2021 NetFoundry Inc.
+ Copyright 2019-2021 NetFoundry Inc.
 
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
@@ -14,19 +14,12 @@
  limitations under the License.
  */
 
-//
-// Created by eugene on 4/21/2021.
-//
+#ifndef ZITI_TUNNEL_SDK_C_INSTANCE_CONFIG_H
+#define ZITI_TUNNEL_SDK_C_INSTANCE_CONFIG_H
 
-#ifndef ZITI_TUNNEL_SDK_C_TUN_H
-#define ZITI_TUNNEL_SDK_C_TUN_H
+bool load_tunnel_status_from_file(uv_loop_t *ziti_loop);
+bool save_tunnel_status_to_file();
+void initialize_instance_config();
+void cleanup_instance_config();
 
-extern netif_driver tun_open(struct uv_loop_s *loop, uint32_t tun_ip, const char *cidr, char *error, size_t error_len);
-
-extern int set_dns(netif_handle tun, uint32_t dns_ip);
-
-extern char* get_tun_name(netif_handle tun);
-
-extern int tun_kill();
-
-#endif //ZITI_TUNNEL_SDK_C_TUN_H
+#endif //ZITI_TUNNEL_SDK_C_INSTANCE_CONFIG_H
