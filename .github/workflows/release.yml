@@ -11,16 +11,21 @@ jobs:
         os:
           - ubuntu-18.04
           - macOS-10.15
-          - windows-latest
-        toolchain: [ default.cmake ]
+        cmake_opts: [ "" ]
         arch: [ x86_64 ]
-        install: [ '' ]
+        toolchain: [ default.cmake ]
 
         include:
+          - os: windows-latest
+            cmake_opts: -G "MinGW Makefiles" -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}\install
+            toolchain: default.cmake
+            arch: x86_64
+
           - os: ubuntu-18.04
-            arch: arm
-            toolchain: Linux-arm.cmake
             install: crossbuild-essential-armhf
+            toolchain: Linux-arm.cmake
+            cmake_opts: -DCMAKE_BUILD_TYPE=Release
+            arch: arm
 
           - os: ubuntu-18.04
             install: crossbuild-essential-arm64
@@ -29,32 +34,50 @@ jobs:
             arch: arm64
 
     steps:
-    - uses: actions/checkout@v2
+    - name: checkout workspace
+      uses: actions/checkout@v3
       with:
-        fetch-depth: '0'
-    - name: install tools
-      if: matrix.install != ''
-      run: |
-        sudo apt update
-        sudo apt install ${{matrix.install}}
+        fetch-depth: 0
 
     - name: make build dir
       run: cmake -E make_directory ${{runner.workspace}}/build
+
+    - name: install toolchain
+      if: ${{ matrix.install != null }}
+      run: |
+        sudo apt -y update
+        sudo apt -y install ${{ matrix.install }}
+
+    - name: install libsystemd if Ubuntu
+      if: ${{ startsWith(matrix.os, 'ubuntu') }}
+      run: |
+        sudo apt -y update
+        sudo apt -y install libsystemd-dev
+
     - name: configure cmake
-      if: ${{ runner.os != 'Windows' }}
-      run: cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=${{github.workspace}}/toolchains/${{matrix.toolchain}} -S ${{ github.workspace }} -B ${{runner.workspace}}/build
-    - name: configure cmake WIN
-      if: ${{ runner.os == 'Windows' }}
-      run: cmake -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=${{github.workspace}}/toolchains/${{matrix.toolchain}} -S ${{ github.workspace }} -B ${{runner.workspace}}/build
-    - name: build
-      run: cmake --build ${{runner.workspace}}/build --target bundle --verbose
-    - uses: actions/upload-artifact@v2
+      run: cmake ${{matrix.cmake_opts}} -DCMAKE_TOOLCHAIN_FILE=${{github.workspace}}/toolchains/${{matrix.toolchain}} -S ${{ github.workspace }} -B ${{github.workspace}}/build
+
+    - name: build ziti-edge-tunnel bundle target
+      run: cmake --build ${{github.workspace}}/build --target bundle --verbose
+
+    - name: list bundle artifacts
+      run: ls -R
+      working-directory: ${{ github.workspace }}/build/bundle/
+
+    - name: list program artifacts
+      run: ls -R
+      working-directory: ${{ github.workspace }}/build/programs/ziti-edge-tunnel/
+
+    - name: upload bundle artifacts
+      uses: actions/upload-artifact@v3
       with:
-        name: ${{ runner.os }}-${{matrix.arch}}
-        path: ${{ runner.workspace }}/build/bundle/*.zip
+        name: ${{ runner.os }}-${{ matrix.arch }}
+        path: |
+          ./build/bundle/ziti-edge-tunnel-*.zip
+        if-no-files-found: error
 
   release:
-    name: Create Release
+    name: Download Release Artifacts
     runs-on: ubuntu-latest
     needs: [ build ]
     steps:
@@ -63,58 +86,44 @@ jobs:
       with:
         path: ${{ runner.workspace }}/downloads/
 
-    - name: Get release
+    - name: List Release Artifacts
+      run: ls -horRAS ${{runner.workspace}}/downloads/
+
+    - name: Release
       id: get_release
-      uses: bruceadams/get-release@v1.2.2
-      env:
-        GITHUB_TOKEN: ${{ github.token }}
+      uses: softprops/action-gh-release@v1
+      with:
+        # name: defaults to tag name
+        # tag_name: defaults to github.ref
+        # token: defaults to github.token
+        draft: false
+        prerelease: false
+        fail_on_unmatched_files: true
+        files: |
+          ${{ runner.workspace }}/downloads/Linux-x86_64/ziti-edge-tunnel-Linux_x86_64.zip
+          ${{ runner.workspace }}/downloads/Linux-arm/ziti-edge-tunnel-Linux_arm.zip
+          ${{ runner.workspace }}/downloads/macOS-x86_64/ziti-edge-tunnel-Darwin_x86_64.zip
 
-    - name: upload Linux
+    # These final two steps are only necessary because we prefer a different
+    # release artifact name than is created by CMake, and so we could change
+    # the CMake configuration or add an inline (shell) run step to manipulate
+    # the filenames. The pre-release build doesn't rename the artifacts.
+    - name: upload Linux ARM64 with different name
       uses: actions/upload-release-asset@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.get_release.outputs.upload_url }}
-        asset_path: ${{runner.workspace}}/downloads/Linux-x86_64/ziti-edge-tunnel-Linux_x86_64.zip
-        asset_name: ziti-edge-tunnel-Linux_x86_64.zip
-        asset_content_type: application/octet-stream
-
-    - name: upload Linux ARM
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.get_release.outputs.upload_url }}
-        asset_path: ${{runner.workspace}}/downloads/Linux-arm/ziti-edge-tunnel-Linux_arm.zip
-        asset_name: ziti-edge-tunnel-Linux_arm.zip
-        asset_content_type: application/octet-stream
-
-    - name: upload Linux ARM64
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.get_release.outputs.upload_url }}
-        asset_path: ${{runner.workspace}}/downloads/Linux-arm64/ziti-edge-tunnel-Linux_aarch64.zip
+        asset_path: ${{ runner.workspace }}/downloads/Linux-arm64/ziti-edge-tunnel-Linux_aarch64.zip
         asset_name: ziti-edge-tunnel-Linux_arm64.zip
         asset_content_type: application/octet-stream
 
-    - name: upload MacOS
+    - name: upload Windows with different name
       uses: actions/upload-release-asset@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.get_release.outputs.upload_url }}
-        asset_path: ${{runner.workspace}}/downloads/macOS-x86_64/ziti-edge-tunnel-Darwin_x86_64.zip
-        asset_name: ziti-edge-tunnel-Darwin_x86_64.zip
-        asset_content_type: application/octet-stream
-
-    - name: upload Windows
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.get_release.outputs.upload_url }}
-        asset_path: ${{runner.workspace}}/downloads/Windows-x86_64/ziti-edge-tunnel-win64_AMD64.zip
+        asset_path: ${{ runner.workspace }}/downloads/Windows-x86_64/ziti-edge-tunnel-Windows_AMD64.zip
         asset_name: ziti-edge-tunnel-Windows_x86_64.zip
         asset_content_type: application/octet-stream

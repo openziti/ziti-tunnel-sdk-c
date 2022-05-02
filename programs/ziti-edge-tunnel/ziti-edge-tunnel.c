@@ -628,7 +628,6 @@ static void on_cmd(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
             free(new_buff);
         }
 #endif
-
     }
 
     free(b->base);
@@ -1090,11 +1089,11 @@ static void load_identities_complete(uv_work_t * wr, int status) {
         struct cfg_instance_s *inst = LIST_FIRST(&load_list);
         LIST_REMOVE(inst, _next);
 
+        CMD_CTRL->load_identity(NULL, inst->cfg, get_api_page_size(), load_id_cb, inst);
+        identity_loaded = true;
         if (config_dir == NULL) {
             create_or_get_tunnel_identity(inst->cfg, inst->cfg);
         }
-        CMD_CTRL->load_identity(NULL, inst->cfg, get_api_page_size(), load_id_cb, inst);
-        identity_loaded = true;
     }
     if (identity_loaded) {
         start_metrics_timer(wr->loop);
@@ -1390,7 +1389,7 @@ static void on_event(const base_event *ev) {
 
         case TunnelEvent_APIEvent: {
             const api_event *api_ev = (api_event *) ev;
-            ZITI_LOG(INFO, "ztx[%s] API Event with controller address : %s", api_ev->identifier, api_ev->ctrl_address);
+            ZITI_LOG(INFO, "ztx[%s] API Event with controller address : %s", api_ev->identifier, api_ev->new_ctrl_address);
             tunnel_identity *id = find_tunnel_identity(ev->identifier);
             if (id == NULL) {
                 break;
@@ -1405,14 +1404,14 @@ static void on_event(const base_event *ev) {
             }
             id_event.Id->Loaded = true;
             bool updated = false;
-            if (api_ev->ctrl_address) {
+            if (api_ev->new_ctrl_address) {
                 if (id_event.Id->Config == NULL) {
                     id_event.Id->Config = calloc(1, sizeof(tunnel_config));
-                    id_event.Id->Config->ZtAPI = strdup(api_ev->ctrl_address);
+                    id_event.Id->Config->ZtAPI = strdup(api_ev->new_ctrl_address);
                     updated = true;
-                } else if (id_event.Id->Config->ZtAPI != NULL && strcmp(id_event.Id->Config->ZtAPI, api_ev->ctrl_address) != 0) {
+                } else if (id_event.Id->Config->ZtAPI != NULL && strcmp(id_event.Id->Config->ZtAPI, api_ev->new_ctrl_address) != 0) {
                     free(id_event.Id->Config->ZtAPI);
-                    id_event.Id->Config->ZtAPI = strdup(api_ev->ctrl_address);
+                    id_event.Id->Config->ZtAPI = strdup(api_ev->new_ctrl_address);
                     updated = true;
                 }
             }
@@ -1999,7 +1998,7 @@ void on_write(uv_write_t* req, int status) {
 void send_message_to_pipe(uv_connect_t *connect) {
     printf("Message...%s\n", connect->data);
     uv_write_t *req = (uv_write_t*) malloc(sizeof(uv_write_t));
-    char* data = calloc(strlen(connect->data) + 2, sizeof(char));
+    char* data = calloc(strlen(connect->data) + strlen("\n") + 1, sizeof(char));
     sprintf(data, "%s\n", connect->data);
     uv_buf_t buf = uv_buf_init(data, strlen(data));
     uv_write((uv_write_t*) req, connect->handle, &buf, 1,    on_write);
