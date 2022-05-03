@@ -25,7 +25,7 @@
 #endif
 
 #ifndef MAXTUNPREFIXLENGTH
-#define MAXTUNPREFIXLENGTH 18
+#define MAXTUNPREFIXLENGTH 24
 #endif
 
 #ifdef __cplusplus
