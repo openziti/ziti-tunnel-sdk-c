@@ -1541,7 +1541,7 @@ static struct option run_options[] = {
         { "dns-upstream", required_argument, NULL, 'u'},
 };
 
-static const char* ip_range = "100.64.0.0/10";
+static const char* ip_range = "100.64.0.1/10";
 static const char* dns_impl = NULL;
 static const char* dns_upstream = NULL;
 
@@ -1632,41 +1632,6 @@ static void run(int argc, char *argv[]) {
     signal(SIGINT, interrupt_handler);
 #endif
 
-    char *ip_range_temp = get_ip_range_from_config();
-    if (ip_range_temp != NULL) {
-        ip_range = ip_range_temp;
-    }
-
-    uint32_t ip[4];
-    int bits;
-    int rc = sscanf(ip_range, "%d.%d.%d.%d/%d", &ip[0], &ip[1], &ip[2], &ip[3], &bits);
-    if (rc != 5) {
-        ZITI_LOG(ERROR, "Invalid IP range specification: n.n.n.n/m format is expected");
-        exit(1);
-    }
-
-    uint32_t mask = 0;
-    for (int i = 0; i < 4; i++) {
-        mask <<= 8U;
-        mask |= (ip[i] & 0xFFU);
-    }
-
-    uint32_t tun_ip = htonl(mask | 0x1);
-    uint32_t dns_ip = htonl(mask | 0x2);
-
-#if __unix__ || __unix
-    // prevent termination when running under valgrind
-    // client forcefully closing connection results in SIGPIPE
-    // which causes valgrind to freak out
-    signal(SIGPIPE, SIG_IGN);
-#endif
-
-    // set ip info into instance
-    set_ip_info(dns_ip, tun_ip, bits);
-
-    // set the service version in instance
-    set_service_version();
-
 #if _WIN32
     if (init) {
         ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, ziti_log_writer);
@@ -1694,6 +1659,41 @@ static void run(int argc, char *argv[]) {
     ziti_tunnel_set_log_level(ziti_log_level());
     set_log_level(ziti_log_level_label());
     ziti_tunnel_set_logger(ziti_logger);
+
+    char *ip_range_temp = get_ip_range_from_config();
+    if (ip_range_temp != NULL) {
+        ip_range = ip_range_temp;
+    }
+
+    uint32_t ip[4];
+    int bits;
+    int rc = sscanf(ip_range, "%d.%d.%d.%d/%d", &ip[0], &ip[1], &ip[2], &ip[3], &bits);
+    if (rc != 5) {
+        ZITI_LOG(ERROR, "Invalid IP range specification: n.n.n.n/m format is expected");
+        exit(1);
+    }
+
+    uint32_t tun_ip = 0;
+    for (int i = 0; i < 4; i++) {
+        tun_ip <<= 8U;
+        tun_ip |= (ip[i] & 0xFFU);
+    }
+
+    tun_ip = htonl(tun_ip);
+    uint32_t dns_ip = htonl(tun_ip + 0x1);
+
+#if __unix__ || __unix
+    // prevent termination when running under valgrind
+    // client forcefully closing connection results in SIGPIPE
+    // which causes valgrind to freak out
+    signal(SIGPIPE, SIG_IGN);
+#endif
+
+    // set ip info into instance
+    set_ip_info(dns_ip, tun_ip, bits);
+
+    // set the service version in instance
+    set_service_version();
 
     if (ziti_loop == NULL) {
         ZITI_LOG(ERROR, "failed to initialize default uv loop");
