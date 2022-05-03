@@ -97,10 +97,17 @@ else
     fi
 fi
 
-
+if (( ${#} )); then
+    if [[ ${1:0:3} == run ]]; then
+        TUNNEL_MODE=${1}
+        shift
+    fi
+else
+    TUNNEL_MODE=run
+fi
 
 echo "INFO: running ziti-edge-tunnel"
 set -x
-ziti-edge-tunnel run "${TUNNEL_OPTS[@]}" "${@}" &
+ziti-edge-tunnel "${TUNNEL_MODE}" "${TUNNEL_OPTS[@]}" "${@}" &
 ZITI_EDGE_TUNNEL_PID=$!
 wait $ZITI_EDGE_TUNNEL_PID

@@ -1,4 +1,4 @@
-FROM debian:buster-slim as fetch-ziti-artifacts
+FROM debian:bullseye-slim as fetch-ziti-artifacts
 
 # This build stage grabs artifacts that are copied into the final image.
 # It uses the same base as the final image to maximize docker cache hits.
@@ -26,7 +26,7 @@ COPY ${ARTIFACTS_DIR}/ziti-edge-tunnel .
 #
 ################
 
-FROM debian:buster-slim
+FROM debian:bullseye-slim
 
 ARG DOCKER_BUILD_DIR=./docker
 ARG ZITI_TUNNELER_BIN=ziti-edge-tunnel
