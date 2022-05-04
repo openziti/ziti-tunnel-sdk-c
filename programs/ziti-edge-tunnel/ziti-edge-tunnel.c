@@ -1630,9 +1630,7 @@ static void run(int argc, char *argv[]) {
     init = log_init(ziti_loop, multi_writer);
 
     signal(SIGINT, interrupt_handler);
-#endif
 
-#if _WIN32
     if (init) {
         ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, ziti_log_writer);
         struct tm *start_time = get_log_start_time();
@@ -1679,8 +1677,8 @@ static void run(int argc, char *argv[]) {
         tun_ip |= (ip[i] & 0xFFU);
     }
 
-    tun_ip = htonl(tun_ip);
     uint32_t dns_ip = htonl(tun_ip + 0x1);
+    tun_ip = htonl(tun_ip);
 
 #if __unix__ || __unix
     // prevent termination when running under valgrind
