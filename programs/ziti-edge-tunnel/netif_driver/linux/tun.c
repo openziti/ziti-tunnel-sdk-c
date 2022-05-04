@@ -97,8 +97,13 @@ int tun_uv_poll_init(netif_handle tun, uv_loop_t *loop, uv_poll_t *tun_poll_req)
 
 int tun_add_route(netif_handle tun, const char *dest) {
     char cmd[1024];
-    snprintf(cmd, sizeof(cmd), "ip route add %s dev %s", dest, tun->name);
-    int s = system(cmd);
+    address_t *rt = parse_address(dest);
+    if (rt == NULL) {
+        ZITI_LOG(ERROR, "failed to parse route '%s'", dest);
+        return -1;
+    }
+    int s = run_command("ip route add %s dev %s", ipaddr_ntoa(&rt->ip), tun->name);
+    free(rt);
     return s;
 }
 
@@ -335,7 +340,7 @@ netif_driver tun_open(uv_loop_t *loop, uint32_t tun_ip, uint32_t dns_ip, const c
     }
 
     if (dns_block) {
-        run_command("ip route add %s dev %s", dns_block, tun->name);
+        tun_add_route(tun, dns_block);
     }
 
     return driver;
