@@ -1031,8 +1031,6 @@ static void load_id_cb(const tunnel_result *res, void *ctx) {
     } else {
         ZITI_LOG(ERROR, "identity[%s] failed to load: %s", inst->cfg, res->error);
     }
-    free((void*)inst->cfg);
-    free(inst);
 }
 
 static void load_identities_complete(uv_work_t * wr, int status) {
