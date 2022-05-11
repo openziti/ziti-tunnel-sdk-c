@@ -174,17 +174,18 @@ int ziti_dns_set_upstream(uv_loop_t *l, const char *host, uint16_t port) {
         CHECK_UV(uv_udp_connect(&ziti_dns.upstream, NULL));
     } else {
         CHECK_UV(uv_udp_init(l, &ziti_dns.upstream));
+        uv_unref(&ziti_dns.upstream);
     }
 
     if (port == 0) port = 53;
 
     char port_str[6];
-    snprintf(port_str, sizeof(port_str), "%d", port);
+    snprintf(port_str, sizeof(port_str), "%hu", port);
     uv_getaddrinfo_t req = {0};
     CHECK_UV(uv_getaddrinfo(l, &req, NULL, host, port_str, NULL));
     CHECK_UV(uv_udp_connect(&ziti_dns.upstream, req.addrinfo->ai_addr));
     CHECK_UV(uv_udp_recv_start(&ziti_dns.upstream, udp_alloc, on_upstream_packet));
-    ZITI_LOG(INFO, "DNS upstream is set to %s:%d", host, port);
+    ZITI_LOG(INFO, "DNS upstream is set to %s:%hu", host, port);
     return 0;
 }
 
