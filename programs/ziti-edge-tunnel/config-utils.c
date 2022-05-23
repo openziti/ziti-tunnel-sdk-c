@@ -67,4 +67,3 @@ char* get_backup_config_file_name(char* config_path) {
         return "config.json.backup";
     }
 }
-
