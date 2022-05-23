@@ -1784,6 +1784,7 @@ static void run(int argc, char *argv[]) {
 
 #if _WIN32
     remove_all_nrpt_rules();
+    check_elevated_privilege();
 
     bool multi_writer = true;
     if (started_by_scm) {

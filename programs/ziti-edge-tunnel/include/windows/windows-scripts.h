@@ -36,5 +36,7 @@ model_map *get_connection_specific_domains();
 void remove_and_add_nrpt_rules(uv_loop_t *nrpt_loop, model_map *hostnames, const char* dns_ip);
 void update_interface_metric(uv_loop_t *ziti_loop, char* tun_name, int metric);
 void update_symlink(uv_loop_t *symlink_loop, char* symlink, char* filename);
+void check_elevated_privilege();
+bool has_elevated_privilege();
 
 #endif //ZITI_TUNNEL_SDK_C_WINDOWS_SCRIPTS_H

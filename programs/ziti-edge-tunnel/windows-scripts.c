@@ -24,6 +24,7 @@
 
 static char* const namespace_template = "%s@{n='%s';}";
 static char* const exe_name = "ziti-edge-tunnel";
+static bool elevated_privilege = false;
 
 struct hostname_s {
     char *hostname;
@@ -526,6 +527,10 @@ void update_interface_metric(uv_loop_t *ziti_loop, char* tun_name, int metric) {
 }
 
 void update_symlink(uv_loop_t *symlink_loop, char* symlink, char* filename) {
+    if (!has_elevated_privilege()) {
+        ZITI_LOG(WARN, "Cannot update symlink because the program is not running using admin privileges");
+        return;
+    }
     char script[MAX_POWERSHELL_SCRIPT_LEN] = { 0 };
     size_t buf_len = sprintf(script, "Get-Item -Path \"%s\" | Remove-Item\n", symlink);
     size_t copied = buf_len;
@@ -546,4 +551,39 @@ void update_symlink(uv_loop_t *symlink_loop, char* symlink, char* filename) {
     } else {
         ZITI_LOG(DEBUG, "Updated symlink script");
     }
+}
+
+void check_elevated_privilege() {
+        HANDLE hToken = NULL;
+        TOKEN_ELEVATION elevation;
+        DWORD dwSize;
+        BOOL success = true;
+
+        if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &hToken))
+        {
+            ZITI_LOG(TRACE, "Failed to get Process Token :%d.",GetLastError());
+            success = false;  // if Failed, we treat as False
+        }
+
+
+        if (success && !GetTokenInformation(hToken, TokenElevation, &elevation, sizeof(elevation), &dwSize))
+        {
+            ZITI_LOG(TRACE, "Failed to get Token Information :%d.", GetLastError());
+            success = false;// if Failed, we treat as False
+        }
+
+        if (success) {
+            elevated_privilege = elevation.TokenIsElevated;
+            ZITI_LOG(INFO, "The Token Elevation privilege status :%d.", elevation.TokenIsElevated);
+        }
+
+        if (hToken)
+        {
+            CloseHandle(hToken);
+            hToken = NULL;
+        }
+}
+
+bool has_elevated_privilege() {
+    return elevated_privilege;
 }
