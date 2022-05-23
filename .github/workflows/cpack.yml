@@ -16,6 +16,9 @@ jobs:
         arch: [ x86_64 ] # TODO: migrate the Linux builds for arm, arm64 too
         distro:
           - name: ubuntu
+            version: "22.04"
+            type: deb
+          - name: ubuntu
             version: "20.04"
             type: deb
           - name: ubuntu
