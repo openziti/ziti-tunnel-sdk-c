@@ -1561,6 +1561,7 @@ static struct option run_options[] = {
         { "refresh", required_argument, NULL, 'r'},
         { "dns-ip-range", required_argument, NULL, 'd'},
         { "dns-upstream", required_argument, NULL, 'u'},
+        { "disable-intercepts", optional_argument, NULL, 'h'},
 };
 
 static const char* ip_range = "100.64.0.0/10";
@@ -1598,6 +1599,7 @@ static int run_opts(int argc, char *argv[]) {
                 break;
             case 'u':
                 dns_upstream = optarg;
+                break;
             case 'h':
                 if (strcmp(optarg, "true") == 0 || strcmp(optarg, "t") == 0 ) {
                     host_only = true;
