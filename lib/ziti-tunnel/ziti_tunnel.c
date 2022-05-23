@@ -56,7 +56,7 @@ static void default_loop_sem_init(void) {
     uv_sem_init(&default_loop_sem, 1);
 }
 
-tunneler_context ziti_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop) {
+static tunneler_context create_tunneler_ctx(tunneler_sdk_options *opts, uv_loop_t *loop) {
     TNL_LOG(INFO, "Ziti Tunneler SDK (%s)", ziti_tunneler_version());
 
     if (opts == NULL) {
@@ -73,6 +73,19 @@ tunneler_context ziti_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop)
     uv_sem_init(&ctx->sem, 1);
     uv_once(&default_loop_sem_init_once, default_loop_sem_init);
     memcpy(&ctx->opts, opts, sizeof(ctx->opts));
+    return ctx;
+}
+
+tunneler_context ziti_tunneler_init_host_only(tunneler_sdk_options *opts, uv_loop_t *loop) {
+    return create_tunneler_ctx(opts, loop);
+}
+
+tunneler_context ziti_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop) {
+    struct tunneler_ctx_s *ctx = create_tunneler_ctx(opts, loop);
+    if (ctx == NULL) {
+        return NULL;
+    }
+
     LIST_INIT(&ctx->intercepts);
     run_packet_loop(loop, ctx);
 
@@ -80,6 +93,11 @@ tunneler_context ziti_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop)
 }
 
 void ziti_tunneler_exclude_route(tunneler_context tnlr_ctx, const char *dst) {
+    if (tnlr_ctx->opts.netif_driver == NULL) {
+        TNL_LOG(WARN, "No netif_driver found tun is running in host only mode and intercepts are disabled");
+        return;
+    }
+
     uv_interface_address_t *if_addrs;
     int err, num_if_addrs;
     if ((err = uv_interface_addresses(&if_addrs, &num_if_addrs)) != 0) {

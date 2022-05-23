@@ -142,6 +142,7 @@ extern bool address_match(const ip_addr_t *addr, const address_list_t *addresses
 extern bool port_match(int port, const port_range_list_t *port_ranges);
 
 extern tunneler_context ziti_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop);
+extern tunneler_context ziti_tunneler_init_host_only(tunneler_sdk_options *opts, uv_loop_t *loop);
 
 extern void ziti_tunneler_exclude_route(tunneler_context tnlr_ctx, const char* dst);
 
