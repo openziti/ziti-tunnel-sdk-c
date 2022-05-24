@@ -1561,7 +1561,13 @@ static struct option run_options[] = {
         { "refresh", required_argument, NULL, 'r'},
         { "dns-ip-range", required_argument, NULL, 'd'},
         { "dns-upstream", required_argument, NULL, 'u'},
-        { "disable-intercepts", optional_argument, NULL, 'h'},
+};
+
+static struct option run_host_options[] = {
+        { "identity", required_argument, NULL, 'i' },
+        { "identity-dir", required_argument, NULL, 'I'},
+        { "verbose", optional_argument, NULL, 'v'},
+        { "refresh", optional_argument, NULL, 'r'},
 };
 
 static const char* ip_range = "100.64.0.0/10";
@@ -1576,7 +1582,7 @@ static int run_opts(int argc, char *argv[]) {
     int c, option_index, errors = 0;
     optind = 0;
 
-    while ((c = getopt_long(argc, argv, "i:I:v:r:d:u:h:",
+    while ((c = getopt_long(argc, argv, "i:I:v:r:d:u:",
                             run_options, &option_index)) != -1) {
         switch (c) {
             case 'i': {
@@ -1600,12 +1606,44 @@ static int run_opts(int argc, char *argv[]) {
             case 'u':
                 dns_upstream = optarg;
                 break;
-            case 'h':
-                if (strcmp(optarg, "true") == 0 || strcmp(optarg, "t") == 0 ) {
-                    host_only = true;
-                } else {
-                    host_only = false;
-                }
+            default: {
+                ZITI_LOG(ERROR, "Unknown option '%c'", c);
+                errors++;
+                break;
+            }
+        }
+    }
+    if (errors > 0) {
+        commandline_help(stderr);
+        exit(1);
+    }
+    return optind;
+}
+
+static int run_host_opts(int argc, char *argv[]) {
+    printf("About to run tunnel service that hosts services... %s", main_cmd.name);
+    ziti_set_app_info(main_cmd.name, ziti_tunneler_version());
+
+    int c, option_index, errors = 0;
+    optind = 0;
+
+    while ((c = getopt_long(argc, argv, "i:I:v:r:",
+                            run_options, &option_index)) != -1) {
+        switch (c) {
+            case 'i': {
+                struct cfg_instance_s *inst = calloc(1, sizeof(struct cfg_instance_s));
+                inst->cfg = strdup(optarg);
+                LIST_INSERT_HEAD(&load_list, inst, _next);
+                break;
+            }
+            case 'I':
+                config_dir = optarg;
+                break;
+            case 'v':
+                setenv("ZITI_LOG", optarg, true);
+                break;
+            case 'r':
+                refresh_interval = strtol(optarg, NULL, 10);
                 break;
             default: {
                 ZITI_LOG(ERROR, "Unknown option '%c'", c);
@@ -1618,6 +1656,7 @@ static int run_opts(int argc, char *argv[]) {
         commandline_help(stderr);
         exit(1);
     }
+    host_only = true;
     return optind;
 }
 
@@ -2595,16 +2634,22 @@ static CommandLine enroll_cmd = make_command("enroll", "enroll Ziti identity",
         "\t-n|--name\tidentity name\n",
         parse_enroll_opts, enroll);
 static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required superuser access)",
-                                          "-i <id.file> [-r N] [-v N] [-d|--dns-ip-range N.N.N.N/n] [-n|--dns <internal|dnsmasq=<dnsmasq hosts dir>>] [-h|--disable-intercepts <true|false>]",
+                                          "-i <id.file> [-r N] [-v N] [-d|--dns-ip-range N.N.N.N/n] [-n|--dns <internal|dnsmasq=<dnsmasq hosts dir>>]",
                                           "\t-i|--identity <identity>\trun with provided identity file (required)\n"
                                           "\t-I|--identity-dir <dir>\tload identities from provided directory\n"
                                           "\t-v|--verbose N\tset log level, higher level -- more verbose (default 3)\n"
                                           "\t-r|--refresh N\tset service polling interval in seconds (default 10)\n"
                                           "\t-d|--dns-ip-range <ip range>\tspecify CIDR block in which service DNS names"
                                           " are assigned in N.N.N.N/n format (default 100.64.0.0/10)\n"
-                                          "\t-n|--dns <internal|dnsmasq=<dnsmasq opts>> DNS configuration setting (default internal)\n"
-                                          "\t-h|--disable-intercepts <true|false>\tdisable intercepts to run it in host only mode (default false)\n",
+                                          "\t-n|--dns <internal|dnsmasq=<dnsmasq opts>> DNS configuration setting (default internal)\n",
         run_opts, run);
+static CommandLine run_host_cmd = make_command("run_host", "run Ziti tunnel to host services",
+                                          "-i <id.file> [-r N] [-v N]",
+                                          "\t-i|--identity <identity>\trun with provided identity file (required)\n"
+                                          "\t-I|--identity-dir <dir>\tload identities from provided directory\n"
+                                          "\t-v|--verbose N\tset log level, higher level -- more verbose (default 3)\n"
+                                          "\t-r|--refresh N\tset service polling interval in seconds (default 10)\n",
+                                          run_host_opts, run);
 static CommandLine dump_cmd = make_command("dump", "dump the identities information", "[-i <identity>] [-p <dir>]",
                                            "\t-i|--identity\tdump identity info\n"
                                            "\t-p|--dump_path\tdump into path\n", dump_opts, send_message_to_tunnel_fn);
@@ -2656,6 +2701,7 @@ static CommandLine help_cmd = make_command("help", "this message", NULL, NULL, N
 static CommandLine *main_cmds[] = {
         &enroll_cmd,
         &run_cmd,
+        &run_host_cmd,
         &on_off_id_cmd,
         &enable_id_cmd,
         &dump_cmd,
