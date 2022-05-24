@@ -76,6 +76,8 @@ typedef struct tunneler_ctx_s {
     uv_sem_t     sem;
     uv_poll_t    netif_poll_req;
     uv_timer_t   lwip_timer_req;
+    bool    host_service;
+    bool    intercept_service;
     LIST_HEAD(intercept_ctx_list_s, intercept_ctx_s) intercepts;
 //    STAILQ_HEAD(hosted_service_ctx_list_s, hosted_service_ctx_s) hosts;
     LIST_HEAD(exclusions, excluded_route_s) excluded_rts;

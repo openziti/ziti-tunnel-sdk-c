@@ -56,7 +56,7 @@ static void default_loop_sem_init(void) {
     uv_sem_init(&default_loop_sem, 1);
 }
 
-static tunneler_context create_tunneler_ctx(tunneler_sdk_options *opts, uv_loop_t *loop) {
+static tunneler_context create_tunneler_ctx(tunneler_sdk_options *opts, uv_loop_t *loop, bool host_service, bool intercept_service) {
     TNL_LOG(INFO, "Ziti Tunneler SDK (%s)", ziti_tunneler_version());
 
     if (opts == NULL) {
@@ -73,15 +73,17 @@ static tunneler_context create_tunneler_ctx(tunneler_sdk_options *opts, uv_loop_
     uv_sem_init(&ctx->sem, 1);
     uv_once(&default_loop_sem_init_once, default_loop_sem_init);
     memcpy(&ctx->opts, opts, sizeof(ctx->opts));
+    ctx->host_service = host_service;
+    ctx->intercept_service = intercept_service;
     return ctx;
 }
 
 tunneler_context ziti_tunneler_init_host_only(tunneler_sdk_options *opts, uv_loop_t *loop) {
-    return create_tunneler_ctx(opts, loop);
+    return create_tunneler_ctx(opts, loop, true, false);
 }
 
 tunneler_context ziti_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop) {
-    struct tunneler_ctx_s *ctx = create_tunneler_ctx(opts, loop);
+    struct tunneler_ctx_s *ctx = create_tunneler_ctx(opts, loop, true, true);
     if (ctx == NULL) {
         return NULL;
     }
@@ -632,6 +634,14 @@ void ziti_tunnel_async_send(tunneler_context tctx, ziti_tunnel_async_fn f, void 
     }
 
     uv_async_send(async);
+}
+
+bool ziti_tunneler_hosts_service(tunneler_context t_ctx) {
+    return t_ctx->host_service;
+}
+
+bool ziti_tunneler_intercepts_service(tunneler_context t_ctx) {
+    return t_ctx->intercept_service;
 }
 
 #define _str(x) #x
