@@ -28,6 +28,7 @@ model_map tnl_identity_map = {0};
 static const char* CFG_INTERCEPT_V1 = "intercept.v1";
 static const char* CFG_ZITI_TUNNELER_CLIENT_V1 = "ziti-tunneler-client.v1";
 static tunnel_status tnl_status = {0};
+IMPL_ENUM(service_permission, SERVICE_PERMISSION);
 
 tunnel_identity *find_tunnel_identity(const char* identifier) {
     tunnel_identity *tnl_id = model_map_get(&tnl_identity_map, identifier);
@@ -198,6 +199,19 @@ static tunnel_posture_check *getTunnelPostureCheck(ziti_posture_query *pq){
     return pc;
 }
 
+static service_permission check_service_permission(bool dial_permission, bool bind_permission) {
+    service_permission permission = service_permission_nil;
+
+    if (bind_permission && !dial_permission) {
+        permission = service_permission_bind;
+    } else if (!bind_permission && dial_permission) {
+        permission = service_permission_dial;
+    } else if (bind_permission && dial_permission) {
+        permission = service_permission_dial_and_bind;
+    }
+    return permission;
+}
+
 static void setTunnelPostureDataTimeout(tunnel_service *tnl_svc, ziti_service *service) {
     int minTimeoutRemaining = -1;
     int minTimeout = -1;
@@ -206,12 +220,17 @@ static void setTunnelPostureDataTimeout(tunnel_service *tnl_svc, ziti_service *s
 
     ziti_posture_query_set *pqs;
     const char *key;
+    bool bind_permission = false;
+    bool dial_permission = false;
+
     MODEL_MAP_FOREACH(key, pqs, &service->posture_query_map) {
 
         if (strcmp(pqs->policy_type, "Bind") == 0) {
+            bind_permission = true;
             ZITI_LOG(TRACE, "Posture Query set returned a Bind policy: %s [ignored]", pqs->policy_id);
             continue;
         } else {
+            dial_permission = true;
             ZITI_LOG(TRACE, "Posture Query set returned a %s policy: %s, is_passing %d", pqs->policy_type, pqs->policy_id, pqs->is_passing);
         }
 
@@ -250,6 +269,8 @@ static void setTunnelPostureDataTimeout(tunnel_service *tnl_svc, ziti_service *s
         }
     }
     model_map_clear(&postureCheckMap, NULL);
+
+    tnl_svc->Permission = strdup(service_permission_name(check_service_permission(dial_permission, bind_permission)));
 
     tnl_svc->IsAccessible = hasAccess;
     tnl_svc->Timeout = minTimeout;

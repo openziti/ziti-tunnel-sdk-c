@@ -83,7 +83,8 @@ XX(OwnsIntercept, bool, none, OwnsIntercept, __VA_ARGS__) \
 XX(PostureChecks, tunnel_posture_check, array, PostureChecks, __VA_ARGS__) \
 XX(IsAccessible, bool, none, IsAccessible, __VA_ARGS__) \
 XX(Timeout, int, none, Timeout, __VA_ARGS__)         \
-XX(TimeoutRemaining, int, none, TimeoutRemaining, __VA_ARGS__)
+XX(TimeoutRemaining, int, none, TimeoutRemaining, __VA_ARGS__) \
+XX(Permission, string, none, Permission, __VA_ARGS__)
 
 #define TUNNEL_STATUS(XX, ...) \
 XX(Active, bool, none, Active, __VA_ARGS__) \
@@ -109,6 +110,12 @@ XX(Version, string, none, Version, __VA_ARGS__) \
 XX(Revision, string, none, Revision, __VA_ARGS__) \
 XX(BuildDate, string, none, BuildDate, __VA_ARGS__)
 
+#define SERVICE_PERMISSION(XX, ...) \
+XX(dial, __VA_ARGS__) \
+XX(bind, __VA_ARGS__) \
+XX(dial_and_bind, __VA_ARGS__) \
+XX(nil, __VA_ARGS__)
+
 DECLARE_MODEL(tunnel_config, TUNNEL_CONFIG)
 DECLARE_MODEL(tunnel_metrics, TUNNEL_METRICS)
 DECLARE_MODEL(tunnel_address, TUNNEL_ADDRESS)
@@ -119,6 +126,7 @@ DECLARE_MODEL(tunnel_identity, TUNNEL_IDENTITY)
 DECLARE_MODEL(ip_info, IP_INFO)
 DECLARE_MODEL(service_version, SERVICE_VERSION)
 DECLARE_MODEL(tunnel_status, TUNNEL_STATUS)
+DECLARE_ENUM(service_permission, SERVICE_PERMISSION)
 
 #ifdef __cplusplus
 }
