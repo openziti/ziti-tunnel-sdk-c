@@ -66,6 +66,7 @@ static void send_tunnel_command_inline(tunnel_command *tnl_cmd, void *ctx);
 static void scm_service_stop_event(uv_loop_t *loop, void *arg);
 static void stop_tunnel_and_cleanup();
 static bool is_host_only();
+static bool is_intercept_only();
 static void run_tunneler_loop(uv_loop_t* ziti_loop);
 static tunneler_context initialize_tunneler(netif_driver tun, uv_loop_t* ziti_loop);
 
@@ -1618,6 +1619,8 @@ static tunneler_context initialize_tunneler(netif_driver tun, uv_loop_t* ziti_lo
 
     if (is_host_only()) {
         return ziti_tunneler_init_host_only(&tunneler_opts, ziti_loop);
+    } else if (is_intercept_only()) {
+        return ziti_tunneler_init_intercept_only(&tunneler_opts, ziti_loop);
     } else {
         return ziti_tunneler_init(&tunneler_opts, ziti_loop);
     }
@@ -1666,6 +1669,7 @@ static const char* ip_range = "100.64.0.0/10";
 static const char* dns_impl = NULL;
 static const char* dns_upstream = NULL;
 static bool host_only = false;
+static bool intercept_only = false;
 
 static int run_opts(int argc, char *argv[]) {
     printf("About to run tunnel service... %s", main_cmd.name);
@@ -1712,6 +1716,52 @@ static int run_opts(int argc, char *argv[]) {
     return optind;
 }
 
+static int run_intercepts_opts(int argc, char *argv[]) {
+    printf("About to run tunnel service that intercepts services... %s", main_cmd.name);
+    ziti_set_app_info(main_cmd.name, ziti_tunneler_version());
+
+    int c, option_index, errors = 0;
+    optind = 0;
+
+    while ((c = getopt_long(argc, argv, "i:I:v:r:d:u:",
+                            run_options, &option_index)) != -1) {
+        switch (c) {
+            case 'i': {
+                struct cfg_instance_s *inst = calloc(1, sizeof(struct cfg_instance_s));
+                inst->cfg = strdup(optarg);
+                LIST_INSERT_HEAD(&load_list, inst, _next);
+                break;
+            }
+            case 'I':
+                config_dir = optarg;
+                break;
+            case 'v':
+                setenv("ZITI_LOG", optarg, true);
+                break;
+            case 'r':
+                refresh_interval = strtol(optarg, NULL, 10);
+                break;
+            case 'd': // ip range
+                ip_range = optarg;
+                break;
+            case 'u':
+                dns_upstream = optarg;
+                break;
+            default: {
+                ZITI_LOG(ERROR, "Unknown option '%c'", c);
+                errors++;
+                break;
+            }
+        }
+    }
+    if (errors > 0) {
+        commandline_help(stderr);
+        exit(1);
+    }
+    intercept_only = true;
+    return optind;
+}
+
 static int run_host_opts(int argc, char *argv[]) {
     printf("About to run tunnel service that hosts services... %s", main_cmd.name);
     ziti_set_app_info(main_cmd.name, ziti_tunneler_version());
@@ -1720,7 +1770,7 @@ static int run_host_opts(int argc, char *argv[]) {
     optind = 0;
 
     while ((c = getopt_long(argc, argv, "i:I:v:r:",
-                            run_options, &option_index)) != -1) {
+                            run_host_options, &option_index)) != -1) {
         switch (c) {
             case 'i': {
                 struct cfg_instance_s *inst = calloc(1, sizeof(struct cfg_instance_s));
@@ -1870,8 +1920,10 @@ static void run(int argc, char *argv[]) {
 
     int rc;
     if (is_host_only()) {
+        ZITI_LOG(INFO, "Tunnel is running in host only mode, it supports only hosting services");
         rc = run_tunnel_host_mode(ziti_loop);
     } else {
+        ZITI_LOG(INFO, "Tunnel supports hosting and intercepting services");
         rc = run_tunnel(ziti_loop, tun_ip, dns_ip, ip_range, dns_upstream);
     }
     exit(rc);
@@ -2746,6 +2798,16 @@ static CommandLine run_host_cmd = make_command("run-host", "run Ziti tunnel to h
                                           "\t-v|--verbose N\tset log level, higher level -- more verbose (default 3)\n"
                                           "\t-r|--refresh N\tset service polling interval in seconds (default 10)\n",
                                           run_host_opts, run);
+static CommandLine run_intercepts_cmd = make_command("run_intercepts", "run Ziti tunnel to intercept services (required superuser access)",
+                                          "-i <id.file> [-r N] [-v N] [-d|--dns-ip-range N.N.N.N/n] [-n|--dns <internal|dnsmasq=<dnsmasq hosts dir>>]",
+                                          "\t-i|--identity <identity>\trun with provided identity file (required)\n"
+                                          "\t-I|--identity-dir <dir>\tload identities from provided directory\n"
+                                          "\t-v|--verbose N\tset log level, higher level -- more verbose (default 3)\n"
+                                          "\t-r|--refresh N\tset service polling interval in seconds (default 10)\n"
+                                          "\t-d|--dns-ip-range <ip range>\tspecify CIDR block in which service DNS names"
+                                          " are assigned in N.N.N.N/n format (default 100.64.0.0/10)\n"
+                                          "\t-n|--dns <internal|dnsmasq=<dnsmasq opts>> DNS configuration setting (default internal)\n",
+                                          run_intercepts_opts, run);
 static CommandLine dump_cmd = make_command("dump", "dump the identities information", "[-i <identity>] [-p <dir>]",
                                            "\t-i|--identity\tdump identity info\n"
                                            "\t-p|--dump_path\tdump into path\n", dump_opts, send_message_to_tunnel_fn);
@@ -2798,6 +2860,7 @@ static CommandLine *main_cmds[] = {
         &enroll_cmd,
         &run_cmd,
         &run_host_cmd,
+        &run_intercepts_cmd,
         &on_off_id_cmd,
         &enable_id_cmd,
         &dump_cmd,
@@ -2980,6 +3043,10 @@ static void move_config_from_previous_windows_backup(uv_loop_t *loop) {
 
 static bool is_host_only() {
     return host_only;
+}
+
+static bool is_intercept_only() {
+    return intercept_only;
 }
 
 int main(int argc, char *argv[]) {

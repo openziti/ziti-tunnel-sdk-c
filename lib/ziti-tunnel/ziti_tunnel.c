@@ -78,20 +78,29 @@ static tunneler_context create_tunneler_ctx(tunneler_sdk_options *opts, uv_loop_
     return ctx;
 }
 
+tunneler_context initialize_intercepts_and_run(uv_loop_t *tun_loop, tunneler_context t_ctx) {
+    if (t_ctx == NULL) {
+        return NULL;
+    }
+
+    LIST_INIT(&t_ctx->intercepts);
+    run_packet_loop(tun_loop, t_ctx);
+
+    return t_ctx;
+}
+
 tunneler_context ziti_tunneler_init_host_only(tunneler_sdk_options *opts, uv_loop_t *loop) {
     return create_tunneler_ctx(opts, loop, true, false);
 }
 
+tunneler_context ziti_tunneler_init_intercept_only(tunneler_sdk_options *opts, uv_loop_t *loop) {
+    struct tunneler_ctx_s *ctx = create_tunneler_ctx(opts, loop, false, true);
+    return initialize_intercepts_and_run(loop, ctx);
+}
+
 tunneler_context ziti_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop) {
     struct tunneler_ctx_s *ctx = create_tunneler_ctx(opts, loop, true, true);
-    if (ctx == NULL) {
-        return NULL;
-    }
-
-    LIST_INIT(&ctx->intercepts);
-    run_packet_loop(loop, ctx);
-
-    return ctx;
+    return initialize_intercepts_and_run(loop, ctx);
 }
 
 void ziti_tunneler_exclude_route(tunneler_context tnlr_ctx, const char *dst) {
