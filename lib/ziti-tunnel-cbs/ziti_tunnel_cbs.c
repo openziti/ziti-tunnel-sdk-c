@@ -499,55 +499,62 @@ tunneled_service_t *ziti_sdk_c_on_service(ziti_context ziti_ctx, ziti_service *s
         cfgtype_desc_t *cfgtype;
         void *config;
 
-        ziti_intercept_t *curr_i = model_map_get(&ziti_instance->intercepts, service->name);
-        if ((service->perm_flags & ZITI_CAN_DIAL) == 0) {
-            if (curr_i) {
-                ZITI_LOG(DEBUG, "stopping intercept: can no longer dial service[%s]", service->name);
-                stop_intercept(tnlr_ctx, ziti_instance, curr_i);
-            }
-        } else {
-            ziti_intercept_t *zi_ctx = new_ziti_intercept(ziti_ctx, service, curr_i);
-
-            if (zi_ctx) {
+        if (ziti_tunneler_intercepts_service(tnlr_ctx)) {
+            ziti_intercept_t *curr_i = model_map_get(&ziti_instance->intercepts, service->name);
+            if ((service->perm_flags & ZITI_CAN_DIAL) == 0) {
                 if (curr_i) {
-                    ZITI_LOG(DEBUG, "replacing intercept for service[%s]", service->name);
+                    ZITI_LOG(DEBUG, "stopping intercept: can no longer dial service[%s]", service->name);
                     stop_intercept(tnlr_ctx, ziti_instance, curr_i);
                 }
-
-                model_map_set(&ziti_instance->intercepts, service->name, zi_ctx);
-                intercept_ctx_t *i_ctx = new_intercept_ctx(tnlr_ctx, zi_ctx);
-                ziti_tunneler_intercept(tnlr_ctx, i_ctx);
-                current_tunneled_service.intercept = i_ctx;
             } else {
-                if (curr_i)
-                    current_tunneled_service.intercept = ziti_tunnel_find_intercept(tnlr_ctx, curr_i);
-            }
+                ziti_intercept_t *zi_ctx = new_ziti_intercept(ziti_ctx, service, curr_i);
 
-            if (current_tunneled_service.intercept == NULL) {
-                ZITI_LOG(DEBUG, "service[%s] can be dialed, but lacks intercept configuration; not intercepting", service->name);
-            }
-        }
+                if (zi_ctx) {
+                    if (curr_i) {
+                        ZITI_LOG(DEBUG, "replacing intercept for service[%s]", service->name);
+                        stop_intercept(tnlr_ctx, ziti_instance, curr_i);
+                    }
 
-        if (service->perm_flags & ZITI_CAN_BIND) {
-            for (i = 0; i < sizeof(host_cfgtypes) / sizeof(cfgtype_desc_t); i++) {
-                cfgtype = &host_cfgtypes[i];
-                config = cfgtype->alloc();
-                get_config_rc = ziti_service_get_config(service, cfgtype->name, config, cfgtype->parse);
-                if (get_config_rc == 0) {
-                    current_tunneled_service.host = ziti_tunneler_host(tnlr_ctx, ziti_ctx, service->name, cfgtype->cfgtype, config);
-                    break;
+                    model_map_set(&ziti_instance->intercepts, service->name, zi_ctx);
+                    intercept_ctx_t *i_ctx = new_intercept_ctx(tnlr_ctx, zi_ctx);
+                    ziti_tunneler_intercept(tnlr_ctx, i_ctx);
+                    current_tunneled_service.intercept = i_ctx;
+                } else {
+                    if (curr_i)
+                        current_tunneled_service.intercept = ziti_tunnel_find_intercept(tnlr_ctx, curr_i);
                 }
-                cfgtype->free(config);
-            }
-            if (!current_tunneled_service.host) {
-                ZITI_LOG(DEBUG, "service[%s] can be bound, but lacks host configuration; not hosting", service->name);
+
+                if (current_tunneled_service.intercept == NULL) {
+                    ZITI_LOG(DEBUG, "service[%s] can be dialed, but lacks intercept configuration; not intercepting", service->name);
+                }
             }
         }
+
+        if (ziti_tunneler_hosts_service(tnlr_ctx)) {
+            if (service->perm_flags & ZITI_CAN_BIND) {
+                for (i = 0; i < sizeof(host_cfgtypes) / sizeof(cfgtype_desc_t); i++) {
+                    cfgtype = &host_cfgtypes[i];
+                    config = cfgtype->alloc();
+                    get_config_rc = ziti_service_get_config(service, cfgtype->name, config, cfgtype->parse);
+                    if (get_config_rc == 0) {
+                        current_tunneled_service.host = ziti_tunneler_host(tnlr_ctx, ziti_ctx, service->name, cfgtype->cfgtype, config);
+                        break;
+                    }
+                    cfgtype->free(config);
+                }
+                if (!current_tunneled_service.host) {
+                    ZITI_LOG(DEBUG, "service[%s] can be bound, but lacks host configuration; not hosting", service->name);
+                }
+            }
+        }
+
     } else if (status == ZITI_SERVICE_UNAVAILABLE) {
         ZITI_LOG(INFO, "service unavailable: %s", service->name);
-        ziti_intercept_t *zi_ctx = model_map_remove(&ziti_instance->intercepts, service->name);
-        if (zi_ctx) {
-            stop_intercept(tnlr_ctx, ziti_instance, zi_ctx);
+        if (ziti_tunneler_intercepts_service(tnlr_ctx)) {
+            ziti_intercept_t *zi_ctx = model_map_remove(&ziti_instance->intercepts, service->name);
+            if (zi_ctx) {
+                stop_intercept(tnlr_ctx, ziti_instance, zi_ctx);
+            }
         }
     }
 

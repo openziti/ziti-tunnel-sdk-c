@@ -181,6 +181,9 @@ extern void ziti_tunnel_set_log_level(int lvl);
 typedef void (*ziti_tunnel_async_fn)(uv_loop_t *loop, void *ctx);
 extern void ziti_tunnel_async_send(tunneler_context tctx, ziti_tunnel_async_fn f, void *arg);
 
+extern bool ziti_tunneler_hosts_service(tunneler_context t_ctx);
+extern bool ziti_tunneler_intercepts_service(tunneler_context t_ctx);
+
 #ifdef __cplusplus
 }
 #endif
