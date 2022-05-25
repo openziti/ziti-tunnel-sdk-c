@@ -528,6 +528,8 @@ tunneled_service_t *ziti_sdk_c_on_service(ziti_context ziti_ctx, ziti_service *s
                     ZITI_LOG(DEBUG, "service[%s] can be dialed, but lacks intercept configuration; not intercepting", service->name);
                 }
             }
+        } else {
+            ZITI_LOG(INFO, "Tunneler does not support intercepts, so intercepts will not be created for service[%s]", service->name);
         }
 
         if (ziti_tunneler_hosts_service(tnlr_ctx)) {
@@ -546,6 +548,8 @@ tunneled_service_t *ziti_sdk_c_on_service(ziti_context ziti_ctx, ziti_service *s
                     ZITI_LOG(DEBUG, "service[%s] can be bound, but lacks host configuration; not hosting", service->name);
                 }
             }
+        } else {
+            ZITI_LOG(INFO, "Tunneler does not support hosting, so not hosting the service[%s]", service->name);
         }
 
     } else if (status == ZITI_SERVICE_UNAVAILABLE) {

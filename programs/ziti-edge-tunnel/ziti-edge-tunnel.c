@@ -2696,14 +2696,14 @@ static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required supe
                                           " are assigned in N.N.N.N/n format (default 100.64.0.0/10)\n"
                                           "\t-n|--dns <internal|dnsmasq=<dnsmasq opts>> DNS configuration setting (default internal)\n",
         run_opts, run);
-static CommandLine run_host_cmd = make_command("run_host", "run Ziti tunnel to host services",
+static CommandLine run_host_cmd = make_command("run-host", "run Ziti tunnel to host services",
                                           "-i <id.file> [-r N] [-v N]",
                                           "\t-i|--identity <identity>\trun with provided identity file (required)\n"
                                           "\t-I|--identity-dir <dir>\tload identities from provided directory\n"
                                           "\t-v|--verbose N\tset log level, higher level -- more verbose (default 3)\n"
                                           "\t-r|--refresh N\tset service polling interval in seconds (default 10)\n",
                                           run_host_opts, run);
-static CommandLine run_intercepts_cmd = make_command("run_intercepts", "run Ziti tunnel to intercept services (required superuser access)",
+static CommandLine run_intercepts_cmd = make_command("run-intercepts", "run Ziti tunnel to intercept services (required superuser access)",
                                           "-i <id.file> [-r N] [-v N] [-d|--dns-ip-range N.N.N.N/n] [-n|--dns <internal|dnsmasq=<dnsmasq hosts dir>>]",
                                           "\t-i|--identity <identity>\trun with provided identity file (required)\n"
                                           "\t-I|--identity-dir <dir>\tload identities from provided directory\n"
