@@ -61,6 +61,9 @@ static void send_tunnel_command(tunnel_command *tnl_cmd, void *ctx);
 static void send_tunnel_command_inline(tunnel_command *tnl_cmd, void *ctx);
 static void scm_service_stop_event(uv_loop_t *loop, void *arg);
 static void stop_tunnel_and_cleanup();
+static bool is_host_only();
+static void run_tunneler_loop(uv_loop_t* ziti_loop);
+static tunneler_context initialize_tunneler(netif_driver tun, uv_loop_t* ziti_loop);
 
 #if _WIN32
 static void move_config_from_previous_windows_backup(uv_loop_t *loop);
@@ -1214,13 +1217,13 @@ static void on_event(const base_event *ev) {
                     }
                 }
             }
-            if (model_map_size(&hostnamesToEdit) > 0) {
+            if (model_map_size(&hostnamesToEdit) > 0 && !is_host_only()) {
                 remove_and_add_nrpt_rules(main_ziti_loop, &hostnamesToEdit, get_dns_ip());
             }
-            if (model_map_size(&hostnamesToAdd) > 0) {
+            if (model_map_size(&hostnamesToAdd) > 0 && !is_host_only()) {
                 add_nrpt_rules(main_ziti_loop, &hostnamesToAdd, get_dns_ip());
             }
-            if (model_map_size(&hostnamesToRemove) > 0) {
+            if (model_map_size(&hostnamesToRemove) > 0 && !is_host_only()) {
                 remove_nrpt_rules(main_ziti_loop, &hostnamesToRemove);
             }
 
@@ -1445,17 +1448,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     }
 #endif
 
-    tunneler_sdk_options tunneler_opts = {
-            .netif_driver = tun,
-            .ziti_dial = ziti_sdk_c_dial,
-            .ziti_close = ziti_sdk_c_close,
-            .ziti_close_write = ziti_sdk_c_close_write,
-            .ziti_write = ziti_sdk_c_write,
-            .ziti_host = ziti_sdk_c_host
-
-    };
-
-    tunneler = ziti_tunneler_init(&tunneler_opts, ziti_loop);
+    tunneler = initialize_tunneler(tun, ziti_loop);
 
     ip_addr_t dns_ip4 = IPADDR4_INIT(dns_ip);
     ziti_dns_setup(tunneler, ipaddr_ntoa(&dns_ip4), ip_range);
@@ -1473,6 +1466,17 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
             ziti_dns_set_upstream(ziti_loop, dns_upstream, 0);
         }
     }
+    run_tunneler_loop(ziti_loop);
+    return 0;
+}
+
+static int run_tunnel_host_mode(uv_loop_t *ziti_loop) {
+    tunneler = initialize_tunneler(NULL, ziti_loop);
+    run_tunneler_loop(ziti_loop);
+    return 0;
+}
+
+static void run_tunneler_loop(uv_loop_t* ziti_loop) {
 
 #if _WIN32
     // set the service to running state
@@ -1482,7 +1486,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     CMD_CTRL = ziti_tunnel_init_cmd(ziti_loop, tunneler, on_event);
 
     if (config_dir != NULL) {
-        ZITI_LOG(INFO,"Loading identity files from %s", config_dir);
+        ZITI_LOG(INFO, "Loading identity files from %s", config_dir);
     }
 
     uv_work_t *loader = calloc(1, sizeof(uv_work_t));
@@ -1506,7 +1510,25 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
 #if _WIN32
     close_log();
 #endif
-    return 0;
+}
+
+static tunneler_context initialize_tunneler(netif_driver tun, uv_loop_t* ziti_loop) {
+
+    tunneler_sdk_options tunneler_opts = {
+            .netif_driver = tun,
+            .ziti_dial = ziti_sdk_c_dial,
+            .ziti_close = ziti_sdk_c_close,
+            .ziti_close_write = ziti_sdk_c_close_write,
+            .ziti_write = ziti_sdk_c_write,
+            .ziti_host = ziti_sdk_c_host
+
+    };
+
+    if (is_host_only()) {
+        return ziti_tunneler_init_host_only(&tunneler_opts, ziti_loop);
+    } else {
+        return ziti_tunneler_init(&tunneler_opts, ziti_loop);
+    }
 }
 
 #define COMMAND_LINE_IMPLEMENTATION
@@ -1541,9 +1563,17 @@ static struct option run_options[] = {
         { "dns-upstream", required_argument, NULL, 'u'},
 };
 
+static struct option run_host_options[] = {
+        { "identity", required_argument, NULL, 'i' },
+        { "identity-dir", required_argument, NULL, 'I'},
+        { "verbose", optional_argument, NULL, 'v'},
+        { "refresh", optional_argument, NULL, 'r'},
+};
+
 static const char* ip_range = "100.64.0.0/10";
 static const char* dns_impl = NULL;
 static const char* dns_upstream = NULL;
+static bool host_only = false;
 
 static int run_opts(int argc, char *argv[]) {
     printf("About to run tunnel service... %s", main_cmd.name);
@@ -1590,6 +1620,46 @@ static int run_opts(int argc, char *argv[]) {
     return optind;
 }
 
+static int run_host_opts(int argc, char *argv[]) {
+    printf("About to run tunnel service that hosts services... %s", main_cmd.name);
+    ziti_set_app_info(main_cmd.name, ziti_tunneler_version());
+
+    int c, option_index, errors = 0;
+    optind = 0;
+
+    while ((c = getopt_long(argc, argv, "i:I:v:r:",
+                            run_options, &option_index)) != -1) {
+        switch (c) {
+            case 'i': {
+                struct cfg_instance_s *inst = calloc(1, sizeof(struct cfg_instance_s));
+                inst->cfg = strdup(optarg);
+                LIST_INSERT_HEAD(&load_list, inst, _next);
+                break;
+            }
+            case 'I':
+                config_dir = optarg;
+                break;
+            case 'v':
+                setenv("ZITI_LOG", optarg, true);
+                break;
+            case 'r':
+                refresh_interval = strtol(optarg, NULL, 10);
+                break;
+            default: {
+                ZITI_LOG(ERROR, "Unknown option '%c'", c);
+                errors++;
+                break;
+            }
+        }
+    }
+    if (errors > 0) {
+        commandline_help(stderr);
+        exit(1);
+    }
+    host_only = true;
+    return optind;
+}
+
 void dns_set_miss_status(int status) {
     dns_miss_status = status;
 }
@@ -1632,37 +1702,42 @@ static void run(int argc, char *argv[]) {
     signal(SIGINT, interrupt_handler);
 #endif
 
-    char *ip_range_temp = get_ip_range_from_config();
-    if (ip_range_temp != NULL) {
-        ip_range = ip_range_temp;
+    uint32_t tun_ip;
+    uint32_t dns_ip;
+
+    if (!is_host_only()) {
+
+        char *ip_range_temp = get_ip_range_from_config();
+        if (ip_range_temp != NULL) {
+            ip_range = ip_range_temp;
+        }
+
+        uint32_t ip[4];
+        int bits;
+        int rc = sscanf(ip_range, "%d.%d.%d.%d/%d", &ip[0], &ip[1], &ip[2], &ip[3], &bits);
+        if (rc != 5) {
+            ZITI_LOG(ERROR, "Invalid IP range specification: n.n.n.n/m format is expected");
+            exit(1);
+        }
+
+        uint32_t mask = 0;
+        for (int i = 0; i < 4; i++) {
+            mask <<= 8U;
+            mask |= (ip[i] & 0xFFU);
+        }
+
+        tun_ip = htonl(mask | 0x1);
+        dns_ip = htonl(mask | 0x2);
+
+        // set ip info into instance
+        set_ip_info(dns_ip, tun_ip, bits);
     }
-
-    uint32_t ip[4];
-    int bits;
-    int rc = sscanf(ip_range, "%d.%d.%d.%d/%d", &ip[0], &ip[1], &ip[2], &ip[3], &bits);
-    if (rc != 5) {
-        ZITI_LOG(ERROR, "Invalid IP range specification: n.n.n.n/m format is expected");
-        exit(1);
-    }
-
-    uint32_t mask = 0;
-    for (int i = 0; i < 4; i++) {
-        mask <<= 8U;
-        mask |= (ip[i] & 0xFFU);
-    }
-
-    uint32_t tun_ip = htonl(mask | 0x1);
-    uint32_t dns_ip = htonl(mask | 0x2);
-
 #if __unix__ || __unix
     // prevent termination when running under valgrind
     // client forcefully closing connection results in SIGPIPE
     // which causes valgrind to freak out
     signal(SIGPIPE, SIG_IGN);
 #endif
-
-    // set ip info into instance
-    set_ip_info(dns_ip, tun_ip, bits);
 
     // set the service version in instance
     set_service_version();
@@ -1700,7 +1775,12 @@ static void run(int argc, char *argv[]) {
         exit(1);
     }
 
-    rc = run_tunnel(ziti_loop, tun_ip, dns_ip, ip_range, dns_upstream);
+    int rc;
+    if (is_host_only()) {
+        rc = run_tunnel_host_mode(ziti_loop);
+    } else {
+        rc = run_tunnel(ziti_loop, tun_ip, dns_ip, ip_range, dns_upstream);
+    }
     exit(rc);
 }
 
@@ -2563,6 +2643,13 @@ static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required supe
                                           " are assigned in N.N.N.N/n format (default 100.64.0.0/10)\n"
                                           "\t-n|--dns <internal|dnsmasq=<dnsmasq opts>> DNS configuration setting (default internal)\n",
         run_opts, run);
+static CommandLine run_host_cmd = make_command("run-host", "run Ziti tunnel to host services",
+                                          "-i <id.file> [-r N] [-v N]",
+                                          "\t-i|--identity <identity>\trun with provided identity file (required)\n"
+                                          "\t-I|--identity-dir <dir>\tload identities from provided directory\n"
+                                          "\t-v|--verbose N\tset log level, higher level -- more verbose (default 3)\n"
+                                          "\t-r|--refresh N\tset service polling interval in seconds (default 10)\n",
+                                          run_host_opts, run);
 static CommandLine dump_cmd = make_command("dump", "dump the identities information", "[-i <identity>] [-p <dir>]",
                                            "\t-i|--identity\tdump identity info\n"
                                            "\t-p|--dump_path\tdump into path\n", dump_opts, send_message_to_tunnel_fn);
@@ -2614,6 +2701,7 @@ static CommandLine help_cmd = make_command("help", "this message", NULL, NULL, N
 static CommandLine *main_cmds[] = {
         &enroll_cmd,
         &run_cmd,
+        &run_host_cmd,
         &on_off_id_cmd,
         &enable_id_cmd,
         &dump_cmd,
@@ -2793,6 +2881,10 @@ static void move_config_from_previous_windows_backup(uv_loop_t *loop) {
     }
 }
 #endif
+
+static bool is_host_only() {
+    return host_only;
+}
 
 int main(int argc, char *argv[]) {
     const char *name = strrchr(argv[0], '/');
