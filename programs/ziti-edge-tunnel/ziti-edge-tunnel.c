@@ -2643,7 +2643,7 @@ static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required supe
                                           " are assigned in N.N.N.N/n format (default 100.64.0.0/10)\n"
                                           "\t-n|--dns <internal|dnsmasq=<dnsmasq opts>> DNS configuration setting (default internal)\n",
         run_opts, run);
-static CommandLine run_host_cmd = make_command("run_host", "run Ziti tunnel to host services",
+static CommandLine run_host_cmd = make_command("run-host", "run Ziti tunnel to host services",
                                           "-i <id.file> [-r N] [-v N]",
                                           "\t-i|--identity <identity>\trun with provided identity file (required)\n"
                                           "\t-I|--identity-dir <dir>\tload identities from provided directory\n"
