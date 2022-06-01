@@ -30,7 +30,6 @@ extern "C" {
 bool open_log(char* log_filename);
 void close_log();
 bool rotate_log();
-void stop_log_check();
 struct tm* get_log_start_time();
 char* get_log_file_name();
 
