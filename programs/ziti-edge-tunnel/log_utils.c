@@ -106,7 +106,7 @@ static void log_rotation(uv_timer_t *timer) {
 
     struct tm *orig_time = timer->data;
     if (orig_time) {
-        if (orig_time->tm_mday < tm->tm_mday) {
+        if (orig_time->tm_mday != tm->tm_mday) {
             if (rotate_log()) {
                 timer->data = start_time;
 #if _WIN32
@@ -127,7 +127,7 @@ static void start_log_rotation_timer(uv_loop_t *ziti_loop) {
     uv_timer_init(ziti_loop, &log_rotation_timer);
     uv_unref((uv_handle_t *) &log_rotation_timer);
     (&log_rotation_timer)->data = start_time;
-    uv_timer_start(&log_rotation_timer, log_rotation, 500, 300000);
+    uv_timer_start(&log_rotation_timer, log_rotation, 5000, 120000);
 }
 
 bool log_init(uv_loop_t *ziti_loop, bool is_multi_writer) {
