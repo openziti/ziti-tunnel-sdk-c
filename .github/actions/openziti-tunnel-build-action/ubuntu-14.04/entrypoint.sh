@@ -28,6 +28,7 @@ cmake \
     -DCMAKE_TOOLCHAIN_FILE=./toolchains/default.cmake \
     -DBUILD_DIST_PACKAGES=ON \
     -DDISABLE_LIBSYSTEMD_FEATURE=ON \
+    -DUSE_OPENSSL=ON \
     -S . \
     -B ./build 
 cmake \

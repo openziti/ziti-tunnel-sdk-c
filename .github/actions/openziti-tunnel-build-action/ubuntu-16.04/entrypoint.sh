@@ -29,6 +29,7 @@ cmake \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_TOOLCHAIN_FILE=./toolchains/default.cmake \
     -DBUILD_DIST_PACKAGES=ON \
+    -DUSE_OPENSSL=ON \
     -S . \
     -B ./build
 cmake \
