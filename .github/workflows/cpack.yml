@@ -72,27 +72,10 @@ jobs:
           chmod +x /root/git.sh
           update-alternatives --install /usr/bin/git git /root/git.sh 50
 
-      # /github/workspace is added to "safe" dirs in global config e.g.
-      # ~/.gitconfig so both runner and builder containers trust these dirs
-      # owned by different UIDs from that of Git's EUID. This is made necessary
-      # by newly-enforced directory boundaries in Git v2.35.2
-      # ref: https://lore.kernel.org/git/xmqqv8veb5i6.fsf@gitster.g/
-      - name: declare to Git "safe" directories owned by a different UID
-        run: |
-          for dir in /github/workspace /__w/ziti-tunnel-sdk-c/ziti-tunnel-sdk-c; do
-            git config --global --add safe.directory ${dir}
-          done
-
       - name: checkout workspace
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
-
-      - name: compare UID of owner of Git "safe" directories
-        run: |
-          set -x
-          ls -dl /__w/ziti-tunnel-sdk-c/ziti-tunnel-sdk-c
-          id
 
       - name: configure build action for distro version
         env:

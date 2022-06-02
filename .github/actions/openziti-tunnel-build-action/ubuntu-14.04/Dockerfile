@@ -27,6 +27,7 @@ RUN apt-get -y update \
         python3 \
         software-properties-common \
         zlib1g-dev \
+        libssl-dev \
     && add-apt-repository -y ppa:ubuntu-toolchain-r/test \
     && apt-get -y update \
     && apt-get -y install \

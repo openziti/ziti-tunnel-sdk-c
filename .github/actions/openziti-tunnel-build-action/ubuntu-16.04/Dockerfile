@@ -27,6 +27,7 @@ RUN apt-get -y update \
         python3 \
         libsystemd-dev \
         zlib1g-dev \
+        libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
 RUN curl -L https://cmake.org/files/v${CMAKE_VERSION%.*}/cmake-${CMAKE_VERSION}-linux-x86_64.sh -o cmake.sh \
