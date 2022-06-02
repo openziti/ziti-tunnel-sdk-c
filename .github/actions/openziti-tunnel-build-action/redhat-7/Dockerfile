@@ -20,7 +20,6 @@ RUN yum -y install \
         graphviz \
         python3 \
         zlib-devel \
-        openssl-devel \
     &&  yum -y install \
         devtoolset-11 \
         devtoolset-11-libatomic-devel \
