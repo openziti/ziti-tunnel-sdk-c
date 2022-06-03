@@ -1,7 +1,7 @@
 version: "3.9"
 
 x-base-service: &base-service
-    image: openziti/ziti-edge-tunnel:latest
+    image: netfoundry/ziti-edge-tunnel:latest
     devices:
     - /dev/net/tun:/dev/net/tun
     volumes:
@@ -34,7 +34,7 @@ services:
         entrypoint: ["sh", "-c", "while true; do sleep infinity; done"]
 
     ziti-host:                    # tunneler for hosting services without providing DNS or IP routes
-        image: openziti/ziti-edge-tunnel:latest
+        image: netfoundry/ziti-edge-tunnel:latest
         environment:
         - NF_REG_NAME
         - NF_REG_TOKEN
@@ -48,7 +48,7 @@ services:
         - --verbose=4
 
     ziti-host-dir:                # tunneler for hosting services without providing DNS or IP routes
-        image: openziti/ziti-edge-tunnel:latest
+        image: netfoundry/ziti-edge-tunnel:latest
         environment: []           # ignore NF_REG_NAME and load all identities in same dir
         volumes:
         - .:/ziti-edge-tunnel
