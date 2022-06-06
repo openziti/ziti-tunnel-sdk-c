@@ -127,6 +127,7 @@ static void start_log_rotation_timer(uv_loop_t *ziti_loop) {
     uv_timer_init(ziti_loop, &log_rotation_timer);
     uv_unref((uv_handle_t *) &log_rotation_timer);
     (&log_rotation_timer)->data = start_time;
+    // log rotation will be attempted every 2 minutes 
     uv_timer_start(&log_rotation_timer, log_rotation, 5000, 120000);
 }
 
