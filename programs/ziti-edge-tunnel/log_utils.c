@@ -37,6 +37,8 @@ char* log_filename;
 static bool multi_writer = false;
 static const char* log_filename_base = "ziti-tunneler.log";
 static int rotation_count = 7;
+static uv_timer_t log_rotation_timer;
+static bool is_log_open = false;
 
 static char* get_log_path() {
     char process_dir[FILENAME_MAX]; //create string buffer to hold path
@@ -97,35 +99,36 @@ void update_symlink_async(uv_async_t *ar) {
     update_symlink(symlink_loop, get_base_filename(), log_filename);
 }
 
-void flush_log(uv_check_t *handle) {
-    if (ziti_tunneler_log != NULL) {
-        fflush(ziti_tunneler_log);
-    }
-    if (multi_writer) {
-        fflush(stdout);
-    }
-
+static void log_rotation(uv_timer_t *timer) {
     uv_timeval64_t now;
     uv_gettimeofday(&now);
     struct tm *tm = gmtime(&now.tv_sec);
 
-    if (handle->data) {
-        struct tm *orig_time = handle->data;
-        if (orig_time->tm_mday < tm->tm_mday) {
+    struct tm *orig_time = timer->data;
+    if (orig_time) {
+        if (orig_time->tm_mday != tm->tm_mday) {
             if (rotate_log()) {
+                timer->data = start_time;
 #if _WIN32
                 uv_async_t *ar = calloc(1, sizeof(uv_async_t));
-                uv_async_init(handle->loop, ar, update_symlink_async);
+                uv_async_init(timer->loop, ar, update_symlink_async);
                 uv_async_send(ar);
 #endif
             }
-            handle->data = start_time;
             uv_async_t *ar = calloc(1, sizeof(uv_async_t));
-            uv_async_init(handle->loop, ar, delete_older_logs);
+            uv_async_init(timer->loop, ar, delete_older_logs);
             uv_async_send(ar);
         }
     }
 
+}
+
+static void start_log_rotation_timer(uv_loop_t *ziti_loop) {
+    uv_timer_init(ziti_loop, &log_rotation_timer);
+    uv_unref((uv_handle_t *) &log_rotation_timer);
+    (&log_rotation_timer)->data = start_time;
+    // log rotation will be attempted every 2 minutes 
+    uv_timer_start(&log_rotation_timer, log_rotation, 5000, 120000);
 }
 
 bool log_init(uv_loop_t *ziti_loop, bool is_multi_writer) {
@@ -145,12 +148,7 @@ bool log_init(uv_loop_t *ziti_loop, bool is_multi_writer) {
 
     multi_writer = is_multi_writer;
 
-    log_flusher = calloc(1, sizeof(uv_check_t));
-    uv_check_init(ziti_loop, log_flusher);
-    log_flusher->data = start_time;
-    uv_unref((uv_handle_t *) log_flusher);
-    uv_check_start(log_flusher, flush_log);
-
+    start_log_rotation_timer(ziti_loop);
 
     log_filename = create_log_filename();
 
@@ -218,10 +216,14 @@ void ziti_log_writer(int level, const char *loc, const char *msg, size_t msglen)
     if ( ziti_tunneler_log != NULL) {
         fprintf(ziti_tunneler_log, "\n[%s] %7s %s ", curr_time, parse_level(level), loc);
         fwrite(msg, 1, msglen, ziti_tunneler_log);
+        if (is_log_open) {
+            fflush(ziti_tunneler_log);
+        }
     }
 
     if(multi_writer) {
         printf("\n[%s] %7s %s %.*s", curr_time, parse_level(level), loc, msglen, msg);
+        fflush(stdout);
     }
 
 }
@@ -231,10 +233,12 @@ bool open_log(char* filename) {
         printf("Could not open logs file %s, due to %s", filename, strerror(errno));
         return false;
     }
+    is_log_open = true;
     return true;
 }
 
 void close_log() {
+    is_log_open = false;
     if (ziti_tunneler_log != NULL) {
         fclose(ziti_tunneler_log);
         ziti_tunneler_log = NULL;
@@ -242,15 +246,6 @@ void close_log() {
     if (log_filename != NULL) {
         free(log_filename);
         log_filename = NULL;
-    }
-}
-
-void stop_log_check() {
-    if (log_flusher != NULL) {
-        uv_check_stop(log_flusher);
-        free(log_flusher->data);
-        free(log_flusher);
-        log_flusher = NULL;
     }
 }
 
@@ -271,11 +266,7 @@ bool rotate_log() {
 #endif
     log_filename = create_log_filename();
 
-    if (open_log(log_filename)) {
-        return true;
-    } else {
-        return false;
-    }
+    return open_log(log_filename);
 }
 
 static void delete_older_logs(uv_async_t *ar) {
