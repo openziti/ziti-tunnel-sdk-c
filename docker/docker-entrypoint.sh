@@ -34,7 +34,7 @@ trap alldone exit
 
 IDENTITIES_DIR="/ziti-edge-tunnel"
 if ! mountpoint "${IDENTITIES_DIR}" &>/dev/null; then
-    echo "ERROR: please run this image with a volume mounted on ${IDENTITIES_DIR}" >&2
+    echo "ERROR: please run this container with a volume mounted on ${IDENTITIES_DIR}" >&2
     exit 1
 fi
 

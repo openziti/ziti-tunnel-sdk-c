@@ -22,6 +22,7 @@ RUN apt-get -y update \
         pkg-config \
         python3 \
         zlib1g-dev \
+        libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
 COPY ./entrypoint.sh /root/

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Ubuntu Xenial 16.04
+# Ubuntu Jammy 22.04
 #
 
 set -euo pipefail
@@ -24,11 +24,12 @@ done
 
 cmake \
     -E make_directory \
-    ./build
+    ./build  
 cmake \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_TOOLCHAIN_FILE=./toolchains/default.cmake \
     -DBUILD_DIST_PACKAGES=ON \
+    -DUSE_OPENSSL=ON \
     -S . \
     -B ./build
 cmake \
