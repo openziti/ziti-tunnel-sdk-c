@@ -1,15 +1,30 @@
 
-add_library(ziti-tunnel-sdk-c STATIC
-        ziti_tunnel.c tunnel_tcp.c tunnel_udp.c intercept.c route.c
-        lwip/netif_shim.c lwip/lwiphooks_ip6.c lwip/lwiphooks_ip4.c lwip/lwip_cloned_fns.c tunnel_log.c)
+if(CMAKE_OPENWRT STREQUAL "YES")
+        add_library(ziti-tunnel-sdk-c STATIC
+                ziti_tunnel.c tunnel_tcp.c tunnel_udp.c intercept.c route.c internal_dns_manager.c
+                lwip/netif_shim.c lwip/lwiphooks_ip6.c lwip/lwiphooks_ip4.c lwip/lwip_cloned_fns.c dns.c tunnel_log.c)
+else()
+        add_library(ziti-tunnel-sdk-c STATIC
+                ziti_tunnel.c tunnel_tcp.c tunnel_udp.c intercept.c route.c
+                lwip/netif_shim.c lwip/lwiphooks_ip6.c lwip/lwiphooks_ip4.c lwip/lwip_cloned_fns.c tunnel_log.c)
+endif()
 
 set_property(TARGET ziti-tunnel-sdk-c PROPERTY C_STANDARD 11)
 
-target_compile_definitions(ziti-tunnel-sdk-c
-        PRIVATE GIT_VERSION=${GIT_VERSION}
-        PRIVATE BUILD_DATE=${BUILD_DATE}
-        PRIVATE ZITI_LOG_PREFIX=${PROJECT_NAME}
-        )
+if(CMAKE_OPENWRT STREQUAL "YES")
+        target_compile_definitions(ziti-tunnel-sdk-c
+                PUBLIC OPENWRT
+                PRIVATE GIT_VERSION=${GIT_VERSION}
+                PRIVATE BUILD_DATE=${BUILD_DATE}
+                PRIVATE ZITI_LOG_PREFIX=${PROJECT_NAME}        
+                )
+else()
+        target_compile_definitions(ziti-tunnel-sdk-c
+                PRIVATE GIT_VERSION=${GIT_VERSION}
+                PRIVATE BUILD_DATE=${BUILD_DATE}
+                PRIVATE ZITI_LOG_PREFIX=${PROJECT_NAME}
+                )
+endif()
 
 FetchContent_GetProperties(lwip)
 set (LWIP_DIR "${lwip_SOURCE_DIR}")

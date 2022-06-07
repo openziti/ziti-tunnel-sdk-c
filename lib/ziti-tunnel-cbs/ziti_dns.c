@@ -150,11 +150,16 @@ static int seed_dns(const char *dns_cidr) {
 }
 
 int ziti_dns_setup(tunneler_context tnlr, const char *dns_addr, const char *dns_cidr) {
+    ZITI_LOG(INFO, "Entering this function");
     ziti_dns.tnlr = tnlr;
     seed_dns(dns_cidr);
 
     intercept_ctx_t *dns_intercept = intercept_ctx_new(tnlr, "ziti:dns-resolver", &ziti_dns);
+#ifndef OPENWRT
     intercept_ctx_add_address(dns_intercept, dns_addr);
+#else
+    intercept_ctx_add_address(dns_intercept, dns_addr, dns_addr);
+#endif
     intercept_ctx_add_port_range(dns_intercept, 53, 53);
     intercept_ctx_add_protocol(dns_intercept, "udp");
     intercept_ctx_override_cbs(dns_intercept, on_dns_client, on_dns_req, on_dns_close, on_dns_close);
@@ -341,6 +346,7 @@ void ziti_dns_deregister_intercept(void *intercept) {
 }
 
 const char *ziti_dns_register_hostname(const char *hostname, void *intercept) {
+    ZITI_LOG(INFO, "Entering this function %s", hostname);
     // CIDR block
     if (strchr(hostname, '/')) {
         return hostname;

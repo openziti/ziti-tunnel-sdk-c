@@ -74,6 +74,9 @@ typedef struct address_s {
     ip_addr_t  ip;
     ip_addr_t  _netmask;
     uint8_t    prefix_len;
+#ifdef OPENWRT
+    bool       is_hostname;
+#endif    
     STAILQ_ENTRY(address_s) entries;
 } address_t;
 typedef STAILQ_HEAD(address_list_s, address_s) address_list_t;
@@ -100,10 +103,13 @@ typedef struct intercept_ctx_s  intercept_ctx_t;
 typedef bool (*intercept_match_addr_fn)(ip_addr_t *addr, void *app_intercept_ctx);
 
 extern intercept_ctx_t* intercept_ctx_new(tunneler_context tnlt_ctx, const char *app_id, void *app_intercept_ctx);
+#ifdef OPENWRT
+extern address_t *intercept_ctx_add_address(intercept_ctx_t *i_ctx, const char *address, const char *intercept_name);
+#else
+extern address_t *intercept_ctx_add_address(intercept_ctx_t *i_ctx, const char *address);
+#endif
 extern void intercept_ctx_set_match_addr(intercept_ctx_t *intercept, intercept_match_addr_fn pred);
 extern void intercept_ctx_add_protocol(intercept_ctx_t *ctx, const char *protocol);
-/** parse address string as hostname|ip|cidr and add result to list of intercepted addresses */
-extern address_t *intercept_ctx_add_address(intercept_ctx_t *i_ctx, const char *address);
 extern port_range_t *intercept_ctx_add_port_range(intercept_ctx_t *i_ctx, uint16_t low, uint16_t high);
 extern void intercept_ctx_override_cbs(intercept_ctx_t *i_ctx, ziti_sdk_dial_cb dial, ziti_sdk_write_cb write, ziti_sdk_close_cb close_write, ziti_sdk_close_cb close);
 
@@ -134,7 +140,40 @@ typedef struct tunneler_sdk_options_s {
     ziti_sdk_host_cb    ziti_host;
 } tunneler_sdk_options;
 
-extern address_t *parse_address(const char *ip_or_cidr);
+#ifdef OPENWRT
+
+typedef struct dns_manager_s dns_manager;
+
+typedef int (*dns_fallback_cb)(const char *name, void *ctx, struct in_addr* addr);
+
+typedef void (*dns_answer_cb)(uint8_t *a_packet, size_t a_len, void *ctx);
+typedef int (*dns_query)(dns_manager *dns, const uint8_t *q_packet, size_t q_len, dns_answer_cb cb, void *ctx);
+
+struct dns_manager_s {
+    bool internal_dns;
+    uint32_t dns_ip;
+    uint16_t dns_port;
+
+    int (*apply)(dns_manager *dns, const char *host, const char *ip);
+    dns_query query;
+
+    uv_loop_t *loop;
+    dns_fallback_cb fb_cb;
+    void *fb_ctx;
+    void *data;
+};
+
+// fallback will be called on the worker thread to avoid blocking event loop
+extern dns_manager *get_tunneler_dns(uv_loop_t *l, uint32_t dns_ip, dns_fallback_cb cb, void *ctx);
+
+#endif
+
+#ifdef OPENWRT
+    extern address_t *parse_address(const char *hn_or_ip_or_cidr, const char *intercept_name, dns_manager *dns);
+#else
+    extern address_t *parse_address(const char *ip_or_cidr);
+#endif
+
 extern port_range_t *parse_port_range(uint16_t low, uint16_t high);
 
 extern bool protocol_match(const char *protocol, const protocol_list_t *protocols);
@@ -174,6 +213,11 @@ extern int ziti_tunneler_close_write(tunneler_io_context tnlr_io_ctx);
 extern const char* ziti_tunneler_version();
 
 extern const char* ziti_tunneler_build_date();
+
+#ifdef OPENWRT
+extern void ziti_tunneler_init_dns(uint32_t mask, int bits);
+extern void ziti_tunneler_set_dns(tunneler_context tnlr_ctx, dns_manager *dns);
+#endif
 
 extern void ziti_tunnel_set_logger(tunnel_logger_f logger);
 extern void ziti_tunnel_set_log_level(int lvl);

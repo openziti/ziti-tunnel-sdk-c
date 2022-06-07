@@ -274,7 +274,11 @@ static int tun_exclude_rt(netif_handle dev, uv_loop_t *l, const char *addr) {
     return run_command("ip route replace %s %s %.*s", addr, type, gw_len, gw);
 }
 
+#ifndef OPENWRT
 netif_driver tun_open(uv_loop_t *loop, uint32_t tun_ip, uint32_t dns_ip, const char *dns_block, char *error, size_t error_len) {
+#else
+netif_driver tun_open(uv_loop_t *loop, uint32_t tun_ip, uint32_t dns_ip, const char *dns_block, const char *tun_name, char *error, size_t error_len) {
+#endif
     if (error != NULL) {
         memset(error, 0, error_len * sizeof(char));
     }
@@ -298,6 +302,12 @@ netif_driver tun_open(uv_loop_t *loop, uint32_t tun_ip, uint32_t dns_ip, const c
     struct ifreq ifr;
     memset(&ifr, 0, sizeof(ifr));
     ifr.ifr_flags = IFF_TUN | IFF_NO_PI;
+
+#ifdef OPENWRT
+    if (tun_name) {
+        strncpy(ifr.ifr_name, tun_name, sizeof(ifr.ifr_name));
+    }
+#endif
 
     if (ioctl(tun->fd, TUNSETIFF, (void *) &ifr) < 0) {
         if (error != NULL) {

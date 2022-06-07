@@ -45,6 +45,14 @@ const char *SRC_IP_KEY = "src_ip";
 const char *SRC_PORT_KEY = "src_port";
 const char *SOURCE_IP_KEY = "source_ip";
 
+#ifdef OPENWRT
+struct resolve_req {
+    ip_addr_t addr;
+    u16_t port;
+    tunneler_context tnlr_ctx;
+};
+#endif
+
 static void run_packet_loop(uv_loop_t *loop, tunneler_context tnlr_ctx);
 
 STAILQ_HEAD(tlnr_ctx_list_s, tunneler_ctx_s) tnlr_ctx_list_head = STAILQ_HEAD_INITIALIZER(tnlr_ctx_list_head);
@@ -81,6 +89,7 @@ tunneler_context ziti_tunneler_init_host_only(tunneler_sdk_options *opts, uv_loo
 }
 
 tunneler_context ziti_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop) {
+    TNL_LOG(ERR, "Entering here");
     struct tunneler_ctx_s *ctx = create_tunneler_ctx(opts, loop);
     if (ctx == NULL) {
         return NULL;
@@ -224,6 +233,55 @@ host_ctx_t *ziti_tunneler_host(tunneler_context tnlr_ctx, const void *ziti_ctx, 
     return tnlr_ctx->opts.ziti_host((void *) ziti_ctx, tnlr_ctx->loop, service_name, cfg_type, config);
 }
 
+#ifdef OPENWRT
+static void send_dns_resp(uint8_t *resp, size_t resp_len, void *ctx) {
+    struct resolve_req *rreq = ctx;
+
+    TNL_LOG(TRACE, "sending DNS resp[%zd] -> %s:%d", resp_len, ipaddr_ntoa(&rreq->addr), rreq->port);
+    struct pbuf *rp = pbuf_alloc(PBUF_TRANSPORT, resp_len, PBUF_RAM);
+    memcpy(rp->payload, resp, resp_len);
+
+    err_t err = udp_sendto_if_src(rreq->tnlr_ctx->dns_pcb, rp, &rreq->addr, rreq->port,
+                                  netif_default, &rreq->tnlr_ctx->dns_pcb->local_ip);
+    if (err != ERR_OK) {
+        TNL_LOG(WARN, "udp_send() DNS response: %d", err);
+    }
+
+    pbuf_free(rp);
+    free(rreq);
+}
+
+static void on_dns_packet(void *arg, struct udp_pcb *pcb, struct pbuf *p,
+    const ip_addr_t *addr, u16_t port) {
+    tunneler_context tnlr_ctx = arg;
+
+    struct resolve_req *rr = calloc(1,sizeof(struct resolve_req));
+    rr->addr = *addr;
+    rr->port = port;
+    rr->tnlr_ctx = tnlr_ctx;
+
+    int rc = tnlr_ctx->dns->query(tnlr_ctx->dns, p->payload, p->len, send_dns_resp, rr);
+    if (rc != 0) {
+        TNL_LOG(WARN, "DNS resolve error: %d", rc);
+        free(rr);
+    }
+    pbuf_free(p);
+}
+
+void ziti_tunneler_set_dns(tunneler_context tnlr_ctx, dns_manager *dns) {
+    tnlr_ctx->dns = dns;
+    if (dns->internal_dns) {
+        tnlr_ctx->dns_pcb = udp_new();
+        ip_addr_t dns_addr = {
+                .type = IPADDR_TYPE_V4,
+                .u_addr.ip4.addr = dns->dns_ip,
+        };
+        udp_bind(tnlr_ctx->dns_pcb, &dns_addr, dns->dns_port);
+        udp_recv(tnlr_ctx->dns_pcb, on_dns_packet, tnlr_ctx);
+    }
+}
+#endif
+
 intercept_ctx_t* intercept_ctx_new(tunneler_context tnlr_ctx, const char *app_id, void *app_intercept_ctx) {
     intercept_ctx_t *ictx = calloc(1, sizeof(intercept_ctx_t));
     ictx->tnlr_ctx = tnlr_ctx;
@@ -246,21 +304,42 @@ void intercept_ctx_add_protocol(intercept_ctx_t *ctx, const char *protocol) {
     STAILQ_INSERT_TAIL(&ctx->protocols, proto, entries);
 }
 
+#ifndef OPENWRT
 address_t *parse_address(const char *ip_or_cidr) {
+#else
+address_t *parse_address(const char *ip_or_cidr, const char *intercept_name, dns_manager *dns ) {
+#endif
     address_t *addr = calloc(1, sizeof(address_t));
     strncpy(addr->str, ip_or_cidr, sizeof(addr->str));
     char *prefix_sep = strchr(addr->str, '/');
+#ifdef OPENWRT
+    addr->is_hostname = false;
+#endif
 
     if (prefix_sep != NULL) {
         *prefix_sep = '\0';
         addr->prefix_len = (int)strtol(prefix_sep + 1, NULL, 10);
     }
 
+#ifndef OPENWRT
     if (ipaddr_aton(addr->str, &addr->ip) == 0) {
         TNL_LOG(ERR, "hostnames are not supported");
         free(addr);
         return NULL;
     }
+#else
+    if ( ! strcasestr(addr->str, "ziti:dns-resolver")) {
+    // does not parse as IP address; assume hostname and try to get IP from the dns manager
+        if (dns != NULL) {
+            TNL_LOG(INFO, "Entered if dns is true & got addr->str = %s", addr->str);
+            if (dns->apply(dns, intercept_name, addr->str) != 0) {
+                TNL_LOG(ERR, "failed to apply DNS mapping %s => %s", intercept_name, addr->str);
+                free(addr);
+                return NULL;
+            }
+        }
+    }
+#endif
 
     uint8_t addr_bits = IP_IS_V4(&addr->ip) ? 32 : 128;
     uint8_t net_bits = addr_bits - addr->prefix_len;
@@ -282,8 +361,17 @@ address_t *parse_address(const char *ip_or_cidr) {
     return addr;
 }
 
+#ifndef OPENWRT
 address_t *intercept_ctx_add_address(intercept_ctx_t *i_ctx, const char *address) {
+#else
+address_t *intercept_ctx_add_address(intercept_ctx_t *i_ctx, const char *address, const char *intercept_name){
+#endif
+
+#ifndef OPENWRT
     address_t *addr = parse_address(address);
+#else  
+    address_t *addr = parse_address(address, intercept_name, i_ctx->tnlr_ctx->dns);
+#endif
 
     if (addr == NULL) {
         TNL_LOG(ERR, "failed to parse address '%s' service[%s]", address, i_ctx->service_name);
@@ -533,6 +621,7 @@ static struct raw_pcb * init_protocol_handler(u8_t proto, raw_recv_fn recv_fn, v
 }
 
 static void run_packet_loop(uv_loop_t *loop, tunneler_context tnlr_ctx) {
+    TNL_LOG(ERR, "Entering here");
     tunneler_sdk_options opts = tnlr_ctx->opts;
     if (opts.ziti_close == NULL || opts.ziti_close_write == NULL ||  opts.ziti_write == NULL ||
         opts.ziti_dial == NULL || opts.ziti_host == NULL) {

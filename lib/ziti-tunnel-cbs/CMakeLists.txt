@@ -1,9 +1,16 @@
 
-
-target_compile_definitions(ziti-tunnel-sdk-c
-        PRIVATE GIT_VERSION=${GIT_VERSION}
-        PRIVATE ZITI_LOG_PREFIX=${PROJECT_NAME}
-        )
+if(CMAKE_OPENWRT STREQUAL "YES")
+        target_compile_definitions(ziti-tunnel-sdk-c
+                PUBLIC OPENWRT
+                PRIVATE GIT_VERSION=${GIT_VERSION}
+                PRIVATE ZITI_LOG_PREFIX=${PROJECT_NAME}
+                )
+else()
+        target_compile_definitions(ziti-tunnel-sdk-c
+                PRIVATE GIT_VERSION=${GIT_VERSION}
+                PRIVATE ZITI_LOG_PREFIX=${PROJECT_NAME}
+                )
+endif()
 
 add_library(ziti-tunnel-cbs-c STATIC
         ziti_tunnel_cbs.c

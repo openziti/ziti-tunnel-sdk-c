@@ -26,6 +26,10 @@ struct netif_handle_s {
     char name[IFNAMSIZ];
 };
 
+#ifndef OPENWRT
 extern netif_driver tun_open(struct uv_loop_s *loop, uint32_t tun_ip, uint32_t dns_ip, const char *cidr, char *error, size_t error_len);
+#else
+extern netif_driver tun_open(struct uv_loop_s *loop, uint32_t tun_ip, uint32_t dns_ip, const char *cidr, const char *tun_name, char *error, size_t error_len);
+#endif
 
 #endif //ZITI_TUNNELER_SDK_TUN_H

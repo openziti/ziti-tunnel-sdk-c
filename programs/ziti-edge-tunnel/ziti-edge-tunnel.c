@@ -69,6 +69,10 @@ static tunneler_context initialize_tunneler(netif_driver tun, uv_loop_t* ziti_lo
 static void move_config_from_previous_windows_backup(uv_loop_t *loop);
 #endif
 
+#ifdef OPENWRT
+extern dns_manager *get_dnsmasq_manager(const char* path);
+#endif
+
 struct cfg_instance_s {
     char *cfg;
     LIST_ENTRY(cfg_instance_s) _next;
@@ -1396,13 +1400,21 @@ static char* normalize_host(char* hostname) {
     return hostname_new;
 }
 
+#ifndef OPENWRT
 static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, const char *ip_range, const char *dns_upstream) {
+#else
+static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, const char *ip_range, const char *dns_upstream, dns_manager *dns, const char *tun_name) {
+#endif
     netif_driver tun;
     char tun_error[64];
 #if __APPLE__ && __MACH__
     tun = utun_open(tun_error, sizeof(tun_error), ip_range);
 #elif __linux__
+#ifndef OPENWRT
     tun = tun_open(ziti_loop, tun_ip, dns_ip, ip_range, tun_error, sizeof(tun_error));
+#else
+    tun = tun_open(ziti_loop, tun_ip, dns->dns_ip, ip_range, tun_name, tun_error, sizeof(tun_error));
+#endif
 #elif _WIN32
     tun = tun_open(ziti_loop, tun_ip, ip_range, tun_error, sizeof(tun_error));
 
@@ -1466,6 +1478,12 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
             ziti_dns_set_upstream(ziti_loop, dns_upstream, 0);
         }
     }
+
+#ifdef OPENWRT
+    ziti_tunneler_set_dns(tunneler, dns);
+//    ZITI_LOG(INFO, "Tunneler DNS context: %s", tunneler->dns);
+#endif
+
     run_tunneler_loop(ziti_loop);
     return 0;
 }
@@ -1554,6 +1572,7 @@ static void usage(int argc, char *argv[]) {
     commandline_run(&main_cmd, 3, help_args);
 }
 
+#ifndef OPENWRT
 static struct option run_options[] = {
         { "identity", required_argument, NULL, 'i' },
         { "identity-dir", required_argument, NULL, 'I'},
@@ -1562,6 +1581,18 @@ static struct option run_options[] = {
         { "dns-ip-range", required_argument, NULL, 'd'},
         { "dns-upstream", required_argument, NULL, 'u'},
 };
+#else
+static struct option run_options[] = {
+        { "identity", required_argument, NULL, 'i' },
+        { "identity-dir", required_argument, NULL, 'I'},
+        { "verbose", required_argument, NULL, 'v'},
+        { "refresh", required_argument, NULL, 'r'},
+        { "dns-ip-range", required_argument, NULL, 'd'},
+        { "dns-upstream", required_argument, NULL, 'u'},
+        { "dns", required_argument, NULL, 'n'},
+        { "tun-name", required_argument, NULL, 't'},
+};
+#endif
 
 static struct option run_host_options[] = {
         { "identity", required_argument, NULL, 'i' },
@@ -1574,6 +1605,7 @@ static const char* ip_range = "100.64.0.0/10";
 static const char* dns_impl = NULL;
 static const char* dns_upstream = NULL;
 static bool host_only = false;
+static const char* tun_name = NULL;
 
 static int run_opts(int argc, char *argv[]) {
     printf("About to run tunnel service... %s", main_cmd.name);
@@ -1582,7 +1614,7 @@ static int run_opts(int argc, char *argv[]) {
     int c, option_index, errors = 0;
     optind = 0;
 
-    while ((c = getopt_long(argc, argv, "i:I:v:r:d:u:",
+    while ((c = getopt_long(argc, argv, "i:I:v:r:d:u:n:t",
                             run_options, &option_index)) != -1) {
         switch (c) {
             case 'i': {
@@ -1606,6 +1638,13 @@ static int run_opts(int argc, char *argv[]) {
             case 'u':
                 dns_upstream = optarg;
                 break;
+#ifdef OPENWRT
+            case 'n': // DNS manager implementation
+                dns_impl = optarg;
+                break;     
+            case 't': // Assigning tun interface name
+                tun_name = optarg;           
+#endif
             default: {
                 ZITI_LOG(ERROR, "Unknown option '%c'", c);
                 errors++;
@@ -1704,6 +1743,8 @@ static void run(int argc, char *argv[]) {
 
     uint32_t tun_ip;
     uint32_t dns_ip;
+    uint32_t mask = 0;
+    int bits;
 
     if (!is_host_only()) {
 
@@ -1713,14 +1754,19 @@ static void run(int argc, char *argv[]) {
         }
 
         uint32_t ip[4];
-        int bits;
         int rc = sscanf(ip_range, "%d.%d.%d.%d/%d", &ip[0], &ip[1], &ip[2], &ip[3], &bits);
         if (rc != 5) {
             ZITI_LOG(ERROR, "Invalid IP range specification: n.n.n.n/m format is expected");
             exit(1);
         }
 
-        uint32_t mask = 0;
+#ifdef OPENWRT
+        if ((NULL != tun_name) && ( IFNAMSIZ < strlen(tun_name))) {
+            ZITI_LOG(ERROR, "Invalid tun name string size: Only 16 char's string length is expected");
+            exit(1);
+        }
+#endif
+
         for (int i = 0; i < 4; i++) {
             mask <<= 8U;
             mask |= (ip[i] & 0xFFU);
@@ -1775,11 +1821,46 @@ static void run(int argc, char *argv[]) {
         exit(1);
     }
 
+#ifdef OPENWRT
+    dns_manager *dns = NULL;
+    struct dnsmasq_conf {
+        const char *mapping_dir;
+    };
+
+    if (dns_impl == NULL || strcmp(dns_impl, "internal") == 0) {
+        ZITI_LOG(INFO, "setting up internal DNS");
+        dns = get_tunneler_dns(ziti_loop, dns_ip, dns_fallback, NULL);
+    } else if (strncmp("dnsmasq", dns_impl, strlen("dnsmasq")) == 0) {
+        ZITI_LOG(INFO, "DNS dnsmasq -- AM I coming here ???");
+        char *col = strchr(dns_impl, ':');
+        if (col == NULL) {
+            ZITI_LOG(ERROR, "DNS dnsmasq option should be `--dns=dnsmasq:<hosts-dir>");
+            exit(1);
+        }
+        dns = get_dnsmasq_manager(col + 1);
+        struct dnsmasq_conf *temp = dns->data;
+        const char* path = temp->mapping_dir;
+        ZITI_LOG(INFO, "dnsmasq_manager = %s", path) ;
+        ZITI_LOG(INFO, "DNS = %p", &dns);
+    } else {
+        ZITI_LOG(ERROR, "DNS setting '%s' is not supported", dns_impl);
+        exit(1);
+    }
+
+    ziti_tunneler_init_dns(mask, bits);
+
+#endif
+
+
     int rc;
     if (is_host_only()) {
         rc = run_tunnel_host_mode(ziti_loop);
     } else {
+#ifndef OPENWRT
         rc = run_tunnel(ziti_loop, tun_ip, dns_ip, ip_range, dns_upstream);
+#else
+        rc = run_tunnel(ziti_loop, tun_ip, dns_ip, ip_range, dns_upstream, dns, tun_name);
+#endif
     }
     exit(rc);
 }
@@ -2633,6 +2714,17 @@ static CommandLine enroll_cmd = make_command("enroll", "enroll Ziti identity",
         "\t-c|--cert\tcertificate for enrollment\n"
         "\t-n|--name\tidentity name\n",
         parse_enroll_opts, enroll);
+#ifndef OPENWRT
+static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required superuser access)",
+                                          "-i <id.file> [-r N] [-v N] [-d|--dns-ip-range N.N.N.N/n] [-n|--dns <internal|dnsmasq=<dnsmasq hosts dir>>]",
+                                          "\t-i|--identity <identity>\trun with provided identity file (required)\n"
+                                          "\t-I|--identity-dir <dir>\tload identities from provided directory\n"
+                                          "\t-v|--verbose N\tset log level, higher level -- more verbose (default 3)\n"
+                                          "\t-r|--refresh N\tset service polling interval in seconds (default 10)\n"
+                                          "\t-d|--dns-ip-range <ip range>\tspecify CIDR block in which service DNS names"
+                                          " are assigned in N.N.N.N/n format (default 100.64.0.0/10)\n",
+        run_opts, run);
+#else
 static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required superuser access)",
                                           "-i <id.file> [-r N] [-v N] [-d|--dns-ip-range N.N.N.N/n] [-n|--dns <internal|dnsmasq=<dnsmasq hosts dir>>]",
                                           "\t-i|--identity <identity>\trun with provided identity file (required)\n"
@@ -2641,8 +2733,10 @@ static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required supe
                                           "\t-r|--refresh N\tset service polling interval in seconds (default 10)\n"
                                           "\t-d|--dns-ip-range <ip range>\tspecify CIDR block in which service DNS names"
                                           " are assigned in N.N.N.N/n format (default 100.64.0.0/10)\n"
-                                          "\t-n|--dns <internal|dnsmasq=<dnsmasq opts>> DNS configuration setting (default internal)\n",
+                                          "\t-n|--dns <internal|dnsmasq=<dnsmasq opts>> DNS configuration setting (default internal)\n"
+                                          "\t-t|--tun-name <identifiable tun interface name>]\n",
         run_opts, run);
+#endif
 static CommandLine run_host_cmd = make_command("run-host", "run Ziti tunnel to host services",
                                           "-i <id.file> [-r N] [-v N]",
                                           "\t-i|--identity <identity>\trun with provided identity file (required)\n"

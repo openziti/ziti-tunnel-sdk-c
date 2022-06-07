@@ -30,7 +30,12 @@ if (WIN32)
     set(ZITI_INSTANCE_OS windows-service.c include/windows/windows-service.h include/windows/windows-scripts.h windows-scripts.c log_utils.c include/log-utils.h include/service-utils.h)
 endif ()
 
-add_executable(ziti-edge-tunnel ziti-edge-tunnel.c ${NETIF_DRIVER_SOURCE} ${ZITI_INSTANCE_COMMON} ${ZITI_INSTANCE_OS})
+if(CMAKE_OPENWRT STREQUAL "YES")
+    add_executable(ziti-edge-tunnel ziti-edge-tunnel.c ${NETIF_DRIVER_SOURCE} dnsmasq_manager.c ${ZITI_INSTANCE_COMMON} ${ZITI_INSTANCE_OS})
+else()
+    add_executable(ziti-edge-tunnel ziti-edge-tunnel.c ${NETIF_DRIVER_SOURCE} ${ZITI_INSTANCE_COMMON} ${ZITI_INSTANCE_OS})
+endif()
+
 set_property(TARGET ziti-edge-tunnel PROPERTY C_STANDARD 11)
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
@@ -57,11 +62,20 @@ target_include_directories(ziti-edge-tunnel
         PRIVATE include
         )
 
-target_compile_definitions(ziti-edge-tunnel
-        PRIVATE GIT_VERSION=${GIT_VERSION}
-        PRIVATE ZITI_LOG_PREFIX=${PROJECT_NAME}
-        PRIVATE ZITI_LOG_MODULE="ziti-edge-tunnel"
-        )
+if(CMAKE_OPENWRT STREQUAL "YES")
+    target_compile_definitions(ziti-edge-tunnel
+            PUBLIC OPENWRT
+            PRIVATE GIT_VERSION=${GIT_VERSION}
+            PRIVATE ZITI_LOG_PREFIX=${PROJECT_NAME}
+            PRIVATE ZITI_LOG_MODULE="ziti-edge-tunnel"
+            )
+else()
+    target_compile_definitions(ziti-edge-tunnel
+            PRIVATE GIT_VERSION=${GIT_VERSION}
+            PRIVATE ZITI_LOG_PREFIX=${PROJECT_NAME}
+            PRIVATE ZITI_LOG_MODULE="ziti-edge-tunnel"
+            )
+endif()
 
 target_link_libraries(ziti-edge-tunnel
         PUBLIC ziti ziti-tunnel-sdk-c ziti-tunnel-cbs-c

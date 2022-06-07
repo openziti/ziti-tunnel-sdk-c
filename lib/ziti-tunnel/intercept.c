@@ -59,7 +59,6 @@ bool port_match(int port, const port_range_list_t *port_ranges) {
 /** return the intercept context for a packet based on its destination ip:port */
 intercept_ctx_t *lookup_intercept_by_address(tunneler_context tnlr_ctx, const char *protocol, ip_addr_t *dst_addr, uint16_t dst_port) {
     if (tnlr_ctx == NULL) {
-        TNL_LOG(DEBUG, "null tnlr_ctx");
         return NULL;
     }
 
@@ -68,11 +67,27 @@ intercept_ctx_t *lookup_intercept_by_address(tunneler_context tnlr_ctx, const ch
         if (!protocol_match(protocol, &intercept->protocols)) continue;
         if (!port_match(dst_port, &intercept->port_ranges)) continue;
 
-        if (intercept->match_addr && intercept->match_addr(dst_addr, intercept->app_intercept_ctx))
+        if (intercept->match_addr && intercept->match_addr(dst_addr, intercept->app_intercept_ctx)) 
+        {
+            TNL_LOG(TRACE, "Found matching address");
             return intercept;
+        } 
+        else
+        {
+            TNL_LOG(TRACE, "Did Not Find matching address");
+        }
+        
 
-        if (address_match(dst_addr, &intercept->addresses))
+        if (address_match(dst_addr, &intercept->addresses)) 
+        {
+            TNL_LOG(TRACE, "Matched address and intercept");
             return intercept;
+        }
+        else
+        {
+            TNL_LOG(TRACE, "Matched address and intercept Not Found");
+        }
+        
     }
 
     return NULL;

@@ -428,8 +428,10 @@ static bool intercept_match_addr(ip_addr_t *addr, void *ctx) {
     ZITI_LOG(INFO, "matching %s", ipaddr_ntoa(addr));
     ziti_intercept_t *zi_ctx = ctx;
     if (zi_ctx->cfg_desc->cfgtype == INTERCEPT_CFG_V1) {
+        ZITI_LOG(INFO, "I am coming here");
         ziti_intercept_cfg_v1 *cfg = &zi_ctx->cfg.intercept_v1;
         const char *domain = ziti_dns_reverse_lookup_domain(addr);
+        ZITI_LOG(INFO, "I am coming here domain %s", domain);
         if (domain) {
             for (int i = 0; cfg->addresses[i] != NULL; i++) {
                 if (strcasecmp(domain, cfg->addresses[i]) == 0) {
@@ -442,6 +444,7 @@ static bool intercept_match_addr(ip_addr_t *addr, void *ctx) {
 }
 
 intercept_ctx_t *new_intercept_ctx(tunneler_context tnlr_ctx, ziti_intercept_t *zi_ctx) {
+    ZITI_LOG(INFO, "Entering this function");
     intercept_ctx_t *i_ctx = intercept_ctx_new(tnlr_ctx, zi_ctx->service_name, zi_ctx);
     intercept_ctx_set_match_addr(i_ctx, intercept_match_addr);
 
@@ -449,14 +452,21 @@ intercept_ctx_t *new_intercept_ctx(tunneler_context tnlr_ctx, ziti_intercept_t *
     const char *ip;
     switch (zi_ctx->cfg_desc->cfgtype) {
         case CLIENT_CFG_V1:
+        ZITI_LOG(INFO, "Entering this function at CLIENT_CFG_V1");
             if ((ip = ziti_dns_register_hostname(zi_ctx->cfg.client_v1.hostname, zi_ctx)) != NULL) {
                 intercept_ctx_add_protocol(i_ctx, "udp");
                 intercept_ctx_add_protocol(i_ctx, "tcp");
+#ifndef OPENWRT
                 intercept_ctx_add_address(i_ctx, ip);
+#else                
+                intercept_ctx_add_address(i_ctx, ip, ip);
+#endif
                 intercept_ctx_add_port_range(i_ctx, zi_ctx->cfg.client_v1.port, zi_ctx->cfg.client_v1.port);
             }
             break;
         case INTERCEPT_CFG_V1:
+        ZITI_LOG(INFO, "Entering this function at INTERCEPT_CFG_V1");
+        ZITI_LOG(INFO, "Halla bol");
         {
             const ziti_intercept_cfg_v1 *config = &zi_ctx->cfg.intercept_v1;
             for (i = 0; config->protocols[i] != NULL; i++) {
@@ -464,7 +474,13 @@ intercept_ctx_t *new_intercept_ctx(tunneler_context tnlr_ctx, ziti_intercept_t *
             }
             for (i = 0; config->addresses[i] != NULL; i++) {
                 if ((ip = ziti_dns_register_hostname(config->addresses[i], zi_ctx)) != NULL)
+                {
+#ifdef OPENWRT
+                    intercept_ctx_add_address(i_ctx, ip, config->addresses[i]);
+#else
                     intercept_ctx_add_address(i_ctx, ip);
+#endif
+                }
             }
             for (i = 0; config->port_ranges[i] != NULL; i++) {
                 intercept_ctx_add_port_range(i_ctx, config->port_ranges[i]->low, config->port_ranges[i]->high);
@@ -489,6 +505,7 @@ static tunneled_service_t current_tunneled_service;
 
 /** set up intercept or host context according to service permissions and configuration */
 tunneled_service_t *ziti_sdk_c_on_service(ziti_context ziti_ctx, ziti_service *service, int status, void *tnlr_ctx) {
+    ZITI_LOG(DEBUG, "Entering here");
     current_tunneled_service.intercept = NULL;
     current_tunneled_service.host = NULL;
 
@@ -507,7 +524,7 @@ tunneled_service_t *ziti_sdk_c_on_service(ziti_context ziti_ctx, ziti_service *s
             }
         } else {
             ziti_intercept_t *zi_ctx = new_ziti_intercept(ziti_ctx, service, curr_i);
-
+            ZITI_LOG(DEBUG, "I am here");
             if (zi_ctx) {
                 if (curr_i) {
                     ZITI_LOG(DEBUG, "replacing intercept for service[%s]", service->name);
@@ -518,9 +535,11 @@ tunneled_service_t *ziti_sdk_c_on_service(ziti_context ziti_ctx, ziti_service *s
                 intercept_ctx_t *i_ctx = new_intercept_ctx(tnlr_ctx, zi_ctx);
                 ziti_tunneler_intercept(tnlr_ctx, i_ctx);
                 current_tunneled_service.intercept = i_ctx;
+                ZITI_LOG(DEBUG, "2. I am here");
             } else {
                 if (curr_i)
                     current_tunneled_service.intercept = ziti_tunnel_find_intercept(tnlr_ctx, curr_i);
+                    ZITI_LOG(DEBUG, "3. I am here");
             }
 
             if (current_tunneled_service.intercept == NULL) {

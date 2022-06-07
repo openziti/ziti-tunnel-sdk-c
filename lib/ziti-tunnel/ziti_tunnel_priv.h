@@ -67,6 +67,25 @@ struct excluded_route_s {
     LIST_ENTRY(excluded_route_s) _next;
 };
 
+#ifdef OPENWRT
+typedef struct tunneler_ctx_s {
+    tunneler_sdk_options opts; // this must be first - it is accessed opaquely through tunneler_context*
+    dns_manager *dns;
+    struct udp_pcb *dns_pcb;
+    struct netif netif;
+    struct raw_pcb *tcp;
+    struct raw_pcb *udp;
+    uv_loop_t      *loop;
+    uv_sem_t     sem;
+    uv_poll_t    netif_poll_req;
+    uv_timer_t   lwip_timer_req;
+    LIST_HEAD(intercept_ctx_list_s, intercept_ctx_s) intercepts;
+//    STAILQ_HEAD(hosted_service_ctx_list_s, hosted_service_ctx_s) hosts;
+    LIST_HEAD(exclusions, excluded_route_s) excluded_rts;
+} *tunneler_context;
+
+#else
+
 typedef struct tunneler_ctx_s {
     tunneler_sdk_options opts; // this must be first - it is accessed opaquely through tunneler_context*
     struct netif netif;
@@ -81,6 +100,8 @@ typedef struct tunneler_ctx_s {
     LIST_HEAD(exclusions, excluded_route_s) excluded_rts;
 
 } *tunneler_context;
+
+#endif
 
 /** return the intercept context for a packet based on its destination ip:port */
 extern intercept_ctx_t *lookup_intercept_by_address(tunneler_context tnlr_ctx, const char *protocol, ip_addr_t *dst_addr, uint16_t dst_port);
@@ -127,5 +148,9 @@ struct write_ctx_s {
 extern int add_route(netif_driver tun, address_t *dest);
 
 extern int delete_route(netif_driver tun, address_t *dest);
+
+#ifdef OPENWRT
+const char* assign_ip(const char *hostname);
+#endif
 
 #endif //ZITI_TUNNELER_SDK_ZITI_TUNNELER_PRIV_H

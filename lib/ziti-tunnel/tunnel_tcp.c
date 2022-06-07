@@ -284,6 +284,7 @@ static tunneler_io_context new_tunneler_io_context(tunneler_context tnlr_ctx, co
 
 /** called by lwip when a tcp segment arrives. return 1 to indicate that the IP packet was consumed. */
 u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_addr_t *addr) {
+    TNL_LOG(INFO, "Flowing from here");
     tunneler_context tnlr_ctx = tnlr_ctx_arg;
 
     u16_t iphdr_hlen;
@@ -301,6 +302,7 @@ u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
             iphdr_hlen = IPH_HL_BYTES(iphdr);
             ip_addr_copy_from_ip4(src, iphdr->src);
             ip_addr_copy_from_ip4(dst, iphdr->dest);
+            TNL_LOG(INFO, "2.Flowing from here");
         }
             break;
         case 6: {
@@ -335,6 +337,7 @@ u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
         TNL_LOG(TRACE, "no intercepted addresses match tcp:%s:%d", ipaddr_ntoa(&dst), dst_p);
         return 0;
     }
+    TNL_LOG(INFO, "3.Flowing from here");
 
     /* pass the segment to lwip if a matching active connection exists */
     for (struct tcp_pcb *tpcb = tcp_active_pcbs, *prev = NULL; tpcb != NULL; tpcb = tpcb->next) {
