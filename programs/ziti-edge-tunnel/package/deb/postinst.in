@@ -1,6 +1,7 @@
 ln -sf @CPACK_BIN_DIR@/@CPACK_PACKAGE_NAME@ /usr/bin/@CPACK_PACKAGE_NAME@
 ln -sf @CPACK_SHARE_DIR@/@SYSTEMD_UNIT_FILE_NAME@ /etc/systemd/system/@SYSTEMD_UNIT_FILE_NAME@
 
+
 # Copied from https://github.com/Debian/debhelper/blob/master/autoscripts/postinst-systemd-dont-enable
 if [ "$1" = "configure" ] || [ "$1" = "abort-upgrade" ] || [ "$1" = "abort-deconfigure" ] || [ "$1" = "abort-remove" ] ; then
 	if deb-systemd-helper debian-installed @SYSTEMD_UNIT_FILE_NAME@; then
@@ -18,3 +19,14 @@ if [ "$1" = "configure" ] || [ "$1" = "abort-upgrade" ] || [ "$1" = "abort-decon
 	deb-systemd-helper update-state @SYSTEMD_UNIT_FILE_NAME@ >/dev/null || true
 fi
 # End copied section
+
+if [ "$1" = "configure" ]; then
+    ssize=$(tput cols)
+    printf '\n'
+    printf %"$ssize"s | tr " " "-"
+    echo "@SYSTEMD_SERVICE_NAME@ was installed..."
+    echo "First install an OpenZiti identity or enroll token in: @ZITI_IDENTITY_DIR@"
+    echo "then start or restart this systemd service unit."
+    pintf %"$ssize"s | tr " " "-"
+    printf '\n'
+fi
