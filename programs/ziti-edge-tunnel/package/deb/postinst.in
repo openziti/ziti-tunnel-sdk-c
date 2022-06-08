@@ -27,6 +27,6 @@ if [ "$1" = "configure" ]; then
     echo "@SYSTEMD_SERVICE_NAME@ was installed..."
     echo "First install an OpenZiti identity or enroll token in: @ZITI_IDENTITY_DIR@"
     echo "then start or restart this systemd service unit."
-    pintf %"$ssize"s | tr " " "-"
+    printf %"$ssize"s | tr " " "-"
     printf '\n'
 fi
