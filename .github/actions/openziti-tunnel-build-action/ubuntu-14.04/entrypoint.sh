@@ -10,6 +10,18 @@ echo "INFO: GIT_DISCOVERY_ACROSS_FILESYSTEM=${GIT_DISCOVERY_ACROSS_FILESYSTEM}"
 echo "INFO: WORKDIR=${PWD}"
 echo "INFO: $(git --version)"
 
+# workspace dir for each build env is added to "safe" dirs in global config e.g.
+# ~/.gitconfig so both runner and builder containers trust these dirs
+# owned by different UIDs from that of Git's EUID. This is made necessary
+# by newly-enforced directory boundaries in Git v2.35.2
+# ref: https://lore.kernel.org/git/xmqqv8veb5i6.fsf@gitster.g/
+for SAFE in \
+    /github/workspace \
+    /__w/ziti-tunnel-sdk-c/ziti-tunnel-sdk-c \
+    /mnt ; do
+        git config --global --add safe.directory ${SAFE}
+done
+
 cmake -E make_directory ./build  
 cmake \
     -DCMAKE_BUILD_TYPE=Release \

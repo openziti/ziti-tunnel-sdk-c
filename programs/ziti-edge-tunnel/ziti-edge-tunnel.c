@@ -76,6 +76,7 @@ static void move_config_from_previous_windows_backup(uv_loop_t *loop);
 #define LAST_CHAR_IPC_CMD '\0'
 #endif
 
+
 #ifdef OPENWRT
 extern dns_manager *get_dnsmasq_manager(const char* path);
 #endif

@@ -21,6 +21,7 @@ RUN dnf install -y \
         zlib-devel \
         systemd-rpm-macros \
         cmake-rpm-macros  \
+        openssl-devel \
     && dnf config-manager --set-enabled powertools \
     && dnf install -y \
         doxygen \
