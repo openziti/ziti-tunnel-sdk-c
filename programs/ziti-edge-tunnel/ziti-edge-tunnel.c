@@ -1828,10 +1828,8 @@ static void run(int argc, char *argv[]) {
     };
 
     if (dns_impl == NULL || strcmp(dns_impl, "internal") == 0) {
-        ZITI_LOG(INFO, "setting up internal DNS");
         dns = get_tunneler_dns(ziti_loop, dns_ip, dns_fallback, NULL);
     } else if (strncmp("dnsmasq", dns_impl, strlen("dnsmasq")) == 0) {
-        ZITI_LOG(INFO, "DNS dnsmasq -- AM I coming here ???");
         char *col = strchr(dns_impl, ':');
         if (col == NULL) {
             ZITI_LOG(ERROR, "DNS dnsmasq option should be `--dns=dnsmasq:<hosts-dir>");
@@ -1840,8 +1838,6 @@ static void run(int argc, char *argv[]) {
         dns = get_dnsmasq_manager(col + 1);
         struct dnsmasq_conf *temp = dns->data;
         const char* path = temp->mapping_dir;
-        ZITI_LOG(INFO, "dnsmasq_manager = %s", path) ;
-        ZITI_LOG(INFO, "DNS = %p", &dns);
     } else {
         ZITI_LOG(ERROR, "DNS setting '%s' is not supported", dns_impl);
         exit(1);

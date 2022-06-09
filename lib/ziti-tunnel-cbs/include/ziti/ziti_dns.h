@@ -18,12 +18,36 @@
 #define ZITI_TUNNEL_SDK_C_ZITI_DNS_H
 
 #include <ziti/ziti_tunnel.h>
+#include "ziti/ziti.h"
 
 #define DNS_NO_ERROR 0
 #define DNS_NXDOMAIN 3
 #define DNS_NOT_IMPL 4
 #define DNS_REFUSE   5
 #define DNS_NOTZONE  9
+
+#define MAX_DNS_NAME 256
+#define MAX_IP_LENGTH 16
+
+typedef struct dns_domain_s {
+    char name[MAX_DNS_NAME];
+
+    model_map intercepts; // set[intercept]
+
+    ziti_connection resolv_proxy;
+
+} dns_domain_t;
+
+// hostname or domain
+typedef struct dns_entry_s {
+    char name[MAX_DNS_NAME];
+    char ip[MAX_IP_LENGTH];
+    ip_addr_t addr;
+    dns_domain_t *domain;
+
+    model_map intercepts;
+
+} dns_entry_t;
 
 int ziti_dns_setup(tunneler_context tnlr, const char *dns_addr, const char *dns_cidr);
 

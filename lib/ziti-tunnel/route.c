@@ -32,9 +32,9 @@ static LIST_HEAD(routes, route_count) route_counts = LIST_HEAD_INITIALIZER(&rout
 // wireguard-windows: mask + IP (https://git.zx2c4.com/wireguard-windows/tree/tunnel/winipcfg/luid.go)
 int add_route(netif_driver tun, address_t *dest) {
     //char dest_cidr[128];
-#ifdef OPENWRT
-    if (dest->is_hostname) return 0;
-#endif
+// #ifdef OPENWRT
+//     if (dest->is_hostname) return 0;
+// #endif
     if (tun == NULL) {
         return 1;
     }
@@ -61,9 +61,10 @@ int add_route(netif_driver tun, address_t *dest) {
  */
 int delete_route(netif_driver tun, address_t *dest) {
     //char dest_cidr[128];
-#ifdef OPENWRT
-    if (dest->is_hostname) return 0;
-#endif
+// #ifdef OPENWRT
+//     if (dest->is_hostname) return 0;
+// #endif
+    TNL_LOG(DEBUG, "Entered this function with addr = %s", ipaddr_ntoa(dest));
     if (tun == NULL) {
         return 1;
     }

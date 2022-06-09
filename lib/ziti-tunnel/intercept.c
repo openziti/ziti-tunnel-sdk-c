@@ -30,8 +30,13 @@ bool protocol_match(const char *protocol, const protocol_list_t *protocols) {
 }
 
 bool address_match(const ip_addr_t *addr, const address_list_t *addresses) {
+    TNL_LOG(DEBUG, "Entering this function with addr = %s", ipaddr_ntoa(addr));
     address_t *a;
+    char ip[64], range[64];
     STAILQ_FOREACH(a, addresses, entries) {
+        ipaddr_ntoa_r(addr, ip, sizeof(ip));
+        ipaddr_ntoa_r(&a->ip, range, sizeof(range));
+        TNL_LOG(DEBUG, "comparing intercepted ip %s to %s", ip, range);
         if (IP_IS_V4(&a->ip) && a->prefix_len != 32) {
             if (ip_addr_netcmp(addr, &a->ip, ip_2_ip4(&a->_netmask))) {
                 return true;

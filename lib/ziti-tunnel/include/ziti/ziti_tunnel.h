@@ -155,6 +155,7 @@ struct dns_manager_s {
     uint16_t dns_port;
 
     int (*apply)(dns_manager *dns, const char *host, const char *ip);
+    int (*remove)(dns_manager *dns, const char *host);
     dns_query query;
 
     uv_loop_t *loop;
@@ -170,6 +171,7 @@ extern dns_manager *get_tunneler_dns(uv_loop_t *l, uint32_t dns_ip, dns_fallback
 
 #ifdef OPENWRT
     extern address_t *parse_address(const char *hn_or_ip_or_cidr, const char *intercept_name, dns_manager *dns);
+    extern void ziti_remove_dnsmasq_iproute(struct tunneler_ctx_s *tnlr, const char *intercept_name, const char *ipaddr);
 #else
     extern address_t *parse_address(const char *ip_or_cidr);
 #endif

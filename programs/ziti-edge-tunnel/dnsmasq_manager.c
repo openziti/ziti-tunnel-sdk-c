@@ -26,6 +26,7 @@ limitations under the License.
 #endif
 
 static int apply_address(dns_manager *dns, const char *hostname, const char *ip);
+static void remove_address(dns_manager *dns, const char *intercept_name);
 
 struct dnsmasq_config {
     const char *mapping_dir;
@@ -34,6 +35,7 @@ struct dnsmasq_config {
 static struct dnsmasq_config dnsmask_cfg;
 dns_manager dnsmasq_manager = {
         .apply = apply_address,
+        .remove = remove_address,
         .data = &dnsmask_cfg
 };
 
@@ -57,6 +59,20 @@ static int apply_address(dns_manager *dns, const char *hostname, const char *ip)
     system("killall -HUP dnsmasq");
     ZITI_LOG(INFO, "successfully written the file %s", fname) ;
     return 0;
+}
+
+void remove_address(dns_manager *dns, const char *intercept_name) {
+    ZITI_LOG(INFO, "Entered this function %s", intercept_name) ;
+    char fname[PATH_MAX];
+    struct dnsmasq_config *cfg = dns->data;
+    sprintf(fname,  "%s/%s", cfg->mapping_dir, intercept_name);
+
+    if (remove(fname) == 0)
+      ZITI_LOG(DEBUG, "Deleted successfully");
+    else
+      ZITI_LOG(ERROR, "Unable to delete the file");
+    
+    return ;
 }
 
 dns_manager *get_dnsmasq_manager(const char* mapping_dir) {

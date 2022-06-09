@@ -21,8 +21,8 @@
 #include "ziti_instance.h"
 #include "dns_host.h"
 
-#define MAX_DNS_NAME 256
-#define MAX_IP_LENGTH 16
+// #define MAX_DNS_NAME 256
+// #define MAX_IP_LENGTH 16
 
 enum ns_q_type {
     NS_T_A = 1,
@@ -64,28 +64,28 @@ static void on_upstream_packet(uv_udp_t *h, ssize_t rc, const uv_buf_t *buf, con
 static void complete_dns_req(struct dns_req *req);
 static void free_dns_req(struct dns_req *req);
 
-typedef struct dns_domain_s {
-    char name[MAX_DNS_NAME];
+// typedef struct dns_domain_s {
+//     char name[MAX_DNS_NAME];
 
-    model_map intercepts; // set[intercept]
+//     model_map intercepts; // set[intercept]
 
-    ziti_connection resolv_proxy;
+//     ziti_connection resolv_proxy;
 
-} dns_domain_t;
+// } dns_domain_t;
 
 static void free_domain(dns_domain_t *domain);
 
 
-// hostname or domain
-typedef struct dns_entry_s {
-    char name[MAX_DNS_NAME];
-    char ip[MAX_IP_LENGTH];
-    ip_addr_t addr;
-    dns_domain_t *domain;
+// // hostname or domain
+// typedef struct dns_entry_s {
+//     char name[MAX_DNS_NAME];
+//     char ip[MAX_IP_LENGTH];
+//     ip_addr_t addr;
+//     dns_domain_t *domain;
 
-    model_map intercepts;
+//     model_map intercepts;
 
-} dns_entry_t;
+// } dns_entry_t;
 
 struct ziti_dns_s {
 
@@ -150,7 +150,6 @@ static int seed_dns(const char *dns_cidr) {
 }
 
 int ziti_dns_setup(tunneler_context tnlr, const char *dns_addr, const char *dns_cidr) {
-    ZITI_LOG(INFO, "Entering this function");
     ziti_dns.tnlr = tnlr;
     seed_dns(dns_cidr);
 
@@ -346,7 +345,7 @@ void ziti_dns_deregister_intercept(void *intercept) {
 }
 
 const char *ziti_dns_register_hostname(const char *hostname, void *intercept) {
-    ZITI_LOG(INFO, "Entering this function %s", hostname);
+    ZITI_LOG(DEBUG, "Entering this function with hostname = %s", hostname);
     // CIDR block
     if (strchr(hostname, '/')) {
         return hostname;

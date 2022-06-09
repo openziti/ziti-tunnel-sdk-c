@@ -89,7 +89,7 @@ tunneler_context ziti_tunneler_init_host_only(tunneler_sdk_options *opts, uv_loo
 }
 
 tunneler_context ziti_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop) {
-    TNL_LOG(ERR, "Entering here");
+    TNL_LOG(DEBUG, "Entering this function");
     struct tunneler_ctx_s *ctx = create_tunneler_ctx(opts, loop);
     if (ctx == NULL) {
         return NULL;
@@ -321,17 +321,16 @@ address_t *parse_address(const char *ip_or_cidr, const char *intercept_name, dns
         addr->prefix_len = (int)strtol(prefix_sep + 1, NULL, 10);
     }
 
-#ifndef OPENWRT
     if (ipaddr_aton(addr->str, &addr->ip) == 0) {
         TNL_LOG(ERR, "hostnames are not supported");
         free(addr);
         return NULL;
     }
-#else
+
     if ( ! strcasestr(addr->str, "ziti:dns-resolver")) {
     // does not parse as IP address; assume hostname and try to get IP from the dns manager
         if (dns != NULL) {
-            TNL_LOG(INFO, "Entered if dns is true & got addr->str = %s", addr->str);
+            TNL_LOG(DEBUG, "Entered if dns is true & got addr->str = %s", addr->str);
             if (dns->apply(dns, intercept_name, addr->str) != 0) {
                 TNL_LOG(ERR, "failed to apply DNS mapping %s => %s", intercept_name, addr->str);
                 free(addr);
@@ -339,7 +338,6 @@ address_t *parse_address(const char *ip_or_cidr, const char *intercept_name, dns
             }
         }
     }
-#endif
 
     uint8_t addr_bits = IP_IS_V4(&addr->ip) ? 32 : 128;
     uint8_t net_bits = addr_bits - addr->prefix_len;
@@ -621,7 +619,7 @@ static struct raw_pcb * init_protocol_handler(u8_t proto, raw_recv_fn recv_fn, v
 }
 
 static void run_packet_loop(uv_loop_t *loop, tunneler_context tnlr_ctx) {
-    TNL_LOG(ERR, "Entering here");
+    TNL_LOG(DEBUG, "Entering this function");
     tunneler_sdk_options opts = tnlr_ctx->opts;
     if (opts.ziti_close == NULL || opts.ziti_close_write == NULL ||  opts.ziti_write == NULL ||
         opts.ziti_dial == NULL || opts.ziti_host == NULL) {
@@ -732,3 +730,17 @@ const char* ziti_tunneler_version() {
 const char* ziti_tunneler_build_date() {
     return str(BUILD_DATE);
 }
+
+#ifdef OPENWRT
+void ziti_remove_dnsmasq_iproute(struct tunneler_ctx_s *tnlr, const char *intercept_name, const char *ipaddr) {
+    TNL_LOG(DEBUG, "Entered this function with intercept_name = %s\tip = %s", intercept_name, ipaddr) ;
+    if (tnlr != NULL) {
+        if (tnlr->dns != NULL) {
+            tnlr->dns->remove(tnlr->dns, intercept_name);    
+        }
+        delete_route(tnlr->opts.netif_driver, ipaddr);
+    }
+    return ;
+}
+
+#endif

@@ -103,6 +103,7 @@ int tun_add_route(netif_handle tun, const char *dest) {
 }
 
 int tun_delete_route(netif_handle tun, const char *dest) {
+    ZITI_LOG(DEBUG, "Entered this function to delete route %s", dest);
     char cmd[1024];
     snprintf(cmd, sizeof(cmd), "ip route delete %s dev %s", dest, tun->name);
     int s = system(cmd);
