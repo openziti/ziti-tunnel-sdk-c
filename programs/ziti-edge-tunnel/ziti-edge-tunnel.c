@@ -44,6 +44,10 @@
 #define setenv(n,v,o) do {if(o || getenv(n) == NULL) _putenv_s(n,v); } while(0)
 #endif
 
+#ifndef MAXIPCCOMMANDLEN
+#define MAXIPCCOMMANDLEN 4096 * 4
+#endif
+
 #ifndef MAXMESSAGELEN
 #define MAXMESSAGELEN 4096
 #endif
@@ -67,11 +71,31 @@ static tunneler_context initialize_tunneler(netif_driver tun, uv_loop_t* ziti_lo
 
 #if _WIN32
 static void move_config_from_previous_windows_backup(uv_loop_t *loop);
+#define LAST_CHAR_IPC_CMD '\n'
+#else
+#define LAST_CHAR_IPC_CMD '\0'
 #endif
 
 #ifdef OPENWRT
 extern dns_manager *get_dnsmasq_manager(const char* path);
 #endif
+
+struct ipc_cmd_s {
+    char *cmd_data;
+    int len;
+    STAILQ_ENTRY(ipc_cmd_s) _next;
+};
+
+typedef STAILQ_HEAD(cmd_q, ipc_cmd_s) ipc_cmd_q;
+
+typedef struct ipc_cmd_ctx_s {
+    ipc_cmd_q ipc_cmd_queue;
+    uv_mutex_t cmd_lock;
+} ipc_cmd_ctx_t;
+
+static ipc_cmd_ctx_t *ipc_cmd_ctx;
+
+static char* ipc_cmd_buffered(ipc_cmd_ctx_t *ipc_cmd_ctx_new);
 
 struct cfg_instance_s {
     char *cfg;
@@ -548,6 +572,39 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
     }
 }
 
+static void queue_ipc_command(ipc_cmd_ctx_t *ipc_command_ctx, ssize_t len, char* base) {
+    struct ipc_cmd_s *cmd_new = calloc(1, sizeof(struct ipc_cmd_s));
+    cmd_new->cmd_data = strdup(base);
+    cmd_new->len = len;
+    uv_mutex_trylock(&ipc_command_ctx->cmd_lock);
+    STAILQ_INSERT_TAIL(&ipc_command_ctx->ipc_cmd_queue, cmd_new, _next);
+    uv_mutex_unlock(&ipc_command_ctx->cmd_lock);
+}
+
+static void process_ipc_command(uv_stream_t *s, ssize_t len, char* base) {
+    tunnel_command tnl_cmd = {0};
+    if (parse_tunnel_command(&tnl_cmd, base, len) >= 0) {
+        // process_tunnel_commands is used to update the log level and the tun ip information in the config file through IPC command.
+        // So when the user restarts the tunnel, the new values will be taken.
+        // The config file can be modified only from ziti-edge-tunnel.c file.
+        int status = process_tunnel_commands(&tnl_cmd, on_command_resp, s);
+        if (!status) {
+            // process_cmd will delegate the requests to ziti_tunnel_ctrl.c , which is used to perform the operations against the controller.
+            // config.file cannot be modified or read from that class
+            CMD_CTRL->process(&tnl_cmd, on_command_resp, s);
+        }
+    } else {
+        tunnel_result resp = {
+                .success = false,
+                .error = "failed to parse command",
+                .code = IPC_ERROR,
+        };
+        on_command_resp(&resp, s);
+    }
+    free_tunnel_command(&tnl_cmd);
+}
+
+
 static void on_cmd(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
     if (len < 0) {
         ZITI_LOG(WARN, "received from client - %s. Closing connection.", uv_err_name(len));
@@ -567,26 +624,17 @@ static void on_cmd(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
     } else {
         ZITI_LOG(INFO, "received cmd <%.*s>", (int) len, b->base);
 
-        tunnel_command tnl_cmd = {0};
-        if (parse_tunnel_command(&tnl_cmd, b->base, len) >= 0) {
-            // process_tunnel_commands is used to update the log level and the tun ip information in the config file through IPC command.
-            // So when the user restarts the tunnel, the new values will be taken.
-            // The config file can be modified only from ziti-edge-tunnel.c file.
-            int status = process_tunnel_commands(&tnl_cmd, on_command_resp, s);
-            if (!status) {
-                // process_cmd will delegate the requests to ziti_tunnel_ctrl.c , which is used to perform the operations against the controller.
-                // config.file cannot be modified or read from that class
-                CMD_CTRL->process(&tnl_cmd, on_command_resp, s);
-            }
-        } else {
-            tunnel_result resp = {
-                    .success = false,
-                    .error = "failed to parse command",
-                    .code = IPC_ERROR,
-            };
-            on_command_resp(&resp, s);
+#if LAST_CHAR_IPC_CMD == '\0'
+        process_ipc_command(s, len, b->base);
+#else
+        queue_ipc_command(ipc_cmd_ctx, len, b->base);
+        if (b->base[len-1] == LAST_CHAR_IPC_CMD) {
+            char* new_buff = ipc_cmd_buffered(ipc_cmd_ctx);
+            ZITI_LOG(TRACE, "buffered cmd <%.*s>", (int) (strlen(new_buff) + 1), new_buff);
+            process_ipc_command(s, strlen(new_buff) + 1, new_buff);
+            free(new_buff);
         }
-        free_tunnel_command(&tnl_cmd);
+#endif
     }
 
     free(b->base);
@@ -1400,6 +1448,45 @@ static char* normalize_host(char* hostname) {
     return hostname_new;
 }
 
+static char* ipc_cmd_buffered(ipc_cmd_ctx_t *ipc_cmd_ctx_new) {
+
+    ipc_cmd_q cmd_q;
+    STAILQ_INIT(&cmd_q);
+
+    uv_mutex_trylock(&ipc_cmd_ctx_new->cmd_lock);
+    cmd_q = ipc_cmd_ctx_new->ipc_cmd_queue;
+    uv_mutex_unlock(&ipc_cmd_ctx_new->cmd_lock);
+
+    STAILQ_INIT(&ipc_cmd_ctx_new->ipc_cmd_queue);
+    struct ipc_cmd_s *ipc_cmd;
+
+    char buff[MAXIPCCOMMANDLEN] = {0};
+    ssize_t buff_len = 0;
+    while (!STAILQ_EMPTY(&cmd_q)) {
+        ipc_cmd = STAILQ_FIRST(&cmd_q);
+        STAILQ_REMOVE_HEAD(&cmd_q, _next);
+
+        if (ipc_cmd->cmd_data != NULL) {
+            strncat(buff, ipc_cmd->cmd_data, ipc_cmd->len);
+            buff_len += ipc_cmd->len;
+        }
+
+        free(ipc_cmd->cmd_data);
+        free(ipc_cmd);
+
+        char lastChar = buff[buff_len - 1];
+        if (lastChar == LAST_CHAR_IPC_CMD) {
+            // end of the ipc command
+            break;
+        }
+    }
+
+    char* buf_new = calloc(buff_len + 1, sizeof(char));
+    snprintf(buf_new, buff_len, buff);
+    return buf_new;
+
+}
+
 #ifndef OPENWRT
 static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, const char *ip_range, const char *dns_upstream) {
 #else
@@ -1512,6 +1599,11 @@ static void run_tunneler_loop(uv_loop_t* ziti_loop) {
 
     start_cmd_socket(ziti_loop);
     start_event_socket(ziti_loop);
+
+#if _WIN32
+    ipc_cmd_ctx = calloc(1, sizeof(struct ipc_cmd_ctx_s));
+    STAILQ_INIT(&ipc_cmd_ctx->ipc_cmd_queue);
+#endif
 
     if (uv_run(ziti_loop, UV_RUN_DEFAULT) != 0) {
         if (started_by_scm) {
@@ -2062,8 +2154,11 @@ void on_write(uv_write_t* req, int status) {
 void send_message_to_pipe(uv_connect_t *connect) {
     printf("Message...%s\n", connect->data);
     uv_write_t *req = (uv_write_t*) malloc(sizeof(uv_write_t));
-    uv_buf_t buf = uv_buf_init(connect->data, strlen(connect->data));
+    char* data = calloc(strlen(connect->data) + strlen("\n") + 1, sizeof(char));
+    sprintf(data, "%s\n", connect->data);
+    uv_buf_t buf = uv_buf_init(data, strlen(data));
     uv_write((uv_write_t*) req, connect->handle, &buf, 1,    on_write);
+    free(connect->data);
     free(connect);
 }
 

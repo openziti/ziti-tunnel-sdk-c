@@ -49,7 +49,7 @@ After=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/opt/ziti/bin/ziti-edge-tunnel run -i /opt/ziti/etc/id.json
+ExecStart=/opt/openziti/bin/ziti-edge-tunnel run -i /opt/openziti/etc/id.json
 Restart=always
 RestartSec=3
 

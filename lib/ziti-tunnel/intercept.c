@@ -74,23 +74,23 @@ intercept_ctx_t *lookup_intercept_by_address(tunneler_context tnlr_ctx, const ch
 
         if (intercept->match_addr && intercept->match_addr(dst_addr, intercept->app_intercept_ctx)) 
         {
-            TNL_LOG(TRACE, "Found matching address");
+            TNL_LOG(DEBUG, "Found matching address");
             return intercept;
         } 
         else
         {
-            TNL_LOG(TRACE, "Did Not Find matching address");
+            TNL_LOG(DEBUG, "Did Not Find matching address");
         }
         
 
         if (address_match(dst_addr, &intercept->addresses)) 
         {
-            TNL_LOG(TRACE, "Matched address and intercept");
+            TNL_LOG(DEBUG, "Matched address and intercept");
             return intercept;
         }
         else
         {
-            TNL_LOG(TRACE, "Matched address and intercept Not Found");
+            TNL_LOG(DEBUG, "Matched address and intercept Not Found");
         }
         
     }

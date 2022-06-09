@@ -283,6 +283,7 @@ static void tun_read(uv_async_t *ar) {
         
         if (packet) {
             tun->on_packet((const char*)packet, len, tun->netif);
+            WintunReleaseReceivePacket(tun->session, packet);
         } else {
             DWORD error = GetLastError();
             if (error == ERROR_NO_MORE_ITEMS) {

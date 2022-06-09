@@ -103,6 +103,7 @@ typedef struct intercept_ctx_s  intercept_ctx_t;
 typedef bool (*intercept_match_addr_fn)(ip_addr_t *addr, void *app_intercept_ctx);
 
 extern intercept_ctx_t* intercept_ctx_new(tunneler_context tnlt_ctx, const char *app_id, void *app_intercept_ctx);
+/** parse address string as hostname|ip|cidr and add result to list of intercepted addresses */
 #ifdef OPENWRT
 extern address_t *intercept_ctx_add_address(intercept_ctx_t *i_ctx, const char *address, const char *intercept_name);
 #else
