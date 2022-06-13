@@ -13,27 +13,26 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os:
-          - ubuntu-18.04
-          - macOS-10.15
-        cmake_opts: [ "" ]
-        arch: [ x86_64 ]
-        toolchain: [ default.cmake ]
-
         include:
-          - os: windows-latest
-            cmake_opts: -G "MinGW Makefiles" -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}\install
+          - os: macOS-10.15
+            arch: x86_64
             toolchain: default.cmake
+
+          - os: windows-latest
             arch: x86_64
 
           - os: ubuntu-18.04
-            install: crossbuild-essential-armhf
+            install: libsystemd-dev
+            arch: x86_64
+
+          - os: ubuntu-18.04
+            install: crossbuild-essential-armhf libsystemd-dev
             toolchain: Linux-arm.cmake
             cmake_opts: -DCMAKE_BUILD_TYPE=Release
             arch: arm
 
           - os: ubuntu-18.04
-            install: crossbuild-essential-arm64
+            install: crossbuild-essential-arm64 libsystemd-dev
             toolchain: Linux-arm64.cmake
             cmake_opts: -DCMAKE_BUILD_TYPE=Release
             arch: arm64
@@ -53,14 +52,10 @@ jobs:
           sudo apt -y update
           sudo apt -y install ${{ matrix.install }}
 
-      - name: install libsystemd if Ubuntu
-        if: ${{ startsWith(matrix.os, 'ubuntu') }}
-        run: |
-          sudo apt -y update
-          sudo apt -y install libsystemd-dev
-
       - name: configure cmake
-        run: cmake ${{matrix.cmake_opts}} -DCMAKE_TOOLCHAIN_FILE=${{github.workspace}}/toolchains/${{matrix.toolchain}} -S ${{ github.workspace }} -B ${{github.workspace}}/build
+        env:
+          TOOLCHAIN: ${{ matrix.toolchain && format('{0}/toolchains/{1}', github.workspace, matrix.toolchain) || '' }}
+        run: cmake ${{matrix.cmake_opts}} -DCMAKE_TOOLCHAIN_FILE="${TOOLCHAIN}" -S ${{ github.workspace }} -B ${{github.workspace}}/build
 
       - name: build ziti-edge-tunnel bundle target
         run: cmake --build ${{github.workspace}}/build --target bundle --verbose
