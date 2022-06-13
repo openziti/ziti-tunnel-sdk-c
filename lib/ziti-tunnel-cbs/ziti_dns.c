@@ -58,7 +58,7 @@ struct dns_req {
 static void* on_dns_client(const void *app_intercept_ctx, io_ctx_t *io);
 static int on_dns_close(void *dns_io_ctx);
 static ssize_t on_dns_req(void *ziti_io_ctx, void *write_ctx, const uint8_t *q_packet, size_t len);
-static void query_upstream(struct dns_req *req);
+static int query_upstream(struct dns_req *req);
 static void udp_alloc(uv_handle_t *h, unsigned long reqlen, uv_buf_t *b);
 static void on_upstream_packet(uv_udp_t *h, ssize_t rc, const uv_buf_t *buf, const struct sockaddr* addr, unsigned int flags);
 static void complete_dns_req(struct dns_req *req);
@@ -109,6 +109,7 @@ struct ziti_dns_s {
 
     model_map requests;
     uv_udp_t upstream;
+    struct sockaddr upstream_addr;
 } ziti_dns;
 
 static uint32_t next_ipv4() {
@@ -179,12 +180,22 @@ int ziti_dns_set_upstream(uv_loop_t *l, const char *host, uint16_t port) {
 
     if (port == 0) port = 53;
 
-    char port_str[6];
-    snprintf(port_str, sizeof(port_str), "%hu", port);
-    uv_getaddrinfo_t req = {0};
-    CHECK_UV(uv_getaddrinfo(l, &req, NULL, host, port_str, NULL));
-    CHECK_UV(uv_udp_connect(&ziti_dns.upstream, req.addrinfo->ai_addr));
+    if (uv_inet_pton(AF_INET6, host, &((struct sockaddr_in6*)&ziti_dns.upstream_addr)->sin6_addr) == 0) {
+        ziti_dns.upstream_addr.sa_family = AF_INET6;
+        ((struct sockaddr_in6*)&ziti_dns.upstream_addr)->sin6_port = htons(port);
+    } else if (uv_inet_pton(AF_INET, host, &((struct sockaddr_in*)&ziti_dns.upstream_addr)->sin_addr) == 0) {
+        ziti_dns.upstream_addr.sa_family = AF_INET;
+        ((struct sockaddr_in*)&ziti_dns.upstream_addr)->sin_port = htons(port);
+    } else {
+        ZITI_LOG(WARN, "upstream address[%s] is not IP format", host);
+        char port_str[6];
+        snprintf(port_str, sizeof(port_str), "%hu", port);
+        uv_getaddrinfo_t req = {0};
+        CHECK_UV(uv_getaddrinfo(l, &req, NULL, host, port_str, NULL));
+        memcpy(&ziti_dns.upstream_addr, req.addrinfo->ai_addr, sizeof(ziti_dns.upstream_addr));
+    }
     CHECK_UV(uv_udp_recv_start(&ziti_dns.upstream, udp_alloc, on_upstream_packet));
+    CHECK_UV(uv_udp_connect(&ziti_dns.upstream, &ziti_dns.upstream_addr));
     ZITI_LOG(INFO, "DNS upstream is set to %s:%hu", host, port);
     return 0;
 }
@@ -526,7 +537,12 @@ static void process_host_req(struct dns_req *req) {
         format_resp(req);
         complete_dns_req(req);
     } else {
-        query_upstream(req);
+        int rc = query_upstream(req);
+        if (rc != DNS_NO_ERROR) {
+            req->msg.status = rc;
+            format_resp(req);
+            complete_dns_req(req);
+        }
     }
 }
 
@@ -604,7 +620,7 @@ ssize_t on_dns_req(void *ziti_io_ctx, void *write_ctx, const uint8_t *q_packet, 
             return (ssize_t)q_len;
         } else { // some other client -- really unlucky to have sent request with same ID
             ziti_tunneler_ack(write_ctx);
-            on_dns_close(clt);
+            // just let the client timeout
             return -1;
         }
     }
@@ -641,7 +657,12 @@ ssize_t on_dns_req(void *ziti_io_ctx, void *write_ctx, const uint8_t *q_packet, 
         if (domain) {
             proxy_domain_req(req, domain);
         } else {
-            query_upstream(req);
+            int dns_status = query_upstream(req);
+            if (dns_status != DNS_NO_ERROR) {
+                req->msg.status = dns_status;
+                format_resp(req);
+                complete_dns_req(req);
+            }
         }
     }
 
@@ -657,7 +678,7 @@ static void on_upstream_send(uv_udp_send_t *sr, int rc) {
     free(sr);
 }
 
-void query_upstream(struct dns_req *req) {
+int query_upstream(struct dns_req *req) {
     bool avail = uv_is_active((const uv_handle_t *) &ziti_dns.upstream);
 
     if (avail) {
@@ -667,11 +688,16 @@ void query_upstream(struct dns_req *req) {
         uv_buf_t buf = uv_buf_init((char *) req->req, req->req_len);
         if ((rc = uv_udp_send(sr, &ziti_dns.upstream, &buf, 1, NULL, on_upstream_send)) != 0) {
             ZITI_LOG(WARN, "failed to query[%04x] upstream DNS server: %d(%s)", req->id, rc, uv_strerror(rc));
+            uv_udp_connect(&ziti_dns.upstream, NULL);
+            rc = uv_udp_connect(&ziti_dns.upstream, &ziti_dns.upstream_addr);
+            if (rc == 0) {
+                ZITI_LOG(INFO, "dns upstream re-connected successfully");
+            } else {
+                ZITI_LOG(WARN, "failed to reconnect upstream: %d/%s", rc, uv_strerror(rc));
+            }
         }
     } else {
-        req->msg.status = DNS_REFUSE;
-        format_resp(req);
-        complete_dns_req(req);
+        return DNS_REFUSE;
     }
 }
 
