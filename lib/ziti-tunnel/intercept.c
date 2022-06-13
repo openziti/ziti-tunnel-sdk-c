@@ -18,6 +18,7 @@
 #include <stdio.h>
 
 #include "ziti_tunnel_priv.h"
+#include "ziti/ziti_model.h"
 
 bool protocol_match(const char *protocol, const protocol_list_t *protocols) {
     protocol_t *p;
@@ -29,17 +30,71 @@ bool protocol_match(const char *protocol, const protocol_list_t *protocols) {
     return false;
 }
 
-bool address_match(const ip_addr_t *addr, const address_list_t *addresses) {
+void ziti_address_from_in_addr(ziti_address *za, const struct in_addr *a) {
+    memset(za, 0, sizeof(ziti_address));
+    za->type = ziti_address_cidr;
+    za->addr.cidr.af = AF_INET;
+    za->addr.cidr.bits = 32;
+    struct in_addr *zin = (struct in_addr *)&za->addr.cidr.ip;
+    zin->s_addr = a->s_addr;
+}
+
+void ziti_address_from_in6_addr(ziti_address *za, const struct in6_addr *a) {
+    memset(za, 0, sizeof(ziti_address));
+    za->type = ziti_address_cidr;
+    za->addr.cidr.af = AF_INET6;
+    za->addr.cidr.bits = 128;
+    memcpy(&za->addr.cidr.ip, &a, sizeof(struct in6_addr));
+}
+
+void ziti_address_from_sockaddr_in(ziti_address *za, const struct sockaddr_in *sin) {
+    ziti_address_from_in_addr(za, &sin->sin_addr);
+}
+
+void ziti_address_from_sockaddr_in6(ziti_address *za, const struct sockaddr_in6 *sin6) {
+    ziti_address_from_in6_addr(za, &sin6->sin6_addr);
+}
+
+bool ziti_address_from_sockaddr(ziti_address *za, const struct sockaddr *sa) {
+    if (sa->sa_family == AF_INET) {
+        ziti_address_from_sockaddr_in(za, (struct sockaddr_in *)sa);
+    } else if (sa->sa_family == AF_INET6) {
+        ziti_address_from_sockaddr_in6(za, (struct sockaddr_in6 *)sa);
+    } else {
+        TNL_LOG(ERR, "unknown address family %d", sa->sa_family);
+        return false;
+    }
+
+    return true;
+}
+
+void ziti_address_from_ip4_addr(ziti_address *za, const ip4_addr_t *ip4) {
+    struct in_addr in = { 0 };
+    in.s_addr = ip4->addr;
+    ziti_address_from_in_addr(za, &in);
+}
+
+void ziti_address_from_ip6_addr(ziti_address *za, const ip6_addr_t *ip6) {
+    ziti_address_from_in6_addr(za, (struct in6_addr *)ip6);
+}
+
+bool ziti_address_from_ip_addr(ziti_address *zaddr, const ip_addr_t *ip) {
+    if (ip->type == IPADDR_TYPE_V4) {
+        ziti_address_from_ip4_addr(zaddr, &ip->u_addr.ip4);
+    } else if (ip->type == IPADDR_TYPE_V6) {
+        ziti_address_from_ip6_addr(zaddr, &ip->u_addr.ip6);
+    } else {
+        TNL_LOG(ERR, "unknown address type %d", ip->type);
+        return false;
+    }
+
+    return true;
+}
+
+bool address_match(const ziti_address *addr, const address_list_t *addresses) {
     address_t *a;
     STAILQ_FOREACH(a, addresses, entries) {
-        if (IP_IS_V4(&a->ip) && a->prefix_len != 32) {
-            if (ip_addr_netcmp(addr, &a->ip, ip_2_ip4(&a->_netmask))) {
-                return true;
-            }
-        } else if (IP_IS_V6(&a->ip) && a->prefix_len != 128) {
-            TNL_LOG(ERR, "IPv6 CIDR intercept is not currently supported");
-            return false;
-        } else if (ip_addr_cmp(&a->ip, addr)) {
+        if (ziti_address_match(addr, &a->za)) {
             return true;
         }
     }
@@ -63,6 +118,8 @@ intercept_ctx_t *lookup_intercept_by_address(tunneler_context tnlr_ctx, const ch
         return NULL;
     }
 
+    ziti_address za;
+    ziti_address_from_ip_addr(&za, dst_addr);
     intercept_ctx_t *intercept;
     LIST_FOREACH(intercept, &tnlr_ctx->intercepts, entries) {
         if (!protocol_match(protocol, &intercept->protocols)) continue;
@@ -71,7 +128,7 @@ intercept_ctx_t *lookup_intercept_by_address(tunneler_context tnlr_ctx, const ch
         if (intercept->match_addr && intercept->match_addr(dst_addr, intercept->app_intercept_ctx))
             return intercept;
 
-        if (address_match(dst_addr, &intercept->addresses))
+        if (address_match(&za, &intercept->addresses))
             return intercept;
     }
 
@@ -82,6 +139,7 @@ void free_intercept(intercept_ctx_t *intercept) {
     while(!STAILQ_EMPTY(&intercept->addresses)) {
         address_t *a = STAILQ_FIRST(&intercept->addresses);
         STAILQ_REMOVE_HEAD(&intercept->addresses, entries);
+        free_ziti_address(&a->za);
         free(a);
     }
     while(!STAILQ_EMPTY(&intercept->protocols)) {

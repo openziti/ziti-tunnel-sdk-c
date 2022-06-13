@@ -246,52 +246,14 @@ void intercept_ctx_add_protocol(intercept_ctx_t *ctx, const char *protocol) {
     STAILQ_INSERT_TAIL(&ctx->protocols, proto, entries);
 }
 
-address_t *parse_address(const char *ip_or_cidr) {
-    address_t *addr = calloc(1, sizeof(address_t));
-    strncpy(addr->str, ip_or_cidr, sizeof(addr->str));
-    char *prefix_sep = strchr(addr->str, '/');
-
-    if (prefix_sep != NULL) {
-        *prefix_sep = '\0';
-        addr->prefix_len = (int)strtol(prefix_sep + 1, NULL, 10);
+void intercept_ctx_add_address(intercept_ctx_t *i_ctx, const ziti_address *za) {
+    if (!i_ctx || !za) {
+        return;
     }
-
-    if (ipaddr_aton(addr->str, &addr->ip) == 0) {
-        TNL_LOG(ERR, "hostnames are not supported");
-        free(addr);
-        return NULL;
-    }
-
-    uint8_t addr_bits = IP_IS_V4(&addr->ip) ? 32 : 128;
-    uint8_t net_bits = addr_bits - addr->prefix_len;
-
-    if (prefix_sep != NULL) {
-        // update ip (and str) with masked address - host bits zeroed
-        if (addr->ip.type == IPADDR_TYPE_V4) {
-            ip_addr_set_ip4_u32(&addr->_netmask, PP_HTONL(IPADDR_BROADCAST >> net_bits << net_bits));
-            ip_addr_set_ip4_u32(&addr->ip, ip_2_ip4(&addr->ip)->addr & ip_2_ip4(&addr->_netmask)->addr);
-        } else if (addr->ip.type == IPADDR_TYPE_V6) {
-            TNL_LOG(ERR, "IPv6 CIDR intercept is not currently supported");
-        }
-        snprintf(addr->str, sizeof(addr->str), "%s/%d", ipaddr_ntoa(&addr->ip), addr->prefix_len);
-    } else {
-        // use full ip
-        addr->prefix_len = addr_bits;
-    }
-
-    return addr;
-}
-
-address_t *intercept_ctx_add_address(intercept_ctx_t *i_ctx, const char *address) {
-    address_t *addr = parse_address(address);
-
-    if (addr == NULL) {
-        TNL_LOG(ERR, "failed to parse address '%s' service[%s]", address, i_ctx->service_name);
-        return NULL;
-    }
-
-    STAILQ_INSERT_TAIL(&i_ctx->addresses, addr, entries);
-    return addr;
+    address_t *a = calloc(1, sizeof(address_t));
+    memcpy(&a->za, za, sizeof(ziti_address));
+    ziti_address_print(a->str, sizeof(a->str), za);
+    STAILQ_INSERT_TAIL(&i_ctx->addresses, a, entries);
 }
 
 port_range_t *parse_port_range(uint16_t low, uint16_t high) {

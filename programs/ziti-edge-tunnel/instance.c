@@ -335,7 +335,7 @@ static void setTunnelServiceAddress(tunnel_service *tnl_svc, ziti_service *servi
 
         // set tunnel address
         tnl_addr_arr = calloc(2, sizeof(tunnel_address *));
-        tnl_addr_arr[0] = to_address(zt_client_cfg_v1.hostname);
+        tnl_addr_arr[0] = to_address(zt_client_cfg_v1.hostname.addr.hostname);
 
         // set protocols
         protocols = calloc(3, sizeof(char *));

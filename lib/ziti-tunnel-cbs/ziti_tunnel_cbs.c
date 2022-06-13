@@ -425,14 +425,15 @@ ziti_intercept_t *new_ziti_intercept(ziti_context ztx, ziti_service *service, zi
 
 // only do matching on based on wildcard domain here
 static bool intercept_match_addr(ip_addr_t *addr, void *ctx) {
-    ZITI_LOG(INFO, "matching %s", ipaddr_ntoa(addr));
+    ZITI_LOG(DEBUG, "matching %s", ipaddr_ntoa(addr));
     ziti_intercept_t *zi_ctx = ctx;
     if (zi_ctx->cfg_desc->cfgtype == INTERCEPT_CFG_V1) {
         ziti_intercept_cfg_v1 *cfg = &zi_ctx->cfg.intercept_v1;
         const char *domain = ziti_dns_reverse_lookup_domain(addr);
         if (domain) {
             for (int i = 0; cfg->addresses[i] != NULL; i++) {
-                if (strcasecmp(domain, cfg->addresses[i]) == 0) {
+                if (cfg->addresses[i]->type != ziti_address_hostname) continue;
+                if (ziti_address_match_s(domain, cfg->addresses[i])) {
                     return true;
                 }
             }
@@ -441,20 +442,38 @@ static bool intercept_match_addr(ip_addr_t *addr, void *ctx) {
     return false;
 }
 
+static const ziti_address  *intercept_addr_from_cfg_addr(const ziti_address *cfg_addr, ziti_intercept_t *zi) {
+    static ziti_address dns_addr;
+    const ziti_address *intercept_addr_p = NULL;
+
+    if (cfg_addr->type == ziti_address_cidr) {
+        intercept_addr_p = cfg_addr;
+    } else if (cfg_addr->type == ziti_address_hostname) {
+        ip_addr_t *intercept_ip = ziti_dns_register_hostname(cfg_addr, zi);
+        if (intercept_ip) {
+            intercept_addr_p = &dns_addr;
+            ziti_address_from_ip_addr(intercept_addr_p, intercept_ip);
+        }
+    } else {
+        ZITI_LOG(WARN, "unknown ziti_address type %d", cfg_addr->type);
+    }
+
+    return intercept_addr_p;
+}
+
 intercept_ctx_t *new_intercept_ctx(tunneler_context tnlr_ctx, ziti_intercept_t *zi_ctx) {
     intercept_ctx_t *i_ctx = intercept_ctx_new(tnlr_ctx, zi_ctx->service_name, zi_ctx);
     intercept_ctx_set_match_addr(i_ctx, intercept_match_addr);
 
     int i;
-    const char *ip;
+    const ziti_address *intercept_addr;
     switch (zi_ctx->cfg_desc->cfgtype) {
         case CLIENT_CFG_V1:
-            if ((ip = ziti_dns_register_hostname(zi_ctx->cfg.client_v1.hostname, zi_ctx)) != NULL) {
-                intercept_ctx_add_protocol(i_ctx, "udp");
-                intercept_ctx_add_protocol(i_ctx, "tcp");
-                intercept_ctx_add_address(i_ctx, ip);
-                intercept_ctx_add_port_range(i_ctx, zi_ctx->cfg.client_v1.port, zi_ctx->cfg.client_v1.port);
-            }
+            intercept_ctx_add_protocol(i_ctx, "udp");
+            intercept_ctx_add_protocol(i_ctx, "tcp");
+            intercept_addr = intercept_addr_from_cfg_addr(&zi_ctx->cfg.client_v1.hostname, zi_ctx);
+            intercept_ctx_add_address(i_ctx, intercept_addr);
+            intercept_ctx_add_port_range(i_ctx, zi_ctx->cfg.client_v1.port, zi_ctx->cfg.client_v1.port);
             break;
         case INTERCEPT_CFG_V1:
         {
@@ -463,8 +482,8 @@ intercept_ctx_t *new_intercept_ctx(tunneler_context tnlr_ctx, ziti_intercept_t *
                 intercept_ctx_add_protocol(i_ctx, config->protocols[i]);
             }
             for (i = 0; config->addresses[i] != NULL; i++) {
-                if ((ip = ziti_dns_register_hostname(config->addresses[i], zi_ctx)) != NULL)
-                    intercept_ctx_add_address(i_ctx, ip);
+                intercept_addr = intercept_addr_from_cfg_addr(config->addresses[i], zi_ctx);
+                intercept_ctx_add_address(i_ctx, intercept_addr);
             }
             for (i = 0; config->port_ranges[i] != NULL; i++) {
                 intercept_ctx_add_port_range(i_ctx, config->port_ranges[i]->low, config->port_ranges[i]->high);
