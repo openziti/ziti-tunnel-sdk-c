@@ -595,7 +595,21 @@ ssize_t on_dns_req(void *ziti_io_ctx, void *write_ctx, const uint8_t *q_packet, 
     const uint8_t *dns_packet = q_packet;
     size_t dns_packet_len = q_len;
 
-    struct dns_req *req = calloc(1, sizeof(struct dns_req));
+    uint16_t req_id = DNS_ID(q_packet);
+    struct dns_req *req = model_map_get_key(&ziti_dns.requests, &req_id, sizeof(req_id));
+    if (req != NULL) {
+        // same client -- it is really impatient, just drop new request
+        if (req->clt == ziti_io_ctx) {
+            ziti_tunneler_ack(write_ctx);
+            return (ssize_t)q_len;
+        } else { // some other client -- really unlucky to have sent request with same ID
+            ziti_tunneler_ack(write_ctx);
+            on_dns_close(clt);
+            return -1;
+        }
+    }
+
+    req = calloc(1, sizeof(struct dns_req));
     req->clt = ziti_io_ctx;
 
     req->req_len = q_len;
@@ -632,7 +646,6 @@ ssize_t on_dns_req(void *ziti_io_ctx, void *write_ctx, const uint8_t *q_packet, 
     }
 
     ziti_tunneler_ack(write_ctx);
-
     return (ssize_t)q_len;
 }
 
@@ -692,7 +705,7 @@ static void free_dns_req(struct dns_req *req) {
 }
 
 static void complete_dns_req(struct dns_req *req) {
-    model_map_removel(&ziti_dns.requests, req->id);
+    model_map_remove_key(&ziti_dns.requests, &req->id, sizeof(req->id));
     if (req->clt) {
         ziti_tunneler_write(req->clt->io_ctx->tnlr_io, req->resp, req->resp_len);
         LIST_REMOVE(req, _next);
