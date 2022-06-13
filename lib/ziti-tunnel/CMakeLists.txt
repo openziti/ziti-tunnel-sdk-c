@@ -50,6 +50,7 @@ target_include_directories(${lwip_sys_lib}
         )
 
 target_link_libraries(ziti-tunnel-sdk-c
+        PUBLIC ziti
         PUBLIC ${lwip_sys_lib}
         PUBLIC lwipcore
         PUBLIC uv_a

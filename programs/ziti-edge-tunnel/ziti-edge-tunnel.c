@@ -1538,7 +1538,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     tunneler = initialize_tunneler(tun, ziti_loop);
 
     ip_addr_t dns_ip4 = IPADDR4_INIT(dns_ip);
-    ziti_dns_setup(tunneler, ipaddr_ntoa(&dns_ip4), ip_range);
+    ziti_dns_setup(tunneler, &dns_ip4, ip_range);
     if (dns_upstream) {
         char *col = strchr(dns_upstream, ':');
         if (col) {

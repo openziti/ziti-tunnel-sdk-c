@@ -20,7 +20,7 @@
 #include "ziti/ziti_tunnel.h"
 #include "lwip/netif.h"
 
-#include <ziti/ziti_tunnel.h>
+#include "ziti/ziti_model.h"
 
 /* xxx.xxx.xxx.xxx/xx */
 #define MAX_ROUTE_LEN (4*4 + 2 + 1)

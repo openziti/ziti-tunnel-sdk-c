@@ -150,12 +150,14 @@ static int seed_dns(const char *dns_cidr) {
     return 0;
 }
 
-int ziti_dns_setup(tunneler_context tnlr, const char *dns_addr, const char *dns_cidr) {
+int ziti_dns_setup(tunneler_context tnlr, const ip_addr_t *dns_addr, const char *dns_cidr) {
     ziti_dns.tnlr = tnlr;
     seed_dns(dns_cidr);
 
     intercept_ctx_t *dns_intercept = intercept_ctx_new(tnlr, "ziti:dns-resolver", &ziti_dns);
-    intercept_ctx_add_address(dns_intercept, dns_addr);
+    ziti_address dns_zaddr;
+    ziti_address_from_ip_addr(&dns_zaddr, dns_addr);
+    intercept_ctx_add_address(dns_intercept, &dns_zaddr);
     intercept_ctx_add_port_range(dns_intercept, 53, 53);
     intercept_ctx_add_protocol(dns_intercept, "udp");
     intercept_ctx_override_cbs(dns_intercept, on_dns_client, on_dns_req, on_dns_close, on_dns_close);
@@ -351,17 +353,13 @@ void ziti_dns_deregister_intercept(void *intercept) {
     }
 }
 
-const char *ziti_dns_register_hostname(const char *hostname, void *intercept) {
-    // CIDR block
-    if (strchr(hostname, '/')) {
-        return hostname;
-    }
-    // IP address
-    ip_addr_t addr;
-    if (ipaddr_aton(hostname, &addr)) {
-        return hostname;
+const ip_addr_t *ziti_dns_register_hostname(const ziti_address *addr, void *intercept) {
+    // IP or CIDR block
+    if (addr->type == ziti_address_cidr) {
+        return NULL;
     }
 
+    const char *hostname = addr->addr.hostname;
     char clean[MAX_DNS_NAME];
     bool is_domain = false;
 
@@ -385,7 +383,7 @@ const char *ziti_dns_register_hostname(const char *hostname, void *intercept) {
             entry = new_ipv4_entry(clean);
         }
         model_map_set_key(&entry->intercepts, &intercept, sizeof(intercept), intercept);
-        return entry->ip;
+        return &entry->addr;
     }
 }
 
