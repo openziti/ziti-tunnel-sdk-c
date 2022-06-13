@@ -210,7 +210,7 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
         }
 
         case TunnelCommand_ListIdentities: {
-            tunnel_identity_list id_list = {0};
+            tunnel_identity_lst id_list = {0};
             id_list.identities = calloc(model_map_size(&instances) + 1, sizeof(tunnel_identity_info*));
             const char *key;
             struct ziti_instance_s *inst;
@@ -226,13 +226,13 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
                 id_list.identities[idx++] = info;
             }
 
-            result.data = tunnel_identity_list_to_json(&id_list, MODEL_JSON_COMPACT, NULL);
+            result.data = tunnel_identity_lst_to_json(&id_list, MODEL_JSON_COMPACT, NULL);
             result.success = true;
             result.code = IPC_SUCCESS;
 
             cb(&result, ctx);
 
-            free_tunnel_identity_list(&id_list);
+            free_tunnel_identity_lst(&id_list);
             free(result.data);
             return 0;
         }
@@ -1242,7 +1242,7 @@ IMPL_MODEL(tunnel_result, TUNNEL_CMD_RES)
 IMPL_MODEL(tunnel_load_identity, TNL_LOAD_IDENTITY)
 
 IMPL_MODEL(tunnel_identity_info, TNL_IDENTITY_INFO)
-IMPL_MODEL(tunnel_identity_list, TNL_IDENTITY_LIST)
+IMPL_MODEL(tunnel_identity_lst, TNL_IDENTITY_LIST)
 IMPL_MODEL(tunnel_on_off_identity, TNL_ON_OFF_IDENTITY)
 IMPL_MODEL(tunnel_ziti_dump, TNL_ZITI_DUMP)
 IMPL_MODEL(tunnel_enable_mfa, TNL_ENABLE_MFA)

@@ -319,9 +319,10 @@ u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     struct tcp_hdr *tcphdr = (struct tcp_hdr *)((char*)p->payload + iphdr_hlen);
     u16_t src_p = lwip_ntohs(tcphdr->src);
     u16_t dst_p = lwip_ntohs(tcphdr->dest);
-
+    char dst_str[IPADDR_STRLEN_MAX];
+    ipaddr_ntoa_r(&dst, dst_str, sizeof(dst_str));
     TNL_LOG(TRACE, "received segment %s:%d->%s:%d",
-            ipaddr_ntoa(&src), src_p, ipaddr_ntoa(&dst), dst_p);
+            ipaddr_ntoa(&src), src_p, dst_str, dst_p);
 
     u8_t flags = TCPH_FLAGS(tcphdr);
     if (!(flags & TCP_SYN)) {
