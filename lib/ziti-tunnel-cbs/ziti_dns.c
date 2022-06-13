@@ -614,15 +614,10 @@ ssize_t on_dns_req(void *ziti_io_ctx, void *write_ctx, const uint8_t *q_packet, 
     uint16_t req_id = DNS_ID(q_packet);
     struct dns_req *req = model_map_get_key(&ziti_dns.requests, &req_id, sizeof(req_id));
     if (req != NULL) {
-        // same client -- it is really impatient, just drop new request
-        if (req->clt == ziti_io_ctx) {
-            ziti_tunneler_ack(write_ctx);
-            return (ssize_t)q_len;
-        } else { // some other client -- really unlucky to have sent request with same ID
-            ziti_tunneler_ack(write_ctx);
-            // just let the client timeout
-            return -1;
-        }
+        ZITI_LOG(TRACE, "duplicate dns req[%04x] from %s client", req_id, req->clt == ziti_io_ctx ? "same" : "another");
+        // just drop new request
+        ziti_tunneler_ack(write_ctx);
+        return (ssize_t)q_len;
     }
 
     req = calloc(1, sizeof(struct dns_req));
@@ -680,10 +675,11 @@ static void on_upstream_send(uv_udp_send_t *sr, int rc) {
 
 int query_upstream(struct dns_req *req) {
     bool avail = uv_is_active((const uv_handle_t *) &ziti_dns.upstream);
+    int rc = -1;
+    uv_udp_send_t *sr = NULL;
 
     if (avail) {
-        int rc;
-        uv_udp_send_t *sr = calloc(1, sizeof(uv_udp_send_t));
+        sr = calloc(1, sizeof(uv_udp_send_t));
         sr->data = req;
         uv_buf_t buf = uv_buf_init((char *) req->req, req->req_len);
         if ((rc = uv_udp_send(sr, &ziti_dns.upstream, &buf, 1, NULL, on_upstream_send)) != 0) {
@@ -692,13 +688,17 @@ int query_upstream(struct dns_req *req) {
             rc = uv_udp_connect(&ziti_dns.upstream, &ziti_dns.upstream_addr);
             if (rc == 0) {
                 ZITI_LOG(INFO, "dns upstream re-connected successfully");
+                rc = uv_udp_send(sr, &ziti_dns.upstream, &buf, 1, NULL, on_upstream_send);
+                if (rc != 0) {
+                    ZITI_LOG(WARN, "failed again to query[%04x] upstream DNS server: %d(%s)", req->id, rc, uv_strerror(rc));
+                }
             } else {
                 ZITI_LOG(WARN, "failed to reconnect upstream: %d/%s", rc, uv_strerror(rc));
             }
         }
-    } else {
-        return DNS_REFUSE;
     }
+    if (rc != 0 && sr != NULL) free(sr);
+    return rc == 0 ? DNS_NO_ERROR : DNS_REFUSE;
 }
 
 static void udp_alloc(uv_handle_t *h, unsigned long reqlen, uv_buf_t *b) {
