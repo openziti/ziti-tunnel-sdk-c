@@ -104,7 +104,9 @@ macro(BUNDLE_COMP comp)
     add_custom_target(${comp}-bundle
         BYPRODUCTS ${CMAKE_BINARY_DIR}/bundle/${comp}-${CMAKE_SYSTEM_NAME}_${CMAKE_SYSTEM_PROCESSOR}.zip
         DEPENDS ${comp}
-        COMMAND ${CMAKE_COMMAND} -E tar "cf" "${CMAKE_BINARY_DIR}/bundle/${comp}-${CMAKE_SYSTEM_NAME}_${CMAKE_SYSTEM_PROCESSOR}.zip" --format=zip -- ${comp}${CMAKE_EXECUTABLE_SUFFIX} ${${comp}_BUNDLE_COMPS})
+        # copy target file when linker output directory isn't "." (e.g. visual studio)
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:${comp}> $<TARGET_FILE_NAME:${comp}>
+        COMMAND ${CMAKE_COMMAND} -E tar "cf" "${CMAKE_BINARY_DIR}/bundle/${comp}-${CMAKE_SYSTEM_NAME}_${CMAKE_SYSTEM_PROCESSOR}.zip" --format=zip -- $<TARGET_FILE_NAME:${comp}> ${${comp}_BUNDLE_COMPS})
     add_dependencies(bundle ${comp}-bundle)
 endmacro()
 
