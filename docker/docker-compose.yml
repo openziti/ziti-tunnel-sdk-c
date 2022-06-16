@@ -42,7 +42,7 @@ services:
         - .:/ziti-edge-tunnel
         networks: 
         - ziti-host
-        privileged: false         # will fail to provide DNS and IP routes if not privileged
+        privileged: false         # no privileges necessary for run-host mode
         command: 
         - run-host
         - --verbose=4
@@ -54,7 +54,7 @@ services:
         - .:/ziti-edge-tunnel
         networks: 
         - ziti-host
-        privileged: false        # will fail to provide DNS and IP routes if not privileged
+        privileged: false         # no privileges necessary for run-host mode
         command: 
         - run-host
         - --verbose=4
