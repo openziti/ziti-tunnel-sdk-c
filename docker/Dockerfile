@@ -1,4 +1,4 @@
-FROM debian:buster-slim as fetch-ziti-artifacts
+FROM debian:bullseye-slim as fetch-ziti-artifacts
 # This build stage grabs artifacts that are copied into the final image.
 # It uses the same base as the final image to maximize docker cache hits.
 
@@ -23,7 +23,7 @@ RUN bash ./fetch-github-releases.sh ziti-edge-tunnel
 #
 ################
 
-FROM debian:buster-slim
+FROM debian:bullseye-slim
 
 RUN mkdir -p /usr/local/bin /etc/ssl/certs
 # libsystemd: install the shared object, necessary in conjunction with      --volume "/var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket"     to communicate with the host's dbus socket to configure systemd-resolved
