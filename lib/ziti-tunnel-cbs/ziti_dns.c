@@ -150,13 +150,17 @@ static int seed_dns(const char *dns_cidr) {
     return 0;
 }
 
-int ziti_dns_setup(tunneler_context tnlr, const ip_addr_t *dns_addr, const char *dns_cidr) {
+int ziti_dns_setup(tunneler_context tnlr, const char *dns_addr, const char *dns_cidr) {
     ziti_dns.tnlr = tnlr;
     seed_dns(dns_cidr);
 
     intercept_ctx_t *dns_intercept = intercept_ctx_new(tnlr, "ziti:dns-resolver", &ziti_dns);
     ziti_address dns_zaddr;
-    ziti_address_from_ip_addr(&dns_zaddr, dns_addr);
+    size_t dns_addr_json_buflen = strlen(dns_addr) + 3;
+    char *dns_addr_json = calloc(dns_addr_json_buflen, sizeof(char));
+    snprintf(dns_addr_json, dns_addr_json_buflen, "\"%s\"", dns_addr);
+    parse_ziti_address(&dns_zaddr, dns_addr_json, dns_addr_json_buflen);
+    free(dns_addr_json);
     intercept_ctx_add_address(dns_intercept, &dns_zaddr);
     intercept_ctx_add_port_range(dns_intercept, 53, 53);
     intercept_ctx_add_protocol(dns_intercept, "udp");

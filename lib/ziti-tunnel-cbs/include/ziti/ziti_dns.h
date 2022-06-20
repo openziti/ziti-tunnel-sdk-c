@@ -25,7 +25,7 @@
 #define DNS_REFUSE   5
 #define DNS_NOTZONE  9
 
-int ziti_dns_setup(tunneler_context tnlr, const ip_addr_t *dns_addr, const char *dns_cidr);
+int ziti_dns_setup(tunneler_context tnlr, const char *dns_addr, const char *dns_cidr);
 
 int ziti_dns_set_upstream(uv_loop_t *l, const char *host, uint16_t port);
 
