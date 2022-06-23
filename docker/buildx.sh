@@ -91,14 +91,14 @@ if [[ ${FLAGS:-} =~ l ]]; then
     TAG_PARAMS+=" --tag=\"${CONTAINER_REPO}:latest\""
 fi
 
-docker run --rm --privileged docker/binfmt:a7996909642ee92942dcd6cff44b9b95f08dad64
+docker run --rm --privileged tonistiigi/binfmt:qemu-v6.2.0
 grep -E -q 'enabled' /proc/sys/fs/binfmt_misc/qemu-arm
 docker run --rm --platform linux/arm64/v8 arm64v8/alpine uname -a | grep -Eq 'aarch64 Linux'
 docker run --rm --platform linux/arm/v7 arm32v7/alpine uname -a | grep -Eq 'armv7l Linux'
 docker buildx create --use --name=ziti-builder 2>/dev/null || docker buildx use --default ziti-builder
 
 # if 
-if [[ ${FLAGS:-} =~ f ]] || ! curl -sSLf https://registry.hub.docker.com/v2/repositories/netfoundry/ziti-edge-tunnel/tags/${ZITI_VERSION} &>/dev/null; then
+if [[ ${FLAGS:-} =~ f ]] || ! curl -sSLf https://registry.hub.docker.com/v2/repositories/${CONTAINER_REPO}/tags/${ZITI_VERSION} &>/dev/null; then
     eval docker buildx build "${DIRNAME}" \
         --platform="linux/amd64,linux/arm/v7,linux/arm64" \
         --build-arg=ZITI_VERSION="${ZITI_VERSION}" \
