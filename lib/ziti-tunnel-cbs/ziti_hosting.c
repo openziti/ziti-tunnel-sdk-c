@@ -751,50 +751,35 @@ static void hosted_listen_cb(ziti_connection serv, int status) {
     }
 }
 
+static ziti_listen_opts DEFAULT_LISTEN_OPTS = {
+        .bind_using_edge_identity = false,
+        .identity = NULL,
+        .connect_timeout_seconds = 5,
+        .terminator_precedence = PRECEDENCE_DEFAULT,
+        .terminator_cost = 0,
+};
+
 static void listen_opts_from_host_cfg_v1(ziti_listen_opts *opts, const ziti_host_cfg_v1 *config) {
-    tag *t;
+    *opts = DEFAULT_LISTEN_OPTS;
 
-    opts->bind_using_edge_identity = false;
-    t = model_map_get(&config->listen_options, "bindUsingEdgeIdentity");
-    if (t != NULL) {
-        opts->bind_using_edge_identity = t->bool_value;
-    }
+    if (config && config->listen_options) {
+        opts->bind_using_edge_identity = config->listen_options->bind_with_identity;
+        opts->identity = config->listen_options->identity;
+        opts->connect_timeout_seconds = config->listen_options->connect_timeout_seconds;
+        opts->terminator_cost = config->listen_options->cost;
 
-    opts->identity = NULL;
-    t = model_map_get(&config->listen_options, "identity");
-    if (t != NULL) {
-        if (opts->bind_using_edge_identity) {
-            ZITI_LOG(WARN, "listen options specifies both 'identity=%s' and 'bindUsingEdgeIdentity=true'",
-                     t->string_value);
-        } else {
-            opts->identity = t->string_value;
+        const char *prec = config->listen_options->precendence;
+        if (prec) {
+            if (strcmp(prec, "default") == 0) {
+                opts->terminator_precedence = PRECEDENCE_DEFAULT;
+            } else if (strcmp(prec, "required") == 0) {
+                opts->terminator_precedence = PRECEDENCE_REQUIRED;
+            } else if (strcmp(prec, "failed") == 0) {
+                opts->terminator_precedence = PRECEDENCE_FAILED;
+            } else {
+                ZITI_LOG(WARN, "unsupported terminator precedence '%s'", prec);
+            }
         }
-    }
-
-    opts->connect_timeout_seconds = 5;
-    t = model_map_get(&config->listen_options, "connectTimeoutSeconds");
-    if (t != NULL) {
-        opts->connect_timeout_seconds = t->num_value;
-    }
-
-    opts->terminator_precedence = PRECEDENCE_DEFAULT;
-    t = model_map_get(&config->listen_options, "precedence");
-    if (t != NULL) {
-        if (strcmp(t->string_value, "default") == 0) {
-            opts->terminator_precedence = PRECEDENCE_DEFAULT;
-        } else if (strcmp(t->string_value, "required") == 0) {
-            opts->terminator_precedence = PRECEDENCE_REQUIRED;
-        } else if (strcmp(t->string_value, "failed") == 0) {
-            opts->terminator_precedence = PRECEDENCE_FAILED;
-        } else {
-            ZITI_LOG(WARN, "unsupported terminator precedence '%s'", t->string_value);
-        }
-    }
-
-    opts->terminator_cost = 0;
-    t = model_map_get(&config->listen_options, "cost");
-    if (t != NULL) {
-        opts->terminator_cost = t->num_value;
     }
 }
 
