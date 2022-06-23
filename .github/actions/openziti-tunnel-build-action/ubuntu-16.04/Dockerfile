@@ -25,7 +25,6 @@ RUN apt-get -y update \
         iproute2 \
         pkg-config \
         python3 \
-        libsystemd-dev \
         zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
