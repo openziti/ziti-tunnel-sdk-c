@@ -29,13 +29,14 @@ function alldone() {
 }
 trap alldone exit
 
-# Ensure that ziti-edge-tunnel's identity is stored on a volume
-# so we don't throw away the one-time enrollment token
-
 IDENTITIES_DIR="/ziti-edge-tunnel"
-if ! mountpoint "${IDENTITIES_DIR}" &>/dev/null; then
-    echo "ERROR: please run this container with a volume mounted on ${IDENTITIES_DIR}" >&2
+if ! [[ -d "${IDENTITIES_DIR}" ]]; then
+    echo "ERROR: need directory ${IDENTITIES_DIR} to find tokens and identities" >&2
     exit 1
+fi
+
+if ! mountpoint "${IDENTITIES_DIR}" &>/dev/null; then
+    echo "WARN: the identities directory only available inside this container because ${IDENTITIES_DIR} is not a mounted volume. Be careful to not publish this image with identity inside or lose access to the identity by removing the image prematurely." >&2
 fi
 
 # IOTEDGE_DEVICEID is a standard var assigned by Azure IoT
@@ -97,13 +98,11 @@ else
     fi
 fi
 
-if (( ${#} )); then
-    if [[ ${1:0:3} == run ]]; then
-        TUNNEL_MODE=${1}
-        shift
-    fi
+if (( ${#} )) && [[ ${1:0:3} == run ]]; then
+    TUNNEL_RUN_MODE=${1}
+    shift
 else
-    TUNNEL_MODE=run
+    TUNNEL_RUN_MODE=run
 fi
 
 echo "INFO: running ziti-edge-tunnel"
