@@ -257,23 +257,21 @@ static void setTunnelPostureDataTimeout(tunnel_service *tnl_svc, ziti_service *s
     ZITI_LOG(DEBUG, "service[%s] timeout=%d timeoutRemaining=%d", service->name, minTimeout, minTimeoutRemaining);
 }
 
-static tunnel_address *to_address(string hostOrIPOrCIDR) {
+static tunnel_address *to_address(const ziti_address *za) {
     tunnel_address *tnl_address = calloc(1, sizeof(struct tunnel_address_s));
-    tnl_address->IsHost = false;
-    tnl_address->Prefix = 0;
 
-    struct in_addr ip;
-    int err = uv_inet_pton(AF_INET, hostOrIPOrCIDR, &ip);
-    if (err == 0) {
-        tnl_address->IP = calloc(INET_ADDRSTRLEN+1, sizeof(char));
-        uv_inet_ntop(AF_INET, &ip, tnl_address->IP, INET_ADDRSTRLEN);
+    if (za->type == ziti_address_cidr) {
+        tnl_address->IsHost = false;
         tnl_address->HostName = NULL;
+        tnl_address->IP = calloc(INET_ADDRSTRLEN+1, sizeof(char));
+        uv_inet_ntop(za->addr.cidr.af, &za->addr.cidr.ip, tnl_address->IP, INET_ADDRSTRLEN);
+        tnl_address->Prefix = (int) za->addr.cidr.bits;
         ZITI_LOG(TRACE, "IP address: %s", tnl_address->IP);
     } else {
         tnl_address->IsHost = true;
         tnl_address->IP = NULL;
-        tnl_address->HostName = strdup(hostOrIPOrCIDR);
-        ZITI_LOG(TRACE, "Hostname: %s", hostOrIPOrCIDR);
+        tnl_address->HostName = strdup(za->addr.hostname);
+        ZITI_LOG(TRACE, "Hostname: %s", tnl_address->HostName);
     }
     // find CIDR
     return tnl_address;
@@ -304,7 +302,7 @@ static void setTunnelServiceAddress(tunnel_service *tnl_svc, ziti_service *servi
         tnl_addr_arr = calloc(idx+1, sizeof(tunnel_address *));
         int address_idx;
         for(address_idx=0; cfg_v1.addresses[address_idx]; address_idx++) {
-            char* addr = cfg_v1.addresses[address_idx];
+            ziti_address* addr = cfg_v1.addresses[address_idx];
             tnl_addr_arr[address_idx] = to_address(addr);
         }
 
@@ -335,7 +333,7 @@ static void setTunnelServiceAddress(tunnel_service *tnl_svc, ziti_service *servi
 
         // set tunnel address
         tnl_addr_arr = calloc(2, sizeof(tunnel_address *));
-        tnl_addr_arr[0] = to_address(zt_client_cfg_v1.hostname.addr.hostname);
+        tnl_addr_arr[0] = to_address(&zt_client_cfg_v1.hostname);
 
         // set protocols
         protocols = calloc(3, sizeof(char *));
