@@ -477,28 +477,6 @@ bool is_nrpt_policies_effective(char* tns_ip) {
     }
 }
 
-model_map *get_connection_specific_domains() {
-    const char* get_cmd = "powershell -Command \"Get-DnsClient | Select-Object ConnectionSpecificSuffix -Unique | ForEach-Object { $_.ConnectionSpecificSuffix }; (Get-DnsClientGlobalSetting).SuffixSearchList\"";
-    ZITI_LOG(INFO, "Getting Connection specific Domains '%s'", get_cmd);
-
-    char* result = exec_process_fetch_result(get_cmd);
-    model_map *conn_sp_domains = calloc(1, sizeof(model_map));
-    if (result == NULL) {
-        ZITI_LOG(WARN, "get connection specific domains script failed");
-        return conn_sp_domains;
-    } else {
-        char delim[] = "\r\n";
-        char *token = strtok(result, delim);
-        while( token != NULL ) {
-            model_map_set(conn_sp_domains, token, true);
-            token = strtok(NULL, delim);
-        }
-        free(result);
-
-        return conn_sp_domains;
-    }
-}
-
 void update_interface_metric(uv_loop_t *ziti_loop, char* tun_name, int metric) {
     char script[MAX_POWERSHELL_SCRIPT_LEN] = { 0 };
     size_t buf_len = sprintf(script, "$i=Get-NetIPInterface | Where -FilterScript {$_.InterfaceAlias -Eq \"%ls\"}\n", tun_name);
