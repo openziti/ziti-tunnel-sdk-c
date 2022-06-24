@@ -448,23 +448,20 @@ bool is_nrpt_policies_effective(char* tns_ip) {
         return false;
     }
 
-    const char* get_cmd = "powershell -Command \"Get-DnsClientNrptPolicy -Effective | Select-Object Namespace -Unique | Where-Object Namespace -Eq '.ziti.test'\"";
+    const char* get_cmd = "powershell -Command \"(Get-DnsClientNrptPolicy -Effective | Select-Object Namespace -Unique | Where-Object Namespace -Eq '.ziti.test' | Measure-Object).Count\"";
     char* result = exec_process_fetch_result(get_cmd);
     if (result == NULL) {
         ZITI_LOG(WARN, "get test nrpt rule script failed");
         return false;
     } else {
-        char delim[] = "\r\n";
-        char *token;
         boolean policy_found = false;
-
-        token = strtok(result, delim);
-        while( token != NULL ) {
-            if (strcmp(token, ".ziti.test") == 0) {
-                policy_found = true;
-                break;
-            }
-            token = strtok(NULL, delim);
+        errno = 0;
+        long n = strtol(result, NULL, 10);
+        if (errno == 0) {
+            ZITI_LOG(DEBUG, "test nrpt rule query returned %ld items", n);
+            policy_found = (n > 0);
+        } else {
+            ZITI_LOG(ERROR, "strtol(%s) failed: e=%d", result, errno);
         }
         free(result);
 
