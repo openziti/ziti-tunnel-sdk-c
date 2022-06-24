@@ -33,6 +33,7 @@
 #include "ziti_instance.h"
 #include "ziti_hosting.h"
 
+
 typedef int (*cfg_parse_fn)(void *, const char *, size_t);
 typedef void* (*cfg_alloc_fn)();
 typedef void (*cfg_free_fn)(void *);
@@ -328,6 +329,13 @@ void * ziti_sdk_c_dial(const void *intercept_ctx, struct io_ctx_s *io) {
             break;
     }
 
+    ssize_t json_len = get_app_data_json(app_data_json, sizeof(app_data_json), io->tnlr_io, ziti_ctx, source_ip);
+    if (json_len < 0) {
+        ZITI_LOG(ERROR, "service[%s] failed to encode app_data", zi_ctx->service_name);
+        free(ziti_io_ctx);
+        return NULL;
+    }
+  
     char resolved_dial_identity[128];
     if (dial_opts.identity != NULL && dial_opts.identity[0] != '\0') {
         const char *dst_addr = get_intercepted_address(io->tnlr_io);
@@ -335,9 +343,8 @@ void * ziti_sdk_c_dial(const void *intercept_ctx, struct io_ctx_s *io) {
             char *proto, *ip, *port;
             strncpy(resolved_dial_identity, dial_opts.identity, sizeof(resolved_dial_identity));
             parse_socket_address(dst_addr, &proto, &ip, &port);
-            const char *dst_host_ip = ip;
-            const char *dst_host = ziti_dns_reverse_lookup(dst_host_ip);
-            printf("\ndest_addr=%s\n", dst_host);
+            tunneler_app_data app_data;
+            parse_tunneler_app_data(&app_data, (char *)app_data_json, json_len);
             if (proto != NULL) {
                 string_replace(resolved_dial_identity, sizeof(resolved_dial_identity), "$dst_protocol", proto);
                 free(proto);
@@ -350,19 +357,14 @@ void * ziti_sdk_c_dial(const void *intercept_ctx, struct io_ctx_s *io) {
                 string_replace(resolved_dial_identity, sizeof(resolved_dial_identity), "$dst_port", port);
                 free(port);
             }
-            if (dst_host != NULL){
-                string_replace(resolved_dial_identity, sizeof(resolved_dial_identity), "$dst_host", dst_host);
+            if (app_data.dst_hostname != NULL){
+                string_replace(resolved_dial_identity, sizeof(resolved_dial_identity), "$dst_hostname", app_data.dst_hostname);
+                free_tunneler_app_data(&app_data);
             }
         }
         dial_opts.identity = resolved_dial_identity;
     }
 
-    ssize_t json_len = get_app_data_json(app_data_json, sizeof(app_data_json), io->tnlr_io, ziti_ctx, source_ip);
-    if (json_len < 0) {
-        ZITI_LOG(ERROR, "service[%s] failed to encode app_data", zi_ctx->service_name);
-        free(ziti_io_ctx);
-        return NULL;
-    }
 
     dial_opts.app_data_sz = (size_t) json_len;
     dial_opts.app_data = app_data_json;
