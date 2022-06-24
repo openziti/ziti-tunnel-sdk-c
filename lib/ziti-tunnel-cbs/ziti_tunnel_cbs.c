@@ -342,29 +342,25 @@ void * ziti_sdk_c_dial(const void *intercept_ctx, struct io_ctx_s *io) {
         if (dst_addr != NULL) {
             char *proto, *ip, *port;
             strncpy(resolved_dial_identity, dial_opts.identity, sizeof(resolved_dial_identity));
-            parse_socket_address(dst_addr, &proto, &ip, &port);
             tunneler_app_data app_data;
-            parse_tunneler_app_data(&app_data, (char *)app_data_json, json_len);
-            if (proto != NULL) {
-                string_replace(resolved_dial_identity, sizeof(resolved_dial_identity), "$dst_protocol", proto);
-                free(proto);
-            }
-            if (ip != NULL) {
-                string_replace(resolved_dial_identity, sizeof(resolved_dial_identity), "$dst_ip", ip);
-                free(ip);
-            }
-            if (port != NULL) {
-                string_replace(resolved_dial_identity, sizeof(resolved_dial_identity), "$dst_port", port);
-                free(port);
-            }
-            if (app_data.dst_hostname != NULL){
-                string_replace(resolved_dial_identity, sizeof(resolved_dial_identity), "$dst_hostname", app_data.dst_hostname);
+            if (parse_tunneler_app_data(&app_data, (char *)app_data_json, json_len) >= 0){
+                if (app_data.dst_protocol != NULL) {
+                    string_replace(resolved_dial_identity, sizeof(resolved_dial_identity), "$dst_protocol", app_data.dst_protocol);
+                }
+                if (app_data.dst_ip != NULL) {
+                    string_replace(resolved_dial_identity, sizeof(resolved_dial_identity), "$dst_ip", app_data.dst_ip);
+                }
+                if (app_data.dst_port != NULL) {
+                    string_replace(resolved_dial_identity, sizeof(resolved_dial_identity), "$dst_port", app_data.dst_port);
+                }
+                if (app_data.dst_hostname != NULL){
+                    string_replace(resolved_dial_identity, sizeof(resolved_dial_identity), "$dst_hostname", app_data.dst_hostname);
+                }
                 free_tunneler_app_data(&app_data);
             }
         }
         dial_opts.identity = resolved_dial_identity;
     }
-
 
     dial_opts.app_data_sz = (size_t) json_len;
     dial_opts.app_data = app_data_json;
