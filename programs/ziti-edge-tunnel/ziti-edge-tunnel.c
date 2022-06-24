@@ -1518,21 +1518,6 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
         ZITI_LOG(INFO, "Setting interface metric to 255");
         update_interface_metric(ziti_loop, get_tun_name(tun->handle), 255);
     }
-    if (nrpt_effective) {
-        model_map *domains = get_connection_specific_domains();
-        bool status;
-        model_map normalized_domains = {0};
-        model_map_iter it = model_map_iterator(domains);
-        while (it != NULL) {
-            const char *key = model_map_it_key(it);
-            model_map_set(&normalized_domains, normalize_host(key), NULL);
-            it = model_map_it_remove(it);
-        }
-        model_map_clear(domains, (_free_f) free);
-        free(domains);
-
-        add_nrpt_rules(main_ziti_loop, &normalized_domains, get_dns_ip());
-    }
 #endif
 
     tunneler = initialize_tunneler(tun, ziti_loop);
