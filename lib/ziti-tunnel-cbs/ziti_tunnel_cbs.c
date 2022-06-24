@@ -335,6 +335,9 @@ void * ziti_sdk_c_dial(const void *intercept_ctx, struct io_ctx_s *io) {
             char *proto, *ip, *port;
             strncpy(resolved_dial_identity, dial_opts.identity, sizeof(resolved_dial_identity));
             parse_socket_address(dst_addr, &proto, &ip, &port);
+            const char *dst_host_ip = ip;
+            const char *dst_host = ziti_dns_reverse_lookup(dst_host_ip);
+            printf("\ndest_addr=%s\n", dst_host);
             if (proto != NULL) {
                 string_replace(resolved_dial_identity, sizeof(resolved_dial_identity), "$dst_protocol", proto);
                 free(proto);
@@ -346,6 +349,9 @@ void * ziti_sdk_c_dial(const void *intercept_ctx, struct io_ctx_s *io) {
             if (port != NULL) {
                 string_replace(resolved_dial_identity, sizeof(resolved_dial_identity), "$dst_port", port);
                 free(port);
+            }
+            if (dst_host != NULL){
+                string_replace(resolved_dial_identity, sizeof(resolved_dial_identity), "$dst_host", dst_host);
             }
         }
         dial_opts.identity = resolved_dial_identity;
