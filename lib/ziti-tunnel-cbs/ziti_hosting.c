@@ -461,6 +461,23 @@ static bool addrinfo_from_host_ctx(struct addrinfo_params_s *dial_params, const 
             dial_params->address = app_data->dst_hostname;
             dial_params->hints.ai_flags = AI_ADDRCONFIG;
         } else if (app_data->dst_ip != NULL && app_data->dst_ip[0] != 0) {
+            struct addrinfo *dial_ai;
+            int s;
+            if((s = getaddrinfo(app_data->dst_ip, app_data->dst_port, &dial_params->hints, &dial_ai)) != 0) {
+                ZITI_LOG(ERROR, "hosted_service[%s],getaddrinfo(%s,%s) failed: %s",
+                        host_ctx->service_name, app_data->dst_ip, app_data->dst_port, gai_strerror(s));
+                return false;
+            }
+            ziti_address dst;
+            ziti_address_from_sockaddr(&dst, dial_ai->ai_addr);
+            if (!address_match(&dst, &host_ctx->addr_u.allowed_addresses)) {
+                ZITI_LOG(ERROR, "hosted_service[%s] client requested address '%s' is not allowed",
+                         host_ctx->service_name,app_data->dst_ip);
+                return false;
+            }
+	    if (dial_ai != NULL) {
+               freeaddrinfo(dial_ai);
+            }
             dial_params->address = app_data->dst_ip;
             dial_params->hints.ai_flags = AI_ADDRCONFIG | AI_NUMERICSERV;
         } else {
@@ -576,19 +593,6 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
     if (dial_ai->ai_next != NULL) {
         ZITI_LOG(DEBUG, "hosted_service[%s], client[%s]: getaddrinfo(%s,%s) returned multiple results; using first",
                  service_ctx->service_name, client_identity, dial_ai_params.address, dial_ai_params.port);
-    }
-
-    /* verify dst_ip is allowed, if it was specified */
-    if (app_data.dst_ip && !app_data.dst_hostname) {
-        ziti_address dst_za;
-        ziti_address_from_sockaddr(&dst_za, dial_ai->ai_addr);
-        if (!address_match(&dst_za, &service_ctx->addr_u.allowed_addresses)) {
-            ZITI_LOG(ERROR, "hosted_service[%s] client requested address '%s' is not allowed",
-                     service_ctx->service_name,
-                     app_data.dst_ip);
-            err = true;
-            goto done;
-        }
     }
 
     const char *dst_proto = app_data.dst_protocol;
