@@ -579,18 +579,19 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
     }
 
     /* verify dst_ip is allowed, if it was specified */
-    if (app_data.dst_ip && !app_data.dst_hostname) {
-        ziti_address dst_za;
-        ziti_address_from_sockaddr(&dst_za, dial_ai->ai_addr);
-        if (!address_match(&dst_za, &service_ctx->addr_u.allowed_addresses)) {
-            ZITI_LOG(ERROR, "hosted_service[%s] client requested address '%s' is not allowed",
-                     service_ctx->service_name,
-                     app_data.dst_ip);
-            err = true;
-            goto done;
+    if(service_ctx->forward_address){
+        if (app_data.dst_ip && !app_data.dst_hostname) {
+            ziti_address dst_za;
+            ziti_address_from_sockaddr(&dst_za, dial_ai->ai_addr);
+            if (!address_match(&dst_za, &service_ctx->addr_u.allowed_addresses)) {
+                ZITI_LOG(ERROR, "hosted_service[%s] client requested address '%s' is not allowed",
+                         service_ctx->service_name,
+                         app_data.dst_ip);
+                err = true;
+                goto done;
+            }
         }
     }
-
     const char *dst_proto = app_data.dst_protocol;
     const char *dst_ip = app_data.dst_hostname ? app_data.dst_hostname : app_data.dst_ip;
     const char *dst_port = app_data.dst_port;
