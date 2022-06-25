@@ -466,6 +466,9 @@ static bool addrinfo_from_host_ctx(struct addrinfo_params_s *dial_params, const 
             if((s = getaddrinfo(app_data->dst_ip, app_data->dst_port, &dial_params->hints, &dial_ai)) != 0) {
                 ZITI_LOG(ERROR, "hosted_service[%s],getaddrinfo(%s,%s) failed: %s",
                         host_ctx->service_name, app_data->dst_ip, app_data->dst_port, gai_strerror(s));
+		if (dial_ai != NULL) {
+                    freeaddrinfo(dial_ai);
+                }
                 return false;
             }
             ziti_address dst;
@@ -473,6 +476,9 @@ static bool addrinfo_from_host_ctx(struct addrinfo_params_s *dial_params, const 
             if (!address_match(&dst, &host_ctx->addr_u.allowed_addresses)) {
                 ZITI_LOG(ERROR, "hosted_service[%s] client requested address '%s' is not allowed",
                          host_ctx->service_name,app_data->dst_ip);
+		if (dial_ai != NULL) {
+                   freeaddrinfo(dial_ai);
+                }
                 return false;
             }
 	    if (dial_ai != NULL) {
