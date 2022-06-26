@@ -376,6 +376,12 @@ void ziti_tunneler_stop_intercepting(tunneler_context tnlr_ctx, void *zi_ctx) {
         tunneler_kill_active(zi_ctx);
 
         LIST_REMOVE(intercept, entries);
+
+        struct address_s *address;
+        STAILQ_FOREACH(address, &intercept->addresses, entries) {
+            delete_route(tnlr_ctx->opts.netif_driver, address);
+        }
+
         free_intercept(intercept);
     }
 
