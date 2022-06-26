@@ -98,6 +98,12 @@ void ziti_tunneler_exclude_route(tunneler_context tnlr_ctx, const char *dst) {
         return;
     }
 
+    if (tnlr_ctx->opts.netif_driver->exclude_rt == NULL) {
+        TNL_LOG(WARN, "netif_driver->exclude_rt function is not implemented");
+        return;
+    }
+
+    uv_getaddrinfo_t resolve_req = {0};
     uv_interface_address_t *if_addrs;
     int err, num_if_addrs;
     if ((err = uv_interface_addresses(&if_addrs, &num_if_addrs)) != 0) {
@@ -105,41 +111,35 @@ void ziti_tunneler_exclude_route(tunneler_context tnlr_ctx, const char *dst) {
         return;
     }
 
-    if (tnlr_ctx->opts.netif_driver->exclude_rt) {
-        TNL_LOG(DEBUG, "excluding %s from tunneler intercept", dst);
+    TNL_LOG(DEBUG, "excluding %s from tunneler intercept", dst);
 
-        uv_getaddrinfo_t resolve_req = {0};
-        uv_getaddrinfo(tnlr_ctx->loop, &resolve_req, NULL, dst, NULL, NULL);
-
-        struct addrinfo *addrinfo = resolve_req.addrinfo;
-        while (addrinfo != NULL) {
-            struct excluded_route_s *exrt = calloc(1, sizeof(struct excluded_route_s));
-            uv_ip4_name((const struct sockaddr_in*)addrinfo->ai_addr, exrt->route, MAX_ROUTE_LEN);
-            // make sure the address isn't local
-            for (int i = 0; i < num_if_addrs; i++) {
-                struct sockaddr *a = (struct sockaddr *)&if_addrs[i].address;
-                if (a->sa_family == AF_INET && addrinfo->ai_family == AF_INET) {
-                    struct sockaddr_in *if_addr = (struct sockaddr_in *) a;
-                    struct sockaddr_in *if_mask = (struct sockaddr_in *) &if_addrs[i].netmask;
-                    struct sockaddr_in *ex_addr = (struct sockaddr_in *) addrinfo->ai_addr;
-                    if ((if_addr->sin_addr.s_addr & if_mask->sin_addr.s_addr) ==
-                        (ex_addr->sin_addr.s_addr & if_mask->sin_addr.s_addr)) {
-                        TNL_LOG(DEBUG, "%s is a local address on %s; not excluding route", exrt->route, if_addrs[i].name);
-                        goto done;
-                    }
-                } else if (a->sa_family == AF_INET6) {
-                    TNL_LOG(TRACE, "ipv6 address compare not implemented");
+    uv_getaddrinfo(tnlr_ctx->loop, &resolve_req, NULL, dst, NULL, NULL);
+    struct addrinfo *addrinfo = resolve_req.addrinfo;
+    while (addrinfo != NULL) {
+        struct excluded_route_s exrt = {0};
+        uv_ip4_name((const struct sockaddr_in *) addrinfo->ai_addr, exrt.route, MAX_ROUTE_LEN);
+        // make sure the address isn't local
+        for (int i = 0; i < num_if_addrs; i++) {
+            struct sockaddr *a = (struct sockaddr *) &if_addrs[i].address;
+            if (a->sa_family == AF_INET && addrinfo->ai_family == AF_INET) {
+                struct sockaddr_in *if_addr = (struct sockaddr_in *) a;
+                struct sockaddr_in *if_mask = (struct sockaddr_in *) &if_addrs[i].netmask;
+                struct sockaddr_in *ex_addr = (struct sockaddr_in *) addrinfo->ai_addr;
+                if ((if_addr->sin_addr.s_addr & if_mask->sin_addr.s_addr) ==
+                    (ex_addr->sin_addr.s_addr & if_mask->sin_addr.s_addr)) {
+                    TNL_LOG(DEBUG, "%s is a local address on %s; not excluding route", exrt.route, if_addrs[i].name);
+                    goto done;
                 }
+            } else if (a->sa_family == AF_INET6) {
+                TNL_LOG(TRACE, "ipv6 address compare not implemented");
             }
-            LIST_INSERT_HEAD(&tnlr_ctx->excluded_rts, exrt, _next);
-            tnlr_ctx->opts.netif_driver->exclude_rt(tnlr_ctx->opts.netif_driver->handle, tnlr_ctx->loop, exrt->route);
-            addrinfo = addrinfo->ai_next;
         }
-        uv_freeaddrinfo(resolve_req.addrinfo);
-    } else {
-        TNL_LOG(WARN, "netif_driver->exclude_rt function is not implemented");
+        tnlr_ctx->opts.netif_driver->exclude_rt(tnlr_ctx->opts.netif_driver->handle, tnlr_ctx->loop, exrt.route);
+        addrinfo = addrinfo->ai_next;
     }
+
     done:
+    uv_freeaddrinfo(resolve_req.addrinfo);
     uv_free_interface_addresses(if_addrs, num_if_addrs);
 }
 
