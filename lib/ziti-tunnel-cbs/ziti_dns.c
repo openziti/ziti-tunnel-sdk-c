@@ -306,16 +306,15 @@ dns_entry_t *ziti_dns_lookup(const char *hostname) {
     }
 
     dns_entry_t *entry = model_map_get(&ziti_dns.hostnames, clean);
-    if (entry) {
-        return entry;
-    }
 
-    dns_domain_t *domain = find_domain(clean);
-    // try domains
-    if (domain && model_map_size(&domain->intercepts) > 0) {
-        ZITI_LOG(DEBUG, "matching domain[%s] found for %s", domain->name, hostname);
-        entry = new_ipv4_entry(clean);
-        entry->domain = domain;
+    if (!entry) {         // try domains
+        dns_domain_t *domain = find_domain(clean);
+
+        if (domain && model_map_size(&domain->intercepts) > 0) {
+            ZITI_LOG(DEBUG, "matching domain[%s] found for %s", domain->name, hostname);
+            entry = new_ipv4_entry(clean);
+            entry->domain = domain;
+        }
     }
 
     if (entry) {
