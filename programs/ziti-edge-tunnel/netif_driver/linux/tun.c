@@ -95,17 +95,89 @@ int tun_uv_poll_init(netif_handle tun, uv_loop_t *loop, uv_poll_t *tun_poll_req)
 }
 
 int tun_add_route(netif_handle tun, const char *dest) {
-    char cmd[1024];
-    snprintf(cmd, sizeof(cmd), "ip route add %s dev %s", dest, tun->name);
-    int s = system(cmd);
-    return s;
+    if (tun->route_updates == NULL) {
+        tun->route_updates = calloc(1, sizeof(*tun->route_updates));
+    }
+    model_map_set(tun->route_updates, dest, (void*)(uintptr_t)true);
 }
 
 int tun_delete_route(netif_handle tun, const char *dest) {
-    char cmd[1024];
-    snprintf(cmd, sizeof(cmd), "ip route delete %s dev %s", dest, tun->name);
-    int s = system(cmd);
-    return s;
+    if (tun->route_updates == NULL) {
+        tun->route_updates = calloc(1, sizeof(*tun->route_updates));
+    }
+    model_map_set(tun->route_updates, dest, (void*)(uintptr_t)false);
+}
+
+struct rt_process_cmd {
+    model_map *updates;
+    netif_handle tun;
+};
+
+static void route_updates_done(uv_work_t *wr, int status) {
+    struct rt_process_cmd *cmd = wr->data;
+    ZITI_LOG(INFO, "route updates[%zd]: %d/%s", model_map_size(cmd->updates), status, uv_strerror(status));
+
+    model_map_iter it = model_map_iterator(cmd->updates);
+    while(it) {
+        it = model_map_it_remove(it);
+    }
+    free(cmd->updates);
+    free(cmd);
+    free(wr);
+}
+
+static void process_routes_updates(uv_work_t *wr) {
+    struct rt_process_cmd *cmd = wr->data;
+    int rc;
+    uv_fs_t tmp_req = {0};
+    uv_file routes_file = uv_fs_mkstemp(wr->loop, &tmp_req, "/tmp/ziti-tunnel-routes.XXXXXX", NULL);
+    if (routes_file < 0) {
+        ZITI_LOG(ERROR, "failed to create temp file for route updates %d/%s", routes_file, uv_strerror(routes_file));
+    }
+
+    char buf[1024];
+    uv_fs_t req;
+
+    // get route deletes first
+    model_map_iter it = model_map_iterator(cmd->updates);
+    while(it) {
+        if (model_map_it_value(it) == 0) { // delete route
+            size_t len = snprintf(buf, sizeof(buf), "route delete %s dev %s\n", model_map_it_key(it), cmd->tun->name);
+            uv_buf_t b = uv_buf_init(buf, len);
+            uv_fs_write(wr->loop, &req, routes_file, &b, 1, 0, NULL);
+        }
+        it = model_map_it_next(it);
+    }
+
+    it = model_map_iterator(cmd->updates);
+    while(it) {
+        if ((uintptr_t)model_map_it_value(it) == 1) {
+            size_t len = snprintf(buf, sizeof(buf), "route add %s dev %s\n", model_map_it_key(it), cmd->tun->name);
+            uv_buf_t b = uv_buf_init(buf, len);
+            uv_fs_write(wr->loop, &req, routes_file, &b, 1, -1, NULL);
+        }
+        it = model_map_it_next(it);
+    }
+
+    run_command("ip -batch %s", uv_fs_get_path(&tmp_req));
+
+    uv_fs_t unlink_req = {0};
+    uv_fs_unlink(wr->loop, &unlink_req, uv_fs_get_path(&tmp_req), NULL);
+    uv_fs_req_cleanup(&unlink_req);
+    uv_fs_req_cleanup(&tmp_req);
+}
+
+void tun_commit_routes(netif_handle tun, uv_loop_t *l) {
+    uv_work_t *wr = calloc(1, sizeof(uv_work_t));
+    struct rt_process_cmd *cmd = calloc(1, sizeof(struct rt_process_cmd));
+    if (tun->route_updates && model_map_size(tun->route_updates) > 0) {
+        ZITI_LOG(INFO, "starting %zd route updates", model_map_size(tun->route_updates));
+        cmd->tun = tun;
+        cmd->updates = tun->route_updates;
+        wr->data = cmd;
+        tun->route_updates = NULL;
+        uv_queue_work(l, wr, process_routes_updates, route_updates_done);
+    }
 }
 
 static void dns_update_resolvectl(const char* tun, unsigned int ifindex, const char* addr) {
@@ -335,6 +407,7 @@ netif_driver tun_open(uv_loop_t *loop, uint32_t tun_ip, uint32_t dns_ip, const c
     driver->delete_route = tun_delete_route;
     driver->close        = tun_close;
     driver->exclude_rt   = tun_exclude_rt;
+    driver->commit_routes = tun_commit_routes;
 
     run_command("ip link set %s up", tun->name);
     run_command("ip addr add %s dev %s", inet_ntoa(*(struct in_addr*)&tun_ip), tun->name);
