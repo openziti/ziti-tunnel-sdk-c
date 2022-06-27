@@ -29,6 +29,7 @@ cmake \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_TOOLCHAIN_FILE=./toolchains/default.cmake \
     -DBUILD_DIST_PACKAGES=ON \
+    -DDISABLE_LIBSYSTEMD_FEATURE=ON \
     -S . \
     -B ./build
 cmake \

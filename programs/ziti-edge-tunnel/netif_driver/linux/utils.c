@@ -19,6 +19,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <ziti/ziti_log.h>
 
 int run_command_va(bool log_nonzero_ec, const char* cmd, va_list args) {
@@ -47,4 +48,14 @@ int run_command_ex(bool log_nonzero_ec, const char *cmd, ...) {
     int r = run_command_va(log_nonzero_ec, cmd, args);
     va_end(args);
     return r;
+}
+
+bool is_executable(const char *path) {
+    struct stat s;
+    return (stat(path, &s) == 0 && (s.st_mode & S_IXUSR));
+}
+
+bool is_symlink(const char *path) {
+    struct stat s;
+    return (lstat(path, &s) == 0 && S_ISLNK(s.st_mode));
 }
