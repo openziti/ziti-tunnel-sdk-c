@@ -64,7 +64,6 @@ struct intercept_ctx_s {
 
 struct excluded_route_s {
     char route[MAX_ROUTE_LEN];
-    LIST_ENTRY(excluded_route_s) _next;
 };
 
 typedef struct tunneler_ctx_s {
@@ -77,8 +76,6 @@ typedef struct tunneler_ctx_s {
     uv_poll_t    netif_poll_req;
     uv_timer_t   lwip_timer_req;
     LIST_HEAD(intercept_ctx_list_s, intercept_ctx_s) intercepts;
-//    STAILQ_HEAD(hosted_service_ctx_list_s, hosted_service_ctx_s) hosts;
-    LIST_HEAD(exclusions, excluded_route_s) excluded_rts;
 
 } *tunneler_context;
 
