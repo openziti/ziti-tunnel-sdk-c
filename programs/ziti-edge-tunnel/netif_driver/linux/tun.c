@@ -15,6 +15,7 @@
  */
 
 #include <sys/ioctl.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 //#include <linux/if.h>
 #include <linux/if_tun.h>
@@ -50,14 +51,12 @@
 
 #define CHECK_UV(op) do{ int rc = op; if (rc < 0) ZITI_LOG(ERROR, "uv_err: %d/%s", rc, uv_strerror(rc)); } while(0)
 
-#define RESOLVECTL "resolvectl"
-
 extern void dns_set_miss_status(int code);
 
-static void dns_update_resolvectl(const char* tun, const char* addr);
-static void dns_update_systemd_resolve(const char* tun, const char* addr);
+static void dns_update_resolvectl(const char* tun, unsigned int ifindex, const char* addr);
+static void dns_update_systemd_resolve(const char* tun, unsigned int ifindex, const char* addr);
 
-static void (*dns_updater)(const char* tun, const char* addr);
+static void (*dns_updater)(const char* tun, unsigned int ifindex, const char* addr);
 static uv_once_t dns_updater_init;
 
 static struct {
@@ -109,68 +108,74 @@ int tun_delete_route(netif_handle tun, const char *dest) {
     return s;
 }
 
-static void dns_update_resolvectl(const char* tun, const char* addr) {
+static void dns_update_resolvectl(const char* tun, unsigned int ifindex, const char* addr) {
+
     run_command(RESOLVECTL " dns %s %s", tun, addr);
     int s = run_command_ex(false, RESOLVECTL " domain | fgrep -v '%s' | fgrep -q '~.'",
                            dns_maintainer.tun_name);
-    char *domain = "";
     // set wildcard domain if any other resolvers set it.
     if (s == 0) {
-        domain = "~.";
+        run_command(RESOLVECTL " domain %s '~.'", dns_maintainer.tun_name);
+    } else {
+        // Use busctl due to systemd version differences fixed in systemd>=240
+        run_command(BUSCTL " call %s %s %s SetLinkDomains 'ia(sb)' %u 0",
+                RESOLVED_DBUS_NAME,
+                RESOLVED_DBUS_PATH,
+                RESOLVED_DBUS_MANAGER_INTERFACE,
+                ifindex);
     }
-    run_command(RESOLVECTL " domain %s '%s'", dns_maintainer.tun_name, domain);
+    run_command(RESOLVECTL " dnssec %s no", dns_maintainer.tun_name);
+    run_command(RESOLVECTL " reset-server-features");
+    run_command(RESOLVECTL " flush-caches");
 }
 
-static void dns_update_systemd_resolve(const char* tun, const char* addr) {
+static void dns_update_systemd_resolve(const char* tun, unsigned int ifindex, const char* addr) {
     run_command("systemd-resolve -i %s --set-dns=%s", tun, addr);
     int s = run_command_ex(false, "systemd-resolve --status | fgrep  'DNS Domain' | fgrep -q '~.'");
-    char *domain = "";
     // set wildcard domain if any other resolvers set it.
     if (s == 0) {
-        domain = "--set-domain=~.";
-        run_command("systemd-resolve -i %s %s", dns_maintainer.tun_name, domain);
+        run_command(SYSTEMD_RESOLVE " -i %s --set-doamin='~.'", dns_maintainer.tun_name);
+    } else {
+        // Use busctl due to systemd version differences fixed in systemd>=240
+        run_command(BUSCTL " call %s %s %s SetLinkDomains 'ia(sb)' %u 0",
+                RESOLVED_DBUS_NAME,
+                RESOLVED_DBUS_PATH,
+                RESOLVED_DBUS_MANAGER_INTERFACE,
+                ifindex);
     }
-    run_command("systemd-resolve --flush-caches");
+    run_command(SYSTEMD_RESOLVE " --set-dnssec=no --interface=%s", dns_maintainer.tun_name);
+    run_command(SYSTEMD_RESOLVE " --reset-server-features");
+    run_command(SYSTEMD_RESOLVE " --flush-caches");
 }
 
 static void find_dns_updater() {
+    if (is_systemd_resolved_primary_resolver()){
 #ifndef EXCLUDE_LIBSYSTEMD_RESOLVER
-    if(try_systemd_resolved()) {
-        dns_updater = dns_update_systemd_resolved;
-        return;
-    }
-#endif
-
-    struct dns_cmd {
-        const char *path;
-        void (* update_fn)(const char* tun, const char* addr);
-    };
-
-    static struct dns_cmd dns_cmds[] = {
-            {
-                    .path = "/usr/bin/resolvectl",
-                    .update_fn = dns_update_resolvectl,
-            },
-            {
-                    .path = "/usr/bin/systemd-resolve",
-                    .update_fn = dns_update_systemd_resolve,
-            },
-            {
-                    .path = "/usr/sbin/resolvconf",
-                    .update_fn = dns_update_resolvconf
-            },
-            {0}
-    };
-
-    uv_loop_t *l = dns_maintainer.update_timer.loop;
-    for (int idx = 0; dns_cmds[idx].path != NULL; idx++) {
-        uv_fs_t req = {0};
-        if (uv_fs_stat(l, &req, dns_cmds[idx].path, NULL) == 0) {
-            dns_updater = dns_cmds[idx].update_fn;
+        if(try_libsystemd_resolver()) {
+            dns_updater = dns_update_systemd_resolved;
             return;
+        }
+#endif
+        if (is_executable(BUSCTL) && (run_command(BUSCTL " status %s > /dev/null", RESOLVED_DBUS_NAME) == 0)) {
+            if (is_executable(RESOLVECTL)) {
+                dns_updater = dns_update_resolvectl;
+                return;
+            } else if (is_executable(SYSTEMD_RESOLVE)){
+                dns_updater = dns_update_systemd_resolve;
+                return;
+            } else {
+                ZITI_LOG(ERROR, "Could not find a way to configure systemd-resolved");
+                exit(1);
+            }
         }
     }
 
+    // On newer systems, RESOLVCONF is a symlink to RESOLVECTL
+    // By now, we know systemd-resolved is not available
+    if (is_executable(RESOLVCONF) && !(is_resolvconf_systemd_resolved())){
+        dns_updater = dns_update_resolvconf;
+        return;
+    }
     ZITI_LOG(ERROR, "could not find a way to configure system resolver. Ziti DNS functionality will be impaired");
     dns_updater = dns_update_etc_resolv;
     dns_set_miss_status(DNS_REFUSE);
@@ -178,7 +183,11 @@ static void find_dns_updater() {
 
 static void set_dns(uv_work_t *wr) {
     uv_once(&dns_updater_init, find_dns_updater);
-    dns_updater(dns_maintainer.tun_name, inet_ntoa(*(struct in_addr*)&dns_maintainer.dns_ip));
+    dns_updater(
+            dns_maintainer.tun_name,
+            if_nametoindex(dns_maintainer.tun_name),
+            inet_ntoa(*(struct in_addr*)&dns_maintainer.dns_ip)
+    );
 }
 
 static void after_set_dns(uv_work_t *wr, int status) {
@@ -220,7 +229,7 @@ static void init_dns_maintainer(uv_loop_t *loop, const char *tun_name, uint32_t 
     if ( s < 0) {
         ZITI_LOG(ERROR, "failed to open netlink socket: %d/%s", errno, strerror(errno));
     }
-    if (bind(s, &local, sizeof(local)) < 0) {
+    if (bind(s, (struct sockaddr *)&local, sizeof(local)) < 0) {
         ZITI_LOG(ERROR, "failed to bind %d/%s", errno, strerror(errno));
     }
 
@@ -313,8 +322,8 @@ netif_driver tun_open(uv_loop_t *loop, uint32_t tun_ip, uint32_t dns_ip, const c
     if (driver == NULL) {
         if (error != NULL) {
             snprintf(error, error_len, "failed to allocate netif_device_s");
-            tun_close(tun);
         }
+        tun_close(tun);
         return NULL;
     }
 

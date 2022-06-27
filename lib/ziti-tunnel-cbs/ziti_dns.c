@@ -306,18 +306,25 @@ dns_entry_t *ziti_dns_lookup(const char *hostname) {
     }
 
     dns_entry_t *entry = model_map_get(&ziti_dns.hostnames, clean);
+
+    if (!entry) {         // try domains
+        dns_domain_t *domain = find_domain(clean);
+
+        if (domain && model_map_size(&domain->intercepts) > 0) {
+            ZITI_LOG(DEBUG, "matching domain[%s] found for %s", domain->name, hostname);
+            entry = new_ipv4_entry(clean);
+            entry->domain = domain;
+        }
+    }
+
     if (entry) {
-        return entry;
+        if (model_map_size(&entry->intercepts) > 0 ||
+            (entry->domain && model_map_size(&entry->domain->intercepts) > 0)) {
+            return entry;
+        } else {
+            return NULL; // inactive entry
+        }
     }
-
-    dns_domain_t *domain = find_domain(clean);
-    // try domains
-    if (domain) {
-        ZITI_LOG(DEBUG, "matching domain[%s] found for %s", domain->name, hostname);
-        entry = new_ipv4_entry(clean);
-        entry->domain = domain;
-    }
-
     return entry;
 }
 
@@ -335,25 +342,18 @@ void ziti_dns_deregister_intercept(void *intercept) {
         dns_entry_t *e = model_map_it_value(it);
         model_map_remove_key(&e->intercepts, &intercept, sizeof(intercept));
         if (model_map_size(&e->intercepts) == 0 && (e->domain == NULL || model_map_size(&e->domain->intercepts) == 0)) {
-            it = model_map_it_remove(it);
-            model_map_remove(&ziti_dns.ip_addresses, e->ip);
-            ZITI_LOG(INFO, "removed DNS mapping %s -> %s", e->name, e->ip);
-            free(e);
-        } else {
-            it = model_map_it_next(it);
+            ZITI_LOG(INFO, "DNS mapping %s -> %s is now inactive", e->name, e->ip);
         }
+        it = model_map_it_next(it);
     }
 
     it = model_map_iterator(&ziti_dns.domains);
     while (it != NULL) {
         dns_domain_t *domain = model_map_it_value(it);
         if (model_map_size(&domain->intercepts) == 0) {
-            it = model_map_it_remove(it);
-            ZITI_LOG(INFO, "removed wildcard domain[*%s]", domain->name);
-            free_domain(domain);
-        } else {
-            it = model_map_it_next(it);
+            ZITI_LOG(INFO, "wildcard domain[*%s] is now inactive", domain->name);
         }
+        it = model_map_it_next(it);
     }
 }
 

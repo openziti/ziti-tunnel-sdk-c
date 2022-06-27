@@ -9,6 +9,7 @@
 #include "lwip/netif.h"
 #include "ziti/netif_driver.h"
 #include "netif_shim.h"
+#include "../ziti_tunnel_priv.h"
 
 #define IFNAME0 't'
 #define IFNAME1 'n'
@@ -25,9 +26,12 @@ static err_t netif_shim_output(struct netif *netif, struct pbuf *p, const ip4_ad
 
     u16_t copied = pbuf_copy_partial(p, shim_buffer, p->tot_len, 0);
     if (copied != p->tot_len) {
-        fprintf(stderr, "pbuf_copy_partial() failed %d/%d", copied, p->tot_len);
+        TNL_LOG(ERR, "pbuf_copy_partial() failed %d/%d", copied, p->tot_len);
         return ERR_BUF; // ?
     }
+
+    if (ip_ver(shim_buffer) == 4)
+        TNL_LOG(TRACE, "writing packet " PACKET_FMT " len=%d", PACKET_FMT_ARGS(shim_buffer), copied);
     dev->write(dev->handle, shim_buffer, p->tot_len);
     return ERR_OK;
 }
@@ -48,6 +52,9 @@ void netif_shim_input(struct netif *netif) {
         return;
     }
 
+    if (ip_ver(buf) == 4)
+        TNL_LOG(TRACE, "received packet " PACKET_FMT " len=%zd", PACKET_FMT_ARGS(buf), nr);
+
     on_packet(buf, nr, netif);
 }
 
@@ -62,13 +69,13 @@ void on_packet(const char *buf, ssize_t nr, void *ctx) {
         /* acknowledge that packet has been read(); */
     } else {
         /* drop packet(); */
-        printf("pbuf_alloc failed\n");
+        TNL_LOG(ERR, "pbuf_alloc failed");
         return;
     }
 
     err_t err = netif->input(p, netif);
     if (err != ERR_OK) {
-        printf("============================> tunif_input: netif input error %s\n", lwip_strerr(err));
+        TNL_LOG(ERR, "============================> tunif_input: netif input error %s", lwip_strerr(err));
         pbuf_free(p);
     }
 }
