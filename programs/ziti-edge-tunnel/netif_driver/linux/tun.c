@@ -115,7 +115,7 @@ struct rt_process_cmd {
 
 static void route_updates_done(uv_work_t *wr, int status) {
     struct rt_process_cmd *cmd = wr->data;
-    ZITI_LOG(INFO, "route updates[%zd]: %d/%s", model_map_size(cmd->updates), status, uv_strerror(status));
+    ZITI_LOG(INFO, "route updates[%zd]: %d/%s", model_map_size(cmd->updates), status, status ? uv_strerror(status) : "OK");
 
     model_map_iter it = model_map_iterator(cmd->updates);
     while(it) {
