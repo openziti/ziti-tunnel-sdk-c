@@ -31,7 +31,7 @@ static err_t netif_shim_output(struct netif *netif, struct pbuf *p, const ip4_ad
     }
 
     if (ip_ver(shim_buffer) == 4)
-        TNL_LOG(TRACE, "writing packet  " PACKET_FMT " len=%d", PACKET_FMT_ARGS(shim_buffer), copied);
+        TNL_LOG(TRACE, "writing packet " PACKET_FMT " len=%d", PACKET_FMT_ARGS(shim_buffer), copied);
     dev->write(dev->handle, shim_buffer, p->tot_len);
     return ERR_OK;
 }
@@ -53,7 +53,7 @@ void netif_shim_input(struct netif *netif) {
     }
 
     if (ip_ver(buf) == 4)
-        TNL_LOG(TRACE, "received packet " PACKET_FMT " len = %zd ", PACKET_FMT_ARGS(buf), nr);
+        TNL_LOG(TRACE, "received packet " PACKET_FMT " len=%zd", PACKET_FMT_ARGS(buf), nr);
 
     on_packet(buf, nr, netif);
 }
