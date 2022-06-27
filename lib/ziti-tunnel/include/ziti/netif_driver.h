@@ -34,6 +34,7 @@ typedef int (*setup_packet_cb)(netif_handle dev, uv_loop_t *loop, packet_cb cb, 
 typedef int (*add_route_cb)(netif_handle dev, const char *dest);
 typedef int (*delete_route_cb)(netif_handle dev, const char *dest);
 typedef int (*exclude_route_fn)(netif_handle dev, uv_loop_t *loop, const char *dest);
+typedef int (*commit_routes_fn)(netif_handle dev, uv_loop_t *loop);
 
 typedef struct netif_driver_s {
     netif_handle handle;
@@ -45,6 +46,7 @@ typedef struct netif_driver_s {
     add_route_cb add_route;
     delete_route_cb delete_route;
     exclude_route_fn exclude_rt;
+    commit_routes_fn commit_routes;
 } netif_driver_t;
 typedef netif_driver_t *netif_driver;
 

@@ -783,6 +783,7 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
                 }
             }
 
+            ziti_tunnel_commit_routes(CMD_CTX.tunnel_ctx);
             break;
         }
 
