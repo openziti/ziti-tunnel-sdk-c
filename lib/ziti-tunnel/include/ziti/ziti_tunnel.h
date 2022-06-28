@@ -153,6 +153,7 @@ extern tunneler_context ziti_tunneler_init(tunneler_sdk_options *opts, uv_loop_t
 extern tunneler_context ziti_tunneler_init_host_only(tunneler_sdk_options *opts, uv_loop_t *loop);
 
 extern void ziti_tunneler_exclude_route(tunneler_context tnlr_ctx, const char* dst);
+extern void ziti_tunnel_commit_routes(tunneler_context tnlr_ctx);
 
 /** called by tunneler application when it is done with a tunneler_context.
  * calls `stop_intercepting` for each intercepted service. */
