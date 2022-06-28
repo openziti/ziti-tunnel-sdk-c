@@ -61,8 +61,8 @@ static int dns_miss_status = DNS_REFUSE;
 static void send_message_to_tunnel();
 typedef char * (*to_json_fn)(const void * msg, int flags, size_t *len);
 static void send_events_message(const void *message, to_json_fn to_json_f, bool displayEvent);
-static void send_tunnel_command(tunnel_command *tnl_cmd, void *ctx);
-static void send_tunnel_command_inline(tunnel_command *tnl_cmd, void *ctx);
+static void send_tunnel_command(const tunnel_command *tnl_cmd, void *ctx);
+static void send_tunnel_command_inline(const tunnel_command *tnl_cmd, void *ctx);
 static void scm_service_stop_event(uv_loop_t *loop, void *arg);
 static void stop_tunnel_and_cleanup();
 static bool is_host_only();
@@ -285,6 +285,7 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
         wr->data = buf.base;
         uv_write(wr, (uv_stream_t *) ctx, &buf, 1, on_cmd_write);
     }
+    free(json);
 }
 
 void tunnel_enroll_cb(ziti_config *cfg, int status, char *err, void *ctx) {
@@ -326,17 +327,18 @@ void tunnel_enroll_cb(ziti_config *cfg, int status, char *err, void *ctx) {
     create_or_get_tunnel_identity(add_id_req->identifier, add_id_req->identifier_file_name);
 
     // send load identity command to the controller
-    tunnel_command *tnl_cmd = calloc(1, sizeof(tunnel_command));
-    tnl_cmd->command = TunnelCommand_LoadIdentity;
-    tunnel_load_identity *load_identity_options = calloc(1, sizeof(tunnel_load_identity));
-    load_identity_options->identifier = strdup(add_id_req->identifier);
-    load_identity_options->path = strdup(add_id_req->identifier);
-    load_identity_options->apiPageSize = get_api_page_size();
+    tunnel_load_identity load_identity_options = {
+            .identifier = add_id_req->identifier,
+            .path = add_id_req->identifier,
+            .apiPageSize = get_api_page_size(),
+    };
     size_t json_len;
-    tnl_cmd->data = tunnel_load_identity_to_json(load_identity_options, MODEL_JSON_COMPACT, &json_len);
-    send_tunnel_command(tnl_cmd, add_id_req->cmd_ctx);
-    free_tunnel_load_identity(load_identity_options);
-    free(load_identity_options);
+    tunnel_command tnl_cmd = {
+            .command = TunnelCommand_LoadIdentity,
+            .data = tunnel_load_identity_to_json(&load_identity_options, MODEL_JSON_COMPACT, &json_len),
+    };
+    send_tunnel_command(&tnl_cmd, add_id_req->cmd_ctx);
+    free_tunnel_command(&tnl_cmd);
     free(add_id_req);
 }
 
@@ -807,8 +809,6 @@ static void tnl_transfer_rates(const tunnel_identity_metrics *metrics, void *ctx
     if (metrics->down != NULL) {
         tnl_id->Metrics.Down = (int) strtol(metrics->down, NULL, 10);
     }
-    free_tunnel_identity_metrics((tunnel_identity_metrics*) metrics);
-    free(metrics);
 }
 
 static void on_command_inline_resp(const tunnel_result* result, void *ctx) {
@@ -822,15 +822,14 @@ static void on_command_inline_resp(const tunnel_result* result, void *ctx) {
         switch (tnl_cmd_inline->command) {
             case TunnelCommand_GetMetrics: {
                 if (result->success) {
-                    tunnel_identity_metrics *id_metrics = calloc(1, sizeof(tunnel_identity_metrics));
-                    if (parse_tunnel_identity_metrics(id_metrics, result->data, strlen(result->data)) < 0) {
+                    tunnel_identity_metrics id_metrics = {0};
+                    if (parse_tunnel_identity_metrics(&id_metrics, result->data, strlen(result->data)) < 0) {
                         ZITI_LOG(ERROR, "Could not fetch metrics data");
-                        free_tunnel_identity_metrics(id_metrics);
-                        free(id_metrics);
-                        break;
+                    } else {
+                        tunnel_identity *tnl_id = find_tunnel_identity(tnl_cmd_inline->identifier);
+                        tnl_transfer_rates(&id_metrics, tnl_id);
                     }
-                    tunnel_identity *tnl_id = find_tunnel_identity(tnl_cmd_inline->identifier);
-                    tnl_transfer_rates(id_metrics, tnl_id);
+                    free_tunnel_identity_metrics(&id_metrics);
                 }
                 break;
             }
@@ -850,16 +849,12 @@ static void on_command_inline_resp(const tunnel_result* result, void *ctx) {
     }
 }
 
-static void send_tunnel_command(tunnel_command *tnl_cmd, void *ctx) {
+static void send_tunnel_command(const tunnel_command *tnl_cmd, void *ctx) {
     CMD_CTRL->process(tnl_cmd, on_command_resp, ctx);
-    free_tunnel_command(tnl_cmd);
-    free(tnl_cmd);
 }
 
-static void send_tunnel_command_inline(tunnel_command *tnl_cmd, void *ctx) {
+static void send_tunnel_command_inline(const tunnel_command *tnl_cmd, void *ctx) {
     CMD_CTRL->process(tnl_cmd, on_command_inline_resp, ctx);
-    free_tunnel_command(tnl_cmd);
-    free(tnl_cmd);
 }
 
 static char* addUnit(int count, char* unit) {
@@ -978,20 +973,20 @@ static void broadcast_metrics(uv_timer_t *timer) {
             if (tnl_id->Active && tnl_id->Loaded && tnl_id->IdFileStatus) {
                 active_identities = true;
 
-                tunnel_command *tnl_cmd = calloc(1, sizeof(tunnel_command));
-                tnl_cmd->command = TunnelCommand_GetMetrics;
-                tunnel_get_identity_metrics *get_metrics = calloc(1, sizeof(tunnel_get_identity_metrics));
-                get_metrics->identifier = strdup(tnl_id->Identifier);
+                tunnel_get_identity_metrics get_metrics = {
+                        .identifier = tnl_id->Identifier,
+                };
                 size_t json_len;
-                tnl_cmd->data = tunnel_get_identity_metrics_to_json(get_metrics, MODEL_JSON_COMPACT, &json_len);
+                tunnel_command tnl_cmd = {
+                        .command = TunnelCommand_GetMetrics,
+                        .data = tunnel_get_identity_metrics_to_json(&get_metrics, MODEL_JSON_COMPACT, &json_len),
+                };
 
-                tunnel_command_inline *tnl_cmd_inline = calloc(1, sizeof(tunnel_command_inline));
+                tunnel_command_inline *tnl_cmd_inline = alloc_tunnel_command_inline();
                 tnl_cmd_inline->identifier = strdup(tnl_id->Identifier);
                 tnl_cmd_inline->command = TunnelCommand_GetMetrics;
-                send_tunnel_command_inline(tnl_cmd, tnl_cmd_inline);
-
-                free_tunnel_get_identity_metrics(get_metrics);
-                free(get_metrics);
+                send_tunnel_command_inline(&tnl_cmd, tnl_cmd_inline);
+                free_tunnel_command(&tnl_cmd);
 
                 // check timeout
                 if (check_send_notification(tnl_id)) {
