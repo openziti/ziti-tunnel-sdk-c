@@ -557,6 +557,7 @@ tunneled_service_t *ziti_sdk_c_on_service(ziti_context ziti_ctx, ziti_service *s
                     break;
                 }
                 cfgtype->free(config);
+                free(config);
             }
             if (!current_tunneled_service.host) {
                 ZITI_LOG(DEBUG, "service[%s] can be bound, but lacks host configuration; not hosting", service->name);
