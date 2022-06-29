@@ -2,6 +2,13 @@ name: CI package
 
 on: 
   workflow_dispatch:
+  push:
+    paths:
+      - programs/ziti-edge-tunnel/package/*
+      - .github/workflows/cpack.yml
+  release:
+    types:
+      - published
 
 jobs:
   package:
@@ -18,12 +25,12 @@ jobs:
           - name: ubuntu
             version: "22.04"
             type: deb
-          - name: ubuntu
-            version: "20.04"
-            type: deb
-          - name: ubuntu
-            version: "18.04"
-            type: deb
+          # - name: ubuntu
+          #   version: "20.04"
+          #   type: deb
+          # - name: ubuntu
+          #   version: "18.04"
+          #   type: deb
           - name: ubuntu
             version: "16.04"
             type: deb
@@ -123,17 +130,27 @@ jobs:
           ldd ./build/programs/ziti-edge-tunnel/ziti-edge-tunnel
           ./build/programs/ziti-edge-tunnel/ziti-edge-tunnel version --verbose
 
-      # - name: upload ziti-edge-tunnel binary
-      #   uses: actions/upload-artifact@v3
-      #   with:
-      #     name: ${{ matrix.distro.name }}-${{ matrix.distro.version }}-${{ matrix.arch }}-bin
-      #     path: |
-      #       ./build/programs/ziti-edge-tunnel/ziti-edge-tunnel
-      #     if-no-files-found: error
-
       - name: upload package artifact
         uses: actions/upload-artifact@v3
         with:
           name: ${{ matrix.distro.name }}-${{ matrix.distro.version }}-${{ matrix.arch }}-${{ matrix.distro.type }}
           path: ./build/ziti-edge-tunnel-*.${{ matrix.distro.type }}
           if-no-files-found: error
+
+      - name: rename package artifact for release
+        if: ${{ github.event_name == 'release' && startsWith(github.ref, 'refs/tags/v') }}
+        run: |
+          mv -v \
+            ./build/ziti-edge-tunnel-*.${{ matrix.distro.type }} \
+            ./build/ziti-edge-tunnel-${{ matrix.distro.name }}-${{ matrix.distro.version }}-${{ matrix.arch }}.${{ matrix.distro.type }}
+
+      - name: upload release artifacts
+        if: ${{ github.event_name == 'release' && startsWith(github.ref, 'refs/tags/v') }}
+        id: get_release
+        uses: softprops/action-gh-release@v1
+        with:
+          draft: false
+          prerelease: false
+          fail_on_unmatched_files: true
+          files: |
+            ./build/ziti-edge-tunnel-${{ matrix.distro.name }}-${{ matrix.distro.version }}-${{ matrix.arch }}.${{ matrix.distro.type }}
