@@ -843,10 +843,6 @@ static void on_command_inline_resp(const tunnel_result* result, void *ctx) {
         free_tunnel_command_inline(tnl_cmd_inline);
         free(tnl_cmd_inline);
     }
-
-    if (result->data) {
-        free(result->data);
-    }
 }
 
 static void send_tunnel_command(const tunnel_command *tnl_cmd, void *ctx) {
@@ -2008,7 +2004,7 @@ static int dump_opts(int argc, char *argv[]) {
                             opts, &option_index)) != -1) {
         switch (c) {
             case 'i':
-                dump_options->identifier = optarg;
+                dump_options->identifier = strdup(optarg);
                 break;
             case 'p':
                 dump_options->dump_path = realpath(optarg, NULL);
