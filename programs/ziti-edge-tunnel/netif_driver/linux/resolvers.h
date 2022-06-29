@@ -21,11 +21,11 @@
 #define RESOLVECTL "/usr/bin/resolvectl"
 #define SYSTEMD_RESOLVE "/usr/bin/systemd-resolve"
 
-#ifndef EXCLUDE_LIBSYSTEMD_RESOLVER
 #ifndef RESOLVED_DBUS_NAME
 #define RESOLVED_DBUS_NAME "org.freedesktop.resolve1"
 #endif
 
+#ifndef EXCLUDE_LIBSYSTEMD_RESOLVER
 #ifndef RESOLVED_DBUS_PATH
 #define RESOLVED_DBUS_PATH "/org/freedesktop/resolve1"
 #endif
