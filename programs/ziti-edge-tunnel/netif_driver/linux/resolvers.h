@@ -25,7 +25,6 @@
 #define RESOLVED_DBUS_NAME "org.freedesktop.resolve1"
 #endif
 
-#ifndef EXCLUDE_LIBSYSTEMD_RESOLVER
 #ifndef RESOLVED_DBUS_PATH
 #define RESOLVED_DBUS_PATH "/org/freedesktop/resolve1"
 #endif
@@ -34,6 +33,7 @@
 #define RESOLVED_DBUS_MANAGER_INTERFACE "org.freedesktop.resolve1.Manager"
 #endif
 
+#ifndef EXCLUDE_LIBSYSTEMD_RESOLVER
 bool try_libsystemd_resolver(void);
 #endif
 bool is_systemd_resolved_primary_resolver(void);
