@@ -58,7 +58,8 @@ TEST_CASE("resolveSRV", "[dns]") {
     CHECK(msg.status == 0);
     REQUIRE(msg.answer != nullptr);
     CHECK(msg.answer[0]->type == 33);
-    CHECK_THAT(msg.answer[0]->data, Catch::Contains("993 imap.gmail.com"));
+    CHECK(msg.answer[0]->port == 993);
+    CHECK_THAT(msg.answer[0]->data, Catch::Contains("imap.gmail.com"));
 
     size_t jsonlen;
     auto json = dns_message_to_json(&msg, 0, &jsonlen);
