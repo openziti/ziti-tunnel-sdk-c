@@ -169,7 +169,7 @@ intercept_ctx_t * lookup_intercept_by_address(tunneler_context tnlr_ctx, const c
 
     ziti_address za;
     ziti_address_from_ip_addr(&za, dst_addr);
-    struct addr_match curr, best = { };
+    struct addr_match curr, best = { 0 };
 
     LIST_FOREACH(intercept, &tnlr_ctx->intercepts, entries) {
         if (!protocol_match(protocol, &intercept->protocols)) continue;
