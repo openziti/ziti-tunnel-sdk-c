@@ -29,15 +29,15 @@ jobs:
           # - name: ubuntu
           #   version: "20.04"
           #   type: deb
+          - name: ubuntu
+            version: "18.04"
+            type: deb
           # - name: ubuntu
-          #   version: "18.04"
+          #   version: "16.04"
           #   type: deb
-          - name: ubuntu
-            version: "16.04"
-            type: deb
-          - name: ubuntu
-            version: "14.04"
-            type: deb
+          # - name: ubuntu
+          #   version: "14.04"
+          #   type: deb
           - name: redhat
             version: "7"
             type: rpm
