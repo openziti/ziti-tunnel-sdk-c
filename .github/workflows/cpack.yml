@@ -5,6 +5,7 @@ on:
   push:
     paths:
       - programs/ziti-edge-tunnel/package/*
+      - .github/actions/openziti-tunnel-build-action/*
       - .github/workflows/cpack.yml
   release:
     types:
