@@ -22,7 +22,6 @@
 
 int init() {
     // init_debug();
-    ziti_tunnel_set_logger()
     return 0;
 }
 

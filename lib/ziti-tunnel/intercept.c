@@ -91,7 +91,7 @@ bool ziti_address_from_ip_addr(ziti_address *zaddr, const ip_addr_t *ip) {
     return true;
 }
 
-/** returns score of best matching address, or -1 if no addresses match */
+/** returns best matching address, or null if no addresses match */
 const ziti_address *address_match(const ziti_address *addr, const address_list_t *addresses) {
     address_t *a;
     const ziti_address *best_addr = NULL;
@@ -160,12 +160,16 @@ intercept_ctx_t * lookup_intercept_by_address(tunneler_context tnlr_ctx, const c
         return NULL;
     }
 
+    char key[3+1+IPADDR_STRLEN_MAX+1+6+1]; // [proto]:[ip]:[port]
+    snprintf(key, sizeof(key), "%s:%s:%d", protocol, ipaddr_ntoa(dst_addr), dst_port);
+    intercept_ctx_t *intercept = model_map_get(&tnlr_ctx->intercepts_cache, key);
+    if (intercept != NULL) {
+        return intercept;
+    }
+
     ziti_address za;
     ziti_address_from_ip_addr(&za, dst_addr);
-    intercept_ctx_t *intercept;
-    struct addr_match curr, best = {
-
-    };
+    struct addr_match curr, best = { };
 
     LIST_FOREACH(intercept, &tnlr_ctx->intercepts, entries) {
         if (!protocol_match(protocol, &intercept->protocols)) continue;
@@ -212,6 +216,7 @@ intercept_ctx_t * lookup_intercept_by_address(tunneler_context tnlr_ctx, const c
         best = curr;
     }
 
+    model_map_set(&tnlr_ctx->intercepts_cache, key, best.intercept);
     return best.intercept;
 }
 

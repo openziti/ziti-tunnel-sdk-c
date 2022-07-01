@@ -128,7 +128,7 @@ typedef struct tunneler_ctx_s {
     uv_poll_t netif_poll_req;
     uv_timer_t lwip_timer_req;
     LIST_HEAD(intercept_ctx_list_s, intercept_ctx_s) intercepts;
-
+    model_map intercepts_cache; // cached intercept_ctx lookup keyed by [proto]:[ip]:[port]
 } *tunneler_context;
 
 /** return the intercept context for a packet based on its destination ip:port */

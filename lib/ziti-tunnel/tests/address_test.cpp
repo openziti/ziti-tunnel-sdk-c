@@ -80,6 +80,11 @@ TEST_CASE("address_match", "[address]") {
     IP_ADDR4(&ip, 192, 168, 0, 10);
     REQUIRE(lookup_intercept_by_address(&tctx, "tcp", &ip, 81) == intercept_s3);
 
-    intercept_ctx_add_address(intercept_s1, ZA_INIT_STR(&za, "*.ziti"));
+    // verify the intercept cache is populated
+    REQUIRE(model_map_get(&tctx.intercepts_cache, "tcp:127.0.0.1:80") == nullptr);
+    REQUIRE(model_map_get(&tctx.intercepts_cache, "tcp:192.168.0.88:80") == intercept_s1);
+    REQUIRE(model_map_get(&tctx.intercepts_cache, "tcp:192.168.0.10:80") == intercept_s2);
+    REQUIRE(model_map_get(&tctx.intercepts_cache, "tcp:192.168.0.10:81") == intercept_s3);
 
+    // todo hostname and wildcard dns matching
 }

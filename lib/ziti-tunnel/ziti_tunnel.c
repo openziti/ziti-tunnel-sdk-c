@@ -87,6 +87,8 @@ tunneler_context ziti_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop)
     }
 
     LIST_INIT(&ctx->intercepts);
+    ctx->intercepts_cache.impl = NULL;
+
     run_packet_loop(loop, ctx);
 
     return ctx;
@@ -305,6 +307,7 @@ int ziti_tunneler_intercept(tunneler_context tnlr_ctx, intercept_ctx_t *i_ctx) {
         return -1;
     }
 
+    model_map_clear(&tnlr_ctx->intercepts_cache, NULL);
     address_t *address;
     STAILQ_FOREACH(address, &i_ctx->addresses, entries) {
         protocol_t *proto;
@@ -380,6 +383,7 @@ intercept_ctx_t * ziti_tunnel_find_intercept(tunneler_context tnlr_ctx, void *zi
 // when called due to conflict we want to mark as disabled
 void ziti_tunneler_stop_intercepting(tunneler_context tnlr_ctx, void *zi_ctx) {
     TNL_LOG(DEBUG, "removing intercept for service_ctx[%p]", zi_ctx);
+    model_map_clear(&tnlr_ctx->intercepts_cache, NULL);
     struct intercept_ctx_s *intercept = ziti_tunnel_find_intercept(tnlr_ctx, zi_ctx);
 
     if (intercept != NULL) {
