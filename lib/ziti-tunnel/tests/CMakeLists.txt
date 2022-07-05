@@ -11,7 +11,7 @@ target_include_directories(ziti-tunnel-sdk-c-test-lib
         )
 
 target_link_libraries(ziti-tunnel-sdk-c-test-lib
-        PUBLIC ziti ziti-tunnel-sdk-c
+        PUBLIC ziti-tunnel-sdk-c
         )
 
 add_executable(ziti-tunnel-sdk-c-test-runner

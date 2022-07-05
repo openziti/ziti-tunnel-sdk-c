@@ -148,12 +148,6 @@ target_compile_definitions(lwipcore
     PUBLIC MEMP_NUM_UDP_PCB=${UDP_MAX_CONNECTIONS}
 )
 
-if (WIN32)
-install(TARGETS lwipwin32arch
-        DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        )
-endif()
-
 if (ZITI_TUNNEL_BUILD_TESTS)
     add_subdirectory(tests)
 endif ()

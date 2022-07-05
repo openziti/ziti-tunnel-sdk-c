@@ -65,7 +65,7 @@ target_compile_definitions(ziti-edge-tunnel
 
 target_link_libraries(ziti-edge-tunnel
         PUBLIC ziti ziti-tunnel-sdk-c ziti-tunnel-cbs-c
-        PUBLIC lwipcore ${lwip_sys_lib} ziti-tunnel-sdk-c ${tun_lib}
+        PUBLIC ${tun_lib}
         PUBLIC subcommand ${getopt}
         )
 
