@@ -15,8 +15,10 @@
  */
 
 #include "catch2/catch.hpp"
+extern "C" {
 #include "ziti/ziti_tunnel.h"
 #include "ziti_tunnel_priv.h"
+}
 
 /** make valid json from a plain string and parse it as a ziti_address */
 #define ZA_INIT_STR(za, s) (( parse_ziti_address((za), "\"" s "\"", strlen("\"" s "\"")) ), (za))
@@ -79,6 +81,12 @@ TEST_CASE("address_match", "[address]") {
     // s3 should win over s4 due to smaller port range
     IP_ADDR4(&ip, 192, 168, 0, 10);
     REQUIRE(lookup_intercept_by_address(&tctx, "tcp", &ip, 81) == intercept_s3);
+
+    // s3 should win due to smaller port range with matching cidr
+    // s1 should be overlooked despite IP match due to port mismatch
+    // s4 should be overlooked due to larger port range
+    IP_ADDR4(&ip, 192, 168, 0, 88);
+    REQUIRE(lookup_intercept_by_address(&tctx, "tcp", &ip, 83) == intercept_s3);
 
     // verify the intercept cache is populated
     REQUIRE(model_map_get(&tctx.intercepts_cache, "tcp:127.0.0.1:80") == nullptr);

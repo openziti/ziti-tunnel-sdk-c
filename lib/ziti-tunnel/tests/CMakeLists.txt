@@ -18,11 +18,6 @@ add_executable(ziti-tunnel-sdk-c-test-runner
         tunnel_test.cpp
         )
 
-#target_include_directories(ziti-tunnel-sdk-c-test-runner
-#        PUBLIC ${ziti-tunnel-sdk-c_SOURCE_DIR}/tests
-#        PUBLIC ${ziti-tunnel-sdk-c_SOURCE_DIR}/lib/ziti-tunnel
-#        )
-
 target_link_libraries(ziti-tunnel-sdk-c-test-runner
         PUBLIC ziti-tunnel-sdk-c-test-lib
         )
