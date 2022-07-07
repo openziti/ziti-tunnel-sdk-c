@@ -263,6 +263,7 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
 
             cb(&result, ctx);
             free_tunnel_on_off_identity(&on_off_id);
+            free(result.data);
             return 0;
         }
 
@@ -586,7 +587,8 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
                     continue;
                 }
                 ziti_endpoint_state_change(inst->ztx, tunnel_status_change_cmd.woken, tunnel_status_change_cmd.unlocked);
-                ZITI_LOG(DEBUG, "Endpoint status change function is invoked for %s with woken %d and unlocked %d", inst->identifier, tunnel_status_change_cmd.woken, tunnel_status_change_cmd.unlocked);
+                ZITI_LOG(DEBUG, "Endpoint status change function is invoked for %s with woken %d and unlocked %d", inst->identifier,
+                         tunnel_status_change_cmd.woken, tunnel_status_change_cmd.unlocked);
             }
             result.success = true;
             free_tunnel_status_change(&tunnel_status_change_cmd);
@@ -600,6 +602,7 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
     }
 
     cb(&result, ctx);
+    FREE(result.data);
     return 0;
 }
 
@@ -624,28 +627,27 @@ static void get_transfer_rates(const char *identifier, command_cb cb, void *ctx)
     }
     double up, down;
     ziti_get_transfer_rates(inst->ztx, &up, &down);
-    tunnel_identity_metrics *id_metrics = calloc(1, sizeof(tunnel_identity_metrics));
-    id_metrics->identifier = strdup(identifier);
+    tunnel_identity_metrics id_metrics = {
+            .identifier = strdup(identifier),
+    };
     int metrics_len = 6;
     if (up > 0) {
-        id_metrics->up = calloc((metrics_len + 1), sizeof(char));
-        snprintf(id_metrics->up, metrics_len, "%.2lf", up);
+        id_metrics.up = calloc((metrics_len + 1), sizeof(char));
+        snprintf(id_metrics.up, metrics_len, "%.2lf", up);
     }
     if (down > 0) {
-        id_metrics->down = calloc((metrics_len + 1), sizeof(char));
-        snprintf(id_metrics->down, metrics_len, "%.2lf", down);
+        id_metrics.down = calloc((metrics_len + 1), sizeof(char));
+        snprintf(id_metrics.down, metrics_len, "%.2lf", down);
     }
 
     tunnel_result result = {0};
     result.success = true;
     result.code = IPC_SUCCESS;
     size_t json_len;
-    char *json = tunnel_identity_metrics_to_json(id_metrics, MODEL_JSON_COMPACT, &json_len);
-    result.data = json;
-    free_tunnel_identity_metrics(id_metrics);
-    free(id_metrics);
+    result.data = tunnel_identity_metrics_to_json(&id_metrics, MODEL_JSON_COMPACT, &json_len);
+    free_tunnel_identity_metrics(&id_metrics);
     cb(&result, ctx);
-
+    free(result.data);
 }
 
 static struct ziti_instance_s *new_ziti_instance(const char *identifier, const char *path) {
@@ -996,6 +998,7 @@ static void on_enable_mfa(ziti_context ztx, int status, ziti_mfa_enrollment *enr
     if (req->ctx) {
         free(req->ctx);
     }
+    FREE(result.data);
     free(req);
 }
 
@@ -1093,6 +1096,7 @@ static void on_mfa_recovery_codes(ziti_context ztx, int status, char **recovery_
     if (req->ctx) {
         free(req->ctx);
     }
+    FREE(result.data);
     free(req);
 }
 
