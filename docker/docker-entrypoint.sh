@@ -65,6 +65,7 @@ if [[ -n "${NF_REG_NAME:-}" ]]; then
         # if non-empty identity file
         if [[ -s "${IDENTITY_FILE}" ]]; then
             echo "INFO: found identity file ${IDENTITY_FILE}"
+            break 1
         # look for enrollment token
         else
             echo "INFO: identity file ${IDENTITY_FILE} does not exist"
@@ -73,7 +74,7 @@ if [[ -n "${NF_REG_NAME:-}" ]]; then
                 echo "INFO: looking for ${JWT_CANDIDATE}"
                 if [[ -s "${JWT_CANDIDATE}" ]]; then
                     JWT_FILE="${JWT_CANDIDATE}"
-                    break
+                    break 1
                 fi
             done
             if [[ -n "${JWT_FILE:-}" ]]; then
