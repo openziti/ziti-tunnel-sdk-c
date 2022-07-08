@@ -52,40 +52,55 @@ typeset -a TUNNEL_OPTS
 if [[ -n "${NF_REG_NAME:-}" ]]; then
     IDENTITY_FILE="${IDENTITIES_DIR}/${NF_REG_NAME}.json"
     TUNNEL_OPTS=("--identity" "${IDENTITY_FILE}")
-    # if non-empty identity file
-    if [[ -s "${IDENTITY_FILE}" ]]; then
-        echo "INFO: found identity file ${IDENTITY_FILE}"
-    # look for enrollment token
+    : ${NF_REG_WAIT:=1}
+    if [[ "${NF_REG_WAIT}" =~ ^[0-9]+$ ]]; then
+        echo "DEBUG: waiting ${NF_REG_WAIT}s for ${IDENTITY_FILE} (or token) to appear"
+    elif (( "${NF_REG_WAIT}" < 0 )); then
+        echo "DEBUG: waiting forever for ${IDENTITY_FILE} (or token) to appear"
     else
-        echo "INFO: identity file ${IDENTITY_FILE} does not exist"
-        for dir in "/var/run/secrets/netfoundry.io/enrollment-token" "${IDENTITIES_DIR}"; do
-            JWT_CANDIDATE="${dir}/${NF_REG_NAME}.jwt"
-            echo "INFO: looking for ${JWT_CANDIDATE}"
-            if [[ -s "${JWT_CANDIDATE}" ]]; then
-                JWT_FILE="${JWT_CANDIDATE}"
-                break
-            fi
-        done
-        if [[ -n "${JWT_FILE:-}" ]]; then
-            echo "INFO: enrolling ${JWT_FILE}"
-            ziti-edge-tunnel enroll --jwt "${JWT_FILE}" --identity "${IDENTITY_FILE}" || {
-                echo "ERROR: failed to enroll with token from ${JWT_FILE} ($(wc -c < "${JWT_FILE}")B)" >&2
-                exit 1
-            }
-        elif [[ -n "${NF_REG_TOKEN:-}" ]]; then
-            echo "INFO: attempting enrollment with NF_REG_TOKEN"
-            ziti-edge-tunnel enroll --jwt - --identity "${IDENTITY_FILE}" <<< "${NF_REG_TOKEN}" || {
-                echo "ERROR: failed to enroll with token from NF_REG_TOKEN ($(wc -c <<<"${NF_REG_TOKEN}")B)" >&2
-                exit 1
-            }
-        else
-            echo "INFO: ${NF_REG_NAME}.jwt was not found, trying stdin" >&2
-            ziti-edge-tunnel enroll --jwt - --identity "${IDENTITY_FILE}" || {
-                echo "ERROR: failed to enroll with token from stdin" >&2
-                exit 1
-            }
-        fi
+        echo "ERROR: need integer for NF_REG_WAIT" >&2
+        exit 1
     fi
+    while (( $NF_REG_WAIT > 0 || $NF_REG_WAIT < 0)); do
+        # if non-empty identity file
+        if [[ -s "${IDENTITY_FILE}" ]]; then
+            echo "INFO: found identity file ${IDENTITY_FILE}"
+            break 1
+        # look for enrollment token
+        else
+            echo "INFO: identity file ${IDENTITY_FILE} does not exist"
+            for dir in "/var/run/secrets/netfoundry.io/enrollment-token" "${IDENTITIES_DIR}"; do
+                JWT_CANDIDATE="${dir}/${NF_REG_NAME}.jwt"
+                echo "INFO: looking for ${JWT_CANDIDATE}"
+                if [[ -s "${JWT_CANDIDATE}" ]]; then
+                    JWT_FILE="${JWT_CANDIDATE}"
+                    break 1
+                fi
+            done
+            if [[ -n "${JWT_FILE:-}" ]]; then
+                echo "INFO: enrolling ${JWT_FILE}"
+                ziti-edge-tunnel enroll --jwt "${JWT_FILE}" --identity "${IDENTITY_FILE}" || {
+                    echo "ERROR: failed to enroll with token from ${JWT_FILE} ($(wc -c < "${JWT_FILE}")B)" >&2
+                    exit 1
+                }
+            elif [[ -n "${NF_REG_TOKEN:-}" ]]; then
+                echo "INFO: attempting enrollment with NF_REG_TOKEN"
+                ziti-edge-tunnel enroll --jwt - --identity "${IDENTITY_FILE}" <<< "${NF_REG_TOKEN}" || {
+                    echo "ERROR: failed to enroll with token from NF_REG_TOKEN ($(wc -c <<<"${NF_REG_TOKEN}")B)" >&2
+                    exit 1
+                }
+            elif [[ -n "${NF_REG_STDIN:-}" ]]; then
+                echo "INFO: trying to get token from stdin" >&2
+                ziti-edge-tunnel enroll --jwt - --identity "${IDENTITY_FILE}" || {
+                    echo "ERROR: failed to enroll with token from stdin" >&2
+                    exit 1
+                }
+            fi
+        fi
+        # decrement the wait seconds until zero or forever if negative
+        let NF_REG_WAIT--
+        sleep 1
+    done
 else
     typeset -a JSON_FILES
     JSON_FILES=( $(ls -1 "${IDENTITIES_DIR}"/*.json) )
@@ -98,6 +113,7 @@ else
     fi
 fi
 
+echo "DEBUG: evaluating positionals: $*"
 if (( ${#} )) && [[ ${1:0:3} == run ]]; then
     TUNNEL_RUN_MODE=${1}
     shift
@@ -107,6 +123,6 @@ fi
 
 echo "INFO: running ziti-edge-tunnel"
 set -x
-ziti-edge-tunnel "${TUNNEL_MODE}" "${TUNNEL_OPTS[@]}" "${@}" &
+ziti-edge-tunnel "${TUNNEL_RUN_MODE}" "${TUNNEL_OPTS[@]}" "${@}" &
 ZITI_EDGE_TUNNEL_PID=$!
 wait $ZITI_EDGE_TUNNEL_PID

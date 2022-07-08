@@ -8,8 +8,8 @@ x-base-service: &base-service
     - .:/ziti-edge-tunnel
     - /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket
     environment:
-    - NF_REG_NAME                  # inherit when run like this: NF_REG_NAME=AcmeIdentity docker-compose up ziti-tun
-    - NF_REG_TOKEN                 # NF_REG_NAME=AcmeIdentity NF_REG_TOKEN=eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbSI6Im90dCIsImV4cCI6MTY1MzE2NzcwOCwiaXNzIjoiaHR0cHM6Ly81MGEyMDc4Zi01MGQyLTRhZTAtYWI4Ny0wYTdjMjM1OWVjOTYucHJvZHVjdGlvbi5uZXRmb3VuZHJ5LmlvOjQ0MyIsImp0aSI6IjFiMjJkMzc2LTMzMWItNDMxNS1iZTFiLWJkOTUzYThiYWM4ZiIsInN1YiI6InRGLnZnLjdwM1kifQ.TWbk3-kjBRKwQCXMoD93sXtyQhZOMZ1iJzV73Sqft-cEOkV2kjbA4TBRwl0nuLPCdJqkhPl9Yc1WG7YaYWYXV4ghE1Hk0Gta_HlpWdNjNlB1cVrzMyxaoCXhaX5xqGnwDuqfOK7q6DItuNsKouM2G6KKZvhGOacax6TvP-sunsxFz6AdYQJizNBoL5fJ14r1_O6yczGd5GSd8x9-eP5rNMQuRdUtiu69b-rEu1gO2SXVTrADTD5p8sP9khbT_eQzIDD9jgagXoJJvOKTVdsUAWS7YKfk1On0BpxNvv30bQ6eAkliwU7GTXDR2IPW-blZYt1Wtf3sgeuTDCCtVO_7gjSn7WM7YJqpsB72V-43Xz8I7LCDa0u48baSmmpPDUSphIBDa_nksPZk8jfwx4pHoHYbSbD4r47Af_9P-JUQRT8hzNuvktG56kmcqVCfEZHT-4xgK0Lvxxp4mzqdcNyCB0VwC6kdk7OlxwqmftDWrJhNuxKMy2MtyTjG0mwHxt4P0y_fZo1ZYJZU5AzvxrE9OLTjsQ4nV5NliJ3Qxaw_taCaIWxn98BeiHfAiIc3EL7bWGjAfXz-XWvWG8-AcCmK-cxIj7Pvj0U7lIWH7bVcRmVVc0fQnXdACkeQe7ixWr4IopV5YJ607zm6Qk_am_MrERla6xyXblvroWIITN2aEUk docker-compose up ziti-host
+    - NF_REG_NAME                 # inherit when run like this: NF_REG_NAME=AcmeIdentity docker-compose up ziti-tun
+    - NF_REG_TOKEN                # NF_REG_NAME=AcmeIdentity NF_REG_TOKEN={JWT} docker-compose up ziti-host
     - PFXLOG_NO_JSON=true         # suppress JSON logging
     network_mode: host            # use the Docker host's network, not the Docker bridge
     privileged: true
@@ -38,6 +38,20 @@ services:
         environment:
         - NF_REG_NAME
         - NF_REG_TOKEN
+        volumes:
+        - .:/ziti-edge-tunnel
+        networks: 
+        - ziti-host
+        privileged: false         # no privileges necessary for run-host mode
+        command: 
+        - run-host
+        - --verbose=4
+
+    ziti-host-wait:               # tunneler for hosting services that waits forever for the identity to become available
+        image: openziti/ziti-edge-tunnel:latest
+        environment:
+        - NF_REG_NAME
+        - NF_REG_WAIT=-1          # optional seconds to wait for identity (or token) to become available, negative value is wait forever
         volumes:
         - .:/ziti-edge-tunnel
         networks: 
