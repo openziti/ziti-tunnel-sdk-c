@@ -25,7 +25,7 @@
 #include <ziti/ziti_log.h>
 #include <ziti/ziti_dns.h>
 #include "model/events.h"
-#include "instance.h"
+#include "identity-utils.h"
 #include "instance-config.h"
 #include <log-utils.h>
 #include <time.h>
