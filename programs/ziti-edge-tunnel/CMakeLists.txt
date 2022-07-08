@@ -25,7 +25,7 @@ if (MSVC)
     set(getopt libwinc)
 endif()
 
-set(ZITI_INSTANCE_COMMON include/model/events.h include/model/dtos.h instance.c include/instance.h config-utils.c include/config-utils.h instance-config.c include/instance-config.h)
+set(ZITI_INSTANCE_COMMON include/model/events.h include/model/dtos.h instance.c include/identity-utils.h config-utils.c include/config-utils.h instance-config.c include/instance-config.h)
 if (WIN32)
     set(ZITI_INSTANCE_OS windows-service.c include/windows/windows-service.h include/windows/windows-scripts.h windows-scripts.c log_utils.c include/log-utils.h include/service-utils.h)
 endif ()
