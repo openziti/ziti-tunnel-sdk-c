@@ -37,6 +37,7 @@ COPY --from=fetch-ziti-artifacts /etc/ssl/certs/ca-certificates.crt /etc/ssl/cer
 COPY --from=fetch-ziti-artifacts /tmp/${ZITI_TUNNELER_BIN} /usr/local/bin
 COPY ${DOCKER_BUILD_DIR}/docker-entrypoint.sh /
 RUN chmod +x /docker-entrypoint.sh
+RUN mkdir -p /ziti-edge-tunnel
 
 ENTRYPOINT [ "/docker-entrypoint.sh" ]
 CMD [ "run" ]
