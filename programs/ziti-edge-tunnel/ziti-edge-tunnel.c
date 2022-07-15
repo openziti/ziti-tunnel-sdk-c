@@ -1825,6 +1825,12 @@ static void run(int argc, char *argv[]) {
     ZITI_LOG(INFO,"	- log file location: %s", get_log_file_name());
     ZITI_LOG(INFO,"============================================================================");
     move_config_from_previous_windows_backup(ziti_loop);
+
+    ZITI_LOG(DEBUG, "granting se_debug privilege to current process to allow access to privileged processes during posture checks");
+    //ensure this process has the necessary access token to get the full path of privileged processes
+    if (!scm_grant_se_debug()){
+        ZITI_LOG(WARN, "could not set se debug access token on process. if process posture checks seem inconsistent this may be why");
+    }
 #else
     ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
 #endif
@@ -2965,7 +2971,6 @@ int main(int argc, char *argv[]) {
     }
 
 #if _WIN32
-    scm_grant_se_debug();
     SvcStart();
 
     // if service is started by SCM, SvcStart will return only when it receives the stop request

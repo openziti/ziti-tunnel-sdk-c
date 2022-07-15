@@ -501,13 +501,15 @@ BOOL SetPrivilege(HANDLE hToken, LPCTSTR lpszPrivilege, BOOL bEnablePrivilege)
     return bRet;
 }
 
-void scm_grant_se_debug() {
+bool scm_grant_se_debug() {
     HANDLE hProcess=GetCurrentProcess();
     HANDLE hToken;
 
     if (OpenProcessToken(hProcess, TOKEN_ADJUST_PRIVILEGES, &hToken))
     {
-        SetPrivilege(hToken, SE_DEBUG_NAME, TRUE);
+        bool worked = SetPrivilege(hToken, SE_DEBUG_NAME, TRUE);
         CloseHandle(hToken);
+        return worked;
     }
+    return false;
 }
