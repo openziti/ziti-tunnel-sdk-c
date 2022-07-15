@@ -38,6 +38,8 @@ bool stop_windows_service();
 
 DWORD get_process_path(LPTSTR, DWORD);
 
+void scm_grant_se_debug();
+
 #ifdef __cplusplus
 }
 #endif

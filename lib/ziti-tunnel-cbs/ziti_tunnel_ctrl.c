@@ -1158,7 +1158,7 @@ static void on_sigdump(uv_signal_t *sig, int signum) {
 
     char time_str[32];
     struct tm* start_tm = gmtime(&dump_time.tv_sec);
-    strftime(time_str, sizeof(time_str), "%FT%T", start_tm);
+    strftime(time_str, sizeof(time_str), "%Y-%m-%dT%H:%M:%S", start_tm);
 
     CHECK(cleanup, fprintf(dumpfile, "ZIti Dump starting: %s\n",time_str));
     const char *k;

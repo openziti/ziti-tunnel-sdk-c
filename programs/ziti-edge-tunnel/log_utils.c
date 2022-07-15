@@ -34,7 +34,6 @@ static FILE *ziti_tunneler_log = NULL;
 static uv_check_t *log_flusher;
 static struct tm *start_time;
 char* log_filename;
-static bool multi_writer = false;
 static const char* log_filename_base = "ziti-tunneler.log";
 static int rotation_count = 7;
 
@@ -101,9 +100,6 @@ void flush_log(uv_check_t *handle) {
     if (ziti_tunneler_log != NULL) {
         fflush(ziti_tunneler_log);
     }
-    if (multi_writer) {
-        fflush(stdout);
-    }
 
     uv_timeval64_t now;
     uv_gettimeofday(&now);
@@ -128,7 +124,7 @@ void flush_log(uv_check_t *handle) {
 
 }
 
-bool log_init(uv_loop_t *ziti_loop, bool is_multi_writer) {
+bool log_init(uv_loop_t *ziti_loop) {
 
     uv_timeval64_t file_time;
     uv_gettimeofday(&file_time);
@@ -142,8 +138,6 @@ bool log_init(uv_loop_t *ziti_loop, bool is_multi_writer) {
     uv_async_t *ar_delete = calloc(1, sizeof(uv_async_t));
     uv_async_init(ziti_loop, ar_delete, delete_older_logs);
     uv_async_send(ar_delete);
-
-    multi_writer = is_multi_writer;
 
     log_flusher = calloc(1, sizeof(uv_check_t));
     uv_check_init(ziti_loop, log_flusher);
@@ -219,11 +213,6 @@ void ziti_log_writer(int level, const char *loc, const char *msg, size_t msglen)
         fprintf(ziti_tunneler_log, "\n[%s] %7s %s ", curr_time, parse_level(level), loc);
         fwrite(msg, 1, msglen, ziti_tunneler_log);
     }
-
-    if(multi_writer) {
-        printf("\n[%s] %7s %s %.*s", curr_time, parse_level(level), loc, msglen, msg);
-    }
-
 }
 
 bool open_log(char* filename) {
