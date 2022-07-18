@@ -1747,7 +1747,6 @@ static void interrupt_handler(int sig) {
 static void run(int argc, char *argv[]) {
     uv_loop_t *ziti_loop = uv_default_loop();
     main_ziti_loop = ziti_loop;
-    bool init = false;
     uv_cond_init(&stop_cond);
     uv_mutex_init(&stop_mutex);
 
@@ -1759,13 +1758,13 @@ static void run(int argc, char *argv[]) {
     }
 
 #if _WIN32
-    remove_all_nrpt_rules();
-
-    bool multi_writer = true;
     if (started_by_scm) {
-        multi_writer = false;
+        log_init(ziti_loop);
+        ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, ziti_log_writer);
+    } else {
+        ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
     }
-    init = log_init(ziti_loop, multi_writer);
+    remove_all_nrpt_rules();
 
     signal(SIGINT, interrupt_handler);
 #endif
@@ -1811,20 +1810,27 @@ static void run(int argc, char *argv[]) {
     set_service_version();
 
 #if _WIN32
-    if (init) {
-        ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, ziti_log_writer);
-        struct tm *start_time = get_log_start_time();
-        char time_val[32];
-        strftime(time_val, sizeof(time_val), "%a %b %d %Y, %X %p", start_time);
-        ZITI_LOG(INFO,"============================ service begins ================================");
-        ZITI_LOG(INFO,"Logger initialization");
-        ZITI_LOG(INFO,"	- initialized at   : %s", time_val);
-        ZITI_LOG(INFO,"	- log file location: %s", get_log_file_name());
-        ZITI_LOG(INFO,"============================================================================");
-    } else {
-        ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
-    }
+    uv_timeval64_t dump_time;
+    uv_gettimeofday(&dump_time);
+    char time_str[32];
+    struct tm* start_tm = gmtime(&dump_time.tv_sec);
+    strftime(time_str, sizeof(time_str), "%Y-%m-%dT%H:%M:%S", start_tm);
+
+    start_tm = localtime(&dump_time.tv_sec);
+    char time_val[32];
+    strftime(time_val, sizeof(time_val), "%a %b %d %Y, %X %p", start_tm);
+    ZITI_LOG(INFO,"============================ service begins ================================");
+    ZITI_LOG(INFO,"Logger initialization");
+    ZITI_LOG(INFO,"	- initialized at   : %s (local time), %s (UTC)", time_val, time_str);
+    ZITI_LOG(INFO,"	- log file location: %s", get_log_file_name());
+    ZITI_LOG(INFO,"============================================================================");
     move_config_from_previous_windows_backup(ziti_loop);
+
+    ZITI_LOG(DEBUG, "granting se_debug privilege to current process to allow access to privileged processes during posture checks");
+    //ensure this process has the necessary access token to get the full path of privileged processes
+    if (!scm_grant_se_debug()){
+        ZITI_LOG(WARN, "could not set se debug access token on process. if process posture checks seem inconsistent this may be why");
+    }
 #else
     ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
 #endif

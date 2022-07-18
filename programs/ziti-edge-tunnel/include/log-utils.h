@@ -34,7 +34,7 @@ void stop_log_check();
 struct tm* get_log_start_time();
 char* get_log_file_name();
 
-bool log_init(uv_loop_t *, bool);
+bool log_init(uv_loop_t *);
 void ziti_log_writer(int , const char *, const char *, size_t);
 
 #ifdef __cplusplus
