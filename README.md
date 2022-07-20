@@ -182,7 +182,7 @@ docker run \
     ziti-edge-tunnel-builder \
         arm arm64 amd64
 
-# build only amd64 
+# build only amd64 with openssl instead of default mbedtls
 docker run \
     --rm \
     --name=ziti-edge-tunnel-builder \
@@ -190,7 +190,5 @@ docker run \
     ziti-edge-tunnel-builder \
         --use-openssl amd64
 ```
-
-FIXME: --use-openssl results in a build failure for arm, arm64
 
 You will find each artifact in `./build-${ARCH}/programs/ziti-edge-tunnel/ziti-edge-tunnel`.
