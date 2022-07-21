@@ -14,7 +14,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macOS-10.15
+          - os: macOS-11
             name: macOS x86_64
             arch: x86_64
             toolchain: default.cmake
