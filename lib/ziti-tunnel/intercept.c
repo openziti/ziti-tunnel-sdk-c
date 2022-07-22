@@ -100,7 +100,6 @@ const ziti_address *address_match(const ziti_address *addr, const address_list_t
     ziti_address_print(addr_str, sizeof(addr_str), addr);
 
     STAILQ_FOREACH(a, addresses, entries) {
-        TNL_LOG(VERBOSE, "matching address %s to %s", addr_str, a->str);
         if (ziti_address_match(addr, &a->za)) {
             if (addr->type == ziti_address_cidr) {
                 score = (int) (addr->addr.cidr.bits - a->za.addr.cidr.bits);
