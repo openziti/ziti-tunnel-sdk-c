@@ -40,6 +40,8 @@ void close_log();
 void ziti_log_writer(int , const char *, const char *, size_t);
 char* get_log_file_name();
 
+#include <stdint.h>
+#define strcasecmp stricmp
 #else
 #define MAXPATHLEN PATH_MAX
 #endif
@@ -1069,10 +1071,10 @@ static void load_identities(uv_work_t *wr) {
                 continue;
             }
 
-            if (stricmp(file.name, get_config_file_name(NULL)) == 0) {
+            if (strcasecmp(file.name, get_config_file_name(NULL)) == 0) {
                 ZITI_LOG(DEBUG, "skipping the configuration file: %s", file.name);
                 continue;
-            } else if(stricmp(file.name, get_backup_config_file_name(NULL)) == 0 ) {
+            } else if(strcasecmp(file.name, get_backup_config_file_name(NULL)) == 0 ) {
                 ZITI_LOG(DEBUG, "skipping the backup configuration file: %s", file.name);
                 continue;
             }
@@ -1080,7 +1082,7 @@ static void load_identities(uv_work_t *wr) {
             char* ext = get_filename_ext(file.name);
 
             // ignore back up files
-            if (strcmpi(ext, ".bak") == 0 || strcmpi(ext, ".original") == 0 || strcmpi(ext, "json") != 0) {
+            if (strcasecmp(ext, ".bak") == 0 || strcasecmp(ext, ".original") == 0 || strcasecmp(ext, "json") != 0) {
                 ZITI_LOG(DEBUG, "skipping backup file: %s", file.name);
                 continue;
             }
