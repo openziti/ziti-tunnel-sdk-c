@@ -721,7 +721,7 @@ static const char *const level_labels[] = {
         DEBUG_LEVELS(LEVEL_LBL)
 };
 
-int get_log_level(char* log_level) {
+int get_log_level(const char* log_level) {
     int lvl = 0;
     int num_levels = sizeof(level_labels) / sizeof(const char *);
     for (int i = 0;i < num_levels; i++) {

@@ -31,21 +31,6 @@
 #include <config-utils.h>
 #include <service-utils.h>
 
-#if _WIN32
-#define MAXPATHLEN MAX_PATH
-
-//functions for logging on windows
-bool log_init(uv_loop_t *);
-void close_log();
-void ziti_log_writer(int , const char *, const char *, size_t);
-char* get_log_file_name();
-
-#include <stdint.h>
-#define strcasecmp stricmp
-#else
-#define MAXPATHLEN PATH_MAX
-#endif
-
 #if __APPLE__ && __MACH__
 #include "netif_driver/darwin/utun.h"
 #elif __linux__
@@ -68,6 +53,13 @@ char* get_log_file_name();
 
 #ifndef HOST_NAME_MAX
 #define HOST_NAME_MAX 254
+
+//functions for logging on windows
+bool log_init(uv_loop_t *);
+void close_log();
+void ziti_log_writer(int , const char *, const char *, size_t);
+char* get_log_file_name();
+#include <stdint.h>
 #endif
 
 static int dns_miss_status = DNS_REFUSE;

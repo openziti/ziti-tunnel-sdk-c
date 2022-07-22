@@ -34,6 +34,13 @@
 extern "C" {
 #endif
 
+#if _WIN32
+#define MAXPATHLEN MAX_PATH
+#define strcasecmp stricmp
+#else
+#define MAXPATHLEN PATH_MAX
+#endif
+
 /** keys used in app_data model map */
 extern const char *DST_PROTO_KEY; // "dst_protocol"
 extern const char *DST_IP_KEY;    // "dst_ip"
