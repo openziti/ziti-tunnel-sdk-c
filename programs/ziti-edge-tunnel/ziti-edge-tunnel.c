@@ -27,7 +27,6 @@
 #include "model/events.h"
 #include "identity-utils.h"
 #include "instance-config.h"
-#include <log-utils.h>
 #include <time.h>
 #include <config-utils.h>
 #include <service-utils.h>
@@ -54,6 +53,13 @@
 
 #ifndef HOST_NAME_MAX
 #define HOST_NAME_MAX 254
+
+//functions for logging on windows
+bool log_init(uv_loop_t *);
+void close_log();
+void ziti_log_writer(int , const char *, const char *, size_t);
+char* get_log_file_name();
+#include <stdint.h>
 #endif
 
 static int dns_miss_status = DNS_REFUSE;
@@ -373,7 +379,7 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
 
             if (strcasecmp(ziti_log_level_label(), tunnel_set_log_level_cmd.loglevel) != 0) {
                 ziti_log_set_level_by_label(tunnel_set_log_level_cmd.loglevel);
-                ziti_tunnel_set_log_level(ziti_log_level());
+                ziti_tunnel_set_log_level(get_log_level(tunnel_set_log_level_cmd.loglevel));
                 set_log_level(ziti_log_level_label());
                 ZITI_LOG(INFO, "Log level is set to %s", tunnel_set_log_level_cmd.loglevel);
             } else {
@@ -1033,6 +1039,12 @@ static void start_metrics_timer(uv_loop_t *ziti_loop) {
     uv_timer_start(&metrics_timer, broadcast_metrics, metrics_latency, refresh_metrics);
 }
 
+const char *get_filename_ext(const char *filename) {
+    const char *dot = strrchr(filename, '.');
+    if(!dot || dot == filename) return "";
+    return dot + 1;
+}
+
 static void load_identities(uv_work_t *wr) {
     if (config_dir != NULL) {
         uv_fs_t fs;
@@ -1045,16 +1057,29 @@ static void load_identities(uv_work_t *wr) {
 
         uv_dirent_t file;
         while (uv_fs_scandir_next(&fs, &file) == 0) {
-            ZITI_LOG(INFO, "file = %s %d", file.name, file.type);
-
-            if (strcmp(file.name, get_config_file_name(NULL)) == 0 || strcmp(file.name, get_backup_config_file_name(NULL)) == 0 ) {
+            ZITI_LOG(TRACE, "processing file: %s %d", file.name, rc);
+            if(file.type != UV_DIRENT_FILE) {
+                ZITI_LOG(DEBUG, "skipping file in config dir as it's not the proper type. type: %d. file: %s", file.type, file.name);
                 continue;
             }
+
+            if (strcasecmp(file.name, get_config_file_name(NULL)) == 0) {
+                ZITI_LOG(DEBUG, "skipping the configuration file: %s", file.name);
+                continue;
+            } else if(strcasecmp(file.name, get_backup_config_file_name(NULL)) == 0 ) {
+                ZITI_LOG(DEBUG, "skipping the backup configuration file: %s", file.name);
+                continue;
+            }
+
+            char* ext = get_filename_ext(file.name);
+
             // ignore back up files
-            if ((strstr(file.name, ".bak") != NULL) || (strstr(file.name, ".original") != NULL)) {
+            if (strcasecmp(ext, ".bak") == 0 || strcasecmp(ext, ".original") == 0 || strcasecmp(ext, "json") != 0) {
+                ZITI_LOG(DEBUG, "skipping backup file: %s", file.name);
                 continue;
             }
 
+            ZITI_LOG(INFO, "loading identity file: %s", file.name);
             if (file.type == UV_DIRENT_FILE) {
                 struct cfg_instance_s *inst = calloc(1, sizeof(struct cfg_instance_s));
                 inst->cfg = malloc(MAXPATHLEN);
@@ -1758,12 +1783,8 @@ static void run(int argc, char *argv[]) {
     }
 
 #if _WIN32
-    if (started_by_scm) {
-        log_init(ziti_loop);
-        ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, ziti_log_writer);
-    } else {
-        ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
-    }
+    log_init(ziti_loop);
+    ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, ziti_log_writer);
     remove_all_nrpt_rules();
 
     signal(SIGINT, interrupt_handler);
@@ -1836,11 +1857,11 @@ static void run(int argc, char *argv[]) {
 #endif
 
     // set log level from instance/config, if NULL is returned, the default log level will be used
-    const char* log_lvl = get_log_level();
+    const char* log_lvl = get_log_level_label();
     if (log_lvl != NULL) {
         ziti_log_set_level_by_label(log_lvl);
     }
-    ziti_tunnel_set_log_level(ziti_log_level());
+    ziti_tunnel_set_log_level(get_log_level(log_lvl));
     set_log_level(ziti_log_level_label());
     ziti_tunnel_set_logger(ziti_logger);
 
