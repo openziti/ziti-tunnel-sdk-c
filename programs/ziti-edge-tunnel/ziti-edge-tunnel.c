@@ -1791,12 +1791,6 @@ static void run(int argc, char *argv[]) {
 #if _WIN32
     log_init(ziti_loop);
     ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, ziti_log_writer);
-    if(started_by_scm) {
-        char start_msg[1024];
-        sprintf(start_msg,"ziti-edge-tunnel started as a service. Log file located at: %s", get_log_file_name());
-        SvcReportEvent(TEXT(start_msg), EVENTLOG_INFORMATION_TYPE);
-        ZITI_LOG(INFO, "%s", start_msg);
-    }
     remove_all_nrpt_rules();
 
     signal(SIGINT, interrupt_handler);

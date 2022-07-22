@@ -184,13 +184,12 @@ static const char* parse_level(int level) {
     return err_level;
 }
 
-char curr_time[25];
-
 void ziti_log_writer(int level, const char *loc, const char *msg, size_t msglen) {
     uv_timeval64_t now;
     uv_gettimeofday(&now);
     struct tm *tm = gmtime(&now.tv_sec);
 
+    char curr_time[25];
     snprintf(curr_time, sizeof(curr_time), "%04d-%02d-%02dT%02d:%02d:%02d.%03dZ",
              1900 + tm->tm_year, tm->tm_mon + 1, tm->tm_mday,
              tm->tm_hour, tm->tm_min, tm->tm_sec, now.tv_usec / 1000
@@ -198,7 +197,6 @@ void ziti_log_writer(int level, const char *loc, const char *msg, size_t msglen)
 
     if ( ziti_tunneler_log != NULL) {
         fprintf(ziti_tunneler_log, "[%s] %7s %s %.*s\n", curr_time, parse_level(level), loc, msglen, msg);
-        fflush(ziti_tunneler_log);
         if(is_interactive) {
             fprintf(stderr, "[%s] %7s %s %.*s\n", curr_time, parse_level(level), loc, msglen, msg);
             fflush(stderr);
