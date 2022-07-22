@@ -32,9 +32,9 @@
 extern "C" {
 #endif
 
-extern tunnel_identity *find_tunnel_identity(char* identifier);
+extern tunnel_identity *find_tunnel_identity(const char* identifier);
 
-extern tunnel_identity *create_or_get_tunnel_identity(char* identifier, char* fingerprint) ;
+extern tunnel_identity *create_or_get_tunnel_identity(const char* identifier, char* fingerprint) ;
 
 extern void set_mfa_status(char* identifier, bool mfa_enabled, bool mfa_needed);
 
@@ -58,11 +58,13 @@ void delete_identity_from_instance(char* identifier);
 
 void set_ip_info(uint32_t dns_ip, uint32_t tun_ip, int bits);
 
-void set_log_level(char* log_level);
+void set_log_level(const char* log_level);
 
 void set_service_version();
 
-const char* get_log_level();
+const char* get_log_level_label();
+
+int get_log_level(char* log_level);
 
 void set_ziti_status(bool enabled, char* identifier);
 
@@ -79,6 +81,7 @@ char *get_tunnel_config(size_t *json_len);
 int get_api_page_size();
 
 tunnel_identity_array get_tunnel_identities_for_metrics();
+
 
 #ifdef __cplusplus
 }

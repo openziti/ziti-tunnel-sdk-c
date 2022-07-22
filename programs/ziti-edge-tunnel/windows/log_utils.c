@@ -1,5 +1,5 @@
 /*
- Copyright 2019-2021 NetFoundry Inc.
+ Copyright 2019-2022 NetFoundry Inc.
 
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
@@ -19,47 +19,49 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
-#include <ziti/ziti_log.h>
+#include "ziti/ziti_log.h"
 #include <time.h>
-#include <log-utils.h>
-#if _WIN32
 #include "windows/windows-service.h"
 #include "windows/windows-scripts.h"
 #include <direct.h>
-#endif
+
+static bool open_log(char* log_filename);
+static bool rotate_log();
+static char* log_filename;
+static void set_is_interactive();
+static BOOL is_interactive = TRUE;
+
+
+
+
+
+char* get_log_file_name(){
+    return log_filename;
+}
 
 static void delete_older_logs(uv_async_t *ar);
 
 static FILE *ziti_tunneler_log = NULL;
 static uv_check_t *log_flusher;
 static struct tm *start_time;
-char* log_filename;
 static const char* log_filename_base = "ziti-tunneler.log";
 static int rotation_count = 7;
 
 static char* get_log_path() {
     char process_dir[FILENAME_MAX]; //create string buffer to hold path
-#if _WIN32
     char process_full_path[FILENAME_MAX];
     char drive[_MAX_DRIVE];
     char dir[_MAX_DIR];
     get_process_path(process_full_path, FILENAME_MAX);
     _splitpath_s(process_full_path, drive, sizeof(drive), dir, sizeof(dir), NULL, 0, NULL, 0);
     _makepath_s(process_dir, sizeof(process_dir), drive, dir, NULL, NULL);
-#else
-    sprintf(process_dir, "/tmp");
-#endif
 
     char* log_path = calloc(FILENAME_MAX, sizeof(char));
     snprintf(log_path, FILENAME_MAX, "%s/logs", process_dir);
     int check;
-#if _WIN32
     mkdir(log_path);
     strcat(log_path, "/service");
     check = mkdir(log_path);
-#else
-    mkdir(log_path, 0755);
-#endif
     if (check == 0) {
         printf("\nlog path is created at %s", log_path);
     } else {
@@ -109,11 +111,9 @@ void flush_log(uv_check_t *handle) {
         struct tm *orig_time = handle->data;
         if (orig_time->tm_mday < tm->tm_mday) {
             if (rotate_log()) {
-#if _WIN32
                 uv_async_t *ar = calloc(1, sizeof(uv_async_t));
                 uv_async_init(handle->loop, ar, update_symlink_async);
                 uv_async_send(ar);
-#endif
             }
             handle->data = start_time;
             uv_async_t *ar = calloc(1, sizeof(uv_async_t));
@@ -126,14 +126,11 @@ void flush_log(uv_check_t *handle) {
 
 bool log_init(uv_loop_t *ziti_loop) {
 
+    set_is_interactive();
     uv_timeval64_t file_time;
     uv_gettimeofday(&file_time);
     start_time = calloc(1, sizeof(struct tm));
-#if _WIN32
     _gmtime64_s(start_time, &file_time.tv_sec);
-#else
-    gmtime_r(&file_time.tv_sec, start_time);
-#endif
 
     uv_async_t *ar_delete = calloc(1, sizeof(uv_async_t));
     uv_async_init(ziti_loop, ar_delete, delete_older_logs);
@@ -151,21 +148,10 @@ bool log_init(uv_loop_t *ziti_loop) {
     if (!open_log(log_filename)) {
         return false;
     }
-#if _WIN32
-    SvcReportEvent(TEXT(log_filename), EVENTLOG_INFORMATION_TYPE);
     uv_async_t *ar_update = calloc(1, sizeof(uv_async_t));
     uv_async_init(ziti_loop, ar_update, update_symlink_async);
     uv_async_send(ar_update);
-#endif
     return true;
-}
-
-struct tm* get_log_start_time() {
-    return start_time;
-}
-
-char* get_log_file_name(){
-    return log_filename;
 }
 
 static const char* parse_level(int level) {
@@ -198,8 +184,9 @@ static const char* parse_level(int level) {
     return err_level;
 }
 
+char curr_time[25];
+
 void ziti_log_writer(int level, const char *loc, const char *msg, size_t msglen) {
-    char curr_time[32];
     uv_timeval64_t now;
     uv_gettimeofday(&now);
     struct tm *tm = gmtime(&now.tv_sec);
@@ -210,8 +197,12 @@ void ziti_log_writer(int level, const char *loc, const char *msg, size_t msglen)
     );
 
     if ( ziti_tunneler_log != NULL) {
-        fprintf(ziti_tunneler_log, "\n[%s] %7s %s ", curr_time, parse_level(level), loc);
-        fwrite(msg, 1, msglen, ziti_tunneler_log);
+        fprintf(ziti_tunneler_log, "[%s] %7s %s %.*s\n", curr_time, parse_level(level), loc, msglen, msg);
+        fflush(ziti_tunneler_log);
+        if(is_interactive) {
+            fprintf(stderr, "[%s] %7s %s %.*s\n", curr_time, parse_level(level), loc, msglen, msg);
+            fflush(stderr);
+        }
     }
 }
 
@@ -234,15 +225,6 @@ void close_log() {
     }
 }
 
-void stop_log_check() {
-    if (log_flusher != NULL) {
-        uv_check_stop(log_flusher);
-        free(log_flusher->data);
-        free(log_flusher);
-        log_flusher = NULL;
-    }
-}
-
 bool rotate_log() {
     close_log();
 
@@ -253,11 +235,7 @@ bool rotate_log() {
         start_time = NULL;
     }
     start_time = calloc(1, sizeof(struct tm));
-#if _WIN32
     _gmtime64_s(start_time, &file_time.tv_sec);
-#else
-    gmtime_r(&file_time.tv_sec, start_time);
-#endif
     log_filename = create_log_filename();
 
     if (open_log(log_filename)) {
@@ -323,8 +301,8 @@ static void delete_older_logs(uv_async_t *ar) {
             }
         }
         if (old_log != NULL) {
-            char logfile_to_delete[MAXPATHLEN];
-            snprintf(logfile_to_delete, MAXPATHLEN, "%s/%s", log_path, old_log);
+            char logfile_to_delete[MAX_PATH];
+            snprintf(logfile_to_delete, MAX_PATH, "%s/%s", log_path, old_log);
             ZITI_LOG(INFO, "Deleting old log file %s", logfile_to_delete);
             remove(logfile_to_delete);
             rotation_index--;
@@ -344,4 +322,18 @@ static void delete_older_logs(uv_async_t *ar) {
     }
     free(log_path);
     free(log_files);
+}
+
+//attempts to detect if this is running as a console attached process or not. if __not__ then is_interactive should be false
+void set_is_interactive()
+{
+    HWINSTA hWinStation = GetProcessWindowStation();
+    if (hWinStation != NULL)
+    {
+        USEROBJECTFLAGS uof = {0};
+        if (GetUserObjectInformation(hWinStation, UOI_FLAGS, &uof, sizeof(USEROBJECTFLAGS), NULL) && ((uof.dwFlags & WSF_VISIBLE) == 0))
+        {
+            is_interactive = FALSE;
+        }
+    }
 }
