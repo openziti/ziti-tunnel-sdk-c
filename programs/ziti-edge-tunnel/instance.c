@@ -723,7 +723,12 @@ static const char *const level_labels[] = {
 
 int get_log_level(const char* log_level) {
     if(!log_level) {
-        return INFO; //no log level supplied - use INFO as default
+        char* loglvl = getenv("ZITI_LOG");
+        if(!loglvl) {
+            return (int) INFO; //no log level supplied - use INFO as default
+        } else {
+            return (int) strtol(loglvl, NULL, 10);
+        }
     }
     int lvl = 0;
     int num_levels = sizeof(level_labels) / sizeof(const char *);
