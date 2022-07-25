@@ -2991,6 +2991,7 @@ int main(int argc, char *argv[]) {
         name = name + 1;
     }
 
+    main_cmd.name = name;
 #if _WIN32
     SvcStart();
 
@@ -2998,12 +2999,13 @@ int main(int argc, char *argv[]) {
     // started_by_scm will be set to true only if scm initializes the config value
     // if the service is started from cmd line, SvcStart will return immediately and started_by_scm will be set to false. In this case tunnel can be run normally
     if (started_by_scm) {
+        main_cmd.name = "Ziti Desktop Edge for Windows"; // when running as a service - it must have been installed by
+                                                         // the ZDEW installer so let's use that name here
         printf("The service is stopped by SCM");
         return 0;
     }
 #endif
 
-    main_cmd.name = name;
     commandline_run(&main_cmd, argc, argv);
     return 0;
 }
