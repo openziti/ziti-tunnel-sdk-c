@@ -21,33 +21,42 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        arch: [ x86_64 ] # TODO: migrate the Linux builds for arm, arm64 too
+        arch:
+          - rpm: x86_64  # this value matches yum var $basearch
+            deb: amd64   # this value matches debian arch
         distro:
-          # - name: ubuntu
-          #   version: "22.04"
-          #   type: deb
-          # - name: ubuntu
-          #   version: "20.04"
-          #   type: deb
-          # - name: ubuntu
-          #   version: "18.04"
-          #   type: deb
-          # - name: ubuntu
-          #   version: "16.04"
-          #   type: deb
-          # - name: ubuntu
-          #   version: "14.04"
-          #   type: deb
+          - name: ubuntu
+            version: "22.04"
+            release_name: jammy
+            type: deb
+          - name: ubuntu
+            version: "20.04"
+            release_name: focal
+            type: deb
+          - name: ubuntu
+            version: "18.04"
+            release_name: bionic
+            type: deb
+          - name: ubuntu
+            version: "16.04"
+            release_name: xenial
+            type: deb
+          - name: ubuntu
+            version: "14.04"
+            release_name: trusty
+            type: deb
           - name: redhat
             version: "7"
+            release_name: ${{ null }}
             type: rpm
             container: quay.io/centos/centos:7
           - name: redhat
             version: "8"
+            release_name: ${{ null }}
             type: rpm
             container: quay.io/rockylinux/rockylinux:8
     steps:
-      # only 20.04 has >= 2.18, which is required by actions/checkout to clone
+      # only focal-20.04 has >= 2.18, which is required by actions/checkout to clone
       # which enables cmake version discovery
       - name: install Modern Git in runner container if Ubuntu
         if: ${{ matrix.distro.name == 'ubuntu' }}
@@ -134,7 +143,7 @@ jobs:
       - name: upload package artifact
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ matrix.distro.name }}-${{ matrix.distro.version }}-${{ matrix.arch }}-${{ matrix.distro.type }}
+          name: ${{ matrix.distro.name }}-${{ matrix.distro.version }}-${{ matrix.arch.rpm }}-${{ matrix.distro.type }}
           path: ./build/ziti-edge-tunnel-*.${{ matrix.distro.type }}
           if-no-files-found: error
 
@@ -149,7 +158,16 @@ jobs:
         run: >
           jf rt upload
           ./build/ziti-edge-tunnel-*.${{ matrix.distro.type }}
-          /zitipax-openziti-rpm-stable/redhat${{ matrix.distro.version }}/${{ matrix.arch }}/
-          --recursive=false --flat=true 
+          /zitipax-openziti-rpm-stable/redhat${{ matrix.distro.version }}/${{ matrix.arch.rpm }}/
+          --recursive=false
+          --flat=true 
 
-      # - name: Upload DEB to Artifactory with jFrog CLI  # TODO
+      - name: Upload DEB to Artifactory with jFrog CLI
+        if: ${{ github.event_name == 'release' && startsWith(github.ref, 'refs/tags/v') && matrix.distro.name == 'ubuntu' }}
+        run: >
+          jf rt upload
+          ./build/ziti-edge-tunnel-*.${{ matrix.distro.type }}
+          /zitipax-openziti-deb-stable/pool/ziti-edge-tunnel/${{ matrix.distro.release_name }}/ 
+          --deb=${{ matrix.distro.release_name }}/main/${{ matrix.arch.deb }}
+          --recursive=false
+          --flat=true 
