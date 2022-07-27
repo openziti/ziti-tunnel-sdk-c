@@ -110,8 +110,10 @@ int tunneler_udp_close(struct udp_pcb *pcb) {
     struct io_ctx_s *io_ctx = pcb->recv_arg;
     tunneler_io_context tnlr_io_ctx = io_ctx->tnlr_io;
     TNL_LOG(DEBUG, "closing %s session", tnlr_io_ctx->service_name);
-    if (pcb != NULL) {
-        udp_remove(pcb);
+    udp_remove(pcb);
+    if (tnlr_io_ctx->udp.queued != NULL) {
+        pbuf_free(tnlr_io_ctx->udp.queued);
+        tnlr_io_ctx->udp.queued = NULL;
     }
     return 0;
 }
