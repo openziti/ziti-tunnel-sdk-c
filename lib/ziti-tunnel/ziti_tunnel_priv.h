@@ -22,6 +22,10 @@
 
 #include "ziti/ziti_model.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* xxx.xxx.xxx.xxx/xx */
 #define MAX_ROUTE_LEN (4*4 + 2 + 1)
 
@@ -40,7 +44,7 @@ if (tunnel_logger && level <= tunnel_log_level) { tunnel_logger(level, "tunnel-s
 } while(0)
 
 
-static const char* proto_s[] = {
+static const char *proto_s[] = {
         "HOPOPT",
         "ICMP",
         "IGMP",
@@ -87,7 +91,8 @@ ip_v4_src1(p),ip_v4_src2(p),ip_v4_src3(p),ip_v4_src4(p),ip_v4_src_port(p), \
 ip_v4_dst1(p),ip_v4_dst2(p),ip_v4_dst3(p),ip_v4_dst4(p),ip_v4_dst_port(p)
 
 extern int tunnel_log_level;
-typedef void (*tunnel_logger_f)(int level, const char *module, const char *file, unsigned int line, const char *func, const char *fmt, ...);
+typedef void (*tunnel_logger_f)(int level, const char *module, const char *file, unsigned int line, const char *func,
+                                const char *fmt, ...);
 extern tunnel_logger_f tunnel_logger;
 
 struct intercept_ctx_s {
@@ -118,27 +123,28 @@ typedef struct tunneler_ctx_s {
     struct netif netif;
     struct raw_pcb *tcp;
     struct raw_pcb *udp;
-    uv_loop_t      *loop;
-    uv_sem_t     sem;
-    uv_poll_t    netif_poll_req;
-    uv_timer_t   lwip_timer_req;
+    uv_loop_t *loop;
+    uv_sem_t sem;
+    uv_poll_t netif_poll_req;
+    uv_timer_t lwip_timer_req;
     LIST_HEAD(intercept_ctx_list_s, intercept_ctx_s) intercepts;
-
+    model_map intercepts_cache; // cached intercept_ctx lookup keyed by [proto]:[ip]:[port]
 } *tunneler_context;
 
 /** return the intercept context for a packet based on its destination ip:port */
-extern intercept_ctx_t *lookup_intercept_by_address(tunneler_context tnlr_ctx, const char *protocol, ip_addr_t *dst_addr, uint16_t dst_port);
+extern intercept_ctx_t *
+lookup_intercept_by_address(tunneler_context tnlr_ctx, const char *protocol, ip_addr_t *dst_addr, uint16_t dst_port);
 
-typedef enum  {
+typedef enum {
     tun_tcp,
     tun_udp
 } tunneler_proto_type;
 
 struct tunneler_io_ctx_s {
-    tunneler_context    tnlr_ctx;
-    const char *        service_name;
-    char                client[64];
-    char                intercepted[64];
+    tunneler_context tnlr_ctx;
+    const char *service_name;
+    char client[64];
+    char intercepted[64];
     tunneler_proto_type proto;
     union {
         struct tcp_pcb *tcp;
@@ -160,7 +166,7 @@ struct write_ctx_s;
 typedef void (*ack_fn)(struct write_ctx_s *write_ctx);
 
 struct write_ctx_s {
-    struct pbuf * pbuf;
+    struct pbuf *pbuf;
     union {
         struct tcp_pcb *tcp;
         struct udp_pcb *udp;
@@ -171,5 +177,9 @@ struct write_ctx_s {
 extern int add_route(netif_driver tun, address_t *dest);
 
 extern int delete_route(netif_driver tun, address_t *dest);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif //ZITI_TUNNELER_SDK_ZITI_TUNNELER_PRIV_H

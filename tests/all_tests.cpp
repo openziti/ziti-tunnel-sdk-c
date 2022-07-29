@@ -1,5 +1,5 @@
 /*
- Copyright 2019-2021 NetFoundry Inc.
+ Copyright NetFoundry Inc.
 
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
@@ -14,31 +14,21 @@
  limitations under the License.
  */
 
-#ifndef ZITI_TUNNEL_SDK_C_LOG_UTILS_H
-#define ZITI_TUNNEL_SDK_C_LOG_UTILS_H
-
-#if _WIN32
-#define MAXPATHLEN MAX_PATH
-#else
-#define MAXPATHLEN PATH_MAX
+// tweaks for mips-openwrt build
+// not sure if there is a better way
+#if defined(mips) || defined(__mips)
+#define nextafterl(x, y) nextafter(x,y)
+#define CATCH_CONFIG_NO_CPP11_TO_STRING
+#define CATCH_CONFIG_GLOBAL_NEXTAFTER
 #endif
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+#define CATCH_CONFIG_MAIN  // This tells Catch to provide a main() - only do this in one cpp file
 
-bool open_log(char* log_filename);
-void close_log();
-bool rotate_log();
-void stop_log_check();
-struct tm* get_log_start_time();
-char* get_log_file_name();
+#include "catch2/catch.hpp"
 
-bool log_init(uv_loop_t *, bool);
-void ziti_log_writer(int , const char *, const char *, size_t);
-
-#ifdef __cplusplus
+int init() {
+    // init_debug();
+    return 0;
 }
-#endif
 
-#endif //ZITI_TUNNEL_SDK_C_LOG_UTILS_H
+static int _init = init();

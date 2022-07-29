@@ -20,6 +20,7 @@
 #include <config-utils.h>
 #include "lwip/ip_addr.h"
 #include "ziti/ziti_tunnel.h"
+#include "identity-utils.h"
 
 #define MIN_API_PAGESIZE 10
 #define DEFAULT_API_PAGESIZE 25
@@ -43,7 +44,7 @@ tunnel_identity *find_tunnel_identity(const char* identifier) {
  * file name will be passed to this function, if this called by the load identities function.
  * file name will be null, if this is called any other time
  */
-tunnel_identity *create_or_get_tunnel_identity(char* identifier, char* filename) {
+tunnel_identity *create_or_get_tunnel_identity(const char* identifier, char* filename) {
     tunnel_identity *id = find_tunnel_identity(identifier);
 
     if (id != NULL) {
@@ -692,8 +693,7 @@ void set_ip_info(uint32_t dns_ip, uint32_t tun_ip, int bits) {
     tnl_status.IpInfo->Subnet = strdup(ipaddr_ntoa(&netmask_ipv4));
 
 }
-
-void set_log_level(char* log_level) {
+void set_log_level(const char* log_level) {
     if (log_level == NULL) {
         return;
     }
@@ -707,12 +707,38 @@ void set_log_level(char* log_level) {
     }
 }
 
-const char* get_log_level() {
+const char* get_log_level_label() {
     if (tnl_status.LogLevel) {
         return tnl_status.LogLevel;
     } else {
         return NULL;
     }
+}
+
+
+#define LEVEL_LBL(lvl) #lvl,
+static const char *const level_labels[] = {
+        DEBUG_LEVELS(LEVEL_LBL)
+};
+
+int get_log_level(const char* log_level) {
+    if(!log_level) {
+        char* loglvl = getenv("ZITI_LOG");
+        if(!loglvl) {
+            return (int) INFO; //no log level supplied - use INFO as default
+        } else {
+            return (int) strtol(loglvl, NULL, 10);
+        }
+    }
+    int lvl = 0;
+    int num_levels = sizeof(level_labels) / sizeof(const char *);
+    for (int i = 0;i < num_levels; i++) {
+        if (strcasecmp(log_level, level_labels[i]) == 0) {
+            lvl = i;
+            break;
+        }
+    }
+    return lvl;
 }
 
 void set_service_version() {

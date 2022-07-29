@@ -16,3 +16,6 @@ Pipfile
 .cache/
 /tags*
 compile_commands.json
+/docker/*.jwt
+/docker/*.json
+/docker/*.json.orig

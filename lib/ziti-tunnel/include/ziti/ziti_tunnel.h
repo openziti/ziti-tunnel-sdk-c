@@ -34,6 +34,13 @@
 extern "C" {
 #endif
 
+#if _WIN32
+#define MAXPATHLEN MAX_PATH
+#define strcasecmp stricmp
+#else
+#define MAXPATHLEN PATH_MAX
+#endif
+
 /** keys used in app_data model map */
 extern const char *DST_PROTO_KEY; // "dst_protocol"
 extern const char *DST_IP_KEY;    // "dst_ip"
@@ -94,9 +101,9 @@ typedef host_ctx_t * (*ziti_sdk_host_cb)(void *ziti_ctx, uv_loop_t *loop, const 
 
 /** data needed to intercept packets and dial the associated ziti service */
 typedef struct intercept_ctx_s  intercept_ctx_t;
-typedef bool (*intercept_match_addr_fn)(ip_addr_t *addr, void *app_intercept_ctx);
+typedef const ziti_address * (*intercept_match_addr_fn)(ip_addr_t *addr, void *app_intercept_ctx);
 
-extern intercept_ctx_t* intercept_ctx_new(tunneler_context tnlt_ctx, const char *app_id, void *app_intercept_ctx);
+extern intercept_ctx_t* intercept_ctx_new(tunneler_context tnlr_ctx, const char *app_id, void *app_intercept_ctx);
 extern void intercept_ctx_set_match_addr(intercept_ctx_t *intercept, intercept_match_addr_fn pred);
 extern void intercept_ctx_add_protocol(intercept_ctx_t *ctx, const char *protocol);
 /** parse address string as hostname|ip|cidr and add result to list of intercepted addresses */
@@ -146,8 +153,8 @@ extern void ziti_address_from_ip4_addr(ziti_address *za, const ip4_addr_t *ip4);
 extern void ziti_address_from_ip6_addr(ziti_address *za, const ip6_addr_t *ip6);
 
 extern bool protocol_match(const char *protocol, const protocol_list_t *protocols);
-extern bool address_match(const ziti_address *addr, const address_list_t *addresses);
-extern bool port_match(int port, const port_range_list_t *port_ranges);
+extern const ziti_address * address_match(const ziti_address *addr, const address_list_t *addresses);
+extern const port_range_t *port_match(int port, const port_range_list_t *port_ranges);
 
 extern tunneler_context ziti_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop);
 extern tunneler_context ziti_tunneler_init_host_only(tunneler_sdk_options *opts, uv_loop_t *loop);

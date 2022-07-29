@@ -91,48 +91,132 @@ bool ziti_address_from_ip_addr(ziti_address *zaddr, const ip_addr_t *ip) {
     return true;
 }
 
-bool address_match(const ziti_address *addr, const address_list_t *addresses) {
+/** returns best matching address, or null if no addresses match */
+const ziti_address *address_match(const ziti_address *addr, const address_list_t *addresses) {
     address_t *a;
+    const ziti_address *best_addr = NULL;
+    int score, best_score = -1;
+    char addr_str[256];
+    ziti_address_print(addr_str, sizeof(addr_str), addr);
+
     STAILQ_FOREACH(a, addresses, entries) {
         if (ziti_address_match(addr, &a->za)) {
-            return true;
+            if (addr->type == ziti_address_cidr) {
+                score = (int) (addr->addr.cidr.bits - a->za.addr.cidr.bits);
+                TNL_LOG(VERBOSE, "ziti_address_cidr match score %d", score);
+            } else if (addr->type == ziti_address_hostname) {
+                score = 0;
+                TNL_LOG(VERBOSE, "ziti_address_hostname match score %d", score);
+            }
+            if (best_score == -1 || score < best_score) {
+                best_score = score;
+                best_addr = &a->za;
+                if (best_score == 0) {
+                    // won't find a better match so get out now
+                    break;
+                }
+            }
         }
     }
-    return false;
+    return best_addr;
 }
 
-bool port_match(int port, const port_range_list_t *port_ranges) {
-    port_range_t *pr;
+/** returns smallest matching port range, or NULL if no ranges match */
+const port_range_t *port_match(int port, const port_range_list_t *port_ranges) {
+    const port_range_t *pr, *best_pr = NULL;
+    int score, best_score = -1;
     STAILQ_FOREACH(pr, port_ranges, entries) {
+        TNL_LOG(VERBOSE, "matching port %d to range %s", port, pr->str);
         if (port >= pr->low && port <= pr->high) {
-            return true;
+            score = pr->high - pr->low;
+            TNL_LOG(VERBOSE, "port %d matches range %s with score %d", port, pr->str, score);
+            if (best_score == -1 || score < best_score) {
+                TNL_LOG(VERBOSE, "port %d is best match so far", port);
+                best_pr = pr;
+                best_score = score;
+                if (best_score == 0) {
+                    // won't find a better match so get out now
+                    break;
+                }
+            }
         }
     }
-    return false;
+    return best_pr;
 }
 
-/** return the intercept context for a packet based on its destination ip:port */
-intercept_ctx_t *lookup_intercept_by_address(tunneler_context tnlr_ctx, const char *protocol, ip_addr_t *dst_addr, uint16_t dst_port) {
+struct addr_match {
+    const ziti_address *addr;
+    int addr_score;
+    const port_range_t *pr;
+    int pr_score;
+    intercept_ctx_t *intercept;
+};
+
+/** return the intercept context with the smallest address range for a packet based on its destination ip:port */
+intercept_ctx_t * lookup_intercept_by_address(tunneler_context tnlr_ctx, const char *protocol, ip_addr_t *dst_addr, uint16_t dst_port) {
     if (tnlr_ctx == NULL) {
         TNL_LOG(DEBUG, "null tnlr_ctx");
         return NULL;
     }
 
-    ziti_address za;
-    ziti_address_from_ip_addr(&za, dst_addr);
-    intercept_ctx_t *intercept;
-    LIST_FOREACH(intercept, &tnlr_ctx->intercepts, entries) {
-        if (!protocol_match(protocol, &intercept->protocols)) continue;
-        if (!port_match(dst_port, &intercept->port_ranges)) continue;
-
-        if (intercept->match_addr && intercept->match_addr(dst_addr, intercept->app_intercept_ctx))
-            return intercept;
-
-        if (address_match(&za, &intercept->addresses))
-            return intercept;
+    char key[3+1+IPADDR_STRLEN_MAX+1+6+1]; // [proto]:[ip]:[port]
+    snprintf(key, sizeof(key), "%s:%s:%d", protocol, ipaddr_ntoa(dst_addr), dst_port);
+    intercept_ctx_t *intercept = model_map_get(&tnlr_ctx->intercepts_cache, key);
+    if (intercept != NULL) {
+        return intercept;
     }
 
-    return NULL;
+    ziti_address za;
+    ziti_address_from_ip_addr(&za, dst_addr);
+    struct addr_match curr, best = { 0 };
+
+    LIST_FOREACH(intercept, &tnlr_ctx->intercepts, entries) {
+        if (!protocol_match(protocol, &intercept->protocols)) continue;
+
+        curr.intercept = intercept;
+        // try IP or hostname match
+        curr.addr = address_match(&za, &intercept->addresses);
+        curr.addr_score = -1;
+        if (curr.addr) {
+            if (za.type == ziti_address_cidr) {
+                curr.addr_score = (int) (za.addr.cidr.bits - curr.addr->addr.cidr.bits);
+            } else {
+                curr.addr_score = 0;
+            }
+        } else if (intercept->match_addr) {
+            // check for wildcard domain match
+            curr.addr = intercept->match_addr(dst_addr, intercept->app_intercept_ctx);
+            if (curr.addr) {
+                curr.addr_score = 1; // leave room for a matching plain ziti_address_hostname to win
+            }
+        }
+        if (curr.addr_score < 0) continue;
+
+        curr.pr = port_match(dst_port, &intercept->port_ranges);
+        curr.pr_score = (curr.pr != NULL) ? curr.pr->high - curr.pr->low : -1;
+        if (curr.pr_score < 0) continue;
+
+        if (best.intercept == NULL) {
+            // first match
+            best = curr;
+            continue;
+        }
+
+        if (curr.addr_score > best.addr_score) {
+            // current address score is inferior to best match so far
+            continue;
+        }
+
+        if (curr.pr_score > best.pr_score) {
+            // current port matches, but matching range is larger than best matching range.
+            continue;
+        }
+
+        best = curr;
+    }
+
+    model_map_set(&tnlr_ctx->intercepts_cache, key, best.intercept);
+    return best.intercept;
 }
 
 void free_intercept(intercept_ctx_t *intercept) {

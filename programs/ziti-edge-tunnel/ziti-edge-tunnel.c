@@ -25,9 +25,8 @@
 #include <ziti/ziti_log.h>
 #include <ziti/ziti_dns.h>
 #include "model/events.h"
-#include "instance.h"
+#include "identity-utils.h"
 #include "instance-config.h"
-#include <log-utils.h>
 #include <time.h>
 #include <config-utils.h>
 #include <service-utils.h>
@@ -54,6 +53,13 @@
 
 #ifndef HOST_NAME_MAX
 #define HOST_NAME_MAX 254
+
+//functions for logging on windows
+bool log_init(uv_loop_t *);
+void close_log();
+void ziti_log_writer(int , const char *, const char *, size_t);
+char* get_log_file_name();
+#include <stdint.h>
 #endif
 
 static int dns_miss_status = DNS_REFUSE;
@@ -61,8 +67,8 @@ static int dns_miss_status = DNS_REFUSE;
 static void send_message_to_tunnel();
 typedef char * (*to_json_fn)(const void * msg, int flags, size_t *len);
 static void send_events_message(const void *message, to_json_fn to_json_f, bool displayEvent);
-static void send_tunnel_command(tunnel_command *tnl_cmd, void *ctx);
-static void send_tunnel_command_inline(tunnel_command *tnl_cmd, void *ctx);
+static void send_tunnel_command(const tunnel_command *tnl_cmd, void *ctx);
+static void send_tunnel_command_inline(const tunnel_command *tnl_cmd, void *ctx);
 static void scm_service_stop_event(uv_loop_t *loop, void *arg);
 static void stop_tunnel_and_cleanup();
 static bool is_host_only();
@@ -285,6 +291,7 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
         wr->data = buf.base;
         uv_write(wr, (uv_stream_t *) ctx, &buf, 1, on_cmd_write);
     }
+    free(json);
 }
 
 void tunnel_enroll_cb(ziti_config *cfg, int status, char *err, void *ctx) {
@@ -326,17 +333,18 @@ void tunnel_enroll_cb(ziti_config *cfg, int status, char *err, void *ctx) {
     create_or_get_tunnel_identity(add_id_req->identifier, add_id_req->identifier_file_name);
 
     // send load identity command to the controller
-    tunnel_command *tnl_cmd = calloc(1, sizeof(tunnel_command));
-    tnl_cmd->command = TunnelCommand_LoadIdentity;
-    tunnel_load_identity *load_identity_options = calloc(1, sizeof(tunnel_load_identity));
-    load_identity_options->identifier = strdup(add_id_req->identifier);
-    load_identity_options->path = strdup(add_id_req->identifier);
-    load_identity_options->apiPageSize = get_api_page_size();
+    tunnel_load_identity load_identity_options = {
+            .identifier = add_id_req->identifier,
+            .path = add_id_req->identifier,
+            .apiPageSize = get_api_page_size(),
+    };
     size_t json_len;
-    tnl_cmd->data = tunnel_load_identity_to_json(load_identity_options, MODEL_JSON_COMPACT, &json_len);
-    send_tunnel_command(tnl_cmd, add_id_req->cmd_ctx);
-    free_tunnel_load_identity(load_identity_options);
-    free(load_identity_options);
+    tunnel_command tnl_cmd = {
+            .command = TunnelCommand_LoadIdentity,
+            .data = tunnel_load_identity_to_json(&load_identity_options, MODEL_JSON_COMPACT, &json_len),
+    };
+    send_tunnel_command(&tnl_cmd, add_id_req->cmd_ctx);
+    free_tunnel_command(&tnl_cmd);
     free(add_id_req);
 }
 
@@ -371,7 +379,7 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
 
             if (strcasecmp(ziti_log_level_label(), tunnel_set_log_level_cmd.loglevel) != 0) {
                 ziti_log_set_level_by_label(tunnel_set_log_level_cmd.loglevel);
-                ziti_tunnel_set_log_level(ziti_log_level());
+                ziti_tunnel_set_log_level(get_log_level(tunnel_set_log_level_cmd.loglevel));
                 set_log_level(ziti_log_level_label());
                 ZITI_LOG(INFO, "Log level is set to %s", tunnel_set_log_level_cmd.loglevel);
             } else {
@@ -807,8 +815,6 @@ static void tnl_transfer_rates(const tunnel_identity_metrics *metrics, void *ctx
     if (metrics->down != NULL) {
         tnl_id->Metrics.Down = (int) strtol(metrics->down, NULL, 10);
     }
-    free_tunnel_identity_metrics((tunnel_identity_metrics*) metrics);
-    free(metrics);
 }
 
 static void on_command_inline_resp(const tunnel_result* result, void *ctx) {
@@ -822,15 +828,14 @@ static void on_command_inline_resp(const tunnel_result* result, void *ctx) {
         switch (tnl_cmd_inline->command) {
             case TunnelCommand_GetMetrics: {
                 if (result->success) {
-                    tunnel_identity_metrics *id_metrics = calloc(1, sizeof(tunnel_identity_metrics));
-                    if (parse_tunnel_identity_metrics(id_metrics, result->data, strlen(result->data)) < 0) {
+                    tunnel_identity_metrics id_metrics = {0};
+                    if (parse_tunnel_identity_metrics(&id_metrics, result->data, strlen(result->data)) < 0) {
                         ZITI_LOG(ERROR, "Could not fetch metrics data");
-                        free_tunnel_identity_metrics(id_metrics);
-                        free(id_metrics);
-                        break;
+                    } else {
+                        tunnel_identity *tnl_id = find_tunnel_identity(tnl_cmd_inline->identifier);
+                        tnl_transfer_rates(&id_metrics, tnl_id);
                     }
-                    tunnel_identity *tnl_id = find_tunnel_identity(tnl_cmd_inline->identifier);
-                    tnl_transfer_rates(id_metrics, tnl_id);
+                    free_tunnel_identity_metrics(&id_metrics);
                 }
                 break;
             }
@@ -844,22 +849,14 @@ static void on_command_inline_resp(const tunnel_result* result, void *ctx) {
         free_tunnel_command_inline(tnl_cmd_inline);
         free(tnl_cmd_inline);
     }
-
-    if (result->data) {
-        free(result->data);
-    }
 }
 
-static void send_tunnel_command(tunnel_command *tnl_cmd, void *ctx) {
+static void send_tunnel_command(const tunnel_command *tnl_cmd, void *ctx) {
     CMD_CTRL->process(tnl_cmd, on_command_resp, ctx);
-    free_tunnel_command(tnl_cmd);
-    free(tnl_cmd);
 }
 
-static void send_tunnel_command_inline(tunnel_command *tnl_cmd, void *ctx) {
+static void send_tunnel_command_inline(const tunnel_command *tnl_cmd, void *ctx) {
     CMD_CTRL->process(tnl_cmd, on_command_inline_resp, ctx);
-    free_tunnel_command(tnl_cmd);
-    free(tnl_cmd);
 }
 
 static char* addUnit(int count, char* unit) {
@@ -978,20 +975,20 @@ static void broadcast_metrics(uv_timer_t *timer) {
             if (tnl_id->Active && tnl_id->Loaded && tnl_id->IdFileStatus) {
                 active_identities = true;
 
-                tunnel_command *tnl_cmd = calloc(1, sizeof(tunnel_command));
-                tnl_cmd->command = TunnelCommand_GetMetrics;
-                tunnel_get_identity_metrics *get_metrics = calloc(1, sizeof(tunnel_get_identity_metrics));
-                get_metrics->identifier = strdup(tnl_id->Identifier);
+                tunnel_get_identity_metrics get_metrics = {
+                        .identifier = tnl_id->Identifier,
+                };
                 size_t json_len;
-                tnl_cmd->data = tunnel_get_identity_metrics_to_json(get_metrics, MODEL_JSON_COMPACT, &json_len);
+                tunnel_command tnl_cmd = {
+                        .command = TunnelCommand_GetMetrics,
+                        .data = tunnel_get_identity_metrics_to_json(&get_metrics, MODEL_JSON_COMPACT, &json_len),
+                };
 
-                tunnel_command_inline *tnl_cmd_inline = calloc(1, sizeof(tunnel_command_inline));
+                tunnel_command_inline *tnl_cmd_inline = alloc_tunnel_command_inline();
                 tnl_cmd_inline->identifier = strdup(tnl_id->Identifier);
                 tnl_cmd_inline->command = TunnelCommand_GetMetrics;
-                send_tunnel_command_inline(tnl_cmd, tnl_cmd_inline);
-
-                free_tunnel_get_identity_metrics(get_metrics);
-                free(get_metrics);
+                send_tunnel_command_inline(&tnl_cmd, tnl_cmd_inline);
+                free_tunnel_command(&tnl_cmd);
 
                 // check timeout
                 if (check_send_notification(tnl_id)) {
@@ -1042,6 +1039,12 @@ static void start_metrics_timer(uv_loop_t *ziti_loop) {
     uv_timer_start(&metrics_timer, broadcast_metrics, metrics_latency, refresh_metrics);
 }
 
+const char *get_filename_ext(const char *filename) {
+    const char *dot = strrchr(filename, '.');
+    if(!dot || dot == filename) return "";
+    return dot + 1;
+}
+
 static void load_identities(uv_work_t *wr) {
     if (config_dir != NULL) {
         uv_fs_t fs;
@@ -1054,16 +1057,29 @@ static void load_identities(uv_work_t *wr) {
 
         uv_dirent_t file;
         while (uv_fs_scandir_next(&fs, &file) == 0) {
-            ZITI_LOG(INFO, "file = %s %d", file.name, file.type);
-
-            if (strcmp(file.name, get_config_file_name(NULL)) == 0 || strcmp(file.name, get_backup_config_file_name(NULL)) == 0 ) {
+            ZITI_LOG(TRACE, "processing file: %s %d", file.name, rc);
+            if(file.type != UV_DIRENT_FILE) {
+                ZITI_LOG(DEBUG, "skipping file in config dir as it's not the proper type. type: %d. file: %s", file.type, file.name);
                 continue;
             }
+
+            if (strcasecmp(file.name, get_config_file_name(NULL)) == 0) {
+                ZITI_LOG(DEBUG, "skipping the configuration file: %s", file.name);
+                continue;
+            } else if(strcasecmp(file.name, get_backup_config_file_name(NULL)) == 0 ) {
+                ZITI_LOG(DEBUG, "skipping the backup configuration file: %s", file.name);
+                continue;
+            }
+
+            char* ext = get_filename_ext(file.name);
+
             // ignore back up files
-            if ((strstr(file.name, ".bak") != NULL) || (strstr(file.name, ".original") != NULL)) {
+            if (strcasecmp(ext, ".bak") == 0 || strcasecmp(ext, ".original") == 0 || strcasecmp(ext, "json") != 0) {
+                ZITI_LOG(DEBUG, "skipping backup file: %s", file.name);
                 continue;
             }
 
+            ZITI_LOG(INFO, "loading identity file: %s", file.name);
             if (file.type == UV_DIRENT_FILE) {
                 struct cfg_instance_s *inst = calloc(1, sizeof(struct cfg_instance_s));
                 inst->cfg = malloc(MAXPATHLEN);
@@ -1756,7 +1772,6 @@ static void interrupt_handler(int sig) {
 static void run(int argc, char *argv[]) {
     uv_loop_t *ziti_loop = uv_default_loop();
     main_ziti_loop = ziti_loop;
-    bool init = false;
     uv_cond_init(&stop_cond);
     uv_mutex_init(&stop_mutex);
 
@@ -1768,13 +1783,9 @@ static void run(int argc, char *argv[]) {
     }
 
 #if _WIN32
+    log_init(ziti_loop);
+    ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, ziti_log_writer);
     remove_all_nrpt_rules();
-
-    bool multi_writer = true;
-    if (started_by_scm) {
-        multi_writer = false;
-    }
-    init = log_init(ziti_loop, multi_writer);
 
     signal(SIGINT, interrupt_handler);
 #endif
@@ -1820,30 +1831,37 @@ static void run(int argc, char *argv[]) {
     set_service_version();
 
 #if _WIN32
-    if (init) {
-        ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, ziti_log_writer);
-        struct tm *start_time = get_log_start_time();
-        char time_val[32];
-        strftime(time_val, sizeof(time_val), "%a %b %d %Y, %X %p", start_time);
-        ZITI_LOG(INFO,"============================ service begins ================================");
-        ZITI_LOG(INFO,"Logger initialization");
-        ZITI_LOG(INFO,"	- initialized at   : %s", time_val);
-        ZITI_LOG(INFO,"	- log file location: %s", get_log_file_name());
-        ZITI_LOG(INFO,"============================================================================");
-    } else {
-        ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
-    }
+    uv_timeval64_t dump_time;
+    uv_gettimeofday(&dump_time);
+    char time_str[32];
+    struct tm* start_tm = gmtime(&dump_time.tv_sec);
+    strftime(time_str, sizeof(time_str), "%Y-%m-%dT%H:%M:%S", start_tm);
+
+    start_tm = localtime(&dump_time.tv_sec);
+    char time_val[32];
+    strftime(time_val, sizeof(time_val), "%a %b %d %Y, %X %p", start_tm);
+    ZITI_LOG(INFO,"============================ service begins ================================");
+    ZITI_LOG(INFO,"Logger initialization");
+    ZITI_LOG(INFO,"	- initialized at   : %s (local time), %s (UTC)", time_val, time_str);
+    ZITI_LOG(INFO,"	- log file location: %s", get_log_file_name());
+    ZITI_LOG(INFO,"============================================================================");
     move_config_from_previous_windows_backup(ziti_loop);
+
+    ZITI_LOG(DEBUG, "granting se_debug privilege to current process to allow access to privileged processes during posture checks");
+    //ensure this process has the necessary access token to get the full path of privileged processes
+    if (!scm_grant_se_debug()){
+        ZITI_LOG(WARN, "could not set se debug access token on process. if process posture checks seem inconsistent this may be why");
+    }
 #else
     ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
 #endif
 
     // set log level from instance/config, if NULL is returned, the default log level will be used
-    const char* log_lvl = get_log_level();
+    const char* log_lvl = get_log_level_label();
     if (log_lvl != NULL) {
         ziti_log_set_level_by_label(log_lvl);
     }
-    ziti_tunnel_set_log_level(ziti_log_level());
+    ziti_tunnel_set_log_level(get_log_level(log_lvl));
     set_log_level(ziti_log_level_label());
     ziti_tunnel_set_logger(ziti_logger);
 
@@ -2013,7 +2031,7 @@ static int dump_opts(int argc, char *argv[]) {
                             opts, &option_index)) != -1) {
         switch (c) {
             case 'i':
-                dump_options->identifier = optarg;
+                dump_options->identifier = strdup(optarg);
                 break;
             case 'p':
                 dump_options->dump_path = realpath(optarg, NULL);
@@ -2973,6 +2991,7 @@ int main(int argc, char *argv[]) {
         name = name + 1;
     }
 
+    main_cmd.name = name;
 #if _WIN32
     SvcStart();
 
@@ -2980,12 +2999,13 @@ int main(int argc, char *argv[]) {
     // started_by_scm will be set to true only if scm initializes the config value
     // if the service is started from cmd line, SvcStart will return immediately and started_by_scm will be set to false. In this case tunnel can be run normally
     if (started_by_scm) {
+        main_cmd.name = "Ziti Desktop Edge for Windows"; // when running as a service - it must have been installed by
+                                                         // the ZDEW installer so let's use that name here
         printf("The service is stopped by SCM");
         return 0;
     }
 #endif
 
-    main_cmd.name = name;
     commandline_run(&main_cmd, argc, argv);
     return 0;
 }

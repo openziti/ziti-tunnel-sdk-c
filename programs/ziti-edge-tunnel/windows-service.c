@@ -228,7 +228,7 @@ VOID SvcInit( DWORD dwArgc, LPTSTR *lpszArgv)
 
     if (WaitForSingleObject(ghSvcRunningEvent, 150000) == WAIT_OBJECT_0) {
         ReportSvcStatus( SERVICE_RUNNING, NO_ERROR, 0 );
-        SvcReportEvent(TEXT("Ziti Edge Tunnel Run"), EVENTLOG_INFORMATION_TYPE);
+        SvcReportEvent(TEXT("Ziti Edge Tunnel Started"), EVENTLOG_INFORMATION_TYPE);
     } else {
         SvcReportEvent(TEXT("Ziti Edge Tunnel Stopped"), EVENTLOG_INFORMATION_TYPE);
         ReportSvcStatus( SERVICE_STOPPED, NO_ERROR, 0 );
@@ -471,4 +471,45 @@ DWORD LphandlerFunctionEx(
     }
 
     return 0;
+}
+
+
+BOOL SetPrivilege(HANDLE hToken, LPCTSTR lpszPrivilege, BOOL bEnablePrivilege)
+{
+    LUID luid;
+    BOOL bRet=FALSE;
+
+    if (LookupPrivilegeValue(NULL, lpszPrivilege, &luid))
+    {
+        TOKEN_PRIVILEGES tp;
+
+        tp.PrivilegeCount=1;
+        tp.Privileges[0].Luid=luid;
+        tp.Privileges[0].Attributes=(bEnablePrivilege) ? SE_PRIVILEGE_ENABLED: 0;
+        //
+        //  Enable the privilege or disable all privileges.
+        //
+        if (AdjustTokenPrivileges(hToken, FALSE, &tp, NULL, (PTOKEN_PRIVILEGES)NULL, (PDWORD)NULL))
+        {
+            //
+            //  Check to see if you have proper access.
+            //  You may get "ERROR_NOT_ALL_ASSIGNED".
+            //
+            bRet=(GetLastError() == ERROR_SUCCESS);
+        }
+    }
+    return bRet;
+}
+
+bool scm_grant_se_debug() {
+    HANDLE hProcess=GetCurrentProcess();
+    HANDLE hToken;
+
+    if (OpenProcessToken(hProcess, TOKEN_ADJUST_PRIVILEGES, &hToken))
+    {
+        bool worked = SetPrivilege(hToken, SE_DEBUG_NAME, TRUE);
+        CloseHandle(hToken);
+        return worked;
+    }
+    return false;
 }

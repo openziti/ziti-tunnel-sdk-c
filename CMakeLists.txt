@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.14)
 if(NOT ZITI_SDK_C_BRANCH)
     #allow using a different branch of the CSDK easily
-    set(ZITI_SDK_C_BRANCH "0.28.11")
+    set(ZITI_SDK_C_BRANCH "0.29.4")
 endif()
 
 # if TUNNEL_SDK_ONLY then don't descend into programs/ziti-edge-tunnel
@@ -11,6 +11,8 @@ message("tunnel only = ${TUNNEL_SDK_ONLY}")
 # if EXCLUDE_PROGRAMS then don't descend into programs/ziti-edge-tunnel
 option(EXCLUDE_PROGRAMS "exclude building the programs directory" OFF)
 message("exclude programs = ${EXCLUDE_PROGRAMS}")
+
+option(ZITI_TUNNEL_BUILD_TESTS "Build tests." ON)
 
 find_package(Git)
 if(NOT GIT_VERSION AND GIT_FOUND)
@@ -146,8 +148,6 @@ target_compile_definitions(lwipcore
     PUBLIC MEMP_NUM_UDP_PCB=${UDP_MAX_CONNECTIONS}
 )
 
-if (WIN32)
-install(TARGETS lwipwin32arch
-        DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        )
-endif()
+if (ZITI_TUNNEL_BUILD_TESTS)
+    add_subdirectory(tests)
+endif ()

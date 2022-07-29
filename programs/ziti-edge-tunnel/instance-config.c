@@ -18,11 +18,10 @@
 #include <stdlib.h>
 #include <config-utils.h>
 #include <string.h>
-#include <instance.h>
+#include "identity-utils.h"
 #include <ziti/ziti_log.h>
 
 // to store the whole tunnel status data
-#define MAX_BUFFER_LEN 1024 * 1024
 #define MIN_BUFFER_LEN 512
 
 static uv_sem_t sem;
@@ -41,7 +40,7 @@ bool load_config_from_file(char* config_file_name) {
 
     FILE* config_file = fopen(config_file_name, "r");
     if (config_file != NULL) {
-        char config_buffer[MAX_BUFFER_LEN];
+        char* config_buffer = calloc(1024*1024, sizeof(char));
         char line[512];
         while ((fgets(line, sizeof(line), config_file)) != NULL) {
             strcat(config_buffer, line);
@@ -56,6 +55,7 @@ bool load_config_from_file(char* config_file_name) {
         }
         config_buffer[0] = '\0';
         fclose(config_file);
+        free(config_buffer);
     } else {
         if (errno != 0) {
             ZITI_LOG(ERROR, "The config file %s cannot be opened due to %s. This is normal if this is a new install or if the config file was removed manually", strerror(errno), config_file_name);
