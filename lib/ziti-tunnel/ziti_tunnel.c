@@ -96,7 +96,7 @@ tunneler_context ziti_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop)
 
 void ziti_tunnel_commit_routes(tunneler_context tnlr_ctx) {
     if (tnlr_ctx->opts.netif_driver == NULL) {
-        TNL_LOG(WARN, "No netif_driver found tun is running in host only mode and intercepts are disabled");
+        TNL_LOG(DEBUG, "No netif_driver found tun is running in host only mode and intercepts are disabled");
         return;
     }
 
@@ -107,7 +107,7 @@ void ziti_tunnel_commit_routes(tunneler_context tnlr_ctx) {
 
 void ziti_tunneler_exclude_route(tunneler_context tnlr_ctx, const char *dst) {
     if (tnlr_ctx->opts.netif_driver == NULL) {
-        TNL_LOG(WARN, "No netif_driver found tun is running in host only mode and intercepts are disabled");
+        TNL_LOG(DEBUG, "No netif_driver found tun is running in host only mode and intercepts are disabled");
         return;
     }
 
