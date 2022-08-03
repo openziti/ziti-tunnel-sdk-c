@@ -24,13 +24,6 @@ extern "C" {
 #define ZA_INIT_STR(za, s) (( parse_ziti_address((za), "\"" s "\"", strlen("\"" s "\"")) ), (za))
 
 TEST_CASE("address_match", "[address]") {
-#if 0
-    CHECK(msg.status == 0);
-    REQUIRE(msg.answer != nullptr);
-    CHECK(msg.answer[0]->type == 33);
-    CHECK(msg.answer[0]->port == 993);
-    CHECK_THAT(msg.answer[0]->data, Catch::Contains("imap.gmail.com"));
-#endif
     struct tunneler_ctx_s tctx = { };
     ziti_address za;
     ip_addr_t ip;
