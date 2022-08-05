@@ -1775,12 +1775,7 @@ static void run(int argc, char *argv[]) {
     uv_cond_init(&stop_cond);
     uv_mutex_init(&stop_mutex);
 
-    // generate tunnel status instance and save active state and start time
-    if (config_dir != NULL) {
-        set_identifier_path(config_dir);
-        initialize_instance_config();
-        load_tunnel_status_from_file(ziti_loop);
-    }
+    initialize_semaphore();
 
     //initialize logger to INFO here. logger will be set further down
 #if _WIN32
@@ -1792,6 +1787,12 @@ static void run(int argc, char *argv[]) {
 #else
     ziti_log_init(ziti_loop, INFO, NULL);
 #endif
+
+    // generate tunnel status instance and save active state and start time
+    if (config_dir != NULL) {
+        set_identifier_path(config_dir);
+        load_tunnel_status_from_file(ziti_loop);
+    }
 
     uint32_t tun_ip;
     uint32_t dns_ip;
