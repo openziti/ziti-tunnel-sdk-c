@@ -683,7 +683,7 @@ void set_ip_info(uint32_t dns_ip, uint32_t tun_ip, int bits) {
     }
     ip_addr_t dns_ip4 = IPADDR4_INIT(dns_ip);
     tnl_status.IpInfo = calloc(1, sizeof(ip_info));
-    tnl_status.IpInfo->Ip = strdup(ipaddr_ntoa(&tun_ip));
+    tnl_status.IpInfo->Ip = strdup(ipaddr_ntoa(&dns_ip4));
     tnl_status.IpInfo->DNS = strdup(ipaddr_ntoa(&dns_ip4));
     tnl_status.IpInfo->MTU = 65535;
 
