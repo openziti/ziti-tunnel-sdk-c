@@ -1775,20 +1775,24 @@ static void run(int argc, char *argv[]) {
     uv_cond_init(&stop_cond);
     uv_mutex_init(&stop_mutex);
 
-    // generate tunnel status instance and save active state and start time
-    if (config_dir != NULL) {
-        set_identifier_path(config_dir);
-        initialize_instance_config();
-        load_tunnel_status_from_file(ziti_loop);
-    }
+    initialize_instance_config();
 
+    //initialize logger to INFO here. logger will be set further down
 #if _WIN32
     log_init(ziti_loop);
-    ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, ziti_log_writer);
+    ziti_log_init(ziti_loop, INFO, ziti_log_writer);
     remove_all_nrpt_rules();
 
     signal(SIGINT, interrupt_handler);
+#else
+    ziti_log_init(ziti_loop, INFO, NULL);
 #endif
+
+    // generate tunnel status instance and save active state and start time
+    if (config_dir != NULL) {
+        set_identifier_path(config_dir);
+        load_tunnel_status_from_file(ziti_loop);
+    }
 
     uint32_t tun_ip;
     uint32_t dns_ip;
@@ -1852,8 +1856,6 @@ static void run(int argc, char *argv[]) {
     if (!scm_grant_se_debug()){
         ZITI_LOG(WARN, "could not set se debug access token on process. if process posture checks seem inconsistent this may be why");
     }
-#else
-    ziti_log_init(ziti_loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
 #endif
 
     // set log level from instance/config, if NULL is returned, the default log level will be used
