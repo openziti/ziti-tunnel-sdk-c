@@ -1775,7 +1775,7 @@ static void run(int argc, char *argv[]) {
     uv_cond_init(&stop_cond);
     uv_mutex_init(&stop_mutex);
 
-    initialize_semaphore();
+    initialize_instance_config();
 
     //initialize logger to INFO here. logger will be set further down
 #if _WIN32

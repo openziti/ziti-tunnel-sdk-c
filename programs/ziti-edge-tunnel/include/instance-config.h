@@ -19,7 +19,7 @@
 
 bool load_tunnel_status_from_file(uv_loop_t *ziti_loop);
 bool save_tunnel_status_to_file();
-void initialize_semaphore();
+void initialize_instance_config();
 void cleanup_instance_config();
 
 #endif //ZITI_TUNNEL_SDK_C_INSTANCE_CONFIG_H
