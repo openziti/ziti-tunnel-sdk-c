@@ -155,7 +155,8 @@ bool save_tunnel_status_to_file() {
             fclose(config);
             ZITI_LOG(DEBUG, "Saved current tunnel status into Config file %s", config_file_name);
         }
-
+        uv_sem_post(&sem);
+        
         ZITI_LOG(TRACE, "Cleaning up resources used for the backup of tunnel config file %s", config_file_name);
 
         free(config_file_name);
