@@ -1798,7 +1798,6 @@ static void run(int argc, char *argv[]) {
     uint32_t dns_ip;
 
     if (!is_host_only()) {
-
         char *ip_range_temp = get_ip_range_from_config();
         if (ip_range_temp != NULL) {
             ip_range = ip_range_temp;
@@ -1818,8 +1817,8 @@ static void run(int argc, char *argv[]) {
             mask |= (ip[i] & 0xFFU);
         }
 
-        tun_ip = htonl(mask | 0x1);
-        dns_ip = htonl(mask | 0x2);
+        tun_ip = htonl(mask);
+        dns_ip = htonl(mask + 1);
 
         // set ip info into instance
         set_ip_info(dns_ip, tun_ip, bits);
