@@ -124,6 +124,7 @@ static LIST_HEAD(ipc_list, ipc_conn_s) ipc_clients_list = LIST_HEAD_INITIALIZER(
 static long refresh_interval = 10;
 static long refresh_metrics = 5000;
 static long metrics_latency = 5000;
+static char* configured_cidr;
 
 static char *config_dir = NULL;
 
@@ -1663,8 +1664,7 @@ static struct option run_host_options[] = {
         { "refresh", optional_argument, NULL, 'r'},
 };
 
-static const char* ip_range = "100.64.0.0/10";
-static const char* dns_impl = NULL;
+static const char* default_cidr = "100.64.0.1/10";
 static const char* dns_upstream = NULL;
 static bool host_only = false;
 
@@ -1694,7 +1694,7 @@ static int run_opts(int argc, char *argv[]) {
                 refresh_interval = strtol(optarg, NULL, 10);
                 break;
             case 'd': // ip range
-                ip_range = optarg;
+                configured_cidr = optarg;
                 break;
             case 'u':
                 dns_upstream = optarg;
@@ -1777,6 +1777,9 @@ static void run(int argc, char *argv[]) {
 
     initialize_instance_config();
 
+    //set log level in precedence: command line flag (-v/--verbose) -> env var (ZITI_LOG) -> config file
+    int log_level = get_log_level(NULL);
+
     //initialize logger to INFO here. logger will be set further down
 #if _WIN32
     log_init(ziti_loop);
@@ -1785,7 +1788,7 @@ static void run(int argc, char *argv[]) {
 
     signal(SIGINT, interrupt_handler);
 #else
-    ziti_log_init(ziti_loop, INFO, NULL);
+    ziti_log_init(ziti_loop, log_level, NULL);
 #endif
 
     // generate tunnel status instance and save active state and start time
@@ -1796,16 +1799,19 @@ static void run(int argc, char *argv[]) {
 
     uint32_t tun_ip;
     uint32_t dns_ip;
+    char* dns_range;
 
     if (!is_host_only()) {
         char *ip_range_temp = get_ip_range_from_config();
         if (ip_range_temp != NULL) {
-            ip_range = ip_range_temp;
+            configured_cidr = ip_range_temp;
+        } else {
+            configured_cidr = strdup(default_cidr);
         }
 
         uint32_t ip[4];
         int bits;
-        int rc = sscanf(ip_range, "%d.%d.%d.%d/%d", &ip[0], &ip[1], &ip[2], &ip[3], &bits);
+        int rc = sscanf(configured_cidr, "%d.%d.%d.%d/%d", &ip[0], &ip[1], &ip[2], &ip[3], &bits);
         if (rc != 5) {
             ZITI_LOG(ERROR, "Invalid IP range specification: n.n.n.n/m format is expected");
             exit(1);
@@ -1819,6 +1825,11 @@ static void run(int argc, char *argv[]) {
 
         tun_ip = htonl(mask);
         dns_ip = htonl(mask + 1);
+        uint32_t dns_nw_addr = mask & (0xFFFFFFFFUL << (32 - bits)) & 0xFFFFFFFFUL;
+
+        ip_addr_t dns_ip4_addr = IPADDR4_INIT(htonl(dns_nw_addr));
+        dns_range = strdup(ipaddr_ntoa(&dns_ip4_addr));
+        sprintf(dns_range, "%s/%d", strdup(ipaddr_ntoa(&dns_ip4_addr)), bits);
 
         // set ip info into instance
         set_ip_info(dns_ip, tun_ip, bits);
@@ -1875,7 +1886,7 @@ static void run(int argc, char *argv[]) {
     if (is_host_only()) {
         rc = run_tunnel_host_mode(ziti_loop);
     } else {
-        rc = run_tunnel(ziti_loop, tun_ip, dns_ip, ip_range, dns_upstream);
+        rc = run_tunnel(ziti_loop, tun_ip, dns_ip, dns_range, dns_upstream);
     }
     exit(rc);
 }
