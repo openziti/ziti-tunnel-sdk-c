@@ -1828,7 +1828,7 @@ static void run(int argc, char *argv[]) {
         uint32_t dns_nw_addr = mask & (0xFFFFFFFFUL << (32 - bits)) & 0xFFFFFFFFUL;
 
         ip_addr_t dns_ip4_addr = IPADDR4_INIT(htonl(dns_nw_addr));
-        sprintf(dns_range, "%s/%d", ipaddr_ntoa(&dns_ip4_addr), bits);
+        snprintf(dns_range, 32, "%s/%d", ipaddr_ntoa(&dns_ip4_addr), bits);
 
         // set ip info into instance
         set_ip_info(dns_ip, tun_ip, bits);
