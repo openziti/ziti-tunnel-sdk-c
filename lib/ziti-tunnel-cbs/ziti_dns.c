@@ -164,6 +164,7 @@ int ziti_dns_setup(tunneler_context tnlr, const char *dns_addr, const char *dns_
     intercept_ctx_add_address(dns_intercept, &dns_zaddr);
     intercept_ctx_add_port_range(dns_intercept, 53, 53);
     intercept_ctx_add_protocol(dns_intercept, "udp");
+    intercept_ctx_add_protocol(dns_intercept, "tcp");
     intercept_ctx_override_cbs(dns_intercept, on_dns_client, on_dns_req, on_dns_close, on_dns_close);
     ziti_tunneler_intercept(tnlr, dns_intercept);
 
@@ -630,9 +631,10 @@ ssize_t on_dns_req(void *ziti_io_ctx, void *write_ctx, const uint8_t *q_packet, 
 
     if (parse_dns_req(&req->msg, dns_packet, dns_packet_len) != 0) {
         ZITI_LOG(ERROR, "failed to parse DNS message");
+        on_dns_close(clt);
         free_dns_req(req);
-        ziti_tunneler_close(write_ctx);
-        return q_len;
+        free(write_ctx);
+        return (ssize_t)q_len;
     }
     req->id = req->msg.id;
 
