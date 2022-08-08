@@ -164,6 +164,7 @@ int ziti_dns_setup(tunneler_context tnlr, const char *dns_addr, const char *dns_
     intercept_ctx_add_address(dns_intercept, &dns_zaddr);
     intercept_ctx_add_port_range(dns_intercept, 53, 53);
     intercept_ctx_add_protocol(dns_intercept, "udp");
+    intercept_ctx_add_protocol(dns_intercept, "tcp");
     intercept_ctx_override_cbs(dns_intercept, on_dns_client, on_dns_req, on_dns_close, on_dns_close);
     ziti_tunneler_intercept(tnlr, dns_intercept);
 
