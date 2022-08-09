@@ -160,7 +160,7 @@ static void hosted_server_shutdown(struct hosted_io_ctx_s *io_ctx) {
 }
 
 /* called by ziti sdk when a client of a hosted service sends data */
-static ssize_t on_hosted_client_data(ziti_connection clt, uint8_t *data, ssize_t len) {
+static ssize_t on_hosted_client_data(ziti_connection clt, const uint8_t *data, ssize_t len) {
     struct hosted_io_ctx_s *io_ctx = ziti_conn_data(clt);
     if (io_ctx == NULL) {
         ZITI_LOG(DEBUG, "null io");
@@ -279,7 +279,7 @@ static void on_hosted_tcp_server_data(uv_stream_t *stream, ssize_t nread, const 
 
     if (nread > 0) {
         io_ctx->in_wreqs++;
-        int zs = ziti_write(io_ctx->client, buf->base, nread, on_hosted_ziti_write, buf->base);
+        int zs = ziti_write(io_ctx->client, (uint8_t *)buf->base, nread, on_hosted_ziti_write, buf->base);
         if (zs != ZITI_OK) {
             ZITI_LOG(ERROR, "ziti_write to %s failed: %s", ziti_conn_source_identity(io_ctx->client),
                      ziti_errorstr(zs));
@@ -300,7 +300,7 @@ static void on_hosted_tcp_server_data(uv_stream_t *stream, ssize_t nread, const 
                 uv_read_stop((uv_stream_t *) &io_ctx->server.tcp);
             }
         } else {
-            ZITI_LOG(WARN, "error reading from server [%zd](%s)", nread, uv_strerror(nread));
+            ZITI_LOG(ERROR, "error receiving data from hosted service %s: %s", io_ctx->service->service_name, uv_strerror(nread));
             hosted_server_close(io_ctx);
         }
 
@@ -314,7 +314,9 @@ static void on_hosted_udp_server_data(uv_udp_t* handle, ssize_t nread, const uv_
     struct hosted_io_ctx_s *io_ctx = handle->data;
     if (nread > 0) {
         io_ctx->in_wreqs++;
-        int zs = ziti_write(io_ctx->client, buf->base, nread, on_hosted_ziti_write, buf->base);
+        ZITI_LOG(TRACE, "sending %zd bytes service[%s] client[%s] server[%s]", nread, io_ctx->service->service_name,
+                 ziti_conn_source_identity(io_ctx->client), io_ctx->server_dial_str);
+        int zs = ziti_write(io_ctx->client, (uint8_t *) buf->base, nread, on_hosted_ziti_write, buf->base);
         if (zs != ZITI_OK) {
             ZITI_LOG(ERROR, "ziti_write failed: %s", ziti_errorstr(zs));
             on_hosted_ziti_write(io_ctx->client, nread, buf->base);
@@ -324,7 +326,7 @@ static void on_hosted_udp_server_data(uv_udp_t* handle, ssize_t nread, const uv_
         if (buf->base != NULL) {
             free(buf->base);
         }
-        ZITI_LOG(ERROR, "error receiving data from hosted service %s", io_ctx->service->service_name);
+        ZITI_LOG(ERROR, "error receiving data from hosted service %s: %s", io_ctx->service->service_name, uv_strerror(nread));
         hosted_server_close(io_ctx);
     }
 }
@@ -333,7 +335,7 @@ static void on_hosted_udp_server_data(uv_udp_t* handle, ssize_t nread, const uv_
 static void on_hosted_client_connect_complete(ziti_connection clt, int err) {
     struct hosted_io_ctx_s *io_ctx = ziti_conn_data(clt);
     if (err == ZITI_OK) {
-        ZITI_LOG(DEBUG, "hosted_service[%s] client[%s] connected", io_ctx->service->service_name, ziti_conn_source_identity(clt));
+        ZITI_LOG(DEBUG, "hosted_service[%s] client[%s] server[%s] connected", io_ctx->service->service_name, ziti_conn_source_identity(clt), io_ctx->server_dial_str);
         switch (io_ctx->server_proto_id) {
             case IPPROTO_TCP:
                 uv_read_start((uv_stream_t *) &io_ctx->server.tcp, alloc_buffer, on_hosted_tcp_server_data);
