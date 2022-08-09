@@ -300,7 +300,8 @@ static void on_hosted_tcp_server_data(uv_stream_t *stream, ssize_t nread, const 
                 uv_read_stop((uv_stream_t *) &io_ctx->server.tcp);
             }
         } else {
-            ZITI_LOG(ERROR, "error receiving data from hosted service %s: %s", io_ctx->service->service_name, uv_strerror(nread));
+            ZITI_LOG(ERROR, "error reading from server %s hosted_server[%s] uv_err[%s]", io_ctx->server_dial_str,
+                     io_ctx->service->service_name, uv_strerror(nread));
             hosted_server_close(io_ctx);
         }
 
@@ -326,7 +327,8 @@ static void on_hosted_udp_server_data(uv_udp_t* handle, ssize_t nread, const uv_
         if (buf->base != NULL) {
             free(buf->base);
         }
-        ZITI_LOG(ERROR, "error receiving data from hosted service %s: %s", io_ctx->service->service_name, uv_strerror(nread));
+        ZITI_LOG(ERROR, "error reading from server %s hosted_server[%s] uv_err[%s]", io_ctx->server_dial_str,
+                 io_ctx->service->service_name, uv_strerror(nread));
         hosted_server_close(io_ctx);
     }
 }
