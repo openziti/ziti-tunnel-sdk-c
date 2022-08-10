@@ -342,6 +342,9 @@ void ziti_dns_deregister_intercept(void *intercept) {
         dns_entry_t *e = model_map_it_value(it);
         model_map_remove_key(&e->intercepts, &intercept, sizeof(intercept));
         if (model_map_size(&e->intercepts) == 0 && (e->domain == NULL || model_map_size(&e->domain->intercepts) == 0)) {
+            model_map_remove(&ziti_dns.hostnames, e->name);
+            model_map_remove_key(&ziti_dns.ip_addresses, &e->addr, sizeof(e->addr));
+            ZITI_LOG(DEBUG, "%zu active hostnames mapped to %zu IPs", model_map_size(&ziti_dns.hostnames), model_map_size(&ziti_dns.ip_addresses));
             ZITI_LOG(INFO, "DNS mapping %s -> %s is now inactive", e->name, e->ip);
         }
         it = model_map_it_next(it);
@@ -351,6 +354,7 @@ void ziti_dns_deregister_intercept(void *intercept) {
     while (it != NULL) {
         dns_domain_t *domain = model_map_it_value(it);
         if (model_map_size(&domain->intercepts) == 0) {
+            model_map_remove(&ziti_dns.domains, domain->name);
             ZITI_LOG(INFO, "wildcard domain[*%s] is now inactive", domain->name);
         }
         it = model_map_it_next(it);
