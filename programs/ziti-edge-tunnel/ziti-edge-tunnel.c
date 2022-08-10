@@ -1804,11 +1804,14 @@ static void run(int argc, char *argv[]) {
     char* dns_range = calloc(sizeof(char), 32);
 
     if (!is_host_only()) {
-        char *ip_range_temp = get_ip_range_from_config();
-        if (ip_range_temp != NULL) {
-            configured_cidr = ip_range_temp;
-        } else {
-            configured_cidr = strdup(default_cidr);
+        if (configured_cidr == NULL) {
+            //allow the -d flag to override anything in the config
+            char *ip_range_temp = get_ip_range_from_config();
+            if (ip_range_temp != NULL) {
+                configured_cidr = ip_range_temp;
+            } else {
+                configured_cidr = strdup(default_cidr);
+            }
         }
 
         uint32_t ip[4];
