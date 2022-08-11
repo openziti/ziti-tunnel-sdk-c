@@ -57,7 +57,7 @@ struct dns_req {
 
 static void* on_dns_client(const void *app_intercept_ctx, io_ctx_t *io);
 static int on_dns_close(void *dns_io_ctx);
-static ssize_t on_dns_req(void *ziti_io_ctx, void *write_ctx, const uint8_t *q_packet, size_t len);
+static ssize_t on_dns_req(void *ziti_io_ctx, void *write_ctx, const void *q_packet, size_t len);
 static int query_upstream(struct dns_req *req);
 static void udp_alloc(uv_handle_t *h, unsigned long reqlen, uv_buf_t *b);
 static void on_upstream_packet(uv_udp_t *h, ssize_t rc, const uv_buf_t *buf, const struct sockaddr* addr, unsigned int flags);
@@ -113,7 +113,16 @@ struct ziti_dns_s {
 } ziti_dns;
 
 static uint32_t next_ipv4() {
-   return  htonl(ziti_dns.ip_pool.base | (ziti_dns.ip_pool.counter++ & ziti_dns.ip_pool.counter_mask));
+    uint32_t candidate;
+    do {
+        candidate = htonl(ziti_dns.ip_pool.base | (ziti_dns.ip_pool.counter++ & ziti_dns.ip_pool.counter_mask));
+        if (ziti_dns.ip_pool.counter == ziti_dns.ip_pool.counter_mask) {
+            ziti_dns.ip_pool.counter = 10;
+        }
+    } while (model_map_getl(&ziti_dns.ip_addresses, candidate) != NULL);
+    // todo: detect infinite loop
+
+    return candidate;
 }
 
 static int seed_dns(const char *dns_cidr) {
@@ -147,6 +156,7 @@ static int seed_dns(const char *dns_cidr) {
              max_ip.b[0],max_ip.b[1],max_ip.b[2],max_ip.b[3]
              );
 
+    // todo: add tun_ip and dns_ip to ziti_dns.ip_addresses.
     return 0;
 }
 
@@ -181,7 +191,7 @@ int ziti_dns_set_upstream(uv_loop_t *l, const char *host, uint16_t port) {
         CHECK_UV(uv_udp_connect(&ziti_dns.upstream, NULL));
     } else {
         CHECK_UV(uv_udp_init(l, &ziti_dns.upstream));
-        uv_unref(&ziti_dns.upstream);
+        uv_unref((uv_handle_t *) &ziti_dns.upstream);
     }
 
     if (port == 0) port = 53;
@@ -265,14 +275,14 @@ static dns_entry_t* new_ipv4_entry(const char *host) {
     ip4addr_ntoa_r(&entry->addr.u_addr.ip4, entry->ip, sizeof(entry->ip));
 
     model_map_set(&ziti_dns.hostnames, host, entry);
-    model_map_set_key(&ziti_dns.ip_addresses, &entry->addr, sizeof(entry->addr), entry);
+    model_map_setl(&ziti_dns.ip_addresses, entry->addr.u_addr.ip4.addr, entry);
     ZITI_LOG(INFO, "registered DNS entry %s -> %s", host, entry->ip);
 
     return entry;
 }
 
 const char *ziti_dns_reverse_lookup_domain(const ip_addr_t *addr) {
-     dns_entry_t *entry = model_map_get_key(&ziti_dns.ip_addresses, addr, sizeof(*addr));
+     dns_entry_t *entry = model_map_getl(&ziti_dns.ip_addresses, ip_2_ip4(addr)->addr);
      if (entry && entry->domain) {
          return entry->domain->name;
      }
@@ -282,7 +292,7 @@ const char *ziti_dns_reverse_lookup_domain(const ip_addr_t *addr) {
 const char *ziti_dns_reverse_lookup(const char *ip_addr) {
     ip_addr_t addr = {0};
     ipaddr_aton(ip_addr, &addr);
-    dns_entry_t *entry = model_map_get_key(&ziti_dns.ip_addresses, &addr, sizeof(addr));
+    dns_entry_t *entry = model_map_getl(&ziti_dns.ip_addresses, ip_2_ip4(&addr)->addr);
 
     return entry ? entry->name : NULL;
 }
@@ -343,7 +353,7 @@ void ziti_dns_deregister_intercept(void *intercept) {
         model_map_remove_key(&e->intercepts, &intercept, sizeof(intercept));
         if (model_map_size(&e->intercepts) == 0 && (e->domain == NULL || model_map_size(&e->domain->intercepts) == 0)) {
             model_map_remove(&ziti_dns.hostnames, e->name);
-            model_map_remove_key(&ziti_dns.ip_addresses, &e->addr, sizeof(e->addr));
+            model_map_removel(&ziti_dns.ip_addresses, ip_2_ip4(&e->addr)->addr);
             ZITI_LOG(DEBUG, "%zu active hostnames mapped to %zu IPs", model_map_size(&ziti_dns.hostnames), model_map_size(&ziti_dns.ip_addresses));
             ZITI_LOG(INFO, "DNS mapping %s -> %s is now inactive", e->name, e->ip);
         }
@@ -612,12 +622,12 @@ static void proxy_domain_req(struct dns_req *req, dns_domain_t *domain) {
 }
 
 
-ssize_t on_dns_req(void *ziti_io_ctx, void *write_ctx, const uint8_t *q_packet, size_t q_len) {
+ssize_t on_dns_req(void *ziti_io_ctx, void *write_ctx, const void *q_packet, size_t q_len) {
     ziti_dns_client_t *clt = ziti_io_ctx;
     const uint8_t *dns_packet = q_packet;
     size_t dns_packet_len = q_len;
 
-    uint16_t req_id = DNS_ID(q_packet);
+    uint16_t req_id = DNS_ID(dns_packet);
     struct dns_req *req = model_map_get_key(&ziti_dns.requests, &req_id, sizeof(req_id));
     if (req != NULL) {
         ZITI_LOG(TRACE, "duplicate dns req[%04x] from %s client", req_id, req->clt == ziti_io_ctx ? "same" : "another");
