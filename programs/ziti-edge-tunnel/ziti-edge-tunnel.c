@@ -955,7 +955,9 @@ static notification_message *create_notification_message(tunnel_identity *tnl_id
     notification->Identifier = strdup(tnl_id->Identifier);
     uv_timeval64_t now;
     uv_gettimeofday(&now);
-    notification->MfaTimeDuration = now.tv_sec - tnl_id->MfaLastUpdatedTime->tv_sec;
+    if(tnl_id->MfaLastUpdatedTime) {
+        notification->MfaTimeDuration = now.tv_sec - tnl_id->MfaLastUpdatedTime->tv_sec;
+    }
     notification->MfaMinimumTimeout = tnl_id->MfaMinTimeoutRem;
     notification->MfaMaximumTimeout = tnl_id->MfaMaxTimeoutRem;
 
@@ -1802,11 +1804,14 @@ static void run(int argc, char *argv[]) {
     char* dns_range = calloc(sizeof(char), 32);
 
     if (!is_host_only()) {
-        char *ip_range_temp = get_ip_range_from_config();
-        if (ip_range_temp != NULL) {
-            configured_cidr = ip_range_temp;
-        } else {
-            configured_cidr = strdup(default_cidr);
+        if (configured_cidr == NULL) {
+            //allow the -d flag to override anything in the config
+            char *ip_range_temp = get_ip_range_from_config();
+            if (ip_range_temp != NULL) {
+                configured_cidr = ip_range_temp;
+            } else {
+                configured_cidr = strdup(default_cidr);
+            }
         }
 
         uint32_t ip[4];
@@ -2605,7 +2610,7 @@ static void service_control(int argc, char *argv[]) {
     } else if (strcmp(tunnel_service_control_opt->operation, "uninstall") == 0) {
         SvcDelete();
     } else if (strcmp(tunnel_service_control_opt->operation, "stop") == 0) {
-        send_message_to_tunnel_fn(NULL, NULL);
+        send_message_to_tunnel_fn(0, NULL);
     } else {
         fprintf(stderr, "Unknown option '%s'\n", tunnel_service_control_opt->operation);
     }

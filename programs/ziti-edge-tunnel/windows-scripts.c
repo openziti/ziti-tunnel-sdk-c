@@ -71,7 +71,7 @@ static bool exec_process(uv_loop_t *ziti_loop, const char* program, const char* 
     return true;
 }
 
-static char* exec_process_fetch_result(char* program) {
+static char* exec_process_fetch_result(const char* program) {
     FILE *fp;
     char path[BUFFER_SIZE];
 
@@ -491,7 +491,7 @@ void update_interface_metric(uv_loop_t *ziti_loop, char* tun_name, int metric) {
 
     ZITI_LOG(DEBUG, "Executing Update Interface metric script :");
     ZITI_LOG(DEBUG, "%s", cmd);
-    char* args[] = {"powershell", "-Command", script, NULL};
+    const char* args[] = {"powershell", "-Command", script, NULL};
     bool result = exec_process(ziti_loop, args[0], args);
     if (!result) {
         ZITI_LOG(WARN, "Update Interface metric script: %d(err=%d)", result, GetLastError());

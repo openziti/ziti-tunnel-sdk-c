@@ -415,8 +415,6 @@ tunnel_identity_array get_tunnel_identities_for_metrics() {
         id_new->Identifier = id->Identifier;
         id_new->FingerPrint = id->FingerPrint;
         id_new->Name = id->Name;
-        id_new->MfaEnabled = id->MfaEnabled;
-        id_new->MfaNeeded = id->MfaNeeded;
         id_new->Active = id->Active;
         id_new->Loaded = id->Loaded;
         id_new->Metrics = id->Metrics;
@@ -515,6 +513,10 @@ void set_identifier_from_identities() {
             tnl_id->IdFileStatus = false;
             model_map_set(&tnl_identity_map, tnl_id->Identifier, tnl_id);
         }
+        //on startup - set mfa needed to false to correctly reflect tunnel status. After the identity is loaded these
+        //are set to true __if necessary__
+        tnl_id->MfaEnabled = false;
+        tnl_id->MfaNeeded = false;
     }
 }
 
