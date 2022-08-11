@@ -98,7 +98,7 @@ struct ziti_dns_s {
     // map[hostname -> dns_entry_t]
     model_map hostnames;
 
-    // map[ip_addr_t -> dns_entry_t]
+    // map[ip4_addr_t -> dns_entry_t]
     model_map ip_addresses;
 
     // map[domain -> dns_domain_t]
@@ -270,12 +270,11 @@ static bool check_name(const char *name, char clean_name[MAX_DNS_NAME], bool *is
 static dns_entry_t* new_ipv4_entry(const char *host) {
     dns_entry_t *entry = calloc(1, sizeof(dns_entry_t));
     strncpy(entry->name, host, sizeof(entry->name));
-    entry->addr.type = IPADDR_TYPE_V4;
-    entry->addr.u_addr.ip4.addr = next_ipv4();
-    ip4addr_ntoa_r(&entry->addr.u_addr.ip4, entry->ip, sizeof(entry->ip));
+    ip_addr_set_ip4_u32(&entry->addr, next_ipv4());
+    ipaddr_ntoa_r(&entry->addr, entry->ip, sizeof(entry->ip));
 
     model_map_set(&ziti_dns.hostnames, host, entry);
-    model_map_setl(&ziti_dns.ip_addresses, entry->addr.u_addr.ip4.addr, entry);
+    model_map_setl(&ziti_dns.ip_addresses, ip_2_ip4(&entry->addr)->addr, entry);
     ZITI_LOG(INFO, "registered DNS entry %s -> %s", host, entry->ip);
 
     return entry;
