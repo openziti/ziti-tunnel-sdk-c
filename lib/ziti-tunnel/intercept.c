@@ -30,6 +30,14 @@ bool protocol_match(const char *protocol, const protocol_list_t *protocols) {
     return false;
 }
 
+void ziti_address_from_string(ziti_address *za, const char *hn_or_cidr) {
+    size_t json_buflen = strlen(hn_or_cidr) + 3;
+    char *json = calloc(json_buflen, sizeof(char));
+    snprintf(json, json_buflen, "\"%s\"", hn_or_cidr);
+    parse_ziti_address(za, json, json_buflen);
+    free(json);
+}
+
 void ziti_address_from_in_addr(ziti_address *za, const struct in_addr *a) {
     memset(za, 0, sizeof(ziti_address));
     za->type = ziti_address_cidr;

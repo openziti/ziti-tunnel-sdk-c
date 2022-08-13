@@ -93,6 +93,7 @@ struct ziti_dns_s {
         uint32_t base;
         uint32_t counter;
         uint32_t counter_mask;
+        uint32_t capacity;
     } ip_pool;
 
     // map[hostname -> dns_entry_t]
@@ -114,13 +115,25 @@ struct ziti_dns_s {
 
 static uint32_t next_ipv4() {
     uint32_t candidate;
+    uint32_t i = 0; // track how many candidates have been considered. should never exceed pool capacity.
+
+    if (model_map_size(&ziti_dns.ip_addresses) == ziti_dns.ip_pool.capacity) {
+        ZITI_LOG(ERROR, "ip pool exhausted (%u IPs)", ziti_dns.ip_pool.capacity);
+        return INADDR_NONE;
+    }
+
     do {
         candidate = htonl(ziti_dns.ip_pool.base | (ziti_dns.ip_pool.counter++ & ziti_dns.ip_pool.counter_mask));
+        i += 1;
         if (ziti_dns.ip_pool.counter == ziti_dns.ip_pool.counter_mask) {
-            ziti_dns.ip_pool.counter = 10;
+            ziti_dns.ip_pool.counter = 1;
         }
-    } while (model_map_getl(&ziti_dns.ip_addresses, candidate) != NULL);
-    // todo: detect infinite loop
+    } while ((model_map_getl(&ziti_dns.ip_addresses, candidate) != NULL) && i < ziti_dns.ip_pool.capacity);
+
+    if (i == ziti_dns.ip_pool.capacity) {
+        ZITI_LOG(ERROR, "no IPs available after scanning entire pool");
+        return INADDR_NONE;
+    }
 
     return candidate;
 }
@@ -142,7 +155,8 @@ static int seed_dns(const char *dns_cidr) {
     ziti_dns.ip_pool.counter_mask = ~( (uint32_t)-1 << (32 - (uint32_t)bits));
     ziti_dns.ip_pool.base = mask & ~ziti_dns.ip_pool.counter_mask;
 
-    ziti_dns.ip_pool.counter = 10;
+    ziti_dns.ip_pool.counter = 1;
+    ziti_dns.ip_pool.capacity = (1 << (32 - bits)) - 2; // subtract 2 for network and broadcast IPs
 
     union ip_bits {
         uint8_t b[4];
@@ -151,12 +165,11 @@ static int seed_dns(const char *dns_cidr) {
 
     min_ip.ip = htonl(ziti_dns.ip_pool.base);
     max_ip.ip = htonl(ziti_dns.ip_pool.base | ziti_dns.ip_pool.counter_mask);
-    ZITI_LOG(INFO, "DNS configured with range %d.%d.%d.%d - %d.%d.%d.%d",
+    ZITI_LOG(INFO, "DNS configured with range %d.%d.%d.%d - %d.%d.%d.%d (%u ips)",
              min_ip.b[0],min_ip.b[1],min_ip.b[2],min_ip.b[3],
-             max_ip.b[0],max_ip.b[1],max_ip.b[2],max_ip.b[3]
+             max_ip.b[0],max_ip.b[1],max_ip.b[2],max_ip.b[3], ziti_dns.ip_pool.capacity
              );
 
-    // todo: add tun_ip and dns_ip to ziti_dns.ip_addresses.
     return 0;
 }
 
@@ -165,18 +178,23 @@ int ziti_dns_setup(tunneler_context tnlr, const char *dns_addr, const char *dns_
     seed_dns(dns_cidr);
 
     intercept_ctx_t *dns_intercept = intercept_ctx_new(tnlr, "ziti:dns-resolver", &ziti_dns);
-    ziti_address dns_zaddr;
-    size_t dns_addr_json_buflen = strlen(dns_addr) + 3;
-    char *dns_addr_json = calloc(dns_addr_json_buflen, sizeof(char));
-    snprintf(dns_addr_json, dns_addr_json_buflen, "\"%s\"", dns_addr);
-    parse_ziti_address(&dns_zaddr, dns_addr_json, dns_addr_json_buflen);
-    free(dns_addr_json);
+    ziti_address dns_zaddr, tun_zaddr;
+    ziti_address_from_string(&dns_zaddr, dns_addr);
     intercept_ctx_add_address(dns_intercept, &dns_zaddr);
     intercept_ctx_add_port_range(dns_intercept, 53, 53);
     intercept_ctx_add_protocol(dns_intercept, "udp");
     intercept_ctx_override_cbs(dns_intercept, on_dns_client, on_dns_req, on_dns_close, on_dns_close);
     ziti_tunneler_intercept(tnlr, dns_intercept);
 
+    // reserve tun and dns ips by adding to ip_addresses with empty dns entries
+    ziti_address_from_string(&tun_zaddr, dns_cidr); // assume tun ip is first in dns_cidr
+    ziti_address *reserved[] = { &tun_zaddr, &dns_zaddr };
+    size_t n = sizeof(reserved) / sizeof(ziti_address *);
+    for (int i = 0; i < n; i++) {
+        ip_addr_t ip4;
+        struct in_addr *in4_p = (struct in_addr *) &reserved[i]->addr.cidr.ip;
+        model_map_setl(&ziti_dns.ip_addresses, in4_p->s_addr, calloc(1, sizeof(dns_entry_t)));
+    }
     return 0;
 }
 
@@ -270,7 +288,12 @@ static bool check_name(const char *name, char clean_name[MAX_DNS_NAME], bool *is
 static dns_entry_t* new_ipv4_entry(const char *host) {
     dns_entry_t *entry = calloc(1, sizeof(dns_entry_t));
     strncpy(entry->name, host, sizeof(entry->name));
-    ip_addr_set_ip4_u32(&entry->addr, next_ipv4());
+    uint32_t next = next_ipv4();
+    if (next == INADDR_NONE) {
+        return NULL;
+    }
+
+    ip_addr_set_ip4_u32(&entry->addr, next);
     ipaddr_ntoa_r(&entry->addr, entry->ip, sizeof(entry->ip));
 
     model_map_set(&ziti_dns.hostnames, host, entry);
@@ -399,8 +422,12 @@ const ip_addr_t *ziti_dns_register_hostname(const ziti_address *addr, void *inte
         if (!entry) {
             entry = new_ipv4_entry(clean);
         }
-        model_map_set_key(&entry->intercepts, &intercept, sizeof(intercept), intercept);
-        return &entry->addr;
+        if (entry) {
+            model_map_set_key(&entry->intercepts, &intercept, sizeof(intercept), intercept);
+            return &entry->addr;
+        } else {
+            return NULL;
+        }
     }
 }
 
