@@ -25,14 +25,24 @@
 #define DNS_REFUSE   5
 #define DNS_NOTZONE  9
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 int ziti_dns_setup(tunneler_context tnlr, const char *dns_addr, const char *dns_cidr);
 
 int ziti_dns_set_upstream(uv_loop_t *l, const char *host, uint16_t port);
 
 const ip_addr_t *ziti_dns_register_hostname(const ziti_address *addr, void *intercept);
+
 const char *ziti_dns_reverse_lookup_domain(const ip_addr_t *addr);
+
 const char *ziti_dns_reverse_lookup(const char *ip_addr);
 
 void ziti_dns_deregister_intercept(void *intercept);
+
+#ifdef __cplusplus
+};
+#endif
 
 #endif //ZITI_TUNNEL_SDK_C_ZITI_DNS_H

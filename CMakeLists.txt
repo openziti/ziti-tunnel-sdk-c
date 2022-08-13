@@ -150,4 +150,5 @@ target_compile_definitions(lwipcore
 
 if (ZITI_TUNNEL_BUILD_TESTS)
     add_subdirectory(tests)
+    add_subdirectory(lib/tests)
 endif ()

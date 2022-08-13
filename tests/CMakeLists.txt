@@ -15,6 +15,7 @@ target_include_directories(all_tests
 target_link_libraries(all_tests
         PUBLIC ziti-tunnel-cbs-c-test-lib
         PUBLIC ziti-tunnel-sdk-c-test-lib
+        PUBLIC ziti-tunnel-sdk-c-integ-test-lib
 )
 
 include(CTest)
