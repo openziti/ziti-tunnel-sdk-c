@@ -118,7 +118,8 @@ static uint32_t next_ipv4() {
     uint32_t i = 0; // track how many candidates have been considered. should never exceed pool capacity.
 
     if (model_map_size(&ziti_dns.ip_addresses) == ziti_dns.ip_pool.capacity) {
-        ZITI_LOG(ERROR, "ip pool exhausted (%u IPs)", ziti_dns.ip_pool.capacity);
+        ZITI_LOG(ERROR, "DNS ip pool exhausted (%u IPs). Try rerunning with larger DNS range.",
+                 ziti_dns.ip_pool.capacity);
         return INADDR_NONE;
     }
 
@@ -329,7 +330,7 @@ static dns_domain_t* find_domain(const char *hostname) {
     return domain;
 }
 
-dns_entry_t *ziti_dns_lookup(const char *hostname) {
+static dns_entry_t *ziti_dns_lookup(const char *hostname) {
     char clean[MAX_DNS_NAME];
     bool is_wildcard;
     if (!check_name(hostname, clean, &is_wildcard) || is_wildcard) {

@@ -61,6 +61,7 @@ TEST_CASE("recycle ip", "[dns]") {
             break;
         }
         model_map_setl(ips, i, (ip_addr_t *)ip);
+        printf("%s --> %s\n", za.addr.hostname, ipaddr_ntoa(ip));
     }
 
     // pool should be at capacity now, with most recent hostname mapped
@@ -72,7 +73,16 @@ TEST_CASE("recycle ip", "[dns]") {
 
     // free up an IP and try again
     ziti_dns_deregister_intercept(model_map_getl(mock_services, 100));
-    CHECK(ziti_dns_register_hostname(&za, new ziti_service) != nullptr);
+    ip = ziti_dns_register_hostname(&za, new ziti_service);
+    CHECK(ip != nullptr);
+    CHECK_THAT(ipaddr_ntoa(ip), Catch::Equals("100.64.0.103"));
 
-    // todo verify active ips are not returned -- call ziti_dns_setup with dns_addr higher than ziti_dns.counter
+    // tun ip (.0.1), dns_ip (.0.2), network ip (.0.0), and broadcast ip (.0.255) should not be returned
+    // first ip should not be tun or dns ip
+    ip = static_cast<const ip_addr_t *>(model_map_getl(ips, 0));
+    CHECK_THAT(ipaddr_ntoa(ip), Catch::Equals("100.64.0.3"));
+
+    // last ip is not broadcast ip
+    ip = static_cast<const ip_addr_t *>(model_map_getl(ips, pool_size-1));
+    CHECK_THAT(ipaddr_ntoa(ip), Catch::Equals("100.64.0.254"));
 }
