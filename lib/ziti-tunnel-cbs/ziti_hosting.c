@@ -315,8 +315,6 @@ static void on_hosted_udp_server_data(uv_udp_t* handle, ssize_t nread, const uv_
     struct hosted_io_ctx_s *io_ctx = handle->data;
     if (nread > 0) {
         io_ctx->in_wreqs++;
-        ZITI_LOG(TRACE, "sending %zd bytes service[%s] client[%s] server[%s]", nread, io_ctx->service->service_name,
-                 ziti_conn_source_identity(io_ctx->client), io_ctx->server_dial_str);
         int zs = ziti_write(io_ctx->client, (uint8_t *) buf->base, nread, on_hosted_ziti_write, buf->base);
         if (zs != ZITI_OK) {
             ZITI_LOG(ERROR, "ziti_write failed: %s", ziti_errorstr(zs));
