@@ -140,6 +140,8 @@ typedef struct tunneler_sdk_options_s {
 
 extern port_range_t *parse_port_range(uint16_t low, uint16_t high);
 
+/** convert from string */
+void ziti_address_from_string(ziti_address *za, const char *hn_or_cidr);
 /** convert from internet address types */
 extern void ziti_address_from_in_addr(ziti_address *za, const struct in_addr *a);
 extern void ziti_address_from_in6_addr(ziti_address *za, const struct in6_addr *a);
