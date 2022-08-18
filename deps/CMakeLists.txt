@@ -14,7 +14,7 @@ endif()
 
 FetchContent_Declare(lwip
         GIT_REPOSITORY https://github.com/lwip-tcpip/lwip.git
-        GIT_TAG STABLE-2_1_0_RELEASE
+        GIT_TAG STABLE-2_1_3_RELEASE
         )
 FetchContent_GetProperties(lwip)
 if(NOT lwip_POPULATED)
