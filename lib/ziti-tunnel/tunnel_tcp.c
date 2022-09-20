@@ -236,6 +236,11 @@ int tunneler_tcp_close(struct tcp_pcb *pcb) {
     }
     tcp_arg(pcb, NULL);
     tcp_recv(pcb, NULL);
+    if (pcb->state <= ESTABLISHED) {
+        TNL_LOG(DEBUG, "closing connection before handshake complete. sending RST to client");
+        tcp_abandon(pcb, 1);
+        return -1;
+    }
     err_t err = tcp_close(pcb);
     if (err != ERR_OK) {
         LOG_STATE(ERR, "tcp_close failed; err=%d", pcb, err);
@@ -253,6 +258,10 @@ void tunneler_tcp_dial_completed(struct io_ctx_s *io, bool ok) {
 
     struct tcp_pcb *pcb = io->tnlr_io->tcp;
     tcp_arg(pcb, io);
+    if (!ok) {
+        TNL_LOG(VERBOSE, "ziti dial failed. not sending SYN to client.");
+        return;
+    }
     ip_set_option(pcb, SOF_KEEPALIVE);
     tcp_recv(pcb, on_tcp_client_data);
     tcp_err(pcb, on_tcp_client_err);
@@ -260,7 +269,7 @@ void tunneler_tcp_dial_completed(struct io_ctx_s *io, bool ok) {
     /* Send a SYN|ACK together with the MSS option. */
     err_t rc = tcp_enqueue_flags(pcb, TCP_SYN | TCP_ACK);
     if (rc != ERR_OK) {
-        tcp_abandon(pcb, 0);
+        tcp_abandon(pcb, 1);
         return;
     }
 
@@ -391,14 +400,8 @@ u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     void *ziti_io_ctx = zdial(intercept_ctx->app_intercept_ctx, io);
     if (ziti_io_ctx == NULL) {
         TNL_LOG(ERR, "ziti_dial(%s) failed", intercept_ctx->service_name);
-        free_tunneler_io_context(&io->tnlr_io);
+        ziti_tunneler_close(io->tnlr_io);
         free(io);
-        err_t rc = tcp_enqueue_flags(npcb, TCP_FIN);
-        if (rc != ERR_OK) {
-            tcp_abandon(npcb, 0);
-            goto done;
-        }
-        tcp_output(npcb);
     }
     /* now we wait for the tunneler app to call ziti_tunneler_dial_complete() */
 
