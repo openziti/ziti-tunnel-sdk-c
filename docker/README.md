@@ -2,7 +2,7 @@
 
 Run `ziti-edge-tunnel`, the C-SDK tunneler for Linux. `ziti-edge-tunnel` captures
 network traffic that is destined for Ziti services and proxies the packet payloads
-to the associated Ziti service. See the [README](README.md) and [the doc](https://openziti.github.io/ziti/clients/linux.html) for more details.
+to the associated Ziti service. See the [repo README](../README.md) and [the doc](https://openziti.github.io/ziti/clients/linux.html) for more details.
 
 This container image requires access to a Ziti enrollment token (JWT), and a persistent
 volume mounted at "/ziti-edge-tunnel" to save the configuration file that is created
