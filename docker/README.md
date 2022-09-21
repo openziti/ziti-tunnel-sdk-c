@@ -2,10 +2,10 @@
 
 Run `ziti-edge-tunnel`, the C-SDK tunneler for Linux. `ziti-edge-tunnel` captures
 network traffic that is destined for Ziti services and proxies the packet payloads
-to the associated Ziti service. See the [repo README](../README.md) and [the doc](https://openziti.github.io/ziti/clients/linux.html) for more details.
+to the associated Ziti service. See the [repo README](../README.md) and [the Linux tunneler doc](https://openziti.github.io/ziti/clients/linux.html) for more details.
 
 This container image requires access to a Ziti enrollment token (JWT), and a persistent
-volume mounted at "/ziti-edge-tunnel" to save the configuration file that is created
+volume mounted at `/ziti-edge-tunnel` to save the configuration file that is created
 when the one-time enrollment token is consumed.
 
 ## Variables
@@ -21,7 +21,7 @@ when the one-time enrollment token is consumed.
 
 ## Files
 
-The enrollment token (JWT) is typically mounted into the ziti-edge-tunnel container as a volume.
+The directory containing the enrollment token (JWT) file is typically mounted into the ziti-edge-tunnel container as a volume.
 The token must be in a file named `${NF_REG_NAME}.jwt` that must be in one of the
 following directories:
 
