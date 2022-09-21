@@ -2,25 +2,26 @@
 
 Run `ziti-edge-tunnel`, the C-SDK tunneler for Linux. `ziti-edge-tunnel` captures
 network traffic that is destined for Ziti services and proxies the packet payloads
-to the associated Ziti service. See the [README](README.md) for more details.
+to the associated Ziti service. See the [README](README.md) and [the doc](https://openziti.github.io/ziti/clients/linux.html) for more details.
 
-This image requires access to a Ziti enrollment token (JWT), and a persistent
+This container image requires access to a Ziti enrollment token (JWT), and a persistent
 volume mounted at "/ziti-edge-tunnel" to save the configuration file that is created
 when the one-time enrollment token is consumed.
 
 ## Variables
 
-- `NF_REG_NAME`: The name of the identity that ziti-tunnel will assume.
+- `NF_REG_NAME`: Required: This is the basename of the identity config JSON file that ziti-edge-tunnel will use.
+- `NF_REG_TOKEN`: Optional if `${NF_REG_NAME}.jwt` is provided: This is the JWT as a string
+- `NF_REG_WAIT`: Optional: max seconds to wait for the JWT or JSON file to appear
 
 ## Volumes
 
-- `/ziti-edge-tunnel`: Configuration files that result from enrollment will be stored
-  here. This volume should be persistent unless you don't mind losing the key for
-  your enrollment token.
+- `/ziti-edge-tunnel`: The permanent identity configuration JSON file that results from enrollment will be stored
+  here. This volume should be persistent.
 
 ## Files
 
-The enrollment token (jwt) must be mounted into the ziti-edge-tunnel container as a volume.
+The enrollment token (JWT) is typically mounted into the ziti-edge-tunnel container as a volume.
 The token must be in a file named `${NF_REG_NAME}.jwt` that must be in one of the
 following directories:
 
@@ -29,35 +30,33 @@ following directories:
 
 ## Examples
 
-### Docker
+Transparent Proxy `run` mode
 
-The ziti-tunnel image can be used in a vanilla Docker environment.
+```bash
+mkdir ./ziti_id
+cp ~/Downloads/ziti_id.jwt ./ziti_id
+docker pull openziti/ziti-edge-tunnel
+docker run \
+    --name ziti-tproxy \
+    --network host \
+    --privileged \
+    --volume ${PWD}:/ziti-edge-tunnel \
+    --volume "/var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket" \
+    --device "/dev/net/tun:/dev/net/tun" \
+    --env NF_REG_NAME=ziti_id \
+    openziti/ziti-edge-tunnel
+```
 
-    $ mkdir ./ziti_id
-    $ cp ~/Downloads/ziti_id.jwt ./ziti_id
-    $ docker pull netfoundry/ziti-edge-tunnel:latest
-    $ docker run \
-        --name ziti-edge-tunnel \
-        --network=host \
-        --cap-add=NET_ADMIN \
-        --volume $(pwd)/ziti_id:/ziti-edge-tunnel \
-        --device="/dev/net/tun:/dev/net/tun" \
-        --env NF_REG_NAME=ziti_id \
-        netfoundry/ziti-edge-tunnel:latest
+Service Bind `run-host` mode is useful for publishing a server to the OpenZiti Network
 
-Notes:
+```bash
+docker run \
+    --name ziti-host \
+    --network host \
+    --volume ${PWD}:/ziti-edge-tunnel \
+    --env NF_REG_NAME=ziti_id \
+    openziti/ziti-edge-tunnel \
+    run-host
+```
 
-- The container that runs ziti-edge-tunnel will only be able to intercept traffic for
-  other processes within the same container, unless the container uses the "host"
-  network mode.
-- The container requires NET_ADMIN capability to address the tun device.
-- The `NF_REG_NAME` environment variable must be set to the name of the ziti
-  identity that ziti-edge-tunnel will assume when connecting to the controller.
-- The "/ziti-edge-tunnel" directory must be mounted on its own volume.
-  - The one-time enrollment token "/ziti-edge-tunnel/${NF_REG_NAME}.jwt" must exist when
-    the container is started for the first time. This is the JWT that was downloaded
-    from the controller when the Ziti identity was created.
-  - "/ziti-edge-tunnel/${NF_REG_NAME}.json" is created when the identity is enrolled.
-    The "/ziti-edge-tunnel" volume must be persistent (that is, ${NF_REG_NAME}.json must
-    endure container restarts), since the enrollment token is only valid for one
-    enrollment.
+Please reference [the included Compose project](docker-compose.yml) for more examples.
