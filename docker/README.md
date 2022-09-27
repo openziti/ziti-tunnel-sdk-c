@@ -108,4 +108,6 @@ This example uses the included Docker Compose project to illustrate publishing a
     NF_REG_NAME=DockerHost docker-compose up --detach ziti-host
     ```
 
+1. Access the demo server via your OpenZiti Network: http://hello-docker.ziti
+
 Please reference [the included Compose project](docker-compose.yml) for examples that exercise the various options and run modes.
