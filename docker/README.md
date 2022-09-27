@@ -26,7 +26,7 @@ when the one-time enrollment token is consumed.
 ## Files
 
 The directory containing the enrollment token (JWT) file is typically mounted as a volume.
-The token must be in a file named `${NF_REG_NAME}.jwt`.
+The token must be in a file named `${NF_REG_NAME}.jwt`. After the first run there will be an additional file name `${NF_REG_NAME}.json`, the permanent identity configuration JSON file. This file contains the private key and user certificate.
 
 ## Examples
 
