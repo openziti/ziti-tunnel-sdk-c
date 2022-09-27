@@ -105,8 +105,6 @@ const ziti_address *address_match(const ziti_address *addr, const address_list_t
     address_t *a;
     const ziti_address *best_addr = NULL;
     int score, best_score = -1;
-    char addr_str[256];
-    ziti_address_print(addr_str, sizeof(addr_str), addr);
 
     STAILQ_FOREACH(a, addresses, entries) {
         if (ziti_address_match(addr, &a->za)) {

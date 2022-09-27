@@ -1505,13 +1505,21 @@ static char* ipc_cmd_buffered(ipc_cmd_ctx_t *ipc_cmd_ctx_new) {
 static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, const char *ip_range, const char *dns_upstream) {
     netif_driver tun;
     char tun_error[64];
-#if __APPLE__ && __MACH__
-    tun = utun_open(tun_error, sizeof(tun_error), ip_range);
-#elif __linux__
-    tun = tun_open(ziti_loop, tun_ip, dns_ip, ip_range, tun_error, sizeof(tun_error));
-#elif _WIN32
-    tun = tun_open(ziti_loop, tun_ip, ip_range, tun_error, sizeof(tun_error));
 
+    // remove the host bits from the dns cidr so added routes are valid
+    char dns_subnet[64];
+    ziti_address dns_subnet_zaddr;
+    ziti_address_from_string(&dns_subnet_zaddr, ip_range);
+    struct in_addr *dns_subnet_in = (struct in_addr *)&dns_subnet_zaddr.addr.cidr.ip;
+    uint32_t dns_subnet_u32 = ntohl(dns_subnet_in->s_addr) & (0xFFFFFFFFUL << (32 - dns_subnet_zaddr.addr.cidr.bits)) & 0xFFFFFFFFUL;
+    ip_addr_t dns_ip4_addr = IPADDR4_INIT(htonl(dns_subnet_u32));
+    snprintf(dns_subnet, sizeof(dns_subnet), "%s/%d", ipaddr_ntoa(&dns_ip4_addr), dns_subnet_zaddr.addr.cidr.bits);
+#if __APPLE__ && __MACH__
+    tun = utun_open(tun_error, sizeof(tun_error), dns_subnet);
+#elif __linux__
+    tun = tun_open(ziti_loop, tun_ip, dns_ip, dns_subnet, tun_error, sizeof(tun_error));
+#elif _WIN32
+    tun = tun_open(ziti_loop, tun_ip, dns_subnet, tun_error, sizeof(tun_error));
 #else
 #error "ziti-edge-tunnel is not supported on this system"
 #endif
@@ -1801,7 +1809,6 @@ static void run(int argc, char *argv[]) {
 
     uint32_t tun_ip;
     uint32_t dns_ip;
-    char* dns_range = calloc(sizeof(char), 32);
 
     if (!is_host_only()) {
         if (configured_cidr == NULL) {
@@ -1830,10 +1837,6 @@ static void run(int argc, char *argv[]) {
 
         tun_ip = htonl(mask);
         dns_ip = htonl(mask + 1);
-        uint32_t dns_nw_addr = mask & (0xFFFFFFFFUL << (32 - bits)) & 0xFFFFFFFFUL;
-
-        ip_addr_t dns_ip4_addr = IPADDR4_INIT(htonl(dns_nw_addr));
-        snprintf(dns_range, 32, "%s/%d", ipaddr_ntoa(&dns_ip4_addr), bits);
 
         // set ip info into instance
         set_ip_info(dns_ip, tun_ip, bits);
@@ -1890,7 +1893,7 @@ static void run(int argc, char *argv[]) {
     if (is_host_only()) {
         rc = run_tunnel_host_mode(ziti_loop);
     } else {
-        rc = run_tunnel(ziti_loop, tun_ip, dns_ip, dns_range, dns_upstream);
+        rc = run_tunnel(ziti_loop, tun_ip, dns_ip, configured_cidr, dns_upstream);
     }
     exit(rc);
 }
