@@ -14,7 +14,7 @@ when the one-time enrollment token is consumed.
 
 ## Variables
 
-- `NF_REG_NAME`: Required: This is the basename of the identity config JSON file that ziti-edge-tunnel will use.
+- `NF_REG_NAME`: Required: This is the basename of the enrollment (.jwt) and identity (.json) files the tunneler will use
 - `NF_REG_TOKEN`: Optional if `${NF_REG_NAME}.jwt` is provided: This is the JWT as a string
 - `NF_REG_WAIT`: Optional: max seconds to wait for the JWT or JSON file to appear
 
