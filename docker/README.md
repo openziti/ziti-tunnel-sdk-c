@@ -66,46 +66,46 @@ This example uses the included Docker Compose project to illustrate publishing a
 
 1. Create an OpenZiti Config with type `intercept.v1`.
 
-  ```json
-  {
-      "addresses": [
-          "hello-docker.ziti"
-      ],
-      "protocols": [
-          "tcp"
-      ],
-      "portRanges": [
-          {
-          "low": 80,
-          "high": 80
-          }
-      ]
-  }
-  ```
+    ```json
+    {
+        "addresses": [
+            "hello-docker.ziti"
+        ],
+        "protocols": [
+            "tcp"
+        ],
+        "portRanges": [
+            {
+            "low": 80,
+            "high": 80
+            }
+        ]
+    }
+    ```
 
 1. Create an OpenZiti Config with type `host.v1`
 
-  ```json
-  {
-      "port": 80,
-      "address": "hello",
-      "protocol": "tcp"
-  }
-  ```
+    ```json
+    {
+        "port": 80,
+        "address": "hello",
+        "protocol": "tcp"
+    }
+    ```
 
 1. Create an identity named like "DockerHost" and download the enrollment token in the same directory as `docker-compose.yml` i.e. "DockerHost.jwt"
 1. Create a Bind service policy assigning service binding to @DockerHost
 1. Create a Dial service policy granting access to your client tunneler's identity
 1. Run the demo server
 
-  ```bash
-  docker-compose up --detach hello
-  ```
+    ```bash
+    docker-compose up --detach hello
+    ```
 
 1. Run the tunneler
 
-  ```bash
-  NF_REG_NAME=DockerHost docker-compose up --detach ziti-host
-  ```
+    ```bash
+    NF_REG_NAME=DockerHost docker-compose up --detach ziti-host
+    ```
 
 Please reference [the included Compose project](docker-compose.yml) for examples that exercise the various options and run modes.
