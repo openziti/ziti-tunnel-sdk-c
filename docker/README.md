@@ -26,11 +26,7 @@ when the one-time enrollment token is consumed.
 ## Files
 
 The directory containing the enrollment token (JWT) file is typically mounted as a volume.
-The token must be in a file named `${NF_REG_NAME}.jwt` that must be in one of the
-following directories:
-
-- `/ziti-edge-tunnel`: This would be used when running in the Docker engine (or IoT Edge).
-   This could be a bind mount or a Docker volume.
+The token must be in a file named `${NF_REG_NAME}.jwt`.
 
 ## Examples
 
@@ -93,9 +89,11 @@ This example uses the included Docker Compose project to illustrate publishing a
     }
     ```
 
+1. Create a service associating the two configs with a role attribute like "#HelloServices"
+1. Create an identity for your client tunneler named like "MyClient" and load the identity
 1. Create an identity named like "DockerHost" and download the enrollment token in the same directory as `docker-compose.yml` i.e. "DockerHost.jwt"
-1. Create a Bind service policy assigning service binding to @DockerHost
-1. Create a Dial service policy granting access to your client tunneler's identity
+1. Create a Bind service policy assigning "#HelloServices" to be bound by "@DockerHost"
+1. Create a Dial service policy granting access to "#HelloServices" to your client tunneler's identity "@MyClient"
 1. Run the demo server
 
     ```bash
