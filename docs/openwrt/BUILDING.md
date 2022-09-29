@@ -23,6 +23,6 @@ in the example below:
 ```shell
 $ mkdir /tmp/my-ziti-build
 $ cd /tmp/my-ziti-build
-$ ${ZITI_TUN_SRC_DIR}/script/openwrt-build.sh -s ${OPENWRT_DIR}
+$ ${ZITI_TUN_SRC_DIR}/scripts/openwrt-build.sh -s ${OPENWRT_DIR}
 ```
 

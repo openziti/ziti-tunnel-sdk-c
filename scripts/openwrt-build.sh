@@ -83,7 +83,7 @@ set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
 
 EOF
 
-CMAKE_OPTS="-DEXCLUDE_LIBSYSTEMD_RESOLVER -DCMAKE_C_FLAGS=-I${target_dir}/usr/include"
+CMAKE_OPTS="-DEXCLUDE_LIBSYSTEMD_RESOLVER=on -DCMAKE_C_FLAGS=-I${target_dir}/usr/include"
 
 if [ -x /usr/bin/ninja ]; then
   CMAKE_OPTS="$CMAKE_OPTS -G Ninja"
