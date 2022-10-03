@@ -80,11 +80,15 @@ Once the Ziti Tunneler SDK is initialized with a network device and ziti-sdk
 callbacks, a tunneler application only needs to indiciate which service(s)
 that should be  
 
-## Multi-Platform Linux Builder Container
+## Run with Docker
+
+Please refer to [the Docker README](./docker/README.md) for instructions to run `ziti-edge-tunnel` with Docker.
+
+## Multi-Platform Linux Crossbuild Container
 
 The purpose of this container is to document the process of building locally the Linux executables in the same way as the GitHub Actions workflow (CI). By default, this produces executables for each supported platform architecture: amd64, arm64. You may instead build for a particular architecture only by specifying the architecture as a parameter to the `docker run` command as shown below.
 
-### Build the Container Image
+### Build the Linux Crossbuild Container Image
 
 You only need to build the container image once unless you change the Dockerfile or `./docker/linux-build.sh` (the container's entrypoint).
 
@@ -97,7 +101,7 @@ docker build \
     --build-arg gid=$GID .
 ```
 
-### Run the Container to Build Executables for the Desired Architecture(s)
+### Run the Linux Crossbuild Container
 
 Executing the following `docker run` command will:
 1. Mount the top-level of this repo on the container's `/mnt`
