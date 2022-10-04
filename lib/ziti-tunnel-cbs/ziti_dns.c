@@ -778,6 +778,7 @@ static void complete_dns_req(struct dns_req *req) {
     model_map_remove_key(&ziti_dns.requests, &req->id, sizeof(req->id));
     if (req->clt) {
         ziti_tunneler_write(req->clt->io_ctx->tnlr_io, req->resp, req->resp_len);
+        on_dns_close(req->clt->io_ctx->ziti_io);
         LIST_REMOVE(req, _next);
     } else {
         ZITI_LOG(WARN, "query[%04x] is stale", req->id);
