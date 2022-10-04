@@ -114,10 +114,6 @@ static void sd_bus_error_free_wrapper(sd_bus_error *e) {
     sd_bus_error_free_f(e);
 }
 
-static void free_buffer(char **buffer) {
-   free(*buffer);
-}
-
 // This replicates the functionality of
 // sd_bus_call_methodv introduced in
 // LIBSYSTEMD_246
@@ -425,7 +421,8 @@ bool is_systemd_resolved_primary_resolver(void){
             "/lib/systemd/resolv.conf"
         };
 
-        _cleanup_(free_buffer) char *actualpath = realpath("/etc/resolv.conf", NULL);
+        char buf[PATH_MAX];
+        char *actualpath = realpath("/etc/resolv.conf", buf);
 
         if (actualpath != NULL) {
             for (int idx = 0; idx < (sizeof(valid_links) / sizeof(valid_links[0])); idx++) {
@@ -442,7 +439,9 @@ bool is_systemd_resolved_primary_resolver(void){
 
 bool is_resolvconf_systemd_resolved(void) {
     if (is_symlink(RESOLVCONF)) {
-        _cleanup_(free_buffer) char *actualpath = realpath(RESOLVCONF, NULL);
+        char buf[PATH_MAX];
+        char *actualpath = realpath(RESOLVCONF, buf);
+
         if (actualpath != NULL) {
             char *file_base = basename(actualpath);
             if (strcmp(file_base, basename(RESOLVECTL)) == 0
