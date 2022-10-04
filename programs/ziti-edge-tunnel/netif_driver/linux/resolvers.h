@@ -16,10 +16,18 @@
 
 #include <stdbool.h>
 
+#ifndef BUSCTL
 #define BUSCTL "/usr/bin/busctl"
+#endif
+#ifndef RESOLVCONF
 #define RESOLVCONF "/usr/sbin/resolvconf"
+#endif
+#ifndef RESOLVECTL
 #define RESOLVECTL "/usr/bin/resolvectl"
+#endif
+#ifndef SYSTEMD_RESOLVE
 #define SYSTEMD_RESOLVE "/usr/bin/systemd-resolve"
+#endif
 
 #ifndef RESOLVED_DBUS_NAME
 #define RESOLVED_DBUS_NAME "org.freedesktop.resolve1"

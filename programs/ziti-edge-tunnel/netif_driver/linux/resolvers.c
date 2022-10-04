@@ -14,6 +14,7 @@
  limitations under the License.
  */
 
+#include <libgen.h>
 #include <limits.h>
 #include <stdbool.h>
 #include <stdlib.h>
@@ -111,6 +112,10 @@ static void sd_bus_message_unrefp_f(sd_bus_message **p) {
 // Added to work around preprocessor time symbols missing
 static void sd_bus_error_free_wrapper(sd_bus_error *e) {
     sd_bus_error_free_f(e);
+}
+
+static void free_buffer(char **buffer) {
+   free(*buffer);
 }
 
 // This replicates the functionality of
@@ -405,7 +410,7 @@ void dns_update_resolvconf(const char* tun, unsigned int ifindex, const char* ad
 }
 
 void dns_update_etc_resolv(const char* tun, unsigned int ifindex, const char* addr) {
-    if (run_command("grep -q '^nameserver %s' /etc/resolv.conf", addr) != 0) {
+    if (run_command_ex(false, "grep -q '^nameserver %s' /etc/resolv.conf", addr) != 0) {
         run_command("sed -z -i 's/nameserver/nameserver %s\\nnameserver/' /etc/resolv.conf", addr);
     }
 }
@@ -420,8 +425,7 @@ bool is_systemd_resolved_primary_resolver(void){
             "/lib/systemd/resolv.conf"
         };
 
-        char buf[PATH_MAX];
-        char *actualpath = realpath("/etc/resolv.conf", buf);
+        _cleanup_(free_buffer) char *actualpath = realpath("/etc/resolv.conf", NULL);
 
         if (actualpath != NULL) {
             for (int idx = 0; idx < (sizeof(valid_links) / sizeof(valid_links[0])); idx++) {
@@ -438,10 +442,12 @@ bool is_systemd_resolved_primary_resolver(void){
 
 bool is_resolvconf_systemd_resolved(void) {
     if (is_symlink(RESOLVCONF)) {
-        char buf[PATH_MAX];
-        char *actualpath = realpath(RESOLVCONF, buf);
+        _cleanup_(free_buffer) char *actualpath = realpath(RESOLVCONF, NULL);
         if (actualpath != NULL) {
-            if (strcmp(actualpath, RESOLVECTL) == 0 || strcmp(actualpath, SYSTEMD_RESOLVE) == 0) {
+            char *file_base = basename(actualpath);
+            if (strcmp(file_base, basename(RESOLVECTL)) == 0
+                || strcmp(file_base, basename(SYSTEMD_RESOLVE)) == 0) {
+                ZITI_LOG(DEBUG, "Detected %s is a symlink to systemd-resolved.", actualpath);
                 return true;
             }
         }
