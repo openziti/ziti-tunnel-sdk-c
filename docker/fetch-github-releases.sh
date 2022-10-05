@@ -49,15 +49,19 @@ esac
 
 host_os=$(uname -s)
 case "${host_os}" in
-"Linux") artifact_os="Linux";;
-"Darwin") artifact_os="Darwin";;
-#"Windows") artifact_os="windows";; # Windows bins do not exist
+    "Linux") artifact_os="Linux";;
+    "Darwin") artifact_os="Darwin";;
+    #"Windows") artifact_os="windows";; # Windows bins do not exist
 *) echo "ERROR: ziti binaries do not exist for os ${host_os}"; exit 1;;
 esac
 
 for exe in "${@}"; do
     zip="${exe}-${artifact_os}_${artifact_arch}.zip"
-    url="${GITHUB_BASE_URL}/${GITHUB_REPO}/releases/download/${ZITI_VERSION}/${zip}"
+    case "${ZITI_VERSION}" in
+        "latest") url="${GITHUB_BASE_URL}/${GITHUB_REPO}/releases/${ZITI_VERSION}/download/${zip}" ;;
+        *)        url="${GITHUB_BASE_URL}/${GITHUB_REPO}/releases/download/${ZITI_VERSION}/${zip}" ;;
+    esac
+    
     echo "Fetching ${zip} from ${url}"
     rm -f "${zip}" "${exe}"
     if { command -v curl > /dev/null; } 2>&1; then

@@ -1,7 +1,7 @@
 version: "3.9"
 
 x-base-service: &base-service
-    image: openziti/ziti-edge-tunnel:latest
+    image: openziti/ziti-edge-tunnel
     devices:
     - /dev/net/tun:/dev/net/tun
     volumes:
@@ -9,7 +9,7 @@ x-base-service: &base-service
     - /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket
     environment:
     - NF_REG_NAME                 # inherit when run like this: NF_REG_NAME=AcmeIdentity docker-compose up ziti-tun
-    - NF_REG_TOKEN                # NF_REG_NAME=AcmeIdentity NF_REG_TOKEN={JWT} docker-compose up ziti-host
+    - NF_REG_TOKEN                # NF_REG_NAME=AcmeIdentity NF_REG_TOKEN={JWT} docker-compose up ziti-tun
     - PFXLOG_NO_JSON=true         # suppress JSON logging
     network_mode: host            # use the Docker host's network, not the Docker bridge
     privileged: true
@@ -34,7 +34,7 @@ services:
         entrypoint: ["sh", "-c", "while true; do sleep infinity; done"]
 
     ziti-host:                    # tunneler for hosting services without providing DNS or IP routes
-        image: openziti/ziti-edge-tunnel:latest
+        image: openziti/ziti-edge-tunnel
         environment:
         - NF_REG_NAME
         - NF_REG_TOKEN
@@ -48,7 +48,7 @@ services:
         - --verbose=4
 
     ziti-host-wait:               # tunneler for hosting services that waits forever for the identity to become available
-        image: openziti/ziti-edge-tunnel:latest
+        image: openziti/ziti-edge-tunnel
         environment:
         - NF_REG_NAME
         - NF_REG_WAIT=-1          # optional seconds to wait for identity (or token) to become available, negative value is wait forever
@@ -62,7 +62,7 @@ services:
         - --verbose=4
 
     ziti-host-dir:                # tunneler for hosting services without providing DNS or IP routes
-        image: openziti/ziti-edge-tunnel:latest
+        image: openziti/ziti-edge-tunnel
         environment: []           # ignore NF_REG_NAME and load all identities in same dir
         volumes:
         - .:/ziti-edge-tunnel
