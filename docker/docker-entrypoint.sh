@@ -36,14 +36,46 @@ if ! [[ -d "${IDENTITIES_DIR}" ]]; then
 fi
 
 if ! mountpoint "${IDENTITIES_DIR}" &>/dev/null; then
-    echo "WARN: the identities directory only available inside this container because ${IDENTITIES_DIR} is not a mounted volume. Be careful to not publish this image with identity inside or lose access to the identity by removing the image prematurely." >&2
+    echo "WARN: the identities directory is only available inside this container because ${IDENTITIES_DIR} is not a mounted volume. Be careful to not publish this image with identity inside or lose access to the identity by removing the image prematurely." >&2
 fi
 
-# IOTEDGE_DEVICEID is a standard var assigned by Azure IoT
+#
+## Map preferred, Ziti var names to legacy NF names. This allows us to begin using the preferred vars right away 
+##  while minimizing immediate differences to the main control structure. This eases code review. Later, the legacy
+##  names can be retired and replaced.
+#
+if [[ -n "${ZITI_IDENTITY_BASENAME:-}" ]]; then
+    echo "INFO: setting NF_REG_NAME to \${ZITI_IDENTITY_BASENAME} (${ZITI_IDENTITY_BASENAME})"
+    NF_REG_NAME="${ZITI_IDENTITY_BASENAME}"
+fi
+if [[ -n "${ZITI_ENROLL_TOKEN:-}" ]]; then
+    echo "INFO: setting NF_REG_TOKEN to \${ZITI_ENROLL_TOKEN} (${ZITI_ENROLL_TOKEN})"
+    NF_REG_TOKEN="${ZITI_ENROLL_TOKEN}"
+fi
+if [[ -n "${ZITI_IDENTITY_WAIT:-}" ]]; then
+    echo "INFO: setting NF_REG_WAIT to \${ZITI_IDENTITY_WAIT} (${ZITI_IDENTITY_WAIT})"
+    NF_REG_WAIT="${ZITI_IDENTITY_WAIT}"
+fi
+
+# treat IOTEDGE_DEVICEID, a standard var assigned by Azure IoT, as an alias for NF_REG_NAME
 if [[ -z "${NF_REG_NAME:-}" ]]; then
     if [[ -n "${IOTEDGE_DEVICEID:-}" ]]; then
         echo "INFO: setting NF_REG_NAME to \${IOTEDGE_DEVICEID} (${IOTEDGE_DEVICEID})"
         NF_REG_NAME="${IOTEDGE_DEVICEID}"
+    fi
+fi
+
+# if identity JSON var is defined then write to a file
+if [[ -n "${ZITI_IDENTITY_JSON:-}" ]]; then
+    # if the basename is not defined then use a default basename to write JSON to a file
+    if [[ -z "${NF_REG_NAME:-}" ]]; then
+        NF_REG_NAME="ziti_id"
+    fi
+    if [[ -s "${IDENTITIES_DIR}/${NF_REG_NAME}.json" ]]; then
+        echo "ERROR: refusing to clobber non-empty Ziti identity file ${NF_REG_NAME}.json with contents of env var ZITI_IDENTITY_JSON!" >&2
+        exit 1
+    else
+        echo "${ZITI_IDENTITY_JSON}" > "${IDENTITIES_DIR}/${NF_REG_NAME}.json"
     fi
 fi
 
@@ -69,7 +101,9 @@ if [[ -n "${NF_REG_NAME:-}" ]]; then
         # look for enrollment token
         else
             echo "INFO: identity file ${IDENTITY_FILE} does not exist"
-            for dir in "/var/run/secrets/netfoundry.io/enrollment-token" "${IDENTITIES_DIR}"; do
+            for dir in  "/var/run/secrets/netfoundry.io/enrollment-token" \
+                        "/enrollment-token" \
+                        "${IDENTITIES_DIR}"; do
                 JWT_CANDIDATE="${dir}/${NF_REG_NAME}.jwt"
                 echo "INFO: looking for ${JWT_CANDIDATE}"
                 if [[ -s "${JWT_CANDIDATE}" ]]; then
