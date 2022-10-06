@@ -317,6 +317,7 @@ static void setTunnelServiceAddress(tunnel_service *tnl_svc, ziti_service *servi
         n = model_list_size(&cfg_v1.port_ranges);
         tnl_port_range_arr = calloc(n+1, sizeof(tunnel_port_range *));
         ziti_port_range *pr;
+        i = 0;
         MODEL_LIST_FOREACH(pr, cfg_v1.port_ranges) {
             tnl_port_range_arr[i++] = getTunnelPortRange(pr);
         }
