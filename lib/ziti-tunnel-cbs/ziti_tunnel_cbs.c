@@ -422,10 +422,11 @@ static const ziti_address *intercept_match_addr(ip_addr_t *addr, void *ctx) {
         ziti_intercept_cfg_v1 *cfg = &zi_ctx->cfg.intercept_v1;
         const char *domain = ziti_dns_reverse_lookup_domain(addr);
         if (domain) {
-            for (int i = 0; cfg->addresses[i] != NULL; i++) {
-                if (cfg->addresses[i]->type != ziti_address_hostname) continue;
-                if (ziti_address_match_s(domain, cfg->addresses[i])) {
-                    return cfg->addresses[i];
+            const ziti_address *zaddr;
+            MODEL_LIST_FOREACH(zaddr, cfg->addresses) {
+                if (zaddr->type != ziti_address_hostname) continue;
+                if (ziti_address_match_s(domain, zaddr)) {
+                    return zaddr;
                 }
             }
         }
@@ -469,15 +470,18 @@ intercept_ctx_t *new_intercept_ctx(tunneler_context tnlr_ctx, ziti_intercept_t *
         case INTERCEPT_CFG_V1:
         {
             const ziti_intercept_cfg_v1 *config = &zi_ctx->cfg.intercept_v1;
-            for (i = 0; config->protocols[i] != NULL; i++) {
-                intercept_ctx_add_protocol(i_ctx, config->protocols[i]);
+            ziti_protocol *proto;
+            MODEL_LIST_FOREACH(proto, config->protocols) {
+                intercept_ctx_add_protocol(i_ctx, ziti_protocols.name(*proto));
             }
-            for (i = 0; config->addresses[i] != NULL; i++) {
-                intercept_addr = intercept_addr_from_cfg_addr(config->addresses[i], zi_ctx);
+            ziti_address *addr;
+            MODEL_LIST_FOREACH(addr, config->addresses) {
+                intercept_addr = intercept_addr_from_cfg_addr(addr, zi_ctx);
                 intercept_ctx_add_address(i_ctx, intercept_addr);
             }
-            for (i = 0; config->port_ranges[i] != NULL; i++) {
-                intercept_ctx_add_port_range(i_ctx, config->port_ranges[i]->low, config->port_ranges[i]->high);
+            ziti_port_range *pr;
+            MODEL_LIST_FOREACH(pr, config->port_ranges) {
+                intercept_ctx_add_port_range(i_ctx, pr->low, pr->high);
             }
         }
             break;

@@ -296,34 +296,30 @@ static void setTunnelServiceAddress(tunnel_service *tnl_svc, ziti_service *servi
         parse_ziti_intercept_cfg_v1(&cfg_v1, cfg_json, strlen(cfg_json));
 
         // set address
-        int idx = 0;
-        for(idx = 0; cfg_v1.addresses[idx]; idx++) {
-            // do nothing
-        }
-        tnl_addr_arr = calloc(idx+1, sizeof(tunnel_address *));
-        int address_idx;
-        for(address_idx=0; cfg_v1.addresses[address_idx]; address_idx++) {
-            ziti_address* addr = cfg_v1.addresses[address_idx];
-            tnl_addr_arr[address_idx] = to_address(addr);
+        size_t n = model_list_size(&cfg_v1.addresses);
+        tnl_addr_arr = calloc(n+1, sizeof(tunnel_address *));
+        const ziti_address *zaddr;
+        int i = 0;
+        MODEL_LIST_FOREACH(zaddr, cfg_v1.addresses) {
+            tnl_addr_arr[i++] = to_address(zaddr);
         }
 
-        for(idx = 0; cfg_v1.protocols[idx]; idx++) {
-            // do nothing
-        }
         // set protocols
-        protocols = calloc(idx+1, sizeof(char*));
-        int protocol_idx;
-        for(protocol_idx=0; cfg_v1.protocols[protocol_idx]; protocol_idx++) {
-            protocols[protocol_idx] = strdup(cfg_v1.protocols[protocol_idx]);
+        n = model_list_size(&cfg_v1.protocols);
+        protocols = calloc(n+1, sizeof(char*));
+        ziti_protocol *proto;
+        i = 0;
+        MODEL_LIST_FOREACH(proto, cfg_v1.protocols) {
+            protocols[i++] = strdup(ziti_protocols.name(*proto));
         }
 
         // set ports
-        for(idx = 0; cfg_v1.port_ranges[idx]; idx++) {
-            // do nothing
-        }
-        tnl_port_range_arr = calloc(idx+1, sizeof(tunnel_port_range *));
-        for(int port_idx = 0; cfg_v1.port_ranges[port_idx]; port_idx++) {
-            tnl_port_range_arr[port_idx] = getTunnelPortRange(cfg_v1.port_ranges[port_idx]);
+        n = model_list_size(&cfg_v1.port_ranges);
+        tnl_port_range_arr = calloc(n+1, sizeof(tunnel_port_range *));
+        ziti_port_range *pr;
+        i = 0;
+        MODEL_LIST_FOREACH(pr, cfg_v1.port_ranges) {
+            tnl_port_range_arr[i++] = getTunnelPortRange(pr);
         }
 
         free_ziti_intercept_cfg_v1(&cfg_v1);
@@ -339,8 +335,8 @@ static void setTunnelServiceAddress(tunnel_service *tnl_svc, ziti_service *servi
         // set protocols
         protocols = calloc(3, sizeof(char *));
         int idx = 0;
-        protocols[idx++] = strdup("TCP");
-        protocols[idx] = strdup("UDP");
+        protocols[idx++] = strdup("tcp");
+        protocols[idx] = strdup("udp");
 
         // set port range
         // set ports
