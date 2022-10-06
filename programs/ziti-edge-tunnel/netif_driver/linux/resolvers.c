@@ -14,6 +14,7 @@
  limitations under the License.
  */
 
+#include <libgen.h>
 #include <limits.h>
 #include <stdbool.h>
 #include <stdlib.h>
@@ -405,7 +406,7 @@ void dns_update_resolvconf(const char* tun, unsigned int ifindex, const char* ad
 }
 
 void dns_update_etc_resolv(const char* tun, unsigned int ifindex, const char* addr) {
-    if (run_command("grep -q '^nameserver %s' /etc/resolv.conf", addr) != 0) {
+    if (run_command_ex(false, "grep -q '^nameserver %s' /etc/resolv.conf", addr) != 0) {
         run_command("sed -z -i 's/nameserver/nameserver %s\\nnameserver/' /etc/resolv.conf", addr);
     }
 }
@@ -440,8 +441,12 @@ bool is_resolvconf_systemd_resolved(void) {
     if (is_symlink(RESOLVCONF)) {
         char buf[PATH_MAX];
         char *actualpath = realpath(RESOLVCONF, buf);
+
         if (actualpath != NULL) {
-            if (strcmp(actualpath, RESOLVECTL) == 0 || strcmp(actualpath, SYSTEMD_RESOLVE) == 0) {
+            char *file_base = basename(actualpath);
+            if (strcmp(file_base, basename(RESOLVECTL)) == 0
+                || strcmp(file_base, basename(SYSTEMD_RESOLVE)) == 0) {
+                ZITI_LOG(DEBUG, "Detected %s is a symlink to systemd-resolved.", actualpath);
                 return true;
             }
         }

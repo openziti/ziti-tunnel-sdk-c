@@ -152,7 +152,7 @@ static void ziti_dump_to_file(void *ctx, char* outputFile) {
     fp = fopen(outputFile, "w+");
     if(fp == NULL)
     {
-        ZITI_LOG(ERROR, "ziti dump to file failed. Unable to Read / Write / Create File");
+        ZITI_LOG(ERROR, "Could not acquire file pointer of dump file: %s - %s", outputFile, strerror(errno));
         return;
     }
     uv_timeval64_t dump_time;

@@ -236,7 +236,7 @@ static void find_dns_updater() {
                 dns_updater = dns_update_systemd_resolve;
                 return;
             } else {
-                ZITI_LOG(ERROR, "Could not find a way to configure systemd-resolved");
+                ZITI_LOG(WARN, "Could not find a way to configure systemd-resolved");
                 exit(1);
             }
         }
