@@ -37,10 +37,14 @@ fi
 
 if ! mountpoint "${IDENTITIES_DIR}" &>/dev/null; then
     echo "WARN: the identities directory is only available inside this container because ${IDENTITIES_DIR} is not a mounted volume. Be careful to not publish this image with identity inside or lose access to the identity by removing the image prematurely." >&2
+else
+    if [[ -n "${ZITI_IDENTITY_JSON:-}" ]]; then
+        echo "WARNING: you supplied the Ziti identity as an env var and you mounted a volume on the identities dir. You may avoid this warning and future errors by not mounting a volume on ${IDENTITIES_DIR} when ZITI_IDENTITY_JSON is defined." >&2
+    fi
 fi
 
 #
-## Map preferred, Ziti var names to legacy NF names. This allows us to begin using the preferred vars right away 
+## Map the preferred, Ziti var names to legacy NF names. This allows us to begin using the preferred vars right away 
 ##  while minimizing immediate differences to the main control structure. This eases code review. Later, the legacy
 ##  names can be retired and replaced.
 #
