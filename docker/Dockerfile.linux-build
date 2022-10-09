@@ -1,7 +1,7 @@
 FROM debian:sid-slim
 #
 # this file mirrors the build params used in the GitHub Actions and enables
-# reproducible builds for downstream forks for Ziti contributors 
+# reproducible crossbuilds for downstream forks for Ziti contributors 
 #
 # usage
 # docker run with top-level of tunneler SDK repo mounted as writeable volume on /mnt

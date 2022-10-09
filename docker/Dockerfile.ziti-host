@@ -1,0 +1,48 @@
+# this builds docker.io/openziti/ziti-host
+FROM registry.access.redhat.com/ubi8/ubi as fetch-ziti-artifacts
+# This build stage grabs artifacts that are copied into the final image.
+# It uses the same base as the final image to maximize docker cache hits.
+
+ARG ZITI_VERSION
+
+ARG GITHUB_BASE_URL="https://github.com/openziti"
+# to fetch snapshots from the "feature-0.5" branch, set GITHUB_REPO="ziti-snapshot/feature-0.5"
+ARG GITHUB_REPO="ziti-tunnel-sdk-c"
+
+WORKDIR /tmp
+
+RUN yum install -y curl unzip
+
+COPY fetch-github-releases.sh .
+RUN bash ./fetch-github-releases.sh ziti-edge-tunnel
+
+################
+#
+#  Main Image
+#
+################
+
+FROM registry.access.redhat.com/ubi8/ubi
+
+MAINTAINER OpenZiti Developers <developers@openziti.org>
+
+### Required OpenShift Labels 
+LABEL name="openziti/ziti-host" \
+      maintainer="developers@openziti.org" \
+      vendor="NetFoundry" \
+      summary="OpenZiti hosting tunneler" \
+      description="Publish any server that is reachable by this container as an OpenZiti service"
+    #   version="0.2.2" \
+    #   release="0.19.11" \
+
+### add licenses to this directory
+COPY ./LICENSE /licenses
+
+RUN mkdir -p /usr/local/bin
+COPY --from=fetch-ziti-artifacts /tmp/ziti-edge-tunnel /usr/local/bin
+COPY ./docker-entrypoint.sh /
+RUN chmod +x /docker-entrypoint.sh
+RUN mkdir -p /ziti-edge-tunnel
+
+ENTRYPOINT [ "/docker-entrypoint.sh" ]
+CMD [ "run-host" ]
