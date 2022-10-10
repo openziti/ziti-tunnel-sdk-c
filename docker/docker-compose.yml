@@ -3,14 +3,14 @@ version: "3.9"
 x-base-service: &base-service
     image: openziti/ziti-edge-tunnel
     devices:
-    - /dev/net/tun:/dev/net/tun
+        - /dev/net/tun:/dev/net/tun
     volumes:
-    - .:/ziti-edge-tunnel
-    - /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket
+        - .:/ziti-edge-tunnel
+        - /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket
     environment:
-    - NF_REG_NAME                 # inherit when run like this: NF_REG_NAME=AcmeIdentity docker-compose up ziti-tun
-    - NF_REG_TOKEN                # NF_REG_NAME=AcmeIdentity NF_REG_TOKEN={JWT} docker-compose up ziti-tun
-    - PFXLOG_NO_JSON=true         # suppress JSON logging
+        - ZITI_IDENTITY_BASENAME  # inherit when run like this: ZITI_IDENTITY_BASENAME=AcmeIdentity docker-compose up ziti-tun
+        - ZITI_ENROLL_TOKEN       # ZITI_IDENTITY_BASENAME=AcmeIdentity ZITI_ENROLL_TOKEN={JWT} docker-compose up ziti-tun
+        - PFXLOG_NO_JSON=true     # suppress JSON logging
     network_mode: host            # use the Docker host's network, not the Docker bridge
     privileged: true
 
@@ -19,64 +19,70 @@ services:
     ziti-tun:                     # tunneler for one Ziti identity
         <<: *base-service
         command: 
-        - --verbose=4
-        - --dns-ip-range=100.64.64.0/18
+            - --verbose=4
+            - --dns-ip-range=100.64.64.0/18
 
     ziti-tun-dir:                 # tunneler for all identities in /ziti-edge-tunnel
         <<: *base-service
         command:
-        - --verbose=4
-        - --dns-ip-range=100.64.64.0/18
-        environment: []           # ignore NF_REG_NAME and load all identities in same dir
+            - --verbose=4
+            - --dns-ip-range=100.64.64.0/18
+        environment: []           # ignore ZITI_IDENTITY_BASENAME and load all identities in same dir
 
     ziti-test:                    # docker-compose exec ziti-test bash
         <<: *base-service
         entrypoint: ["sh", "-c", "while true; do sleep infinity; done"]
 
-    ziti-host:                    # tunneler for hosting services without providing DNS or IP routes
+
+    # enrolled identity JSON from env var is written to container filesystem /ziti-edge-tunnel/ziti_id.json
+    ziti-host:
         image: openziti/ziti-edge-tunnel
         environment:
-        - NF_REG_NAME
-        - NF_REG_TOKEN
-        volumes:
-        - .:/ziti-edge-tunnel
+            - ZITI_IDENTITY_JSON
         networks: 
-        - ziti-host
+            - ziti-host
         privileged: false         # no privileges necessary for run-host mode
         command: 
-        - run-host
-        - --verbose=4
+            - run-host
+            - --verbose=4
 
     ziti-host-wait:               # tunneler for hosting services that waits forever for the identity to become available
         image: openziti/ziti-edge-tunnel
         environment:
-        - NF_REG_NAME
-        - NF_REG_WAIT=-1          # optional seconds to wait for identity (or token) to become available, negative value is wait forever
+            - ZITI_IDENTITY_BASENAME
+            - ZITI_IDENTITY_WAIT=-1          # optional seconds to wait for identity (or token) to become available, negative value is wait forever
         volumes:
-        - .:/ziti-edge-tunnel
+            - .:/ziti-edge-tunnel
         networks: 
-        - ziti-host
+            - ziti-host
         privileged: false         # no privileges necessary for run-host mode
         command: 
-        - run-host
-        - --verbose=4
+            - run-host
+            - --verbose=4
 
     ziti-host-dir:                # tunneler for hosting services without providing DNS or IP routes
         image: openziti/ziti-edge-tunnel
-        environment: []           # ignore NF_REG_NAME and load all identities in same dir
+        environment: []           # ignore ZITI_IDENTITY_BASENAME and load all identities in same dir
         volumes:
-        - .:/ziti-edge-tunnel
+            - .:/ziti-edge-tunnel
         networks: 
-        - ziti-host
+            - ziti-host
         privileged: false         # no privileges necessary for run-host mode
         command: 
-        - run-host
-        - --verbose=4
+            - run-host
+            - --verbose=4
 
     hello:                       # http://hello:80 from bridge network "ziti-host"
         image: netfoundry/hello-world-webpage
         networks: 
-        - ziti-host
+            - ziti-host
+
+    httpbin:
+        image: mccutchen/go-httpbin
+        networks: 
+            - ziti-host
+        # ports:
+        #   - "127.0.0.1:8080:8080/tcp"
 
 networks:
     ziti-host:
