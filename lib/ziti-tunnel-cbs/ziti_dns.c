@@ -35,7 +35,7 @@ enum ns_q_type {
 typedef struct ziti_dns_client_s {
     io_ctx_t *io_ctx;
     bool is_tcp;
-    LIST_HEAD(reqs, dns_req) active_reqs;
+    model_map active_reqs; // dns_reqs keyed by address of ID.
 } ziti_dns_client_t;
 
 struct dns_req {
@@ -52,7 +52,6 @@ struct dns_req {
     uint8_t *rp;
 
     ziti_dns_client_t *clt;
-    LIST_ENTRY(dns_req) _next;
 };
 
 static void* on_dns_client(const void *app_intercept_ctx, io_ctx_t *io);
@@ -249,11 +248,7 @@ void* on_dns_client(const void *app_intercept_ctx, io_ctx_t *io) {
 int on_dns_close(void *dns_io_ctx) {
     ZITI_LOG(TRACE, "DNS client close");
     ziti_dns_client_t *clt = dns_io_ctx;
-    while(!LIST_EMPTY(&clt->active_reqs)) {
-        struct dns_req *req = LIST_FIRST(&clt->active_reqs);
-        LIST_REMOVE(req, _next);
-        req->clt = NULL;
-    }
+    model_map_clear(&clt->active_reqs, NULL);
     ziti_tunneler_close(clt->io_ctx->tnlr_io);
     free(clt->io_ctx);
     free(dns_io_ctx);
@@ -683,7 +678,7 @@ ssize_t on_dns_req(void *ziti_io_ctx, void *write_ctx, const void *q_packet, siz
              req->msg.question[0]->type,
              req->msg.question[0]->name);
 
-    LIST_INSERT_HEAD(&req->clt->active_reqs, req, _next);
+    model_map_set_key(&req->clt->active_reqs, &req->id, sizeof(req->id), req);
     model_map_set_key(&ziti_dns.requests, &req->id, sizeof(req->id), req);
 
     // route request
@@ -778,7 +773,11 @@ static void complete_dns_req(struct dns_req *req) {
     model_map_remove_key(&ziti_dns.requests, &req->id, sizeof(req->id));
     if (req->clt) {
         ziti_tunneler_write(req->clt->io_ctx->tnlr_io, req->resp, req->resp_len);
-        LIST_REMOVE(req, _next);
+        model_map_remove_key(&req->clt->active_reqs, &req->id, sizeof(req->id));
+        // close client if there are no other pending requests
+        if (model_map_size(&req->clt->active_reqs) == 0) {
+            on_dns_close(req->clt->io_ctx->ziti_io);
+        }
     } else {
         ZITI_LOG(WARN, "query[%04x] is stale", req->id);
     }
