@@ -1,5 +1,21 @@
 # Run The OpenZiti Tunneler with Docker
 
+## Configuring the Ziti Identity
+
+It is necessary to supply a Ziti identity enrollment token or an enrolled Ziti identity configuration JSON to the container as a volume-mounted file or as environment variables. The following variable, volumes, and files are common to both container images described below.
+
+### Configuration with Environment Variable
+
+- `ZITI_IDENTITY_JSON`: The JSON string of the Ziti identity. This overrides other methods of supplying the Ziti identity JSON. It is not advisable to mount a volume on the container filesystem when using this method becauset the Ziti identity is written to a temporary file and will cause an error if the file already exists.
+
+### Configuration with Files from Mounted Volume
+
+You may bind a host directory to the container filesystem in `/ziti-edge-tunnel` as a means of supplying the token JWT file or configuration JSON file. If a token JWT file is supplied then it will be enrolled on first container startup and the identity configuration JSON file will be written in the same location named like `${ZITI_IDENTITY_BASENAME}.json`.
+
+- `ZITI_IDENTITY_BASENAME`: the file basename (without the filename suffix) of the enrollment (.jwt) and identity (.json) files the tunneler will use
+- `ZITI_ENROLL_TOKEN`: Optionally, you may supply the enrollment token JWT as a string if `${ZITI_IDENTITY_BASENAME}.jwt` is not mounted
+- `ZITI_IDENTITY_WAIT`: Optionally, you may configure the container to wait max seconds for the JWT or JSON file to appear in the mounted volume
+
 ## Container Image `openziti/ziti-host`
 
 This image runs `ziti-edge-tunnel run-host` on the Red Hat 8 Universal Base Image to optimize deployability within the Red Hat ecosystem e.g. OpenShift. The `ziti-edge-tunnel run-host` hosting-only mode of the Linux tunneler is useful as a sidecar for publishing containerized servers located in a Docker bridge network (use network mode `bridge`) or any other server running in the Docker host's network (use network mode `host`).
@@ -115,22 +131,6 @@ The container image `openziti/ziti-edge-tunnel` is published in Docker Hub and f
 ### Dockerfile for `openziti/ziti-edge-tunnel`
 
 The main Dockerfile for `openziti/ziti-edge-tunnel` is [./Dockerfile](./Dockerfile). This image is typically built with the BuildKit wrapper script [./buildx.sh](./buildx.sh) and there is not yet any build or test automation for this image.
-
-### Variables for `openziti/ziti-edge-tunnel`
-
-- `ZITI_IDENTITY_BASENAME`: Required: This is the basename of the enrollment (.jwt) and identity (.json) files the tunneler will use
-- `ZITI_ENROLL_TOKEN`: Optional if `${ZITI_IDENTITY_BASENAME}.jwt` is provided: This is the JWT as a string
-- `ZITI_IDENTITY_WAIT`: Optional: max seconds to wait for the JWT or JSON file to appear
-
-### Volumes for `openziti/ziti-edge-tunnel`
-
-- `/ziti-edge-tunnel`: The permanent identity configuration JSON file that results from enrollment will be stored
-  here. This volume should be persistent.
-
-### Files for `openziti/ziti-edge-tunnel`
-
-The directory containing the enrollment token (JWT) file is typically mounted as a volume.
-The token must be in a file named `${ZITI_IDENTITY_BASENAME}.jwt`. After the first run there will be an additional file name `${ZITI_IDENTITY_BASENAME}.json`, the permanent identity configuration JSON file. This file contains the private key and user certificate.
 
 ### Examples using `openziti/ziti-edge-tunnel`
 
