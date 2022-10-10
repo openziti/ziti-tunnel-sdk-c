@@ -24,15 +24,15 @@ This image is used by [the eponymous Helm chart, `ziti-host`](https://openziti.g
 
 See the [the Linux tunneler doc](https://openziti.github.io/ziti/clients/linux.html) for general info about the Linux tunneler that is installed in this container image.
 
-### Image Tags for `cziti-host`
+### Image Tags for `openziti/ziti-host`
 
 The `openziti/ziti-host` image is published in Docker Hub and manually updated for some new releases. You may subscribe to `:latest` (default) or pin a version for stability e.g. `:0.19.11`.
 
-### Dockerfile for `openzitiziti-host`
+### Dockerfile for `openziti/ziti-host`
 
 The Dockerfile for `openziti/ziti-host` is [./Dockerfile.ziti-host](./Dockerfile.ziti-host). There's no build or test automation for this image yet.
 
-### Examples using `openzitiziti-host`
+### Examples using `openziti/ziti-host`
 
 Publish servers that are reachable on the Docker host's network e.g. `tcp:localhost:54321`:
 
