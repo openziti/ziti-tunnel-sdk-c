@@ -6,7 +6,7 @@ It is necessary to supply a Ziti identity enrollment token or an enrolled Ziti i
 
 ### Configuration with Environment Variable
 
-- `ZITI_IDENTITY_JSON`: The JSON string of the Ziti identity. This overrides other methods of supplying the Ziti identity JSON. It is not advisable to mount a volume on the container filesystem when using this method becauset the Ziti identity is written to a temporary file and will cause an error if the file already exists.
+- `ZITI_IDENTITY_JSON`: The JSON string of the Ziti identity. This overrides other methods of supplying the Ziti identity JSON. It is not advisable to mount a volume on the container filesystem when using this method because the Ziti identity is written to a temporary file and will cause an error if the file already exists.
 
 ### Configuration with Files from Mounted Volume
 
