@@ -58,6 +58,11 @@ jobs:
             release_name: ${{ null }}
             type: rpm
             container: docker.io/library/rockylinux:8
+          - name: redhat
+            version: "9"
+            release_name: ${{ null }}
+            type: rpm
+            container: docker.io/library/rockylinux:9
         exclude:
           - distro:
               name: ubuntu
@@ -86,7 +91,7 @@ jobs:
     steps:
       # only focal-20.04 has >= 2.18, which is required by actions/checkout to clone
       # which enables cmake version discovery
-      - name: install Modern Git in runner container if Ubuntu
+      - name: install contemporary Git in runner container if Ubuntu
         if: ${{ matrix.distro.name == 'ubuntu' }}
         run: |
           apt -y update
@@ -96,14 +101,14 @@ jobs:
           apt -y install git
           git --version
 
-      - name: install Modern Git in runner container if RedHat 8
-        if: ${{ matrix.distro.name == 'redhat' && matrix.distro.version == '8' }}
+      - name: install contemporary Git in runner container if RedHat 8 or 9
+        if: ${{ matrix.distro.name == 'redhat' && (matrix.distro.version == '8' || matrix.distro.version == '9') }}
         run: |
           dnf -y update
           dnf -y install git
           git --version
 
-      - name: install Modern Git in runner container if RedHat 7
+      - name: install contemporary Git in runner container if RedHat 7
         if: ${{ matrix.distro.name == 'redhat' && matrix.distro.version == '7' }}
         run: |
           yum -y update
