@@ -1515,7 +1515,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     ip_addr_t dns_ip4_addr = IPADDR4_INIT(htonl(dns_subnet_u32));
     snprintf(dns_subnet, sizeof(dns_subnet), "%s/%d", ipaddr_ntoa(&dns_ip4_addr), dns_subnet_zaddr.addr.cidr.bits);
 #if __APPLE__ && __MACH__
-    tun = utun_open(tun_error, sizeof(tun_error), dns_subnet);
+    tun = utun_open(tun_error, sizeof(tun_error), ip_range);
 #elif __linux__
     tun = tun_open(ziti_loop, tun_ip, dns_ip, dns_subnet, tun_error, sizeof(tun_error));
 #elif _WIN32
@@ -1674,7 +1674,9 @@ static struct option run_host_options[] = {
         { "refresh", optional_argument, NULL, 'r'},
 };
 
-static const char* default_cidr = "100.64.0.1/10";
+#ifndef DEFAULT_DNS_CIDR
+#define DEFAULT_DNS_CIDR "100.64.0.1/10"
+#endif
 static const char* dns_upstream = NULL;
 static bool host_only = false;
 
@@ -1817,7 +1819,7 @@ static void run(int argc, char *argv[]) {
             if (ip_range_temp != NULL) {
                 configured_cidr = ip_range_temp;
             } else {
-                configured_cidr = strdup(default_cidr);
+                configured_cidr = strdup(DEFAULT_DNS_CIDR);
             }
         }
 
@@ -2757,7 +2759,7 @@ static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required supe
                                           "\t-v|--verbose N\tset log level, higher level -- more verbose (default 3)\n"
                                           "\t-r|--refresh N\tset service polling interval in seconds (default 10)\n"
                                           "\t-d|--dns-ip-range <ip range>\tspecify CIDR block in which service DNS names"
-                                          " are assigned in N.N.N.N/n format (default 100.64.0.0/10)\n",
+                                          " are assigned in N.N.N.N/n format (default " DEFAULT_DNS_CIDR ")\n",
         run_opts, run);
 static CommandLine run_host_cmd = make_command("run-host", "run Ziti tunnel to host services",
                                           "-i <id.file> [-r N] [-v N]",

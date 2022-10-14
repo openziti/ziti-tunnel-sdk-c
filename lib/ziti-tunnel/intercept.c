@@ -107,24 +107,18 @@ const ziti_address *address_match(const ziti_address *addr, const address_list_t
     int score, best_score = -1;
 
     STAILQ_FOREACH(a, addresses, entries) {
-        if (ziti_address_match(addr, &a->za)) {
-            if (addr->type == ziti_address_cidr) {
-                score = (int) (addr->addr.cidr.bits - a->za.addr.cidr.bits);
-                TNL_LOG(VERBOSE, "ziti_address_cidr match score %d", score);
-            } else if (addr->type == ziti_address_hostname) {
-                score = 0;
-                TNL_LOG(VERBOSE, "ziti_address_hostname match score %d", score);
-            }
-            if (best_score == -1 || score < best_score) {
-                best_score = score;
-                best_addr = &a->za;
-                if (best_score == 0) {
-                    // won't find a better match so get out now
-                    break;
-                }
+        score = ziti_address_match(addr, &a->za);
+        TNL_LOG(VERBOSE, "ziti_address_match score %d", score);
+        if (best_score == -1 || score < best_score) {
+            best_score = score;
+            best_addr = &a->za;
+            if (best_score == 0) {
+                // won't find a better match so get out now
+                break;
             }
         }
     }
+
     return best_addr;
 }
 

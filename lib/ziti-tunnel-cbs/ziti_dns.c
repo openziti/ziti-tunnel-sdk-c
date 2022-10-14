@@ -191,7 +191,6 @@ int ziti_dns_setup(tunneler_context tnlr, const char *dns_addr, const char *dns_
     ziti_address *reserved[] = { &tun_zaddr, &dns_zaddr };
     size_t n = sizeof(reserved) / sizeof(ziti_address *);
     for (int i = 0; i < n; i++) {
-        ip_addr_t ip4;
         struct in_addr *in4_p = (struct in_addr *) &reserved[i]->addr.cidr.ip;
         model_map_setl(&ziti_dns.ip_addresses, in4_p->s_addr, calloc(1, sizeof(dns_entry_t)));
     }

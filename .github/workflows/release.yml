@@ -18,20 +18,23 @@ jobs:
             name: Windows x86_64
             arch: x86_64
 
-          - os: ubuntu-18.04
+          - os: ubuntu-latest
+            container: ubuntu:18.04
             name: Linux x86_64
             install: libsystemd-dev
             toolchain: default.cmake
             arch: x86_64
 
-          - os: ubuntu-18.04
+          - os: ubuntu-latest
+            container: ubuntu:18.04
             name: Linux arm
             install: crossbuild-essential-armhf libsystemd-dev
             toolchain: Linux-arm.cmake
             cmake_opts: -DCMAKE_BUILD_TYPE=Release
             arch: arm
 
-          - os: ubuntu-18.04
+          - os: ubuntu-latest
+            container: ubuntu:18.04
             name: Linux arm64
             install: crossbuild-essential-arm64 libsystemd-dev
             toolchain: Linux-arm64.cmake
