@@ -109,6 +109,7 @@ const ziti_address *address_match(const ziti_address *addr, const address_list_t
     STAILQ_FOREACH(a, addresses, entries) {
         score = ziti_address_match(addr, &a->za);
         TNL_LOG(VERBOSE, "ziti_address_match score %d", score);
+        if (score < 0) continue;
         if (best_score == -1 || score < best_score) {
             best_score = score;
             best_addr = &a->za;
