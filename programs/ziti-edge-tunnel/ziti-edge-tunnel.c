@@ -1515,7 +1515,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     ip_addr_t dns_ip4_addr = IPADDR4_INIT(htonl(dns_subnet_u32));
     snprintf(dns_subnet, sizeof(dns_subnet), "%s/%d", ipaddr_ntoa(&dns_ip4_addr), dns_subnet_zaddr.addr.cidr.bits);
 #if __APPLE__ && __MACH__
-    tun = utun_open(tun_error, sizeof(tun_error), dns_subnet);
+    tun = utun_open(tun_error, sizeof(tun_error), ip_range);
 #elif __linux__
     tun = tun_open(ziti_loop, tun_ip, dns_ip, dns_subnet, tun_error, sizeof(tun_error));
 #elif _WIN32
