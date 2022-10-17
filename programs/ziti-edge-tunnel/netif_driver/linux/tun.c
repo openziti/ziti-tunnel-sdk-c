@@ -221,36 +221,44 @@ static void dns_update_systemd_resolve(const char* tun, unsigned int ifindex, co
 }
 
 static void find_dns_updater() {
-    if (is_systemd_resolved_primary_resolver()){
 #ifndef EXCLUDE_LIBSYSTEMD_RESOLVER
-        if(try_libsystemd_resolver()) {
-            dns_updater = dns_update_systemd_resolved;
-            return;
-        }
+    if(try_libsystemd_resolver()) {
+        dns_updater = dns_update_systemd_resolved;
+        return;
+    }
 #endif
-        if (is_executable(BUSCTL) && (run_command(BUSCTL " status %s > /dev/null", RESOLVED_DBUS_NAME) == 0)) {
+    if (is_executable(BUSCTL)) {
+        if (run_command_ex(false, BUSCTL " status %s &> /dev/null", RESOLVED_DBUS_NAME) == 0) {
             if (is_executable(RESOLVECTL)) {
                 dns_updater = dns_update_resolvectl;
                 return;
-            } else if (is_executable(SYSTEMD_RESOLVE)){
+            } else if (is_executable(SYSTEMD_RESOLVE)) {
                 dns_updater = dns_update_systemd_resolve;
                 return;
             } else {
-                ZITI_LOG(WARN, "Could not find a way to configure systemd-resolved");
+                ZITI_LOG(ERROR, "systemd-resolved DBus name found, but could not find a way to configure systemd-resolved");
                 exit(1);
             }
+        } else {
+            ZITI_LOG(TRACE, "systemd-resolved DBus name is NOT acquired");
         }
     }
 
-    // On newer systems, RESOLVCONF is a symlink to RESOLVECTL
-    // By now, we know systemd-resolved is not available
-    if (is_executable(RESOLVCONF) && !(is_resolvconf_systemd_resolved())){
-        dns_updater = dns_update_resolvconf;
-        return;
+    if (!(is_systemd_resolved_primary_resolver())) {
+        // On newer systems, RESOLVCONF is a symlink to RESOLVECTL
+        // By now, we know systemd-resolved is not available
+        if (is_executable(RESOLVCONF) && !(is_resolvconf_systemd_resolved())) {
+            dns_updater = dns_update_resolvconf;
+            return;
+        }
+
+        ZITI_LOG(WARN, "Adding ziti resolver to /etc/resolv.conf. Ziti DNS functionality may be impaired");
+        dns_updater = dns_update_etc_resolv;
+        dns_set_miss_status(DNS_REFUSE);
+    } else {
+        ZITI_LOG(ERROR, "Refusing to alter DNS configuration. /etc/resolv.conf is a symlink to systemd-resolved, but no systemd resolver succeeded");
+        exit(1);
     }
-    ZITI_LOG(ERROR, "could not find a way to configure system resolver. Ziti DNS functionality will be impaired");
-    dns_updater = dns_update_etc_resolv;
-    dns_set_miss_status(DNS_REFUSE);
 }
 
 static void set_dns(uv_work_t *wr) {

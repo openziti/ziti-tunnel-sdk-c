@@ -204,8 +204,8 @@ static int sd_bus_is_acquired_name(sd_bus *bus, const char* bus_name) {
     for (i=0; acquired[i] != NULL; i++) {
         if (strcmp(acquired[i], bus_name) == 0) {
             ZITI_LOG(DEBUG, "systemd-resolved DBus name found: %s", acquired[i]);
-        found = 0;
-        break;
+            found = 0;
+            break;
         }
     }
 
@@ -214,6 +214,10 @@ static int sd_bus_is_acquired_name(sd_bus *bus, const char* bus_name) {
             free(acquired[i]);
         }
         free(acquired);
+    }
+
+    if (found != 0) {
+        ZITI_LOG(TRACE, "systemd-resolved DBus name is NOT acquired");
     }
 
     return found;
@@ -336,7 +340,7 @@ bool try_libsystemd_resolver(void) {
         ZITI_LOG(DEBUG, "Connected to system DBus");
         r = sd_bus_is_acquired_name(bus, RESOLVED_DBUS_NAME);
         if (r < 0) {
-            ZITI_LOG(ERROR, "Did not find DBus acquired bus name: %s. Falling back to legacy resolvers...", RESOLVED_DBUS_NAME);
+            ZITI_LOG(ERROR, "Did not find DBus acquired bus name: %s. Falling back to legacy resolvers", RESOLVED_DBUS_NAME);
             return false;
         }
         if (r == 0) {
@@ -446,7 +450,7 @@ bool is_resolvconf_systemd_resolved(void) {
             char *file_base = basename(actualpath);
             if (strcmp(file_base, basename(RESOLVECTL)) == 0
                 || strcmp(file_base, basename(SYSTEMD_RESOLVE)) == 0) {
-                ZITI_LOG(DEBUG, "Detected %s is a symlink to systemd-resolved.", actualpath);
+                ZITI_LOG(DEBUG, "Detected %s is a symlink to systemd-resolved", actualpath);
                 return true;
             }
         }
