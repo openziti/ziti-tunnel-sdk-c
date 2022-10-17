@@ -12,7 +12,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     container: ${{ matrix.container }}
     env:
-      common_ubuntu_deps: curl libssl-dev libsystemd-dev pkg-config zlib1g-dev zip
+      common_ubuntu_deps: curl doxygen libssl-dev libsystemd-dev pkg-config zlib1g-dev zip
 
     strategy:
       fail-fast: false
@@ -64,7 +64,7 @@ jobs:
           add-apt-repository -y ppa:git-core/ppa
           apt -y update
           apt -y install git
-          git config --global --add safe.directory .
+          git config --global --add safe.directory $GITHUB_WORKSPACE
           git --version
 
       - name: install contemporary cmake
