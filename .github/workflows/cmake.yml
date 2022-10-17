@@ -64,6 +64,7 @@ jobs:
           add-apt-repository -y ppa:git-core/ppa
           apt -y update
           apt -y install git
+          git config --global --add safe.directory .
           git --version
 
       - name: install contemporary cmake
