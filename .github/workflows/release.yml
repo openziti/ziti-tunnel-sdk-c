@@ -8,7 +8,7 @@ on:
 
 jobs:
   call-cmake-build:
-    uses: .github/workflows/cmake.yml
+    uses: ./.github/workflows/cmake.yml
 
   release:
     name: Download Release Artifacts
