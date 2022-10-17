@@ -27,13 +27,13 @@ jobs:
           - os: ubuntu-20.04
             container: ubuntu:18.04
             name: Linux x86_64
-            install: curl build-essential libsystemd-dev
+            install: curl zip build-essential libsystemd-dev
             arch: x86_64
 
           - os: ubuntu-20.04
             container: ubuntu:18.04
             name: Linux arm
-            install: curl crossbuild-essential-armhf libsystemd-dev
+            install: curl zip crossbuild-essential-armhf libsystemd-dev
             toolchain: Linux-arm.cmake
             cmake_opts: -DCMAKE_BUILD_TYPE=Release
             arch: arm
@@ -41,13 +41,13 @@ jobs:
           - os: ubuntu-20.04
             container: ubuntu:18.04
             name: Linux arm64
-            install: curl crossbuild-essential-arm64 libsystemd-dev
+            install: curl zip crossbuild-essential-arm64 libsystemd-dev
             toolchain: Linux-arm64.cmake
             cmake_opts: -DCMAKE_BUILD_TYPE=Release
             arch: arm64
 
     steps:
-      - name: install toolchain
+      - name: install tools
         if: ${{ matrix.install != null }}
         run: |
           apt -y update
@@ -80,7 +80,7 @@ jobs:
 
       - name: configure cmake
         env:
-          TOOLCHAIN: ${{ matrix.toolchain && format('../toolchains/{1}', matrix.toolchain) || '' }}
+          TOOLCHAIN: ${{ matrix.toolchain && format('./toolchains/{0}', matrix.toolchain) || '' }}
         run: cmake ${{matrix.cmake_opts}} -DCMAKE_TOOLCHAIN_FILE="${TOOLCHAIN}" -S . -B ./build
 
       - name: build ziti-edge-tunnel bundle target
