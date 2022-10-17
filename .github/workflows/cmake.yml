@@ -70,6 +70,8 @@ jobs:
         run: |
           pwd
           ls
+          cmake --version
+          cmake --help
           cmake ${{matrix.cmake_opts}} -DCMAKE_TOOLCHAIN_FILE="${TOOLCHAIN}" -S ./ -B ./build
 
       - name: build ziti-edge-tunnel bundle target
