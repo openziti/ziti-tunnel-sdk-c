@@ -27,13 +27,13 @@ jobs:
           - os: ubuntu-20.04
             container: ubuntu:18.04
             name: Linux x86_64
-            install: curl git libsystemd-dev
+            install: curl libsystemd-dev
             arch: x86_64
 
           - os: ubuntu-20.04
             container: ubuntu:18.04
             name: Linux arm
-            install: curl git crossbuild-essential-armhf libsystemd-dev
+            install: curl crossbuild-essential-armhf libsystemd-dev
             toolchain: Linux-arm.cmake
             cmake_opts: -DCMAKE_BUILD_TYPE=Release
             arch: arm
@@ -41,7 +41,7 @@ jobs:
           - os: ubuntu-20.04
             container: ubuntu:18.04
             name: Linux arm64
-            install: curl git crossbuild-essential-arm64 libsystemd-dev
+            install: curl crossbuild-essential-arm64 libsystemd-dev
             toolchain: Linux-arm64.cmake
             cmake_opts: -DCMAKE_BUILD_TYPE=Release
             arch: arm64
@@ -57,6 +57,16 @@ jobs:
         run: |
           apt -y update
           apt -y install ${{ matrix.install }}
+
+      - name: install contemporary git
+        if: ${{ matrix.container != null }}
+        run: |
+          apt -y update
+          apt -y install software-properties-common
+          add-apt-repository -y ppa:git-core/ppa
+          apt -y update
+          apt -y install git
+          git --version
 
       - name: install contemporary cmake
         if: ${{ matrix.container != null }}
