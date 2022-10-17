@@ -27,13 +27,13 @@ jobs:
           - os: ubuntu-20.04
             container: ubuntu:18.04
             name: Linux x86_64
-            install: cmake libsystemd-dev
+            install: libsystemd-dev
             arch: x86_64
 
           - os: ubuntu-20.04
             container: ubuntu:18.04
             name: Linux arm
-            install: cmake crossbuild-essential-armhf libsystemd-dev
+            install: crossbuild-essential-armhf libsystemd-dev
             toolchain: Linux-arm.cmake
             cmake_opts: -DCMAKE_BUILD_TYPE=Release
             arch: arm
@@ -41,7 +41,7 @@ jobs:
           - os: ubuntu-20.04
             container: ubuntu:18.04
             name: Linux arm64
-            install: cmake crossbuild-essential-arm64 libsystemd-dev
+            install: crossbuild-essential-arm64 libsystemd-dev
             toolchain: Linux-arm64.cmake
             cmake_opts: -DCMAKE_BUILD_TYPE=Release
             arch: arm64
@@ -58,21 +58,20 @@ jobs:
           apt -y update
           apt -y install ${{ matrix.install }}
 
-      - name: make build dir
+      - name: install contemporary cmake
+        if: ${{ container != null }}
         run: |
-          pwd
-          ls
-          cmake -E make_directory ./build
+          curl -L https://cmake.org/files/v3.24/cmake-3.24.2-linux-x86_64.sh -o cmake.sh
+          bash cmake.sh --skip-license --prefix=/usr/local
+          rm cmake.sh
+
+      - name: make build dir
+        run: cmake -E make_directory ./build
 
       - name: configure cmake
         env:
           TOOLCHAIN: ${{ matrix.toolchain && format('../toolchains/{1}', matrix.toolchain) || '' }}
-        run: |
-          pwd
-          ls
-          cmake --version
-          cmake --help
-          cmake ${{matrix.cmake_opts}} -DCMAKE_TOOLCHAIN_FILE="${TOOLCHAIN}" ..
+        run: cmake ${{matrix.cmake_opts}} -DCMAKE_TOOLCHAIN_FILE="${TOOLCHAIN}" -S . -B ./build
         working-directory: ./build
 
       - name: build ziti-edge-tunnel bundle target
