@@ -47,11 +47,6 @@ jobs:
             arch: arm64
 
     steps:
-      - name: checkout workspace
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-
       - name: install toolchain
         if: ${{ matrix.install != null }}
         run: |
@@ -74,6 +69,11 @@ jobs:
           curl -L https://cmake.org/files/v3.24/cmake-3.24.2-linux-x86_64.sh -o cmake.sh
           bash cmake.sh --skip-license --prefix=/usr/local
           rm cmake.sh
+
+      - name: checkout workspace
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
       - name: make build dir
         run: cmake -E make_directory ./build
