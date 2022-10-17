@@ -66,13 +66,14 @@ jobs:
 
       - name: configure cmake
         env:
-          TOOLCHAIN: ${{ matrix.toolchain && format('./toolchains/{1}', matrix.toolchain) || '' }}
+          TOOLCHAIN: ${{ matrix.toolchain && format('../toolchains/{1}', matrix.toolchain) || '' }}
         run: |
           pwd
           ls
           cmake --version
           cmake --help
-          cmake ${{matrix.cmake_opts}} -DCMAKE_TOOLCHAIN_FILE="${TOOLCHAIN}" -S ./ -B ./build
+          cmake ${{matrix.cmake_opts}} -DCMAKE_TOOLCHAIN_FILE="${TOOLCHAIN}" ..
+        working-directory: ./build
 
       - name: build ziti-edge-tunnel bundle target
         run: cmake --build ./build --target bundle --verbose
