@@ -59,7 +59,7 @@ jobs:
           apt -y install ${{ matrix.install }}
 
       - name: install contemporary cmake
-        if: ${{ container != null }}
+        if: ${{ matrix.container != null }}
         run: |
           curl -L https://cmake.org/files/v3.24/cmake-3.24.2-linux-x86_64.sh -o cmake.sh
           bash cmake.sh --skip-license --prefix=/usr/local
