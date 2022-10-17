@@ -11,6 +11,9 @@ jobs:
   build:
     runs-on: ${{ matrix.os }}
     container: ${{ matrix.container }}
+    env:
+      common_ubuntu_deps: curl libssl-dev libsystemd-dev pkg-config zlib1g-dev zip
+
     strategy:
       fail-fast: false
       matrix:
@@ -27,13 +30,13 @@ jobs:
           - os: ubuntu-20.04
             container: ubuntu:18.04
             name: Linux x86_64
-            install: curl pkg-config zip build-essential libsystemd-dev zlib1g-dev libssl-dev
+            install: $common_ubuntu_deps build-essential
             arch: x86_64
 
           - os: ubuntu-20.04
             container: ubuntu:18.04
             name: Linux arm
-            install: curl pkg-config zip crossbuild-essential-armhf libsystemd-dev zlib1g-dev libssl-dev
+            install: $common_ubuntu_deps crossbuild-essential-armhf
             toolchain: Linux-arm.cmake
             cmake_opts: -DCMAKE_BUILD_TYPE=Release
             arch: arm
@@ -41,7 +44,7 @@ jobs:
           - os: ubuntu-20.04
             container: ubuntu:18.04
             name: Linux arm64
-            install: curl pkg-config zip crossbuild-essential-arm64 libsystemd-dev zlib1g-dev libssl-dev
+            install: $common_ubuntu_deps crossbuild-essential-arm64
             toolchain: Linux-arm64.cmake
             cmake_opts: -DCMAKE_BUILD_TYPE=Release
             arch: arm64
