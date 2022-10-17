@@ -27,7 +27,7 @@ jobs:
           - os: ubuntu-20.04
             container: ubuntu:18.04
             name: Linux x86_64
-            install: curl libsystemd-dev
+            install: curl build-essential libsystemd-dev
             arch: x86_64
 
           - os: ubuntu-20.04
