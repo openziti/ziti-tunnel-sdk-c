@@ -7,9 +7,15 @@ on:
   pull_request:
     branches: [ main ]
 
+  workflow_call:
+
 jobs:
   build:
     runs-on: ${{ matrix.os }}
+    container: ${{ matrix.container }}
+    env:
+      common_ubuntu_deps: curl doxygen libssl-dev libsystemd-dev pkg-config zlib1g-dev zip
+
     strategy:
       fail-fast: false
       matrix:
@@ -23,58 +29,76 @@ jobs:
             name: Windows x86_64
             arch: x86_64
 
-          - os: ubuntu-latest
+          - os: ubuntu-20.04
             container: ubuntu:18.04
             name: Linux x86_64
-            install: libsystemd-dev
+            install: $common_ubuntu_deps build-essential
             arch: x86_64
 
-          - os: ubuntu-latest
+          - os: ubuntu-20.04
             container: ubuntu:18.04
             name: Linux arm
-            install: crossbuild-essential-armhf libsystemd-dev
+            install: $common_ubuntu_deps crossbuild-essential-armhf
             toolchain: Linux-arm.cmake
             cmake_opts: -DCMAKE_BUILD_TYPE=Release
             arch: arm
 
-          - os: ubuntu-latest
+          - os: ubuntu-20.04
             container: ubuntu:18.04
             name: Linux arm64
-            install: crossbuild-essential-arm64 libsystemd-dev
+            install: $common_ubuntu_deps crossbuild-essential-arm64
             toolchain: Linux-arm64.cmake
             cmake_opts: -DCMAKE_BUILD_TYPE=Release
             arch: arm64
 
     steps:
+      - name: install tools
+        if: ${{ matrix.install != null }}
+        run: |
+          apt -y update
+          apt -y install ${{ matrix.install }}
+
+      - name: install contemporary git
+        if: ${{ matrix.container != null }}
+        run: |
+          apt -y update
+          apt -y install software-properties-common
+          add-apt-repository -y ppa:git-core/ppa
+          apt -y update
+          apt -y install git
+          git config --global --add safe.directory $GITHUB_WORKSPACE
+          git --version
+
+      - name: install contemporary cmake
+        if: ${{ matrix.container != null }}
+        run: |
+          curl -L https://cmake.org/files/v3.24/cmake-3.24.2-linux-x86_64.sh -o cmake.sh
+          bash cmake.sh --skip-license --prefix=/usr/local
+          rm cmake.sh
+
       - name: checkout workspace
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
 
       - name: make build dir
-        run: cmake -E make_directory ${{runner.workspace}}/build
-
-      - name: install toolchain
-        if: ${{ matrix.install != null }}
-        run: |
-          sudo apt -y update
-          sudo apt -y install ${{ matrix.install }}
+        run: cmake -E make_directory ./build
 
       - name: configure cmake
         env:
-          TOOLCHAIN: ${{ matrix.toolchain && format('{0}/toolchains/{1}', github.workspace, matrix.toolchain) || '' }}
-        run: cmake ${{matrix.cmake_opts}} -DCMAKE_TOOLCHAIN_FILE="${TOOLCHAIN}" -S ${{ github.workspace }} -B ${{github.workspace}}/build
+          TOOLCHAIN: ${{ matrix.toolchain && format('./toolchains/{0}', matrix.toolchain) || '' }}
+        run: cmake ${{matrix.cmake_opts}} -DCMAKE_TOOLCHAIN_FILE="${TOOLCHAIN}" -S . -B ./build
 
       - name: build ziti-edge-tunnel bundle target
-        run: cmake --build ${{github.workspace}}/build --target bundle --verbose
+        run: cmake --build ./build --target bundle --verbose
 
       - name: list bundle artifacts
         run: ls -R
-        working-directory: ${{ github.workspace }}/build/bundle/
+        working-directory: ./build/bundle/
 
       - name: list program artifacts
         run: ls -R
-        working-directory: ${{ github.workspace }}/build/programs/ziti-edge-tunnel/
+        working-directory: ./build/programs/ziti-edge-tunnel/
 
       - name: upload bundle artifacts
         uses: actions/upload-artifact@v3
