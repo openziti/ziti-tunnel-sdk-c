@@ -19,8 +19,8 @@
 set -e -u -o pipefail
 
 function alldone() {
-    # if successfully sent to background then send SIGINT to trigger a cleanup
-    # of iptables mangle rules and loopback assignments
+    # if successfully sent to background then send SIGTERM to trigger a cleanup
+    # of resolver config, tun devices and associated routes
     [[ "${ZITI_EDGE_TUNNEL_PID:-}" =~ ^[0-9]+$ ]] && {
         ps -fww "$ZITI_EDGE_TUNNEL_PID"
         kill -TERM "$ZITI_EDGE_TUNNEL_PID"
