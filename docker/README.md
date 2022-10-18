@@ -1,61 +1,62 @@
-# Ziti-edge-tunnel Docker Image
+# Run The OpenZiti Tunneler with Docker
 
-The container image `openziti/ziti-edge-tunnel` is published in Docker Hub and frequently updated with new releases. You may subscribe to `:latest` (default) or pin a version for stability e.g. `:0.19.11`.
+## Configuring the Ziti Identity
 
-This image runs `ziti-edge-tunnel`, the OpenZiti tunneler for Linux. `ziti-edge-tunnel run` captures
-network traffic that is destined for Ziti services and proxies the packet payloads
-to the associated Ziti service. The `ziti-edge-tunnel run-host` hosting-only mode is useful as a sidecar for publishing containerized servers located in a Docker bridge network or any other server running in the Docker host's network.
+It is necessary to supply a Ziti identity enrollment token or an enrolled Ziti identity configuration JSON to the container as a volume-mounted file or as environment variables. The following variable, volumes, and files are common to both container images described below.
 
-See the [the Linux tunneler doc](https://openziti.github.io/ziti/clients/linux.html) for general info not pertinent to running with Docker.
+### Configuration with Environment Variable
 
-This container image requires access to a Ziti enrollment token (JWT), and typically uses a persistent
-volume mounted at `/ziti-edge-tunnel` to save the configuration file that is created
-when the one-time enrollment token is consumed.
+- `ZITI_IDENTITY_JSON`: The JSON string of the Ziti identity. This overrides other methods of supplying the Ziti identity JSON. It is not advisable to mount a volume on the container filesystem when using this method because the Ziti identity is written to a temporary file and will cause an error if the file already exists.
 
-## Variables
+### Configuration with Files from Mounted Volume
 
-- `NF_REG_NAME`: Required: This is the basename of the enrollment (.jwt) and identity (.json) files the tunneler will use
-- `NF_REG_TOKEN`: Optional if `${NF_REG_NAME}.jwt` is provided: This is the JWT as a string
-- `NF_REG_WAIT`: Optional: max seconds to wait for the JWT or JSON file to appear
+You may bind a host directory to the container filesystem in `/ziti-edge-tunnel` as a means of supplying the token JWT file or configuration JSON file. If a token JWT file is supplied then it will be enrolled on first container startup and the identity configuration JSON file will be written in the same location named like `${ZITI_IDENTITY_BASENAME}.json`.
 
-## Volumes
+- `ZITI_IDENTITY_BASENAME`: the file basename (without the filename suffix) of the enrollment (.jwt) and identity (.json) files the tunneler will use
+- `ZITI_ENROLL_TOKEN`: Optionally, you may supply the enrollment token JWT as a string if `${ZITI_IDENTITY_BASENAME}.jwt` is not mounted
+- `ZITI_IDENTITY_WAIT`: Optionally, you may configure the container to wait max seconds for the JWT or JSON file to appear in the mounted volume
 
-- `/ziti-edge-tunnel`: The permanent identity configuration JSON file that results from enrollment will be stored
-  here. This volume should be persistent.
+## Container Image `openziti/ziti-host`
 
-## Files
+This image runs `ziti-edge-tunnel run-host` on the Red Hat 8 Universal Base Image to optimize deployability within the Red Hat ecosystem e.g. OpenShift. The `ziti-edge-tunnel run-host` hosting-only mode of the Linux tunneler is useful as a sidecar for publishing containerized servers located in a Docker bridge network (use network mode `bridge`) or any other server running in the Docker host's network (use network mode `host`).
 
-The directory containing the enrollment token (JWT) file is typically mounted as a volume.
-The token must be in a file named `${NF_REG_NAME}.jwt`. After the first run there will be an additional file name `${NF_REG_NAME}.json`, the permanent identity configuration JSON file. This file contains the private key and user certificate.
+This image is used by [the eponymous Helm chart, `ziti-host`](https://openziti.github.io/helm-charts/).
 
-## Examples
+See the [the Linux tunneler doc](https://openziti.github.io/ziti/clients/linux.html) for general info about the Linux tunneler that is installed in this container image.
 
-Mode `run-host` is useful for publishing a server to the OpenZiti Network. This example uses the Docker host's network, but you could instead run the container in a Docker bridge for the purpose of publishing a bridge-isolated server that is known by its Docker-internal domain name.
+### Image Tags for `openziti/ziti-host`
+
+The `openziti/ziti-host` image is published in Docker Hub and manually updated for some new releases. You may subscribe to `:latest` (default) or pin a version for stability e.g. `:0.19.11`.
+
+### Dockerfile for `openziti/ziti-host`
+
+The Dockerfile for `openziti/ziti-host` is [./Dockerfile.ziti-host](./Dockerfile.ziti-host). There's no build or test automation for this image yet.
+
+### Examples using `openziti/ziti-host`
+
+Publish servers that are reachable on the Docker host's network e.g. `tcp:localhost:54321`:
 
 ```bash
-# current directory contains enrollment token file ziti_id.jwt
+# identity file on Docker host is mounted in container: /opt/openziti/etc/identities/my-ziti-identity.json
 docker run \
-    --name ziti-host \
-    --network host \
-    --volume ${PWD}:/ziti-edge-tunnel \
-    --env NF_REG_NAME=ziti_id \
-    openziti/ziti-edge-tunnel \
-    run-host
+  --name ziti-host \
+  --rm \
+  --network=host \
+  --env ZITI_IDENTITY_BASENAME="my-ziti-identity" \
+  --volume /opt/openziti/etc/identities:/ziti-edge-tunnel \
+  openziti/ziti-host
 ```
 
-Transparent Proxy `run` mode configures an OpenZiti nameserver running on the local device and captures any layer 4 traffic that matches an authorized service destination.
+Publish servers inside the same Docker bridge network e.g. `tcp:my-docker-service:80`:
 
 ```bash
-# current directory contains enrollment token file ziti_id.jwt
+# identity file on Docker host is stuffed in env var: /opt/openziti/etc/identities/my-ziti-identity.json
 docker run \
-    --name ziti-tun \
-    --network host \
-    --privileged \
-    --volume ${PWD}:/ziti-edge-tunnel/ \
-    --volume "/var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket" \
-    --device "/dev/net/tun:/dev/net/tun" \
-    --env NF_REG_NAME=ziti_id \
-    openziti/ziti-edge-tunnel
+  --name ziti-host \
+  --rm \
+  --network=my-docker-bridge \
+  --env ZITI_IDENTITY_JSON="$(< /opt/openziti/etc/identities/my-ziti-identity.json)" \
+  openziti/ziti-host
 ```
 
 This example uses the included Docker Compose project to illustrate publishing a server container to your OpenZiti Network.
@@ -103,9 +104,54 @@ This example uses the included Docker Compose project to illustrate publishing a
 1. Run the tunneler
 
     ```bash
-    NF_REG_NAME=DockerHost docker-compose up --detach ziti-host
+    ZITI_IDENTITY_JSON="$(< /tmp/my-ziti-id.json)" docker-compose up --detach ziti-host
+    # debug
+    ZITI_IDENTITY_JSON="$(< /tmp/my-ziti-id.json)" docker-compose run ziti-host run-host --verbose=4
     ```
 
-1. Access the demo server via your OpenZiti Network: http://hello-docker.ziti
+1. Access the demo server via your OpenZiti Network: [http://hello-docker.ziti](http://hello-docker.ziti)
 
-Please reference [the included Compose project](docker-compose.yml) for examples that exercise the various options and run modes.
+Please reference [the included Compose project](docker-compose.yml) for examples that exercise the various container images, options, and run modes.
+
+## Container Image `openziti/ziti-edge-tunnel`
+
+This image runs `ziti-edge-tunnel run`, the OpenZiti tunneler, on a Debian Linux base. This run mode provides a Ziti nameserver and transparent proxy that captures
+network traffic destined for Ziti services.
+
+See the [the Linux tunneler doc](https://openziti.github.io/ziti/clients/linux.html) for general info about the Linux tunneler that is installed in this container image.
+
+This container image requires access to a Ziti enrollment token (JWT), and typically uses a persistent
+volume mounted at `/ziti-edge-tunnel` to persist the permanent identity JSON configuration file that is created
+when the one-time enrollment token is consumed.
+
+### Tags for `openziti/ziti-edge-tunnel`
+
+The container image `openziti/ziti-edge-tunnel` is published in Docker Hub and frequently updated with new releases. You may subscribe to `:latest` (default) or pin a version for stability e.g. `:0.19.11`.
+
+### Dockerfile for `openziti/ziti-edge-tunnel`
+
+The main Dockerfile for `openziti/ziti-edge-tunnel` is [./Dockerfile](./Dockerfile). This image is typically built with the BuildKit wrapper script [./buildx.sh](./buildx.sh) and there is not yet any build or test automation for this image.
+
+### Examples using `openziti/ziti-edge-tunnel`
+
+Transparent Proxy `run` mode configures an OpenZiti nameserver running on the local device and captures any layer 4 traffic that matches an authorized service destination.
+
+```bash
+# current directory contains enrollment token file ziti_id.jwt
+docker run \
+    --name ziti-tun \
+    --network host \
+    --privileged \
+    --volume ${PWD}:/ziti-edge-tunnel/ \
+    --volume "/var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket" \
+    --device "/dev/net/tun:/dev/net/tun" \
+    --env ZITI_IDENTITY_BASENAME=ziti_id \
+    openziti/ziti-edge-tunnel
+```
+
+This example uses the Docker Compose project included in this repo.
+
+```bash
+# enrolled identity file ziti_id.json is in the same directory as docker-compose.yml
+ZITI_IDENTITY_BASENAME=ziti_id docker-compose run ziti-tun
+```
