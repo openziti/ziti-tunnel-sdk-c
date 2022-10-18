@@ -71,10 +71,7 @@ jobs:
 
       - name: install contemporary cmake
         if: ${{ matrix.container != null }}
-        run: |
-          curl -L https://cmake.org/files/v3.24/cmake-3.24.2-linux-x86_64.sh -o cmake.sh
-          bash cmake.sh --skip-license --prefix=/usr/local
-          rm cmake.sh
+        uses: lukka/get-cmake@latest
 
       - name: checkout workspace
         uses: actions/checkout@v3
