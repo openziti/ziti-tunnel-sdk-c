@@ -2033,7 +2033,7 @@ static void enroll(int argc, char *argv[]) {
     }
 
     /* open with O_EXCL to fail if the file exists */
-    int outfd = open(config_file, O_CREAT | O_WRONLY | O_EXCL, S_IRUSR | S_IWUSR);
+    int outfd = open(config_file, O_CREAT | O_WRONLY | O_EXCL, _S_IREAD | _S_IWRITE);
     if (outfd < 0) {
         ZITI_LOG(ERROR, "failed to open file %s: %s(%d)", config_file, strerror(errno), errno);
         exit(-1);
