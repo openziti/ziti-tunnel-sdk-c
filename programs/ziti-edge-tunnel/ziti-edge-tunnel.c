@@ -2018,6 +2018,10 @@ static void enroll_cb(ziti_config *cfg, int status, char *err, void *ctx) {
 }
 
 static void enroll(int argc, char *argv[]) {
+    uv_loop_t *l = uv_loop_new();
+    int log_level = get_log_level(NULL);
+    ziti_log_init(l, log_level, NULL);
+
     if (config_file == 0) {
         ZITI_LOG(ERROR, "output file option(-i|--identity) is required");
         exit(-1);
@@ -2040,7 +2044,7 @@ static void enroll(int argc, char *argv[]) {
         exit(-1);
 
     }
-    uv_loop_t *l = uv_loop_new();
+
     ziti_enroll(&enroll_opts, l, enroll_cb, outfile);
 
     uv_run(l, UV_RUN_DEFAULT);
