@@ -2038,8 +2038,8 @@ static tunnel_command *cmd;
 
 static int dump_opts(int argc, char *argv[]) {
     static struct option opts[] = {
-            {"identity", optional_argument, NULL, 'i'},
-            {"dump_path", optional_argument, NULL, 'p'},
+            {"identity", required_argument, NULL, 'i'},
+            {"dump_path", required_argument, NULL, 'p'},
     };
     int c, option_index, errors = 0;
     optind = 0;
