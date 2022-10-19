@@ -1988,7 +1988,7 @@ static int parse_enroll_opts(int argc, char *argv[]) {
             }
         }
     }
-    if (errors > 0 || enroll_opts.jwt == NULL || enroll_opts.enroll_key == NULL) {
+    if (errors > 0 || enroll_opts.jwt == NULL || config_file == NULL) {
         commandline_help(stderr);
         exit(1);
     }
@@ -2028,8 +2028,14 @@ static void enroll(int argc, char *argv[]) {
         exit(-1);
     }
 
-    FILE *outfile;
-    if ((outfile = fopen(config_file, "wb")) == NULL) {
+    /* open with O_EXCL to fail if the file exists */
+    int outfd = open(config_file, O_CREAT | O_WRONLY | O_EXCL, S_IRUSR | S_IWUSR);
+    if (outfd < 0) {
+        ZITI_LOG(ERROR, "failed to open file %s: %s(%d)", config_file, strerror(errno), errno);
+        exit(-1);
+    }
+    FILE *outfile = NULL;
+    if ((outfile = fdopen(outfd, "wb")) == NULL) {
         ZITI_LOG(ERROR, "failed to open file %s: %s(%d)", config_file, strerror(errno), errno);
         exit(-1);
 
