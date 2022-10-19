@@ -1950,9 +1950,9 @@ static int parse_enroll_opts(int argc, char *argv[]) {
     static struct option opts[] = {
             {"jwt", required_argument, NULL, 'j'},
             {"identity", required_argument, NULL, 'i'},
-            {"key", optional_argument, NULL, 'k'},
-            {"cert", optional_argument, NULL, 'c'},
-            { "name", optional_argument, NULL, 'n'}
+            {"key", required_argument, NULL, 'k'},
+            {"cert", required_argument, NULL, 'c'},
+            { "name", required_argument, NULL, 'n'}
     };
     int c, option_index, errors = 0;
     optind = 0;
