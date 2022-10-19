@@ -1670,8 +1670,8 @@ static struct option run_options[] = {
 static struct option run_host_options[] = {
         { "identity", required_argument, NULL, 'i' },
         { "identity-dir", required_argument, NULL, 'I'},
-        { "verbose", optional_argument, NULL, 'v'},
-        { "refresh", optional_argument, NULL, 'r'},
+        { "verbose", required_argument, NULL, 'v'},
+        { "refresh", required_argument, NULL, 'r'},
 };
 
 #ifndef DEFAULT_DNS_CIDR
@@ -1686,6 +1686,7 @@ static int run_opts(int argc, char *argv[]) {
 
     int c, option_index, errors = 0;
     optind = 0;
+    bool identity_provided = false;
 
     while ((c = getopt_long(argc, argv, "i:I:v:r:d:u:",
                             run_options, &option_index)) != -1) {
@@ -1694,10 +1695,12 @@ static int run_opts(int argc, char *argv[]) {
                 struct cfg_instance_s *inst = calloc(1, sizeof(struct cfg_instance_s));
                 inst->cfg = strdup(optarg);
                 LIST_INSERT_HEAD(&load_list, inst, _next);
+                identity_provided = true;
                 break;
             }
             case 'I':
                 config_dir = optarg;
+                identity_provided = true;
                 break;
             case 'v':
                 setenv("ZITI_LOG", optarg, true);
@@ -1731,18 +1734,21 @@ static int run_host_opts(int argc, char *argv[]) {
 
     int c, option_index, errors = 0;
     optind = 0;
+    bool identity_provided = false;
 
     while ((c = getopt_long(argc, argv, "i:I:v:r:",
-                            run_options, &option_index)) != -1) {
+                            run_host_options, &option_index)) != -1) {
         switch (c) {
             case 'i': {
                 struct cfg_instance_s *inst = calloc(1, sizeof(struct cfg_instance_s));
                 inst->cfg = strdup(optarg);
                 LIST_INSERT_HEAD(&load_list, inst, _next);
+                identity_provided = true;
                 break;
             }
             case 'I':
                 config_dir = optarg;
+                identity_provided = true;
                 break;
             case 'v':
                 setenv("ZITI_LOG", optarg, true);
@@ -1757,7 +1763,7 @@ static int run_host_opts(int argc, char *argv[]) {
             }
         }
     }
-    if (errors > 0) {
+    if (errors > 0 || !identity_provided) {
         commandline_help(stderr);
         exit(1);
     }
@@ -2510,9 +2516,9 @@ static int set_log_level_opts(int argc, char *argv[]) {
 
 static int update_tun_ip_opts(int argc, char *argv[]) {
     static struct option opts[] = {
-            {"tunip", optional_argument, NULL, 't'},
-            {"prefixlength", optional_argument, NULL, 'p'},
-            {"addDNS", optional_argument, NULL, 'd'},
+            {"tunip", required_argument, NULL, 't'},
+            {"prefixlength", required_argument, NULL, 'p'},
+            {"addDNS", required_argument, NULL, 'd'},
     };
     int c, option_index, errors = 0;
     optind = 0;
