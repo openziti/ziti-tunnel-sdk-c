@@ -54,6 +54,13 @@
 #ifndef HOST_NAME_MAX
 #define HOST_NAME_MAX 254
 
+#ifndef S_IRUSR
+#define	S_IRUSR		_S_IREAD
+#endif
+#ifndef S_IWUSR
+#define	S_IWUSR	_S_IWRITE
+#endif
+
 //functions for logging on windows
 bool log_init(uv_loop_t *);
 void close_log();
@@ -2033,7 +2040,7 @@ static void enroll(int argc, char *argv[]) {
     }
 
     /* open with O_EXCL to fail if the file exists */
-    int outfd = open(config_file, O_CREAT | O_WRONLY | O_EXCL, _S_IREAD | _S_IWRITE);
+    int outfd = open(config_file, O_CREAT | O_WRONLY | O_EXCL, S_IRUSR | S_IWUSR);
     if (outfd < 0) {
         ZITI_LOG(ERROR, "failed to open file %s: %s(%d)", config_file, strerror(errno), errno);
         exit(-1);
