@@ -1982,7 +1982,7 @@ static int parse_enroll_opts(int argc, char *argv[]) {
             }
         }
     }
-    if (errors > 0) {
+    if (errors > 0 || enroll_opts.jwt == NULL || enroll_opts.enroll_key == NULL) {
         commandline_help(stderr);
         exit(1);
     }
