@@ -54,6 +54,13 @@
 #ifndef HOST_NAME_MAX
 #define HOST_NAME_MAX 254
 
+#ifndef S_IRUSR
+#define	S_IRUSR		_S_IREAD
+#endif
+#ifndef S_IWUSR
+#define	S_IWUSR	_S_IWRITE
+#endif
+
 //functions for logging on windows
 bool log_init(uv_loop_t *);
 void close_log();
@@ -1988,7 +1995,7 @@ static int parse_enroll_opts(int argc, char *argv[]) {
             }
         }
     }
-    if (errors > 0 || enroll_opts.jwt == NULL || enroll_opts.enroll_key == NULL) {
+    if (errors > 0 || enroll_opts.jwt == NULL || config_file == NULL) {
         commandline_help(stderr);
         exit(1);
     }
@@ -2018,6 +2025,10 @@ static void enroll_cb(ziti_config *cfg, int status, char *err, void *ctx) {
 }
 
 static void enroll(int argc, char *argv[]) {
+    uv_loop_t *l = uv_loop_new();
+    int log_level = get_log_level(NULL);
+    ziti_log_init(l, log_level, NULL);
+
     if (config_file == 0) {
         ZITI_LOG(ERROR, "output file option(-i|--identity) is required");
         exit(-1);
@@ -2028,13 +2039,19 @@ static void enroll(int argc, char *argv[]) {
         exit(-1);
     }
 
-    FILE *outfile;
-    if ((outfile = fopen(config_file, "wb")) == NULL) {
+    /* open with O_EXCL to fail if the file exists */
+    int outfd = open(config_file, O_CREAT | O_WRONLY | O_EXCL, S_IRUSR | S_IWUSR);
+    if (outfd < 0) {
+        ZITI_LOG(ERROR, "failed to open file %s: %s(%d)", config_file, strerror(errno), errno);
+        exit(-1);
+    }
+    FILE *outfile = NULL;
+    if ((outfile = fdopen(outfd, "wb")) == NULL) {
         ZITI_LOG(ERROR, "failed to open file %s: %s(%d)", config_file, strerror(errno), errno);
         exit(-1);
 
     }
-    uv_loop_t *l = uv_loop_new();
+
     ziti_enroll(&enroll_opts, l, enroll_cb, outfile);
 
     uv_run(l, UV_RUN_DEFAULT);
