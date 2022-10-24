@@ -8,21 +8,16 @@
 #endif
 
 // make sure BYTE_ORDER is defined early, otherwise some lwip sources will be compiled with inconsistent values.
+#include "lwip/arch.h" // defines BIG_ENDIAN, LITTLE_ENDIAN
 #ifndef BYTE_ORDER
-#if __linux__
-#include <endian.h>
-#elif _WIN32
-#ifdef _MSC_VER
-#include <netiodef.h>
-#endif
-#ifdef __MINGW32__
-#include <sys/param.h>
-#endif
-#elif __APPLE__ && __MACH__
-#include <machine/endian.h>
-#endif
-#ifndef BYTE_ORDER
-#error "BYTE_ORDER is not defined"
+#error "could not determine BYTE_ORDER"
+#else
+#if BYTE_ORDER == LITTLE_ENDIAN
+#warning "BYTE_ORDER == LITTLE_ENDIAN"
+#elif BYTE_ORDER == BIG_ENDIAN
+#warning "BYTE_ORDER == BIG_ENDIAN"
+#else
+#error "we need BYTE_ORDER"
 #endif
 #endif
 
