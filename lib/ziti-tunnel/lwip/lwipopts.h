@@ -65,7 +65,7 @@
 #define BYTE_ORDER CMAKE_C_BYTE_ORDER // define BYTE_ORDER before including arch.h. the default is dumb.
 #include "lwip/arch.h" // defines BIG_ENDIAN, etc
 
-#if (BYTE_ORDER != LITTLE_ENDIAN && BYTE_ORDER != BIG_ENDIAN && BYTE_ORDER != PDP_ENDIAN)
+#if (BYTE_ORDER != LITTLE_ENDIAN && BYTE_ORDER != BIG_ENDIAN)
 #error "BYTE_ORDER is not defined"
 #endif
 #endif

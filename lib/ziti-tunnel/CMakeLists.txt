@@ -35,7 +35,7 @@ set (LWIP_INCLUDE_DIRS
 include(${LWIP_DIR}/src/Filelists.cmake)
 
 target_sources(lwipcore PRIVATE ${lwip_sys_srcs} lwip/lwiphooks_ip6.c lwip/lwiphooks_ip4.c lwip/lwip_cloned_fns.c)
-target_compile_definitions(lwipcore PUBLIC CMAKE_C_BYTE_ORDER=${CMAKE_C_BYTE_ORDER})
+#target_compile_definitions(lwipcore PUBLIC CMAKE_C_BYTE_ORDER=${CMAKE_C_BYTE_ORDER})
 
 target_include_directories(ziti-tunnel-sdk-c
         PUBLIC ${LWIP_INCLUDE_DIRS}
