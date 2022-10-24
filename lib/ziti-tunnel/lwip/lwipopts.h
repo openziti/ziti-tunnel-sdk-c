@@ -60,6 +60,16 @@
 #define LWIP_NO_UNISTD_H 1
 #endif
 
+#ifndef BYTE_ORDER
+// make sure BYTE_ORDER is defined early, otherwise lwip sources will be compiled with inconsistent values.
+#define BYTE_ORDER CMAKE_C_BYTE_ORDER // define BYTE_ORDER before including arch.h. the default is dumb.
+#include "lwip/arch.h" // defines BIG_ENDIAN, etc
+
+#if (BYTE_ORDER != LITTLE_ENDIAN && BYTE_ORDER != BIG_ENDIAN)
+#error "BYTE_ORDER is not defined"
+#endif
+#endif
+
 // hooks
 #define LWIP_HOOK_FILENAME "lwiphooks.h"
 #define LWIP_HOOK_IP4_INPUT(pbuf, input_netif) ip4_input_hook((pbuf),(input_netif))
