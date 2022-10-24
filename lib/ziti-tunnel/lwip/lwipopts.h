@@ -7,16 +7,6 @@
 #define MEM_SIZE              524288      /* the size of the heap memory (1600) */
 #endif
 
-#ifndef BYTE_ORDER
-// make sure BYTE_ORDER is defined early, otherwise lwip sources will be compiled with inconsistent values.
-#define BYTE_ORDER CMAKE_C_BYTE_ORDER // define BYTE_ORDER before including arch.h. the default is dumb.
-#include "lwip/arch.h" // defines BIG_ENDIAN, etc
-
-#if (BYTE_ORDER != LITTLE_ENDIAN && BYTE_ORDER != BIG_ENDIAN && BYTE_ORDER != PDP_ENDIAN)
-#error "BYTE_ORDER is not defined"
-#endif
-#endif
-
 #if SCAREY_DEBUGGING_LWIP
 #define MEMP_OVERFLOW_CHECK   2           /* reserves bytes before and after each memp element in every pool and fills it with a prominent default value */
 #define MEMP_SANITY_CHECK     1           /* run a sanity check after each mem_free() to make sure that the linked list of heap elements is not corrupted */
@@ -68,6 +58,16 @@
 #ifdef _WIN32
 #define LWIP_NORAND 1
 #define LWIP_NO_UNISTD_H 1
+#endif
+
+#ifndef BYTE_ORDER
+// make sure BYTE_ORDER is defined early, otherwise lwip sources will be compiled with inconsistent values.
+#define BYTE_ORDER CMAKE_C_BYTE_ORDER // define BYTE_ORDER before including arch.h. the default is dumb.
+#include "lwip/arch.h" // defines BIG_ENDIAN, etc
+
+#if (BYTE_ORDER != LITTLE_ENDIAN && BYTE_ORDER != BIG_ENDIAN && BYTE_ORDER != PDP_ENDIAN)
+#error "BYTE_ORDER is not defined"
+#endif
 #endif
 
 // hooks
