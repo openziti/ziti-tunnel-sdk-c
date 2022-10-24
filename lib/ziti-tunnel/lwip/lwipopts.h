@@ -7,17 +7,13 @@
 #define MEM_SIZE              524288      /* the size of the heap memory (1600) */
 #endif
 
-// make sure BYTE_ORDER is defined early, otherwise some lwip sources will be compiled with inconsistent values.
-#include "lwip/arch.h" // defines BIG_ENDIAN, LITTLE_ENDIAN
 #ifndef BYTE_ORDER
-#error "could not determine BYTE_ORDER"
-#else
-#if BYTE_ORDER == LITTLE_ENDIAN
-#warning "BYTE_ORDER == LITTLE_ENDIAN"
-#elif BYTE_ORDER == BIG_ENDIAN
-#warning "BYTE_ORDER == BIG_ENDIAN"
-#else
-#error "we need BYTE_ORDER"
+// make sure BYTE_ORDER is defined early, otherwise lwip sources will be compiled with inconsistent values.
+#define BYTE_ORDER CMAKE_C_BYTE_ORDER // define BYTE_ORDER before including arch.h. the default is dumb.
+#include "lwip/arch.h" // defines BIG_ENDIAN, etc
+
+#if (BYTE_ORDER != LITTLE_ENDIAN && BYTE_ORDER != BIG_ENDIAN && BYTE_ORDER != PDP_ENDIAN)
+#error "BYTE_ORDER is not defined"
 #endif
 #endif
 
