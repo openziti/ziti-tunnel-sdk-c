@@ -7,6 +7,13 @@
 #define MEM_SIZE              524288      /* the size of the heap memory (1600) */
 #endif
 
+#ifndef BYTE_ORDER
+#include <endian.h>
+#ifndef BYTE_ORDER
+#error "BYTE_ORDER is not defined"
+#endif
+#endif
+
 #if SCAREY_DEBUGGING_LWIP
 #define MEMP_OVERFLOW_CHECK   2           /* reserves bytes before and after each memp element in every pool and fills it with a prominent default value */
 #define MEMP_SANITY_CHECK     1           /* run a sanity check after each mem_free() to make sure that the linked list of heap elements is not corrupted */
