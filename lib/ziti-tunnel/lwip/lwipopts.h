@@ -12,7 +12,12 @@
 #if __linux__
 #include <endian.h>
 #elif _WIN32
+#ifdef _MSC_VER
+#include <netiodef.h>
+#endif
+#ifdef __MINGW32__
 #include <sys/param.h>
+#endif
 #elif __APPLE__ && __MACH__
 #include <machine/endian.h>
 #endif
