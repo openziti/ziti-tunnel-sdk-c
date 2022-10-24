@@ -7,8 +7,15 @@
 #define MEM_SIZE              524288      /* the size of the heap memory (1600) */
 #endif
 
+// make sure BYTE_ORDER is defined early, otherwise some lwip sources will be compiled with inconsistent values.
 #ifndef BYTE_ORDER
+#if __linux__
 #include <endian.h>
+#elif _WIN32
+#include <sys/param.h>
+#elif __APPLE__ && __MACH__
+#include <machine/endian.h>
+#endif
 #ifndef BYTE_ORDER
 #error "BYTE_ORDER is not defined"
 #endif
