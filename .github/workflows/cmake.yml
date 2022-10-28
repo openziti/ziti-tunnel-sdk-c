@@ -25,6 +25,11 @@ jobs:
             arch: x86_64
             toolchain: default.cmake
 
+          - os: macOS-11
+            name: macOS arm64
+            arch: arm64
+            toolchain: macOS-arm64.cmake
+
           - os: windows-latest
             name: Windows x86_64
             arch: x86_64
