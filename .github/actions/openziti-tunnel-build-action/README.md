@@ -21,11 +21,11 @@
           - name: redhat
             version: "7"
             type: rpm
-            container: quay.io/centos/centos:7
+            container: docker.io/library/centos:7
           - name: redhat
             version: "8"
             type: rpm
-            container: quay.io/rockylinux/rockylinux:8
+            container: docker.io/library/rockylinux:8
 
       - name: configure build action for distro version
         env:

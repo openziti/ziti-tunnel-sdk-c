@@ -22,8 +22,15 @@ jobs:
       fail-fast: false
       matrix:
         arch:
-          - rpm: x86_64  # this value matches yum var $basearch
-            deb: amd64   # this value matches debian arch
+          - cmake: amd64  # selects CMAKE_TOOLCHAIN_FILE
+            rpm: x86_64   # yum $basearch
+            deb: amd64    # dpkg --print-architecture
+          - cmake: arm
+            rpm: armhfp
+            deb: armhf
+          - cmake: arm64
+            rpm: aarch64
+            deb: arm64
         distro:
           - name: ubuntu
             version: "22.04"
@@ -49,12 +56,52 @@ jobs:
             version: "7"
             release_name: ${{ null }}
             type: rpm
-            container: quay.io/centos/centos:7
+            container: docker.io/library/centos:7
           - name: redhat
             version: "8"
             release_name: ${{ null }}
             type: rpm
-            container: quay.io/rockylinux/rockylinux:8
+            container: docker.io/library/rockylinux:8
+        exclude:
+          - distro:
+              name: ubuntu
+              release_name: xenial
+            arch:
+              cmake: arm
+          - distro:
+              name: ubuntu
+              release_name: xenial
+            arch:
+              cmake: arm64
+          - distro:
+              name: ubuntu
+              release_name: trusty
+            arch:
+              cmake: arm
+          - distro:
+              name: ubuntu
+              release_name: trusty
+            arch:
+              cmake: arm64
+          - distro:
+              name: ubuntu
+              release_name: bionic
+            arch:
+              cmake: arm
+          - distro:
+              name: ubuntu
+              release_name: bionic
+            arch:
+              cmake: arm64
+          - distro:
+              name: redhat
+            arch:
+              cmake: arm
+          - distro:
+              name: redhat
+            arch:
+              cmake: arm64
+              
     steps:
       # only focal-20.04 has >= 2.18, which is required by actions/checkout to clone
       # which enables cmake version discovery
@@ -104,8 +151,11 @@ jobs:
                   ./.github/actions/openziti-tunnel-build-action/${FILE}
           done
 
+      # entrypoint.sh uses the value of arch to lookup the cmake toolchain file  
       - name: build binary and package
         uses: ./.github/actions/openziti-tunnel-build-action
+        with:
+          arch: ${{ matrix.arch.cmake }}
 
       - name: list build artifacts
         run: |
@@ -123,17 +173,18 @@ jobs:
           yes|dpkg --install ./build/ziti-edge-tunnel-*.deb || apt-get --yes --fix-broken install
 
       - name: install package artifact in runner container if Ubuntu >= 16.04
-        if: ${{ matrix.distro.name == 'ubuntu' && matrix.distro.version != '14.04' }}
+        if: ${{ matrix.arch.cmake == 'amd64' && matrix.distro.name == 'ubuntu' && matrix.distro.version != '14.04' }}
         run: |
           apt -y install ./build/ziti-edge-tunnel-*.deb
 
       - name: install package artifact in runner container if RedHat
-        if: ${{ matrix.distro.name == 'redhat' }}
+        if: ${{ matrix.arch.cmake == 'amd64' && matrix.distro.name == 'redhat' }}
         run: |
           set -x
           yum -y install ./build/ziti-edge-tunnel-*.rpm
 
       - name: run binary artifact
+        if: ${{ matrix.arch.cmake == 'amd64' }}
         run: |
           set -x
           cat /etc/*-release

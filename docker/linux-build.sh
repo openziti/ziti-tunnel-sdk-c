@@ -11,12 +11,21 @@ set -x
 
 DIRNAME=$(dirname $0)
 REPO_DIR=${DIRNAME}/..            # parent of the top-level dir where this script lives
+: ${USE_OPENSSL:="OFF"}
+: ${TARGET:="bundle"}
+: ${BUILD_DIST_PACKAGES:="OFF"}
 
-if (( ${#} )) && [[ $1 == --use-openssl ]]; then
+if (( ${#} )) && [[ $1 == --openssl ]]; then
     shift
     USE_OPENSSL="ON"
-else
-    USE_OPENSSL="OFF"
+fi
+
+if (( ${#} )) && [[ $1 == --package ]]; then
+    shift
+    USE_OPENSSL="ON"
+    TARGET="package"
+    BUILD_DIST_PACKAGES="ON"
+
 fi
 
 # if no architectures supplied then default list of three
@@ -35,13 +44,15 @@ for ARCH in ${JOBS[@]}; do
 #    cd ${CMAKE_BUILD_DIR}
     case ${ARCH} in
         amd64)  { cmake \
+                    -DCMAKE_BUILD_TYPE=Release \
                     -DCMAKE_TOOLCHAIN_FILE=${REPO_DIR}/toolchains/default.cmake \
                     -DUSE_OPENSSL=${USE_OPENSSL} \
+                    -DBUILD_DIST_PACKAGES=${BUILD_DIST_PACKAGES} \
                     -S ${REPO_DIR} \
                     -B ${CMAKE_BUILD_DIR} \
                 && cmake \
                     --build ${CMAKE_BUILD_DIR} \
-                    --target bundle \
+                    --target ${TARGET} \
                     --verbose;
                 }
         ;;
@@ -49,11 +60,12 @@ for ARCH in ${JOBS[@]}; do
                     -DCMAKE_BUILD_TYPE=Release \
                     -DCMAKE_TOOLCHAIN_FILE=${REPO_DIR}/toolchains/Linux-arm64.cmake \
                     -DUSE_OPENSSL=${USE_OPENSSL} \
+                    -DBUILD_DIST_PACKAGES=${BUILD_DIST_PACKAGES} \
                     -S ${REPO_DIR} \
                     -B ${CMAKE_BUILD_DIR} \
                 && cmake \
                     --build ${CMAKE_BUILD_DIR} \
-                    --target bundle \
+                    --target ${TARGET} \
                     --verbose;
                 }
         ;;
@@ -61,11 +73,12 @@ for ARCH in ${JOBS[@]}; do
                     -DCMAKE_BUILD_TYPE=Release \
                     -DCMAKE_TOOLCHAIN_FILE=${REPO_DIR}/toolchains/Linux-arm.cmake \
                     -DUSE_OPENSSL=${USE_OPENSSL} \
+                    -DBUILD_DIST_PACKAGES=${BUILD_DIST_PACKAGES} \
                     -S ${REPO_DIR} \
                     -B ${CMAKE_BUILD_DIR} \
                 && cmake \
                     --build ${CMAKE_BUILD_DIR} \
-                    --target bundle \
+                    --target ${TARGET} \
                     --verbose;
                 }
         ;;
