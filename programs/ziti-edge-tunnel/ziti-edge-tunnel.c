@@ -2304,7 +2304,7 @@ static int enable_mfa_opts(int argc, char *argv[]) {
 static int verify_mfa_opts(int argc, char *argv[]) {
     static struct option opts[] = {
             {"identity", required_argument, NULL, 'i'},
-            {"code", required_argument, NULL, 'c'},
+            {"authcode", required_argument, NULL, 'c'},
     };
     int c, option_index, errors = 0;
     optind = 0;
@@ -2343,7 +2343,7 @@ static int verify_mfa_opts(int argc, char *argv[]) {
 static int remove_mfa_opts(int argc, char *argv[]) {
     static struct option opts[] = {
             {"identity", required_argument, NULL, 'i'},
-            {"code", required_argument, NULL, 'c'},
+            {"authcode", required_argument, NULL, 'c'},
     };
     int c, option_index, errors = 0;
     optind = 0;
@@ -2382,7 +2382,7 @@ static int remove_mfa_opts(int argc, char *argv[]) {
 static int submit_mfa_opts(int argc, char *argv[]) {
     static struct option opts[] = {
             {"identity", required_argument, NULL, 'i'},
-            {"code", required_argument, NULL, 'c'},
+            {"authcode", required_argument, NULL, 'c'},
     };
     int c, option_index, errors = 0;
     optind = 0;
@@ -2421,7 +2421,7 @@ static int submit_mfa_opts(int argc, char *argv[]) {
 static int generate_mfa_codes_opts(int argc, char *argv[]) {
     static struct option opts[] = {
             {"identity", required_argument, NULL, 'i'},
-            {"code", required_argument, NULL, 'c'},
+            {"authcode", required_argument, NULL, 'c'},
     };
     int c, option_index, errors = 0;
     optind = 0;
@@ -2460,7 +2460,7 @@ static int generate_mfa_codes_opts(int argc, char *argv[]) {
 static int get_mfa_codes_opts(int argc, char *argv[]) {
     static struct option opts[] = {
             {"identity", required_argument, NULL, 'i'},
-            {"code", required_argument, NULL, 'c'},
+            {"authcode", required_argument, NULL, 'c'},
     };
     int c, option_index, errors = 0;
     optind = 0;
