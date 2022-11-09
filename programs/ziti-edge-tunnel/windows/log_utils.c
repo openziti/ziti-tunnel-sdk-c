@@ -109,7 +109,7 @@ void flush_log(uv_check_t *handle) {
 
     if (handle->data) {
         struct tm *orig_time = handle->data;
-        if (orig_time->tm_mday < tm->tm_mday) {
+        if (orig_time->tm_mday < tm->tm_mday || orig_time->tm_mon < tm->tm_mon || orig_time->tm_year < tm->tm_year) {
             if (rotate_log()) {
                 uv_async_t *ar = calloc(1, sizeof(uv_async_t));
                 uv_async_init(handle->loop, ar, update_symlink_async);
