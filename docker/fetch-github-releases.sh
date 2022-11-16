@@ -43,7 +43,8 @@ fi
 host_arch=$(uname -m)
 case "${host_arch}" in
 "x86_64") artifact_arch="x86_64";;
-"armv7l"|"aarch64") artifact_arch="arm";;
+"armv7l") artifact_arch="arm";;
+"aarch64") artifact_arch="arm64";;
 *) echo "ERROR: Ziti binaries do not exist for architecture ${host_arch}"; exit 1;;
 esac
 

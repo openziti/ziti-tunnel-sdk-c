@@ -50,7 +50,7 @@ EOF
 DIRNAME=$(dirname "$0") || exit $?
 EXIT=0
 
-while getopts :r:chlf OPT;do
+while getopts :r:chlfP OPT;do
     case $OPT in
         r)  CONTAINER_REPO=$OPTARG 
             ;;
@@ -60,7 +60,9 @@ while getopts :r:chlf OPT;do
             ;;
         l)  FLAGS+=$OPT     # also tag and push latest
             ;;
-        f)  FLAGS+=$OPT
+        f)  FLAGS+=$OPT     # clobber existing tag(s) in Hub
+            ;;
+        P) 	FLAGS+=$OPT     # don't push container image to Hub
             ;;
         \?|*) _usage 1      # error
             ;;
@@ -91,6 +93,14 @@ if [[ ${FLAGS:-} =~ l ]]; then
     TAG_PARAMS+=" --tag=\"${CONTAINER_REPO}:latest\""
 fi
 
+if [[ ${FLAGS:-} =~ P ]]; then
+    # if no push then load in image cache
+    BUILDX_OUTPUT=""
+else
+    # default is push to Hub
+    BUILDX_OUTPUT="--push"
+fi
+
 docker run --rm --privileged tonistiigi/binfmt:qemu-v6.2.0
 grep -E -q 'enabled' /proc/sys/fs/binfmt_misc/qemu-arm
 docker run --rm --platform linux/arm64/v8 arm64v8/alpine uname -a | grep -Eq 'aarch64 Linux'
@@ -98,12 +108,12 @@ docker run --rm --platform linux/arm/v7 arm32v7/alpine uname -a | grep -Eq 'armv
 docker buildx create --use --name=ziti-builder 2>/dev/null || docker buildx use --default ziti-builder
 
 # if 
-if [[ ${FLAGS:-} =~ f ]] || ! curl -sSLf https://registry.hub.docker.com/v2/repositories/${CONTAINER_REPO}/tags/${ZITI_VERSION} &>/dev/null; then
+if [[ ${FLAGS:-} =~ P ]] || [[ ${FLAGS:-} =~ f ]] || ! curl -sSLf https://registry.hub.docker.com/v2/repositories/${CONTAINER_REPO}/tags/${ZITI_VERSION} &>/dev/null; then
     eval docker buildx build "${DIRNAME}" \
         --platform="linux/amd64,linux/arm/v7,linux/arm64" \
         --build-arg=ZITI_VERSION="${ZITI_VERSION}" \
         "${TAG_PARAMS}" \
-        --push
+        "${BUILDX_OUTPUT}"
 else
     echo "ERROR: Docker tag ziti-edge-tunnel:${ZITI_VERSION} already exists. Carefully send option -f to clobber Docker image tag." >&2
     EXIT=1
