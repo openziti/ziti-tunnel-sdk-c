@@ -1,0 +1,33 @@
+ARG CMAKE_VERSION="3.22.3"
+FROM debian:jessie-slim
+#
+# usage
+# docker run with top-level of tunneler SDK repo mounted as writeable volume on /mnt
+
+ARG CMAKE_VERSION
+ARG uid=1000
+ARG gid=1000
+ENV TZ=Etc/UTC
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update \
+    && apt-get -y install \
+        build-essential \
+        curl \
+        doxygen \
+        git \
+        graphviz \
+        libsystemd-dev \
+        iproute2 \
+        pkg-config \
+        python3 \
+        zlib1g-dev \
+        libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN curl -sSfL https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}.tar.gz -o cmake.tgz \
+    && tar xf cmake.tgz \
+    && (cd ./cmake-${CMAKE_VERSION} && ./bootstrap && make && make install)
+
+USER ${uid}:${gid}
+WORKDIR /mnt/
+ENTRYPOINT ["/mnt/docker/linux-native-build.sh"]

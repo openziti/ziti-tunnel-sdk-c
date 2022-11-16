@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
 #
-# build the Linux artifacts for amd64, arm64
-#
-# runs one background job per desired architecture unless there are too few CPUs
-#
+# cross-compile the Linux artifacts for the target architecture on amd64
 # 
 
 set -o pipefail -e -u
@@ -34,8 +31,6 @@ if (( ${#} )); then
 else
     typeset -a JOBS=(amd64 arm64 arm)
 fi
-
-typeset -A BUILDS
 
 for ARCH in ${JOBS[@]}; do
     CMAKE_BUILD_DIR=${REPO_DIR}/build-${ARCH} # adjacent the top-level dir where this script lives

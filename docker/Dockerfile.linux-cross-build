@@ -1,9 +1,6 @@
 ARG CMAKE_VERSION="3.22.3"
 FROM debian:buster-slim
 #
-# this file mirrors the build params used in the GitHub Actions and enables
-# reproducible crossbuilds for downstream forks for Ziti contributors 
-#
 # usage
 # docker run with top-level of tunneler SDK repo mounted as writeable volume on /mnt
 
@@ -39,10 +36,10 @@ RUN apt-get update \
         libssl-dev:armhf \
     && rm -rf /var/lib/apt/lists/*
 
-RUN curl -sSfL https://cmake.org/files/v${CMAKE_VERSION%.*}/cmake-${CMAKE_VERSION}-linux-x86_64.sh -o cmake.sh \
+RUN curl -sSfL https://cmake.org/files/v${CMAKE_VERSION%.*}/cmake-${CMAKE_VERSION}-linux-$(uname -m).sh -o cmake.sh \
     && (bash cmake.sh --skip-license --prefix=/usr/local) \
     && rm cmake.sh
 
 USER ${uid}:${gid}
 WORKDIR /mnt/
-ENTRYPOINT ["/mnt/docker/linux-build.sh"]
+ENTRYPOINT ["/mnt/docker/linux-cross-build.sh"]
