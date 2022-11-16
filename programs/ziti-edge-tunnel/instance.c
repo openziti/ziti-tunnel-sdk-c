@@ -15,6 +15,7 @@
  */
 
 #include "model/dtos.h"
+#include <ziti/ziti_model.h>
 #include <ziti/ziti_log.h>
 #include <time.h>
 #include <config-utils.h>
@@ -376,6 +377,8 @@ tunnel_service *get_tunnel_service(tunnel_identity* id, ziti_service* zs) {
     svc->Name = strdup(zs->name);
     svc->PostureChecks = NULL;
     svc->OwnsIntercept = true;
+    svc->Permissions.Bind = ziti_service_has_permission(zs, ziti_session_type_Bind);
+    svc->Permissions.Dial = ziti_service_has_permission(zs, ziti_session_type_Dial);
     setTunnelPostureDataTimeout(svc, zs);
     setTunnelServiceAddress(svc, zs);
     return svc;
@@ -815,6 +818,7 @@ IMPL_MODEL(tunnel_metrics, TUNNEL_METRICS)
 IMPL_MODEL(tunnel_address, TUNNEL_ADDRESS)
 IMPL_MODEL(tunnel_port_range, TUNNEL_PORT_RANGE)
 IMPL_MODEL(tunnel_posture_check, TUNNEL_POSTURE_CHECK)
+IMPL_MODEL(tunnel_service_permissions, TUNNEL_SERVICE_PERMISSIONS)
 IMPL_MODEL(tunnel_service, TUNNEL_SERVICE)
 IMPL_MODEL(tunnel_status, TUNNEL_STATUS)
 IMPL_MODEL(ip_info, IP_INFO)

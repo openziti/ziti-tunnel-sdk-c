@@ -73,6 +73,10 @@ XX(Id, string, none, Id, __VA_ARGS__) \
 XX(Timeout, int, none, Timeout, __VA_ARGS__)  \
 XX(TimeoutRemaining, int, none, TimeoutRemaining, __VA_ARGS__)
 
+#define TUNNEL_SERVICE_PERMISSIONS(XX,...) \
+XX(Bind, bool, none, Bind, __VA_ARGS__) \
+XX(Dial, bool, none, Dial, __VA_ARGS__)
+
 #define TUNNEL_SERVICE(XX, ...) \
 XX(Id, string, none, Id, __VA_ARGS__) \
 XX(Name, string, none, Name, __VA_ARGS__) \
@@ -83,7 +87,8 @@ XX(OwnsIntercept, bool, none, OwnsIntercept, __VA_ARGS__) \
 XX(PostureChecks, tunnel_posture_check, array, PostureChecks, __VA_ARGS__) \
 XX(IsAccessible, bool, none, IsAccessible, __VA_ARGS__) \
 XX(Timeout, int, none, Timeout, __VA_ARGS__)         \
-XX(TimeoutRemaining, int, none, TimeoutRemaining, __VA_ARGS__)
+XX(TimeoutRemaining, int, none, TimeoutRemaining, __VA_ARGS__) \
+XX(Permissions, tunnel_service_permissions , none, Permissions, __VA_ARGS__)
 
 #define TUNNEL_STATUS(XX, ...) \
 XX(Active, bool, none, Active, __VA_ARGS__) \
@@ -114,6 +119,7 @@ DECLARE_MODEL(tunnel_metrics, TUNNEL_METRICS)
 DECLARE_MODEL(tunnel_address, TUNNEL_ADDRESS)
 DECLARE_MODEL(tunnel_port_range, TUNNEL_PORT_RANGE)
 DECLARE_MODEL(tunnel_posture_check, TUNNEL_POSTURE_CHECK)
+DECLARE_MODEL(tunnel_service_permissions, TUNNEL_SERVICE_PERMISSIONS)
 DECLARE_MODEL(tunnel_service, TUNNEL_SERVICE)
 DECLARE_MODEL(tunnel_identity, TUNNEL_IDENTITY)
 DECLARE_MODEL(ip_info, IP_INFO)
