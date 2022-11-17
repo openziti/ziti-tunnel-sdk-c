@@ -1,9 +1,12 @@
 name: 'OpenZiti Tunneler Build Action'
 description: 'Builds ziti-edge-tunnel binary and install package for Linux'
 author: 'NetFoundry'
-outputs:
-  package_type:
-    description: lowercase filename suffix of the install package built by this action
+inputs:
+  arch:
+    description: 'The architecture string used by entrypoint.sh to select CMAKE_TOOLCHAIN_FILE'
+    required: false
 runs:
   using: 'docker'
   image: 'Dockerfile'
+  args:
+    - ${{ inputs.arch }}

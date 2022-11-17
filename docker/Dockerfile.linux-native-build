@@ -1,23 +1,17 @@
-FROM debian:sid-slim
-#
-# this file mirrors the build params used in the GitHub Actions and enables
-# reproducible crossbuilds for downstream forks for Ziti contributors 
+ARG CMAKE_VERSION="3.22.3"
+FROM debian:jessie-slim
 #
 # usage
 # docker run with top-level of tunneler SDK repo mounted as writeable volume on /mnt
 
+ARG CMAKE_VERSION
 ARG uid=1000
 ARG gid=1000
 ENV TZ=Etc/UTC
 ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get -y update
-# multi-platform stuff
-RUN apt-get -y install gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf gcc-aarch64-linux-gnu crossbuild-essential-arm64
-# tunneler SDK stuff
-RUN apt-get -y update \
+RUN apt-get update \
     && apt-get -y install \
         build-essential \
-        cmake \
         curl \
         doxygen \
         git \
@@ -30,6 +24,10 @@ RUN apt-get -y update \
         libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
+RUN curl -sSfL https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}.tar.gz -o cmake.tgz \
+    && tar xf cmake.tgz \
+    && (cd ./cmake-${CMAKE_VERSION} && ./bootstrap && make && make install)
+
 USER ${uid}:${gid}
 WORKDIR /mnt/
-ENTRYPOINT ["/mnt/docker/linux-build.sh"]
+ENTRYPOINT ["/mnt/docker/linux-native-build.sh"]

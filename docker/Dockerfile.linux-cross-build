@@ -1,19 +1,14 @@
 ARG CMAKE_VERSION="3.22.3"
-
-# upstream of Ubuntu Jammy 22.04 LTS
-FROM debian:bookworm
+FROM debian:buster-slim
+#
+# usage
+# docker run with top-level of tunneler SDK repo mounted as writeable volume on /mnt
 
 ARG CMAKE_VERSION
-
-LABEL org.opencontainers.image.authors="support@netfoundry.io"
-
+ARG uid=1000
+ARG gid=1000
+ENV TZ=Etc/UTC
 ENV DEBIAN_FRONTEND=noninteractive
-ENV GIT_DISCOVERY_ACROSS_FILESYSTEM=1
-ENV TZ=UTC
-
-USER root
-WORKDIR /root/
-
 RUN apt-get update \
     && apt-get -y install \
         gcc-arm-linux-gnueabihf \
@@ -45,5 +40,6 @@ RUN curl -sSfL https://cmake.org/files/v${CMAKE_VERSION%.*}/cmake-${CMAKE_VERSIO
     && (bash cmake.sh --skip-license --prefix=/usr/local) \
     && rm cmake.sh
 
-COPY ./entrypoint.sh /root/
-ENTRYPOINT [ "/root/entrypoint.sh" ]
+USER ${uid}:${gid}
+WORKDIR /mnt/
+ENTRYPOINT ["/mnt/docker/linux-cross-build.sh"]

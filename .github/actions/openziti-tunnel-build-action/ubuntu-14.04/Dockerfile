@@ -4,7 +4,7 @@ FROM ubuntu:trusty
 
 ARG CMAKE_VERSION
 
-LABEL org.opencontainers.image.authors="steven.broderick@netfoundry.io,kenneth.bingham@netfoundry.io"
+LABEL org.opencontainers.image.authors="support@netfoundry.io"
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV GIT_DISCOVERY_ACROSS_FILESYSTEM=1
@@ -39,7 +39,7 @@ RUN update-alternatives \
         --slave /usr/bin/g++ g++ /usr/bin/g++-9 \
         --slave /usr/bin/gcov gcov /usr/bin/gcov-9
 
-RUN curl -L https://cmake.org/files/v${CMAKE_VERSION%.*}/cmake-${CMAKE_VERSION}-linux-x86_64.sh -o cmake.sh \
+RUN curl -sSfL https://cmake.org/files/v${CMAKE_VERSION%.*}/cmake-${CMAKE_VERSION}-linux-$(uname -m).sh -o cmake.sh \
     && (bash cmake.sh --skip-license --prefix=/usr/local) \
     && rm cmake.sh
 

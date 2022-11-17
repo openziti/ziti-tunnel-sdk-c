@@ -10,6 +10,25 @@ echo "INFO: GIT_DISCOVERY_ACROSS_FILESYSTEM=${GIT_DISCOVERY_ACROSS_FILESYSTEM}"
 echo "INFO: WORKDIR=${PWD}"
 echo "INFO: $(git --version)"
 
+# if first positional is an expected arch string then set toolchain file, else default toolchain
+if (( ${#} )); then
+    case ${1} in
+        amd64)  CMAKE_TOOLCHAIN_FILE="default.cmake"
+                shift
+        ;;
+        arm64)  CMAKE_TOOLCHAIN_FILE="Linux-arm64.cmake"
+                shift
+        ;;
+        arm)    CMAKE_TOOLCHAIN_FILE="Linux-arm.cmake"
+                shift
+        ;;
+        *)      CMAKE_TOOLCHAIN_FILE="default.cmake"
+        ;;
+    esac
+else
+    CMAKE_TOOLCHAIN_FILE="default.cmake"
+fi
+
 # workspace dir for each build env is added to "safe" dirs in global config e.g.
 # ~/.gitconfig so both runner and builder containers trust these dirs
 # owned by different UIDs from that of Git's EUID. This is made necessary
@@ -22,12 +41,13 @@ for SAFE in \
         git config --global --add safe.directory ${SAFE}
 done
 
+[[ -d ./build ]] && rm -r ./build
 cmake \
     -E make_directory \
     ./build  
 cmake \
     -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_TOOLCHAIN_FILE=./toolchains/default.cmake \
+    -DCMAKE_TOOLCHAIN_FILE=./toolchains/${CMAKE_TOOLCHAIN_FILE} \
     -DBUILD_DIST_PACKAGES=ON \
     -DUSE_OPENSSL=ON \
     -S . \
