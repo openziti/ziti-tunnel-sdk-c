@@ -1,5 +1,5 @@
 ARG CMAKE_VERSION="3.22.3"
-FROM debian:stretch-slim
+FROM debian:jessie-slim
 #
 # (cd ./docker; DOCKER_BUILDKIT=1 docker build --platform arm --file Dockerfile.linux-native-build -t openziti/ziti-edge-tunnel-builder:debian-jessie-arm ./;)
 # docker run --rm -it --volume "${PWD}:/mnt" --platform arm openziti/ziti-edge-tunnel-builder:debian-jessie-arm
