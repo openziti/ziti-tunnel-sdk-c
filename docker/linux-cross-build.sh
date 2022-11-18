@@ -11,18 +11,27 @@ REPO_DIR=${DIRNAME}/..            # parent of the top-level dir where this scrip
 : ${USE_OPENSSL:="OFF"}
 : ${TARGET:="bundle"}
 : ${BUILD_DIST_PACKAGES:="OFF"}
+: ${DISABLE_LIBSYSTEMD_FEATURE:="OFF"}
 
-if (( ${#} )) && [[ $1 == --openssl ]]; then
-    shift
-    USE_OPENSSL="ON"
-fi
-
-if (( ${#} )) && [[ $1 == --package ]]; then
-    shift
-    USE_OPENSSL="ON"
-    TARGET="package"
-    BUILD_DIST_PACKAGES="ON"
-
+if (( ${#} )); then
+    for OPT in ${*}; do
+        case $OPT in
+            --openssl)
+                USE_OPENSSL="ON"
+                shift
+            ;;
+            --package)
+                USE_OPENSSL="ON"
+                TARGET="package"
+                BUILD_DIST_PACKAGES="ON"
+                shift
+            ;;
+            --no-systemd)
+                DISABLE_LIBSYSTEMD_FEATURE="ON"
+                shift
+            ;;
+        esac
+    done
 fi
 
 # if no architectures supplied then default list of three
@@ -43,6 +52,7 @@ for ARCH in ${JOBS[@]}; do
                     -DCMAKE_TOOLCHAIN_FILE=${REPO_DIR}/toolchains/default.cmake \
                     -DUSE_OPENSSL=${USE_OPENSSL} \
                     -DBUILD_DIST_PACKAGES=${BUILD_DIST_PACKAGES} \
+                    -DDISABLE_LIBSYSTEMD_FEATURE=${DISABLE_LIBSYSTEMD_FEATURE} \
                     -S ${REPO_DIR} \
                     -B ${CMAKE_BUILD_DIR} \
                 && cmake \
@@ -56,6 +66,7 @@ for ARCH in ${JOBS[@]}; do
                     -DCMAKE_TOOLCHAIN_FILE=${REPO_DIR}/toolchains/Linux-arm64.cmake \
                     -DUSE_OPENSSL=${USE_OPENSSL} \
                     -DBUILD_DIST_PACKAGES=${BUILD_DIST_PACKAGES} \
+                    -DDISABLE_LIBSYSTEMD_FEATURE=${DISABLE_LIBSYSTEMD_FEATURE} \
                     -S ${REPO_DIR} \
                     -B ${CMAKE_BUILD_DIR} \
                 && cmake \
@@ -69,6 +80,7 @@ for ARCH in ${JOBS[@]}; do
                     -DCMAKE_TOOLCHAIN_FILE=${REPO_DIR}/toolchains/Linux-arm.cmake \
                     -DUSE_OPENSSL=${USE_OPENSSL} \
                     -DBUILD_DIST_PACKAGES=${BUILD_DIST_PACKAGES} \
+                    -DDISABLE_LIBSYSTEMD_FEATURE=${DISABLE_LIBSYSTEMD_FEATURE} \
                     -S ${REPO_DIR} \
                     -B ${CMAKE_BUILD_DIR} \
                 && cmake \
