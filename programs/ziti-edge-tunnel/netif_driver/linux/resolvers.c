@@ -49,6 +49,7 @@ static int (*sd_booted_f)(void);
 static int (*sd_bus_call_f)(sd_bus *bus, sd_bus_message *m, uint64_t usec, sd_bus_error *ret_error, sd_bus_message **reply);
 static int (*sd_bus_call_method_f)(sd_bus *bus, const char *destination, const char *path, const char *interface, const char *member, sd_bus_error *ret_error, sd_bus_message **reply, const char *types, ...);
 static void (*sd_bus_error_free_f)(sd_bus_error *e);
+static int (*sd_bus_error_has_name_f)(const sd_bus_error *e, const char *name);
 static int (*sd_bus_error_set_errno_f)(sd_bus_error *e, int error);
 static sd_bus *(*sd_bus_flush_close_unref_f)(sd_bus *bus);
 static int (*sd_bus_get_property_f)(sd_bus *bus, const char *destination, const char *path, const char *interface, const char *member, sd_bus_error *ret_error, sd_bus_message **reply, const char *type);
@@ -69,6 +70,7 @@ static void init_libsystemd() {
     TRY_DL(uv_dlsym(&libsystemd_h, "sd_bus_call", (void **) &sd_bus_call_f));
     TRY_DL(uv_dlsym(&libsystemd_h, "sd_bus_call_method", (void **) &sd_bus_call_method_f));
     TRY_DL(uv_dlsym(&libsystemd_h, "sd_bus_error_free", (void **) &sd_bus_error_free_f));
+    TRY_DL(uv_dlsym(&libsystemd_h, "sd_bus_error_has_name", (void **) &sd_bus_error_has_name_f));
     TRY_DL(uv_dlsym(&libsystemd_h, "sd_bus_error_set_errno", (void **) &sd_bus_error_set_errno_f));
     TRY_DL(uv_dlsym(&libsystemd_h, "sd_bus_flush_close_unref", (void **) &sd_bus_flush_close_unref_f));
     TRY_DL(uv_dlsym(&libsystemd_h, "sd_bus_get_property", (void **) &sd_bus_get_property_f));
@@ -309,12 +311,18 @@ static bool set_systemd_resolved_link_setting(sd_bus *bus, const char* tun, cons
     va_end(ap);
 
     if (r < 0) {
-        ZITI_LOG(ERROR, "Failure in method invocation: %s for link: (%s): (%s, %s)",
+        if (sd_bus_error_has_name_f(&error, SD_BUS_ERROR_UNKNOWN_METHOD)) {
+            ZITI_LOG(WARN, "Attempted to call unknown method: %s for link: (%s)",
+                    method, tun);
+            return true;
+        }
+
+        ZITI_LOG(ERROR, "Failure calling method: %s for link: (%s): (%s, %s)",
                  method, tun, error.name, error.message);
         return false;
     }
 
-    ZITI_LOG(DEBUG, "Success in method invocation: %s for link: (%s)", method, tun);
+    ZITI_LOG(DEBUG, "Success calling method: %s for link: (%s)", method, tun);
 
     return true;
 }
