@@ -218,7 +218,7 @@ jobs:
         run: >
           jf rt upload
           ./build/ziti-edge-tunnel-*.${{ matrix.distro.type }}
-          /zitipax-openziti-deb-stable/pool/ziti-edge-tunnel/${{ matrix.distro.release_name }}/ 
+          /zitipax-openziti-deb-stable/pool/ziti-edge-tunnel/${{ matrix.distro.release_name }}/${{ matrix.arch.deb }}/
           --deb=${{ matrix.distro.release_name }}/main/${{ matrix.arch.deb }}
           --recursive=false
           --flat=true 
