@@ -219,7 +219,7 @@ static int sd_bus_is_acquired_name(sd_bus *bus, const char* bus_name) {
     }
 
     if (found != 0) {
-        ZITI_LOG(TRACE, "systemd-resolved DBus name is NOT acquired");
+        ZITI_LOG(DEBUG, "systemd-resolved DBus name is NOT acquired");
     }
 
     return found;
@@ -347,8 +347,8 @@ bool try_libsystemd_resolver(void) {
     if ((r >= 0) && (sd_bus_is_bus_client_f(bus) > 0)) {
         ZITI_LOG(DEBUG, "Connected to system DBus");
         r = sd_bus_is_acquired_name(bus, RESOLVED_DBUS_NAME);
-        if (r < 0) {
-            ZITI_LOG(ERROR, "Did not find DBus acquired bus name: %s. Falling back to legacy resolvers", RESOLVED_DBUS_NAME);
+        if (r != 0) {
+            ZITI_LOG(WARN, "libsystemd resolver unsuccessful. Falling back to legacy resolvers");
             return false;
         }
         if (r == 0) {

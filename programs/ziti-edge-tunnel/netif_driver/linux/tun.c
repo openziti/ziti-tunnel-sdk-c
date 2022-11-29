@@ -228,7 +228,7 @@ static void find_dns_updater() {
     }
 #endif
     if (is_executable(BUSCTL)) {
-        if (run_command_ex(false, BUSCTL " status %s &> /dev/null", RESOLVED_DBUS_NAME) == 0) {
+        if (run_command_ex(false, BUSCTL " status %s > /dev/null 2>&1", RESOLVED_DBUS_NAME) == 0) {
             if (is_executable(RESOLVECTL)) {
                 dns_updater = dns_update_resolvectl;
                 return;
