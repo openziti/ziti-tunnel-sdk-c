@@ -20,8 +20,6 @@ You may bind a host directory to the container filesystem in `/ziti-edge-tunnel`
 
 This image runs `ziti-edge-tunnel run-host` on the Red Hat 8 Universal Base Image to optimize deployability within the Red Hat ecosystem e.g. OpenShift. The `ziti-edge-tunnel run-host` hosting-only mode of the Linux tunneler is useful as a sidecar for publishing containerized servers located in a Docker bridge network (use network mode `bridge`) or any other server running in the Docker host's network (use network mode `host`).
 
-This image is used by [the eponymous Helm chart, `ziti-host`](https://openziti.github.io/helm-charts/).
-
 See the [the Linux tunneler doc](https://openziti.github.io/ziti/clients/linux.html) for general info about the Linux tunneler that is installed in this container image.
 
 ### Image Tags for `openziti/ziti-host`
@@ -59,7 +57,7 @@ docker run \
   openziti/ziti-host
 ```
 
-This example uses the included Docker Compose project to illustrate publishing a server container to your OpenZiti Network.
+This example uses [the included Docker Compose project](./docker-compose.yml) to illustrate publishing a server container to your OpenZiti Network.
 
 1. Create an OpenZiti Config with type `intercept.v1`.
 
@@ -111,7 +109,7 @@ This example uses the included Docker Compose project to illustrate publishing a
 
 1. Access the demo server via your OpenZiti Network: [http://hello-docker.ziti](http://hello-docker.ziti)
 
-### Docker Compose Projects for `openziti/ziti-host`
+### Docker Compose Examples for `openziti/ziti-host`
 
 Get a single, enrolled identity configuration from an environment variable. You could define the value of the variable with an `.env` file in the same directory as `docker-compose.yml`.
 
@@ -172,6 +170,8 @@ volumes:
 
 ### Kubernetes Deployments for `openziti/ziti-host`
 
+You can use the this container in a Kubernetes pod network in the same way that it's used with a Docker network, to publish cluster services, internal node IPs, etc. to the Ziti network.
+
 - [Helm Chart `openziti/ziti-host`](https://openziti.github.io/helm-charts/#ziti-host)
 - [Deployment manifest](./ziti-host-deployment.yaml)
 
@@ -211,7 +211,7 @@ docker run \
     openziti/ziti-edge-tunnel
 ```
 
-### Docker Compose Projects for `openziti/ziti-edge-tunnel`
+### Docker Compose Examples for `openziti/ziti-edge-tunnel`
 
 This example uses [the Docker Compose project](./docker-compose.yml) included in this repo.
 
@@ -241,7 +241,7 @@ services:
 
 ### Kubernetes Deployments for `openziti/ziti-edge-tunnel`
 
-[Daemonset manifest](./ziti-tun-daemonset.yaml): provides a nameserver `100.64.0.2`, but containers don't automatically use it until you configure cluster DNS. You could configure CoreDNS to forward queries that match a namespace like `*.ziti` to the Ziti nameserver like this:
+[Daemonset manifest](./ziti-tun-daemonset.yaml): provides a nameserver `100.64.0.2`, but containers don't automatically use it until you configure cluster DNS. CoreDNS doesn't currently have a fallthrough mechanism, but you can use conventional names for your Ziti services' like `*.ziti` and configure CoreDNS to forward queries that match that namespace to the Ziti nameserver.
 
 ```yaml
 apiVersion: v1
