@@ -1,12 +1,13 @@
 ARG CMAKE_VERSION="3.22.3"
 FROM debian:jessie-slim
 #
-# usage
-# docker run with top-level of tunneler SDK repo mounted as writeable volume on /mnt
+# (cd ./docker; DOCKER_BUILDKIT=1 docker build --platform arm --file Dockerfile.linux-native-build -t openziti/ziti-edge-tunnel-builder:debian-jessie-arm ./;)
+# docker run --rm -it --volume "${PWD}:/mnt" --platform arm openziti/ziti-edge-tunnel-builder:debian-jessie-arm
+
 
 ARG CMAKE_VERSION
 ARG uid=1000
-ARG gid=1000
+ARG gid=0
 ENV TZ=Etc/UTC
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update \
@@ -24,10 +25,15 @@ RUN apt-get update \
         libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# binary releases are available for x86_64, arm64
 RUN curl -sSfL https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}.tar.gz -o cmake.tgz \
     && tar xf cmake.tgz \
-    && (cd ./cmake-${CMAKE_VERSION} && ./bootstrap && make && make install)
+    && (cd ./cmake-${CMAKE_VERSION} && ./bootstrap && make && make install) \
+    && rm -r ./cmake-${CMAKE_VERSION}
 
+# the purpose of the uid:gid is to avoid root-owned build output folder
+RUN getent group ${gid} &>/dev/null || groupadd --gid ${gid} ziggy
+RUN getent passwd ${uid} &>/dev/null || useradd --system --home-dir /mnt --gid ${gid} --uid ${uid} ziggy
 USER ${uid}:${gid}
-WORKDIR /mnt/
+WORKDIR /mnt
 ENTRYPOINT ["/mnt/docker/linux-native-build.sh"]
