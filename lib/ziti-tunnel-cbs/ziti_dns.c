@@ -259,12 +259,12 @@ static bool check_name(const char *name, char clean_name[MAX_DNS_NAME], bool *is
     char *p = clean_name;
 
     if (*hp == '*' && *(hp + 1) == '.') {
-        *is_domain = true;
+        if (is_domain) *is_domain = true;
         *p++ = '*';
         *p++ = '.';
         hp += 2;
     } else {
-        *is_domain = false;
+        if (is_domain) *is_domain = false;
     }
 
     bool need_alphanum = true;
@@ -686,7 +686,10 @@ ssize_t on_dns_req(void *ziti_io_ctx, void *write_ctx, const void *q_packet, siz
     if (q->type == NS_T_A || q->type == NS_T_AAAA) {
         process_host_req(req);
     } else {
-        dns_domain_t *domain = find_domain(q->name);
+        // find domain requires normalized name
+        char reqname[MAX_DNS_NAME];
+        check_name(q->name, reqname, NULL);
+        dns_domain_t *domain = find_domain(reqname);
         if (domain) {
             proxy_domain_req(req, domain);
         } else {
