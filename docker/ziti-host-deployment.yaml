@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ziti-host
+  namespace: default
+spec:
+  replicas: 1
+  selector:   
+    matchLabels:
+      app.kubernetes.io/name: ziti-host
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ziti-host
+    spec:
+      containers:
+      - env:
+        - name: ZITI_IDENTITY_BASENAME
+          value: ziti-host-identity
+        image: openziti/ziti-host
+        name: ziti-host
+        volumeMounts:           
+        - mountPath: /ziti-edge-tunnel
+          name: persisted-identity
+          readOnly: true
+      volumes:
+      - name: persisted-identity
+        secret:
+          defaultMode: 256
+          items:
+          - key: persisted-identity
+            path: ziti-host-identity.json
+          secretName: ziti-host-identity
