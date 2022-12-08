@@ -39,7 +39,8 @@ LABEL name="openziti/ziti-host" \
     #   release="0.19.11" \
 
 ### add licenses to this directory
-COPY ./LICENSE /licenses
+RUN mkdir -m0755 /licenses
+COPY ./LICENSE-Apache /licenses/apache.txt
 
 RUN mkdir -p /usr/local/bin
 COPY --from=fetch-ziti-artifacts /tmp/ziti-edge-tunnel /usr/local/bin
