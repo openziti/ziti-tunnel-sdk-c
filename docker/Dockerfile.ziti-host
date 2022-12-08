@@ -45,7 +45,8 @@ RUN mkdir -p /usr/local/bin
 COPY --from=fetch-ziti-artifacts /tmp/ziti-edge-tunnel /usr/local/bin
 COPY ./docker-entrypoint.sh /
 RUN chmod +x /docker-entrypoint.sh
-RUN mkdir -p /ziti-edge-tunnel
+RUN mkdir -m0777 /ziti-edge-tunnel
+USER nobody
 
 ENTRYPOINT [ "/docker-entrypoint.sh" ]
 CMD [ "run-host" ]
