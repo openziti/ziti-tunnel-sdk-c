@@ -11,7 +11,12 @@ ARG GITHUB_REPO="ziti-tunnel-sdk-c"
 
 WORKDIR /tmp
 
-RUN yum install -y curl unzip
+### Add necessary Red Hat repos and packages
+RUN REPOLIST=ubi-8-baseos-rpms \
+    INSTALL_PKGS="curl unzip" && \
+    yum -y update-minimal --disablerepo "*" --enablerepo ${REPOLIST} --setopt=tsflags=nodocs \
+      --security --sec-severity=Important --sec-severity=Critical && \
+    yum -y install --disablerepo "*" --enablerepo ${REPOLIST} --setopt=tsflags=nodocs ${INSTALL_PKGS}
 
 COPY fetch-github-releases.sh .
 RUN bash ./fetch-github-releases.sh ziti-edge-tunnel
@@ -23,8 +28,6 @@ RUN bash ./fetch-github-releases.sh ziti-edge-tunnel
 ################
 
 FROM registry.access.redhat.com/ubi8/ubi
-
-MAINTAINER OpenZiti Developers <developers@openziti.org>
 
 ### Required OpenShift Labels 
 LABEL name="openziti/ziti-host" \
