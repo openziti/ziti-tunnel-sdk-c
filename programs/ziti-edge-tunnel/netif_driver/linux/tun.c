@@ -159,7 +159,7 @@ static void process_routes_updates(uv_work_t *wr) {
         it = model_map_it_next(it);
     }
 
-    run_command("ip -batch -force %s", uv_fs_get_path(&tmp_req));
+    run_command("ip -force -batch %s", uv_fs_get_path(&tmp_req));
 
     uv_fs_t unlink_req = {0};
     uv_fs_unlink(wr->loop, &unlink_req, uv_fs_get_path(&tmp_req), NULL);
