@@ -25,8 +25,8 @@ set -euo pipefail
 
 echo "Fetching from GitHub."
 # defaults
-: "${GITHUB_BASE_URL:=https://github.com/openziti}"
-: "${GITHUB_REPO:="ziti-tunnel-sdk-c"}"
+: "${GITHUB_BASE_URL:=https://github.com}"
+: "${GITHUB_REPO:="openziti/ziti-tunnel-sdk-c"}"
 : "${ZITI_VERSION:="latest"}"
 
 if [[ "$ZITI_VERSION" == "latest" ]];then

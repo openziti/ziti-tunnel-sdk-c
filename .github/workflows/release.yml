@@ -11,9 +11,11 @@ jobs:
     name: Download Release Artifacts
     runs-on: ubuntu-latest
     needs: [ call-cmake-build ]
+    outputs:
+      ZITI_VERSION: ${{ steps.get_version.outputs.ZITI_VERSION }}
     steps:
       - name: download
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           path: ${{ runner.workspace }}/downloads/
 
@@ -58,3 +60,26 @@ jobs:
           asset_path: ${{ runner.workspace }}/downloads/Windows-x86_64/ziti-edge-tunnel-Windows_AMD64.zip
           asset_name: ziti-edge-tunnel-Windows_x86_64.zip
           asset_content_type: application/octet-stream
+
+      - name: Get the Version String from Git Tag
+        id: get_version
+        env:
+          GITHUB_REF: ${{ github.ref }}
+        run: |
+          ZITI_VERSION="${GITHUB_REF#refs/*/v}"
+          if [[ "${ZITI_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "DEBUG: ZITI_VERSION=${ZITI_VERSION}"
+            echo ZITI_VERSION="${ZITI_VERSION}" >> $GITHUB_OUTPUT
+          else
+            # fail the job because we could not obtain a valid version string from the Git ref
+            echo "ERROR: ZITI_VERSION=${ZITI_VERSION} is not a semver"
+            exit 1
+          fi
+
+  call-publish-containers:
+    name: Publish Container Images
+    needs: [ release ]
+    uses: ./.github/workflows/publish-containers.yml
+    secrets: inherit
+    with:
+      ziti-version: ${{ needs.release.outputs.ZITI_VERSION }}
