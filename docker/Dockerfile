@@ -4,9 +4,8 @@ FROM debian:buster-slim as fetch-ziti-artifacts
 
 ARG ZITI_VERSION
 
-ARG GITHUB_BASE_URL="https://github.com/openziti"
-# to fetch snapshots from the "feature-0.5" branch, set ZITI_REPO="ziti-snapshot/feature-0.5"
-ARG GITHUB_REPO="ziti-tunnel-sdk-c"
+ARG GITHUB_BASE_URL
+ARG GITHUB_REPO
 
 WORKDIR /tmp
 
@@ -15,7 +14,7 @@ RUN apt-get -q update && apt-get -q install -y --no-install-recommends curl ca-c
 RUN /bin/bash -c "if ! compgen -G '/etc/ssl/certs/*.[0-9]' > /dev/null; then c_rehash /etc/ssl/certs; fi"
 
 COPY fetch-github-releases.sh .
-RUN bash ./fetch-github-releases.sh ziti-edge-tunnel
+RUN bash -x ./fetch-github-releases.sh ziti-edge-tunnel
 
 ################
 #
