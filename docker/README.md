@@ -6,11 +6,11 @@ It is necessary to supply a Ziti identity enrollment token or an enrolled Ziti i
 
 ### Configuration with Environment Variable
 
-- `ZITI_IDENTITY_JSON`: The JSON string of the Ziti identity. This overrides other methods of supplying the Ziti identity JSON. It is not advisable to mount a volume on the container filesystem when using this method because the Ziti identity is written to a temporary file and will cause an error if the file already exists.
+- `ZITI_IDENTITY_JSON`: This is the Ziti identity as represented as JSON. This variable overrides other methods of supplying the Ziti identity JSON. It is not advisable to mount a volume on the container filesystem when using this method because the Ziti identity is written to a temporary file and will cause an error if the file already exists.
 
 ### Configuration with Files from Mounted Volume
 
-You may bind a host directory to the container filesystem in `/ziti-edge-tunnel` as a means of supplying the token JWT file or configuration JSON file. If a token JWT file is supplied then it will be enrolled on first container startup and the identity configuration JSON file will be written in the same location named like `${ZITI_IDENTITY_BASENAME}.json`.
+You may bind a host directory to the container filesystem in `/ziti-edge-tunnel` to supply the token JWT file or configuration JSON file. If you provide a token JWT file, the entrypoint script will enroll the identity during container startup. The entrypoint script will write the identity configuration JSON file in the same directory with a filename like `${ZITI_IDENTITY_BASENAME}.json`.
 
 - `ZITI_IDENTITY_BASENAME`: the file basename (without the filename suffix) of the enrollment (.jwt) and identity (.json) files the tunneler will use
 - `ZITI_ENROLL_TOKEN`: Optionally, you may supply the enrollment token JWT as a string if `${ZITI_IDENTITY_BASENAME}.jwt` is not mounted
@@ -18,13 +18,13 @@ You may bind a host directory to the container filesystem in `/ziti-edge-tunnel`
 
 ## Container Image `openziti/ziti-host`
 
-This image runs `ziti-edge-tunnel run-host` on the Red Hat 8 Universal Base Image to optimize deployability within the Red Hat ecosystem e.g. OpenShift. The `ziti-edge-tunnel run-host` hosting-only mode of the Linux tunneler is useful as a sidecar for publishing containerized servers located in a Docker bridge network (use network mode `bridge`) or any other server running in the Docker host's network (use network mode `host`).
+This image runs `ziti-edge-tunnel run-host` on the Red Hat 8 Universal Base Image to optimize deployability within the Red Hat ecosystem, e.g., OpenShift. The hosting-only mode (`ziti-edge-tunnel run-host`) of the Linux tunneler is helpful for publishing containerized servers. YOu may locate the published servers in a Docker bridge network (use network mode `bridge`) or the Docker host's network (use network mode `host`).
 
-See the [the Linux tunneler doc](https://openziti.github.io/ziti/clients/linux.html) for general info about the Linux tunneler that is installed in this container image.
+See [the Linux tunneler doc](https://openziti.github.io/ziti/clients/linux.html) for general info about the OpenZiti Linux tunneler.
 
 ### Image Tags for `openziti/ziti-host`
 
-The `openziti/ziti-host` image is published in Docker Hub and manually updated for some new releases. You may subscribe to `:latest` (default) or pin a version for stability e.g. `:0.19.11`.
+The `openziti/ziti-host` image is published in Docker Hub and automatically updated with new releases. You may subscribe to `:latest` (default) or pin a version for stability e.g. `:0.19.11`.
 
 ### Dockerfile for `openziti/ziti-host`
 
@@ -32,7 +32,7 @@ The Dockerfile for `openziti/ziti-host` is [./Dockerfile.ziti-host](./Dockerfile
 
 ### Hosting a Ziti Service with `openziti/ziti-host`
 
-Publish servers that are reachable on the Docker host's network e.g. `tcp:localhost:54321`:
+Publish servers that are reachable on the Docker host's network, e.g., `tcp:localhost:54321`:
 
 ```bash
 # identity file on Docker host is mounted in container: /opt/openziti/etc/identities/my-ziti-identity.json
@@ -45,7 +45,7 @@ docker run \
   openziti/ziti-host
 ```
 
-Publish servers inside the same Docker bridge network e.g. `tcp:my-docker-service:80`:
+Publish servers inside the same Docker bridge network, e.g., `tcp:my-docker-service:80`:
 
 ```bash
 # identity file on Docker host is stuffed in env var: /opt/openziti/etc/identities/my-ziti-identity.json
@@ -88,11 +88,11 @@ This example uses [the included Docker Compose project](./docker-compose.yml) to
     }
     ```
 
-1. Create a service associating the two configs with a role attribute like "#HelloServices"
-1. Create an identity for your client tunneler named like "MyClient" and load the identity
-1. Create an identity named like "DockerHost" and download the enrollment token in the same directory as `docker-compose.yml` i.e. "DockerHost.jwt"
-1. Create a Bind service policy assigning "#HelloServices" to be bound by "@DockerHost"
-1. Create a Dial service policy granting access to "#HelloServices" to your client tunneler's identity "@MyClient"
+1. Create a service associating the two configs with a role attribute like "#HelloServices."
+1. Create an identity for your client tunneler named "MyClient" and load the identity.
+1. Create an identity named "DockerHost" and download the enrollment token in the same directory as `docker-compose.yml`, i.e., "DockerHost.jwt."
+1. Create a Bind service policy assigning "#HelloServices" to be bound by "@DockerHost."
+1. Create a Dial service policy granting access to "#HelloServices" to your client tunneler's identity "@MyClient."
 1. Run the demo server
 
     ```bash
@@ -111,7 +111,7 @@ This example uses [the included Docker Compose project](./docker-compose.yml) to
 
 ### Docker Compose Examples for `openziti/ziti-host`
 
-Get a single, enrolled identity configuration from an environment variable. You could define the value of the variable with an `.env` file in the same directory as `docker-compose.yml`.
+Get a single, enrolled identity configuration from an environment variable. You could define the variable with an `.env` file in the same directory as `docker-compose.yml`.
 
 ```yaml
 version: "3.9"
@@ -122,7 +122,7 @@ services:
             - ZITI_IDENTITY_JSON
 ```
 
-Configure a single, enrolled identity from the host filesystem directory where `docker-compose.yml` file is located.
+Configure a single, enrolled identity from the host filesystem directory in the same directory as `docker-compose.yml`.
 
 In this example, the file `ziti_id.jwt` exists and is used to enroll on the first run, producing `ziti_id.json`, the identity configuration file. Subsequent runs will use only the enrolled identity's JSON configuration file.
 
@@ -139,7 +139,7 @@ services:
 
 Configure all enrolled identities from a named volume.
 
-In this example, all of the files named like *.json in the volume are loaded.
+This example loads all files named *.json from the mounted volume.
 
 ```yaml
 version: "3.9"
@@ -170,7 +170,7 @@ volumes:
 
 ### Kubernetes Deployments for `openziti/ziti-host`
 
-You can use the this container in a Kubernetes pod network in the same way that it's used with a Docker network, to publish cluster services, internal node IPs, etc. to the Ziti network.
+This deployment is a zero-trust ingress (North-South) solution for exposing cluster services to authorized clients.
 
 - [Helm Chart `openziti/ziti-host`](https://openziti.github.io/helm-charts/#ziti-host)
 - [Deployment manifest](./ziti-host-deployment.yaml)
@@ -180,19 +180,19 @@ You can use the this container in a Kubernetes pod network in the same way that 
 This image runs `ziti-edge-tunnel run`, the OpenZiti tunneler, on a Debian Linux base. This run mode provides a Ziti nameserver and transparent proxy that captures
 network traffic destined for Ziti services.
 
-See the [the Linux tunneler doc](https://openziti.github.io/ziti/clients/linux.html) for general info about the Linux tunneler that is installed in this container image.
+See [the Linux tunneler doc](https://openziti.github.io/ziti/clients/linux.html) for general info about the OpenZiti Linux tunneler.
 
-This container image requires access to a Ziti enrollment token (JWT), and typically uses a persistent
-volume mounted at `/ziti-edge-tunnel` to persist the permanent identity JSON configuration file that is created
-when the one-time enrollment token is consumed.
+This container image requires access to a Ziti enrollment token (JWT). It typically uses a persistent
+volume mounted at `/ziti-edge-tunnel` to persist the permanent identity JSON configuration file. The entrypoint script will
+consume the JWT to create the JSON file during container startup.
 
 ### Tags for `openziti/ziti-edge-tunnel`
 
-The container image `openziti/ziti-edge-tunnel` is published in Docker Hub and frequently updated with new releases. You may subscribe to `:latest` (default) or pin a version for stability e.g. `:0.19.11`.
+The container image `openziti/ziti-edge-tunnel` is published in Docker Hub and frequently updated with new releases. You may subscribe to `:latest` (default) or pin a version for stability, e.g., `:0.19.11`.
 
 ### Dockerfile for `openziti/ziti-edge-tunnel`
 
-The main Dockerfile for `openziti/ziti-edge-tunnel` is [./Dockerfile](./Dockerfile). This image is typically built with the BuildKit wrapper script [./buildx.sh](./buildx.sh) and there is not yet any build or test automation for this image.
+The main Dockerfile for `openziti/ziti-edge-tunnel` is [./Dockerfile](./Dockerfile). This image is routinely published to Docker Hub with each release of the OpenZiti tunneler.
 
 ### Accessing Ziti Services with `openziti/ziti-edge-tunnel`
 
@@ -241,7 +241,7 @@ services:
 
 ### Kubernetes Deployments for `openziti/ziti-edge-tunnel`
 
-[Daemonset manifest](./ziti-tun-daemonset.yaml): provides a nameserver `100.64.0.2`, but containers don't automatically use it until you configure cluster DNS. CoreDNS doesn't currently have a fallthrough mechanism, but you can use conventional names for your Ziti services' like `*.ziti` and configure CoreDNS to forward queries that match that namespace to the Ziti nameserver.
+[Daemonset manifest](./ziti-tun-daemonset.yaml): provides a nameserver `100.64.0.2`, but containers don't automatically use it until you configure cluster DNS. CoreDNS doesn't currently have a fallthrough mechanism, but you can use conventional names for your Ziti services' like `*.ziti`, and configure CoreDNS to forward queries that match that namespace to the Ziti nameserver.
 
 ```yaml
 apiVersion: v1
