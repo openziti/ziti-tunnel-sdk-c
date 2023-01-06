@@ -1,51 +1,6 @@
 # this builds docker.io/openziti/ziti-host
-FROM registry.access.redhat.com/ubi8/ubi as fetch-ziti-artifacts
-# This build stage grabs artifacts that are copied into the final image.
-# It uses the same base as the final image to maximize docker cache hits.
+FROM docker.io/openziti/ziti-edge-tunnel
 
-ARG ZITI_VERSION
-
-ARG GITHUB_BASE_URL
-ARG GITHUB_REPO
-
-WORKDIR /tmp
-
-### Add necessary Red Hat repos and packages
-RUN REPOLIST=ubi-8-baseos-rpms \
-    INSTALL_PKGS="curl unzip" && \
-    yum -y update-minimal --disablerepo "*" --enablerepo ${REPOLIST} --setopt=tsflags=nodocs \
-      --security --sec-severity=Important --sec-severity=Critical && \
-    yum -y install --disablerepo "*" --enablerepo ${REPOLIST} --setopt=tsflags=nodocs ${INSTALL_PKGS}
-
-COPY fetch-github-releases.sh .
-RUN bash ./fetch-github-releases.sh ziti-edge-tunnel
-
-################
-#
-#  Main Image
-#
-################
-
-FROM registry.access.redhat.com/ubi8/ubi
-
-### Required OpenShift Labels 
-LABEL name="openziti/ziti-host" \
-      maintainer="developers@openziti.org" \
-      vendor="NetFoundry" \
-      summary="OpenZiti hosting tunneler" \
-      description="Publish any server that is reachable by this container as an OpenZiti service"
-    #   version="0.2.2" \
-    #   release="0.19.11" \
-
-### add licenses to this directory
-RUN mkdir -m0755 /licenses
-COPY ./LICENSE-Apache /licenses/apache.txt
-
-RUN mkdir -p /usr/local/bin
-COPY --from=fetch-ziti-artifacts /tmp/ziti-edge-tunnel /usr/local/bin
-COPY ./docker-entrypoint.sh /
-RUN chmod +x /docker-entrypoint.sh
-RUN mkdir -m0777 /ziti-edge-tunnel
 USER nobody
 
 ENTRYPOINT [ "/docker-entrypoint.sh" ]
