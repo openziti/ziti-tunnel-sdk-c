@@ -1,6 +1,14 @@
 # this builds docker.io/openziti/ziti-host
 FROM docker.io/openziti/ziti-edge-tunnel
 
+
+### Required OpenShift Labels 
+LABEL name="openziti/ziti-host" \
+      maintainer="developers@openziti.org" \
+      vendor="NetFoundry" \
+      summary="OpenZiti Hosting Tunneler" \
+      description="Configure a reverse proxy for OpenZiti Services"
+
 USER nobody
 
 ENTRYPOINT [ "/docker-entrypoint.sh" ]

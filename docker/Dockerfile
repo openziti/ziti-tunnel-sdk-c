@@ -32,8 +32,8 @@ FROM registry.access.redhat.com/ubi8/ubi
 LABEL name="openziti/ziti-edge-tunnel" \
       maintainer="developers@openziti.org" \
       vendor="NetFoundry" \
-      summary="OpenZiti tunneler" \
-      description="Configure a forward proxy and nameserver for OpenZiti Services"
+      summary="OpenZiti Tunneler" \
+      description="Configure a proxy and nameserver for OpenZiti Services"
 
 ### add licenses to this directory
 RUN mkdir -m0755 /licenses
