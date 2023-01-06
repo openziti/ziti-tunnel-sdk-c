@@ -1,14 +1,22 @@
 # Run The OpenZiti Tunneler with Docker
 
-## Configuring the Ziti Identity
+## What’s the difference between the two containers?
+
+The newer container is `openziti/ziti-host`. This container focuses on the most common use case for a containerized tunneler: hosting Ziti services. It employs the “run-host” mode of the tunneler (service hosting only without a proxy or nameserver). This container drops privileges to improve security (non-root) and builds on the Red Hat Universal Base Image.
+
+The original container was `openziti/ziti-edge-tunnel`. This container provides a privileged proxy and nameserver with the “run” mode of the tunneler.
+
+## Conventions
+
+### Configuring the Ziti Identity
 
 It is necessary to supply a Ziti identity enrollment token or an enrolled Ziti identity configuration JSON to the container as a volume-mounted file or as environment variables. The following variable, volumes, and files are common to both container images described below.
 
-### Configuration with Environment Variable
+#### Configuration with Environment Variable
 
 - `ZITI_IDENTITY_JSON`: This is the Ziti identity as represented as JSON. This variable overrides other methods of supplying the Ziti identity JSON. It is not advisable to mount a volume on the container filesystem when using this method because the Ziti identity is written to a temporary file and will cause an error if the file already exists.
 
-### Configuration with Files from Mounted Volume
+#### Configuration with Files from Mounted Volume
 
 You may bind a host directory to the container filesystem in `/ziti-edge-tunnel` to supply the token JWT file or configuration JSON file. If you provide a token JWT file, the entrypoint script will enroll the identity during container startup. The entrypoint script will write the identity configuration JSON file in the same directory with a filename like `${ZITI_IDENTITY_BASENAME}.json`.
 
