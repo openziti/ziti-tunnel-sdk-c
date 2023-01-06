@@ -424,8 +424,11 @@ static const ziti_address *intercept_match_addr(ip_addr_t *addr, void *ctx) {
         if (domain) {
             const ziti_address *zaddr;
             MODEL_LIST_FOREACH(zaddr, cfg->addresses) {
+                char str[64];
+                ziti_address_print(str, sizeof(str), zaddr);
+                ZITI_LOG(INFO, "---------> %s", str);
                 if (zaddr->type != ziti_address_hostname) continue;
-                if (ziti_address_match_s(domain, zaddr)) {
+                if (ziti_address_match_s(domain, zaddr) >= 0) {
                     return zaddr;
                 }
             }
