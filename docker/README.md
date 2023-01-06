@@ -27,11 +27,11 @@ You may bind a host directory to the container filesystem in `/ziti-edge-tunnel`
 
 ## Use Case: Hosting OpenZiti Services
 
-This use case involves deploying the OpenZiti tunneler as a reverse proxy to publish regular network servers to your OpenZiti Network. You may locate the published servers in a Docker bridge network (use network mode `bridge`) or the Docker host's network (use network mode `host`). See [the Linux tunneler doc](https://openziti.github.io/ziti/clients/linux.html) for general info about the OpenZiti tunneler. Use the `openziti/ziti-host` container image for this use case.
+This use case involves deploying the OpenZiti tunneler as a reverse proxy to publish regular network servers to your OpenZiti Network. You may locate the published servers in a Docker bridge network (use network mode `bridge`) or the Docker host's network (use network mode `host`). See [the Linux tunneler doc](https://openziti.github.io/ziti/clients/linux.html) for general info about the OpenZiti tunneler. Use the `openziti/ziti-host` container image for this case.
 
 ### Container Image `openziti/ziti-host`
 
-This image runs `ziti-edge-tunnel run-host` to invoke the hosting-only mode of the tunneler. The parent image of this container is `openziti/ziti-edge-tunnel`.
+This image runs `ziti-edge-tunnel run-host` to invoke the hosting-only mode of the tunneler. The main difference from the parent image (`openziti/ziti-edge-tunnel`) is the command argument and run-as user. This container runs as "nobody" and doesn't require special privileges.
 
 #### Image Tags for `openziti/ziti-host`
 
@@ -188,9 +188,9 @@ This deployment is a zero-trust ingress (North-South) solution for exposing clus
 
 ## Use Case: Intercepting Proxy and Nameserver
 
-This use case involves deploying the OpenZiti tunneler as an intercepting proxy with a built-in nameserver. You will use the `openziti/ziti-edge-tunnel` container image for this use case. 
+This use case involves deploying the OpenZiti tunneler as an intercepting proxy with a built-in nameserver. Use the `openziti/ziti-edge-tunnel` container image for this case.
 
-The "run" mode provides a built-in nameserver and intercepting proxy that captures network traffic destined for OpenZiti Services. "Run" mode requires elevated privileges to configure the OS with a DNS resolver and IP routes.
+The "run" mode requires elevated privileges to configure the OS with a DNS resolver and IP routes.
 
 ### Container Image `openziti/ziti-edge-tunnel`
 
@@ -204,11 +204,11 @@ The container image `openziti/ziti-edge-tunnel` is published in Docker Hub and a
 
 #### Dockerfile for `openziti/ziti-edge-tunnel`
 
-The main Dockerfile for `openziti/ziti-edge-tunnel` is [./Dockerfile](./Dockerfile).
+The Dockerfile for `openziti/ziti-edge-tunnel` is [./Dockerfile](./Dockerfile).
 
 #### Accessing OpenZiti Services with `openziti/ziti-edge-tunnel`
 
-Transparent Proxy `run` mode provides a nameserver running on the local device and captures any layer-4 traffic that matches an authorized service destination.
+Intercepting proxy `run` mode captures DNS names and layer-4 traffic that match authorized destinations.
 
 ```bash
 # current directory contains enrollment token file ziti_id.jwt
