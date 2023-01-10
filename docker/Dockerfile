@@ -1,4 +1,5 @@
-FROM debian:buster-slim as fetch-ziti-artifacts
+# this builds docker.io/openziti/ziti-edge-tunnel
+FROM registry.access.redhat.com/ubi8/ubi-minimal as fetch-ziti-artifacts
 # This build stage grabs artifacts that are copied into the final image.
 # It uses the same base as the final image to maximize docker cache hits.
 
@@ -9,12 +10,13 @@ ARG GITHUB_REPO
 
 WORKDIR /tmp
 
-RUN apt-get -q update && apt-get -q install -y --no-install-recommends curl ca-certificates unzip
-# workaround for `openssl rehash` not working on arm.
-RUN /bin/bash -c "if ! compgen -G '/etc/ssl/certs/*.[0-9]' > /dev/null; then c_rehash /etc/ssl/certs; fi"
+### Add necessary Red Hat repos and packages
+RUN INSTALL_PKGS="curl unzip" && \
+    microdnf -y update --setopt=install_weak_deps=0 --setopt=tsflags=nodocs && \
+    microdnf -y install --setopt=install_weak_deps=0 --setopt=tsflags=nodocs ${INSTALL_PKGS}
 
 COPY fetch-github-releases.sh .
-RUN bash -x ./fetch-github-releases.sh ziti-edge-tunnel
+RUN bash ./fetch-github-releases.sh ziti-edge-tunnel
 
 ################
 #
@@ -22,19 +24,30 @@ RUN bash -x ./fetch-github-releases.sh ziti-edge-tunnel
 #
 ################
 
-FROM debian:buster-slim
+FROM registry.access.redhat.com/ubi8/ubi-minimal
 
-RUN mkdir -p /usr/local/bin /etc/ssl/certs
-# libsystemd: install the shared object, necessary in conjunction with      --volume "/var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket"     to communicate with the host's dbus socket to configure systemd-resolved
-# iproute2: install /sbin/ip, necessary in conjunction with    --device="/dev/net/tun:/dev/net/tun"    to up the tun device, assign routes, and assign source IP 
-RUN apt-get -q update && apt-get -q install -y --no-install-recommends iproute2 libsystemd0
-# Use 32-bit arm binaries on arm64 until we have 64-bit arm builds. This also affects fetch-github-releases.sh.
-RUN /bin/bash -c 'if [[ "$(uname -m)" == "aarch64" ]]; then dpkg --add-architecture armhf; apt update; apt install -y libc6:armhf; fi'
-COPY --from=fetch-ziti-artifacts /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs
+### Required OpenShift Labels 
+LABEL name="openziti/ziti-edge-tunnel" \
+      maintainer="developers@openziti.org" \
+      vendor="NetFoundry" \
+      summary="OpenZiti Tunneler" \
+      description="Configure a proxy and nameserver for OpenZiti Services"
+
+### add licenses to this directory
+RUN mkdir -m0755 /licenses
+COPY ./LICENSE-Apache /licenses/apache.txt
+
+### Add necessary Red Hat repos and packages
+RUN INSTALL_PKGS="iproute procps" && \
+    microdnf -y update --setopt=install_weak_deps=0 --setopt=tsflags=nodocs && \
+    microdnf -y install --setopt=install_weak_deps=0 --setopt=tsflags=nodocs ${INSTALL_PKGS}
+
+RUN mkdir -p /usr/local/bin
 COPY --from=fetch-ziti-artifacts /tmp/ziti-edge-tunnel /usr/local/bin
 COPY ./docker-entrypoint.sh /
 RUN chmod +x /docker-entrypoint.sh
-RUN mkdir -p /ziti-edge-tunnel
+RUN mkdir -m0777 /ziti-edge-tunnel
+USER root
 
 ENTRYPOINT [ "/docker-entrypoint.sh" ]
 CMD [ "run" ]

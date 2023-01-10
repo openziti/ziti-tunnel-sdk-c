@@ -23,11 +23,11 @@ function alldone() {
     # of resolver config, tun devices and associated routes
     [[ "${ZITI_EDGE_TUNNEL_PID:-}" =~ ^[0-9]+$ ]] && {
         kill -TERM "$ZITI_EDGE_TUNNEL_PID"
-        # let entrypoint script exit after ziti-tunnel PID
-        wait "$ZITI_EDGE_TUNNEL_PID"
+        # let entrypoint script exit after ziti-edge-tunnel PID
+        kill -0 "$ZITI_EDGE_TUNNEL_PID" && wait "$ZITI_EDGE_TUNNEL_PID"
     }
 }
-trap alldone EXIT
+trap alldone SIGTERM SIGINT EXIT
 
 IDENTITIES_DIR="/ziti-edge-tunnel"
 if ! [[ -d "${IDENTITIES_DIR}" ]]; then
@@ -160,7 +160,6 @@ else
 fi
 
 echo "INFO: running ziti-edge-tunnel"
-set -x
 ziti-edge-tunnel "${TUNNEL_RUN_MODE}" "${TUNNEL_OPTS[@]}" "${@}" &
 ZITI_EDGE_TUNNEL_PID=$!
 wait $ZITI_EDGE_TUNNEL_PID
