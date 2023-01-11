@@ -283,3 +283,20 @@ data:
         forward . 100.64.0.2
     }
 ```
+
+Some Kubernetes distributions provide a method for persisting CoreDNS configuration, e.g., the `import` plugin. A common pattern is for the CoreDNS pod to mount a configmap with a particular name in the `kube-system` namespace, e.g., `coredns-custom` on a directory like `/etc/coredns/custom/` with an aligned statement in the Corefile like `import /etc/coredns/custom/*.server`. The CoreDNS customization configmap then has contents like:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coredns-custom
+  namespace: kube-system
+data:
+  ziti.server: |
+    ziti {
+      forward . 100.64.0.2
+    }
+```
+
+The result is that CoreDNS automatically includes Corefile server blocks from the customization configmap.
