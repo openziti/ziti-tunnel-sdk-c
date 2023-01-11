@@ -267,17 +267,17 @@ static bool check_name(const char *name, char clean_name[MAX_DNS_NAME], bool *is
         if (is_domain) *is_domain = false;
     }
 
-    bool need_alphanum = true;
+    bool success = true;
     while (*hp != '\0') {
-        if (!isalnum(*hp) && *hp != '-' && *hp != '.') { return false; }
-        if (!isalnum(*hp) && need_alphanum) return false;
-
-        need_alphanum = *hp == '.';
-
         *p++ = (char) tolower(*hp++);
+        if (p - clean_name >= MAX_DNS_NAME) {
+            p = clean_name;
+            success = false;
+            break;
+        }
     }
     *p = '\0';
-    return true;
+    return success;
 }
 
 static dns_entry_t* new_ipv4_entry(const char *host) {
