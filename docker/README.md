@@ -27,7 +27,7 @@ You may bind a host directory to the container filesystem in `/ziti-edge-tunnel`
 
 ## Use Case: Hosting OpenZiti Services
 
-This use case involves deploying the OpenZiti tunneler as a reverse proxy to publish regular network servers to your OpenZiti Network. You may locate the published servers in a Docker bridge network (use network mode `bridge`) or the Docker host's network (use network mode `host`). See [the Linux tunneler doc](https://openziti.github.io/ziti/clients/linux.html) for general info about the OpenZiti tunneler. Use the `openziti/ziti-host` container image for this case.
+This use case involves deploying the OpenZiti tunneler as a reverse proxy to publish regular network servers to your OpenZiti Network. You may locate the published servers in a Docker bridge network (use network mode `bridge`) or the Docker host's network (use network mode `host`). See [the Linux tunneler doc](https://docs.openziti.io/docs/learn/core-concepts/clients/tunnelers/linux/) for general info about the OpenZiti tunneler. Use the `openziti/ziti-host` container image for this case.
 
 ### Container Image `openziti/ziti-host`
 
@@ -39,7 +39,7 @@ The `openziti/ziti-host` image is published in Docker Hub and automatically upda
 
 #### Dockerfile for `openziti/ziti-host`
 
-The Dockerfile for `openziti/ziti-host` is [./Dockerfile.ziti-host](./Dockerfile.ziti-host).
+The Dockerfile for `openziti/ziti-host` is [./Dockerfile.ziti-host](Dockerfile.ziti-host).
 
 #### Hosting an OpenZiti Service with `openziti/ziti-host`
 
@@ -68,7 +68,7 @@ docker run \
   openziti/ziti-host
 ```
 
-This example uses [the included Docker Compose project](./docker-compose.yml) to illustrate publishing a server container to your OpenZiti Network.
+This example uses [the included Docker Compose project](docker-compose.yml) to illustrate publishing a server container to your OpenZiti Network.
 
 1. Create an OpenZiti Config with type `intercept.v1`.
 
@@ -118,7 +118,7 @@ This example uses [the included Docker Compose project](./docker-compose.yml) to
     ZITI_IDENTITY_JSON="$(< /tmp/my-ziti-id.json)" docker-compose run ziti-host run-host --verbose=4
     ```
 
-1. Access the demo server via your OpenZiti Network: [http://hello-docker.ziti](http://hello-docker.ziti)
+1. Access the demo server via your OpenZiti Network: `http://hello-docker.ziti`
 
 #### Docker Compose Examples for `openziti/ziti-host`
 
@@ -183,8 +183,8 @@ volumes:
 
 This deployment is a zero-trust ingress (North-South) solution for exposing cluster services to authorized clients.
 
-- [Helm Chart `openziti/ziti-host`](https://openziti.github.io/helm-charts/#ziti-host)
-- [Deployment manifest](./ziti-host-deployment.yaml)
+- [Helm Chart `openziti/ziti-host`](https://docs.openziti.io/helm-charts/#ziti-host)
+- [Deployment manifest](ziti-host-deployment.yaml)
 
 ## Use Case: Intercepting Proxy and Nameserver
 
@@ -196,7 +196,7 @@ The "run" mode requires elevated privileges to configure the OS with a DNS resol
 
 This image runs `ziti-edge-tunnel run`, the intercepting proxy mode of the tunneler. The Red Hat 8 Universal Base Image (UBI) is the base image of this container.
 
-See [the Linux tunneler doc](https://openziti.github.io/ziti/clients/linux.html) for general info about the OpenZiti tunneler.
+See [the Linux tunneler doc](https://docs.openziti.io/docs/learn/core-concepts/clients/tunnelers/linux/) for general info about the OpenZiti tunneler.
 
 #### Tags for `openziti/ziti-edge-tunnel`
 
@@ -204,7 +204,7 @@ The container image `openziti/ziti-edge-tunnel` is published in Docker Hub and a
 
 #### Dockerfile for `openziti/ziti-edge-tunnel`
 
-The Dockerfile for `openziti/ziti-edge-tunnel` is [./Dockerfile](./Dockerfile).
+The Dockerfile for `openziti/ziti-edge-tunnel` is [./Dockerfile.base](Dockerfile.base).
 
 #### Accessing OpenZiti Services with `openziti/ziti-edge-tunnel`
 
@@ -225,7 +225,7 @@ docker run \
 
 #### Docker Compose Examples for `openziti/ziti-edge-tunnel`
 
-This example uses [the Docker Compose project](./docker-compose.yml) included in this repo.
+This example uses [the Docker Compose project](docker-compose.yml) included in this repo.
 
 ```bash
 # enrolled identity file ziti_id.json is in the same directory as docker-compose.yml
@@ -253,7 +253,7 @@ services:
 
 #### Kubernetes Deployments for `openziti/ziti-edge-tunnel`
 
-[Daemonset manifest](./ziti-tun-daemonset.yaml): provides a nameserver `100.64.0.2`, but containers don't automatically use it until you configure cluster DNS. CoreDNS doesn't currently have a fallthrough mechanism, but you can use conventional names for your OpenZiti services' like `*.ziti`, and configure CoreDNS to forward queries that match that namespace to the OpenZiti nameserver.
+[Daemonset manifest](ziti-tun-daemonset.yaml): provides a nameserver `100.64.0.2`, but containers don't automatically use it until you configure cluster DNS. CoreDNS doesn't currently have a fallthrough mechanism, but you can use conventional names for your OpenZiti services' like `*.ziti`, and configure CoreDNS to forward queries that match that namespace to the OpenZiti nameserver.
 
 ```yaml
 apiVersion: v1
