@@ -204,7 +204,7 @@ The container image `openziti/ziti-edge-tunnel` is published in Docker Hub and a
 
 #### Dockerfile for `openziti/ziti-edge-tunnel`
 
-The Dockerfile for `openziti/ziti-edge-tunnel` is [./Dockerfile](Dockerfile).
+The Dockerfile for `openziti/ziti-edge-tunnel` is [./Dockerfile.base](Dockerfile.base).
 
 #### Accessing OpenZiti Services with `openziti/ziti-edge-tunnel`
 

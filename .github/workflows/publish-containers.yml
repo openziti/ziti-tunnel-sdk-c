@@ -53,7 +53,7 @@ jobs:
         with:
           builder: ${{ steps.buildx.outputs.name }}
           context: ${{ github.workspace }}/docker
-          file: ${{ github.workspace }}/docker/Dockerfile
+          file: ${{ github.workspace }}/docker/Dockerfile.base
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.tagprep_run.outputs.DOCKER_TAGS }}
           build-args: |
