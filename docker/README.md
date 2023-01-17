@@ -27,7 +27,7 @@ You may bind a host directory to the container filesystem in `/ziti-edge-tunnel`
 
 ## Use Case: Hosting OpenZiti Services
 
-This use case involves deploying the OpenZiti tunneler as a reverse proxy to publish regular network servers to your OpenZiti Network. You may locate the published servers in a Docker bridge network (use network mode `bridge`) or the Docker host's network (use network mode `host`). See [the Linux tunneler doc](https://docs.openziti.io/docs/learn/core-concepts/clients/tunnelers/linux/) for general info about the OpenZiti tunneler. Use the `openziti/ziti-host` container image for this case.
+This use case involves deploying the OpenZiti tunneler as a reverse proxy to publish regular network servers to your OpenZiti Network. You may locate the published servers in a Docker bridge network (use network mode `bridge`) or the Docker host's network (use network mode `host`). See [the Linux tunneler doc](https://docs.openziti.io/docs/reference/tunnelers/linux/) for general info about the OpenZiti tunneler. Use the `openziti/ziti-host` container image for this case.
 
 ### Container Image `openziti/ziti-host`
 
@@ -118,7 +118,7 @@ This example uses [the included Docker Compose project](docker-compose.yml) to i
     ZITI_IDENTITY_JSON="$(< /tmp/my-ziti-id.json)" docker-compose run ziti-host run-host --verbose=4
     ```
 
-1. Access the demo server via your OpenZiti Network: `http://hello-docker.ziti`
+1. Access the demo server via your OpenZiti Network: [http://hello-docker.ziti](http://hello-docker.ziti)
 
 #### Docker Compose Examples for `openziti/ziti-host`
 
@@ -196,7 +196,7 @@ The "run" mode requires elevated privileges to configure the OS with a DNS resol
 
 This image runs `ziti-edge-tunnel run`, the intercepting proxy mode of the tunneler. The Red Hat 8 Universal Base Image (UBI) is the base image of this container.
 
-See [the Linux tunneler doc](https://docs.openziti.io/docs/learn/core-concepts/clients/tunnelers/linux/) for general info about the OpenZiti tunneler.
+See [the Linux tunneler doc](https://docs.openziti.io/docs/reference/tunnelers/linux/) for general info about the OpenZiti tunneler.
 
 #### Tags for `openziti/ziti-edge-tunnel`
 
