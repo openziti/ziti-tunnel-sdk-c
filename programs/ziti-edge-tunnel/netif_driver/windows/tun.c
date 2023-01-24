@@ -133,6 +133,30 @@ static void InitializeWintun(void)
     WINTUN = Wintun;
 }
 
+static bool flush_dns() {
+    static BOOL (*DnsFlushResolverCache)();
+    if (DnsFlushResolverCache == NULL) {
+        HMODULE dnsapi = LoadLibrary("dnsapi.dll");
+        if (dnsapi == NULL) {
+            ZITI_LOG(ERROR, "Failed loading module: %lu", GetLastError());
+            return false;
+        }
+        DnsFlushResolverCache = (BOOL (*)()) GetProcAddress(dnsapi, "DnsFlushResolverCache");
+        if (DnsFlushResolverCache == NULL) {
+            ZITI_LOG(ERROR, "Failed loading DnsFlushResolverCache function: %lu", GetLastError());
+            FreeLibrary(dnsapi);
+            return false;
+        }
+    }
+    BOOL result = DnsFlushResolverCache();
+    if (result) {
+        ZITI_LOG(INFO, "DnsFlushResolverCache succeeded");
+    } else {
+        ZITI_LOG(ERROR, "DnsFlushResolverCache failed: %lu", GetLastError());
+    }
+    return result;
+}
+
 netif_driver tun_open(struct uv_loop_s *loop, uint32_t tun_ip, const char *cidr, char *error, size_t error_len) {
     if (error != NULL) {
         memset(error, 0, error_len * sizeof(char));
@@ -154,6 +178,7 @@ netif_driver tun_open(struct uv_loop_s *loop, uint32_t tun_ip, const char *cidr,
         return NULL;
     }
     cleanup_adapters(ZITI_TUN);
+    flush_dns();
 
     BOOL rr;
     GUID adapterGuid;
@@ -248,6 +273,7 @@ static int tun_close(struct netif_handle_s *tun) {
         tun->adapter = NULL;
     }
     free(tun);
+    flush_dns();
     return 0;
 }
 
