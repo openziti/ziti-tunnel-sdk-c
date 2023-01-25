@@ -320,7 +320,7 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
                 char errorMsg[1024];
                 snprintf(errorMsg, sizeof(errorMsg),"No matching identifier found for %s", dump.identifier);
                 result.error = errorMsg;
-                ZITI_LOG(WARN, result.error);
+                ZITI_LOG(WARN, "%s", result.error);
             }
             ZITI_LOG(INFO, "ziti dump finished ");
             free_tunnel_ziti_dump(&dump);
@@ -1111,7 +1111,7 @@ static void get_mfa_codes(ziti_context ztx, char *code, void *ctx) {
 #define CHECK(lbl, op) do{ \
 int rc = (op);                  \
 if (rc < 0) {              \
-ZITI_LOG(ERROR, "operation[" #op "] failed: %d(%s) errno=%d", rc, strerror(rc), errno); \
+ZITI_LOG(ERROR, "operation[%s] failed: %d(%s) errno=%d", #op, rc, strerror(rc), errno); \
 goto lbl;\
 }                           \
 }while(0)
