@@ -1571,6 +1571,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
         }
     }
     run_tunneler_loop(ziti_loop);
+    tun->close(tun->handle);
     return 0;
 }
 
@@ -1617,7 +1618,7 @@ static void run_tunneler_loop(uv_loop_t* ziti_loop) {
 
     free(tunneler);
 #if _WIN32
-    close_log();
+    //close_log();
 #endif
 }
 
@@ -2940,9 +2941,6 @@ void stop_tunnel_and_cleanup() {
     ZITI_LOG(INFO,"cleaning instance config ");
     cleanup_instance_config();
 
-    ZITI_LOG(INFO,"closing/cleaning tun");
-    tun_kill();
-    ZITI_LOG(INFO,"tun closed/cleaned");
     ZITI_LOG(INFO,"============================ service ends ==================================");
     uv_cond_signal(&stop_cond); //release the wait condition held in scm_service_stop
 }
@@ -2950,8 +2948,7 @@ void stop_tunnel_and_cleanup() {
 void scm_service_stop_event(uv_loop_t *loop, void *arg) {
     //function used to get back onto the loop
     stop_tunnel_and_cleanup();
-
-    if (arg != NULL && arg == "interrupted" && loop != NULL) {
+    if (arg != NULL && strcmp(arg, "interrupted") == 0 && loop != NULL) {
         uv_stop(loop);
         uv_loop_close(loop);
     }
