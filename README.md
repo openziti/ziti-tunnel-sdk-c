@@ -9,9 +9,8 @@ that are useful to Ziti Tunnelers.
 
 ## What's a Ziti Tunneler?
 
-The main article about tunnellers is
-https://openziti.github.io/ziti/clients/tunneler.html. Editors may follow the
-"Improve this doc" link on any page.
+[The main article about tunnellers is here](https://docs.openziti.io/docs/reference/tunnelers/linux/). Editors may follow the
+"Edit this page" link on every page.
 
 ## What is the Ziti Tunneler SDK?
 
@@ -82,7 +81,7 @@ that should be
 
 ## Run with Docker
 
-Please refer to [the Docker README](./docker/README.md) for instructions to run `ziti-edge-tunnel` with Docker.
+Please refer to [the container README](https://docs.openziti.io/docs/reference/tunnelers/linux/container/) for instructions to run `ziti-edge-tunnel` with Docker.
 
 ## Multi-Platform Linux Crossbuild Container
 
