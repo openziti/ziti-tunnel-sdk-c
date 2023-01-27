@@ -62,7 +62,6 @@
 
 //functions for logging on windows
 bool log_init(uv_loop_t *);
-void close_log();
 void ziti_log_writer(int , const char *, const char *, size_t);
 char* get_log_file_name();
 #include <stdint.h>
@@ -1617,9 +1616,6 @@ static void run_tunneler_loop(uv_loop_t* ziti_loop) {
     }
 
     free(tunneler);
-#if _WIN32
-    //close_log();
-#endif
 }
 
 static tunneler_context initialize_tunneler(netif_driver tun, uv_loop_t* ziti_loop) {
