@@ -27,7 +27,6 @@
 #include "model/events.h"
 #include "identity-utils.h"
 #include "instance-config.h"
-#include <time.h>
 #include <config-utils.h>
 #include <service-utils.h>
 
@@ -44,7 +43,7 @@
 #endif
 
 #ifndef MAXIPCCOMMANDLEN
-#define MAXIPCCOMMANDLEN 4096 * 4
+#define MAXIPCCOMMANDLEN (4096 * 4)
 #endif
 
 #ifndef MAXMESSAGELEN
@@ -71,7 +70,6 @@ char* get_log_file_name();
 
 static int dns_miss_status = DNS_REFUSE;
 
-static void send_message_to_tunnel();
 typedef char * (*to_json_fn)(const void * msg, int flags, size_t *len);
 static void send_events_message(const void *message, to_json_fn to_json_f, bool displayEvent);
 static void send_tunnel_command(const tunnel_command *tnl_cmd, void *ctx);
@@ -302,7 +300,7 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
     free(json);
 }
 
-void tunnel_enroll_cb(ziti_config *cfg, int status, char *err, void *ctx) {
+void tunnel_enroll_cb(const ziti_config *cfg, int status, const char *err, void *ctx) {
     struct add_identity_request_s *add_id_req = ctx;
 
     tunnel_result result = {
@@ -2002,7 +2000,7 @@ static int parse_enroll_opts(int argc, char *argv[]) {
     return optind;
 }
 
-static void enroll_cb(ziti_config *cfg, int status, char *err, void *ctx) {
+static void enroll_cb(const ziti_config *cfg, int status, const char *err, void *ctx) {
     if (status != ZITI_OK) {
         ZITI_LOG(ERROR, "enrollment failed: %s(%d)", err, status);
         exit(status);
@@ -2115,35 +2113,37 @@ static void on_response(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
 void on_write(uv_write_t* req, int status) {
     if (status < 0) {
         fprintf(stderr,"Could not sent message to the tunnel. Write error %s\n", uv_err_name(status));
-    } else {
-        puts("Message sent to the tunnel.");
     }
     free(req);
 }
 
-void send_message_to_pipe(uv_connect_t *connect) {
-    printf("Message...%s\n", connect->data);
+void send_message_to_pipe(uv_stream_t *pipe, char *msg) {
+    ZITI_LOG(VERBOSE, "Message...%s\n", msg);
     uv_write_t *req = (uv_write_t*) malloc(sizeof(uv_write_t));
-    char* data = calloc(strlen(connect->data) + strlen("\n") + 1, sizeof(char));
-    sprintf(data, "%s\n", connect->data);
-    uv_buf_t buf = uv_buf_init(data, strlen(data));
-    uv_write((uv_write_t*) req, connect->handle, &buf, 1,    on_write);
-    free(connect->data);
-    free(connect);
+    req->data = msg;
+
+    uv_buf_t bufs[2];
+    bufs[0] = uv_buf_init(msg, strlen(msg));
+    bufs[1] = uv_buf_init("\n", 1);
+
+    int rc = uv_write(req, pipe, bufs, 2, on_write);
+    if (rc != 0) {
+        on_write(req, rc);
+    }
 }
 
 void on_connect(uv_connect_t* connect, int status){
     if (status < 0) {
-        puts("failed to connect!");
-        free(connect);
+        fprintf(stderr, "failed to connect: %d/%s", status, uv_strerror(status));
+        free(connect->data);
     } else {
-        puts("connected!");
         int res = uv_read_start((uv_stream_t *) connect->handle, cmd_alloc, on_response);
         if (res != 0) {
-            printf("UV read error %s\n", uv_err_name(res));
+            fprintf(stderr, "UV read error %d/%s\n", res, uv_strerror(res));
         }
-        send_message_to_pipe(connect);
+        send_message_to_pipe(connect->handle, connect->data);
     }
+    free(connect);
 }
 
 static uv_loop_t* connect_and_send_cmd(char pipesockfile[],uv_connect_t* connect, uv_pipe_t* client_handle) {
@@ -2151,7 +2151,7 @@ static uv_loop_t* connect_and_send_cmd(char pipesockfile[],uv_connect_t* connect
 
     int res = uv_pipe_init(loop, client_handle, 0);
     if (res != 0) {
-        printf("UV client handle init failed %s\n", uv_err_name(res));
+        fprintf(stderr, "UV client handle init failed %d/%s\n", res, uv_strerror(res));
         return NULL;
     }
 
@@ -2168,13 +2168,13 @@ static void send_message_to_tunnel(char* message) {
     uv_loop_t* loop = connect_and_send_cmd(sockfile, connect, &client_handle);
 
     if (loop == NULL) {
-        printf("Cannot run UV loop, loop is null");
+        fprintf(stderr, "Cannot run UV loop, loop is null");
         return;
     }
 
     int res = uv_run(loop, UV_RUN_DEFAULT);
     if (res != 0) {
-        printf("UV run error %s\n", uv_err_name(res));
+        fprintf(stderr, "UV run error %s\n", uv_err_name(res));
     }
 }
 
@@ -2189,12 +2189,13 @@ static void send_message_to_tunnel_fn(int argc, char *argv[]) {
 
 static int on_off_identity_opts(int argc, char *argv[]) {
     static struct option opts[] = {
-            {"identity", required_argument, NULL, 'i:o:'},
+            {"identity", required_argument, NULL, 'i'},
+            {"onoff", required_argument, NULL, 'o'}
     };
     int c, option_index, errors = 0;
     optind = 0;
 
-    tunnel_on_off_identity *on_off_identity_options = calloc(1, sizeof(tunnel_on_off_identity));
+    tunnel_on_off_identity on_off_identity_options = {0};
     cmd = calloc(1, sizeof(tunnel_command));
     cmd->command = TunnelCommand_IdentityOnOff;
 
@@ -2202,13 +2203,13 @@ static int on_off_identity_opts(int argc, char *argv[]) {
                             opts, &option_index)) != -1) {
         switch (c) {
             case 'i':
-                on_off_identity_options->identifier = optarg;
+                on_off_identity_options.identifier = optarg;
                 break;
             case 'o': {
-                if (strcasecmp(optarg, "true") == 0 || strcmp(optarg, "t") == 0) {
-                    on_off_identity_options->onOff = true;
+                if (optarg[0] == 'T' || optarg[0] == 't') {
+                    on_off_identity_options.onOff = true;
                 } else {
-                    on_off_identity_options->onOff = false;
+                    on_off_identity_options.onOff = false;
                 }
                 break;
             }
@@ -2224,8 +2225,8 @@ static int on_off_identity_opts(int argc, char *argv[]) {
         exit(1);
     }
     size_t json_len;
-    cmd->data = tunnel_on_off_identity_to_json(on_off_identity_options, MODEL_JSON_COMPACT, &json_len);
-    free(on_off_identity_options);
+    cmd->data = tunnel_on_off_identity_to_json(&on_off_identity_options, MODEL_JSON_COMPACT, &json_len);
+    free_tunnel_on_off_identity(&on_off_identity_options);
 
     return optind;
 }
@@ -2237,7 +2238,7 @@ static int enable_identity_opts(int argc, char *argv[]) {
     int c, option_index, errors = 0;
     optind = 0;
 
-    tunnel_load_identity *load_identity_options = calloc(1, sizeof(tunnel_load_identity));
+    tunnel_load_identity load_identity_options = {0};
     cmd = calloc(1, sizeof(tunnel_command));
     cmd->command = TunnelCommand_LoadIdentity;
 
@@ -2245,7 +2246,7 @@ static int enable_identity_opts(int argc, char *argv[]) {
                             opts, &option_index)) != -1) {
         switch (c) {
             case 'i':
-                load_identity_options->path = realpath(optarg, NULL);
+                load_identity_options.path = realpath(optarg, NULL);
                 break;
             default: {
                 fprintf(stderr, "Unknown option '%c'\n", c);
@@ -2259,9 +2260,8 @@ static int enable_identity_opts(int argc, char *argv[]) {
         exit(1);
     }
     size_t json_len;
-    cmd->data = tunnel_load_identity_to_json(load_identity_options, MODEL_JSON_COMPACT, &json_len);
-    free_tunnel_load_identity(load_identity_options);
-    free(load_identity_options);
+    cmd->data = tunnel_load_identity_to_json(&load_identity_options, MODEL_JSON_COMPACT, &json_len);
+    free_tunnel_load_identity(&load_identity_options);
 
     return optind;
 }
