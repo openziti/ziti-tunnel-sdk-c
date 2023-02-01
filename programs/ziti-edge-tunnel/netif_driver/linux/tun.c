@@ -206,7 +206,7 @@ static void dns_update_systemd_resolve(const char* tun, unsigned int ifindex, co
     int s = run_command_ex(false, "systemd-resolve --status | fgrep  'DNS Domain' | fgrep -q '~.'");
     // set wildcard domain if any other resolvers set it.
     if (s == 0) {
-        run_command(SYSTEMD_RESOLVE " -i %s --set-doamin='~.'", dns_maintainer.tun_name);
+        run_command(SYSTEMD_RESOLVE " -i %s --set-domain='~.'", dns_maintainer.tun_name);
     } else {
         // Use busctl due to systemd version differences fixed in systemd>=240
         run_command(BUSCTL " call %s %s %s SetLinkDomains 'ia(sb)' %u 0",
