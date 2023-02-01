@@ -1570,7 +1570,9 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
         }
     }
     run_tunneler_loop(ziti_loop);
-    tun->close(tun->handle);
+    if (tun->close) {
+        tun->close(tun->handle);
+    }
     return 0;
 }
 
