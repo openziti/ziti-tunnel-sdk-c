@@ -269,21 +269,6 @@ typedef struct ziti_io_ctx_s {
     bool tnlr_eof;
 } ziti_io_context;
 
-struct hosted_io_ctx_s {
-    struct hosted_service_ctx_s *service;
-    ziti_connection client;
-    char server_dial_str[64];
-    int server_proto_id;
-    union {
-        uv_tcp_t tcp;
-        uv_udp_t udp;
-    } server;
-    bool ziti_eof;
-    bool tcp_eof;
-
-    // count of ziti_write requests yet to be ack'ed by ziti sdk
-    size_t in_wreqs;
-};
 
 typedef void (*event_cb)(const base_event* event);
 typedef void (*command_cb)(const tunnel_result *, void *ctx);
