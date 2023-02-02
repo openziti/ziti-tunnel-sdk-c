@@ -81,7 +81,7 @@ that should be
 
 ## Run with Docker
 
-Please refer to [the container README](https://docs.openziti.io/docs/reference/tunnelers/linux/container/) for instructions to run `ziti-edge-tunnel` with Docker.
+Please refer to [the Docker README](./docker/README.md) for instructions to run `ziti-edge-tunnel` with Docker.
 
 ## Multi-Platform Linux Crossbuild Container
 
