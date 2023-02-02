@@ -42,7 +42,6 @@ struct hosted_io_ctx_s {
     struct hosted_service_ctx_s *service;
     ziti_connection client;
     char server_dial_str[64];
-    int server_proto_id;
     union {
         uv_tcp_t tcp;
         uv_udp_t udp;
@@ -70,7 +69,7 @@ static void ziti_conn_close_cb(ziti_connection zc) {
         STAILQ_REMOVE_HEAD((slist_head), entries); \
         free_fn(elem); \
     } \
-} while(0);
+} while(0)
 
 static void free_hosted_service_ctx(struct hosted_service_ctx_s *hosted_ctx) {
     if (hosted_ctx == NULL) {
@@ -130,14 +129,7 @@ static void hosted_server_close(struct hosted_io_ctx_s *io_ctx) {
         return;
     }
 
-    switch (io_ctx->server_proto_id) {
-        case IPPROTO_TCP:
-            safe_close(&io_ctx->server.tcp, hosted_server_close_cb);
-            break;
-        case IPPROTO_UDP:
-            safe_close( &io_ctx->server.udp, hosted_server_close_cb);
-            break;
-    }
+    safe_close(&io_ctx->server, hosted_server_close_cb);
 }
 
 /** called by ziti sdk when a client connection is established (or fails) */
@@ -305,22 +297,22 @@ static bool addrinfo_from_host_ctx(struct addrinfo_params_s *dial_params, const 
     }
 
     if (host_ctx->forward_port) {
-        int port = 0;
         if (app_data->dst_port == NULL) {
             snprintf(dial_params->err, sizeof(dial_params->err),
                      "hosted_service[%s] config specifies 'forwardPort' but client didn't send %s",
                      host_ctx->service_name, DST_PORT_KEY);
             return false;
-        } else {
-            errno = 0;
-            port = (int)strtol(app_data->dst_port, NULL, 10);
-            if (errno != 0) {
-                snprintf(dial_params->err, sizeof(dial_params->err),
-                         "hosted_service[%s] client sent invalid %s '%s'", host_ctx->service_name,
-                         DST_PORT_KEY, app_data->dst_port);
-                return false;
-            }
         }
+
+        errno = 0;
+        int port = (int) strtol(app_data->dst_port, NULL, 10);
+        if (errno != 0) {
+            snprintf(dial_params->err, sizeof(dial_params->err),
+                     "hosted_service[%s] client sent invalid %s '%s'", host_ctx->service_name,
+                     DST_PORT_KEY, app_data->dst_port);
+            return false;
+        }
+
         if (!port_match(port, &host_ctx->port_u.allowed_port_ranges)) {
             snprintf(dial_params->err, sizeof(dial_params->err),
                      "hosted_service[%s] client requested port '%s' is not allowed", host_ctx->service_name,
@@ -458,7 +450,6 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
     io_ctx = calloc(1, sizeof(struct hosted_io_ctx_s));
     io_ctx->service = service_ctx;
     io_ctx->client = clt;
-    io_ctx->server_proto_id = dial_ai->ai_protocol;
     ziti_conn_set_data(clt, io_ctx);
 
     char host[48];
