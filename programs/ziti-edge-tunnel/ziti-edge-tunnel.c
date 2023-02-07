@@ -35,6 +35,7 @@
 #elif __linux__
 #include "netif_driver/linux/tun.h"
 #elif _WIN32
+#include <time.h>
 #include "netif_driver/windows/tun.h"
 #include "windows/windows-service.h"
 #include "windows/windows-scripts.h"
