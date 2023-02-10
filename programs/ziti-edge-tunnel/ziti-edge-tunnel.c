@@ -155,8 +155,9 @@ IMPL_ENUM(event, EVENT_ACTIONS)
 static char sockfile[] = "\\\\.\\pipe\\ziti-edge-tunnel.sock";
 static char eventsockfile[] = "\\\\.\\pipe\\ziti-edge-tunnel-event.sock";
 #elif __unix__ || unix || ( __APPLE__ && __MACH__ )
-static char sockfile[] = "/tmp/ziti-edge-tunnel.sock";
-static char eventsockfile[] = "/tmp/ziti-edge-tunnel-event.sock";
+#define SOCKET_PATH "/tmp/.ziti"
+static char sockfile[] = SOCKET_PATH "/ziti-edge-tunnel.sock";
+static char eventsockfile[] = SOCKET_PATH "/ziti-edge-tunnel-event.sock";
 #endif
 
 static int sizeof_event_clients_list() {
@@ -1583,6 +1584,50 @@ static int run_tunnel_host_mode(uv_loop_t *ziti_loop) {
     return 0;
 }
 
+static int make_socket_path(uv_loop_t *loop) {
+
+#if defined(SOCKET_PATH)
+  uv_fs_t req;
+  int rc, mkdir_rc;
+
+  rc = mkdir_rc = uv_fs_mkdir(loop, &req, SOCKET_PATH,
+        S_IRWXU|S_IRGRP|S_IXGRP, NULL);
+  uv_fs_req_cleanup(&req);
+
+  if (rc != UV_ENOENT) {
+      rc = uv_fs_lstat(loop, &req, SOCKET_PATH, NULL);
+      if (rc == 0) {
+          /**
+           * Ensure path is a directory;
+           * that the directory owner and process user are one in the same;
+           * and that the permissions are not permissive.
+           */
+          if (!S_ISDIR(req.statbuf.st_mode)
+              || (geteuid() != req.statbuf.st_uid)
+              || (req.statbuf.st_mode & S_IRWXO)) {
+              rc = UV_EEXIST;
+          }
+      } else if (mkdir_rc < 0) {
+          rc = mkdir_rc;
+      }
+      uv_fs_req_cleanup(&req);
+    }
+
+    if (rc < 0) {
+        ZITI_LOG(WARN, "Cannot create socket directory '%s': %s (%d)",
+            SOCKET_PATH, uv_strerror(rc), rc);
+        if (rc == UV_EEXIST) {
+          ZITI_LOG(WARN, "(The path '%s' is not a directory or has incorrect permissions)",
+              SOCKET_PATH);
+        }
+        return rc;
+    }
+
+#endif /* defined(SOCKET_PATH) */
+
+    return 0;
+}
+
 static void run_tunneler_loop(uv_loop_t* ziti_loop) {
 
 #if _WIN32
@@ -1599,8 +1644,16 @@ static void run_tunneler_loop(uv_loop_t* ziti_loop) {
     uv_work_t *loader = calloc(1, sizeof(uv_work_t));
     uv_queue_work(ziti_loop, loader, load_identities, load_identities_complete);
 
-    start_cmd_socket(ziti_loop);
-    start_event_socket(ziti_loop);
+    int rc0, rc1;
+    rc0 = rc1 = make_socket_path(ziti_loop);
+    if (rc0 == 0) {
+        rc0 = start_cmd_socket(ziti_loop);
+        rc1 = start_event_socket(ziti_loop);
+    }
+
+    if (rc0 < 0 || rc1 < 0) {
+      ZITI_LOG(WARN, "One or more socket servers did not properly start.");
+    }
 
 #if _WIN32
     ipc_cmd_ctx = calloc(1, sizeof(struct ipc_cmd_ctx_s));
