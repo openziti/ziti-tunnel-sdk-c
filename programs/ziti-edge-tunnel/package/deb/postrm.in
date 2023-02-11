@@ -26,3 +26,15 @@ fi
 if [ -L /usr/bin/@CPACK_PACKAGE_NAME@ ]; then
     unlink /usr/bin/@CPACK_PACKAGE_NAME@
 fi
+
+###
+### Unlikely all files and directories were removed.
+### Some of the unremoved files and directories are likely owned by `ziti' user or group.
+### Conseequently, don't remove 'ziti` user and group as it will strand the files
+###
+#if [ "$1" = "purge" ]; then
+#  if command -v deluser >/dev/null; then
+#    deluser --quiet ziti >/dev/null || true
+#    delgroup --group --quiet ziti >/dev/null || true
+#  fi
+#fi

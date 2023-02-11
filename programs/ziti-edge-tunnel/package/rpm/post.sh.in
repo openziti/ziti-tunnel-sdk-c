@@ -7,6 +7,14 @@ fi
 
 %systemd_post $SYSTEMD_SERVICE_NAME
 
+# update permissions
+chown ziti:ziti "@ZITI_STATE_DIR@" || :
+chmod -R u=rwX,g=rwX,o= "@ZITI_STATE_DIR@" || :
+
+chown root:ziti "@ZITI_IDENTITY_DIR@" || :
+chmod 0770 "@ZITI_IDENTITY_DIR@" || :
+find "@ZITI_IDENTITY_DIR@" -maxdepth 1 -name "*.json" -type f -exec chown ziti:ziti "{}" + -exec chmod 0400 "{}" + || :
+
 if [ $1 -eq 1 ]; then
     ssize=$(tput cols)
     printf '\n'
