@@ -33,6 +33,8 @@ LABEL name="openziti/ziti-edge-tunnel" \
       summary="OpenZiti Tunneler" \
       description="Configure a proxy and nameserver for OpenZiti Services"
 
+USER root
+
 ### add licenses to this directory
 RUN mkdir -m0755 /licenses
 COPY ./LICENSE-Apache /licenses/apache.txt
@@ -47,7 +49,6 @@ COPY --from=fetch-ziti-artifacts /tmp/ziti-edge-tunnel /usr/local/bin
 COPY ./docker-entrypoint.sh /
 RUN chmod +x /docker-entrypoint.sh
 RUN mkdir -m0777 /ziti-edge-tunnel
-USER root
 
 ENTRYPOINT [ "/docker-entrypoint.sh" ]
 CMD [ "run" ]
