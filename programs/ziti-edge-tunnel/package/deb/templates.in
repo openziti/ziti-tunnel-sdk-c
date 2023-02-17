@@ -1,0 +1,5 @@
+Template: ziti_edge_tunnel/install_pkla
+Type: boolean
+Default: false
+Description: Install ziti-edge-tunnel.pkla?
+

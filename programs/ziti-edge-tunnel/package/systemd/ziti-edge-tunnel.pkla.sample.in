@@ -1,0 +1,4 @@
+[Permit ziti-edge-tunnel to configure link DNS]
+Identity=unix-user:ziti
+Action=org.freedesktop.resolve1.*
+ResultAny=yes

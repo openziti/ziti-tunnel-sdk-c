@@ -1,6 +1,9 @@
 ln -sf @CPACK_BIN_DIR@/@CPACK_PACKAGE_NAME@ /usr/bin/@CPACK_PACKAGE_NAME@
 ln -sf @CPACK_SHARE_DIR@/@SYSTEMD_UNIT_FILE_NAME@ /etc/systemd/system/@SYSTEMD_UNIT_FILE_NAME@
 
+# Source debconf library.
+. /usr/share/debconf/confmodule
+
 # Add user `ziti'
 if [ "$1" = "configure" ]; then
   # create user / group
@@ -15,9 +18,11 @@ if [ "$1" = "configure" ]; then
   chmod 0770 "@ZITI_IDENTITY_DIR@"
   find "@ZITI_IDENTITY_DIR@" -maxdepth 1 -name "*.json" -type f -exec chown ziti:ziti "{}" + -exec chmod 0400 "{}" +
 
-  # install PolicyKit policies based on policy directory existance
-  ucf "@CPACK_SHARE_DIR@/@ZITI_POLKIT_RULES_FILE@.sample" "/usr/share/polkit-1/rules.d/@ZITI_POLKIT_RULES_FILE@" 2>/dev/null || true
-  ucf "@CPACK_SHARE_DIR@/@ZITI_POLKIT_PKLA_FILE@.sample" "/var/lib/polkit-1/localauthority/10-vendor.d/@ZITI_POLKIT_PKLA_FILE@" 2>/dev/null || true
+  # install PolicyKit policy if directory exists
+  if [ -d /var/lib/polkit-1/localauthority/10-vendor.d ]; then
+    cp "@CPACK_SHARE_DIR@/@ZITI_POLKIT_PKLA_FILE@.sample" "/var/lib/polkit-1/localauthority/10-vendor.d/@ZITI_POLKIT_PKLA_FILE@"
+    db_set ziti_edge_tunnel/install_pkla true
+  fi
 fi
 
 # Copied from https://github.com/Debian/debhelper/blob/master/autoscripts/postinst-systemd-dont-enable

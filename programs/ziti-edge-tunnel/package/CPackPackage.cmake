@@ -58,6 +58,8 @@ set(SYSTEMD_SERVICE_NAME "${CPACK_PACKAGE_NAME}")
 set(SYSTEMD_UNIT_FILE_NAME "${SYSTEMD_SERVICE_NAME}.service")
 set(SYSTEMD_EXECSTARTPRE "${SYSTEMD_SERVICE_NAME}.sh")
 set(SYSTEMD_ENV_FILE "${SYSTEMD_SERVICE_NAME}.env")
+set(ZITI_POLKIT_PKLA_FILE "${CPACK_PACKAGE_NAME}.pkla")
+set(ZITI_POLKIT_RULES_FILE "${CPACK_PACKAGE_NAME}.rules")
 
 set(ZITI_IDENTITY_DIR "${CPACK_ETC_DIR}/identities")
 
@@ -81,6 +83,14 @@ configure_file("${SYSTEMD_IN_DIR}/${SYSTEMD_EXECSTARTPRE}.in"
 	           "${INSTALL_OUT_DIR}/${SYSTEMD_EXECSTARTPRE}"
 	           @ONLY)
 
+configure_file("${SYSTEMD_IN_DIR}/${ZITI_POLKIT_PKLA_FILE}.sample.in"
+              "${INSTALL_OUT_DIR}/${ZITI_POLKIT_PKLA_FILE}.sample"
+              @ONLY)
+
+configure_file("${SYSTEMD_IN_DIR}/${ZITI_POLKIT_RULES_FILE}.sample.in"
+              "${INSTALL_OUT_DIR}/${ZITI_POLKIT_RULES_FILE}.sample"
+              @ONLY)
+
 install(FILES "${INSTALL_OUT_DIR}/${SYSTEMD_ENV_FILE}"
         DESTINATION "${CPACK_ETC_DIR}"
         COMPONENT "${COMPONENT_NAME}")
@@ -101,7 +111,18 @@ install(FILES "${INSTALL_OUT_DIR}/${SYSTEMD_EXECSTARTPRE}"
 install(DIRECTORY DESTINATION "${ZITI_STATE_DIR}"
         COMPONENT "${COMPONENT_NAME}")
 
+install(FILES "${INSTALL_OUT_DIR}/${ZITI_POLKIT_PKLA_FILE}.sample" "${INSTALL_OUT_DIR}/${ZITI_POLKIT_RULES_FILE}.sample"
+        DESTINATION "${CPACK_SHARE_DIR}"
+        COMPONENT "${COMPONENT_NAME}")
+
+install(FILES "${INSTALL_OUT_DIR}/${ZITI_POLKIT_RULES_FILE}.sample"
+        DESTINATION "/usr/share/polkit-1/rules.d"
+        COMPONENT "${COMPONENT_NAME}"
+        RENAME "${ZITI_POLKIT_RULES_FILE}")
+
 if("RPM" IN_LIST CPACK_GENERATOR)
+    set(CPACK_RPM_EXCLUDE_FROM_AUTO_FILELIST_ADDITION "/usr/share/polkit-1/rules.d")
+
     set(RPM_IN_DIR "${PACKAGING_BASE}/rpm")
     set(RPM_PRE_INSTALL_IN "${RPM_IN_DIR}/pre.sh.in")
     set(RPM_POST_INSTALL_IN "${RPM_IN_DIR}/post.sh.in")
@@ -120,19 +141,23 @@ if("RPM" IN_LIST CPACK_GENERATOR)
 endif()
 
 if("DEB" IN_LIST CPACK_GENERATOR)
+
     set(DEB_IN_DIR "${PACKAGING_BASE}/deb")
     set(DEB_CONFFILES_IN "${DEB_IN_DIR}/conffiles.in")
     set(DEB_POST_INSTALL_IN "${DEB_IN_DIR}/postinst.in")
     set(DEB_PRE_UNINSTALL_IN "${DEB_IN_DIR}/prerm.in")
     set(DEB_POST_UNINSTALL_IN "${DEB_IN_DIR}/postrm.in")
+    set(DEB_TEMPLATES_IN "${DEB_IN_DIR}/templates.in")
 
     set(CPACK_DEB_CONFFILES "${INSTALL_OUT_DIR}/conffiles")
     set(CPACK_DEB_POST_INSTALL "${INSTALL_OUT_DIR}/postinst")
     set(CPACK_DEB_PRE_UNINSTALL "${INSTALL_OUT_DIR}/prerm")
     set(CPACK_DEB_POST_UNINSTALL "${INSTALL_OUT_DIR}/postrm")
+    set(CPACK_DEB_TEMPLATES "${INSTALL_OUT_DIR}/templates")
 
     configure_file("${DEB_CONFFILES_IN}" "${CPACK_DEB_CONFFILES}" @ONLY)
     configure_file("${DEB_POST_INSTALL_IN}" "${CPACK_DEB_POST_INSTALL}" @ONLY)
     configure_file("${DEB_PRE_UNINSTALL_IN}" "${CPACK_DEB_PRE_UNINSTALL}" @ONLY)
     configure_file("${DEB_POST_UNINSTALL_IN}" "${CPACK_DEB_POST_UNINSTALL}" @ONLY)
+    configure_file("${DEB_TEMPLATES_IN}" "${CPACK_DEB_TEMPLATES}" @ONLY)
 endif()
