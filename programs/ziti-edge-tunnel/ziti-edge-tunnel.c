@@ -102,6 +102,10 @@ typedef struct ipc_cmd_ctx_s {
 
 static ipc_cmd_ctx_t *ipc_cmd_ctx;
 
+struct enroll_cb_params {
+    uv_buf_t config; /* out */
+};
+
 static char* ipc_cmd_buffered(ipc_cmd_ctx_t *ipc_cmd_ctx_new);
 
 struct cfg_instance_s {
@@ -2057,25 +2061,46 @@ static int parse_enroll_opts(int argc, char *argv[]) {
 }
 
 static void enroll_cb(const ziti_config *cfg, int status, const char *err, void *ctx) {
+    struct enroll_cb_params *params = ctx;
+
+    *params = (struct enroll_cb_params) { 0 };
+
     if (status != ZITI_OK) {
         ZITI_LOG(ERROR, "enrollment failed: %s(%d)", err, status);
-        exit(status);
+        return;
     }
-
-    FILE *f = ctx;
 
     size_t len;
     char *cfg_json = ziti_config_to_json(cfg, 0, &len);
 
-    if (fwrite(cfg_json, 1, len, f) != len) {
-        ZITI_LOG(ERROR, "failed to write config file");
-        fclose(f);
-        exit (-1);
-    }
+    params->config.base = cfg_json;
+    params->config.len = len;
+}
 
-    free(cfg_json);
-    fflush(f);
-    fclose(f);
+static int write_close(FILE *fp, const uv_buf_t *data)
+{
+  size_t n;
+  int rc = 0;
+
+  /**
+   * fwrite signals error by a short count.
+   * Cstd does not specify errno, while
+   * POSIX specifies that errno is set on error.
+   */
+  errno = 0;
+  n = fwrite(data->base, data->len, 1, fp);
+  if (n != 1) {
+    rc = -errno;
+    if (rc == 0)
+      rc = -EIO;
+  }
+
+  if (fclose(fp) == EOF) {
+    if (rc == 0)
+      rc = -errno;
+  }
+
+  return rc;
 }
 
 static void enroll(int argc, char *argv[]) {
@@ -2090,25 +2115,46 @@ static void enroll(int argc, char *argv[]) {
 
     if (enroll_opts.jwt == NULL) {
         ZITI_LOG(ERROR, "JWT file option(-j|--jwt) is required");
-        exit(-1);
+        exit(1);
     }
 
     /* open with O_EXCL to fail if the file exists */
     int outfd = open(config_file, O_CREAT | O_WRONLY | O_EXCL, S_IRUSR | S_IWUSR);
     if (outfd < 0) {
         ZITI_LOG(ERROR, "failed to open file %s: %s(%d)", config_file, strerror(errno), errno);
-        exit(-1);
+        exit(1);
     }
     FILE *outfile = NULL;
     if ((outfile = fdopen(outfd, "wb")) == NULL) {
         ZITI_LOG(ERROR, "failed to open file %s: %s(%d)", config_file, strerror(errno), errno);
-        exit(-1);
-
+        (void) close(outfd);
+        exit(1);
     }
 
-    ziti_enroll(&enroll_opts, l, enroll_cb, outfile);
+    struct enroll_cb_params params = { 0 };
+
+    ziti_enroll(&enroll_opts, l, enroll_cb, &params);
 
     uv_run(l, UV_RUN_DEFAULT);
+
+    int rc;
+    if (params.config.len > 0) {
+        rc = write_close(outfile, &params.config);
+        free(params.config.base);
+        if (rc < 0) {
+            ZITI_LOG(ERROR, "failed to write config file %s: %s (%d)",
+                config_file, strerror(-rc), -rc);
+        }
+    } else {
+        (void) fclose(outfile);
+        rc = -1;
+    }
+
+    /* if unsuccessful, delete config_file and exit */
+    if (rc < 0) {
+        (void) unlink(config_file);
+        exit(1);
+    }
 }
 
 static tunnel_command *cmd;
