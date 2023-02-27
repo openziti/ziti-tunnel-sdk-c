@@ -262,11 +262,14 @@ DECLARE_MODEL(api_event, ZTX_API_EVENT_MODEL)
 
 typedef struct tunneled_service_s tunneled_service_t;
 
+#define MAX_PENDING_BYTES (128 * 1024)
+
 /** context passed through the tunneler SDK for network i/o */
 typedef struct ziti_io_ctx_s {
     ziti_connection      ziti_conn;
     bool ziti_eof;
     bool tnlr_eof;
+    uint64_t pending_wbytes;
 } ziti_io_context;
 
 

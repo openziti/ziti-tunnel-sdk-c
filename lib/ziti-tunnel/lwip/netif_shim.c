@@ -46,16 +46,20 @@ void netif_shim_input(struct netif *netif) {
     netif_driver dev = netif->state;
     char buf[BUFFER_SIZE];
 
-    ssize_t nr = dev->read(dev->handle, buf, sizeof(buf));
+    int count = 0;
+    while (count < 128) {
+        ssize_t nr = dev->read(dev->handle, buf, sizeof(buf));
+        if ((nr <= 0) || (nr > 0xffff)) {
+            break;
+        }
+        count++;
 
-    if ((nr <= 0) || (nr > 0xffff)) {
-        return;
+        if (ip_ver(buf) == 4)
+            TNL_LOG(TRACE, "received packet " PACKET_FMT " len=%zd", PACKET_FMT_ARGS(buf), nr);
+
+        on_packet(buf, nr, netif);
     }
-
-    if (ip_ver(buf) == 4)
-        TNL_LOG(TRACE, "received packet " PACKET_FMT " len=%zd", PACKET_FMT_ARGS(buf), nr);
-
-    on_packet(buf, nr, netif);
+    TNL_LOG(TRACE, "done after reading %d packets", count);
 }
 
 void on_packet(const char *buf, ssize_t nr, void *ctx) {

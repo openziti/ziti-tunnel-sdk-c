@@ -20,18 +20,17 @@
 #define _WIN32_WINNT  _WIN32_WINNT_WIN6
  // Windows Server 2008
 #include <ws2tcpip.h>
-#ifndef strcasecmp
-#define strcasecmp(a,b) stricmp(a,b)
-#endif
 #endif
 
-#include <stdio.h>
-#include <ziti/ziti_log.h>
 #include <memory.h>
+#include <stdio.h>
+
+#include <ziti/ziti_log.h>
 #include <ziti/ziti_dns.h>
 #include "ziti/ziti_tunnel_cbs.h"
-#include "ziti_instance.h"
 #include "ziti_hosting.h"
+#include "ziti_instance.h"
+#include "lwip/err.h"
 
 typedef int (*cfg_parse_fn)(void *, const char *, size_t);
 typedef void* (*cfg_alloc_fn)();
@@ -292,6 +291,9 @@ void * ziti_sdk_c_dial(const void *intercept_ctx, struct io_ctx_s *io) {
         return NULL;
     }
     io->ziti_io = ziti_io_ctx;
+    ziti_io_ctx->ziti_eof = false;
+    ziti_io_ctx->tnlr_eof = false;
+    ziti_io_ctx->pending_wbytes = 0;
 
     ziti_context ziti_ctx = zi_ctx->ztx;
     if (ziti_conn_init(ziti_ctx, &ziti_io_ctx->ziti_conn, io) != ZITI_OK) {
@@ -360,29 +362,42 @@ void * ziti_sdk_c_dial(const void *intercept_ctx, struct io_ctx_s *io) {
         return NULL;
     }
 
-    ziti_io_ctx->ziti_eof = false;
-    ziti_io_ctx->tnlr_eof = false;
-
     return ziti_io_ctx;
 }
 
 /** called by ziti SDK when data transfer initiated by ziti_write completes */
 static void on_ziti_write(ziti_connection ziti_conn, ssize_t len, void *ctx) {
-    if (len > 0) {
-        ziti_tunneler_ack(ctx);
+    struct io_ctx_s *io = ziti_conn_data(ziti_conn);
+    if (io != NULL) {
+        ziti_io_context *zio = io->ziti_io;
+
+        if (len < 0) {
+            ZITI_LOG(ERROR, "ziti_write(ziti_conn[%p]) failed: %s", ziti_conn, ziti_errorstr(len));
+            ziti_close(ziti_conn, ziti_conn_close_cb);
+        } else {
+            zio->pending_wbytes -= len;
+        }
     }
+
+    // without calling this ctx is leaked
+    // in case of error this should N(negative)ACK,
+    // but connection is being closed anyway, so it is probably ok
+    ziti_tunneler_ack(ctx);
 }
 
 /** called from tunneler SDK when intercepted client sends data */
 ssize_t ziti_sdk_c_write(const void *ziti_io_ctx, void *write_ctx, const void *data, size_t len) {
     struct ziti_io_ctx_s *_ziti_io_ctx = (struct ziti_io_ctx_s *)ziti_io_ctx;
-    int zs = ziti_write(_ziti_io_ctx->ziti_conn, (void *)data, len, on_ziti_write, write_ctx);
-    if (zs != ZITI_OK) {
-        ZITI_LOG(ERROR, "ziti_write(ziti_conn[%p]) failed: %s", _ziti_io_ctx->ziti_conn, ziti_errorstr(zs));
-        on_ziti_write(_ziti_io_ctx->ziti_conn, len, write_ctx);
-        ziti_close(_ziti_io_ctx->ziti_conn, ziti_conn_close_cb);
+    if (_ziti_io_ctx->pending_wbytes + len < MAX_PENDING_BYTES) {
+        int zs = ziti_write(_ziti_io_ctx->ziti_conn, (void *) data, len, on_ziti_write, write_ctx);
+        if (zs == ZITI_OK) {
+            _ziti_io_ctx->pending_wbytes += len;
+        }
+        return zs;
     }
-    return zs;
+
+    ZITI_LOG(VERBOSE, "applying backpressure %lu pending bytes", _ziti_io_ctx->pending_wbytes);
+    return ERR_WOULDBLOCK;
 }
 
 ziti_intercept_t *new_ziti_intercept(ziti_context ztx, ziti_service *service, ziti_intercept_t *curr_i) {

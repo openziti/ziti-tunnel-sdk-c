@@ -147,8 +147,14 @@ static err_t on_tcp_client_data(void *io_ctx, struct tcp_pcb *pcb, struct pbuf *
     wr_ctx->tcp = pcb;
     wr_ctx->ack = tunneler_tcp_ack;
     ssize_t s = io->write_fn(io->ziti_io, wr_ctx, p->payload, len);
-    if (s < 0) {
+    if (s == ERR_WOULDBLOCK) {
+        // apply backpressure -- let LWIP keep the data and retry later
+        TNL_LOG(VERBOSE, "ziti_write indicated backpressure: service=%s, client=%s", io->tnlr_io->service_name, io->tnlr_io->client);
+        free(wr_ctx);
+        return ERR_WOULDBLOCK;
+    } else if (s < 0) {
         TNL_LOG(ERR, "ziti_write failed: service=%s, client=%s, ret=%ld", io->tnlr_io->service_name, io->tnlr_io->client, s);
+        free(wr_ctx);
         return ERR_ABRT;
     }
     return ERR_OK;

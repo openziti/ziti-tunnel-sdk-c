@@ -64,7 +64,13 @@ static void to_ziti(struct io_ctx_s *io, struct pbuf *p) {
         recv_data = recv_data->next;
 
         ssize_t s = io->write_fn(io->ziti_io, wr_ctx, wr_ctx->pbuf->payload, wr_ctx->pbuf->len);
-        if (s < 0) {
+        if (s == ERR_WOULDBLOCK) {
+            tunneler_udp_ack(wr_ctx);
+            free(wr_ctx);
+            TNL_LOG(DEBUG, "ziti_write stalled: dropping UDP packet service=%s, client=%s, ret=%ld", io->tnlr_io->service_name, io->tnlr_io->client, s);
+        } else if (s < 0) {
+            tunneler_udp_ack(wr_ctx);
+            free(wr_ctx);
             TNL_LOG(ERR, "ziti_write failed: service=%s, client=%s, ret=%ld", io->tnlr_io->service_name, io->tnlr_io->client, s);
             break;
         }
