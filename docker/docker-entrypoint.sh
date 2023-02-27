@@ -136,12 +136,12 @@ if [[ -n "${NF_REG_NAME:-}" ]]; then
             fi
         fi
         # decrement the wait seconds until zero or forever if negative
-        let NF_REG_WAIT--
+        (( NF_REG_WAIT-- ))
         sleep 1
     done
 else
     typeset -a JSON_FILES
-    JSON_FILES=( $(ls -1 "${IDENTITIES_DIR}"/*.json) )
+    mapfile -t JSON_FILES < <(ls -1 "${IDENTITIES_DIR}"/*.json)
     if [[ ${#JSON_FILES[*]} -gt 0 ]]; then
         echo "INFO: NF_REG_NAME not set, loading ${#JSON_FILES[*]} identities from ${IDENTITIES_DIR}"
         TUNNEL_OPTS=("--identity-dir" "${IDENTITIES_DIR}")
