@@ -36,7 +36,9 @@ extern "C" {
 
 #if _WIN32
 #define MAXPATHLEN MAX_PATH
-#define strcasecmp stricmp
+#ifndef strcasecmp
+#define strcasecmp(a,b) stricmp(a,b)
+#endif
 #else
 #define MAXPATHLEN PATH_MAX
 #endif
