@@ -1,3 +1,10 @@
 # Add `ziti' user
-echo 'u ziti - "openziti user" "/var/lib/ziti"' | \
-    systemd-sysusers --replace=/usr/lib/sysusers.d/ziti-edge-tunnel.conf -
+# systemd-sysusers isn't on redhat7, possibly others? test and fall back to useradd as a last ditch
+if command -v systemd-sysusers > /dev/null 2>&1; then
+  echo 'u ziti - "openziti user" "/var/lib/ziti"' | \
+      systemd-sysusers --replace=/usr/lib/sysusers.d/ziti-edge-tunnel.conf -
+else
+  if ! id ziti > /dev/null 2>&1; then
+    useradd --system --home-dir=/var/lib/ziti --comment "openziti user" --user-group ziti
+  fi
+fi
