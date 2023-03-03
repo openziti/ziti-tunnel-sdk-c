@@ -1597,13 +1597,52 @@ static int make_socket_path(uv_loop_t *loop) {
   uv_fs_t req;
   int rc, mkdir_rc;
 
-  rc = mkdir_rc = uv_fs_mkdir(loop, &req, SOCKET_PATH,
-        S_IRWXU|S_IRGRP|S_IXGRP, NULL);
+  mkdir_rc = uv_fs_mkdir(loop, &req, SOCKET_PATH, S_IRWXU|S_IRGRP|S_IXGRP, NULL);
   uv_fs_req_cleanup(&req);
 
-  if (rc != UV_ENOENT) {
+  if (mkdir_rc == 0 || mkdir_rc == UV_EEXIST) {
       rc = uv_fs_lstat(loop, &req, SOCKET_PATH, NULL);
       if (rc == 0) {
+          /* The directory will be owned by root:root (or root:wheel on bsd/darwin) if running as root/sudo. This leads
+           * to an unfortunate situation where users will need to be in the root (or wheel) group to use the sockets.
+           * We don't want to encourage users to run their UI (or whatever they are doing with the IPC sockets) with
+           * sudo; we also don't want to leave the IPC socket directory wide open.
+           *
+           * Look for a "ziti" user/group. If found:
+           *   - chgrp the directory to the ziti group
+           *   - log that the sockets can be used by users in the "ziti" group. include helpful `usermod` command
+           * If "ziti" group is not found:
+           *   - warn that IPC sockets are not being started because admin privs would be needed to access the sockets.
+           *   - include helpful commands to create ziti user/group
+           */
+          if (geteuid() == 0 && req.statbuf.st_gid == getegid()) {
+              bool chgrp_succeeded = false;
+              ZITI_LOG(DEBUG, "created IPC socket directory %s with root ownership. attempting to set group to 'ziti'",
+                       SOCKET_PATH);
+              struct passwd *pwd = getpwnam("ziti");
+              if (pwd) {
+                  rc = chown(SOCKET_PATH, -1, pwd->pw_gid);
+                  if (rc == 0) {
+                      chgrp_succeeded = true;
+                      ZITI_LOG(DEBUG, "successfully set group of %s to 'ziti' (gid=%d)", SOCKET_PATH, pwd->pw_gid);
+                  } else {
+                      ZITI_LOG(WARN, "failed to set group of %s to 'ziti' (gid=%d): %s",
+                               SOCKET_PATH, pwd->pw_gid, strerror(errno));
+                  }
+              } else {
+                  ZITI_LOG(WARN, "local 'ziti' user not found.");
+                  ZITI_LOG(WARN, "please create the 'ziti' user and group by running this command: "
+                                 "useradd --system --home-dir=/var/lib/ziti --comment 'openziti user' --user-group ziti");
+                  ZITI_LOG(WARN, "this will make it possible for non-admins in the 'ziti' group to use the IPC sockets");
+                  // todo darwin command?
+              }
+              if (chgrp_succeeded) {
+                  ZITI_LOG(INFO, "members of the 'ziti' group can use the IPC sockets in %s", SOCKET_PATH);
+              } else {
+                  ZITI_LOG(WARN, "IPC sockets in %s will require admin privileges, which is not advisable", SOCKET_PATH);
+              }
+          }
+
           /**
            * Ensure path is a directory;
            * that the directory owner and process user are one in the same;
@@ -1612,22 +1651,22 @@ static int make_socket_path(uv_loop_t *loop) {
           if (!S_ISDIR(req.statbuf.st_mode)
               || (geteuid() != req.statbuf.st_uid)
               || (req.statbuf.st_mode & S_IRWXO)) {
-              rc = UV_EEXIST;
+              mkdir_rc = UV_EEXIST;
+          } else {
+              mkdir_rc = 0;
           }
-      } else if (mkdir_rc < 0) {
-          rc = mkdir_rc;
+      } else {
+          mkdir_rc = rc;
       }
       uv_fs_req_cleanup(&req);
     }
 
-    if (rc < 0) {
-        ZITI_LOG(WARN, "Cannot create socket directory '%s': %s (%d)",
-            SOCKET_PATH, uv_strerror(rc), rc);
-        if (rc == UV_EEXIST) {
-          ZITI_LOG(WARN, "(The path '%s' is not a directory or has incorrect permissions)",
-              SOCKET_PATH);
+    if (mkdir_rc < 0) {
+        ZITI_LOG(WARN, "Cannot create socket directory '%s': %s (%d)", SOCKET_PATH, uv_strerror(mkdir_rc), mkdir_rc);
+        if (mkdir_rc == UV_EEXIST) {
+            ZITI_LOG(WARN, "(The path '%s' is not a directory or has incorrect permissions)", SOCKET_PATH);
         }
-        return rc;
+        return mkdir_rc;
     }
 
 #endif /* defined(SOCKET_PATH) */
@@ -1651,7 +1690,7 @@ static void run_tunneler_loop(uv_loop_t* ziti_loop) {
     uv_work_t *loader = calloc(1, sizeof(uv_work_t));
     uv_queue_work(ziti_loop, loader, load_identities, load_identities_complete);
 
-    int rc0, rc1;
+    int rc0 = 0, rc1;
     rc0 = rc1 = make_socket_path(ziti_loop);
     if (rc0 == 0) {
         rc0 = start_cmd_socket(ziti_loop);
