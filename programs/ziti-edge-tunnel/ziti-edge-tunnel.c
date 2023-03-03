@@ -1610,10 +1610,10 @@ static int make_socket_path(uv_loop_t *loop) {
            *
            * Look for a "ziti" user/group. If found:
            *   - chgrp the directory to the ziti group
-           *   - log that the sockets can be used by users in the "ziti" group. include helpful `usermod` command
+           *   - log that the sockets can be used by users in the "ziti" group
            * If "ziti" group is not found:
-           *   - warn that IPC sockets are not being started because admin privs would be needed to access the sockets.
            *   - include helpful commands to create ziti user/group
+           *   - warn that IPC sockets will require admin privs
            */
           if (geteuid() == 0 && req.statbuf.st_gid == getegid()) {
               bool chgrp_succeeded = false;
