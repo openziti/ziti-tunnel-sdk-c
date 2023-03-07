@@ -1034,10 +1034,13 @@ static void broadcast_metrics(uv_timer_t *timer) {
         // do not display the metrics events in the logs as this event will get called every 5 seconds
         send_events_message(&metrics_event, (to_json_fn) tunnel_metrics_event_to_json, false);
     }
-    if(metrics_event.Identities) {
+    if (metrics_event.Identities) {
+        for (idx = 0; metrics_event.Identities[idx]; idx++) {
+            free(metrics_event.Identities[idx]);
+        }
         free(metrics_event.Identities);
+        metrics_event.Identities = NULL;
     }
-    metrics_event.Identities = NULL;
     free_tunnel_metrics_event(&metrics_event);
 }
 
