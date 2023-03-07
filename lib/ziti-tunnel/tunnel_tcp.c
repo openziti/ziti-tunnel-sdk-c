@@ -155,8 +155,12 @@ static err_t on_tcp_client_data(void *io_ctx, struct tcp_pcb *pcb, struct pbuf *
     } else if (s < 0) {
         TNL_LOG(ERR, "ziti_write failed: service=%s, client=%s, ret=%ld", io->tnlr_io->service_name, io->tnlr_io->client, s);
         free(wr_ctx);
+        pbuf_free(p);
         return ERR_ABRT;
     }
+    /* Don't free the pbuf when returning ERR_OK (as lwip doc suggests) because the pbuf data is needed until
+     * the ziti_write callback (`on_ziti_write`) is called. The pbuf is ultimately freed in `tunneler_tcp_ack`.
+     */
     return ERR_OK;
 }
 
