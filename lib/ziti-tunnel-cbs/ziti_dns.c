@@ -667,7 +667,7 @@ ssize_t on_dns_req(void *ziti_io_ctx, void *write_ctx, const void *q_packet, siz
         ZITI_LOG(ERROR, "failed to parse DNS message");
         on_dns_close(clt);
         free_dns_req(req);
-        free(write_ctx);
+        ziti_tunneler_ack(write_ctx);
         return (ssize_t)q_len;
     }
     req->id = req->msg.id;
