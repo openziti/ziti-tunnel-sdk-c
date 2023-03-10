@@ -246,8 +246,11 @@ netif_driver utun_open(char *error, size_t error_len, const char *cidr) {
         if (prefix_sep != NULL) {
             ip_len = (int)(prefix_sep - cidr);
         }
+        long prefix = strtol(prefix_sep+1, NULL, 10);
+        in_addr_t netmask = (0xffffffff << (32 - prefix)) & 0xffffffff;
+        struct in_addr netmask_in = inet_makeaddr(netmask, 0);
         // add address to interface. darwin utun devices may only have "point to point" addresses
-        snprintf(cmd, sizeof(cmd), "ifconfig %s %.*s %.*s", tun->name, ip_len, cidr, ip_len, cidr);
+        snprintf(cmd, sizeof(cmd), "ifconfig %s %.*s %.*s netmask %s", tun->name, ip_len, cidr, ip_len, cidr, inet_ntoa(netmask_in));
         system(cmd);
 
         // add a route for the subnet if one was specified
