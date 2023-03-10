@@ -1635,11 +1635,11 @@ static int make_socket_path(uv_loop_t *loop) {
                   ZITI_LOG(WARN, "please create the 'ziti' group by running this command: ");
 #if __linux__
                   ZITI_LOG(WARN, "please create the 'ziti' group by running this command: ");
-                  ZITI_LOG(WARN, "useradd --system --home-dir=/var/lib/ziti --comment 'openziti user' --user-group ziti");
+                  ZITI_LOG(WARN, "sudo useradd --system --home-dir=/var/lib/ziti --comment 'openziti user' --user-group ziti");
 #elif (__APPLE__ && __MACH__ )
                   ZITI_LOG(WARN, "please create the 'ziti' group by running these commands: ");
-                  ZITI_LOG(WARN, "dseditgroup -o create ziti");
-                  ZITI_LOG(WARN, "sysadminctl -addUser ziti -shell /usr/bin/false -GID $(dscl . -read /groups/ziti PrimaryGroupID | awk '{print $2}')");
+                  ZITI_LOG(WARN, "sudo dseditgroup -o create ziti");
+                  ZITI_LOG(WARN, "sudo sysadminctl -addUser ziti -home /var/lib/ziti -shell /usr/bin/false -GID $(dscl . -read /groups/ziti PrimaryGroupID | awk '{print $2}')");
 #endif
                   ZITI_LOG(WARN, "this will make it possible for non-admins in the 'ziti' group to use the IPC sockets");
               }
