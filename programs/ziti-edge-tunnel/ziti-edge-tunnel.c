@@ -159,6 +159,7 @@ IMPL_ENUM(event, EVENT_ACTIONS)
 static char sockfile[] = "\\\\.\\pipe\\ziti-edge-tunnel.sock";
 static char eventsockfile[] = "\\\\.\\pipe\\ziti-edge-tunnel-event.sock";
 #elif __unix__ || unix || ( __APPLE__ && __MACH__ )
+#include <grp.h>
 #define SOCKET_PATH "/tmp/.ziti"
 static char sockfile[] = SOCKET_PATH "/ziti-edge-tunnel.sock";
 static char eventsockfile[] = SOCKET_PATH "/ziti-edge-tunnel-event.sock";
@@ -1619,22 +1620,28 @@ static int make_socket_path(uv_loop_t *loop) {
               bool chgrp_succeeded = false;
               ZITI_LOG(DEBUG, "created IPC socket directory %s with root ownership. attempting to set group to 'ziti'",
                        SOCKET_PATH);
-              struct passwd *pwd = getpwnam("ziti");
-              if (pwd) {
-                  rc = chown(SOCKET_PATH, -1, pwd->pw_gid);
+              struct group *grp = getgrnam("ziti");
+              if (grp) {
+                  rc = chown(SOCKET_PATH, -1, grp->gr_gid);
                   if (rc == 0) {
                       chgrp_succeeded = true;
-                      ZITI_LOG(DEBUG, "successfully set group of %s to 'ziti' (gid=%d)", SOCKET_PATH, pwd->pw_gid);
+                      ZITI_LOG(DEBUG, "successfully set group of %s to 'ziti' (gid=%d)", SOCKET_PATH, grp->gr_gid);
                   } else {
                       ZITI_LOG(WARN, "failed to set group of %s to 'ziti' (gid=%d): %s",
-                               SOCKET_PATH, pwd->pw_gid, strerror(errno));
+                               SOCKET_PATH, grp->gr_gid, strerror(errno));
                   }
               } else {
-                  ZITI_LOG(WARN, "local 'ziti' user not found.");
-                  ZITI_LOG(WARN, "please create the 'ziti' user and group by running this command: "
-                                 "useradd --system --home-dir=/var/lib/ziti --comment 'openziti user' --user-group ziti");
+                  ZITI_LOG(WARN, "local 'ziti' group not found.");
+                  ZITI_LOG(WARN, "please create the 'ziti' group by running this command: ");
+#if __linux__
+                  ZITI_LOG(WARN, "please create the 'ziti' group by running this command: ");
+                  ZITI_LOG(WARN, "useradd --system --home-dir=/var/lib/ziti --comment 'openziti user' --user-group ziti");
+#elif (__APPLE__ && __MACH__ )
+                  ZITI_LOG(WARN, "please create the 'ziti' group by running these commands: ");
+                  ZITI_LOG(WARN, "dseditgroup -o create ziti");
+                  ZITI_LOG(WARN, "sysadminctl -addUser ziti -shell /usr/bin/false -GID $(dscl . -read /groups/ziti PrimaryGroupID | awk '{print $2}')");
+#endif
                   ZITI_LOG(WARN, "this will make it possible for non-admins in the 'ziti' group to use the IPC sockets");
-                  // todo darwin command?
               }
               if (chgrp_succeeded) {
                   ZITI_LOG(INFO, "members of the 'ziti' group can use the IPC sockets in %s", SOCKET_PATH);
