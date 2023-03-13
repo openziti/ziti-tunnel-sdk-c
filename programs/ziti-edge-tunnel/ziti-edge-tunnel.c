@@ -1641,7 +1641,7 @@ static int make_socket_path(uv_loop_t *loop) {
 #elif (__APPLE__ && __MACH__ )
                   ZITI_LOG(WARN, "please create the 'ziti' group by running these commands: ");
                   ZITI_LOG(WARN, "sudo dseditgroup -o create ziti");
-                  ZITI_LOG(WARN, "sudo sysadminctl -addUser ziti -home /var/lib/ziti -shell /usr/bin/false -GID $(dscl . -read /groups/ziti PrimaryGroupID | awk '{print $2}')");
+                  ZITI_LOG(WARN, "sudo sysadminctl -addUser ziti -home /var/lib/ziti -shell /sbin/nologin -GID $(dscl . -read /groups/ziti PrimaryGroupID | awk '{print $2}')");
                   ZITI_LOG(WARN, "users can then be added to the 'ziti' group with:");
                   ZITI_LOG(WARN, "sudo dscl . -append /groups/ziti GroupMembership <USER>");
 #endif
