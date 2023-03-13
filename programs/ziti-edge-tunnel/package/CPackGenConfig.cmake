@@ -22,7 +22,7 @@ if(CPACK_GENERATOR MATCHES "RPM")
     set(CPACK_RPM_POST_UNINSTALL_SCRIPT_FILE "${CPACK_RPM_POST_UNINSTALL}")
     # systemd package on redhat 7 does not contain `systemd-sysusers`, so include shadow-utils
     # util-linux provides /usr/sbin/nologin.
-    set(CPACK_RPM_PACKAGE_REQUIRES_PRE "systemd, shadow-utils", "util-linux")
+    set(CPACK_RPM_PACKAGE_REQUIRES_PRE "systemd, shadow-utils, util-linux")
     set(CPACK_RPM_PACKAGE_REQUIRES_POST "systemd")
     set(CPACK_RPM_PACKAGE_REQUIRES_PREUN "systemd")
     set(CPACK_RPM_PACKAGE_REQUIRES_POSTUN "systemd")
