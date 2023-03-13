@@ -345,13 +345,12 @@ void * ziti_sdk_c_dial(const void *intercept_ctx, struct io_ctx_s *io) {
                 if (app_data.dst_hostname != NULL){
                     string_replace(resolved_dial_identity, sizeof(resolved_dial_identity), "$dst_hostname", app_data.dst_hostname);
                 }
-            free_tunneler_app_data(&app_data);
             }
         }
         dial_opts.identity = resolved_dial_identity;
     }
 
-
+    free_tunneler_app_data(&app_data);
     dial_opts.app_data_sz = (size_t) json_len;
     dial_opts.app_data = app_data_json;
 
