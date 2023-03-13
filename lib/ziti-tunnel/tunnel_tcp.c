@@ -154,8 +154,8 @@ static err_t on_tcp_client_data(void *io_ctx, struct tcp_pcb *pcb, struct pbuf *
         return ERR_WOULDBLOCK;
     } else if (s < 0) {
         TNL_LOG(ERR, "ziti_write failed: service=%s, client=%s, ret=%ld", io->tnlr_io->service_name, io->tnlr_io->client, s);
-        free(wr_ctx);
-        tcp_abort(io->tnlr_io->tcp); // todo seems that connections closed due to ER drop are not closed on tunneler side (or reconnected on ziti side)
+        pbuf_free(p);
+        io->close_fn(io->ziti_io);
         return ERR_ABRT;
     }
     return ERR_OK;
