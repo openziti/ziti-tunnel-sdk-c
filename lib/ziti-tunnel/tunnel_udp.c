@@ -72,6 +72,7 @@ static void to_ziti(struct io_ctx_s *io, struct pbuf *p) {
             tunneler_udp_ack(wr_ctx);
             free(wr_ctx);
             TNL_LOG(ERR, "ziti_write failed: service=%s, client=%s, ret=%ld", io->tnlr_io->service_name, io->tnlr_io->client, s);
+            io->close_fn(io->ziti_io);
             break;
         }
     } while (recv_data != NULL);

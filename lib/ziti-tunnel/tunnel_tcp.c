@@ -154,7 +154,12 @@ static err_t on_tcp_client_data(void *io_ctx, struct tcp_pcb *pcb, struct pbuf *
         return ERR_WOULDBLOCK;
     } else if (s < 0) {
         TNL_LOG(ERR, "ziti_write failed: service=%s, client=%s, ret=%ld", io->tnlr_io->service_name, io->tnlr_io->client, s);
+        // tell lwip to abort this connection immediately, and null the PCB to prevent ziti_close callback from (double) closing
+        tcp_abort(io->tnlr_io->tcp);
+        io->tnlr_io->tcp = NULL;
+        io->close_fn(io->ziti_io);
         free(wr_ctx);
+        pbuf_free(p);
         return ERR_ABRT;
     }
     return ERR_OK;
