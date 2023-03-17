@@ -1595,90 +1595,92 @@ static int run_tunnel_host_mode(uv_loop_t *ziti_loop) {
 static int make_socket_path(uv_loop_t *loop) {
 
 #if defined(SOCKET_PATH)
-  uv_fs_t req;
-  int rc, mkdir_rc;
+#define ZITI_GRNAME "ziti"
+    uv_fs_t req;
+    int rc;
 
-  mkdir_rc = uv_fs_mkdir(loop, &req, SOCKET_PATH, S_IRWXU|S_IRGRP|S_IXGRP, NULL);
-  uv_fs_req_cleanup(&req);
-
-  if (mkdir_rc == 0 || mkdir_rc == UV_EEXIST) {
-      rc = uv_fs_lstat(loop, &req, SOCKET_PATH, NULL);
-      if (rc == 0) {
-          /* The directory will be owned by root:root (or root:wheel on bsd/darwin) if running as root/sudo. This leads
-           * to an unfortunate situation where users will need to be in the root (or wheel) group to use the sockets.
-           * We don't want to encourage users to run their UI (or whatever they are doing with the IPC sockets) with
-           * sudo; we also don't want to leave the IPC socket directory wide open.
-           *
-           * Look for a "ziti" user/group. If found:
-           *   - chgrp the directory to the ziti group
-           *   - log that the sockets can be used by users in the "ziti" group
-           * If "ziti" group is not found:
-           *   - include helpful commands to create ziti user/group
-           *   - warn that IPC sockets will require admin privs
-           */
-          if (geteuid() == 0 && req.statbuf.st_gid == getegid()) {
-              bool chgrp_succeeded = false;
-              ZITI_LOG(DEBUG, "created IPC socket directory %s with root ownership. attempting to set group to 'ziti'",
-                       SOCKET_PATH);
-              struct group *grp = getgrnam("ziti");
-              if (grp) {
-                  rc = chown(SOCKET_PATH, -1, grp->gr_gid);
-                  if (rc == 0) {
-                      chgrp_succeeded = true;
-                      ZITI_LOG(DEBUG, "successfully set group of %s to 'ziti' (gid=%d)", SOCKET_PATH, grp->gr_gid);
-                  } else {
-                      ZITI_LOG(WARN, "failed to set group of %s to 'ziti' (gid=%d): %s",
-                               SOCKET_PATH, grp->gr_gid, strerror(errno));
-                  }
-              } else {
-                  ZITI_LOG(WARN, "local 'ziti' group not found.");
-                  ZITI_LOG(WARN, "please create the 'ziti' group by running this command: ");
+    // set effective group to "ziti"
+    struct group *ziti_grp = getgrnam(ZITI_GRNAME);
+    if (!ziti_grp) {
+        ZITI_LOG(WARN, "local '%s' group not found.", ZITI_GRNAME);
 #if __linux__
-                  ZITI_LOG(WARN, "please create the 'ziti' group by running this command: ");
-                  ZITI_LOG(WARN, "sudo useradd --system --home-dir=/var/lib/ziti --shell /usr/sbin/nologin --comment 'openziti user' --user-group ziti");
-                  ZITI_LOG(WARN, "users can then be added to the 'ziti' group with:");
-                  ZITI_LOG(WARN, "sudo usermod --append --groups ziti <USER>");
-#elif (__APPLE__ && __MACH__ )
-                  ZITI_LOG(WARN, "please create the 'ziti' group by running these commands: ");
-                  ZITI_LOG(WARN, "sudo dseditgroup -o create ziti");
-                  ZITI_LOG(WARN, "sudo sysadminctl -addUser ziti -home /var/lib/ziti -shell /sbin/nologin -GID $(dscl . -read /groups/ziti PrimaryGroupID | awk '{print $2}')");
-                  ZITI_LOG(WARN, "users can then be added to the 'ziti' group with:");
-                  ZITI_LOG(WARN, "sudo dscl . -append /groups/ziti GroupMembership <USER>");
+        ZITI_LOG(WARN, "please create the '%s' group by running this command: ", ZITI_GRNAME);
+        ZITI_LOG(WARN,
+                 "sudo useradd --system --home-dir=/var/lib/ziti --shell /usr/sbin/nologin --comment 'openziti user' --user-group %s",
+                 ZITI_GRNAME);
+        ZITI_LOG(WARN, "users can then be added to the '%s' group with:", ZITI_GRNAME);
+        ZITI_LOG(WARN, "sudo usermod --append --groups %s <USER>", ZITI_GRNAME);
+#elif (__APPLE__ && __MACH__)
+        ZITI_LOG(WARN, "please create the '%s' group by running these commands:", ZITI_GRNAME);
+        ZITI_LOG(WARN, "sudo dseditgroup -o create %s", ZITI_GRNAME);
+        ZITI_LOG(WARN,
+                 "sudo sysadminctl -addUser ziti -home /var/lib/ziti -shell /sbin/nologin -GID $(dscl . -read /groups/ziti PrimaryGroupID | awk '{print $2}')");
+        ZITI_LOG(WARN, "users can then be added to the '%s' group with:", ZITI_GRNAME);
+        ZITI_LOG(WARN, "sudo dscl . -append /groups/%s GroupMembership <USER>", ZITI_GRNAME);
 #endif
-                  ZITI_LOG(WARN, "this will make it possible for non-admins in the 'ziti' group to use the IPC sockets");
-              }
-              if (chgrp_succeeded) {
-                  ZITI_LOG(INFO, "members of the 'ziti' group can use the IPC sockets in %s", SOCKET_PATH);
-              } else {
-                  ZITI_LOG(WARN, "IPC sockets in %s will require admin privileges, which is not advisable", SOCKET_PATH);
-              }
-          }
-
-          /**
-           * Ensure path is a directory;
-           * that the directory owner and process user are one in the same;
-           * and that the permissions are not permissive.
-           */
-          if (!S_ISDIR(req.statbuf.st_mode)
-              || (geteuid() != req.statbuf.st_uid)
-              || (req.statbuf.st_mode & S_IRWXO)) {
-              mkdir_rc = UV_EEXIST;
-          } else {
-              mkdir_rc = 0;
-          }
-      } else {
-          mkdir_rc = rc;
-      }
-      uv_fs_req_cleanup(&req);
+        return -1;
     }
 
-    if (mkdir_rc < 0) {
-        ZITI_LOG(WARN, "Cannot create socket directory '%s': %s (%d)", SOCKET_PATH, uv_strerror(mkdir_rc), mkdir_rc);
-        if (mkdir_rc == UV_EEXIST) {
-            ZITI_LOG(WARN, "(The path '%s' is not a directory or has incorrect permissions)", SOCKET_PATH);
+    ZITI_LOG(DEBUG, "local group '%s' exists, gid=%d", ZITI_GRNAME, ziti_grp->gr_gid);
+    if (setgid(ziti_grp->gr_gid) == 0) {
+        ZITI_LOG(INFO, "effective group set to '%s' (gid=%d)", ziti_grp->gr_name, ziti_grp->gr_gid);
+    } else {
+        ZITI_LOG(WARN, "failed setting effective group to 'ziti': %s (errno=%d)", strerror(errno), errno);
+        return -1;
+    }
+
+    rc = uv_fs_mkdir(loop, &req, SOCKET_PATH, S_IRWXU|S_IRGRP|S_IXGRP, NULL);
+    uv_fs_req_cleanup(&req);
+
+    if (rc == 0) {
+        ZITI_LOG(DEBUG, "created socket directory %s", SOCKET_PATH);
+        return 0;
+    } else if (rc != UV_EEXIST) {
+        ZITI_LOG(WARN, "Cannot create socket directory '%s': %s (%d)", SOCKET_PATH, uv_strerror(rc), rc);
+        return -1;
+    }
+
+    // the directory already existed, check/set permissions as needed */
+    bool perms_ok = true;
+    rc = uv_fs_lstat(loop, &req, SOCKET_PATH, NULL);
+    if (rc == 0) {
+        // ensure SOCKET_PATH is a directory.
+        if (!S_ISDIR(req.statbuf.st_mode)) {
+            ZITI_LOG(WARN, "IPC socket path '%s' is not a directory", SOCKET_PATH);
+            perms_ok = false;
+            goto done;
         }
-        return mkdir_rc;
+        // ensure it has correct permissions
+        if (req.statbuf.st_mode & (S_IRWXO | S_IWGRP)) {
+            if (chmod(SOCKET_PATH, S_IRWXU|S_IRGRP|S_IXGRP) == 0) {
+                ZITI_LOG(DEBUG, "successfully set permissions of %s to 0%o", SOCKET_PATH, S_IRWXU|S_IRGRP|S_IXGRP);
+            } else {
+                ZITI_LOG(WARN, "failed to set permissions of %s to 0%o: %s (%d)", SOCKET_PATH, S_IRWXU|S_IRGRP|S_IXGRP, strerror(errno), errno);
+                perms_ok = false;
+                goto done;
+            }
+        }
+        // ensure it has correct owner/group
+        if (geteuid() != req.statbuf.st_uid || req.statbuf.st_gid != ziti_grp->gr_gid) {
+            ZITI_LOG(DEBUG, "attempting to set ownership of IPC socket directory %s to %d:%d", SOCKET_PATH,
+                     geteuid(), ziti_grp->gr_gid);
+            if (chown(SOCKET_PATH, geteuid(), ziti_grp->gr_gid) == 0) {
+                ZITI_LOG(DEBUG, "successfully set ownership of %s to %d:%d", SOCKET_PATH, geteuid(), ziti_grp->gr_gid);
+            } else {
+                ZITI_LOG(WARN, "failed to set ownership of %s to %d:%d: %s (errno=%d)", SOCKET_PATH, geteuid(),
+                         ziti_grp->gr_gid, strerror(errno), errno);
+                perms_ok = false;
+                goto done;
+            }
+        }
+    } else {
+        ZITI_LOG(WARN, "lstat(%s) failed: %s (%d)", SOCKET_PATH, uv_strerror(rc), rc);
+        perms_ok = false;
     }
+
+    done:
+    uv_fs_req_cleanup(&req);
+    return perms_ok ? 0 : -1;
 
 #endif /* defined(SOCKET_PATH) */
 
