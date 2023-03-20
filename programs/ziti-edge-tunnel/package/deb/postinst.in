@@ -23,6 +23,9 @@ if [ "$1" = "configure" ]; then
     cp "@CPACK_SHARE_DIR@/@ZITI_POLKIT_PKLA_FILE@.sample" "/var/lib/polkit-1/localauthority/10-vendor.d/@ZITI_POLKIT_PKLA_FILE@"
     db_set ziti_edge_tunnel/install_pkla true
   fi
+
+  # remove socket files that were created by older ziti-edge-tunnel versions
+  rm -f /tmp/ziti-edge-tunnel.sock /tmp/ziti-edge-tunnel-event.sock
 fi
 
 # Copied from https://github.com/Debian/debhelper/blob/master/autoscripts/postinst-systemd-dont-enable

@@ -15,6 +15,9 @@ chown root:ziti "@ZITI_IDENTITY_DIR@" || :
 chmod 0770 "@ZITI_IDENTITY_DIR@" || :
 find "@ZITI_IDENTITY_DIR@" -maxdepth 1 -name "*.json" -type f -exec chown ziti:ziti "{}" + -exec chmod 0400 "{}" + || :
 
+# remove socket files that were created by older ziti-edge-tunnel versions
+rm -f /tmp/ziti-edge-tunnel.sock /tmp/ziti-edge-tunnel-event.sock
+
 if [ $1 -eq 1 ]; then
     ssize=$(tput cols)
     printf '\n'
