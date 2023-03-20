@@ -1603,18 +1603,13 @@ static int make_socket_path(uv_loop_t *loop) {
     struct group *ziti_grp = getgrnam(ZITI_GRNAME);
     if (!ziti_grp) {
         ZITI_LOG(WARN, "local '%s' group not found.", ZITI_GRNAME);
+        ZITI_LOG(WARN, "please create the '%s' group by running these commands:", ZITI_GRNAME);
 #if __linux__
-        ZITI_LOG(WARN, "please create the '%s' group by running this command: ", ZITI_GRNAME);
-        ZITI_LOG(WARN,
-                 "sudo useradd --system --home-dir=/var/lib/ziti --shell /usr/sbin/nologin --comment 'openziti user' --user-group %s",
-                 ZITI_GRNAME);
+        ZITI_LOG(WARN, "sudo groupadd --system %s", ZITI_GRNAME);
         ZITI_LOG(WARN, "users can then be added to the '%s' group with:", ZITI_GRNAME);
         ZITI_LOG(WARN, "sudo usermod --append --groups %s <USER>", ZITI_GRNAME);
 #elif (__APPLE__ && __MACH__)
-        ZITI_LOG(WARN, "please create the '%s' group by running these commands:", ZITI_GRNAME);
         ZITI_LOG(WARN, "sudo dseditgroup -o create %s", ZITI_GRNAME);
-        ZITI_LOG(WARN,
-                 "sudo sysadminctl -addUser ziti -home /var/lib/ziti -shell /sbin/nologin -GID $(dscl . -read /groups/ziti PrimaryGroupID | awk '{print $2}')");
         ZITI_LOG(WARN, "users can then be added to the '%s' group with:", ZITI_GRNAME);
         ZITI_LOG(WARN, "sudo dscl . -append /groups/%s GroupMembership <USER>", ZITI_GRNAME);
 #endif
