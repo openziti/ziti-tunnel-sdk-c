@@ -16,9 +16,13 @@ if(CPACK_GENERATOR MATCHES "RPM")
     set(CPACK_RPM_PACKAGE_SUMMARY "OpenZiti Edge Tunneling Software Client")
     set(CPACK_RPM_PACKAGE_URL "https://openziti.github.io/")
     
+    set(CPACK_RPM_PRE_INSTALL_SCRIPT_FILE "${CPACK_RPM_PRE_INSTALL}")
     set(CPACK_RPM_POST_INSTALL_SCRIPT_FILE "${CPACK_RPM_POST_INSTALL}")
     set(CPACK_RPM_PRE_UNINSTALL_SCRIPT_FILE "${CPACK_RPM_PRE_UNINSTALL}")
     set(CPACK_RPM_POST_UNINSTALL_SCRIPT_FILE "${CPACK_RPM_POST_UNINSTALL}")
+    # systemd package on redhat 7 does not contain `systemd-sysusers`, so include shadow-utils
+    # util-linux provides /usr/sbin/nologin.
+    set(CPACK_RPM_PACKAGE_REQUIRES_PRE "systemd, shadow-utils, util-linux")
     set(CPACK_RPM_PACKAGE_REQUIRES_POST "systemd")
     set(CPACK_RPM_PACKAGE_REQUIRES_PREUN "systemd")
     set(CPACK_RPM_PACKAGE_REQUIRES_POSTUN "systemd")
@@ -29,6 +33,6 @@ if(CPACK_GENERATOR MATCHES "RPM")
     endif(CPACK_GENERATOR MATCHES "RPM")
 
 if(CPACK_GENERATOR MATCHES "DEB")
-    set(CPACK_DEBIAN_PACKAGE_DEPENDS "iproute2, sed, systemd, libatomic1, openssl")
-    set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA "${CPACK_DEB_CONFFILES};${CPACK_DEB_POST_INSTALL};${CPACK_DEB_PRE_UNINSTALL};${CPACK_DEB_POST_UNINSTALL}")
+    set(CPACK_DEBIAN_PACKAGE_DEPENDS "debconf, iproute2, sed, systemd, libatomic1, openssl")
+    set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA "${CPACK_DEB_CONFFILES};${CPACK_DEB_POST_INSTALL};${CPACK_DEB_PRE_UNINSTALL};${CPACK_DEB_POST_UNINSTALL};${CPACK_DEB_TEMPLATES}")
 endif(CPACK_GENERATOR MATCHES "DEB")

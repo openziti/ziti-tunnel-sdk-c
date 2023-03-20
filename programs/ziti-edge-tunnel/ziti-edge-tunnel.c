@@ -102,6 +102,10 @@ typedef struct ipc_cmd_ctx_s {
 
 static ipc_cmd_ctx_t *ipc_cmd_ctx;
 
+struct enroll_cb_params {
+    uv_buf_t config; /* out */
+};
+
 static char* ipc_cmd_buffered(ipc_cmd_ctx_t *ipc_cmd_ctx_new);
 
 struct cfg_instance_s {
@@ -155,8 +159,10 @@ IMPL_ENUM(event, EVENT_ACTIONS)
 static char sockfile[] = "\\\\.\\pipe\\ziti-edge-tunnel.sock";
 static char eventsockfile[] = "\\\\.\\pipe\\ziti-edge-tunnel-event.sock";
 #elif __unix__ || unix || ( __APPLE__ && __MACH__ )
-static char sockfile[] = "/tmp/ziti-edge-tunnel.sock";
-static char eventsockfile[] = "/tmp/ziti-edge-tunnel-event.sock";
+#include <grp.h>
+#define SOCKET_PATH "/tmp/.ziti"
+static char sockfile[] = SOCKET_PATH "/ziti-edge-tunnel.sock";
+static char eventsockfile[] = SOCKET_PATH "/ziti-edge-tunnel-event.sock";
 #endif
 
 static int sizeof_event_clients_list() {
@@ -1586,6 +1592,96 @@ static int run_tunnel_host_mode(uv_loop_t *ziti_loop) {
     return 0;
 }
 
+static int make_socket_path(uv_loop_t *loop) {
+
+#if defined(SOCKET_PATH)
+#define ZITI_GRNAME "ziti"
+    uv_fs_t req;
+    int rc;
+
+    // set effective group to "ziti"
+    struct group *ziti_grp = getgrnam(ZITI_GRNAME);
+    if (!ziti_grp) {
+        ZITI_LOG(WARN, "local '%s' group not found.", ZITI_GRNAME);
+        ZITI_LOG(WARN, "please create the '%s' group by running these commands:", ZITI_GRNAME);
+#if __linux__
+        ZITI_LOG(WARN, "sudo groupadd --system %s", ZITI_GRNAME);
+        ZITI_LOG(WARN, "users can then be added to the '%s' group with:", ZITI_GRNAME);
+        ZITI_LOG(WARN, "sudo usermod --append --groups %s <USER>", ZITI_GRNAME);
+#elif (__APPLE__ && __MACH__)
+        ZITI_LOG(WARN, "sudo dseditgroup -o create %s", ZITI_GRNAME);
+        ZITI_LOG(WARN, "users can then be added to the '%s' group with:", ZITI_GRNAME);
+        ZITI_LOG(WARN, "sudo dscl . -append /groups/%s GroupMembership <USER>", ZITI_GRNAME);
+#endif
+        return -1;
+    }
+
+    ZITI_LOG(DEBUG, "local group '%s' exists, gid=%d", ZITI_GRNAME, ziti_grp->gr_gid);
+    if (setgid(ziti_grp->gr_gid) == 0) {
+        ZITI_LOG(INFO, "effective group set to '%s' (gid=%d)", ziti_grp->gr_name, ziti_grp->gr_gid);
+    } else {
+        ZITI_LOG(WARN, "failed setting effective group to 'ziti': %s (errno=%d)", strerror(errno), errno);
+        return -1;
+    }
+
+    rc = uv_fs_mkdir(loop, &req, SOCKET_PATH, S_IRWXU|S_IRGRP|S_IXGRP, NULL);
+    uv_fs_req_cleanup(&req);
+
+    if (rc == 0) {
+        ZITI_LOG(DEBUG, "created socket directory %s", SOCKET_PATH);
+        return 0;
+    } else if (rc != UV_EEXIST) {
+        ZITI_LOG(WARN, "Cannot create socket directory '%s': %s (%d)", SOCKET_PATH, uv_strerror(rc), rc);
+        return -1;
+    }
+
+    // the directory already existed, check/set permissions as needed */
+    bool perms_ok = true;
+    rc = uv_fs_lstat(loop, &req, SOCKET_PATH, NULL);
+    if (rc == 0) {
+        // ensure SOCKET_PATH is a directory.
+        if (!S_ISDIR(req.statbuf.st_mode)) {
+            ZITI_LOG(WARN, "IPC socket path '%s' is not a directory", SOCKET_PATH);
+            perms_ok = false;
+            goto done;
+        }
+        // ensure it has correct permissions
+        if (req.statbuf.st_mode & (S_IRWXO | S_IWGRP)) {
+            if (chmod(SOCKET_PATH, S_IRWXU|S_IRGRP|S_IXGRP) == 0) {
+                ZITI_LOG(DEBUG, "successfully set permissions of %s to 0%o", SOCKET_PATH, S_IRWXU|S_IRGRP|S_IXGRP);
+            } else {
+                ZITI_LOG(WARN, "failed to set permissions of %s to 0%o: %s (%d)", SOCKET_PATH, S_IRWXU|S_IRGRP|S_IXGRP, strerror(errno), errno);
+                perms_ok = false;
+                goto done;
+            }
+        }
+        // ensure it has correct owner/group
+        if (geteuid() != req.statbuf.st_uid || req.statbuf.st_gid != ziti_grp->gr_gid) {
+            ZITI_LOG(DEBUG, "attempting to set ownership of IPC socket directory %s to %d:%d", SOCKET_PATH,
+                     geteuid(), ziti_grp->gr_gid);
+            if (chown(SOCKET_PATH, geteuid(), ziti_grp->gr_gid) == 0) {
+                ZITI_LOG(DEBUG, "successfully set ownership of %s to %d:%d", SOCKET_PATH, geteuid(), ziti_grp->gr_gid);
+            } else {
+                ZITI_LOG(WARN, "failed to set ownership of %s to %d:%d: %s (errno=%d)", SOCKET_PATH, geteuid(),
+                         ziti_grp->gr_gid, strerror(errno), errno);
+                perms_ok = false;
+                goto done;
+            }
+        }
+    } else {
+        ZITI_LOG(WARN, "lstat(%s) failed: %s (%d)", SOCKET_PATH, uv_strerror(rc), rc);
+        perms_ok = false;
+    }
+
+    done:
+    uv_fs_req_cleanup(&req);
+    return perms_ok ? 0 : -1;
+
+#endif /* defined(SOCKET_PATH) */
+
+    return 0;
+}
+
 static void run_tunneler_loop(uv_loop_t* ziti_loop) {
 
 #if _WIN32
@@ -1602,8 +1698,16 @@ static void run_tunneler_loop(uv_loop_t* ziti_loop) {
     uv_work_t *loader = calloc(1, sizeof(uv_work_t));
     uv_queue_work(ziti_loop, loader, load_identities, load_identities_complete);
 
-    start_cmd_socket(ziti_loop);
-    start_event_socket(ziti_loop);
+    int rc0 = 0, rc1;
+    rc0 = rc1 = make_socket_path(ziti_loop);
+    if (rc0 == 0) {
+        rc0 = start_cmd_socket(ziti_loop);
+        rc1 = start_event_socket(ziti_loop);
+    }
+
+    if (rc0 < 0 || rc1 < 0) {
+      ZITI_LOG(WARN, "One or more socket servers did not properly start.");
+    }
 
 #if _WIN32
     ipc_cmd_ctx = calloc(1, sizeof(struct ipc_cmd_ctx_s));
@@ -2004,25 +2108,46 @@ static int parse_enroll_opts(int argc, char *argv[]) {
 }
 
 static void enroll_cb(const ziti_config *cfg, int status, const char *err, void *ctx) {
+    struct enroll_cb_params *params = ctx;
+
+    *params = (struct enroll_cb_params) { 0 };
+
     if (status != ZITI_OK) {
         ZITI_LOG(ERROR, "enrollment failed: %s(%d)", err, status);
-        exit(status);
+        return;
     }
-
-    FILE *f = ctx;
 
     size_t len;
     char *cfg_json = ziti_config_to_json(cfg, 0, &len);
 
-    if (fwrite(cfg_json, 1, len, f) != len) {
-        ZITI_LOG(ERROR, "failed to write config file");
-        fclose(f);
-        exit (-1);
-    }
+    params->config.base = cfg_json;
+    params->config.len = len;
+}
 
-    free(cfg_json);
-    fflush(f);
-    fclose(f);
+static int write_close(FILE *fp, const uv_buf_t *data)
+{
+  size_t n;
+  int rc = 0;
+
+  /**
+   * fwrite signals error by a short count.
+   * Cstd does not specify errno, while
+   * POSIX specifies that errno is set on error.
+   */
+  errno = 0;
+  n = fwrite(data->base, data->len, 1, fp);
+  if (n != 1) {
+    rc = -errno;
+    if (rc == 0)
+      rc = -EIO;
+  }
+
+  if (fclose(fp) == EOF) {
+    if (rc == 0)
+      rc = -errno;
+  }
+
+  return rc;
 }
 
 static void enroll(int argc, char *argv[]) {
@@ -2037,25 +2162,46 @@ static void enroll(int argc, char *argv[]) {
 
     if (enroll_opts.jwt == NULL) {
         ZITI_LOG(ERROR, "JWT file option(-j|--jwt) is required");
-        exit(-1);
+        exit(1);
     }
 
     /* open with O_EXCL to fail if the file exists */
     int outfd = open(config_file, O_CREAT | O_WRONLY | O_EXCL, S_IRUSR | S_IWUSR);
     if (outfd < 0) {
         ZITI_LOG(ERROR, "failed to open file %s: %s(%d)", config_file, strerror(errno), errno);
-        exit(-1);
+        exit(1);
     }
     FILE *outfile = NULL;
     if ((outfile = fdopen(outfd, "wb")) == NULL) {
         ZITI_LOG(ERROR, "failed to open file %s: %s(%d)", config_file, strerror(errno), errno);
-        exit(-1);
-
+        (void) close(outfd);
+        exit(1);
     }
 
-    ziti_enroll(&enroll_opts, l, enroll_cb, outfile);
+    struct enroll_cb_params params = { 0 };
+
+    ziti_enroll(&enroll_opts, l, enroll_cb, &params);
 
     uv_run(l, UV_RUN_DEFAULT);
+
+    int rc;
+    if (params.config.len > 0) {
+        rc = write_close(outfile, &params.config);
+        free(params.config.base);
+        if (rc < 0) {
+            ZITI_LOG(ERROR, "failed to write config file %s: %s (%d)",
+                config_file, strerror(-rc), -rc);
+        }
+    } else {
+        (void) fclose(outfile);
+        rc = -1;
+    }
+
+    /* if unsuccessful, delete config_file and exit */
+    if (rc < 0) {
+        (void) unlink(config_file);
+        exit(1);
+    }
 }
 
 static tunnel_command *cmd;
