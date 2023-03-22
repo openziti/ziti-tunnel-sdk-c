@@ -39,16 +39,7 @@ RUN curl -sSfL https://cmake.org/files/v${CMAKE_VERSION%.*}/cmake-${CMAKE_VERSIO
 
 RUN dpkg --add-architecture armhf
 RUN dpkg --add-architecture arm64
-RUN cat <<EOF > /etc/apt/sources.list.d/crossbuild.list
-deb [arch=armhf,arm64] http://ports.ubuntu.com/ bionic main restricted
-deb [arch=armhf,arm64] http://ports.ubuntu.com/ bionic-updates main restricted
-deb [arch=armhf,arm64] http://ports.ubuntu.com/ bionic universe
-deb [arch=armhf,arm64] http://ports.ubuntu.com/ bionic-updates universe
-deb [arch=armhf,arm64] http://ports.ubuntu.com/ bionic multiverse
-deb [arch=armhf,arm64] http://ports.ubuntu.com/ bionic-updates multiverse
-deb [arch=armhf,arm64] http://ports.ubuntu.com/ bionic-backports main restricted universe multiverse
-EOF
-
+COPY ./crossbuild.list /etc/apt/sources.list.d/crossbuild.list
 RUN sed -Ei 's/^deb/deb [arch=amd64]/g' /etc/apt/sources.list
 RUN apt-get update
 RUN apt-get -y install \
