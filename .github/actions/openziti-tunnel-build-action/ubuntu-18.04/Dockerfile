@@ -39,7 +39,9 @@ RUN curl -sSfL https://cmake.org/files/v${CMAKE_VERSION%.*}/cmake-${CMAKE_VERSIO
 
 RUN dpkg --add-architecture armhf
 RUN dpkg --add-architecture arm64
-COPY ./crossbuild.list /etc/apt/sources.list.d/crossbuild.list
+# the copy source path is relative to the GH Action's root where this Dockerfile
+# is copied before building the container image
+COPY ./ubuntu-18.04/crossbuild.list /etc/apt/sources.list.d/crossbuild.list
 RUN sed -Ei 's/^deb/deb [arch=amd64]/g' /etc/apt/sources.list
 RUN apt-get update
 RUN apt-get -y install \
