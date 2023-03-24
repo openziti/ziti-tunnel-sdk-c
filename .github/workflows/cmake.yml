@@ -38,6 +38,8 @@ jobs:
             container: ubuntu:18.04
             name: Linux x86_64
             install: $common_ubuntu_deps build-essential
+            toolchain: default.cmake
+            cmake_opts: -DUSE_OPENSSL=ON
             arch: x86_64
 
           - os: ubuntu-20.04
@@ -45,7 +47,7 @@ jobs:
             name: Linux arm
             install: $common_ubuntu_deps crossbuild-essential-armhf
             toolchain: Linux-arm.cmake
-            cmake_opts: -DCMAKE_BUILD_TYPE=Release
+            cmake_opts: -DCMAKE_BUILD_TYPE=Release -DUSE_OPENSSL=ON
             arch: arm
 
           - os: ubuntu-20.04
@@ -53,7 +55,7 @@ jobs:
             name: Linux arm64
             install: $common_ubuntu_deps crossbuild-essential-arm64
             toolchain: Linux-arm64.cmake
-            cmake_opts: -DCMAKE_BUILD_TYPE=Release
+            cmake_opts: -DCMAKE_BUILD_TYPE=Release -DUSE_OPENSSL=ON
             arch: arm64
 
     steps:
@@ -73,6 +75,28 @@ jobs:
           apt -y install git
           git config --global --add safe.directory $GITHUB_WORKSPACE
           git --version
+
+      # run this step if Linux and arm or arm64 
+      - name: subscribe to apt multiarch ports and install libssl-dev for target arch
+        if: ${{ matrix.container != null && matrix.arch != 'x86_64' }}
+        run: |
+          case ${{ matrix.arch }} in
+            arm)   TARGETARCH=armhf;;
+            arm64) TARGETARCH=arm64;;
+          esac
+          dpkg --add-architecture ${TARGETARCH}
+          cat <<EOF > /etc/apt/sources.list.d/crossbuild.list
+          deb [arch=${TARGETARCH}] http://ports.ubuntu.com/ bionic main restricted
+          deb [arch=${TARGETARCH}] http://ports.ubuntu.com/ bionic-updates main restricted
+          deb [arch=${TARGETARCH}] http://ports.ubuntu.com/ bionic universe
+          deb [arch=${TARGETARCH}] http://ports.ubuntu.com/ bionic-updates universe
+          deb [arch=${TARGETARCH}] http://ports.ubuntu.com/ bionic multiverse
+          deb [arch=${TARGETARCH}] http://ports.ubuntu.com/ bionic-updates multiverse
+          deb [arch=${TARGETARCH}] http://ports.ubuntu.com/ bionic-backports main restricted universe multiverse
+          EOF
+          sed -Ei 's/^deb/deb [arch=amd64]/g' /etc/apt/sources.list
+          apt-get update
+          apt-get -y install libssl-dev:${TARGETARCH}
 
       - name: install contemporary cmake
         if: ${{ matrix.container != null }}

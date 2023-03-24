@@ -19,6 +19,8 @@ ENV PATH="/usr/local/:${PATH}"
 RUN apt-get update \
     && apt-get -y install \
         build-essential \
+        crossbuild-essential-armhf \
+        crossbuild-essential-arm64 \
         curl \
         doxygen \
         git \
@@ -34,6 +36,17 @@ RUN apt-get update \
 RUN curl -sSfL https://cmake.org/files/v${CMAKE_VERSION%.*}/cmake-${CMAKE_VERSION}-linux-$(uname -m).sh -o cmake.sh \
     && (bash cmake.sh --skip-license --prefix=/usr/local) \
     && rm cmake.sh
+
+RUN dpkg --add-architecture armhf
+RUN dpkg --add-architecture arm64
+# the copy source path is relative to the GH Action's root where this Dockerfile
+# is copied before building the container image
+COPY ./ubuntu-18.04/crossbuild.list /etc/apt/sources.list.d/crossbuild.list
+RUN sed -Ei 's/^deb/deb [arch=amd64]/g' /etc/apt/sources.list
+RUN apt-get update
+RUN apt-get -y install \
+    libssl-dev:armhf \
+    libssl-dev:arm64
 
 WORKDIR /github/workspace
 COPY ./entrypoint.sh /root/

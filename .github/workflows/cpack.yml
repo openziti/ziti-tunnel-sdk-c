@@ -89,11 +89,6 @@ jobs:
             arch:
               cmake: arm
           - distro:
-              name: ubuntu
-              release_name: bionic
-            arch:
-              cmake: arm64
-          - distro:
               name: redhat
             arch:
               cmake: arm
