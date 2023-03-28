@@ -1,6 +1,10 @@
-FROM quay.io/rockylinux/rockylinux:9
+ARG CMAKE_VERSION="3.22.3"
 
-LABEL org.opencontainers.image.authors="steven.broderick@netfoundry.io,kenneth.bingham@netfoundry.io"
+FROM rockylinux:9
+
+ARG CMAKE_VERSION
+
+LABEL org.opencontainers.image.authors="support@netfoundry.io"
 
 USER root
 WORKDIR /root/
@@ -28,7 +32,10 @@ RUN dnf install -y \
         git \
     && dnf clean all 
 
-    
+RUN curl -sSfL https://cmake.org/files/v${CMAKE_VERSION%.*}/cmake-${CMAKE_VERSION}-linux-$(uname -m).sh -o cmake.sh \
+    && (bash cmake.sh --skip-license --prefix=/usr/local) \
+    && rm cmake.sh
+
 WORKDIR /github/workspace
 COPY ./entrypoint.sh /root/
 ENTRYPOINT [ "/root/entrypoint.sh" ]
