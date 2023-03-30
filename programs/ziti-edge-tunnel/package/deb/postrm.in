@@ -13,8 +13,8 @@ if [ "$1" = "purge" ]; then
 fi
 # End copied seciton
 
-if [ -L /etc/systemd/system/@SYSTEMD_UNIT_FILE_NAME@ ]; then
-    unlink /etc/systemd/system/@SYSTEMD_UNIT_FILE_NAME@
+if [ -L @SYSTEMD_UNIT_DIR@/@SYSTEMD_UNIT_FILE_NAME@ ]; then
+    unlink @SYSTEMD_UNIT_DIR@/@SYSTEMD_UNIT_FILE_NAME@
 fi
 
 # Copied from https://github.com/Debian/debhelper/blob/master/autoscripts/postrm-systemd-restart-only
