@@ -36,7 +36,7 @@ jobs:
 
           - os: windows-2019
             name: Windows ARM64
-            toolchain: Windows-ARM64-msvc
+            toolchain: Windows-ARM64-msvc.cmake
             cmake_opts: -A ARM64
             arch: arm64
 
