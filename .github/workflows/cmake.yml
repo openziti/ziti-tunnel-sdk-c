@@ -34,6 +34,10 @@ jobs:
             name: Windows x86_64
             arch: x86_64
 
+          - os: windows-2019
+            name: Windows ARM64
+            arch: arm64
+
           - os: ubuntu-20.04
             container: ubuntu:18.04
             name: Linux x86_64
@@ -101,6 +105,10 @@ jobs:
       - name: install contemporary cmake
         if: ${{ matrix.container != null }}
         uses: lukka/get-cmake@latest
+
+      - name: Add msbuild to PATH
+        if: matrix.spec.runner == 'windows-2019'
+        uses: microsoft/setup-msbuild@v1.1
 
       - name: checkout workspace
         uses: actions/checkout@v3
