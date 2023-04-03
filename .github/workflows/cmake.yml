@@ -35,7 +35,7 @@ jobs:
             arch: x86_64
 
           - os: windows-2019
-            name: Windows ARM64
+            name: Windows arm64
             toolchain: Windows-arm64-msvc.cmake
             cmake_opts: -A ARM64
             arch: arm64
@@ -121,7 +121,9 @@ jobs:
         run: cmake -E make_directory ./build
 
       - name: configure cmake
-        run: cmake ${{matrix.cmake_opts}} -DCMAKE_TOOLCHAIN_FILE="${{ matrix.toolchain && format('./toolchains/{0}', matrix.toolchain) || '' }}" -S . -B ./build
+        env:
+          TOOLCHAIN: ${{ matrix.toolchain && format('./toolchains/{0}', matrix.toolchain) || '' }}
+        run: cmake ${{matrix.cmake_opts}} -DCMAKE_TOOLCHAIN_FILE="${{ env.TOOLCHAIN_FILE }}" -S . -B ./build
 
       - name: build ziti-edge-tunnel bundle target
         run: cmake --build ./build --target bundle --verbose
@@ -140,4 +142,5 @@ jobs:
           name: ${{ runner.os }}-${{ matrix.arch }}
           path: |
             ./build/bundle/ziti-edge-tunnel-*.zip
+            !./build/bundle/ziti-edge-tunnel-test-*.zip
           if-no-files-found: error
