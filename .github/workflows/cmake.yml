@@ -32,12 +32,13 @@ jobs:
 
           - os: windows-latest
             name: Windows x86_64
+            cmake_opts: -DCMAKE_BUILD_TYPE=Release
             arch: x86_64
 
           - os: windows-2019
             name: Windows arm64
             toolchain: Windows-arm64-msvc.cmake
-            cmake_opts: -A ARM64
+            cmake_opts: -A ARM64 -DCMAKE_BUILD_TYPE=Release
             arch: arm64
 
           - os: ubuntu-20.04
@@ -123,7 +124,7 @@ jobs:
       - name: configure cmake
         env:
           TOOLCHAIN: ${{ matrix.toolchain && format('./toolchains/{0}', matrix.toolchain) || '' }}
-        run: cmake ${{matrix.cmake_opts}} -DCMAKE_TOOLCHAIN_FILE="${{ env.TOOLCHAIN_FILE }}" -S . -B ./build
+        run: cmake ${{matrix.cmake_opts}} -DCMAKE_TOOLCHAIN_FILE="${{ env.TOOLCHAIN }}" -S . -B ./build
 
       - name: build ziti-edge-tunnel bundle target
         run: cmake --build ./build --target bundle --verbose
