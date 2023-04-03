@@ -32,13 +32,15 @@ jobs:
 
           - os: windows-latest
             name: Windows x86_64
-            cmake_opts: -DCMAKE_BUILD_TYPE=Release
+            cmake_generate_opts: -DCMAKE_BUILD_TYPE=Release
+            cmake_build_opts: --config Release
             arch: x86_64
 
           - os: windows-2019
             name: Windows arm64
             toolchain: Windows-arm64-msvc.cmake
-            cmake_opts: -A ARM64 -DCMAKE_BUILD_TYPE=Release
+            cmake_generate_opts: -A ARM64 -DCMAKE_BUILD_TYPE=Release
+            cmake_build_opts: --config Release
             arch: arm64
 
           - os: ubuntu-20.04
@@ -46,7 +48,7 @@ jobs:
             name: Linux x86_64
             install: $common_ubuntu_deps build-essential
             toolchain: default.cmake
-            cmake_opts: -DUSE_OPENSSL=ON
+            cmake_generate_opts: -DUSE_OPENSSL=ON
             arch: x86_64
 
           - os: ubuntu-20.04
@@ -54,7 +56,7 @@ jobs:
             name: Linux arm
             install: $common_ubuntu_deps crossbuild-essential-armhf
             toolchain: Linux-arm.cmake
-            cmake_opts: -DCMAKE_BUILD_TYPE=Release -DUSE_OPENSSL=ON
+            cmake_generate_opts: -DCMAKE_BUILD_TYPE=Release -DUSE_OPENSSL=ON
             arch: arm
 
           - os: ubuntu-20.04
@@ -62,7 +64,7 @@ jobs:
             name: Linux arm64
             install: $common_ubuntu_deps crossbuild-essential-arm64
             toolchain: Linux-arm64.cmake
-            cmake_opts: -DCMAKE_BUILD_TYPE=Release -DUSE_OPENSSL=ON
+            cmake_generate_opts: -DCMAKE_BUILD_TYPE=Release -DUSE_OPENSSL=ON
             arch: arm64
 
     steps:
@@ -124,10 +126,10 @@ jobs:
       - name: configure cmake
         env:
           TOOLCHAIN: ${{ matrix.toolchain && format('./toolchains/{0}', matrix.toolchain) || '' }}
-        run: cmake ${{matrix.cmake_opts}} -DCMAKE_TOOLCHAIN_FILE="${{ env.TOOLCHAIN }}" -S . -B ./build
+        run: cmake ${{matrix.cmake_generate_opts}} -DCMAKE_TOOLCHAIN_FILE="${{ env.TOOLCHAIN }}" -S . -B ./build
 
       - name: build ziti-edge-tunnel bundle target
-        run: cmake --build ./build --target bundle --verbose
+        run: cmake --build ./build --target bundle --verbose ${{ matrix.cmake_build_opts }}
 
       - name: list bundle artifacts
         run: ls -R
