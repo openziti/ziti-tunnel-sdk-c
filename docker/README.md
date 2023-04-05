@@ -181,7 +181,7 @@ volumes:
 
 #### Kubernetes Deployments for `openziti/ziti-host`
 
-Refer to [the workload tunneling guides for Kubernetes](https://docs.openziti.io/docs/category/workload-tunneling).
+Refer to [the workload tunneling guides for Kubernetes](https://docs.openziti.io/docs/guides/kubernetes/workload-tunneling/).
 
 ## Use Case: Intercepting Proxy and Nameserver
 
@@ -250,4 +250,4 @@ services:
 
 #### Kubernetes Deployments for `openziti/ziti-edge-tunnel`
 
-Refer to [the workload tunneling guides for Kubernetes](https://docs.openziti.io/docs/category/workload-tunneling).
+Refer to [the workload tunneling guides for Kubernetes](https://docs.openziti.io/docs/guides/kubernetes/workload-tunneling/).
