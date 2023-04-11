@@ -261,28 +261,29 @@ static bool addrinfo_from_host_ctx(struct addrinfo_params_s *dial_params, const 
             dial_params->address = app_data->dst_hostname;
             dial_params->hints.ai_flags = AI_ADDRCONFIG;
         } else if (app_data->dst_ip != NULL && app_data->dst_ip[0] != 0) {
-            struct addrinfo *dial_ai;
+            uv_getaddrinfo_t gai_req = {0};
             int s;
-            if((s = getaddrinfo(app_data->dst_ip, app_data->dst_port, &dial_params->hints, &dial_ai)) != 0) {
+            if((s = uv_getaddrinfo(host_ctx->loop, &gai_req, NULL, app_data->dst_ip,
+                                   app_data->dst_port, &dial_params->hints)) != 0) {
                 ZITI_LOG(ERROR, "hosted_service[%s],getaddrinfo(%s,%s) failed: %s",
                         host_ctx->service_name, app_data->dst_ip, app_data->dst_port, gai_strerror(s));
-		if (dial_ai != NULL) {
-                    freeaddrinfo(dial_ai);
+                if (gai_req.addrinfo != NULL) {
+                    uv_freeaddrinfo(gai_req.addrinfo);
                 }
                 return false;
             }
             ziti_address dst;
-            ziti_address_from_sockaddr(&dst, dial_ai->ai_addr);
+            ziti_address_from_sockaddr(&dst, gai_req.addrinfo->ai_addr);
             if (!address_match(&dst, &host_ctx->addr_u.allowed_addresses)) {
                 ZITI_LOG(ERROR, "hosted_service[%s] client requested address '%s' is not allowed",
                          host_ctx->service_name,app_data->dst_ip);
-		if (dial_ai != NULL) {
-                   freeaddrinfo(dial_ai);
+                if (gai_req.addrinfo != NULL) {
+                   uv_freeaddrinfo(gai_req.addrinfo);
                 }
                 return false;
             }
-	    if (dial_ai != NULL) {
-               freeaddrinfo(dial_ai);
+            if (gai_req.addrinfo != NULL) {
+               uv_freeaddrinfo(gai_req.addrinfo);
             }
             dial_params->address = app_data->dst_ip;
             dial_params->hints.ai_flags = AI_ADDRCONFIG | AI_NUMERICSERV;
@@ -347,7 +348,8 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
     const char *client_identity = clt_ctx->caller_id;
     if (client_identity == NULL) client_identity = "<unidentified>";
 
-    struct addrinfo *dial_ai = NULL, *source_ai = NULL;
+    uv_getaddrinfo_t dial_ai_req = {0};
+    uv_getaddrinfo_t source_ai_req = {0};
     struct hosted_io_ctx_s *io_ctx = NULL;
     bool err = false;
 
@@ -390,13 +392,13 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
             break;
     }
 
-    if ((s = getaddrinfo(dial_ai_params.address, dial_ai_params.port, &dial_ai_params.hints, &dial_ai)) != 0) {
+    if ((s = uv_getaddrinfo(service_ctx->loop, &dial_ai_req, NULL, dial_ai_params.address, dial_ai_params.port, &dial_ai_params.hints)) != 0) {
         ZITI_LOG(ERROR, "hosted_service[%s], client[%s]: getaddrinfo(%s,%s) failed: %s",
                  service_ctx->service_name, client_identity, dial_ai_params.address, dial_ai_params.port, gai_strerror(s));
         err = true;
         goto done;
     }
-    if (dial_ai->ai_next != NULL) {
+    if (dial_ai_req.addrinfo->ai_next != NULL) {
         ZITI_LOG(DEBUG, "hosted_service[%s], client[%s]: getaddrinfo(%s,%s) returned multiple results; using first",
                  service_ctx->service_name, client_identity, dial_ai_params.address, dial_ai_params.port);
     }
@@ -427,18 +429,18 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
         source_hints.ai_flags = AI_ADDRCONFIG | AI_NUMERICHOST | AI_NUMERICSERV;
         source_hints.ai_protocol = dial_ai_params.hints.ai_protocol;
         source_hints.ai_socktype = dial_ai_params.hints.ai_socktype;
-        if ((s = getaddrinfo(source_addr, source_port, &source_hints, &source_ai)) != 0) {
+        if ((s = uv_getaddrinfo(service_ctx->loop, &source_ai_req, NULL, source_addr, source_port, &source_hints)) != 0) {
             ZITI_LOG(ERROR, "hosted_service[%s], client[%s]: getaddrinfo(%s,%s) failed: %s",
                      service_ctx->service_name, client_identity, source_addr, source_port, gai_strerror(s));
             err = true;
             goto done;
         }
-        if (source_ai->ai_next != NULL) {
+        if (source_ai_req.addrinfo->ai_next != NULL) {
             ZITI_LOG(DEBUG, "hosted_service[%s], client[%s]: getaddrinfo(%s,%s) returned multiple results; using first",
                      service_ctx->service_name, client_identity, source_addr, source_port);
         }
         ziti_address src_za;
-        ziti_address_from_sockaddr(&src_za, source_ai->ai_addr);
+        ziti_address_from_sockaddr(&src_za, source_ai_req.addrinfo->ai_addr);
         if (!address_match(&src_za, &service_ctx->allowed_source_addresses)) {
             ZITI_LOG(ERROR, "hosted_service[%s], client[%s] client requested source IP %s is not allowed",
                      service_ctx->service_name, client_identity, source_addr);
@@ -454,11 +456,11 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
 
     char host[48];
     char port[12];
-    s = getnameinfo(dial_ai->ai_addr, dial_ai->ai_addrlen, host, sizeof(host), port, sizeof(port),
+    s = getnameinfo(dial_ai_req.addrinfo->ai_addr, dial_ai_req.addrinfo->ai_addrlen, host, sizeof(host), port, sizeof(port),
                     NI_NUMERICHOST | NI_NUMERICSERV);
     if (s == 0) {
         snprintf(io_ctx->server_dial_str, sizeof(io_ctx->server_dial_str), "%s:%s:%s",
-                 get_protocol_str(dial_ai->ai_protocol), host, port);
+                 get_protocol_str(dial_ai_req.addrinfo->ai_protocol), host, port);
     } else {
         ZITI_LOG(WARN, "hosted_service[%s] client[%s] getnameinfo failed: %s", io_ctx->service->service_name,
                  ziti_conn_source_identity(io_ctx->client), gai_strerror(s));
@@ -466,12 +468,12 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
     }
 
     int uv_err;
-    switch (dial_ai->ai_protocol) {
+    switch (dial_ai_req.addrinfo->ai_protocol) {
         case IPPROTO_TCP:
             uv_tcp_init(service_ctx->loop, &io_ctx->server.tcp);
             io_ctx->server.tcp.data = io_ctx;
-            if (source_ai != NULL) {
-                uv_err = uv_tcp_bind(&io_ctx->server.tcp, source_ai->ai_addr, 0);
+            if (source_ai_req.addrinfo != NULL) {
+                uv_err = uv_tcp_bind(&io_ctx->server.tcp, source_ai_req.addrinfo->ai_addr, 0);
                 if (uv_err != 0) {
                     ZITI_LOG(ERROR, "hosted_service[%s], client[%s]: uv_tcp_bind failed: %s",
                              service_ctx->service_name, client_identity, uv_err_name(uv_err));
@@ -481,7 +483,7 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
             }
             {
                 uv_connect_t *c = malloc(sizeof(uv_connect_t));
-                uv_err = uv_tcp_connect(c, &io_ctx->server.tcp, dial_ai->ai_addr, on_hosted_tcp_server_connect_complete);
+                uv_err = uv_tcp_connect(c, &io_ctx->server.tcp, dial_ai_req.addrinfo->ai_addr, on_hosted_tcp_server_connect_complete);
                 if (uv_err != 0) {
                     ZITI_LOG(ERROR, "hosted_service[%s], client[%s]: uv_tcp_connect failed: %s",
                              service_ctx->service_name, client_identity, uv_err_name(uv_err));
@@ -493,8 +495,8 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
         case IPPROTO_UDP:
             uv_udp_init(service_ctx->loop, &io_ctx->server.udp);
             io_ctx->server.udp.data = io_ctx;
-            if (source_ai != NULL) {
-                uv_err = uv_udp_bind(&io_ctx->server.udp, source_ai->ai_addr, 0);
+            if (source_ai_req.addrinfo != NULL) {
+                uv_err = uv_udp_bind(&io_ctx->server.udp, source_ai_req.addrinfo->ai_addr, 0);
                 if (uv_err != 0) {
                     ZITI_LOG(ERROR, "hosted_service[%s] client[%s]: uv_udp_bind failed: %s",
                              service_ctx->service_name, client_identity, uv_err_name(uv_err));
@@ -502,7 +504,7 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
                     goto done;
                 }
             }
-            uv_err = uv_udp_connect(&io_ctx->server.udp, dial_ai->ai_addr);
+            uv_err = uv_udp_connect(&io_ctx->server.udp, dial_ai_req.addrinfo->ai_addr);
             if (uv_err != 0) {
                 ZITI_LOG(ERROR, "hosted_service[%s], client[%s]: uv_udp_connect failed: %s",
                          service_ctx->service_name, client_identity, uv_err_name(uv_err));
@@ -529,11 +531,11 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
     if (clt_ctx->app_data != NULL) {
         free_tunneler_app_data(&app_data);
     }
-    if (dial_ai != NULL) {
-        freeaddrinfo(dial_ai);
+    if (dial_ai_req.addrinfo != NULL) {
+        uv_freeaddrinfo(dial_ai_req.addrinfo);
     }
-    if (source_ai != NULL) {
-        freeaddrinfo(source_ai);
+    if (source_ai_req.addrinfo != NULL) {
+        uv_freeaddrinfo(source_ai_req.addrinfo);
     }
 }
 
