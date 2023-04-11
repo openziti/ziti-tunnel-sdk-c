@@ -21,6 +21,13 @@
 #include "ziti_tunnel_priv.h"
 #include "ziti/sys/queue.h"
 
+#include "lwip/dns.h"
+
+void foo()
+{
+
+}
+
 #if _WIN32
 #define MIN(a,b) ((a)<(b) ? (a) : (b))
 #endif
