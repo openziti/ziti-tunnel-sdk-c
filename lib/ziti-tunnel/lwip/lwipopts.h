@@ -58,10 +58,6 @@
 #define LWIP_IPV6 1                       /* enable ipv6 */
 #define IPV6_FRAG_COPYHEADER 1            /* avoid assert in lwip code when ipv6 is enabled */
 
-#define LWIP_DNS 1
-#define DNS_LOCAL_HOSTLIST 1
-#define DNS_LOCAL_HOSTLIST_IS_DYNAMIC 1
-
 #ifdef _WIN32
 #define LWIP_NORAND 1
 #define LWIP_NO_UNISTD_H 1
