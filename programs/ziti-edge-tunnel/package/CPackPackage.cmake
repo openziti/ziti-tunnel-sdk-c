@@ -58,6 +58,10 @@ set(SYSTEMD_SERVICE_NAME "${CPACK_PACKAGE_NAME}")
 set(SYSTEMD_UNIT_FILE_NAME "${SYSTEMD_SERVICE_NAME}.service")
 set(SYSTEMD_EXECSTARTPRE "${SYSTEMD_SERVICE_NAME}.sh")
 set(SYSTEMD_ENV_FILE "${SYSTEMD_SERVICE_NAME}.env")
+
+set(SYSTEMD_SYSTEM_ETC "/etc/systemd/system")
+set(SYSTEMD_UNIT_DIR "/usr/lib/systemd/system")
+
 set(ZITI_POLKIT_PKLA_FILE "${CPACK_PACKAGE_NAME}.pkla")
 set(ZITI_POLKIT_RULES_FILE "${CPACK_PACKAGE_NAME}.rules")
 
@@ -144,18 +148,21 @@ if("DEB" IN_LIST CPACK_GENERATOR)
 
     set(DEB_IN_DIR "${PACKAGING_BASE}/deb")
     set(DEB_CONFFILES_IN "${DEB_IN_DIR}/conffiles.in")
+    set(DEB_PRE_INSTALL_IN "${DEB_IN_DIR}/preinst.in")
     set(DEB_POST_INSTALL_IN "${DEB_IN_DIR}/postinst.in")
     set(DEB_PRE_UNINSTALL_IN "${DEB_IN_DIR}/prerm.in")
     set(DEB_POST_UNINSTALL_IN "${DEB_IN_DIR}/postrm.in")
     set(DEB_TEMPLATES_IN "${DEB_IN_DIR}/templates.in")
 
     set(CPACK_DEB_CONFFILES "${INSTALL_OUT_DIR}/conffiles")
+    set(CPACK_DEB_PRE_INSTALL "${INSTALL_OUT_DIR}/preinst")
     set(CPACK_DEB_POST_INSTALL "${INSTALL_OUT_DIR}/postinst")
     set(CPACK_DEB_PRE_UNINSTALL "${INSTALL_OUT_DIR}/prerm")
     set(CPACK_DEB_POST_UNINSTALL "${INSTALL_OUT_DIR}/postrm")
     set(CPACK_DEB_TEMPLATES "${INSTALL_OUT_DIR}/templates")
 
     configure_file("${DEB_CONFFILES_IN}" "${CPACK_DEB_CONFFILES}" @ONLY)
+    configure_file("${DEB_PRE_INSTALL_IN}" "${CPACK_DEB_PRE_INSTALL}" @ONLY)
     configure_file("${DEB_POST_INSTALL_IN}" "${CPACK_DEB_POST_INSTALL}" @ONLY)
     configure_file("${DEB_PRE_UNINSTALL_IN}" "${CPACK_DEB_PRE_UNINSTALL}" @ONLY)
     configure_file("${DEB_POST_UNINSTALL_IN}" "${CPACK_DEB_POST_UNINSTALL}" @ONLY)

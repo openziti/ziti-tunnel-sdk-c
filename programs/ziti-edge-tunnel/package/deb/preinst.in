@@ -1,0 +1,5 @@
+if [ "$1" = "upgrade" ]; then
+    if [ ! -L @SYSTEMD_UNIT_DIR@/@SYSTEMD_UNIT_FILE_NAME@ -a -L @SYSTEMD_SYSTEM_ETC@/@SYSTEMD_UNIT_FILE_NAME@ ]; then
+        unlink @SYSTEMD_SYSTEM_ETC@/@SYSTEMD_UNIT_FILE_NAME@
+    fi
+fi
