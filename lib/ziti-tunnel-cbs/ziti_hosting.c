@@ -160,11 +160,12 @@ static void on_hosted_client_connect_complete(ziti_connection clt, int err) {
     struct hosted_io_ctx_s *io_ctx = ziti_conn_data(clt);
     if (err == ZITI_OK) {
         uv_handle_t *server = (uv_handle_t *) &io_ctx->server;
-        struct sockaddr name;
-        int len = sizeof(name);
-        void *in = local_addr(server, &name, &len);
-        uv_getnameinfo_t req;
-        uv_getnameinfo(io_ctx->service->loop, &req, NULL, &name, NI_NUMERICHOST|NI_NUMERICSERV);
+        struct sockaddr_storage name_storage;
+        struct sockaddr *name = (struct sockaddr *) &name_storage;
+        int len = sizeof(name_storage);
+        local_addr(server, name, &len);
+        uv_getnameinfo_t req = {0};
+        uv_getnameinfo(io_ctx->service->loop, &req, NULL, name, NI_NUMERICHOST|NI_NUMERICSERV);
         uv_os_fd_t fd;
         int e = uv_fileno((uv_handle_t *) &io_ctx->server, &fd);
         ZITI_LOG(DEBUG, "hosted_service[%s] client[%s] local_addr[%s:%s] fd[%d] server[%s] connected %d", io_ctx->service->service_name,
@@ -781,8 +782,17 @@ static void on_uv_close(uv_handle_t *handle) {
 }
 
 static void on_bridge_close(uv_handle_t *handle) {
+    struct hosted_io_ctx_s *io_ctx = handle->data;
+    uv_getnameinfo_t req = {0};
+    if (io_ctx != NULL) {
+        struct sockaddr_storage name_storage;
+        struct sockaddr *name = (struct sockaddr *) &name_storage;
+        int len = sizeof(name_storage);
+        local_addr(handle, name, &len);
+        uv_getnameinfo(io_ctx->service->loop, &req, NULL, name, NI_NUMERICHOST | NI_NUMERICSERV);
+    }
     uv_os_fd_t fd;
     uv_fileno(handle, &fd);
-    ZITI_LOG(DEBUG, "closing fd[%d]", fd);
+    ZITI_LOG(DEBUG, "closing local_addr[%s:%s] fd[%d] ", req.host, req.service, fd);
     uv_close(handle, on_uv_close);
 }
