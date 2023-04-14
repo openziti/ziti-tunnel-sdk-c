@@ -22,7 +22,7 @@
 #include "ziti_instance.h"
 #include "stdarg.h"
 #include <time.h>
-#include <http_parser.h>
+#include <tlsuv/http.h>
 
 #ifndef MAXBUFFERLEN
 #define MAXBUFFERLEN 8192
@@ -726,10 +726,11 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
                 ZITI_LOG(INFO, "ziti_ctx[%s] connected to controller", ziti_get_identity(ztx)->name);
                 ev.status = "OK";
                 const char *ctrl = ziti_get_controller(ztx);
-                struct http_parser_url ctrl_url;
-                if (http_parser_parse_url(ctrl, strlen(ctrl), 0, &ctrl_url) == 0 && (ctrl_url.field_set & UF_HOST)) {
+
+                struct tlsuv_url_s ctrl_url;
+                if (tlsuv_parse_url(&ctrl_url, ctrl) == 0) {
                     char ctrl_hostname[HOST_NAME_MAX];
-                    snprintf(ctrl_hostname, sizeof(ctrl_hostname), "%.*s", ctrl_url.field_data[UF_HOST].len, ctrl + ctrl_url.field_data[UF_HOST].off);
+                    snprintf(ctrl_hostname, sizeof(ctrl_hostname), "%.*s", (int)ctrl_url.hostname_len, ctrl_url.hostname);
                     ziti_tunneler_exclude_route(CMD_CTX.tunnel_ctx, ctrl_hostname);
                 } else {
                     ZITI_LOG(WARN, "failed to parse controller URL(%s)", ctrl);

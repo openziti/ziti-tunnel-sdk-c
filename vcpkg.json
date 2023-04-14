@@ -1,0 +1,27 @@
+{
+  "name": "ziti",
+  "version-semver": "1.0.0",
+  "dependencies": [
+    "libuv",
+    "zlib",
+    "llhttp",
+    "libsodium",
+    "getopt",
+    {
+      "name": "openssl",
+      "$comment": "on linux we use system installed OpenSSL",
+      "platform": "!linux"
+    }
+  ],
+  "features": {
+    "test": {
+      "description": "Dependencies for testing",
+      "dependencies": [
+        {
+          "name": "catch2"
+        }
+      ]
+    }
+  },
+  "builtin-baseline": "f14984af3738e69f197bf0e647a8dca12de92996"
+}

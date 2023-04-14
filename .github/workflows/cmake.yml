@@ -22,41 +22,40 @@ jobs:
         include:
           - os: macOS-11
             name: macOS x86_64
-            arch: x86_64
-            toolchain: default.cmake
+            target: macOS-x64
 
           - os: macOS-11
             name: macOS arm64
-            arch: arm64
-            toolchain: macOS-arm64.cmake
+            target: macOS-arm64
 
           - os: windows-latest
             name: Windows x86_64
-            arch: x86_64
+            target: windows-x64
+
+          - os: windows-latest
+            name: Windows arm64
+            target: windows-arm64
 
           - os: ubuntu-20.04
             container: ubuntu:18.04
             name: Linux x86_64
             install: $common_ubuntu_deps build-essential
-            toolchain: default.cmake
             cmake_opts: -DUSE_OPENSSL=ON
-            arch: x86_64
+            target: linux-x64
 
           - os: ubuntu-20.04
             container: ubuntu:18.04
             name: Linux arm
             install: $common_ubuntu_deps crossbuild-essential-armhf
-            toolchain: Linux-arm.cmake
             cmake_opts: -DCMAKE_BUILD_TYPE=Release -DUSE_OPENSSL=ON
-            arch: arm
+            target: linux-arm
 
           - os: ubuntu-20.04
             container: ubuntu:18.04
             name: Linux arm64
             install: $common_ubuntu_deps crossbuild-essential-arm64
-            toolchain: Linux-arm64.cmake
             cmake_opts: -DCMAKE_BUILD_TYPE=Release -DUSE_OPENSSL=ON
-            arch: arm64
+            target: linux-arm64
 
     steps:
       - name: install tools
@@ -78,11 +77,11 @@ jobs:
 
       # run this step if Linux and arm or arm64 
       - name: subscribe to apt multiarch ports and install libssl-dev for target arch
-        if: ${{ matrix.container != null && matrix.arch != 'x86_64' }}
+        if: matrix.container != null && matrix.target != 'linux-x64'
         run: |
-          case ${{ matrix.arch }} in
-            arm)   TARGETARCH=armhf;;
-            arm64) TARGETARCH=arm64;;
+          case ${{ matrix.target }} in
+            linux-arm)   TARGETARCH=armhf;;
+            linux-arm64) TARGETARCH=arm64;;
           esac
           dpkg --add-architecture ${TARGETARCH}
           cat <<EOF > /etc/apt/sources.list.d/crossbuild.list
@@ -98,22 +97,23 @@ jobs:
           apt-get update
           apt-get -y install libssl-dev:${TARGETARCH}
 
-      - name: install contemporary cmake
-        if: ${{ matrix.container != null }}
-        uses: lukka/get-cmake@latest
-
       - name: checkout workspace
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
 
-      - name: make build dir
-        run: cmake -E make_directory ./build
+      - name: install contemporary cmake
+        uses: lukka/get-cmake@latest
 
-      - name: configure cmake
-        env:
-          TOOLCHAIN: ${{ matrix.toolchain && format('./toolchains/{0}', matrix.toolchain) || '' }}
-        run: cmake ${{matrix.cmake_opts}} -DCMAKE_TOOLCHAIN_FILE="${TOOLCHAIN}" -S . -B ./build
+      - uses: lukka/run-vcpkg@v10
+        with:
+          vcpkgGitCommitId: '19af97cba8ca48474e4ad15a24ed50271a9ecdac'
+
+      - uses: lukka/run-cmake@v10
+        name: Configure CMake
+        with:
+          configurePreset: ci-${{ inputs.target }}
+          configurePresetAdditionalArgs: "[ `-B`, `./build` ]"
 
       - name: build ziti-edge-tunnel bundle target
         run: cmake --build ./build --target bundle --verbose
@@ -129,7 +129,7 @@ jobs:
       - name: upload bundle artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ runner.os }}-${{ matrix.arch }}
+          name: ${{ matrix.target }}
           path: |
             ./build/bundle/ziti-edge-tunnel-*.zip
           if-no-files-found: error
