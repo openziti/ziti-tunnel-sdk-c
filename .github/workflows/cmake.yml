@@ -112,7 +112,7 @@ jobs:
       - uses: lukka/run-cmake@v10
         name: Configure CMake
         with:
-          configurePreset: ci-${{ inputs.target }}
+          configurePreset: ci-${{ matrix.target }}
           configurePresetAdditionalArgs: "[ `-B`, `./build` ]"
 
       - name: build ziti-edge-tunnel bundle target
