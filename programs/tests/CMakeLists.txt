@@ -7,8 +7,6 @@ target_link_libraries(ziti-edge-tunnel-test
         PUBLIC ${tunnel_libuv_lib}
         )
 
-BUNDLE_COMP(ziti-edge-tunnel-test)
-
 install(TARGETS ziti-edge-tunnel-test
         DESTINATION ${CMAKE_INSTALL_BINDIR}
         )
