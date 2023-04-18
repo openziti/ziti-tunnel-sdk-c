@@ -5,4 +5,4 @@ set(CMAKE_SYSTEM_PROCESSOR ARM64)
 # that cause msbuild to that the ZERO_CHECK project doesn't contain the "Debug|x64" platform/config
 # combination. running cmake with '-A ARCH64' avoids the msbuild failure.
 set(CMAKE_GENERATOR_PLATFORM ARM64)
-set(CMAKE_C_COMPILER cl.exe)
+#set(CMAKE_C_COMPILER cl.exe)
