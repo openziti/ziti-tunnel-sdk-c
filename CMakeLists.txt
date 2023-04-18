@@ -103,6 +103,7 @@ add_custom_target(bundle
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/bundle)
 
 macro(BUNDLE_COMP comp)
+    message("adding target to bundle ${comp} for ${CMAKE_SYSTEM_NAME}:${CMAKE_SYSTEM_PROCESSOR}")
     add_custom_target(${comp}-bundle
         BYPRODUCTS ${CMAKE_BINARY_DIR}/bundle/${comp}-${CMAKE_SYSTEM_NAME}_${CMAKE_SYSTEM_PROCESSOR}.zip
         DEPENDS ${comp}

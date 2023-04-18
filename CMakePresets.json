@@ -182,6 +182,7 @@
         "vcpkg"
       ],
       "cacheVariables": {
+        "CMAKE_SYSTEM_PROCESSOR": "ARM64",
         "CMAKE_GENERATOR_PLATFORM": "ARM64",
         "VCPKG_TARGET_TRIPLET": "arm64-windows-static-md"
       }
