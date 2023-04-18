@@ -104,7 +104,7 @@
         "ci-std",
         "vs-2022"
       ],
-      "architecture": "AMR64",
+      "architecture": "ARM64",
       "hidden": true
     },
     {

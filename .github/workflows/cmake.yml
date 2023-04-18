@@ -32,10 +32,10 @@ jobs:
           - os: windows-latest
             name: Windows x86_64
             target: windows-x64
-#
-#          - os: windows-latest
-#            name: Windows arm64
-#            target: windows-arm64
+
+          - os: windows-latest
+            name: Windows arm64
+            target: windows-arm64
 
           - os: ubuntu-20.04
             container: ubuntu:18.04
