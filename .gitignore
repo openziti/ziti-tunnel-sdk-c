@@ -12,6 +12,7 @@ install/
 .vscode/
 Pipfile
 
+/CMakeUserPresets.json
 /_deps/
 .cache/
 /tags*

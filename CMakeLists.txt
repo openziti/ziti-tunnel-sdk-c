@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 if(NOT ZITI_SDK_C_BRANCH)
     #allow using a different branch of the CSDK easily
-    set(ZITI_SDK_C_BRANCH "0.31.5")
+    set(ZITI_SDK_C_BRANCH 0.32.0)
 endif()
 
 # if TUNNEL_SDK_ONLY then don't descend into programs/ziti-edge-tunnel
@@ -103,6 +103,7 @@ add_custom_target(bundle
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/bundle)
 
 macro(BUNDLE_COMP comp)
+    message("adding target to bundle ${comp} for ${CMAKE_SYSTEM_NAME}:${CMAKE_SYSTEM_PROCESSOR}")
     add_custom_target(${comp}-bundle
         BYPRODUCTS ${CMAKE_BINARY_DIR}/bundle/${comp}-${CMAKE_SYSTEM_NAME}_${CMAKE_SYSTEM_PROCESSOR}.zip
         DEPENDS ${comp}
@@ -118,6 +119,18 @@ message("cross-compiling: ${CMAKE_CROSSCOMPILING}")
 link_directories(${CMAKE_BINARY_DIR}/lib)
 
 add_subdirectory(deps)
+
+find_package(libuv CONFIG QUIET)
+if (libuv_FOUND)
+    if (TARGET uv_a)
+        set(tunnel_libuv_lib uv_a)
+    else()
+        set(tunnel_libuv_lib uv)
+    endif()
+else()
+    find_path(tunnel_libuv_include_dir NAMES uv.h)
+    find_library(tunnel_libuv_lib uv_a NAMES uv)
+endif()
 
 add_subdirectory(lib/ziti-tunnel)
 
