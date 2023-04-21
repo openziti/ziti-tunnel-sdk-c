@@ -10,23 +10,18 @@ echo "INFO: GIT_DISCOVERY_ACROSS_FILESYSTEM=${GIT_DISCOVERY_ACROSS_FILESYSTEM}"
 echo "INFO: WORKDIR=${PWD}"
 echo "INFO: $(git --version)"
 
-# if first positional is an expected arch string then set toolchain file, else default toolchain
-if (( ${#} )); then
-    case ${1} in
-        amd64)  CMAKE_TOOLCHAIN_FILE="default.cmake"
-                shift
-        ;;
-        arm64)  CMAKE_TOOLCHAIN_FILE="Linux-arm64.cmake"
-                shift
-        ;;
-        arm)    CMAKE_TOOLCHAIN_FILE="Linux-arm.cmake"
-                shift
-        ;;
-        *)      CMAKE_TOOLCHAIN_FILE="default.cmake"
-        ;;
-    esac
+# if first positional is an expected arch string then set cmake preset,
+# else use ci-linux-x64 (which actually just uses native/host tools - e.g. not cross compile)
+if [ -n "${1}" ]; then
+    cmake_preset="${1}"
 else
-    CMAKE_TOOLCHAIN_FILE="default.cmake"
+    cmake_preset="ci-linux-x64"
+fi
+
+if [ -n "${2}" ]; then
+    cmake_config="${2}"
+else
+    cmake_config="Release"
 fi
 
 # workspace dir for each build env is added to "safe" dirs in global config e.g.
@@ -49,14 +44,15 @@ cmake -E make_directory ./build
     set +u
     source scl_source enable devtoolset-11 \
         && cmake \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_TOOLCHAIN_FILE=./toolchains/${CMAKE_TOOLCHAIN_FILE} \
+            --preset "${cmake_preset}" \
+            -DCMAKE_BUILD_TYPE="${cmake_config}" \
             -DBUILD_DIST_PACKAGES=ON \
             -DDISABLE_LIBSYSTEMD_FEATURE=ON \
             -S . \
             -B ./build
     source scl_source enable devtoolset-11 \
         && cmake \
+            --config "${cmake_config}" \
             --build ./build \
             --target package \
             --verbose
