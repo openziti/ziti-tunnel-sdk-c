@@ -61,5 +61,5 @@ cmake -E make_directory ./build
 if (( ${#} )); then
     echo "INFO: running ziti-edge-tunnel"
     set -x
-    ./build/programs/ziti-edge-tunnel/ziti-edge-tunnel ${@}
+    "./build/programs/ziti-edge-tunnel/${cmake_config}/ziti-edge-tunnel" ${@}
 fi
