@@ -184,8 +184,8 @@ jobs:
         run: |
           set -x
           cat /etc/*-release
-          ldd ./build/programs/ziti-edge-tunnel/ziti-edge-tunnel
-          ./build/programs/ziti-edge-tunnel/ziti-edge-tunnel version --verbose
+          ldd ./build/programs/ziti-edge-tunnel/Release/ziti-edge-tunnel
+          ./build/programs/ziti-edge-tunnel/Release/ziti-edge-tunnel version --verbose
 
       - name: upload package artifact
         uses: actions/upload-artifact@v3
