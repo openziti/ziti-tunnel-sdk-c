@@ -42,6 +42,7 @@ cmake \
     --preset "${cmake_preset}" \
     -DCMAKE_BUILD_TYPE="${cmake_config}" \
     -DBUILD_DIST_PACKAGES=ON \
+    -DUSE_OPENSSL=ON \
     -DDISABLE_LIBSYSTEMD_FEATURE=ON \
     -S . \
     -B ./build 
@@ -50,9 +51,3 @@ cmake \
     --build ./build \
     --target package \
     --verbose
-
-if (( ${#} )); then
-    echo "INFO: running ziti-edge-tunnel"
-    set -x
-    ./build/programs/ziti-edge-tunnel/ziti-edge-tunnel ${@}
-fi
