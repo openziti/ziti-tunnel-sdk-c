@@ -34,5 +34,13 @@ RUN curl -sSfL https://cmake.org/files/v${CMAKE_VERSION%.*}/cmake-${CMAKE_VERSIO
     && (bash cmake.sh --skip-license --prefix=/usr/local) \
     && rm cmake.sh
 
+ENV VCPKG_ROOT=/usr/local/vcpkg
+# this must be set on arm. see https://learn.microsoft.com/en-us/vcpkg/users/config-environment#vcpkg_force_system_binaries
+ENV VCPKG_FORCE_SYSTEM_BINARIES=yes
+
+RUN cd /usr/local \
+    && git clone --branch 2023.04.15 https://github.com/microsoft/vcpkg \
+    && ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
+
 COPY ./entrypoint.sh /root/
 ENTRYPOINT [ "/root/entrypoint.sh" ]
