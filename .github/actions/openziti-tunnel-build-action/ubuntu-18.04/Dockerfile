@@ -21,7 +21,7 @@ RUN apt-get update \
         build-essential \
         crossbuild-essential-armhf \
         crossbuild-essential-arm64 \
-        curl \
+        curl zip unzip tar \
         doxygen \
         git \
         graphviz \
@@ -31,6 +31,7 @@ RUN apt-get update \
         python3 \
         zlib1g-dev \
         libssl-dev \
+        ninja-build \
     && rm -rf /var/lib/apt/lists/*
 
 RUN curl -sSfL https://cmake.org/files/v${CMAKE_VERSION%.*}/cmake-${CMAKE_VERSION}-linux-$(uname -m).sh -o cmake.sh \

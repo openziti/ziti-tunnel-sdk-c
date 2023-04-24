@@ -12,13 +12,13 @@ echo "INFO: $(git --version)"
 
 # if first positional is an expected arch string then set cmake preset,
 # else use ci-linux-x64 (which actually just uses native/host tools - e.g. not cross compile)
-if [ -n "${1}" ]; then
+if [ ${#} -ge 1 ]; then
     cmake_preset="${1}"
 else
     cmake_preset="ci-linux-x64"
 fi
 
-if [ -n "${2}" ]; then
+if [ ${#} -ge 2 ]; then
     cmake_config="${2}"
 else
     cmake_config="Release"
@@ -48,13 +48,13 @@ cmake \
     -S "${PWD}/" \
     -B ./build/
 cmake \
-    --config "${cmake_config}" \
     --build ./build/ \
+    --config "${cmake_config}" \
     --target package \
     --verbose
 
 if (( ${#} )); then
     echo "INFO: running ziti-edge-tunnel"
     set -x
-    ./build/programs/ziti-edge-tunnel/ziti-edge-tunnel ${@}
+    "./build/programs/ziti-edge-tunnel/${cmake_config}/ziti-edge-tunnel" ${@}
 fi

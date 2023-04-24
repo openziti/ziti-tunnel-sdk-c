@@ -12,13 +12,13 @@ echo "INFO: $(git --version)"
 
 # if first positional is an expected arch string then set cmake preset,
 # else use ci-linux-x64 (which actually just uses native/host tools - e.g. not cross compile)
-if [ -n "${1}" ]; then
+if [ ${#} -ge 1 ]; then
     cmake_preset="${1}"
 else
     cmake_preset="ci-linux-x64"
 fi
 
-if [ -n "${2}" ]; then
+if [ ${#} -ge 2 ]; then
     cmake_config="${2}"
 else
     cmake_config="Release"
@@ -48,13 +48,20 @@ cmake \
     -S . \
     -B ./build
 cmake \
-    --config "${cmake_config}" \
     --build ./build \
+    --config "${cmake_config}" \
     --target package \
     --verbose
 
-if (( ${#} )); then
-    echo "INFO: running ziti-edge-tunnel"
-    set -x
-    ./build/programs/ziti-edge-tunnel/ziti-edge-tunnel ${@}
-fi
+# The original idea behind that was to crudely test the built artifact inside
+# the container image with the correct architecture before returning to allow
+# the build job to succeed. Basically a smoke test to see if it would execute as
+# built at all. I don't recall why I/we abandoned that idea in favor of only
+# running the x86 artifact in the job container. So, we're not getting any value
+# from those lines of the entrypoint scripts right now, and I agree we'd have to
+# embellish the option parsing a bit to get that working.
+# if (( ${#} )); then
+#     echo "INFO: running ziti-edge-tunnel"
+#     set -x
+#     "./build/programs/ziti-edge-tunnel/${cmake_config}/ziti-edge-tunnel" ${@}
+# fi
