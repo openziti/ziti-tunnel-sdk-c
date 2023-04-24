@@ -11,6 +11,12 @@ set -euo pipefail
     exit 1
 }
 
+command -v gdate &>/dev/null && {
+    date() {
+        gdate "${@}"
+    }
+}
+
 STARTSTAMP_LINE=$(grep -Pm1 'starting at \([0-9-]+T[0-9:.]+\)' "${LOGFILE}")
 STARTOFFSET=$(grep -Po '^\([0-9]+\)\[(\s+)?\K[0-9.]+' <<< "${STARTSTAMP_LINE}")
 STARTSTAMP=$(grep -Po 'starting at \(\K[0-9-]+T[0-9:.]+' <<< "${STARTSTAMP_LINE}")
