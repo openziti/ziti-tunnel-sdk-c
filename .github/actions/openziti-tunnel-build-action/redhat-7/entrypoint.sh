@@ -48,6 +48,7 @@ cmake -E make_directory ./build
             -DCMAKE_BUILD_TYPE="${cmake_config}" \
             -DBUILD_DIST_PACKAGES=ON \
             -DDISABLE_LIBSYSTEMD_FEATURE=ON \
+            -DUSE_OPENSSL=ON \
             -S . \
             -B ./build
     source scl_source enable devtoolset-11 \
@@ -57,9 +58,9 @@ cmake -E make_directory ./build
             --target package \
             --verbose
 )
-
-if (( ${#} )); then
-    echo "INFO: running ziti-edge-tunnel"
-    set -x
-    ./build/programs/ziti-edge-tunnel/ziti-edge-tunnel ${@}
-fi
+# todo looks like this is broken... remove?
+#if (( ${#} )); then
+#    echo "INFO: running ziti-edge-tunnel"
+#    set -x
+#    "./build/programs/ziti-edge-tunnel/${cmake_config}ziti-edge-tunnel" ${@}
+#fi
