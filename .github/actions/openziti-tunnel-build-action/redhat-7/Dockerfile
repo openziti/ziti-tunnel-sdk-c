@@ -20,10 +20,15 @@ RUN yum -y install \
         graphviz \
         python3 \
         zlib-devel \
+        epel-release \
     &&  yum -y install \
         devtoolset-11 \
         devtoolset-11-libatomic-devel \
+        ninja-build \
     &&  yum clean all
+
+# needed only to build openssl. we can't use openssl from rocky's repos because it is too old.
+RUN yum install -y perl-IPC-Cmd
 
 RUN curl -sSfL https://cmake.org/files/v${CMAKE_VERSION%.*}/cmake-${CMAKE_VERSION}-linux-$(uname -m).sh -o cmake.sh \
     && (bash cmake.sh --skip-license --prefix=/usr/local) \

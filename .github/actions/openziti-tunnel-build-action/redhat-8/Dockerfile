@@ -32,7 +32,7 @@ RUN dnf install -y \
         ninja-build \
     && dnf clean all 
 
-# todo needed only to build openssl. we can't use openssl from rocky's repos because it is too old.
+# needed only to build openssl. we can't use openssl from rocky's repos because it is too old.
 RUN dnf install -y perl-IPC-Cmd
 
 RUN curl -sSfL https://cmake.org/files/v${CMAKE_VERSION%.*}/cmake-${CMAKE_VERSION}-linux-$(uname -m).sh -o cmake.sh \
