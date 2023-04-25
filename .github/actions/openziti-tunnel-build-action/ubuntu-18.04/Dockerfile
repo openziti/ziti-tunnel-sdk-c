@@ -49,6 +49,15 @@ RUN apt-get -y install \
     libssl-dev:armhf \
     libssl-dev:arm64
 
+ENV VCPKG_ROOT=/usr/local/vcpkg
+# this must be set on arm. see https://learn.microsoft.com/en-us/vcpkg/users/config-environment#vcpkg_force_system_binaries
+ENV VCPKG_FORCE_SYSTEM_BINARIES=yes
+
+RUN cd /usr/local \
+    && git config --global advice.detachedHead false \
+    && git clone --branch 2023.04.15 https://github.com/microsoft/vcpkg \
+    && ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
+
 WORKDIR /github/workspace
 COPY ./entrypoint.sh /root/
 ENTRYPOINT [ "/root/entrypoint.sh" ]
