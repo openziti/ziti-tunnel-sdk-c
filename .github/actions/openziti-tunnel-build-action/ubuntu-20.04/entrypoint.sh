@@ -53,8 +53,15 @@ cmake \
     --target package \
     --verbose
 
-if (( ${#} )); then
-    echo "INFO: running ziti-edge-tunnel"
-    set -x
-    "./build/programs/ziti-edge-tunnel/${cmake_config}/ziti-edge-tunnel" ${@}
-fi
+# The original idea behind that was to crudely test the built artifact inside
+# the container image with the correct architecture before returning to allow
+# the build job to succeed. Basically a smoke test to see if it would execute as
+# built at all. I don't recall why I/we abandoned that idea in favor of only
+# running the x86 artifact in the job container. So, we're not getting any value
+# from those lines of the entrypoint scripts right now, and I agree we'd have to
+# embellish the option parsing a bit to get that working.
+# if (( ${#} )); then
+#     echo "INFO: running ziti-edge-tunnel"
+#     set -x
+#     "./build/programs/ziti-edge-tunnel/${cmake_config}/ziti-edge-tunnel" ${@}
+# fi
