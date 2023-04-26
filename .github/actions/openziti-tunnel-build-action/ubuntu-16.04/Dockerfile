@@ -27,7 +27,6 @@ RUN apt-get -y update \
         graphviz \
         pkg-config \
         python3 \
-        libssl-dev \
         zlib1g-dev \
         ninja-build \
     && rm -rf /var/lib/apt/lists/*
