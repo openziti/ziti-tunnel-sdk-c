@@ -20,11 +20,11 @@ RUN yum -y install \
         graphviz \
         python3 \
         zlib-devel \
-        openssl-devel \
         epel-release \
     &&  yum -y install \
         devtoolset-11 \
         devtoolset-11-libatomic-devel \
+        openssl11-devel \
         ninja-build \
     &&  yum clean all
 
