@@ -19,6 +19,9 @@ RUN apt-get -y update \
     && apt-get -y install \
         build-essential \
         curl \
+        zip \
+        unzip \
+        tar \
         doxygen \
         git \
         graphviz \
