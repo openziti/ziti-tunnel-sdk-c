@@ -29,6 +29,7 @@ RUN apt-get -y update \
         python3 \
         libssl-dev \
         zlib1g-dev \
+        ninja-build \
     && rm -rf /var/lib/apt/lists/*
 
 RUN curl -sSfL https://cmake.org/files/v${CMAKE_VERSION%.*}/cmake-${CMAKE_VERSION}-linux-$(uname -m).sh -o cmake.sh \
