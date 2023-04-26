@@ -48,13 +48,7 @@ cmake \
     -S . \
     -B ./build
 cmake \
-    --config "${cmake_config}" \
     --build ./build \
+    --config "${cmake_config}" \
     --target package \
     --verbose
-
-if (( ${#} )); then
-    echo "INFO: running ziti-edge-tunnel"
-    set -x
-    ./build/programs/ziti-edge-tunnel/ziti-edge-tunnel ${@}
-fi
