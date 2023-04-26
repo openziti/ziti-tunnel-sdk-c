@@ -24,6 +24,7 @@ RUN dnf install -y \
         zlib-devel \
         systemd-rpm-macros \
         cmake-rpm-macros  \
+        openssl-devel \
     && dnf config-manager --set-enabled powertools \
     && dnf install -y \
         doxygen \
@@ -31,9 +32,6 @@ RUN dnf install -y \
         git \
         ninja-build \
     && dnf clean all 
-
-# needed only to build openssl. we can't use openssl from rocky's repos because it is too old.
-RUN dnf install -y perl-IPC-Cmd
 
 RUN curl -sSfL https://cmake.org/files/v${CMAKE_VERSION%.*}/cmake-${CMAKE_VERSION}-linux-$(uname -m).sh -o cmake.sh \
     && (bash cmake.sh --skip-license --prefix=/usr/local) \

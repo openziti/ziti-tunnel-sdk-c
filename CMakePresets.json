@@ -142,7 +142,10 @@
         "ci-unix",
         "vcpkg",
         "dev-mode"
-      ]
+      ],
+      "cacheVariables": {
+        "VCPKG_OVERLAY_PORTS": "${sourceDir}/vcpkg/overlays/linux"
+      }
     },
     {
       "name": "ci-linux-arm64",

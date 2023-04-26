@@ -58,9 +58,3 @@ cmake -E make_directory ./build
             --target package \
             --verbose
 )
-# todo looks like this is broken... remove?
-#if (( ${#} )); then
-#    echo "INFO: running ziti-edge-tunnel"
-#    set -x
-#    "./build/programs/ziti-edge-tunnel/${cmake_config}ziti-edge-tunnel" ${@}
-#fi

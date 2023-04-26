@@ -20,6 +20,7 @@ RUN yum -y install \
         graphviz \
         python3 \
         zlib-devel \
+        openssl-devel \
         epel-release \
     &&  yum -y install \
         devtoolset-11 \
