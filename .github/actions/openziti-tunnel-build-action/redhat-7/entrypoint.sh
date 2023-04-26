@@ -53,8 +53,8 @@ cmake -E make_directory ./build
             -B ./build
     source scl_source enable devtoolset-11 \
         && cmake \
-            --config "${cmake_config}" \
             --build ./build \
+            --config "${cmake_config}" \
             --target package \
             --verbose
 )
