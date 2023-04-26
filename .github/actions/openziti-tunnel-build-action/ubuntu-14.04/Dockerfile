@@ -19,14 +19,17 @@ RUN apt-get -y update \
     && apt-get -y install \
         build-essential \
         curl \
+        zip \
+        unzip \
+        tar \
         doxygen \
         git \
         graphviz \
-        iproute2 \
         pkg-config \
         python3 \
         software-properties-common \
         zlib1g-dev \
+        ninja-build \
     && add-apt-repository -y ppa:ubuntu-toolchain-r/test \
     && apt-get -y update \
     && apt-get -y install \
@@ -48,6 +51,7 @@ ENV VCPKG_ROOT=/usr/local/vcpkg
 ENV VCPKG_FORCE_SYSTEM_BINARIES=yes
 
 RUN cd /usr/local \
+    && git config --global advice.detachedHead false \
     && git clone --branch 2023.04.15 https://github.com/microsoft/vcpkg \
     && ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
 
