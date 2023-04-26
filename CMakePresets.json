@@ -144,7 +144,7 @@
         "dev-mode"
       ],
       "cacheVariables": {
-        "VCPKG_OVERLAY_PORTS": "${sourceDir}/vcpkg/overlays/linux"
+        "VCPKG_OVERLAY_PORTS": "${sourceDir}/vcpkg/overlays/linux-syslibs/default"
       }
     },
     {

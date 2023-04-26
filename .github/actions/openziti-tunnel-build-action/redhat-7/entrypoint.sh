@@ -48,6 +48,7 @@ cmake -E make_directory ./build
             -DCMAKE_BUILD_TYPE="${cmake_config}" \
             -DBUILD_DIST_PACKAGES=ON \
             -DDISABLE_LIBSYSTEMD_FEATURE=ON \
+            -DVCPKG_OVERLAY_PORTS="./vcpkg/overlays/linux-syslibs/redhat7"
             -DUSE_OPENSSL=ON \
             -S . \
             -B ./build
