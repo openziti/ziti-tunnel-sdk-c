@@ -26,7 +26,6 @@ RUN apt-get update \
         git \
         graphviz \
         libsystemd-dev \
-        iproute2 \
         pkg-config \
         python3 \
         zlib1g-dev \
@@ -46,6 +45,8 @@ COPY ./ubuntu-18.04/crossbuild.list /etc/apt/sources.list.d/crossbuild.list
 RUN sed -Ei 's/^deb/deb [arch=amd64]/g' /etc/apt/sources.list
 RUN apt-get update
 RUN apt-get -y install \
+    zlib1g-dev:armhf \
+    zlib1g-dev:arm64 \
     libssl-dev:armhf \
     libssl-dev:arm64
 

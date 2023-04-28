@@ -27,7 +27,6 @@ RUN apt-get update \
         git \
         graphviz \
         libsystemd-dev \
-        iproute2 \
         pkg-config \
         python3 \
         zlib1g-dev \
@@ -42,6 +41,8 @@ RUN apt-get update \
     && apt-get -y install \
         libssl-dev:arm64 \
         libssl-dev:armhf \
+        zlib1g-dev:arm64 \
+        zlib1g-dev:armhf \
     && rm -rf /var/lib/apt/lists/*
 
 RUN curl -sSfL https://cmake.org/files/v${CMAKE_VERSION%.*}/cmake-${CMAKE_VERSION}-linux-$(uname -m).sh -o cmake.sh \
