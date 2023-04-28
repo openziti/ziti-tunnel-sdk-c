@@ -1,4 +1,4 @@
-ARG CMAKE_VERSION="3.22.3"
+ARG CMAKE_VERSION="3.26.3"
 
 FROM rockylinux:8
 
