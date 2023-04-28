@@ -8,3 +8,5 @@ set(CMAKE_CXX_COMPILER ${triple}-g++)
 
 set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE arm64)
 set(CPACK_RPM_PACKAGE_ARCHITECTURE aarch64)
+
+set(ENV{PKG_CONFIG_PATH} /usr/lib/${triple}/pkgconfig)
