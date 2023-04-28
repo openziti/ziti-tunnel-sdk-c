@@ -27,7 +27,6 @@ RUN apt-get update \
         git \
         graphviz \
         libsystemd-dev \
-        iproute2 \
         pkg-config \
         python3 \
         zlib1g-dev \
