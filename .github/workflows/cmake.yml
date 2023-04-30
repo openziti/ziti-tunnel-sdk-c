@@ -96,7 +96,7 @@ jobs:
           EOF
           sed -Ei 's/^deb/deb [arch=amd64]/g' /etc/apt/sources.list
           apt-get update
-          apt-get -y install libssl-dev:${TARGETARCH}
+          apt-get -y install libssl-dev:${TARGETARCH} zlib1g-dev:${TARGETARCH}
 
       - name: checkout workspace
         uses: actions/checkout@v3
