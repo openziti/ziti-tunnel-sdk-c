@@ -41,7 +41,7 @@ jobs:
             container: ubuntu:18.04
             name: Linux x86_64
             install: $common_ubuntu_deps build-essential
-            cmake_opts: -DVCPKG_OVERLAY_PORTS=./vcpkg/overlays/linux-syslibs/ubuntu18
+            cmake_opts: -DVCPKG_OVERLAY_PORTS=./vcpkg-overlays/linux-syslibs/ubuntu18
             target: linux-x64
 
           - os: ubuntu-20.04
@@ -106,7 +106,7 @@ jobs:
       - name: install contemporary cmake
         uses: lukka/get-cmake@latest
 
-      - uses: lukka/run-vcpkg@v11
+      - uses: lukka/run-vcpkg@v10
         with:
           # use 2023.02.24 vcpkg baseline,
           # see https://learn.microsoft.com/en-us/vcpkg/users/examples/versioning.getting-started#builtin-baseline

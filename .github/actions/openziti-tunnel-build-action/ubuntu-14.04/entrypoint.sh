@@ -43,7 +43,7 @@ cmake \
     -DCMAKE_BUILD_TYPE="${cmake_config}" \
     -DBUILD_DIST_PACKAGES=ON \
     -DDISABLE_LIBSYSTEMD_FEATURE=ON \
-    -DVCPKG_OVERLAY_PORTS="./vcpkg/overlays/linux-syslibs/ubuntu14" \
+    -DVCPKG_OVERLAY_PORTS="./vcpkg-overlays/linux-syslibs/ubuntu14" \
     -S . \
     -B ./build 
 cmake \
