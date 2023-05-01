@@ -116,7 +116,7 @@ jobs:
         name: Configure CMake
         with:
           configurePreset: ci-${{ matrix.target }}
-          configurePresetAdditionalArgs: "[ `-B`, `./build` ]"
+          configurePresetAdditionalArgs: "[ `-B`, `./build`, ${{ matrix.cmake_opts }} ]"
 
       - name: build ziti-edge-tunnel bundle target
         run: cmake --build ./build --target bundle --verbose
