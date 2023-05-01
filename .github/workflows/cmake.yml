@@ -48,14 +48,14 @@ jobs:
             container: ubuntu:18.04
             name: Linux arm
             install: $common_ubuntu_deps crossbuild-essential-armhf
-            cmake_opts: -DCMAKE_BUILD_TYPE=Release
+            cmake_opts: -DVCPKG_OVERLAY_PORTS=./vcpkg-overlays/linux-syslibs/ubuntu18
             target: linux-arm
 
           - os: ubuntu-20.04
             container: ubuntu:18.04
             name: Linux arm64
             install: $common_ubuntu_deps crossbuild-essential-arm64
-            cmake_opts: -DCMAKE_BUILD_TYPE=Release
+            cmake_opts: -DVCPKG_OVERLAY_PORTS=./vcpkg-overlays/linux-syslibs/ubuntu18
             target: linux-arm64
 
     steps:
