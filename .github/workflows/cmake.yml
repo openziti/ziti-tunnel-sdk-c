@@ -41,12 +41,14 @@ jobs:
             container: ubuntu:18.04
             name: Linux x86_64
             install: $common_ubuntu_deps build-essential
+            # build current openssl libs instead of using old versions provided by apt on ubuntu 18
             cmake_opts: "`-DVCPKG_OVERLAY_PORTS=./vcpkg-overlays/linux-syslibs/ubuntu18`"
             target: linux-x64
 
           - os: ubuntu-20.04
             container: ubuntu:18.04
             name: Linux arm
+            # build current openssl libs instead of using old versions provided by apt on ubuntu 18
             install: $common_ubuntu_deps crossbuild-essential-armhf
             cmake_opts: "`-DVCPKG_OVERLAY_PORTS=./vcpkg-overlays/linux-syslibs/ubuntu18`"
             target: linux-arm
@@ -55,6 +57,7 @@ jobs:
             container: ubuntu:18.04
             name: Linux arm64
             install: $common_ubuntu_deps crossbuild-essential-arm64
+            # build current openssl libs instead of using old versions provided by apt on ubuntu 18
             cmake_opts: "`-DVCPKG_OVERLAY_PORTS=./vcpkg-overlays/linux-syslibs/ubuntu18`"
             target: linux-arm64
 
