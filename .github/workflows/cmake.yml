@@ -41,21 +41,21 @@ jobs:
             container: ubuntu:18.04
             name: Linux x86_64
             install: $common_ubuntu_deps build-essential
-            cmake_opts: "-DVCPKG_OVERLAY_PORTS=./vcpkg-overlays/linux-syslibs/ubuntu18"
+            cmake_opts: `-DVCPKG_OVERLAY_PORTS=./vcpkg-overlays/linux-syslibs/ubuntu18`
             target: linux-x64
 
           - os: ubuntu-20.04
             container: ubuntu:18.04
             name: Linux arm
             install: $common_ubuntu_deps crossbuild-essential-armhf
-            cmake_opts: "-DVCPKG_OVERLAY_PORTS=./vcpkg-overlays/linux-syslibs/ubuntu18"
+            cmake_opts: `-DVCPKG_OVERLAY_PORTS=./vcpkg-overlays/linux-syslibs/ubuntu18"`
             target: linux-arm
 
           - os: ubuntu-20.04
             container: ubuntu:18.04
             name: Linux arm64
             install: $common_ubuntu_deps crossbuild-essential-arm64
-            cmake_opts: "-DVCPKG_OVERLAY_PORTS=./vcpkg-overlays/linux-syslibs/ubuntu18"
+            cmake_opts: `-DVCPKG_OVERLAY_PORTS=./vcpkg-overlays/linux-syslibs/ubuntu18`
             target: linux-arm64
 
     steps:
