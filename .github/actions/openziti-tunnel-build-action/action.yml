@@ -12,7 +12,7 @@ inputs:
     required: false
 runs:
   using: 'docker'
-  image: ${{ inputs.distro }}/Dockerfile
+  image: ${{ format('{0}/Dockerfile', inputs.distro) }}
   args:
     - ${{ inputs.arch }}
     - ${{ inputs.config }}
