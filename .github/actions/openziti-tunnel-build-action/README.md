@@ -27,18 +27,13 @@
             type: rpm
             container: docker.io/library/rockylinux:8
 
-      - name: configure build action for distro version
-        env:
-          DISTRO_LABEL: ${{ format('{0}:{1}', matrix.distro.name, matrix.distro.version) }}
-        shell: bash
-        run: |
-          for FILE in Dockerfile entrypoint.sh; do
-            mv -v ./.github/actions/openziti-tunnel-build-action/${FILE}.${DISTRO_LABEL} \
-                  ./.github/actions/openziti-tunnel-build-action/${FILE}
-          done
-
+    steps:
       - name: build cmake target "package"
         uses: ./.github/actions/openziti-tunnel-build-action
+        with:
+          distro: ${{ format('{0}-{1}', matrix.distro.name, matrix.distro.version) }}
+          arch: ${{ matrix.arch.cmake }}
+          config: Release
 
       - name: run binary artifact
         run: |

@@ -34,7 +34,7 @@ RUN apt-get update \
         ninja-build \
     && rm -rf /var/lib/apt/lists/*
 
-COPY ./ubuntu-22.04/crossbuild.list /etc/apt/sources.list.d/crossbuild.list
+COPY ./crossbuild.list /etc/apt/sources.list.d/crossbuild.list
 RUN sed -Ei 's/^deb/deb [arch=amd64]/g' /etc/apt/sources.list
 RUN dpkg --add-architecture arm64 && dpkg --add-architecture armhf
 RUN apt-get update \

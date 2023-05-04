@@ -136,20 +136,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: configure build action for distro version
-        env:
-          DISTRO_LABEL: ${{ format('{0}-{1}', matrix.distro.name, matrix.distro.version) }}
-        shell: bash
-        run: |
-          for FILE in Dockerfile entrypoint.sh; do
-            mv -v ./.github/actions/openziti-tunnel-build-action/${DISTRO_LABEL}/${FILE} \
-                  ./.github/actions/openziti-tunnel-build-action/${FILE}
-          done
-
       # entrypoint.sh uses the value of arch to select the cmake preset
       - name: build binary and package
         uses: ./.github/actions/openziti-tunnel-build-action
         with:
+          distro: ${{ format('{0}-{1}', matrix.distro.name, matrix.distro.version) }}
           arch: ${{ matrix.arch.cmake }}
           config: Release
 

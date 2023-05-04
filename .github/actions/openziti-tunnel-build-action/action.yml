@@ -2,6 +2,8 @@ name: 'OpenZiti Tunneler Build Action'
 description: 'Builds ziti-edge-tunnel binary and install package for Linux'
 author: 'NetFoundry'
 inputs:
+  distro:
+    description: 'The distro name of the builder. e.g. selects a subdirectory for docker build'
   arch:
     description: 'The cmake preset used by entrypoint.sh when running cmake'
     required: false
@@ -10,7 +12,7 @@ inputs:
     required: false
 runs:
   using: 'docker'
-  image: 'Dockerfile'
+  image: ${{ inputs.distro }}/Dockerfile
   args:
     - ${{ inputs.arch }}
     - ${{ inputs.config }}
