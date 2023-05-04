@@ -7,8 +7,18 @@ ln -sf @CPACK_SHARE_DIR@/@SYSTEMD_UNIT_FILE_NAME@ @SYSTEMD_UNIT_DIR@/@SYSTEMD_UN
 # Add user `ziti'
 if [ "$1" = "configure" ]; then
   # create user / group
-  echo 'u ziti - "openziti user" "/var/lib/ziti"' | \
-    systemd-sysusers --replace=/usr/lib/sysusers.d/ziti-edge-tunnel.conf -
+  # systemd-sysusers isn't on xenial, possibly others? test and fall back to useradd as a last ditch
+  if command -v systemd-sysusers > /dev/null 2>&1; then
+    echo 'u ziti - "openziti user" "/var/lib/ziti"' | \
+      systemd-sysusers --replace=/usr/lib/sysusers.d/ziti-edge-tunnel.conf -
+  else
+    if ! getent group ziti > /dev/null 2>&1; then
+      groupadd --system ziti
+    fi
+    if ! getent passwd ziti > /dev/null 2>&1; then
+      useradd --system --home-dir=/var/lib/ziti --shell /usr/sbin/nologin --comment "openziti user" -g ziti --no-user-group ziti
+    fi
+  fi
 
   # update permissions
   chown -R ziti:ziti "@ZITI_STATE_DIR@"

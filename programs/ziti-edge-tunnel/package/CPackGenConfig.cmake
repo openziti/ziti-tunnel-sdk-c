@@ -36,6 +36,8 @@ if(CPACK_GENERATOR MATCHES "DEB")
     # note: libssl and libcrypto are 1.1.x or older on ubuntu <= 20. there we don't actually depend on libssl1.1 or libssl1.0.0.
     # when building on those distros/versions we compile the latest openssl libs and link statically, but it is clear how to
     # specify "libssl3 if it exists in the repos, or nothing" as a dependency.
-    set(CPACK_DEBIAN_PACKAGE_DEPENDS "debconf, iproute2, sed, systemd, libatomic1, libssl3 | libssl1.1 | libssl1.0.0, zlib1g")
+    # systemd package on older distros does not contain `systemd-sysusers`, so include passwd for `useradd`, `groupadd`.
+    # login provides `/usr/sbin/nologin`.
+    set(CPACK_DEBIAN_PACKAGE_DEPENDS "debconf, iproute2, sed, systemd, libatomic1, libssl3 | libssl1.1 | libssl1.0.0, login, passwd, zlib1g")
     set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA "${CPACK_DEB_CONFFILES};${CPACK_DEB_PRE_INSTALL};${CPACK_DEB_POST_INSTALL};${CPACK_DEB_PRE_UNINSTALL};${CPACK_DEB_POST_UNINSTALL};${CPACK_DEB_TEMPLATES}")
 endif(CPACK_GENERATOR MATCHES "DEB")
