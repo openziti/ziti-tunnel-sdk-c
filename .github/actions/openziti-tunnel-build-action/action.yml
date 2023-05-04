@@ -4,6 +4,7 @@ author: 'NetFoundry'
 inputs:
   distro:
     description: 'The distro name of the builder. e.g. selects a subdirectory for docker build'
+    required: true
   arch:
     description: 'The cmake preset used by entrypoint.sh when running cmake'
     required: false
