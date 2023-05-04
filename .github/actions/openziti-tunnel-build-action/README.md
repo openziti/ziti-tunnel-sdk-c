@@ -27,16 +27,16 @@
             type: rpm
             container: docker.io/library/rockylinux:8
 
+    env:
+      distro_label: ${{ format('{0}-{1}', matrix.distro.name, matrix.distro.version) }}
+
     steps:
       - name: configure build action for distro version
-        env:
-          DISTRO_LABEL: ${{ format('{0}-{1}', matrix.distro.name, matrix.distro.version) }}
-        shell: bash
-        run: cp "./github/actions/openziti-tunnel/build/action/action.yml" \
-          "./github/actions/openziti-tunnel/build/action/${DISTRO_LABEL}/"
+        run: cp "./github/actions/openziti-tunnel-build-action/action.yml" \
+                "./github/actions/openziti-tunnel-build-action/$distro_label/"
 
       - name: build cmake target "package"
-        uses: ./.github/actions/openziti-tunnel-build-action
+        uses: ./.github/actions/openziti-tunnel-build-action/$distro_label
         with:
           arch: ${{ matrix.arch.cmake }}
           config: Release

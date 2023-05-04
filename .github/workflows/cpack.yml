@@ -96,7 +96,9 @@ jobs:
               name: redhat
             arch:
               cmake: ci-linux-arm64
-              
+    env:
+      distro_label: ${{ format('{0}-{1}', matrix.distro.name, matrix.distro.version) }}
+
     steps:
       # only focal-20.04 has >= 2.18, which is required by actions/checkout to clone
       # which enables cmake version discovery
@@ -137,15 +139,12 @@ jobs:
           fetch-depth: 0
 
       - name: configure build action for distro version
-        env:
-          DISTRO_LABEL: ${{ format('{0}-{1}', matrix.distro.name, matrix.distro.version) }}
-        shell: bash
-        run: cp "./github/actions/openziti-tunnel/build/action/action.yml" \
-                "./github/actions/openziti-tunnel/build/action/${DISTRO_LABEL}/"
+        run: cp "./github/actions/openziti-tunnel-build-action/action.yml" \
+                "./github/actions/openziti-tunnel-build-action/$distro_label/"
 
         # entrypoint.sh uses the value of arch to select the cmake preset
       - name: build binary and package
-        uses: ./.github/actions/openziti-tunnel-build-action
+        uses: ./.github/actions/openziti-tunnel-build-action/$distro_label
         with:
           arch: ${{ matrix.arch.cmake }}
           config: Release
