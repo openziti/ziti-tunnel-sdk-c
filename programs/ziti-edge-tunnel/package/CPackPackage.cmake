@@ -30,9 +30,9 @@ set(CPACK_RPM_DISTRIBUTIONS "redhat;rocky;centos;fedora;rhel")
 set(CPACK_DEB_DISTRIBUTIONS "debian;ubuntu;mint;pop")
 
 if(CPACK_OS_RELEASE_ID IN_LIST CPACK_DEB_DISTRIBUTIONS)
-	set(CPACK_GENERATOR "DEB")
+    set(CPACK_GENERATOR "DEB")
 elseif(CPACK_OS_RELEASE_ID IN_LIST CPACK_RPM_DISTRIBUTIONS)
-	set(CPACK_GENERATOR "RPM")
+    set(CPACK_GENERATOR "RPM")
 else()
     message(FATAL_ERROR "failed to match OS_RELEASE_ID: ${OS_RELEASE_ID}")
 endif()
@@ -60,7 +60,9 @@ set(SYSTEMD_EXECSTARTPRE "${SYSTEMD_SERVICE_NAME}.sh")
 set(SYSTEMD_ENV_FILE "${SYSTEMD_SERVICE_NAME}.env")
 
 set(SYSTEMD_SYSTEM_ETC "/etc/systemd/system")
-set(SYSTEMD_UNIT_DIR "/usr/lib/systemd/system")
+if(NOT SYSTEMD_UNIT_DIR)
+    set(SYSTEMD_UNIT_DIR "/usr/lib/systemd/system")
+endif()
 
 set(ZITI_POLKIT_PKLA_FILE "${CPACK_PACKAGE_NAME}.pkla")
 set(ZITI_POLKIT_RULES_FILE "${CPACK_PACKAGE_NAME}.rules")
@@ -76,16 +78,16 @@ install(DIRECTORY DESTINATION "${ZITI_IDENTITY_DIR}"
         COMPONENT "${COMPONENT_NAME}")
 
 configure_file("${SYSTEMD_IN_DIR}/${SYSTEMD_ENV_FILE}.in"
-	           "${INSTALL_OUT_DIR}/${SYSTEMD_ENV_FILE}"
-	           @ONLY)
+               "${INSTALL_OUT_DIR}/${SYSTEMD_ENV_FILE}"
+               @ONLY)
 
 configure_file("${SYSTEMD_IN_DIR}/${SYSTEMD_UNIT_FILE_NAME}.in"
                "${INSTALL_OUT_DIR}/${SYSTEMD_UNIT_FILE_NAME}"
                @ONLY)
 
 configure_file("${SYSTEMD_IN_DIR}/${SYSTEMD_EXECSTARTPRE}.in"
-	           "${INSTALL_OUT_DIR}/${SYSTEMD_EXECSTARTPRE}"
-	           @ONLY)
+               "${INSTALL_OUT_DIR}/${SYSTEMD_EXECSTARTPRE}"
+               @ONLY)
 
 configure_file("${SYSTEMD_IN_DIR}/${ZITI_POLKIT_PKLA_FILE}.sample.in"
               "${INSTALL_OUT_DIR}/${ZITI_POLKIT_PKLA_FILE}.sample"
@@ -100,7 +102,7 @@ install(FILES "${INSTALL_OUT_DIR}/${SYSTEMD_ENV_FILE}"
         COMPONENT "${COMPONENT_NAME}")
 
 install(FILES "${INSTALL_OUT_DIR}/${SYSTEMD_UNIT_FILE_NAME}"
-	    DESTINATION "${CPACK_SHARE_DIR}"
+        DESTINATION "${CPACK_SHARE_DIR}"
         COMPONENT "${COMPONENT_NAME}")
 
 

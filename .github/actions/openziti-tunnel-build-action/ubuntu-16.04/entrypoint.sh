@@ -46,6 +46,7 @@ cmake \
     -DBUILD_DIST_PACKAGES=ON \
     -DDISABLE_LIBSYSTEMD_FEATURE=ON \
     -DVCPKG_OVERLAY_PORTS="./vcpkg-overlays/linux-syslibs/ubuntu16" \
+    -DSYSTEMD_UNIT_DIR=/lib/systemd/system \
     -S . \
     -B ./build
 cmake \
