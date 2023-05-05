@@ -329,38 +329,50 @@ static void init_dns_maintainer(uv_loop_t *loop, const char *tun_name, uint32_t 
 }
 
 static int tun_exclude_rt(netif_handle dev, uv_loop_t *l, const char *addr) {
-    char def_route[128];
-    FILE *def_rt = popen("ip route show default", "r");
-    if (def_rt == NULL) {
-        ZITI_LOG(WARN, "ip route cmd failed[%d:%s]", errno, strerror(errno));
+    char cmd[1024];
+    char route[128];
+    FILE *cmdpipe = NULL;
+    int n;
+
+    n = snprintf(cmd, sizeof cmd,
+        "ip -o route show match %s table all | "
+        "awk '/dev %s/ { next; } { if (match($0, / metric ([^ ]+)/)) { metric = substr($0, RSTART, RLENGTH); } printf \"%%s %%s%%s\\n\", $2, $3, metric; }'",
+        addr, dev->name);
+    if (n > 0 && (size_t) n < sizeof cmd) {
+        ZITI_LOG(DEBUG, "popen(%s)", cmd);
+        cmdpipe = popen(cmd, "r");
+    } else {
+        errno = ENOMEM;
+    }
+
+    if (cmdpipe == NULL) {
+        ZITI_LOG(WARN, "ip route cmd popen(%s) failed [%d:%s]", cmd, errno, strerror(errno));
         return -1;
     }
-    int def_rt_size = (int)fread(def_route, 1, sizeof(def_route), def_rt);
+
+    errno = 0;
+    size_t size = fread(route, 1, sizeof route, cmdpipe);
+    int saved_errno = errno;
+    int ferr = ferror(cmdpipe);
+    (void) pclose(cmdpipe);
+    if (ferr) {
+        errno = saved_errno ? saved_errno : EIO;
+        ZITI_LOG(WARN, "ip route cmd I/O failed [%d:%s]", errno, strerror(errno));
+        return -1;
+    }
 
     // only look at first line
-    char *p = strchr(def_route, '\n');
-    if (p != NULL) {
-        *p = 0;
-    }
-
-    ZITI_LOG(DEBUG, "default route is '%.*s'", def_rt_size, def_route);
-    pclose(def_rt);
-
-    const char *type = NULL;
-    if ((p = strstr(def_route, "via ")) != NULL) {
-        type = "via";
-    } else if ((p = strstr(def_route, "dev ")) != NULL) {
-        type = "dev";
-    } else {
-        ZITI_LOG(WARN, "could not find default route");
+    char *p = memchr(route, '\n', size);
+    // was a full line read?
+    if (p == NULL || p == route) {
+        ZITI_LOG(WARN, "failed to retrieve destination route");
         return -1;
     }
+    *p = 0;
 
-    char *gw = p + 4;
-    char *endgw = strchr(gw, ' ');
-    int gw_len = (int)(endgw - gw);
+    ZITI_LOG(DEBUG, "route is %s %s", addr, route);
 
-    return run_command("ip route replace %s %s %.*s", addr, type, gw_len, gw);
+    return run_command("ip route replace %s %s", addr, route);
 }
 
 netif_driver tun_open(uv_loop_t *loop, uint32_t tun_ip, uint32_t dns_ip, const char *dns_block, char *error, size_t error_len) {
