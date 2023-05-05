@@ -45,7 +45,6 @@ cmake \
     -DCMAKE_BUILD_TYPE="${cmake_config}" \
     -DBUILD_DIST_PACKAGES=ON \
     -DVCPKG_OVERLAY_PORTS="./vcpkg-overlays/linux-syslibs/ubuntu18" \
-    -DSYSTEMD_UNIT_DIR=/lib/systemd/system \
     -S . \
     -B ./build
 cmake \

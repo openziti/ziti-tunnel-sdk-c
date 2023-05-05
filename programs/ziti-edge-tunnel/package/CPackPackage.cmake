@@ -60,9 +60,7 @@ set(SYSTEMD_EXECSTARTPRE "${SYSTEMD_SERVICE_NAME}.sh")
 set(SYSTEMD_ENV_FILE "${SYSTEMD_SERVICE_NAME}.env")
 
 set(SYSTEMD_SYSTEM_ETC "/etc/systemd/system")
-if(NOT SYSTEMD_UNIT_DIR)
-    set(SYSTEMD_UNIT_DIR "/usr/lib/systemd/system")
-endif()
+set(SYSTEMD_UNIT_DIR "/lib/systemd/system")
 
 set(ZITI_POLKIT_PKLA_FILE "${CPACK_PACKAGE_NAME}.pkla")
 set(ZITI_POLKIT_RULES_FILE "${CPACK_PACKAGE_NAME}.rules")
