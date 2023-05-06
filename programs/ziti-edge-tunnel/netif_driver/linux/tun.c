@@ -305,7 +305,7 @@ static void init_dns_maintainer(uv_loop_t *loop, const char *tun_name, uint32_t 
     local.nl_family = AF_NETLINK;
     local.nl_groups = RTMGRP_LINK;// | RTMGRP_IPV4_ROUTE;
 
-    int s = socket(AF_NETLINK, SOCK_DGRAM, NETLINK_ROUTE);
+    int s = socket(AF_NETLINK, SOCK_DGRAM|SOCK_CLOEXEC, NETLINK_ROUTE);
     if ( s < 0) {
         ZITI_LOG(ERROR, "failed to open netlink socket: %d/%s", errno, strerror(errno));
     }
