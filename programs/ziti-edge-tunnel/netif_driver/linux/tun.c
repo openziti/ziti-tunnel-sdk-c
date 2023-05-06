@@ -376,7 +376,7 @@ netif_driver tun_open(uv_loop_t *loop, uint32_t tun_ip, uint32_t dns_ip, const c
         return NULL;
     }
 
-    if ((tun->fd = open(DEVTUN, O_RDWR)) < 0) {
+    if ((tun->fd = open(DEVTUN, O_RDWR|O_CLOEXEC)) < 0) {
         if (error != NULL) {
             snprintf(error, error_len,"open %s failed", DEVTUN);
         }
