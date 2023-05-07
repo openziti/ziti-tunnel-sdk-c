@@ -144,7 +144,7 @@ static void process_routes_updates(uv_work_t *wr) {
         if (model_map_it_value(it) == 0) { // delete route
             size_t len = snprintf(buf, sizeof(buf), "route delete %s dev %s\n", model_map_it_key(it), cmd->tun->name);
             uv_buf_t b = uv_buf_init(buf, len);
-            uv_fs_write(wr->loop, &req, routes_file, &b, 1, 0, NULL);
+            uv_fs_write(wr->loop, &req, routes_file, &b, 1, -1, NULL);
         }
         it = model_map_it_next(it);
     }
