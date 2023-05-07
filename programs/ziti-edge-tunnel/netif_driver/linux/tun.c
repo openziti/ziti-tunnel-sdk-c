@@ -165,6 +165,10 @@ static void process_routes_updates(uv_work_t *wr) {
     uv_fs_unlink(wr->loop, &unlink_req, uv_fs_get_path(&tmp_req), NULL);
     uv_fs_req_cleanup(&unlink_req);
     uv_fs_req_cleanup(&tmp_req);
+
+    uv_fs_t close_req;
+    (void) uv_fs_close(wr->loop, &close_req, routes_file, NULL);
+    uv_fs_req_cleanup(&close_req);
 }
 
 void tun_commit_routes(netif_handle tun, uv_loop_t *l) {
