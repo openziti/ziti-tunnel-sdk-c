@@ -8,7 +8,9 @@ ln -sf @CPACK_SHARE_DIR@/@SYSTEMD_UNIT_FILE_NAME@ @SYSTEMD_UNIT_DIR@/@SYSTEMD_UN
 if [ "$1" = "configure" ]; then
   # create user / group
   # systemd-sysusers isn't on xenial, possibly others? test and fall back to useradd as a last ditch
-  if command -v systemd-sysusers > /dev/null 2>&1; then
+  # systemd-sysusers on ubuntu 18 (systemd v237) doesn't recognize `--replace`
+  if command -v systemd-sysusers > /dev/null 2>&1 &&
+     test $(systemd-sysusers --version | awk '/^systemd / { print $2}') -gt 237; then
     echo 'u ziti - "openziti user" "/var/lib/ziti"' | \
       systemd-sysusers --replace=/usr/lib/sysusers.d/ziti-edge-tunnel.conf -
   else
