@@ -30,10 +30,22 @@ if [ "$1" = "configure" ]; then
   chmod 0770 "@ZITI_IDENTITY_DIR@"
   find "@ZITI_IDENTITY_DIR@" -maxdepth 1 -name "*.json" -type f -exec chown ziti:ziti "{}" + -exec chmod 0400 "{}" +
 
-  # install PolicyKit policy if directory exists
-  if [ -d /var/lib/polkit-1/localauthority/10-vendor.d ]; then
-    cp "@CPACK_SHARE_DIR@/@ZITI_POLKIT_PKLA_FILE@.sample" "/var/lib/polkit-1/localauthority/10-vendor.d/@ZITI_POLKIT_PKLA_FILE@"
-    db_set ziti_edge_tunnel/install_pkla true
+  policykit_version=$(dpkg-query -Wf '${Version;5}' policykit-1 | cut -d . -f 2)
+  systemd_version=$(dpkg-query -Wf '${Version;3}' systemd)
+
+  # install PolicyKit policy if using policykit < 0.106 (https://askubuntu.com/questions/1287924/whats-going-on-with-policykit)
+  if [ ${policykit_version} -lt 106 ]; then
+    # ... the set-llmnr action was exposed with v243 (https://github.com/systemd/systemd/commit/52aaef0f5dc81b9a08d720f551eac53ac88aa596)
+    if [ ${systemd_version} -ge 243 ]
+      cp "@CPACK_SHARE_DIR@/@ZITI_POLKIT_PKLA_FILE@.sample" "/var/lib/polkit-1/localauthority/10-vendor.d/@ZITI_POLKIT_PKLA_FILE@"
+      db_set ziti_edge_tunnel/install_pkla true
+    else
+      service_user=root
+      override_dir=/etc/systemd/system/${SYSTEMD_UNIT_FILE_NAME}.d"
+      mkdir -p "${override_dir}/"
+      ( echo '[Service]'; echo "User=root" ) > "${override_dir}/10-run-as-root.conf"
+      # todo ok to `systemctl daemon-reload` here?
+    fi
   fi
 
   # remove socket files that were created by older ziti-edge-tunnel versions
@@ -63,6 +75,9 @@ if [ "$1" = "configure" ]; then
     printf '\n'
     printf %"$ssize"s | tr " " "-"
     echo "@SYSTEMD_SERVICE_NAME@ was installed..."
+    if [ "${service_user}" = "root" ]; then
+      echo "${SYSTEMD_SERVICE_NAME} will run as root, since policykit cannot be configured to authorize set-llmnr on this system".
+    fi
     echo "First install an OpenZiti identity or enroll token in: @ZITI_IDENTITY_DIR@"
     echo "then start or restart this systemd service unit."
     printf %"$ssize"s | tr " " "-"
