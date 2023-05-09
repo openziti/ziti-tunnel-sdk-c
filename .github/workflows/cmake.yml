@@ -41,21 +41,24 @@ jobs:
             container: ubuntu:18.04
             name: Linux x86_64
             install: $common_ubuntu_deps build-essential
-            cmake_opts: -DUSE_OPENSSL=ON
+            # build current openssl libs instead of using old versions provided by apt on ubuntu 18
+            cmake_opts: "`-DVCPKG_OVERLAY_PORTS=./vcpkg-overlays/linux-syslibs/ubuntu18`"
             target: linux-x64
 
           - os: ubuntu-20.04
             container: ubuntu:18.04
             name: Linux arm
+            # build current openssl libs instead of using old versions provided by apt on ubuntu 18
             install: $common_ubuntu_deps crossbuild-essential-armhf
-            cmake_opts: -DCMAKE_BUILD_TYPE=Release -DUSE_OPENSSL=ON
+            cmake_opts: "`-DVCPKG_OVERLAY_PORTS=./vcpkg-overlays/linux-syslibs/ubuntu18`"
             target: linux-arm
 
           - os: ubuntu-20.04
             container: ubuntu:18.04
             name: Linux arm64
             install: $common_ubuntu_deps crossbuild-essential-arm64
-            cmake_opts: -DCMAKE_BUILD_TYPE=Release -DUSE_OPENSSL=ON
+            # build current openssl libs instead of using old versions provided by apt on ubuntu 18
+            cmake_opts: "`-DVCPKG_OVERLAY_PORTS=./vcpkg-overlays/linux-syslibs/ubuntu18`"
             target: linux-arm64
 
     steps:
@@ -96,7 +99,7 @@ jobs:
           EOF
           sed -Ei 's/^deb/deb [arch=amd64]/g' /etc/apt/sources.list
           apt-get update
-          apt-get -y install libssl-dev:${TARGETARCH}
+          apt-get -y install libssl-dev:${TARGETARCH} zlib1g-dev:${TARGETARCH}
 
       - name: checkout workspace
         uses: actions/checkout@v3
@@ -116,7 +119,7 @@ jobs:
         name: Configure CMake
         with:
           configurePreset: ci-${{ matrix.target }}
-          configurePresetAdditionalArgs: "[ `-B`, `./build` ]"
+          configurePresetAdditionalArgs: "[ `-B`, `./build`, ${{ matrix.cmake_opts }} ]"
 
       - name: build ziti-edge-tunnel bundle target
         run: cmake --build ./build --target bundle --verbose

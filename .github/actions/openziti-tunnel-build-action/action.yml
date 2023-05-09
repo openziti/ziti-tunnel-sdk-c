@@ -3,10 +3,14 @@ description: 'Builds ziti-edge-tunnel binary and install package for Linux'
 author: 'NetFoundry'
 inputs:
   arch:
-    description: 'The architecture string used by entrypoint.sh to select CMAKE_TOOLCHAIN_FILE'
+    description: 'The cmake preset used by entrypoint.sh when running cmake'
+    required: false
+  config:
+    description: 'The cmake build configuration used by entrypoint.sh when running cmake'
     required: false
 runs:
   using: 'docker'
   image: 'Dockerfile'
   args:
     - ${{ inputs.arch }}
+    - ${{ inputs.config }}

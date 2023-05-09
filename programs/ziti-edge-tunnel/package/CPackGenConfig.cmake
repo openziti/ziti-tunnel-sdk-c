@@ -1,12 +1,12 @@
 cmake_policy(SET CMP0057 NEW)
 
 if(CPACK_GENERATOR MATCHES "RPM")
-    set(CPACK_RPM_BUILDREQUIRES "cmake >= ${CMAKE_MINIMUM_REQUIRED_VERSION}, systemd, gawk, gcc-c++ >= 4.9, python3, zlib-devel")
+    set(CPACK_RPM_BUILDREQUIRES "cmake >= ${CMAKE_MINIMUM_REQUIRED_VERSION}, systemd, gawk, gcc-c++ >= 4.9, python3, openssl-devel zlib-devel")
     if(CPACK_OS_RELEASE_NAME IN_LIST CPACK_RPM_DISTRIBUTIONS AND CPACK_OS_RELEASE_VERSION VERSION_GREATER "7")
         list(APPEND CPACK_RPM_BUILDREQUIRES "systemd-rpm-macros")
     endif()
     set(CPACK_RPM_PACKAGE_SOURCES OFF)
-    set(CPACK_RPM_PACKAGE_REQUIRES "iproute, sed, systemd, libatomic, openssl-libs")
+    set(CPACK_RPM_PACKAGE_REQUIRES "iproute, sed, systemd, libatomic, openssl-libs, zlib")
     set(CPACK_RPM_CHANGELOG_FILE "${CMAKE_CURRENT_LIST_DIR}/RPM_CHANGELOG")
     set(CPACK_RPM_FILE_NAME "RPM-DEFAULT")
     set(CPACK_RPM_PACKAGE_DESCRIPTION "The OpenZiti Edge Tunnel is a zero-trust tunneling software client.")
@@ -33,6 +33,11 @@ if(CPACK_GENERATOR MATCHES "RPM")
     endif(CPACK_GENERATOR MATCHES "RPM")
 
 if(CPACK_GENERATOR MATCHES "DEB")
-    set(CPACK_DEBIAN_PACKAGE_DEPENDS "debconf, iproute2, sed, systemd, libatomic1, openssl")
+    # note: libssl and libcrypto are 1.1.x or older on ubuntu <= 20. there we don't actually depend on libssl1.1 or libssl1.0.0.
+    # when building on those distros/versions we compile the latest openssl libs and link statically, but it is clear how to
+    # specify "libssl3 if it exists in the repos, or nothing" as a dependency.
+    # systemd package on older distros does not contain `systemd-sysusers`, so include passwd for `useradd`, `groupadd`.
+    # login provides `/usr/sbin/nologin`.
+    set(CPACK_DEBIAN_PACKAGE_DEPENDS "debconf, iproute2, sed, systemd, libatomic1, libssl3 | libssl1.1 | libssl1.0.0, login, passwd, zlib1g")
     set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA "${CPACK_DEB_CONFFILES};${CPACK_DEB_PRE_INSTALL};${CPACK_DEB_POST_INSTALL};${CPACK_DEB_PRE_UNINSTALL};${CPACK_DEB_POST_UNINSTALL};${CPACK_DEB_TEMPLATES}")
 endif(CPACK_GENERATOR MATCHES "DEB")
