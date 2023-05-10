@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+#
+# parse a log file with GNU date to convert ss.mmm offset to UTC timestamp
+# hint: avoid needing this script by setting ZITI_TIME_FORMAT=utc in ziti-edge-tunnel env
+#
+# usage: timestamp.sh LOGFILE
+
 set -euo pipefail
 
 (( ${#} )) && {
