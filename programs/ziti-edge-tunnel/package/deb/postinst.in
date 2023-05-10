@@ -41,7 +41,7 @@ if [ "$1" = "configure" ]; then
       db_set ziti_edge_tunnel/install_pkla true
     else
       service_user=root
-      override_dir="${SYSTEMD_UNIT_DIR}/${SYSTEMD_UNIT_FILE_NAME}.d"
+      override_dir="@SYSTEMD_UNIT_DIR@/@SYSTEMD_UNIT_FILE_NAME@.d"
       mkdir -p "${override_dir}/"
       ( echo '[Service]'; echo "User=root" ) > "${override_dir}/10-run-as-root.conf"
       # todo ok to `systemctl daemon-reload` here?
@@ -76,7 +76,7 @@ if [ "$1" = "configure" ]; then
     printf %"$ssize"s | tr " " "-"
     echo "@SYSTEMD_SERVICE_NAME@ was installed..."
     if [ "${service_user}" = "root" ]; then
-      echo "${SYSTEMD_SERVICE_NAME} will run as root, since policykit cannot be configured to authorize set-llmnr on this system".
+      echo "@SYSTEMD_SERVICE_NAME@ will run as root, since policykit cannot be configured to authorize set-llmnr on this system".
     fi
     echo "First install an OpenZiti identity or enroll token in: @ZITI_IDENTITY_DIR@"
     echo "then start or restart this systemd service unit."
