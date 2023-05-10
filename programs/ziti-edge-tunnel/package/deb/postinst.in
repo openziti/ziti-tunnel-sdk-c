@@ -41,7 +41,7 @@ if [ "$1" = "configure" ]; then
       db_set ziti_edge_tunnel/install_pkla true
     else
       service_user=root
-      override_dir=/etc/systemd/system/${SYSTEMD_UNIT_FILE_NAME}.d"
+      override_dir="${SYSTEMD_UNIT_DIR}/${SYSTEMD_UNIT_FILE_NAME}.d"
       mkdir -p "${override_dir}/"
       ( echo '[Service]'; echo "User=root" ) > "${override_dir}/10-run-as-root.conf"
       # todo ok to `systemctl daemon-reload` here?
