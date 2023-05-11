@@ -48,10 +48,6 @@ jobs:
             version: "16.04"
             release_name: xenial
             type: deb
-          - name: ubuntu
-            version: "14.04"
-            release_name: trusty
-            type: deb
           - name: redhat
             version: "7"
             release_name: ${{ null }}
@@ -71,16 +67,6 @@ jobs:
           - distro:
               name: ubuntu
               release_name: xenial
-            arch:
-              cmake: ci-linux-arm64
-          - distro:
-              name: ubuntu
-              release_name: trusty
-            arch:
-              cmake: ci-linux-arm
-          - distro:
-              name: ubuntu
-              release_name: trusty
             arch:
               cmake: ci-linux-arm64
           - distro:
@@ -160,13 +146,8 @@ jobs:
           cat /etc/*-release
           ls -horAS ./build/programs/ziti-edge-tunnel/
 
-      - name: install package artifact in runner container if Ubuntu 14.04
-        if: ${{ matrix.distro.name == 'ubuntu' && matrix.distro.version == '14.04' }}
-        run: |
-          yes|dpkg --install ./build/ziti-edge-tunnel-*.deb || apt-get --yes --fix-broken install
-
       - name: install package artifact in runner container if Ubuntu >= 16.04
-        if: ${{ matrix.arch.cmake == 'ci-linux-x64' && matrix.distro.name == 'ubuntu' && matrix.distro.version != '14.04' }}
+        if: ${{ matrix.arch.cmake == 'ci-linux-x64' && matrix.distro.name == 'ubuntu' }}
         run: |
           apt -y install ./build/ziti-edge-tunnel-*.deb
 
