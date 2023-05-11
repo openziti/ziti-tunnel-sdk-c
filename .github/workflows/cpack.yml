@@ -146,8 +146,10 @@ jobs:
           cat /etc/*-release
           ls -horAS ./build/programs/ziti-edge-tunnel/
 
-      - name: install package artifact in runner container if Ubuntu >= 16.04
+      - name: install package artifact in runner container if Ubuntu x86_64
         if: ${{ matrix.arch.cmake == 'ci-linux-x64' && matrix.distro.name == 'ubuntu' }}
+        env:
+          DEBIAN_FRONTEND: noninteractive
         run: |
           apt -y install ./build/ziti-edge-tunnel-*.deb
 
