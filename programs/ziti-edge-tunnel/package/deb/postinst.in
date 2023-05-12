@@ -44,7 +44,6 @@ if [ "$1" = "configure" ]; then
       override_dir="@SYSTEMD_UNIT_DIR@/@SYSTEMD_UNIT_FILE_NAME@.d"
       mkdir -p "${override_dir}/"
       ( echo '[Service]'; echo "User=root" ) > "${override_dir}/10-run-as-root.conf"
-      # todo ok to `systemctl daemon-reload` here?
     fi
   fi
 
@@ -67,6 +66,17 @@ if [ "$1" = "configure" ] || [ "$1" = "abort-upgrade" ] || [ "$1" = "abort-decon
 	# Update the statefile to add new symlinks (if any), which need to be cleaned
 	# up on purge. Also remove old symlinks.
 	deb-systemd-helper update-state @SYSTEMD_UNIT_FILE_NAME@ >/dev/null || true
+fi
+# End copied section
+
+# Copied from https://github.com/Debian/debhelper/blob/master/autoscripts/postinst-systemd-restartnostart
+if [ "$1" = "configure" ] || [ "$1" = "abort-upgrade" ] || [ "$1" = "abort-deconfigure" ] || [ "$1" = "abort-remove" ] ; then
+	if [ -d /run/systemd/system ]; then
+		systemctl --system daemon-reload >/dev/null || true
+		if [ -n "$2" ]; then
+			deb-systemd-invoke try-restart @SYSTEMD_UNIT_FILE_NAME@ >/dev/null || true
+		fi
+	fi
 fi
 # End copied section
 
