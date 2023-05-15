@@ -73,9 +73,10 @@ fi
 if [ "$1" = "configure" ] || [ "$1" = "abort-upgrade" ] || [ "$1" = "abort-deconfigure" ] || [ "$1" = "abort-remove" ] ; then
 	if [ -d /run/systemd/system ]; then
 		systemctl --system daemon-reload >/dev/null || true
-		if [ -n "$2" ]; then
-			deb-systemd-invoke try-restart @SYSTEMD_UNIT_FILE_NAME@ >/dev/null || true
-		fi
+        # TODO: Handle service restart
+		# if [ -n "$2" ]; then
+		# 	deb-systemd-invoke try-restart @SYSTEMD_UNIT_FILE_NAME@ >/dev/null || true
+		# fi
 	fi
 fi
 # End copied section
