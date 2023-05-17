@@ -1,21 +1,22 @@
 name: CI build
 
 on:
-  push:
-    branches: [ '**' ]
-
   pull_request:
     branches: [ main ]
-
+  workflow_dispatch:
   workflow_call:
+
+# cancel older, redundant runs of same workflow on same branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ${{ matrix.os }}
     container: ${{ matrix.container }}
-    name: build ${{ matrix.target }}
-    env:
-      common_ubuntu_deps: curl doxygen libssl-dev libsystemd-dev pkg-config zlib1g-dev zip
+    name: build ${{ matrix.preset }}
+    env: {}
 
     strategy:
       fail-fast: false
@@ -23,106 +24,54 @@ jobs:
         include:
           - os: macOS-11
             name: macOS x86_64
-            target: macOS-x64
+            preset: macOS-x64
 
           - os: macOS-11
             name: macOS arm64
-            target: macOS-arm64
+            preset: macOS-arm64
 
           - os: windows-latest
             name: Windows x86_64
-            target: windows-x64
+            preset: windows-x64
 
           - os: windows-latest
             name: Windows arm64
-            target: windows-arm64
+            preset: windows-arm64
 
           - os: ubuntu-20.04
-            container: ubuntu:18.04
+            container: openziti/ziti-builder
             name: Linux x86_64
-            install: $common_ubuntu_deps build-essential
-            # build current openssl libs instead of using old versions provided by apt on ubuntu 18
-            cmake_opts: "`-DVCPKG_OVERLAY_PORTS=./vcpkg-overlays/linux-syslibs/ubuntu18`"
-            target: linux-x64
+            preset: linux-x64
 
           - os: ubuntu-20.04
-            container: ubuntu:18.04
+            container: openziti/ziti-builder
             name: Linux arm
-            # build current openssl libs instead of using old versions provided by apt on ubuntu 18
-            install: $common_ubuntu_deps crossbuild-essential-armhf
-            cmake_opts: "`-DVCPKG_OVERLAY_PORTS=./vcpkg-overlays/linux-syslibs/ubuntu18`"
-            target: linux-arm
+            preset: linux-arm
 
           - os: ubuntu-20.04
-            container: ubuntu:18.04
+            container: openziti/ziti-builder
             name: Linux arm64
-            install: $common_ubuntu_deps crossbuild-essential-arm64
-            # build current openssl libs instead of using old versions provided by apt on ubuntu 18
-            cmake_opts: "`-DVCPKG_OVERLAY_PORTS=./vcpkg-overlays/linux-syslibs/ubuntu18`"
-            target: linux-arm64
+            preset: linux-arm64
 
     steps:
-      - name: install tools
-        if: ${{ matrix.install != null }}
-        run: |
-          apt -y update
-          apt -y install ${{ matrix.install }}
-
-      - name: install contemporary git
-        if: ${{ matrix.container != null }}
-        run: |
-          apt -y update
-          apt -y install software-properties-common
-          add-apt-repository -y ppa:git-core/ppa
-          apt -y update
-          apt -y install git
-          git config --global --add safe.directory $GITHUB_WORKSPACE
-          git --version
-
-      # run this step if Linux and arm or arm64 
-      - name: subscribe to apt multiarch ports and install libssl-dev for target arch
-        if: matrix.container != null && matrix.target != 'linux-x64'
-        run: |
-          case ${{ matrix.target }} in
-            linux-arm)   TARGETARCH=armhf;;
-            linux-arm64) TARGETARCH=arm64;;
-          esac
-          dpkg --add-architecture ${TARGETARCH}
-          cat <<EOF > /etc/apt/sources.list.d/crossbuild.list
-          deb [arch=${TARGETARCH}] http://ports.ubuntu.com/ bionic main restricted
-          deb [arch=${TARGETARCH}] http://ports.ubuntu.com/ bionic-updates main restricted
-          deb [arch=${TARGETARCH}] http://ports.ubuntu.com/ bionic universe
-          deb [arch=${TARGETARCH}] http://ports.ubuntu.com/ bionic-updates universe
-          deb [arch=${TARGETARCH}] http://ports.ubuntu.com/ bionic multiverse
-          deb [arch=${TARGETARCH}] http://ports.ubuntu.com/ bionic-updates multiverse
-          deb [arch=${TARGETARCH}] http://ports.ubuntu.com/ bionic-backports main restricted universe multiverse
-          EOF
-          sed -Ei 's/^deb/deb [arch=amd64]/g' /etc/apt/sources.list
-          apt-get update
-          apt-get -y install libssl-dev:${TARGETARCH} zlib1g-dev:${TARGETARCH}
-
       - name: checkout workspace
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
 
-      - name: install contemporary cmake
-        uses: lukka/get-cmake@latest
+      - name: Run CMake for Linux
+        if: ${{ matrix.container != null }}
+        run: |
+          ./ziti-builder.sh \
+            -p "ci-${{ matrix.preset }}" \
+            -t bundle
 
-      - uses: lukka/run-vcpkg@v10
+      - name: Run CMake for non-Linux platforms
+        if: ${{ matrix.container == null }}
+        uses: ./.github/actions/build
         with:
-          # use 2023.02.24 vcpkg baseline,
-          # see https://learn.microsoft.com/en-us/vcpkg/users/examples/versioning.getting-started#builtin-baseline
-          vcpkgGitCommitId: 'a7b6122f6b6504d16d96117336a0562693579933'
-
-      - uses: lukka/run-cmake@v10
-        name: Configure CMake
-        with:
-          configurePreset: ci-${{ matrix.target }}
-          configurePresetAdditionalArgs: "[ `-B`, `./build`, ${{ matrix.cmake_opts }} ]"
-
-      - name: build ziti-edge-tunnel bundle target
-        run: cmake --build ./build --target bundle --verbose
+          preset: ${{ matrix.preset }}
+          target: bundle
 
       - name: list bundle artifacts
         run: ls -R
@@ -135,7 +84,7 @@ jobs:
       - name: upload bundle artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ matrix.target }}
+          name: ${{ matrix.preset }}
           path: |
             ./build/bundle/ziti-edge-tunnel-*.zip
           if-no-files-found: error

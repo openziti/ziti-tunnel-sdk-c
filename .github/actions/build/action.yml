@@ -1,0 +1,49 @@
+name: Reusable build
+description: Reusable CMake build for non-Linux OS
+
+inputs:
+  preset:
+    required: true
+    description: build preset, e.g, windows-arm64
+
+  config:
+    default: Release
+    description: build type
+
+  target:
+    default: bundle
+    description: cmake build target
+
+  test_id:
+    description: Ziti Test Identity
+
+runs:
+  using: "composite"
+  steps:
+    - name: simple build
+      run: echo "preset = ${{ inputs.preset }}"
+      shell: bash
+
+    - name: install contemporary cmake
+      uses: lukka/get-cmake@latest
+
+    - uses: lukka/run-vcpkg@v10
+      with:
+        # use 2023.02.24 vcpkg baseline,
+        # see https://learn.microsoft.com/en-us/vcpkg/users/examples/versioning.getting-started#builtin-baseline
+        vcpkgGitCommitId: 'a7b6122f6b6504d16d96117336a0562693579933'
+
+    - uses: lukka/run-cmake@v10
+      name: Configure CMake
+      with:
+        configurePreset: ci-${{ inputs.preset }}
+        configurePresetAdditionalArgs: "[ `-B`, `./build` ]"
+
+    - name: build ziti-edge-tunnel
+      shell: bash
+      run: |
+        cmake \
+          --build ./build \
+          --config ${{ inputs.config }} \
+          --target ${{ inputs.target }} \
+          --verbose
