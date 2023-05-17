@@ -61,7 +61,7 @@ services:
             - ziti-host
         privileged: false         # no privileges necessary for run-host mode
 
-    hello:                       # http://hello:80 from bridge network "ziti-host"
+    hello:                       # http://hello:8080 from bridge network "ziti-host"
         image: netfoundry/hello-world-webpage
         networks: 
             - ziti-host
