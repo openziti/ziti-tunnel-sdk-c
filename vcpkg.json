@@ -7,14 +7,7 @@
     "llhttp",
     "libsodium",
     "getopt",
-    {
-      "name": "mbedtls",
-      "platform": "windows"
-    },
-    {
-      "name": "openssl",
-      "$comment": "on linux we use system installed OpenSSL (add platform = !linux once we figure out how)"
-    }
+    "mbedtls"
   ],
   "features": {
     "test": {
