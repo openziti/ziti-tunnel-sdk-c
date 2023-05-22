@@ -110,7 +110,10 @@
     {
       "name": "ci-build",
       "binaryDir": "${sourceDir}/build",
-      "hidden": true
+      "hidden": true,
+      "cacheVariables": {
+        "TLSUV_TLSLIB": "mbedtls"
+      }
     },
     {
       "name": "ci-macOS-x64",
