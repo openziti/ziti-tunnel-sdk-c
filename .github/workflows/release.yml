@@ -33,9 +33,9 @@ jobs:
           prerelease: false
           fail_on_unmatched_files: true
           files: |
-            ${{ runner.workspace }}/downloads/Linux-x86_64/ziti-edge-tunnel-Linux_x86_64.zip
-            ${{ runner.workspace }}/downloads/Linux-arm/ziti-edge-tunnel-Linux_arm.zip
-            ${{ runner.workspace }}/downloads/macOS-x86_64/ziti-edge-tunnel-Darwin_x86_64.zip
+            ${{ runner.workspace }}/downloads/linux-x64/ziti-edge-tunnel-Linux_x86_64.zip
+            ${{ runner.workspace }}/downloads/linux-arm/ziti-edge-tunnel-Linux_arm.zip
+            ${{ runner.workspace }}/downloads/macOS-x64/ziti-edge-tunnel-Darwin_x86_64.zip
             ${{ runner.workspace }}/downloads/macOS-arm64/ziti-edge-tunnel-Darwin_arm64.zip
 
       # These final two steps are only necessary because we prefer a different
