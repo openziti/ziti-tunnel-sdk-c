@@ -53,31 +53,31 @@ fi
 
 # Copied from https://github.com/Debian/debhelper/blob/master/autoscripts/postinst-systemd-dont-enable
 if [ "$1" = "configure" ] || [ "$1" = "abort-upgrade" ] || [ "$1" = "abort-deconfigure" ] || [ "$1" = "abort-remove" ] ; then
-	if deb-systemd-helper debian-installed @SYSTEMD_UNIT_FILE_NAME@; then
-		# This will only remove masks created by d-s-h on package removal.
-		deb-systemd-helper unmask @SYSTEMD_UNIT_FILE_NAME@ >/dev/null || true
+    if deb-systemd-helper debian-installed @SYSTEMD_UNIT_FILE_NAME@; then
+        # This will only remove masks created by d-s-h on package removal.
+        deb-systemd-helper unmask @SYSTEMD_UNIT_FILE_NAME@ >/dev/null || true
 
-		if deb-systemd-helper --quiet was-enabled @SYSTEMD_UNIT_FILE_NAME@; then
-			# Create new symlinks, if any.
-			deb-systemd-helper enable @SYSTEMD_UNIT_FILE_NAME@ >/dev/null || true
-		fi
-	fi
+        if deb-systemd-helper --quiet was-enabled @SYSTEMD_UNIT_FILE_NAME@; then
+            # Create new symlinks, if any.
+            deb-systemd-helper enable @SYSTEMD_UNIT_FILE_NAME@ >/dev/null || true
+        fi
+    fi
 
-	# Update the statefile to add new symlinks (if any), which need to be cleaned
-	# up on purge. Also remove old symlinks.
-	deb-systemd-helper update-state @SYSTEMD_UNIT_FILE_NAME@ >/dev/null || true
+    # Update the statefile to add new symlinks (if any), which need to be cleaned
+    # up on purge. Also remove old symlinks.
+    deb-systemd-helper update-state @SYSTEMD_UNIT_FILE_NAME@ >/dev/null || true
 fi
 # End copied section
 
 # Copied from https://github.com/Debian/debhelper/blob/master/autoscripts/postinst-systemd-restartnostart
 if [ "$1" = "configure" ] || [ "$1" = "abort-upgrade" ] || [ "$1" = "abort-deconfigure" ] || [ "$1" = "abort-remove" ] ; then
-	if [ -d /run/systemd/system ]; then
-		systemctl --system daemon-reload >/dev/null || true
+    if [ -d /run/systemd/system ]; then
+        systemctl --system daemon-reload >/dev/null || true
         # TODO: Handle service restart
-		# if [ -n "$2" ]; then
-		# 	deb-systemd-invoke try-restart @SYSTEMD_UNIT_FILE_NAME@ >/dev/null || true
-		# fi
-	fi
+        # if [ -n "$2" ]; then
+        #     deb-systemd-invoke try-restart @SYSTEMD_UNIT_FILE_NAME@ >/dev/null || true
+        # fi
+    fi
 fi
 # End copied section
 
