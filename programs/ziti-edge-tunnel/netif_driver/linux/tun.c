@@ -128,43 +128,65 @@ static void route_updates_done(uv_work_t *wr, int status) {
 
 static void process_routes_updates(uv_work_t *wr) {
     struct rt_process_cmd *cmd = wr->data;
-    int rc;
+
     uv_fs_t tmp_req = {0};
     uv_file routes_file = uv_fs_mkstemp(wr->loop, &tmp_req, "/tmp/ziti-tunnel-routes.XXXXXX", NULL);
     if (routes_file < 0) {
         ZITI_LOG(ERROR, "failed to create temp file for route updates %d/%s", routes_file, uv_strerror(routes_file));
+        uv_fs_req_cleanup(&tmp_req);
+        return;
     }
-
-    char buf[1024];
-    uv_fs_t req;
 
     // get route deletes first
-    model_map_iter it = model_map_iterator(cmd->updates);
-    while(it) {
-        if (model_map_it_value(it) == 0) { // delete route
-            size_t len = snprintf(buf, sizeof(buf), "route delete %s dev %s\n", model_map_it_key(it), cmd->tun->name);
-            uv_buf_t b = uv_buf_init(buf, len);
-            uv_fs_write(wr->loop, &req, routes_file, &b, 1, 0, NULL);
-        }
-        it = model_map_it_next(it);
-    }
+    static const char *const verbs[] = {
+        "delete",
+        "add",
+    };
+    char buf[1024];
+    for (size_t i = 0; i < sizeof verbs/sizeof verbs[0]; i++) {
+        const char *const verb = verbs[i];
+        const char *prefix;
+        const void *value;
 
-    it = model_map_iterator(cmd->updates);
-    while(it) {
-        if ((uintptr_t)model_map_it_value(it) == 1) {
-            size_t len = snprintf(buf, sizeof(buf), "route add %s dev %s\n", model_map_it_key(it), cmd->tun->name);
-            uv_buf_t b = uv_buf_init(buf, len);
-            uv_fs_write(wr->loop, &req, routes_file, &b, 1, -1, NULL);
+        MODEL_MAP_FOREACH(prefix, value, cmd->updates) {
+            // action == 0: delete
+            // action == 1: add
+            unsigned action = (uintptr_t) value;
+            if (action == i) {
+                int len = snprintf(buf, sizeof(buf), "route %s %s dev %s\n", verb, prefix, cmd->tun->name);
+                if (len < 0 || (size_t) len >= sizeof buf) {
+                    if (len > 0) errno = ENOMEM;
+                    ZITI_LOG(ERROR, "route updates failed %d/%s", -errno, strerror(errno));
+                    goto close_file;
+                }
+
+                uv_fs_t write_req;
+                uv_buf_t b = uv_buf_init(buf, len);
+                int rc = uv_fs_write(wr->loop, &write_req, routes_file, &b, 1, -1, NULL);
+                uv_fs_req_cleanup(&write_req);
+                /* if an incomplete write is encountered, bail.
+                 * Don't want to execute clipped commands
+                 */
+                if (rc < len) {
+                    if (rc > 0) rc = UV_EIO;
+                    ZITI_LOG(ERROR, "route updates failed %d/%s", rc, uv_strerror(rc));
+                    goto close_file;
+                }
+            }
         }
-        it = model_map_it_next(it);
     }
 
     run_command("ip -force -batch %s", uv_fs_get_path(&tmp_req));
 
-    uv_fs_t unlink_req = {0};
-    uv_fs_unlink(wr->loop, &unlink_req, uv_fs_get_path(&tmp_req), NULL);
+close_file: ; /* declaration is not a statement */
+    uv_fs_t unlink_req;
+    (void) uv_fs_unlink(wr->loop, &unlink_req, uv_fs_get_path(&tmp_req), NULL);
     uv_fs_req_cleanup(&unlink_req);
     uv_fs_req_cleanup(&tmp_req);
+
+    uv_fs_t close_req;
+    (void) uv_fs_close(wr->loop, &close_req, routes_file, NULL);
+    uv_fs_req_cleanup(&close_req);
 }
 
 void tun_commit_routes(netif_handle tun, uv_loop_t *l) {
