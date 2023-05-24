@@ -1,15 +1,15 @@
 # Copied from https://github.com/Debian/debhelper/blob/master/autoscripts/postrm-systemd
 if [ "$1" = "remove" ]; then
-	if [ -x "/usr/bin/deb-systemd-helper" ]; then
-		deb-systemd-helper mask @SYSTEMD_UNIT_FILE_NAME@ >/dev/null || true
-	fi
+    if [ -x "/usr/bin/deb-systemd-helper" ]; then
+        deb-systemd-helper mask @SYSTEMD_UNIT_FILE_NAME@ >/dev/null || true
+    fi
 fi
 
 if [ "$1" = "purge" ]; then
-	if [ -x "/usr/bin/deb-systemd-helper" ]; then
-		deb-systemd-helper purge @SYSTEMD_UNIT_FILE_NAME@ >/dev/null || true
-		deb-systemd-helper unmask @SYSTEMD_UNIT_FILE_NAME@ >/dev/null || true
-	fi
+    if [ -x "/usr/bin/deb-systemd-helper" ]; then
+        deb-systemd-helper purge @SYSTEMD_UNIT_FILE_NAME@ >/dev/null || true
+        deb-systemd-helper unmask @SYSTEMD_UNIT_FILE_NAME@ >/dev/null || true
+    fi
 fi
 # End copied seciton
 
@@ -17,9 +17,9 @@ if [ -L @SYSTEMD_UNIT_DIR@/@SYSTEMD_UNIT_FILE_NAME@ ]; then
     unlink @SYSTEMD_UNIT_DIR@/@SYSTEMD_UNIT_FILE_NAME@
 fi
 
-# Copied from https://github.com/Debian/debhelper/blob/master/autoscripts/postrm-systemd-restart-only
+# Copied from https://github.com/Debian/debhelper/blob/master/autoscripts/postrm-systemd-reload-only
 if [ -d /run/systemd/system ]; then
-	systemctl --system daemon-reload >/dev/null || true
+    systemctl --system daemon-reload >/dev/null || true
 fi
 # End copied section
 
