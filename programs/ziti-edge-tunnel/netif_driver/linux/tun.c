@@ -396,11 +396,10 @@ netif_driver tun_open(uv_loop_t *loop, uint32_t tun_ip, uint32_t dns_ip, const c
         return NULL;
     }
 
-    struct ifreq ifr;
-    memset(&ifr, 0, sizeof(ifr));
-    ifr.ifr_flags = IFF_TUN | IFF_NO_PI;
+    struct ifreq ifr = { .ifr_name = "ziti%d",
+                         .ifr_flags = IFF_TUN | IFF_NO_PI };
 
-    if (ioctl(tun->fd, TUNSETIFF, (void *) &ifr) < 0) {
+    if (ioctl(tun->fd, TUNSETIFF, &ifr) < 0) {
         if (error != NULL) {
             snprintf(error, error_len, "failed to open tun device:%s", strerror(errno));
         }
