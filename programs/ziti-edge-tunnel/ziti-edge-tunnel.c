@@ -1751,6 +1751,15 @@ static tunneler_context initialize_tunneler(netif_driver tun, uv_loop_t* ziti_lo
 #include <commandline.h>
 #include <getopt.h>
 
+#define CHECK_COMMAND_ERRORS(errors) \
+    do { \
+        if (errors > 0) { \
+            commandline_help(stderr); \
+            exit(EXIT_FAILURE); \
+        } \
+    } while (0)
+
+
 static CommandLine main_cmd;
 static void usage(int argc, char *argv[]) {
     if (argc == 0) {
@@ -1793,9 +1802,6 @@ static const char* dns_upstream = NULL;
 static bool host_only = false;
 
 static int run_opts(int argc, char *argv[]) {
-    printf("About to run tunnel service... %s", main_cmd.name);
-    ziti_set_app_info(main_cmd.name, ziti_tunneler_version());
-
     int c, option_index, errors = 0;
     optind = 0;
     bool identity_provided = false;
@@ -1833,17 +1839,16 @@ static int run_opts(int argc, char *argv[]) {
             }
         }
     }
-    if (errors > 0) {
-        commandline_help(stderr);
-        exit(1);
-    }
+
+    CHECK_COMMAND_ERRORS(errors);
+
+    printf("About to run tunnel service... %s", main_cmd.name);
+    ziti_set_app_info(main_cmd.name, ziti_tunneler_version());
+
     return optind;
 }
 
 static int run_host_opts(int argc, char *argv[]) {
-    printf("About to run tunnel service that hosts services... %s", main_cmd.name);
-    ziti_set_app_info(main_cmd.name, ziti_tunneler_version());
-
     int c, option_index, errors = 0;
     optind = 0;
     bool identity_provided = false;
@@ -1875,10 +1880,16 @@ static int run_host_opts(int argc, char *argv[]) {
             }
         }
     }
-    if (errors > 0 || !identity_provided) {
-        commandline_help(stderr);
-        exit(1);
+
+    if (!identity_provided) {
+        errors++;
     }
+
+    CHECK_COMMAND_ERRORS(errors);
+
+    printf("About to run tunnel service that hosts services... %s", main_cmd.name);
+    ziti_set_app_info(main_cmd.name, ziti_tunneler_version());
+
     host_only = true;
     return optind;
 }
@@ -1946,7 +1957,7 @@ static void run(int argc, char *argv[]) {
         int rc = sscanf(configured_cidr, "%d.%d.%d.%d/%d", &ip[0], &ip[1], &ip[2], &ip[3], &bits);
         if (rc != 5) {
             ZITI_LOG(ERROR, "Invalid IP range specification: n.n.n.n/m format is expected");
-            exit(1);
+            exit(EXIT_FAILURE);
         }
 
         uint32_t mask = 0;
@@ -2006,7 +2017,7 @@ static void run(int argc, char *argv[]) {
 
     if (ziti_loop == NULL) {
         ZITI_LOG(ERROR, "failed to initialize default uv loop");
-        exit(1);
+        exit(EXIT_FAILURE);
     }
 
     int rc;
@@ -2039,10 +2050,9 @@ static int version_opts(int argc, char *argv[]) {
             }
         }
     }
-    if (errors > 0) {
-        commandline_help(stderr);
-        exit(1);
-    }
+
+    CHECK_COMMAND_ERRORS(errors);
+
     return optind;
 }
 
@@ -2100,10 +2110,13 @@ static int parse_enroll_opts(int argc, char *argv[]) {
             }
         }
     }
-    if (errors > 0 || enroll_opts.jwt == NULL || config_file == NULL) {
-        commandline_help(stderr);
-        exit(1);
+
+    if (enroll_opts.jwt == NULL || config_file == NULL) {
+        errors++;
     }
+
+    CHECK_COMMAND_ERRORS(errors);
+
     return optind;
 }
 
@@ -2157,25 +2170,25 @@ static void enroll(int argc, char *argv[]) {
 
     if (config_file == 0) {
         ZITI_LOG(ERROR, "output file option(-i|--identity) is required");
-        exit(-1);
+        exit(EXIT_FAILURE);
     }
 
     if (enroll_opts.jwt == NULL) {
         ZITI_LOG(ERROR, "JWT file option(-j|--jwt) is required");
-        exit(1);
+        exit(EXIT_FAILURE);
     }
 
     /* open with O_EXCL to fail if the file exists */
     int outfd = open(config_file, O_CREAT | O_WRONLY | O_EXCL, S_IRUSR | S_IWUSR);
     if (outfd < 0) {
         ZITI_LOG(ERROR, "failed to open file %s: %s(%d)", config_file, strerror(errno), errno);
-        exit(1);
+        exit(EXIT_FAILURE);
     }
     FILE *outfile = NULL;
     if ((outfile = fdopen(outfd, "wb")) == NULL) {
         ZITI_LOG(ERROR, "failed to open file %s: %s(%d)", config_file, strerror(errno), errno);
         (void) close(outfd);
-        exit(1);
+        exit(EXIT_FAILURE);
     }
 
     struct enroll_cb_params params = { 0 };
@@ -2200,7 +2213,7 @@ static void enroll(int argc, char *argv[]) {
     /* if unsuccessful, delete config_file and exit */
     if (rc < 0) {
         (void) unlink(config_file);
-        exit(1);
+        exit(EXIT_FAILURE);
     }
 }
 
@@ -2234,10 +2247,9 @@ static int dump_opts(int argc, char *argv[]) {
             }
         }
     }
-    if (errors > 0) {
-        commandline_help(stderr);
-        exit(1);
-    }
+
+    CHECK_COMMAND_ERRORS(errors);
+
     size_t json_len;
     cmd->data = tunnel_ziti_dump_to_json(dump_options, MODEL_JSON_COMPACT, &json_len);
     if (dump_options != NULL) {
@@ -2369,10 +2381,9 @@ static int on_off_identity_opts(int argc, char *argv[]) {
             }
         }
     }
-    if (errors > 0) {
-        commandline_help(stderr);
-        exit(1);
-    }
+
+    CHECK_COMMAND_ERRORS(errors);
+
     size_t json_len;
     cmd->data = tunnel_on_off_identity_to_json(&on_off_identity_options, MODEL_JSON_COMPACT, &json_len);
     free_tunnel_on_off_identity(&on_off_identity_options);
@@ -2404,10 +2415,9 @@ static int enable_identity_opts(int argc, char *argv[]) {
             }
         }
     }
-    if (errors > 0) {
-        commandline_help(stderr);
-        exit(1);
-    }
+
+    CHECK_COMMAND_ERRORS(errors);
+
     size_t json_len;
     cmd->data = tunnel_load_identity_to_json(&load_identity_options, MODEL_JSON_COMPACT, &json_len);
     free_tunnel_load_identity(&load_identity_options);
@@ -2439,10 +2449,9 @@ static int enable_mfa_opts(int argc, char *argv[]) {
             }
         }
     }
-    if (errors > 0) {
-        commandline_help(stderr);
-        exit(1);
-    }
+
+    CHECK_COMMAND_ERRORS(errors);
+
     size_t json_len;
     cmd->data = tunnel_enable_mfa_to_json(enable_mfa_options, MODEL_JSON_COMPACT, &json_len);
     free(enable_mfa_options);
@@ -2478,10 +2487,9 @@ static int verify_mfa_opts(int argc, char *argv[]) {
             }
         }
     }
-    if (errors > 0) {
-        commandline_help(stderr);
-        exit(1);
-    }
+
+    CHECK_COMMAND_ERRORS(errors);
+
     size_t json_len;
     cmd->data = tunnel_verify_mfa_to_json(verify_mfa_options, MODEL_JSON_COMPACT, &json_len);
     free(verify_mfa_options);
@@ -2517,10 +2525,9 @@ static int remove_mfa_opts(int argc, char *argv[]) {
             }
         }
     }
-    if (errors > 0) {
-        commandline_help(stderr);
-        exit(1);
-    }
+
+    CHECK_COMMAND_ERRORS(errors);
+
     size_t json_len;
     cmd->data = tunnel_remove_mfa_to_json(remove_mfa_options, MODEL_JSON_COMPACT, &json_len);
     free(remove_mfa_options);
@@ -2556,10 +2563,9 @@ static int submit_mfa_opts(int argc, char *argv[]) {
             }
         }
     }
-    if (errors > 0) {
-        commandline_help(stderr);
-        exit(1);
-    }
+
+    CHECK_COMMAND_ERRORS(errors);
+
     size_t json_len;
     cmd->data = tunnel_submit_mfa_to_json(submit_mfa_options, MODEL_JSON_COMPACT, &json_len);
     free(submit_mfa_options);
@@ -2595,10 +2601,9 @@ static int generate_mfa_codes_opts(int argc, char *argv[]) {
             }
         }
     }
-    if (errors > 0) {
-        commandline_help(stderr);
-        exit(1);
-    }
+
+    CHECK_COMMAND_ERRORS(errors);
+
     size_t json_len;
     cmd->data = tunnel_generate_mfa_codes_to_json(mfa_codes_options, MODEL_JSON_COMPACT, &json_len);
     free(mfa_codes_options);
@@ -2634,10 +2639,9 @@ static int get_mfa_codes_opts(int argc, char *argv[]) {
             }
         }
     }
-    if (errors > 0) {
-        commandline_help(stderr);
-        exit(1);
-    }
+
+    CHECK_COMMAND_ERRORS(errors);
+
     size_t json_len;
     cmd->data = tunnel_get_mfa_codes_to_json(get_mfa_codes_options, MODEL_JSON_COMPACT, &json_len);
     free(get_mfa_codes_options);
@@ -2669,10 +2673,9 @@ static int set_log_level_opts(int argc, char *argv[]) {
             }
         }
     }
-    if (errors > 0) {
-        commandline_help(stderr);
-        exit(1);
-    }
+
+    CHECK_COMMAND_ERRORS(errors);
+
     size_t json_len;
     cmd->data = tunnel_set_log_level_to_json(log_level_options, MODEL_JSON_COMPACT, &json_len);
     free(log_level_options);
@@ -2716,10 +2719,9 @@ static int update_tun_ip_opts(int argc, char *argv[]) {
             }
         }
     }
-    if (errors > 0) {
-        commandline_help(stderr);
-        exit(1);
-    }
+
+    CHECK_COMMAND_ERRORS(errors);
+
     size_t json_len;
     cmd->data = tunnel_tun_ip_v4_to_json(tun_ip_v4_options, MODEL_JSON_COMPACT, &json_len);
     free(tun_ip_v4_options);
@@ -2763,10 +2765,9 @@ static int endpoint_status_change_opts(int argc, char *argv[]) {
             }
         }
     }
-    if (errors > 0) {
-        commandline_help(stderr);
-        exit(1);
-    }
+
+    CHECK_COMMAND_ERRORS(errors);
+
     size_t json_len;
     cmd->data = tunnel_status_change_to_json(tunnel_status_change_opts, MODEL_JSON_COMPACT, &json_len);
     free(tunnel_status_change_opts);
@@ -2820,13 +2821,12 @@ static int svc_opts(int argc, char *argv[]) {
             }
         }
     }
+
+    CHECK_COMMAND_ERRORS(errors);
+
     size_t json_len;
     cmd->data = tunnel_service_control_to_json(tunnel_service_control_options, MODEL_JSON_COMPACT, &json_len);
 
-    if (errors > 0) {
-        commandline_help(stderr);
-        exit(1);
-    }
     return optind;
 }
 #endif
@@ -2864,10 +2864,9 @@ static int delete_identity_opts(int argc, char *argv[]) {
             }
         }
     }
-    if (errors > 0) {
-        commandline_help(stderr);
-        exit(1);
-    }
+
+    CHECK_COMMAND_ERRORS(errors);
+
     size_t json_len;
     cmd->data = tunnel_delete_identity_to_json(delete_identity_options, MODEL_JSON_COMPACT, &json_len);
     free(delete_identity_options);
@@ -2904,10 +2903,9 @@ static int add_identity_opts(int argc, char *argv[]) {
             }
         }
     }
-    if (errors > 0) {
-        commandline_help(stderr);
-        exit(1);
-    }
+
+    CHECK_COMMAND_ERRORS(errors);
+
     size_t json_len;
     cmd->data = tunnel_add_identity_to_json(tunnel_add_identity_opt, MODEL_JSON_COMPACT, &json_len);
     free(tunnel_add_identity_opt);
