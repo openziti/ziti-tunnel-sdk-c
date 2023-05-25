@@ -22,6 +22,8 @@
 #include "linux/libsystemd.h"
 #include <ziti/ziti_log.h>
 
+#define _cleanup_(f) __attribute__((cleanup(f)))
+
 #define TRY_DL(dl_func) do{if ((dl_func) != 0) goto dl_error;} while(0)
 
 

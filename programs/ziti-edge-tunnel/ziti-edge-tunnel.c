@@ -34,7 +34,9 @@
 #include "netif_driver/darwin/utun.h"
 #elif __linux__
 #include "netif_driver/linux/tun.h"
+#ifndef DISABLE_LIBSYSTEMD
 #include "linux/libsystemd.h"
+#endif
 #elif _WIN32
 #include <time.h>
 #include "netif_driver/windows/tun.h"
@@ -155,21 +157,17 @@ static uv_mutex_t stop_mutex;
 static uv_cond_t stop_cond;
 IMPL_ENUM(event, EVENT_ACTIONS)
 
-static bool is_socket_activated = false;
 #if _WIN32
-static char sockfile[] = "\\\\.\\pipe\\ziti-edge-tunnel.sock";
+static char cmdsockfile[] = "\\\\.\\pipe\\ziti-edge-tunnel.sock";
 static char eventsockfile[] = "\\\\.\\pipe\\ziti-edge-tunnel-event.sock";
 #elif __unix__ || unix || ( __APPLE__ && __MACH__ )
 #include <grp.h>
 #define SOCKET_PATH "/tmp/.ziti"
-static char sockfile[] = SOCKET_PATH "/ziti-edge-tunnel.sock";
+static char cmdsockfile[] = SOCKET_PATH "/ziti-edge-tunnel.sock";
 static char eventsockfile[] = SOCKET_PATH "/ziti-edge-tunnel-event.sock";
 #endif
-#if __linux__
-static int sockfile_fd = SD_LISTEN_FDS_START;
-static int eventsockfile_fd = SD_LISTEN_FDS_START + 1;
-#endif
 
+#define ZITI_SOCKFD_UNSET -1
 
 static int sizeof_event_clients_list() {
     struct event_conn_s *event_client;
@@ -675,32 +673,38 @@ static void on_cmd_client(uv_stream_t *s, int status) {
     ZITI_LOG(DEBUG,"Received IPC client connection request, count: %d", ++current_ipc_channels);
 }
 
-static int start_cmd_socket(uv_loop_t *l) {
+
+
+static int start_cmd_socket(uv_loop_t *l, int sockfd) {
+
+#define CHECK_UV(op) do{ \
+    int uv_rc = (op);    \
+    if (uv_rc != 0) {    \
+       ZITI_LOG(WARN, "failed to open IPC socket op=[%s] err=%d[%s]", #op, uv_rc, uv_strerror(uv_rc)); \
+       goto uv_err;      \
+    }                    \
+} while(0)
+
 
     if (uv_is_active((const uv_handle_t *) &cmd_server)) {
         return 0;
     }
 
-    if (!is_socket_activated) {
+    if (sockfd == ZITI_SOCKFD_UNSET) {
         uv_fs_t fs;
-        uv_fs_unlink(l, &fs, sockfile, NULL);
+        uv_fs_unlink(l, &fs, cmdsockfile, NULL);
+        ZITI_LOG(TRACE, "Removed stale socket file: %s", cmdsockfile);
     }
 
-#define CHECK_UV(op) do{ \
-    int uv_rc = (op);    \
-    if (uv_rc != 0) {    \
-       ZITI_LOG(WARN, "failed to open IPC socket op=[%s] err=%d[%s]", #op, uv_rc, uv_strerror(uv_rc));\
-       goto uv_err; \
-    }                    \
-    } while(0)
-
-
     CHECK_UV(uv_pipe_init(l, &cmd_server, 0));
-    if (!is_socket_activated) {
-        CHECK_UV(uv_pipe_bind(&cmd_server, sockfile));
+
+    if (sockfd == ZITI_SOCKFD_UNSET) {
+        CHECK_UV(uv_pipe_bind(&cmd_server, cmdsockfile));
+        ZITI_LOG(TRACE, "Bound socket[%s]", cmdsockfile);
         CHECK_UV(uv_pipe_chmod(&cmd_server, UV_WRITABLE | UV_READABLE));
     } else {
-        CHECK_UV(uv_pipe_open(&cmd_server, sockfile_fd));
+        CHECK_UV(uv_pipe_open(&cmd_server, sockfd));
+        ZITI_LOG(TRACE, "Opened socket[%s], from sockfd[%d]", cmdsockfile, sockfd);
     }
 
     uv_unref((uv_handle_t *) &cmd_server);
@@ -808,22 +812,25 @@ static void send_events_message(const void *message, to_json_fn to_json_f, bool 
     free(json);
 }
 
-static int start_event_socket(uv_loop_t *l) {
+static int start_event_socket(uv_loop_t *l, int sockfd) {
 
     if (uv_is_active((const uv_handle_t *) &event_server)) {
         return 0;
     }
-    if (!is_socket_activated) {
+
+    if (sockfd == ZITI_SOCKFD_UNSET) {
         uv_fs_t fs;
         uv_fs_unlink(l, &fs, eventsockfile, NULL);
     }
 
     CHECK_UV(uv_pipe_init(l, &event_server, 0));
-    if (!is_socket_activated) {
+    if (sockfd == ZITI_SOCKFD_UNSET) {
         CHECK_UV(uv_pipe_bind(&event_server, eventsockfile));
+        ZITI_LOG(TRACE, "Bound socket[%s]", eventsockfile);
         CHECK_UV(uv_pipe_chmod(&event_server, UV_WRITABLE | UV_READABLE));
     } else {
-        CHECK_UV(uv_pipe_open(&event_server, eventsockfile_fd));
+        CHECK_UV(uv_pipe_open(&event_server, sockfd));
+        ZITI_LOG(TRACE, "Opened socket[%s], from sockfd[%d]", eventsockfile, sockfd);
     }
 
     uv_unref((uv_handle_t *) &event_server);
@@ -1700,45 +1707,53 @@ static int make_socket_path(uv_loop_t *loop) {
     return 0;
 }
 
+#if __linux__ && !defined(DISABLE_LIBSYSTEMD)
 static void enforce_sockpath(int sockfd, const char* path) {
+
     int r = sd_is_socket_unix_f(sockfd, SOCK_STREAM, 1, path, 0);
     if (r < 0) {
         fprintf(stderr, "error calling sd_is_socket_unix on fd=[%d]: err=%d[%s]", sockfd, r, strerror(r));
         exit(EXIT_FAILURE);
     }
     if (!r) {
-        fprintf(ERROR, "socket fd=[%d] with path=[%s] is not a unix socket", sockfd, path);
+        fprintf(stderr, "socket fd=[%d] with path=[%s] is not a unix socket", sockfd, path);
         exit(EXIT_FAILURE);
     }
     ZITI_LOG(DEBUG, "Received sockfd=[%d] with path=[%s]", sockfd, path);
 }
+#endif
 
 static void run_tunneler_loop(uv_loop_t* ziti_loop) {
+    int cmdsockfile_fd = ZITI_SOCKFD_UNSET;
+    int eventsockfile_fd = ZITI_SOCKFD_UNSET;
+
 #if _WIN32
     // set the service to running state
     scm_running_event();
-#elif __linux__
-    static uv_once_t guard;
+#elif __linux__ && !defined(DISABLE_LIBSYSTEMD)
+        static uv_once_t guard;
     uv_once(&guard, init_libsystemd);
 
     if(libsystemd_dl_success) {
 
-	    int n = sd_listen_fds_f(0);
+        int n = sd_listen_fds_f(0);
 
-	    if (n < 0) {
-		fprintf(stderr, "Failed calling sd_listen_fds: err=%d[%s]", n, strerror(n));
-		exit(EXIT_FAILURE);
-	    }
+        if (n < 0) {
+            fprintf(stderr, "Failed calling sd_listen_fds: err=%d[%s]", n, strerror(n));
+            exit(EXIT_FAILURE);
+        }
 
-	    if (n != 2) {
-		ZITI_LOG(DEBUG, "Too many or too few file descriptors for socket activation: LISTEN_FDS=%d. Proceeding normally...", n);
-	    }
-	    else {
-		enforce_sockpath(sockfile_fd, sockfile);
-		enforce_sockpath(eventsockfile_fd, eventsockfile);
-		ZITI_LOG(DEBUG, "Using socket activation for command and event sockets.");
-		is_socket_activated = true;
-	    }
+        if (n != 2) {
+            ZITI_LOG(DEBUG, "Too many or too few file descriptors for socket activation: LISTEN_FDS=%d. Proceeding normally...", n);
+        }
+        else {
+            cmdsockfile_fd = SD_LISTEN_FDS_START;
+            eventsockfile_fd = SD_LISTEN_FDS_START + 1;
+
+            enforce_sockpath(cmdsockfile_fd, cmdsockfile);
+            enforce_sockpath(eventsockfile_fd, eventsockfile);
+            ZITI_LOG(DEBUG, "Using socket activation for command and event sockets.");
+        }
     }
 #endif
 
@@ -1754,8 +1769,8 @@ static void run_tunneler_loop(uv_loop_t* ziti_loop) {
     int rc0 = 0, rc1;
     rc0 = rc1 = make_socket_path(ziti_loop);
     if (rc0 == 0) {
-        rc0 = start_cmd_socket(ziti_loop);
-        rc1 = start_event_socket(ziti_loop);
+        rc0 = start_cmd_socket(ziti_loop, cmdsockfile_fd);
+        rc1 = start_event_socket(ziti_loop, eventsockfile_fd);
     }
 
     if (rc0 < 0 || rc1 < 0) {
@@ -2387,7 +2402,7 @@ static void send_message_to_tunnel(char* message) {
     uv_connect_t* connect = (uv_connect_t*)malloc(sizeof(uv_connect_t));
     connect->data = strdup(message);
 
-    uv_loop_t* loop = connect_and_send_cmd(sockfile, connect, &client_handle);
+    uv_loop_t* loop = connect_and_send_cmd(cmdsockfile, connect, &client_handle);
 
     if (loop == NULL) {
         fprintf(stderr, "Cannot run UV loop, loop is null");

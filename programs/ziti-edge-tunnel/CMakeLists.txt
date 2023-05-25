@@ -39,7 +39,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     message("DISABLE_LIBSYSTEMD_FEATURE: ${DISABLE_LIBSYSTEMD_FEATURE}")
 
     if (DISABLE_LIBSYSTEMD_FEATURE)
-        target_compile_definitions(ziti-edge-tunnel PRIVATE EXCLUDE_LIBSYSTEMD_RESOLVER)
+        target_compile_definitions(ziti-edge-tunnel PRIVATE DISABLE_LIBSYSTEMD EXCLUDE_LIBSYSTEMD_RESOLVER)
     else()
         find_package(PkgConfig REQUIRED)
         pkg_check_modules(LIBSYSTEMD IMPORTED_TARGET "libsystemd")

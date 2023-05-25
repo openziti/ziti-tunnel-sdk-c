@@ -20,10 +20,7 @@
 #include <systemd/sd-bus.h>
 #include <systemd/sd-daemon.h>
 
-#define _cleanup_(f) __attribute__((cleanup(f)))
-
 extern bool libsystemd_dl_success;
-
 
 extern int (*sd_booted_f)(void);
 extern int (*sd_bus_call_f)(sd_bus *bus, sd_bus_message *m, uint64_t usec, sd_bus_error *ret_error, sd_bus_message **reply);

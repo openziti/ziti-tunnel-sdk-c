@@ -18,11 +18,7 @@
 #include <limits.h>
 #include <stdbool.h>
 #include <stdlib.h>
-#ifndef EXCLUDE_LIBSYSTEMD_RESOLVER
-#include <net/if.h>
-#include <stdarg.h>
-#include "linux/libsystemd.h"
-#endif
+#include <string.h>
 
 #include <ziti/ziti_log.h>
 #include <uv.h>
@@ -30,7 +26,13 @@
 #include "resolvers.h"
 #include "utils.h"
 
+#define _cleanup_(f) __attribute__((cleanup(f)))
+
 #ifndef EXCLUDE_LIBSYSTEMD_RESOLVER
+#include <net/if.h>
+#include <stdarg.h>
+#include "linux/libsystemd.h"
+
 #define RET_ON_FAIL(bool_func) do{if (!(bool_func)) return;} while(0)
 
 static int detect_systemd_resolved_routing_domain_wildcard(sd_bus *bus, int32_t ifindex) {
