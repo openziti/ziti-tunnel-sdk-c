@@ -1,0 +1,18 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 65484a7..6877f8a 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -47,8 +47,11 @@ configure_file(
+ function(config_library target)
+   target_sources(${target} PRIVATE ${LLHTTP_SOURCES} ${LLHTTP_HEADERS})
+ 
+-  target_include_directories(${target} PRIVATE
+-      ${CMAKE_CURRENT_SOURCE_DIR}/include
++  message("configuring ${target}")
++  target_include_directories(${target}
++          PUBLIC
++          $<INSTALL_INTERFACE:include>
++          $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+   )
+ 
+   set_target_properties(${target} PROPERTIES
