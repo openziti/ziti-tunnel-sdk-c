@@ -224,8 +224,8 @@ static void dns_update_resolvectl(const char* tun, unsigned int ifindex, const c
 }
 
 static void dns_update_systemd_resolve(const char* tun, unsigned int ifindex, const char* addr) {
-    run_command("systemd-resolve -i %s --set-dns=%s", tun, addr);
-    int s = run_command_ex(false, "systemd-resolve --status | fgrep  'DNS Domain' | fgrep -q '~.'");
+    run_command(SYSTEMD_RESOLVE " -i %s --set-dns=%s", tun, addr);
+    int s = run_command_ex(false, SYSTEMD_RESOLVE " --status | fgrep  'DNS Domain' | fgrep -q '~.'");
     // set wildcard domain if any other resolvers set it.
     if (s == 0) {
         run_command(SYSTEMD_RESOLVE " -i %s --set-domain='~.'", dns_maintainer.tun_name);

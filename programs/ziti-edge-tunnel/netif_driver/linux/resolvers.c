@@ -417,14 +417,86 @@ void dns_update_resolvconf(const char* tun, unsigned int ifindex, const char* ad
     run_command("echo 'nameserver %s' | %s -a %s", addr, RESOLVCONF, tun);
 }
 
-void dns_update_etc_resolv(const char* tun, unsigned int ifindex, const char* addr) {
-    if (run_command_ex(false, "grep -q '^nameserver %s' /etc/resolv.conf", addr) != 0) {
-        run_command("sed -z -i 's/nameserver/nameserver %s\\nnameserver/' /etc/resolv.conf", addr);
+static void cleanup_filep(FILE **file) {
+    if (*file != NULL) {
+        fclose(*file);
+        *file = NULL;
     }
 }
 
+static void cleanup_bufferp(char **buffer) {
+    if (*buffer != NULL) {
+        free(*buffer);
+        *buffer = NULL;
+    }
+}
+
+void dns_update_etc_resolv(const char* tun, unsigned int ifindex, const char* addr) {
+      const char* match = "nameserver ";
+      char replace[strlen(match) + strlen(addr) + 1];
+      strcpy(replace, match);
+      strcat(replace, addr);
+
+      _cleanup_(cleanup_filep) FILE* file = fopen(RESOLV_CONF_FILE, "r+");
+      if (file == NULL) {
+          ZITI_LOG(ERROR, "error opening %s: %s", RESOLV_CONF_FILE, strerror(errno));
+          ZITI_LOG(WARN, "run as 'root' or manually update your resolver configuration. Ziti DNS must be the first resolver: %s", addr);
+          return;
+      }
+
+      char* buffer = NULL;
+      size_t buffer_size;
+      ssize_t line_size;
+      long match_start_offset = -1;
+
+      while((line_size = getline(&buffer, &buffer_size, file)) != -1) {
+          if(strstr(buffer, match) != NULL) {
+              if(strstr(buffer, replace) != NULL) {
+                  ZITI_LOG(TRACE, "ziti nameserver is already in %s", RESOLV_CONF_FILE);
+                  return;
+              }
+              match_start_offset = ftell(file) - line_size;
+              break;
+          }
+      }
+
+      // Slices everything after the matched line into a buffer,
+      // inserts the ziti nameserver line, and flushes the buffer back to the file.
+      if (match_start_offset != -1) {
+          struct stat file_stat;
+          if(stat(RESOLV_CONF_FILE, &file_stat) == -1){
+              ZITI_LOG(ERROR, "error retrieving %s size: %s", RESOLV_CONF_FILE, strerror(errno));
+              cleanup_filep(&file);
+              exit(EXIT_FAILURE);
+          }
+
+          long remaining_size = file_stat.st_size - match_start_offset;
+          _cleanup_(cleanup_bufferp) char* remaining_content = malloc(remaining_size + 1);
+          if (remaining_content == NULL) {
+              ZITI_LOG(ERROR, "error allocating %s file buffer: %s", RESOLV_CONF_FILE, strerror(errno));
+              cleanup_filep(&file);
+              exit(EXIT_FAILURE);
+
+          }
+
+          fseek(file, match_start_offset, SEEK_SET);
+          fread(remaining_content, 1, remaining_size, file);
+          remaining_content[remaining_size] ='\0';
+          fseek(file, match_start_offset, SEEK_SET);
+          fputs(replace, file);
+          fputc('\n', file);
+          fwrite(remaining_content, 1, remaining_size, file);
+
+          return;
+      }
+
+      //If no nameservers directives to preppend, just append to the file.
+      fprintf(file, "%s\n", replace);
+      return;
+}
+
 bool is_systemd_resolved_primary_resolver(void){
-    if (is_symlink("/etc/resolv.conf")){
+    if (is_symlink(RESOLV_CONF_FILE)){
 
         const char *valid_links[] = {
             "/run/systemd/resolve/stub-resolv.conf",
@@ -434,7 +506,7 @@ bool is_systemd_resolved_primary_resolver(void){
         };
 
         char buf[PATH_MAX];
-        char *actualpath = realpath("/etc/resolv.conf", buf);
+        char *actualpath = realpath(RESOLV_CONF_FILE, buf);
 
         if (actualpath != NULL) {
             for (int idx = 0; idx < (sizeof(valid_links) / sizeof(valid_links[0])); idx++) {

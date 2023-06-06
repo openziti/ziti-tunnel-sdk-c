@@ -19,6 +19,10 @@
 #ifndef BUSCTL
 #define BUSCTL "/usr/bin/busctl"
 #endif
+
+#ifndef RESOLV_CONF_FILE
+#define RESOLV_CONF_FILE "/etc/resolv.conf"
+#endif
 #ifndef RESOLVCONF
 #define RESOLVCONF "/usr/sbin/resolvconf"
 #endif
