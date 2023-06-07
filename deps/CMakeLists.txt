@@ -25,49 +25,13 @@ if (NOT VCPKG_MANIFEST_MODE)
         add_library(llhttp::llhttp_static ALIAS llhttp_static)
     endif ()
 
-    FetchContent_Declare(
-            libsodium
-            GIT_REPOSITORY http://github.com/jedisct1/libsodium
-            GIT_TAG stable
+    FetchContent_Declare(Sodium
+            GIT_REPOSITORY https://github.com/robinlinden/libsodium-cmake.git
+            GIT_TAG 99f14233eab1d4f7f49c2af4ec836f2e701c445e # HEAD as of 2022-05-28
             OVERRIDE_FIND_PACKAGE
     )
-
-    FetchContent_GetProperties(libsodium)
-    if (NOT libsodium_POPULATED)
-        FetchContent_Populate(libsodium)
-        message("MAKE_DIRECTORY	${libsodium_BINARY_DIR}")
-
-        if (NOT EXISTS ${libsodium_BINARY_DIR})
-            file(MAKE_DIRECTORY ${libsodium_BINARY_DIR})
-        endif ()
-        if (NOT WIN32)
-            if (NOT EXISTS ${unofficial-sodium_BINARY_DIR}/config.status)
-                # first build on macos fails because CMake picks up xcode
-                if (APPLE)
-                    unset(ENV{CC})
-                    unset(ENV{CXX})
-                endif ()
-                execute_process(
-                        COMMAND "${libsodium_SOURCE_DIR}/configure" "--prefix=${libsodium_BINARY_DIR}"
-                        --disable-opt --without-pthreads --with-pic --host=${triple}
-                        --with-sysroot=${CMAKE_SYSROOT}
-                        WORKING_DIRECTORY ${libsodium_BINARY_DIR}
-                )
-            endif ()
-            execute_process(
-                    COMMAND make -j4
-                    WORKING_DIRECTORY ${libsodium_BINARY_DIR}
-            )
-            execute_process(
-                    COMMAND make install
-                    WORKING_DIRECTORY ${libsodium_BINARY_DIR}
-            )
-        endif ()
-    endif ()
-
-    add_library(sodium IMPORTED STATIC GLOBAL)
-    target_include_directories(sodium INTERFACE ${libsodium_BINARY_DIR}/include)
-    set_target_properties(sodium PROPERTIES IMPORTED_LOCATION ${libsodium_BINARY_DIR}/lib/libsodium.a)
+    set(SODIUM_DISABLE_TESTS ON)
+    FetchContent_MakeAvailable(Sodium)
 endif ()
 
 if (NOT TUNNEL_SDK_ONLY)
