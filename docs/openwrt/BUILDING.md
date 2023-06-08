@@ -26,3 +26,26 @@ $ cd /tmp/my-ziti-build
 $ ${ZITI_TUN_SRC_DIR}/scripts/openwrt-build.sh -s ${OPENWRT_DIR}
 ```
 
+## TELTONIKA notes
+
+### RUTOS
+
+Follow instructions [here](https://wiki.teltonika-networks.com/view/RUTOS_Software_Development_Kit_instructions), 
+however it is missing one step. After installing requirements with `apt`, you'll need to get `nodejs` and `npm` as updated
+OpenWRT toolchain requires it.
+
+The easiest way to get the right version(>= 12.0) of `nodejs` is to use [NodeJS Version Manager](https://github.com/nvm-sh/nvm)
+
+After `nvm` is installed:
+```bash
+$ nvm install 12
+Downloading and installing node v12.22.12...
+Downloading https://nodejs.org/dist/v12.22.12/node-v12.22.12-linux-x64.tar.xz...
+############################################################################################################################################################################## 100.0%
+Computing checksum with sha256sum
+Checksums matched!
+Now using node v12.22.12 (npm v6.14.16)
+Creating default alias: default -> 12 (-> v12.22.12)
+```
+
+Once it is done, open a new shell so that `nodejs` is available and continue following instructions with `./scripts/feeds update -a` step.
