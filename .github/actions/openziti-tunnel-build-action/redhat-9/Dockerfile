@@ -1,4 +1,4 @@
-ARG CMAKE_VERSION="3.22.3"
+ARG CMAKE_VERSION="3.26.3"
 
 FROM rockylinux:9
 
@@ -15,7 +15,6 @@ ENV TZ=UTC
 
 RUN dnf install -y \
         "@Development Tools" \
-        cmake \
         dnf-plugins-core \
         iproute \
         python3 \
@@ -30,11 +29,23 @@ RUN dnf install -y \
         doxygen \
         graphviz \
         git \
+        ninja-build \
     && dnf clean all 
 
 RUN curl -sSfL https://cmake.org/files/v${CMAKE_VERSION%.*}/cmake-${CMAKE_VERSION}-linux-$(uname -m).sh -o cmake.sh \
     && (bash cmake.sh --skip-license --prefix=/usr/local) \
     && rm cmake.sh
+
+ENV GIT_CONFIG_GLOBAL="/tmp/ziti-builder-gitconfig"
+
+ENV VCPKG_ROOT=/usr/local/vcpkg
+# this must be set on arm. see https://learn.microsoft.com/en-us/vcpkg/users/config-environment#vcpkg_force_system_binaries
+ENV VCPKG_FORCE_SYSTEM_BINARIES=yes
+
+RUN cd /usr/local \
+    && git clone --branch 2023.04.15 https://github.com/microsoft/vcpkg \
+    && ./vcpkg/bootstrap-vcpkg.sh -disableMetrics \
+    && chmod -R ugo+rwX /usr/local/vcpkg
 
 WORKDIR /github/workspace
 COPY ./entrypoint.sh /root/

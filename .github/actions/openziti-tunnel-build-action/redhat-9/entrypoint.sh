@@ -10,6 +10,20 @@ echo "INFO: GIT_DISCOVERY_ACROSS_FILESYSTEM=${GIT_DISCOVERY_ACROSS_FILESYSTEM}"
 echo "INFO: WORKDIR=${PWD}"
 echo "INFO: $(git --version)"
 
+# if first positional is an expected arch string then set cmake preset,
+# else use ci-linux-x64 (which actually just uses native/host tools - e.g. not cross compile)
+if [ ${#} -ge 1 ]; then
+    cmake_preset="${1}"
+else
+    cmake_preset="ci-linux-x64"
+fi
+
+if [ ${#} -ge 2 ]; then
+    cmake_config="${2}"
+else
+    cmake_config="Release"
+fi
+
 # workspace dir for each build env is added to "safe" dirs in global config e.g.
 # ~/.gitconfig so both runner and builder containers trust these dirs
 # owned by different UIDs from that of Git's EUID. This is made necessary
@@ -22,23 +36,21 @@ for SAFE in \
         git config --global --add safe.directory ${SAFE}
 done
 
-cmake -E make_directory ./build
 (
+    [[ -d ./build ]] && rm -r ./build
+    cmake -E make_directory ./build  
+    # allow unset for scl_source scripts
+    set +u
     cmake \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_TOOLCHAIN_FILE=./toolchains/default.cmake \
+        --preset "${cmake_preset}" \
+        -DCMAKE_BUILD_TYPE="${cmake_config}" \
         -DBUILD_DIST_PACKAGES=ON \
         -DUSE_OPENSSL=ON \
         -S . \
         -B ./build 
     cmake \
         --build ./build \
+        --config "${cmake_config}" \
         --target package \
         --verbose
 )
-
-if (( ${#} )); then
-    echo "INFO: running ziti-edge-tunnel"
-    set -x
-    ./build/programs/ziti-edge-tunnel/ziti-edge-tunnel ${@}
-fi
