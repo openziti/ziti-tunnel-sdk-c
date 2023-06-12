@@ -47,7 +47,6 @@ cmake -E make_directory ./build
             --preset "${cmake_preset}" \
             -DCMAKE_BUILD_TYPE="${cmake_config}" \
             -DBUILD_DIST_PACKAGES=ON \
-            -DUSE_OPENSSL=ON \
             -S . \
             -B ./build 
     source scl_source enable gcc-toolset-10 \

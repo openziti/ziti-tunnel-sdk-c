@@ -90,7 +90,7 @@ if [ -x /usr/bin/ninja ]; then
 fi
 
 if [ -f "$target_dir/usr/include/openssl/opensslv.h" ]; then
-  CMAKE_OPTS="$CMAKE_OPTS -DUSE_OPENSSL=on"
+  CMAKE_OPTS="$CMAKE_OPTS"
 fi
 
 if [ -f "$target_dir/usr/include/sodium.h" ]; then
