@@ -432,15 +432,29 @@ static void cleanup_bufferp(char **buffer) {
     }
 }
 
+#define CLEANUP_ETC_RESOLV() do { \
+    cleanup_bufferp(&replace); \
+    cleanup_filep(&file); \
+    exit(EXIT_FAILURE); \
+} while(0)
+
+#define CHECK_F_EOF(f) do { \
+    if ((f) == EOF) { \
+        ZITI_LOG(ERROR, "EOF received while writing file"); \
+        CLEANUP_ETC_RESOLV(); \
+    } \
+} while (0)
+
 void dns_update_etc_resolv(const char* tun, unsigned int ifindex, const char* addr) {
       const char* match = "nameserver ";
-      char replace[strlen(match) + strlen(addr) + 1];
+      int replace_size = strlen(match) + strlen(addr) + 1;
+      _cleanup_(cleanup_bufferp) char* replace = (char *)malloc(replace_size);
       strcpy(replace, match);
       strcat(replace, addr);
 
       _cleanup_(cleanup_filep) FILE* file = fopen(RESOLV_CONF_FILE, "r+");
       if (file == NULL) {
-          ZITI_LOG(ERROR, "error opening %s: %s", RESOLV_CONF_FILE, strerror(errno));
+          ZITI_LOG(ERROR, "cannot open %s: %s", RESOLV_CONF_FILE, strerror(errno));
           ZITI_LOG(WARN, "run as 'root' or manually update your resolver configuration. Ziti DNS must be the first resolver: %s", addr);
           return;
       }
@@ -463,36 +477,40 @@ void dns_update_etc_resolv(const char* tun, unsigned int ifindex, const char* ad
 
       // Slices everything after the matched line into a buffer,
       // inserts the ziti nameserver line, and flushes the buffer back to the file.
-      if (match_start_offset != -1) {
+      if (match_start_offset >= 0) {
           struct stat file_stat;
           if(stat(RESOLV_CONF_FILE, &file_stat) == -1){
-              ZITI_LOG(ERROR, "error retrieving %s size: %s", RESOLV_CONF_FILE, strerror(errno));
-              cleanup_filep(&file);
-              exit(EXIT_FAILURE);
+              ZITI_LOG(ERROR, "cannot stat %s: %s", RESOLV_CONF_FILE, strerror(errno));
+              CLEANUP_ETC_RESOLV();
           }
 
           long remaining_size = file_stat.st_size - match_start_offset;
           _cleanup_(cleanup_bufferp) char* remaining_content = malloc(remaining_size + 1);
           if (remaining_content == NULL) {
               ZITI_LOG(ERROR, "error allocating %s file buffer: %s", RESOLV_CONF_FILE, strerror(errno));
-              cleanup_filep(&file);
-              exit(EXIT_FAILURE);
-
+              CLEANUP_ETC_RESOLV();
           }
 
           fseek(file, match_start_offset, SEEK_SET);
-          fread(remaining_content, 1, remaining_size, file);
+          if (fread(remaining_content, sizeof(char), remaining_size, file) != remaining_size) {
+              if (ferror(file) || feof(file)) {
+                  ZITI_LOG(ERROR, "Error during file stream operation or EOF received.");
+              }
+              CLEANUP_ETC_RESOLV();
+          }
+
           remaining_content[remaining_size] ='\0';
           fseek(file, match_start_offset, SEEK_SET);
-          fputs(replace, file);
-          fputc('\n', file);
-          fwrite(remaining_content, 1, remaining_size, file);
+          CHECK_F_EOF(fputs(replace, file));
+          CHECK_F_EOF(fputc('\n', file));
+          CHECK_F_EOF(fputs(remaining_content, file));
 
           return;
       }
 
-      //If no nameservers directives to preppend, just append to the file.
-      fprintf(file, "%s\n", replace);
+      // If no nameservers directives to preppend, just append to the file.
+      CHECK_F_EOF(fputs(replace, file));
+      CHECK_F_EOF(fputc('\n', file));
       return;
 }
 
