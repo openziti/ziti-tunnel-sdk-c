@@ -432,19 +432,6 @@ static void cleanup_bufferp(char **buffer) {
     }
 }
 
-#define CLEANUP_ETC_RESOLV() do { \
-    cleanup_bufferp(&replace); \
-    cleanup_filep(&file); \
-    exit(EXIT_FAILURE); \
-} while(0)
-
-#define CHECK_F_EOF(f) do { \
-    if ((f) == EOF) { \
-        ZITI_LOG(ERROR, "EOF received while writing file"); \
-        CLEANUP_ETC_RESOLV(); \
-    } \
-} while (0)
-
 void dns_update_etc_resolv(const char* tun, unsigned int ifindex, const char* addr) {
       const char* match = "nameserver ";
       int replace_size = strlen(match) + strlen(addr) + 1;
@@ -474,6 +461,19 @@ void dns_update_etc_resolv(const char* tun, unsigned int ifindex, const char* ad
               break;
           }
       }
+
+#define CLEANUP_ETC_RESOLV() do { \
+    cleanup_bufferp(&replace); \
+    cleanup_filep(&file); \
+    exit(EXIT_FAILURE); \
+} while(0)
+
+#define CHECK_F_EOF(f) do { \
+    if ((f) == EOF) { \
+        ZITI_LOG(ERROR, "EOF received while writing file"); \
+        CLEANUP_ETC_RESOLV(); \
+    } \
+} while (0)
 
       // Slices everything after the matched line into a buffer,
       // inserts the ziti nameserver line, and flushes the buffer back to the file.
