@@ -18,6 +18,7 @@
 #include <limits.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include <string.h>
 #ifndef EXCLUDE_LIBSYSTEMD_RESOLVER
 #include <net/if.h>
 #include <stdarg.h>
@@ -417,14 +418,104 @@ void dns_update_resolvconf(const char* tun, unsigned int ifindex, const char* ad
     run_command("echo 'nameserver %s' | %s -a %s", addr, RESOLVCONF, tun);
 }
 
-void dns_update_etc_resolv(const char* tun, unsigned int ifindex, const char* addr) {
-    if (run_command_ex(false, "grep -q '^nameserver %s' /etc/resolv.conf", addr) != 0) {
-        run_command("sed -z -i 's/nameserver/nameserver %s\\nnameserver/' /etc/resolv.conf", addr);
+static void cleanup_filep(FILE **file) {
+    if (*file != NULL) {
+        fclose(*file);
+        *file = NULL;
     }
 }
 
+static void cleanup_bufferp(char **buffer) {
+    if (*buffer != NULL) {
+        free(*buffer);
+        *buffer = NULL;
+    }
+}
+
+void dns_update_etc_resolv(const char* tun, unsigned int ifindex, const char* addr) {
+      const char* match = "nameserver ";
+      int replace_size = strlen(match) + strlen(addr) + 1;
+      _cleanup_(cleanup_bufferp) char* replace = (char *)malloc(replace_size);
+      strcpy(replace, match);
+      strcat(replace, addr);
+
+      _cleanup_(cleanup_filep) FILE* file = fopen(RESOLV_CONF_FILE, "r+");
+      if (file == NULL) {
+          ZITI_LOG(ERROR, "cannot open %s: %s", RESOLV_CONF_FILE, strerror(errno));
+          ZITI_LOG(WARN, "run as 'root' or manually update your resolver configuration. Ziti DNS must be the first resolver: %s", addr);
+          return;
+      }
+
+      char* buffer = NULL;
+      size_t buffer_size;
+      ssize_t line_size;
+      long match_start_offset = -1;
+
+      while((line_size = getline(&buffer, &buffer_size, file)) != -1) {
+          if(strstr(buffer, match) != NULL) {
+              if(strstr(buffer, replace) != NULL) {
+                  ZITI_LOG(TRACE, "ziti nameserver is already in %s", RESOLV_CONF_FILE);
+                  return;
+              }
+              match_start_offset = ftell(file) - line_size;
+              break;
+          }
+      }
+
+#define CLEANUP_ETC_RESOLV() do { \
+    cleanup_bufferp(&replace); \
+    cleanup_filep(&file); \
+    exit(EXIT_FAILURE); \
+} while(0)
+
+#define CHECK_F_EOF(f) do { \
+    if ((f) == EOF) { \
+        ZITI_LOG(ERROR, "EOF received while writing file"); \
+        CLEANUP_ETC_RESOLV(); \
+    } \
+} while (0)
+
+      // Slices everything after the matched line into a buffer,
+      // inserts the ziti nameserver line, and flushes the buffer back to the file.
+      if (match_start_offset >= 0) {
+          struct stat file_stat;
+          if(stat(RESOLV_CONF_FILE, &file_stat) == -1){
+              ZITI_LOG(ERROR, "cannot stat %s: %s", RESOLV_CONF_FILE, strerror(errno));
+              CLEANUP_ETC_RESOLV();
+          }
+
+          long remaining_size = file_stat.st_size - match_start_offset;
+          _cleanup_(cleanup_bufferp) char* remaining_content = malloc(remaining_size + 1);
+          if (remaining_content == NULL) {
+              ZITI_LOG(ERROR, "error allocating %s file buffer: %s", RESOLV_CONF_FILE, strerror(errno));
+              CLEANUP_ETC_RESOLV();
+          }
+
+          fseek(file, match_start_offset, SEEK_SET);
+          if (fread(remaining_content, sizeof(char), remaining_size, file) != remaining_size) {
+              if (ferror(file) || feof(file)) {
+                  ZITI_LOG(ERROR, "Error during file stream operation or EOF received.");
+              }
+              CLEANUP_ETC_RESOLV();
+          }
+
+          remaining_content[remaining_size] ='\0';
+          fseek(file, match_start_offset, SEEK_SET);
+          CHECK_F_EOF(fputs(replace, file));
+          CHECK_F_EOF(fputc('\n', file));
+          CHECK_F_EOF(fputs(remaining_content, file));
+
+          return;
+      }
+
+      // If no nameservers directives to preppend, just append to the file.
+      CHECK_F_EOF(fputs(replace, file));
+      CHECK_F_EOF(fputc('\n', file));
+      return;
+}
+
 bool is_systemd_resolved_primary_resolver(void){
-    if (is_symlink("/etc/resolv.conf")){
+    if (is_symlink(RESOLV_CONF_FILE)){
 
         const char *valid_links[] = {
             "/run/systemd/resolve/stub-resolv.conf",
@@ -434,7 +525,7 @@ bool is_systemd_resolved_primary_resolver(void){
         };
 
         char buf[PATH_MAX];
-        char *actualpath = realpath("/etc/resolv.conf", buf);
+        char *actualpath = realpath(RESOLV_CONF_FILE, buf);
 
         if (actualpath != NULL) {
             for (int idx = 0; idx < (sizeof(valid_links) / sizeof(valid_links[0])); idx++) {
