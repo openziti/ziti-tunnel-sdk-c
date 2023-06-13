@@ -33,8 +33,8 @@
 #include "resolvers.h"
 #include "utils.h"
 
-#ifndef EXCLUDE_LIBSYSTEMD_RESOLVER
 #define _cleanup_(f) __attribute__((cleanup(f)))
+#ifndef EXCLUDE_LIBSYSTEMD_RESOLVER
 #define TRY_DL(dl_func) do{if ((dl_func) != 0) goto dl_error;} while(0)
 #define RET_ON_FAIL(bool_func) do{if (!(bool_func)) return;} while(0)
 
