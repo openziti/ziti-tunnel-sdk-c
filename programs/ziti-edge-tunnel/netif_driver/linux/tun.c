@@ -189,7 +189,7 @@ close_file: ; /* declaration is not a statement */
     uv_fs_req_cleanup(&close_req);
 }
 
-void tun_commit_routes(netif_handle tun, uv_loop_t *l) {
+int tun_commit_routes(netif_handle tun, uv_loop_t *l) {
     uv_work_t *wr = calloc(1, sizeof(uv_work_t));
     struct rt_process_cmd *cmd = calloc(1, sizeof(struct rt_process_cmd));
     if (tun->route_updates && model_map_size(tun->route_updates) > 0) {
@@ -200,6 +200,7 @@ void tun_commit_routes(netif_handle tun, uv_loop_t *l) {
         tun->route_updates = NULL;
         uv_queue_work(l, wr, process_routes_updates, route_updates_done);
     }
+    return 0;
 }
 
 static void dns_update_resolvectl(const char* tun, unsigned int ifindex, const char* addr) {
