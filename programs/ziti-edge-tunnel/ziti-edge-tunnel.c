@@ -484,7 +484,8 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
             cmd_accepted = true;
             tunnel_add_identity tunnel_add_identity_cmd = {0};
             if (tnl_cmd->data == NULL ||
-                parse_tunnel_add_identity(&tunnel_add_identity_cmd, tnl_cmd->data, strlen(tnl_cmd->data)) < 0) {
+                parse_tunnel_add_identity(&tunnel_add_identity_cmd, tnl_cmd->data, strlen(tnl_cmd->data)) < 0 ||
+                (tunnel_add_identity_cmd.jwtFileName == NULL && tunnel_add_identity_cmd.jwtContent == NULL)) {
                 result.error = "invalid command";
                 result.success = false;
                 free_tunnel_add_identity(&tunnel_add_identity_cmd);
@@ -2375,6 +2376,7 @@ static int on_off_identity_opts(int argc, char *argv[]) {
     }
     size_t json_len;
     cmd->data = tunnel_on_off_identity_to_json(&on_off_identity_options, MODEL_JSON_COMPACT, &json_len);
+    on_off_identity_options.identifier = NULL; // don't try to free static memory (`optarg`)
     free_tunnel_on_off_identity(&on_off_identity_options);
 
     return optind;
@@ -2943,9 +2945,9 @@ static CommandLine run_host_cmd = make_command("run-host", "run Ziti tunnel to h
 static CommandLine dump_cmd = make_command("dump", "dump the identities information", "[-i <identity>] [-p <dir>]",
                                            "\t-i|--identity\tdump identity info\n"
                                            "\t-p|--dump_path\tdump into path\n", dump_opts, send_message_to_tunnel_fn);
-static CommandLine on_off_id_cmd = make_command("on_off_identity", "enable/disable the identities information", "[-i <identity>] [-o <onoff>]",
+static CommandLine on_off_id_cmd = make_command("on_off_identity", "enable/disable the identities information", "-i <identity> -o t|f",
                                            "\t-i|--identity\tidentity info that needs to be enabled/disabled\n"
-                                                "\t-o|--onoff\tenable/disable the identity\n", on_off_identity_opts, send_message_to_tunnel_fn);
+                                                "\t-o|--onoff\t't' or 'f' to enable or disable the identity\n", on_off_identity_opts, send_message_to_tunnel_fn);
 static CommandLine enable_id_cmd = make_command("enable", "enable the identities information", "[-i <identity>]",
                                                  "\t-i|--identity\tidentity info that needs to be enabled\n", enable_identity_opts, send_message_to_tunnel_fn);
 static CommandLine enable_mfa_cmd = make_command("enable_mfa", "Enable MFA function fetches the totp url from the controller", "[-i <identity>]",
