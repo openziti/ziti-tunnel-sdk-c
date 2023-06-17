@@ -19,6 +19,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #ifndef EXCLUDE_LIBSYSTEMD_RESOLVER
 #include <net/if.h>
 #include <stdarg.h>
@@ -38,9 +39,9 @@
 #define TRY_DL(dl_func) do{if ((dl_func) != 0) goto dl_error;} while(0)
 #define RET_ON_FAIL(bool_func) do{if (!(bool_func)) return;} while(0)
 
-static int sd_bus_is_acquired_name(sd_bus *bus, const char* bus_name);
+static int sd_bus_is_acquired_name(sd_bus *bus, const char *bus_name);
 static int detect_systemd_resolved_routing_domain_wildcard(sd_bus *bus, int32_t ifindex);
-static bool set_systemd_resolved_link_setting(sd_bus *bus, const char* tun, const char* method, const char* method_type, ...);
+static bool set_systemd_resolved_link_setting(sd_bus *bus, const char *tun, const char *method, const char *method_type, ...);
 
 // libsystemd prototypes
 static uv_once_t guard;
@@ -149,7 +150,7 @@ static int sd_bus_call_method_va(
         return sd_bus_call_f(bus, m, 0, error, reply);
 }
 
-static int sd_bus_run_command(sd_bus *bus, const char *destination, const char* path, const char* interface,  const char* command) {
+static int sd_bus_run_command(sd_bus *bus, const char *destination, const char *path, const char *interface,  const char *command) {
     int r;
     _cleanup_(sd_bus_error_free_wrapper) sd_bus_error error = SD_BUS_ERROR_NULL;
 
@@ -176,7 +177,7 @@ static int sd_bus_is_acquired_name(sd_bus *bus, const char* bus_name) {
     int r;
     _cleanup_(sd_bus_message_unrefp_f) sd_bus_message *reply = NULL;
     _cleanup_(sd_bus_error_free_wrapper) sd_bus_error error = SD_BUS_ERROR_NULL;
-    char** acquired = NULL;
+    char **acquired = NULL;
 
     r = sd_bus_call_method_f(
             bus,
@@ -255,7 +256,7 @@ static int detect_systemd_resolved_routing_domain_wildcard(sd_bus *bus, int32_t 
 
     struct s_domain {
         int32_t ifindex;
-        char * name;
+        char *name;
         int is_routing_only;
     };
 
@@ -289,7 +290,7 @@ static int detect_systemd_resolved_routing_domain_wildcard(sd_bus *bus, int32_t 
     return routing_only_wildcard_set;
 }
 
-static bool set_systemd_resolved_link_setting(sd_bus *bus, const char* tun, const char* method, const char* method_type, ...) {
+static bool set_systemd_resolved_link_setting(sd_bus *bus, const char *tun, const char *method, const char *method_type, ...) {
     _cleanup_(sd_bus_message_unrefp_f) sd_bus_message *reply = NULL;
     _cleanup_(sd_bus_error_free_wrapper) sd_bus_error error = SD_BUS_ERROR_NULL;
 
@@ -353,7 +354,7 @@ bool try_libsystemd_resolver(void) {
             return false;
         }
         if (r == 0) {
-            ZITI_LOG(INFO, "systemd-resolved selected as dns resolver manager");
+            ZITI_LOG(INFO, "systemd-resolved selected as DNS resolver manager");
             return true;
         }
     } else {
@@ -363,7 +364,7 @@ bool try_libsystemd_resolver(void) {
     return false;
 }
 
-void dns_update_systemd_resolved(const char* tun, unsigned int ifindex, const char* addr) {
+void dns_update_systemd_resolved(const char *tun, unsigned int ifindex, const char *addr) {
     int r;
     struct in_addr inaddr;
 
@@ -375,7 +376,7 @@ void dns_update_systemd_resolved(const char* tun, unsigned int ifindex, const ch
     r = inet_pton(AF_INET, addr, &inaddr);
 
     if (r != 1) {
-        ZITI_LOG(ERROR, "Failed to translate dns address. Received: %s", addr);
+        ZITI_LOG(ERROR, "Failed to translate DNS address. Received: %s", addr);
         return;
     } else {
         sscanf(addr, "%hhu.%hhu.%hhu.%hhu", &ay[0], &ay[1], &ay[2], &ay[3]);
@@ -414,8 +415,33 @@ void dns_update_systemd_resolved(const char* tun, unsigned int ifindex, const ch
 }
 #endif
 
-void dns_update_resolvconf(const char* tun, unsigned int ifindex, const char* addr) {
+void dns_update_resolvconf(const char *tun, unsigned int ifindex, const char *addr) {
     run_command("echo 'nameserver %s' | %s -a %s", addr, RESOLVCONF, tun);
+}
+
+static bool make_copy(const char *src, const char *dst) {
+
+    uv_fs_t *req = (uv_fs_t *)malloc(sizeof(uv_fs_t));
+
+    ZITI_LOG(INFO, "attempting copy of: %s", src);
+
+    int ret = uv_fs_copyfile(uv_default_loop(), req, src, dst, UV_FS_COPYFILE_EXCL, NULL);
+
+    if (req->result < 0) {
+        if (req->result == UV_EEXIST) {
+            ZITI_LOG(DEBUG, "%s has already been copied", req->path);
+        } else {
+            ZITI_LOG(WARN, "could not create copy[%s]: %s", req->new_path, uv_strerror(req->result));
+            uv_fs_req_cleanup(req);
+            return false;
+        }
+    }
+
+    ZITI_LOG(INFO, "copy successful: %s", req->new_path);
+
+    uv_fs_req_cleanup(req);
+
+    return true;
 }
 
 static void cleanup_filep(FILE **file) {
@@ -432,24 +458,33 @@ static void cleanup_bufferp(char **buffer) {
     }
 }
 
-void dns_update_etc_resolv(const char* tun, unsigned int ifindex, const char* addr) {
-      const char* match = "nameserver ";
-      int replace_size = strlen(match) + strlen(addr) + 1;
-      _cleanup_(cleanup_bufferp) char* replace = (char *)malloc(replace_size);
+void dns_update_etc_resolv(const char *tun, unsigned int ifindex, const char *addr) {
+      bool copy_r = make_copy(RESOLV_CONF_FILE, RESOLV_CONF_FILE ".bkp");
+
+      const char *match = "nameserver ";
+      off_t replace_size = strlen(match) + strlen(addr) + sizeof(char);
+
+      _cleanup_(cleanup_bufferp) char *replace = (char *)malloc((size_t)(replace_size + 1));
+      if (replace == NULL){
+          ZITI_LOG(ERROR, "error allocating replace buffer: %s", strerror(errno));
+          exit(EXIT_FAILURE);
+      }
+
       strcpy(replace, match);
       strcat(replace, addr);
+      strcat(replace, "\n");
 
-      _cleanup_(cleanup_filep) FILE* file = fopen(RESOLV_CONF_FILE, "r+");
+      _cleanup_(cleanup_filep) FILE *file = fopen(RESOLV_CONF_FILE, "r+");
       if (file == NULL) {
           ZITI_LOG(ERROR, "cannot open %s: %s", RESOLV_CONF_FILE, strerror(errno));
           ZITI_LOG(WARN, "run as 'root' or manually update your resolver configuration. Ziti DNS must be the first resolver: %s", addr);
           return;
       }
 
-      char* buffer = NULL;
+      char *buffer = NULL;
       size_t buffer_size;
       ssize_t line_size;
-      long match_start_offset = -1;
+      off_t match_start_offset = -1;
 
       while((line_size = getline(&buffer, &buffer_size, file)) != -1) {
           if(strstr(buffer, match) != NULL) {
@@ -468,49 +503,74 @@ void dns_update_etc_resolv(const char* tun, unsigned int ifindex, const char* ad
     exit(EXIT_FAILURE); \
 } while(0)
 
-#define CHECK_F_EOF(f) do { \
-    if ((f) == EOF) { \
-        ZITI_LOG(ERROR, "EOF received while writing file"); \
-        CLEANUP_ETC_RESOLV(); \
-    } \
-} while (0)
+      struct stat file_stat;
+      if(stat(RESOLV_CONF_FILE, &file_stat) == -1){
+          ZITI_LOG(ERROR, "cannot stat %s: %s", RESOLV_CONF_FILE, strerror(errno));
+          CLEANUP_ETC_RESOLV();
+      }
 
       // Slices everything after the matched line into a buffer,
       // inserts the ziti nameserver line, and flushes the buffer back to the file.
       if (match_start_offset >= 0) {
-          struct stat file_stat;
-          if(stat(RESOLV_CONF_FILE, &file_stat) == -1){
-              ZITI_LOG(ERROR, "cannot stat %s: %s", RESOLV_CONF_FILE, strerror(errno));
-              CLEANUP_ETC_RESOLV();
-          }
 
-          long remaining_size = file_stat.st_size - match_start_offset;
-          _cleanup_(cleanup_bufferp) char* remaining_content = malloc(remaining_size + 1);
+          off_t remaining_size = file_stat.st_size - match_start_offset;
+
+          _cleanup_(cleanup_bufferp) char *remaining_content = (char *)malloc(remaining_size + 1);
           if (remaining_content == NULL) {
-              ZITI_LOG(ERROR, "error allocating %s file buffer: %s", RESOLV_CONF_FILE, strerror(errno));
+              ZITI_LOG(ERROR, "error allocating %s remaining content buffer: %s", RESOLV_CONF_FILE, strerror(errno));
               CLEANUP_ETC_RESOLV();
           }
 
           fseek(file, match_start_offset, SEEK_SET);
-          if (fread(remaining_content, sizeof(char), remaining_size, file) != remaining_size) {
+          if (fread(remaining_content, sizeof(char), (size_t)remaining_size, file) != remaining_size) {
               if (ferror(file) || feof(file)) {
                   ZITI_LOG(ERROR, "Error during file stream operation or EOF received.");
               }
+              cleanup_bufferp(&remaining_content);
+              CLEANUP_ETC_RESOLV();
+          }
+          remaining_content[remaining_size] = '\0';
+
+          _cleanup_(cleanup_bufferp) char *rptr = realloc(replace, (size_t)(replace_size + remaining_size + 1));
+          if (rptr == NULL) {
+              ZITI_LOG(ERROR, "cannot realloc");
+              cleanup_bufferp(&remaining_content);
               CLEANUP_ETC_RESOLV();
           }
 
-          remaining_content[remaining_size] ='\0';
+          // Handle case in which realloc moves the memory block
+          // and calls free()
+          if (rptr != replace) {
+              replace = NULL;
+          }
+
+          strcat(rptr, remaining_content);
+
           fseek(file, match_start_offset, SEEK_SET);
-          CHECK_F_EOF(fputs(replace, file));
-          CHECK_F_EOF(fputc('\n', file));
-          CHECK_F_EOF(fputs(remaining_content, file));
+
+          if (fputs(rptr, file) == EOF) {
+              ZITI_LOG(ERROR, "EOF received while writing file. Attempting to restore file to original content...");
+              fseek(file, match_start_offset, SEEK_SET);
+              if (fputs(remaining_content, file) == EOF) {
+                  ZITI_LOG(ERROR, "EOF received while restoring file."); 
+                  if (copy_r) {
+                      ZITI_LOG(ERROR, "Backup location: %s", RESOLV_CONF_FILE ".bkp");
+                  }
+                  cleanup_bufferp(&remaining_content);
+                  cleanup_bufferp(&rptr);
+                  CLEANUP_ETC_RESOLV();
+              }
+          }
+          ZITI_LOG(DEBUG, "Added ziti DNS resolver to %s", RESOLV_CONF_FILE);
 
           return;
       }
 
-      // If no nameservers directives to preppend, just append to the file.
-      CHECK_F_EOF(fputs(replace, file));
-      CHECK_F_EOF(fputc('\n', file));
+      // If no nameserver directives to prepend, just append to the file.
+      if (fputs(replace, file) == EOF) {
+          ZITI_LOG(ERROR, "EOF received while appending to: %s", RESOLV_CONF_FILE);
+          CLEANUP_ETC_RESOLV();
+      }
       return;
 }
 
