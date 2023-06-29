@@ -19,7 +19,6 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 #ifndef EXCLUDE_LIBSYSTEMD_RESOLVER
 #include <net/if.h>
 #include <stdarg.h>
