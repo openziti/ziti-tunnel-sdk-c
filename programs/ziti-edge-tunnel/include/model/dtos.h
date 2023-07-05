@@ -62,6 +62,10 @@ XX(HostName, string, none, HostName, __VA_ARGS__) \
 XX(IP, string, none, IP, __VA_ARGS__) \
 XX(Prefix, int, none, Prefix, __VA_ARGS__)
 
+#define ALLOWED_SOURCE_ADDRESS(XX, ...) \
+XX(Prefix, string, none, Prefix, __VA_ARGS__) \
+XX(Suffix, int, none, Suffix, __VA_ARGS__)
+
 #define TUNNEL_PORT_RANGE(XX, ...) \
 XX(High, int, none, High, __VA_ARGS__) \
 XX(Low, int, none, Low, __VA_ARGS__)
@@ -82,6 +86,7 @@ XX(Id, string, none, Id, __VA_ARGS__) \
 XX(Name, string, none, Name, __VA_ARGS__) \
 XX(Protocols, string, array, Protocols, __VA_ARGS__) \
 XX(Addresses, tunnel_address, array, Addresses, __VA_ARGS__) \
+XX(AllowedSourceAddresses, allowed_source_address, array, AllowedSourceAddresses, __VA_ARGS__) \
 XX(Ports, tunnel_port_range, array, Ports, __VA_ARGS__)  \
 XX(OwnsIntercept, bool, none, OwnsIntercept, __VA_ARGS__) \
 XX(PostureChecks, tunnel_posture_check, array, PostureChecks, __VA_ARGS__) \
@@ -117,6 +122,7 @@ XX(BuildDate, string, none, BuildDate, __VA_ARGS__)
 DECLARE_MODEL(tunnel_config, TUNNEL_CONFIG)
 DECLARE_MODEL(tunnel_metrics, TUNNEL_METRICS)
 DECLARE_MODEL(tunnel_address, TUNNEL_ADDRESS)
+DECLARE_MODEL(allowed_source_address, ALLOWED_SOURCE_ADDRESS)
 DECLARE_MODEL(tunnel_port_range, TUNNEL_PORT_RANGE)
 DECLARE_MODEL(tunnel_posture_check, TUNNEL_POSTURE_CHECK)
 DECLARE_MODEL(tunnel_service_permissions, TUNNEL_SERVICE_PERMISSIONS)

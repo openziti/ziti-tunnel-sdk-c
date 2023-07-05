@@ -28,6 +28,7 @@
 
 model_map tnl_identity_map = {0};
 static const char* CFG_INTERCEPT_V1 = "intercept.v1";
+static const char* CFG_HOST_V1 = "host.v1";
 static const char* CFG_ZITI_TUNNELER_CLIENT_V1 = "ziti-tunneler-client.v1";
 static tunnel_status tnl_status = {0};
 
@@ -259,6 +260,15 @@ static void setTunnelPostureDataTimeout(tunnel_service *tnl_svc, ziti_service *s
     ZITI_LOG(DEBUG, "service[%s] timeout=%d timeoutRemaining=%d", service->name, minTimeout, minTimeoutRemaining);
 }
 
+static allowed_source_address *to_allowedSourceAddress(const ziti_address *za) {
+    allowed_source_address *allowed_address = calloc(1, sizeof(struct allowed_source_address_s));
+    allowed_address->Prefix = calloc(INET_ADDRSTRLEN+1, sizeof(char));
+    uv_inet_ntop(za->addr.cidr.af, &za->addr.cidr.ip, allowed_address->Prefix, INET_ADDRSTRLEN);
+    allowed_address->Suffix = (unsigned int) za->addr.cidr.bits;
+    ZITI_LOG(TRACE, "CIDR address: %s/%d", allowed_address->Prefix, allowed_address->Suffix);
+    return allowed_address;
+}
+
 static tunnel_address *to_address(const ziti_address *za) {
     tunnel_address *tnl_address = calloc(1, sizeof(struct tunnel_address_s));
 
@@ -286,6 +296,44 @@ tunnel_port_range *getTunnelPortRange(ziti_port_range *zpr){
     return tpr;
 }
 
+static void setTunnelAllowedSourceAddress(tunnel_service *tnl_svc, ziti_service *service) {
+    const char* cfg_json = ziti_service_get_raw_config(service, CFG_HOST_V1);
+    allowed_source_address_array allowed_src_addr_arr = NULL;
+    if (cfg_json != NULL && strlen(cfg_json) > 0) {
+        ZITI_LOG(TRACE, "host.v1: %s", cfg_json);
+        ziti_host_cfg_v1 cfg_v1 = {0};
+        parse_ziti_host_cfg_v1(&cfg_v1, cfg_json, strlen(cfg_json));
+        size_t n = 0;
+        int j = 0;
+        ziti_address_array allowed_src_addrs = cfg_v1.allowed_source_addresses;
+        for (int x = 0; allowed_src_addrs != NULL && allowed_src_addrs[x] != NULL; x++) {
+            n++;
+        }
+        allowed_src_addr_arr = calloc(n + 1, sizeof(allowed_source_address *));
+        for (int i = 0; i < n; i++) {
+            if (allowed_src_addrs[i]->type != ziti_address_cidr) {
+                    if (allowed_src_addrs[i]->type == ziti_address_hostname) {
+                        ZITI_LOG(ERROR, "hosted_service[%s] cannot use hostname '%s' as `allowed_source_address`",
+                                 tnl_svc->Name, allowed_src_addrs[i]->addr.hostname);
+                    } else {
+                        ZITI_LOG(ERROR, "unknown ziti_address type %d", allowed_src_addrs[i]->type);
+                    }
+                    continue;
+            }
+            else{
+                allowed_src_addr_arr[j] = to_allowedSourceAddress(allowed_src_addrs[i]);
+                j++;
+            }
+        }
+        free_ziti_host_cfg_v1(&cfg_v1);
+        if (allowed_src_addr_arr != NULL) {
+            tnl_svc->AllowedSourceAddresses = allowed_src_addr_arr;
+        }else{
+            tnl_svc->AllowedSourceAddresses = NULL;
+        }
+    }
+}
+
 static void setTunnelServiceAddress(tunnel_service *tnl_svc, ziti_service *service) {
     const char* cfg_json = ziti_service_get_raw_config(service, CFG_INTERCEPT_V1);
     tunnel_address_array tnl_addr_arr = NULL;
@@ -295,7 +343,6 @@ static void setTunnelServiceAddress(tunnel_service *tnl_svc, ziti_service *servi
         ZITI_LOG(TRACE, "intercept.v1: %s", cfg_json);
         ziti_intercept_cfg_v1 cfg_v1 = {0};
         parse_ziti_intercept_cfg_v1(&cfg_v1, cfg_json, strlen(cfg_json));
-
         // set address
         size_t n = model_list_size(&cfg_v1.addresses);
         tnl_addr_arr = calloc(n+1, sizeof(tunnel_address *));
@@ -381,6 +428,7 @@ tunnel_service *get_tunnel_service(tunnel_identity* id, ziti_service* zs) {
     svc->Permissions.Dial = ziti_service_has_permission(zs, ziti_session_type_Dial);
     setTunnelPostureDataTimeout(svc, zs);
     setTunnelServiceAddress(svc, zs);
+    setTunnelAllowedSourceAddress(svc, zs);
     return svc;
 }
 
@@ -816,6 +864,7 @@ IMPL_MODEL(tunnel_identity, TUNNEL_IDENTITY)
 IMPL_MODEL(tunnel_config, TUNNEL_CONFIG)
 IMPL_MODEL(tunnel_metrics, TUNNEL_METRICS)
 IMPL_MODEL(tunnel_address, TUNNEL_ADDRESS)
+IMPL_MODEL(allowed_source_address, ALLOWED_SOURCE_ADDRESS)
 IMPL_MODEL(tunnel_port_range, TUNNEL_PORT_RANGE)
 IMPL_MODEL(tunnel_posture_check, TUNNEL_POSTURE_CHECK)
 IMPL_MODEL(tunnel_service_permissions, TUNNEL_SERVICE_PERMISSIONS)
