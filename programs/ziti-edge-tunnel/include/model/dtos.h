@@ -82,6 +82,7 @@ XX(Id, string, none, Id, __VA_ARGS__) \
 XX(Name, string, none, Name, __VA_ARGS__) \
 XX(Protocols, string, array, Protocols, __VA_ARGS__) \
 XX(Addresses, tunnel_address, array, Addresses, __VA_ARGS__) \
+XX(AllowedSourceAddresses, tunnel_address, array, AllowedSourceAddresses, __VA_ARGS__) \
 XX(Ports, tunnel_port_range, array, Ports, __VA_ARGS__)  \
 XX(OwnsIntercept, bool, none, OwnsIntercept, __VA_ARGS__) \
 XX(PostureChecks, tunnel_posture_check, array, PostureChecks, __VA_ARGS__) \
