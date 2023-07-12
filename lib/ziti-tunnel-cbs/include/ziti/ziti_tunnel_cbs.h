@@ -332,6 +332,8 @@ struct ziti_instance_s {
     LIST_ENTRY(ziti_instance_s) _next;
 };
 
+void ziti_set_refresh_interval(unsigned long seconds);
+
 struct ziti_instance_s *new_ziti_instance_ex(const char *identifier);
 void set_ziti_instance(const char *identifier, struct ziti_instance_s *inst);
 void remove_ziti_instance(const char *identifier);
