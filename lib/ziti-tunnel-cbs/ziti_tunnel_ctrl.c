@@ -44,7 +44,7 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event);
 
 static const char * cfg_types[] = { "ziti-tunneler-client.v1", "intercept.v1", "ziti-tunneler-server.v1", "host.v1", NULL };
 
-static long refresh_interval = 10;
+static unsigned long refresh_interval = 10;
 
 static int process_cmd(const tunnel_command *cmd, void (*cb)(const tunnel_result *, void *ctx), void *ctx);
 static int load_identity(const char *identifier, const char *path, int api_page_size, command_cb cb, void *ctx);
@@ -102,6 +102,10 @@ const ziti_tunnel_ctrl* ziti_tunnel_init_cmd(uv_loop_t *loop, tunneler_context t
 #endif
 
 IMPL_ENUM(mfa_status, MFA_STATUS)
+
+void ziti_set_refresh_interval(unsigned long seconds) {
+    refresh_interval = seconds;
+}
 
 static ziti_context get_ziti(const char *identifier) {
     struct ziti_instance_s *inst = model_map_get(&instances, identifier);

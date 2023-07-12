@@ -130,7 +130,6 @@ struct ipc_conn_s {
 // list to store the ipc connections
 static LIST_HEAD(ipc_list, ipc_conn_s) ipc_clients_list = LIST_HEAD_INITIALIZER(ipc_clients_list);
 
-static long refresh_interval = 10;
 static long refresh_metrics = 5000;
 static long metrics_latency = 5000;
 static char* configured_cidr;
@@ -1824,9 +1823,11 @@ static int run_opts(int argc, char *argv[]) {
             case 'v':
                 setenv("ZITI_LOG", optarg, true);
                 break;
-            case 'r':
-                refresh_interval = strtol(optarg, NULL, 10);
+            case 'r': {
+                unsigned long interval = strtoul(optarg, NULL, 10);
+                ziti_set_refresh_interval(interval);
                 break;
+            }
             case 'd': // ip range
                 configured_cidr = optarg;
                 break;
@@ -1871,9 +1872,11 @@ static int run_host_opts(int argc, char *argv[]) {
             case 'v':
                 setenv("ZITI_LOG", optarg, true);
                 break;
-            case 'r':
-                refresh_interval = strtol(optarg, NULL, 10);
+            case 'r': {
+                unsigned long interval = strtoul(optarg, NULL, 10);
+                ziti_set_refresh_interval(interval);
                 break;
+            }
             default: {
                 ZITI_LOG(ERROR, "Unknown option '%c'", c);
                 errors++;
