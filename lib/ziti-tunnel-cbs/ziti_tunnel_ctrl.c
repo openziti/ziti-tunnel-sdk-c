@@ -104,7 +104,6 @@ const ziti_tunnel_ctrl* ziti_tunnel_init_cmd(uv_loop_t *loop, tunneler_context t
 IMPL_ENUM(mfa_status, MFA_STATUS)
 
 void ziti_set_refresh_interval(unsigned long seconds) {
-    unsigned long old = refresh_interval;
     refresh_interval = seconds;
 }
 
