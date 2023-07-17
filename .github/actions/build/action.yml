@@ -1,10 +1,10 @@
-name: Reusable build
-description: Reusable CMake build for non-Linux OS
+name: CMake build
+description: CMake Composite Action
 
 inputs:
   preset:
     required: true
-    description: build preset, e.g, windows-arm64
+    description: vcpkg build preset, e.g, windows-arm64
 
   config:
     default: Release

@@ -59,15 +59,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Run CMake for Linux
-        if: ${{ matrix.container != null }}
-        run: |
-          ./ziti-builder.sh \
-            -p "ci-${{ matrix.preset }}" \
-            -t bundle
-
-      - name: Run CMake for non-Linux platforms
-        if: ${{ matrix.container == null }}
+      - name: Run CMake Composite Action
         uses: ./.github/actions/build
         with:
           preset: ${{ matrix.preset }}
