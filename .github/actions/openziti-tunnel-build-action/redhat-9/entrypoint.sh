@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# RedHat 8
+# RedHat 9
 #
 
 set -euo pipefail
@@ -36,23 +36,20 @@ for SAFE in \
         git config --global --add safe.directory ${SAFE}
 done
 
-cmake -E make_directory ./build
 (
     [[ -d ./build ]] && rm -r ./build
     cmake -E make_directory ./build  
     # allow unset for scl_source scripts
     set +u
-    source scl_source enable gcc-toolset-10 \
-        && cmake \
-            --preset "${cmake_preset}" \
-            -DCMAKE_BUILD_TYPE="${cmake_config}" \
-            -DBUILD_DIST_PACKAGES=ON \
-            -S . \
-            -B ./build 
-    source scl_source enable gcc-toolset-10 \
-        && cmake \
-            --build ./build \
-            --config "${cmake_config}" \
-            --target package \
-            --verbose
+    cmake \
+        --preset "${cmake_preset}" \
+        -DCMAKE_BUILD_TYPE="${cmake_config}" \
+        -DBUILD_DIST_PACKAGES=ON \
+        -S . \
+        -B ./build 
+    cmake \
+        --build ./build \
+        --config "${cmake_config}" \
+        --target package \
+        --verbose
 )
