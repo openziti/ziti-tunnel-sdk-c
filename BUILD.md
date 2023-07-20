@@ -10,7 +10,7 @@ is. To use this library it is also required to have a functioning Ziti Network a
 To learn more about what Ziti is or how to learn how to setup a Ziti Network head over to [the official documentation
 site](https://openziti.github.io/ziti/overview.html).
 
-## Building Requirements
+### Building Requirements
 
 * [cmake](https://cmake.org/install/)
 * make sure cmake is on your path or replace the following `cmake` commands with the fully qualified path to the binary
@@ -144,3 +144,23 @@ threads your CPU has. You may also want to add that to your preset using the
 
 [1]: https://cmake.org/cmake/help/latest/manual/cmake-presets.7.html
 [2]: https://cmake.org/download/
+
+## Docker Crossbuilder Image
+
+The CI job which also runs the included `ziti-builder.sh` builds this project inside a Docker container. The script will run the necessary container image if needed. The container image has the tools to cross-compile for target architectures arm, arm64. This script works for Linux, macOS, and WSL2 on Windows. Arm architecture hosts will experience slower build times due to emulation of this x86_64 container image.
+
+Without any arguments, the `ziti-builder.sh` script will build the `bundle` target with the `ci-linux-x64` (amd64) preset, placing the resulting ZIP archive in `./build/bundle`.
+
+```bash
+./ziti-builder.sh
+```
+
+To build for a specific target architecture, use the `-p` argument to specify the vcpkg preset.
+
+```bash
+./ziti-builder.sh -p ci-linux-arm64
+```
+
+```bash
+./cmake help
+```
