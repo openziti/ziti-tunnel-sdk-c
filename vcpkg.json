@@ -14,7 +14,8 @@
       "description": "Dependencies for testing",
       "dependencies": [
         {
-          "name": "catch2"
+          "name": "catch2",
+          "version>=": "3.3.2"
         }
       ]
     }
