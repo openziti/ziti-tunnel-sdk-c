@@ -30,6 +30,9 @@ if (WIN32)
     set(ZITI_INSTANCE_OS windows-service.c include/windows/windows-service.h include/windows/windows-scripts.h windows-scripts.c windows/log_utils.c include/service-utils.h)
 endif ()
 
+add_executable(ziti-edge-tunnel ziti-edge-tunnel.c ${NETIF_DRIVER_SOURCE} ${ZITI_INSTANCE_COMMON} ${ZITI_INSTANCE_OS})
+set_property(TARGET ziti-edge-tunnel PROPERTY C_STANDARD 11)
+
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     option(DISABLE_LIBSYSTEMD_FEATURE "libsystemd library integration toggle" OFF)
     message("DISABLE_LIBSYSTEMD_FEATURE: ${DISABLE_LIBSYSTEMD_FEATURE}")
@@ -43,17 +46,14 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         if(LIBSYSTEMD_FOUND)
             if(LIBSYSTEMD_VERSION VERSION_LESS "229")
                 message(FATAL_ERROR "Unsupported version of libsystemd detected. To disable libsystmd feature, set DISABLE_LIBSYSTEMD_FEATURE=ON.")
+            else()
+                target_sources(ziti-edge-tunnel PRIVATE linux/libsystemd.c)
             endif()
         else()
             message(FATAL_ERROR "libsystemd not found. To disable libsytemd feature, set DISABLE_LIBSYSTEMD_FEATURE=ON")
         endif()
-
-        set(ZITI_INSTANCE_OS linux/libsystemd.c)
     endif()
 endif()
-
-add_executable(ziti-edge-tunnel ziti-edge-tunnel.c ${NETIF_DRIVER_SOURCE} ${ZITI_INSTANCE_COMMON} ${ZITI_INSTANCE_OS})
-set_property(TARGET ziti-edge-tunnel PROPERTY C_STANDARD 11)
 
 target_include_directories(ziti-edge-tunnel
         PRIVATE include
