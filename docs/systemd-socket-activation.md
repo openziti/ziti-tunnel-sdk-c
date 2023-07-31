@@ -33,17 +33,17 @@ After=ziti-edge-tunnel.socket
 Ziti Desktop Edge Integration:
 ------------------------------
 
-Integration with the `ziti-console` can be achieved like this:
+Integration with the [Ziti Desktop Edge](https://github.com/openziti/desktop-edge-ui) can be achieved like this:
 
 `/usr/share/application/zitidesktopedge.desktop`: 
 
 ```ini
 [Desktop Entry]
-Name=Ziti Desktop Edge Debug
+Name=Ziti Desktop Edge
 Exec=sudo /usr/bin/sh -c "/usr/bin/systemd-run --uid=$SUDO_USER --gid=ziti --setenv=DISPLAY=$DISPLAY --setenv=XAUTHORITY=$XAUTHORITY /usr/bin/zitidesktopedge"
 Type=Application
 Icon=zitidesktopedge
-Comment=Ziti Desktop Edge Debug
+Comment=Ziti Desktop Edge
 Categories=Utility;
 ```
 
