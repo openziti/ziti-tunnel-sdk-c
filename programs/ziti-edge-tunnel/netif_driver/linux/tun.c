@@ -259,8 +259,7 @@ static void find_dns_updater() {
                 dns_updater = dns_update_systemd_resolve;
                 return;
             } else {
-                ZITI_LOG(ERROR, "systemd-resolved DBus name found, but could not find a way to configure systemd-resolved");
-                exit(1);
+                ZITI_LOG(WARN, "systemd-resolved DBus name found, but could not find a way to configure systemd-resolved");
             }
         } else {
             ZITI_LOG(TRACE, "systemd-resolved DBus name is NOT acquired");
