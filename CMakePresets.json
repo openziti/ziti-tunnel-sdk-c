@@ -112,7 +112,7 @@
       "binaryDir": "${sourceDir}/build",
       "hidden": true,
       "cacheVariables": {
-        "TLSUV_TLSLIB": "mbedtls"
+        "TLSUV_TLSLIB": "openssl"
       }
     },
     {
