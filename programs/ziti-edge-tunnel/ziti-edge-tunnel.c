@@ -2097,6 +2097,10 @@ static int parse_enroll_opts(int argc, char *argv[]) {
                 break;
             case 'k':
                 enroll_opts.enroll_key = realpath(optarg, NULL);
+                if (enroll_opts.enroll_key == NULL) {
+                    // may be pkcs11 key ref
+                    enroll_opts.enroll_key = optarg;
+                }
                 break;
             case 'c':
                 enroll_opts.enroll_cert = realpath(optarg, NULL);
