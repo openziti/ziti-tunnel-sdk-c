@@ -27,6 +27,8 @@ RUN dnf install -y \
         openssl-devel \
         perl-FindBin perl-IPC-Cmd perl-File-Compare perl-File-Copy \
         libatomic \
+        libacl-devel \
+        libcap-devel \
     && dnf config-manager --set-enabled crb \
     && dnf install -y \
         doxygen \
