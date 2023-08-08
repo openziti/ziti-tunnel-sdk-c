@@ -32,6 +32,8 @@ RUN apt-get update \
         zlib1g-dev \
         libssl-dev \
         ninja-build \
+        libacl1-dev \
+        libcap-dev \
     && rm -rf /var/lib/apt/lists/*
 
 COPY ./crossbuild.list /etc/apt/sources.list.d/crossbuild.list

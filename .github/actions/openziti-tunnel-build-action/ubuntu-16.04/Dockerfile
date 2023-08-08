@@ -29,6 +29,8 @@ RUN apt-get -y update \
         python3 \
         zlib1g-dev \
         ninja-build \
+        libacl1-dev \
+        libcap-dev \
     && rm -rf /var/lib/apt/lists/*
 
 RUN curl -sSfL https://cmake.org/files/v${CMAKE_VERSION%.*}/cmake-${CMAKE_VERSION}-linux-$(uname -m).sh -o cmake.sh \

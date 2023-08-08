@@ -21,6 +21,8 @@ RUN yum -y install \
         python3 \
         zlib-devel \
         epel-release \
+        libacl-devel \
+        libcap-devel \
     &&  yum -y install \
         devtoolset-11 \
         devtoolset-11-libatomic-devel \

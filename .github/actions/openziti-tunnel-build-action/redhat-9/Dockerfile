@@ -24,6 +24,8 @@ RUN dnf install -y \
         cmake-rpm-macros  \
         openssl-devel \
         libatomic \
+        libacl-devel \
+        libcap-devel \
     && dnf config-manager --set-enabled crb \
     && dnf install -y \
         doxygen \
