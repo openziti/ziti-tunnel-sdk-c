@@ -475,10 +475,10 @@ static void cleanup_acl(acl_t *acl) {
     }
 }
 
-#define ACL_EXIT(acl) do{                                          \
+#define ACL_EXIT(acl) do{                                           \
     ZITI_LOG(ERROR, "ACL operation failed: %s\n", strerror(errno)); \
-    cleanup_acl(acl);                                              \
-    return;                                                        \
+    cleanup_acl(acl);                                               \
+    return;                                                         \
 } while(0)
 
 #define CHECK_ACL(f) do{ \
