@@ -19,6 +19,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/capability.h>
 #include <sys/stat.h>
 #include <ziti/ziti_log.h>
 
@@ -58,4 +59,51 @@ bool is_executable(const char *path) {
 bool is_symlink(const char *path) {
     struct stat s;
     return (lstat(path, &s) == 0 && S_ISLNK(s.st_mode));
+}
+
+bool has_effective_capability(cap_value_t cap) {
+    cap_t caps;
+    cap_flag_value_t flag;
+
+    caps = cap_get_proc();
+
+    if (caps == NULL) {
+        ZITI_LOG(ERROR, "could not get process capabilities: %d/%s", errno, strerror(errno));
+        return false;
+    }
+
+    if (cap_get_flag(caps, cap, CAP_EFFECTIVE, &flag) == -1) {
+        ZITI_LOG(ERROR, "could not get capability flags: %d/%s", errno, strerror(errno));
+        cap_free(caps);
+        return false;
+    }
+
+    if (flag != CAP_SET) {
+        char *cap_name = cap_to_name(cap);
+        if (cap_name == NULL) {
+            ZITI_LOG(ERROR, "failure getting capability name");
+        } else {
+            ZITI_LOG(WARN, "capability %s is missing", cap_name);
+            cap_free(cap_name);
+        }
+        cap_free(caps);
+        return false;
+    }
+
+    cap_free(caps);
+    return true;
+}
+
+uid_t get_user_uid(const char *username) {
+    uid_t ziti_uid = -1;
+
+    struct passwd *pwd = getpwnam(username);
+    if (pwd == NULL) {
+        ZITI_LOG(ERROR, "could not find id of '%s' user\n", username);
+        return ziti_uid;
+    }
+
+    ziti_uid = pwd->pw_uid;
+    ZITI_LOG(TRACE, "found uid=%d for user '%s'\n", ziti_uid, username);
+    return ziti_uid;
 }
