@@ -15,9 +15,12 @@
  */
 #include <stdbool.h>
 #include <stdio.h>
+#include <sys/capability.h>
 
 int run_command_va(bool log_nonzero_ec, const char* cmd, va_list args);
 int run_command(const char *cmd, ...);
 int run_command_ex(bool log_nonzero_ec, const char *cmd, ...);
 bool is_executable(const char *path);
 bool is_symlink(const char *path);
+bool has_effective_capability(cap_value_t cap);
+uid_t get_user_uid(const char *username);

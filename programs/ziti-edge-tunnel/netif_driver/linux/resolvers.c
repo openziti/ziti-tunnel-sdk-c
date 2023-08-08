@@ -19,6 +19,9 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/acl.h>
+#include <acl/libacl.h>
+
 #ifndef EXCLUDE_LIBSYSTEMD_RESOLVER
 #include <net/if.h>
 #include <stdarg.h>
@@ -416,6 +419,104 @@ void dns_update_systemd_resolved(const char *tun, unsigned int ifindex, const ch
 
 void dns_update_resolvconf(const char *tun, unsigned int ifindex, const char *addr) {
     run_command("echo 'nameserver %s' | %s -a %s", addr, RESOLVCONF, tun);
+}
+
+static void cleanup_acl(acl_t *acl) {
+    if (*acl != NULL) {
+       if (acl_free(*acl) == -1) {
+           ZITI_LOG(ERROR, "acl_free error: %s\n", strerror(errno));
+       }
+       *acl = NULL;
+    }
+}
+
+#define ACL_EXIT(acl) do{                                          \
+    ZITI_LOG(ERROR, "ACL operation failed: %s\n", strerror(errno)); \
+    cleanup_acl(acl);                                              \
+    return;                                                        \
+} while(0)
+
+#define CHECK_ACL(f) do{ \
+    if ((f) == -1) {     \
+        ACL_EXIT(&acl);  \
+    }                    \
+} while(0)
+
+
+void install_user_acl_etc_resolv(uid_t uid) {
+
+    _cleanup_(cleanup_acl) acl_t acl;
+    acl_entry_t entry;
+    acl_tag_t acl_tag_type;
+    acl_permset_t permset;
+
+    acl = acl_get_file(RESOLV_CONF_FILE, ACL_TYPE_ACCESS);
+    if (acl == NULL) {
+        ACL_EXIT(&acl);
+    }
+
+    bool acl_found = false;
+    for (int entry_id = ACL_FIRST_ENTRY; ; entry_id = ACL_NEXT_ENTRY) {
+        if (acl_get_entry(acl, entry_id, &entry) != 1) {
+            break;
+        }
+
+        CHECK_ACL(acl_get_tag_type(entry, &acl_tag_type));
+
+        if ( acl_tag_type == ACL_USER) {
+            uid_t  *qualifier_uid = acl_get_qualifier(entry);
+            if (qualifier_uid == NULL) {
+                ACL_EXIT(&acl);
+            }
+
+            if (uid == *qualifier_uid) {
+                acl_found = true;
+                break;
+            }
+        }
+    }
+
+    if (acl_found) {
+        CHECK_ACL(acl_get_permset(entry, &permset));
+
+        int rd = acl_get_perm(permset, ACL_READ);
+        CHECK_ACL(rd);
+        int wr = acl_get_perm(permset, ACL_WRITE);
+        CHECK_ACL(wr);
+
+        if ( rd != 1 || wr != 1) {
+            ZITI_LOG(TRACE, "[%s] ACL permissions are incorrect. Fixing...\n", RESOLV_CONF_FILE);
+        } else {
+            ZITI_LOG(DEBUG, "[%s] ACL permissions are already set.\n", RESOLV_CONF_FILE);
+            return;
+        }
+    }
+
+    if (!acl_found) {
+        CHECK_ACL(acl_create_entry(&acl, &entry)); CHECK_ACL(acl_set_tag_type(entry, ACL_USER));
+        CHECK_ACL(acl_set_qualifier(entry, &uid));
+        CHECK_ACL(acl_get_permset(entry, &permset));
+    }
+    CHECK_ACL(acl_add_perm(permset, ACL_READ | ACL_WRITE));
+    CHECK_ACL(acl_calc_mask(&acl));
+
+    int r = acl_check(acl, NULL);
+
+    switch (r) {
+        case -1:
+            ZITI_LOG(ERROR, "acl_check error: %s\n", strerror(errno));
+            return;
+        case 0:
+            ZITI_LOG(TRACE, "ACL is valid. Proceeding with installation...\n");
+            break;
+        default:
+            ZITI_LOG(ERROR, "ACL is invalid. Reason: %s\n", acl_error(r));
+            return;
+    }
+
+    CHECK_ACL(acl_set_file(RESOLV_CONF_FILE, ACL_TYPE_ACCESS, acl));
+    ZITI_LOG(INFO, "[%s] ACL permissions have been installed.\n", RESOLV_CONF_FILE);
+    return;
 }
 
 static bool make_copy(const char *src, const char *dst) {
