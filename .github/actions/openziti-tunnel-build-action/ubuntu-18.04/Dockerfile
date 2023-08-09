@@ -18,21 +18,24 @@ ENV PATH="/usr/local/:${PATH}"
 
 RUN apt-get update \
     && apt-get -y install \
+        autoconf \
+        automake \
+        autopoint \
         build-essential \
-        crossbuild-essential-armhf \
         crossbuild-essential-arm64 \
+        crossbuild-essential-armhf \
         curl zip unzip tar \
         doxygen \
         git \
         graphviz \
+        libcap-dev \
+        libssl-dev \
         libsystemd-dev \
+        libtool \
+        ninja-build \
         pkg-config \
         python3 \
         zlib1g-dev \
-        libssl-dev \
-        ninja-build \
-        libacl1-dev \
-        libcap-dev \
     && rm -rf /var/lib/apt/lists/*
 
 RUN curl -sSfL https://cmake.org/files/v${CMAKE_VERSION%.*}/cmake-${CMAKE_VERSION}-linux-$(uname -m).sh -o cmake.sh \
@@ -45,6 +48,8 @@ COPY ./crossbuild.list /etc/apt/sources.list.d/crossbuild.list
 RUN sed -Ei 's/^deb/deb [arch=amd64]/g' /etc/apt/sources.list
 RUN apt-get update
 RUN apt-get -y install \
+    libcap-dev:armhf \
+    libcap-dev:arm64 \
     zlib1g-dev:armhf \
     zlib1g-dev:arm64 \
     libssl-dev:armhf \
@@ -56,7 +61,7 @@ ENV VCPKG_FORCE_SYSTEM_BINARIES=yes
 
 RUN cd /usr/local \
     && git config --global advice.detachedHead false \
-    && git clone --branch 2023.04.15 https://github.com/microsoft/vcpkg \
+    && git clone --branch 2023.06.20 https://github.com/microsoft/vcpkg \
     && ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
 
 WORKDIR /github/workspace

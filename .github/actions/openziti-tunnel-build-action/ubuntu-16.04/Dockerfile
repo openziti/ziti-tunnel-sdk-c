@@ -17,20 +17,23 @@ ENV PATH="/usr/local/:${PATH}"
 
 RUN apt-get -y update \
     && apt-get -y install \
+        autoconf \
+        automake \
+        autopoint \
         build-essential \
         curl \
-        zip \
-        unzip \
-        tar \
         doxygen \
         git \
         graphviz \
+        libcap-dev \
+        libtool \
+        ninja-build \
         pkg-config \
         python3 \
+        tar \
+        unzip \
+        zip \
         zlib1g-dev \
-        ninja-build \
-        libacl1-dev \
-        libcap-dev \
     && rm -rf /var/lib/apt/lists/*
 
 RUN curl -sSfL https://cmake.org/files/v${CMAKE_VERSION%.*}/cmake-${CMAKE_VERSION}-linux-$(uname -m).sh -o cmake.sh \
@@ -43,7 +46,7 @@ ENV VCPKG_FORCE_SYSTEM_BINARIES=yes
 
 RUN cd /usr/local \
     && git config --global advice.detachedHead false \
-    && git clone --branch 2023.04.15 https://github.com/microsoft/vcpkg \
+    && git clone --branch 2023.06.20 https://github.com/microsoft/vcpkg \
     && ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
 
 WORKDIR /github/workspace

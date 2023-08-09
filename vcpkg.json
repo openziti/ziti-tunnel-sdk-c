@@ -2,6 +2,10 @@
   "name": "ziti",
   "version-semver": "1.0.0",
   "dependencies": [
+    {
+      "name": "acl",
+      "platform": "linux"
+    },
     "libuv",
     "zlib",
     "llhttp",
@@ -23,5 +27,5 @@
       ]
     }
   },
-  "builtin-baseline": "f14984af3738e69f197bf0e647a8dca12de92996"
+  "builtin-baseline": "f6a5d4e8eb7476b8d7fc12a56dff300c1c986131"
 }

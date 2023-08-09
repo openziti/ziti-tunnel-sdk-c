@@ -15,22 +15,25 @@ ENV TZ=UTC
 
 RUN dnf install -y \
         "@Development Tools" \
+        autoconf \
+        automake \
+        cmake-rpm-macros  \
         dnf-plugins-core \
+        gettext-devel \
         iproute \
+        libatomic \
+        libcap-devel \
+        libtool \
+        openssl-devel \
         python3 \
         systemd-devel \
-        zlib-devel \
         systemd-rpm-macros \
-        cmake-rpm-macros  \
-        openssl-devel \
-        libatomic \
-        libacl-devel \
-        libcap-devel \
+        zlib-devel \
     && dnf config-manager --set-enabled crb \
     && dnf install -y \
         doxygen \
-        graphviz \
         git \
+        graphviz \
         ninja-build \
     && dnf clean all 
 
@@ -45,7 +48,7 @@ ENV VCPKG_ROOT=/usr/local/vcpkg
 ENV VCPKG_FORCE_SYSTEM_BINARIES=yes
 
 RUN cd /usr/local \
-    && git clone --branch 2023.04.15 https://github.com/microsoft/vcpkg \
+    && git clone --branch 2023.06.20 https://github.com/microsoft/vcpkg \
     && ./vcpkg/bootstrap-vcpkg.sh -disableMetrics \
     && chmod -R ugo+rwX /usr/local/vcpkg
 

@@ -15,22 +15,23 @@ ENV TZ=UTC
 
 RUN yum -y install \
         "@Development Tools" \
+        autoconf \
+        automake \
         centos-release-scl \
         doxygen \
+        epel-release \
+        gettext-devel \
         graphviz \
+        libcap-devel \
+        libtool \
+        perl-IPC-Cmd \
         python3 \
         zlib-devel \
-        epel-release \
-        libacl-devel \
-        libcap-devel \
     &&  yum -y install \
         devtoolset-11 \
         devtoolset-11-libatomic-devel \
         ninja-build \
     &&  yum clean all
-
-# needed only to build openssl. we can't use openssl from rocky's repos because it is too old.
-RUN yum install -y perl-IPC-Cmd
 
 RUN curl -sSfL https://cmake.org/files/v${CMAKE_VERSION%.*}/cmake-${CMAKE_VERSION}-linux-$(uname -m).sh -o cmake.sh \
     && (bash cmake.sh --skip-license --prefix=/usr/local) \
@@ -41,7 +42,7 @@ ENV VCPKG_ROOT=/usr/local/vcpkg
 ENV VCPKG_FORCE_SYSTEM_BINARIES=yes
 
 RUN cd /usr/local \
-    && git clone --branch 2023.04.15 https://github.com/microsoft/vcpkg \
+    && git clone --branch 2023.06.20 https://github.com/microsoft/vcpkg \
     && ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
 
 COPY ./entrypoint.sh /root/
