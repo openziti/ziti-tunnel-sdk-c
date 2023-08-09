@@ -17,23 +17,31 @@ ENV TZ=UTC
 
 RUN dnf install -y \
         "@Development Tools" \
-        dnf-plugins-core \
-        iproute \
-        python3 \
-        systemd-devel \
-        zlib-devel \
-        systemd-rpm-macros \
+        autoconf \
+        automake \
         cmake-rpm-macros  \
+        cmake-rpm-macros  \
+        dnf-plugins-core \
+        gettext-devel \
+        iproute \
+        libacl-devel \
+        libatomic \
+        libatomic \
+        libcap-devel \
+        libcap-devel \
+        libtool \
+        openssl-devel \
         openssl-devel \
         perl-FindBin perl-IPC-Cmd perl-File-Compare perl-File-Copy \
-        libatomic \
-        libacl-devel \
-        libcap-devel \
+        python3 \
+        systemd-devel \
+        systemd-rpm-macros \
+        zlib-devel \
     && dnf config-manager --set-enabled crb \
     && dnf install -y \
         doxygen \
-        graphviz \
         git \
+        graphviz \
         ninja-build \
     && dnf clean all 
 

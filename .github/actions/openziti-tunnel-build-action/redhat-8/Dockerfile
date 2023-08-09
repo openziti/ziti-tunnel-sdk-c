@@ -15,13 +15,17 @@ ENV TZ=UTC
 
 RUN dnf install -y \
         "@Development Tools" \
+        autoconf \
+        automake \
         cmake-rpm-macros  \
         dnf-plugins-core \
         gcc-toolset-10 \
         gcc-toolset-10-libatomic-devel \
+        gettext-devel \
         iproute \
         libacl-devel \
         libcap-devel \
+        libtool \
         openssl-devel \
         perl \
         python3 \

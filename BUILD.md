@@ -16,6 +16,25 @@ site](https://openziti.io/).
 * make sure cmake is on your path or replace the following `cmake` commands with the fully qualified path to the binary
 * [vcpkg](https://github.com/microsoft/vcpkg) is now used for dependencies.
 
+On Linux, you may also need the following:
+
+* autoconf
+* automake
+* libtool
+* autopoint
+
+On Red Hat distributions:
+
+```bash
+sudo yum install automake autoconf libtool gettext-devel
+```
+
+On Debian based distributions:
+
+```bash
+sudo apt install automake autoconf libtool autopoint
+```
+
 ### Setting up vcpkg
 
 To setup vcpkg you'll need to clone the actual vcpkg repository. The first step will have you set this environment variable.

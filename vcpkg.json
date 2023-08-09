@@ -2,6 +2,10 @@
   "name": "ziti",
   "version-semver": "1.0.0",
   "dependencies": [
+    {
+      "name": "acl",
+      "platform": "linux"
+    },
     "libuv",
     "zlib",
     "llhttp",
