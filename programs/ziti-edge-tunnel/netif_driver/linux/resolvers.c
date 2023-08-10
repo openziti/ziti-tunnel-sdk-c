@@ -538,7 +538,8 @@ void install_user_acl_etc_resolv(uid_t uid) {
     }
 
     if (!acl_found) {
-        CHECK_ACL(acl_create_entry(&acl, &entry)); CHECK_ACL(acl_set_tag_type(entry, ACL_USER));
+        CHECK_ACL(acl_create_entry(&acl, &entry));
+        CHECK_ACL(acl_set_tag_type(entry, ACL_USER));
         CHECK_ACL(acl_set_qualifier(entry, &uid));
         CHECK_ACL(acl_get_permset(entry, &permset));
     }
