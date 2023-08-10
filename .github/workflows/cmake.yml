@@ -39,17 +39,17 @@ jobs:
             preset: windows-arm64
 
           - os: ubuntu-20.04
-            container: openziti/ziti-builder:v1
+            container: openziti/ziti-builder:1.0.3
             name: Linux x86_64
             preset: linux-x64
 
           - os: ubuntu-20.04
-            container: openziti/ziti-builder:v1
+            container: openziti/ziti-builder:1.0.3
             name: Linux arm
             preset: linux-arm
 
           - os: ubuntu-20.04
-            container: openziti/ziti-builder:v1
+            container: openziti/ziti-builder:1.0.3
             name: Linux arm64
             preset: linux-arm64
 
