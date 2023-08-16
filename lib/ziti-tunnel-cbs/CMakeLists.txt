@@ -42,4 +42,6 @@ install(TARGETS ziti-tunnel-cbs-c
         DESTINATION ${CMAKE_INSTALL_PREFIX}/lib
         )
 
-add_subdirectory(tests)
+if(ZITI_TUNNEL_BUILD_TESTS)
+  add_subdirectory(tests)
+endif()
