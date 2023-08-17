@@ -41,17 +41,17 @@ jobs:
           - os: ubuntu-20.04
             container: openziti/ziti-builder:1.0.3
             name: Linux x86_64
-            preset: linux-x64
+            preset: linux-x64-static-libssl
 
           - os: ubuntu-20.04
             container: openziti/ziti-builder:1.0.3
             name: Linux arm
-            preset: linux-arm
+            preset: linux-arm-static-libssl
 
           - os: ubuntu-20.04
             container: openziti/ziti-builder:1.0.3
             name: Linux arm64
-            preset: linux-arm64
+            preset: linux-arm64-static-libssl
 
     steps:
       - name: checkout workspace

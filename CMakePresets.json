@@ -165,6 +165,26 @@
       }
     },
     {
+      "name": "ci-linux-static-libssl",
+      "description": "preset to use static ssl libs provided by vcpkg for broad compatibility of GH release binaries",
+      "cacheVariables": {
+        "VCPKG_OVERLAY_PORTS": "${sourceDir}/vcpkg-overlays/linux-syslibs/ubuntu18"
+      },
+      "hidden": true
+    },
+    {
+      "name": "ci-linux-x64-static-libssl",
+      "inherits": [ "ci-linux-static-libssl", "ci-linux-x64" ]
+    },
+    {
+      "name": "ci-linux-arm64-static-libssl",
+      "inherits": [ "ci-linux-static-libssl", "ci-linux-arm64" ]
+    },
+    {
+      "name": "ci-linux-arm-static-libssl",
+      "inherits": [ "ci-linux-static-libssl", "ci-linux-arm" ]
+    },
+    {
       "name": "ci-windows-x64",
       "inherits": [
         "ci-build",
