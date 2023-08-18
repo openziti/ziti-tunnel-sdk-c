@@ -57,8 +57,8 @@ jobs:
       # only focal-20.04 has >= 2.18, which is required by actions/checkout to clone
       # which enables cmake version discovery. remove this step when openziti:ziti-builder
       # is upgraded to a version that contains git 2.18+
-      - name: install contemporary Git if Ubuntu
-        if: ${{ matrix.distro.name == 'ubuntu' }}
+      - name: install contemporary Git if using ziti-builder
+        if: ${{ startsWith(matrix.container, 'openziti/ziti-builder') }}
         run: |
           apt -y update
           apt-get -y install software-properties-common
