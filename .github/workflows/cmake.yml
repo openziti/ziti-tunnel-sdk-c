@@ -54,6 +54,19 @@ jobs:
             preset: linux-arm64-static-libssl
 
     steps:
+      # only focal-20.04 has >= 2.18, which is required by actions/checkout to clone
+      # which enables cmake version discovery. remove this step when openziti:ziti-builder
+      # is upgraded to a version that contains git 2.18+
+      - name: install contemporary Git if Ubuntu
+        if: ${{ matrix.distro.name == 'ubuntu' }}
+        run: |
+          apt -y update
+          apt-get -y install software-properties-common
+          add-apt-repository -y ppa:git-core/ppa
+          apt -y update
+          apt -y install git
+          git --version
+
       - name: checkout workspace
         uses: actions/checkout@v3
         with:
