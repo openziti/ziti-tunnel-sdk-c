@@ -180,13 +180,13 @@ jobs:
           if-no-files-found: error
 
       - name: Configure jFrog CLI
-        if: ${{ github.event.release.published && startsWith(github.ref, 'refs/tags/v') }}
+        if: ${{ !github.event.release.prerelease && startsWith(github.ref, 'refs/tags/v') }}
         uses: jfrog/setup-jfrog-cli@v3
         env:
           JF_ENV_1: ${{ secrets.ZITI_ARTIFACTORY_CLI_CONFIG_PACKAGE_UPLOAD }}
 
       - name: Upload RPM to Artifactory with jFrog CLI
-        if: ${{ github.event.release.published && startsWith(github.ref, 'refs/tags/v') && matrix.distro.name == 'redhat' }}
+        if: ${{ !github.event.release.prerelease && startsWith(github.ref, 'refs/tags/v') && matrix.distro.name == 'redhat' }}
         run: >
           jf rt upload
           ./build/ziti-edge-tunnel-*.${{ matrix.distro.type }}
@@ -195,7 +195,7 @@ jobs:
           --flat=true 
 
       - name: Upload DEB to Artifactory with jFrog CLI
-        if: ${{ github.event.release.published && startsWith(github.ref, 'refs/tags/v') && matrix.distro.name == 'ubuntu' }}
+        if: ${{ !github.event.release.prerelease && startsWith(github.ref, 'refs/tags/v') && matrix.distro.name == 'ubuntu' }}
         run: >
           jf rt upload
           ./build/ziti-edge-tunnel-*.${{ matrix.distro.type }}
