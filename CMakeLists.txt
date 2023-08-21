@@ -54,8 +54,8 @@ endif()
 option(DISABLE_SEMVER_VERIFICATION "Toggle SEMVER verification for BUILD_DIST_PACKAGES" OFF)
 option(BUILD_DIST_PACKAGES "Build packages for distribution package managers" OFF)
 
-# Require explicitly disabling SEMVER verification for building DIST packages.
-if(NOT DISABLE_SEMVER_VERIFICATION AND BUILD_DIST_PACKAGES AND PROJECT_SEMVER VERSION_EQUAL "${DUMMY_SEMVER}")
+# verify the semver unless DISABLE option is set
+if((NOT DISABLE_SEMVER_VERIFICATION) AND PROJECT_SEMVER VERSION_EQUAL "${DUMMY_SEMVER}")
     unset(GIT_VERSION CACHE)
     unset(GIT_ERROR_CODE CACHE)
     unset(PROJECT_SEMVER CACHE)
