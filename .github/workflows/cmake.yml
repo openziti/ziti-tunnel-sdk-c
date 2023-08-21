@@ -39,34 +39,21 @@ jobs:
             preset: windows-arm64
 
           - os: ubuntu-20.04
-            container: openziti/ziti-builder:1.0.3
+            container: openziti/ziti-builder:1.0.7
             name: Linux x86_64
             preset: linux-x64
 
           - os: ubuntu-20.04
-            container: openziti/ziti-builder:1.0.3
+            container: openziti/ziti-builder:1.0.7
             name: Linux arm
             preset: linux-arm
 
           - os: ubuntu-20.04
-            container: openziti/ziti-builder:1.0.3
+            container: openziti/ziti-builder:1.0.7
             name: Linux arm64
             preset: linux-arm64
 
     steps:
-      # only focal-20.04 has >= 2.18, which is required by actions/checkout to clone
-      # which enables cmake version discovery. remove this step when openziti:ziti-builder
-      # is upgraded to a version that contains git 2.18+
-      - name: install contemporary Git if using ziti-builder
-        if: ${{ startsWith(matrix.container, 'openziti/ziti-builder') }}
-        run: |
-          apt -y update
-          apt-get -y install software-properties-common
-          add-apt-repository -y ppa:git-core/ppa
-          apt -y update
-          apt -y install git
-          git --version
-
       - name: checkout workspace
         uses: actions/checkout@v3
         with:
