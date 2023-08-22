@@ -6,7 +6,15 @@
 set -euo pipefail
 
 BASENAME="$(basename "${0}")"
-BASEDIR="$(cd "$(dirname "${0}")" && pwd)"
+BASEDIR="$(cd "$(dirname "${0}")" && pwd)"  # full path to scripts dir
+SCRIPTSDIR="$(basename "${BASEDIR}")"       # relative path to scripts dir, only works if executable is homed in a top-level dir of the project, .e.g. "/scripts"
+REPODIR="$(dirname "${BASEDIR}")"           # path to project root is parent of scripts dir
+
+[[ -x ${REPODIR}/${SCRIPTSDIR}/${BASENAME} ]] || {
+    echo "ERROR: ${REPODIR}/${SCRIPTSDIR}/${BASENAME} is not executable" >&2
+    exit 1
+}
+
 # set in ziti-builder image, but this default allows hacking the script to run
 # outside the ziti-builder container
 : "${GIT_CONFIG_GLOBAL:=/tmp/ziti-builder-gitconfig}"
@@ -45,7 +53,7 @@ function set_workspace(){
     fi
 
     # if project is mounted on WORKDIR then build, else restart in container
-    if [[ -x "${WORKDIR}/${BASENAME}" ]]; then
+    if [[ -x "${WORKDIR}/${SCRIPTSDIR}/${BASENAME}" ]]; then
         # container environment defines BUILD_ENVIRONMENT=ziti-builder-docker
         if [[ "${BUILD_ENVIRONMENT:-}" == "ziti-builder-docker" ]]; then
             echo "INFO: running in ziti-builder container"
@@ -56,14 +64,14 @@ function set_workspace(){
         fi
     else
         echo -e "INFO: project not mounted on ${WORKDIR}, re-running in container"\
-            "\nINFO: 'docker run --user ${UID} --volume ${BASEDIR}:${WORKDIR} openziti/ziti-builder ${WORKDIR}/${BASENAME} ${*}'"
+            "\nINFO: 'docker run --user ${UID} --volume ${REPODIR}:${WORKDIR} openziti/ziti-builder ${WORKDIR}/${SCRIPTSDIR}/${BASENAME} ${*}'"
         exec docker run \
             --rm \
             --user "${UID}" \
-            --volume "${BASEDIR}:${WORKDIR}" \
+            --volume "${REPODIR}:${WORKDIR}" \
             --platform "linux/amd64" \
             openziti/ziti-builder \
-                "${WORKDIR}/${BASENAME}" "${@}"
+                "${WORKDIR}/${SCRIPTSDIR}/${BASENAME}" "${@}"
     fi
 }
 
@@ -76,10 +84,12 @@ function main() {
     # they're being ignored when an override command is sent at the same time
     : "${OPTS:=0}"
 
-    while getopts 'c::p:t:' OPT; do
+    while getopts 'c:e:p:t:' OPT; do
         case "${OPT}" in
             c)  CMAKE_CONFIG="${OPTARG}"
                 OPTS=1
+            ;;
+            e)  CMAKE_EXTRA_ARGS="${OPTARG}"
             ;;
             p)  CMAKE_PRESET="${OPTARG}"
                 OPTS=1
@@ -101,6 +111,7 @@ function main() {
         if (( OPTS )); then
             echo "WARN: ignoring options because override command is present" >&2
         fi
+        cd "${REPODIR}"
         exec "${@}"
     else
         [[ -d ./build ]] && rm -rf ./build
@@ -113,7 +124,8 @@ function main() {
             -DBUILD_DIST_PACKAGES="${BUILD_DIST_PACKAGES:-OFF}" \
             -DVCPKG_OVERLAY_PORTS="./vcpkg-overlays/linux-syslibs/ubuntu18" \
             -S . \
-            -B ./build
+            -B ./build \
+            "${CMAKE_EXTRA_ARGS:-}"
         cmake \
             --build ./build \
             --config "${CMAKE_CONFIG:-Release}" \
