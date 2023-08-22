@@ -19,8 +19,10 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef HAVE_LIBACL_H
 #include <sys/acl.h>
 #include <acl/libacl.h>
+#endif
 
 #ifndef EXCLUDE_LIBSYSTEMD_RESOLVER
 #include <net/if.h>
@@ -466,6 +468,7 @@ void dns_update_resolvconf(const char *tun, unsigned int ifindex, const char *ad
     run_command("echo 'nameserver %s' | %s -a %s", addr, RESOLVCONF, tun);
 }
 
+#ifdef HAVE_LIBACL_H
 static void cleanup_acl(acl_t *acl) {
     if (*acl != NULL) {
        if (acl_free(*acl) == -1) {
@@ -486,7 +489,6 @@ static void cleanup_acl(acl_t *acl) {
         ACL_EXIT(&acl);  \
     }                    \
 } while(0)
-
 
 void install_user_acl_etc_resolv(uid_t uid) {
 
@@ -564,6 +566,7 @@ void install_user_acl_etc_resolv(uid_t uid) {
     ZITI_LOG(INFO, "[%s] ACL permissions have been installed.\n", RESOLV_CONF_FILE);
     return;
 }
+#endif
 
 static bool make_copy(const char *src, const char *dst) {
 

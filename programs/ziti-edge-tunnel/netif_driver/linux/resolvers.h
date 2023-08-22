@@ -55,4 +55,6 @@ void dns_update_systemd_resolved(const char* tun, unsigned int ifindex, const ch
 void dns_update_resolvconf(const char* tun, unsigned int ifindex, const char* addr);
 void dns_update_etc_resolv(const char* tun, unsigned int ifindex, const char* addr);
 
+#ifdef HAVE_LIBACL_H
 void install_user_acl_etc_resolv(uid_t uid);
+#endif
