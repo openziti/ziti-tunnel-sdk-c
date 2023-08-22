@@ -277,22 +277,22 @@ static void find_dns_updater() {
             return;
         }
 
-        bool fowner_cap = has_effective_capability(CAP_FOWNER);
-        if (euid == 0 || fowner_cap) {
-            ZITI_LOG(WARN, "Adding ziti resolver to %s.conf. Ziti DNS functionality may be impaired", RESOLV_CONF_FILE);
+#if defined(HAVE_LIBCAP_H) && defined(HAVE_LIBACL_H)
+        if (euid != 0) {
             uid_t ziti_uid = get_user_uid("ziti");
-            if (euid != 0 && fowner_cap) {
-                if (euid == ziti_uid) {
-                    install_user_acl_etc_resolv(ziti_uid);
-                } else {
-                    ZITI_LOG(ERROR, "No means to manipulate %s. Run this program as 'root' or as the 'ziti' user with CAP_FOWNER.", RESOLV_CONF_FILE);
-                    exit(EXIT_FAILURE);
-                }
+            bool fowner_cap = has_effective_capability(CAP_FOWNER);
+            if ((euid == ziti_uid) && fowner_cap) {
+                install_user_acl_etc_resolv(ziti_uid);
+            } else {
+                ZITI_LOG(ERROR, "No means to manipulate %s. Run this program as 'root' or as the 'ziti' user with CAP_FOWNER.", RESOLV_CONF_FILE);
+                exit(EXIT_FAILURE);
             }
-            dns_updater = dns_update_etc_resolv;
-            dns_set_miss_status(DNS_REFUSE);
-            return;
         }
+#endif
+        ZITI_LOG(WARN, "Adding ziti resolver to %s.conf. Ziti DNS functionality may be impaired", RESOLV_CONF_FILE);
+        dns_updater = dns_update_etc_resolv;
+        dns_set_miss_status(DNS_REFUSE);
+        return;
     } else {
         ZITI_LOG(ERROR, "Refusing to alter DNS configuration. %s is a symlink to systemd-resolved, but no systemd resolver succeeded.", RESOLV_CONF_FILE);
         exit(EXIT_FAILURE);

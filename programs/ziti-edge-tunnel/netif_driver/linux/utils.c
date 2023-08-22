@@ -19,7 +19,10 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <pwd.h>
+#ifdef HAVE_LIBCAP_H
 #include <sys/capability.h>
+#endif
 #include <sys/stat.h>
 #include <ziti/ziti_log.h>
 
@@ -61,6 +64,7 @@ bool is_symlink(const char *path) {
     return (lstat(path, &s) == 0 && S_ISLNK(s.st_mode));
 }
 
+#ifdef HAVE_LIBCAP_H
 bool has_effective_capability(cap_value_t cap) {
     cap_t caps;
     cap_flag_value_t flag;
@@ -93,6 +97,7 @@ bool has_effective_capability(cap_value_t cap) {
     cap_free(caps);
     return true;
 }
+#endif
 
 uid_t get_user_uid(const char *username) {
     uid_t ziti_uid = -1;
