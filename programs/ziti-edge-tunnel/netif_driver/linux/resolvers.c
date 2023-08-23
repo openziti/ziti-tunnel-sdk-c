@@ -420,25 +420,25 @@ void dns_update_resolvconf(const char *tun, unsigned int ifindex, const char *ad
 
 static bool make_copy(const char *src, const char *dst) {
 
-    uv_fs_t *req = (uv_fs_t *)malloc(sizeof(uv_fs_t));
+    uv_fs_t req = {0};
 
     ZITI_LOG(INFO, "attempting copy of: %s", src);
 
-    int ret = uv_fs_copyfile(uv_default_loop(), req, src, dst, UV_FS_COPYFILE_EXCL, NULL);
+    int ret = uv_fs_copyfile(uv_default_loop(), &req, src, dst, UV_FS_COPYFILE_EXCL, NULL);
 
-    if (req->result < 0) {
-        if (req->result == UV_EEXIST) {
-            ZITI_LOG(DEBUG, "%s has already been copied", req->path);
+    if (req.result < 0) {
+        if (req.result == UV_EEXIST) {
+            ZITI_LOG(DEBUG, "%s has already been copied", req.path);
         } else {
-            ZITI_LOG(WARN, "could not create copy[%s]: %s", req->new_path, uv_strerror(req->result));
-            uv_fs_req_cleanup(req);
+            ZITI_LOG(WARN, "could not create copy[%s]: %s", req.new_path, uv_strerror(req.result));
+            uv_fs_req_cleanup(&req);
             return false;
         }
     }
 
-    ZITI_LOG(INFO, "copy successful: %s", req->new_path);
+    ZITI_LOG(INFO, "copy successful: %s", req.new_path);
 
-    uv_fs_req_cleanup(req);
+    uv_fs_req_cleanup(&req);
 
     return true;
 }
@@ -480,7 +480,7 @@ void dns_update_etc_resolv(const char *tun, unsigned int ifindex, const char *ad
           return;
       }
 
-      char *buffer = NULL;
+      _cleanup_(cleanup_bufferp) char *buffer = NULL;
       size_t buffer_size;
       ssize_t line_size;
       off_t match_start_offset = -1;
@@ -488,7 +488,7 @@ void dns_update_etc_resolv(const char *tun, unsigned int ifindex, const char *ad
       while((line_size = getline(&buffer, &buffer_size, file)) != -1) {
           if(strstr(buffer, match) != NULL) {
               if(strstr(buffer, replace) != NULL) {
-                  ZITI_LOG(TRACE, "ziti nameserver is already in %s", RESOLV_CONF_FILE);
+                  ZITI_LOG(DEBUG, "ziti nameserver is already in %s", RESOLV_CONF_FILE);
                   return;
               }
               match_start_offset = ftell(file) - line_size;
@@ -537,11 +537,8 @@ void dns_update_etc_resolv(const char *tun, unsigned int ifindex, const char *ad
               CLEANUP_ETC_RESOLV();
           }
 
-          // Handle case in which realloc moves the memory block
-          // and calls free()
-          if (rptr != replace) {
-              replace = NULL;
-          }
+          // prevent double free() when cleanup_bufferp() is called
+          replace = NULL;
 
           strcat(rptr, remaining_content);
 
@@ -560,16 +557,17 @@ void dns_update_etc_resolv(const char *tun, unsigned int ifindex, const char *ad
                   CLEANUP_ETC_RESOLV();
               }
           }
-          ZITI_LOG(DEBUG, "Added ziti DNS resolver to %s", RESOLV_CONF_FILE);
 
-          return;
+      } else {
+          // If no nameserver directives to prepend, just append to the file.
+          if (fputs(replace, file) == EOF) {
+              ZITI_LOG(ERROR, "EOF received while appending to: %s", RESOLV_CONF_FILE);
+              CLEANUP_ETC_RESOLV();
+          }
       }
 
-      // If no nameserver directives to prepend, just append to the file.
-      if (fputs(replace, file) == EOF) {
-          ZITI_LOG(ERROR, "EOF received while appending to: %s", RESOLV_CONF_FILE);
-          CLEANUP_ETC_RESOLV();
-      }
+      ZITI_LOG(DEBUG, "Added ziti DNS resolver to %s", RESOLV_CONF_FILE);
+
       return;
 }
 
