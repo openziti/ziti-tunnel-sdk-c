@@ -110,7 +110,7 @@
       "hidden": true,
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "TLSUV_TLSLIB": "openssl"
+        "TLSUV_TLSLIB": "mbedtls"
       }
     },
     {
