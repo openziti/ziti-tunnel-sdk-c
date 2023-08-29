@@ -120,6 +120,20 @@ This example uses [the included Docker Compose project](docker-compose.yml) to i
 
 1. Access the demo server via your OpenZiti Network: [http://hello-docker.ziti](http://hello-docker.ziti)
 
+#### Troubleshooting `openziti/ziti-host`
+
+You may pass additional args by supplying the `run-host` mode and args when the container is run.
+
+```bash
+docker run \
+  --name ziti-host \
+  --rm \
+  --network=my-docker-bridge \
+  --env ZITI_IDENTITY_JSON="$(< /opt/openziti/etc/identities/my-ziti-identity.json)" \
+  openziti/ziti-host \
+    run-host --verbose=4
+```
+
 #### Docker Compose Examples for `openziti/ziti-host`
 
 Get a single, enrolled identity configuration from an environment variable. You could define the variable with an `.env` file in the same directory as `docker-compose.yml`.
@@ -218,6 +232,23 @@ docker run \
     --device "/dev/net/tun:/dev/net/tun" \
     --env ZITI_IDENTITY_BASENAME=ziti_id \
     openziti/ziti-edge-tunnel
+```
+
+#### Troubleshooting `openziti/ziti-edge-tunnel`
+
+You may pass additional args by supplying the `run` mode followed by args when the container is run.
+
+```bash
+docker run \
+    --name ziti-tun \
+    --network host \
+    --privileged \
+    --volume ${PWD}:/ziti-edge-tunnel/ \
+    --volume "/var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket" \
+    --device "/dev/net/tun:/dev/net/tun" \
+    --env ZITI_IDENTITY_BASENAME=ziti_id \
+    openziti/ziti-edge-tunnel \
+      run --verbose=4
 ```
 
 #### Docker Compose Examples for `openziti/ziti-edge-tunnel`
