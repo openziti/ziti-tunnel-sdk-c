@@ -240,7 +240,7 @@ You may pass additional args by supplying the `run` mode followed by args when t
 
 ```bash
 docker run \
-    --name ziti-tun \
+    --name ziti-edge-tunnel \
     --network host \
     --privileged \
     --volume ${PWD}:/ziti-edge-tunnel/ \
