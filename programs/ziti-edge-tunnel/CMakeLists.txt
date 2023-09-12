@@ -67,7 +67,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 
     if (LIBCAP_FOUND)
         target_compile_definitions(ziti-edge-tunnel PRIVATE HAVE_LIBCAP_PKG)
-	    target_link_libraries(ziti-edge-tunnel PRIVATE PkgConfig::LIBCAP)
+        target_link_libraries(ziti-edge-tunnel PRIVATE PkgConfig::LIBCAP)
     endif()
 
 
