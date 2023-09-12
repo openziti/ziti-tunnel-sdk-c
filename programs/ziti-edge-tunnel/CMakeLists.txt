@@ -61,12 +61,12 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     pkg_check_modules(LIBCAP IMPORTED_TARGET "libcap")
 
     if (LIBACL_FOUND)
-        target_compile_definitions(ziti-edge-tunnel PRIVATE HAVE_LIBACL_H)
+        target_compile_definitions(ziti-edge-tunnel PRIVATE HAVE_LIBACL_PKG)
         target_link_libraries(ziti-edge-tunnel PRIVATE PkgConfig::LIBACL)
     endif()
 
     if (LIBCAP_FOUND)
-        target_compile_definitions(ziti-edge-tunnel PRIVATE HAVE_LIBCAP_H)
+        target_compile_definitions(ziti-edge-tunnel PRIVATE HAVE_LIBCAP_PKG)
 	    target_link_libraries(ziti-edge-tunnel PRIVATE PkgConfig::LIBCAP)
     endif()
 

@@ -20,7 +20,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <pwd.h>
-#ifdef HAVE_LIBCAP_H
+#ifdef HAVE_LIBCAP_PKG
 #include <sys/capability.h>
 #endif
 #include <sys/stat.h>
@@ -64,7 +64,7 @@ bool is_symlink(const char *path) {
     return (lstat(path, &s) == 0 && S_ISLNK(s.st_mode));
 }
 
-#ifdef HAVE_LIBCAP_H
+#ifdef HAVE_LIBCAP_PKG
 bool has_effective_capability(cap_value_t cap) {
     cap_t caps;
     cap_flag_value_t flag;
