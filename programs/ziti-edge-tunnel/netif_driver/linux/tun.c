@@ -277,7 +277,7 @@ static void find_dns_updater() {
             return;
         }
 
-#if defined(HAVE_LIBCAP_H) && defined(HAVE_LIBACL_H)
+#if defined(HAVE_LIBCAP_PKG) && defined(HAVE_LIBACL_PKG)
         if (euid != 0) {
             uid_t ziti_uid = get_user_uid("ziti");
             bool fowner_cap = has_effective_capability(CAP_FOWNER);

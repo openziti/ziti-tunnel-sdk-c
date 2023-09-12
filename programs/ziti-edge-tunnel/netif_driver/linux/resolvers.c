@@ -19,7 +19,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
-#ifdef HAVE_LIBACL_H
+#ifdef HAVE_LIBACL_PKG
 #include <sys/acl.h>
 #include <acl/libacl.h>
 #endif
@@ -423,7 +423,7 @@ void dns_update_resolvconf(const char *tun, unsigned int ifindex, const char *ad
     run_command("echo 'nameserver %s' | %s -a %s", addr, RESOLVCONF, tun);
 }
 
-#ifdef HAVE_LIBACL_H
+#ifdef HAVE_LIBACL_PKG
 static void cleanup_acl(acl_t *acl) {
     if (*acl != NULL) {
        if (acl_free(*acl) == -1) {
