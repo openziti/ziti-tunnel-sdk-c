@@ -1,7 +1,7 @@
 cmake_policy(SET CMP0057 NEW)
 
 if(CPACK_GENERATOR MATCHES "RPM")
-    set(CPACK_RPM_BUILDREQUIRES "cmake >= ${CMAKE_MINIMUM_REQUIRED_VERSION}, systemd-devel, gawk, gcc-c++ >= 4.9, python3, openssl-devel, zlib-devel, libacl-devel")
+    set(CPACK_RPM_BUILDREQUIRES "cmake >= ${CMAKE_MINIMUM_REQUIRED_VERSION}, systemd-devel, gawk, gcc-c++ >= 4.9, python3, openssl-devel, zlib-devel, libcap-devel")
     if(CPACK_OS_RELEASE_NAME IN_LIST CPACK_RPM_DISTRIBUTIONS AND CPACK_OS_RELEASE_VERSION VERSION_GREATER "7")
         list(APPEND CPACK_RPM_BUILDREQUIRES "systemd-rpm-macros")
     endif()
