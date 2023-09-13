@@ -74,6 +74,7 @@ typedef struct api_update_req_s {
     uv_work_t wr;
     ziti_context ztx;
     char *new_url;
+    char *new_ca;
     int err;
     const char *errmsg;
 } api_update_req;
@@ -830,12 +831,13 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
         }
 
         case ZitiAPIEvent: {
-            if (event->event.api.new_ctrl_address) {
+            if (event->event.api.new_ctrl_address || event->event.api.new_ca_bundle) {
                 if (instance->opts.config) {
                     api_update_req *req = calloc(1, sizeof(api_update_req));
                     req->wr.data = req;
                     req->ztx = ztx;
-                    req->new_url = strdup(event->event.api.new_ctrl_address);
+                    req->new_url = event->event.api.new_ctrl_address ? strdup(event->event.api.new_ctrl_address) : NULL;
+                    req->new_ca = event->event.api.new_ca_bundle ? strdup(event->event.api.new_ca_bundle) : NULL;
                     uv_queue_work(CMD_CTX.loop, &req->wr, update_config, update_config_done);
                 }
 
@@ -843,6 +845,7 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
                 ev.event_type = TunnelEvents.APIEvent;
                 ev.identifier = instance->identifier;
                 ev.new_ctrl_address = event->event.api.new_ctrl_address;
+                ev.new_ca_bundle = event->event.api.new_ca_bundle;
                 CMD_CTX.on_event((const base_event *) &ev);
             } else {
                 ZITI_LOG(WARN, "unexpected API event: new_ctrl_address is missing");
@@ -1178,6 +1181,36 @@ static void on_sigdump(uv_signal_t *sig, int signum) {
     fclose(dumpfile);
 }
 
+
+static int update_file(const char *path, char *content, size_t content_len) {
+#define CHECK_UV(desc, op) do{ \
+    uv_fs_req_cleanup(&fs_req); \
+    rc = op;             \
+    if (rc < 0) {           \
+        ZITI_LOG(ERROR, "op[" desc "] failed: %d(%s)", rc, uv_strerror(rc)); \
+        goto DONE;               \
+    }} while(0)
+
+    int rc = 0;
+    uv_fs_t fs_req = {0};
+    CHECK_UV("check exiting config", uv_fs_stat(NULL, &fs_req, path, NULL));
+    uint64_t mode = fs_req.statbuf.st_mode;
+
+    char backup[FILENAME_MAX];
+    snprintf(backup, sizeof(backup), "%s.bak", path);
+    CHECK_UV("create backup", uv_fs_rename(NULL, &fs_req, path, backup, NULL));
+
+    uv_os_fd_t f;
+    CHECK_UV("open new config", f = uv_fs_open(NULL, &fs_req, path, UV_FS_O_WRONLY | UV_FS_O_CREAT, (int) mode, NULL));
+    uv_buf_t buf = uv_buf_init(content, content_len);
+    CHECK_UV("write new config", uv_fs_write(NULL, &fs_req, f, &buf, 1, 0, NULL));
+    CHECK_UV("close new config", uv_fs_close(NULL, &fs_req, f, NULL));
+
+    DONE:
+    return rc;
+#undef CHECK_UV
+}
+
 #define CHECK_UV(desc, op) do{ \
 int rc = op;             \
 if (rc < 0) {           \
@@ -1200,7 +1233,6 @@ static void update_config(uv_work_t *wr) {
     cfg_len = fs_req.statbuf.st_size;
 
     cfg_buf = malloc(cfg_len);
-    uint64_t cfg_mode = fs_req.statbuf.st_mode;
     CHECK_UV("open existing config", f = uv_fs_open(wr->loop, &fs_req, config_file, UV_FS_O_RDONLY, 0, NULL));
     uv_buf_t buf = uv_buf_init(cfg_buf, cfg_len);
     CHECK_UV("read existing config", uv_fs_read(wr->loop, &fs_req, f, &buf, 1, 0, NULL));
@@ -1215,21 +1247,35 @@ static void update_config(uv_work_t *wr) {
     }
     FREE(cfg_buf);
 
-    free(cfg.controller_url);
-    cfg.controller_url = req->new_url;
-    req->new_url = NULL;
+    // attempt to update CA bundle external to config file
+    if (req->new_ca && strncmp(cfg.id.ca, "file://", strlen("file://")) == 0) {
+        struct tlsuv_url_s path_uri;
+        char path[FILENAME_MAX];
+        CHECK_UV("parse CA bundle path", tlsuv_parse_url(&path_uri, cfg.id.ca));
+        strncpy(path, path_uri.path, path_uri.path_len);
+        CHECK_UV("update CA bundle file", update_file(path, req->new_ca, strlen(req->new_ca)));
+        FREE(req->new_ca);
+    }
 
-    char backup[FILENAME_MAX];
+    bool write_new_cfg = false;
+    if (req->new_url) {
+        free(cfg.controller_url);
+        cfg.controller_url = req->new_url;
+        req->new_url = NULL;
+        write_new_cfg = true;
+    }
 
-    snprintf(backup, sizeof(backup), "%s.bak", config_file);
-    CHECK_UV("create backup", uv_fs_rename(wr->loop, &fs_req, config_file, backup, NULL));
+    if (req->new_ca) {
+        free(cfg.id.ca);
+        cfg.id.ca = req->new_ca;
+        req->new_ca = NULL;
+        write_new_cfg = true;
+    }
 
-    CHECK_UV("open new config", f = uv_fs_open(wr->loop, &fs_req, config_file, UV_FS_O_WRONLY | UV_FS_O_CREAT, (int)cfg_mode, NULL));
-    cfg_buf = ziti_config_to_json(&cfg, 0, &cfg_len);
-    buf = uv_buf_init(cfg_buf, cfg_len);
-    CHECK_UV("write new config", uv_fs_write(wr->loop, &fs_req, f, &buf, 1, 0, NULL));
-    CHECK_UV("close new config", uv_fs_close(wr->loop, &fs_req, f, NULL));
-
+    if (write_new_cfg) {
+        cfg_buf = ziti_config_to_json(&cfg, 0, &cfg_len);
+        CHECK_UV("update config", update_file(config_file, cfg_buf, cfg_len));
+    }
     DONE:
     free_ziti_config(&cfg);
     FREE(cfg_buf);

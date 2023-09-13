@@ -252,7 +252,8 @@ XX(code, int, none, code, __VA_ARGS__)
 
 #define ZTX_API_EVENT_MODEL(XX, ...)  \
 BASE_EVENT_MODEL(XX, __VA_ARGS__)  \
-XX(new_ctrl_address, string, none, new_ctrl_address, __VA_ARGS__)
+XX(new_ctrl_address, string, none, new_ctrl_address, __VA_ARGS__) \
+XX(new_ca_bundle, string, none, new_ca_bundle, __VA_ARGS__)
 
 DECLARE_MODEL(base_event, BASE_EVENT_MODEL)
 DECLARE_MODEL(ziti_ctx_event, ZTX_EVENT_MODEL)
