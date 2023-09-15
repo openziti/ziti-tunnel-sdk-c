@@ -48,6 +48,8 @@ RUN sed -Ei 's/^deb/deb [arch=amd64]/g' /etc/apt/sources.list
 RUN dpkg --add-architecture arm64 && dpkg --add-architecture armhf
 RUN apt-get update \
     && apt-get -y install \
+        libacl1-dev:armhf \
+        libacl1-dev:arm64 \
         libcap-dev:armhf \
         libcap-dev:arm64 \
         libssl-dev:arm64 \
