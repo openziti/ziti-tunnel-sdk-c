@@ -45,7 +45,7 @@ done
         --preset "${cmake_preset}" \
         -DCMAKE_BUILD_TYPE="${cmake_config}" \
         -DBUILD_DIST_PACKAGES=ON \
-        -DVCPKG_OVERLAY_PORTS="./vcpkg-overlays/linux-syslibs/redhat9" \
+        -DVCPKG_OVERLAY_PORTS="./vcpkg-overlays/linux-syslibs/default:./vcpkg-overlays/linux-syslibs/redhat9" \
         -S . \
         -B ./build
     cmake \
