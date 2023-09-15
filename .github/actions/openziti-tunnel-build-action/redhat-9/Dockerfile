@@ -20,19 +20,18 @@ RUN dnf install -y \
         autoconf \
         automake \
         cmake-rpm-macros  \
-        cmake-rpm-macros  \
         dnf-plugins-core \
         gettext-devel \
         iproute \
         libacl-devel \
         libatomic \
-        libatomic \
-        libcap-devel \
         libcap-devel \
         libtool \
         openssl-devel \
-        openssl-devel \
-        perl-FindBin perl-IPC-Cmd perl-File-Compare perl-File-Copy \
+        perl-File-Compare \
+        perl-File-Copy \
+        perl-FindBin \
+        perl-IPC-Cmd \
         python3 \
         systemd-devel \
         systemd-rpm-macros \
@@ -43,7 +42,7 @@ RUN dnf install -y \
         git \
         graphviz \
         ninja-build \
-    && dnf clean all 
+    && dnf clean all
 
 RUN curl -sSfL https://cmake.org/files/v${CMAKE_VERSION%.*}/cmake-${CMAKE_VERSION}-linux-$(uname -m).sh -o cmake.sh \
     && (bash cmake.sh --skip-license --prefix=/usr/local) \

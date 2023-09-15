@@ -31,6 +31,7 @@ RUN apt-get update \
         gcc-arm-linux-gnueabihf \
         git \
         graphviz \
+        libacl1-dev \
         libcap-dev \
         libssl-dev \
         libsystemd-dev \
