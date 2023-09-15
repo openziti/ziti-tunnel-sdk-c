@@ -44,6 +44,7 @@ cmake \
     --preset "${cmake_preset}" \
     -DCMAKE_BUILD_TYPE="${cmake_config}" \
     -DBUILD_DIST_PACKAGES=ON \
+    -DVCPKG_OVERLAY_PORTS="./vcpkg-overlays/linux-syslibs/ubuntu22" \
     -S "${PWD}/" \
     -B ./build
 cmake \

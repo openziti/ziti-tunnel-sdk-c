@@ -23,6 +23,7 @@ RUN dnf install -y \
         gcc-toolset-10-libatomic-devel \
         gettext-devel \
         iproute \
+        libacl-devel \
         libcap-devel \
         libtool \
         openssl-devel \

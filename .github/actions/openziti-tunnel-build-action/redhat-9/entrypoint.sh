@@ -38,15 +38,16 @@ done
 
 (
     [[ -d ./build ]] && rm -r ./build
-    cmake -E make_directory ./build  
+    cmake -E make_directory ./build
     # allow unset for scl_source scripts
     set +u
     cmake \
         --preset "${cmake_preset}" \
         -DCMAKE_BUILD_TYPE="${cmake_config}" \
         -DBUILD_DIST_PACKAGES=ON \
+        -DVCPKG_OVERLAY_PORTS="./vcpkg-overlays/linux-syslibs/redhat9" \
         -S . \
-        -B ./build 
+        -B ./build
     cmake \
         --build ./build \
         --config "${cmake_config}" \

@@ -1,12 +1,12 @@
 cmake_policy(SET CMP0057 NEW)
 
 if(CPACK_GENERATOR MATCHES "RPM")
-    set(CPACK_RPM_BUILDREQUIRES "cmake >= ${CMAKE_MINIMUM_REQUIRED_VERSION}, systemd-devel, gawk, gcc-c++ >= 4.9, python3, openssl-devel, zlib-devel, libcap-devel")
+    set(CPACK_RPM_BUILDREQUIRES "cmake >= ${CMAKE_MINIMUM_REQUIRED_VERSION}, systemd-devel, gawk, gcc-c++ >= 4.9, python3, openssl-devel, zlib-devel, libacl-devel, libcap-devel")
     if(CPACK_OS_RELEASE_NAME IN_LIST CPACK_RPM_DISTRIBUTIONS AND CPACK_OS_RELEASE_VERSION VERSION_GREATER "7")
         list(APPEND CPACK_RPM_BUILDREQUIRES "systemd-rpm-macros")
     endif()
     set(CPACK_RPM_PACKAGE_SOURCES OFF)
-    set(CPACK_RPM_PACKAGE_REQUIRES "iproute, gawk, systemd, libatomic, openssl-libs, zlib, polkit, libcap")
+    set(CPACK_RPM_PACKAGE_REQUIRES "iproute, gawk, systemd, libatomic, openssl-libs, zlib, polkit, libacl, libcap")
     set(CPACK_RPM_CHANGELOG_FILE "${CMAKE_CURRENT_LIST_DIR}/RPM_CHANGELOG")
     set(CPACK_RPM_FILE_NAME "RPM-DEFAULT")
     set(CPACK_RPM_PACKAGE_DESCRIPTION "The OpenZiti Edge Tunnel is a zero-trust tunneling software client.")
@@ -38,6 +38,6 @@ if(CPACK_GENERATOR MATCHES "DEB")
     # specify "libssl3 if it exists in the repos, or nothing" as a dependency.
     # systemd package on older distros does not contain `systemd-sysusers`, so include passwd for `useradd`, `groupadd`.
     # login provides `/usr/sbin/nologin`.
-    set(CPACK_DEBIAN_PACKAGE_DEPENDS "debconf, iproute2, sed, systemd, libatomic1, libssl3 | libssl1.1 | libssl1.0.0, login, passwd, policykit-1, zlib1g, libcap2")
+    set(CPACK_DEBIAN_PACKAGE_DEPENDS "debconf, iproute2, sed, systemd, libatomic1, libssl3 | libssl1.1 | libssl1.0.0, login, passwd, policykit-1, zlib1g, libacl1, libcap2")
     set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA "${CPACK_DEB_CONFFILES};${CPACK_DEB_PRE_INSTALL};${CPACK_DEB_POST_INSTALL};${CPACK_DEB_PRE_UNINSTALL};${CPACK_DEB_POST_UNINSTALL};${CPACK_DEB_TEMPLATES}")
 endif(CPACK_GENERATOR MATCHES "DEB")

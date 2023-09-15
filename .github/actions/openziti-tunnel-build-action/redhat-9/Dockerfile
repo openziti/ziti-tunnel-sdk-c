@@ -22,6 +22,7 @@ RUN dnf install -y \
         gettext-devel \
         iproute \
         libatomic \
+        libacl-devel \
         libcap-devel \
         libtool \
         openssl-devel \
