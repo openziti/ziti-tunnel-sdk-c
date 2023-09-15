@@ -1731,7 +1731,7 @@ static void run_tunneler_loop(uv_loop_t* ziti_loop) {
     // set the service to running state
     scm_running_event();
 #elif __linux__ && !defined(DISABLE_LIBSYSTEMD)
-        static uv_once_t guard;
+    static uv_once_t guard;
     uv_once(&guard, init_libsystemd);
 
     if(libsystemd_dl_success) {
