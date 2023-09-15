@@ -28,6 +28,7 @@ RUN dnf install -y \
         libtool \
         openssl-devel \
         perl \
+        perl-IPC-Cmd \
         python3 \
         systemd-devel \
         systemd-rpm-macros \
