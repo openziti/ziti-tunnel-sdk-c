@@ -259,7 +259,7 @@ static bool addrinfo_from_host_ctx(struct addrinfo_params_s *dial_params, const 
 
     if (host_ctx->forward_protocol) {
         dial_protocol_str = app_data->dst_protocol;
-        if (dial_protocol_str == NULL | dial_protocol_str[0] == '\0') {
+        if (dial_protocol_str == NULL || dial_protocol_str[0] == '\0') {
             snprintf(dial_params->err, sizeof(dial_params->err),
                      "hosted_service[%s] config specifies 'forwardProtocol', but client didn't send %s",
                      host_ctx->service_name, DST_PROTO_KEY);
