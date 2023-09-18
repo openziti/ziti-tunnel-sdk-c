@@ -382,7 +382,9 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
             cmd_accepted = true;
 
             tunnel_set_log_level tunnel_set_log_level_cmd = {0};
-            if (tnl_cmd->data == NULL || parse_tunnel_set_log_level(&tunnel_set_log_level_cmd, tnl_cmd->data, strlen(tnl_cmd->data)) < 0) {
+            if (tnl_cmd->data == NULL ||
+                parse_tunnel_set_log_level(&tunnel_set_log_level_cmd, tnl_cmd->data, strlen(tnl_cmd->data)) < 0 ||
+                tunnel_set_log_level_cmd.loglevel == NULL) {
                 result.error = "invalid command";
                 result.success = false;
                 break;
@@ -391,8 +393,9 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
             if (strcasecmp(ziti_log_level_label(), tunnel_set_log_level_cmd.loglevel) != 0) {
                 ziti_log_set_level_by_label(tunnel_set_log_level_cmd.loglevel);
                 ziti_tunnel_set_log_level(get_log_level(tunnel_set_log_level_cmd.loglevel));
-                set_log_level(ziti_log_level_label());
-                ZITI_LOG(INFO, "Log level is set to %s", tunnel_set_log_level_cmd.loglevel);
+                const char *level = ziti_log_level_label();
+                set_log_level(level);
+                ZITI_LOG(INFO, "Log level is set to %s", level);
             } else {
                 ZITI_LOG(INFO, "Log level is already set to %s", tunnel_set_log_level_cmd.loglevel);
             }
@@ -2665,15 +2668,12 @@ static int set_log_level_opts(int argc, char *argv[]) {
     int c, option_index, errors = 0;
     optind = 0;
 
-    tunnel_set_log_level *log_level_options = calloc(1, sizeof(tunnel_set_log_level));
-    cmd = calloc(1, sizeof(tunnel_command));
-    cmd->command = TunnelCommand_SetLogLevel;
-
+    tunnel_set_log_level log_level_options = {0};
     while ((c = getopt_long(argc, argv, "l:",
                             opts, &option_index)) != -1) {
         switch (c) {
             case 'l':
-                log_level_options->loglevel = optarg;
+                log_level_options.loglevel = optarg;
                 break;
             default: {
                 fprintf(stderr, "Unknown option '%c'\n", c);
@@ -2683,11 +2683,18 @@ static int set_log_level_opts(int argc, char *argv[]) {
         }
     }
 
+    if (log_level_options.loglevel == NULL) {
+        fprintf(stderr, "level option(-l|--loglevel) is not specified\n");
+        errors++;
+    }
+
     CHECK_COMMAND_ERRORS(errors);
 
+    cmd = calloc(1, sizeof(tunnel_command));
+    cmd->command = TunnelCommand_SetLogLevel;
+
     size_t json_len;
-    cmd->data = tunnel_set_log_level_to_json(log_level_options, MODEL_JSON_COMPACT, &json_len);
-    free(log_level_options);
+    cmd->data = tunnel_set_log_level_to_json(&log_level_options, MODEL_JSON_COMPACT, &json_len);
 
     return optind;
 }
