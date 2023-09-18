@@ -2684,7 +2684,7 @@ static int set_log_level_opts(int argc, char *argv[]) {
     }
 
     if (log_level_options.loglevel == NULL) {
-        fprintf(stderr, "level option(-l|--loglevel) is not specified\n");
+        fprintf(stderr, "symbolic level option(-l|--loglevel) is not specified, e.g., INFO, DEBUG\n");
         errors++;
     }
 
