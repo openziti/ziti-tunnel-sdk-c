@@ -323,7 +323,7 @@ struct add_identity_request_s {
 
 struct ziti_instance_s {
     char *identifier;
-    ziti_options opts;
+    char *config_path;
     command_cb load_cb;
     void *load_ctx;
 
@@ -335,7 +335,8 @@ struct ziti_instance_s {
 
 void ziti_set_refresh_interval(unsigned long seconds);
 
-struct ziti_instance_s *new_ziti_instance_ex(const char *identifier);
+struct ziti_instance_s *new_ziti_instance(const char *identifier);
+int init_ziti_instance(struct ziti_instance_s *inst, const ziti_config *cfg, const ziti_options *opts);
 void set_ziti_instance(const char *identifier, struct ziti_instance_s *inst);
 void remove_ziti_instance(const char *identifier);
 

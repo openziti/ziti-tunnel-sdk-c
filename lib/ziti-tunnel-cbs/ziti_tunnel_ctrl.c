@@ -44,12 +44,11 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event);
 
 static const char * cfg_types[] = { "ziti-tunneler-client.v1", "intercept.v1", "ziti-tunneler-server.v1", "host.v1", NULL };
 
-static unsigned long refresh_interval = 10;
+static long refresh_interval = 10;
 
 static int process_cmd(const tunnel_command *cmd, void (*cb)(const tunnel_result *, void *ctx), void *ctx);
 static int load_identity(const char *identifier, const char *path, int api_page_size, command_cb cb, void *ctx);
 static void get_transfer_rates(const char *identifier, command_cb cb, void *ctx);
-static struct ziti_instance_s *new_ziti_instance(const char *identifier, const char *path);
 static void load_ziti_async(uv_loop_t *loop, void *arg);
 static void on_sigdump(uv_signal_t *sig, int signum);
 static void enable_mfa(ziti_context ztx, void *ctx);
@@ -612,17 +611,33 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
 }
 
 static int load_identity(const char *identifier, const char *path, int api_page_size, command_cb cb, void *ctx) {
-
-    struct ziti_instance_s *inst = new_ziti_instance(identifier, path);
-    inst->load_cb = cb;
-    inst->load_ctx = ctx;
-    inst->opts.config = strdup(path);
-    if (api_page_size > 0) {
-        inst->opts.api_page_size = api_page_size;
+    ziti_config cfg = {0};
+    int rc = ziti_load_config(&cfg, path);
+    if (rc != ZITI_OK) {
+        goto on_error;
     }
 
+    struct ziti_instance_s *inst = new_ziti_instance(identifier ? identifier : path);
+    ziti_options opts = {
+            .config_types = cfg_types,
+            .events = -1,
+            .event_cb = on_ziti_event,
+            .api_page_size = api_page_size > 0 ? api_page_size : 0,
+            .refresh_interval = refresh_interval,
+            .app_ctx = inst,
+    };
+    rc = init_ziti_instance(inst, &cfg, &opts);
+    if (rc != ZITI_OK) {
+        goto on_error;
+    }
+    inst->load_cb = cb;
+    inst->load_ctx = ctx;
+
     load_ziti_async(CMD_CTX.loop, inst);
-    return 0;
+
+    on_error:
+    free_ziti_config(&cfg);
+    return rc;
 }
 
 static void get_transfer_rates(const char *identifier, command_cb cb, void *ctx) {
@@ -655,25 +670,22 @@ static void get_transfer_rates(const char *identifier, command_cb cb, void *ctx)
     free(result.data);
 }
 
-static struct ziti_instance_s *new_ziti_instance(const char *identifier, const char *path) {
+struct ziti_instance_s *new_ziti_instance(const char *identifier) {
     struct ziti_instance_s *inst = calloc(1, sizeof(struct ziti_instance_s));
-
-    inst->identifier = strdup(identifier ? identifier : path);
-    if (path) {
-        inst->opts.config = realpath(path, NULL);
-    }
-    inst->opts.config_types = cfg_types;
-    inst->opts.events = -1;
-    inst->opts.event_cb = on_ziti_event;
-    inst->opts.refresh_interval = refresh_interval; /* default refresh */
-    inst->opts.app_ctx = inst;
-
+    inst->identifier = strdup(identifier);
     return inst;
 }
 
-struct ziti_instance_s *new_ziti_instance_ex(const char *identifier) {
-    return new_ziti_instance(identifier, NULL);
+int init_ziti_instance(struct ziti_instance_s *inst, const ziti_config *cfg, const ziti_options *opts) {
+    int rc = ziti_context_init(&inst->ztx, cfg);
+    if (rc != ZITI_OK) {
+        return rc;
+    }
+
+    rc = ziti_context_set_options(inst->ztx, opts);
+    return rc;
 }
+
 
 void set_ziti_instance(const char *identifier, struct ziti_instance_s *inst) {
     model_map_set(&instances, identifier, inst);
@@ -832,7 +844,7 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
 
         case ZitiAPIEvent: {
             if (event->event.api.new_ctrl_address || event->event.api.new_ca_bundle) {
-                if (instance->opts.config) {
+                if (instance->config_path) {
                     api_update_req *req = calloc(1, sizeof(api_update_req));
                     req->wr.data = req;
                     req->ztx = ztx;
@@ -868,17 +880,15 @@ static void load_ziti_async(uv_loop_t *loop, void *arg) {
             .code = IPC_SUCCESS,
     };
 
-    char *config_path = realpath(inst->opts.config, NULL);
-    ZITI_LOG(INFO, "attempting to load ziti instance from file[%s]", inst->opts.config);
+    ZITI_LOG(INFO, "attempting to load ziti instance[%s]", inst->identifier);
     if (model_map_get(&instances, inst->identifier) != NULL) {
-        ZITI_LOG(WARN, "ziti context already loaded for %s", inst->opts.config);
+        ZITI_LOG(WARN, "ziti context already loaded for %s", inst->identifier);
         result.success = false;
         result.error = "context already loaded";
         result.code = IPC_ERROR;
     } else {
-        ZITI_LOG(INFO, "loading ziti instance from %s", config_path);
-        inst->opts.app_ctx = inst;
-        if (ziti_init_opts(&inst->opts, loop) == ZITI_OK) {
+        ZITI_LOG(INFO, "loading ziti instance[%s]", inst->identifier);
+        if (ziti_context_run(inst->ztx, loop) == ZITI_OK) {
             model_map_set(&instances, inst->identifier, inst);
         } else {
             result.success = false;
@@ -894,8 +904,6 @@ static void load_ziti_async(uv_loop_t *loop, void *arg) {
     if (!result.success) {
         free(inst);
     }
-
-    free(config_path);
 }
 
 /*
@@ -1223,7 +1231,7 @@ goto DONE;               \
 static void update_config(uv_work_t *wr) {
     api_update_req *req = wr->data;
     struct ziti_instance_s *inst = ziti_app_ctx(req->ztx);
-    const char *config_file = inst->opts.config;
+    const char *config_file = inst->config_path;
     size_t cfg_len;
     char *cfg_buf = NULL;
     uv_file f;
