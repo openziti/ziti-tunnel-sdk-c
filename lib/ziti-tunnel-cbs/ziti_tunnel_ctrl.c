@@ -619,12 +619,7 @@ static int load_identity(const char *identifier, const char *path, int api_page_
 
     struct ziti_instance_s *inst = new_ziti_instance(identifier ? identifier : path);
     ziti_options opts = {
-            .config_types = cfg_types,
-            .events = -1,
-            .event_cb = on_ziti_event,
             .api_page_size = api_page_size > 0 ? api_page_size : 0,
-            .refresh_interval = refresh_interval,
-            .app_ctx = inst,
     };
     rc = init_ziti_instance(inst, &cfg, &opts);
     if (rc != ZITI_OK) {
@@ -677,12 +672,33 @@ struct ziti_instance_s *new_ziti_instance(const char *identifier) {
 }
 
 int init_ziti_instance(struct ziti_instance_s *inst, const ziti_config *cfg, const ziti_options *opts) {
-    int rc = ziti_context_init(&inst->ztx, cfg);
-    if (rc != ZITI_OK) {
-        return rc;
+    int rc;
+    if (!inst->ztx) {
+        rc = ziti_context_init(&inst->ztx, cfg);
+        if (rc != ZITI_OK) {
+            ZITI_LOG(ERROR, "ziti_context_init failed: %s", ziti_errorstr(rc));
+            return rc;
+        }
     }
 
     rc = ziti_context_set_options(inst->ztx, opts);
+    if (rc != ZITI_OK) {
+        ZITI_LOG(ERROR, "ziti_context_set_options failed: %s", ziti_errorstr(rc));
+        return rc;
+    }
+
+    // override options that are necessary and/or appropriate for tunnelers
+    ziti_options tunneler_ziti_options = {
+            .config_types = cfg_types,
+            .event_cb = on_ziti_event, // ensure ziti events are propagated (as tunnel events) via the command interface
+            .events = -1,
+            .refresh_interval = refresh_interval,
+            .app_ctx = inst
+    };
+    rc = ziti_context_set_options(inst->ztx, &tunneler_ziti_options);
+    if (rc != ZITI_OK) {
+        ZITI_LOG(ERROR, "ziti_context_set_options failed: %s", ziti_errorstr(rc));
+    }
     return rc;
 }
 
