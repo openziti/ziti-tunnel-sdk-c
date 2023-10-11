@@ -14,12 +14,19 @@ on:
         type: string
         required: true
 
+# no need for concurrency group in callable workflows
+
 jobs:
   publish-containers:
     runs-on: ubuntu-latest
     env:
       ZITI_VERSION: ${{ inputs.ziti-version || github.event.inputs.ziti-version }}
+      ZITI_EDGE_TUNNEL_IMAGE: ${{ vars.ZITI_EDGE_TUNNEL_IMAGE || 'docker.io/openziti/ziti-edge-tunnel' }}
+      ZITI_HOST_IMAGE: ${{ vars.ZITI_HOST_IMAGE || 'docker.io/openziti/ziti-host' }}
     steps:
+      - name: Debug action
+        uses: hmarr/debug-action@v2.1.0
+
       - name: Checkout Workspace
         uses: actions/checkout@v3
 
@@ -35,18 +42,14 @@ jobs:
       - name: Login to Docker Hub
         uses: docker/login-action@v2
         with:
-          username: ${{ secrets.DOCKER_HUB_API_USER }}
+          username: ${{ vars.DOCKER_HUB_API_USER || secrets.DOCKER_HUB_API_USER }}
           password: ${{ secrets.DOCKER_HUB_API_TOKEN }}
 
       - name: Set up Docker image tags for "run" container
         env:
-          RELEASE_REPO: openziti/ziti-edge-tunnel
+          IMAGE_REPO: ${{ env.ZITI_EDGE_TUNNEL_IMAGE }}
         id: tagprep_run
-        run: |
-          DOCKER_TAGS=""
-          DOCKER_TAGS="${RELEASE_REPO}:${ZITI_VERSION},${RELEASE_REPO}:latest"
-          echo "DEBUG: DOCKER_TAGS=${DOCKER_TAGS}"
-          echo DOCKER_TAGS="${DOCKER_TAGS}" >> $GITHUB_OUTPUT
+        run: echo DOCKER_TAGS="${IMAGE_REPO}:${ZITI_VERSION}" | tee -a $GITHUB_OUTPUT
 
       - name: Build & Push Multi-Platform Container Image to Hub
         uses: docker/build-push-action@v3
@@ -63,13 +66,10 @@ jobs:
 
       - name: Set up Docker image tags for "run-host" container
         env:
-          RELEASE_REPO: openziti/ziti-host
+          IMAGE_REPO: ${{ env.ZITI_HOST_IMAGE }}
         id: tagprep_run_host
-        run: |
-          DOCKER_TAGS=""
-          DOCKER_TAGS="${RELEASE_REPO}:${ZITI_VERSION},${RELEASE_REPO}:latest"
-          echo "DEBUG: DOCKER_TAGS=${DOCKER_TAGS}"
-          echo DOCKER_TAGS="${DOCKER_TAGS}" >> $GITHUB_OUTPUT
+        run: echo DOCKER_TAGS="${IMAGE_REPO}:${ZITI_VERSION}" | tee -a $GITHUB_OUTPUT
+
 
       - name: Build & Push Multi-Platform Container Image to Hub
         uses: docker/build-push-action@v3
@@ -80,6 +80,6 @@ jobs:
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.tagprep_run_host.outputs.DOCKER_TAGS }}
           build-args: |
-            ZITI_VERSION=${{ env.ZITI_VERSION }}
-            GITHUB_REPO=${{ github.repository }}
+            ZITI_EDGE_TUNNEL_TAG=${{ env.ZITI_VERSION }}
+            ZITI_EDGE_TUNNEL_IMAGE=${{ env.ZITI_EDGE_TUNNEL_IMAGE }}
           push: true

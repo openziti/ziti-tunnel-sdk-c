@@ -64,12 +64,14 @@ function set_workspace(){
         fi
     else
         echo -e "INFO: project not mounted on ${WORKDIR}, re-running in container"\
-            "\nINFO: 'docker run --user ${UID} --volume ${REPODIR}:${WORKDIR} openziti/ziti-builder ${WORKDIR}/${SCRIPTSDIR}/${BASENAME} ${*}'"
+            "\nINFO: re-running in ziti-builder container"
+        set -x
         exec docker run \
             --rm \
             --user "${UID}" \
             --volume "${REPODIR}:${WORKDIR}" \
             --platform "linux/amd64" \
+            --env "VCPKG_DEFAULT_BINARY_CACHE=${WORKDIR}/.cache" \
             openziti/ziti-builder \
                 "${WORKDIR}/${SCRIPTSDIR}/${BASENAME}" "${@}"
     fi
@@ -115,6 +117,7 @@ function main() {
         exec "${@}"
     else
         [[ -d ./build ]] && rm -rf ./build
+        [[ -d ./.cache ]] || mkdir -v ./.cache
         cmake \
             -E make_directory \
             ./build  
@@ -132,6 +135,7 @@ function main() {
             --target "${CMAKE_TARGET:-bundle}" \
             --verbose
     fi
+    ls -lAh ./build/programs/ziti-edge-tunnel/Release/ziti-edge-tunnel
 }
 
 # set global WORKDIR

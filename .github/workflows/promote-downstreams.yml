@@ -1,0 +1,138 @@
+name: Promote Downstream Releases
+
+on: 
+  workflow_dispatch:
+
+# cancel older, redundant runs of same workflow on same branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+env:
+  RELEASE_REF: ${{ github.ref}}
+
+jobs:
+  wait_for_release:
+    name: Wait for Release Builds to Succeed
+    runs-on: ubuntu-latest
+    steps:
+      - name: Debug action
+        uses: hmarr/debug-action@v2.1.0
+
+      - name: Wait for all checks on this ref
+        uses: lewagon/wait-on-check-action@v1.3.1
+        with:
+          ref: ${{ env.RELEASE_REF }}
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          # seconds between polling the checks api for job statuses
+          wait-interval: 20
+          # confusingly, this means "pause this step until all jobs from all workflows in same run have completed"
+          running-workflow-name: Wait for Release Builds to Succeed
+
+  parse_version:
+    needs: wait_for_release
+    name: Parse Release Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.parse.outputs.version }}
+    steps:
+      - name: Parse Release Version
+        id: parse
+        shell: bash
+        run: |
+          if [[ "${RELEASE_REF}" =~ ^refs\/tags\/v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "RELEASE_REF=${RELEASE_REF} is a semver release ref"
+            echo "version=${RELEASE_REF#refs/tags/v}" | tee -a $GITHUB_OUTPUT
+          else
+            echo "RELEASE_REF=${RELEASE_REF} is not a semver release ref" >&2
+            exit 1
+          fi
+
+  set_matrix:
+    needs: wait_for_release
+    name: Set CPack Config Matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set_matrix.outputs.matrix }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Set Matrix
+        id: set_matrix
+        shell: bash
+        run: |
+          matrix="$(
+            yq --output-format json .github/cpack-matrix.yml \
+            | jq --compact-output '.cpack_matrix'
+          )"
+          echo "matrix=$matrix" | tee -a $GITHUB_OUTPUT
+
+  promote_docker:
+    needs: parse_version
+    name: Promote Docker Hub to Latest
+    runs-on: ubuntu-latest
+    env:
+      ZITI_EDGE_TUNNEL_IMAGE: ${{ vars.ZITI_EDGE_TUNNEL_IMAGE || 'docker.io/openziti/ziti-edge-tunnel' }}
+      ZITI_HOST_IMAGE: ${{ vars.ZITI_HOST_IMAGE || 'docker.io/openziti/ziti-host' }}
+    steps:
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ vars.DOCKER_HUB_API_USER || secrets.DOCKER_HUB_API_USER }}
+          password: ${{ secrets.DOCKER_HUB_API_TOKEN }}
+
+      - name: Tag Latest zti-edge-tunnel 
+        shell: bash
+        run: >
+          docker buildx imagetools create --tag
+          ${{ env.ZITI_EDGE_TUNNEL_IMAGE }}:latest
+          ${{ env.ZITI_EDGE_TUNNEL_IMAGE }}:${{ needs.parse_version.outputs.version }}
+
+      - name: Tag Latest zti-host
+        shell: bash
+        run: >
+          docker buildx imagetools create --tag
+          ${{ env.ZITI_HOST_IMAGE }}:latest
+          ${{ env.ZITI_HOST_IMAGE }}:${{ needs.parse_version.outputs.version }}
+
+  promote_artifactory:
+    needs:
+      - set_matrix
+      - parse_version
+    name: ${{ matrix.arch.rpm }} ${{ matrix.distro.name }} ${{ matrix.distro.version }}
+    runs-on: ubuntu-latest
+    env:
+      ZITI_DEB_TEST_REPO: ${{ vars.ZITI_DEB_TEST_REPO || 'zitipax-openziti-deb-test' }}
+      ZITI_RPM_TEST_REPO: ${{ vars.ZITI_RPM_TEST_REPO || 'zitipax-openziti-rpm-test' }}
+      ZITI_DEB_PROD_REPO: ${{ vars.ZITI_DEB_PROD_REPO || 'zitipax-openziti-deb-stable' }}
+      ZITI_RPM_PROD_REPO: ${{ vars.ZITI_RPM_PROD_REPO || 'zitipax-openziti-rpm-stable' }}
+    strategy:
+      fail-fast: true
+      matrix: ${{ fromJSON(needs.set_matrix.outputs.matrix) }}
+    steps:
+      - name: Configure jFrog CLI
+        uses: jfrog/setup-jfrog-cli@v3
+        env:
+          JF_ENV_1: ${{ secrets.ZITI_ARTIFACTORY_CLI_CONFIG_PACKAGE_UPLOAD }}
+
+      - name: Copy RPM from testing to release Artifactory repo with jFrog CLI
+        if: matrix.distro.type == 'rpm'
+        shell: bash
+        run: >
+          jf rt copy
+          --recursive=false
+          --flat=true
+          ${{ env.ZITI_RPM_TEST_REPO }}/redhat${{ matrix.distro.version }}/${{ matrix.arch.rpm }}/ziti-edge-tunnel-${{ needs.parse_version.outputs.version }}-*.${{ matrix.arch.rpm }}.rpm
+          ${{ env.ZITI_RPM_PROD_REPO }}/redhat${{ matrix.distro.version }}/${{ matrix.arch.rpm }}/
+
+      - name: Copy DEB from testing to release Artifactory repo with jFrog CLI
+        if: matrix.distro.type == 'deb'
+        shell: bash
+        run: >
+          jf rt copy
+          --recursive=false
+          --flat=true
+          ${{ env.ZITI_DEB_TEST_REPO }}/pool/ziti-edge-tunnel/${{ matrix.distro.release_name }}/${{ matrix.arch.deb }}/ziti-edge-tunnel-${{ needs.parse_version.outputs.version }}-*.deb
+          ${{ env.ZITI_DEB_PROD_REPO }}/pool/ziti-edge-tunnel/${{ matrix.distro.release_name }}/${{ matrix.arch.deb }}/

@@ -54,6 +54,9 @@ jobs:
             preset: linux-arm64
 
     steps:
+      - name: Debug action
+        uses: hmarr/debug-action@v2.1.0
+
       - name: checkout workspace
         uses: actions/checkout@v3
         with:
@@ -77,6 +80,5 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: ${{ matrix.preset }}
-          path: |
-            ./build/bundle/ziti-edge-tunnel-*.zip
+          path: ./build/bundle/ziti-edge-tunnel-*.zip 
           if-no-files-found: error
