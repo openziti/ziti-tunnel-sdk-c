@@ -672,25 +672,29 @@ struct ziti_instance_s *new_ziti_instance(const char *identifier) {
 }
 
 int init_ziti_instance(struct ziti_instance_s *inst, const ziti_config *cfg, const ziti_options *opts) {
-    int rc;
-    bool allocated_ztx = false;
-    if (!inst->ztx) {
-        rc = ziti_context_init(&inst->ztx, cfg);
-        if (rc != ZITI_OK) {
-            ZITI_LOG(ERROR, "ziti_context_init failed: %s", ziti_errorstr(rc));
-            return rc;
-        }
-        allocated_ztx = true;
+    FREE(inst->ztx);
+    int rc = ziti_context_init(&inst->ztx, cfg);
+    if (rc != ZITI_OK) {
+        ZITI_LOG(ERROR, "ziti_context_init failed: %s", ziti_errorstr(rc));
+        return rc;
     }
 
     rc = ziti_context_set_options(inst->ztx, opts);
     if (rc != ZITI_OK) {
         ZITI_LOG(ERROR, "ziti_context_set_options failed: %s", ziti_errorstr(rc));
-        if (allocated_ztx) FREE(inst->ztx);
+        FREE(inst->ztx);
         return rc;
     }
 
-    // override options that are necessary and/or appropriate for tunnelers
+    rc = set_tnlr_options(inst);
+    if (rc != ZITI_OK) {
+        FREE(inst->ztx);
+    }
+
+    return rc;
+}
+
+int set_tnlr_options(struct ziti_instance_s *inst) {
     ziti_options tunneler_ziti_options = {
             .config_types = cfg_types,
             .event_cb = on_ziti_event, // ensure ziti events are propagated (as tunnel events) via the command interface
@@ -698,14 +702,14 @@ int init_ziti_instance(struct ziti_instance_s *inst, const ziti_config *cfg, con
             .refresh_interval = refresh_interval,
             .app_ctx = inst
     };
-    rc = ziti_context_set_options(inst->ztx, &tunneler_ziti_options);
+    int rc = ziti_context_set_options(inst->ztx, &tunneler_ziti_options);
     if (rc != ZITI_OK) {
         ZITI_LOG(ERROR, "ziti_context_set_options failed: %s", ziti_errorstr(rc));
-        if (allocated_ztx) FREE(inst->ztx);
+        FREE(inst->ztx);
     }
+
     return rc;
 }
-
 
 void set_ziti_instance(const char *identifier, struct ziti_instance_s *inst) {
     model_map_set(&instances, identifier, inst);
