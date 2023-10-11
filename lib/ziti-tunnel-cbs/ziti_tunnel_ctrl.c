@@ -673,17 +673,20 @@ struct ziti_instance_s *new_ziti_instance(const char *identifier) {
 
 int init_ziti_instance(struct ziti_instance_s *inst, const ziti_config *cfg, const ziti_options *opts) {
     int rc;
+    bool allocated_ztx = false;
     if (!inst->ztx) {
         rc = ziti_context_init(&inst->ztx, cfg);
         if (rc != ZITI_OK) {
             ZITI_LOG(ERROR, "ziti_context_init failed: %s", ziti_errorstr(rc));
             return rc;
         }
+        allocated_ztx = true;
     }
 
     rc = ziti_context_set_options(inst->ztx, opts);
     if (rc != ZITI_OK) {
         ZITI_LOG(ERROR, "ziti_context_set_options failed: %s", ziti_errorstr(rc));
+        if (allocated_ztx) FREE(inst->ztx);
         return rc;
     }
 
@@ -698,6 +701,7 @@ int init_ziti_instance(struct ziti_instance_s *inst, const ziti_config *cfg, con
     rc = ziti_context_set_options(inst->ztx, &tunneler_ziti_options);
     if (rc != ZITI_OK) {
         ZITI_LOG(ERROR, "ziti_context_set_options failed: %s", ziti_errorstr(rc));
+        if (allocated_ztx) FREE(inst->ztx);
     }
     return rc;
 }
