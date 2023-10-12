@@ -337,6 +337,8 @@ void ziti_set_refresh_interval(unsigned long seconds);
 
 struct ziti_instance_s *new_ziti_instance(const char *identifier);
 int init_ziti_instance(struct ziti_instance_s *inst, const ziti_config *cfg, const ziti_options *opts);
+/** set options for tsdk usage on a ziti_instance's ziti_context */
+int set_tnlr_options(struct ziti_instance_s *inst);
 void set_ziti_instance(const char *identifier, struct ziti_instance_s *inst);
 void remove_ziti_instance(const char *identifier);
 
