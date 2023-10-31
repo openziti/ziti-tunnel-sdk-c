@@ -49,7 +49,7 @@ jobs:
         env:
           IMAGE_REPO: ${{ env.ZITI_EDGE_TUNNEL_IMAGE }}
         id: tagprep_run
-        run: echo DOCKER_TAGS="${IMAGE_REPO}:${ZITI_VERSION}" | tee -a $GITHUB_OUTPUT
+        run: echo DOCKER_TAGS="${IMAGE_REPO}:unstable,${IMAGE_REPO}:${ZITI_VERSION}" | tee -a $GITHUB_OUTPUT
 
       - name: Build & Push Multi-Platform Container Image to Hub
         uses: docker/build-push-action@v3
@@ -68,7 +68,7 @@ jobs:
         env:
           IMAGE_REPO: ${{ env.ZITI_HOST_IMAGE }}
         id: tagprep_run_host
-        run: echo DOCKER_TAGS="${IMAGE_REPO}:${ZITI_VERSION}" | tee -a $GITHUB_OUTPUT
+        run: echo DOCKER_TAGS="${IMAGE_REPO}:unstable,${IMAGE_REPO}:${ZITI_VERSION}" | tee -a $GITHUB_OUTPUT
 
 
       - name: Build & Push Multi-Platform Container Image to Hub
