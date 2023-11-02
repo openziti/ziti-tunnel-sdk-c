@@ -374,7 +374,7 @@ void ziti_dns_deregister_intercept(void *intercept) {
             ZITI_LOG(DEBUG, "%zu active hostnames mapped to %zu IPs", model_map_size(&ziti_dns.hostnames), model_map_size(&ziti_dns.ip_addresses));
             ZITI_LOG(INFO, "DNS mapping %s -> %s is now inactive", e->name, e->ip);
         }
-        it = model_map_it_next(it);
+        it = model_map_it_next(it); // todo valgrind found invalid read
     }
 
     it = model_map_iterator(&ziti_dns.domains);
