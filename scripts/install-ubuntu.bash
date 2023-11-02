@@ -12,7 +12,7 @@ case ${UBUNTU_CODENAME} in
   jammy|focal|bionic)
     UBUNTU_LTS=${UBUNTU_CODENAME}
     ;;
-  lunar|kinetic)
+  lunar|kinetic|mantic)
     UBUNTU_LTS=jammy
     ;;
   impish|hirsute|groovy)
@@ -22,8 +22,8 @@ case ${UBUNTU_CODENAME} in
     UBUNTU_LTS=bionic
     ;;
   *)
-    echo "Unsupported Ubuntu version: ${UBUNTU_CODENAME}" >&2
-    exit 1
+    echo "WARN: Ubuntu version: ${UBUNTU_CODENAME} not recognized, assuming latest" >&2
+    UBUNTU_LTS=jammy
     ;;
 esac
 
