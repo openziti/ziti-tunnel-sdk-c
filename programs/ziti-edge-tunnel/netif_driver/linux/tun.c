@@ -126,6 +126,36 @@ static void route_updates_done(uv_work_t *wr, int status) {
     free(wr);
 }
 
+static int ipv6_equal_prefix(const struct in6_addr *addr1, const struct in6_addr *addr2, unsigned int prefixlen)
+{
+    const uint32_t *a1 = addr1->s6_addr32;
+    const uint32_t *a2 = addr2->s6_addr32;
+    unsigned int nw = prefixlen / 32;
+    unsigned int nb = prefixlen % 32;
+
+    if (memcmp(a1, a2, 4*nw))
+      return 0;
+
+    return !(nb && ((a1[nw] ^ a2[nw]) & htonl(0xffffffffUL << (32 - nb))));
+}
+
+static int tun_check_prefix(netif_handle tun, const char *cidr)
+{
+    ziti_address *ifa = &tun->addr;
+    ziti_address range;
+
+    if (parse_ziti_address_str(&range, cidr) < 0 || range.type != ziti_address_cidr)
+        return -1;
+
+    if (range.addr.cidr.af != ifa->addr.cidr.af)
+        return -1;
+
+    if (range.addr.cidr.bits < ifa->addr.cidr.bits)
+        return 0;
+
+    return ipv6_equal_prefix(&range.addr.cidr.ip, &ifa->addr.cidr.ip, ifa->addr.cidr.bits);
+}
+
 static void process_routes_updates(uv_work_t *wr) {
     struct rt_process_cmd *cmd = wr->data;
 
@@ -153,6 +183,12 @@ static void process_routes_updates(uv_work_t *wr) {
             // action == 1: add
             unsigned action = (uintptr_t) value;
             if (action == i) {
+                /*
+                 * Ignore update if the prefix is a subnetwork of the tun's network
+                 */
+                if (tun_check_prefix(cmd->tun, prefix) > 0)
+                  continue;
+
                 int len = snprintf(buf, sizeof(buf), "route %s %s dev %s\n", verb, prefix, cmd->tun->name);
                 if (len < 0 || (size_t) len >= sizeof buf) {
                     if (len > 0) errno = ENOMEM;
@@ -450,15 +486,31 @@ netif_driver tun_open(uv_loop_t *loop, uint32_t tun_ip, uint32_t dns_ip, const c
     driver->exclude_rt   = tun_exclude_rt;
     driver->commit_routes = tun_commit_routes;
 
+    ziti_address range;
+    unsigned int prefixlen;
+    if (!dns_block ||
+        parse_ziti_address_str(&range, dns_block) < 0 ||
+        range.type != ziti_address_cidr ||
+        range.addr.cidr.bits > 32) {
+        prefixlen = 32;
+    } else {
+        prefixlen = range.addr.cidr.bits;
+    }
+    tun->addr = (ziti_address) {
+      .type = ziti_address_cidr,
+      .addr.cidr.af = AF_INET,
+      .addr.cidr.bits = prefixlen,
+      .addr.cidr.ip = { .s6_addr32 = { tun_ip } }
+    };
+
     run_command("ip link set %s up", tun->name);
-    run_command("ip addr add %s dev %s", inet_ntoa(*(struct in_addr*)&tun_ip), tun->name);
+    run_command("ip addr add %s/%d dev %s",
+        inet_ntoa((struct in_addr){ .s_addr = tun->addr.addr.cidr.ip.s6_addr32[0] }),
+        tun->addr.addr.cidr.bits,
+        tun->name);
 
     if (dns_ip) {
         init_dns_maintainer(loop, tun->name, dns_ip);
-    }
-
-    if (dns_block) {
-        run_command("ip route add %s dev %s", dns_block, tun->name);
     }
 
     return driver;
