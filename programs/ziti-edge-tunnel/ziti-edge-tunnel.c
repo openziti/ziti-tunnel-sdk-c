@@ -1918,6 +1918,7 @@ static void interrupt_handler(int sig) {
 #endif
 
 static void run(int argc, char *argv[]) {
+    setenv("UV_THREADPOOL_SIZE", "8", 0);
     uv_loop_t *ziti_loop = uv_default_loop();
     main_ziti_loop = ziti_loop;
     uv_cond_init(&stop_cond);

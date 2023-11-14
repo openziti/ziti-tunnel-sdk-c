@@ -35,12 +35,6 @@ extern "C" {
 XX(data, __VA_ARGS__)                    \
 XX(resolver, __VA_ARGS__)
 
-
-enum tunnel_conn_type {
-    data_conn_type,
-    resolve_conn_type
-};
-
 #define TUNNELER_APP_DATA_MODEL(XX, ...) \
 XX(conn_type, TunnelConnectionType, none, connType, __VA_ARGS__) \
 XX(dst_protocol, string, none, dst_protocol, __VA_ARGS__)\
