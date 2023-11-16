@@ -29,6 +29,7 @@ STARTSTAMP=$(grep -Po 'starting at \(\K[0-9-]+T[0-9:.]+' <<< "${STARTSTAMP_LINE}
 REALSTARTSTAMP=$(date --utc --date "${STARTSTAMP} -${STARTOFFSET} seconds" +%Y-%m-%dT%H:%M:%S.%3NZ)
 
 while read -r; do
+    grep -qP '^\([0-9]+\)\[(\s+)?\K[0-9.]+' <<< "${REPLY}" || continue
     OFFSET=$(grep -Po '^\([0-9]+\)\[(\s+)?\K[0-9.]+' <<< "${REPLY}")
     MESSAGE=$(grep -Po '^\([0-9]+\)\[(\s+)?[0-9.]+(\s+)?\]\K.*' <<< "${REPLY}")
     UTCSTAMP=$(date --utc --date "${REALSTARTSTAMP} +${OFFSET} seconds" +%Y-%m-%dT%H:%M:%S.%3NZ)
