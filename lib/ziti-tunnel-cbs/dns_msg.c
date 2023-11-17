@@ -33,7 +33,7 @@ static int parse_dns_q(dns_question *q, const unsigned char *buf, size_t buflen)
     }
 
     q->type = type;
-    q->name = malloc(namelen);
+    q->name = malloc(namelen+1);
     char *wp = q->name;
     p = buf;
     while(*p != 0) {
