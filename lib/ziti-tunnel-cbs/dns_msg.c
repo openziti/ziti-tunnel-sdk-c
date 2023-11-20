@@ -19,7 +19,7 @@
 
 static int parse_dns_q(dns_question *q, const unsigned char *buf, size_t buflen) {
     const uint8_t *p = buf;
-    size_t namelen = 0;
+    size_t namelen = 1; // ensure there's room for a nul byte if name is empty
 
     while(*p != 0) {
         namelen += (*p + 1);
@@ -33,7 +33,7 @@ static int parse_dns_q(dns_question *q, const unsigned char *buf, size_t buflen)
     }
 
     q->type = type;
-    q->name = malloc(namelen+1);
+    q->name = malloc(namelen);
     char *wp = q->name;
     p = buf;
     while(*p != 0) {
