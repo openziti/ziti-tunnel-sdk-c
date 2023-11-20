@@ -31,7 +31,7 @@ runs:
       with:
         # use 2023.02.24 vcpkg baseline,
         # see https://learn.microsoft.com/en-us/vcpkg/users/examples/versioning.getting-started#builtin-baseline
-        vcpkgGitCommitId: 'f6a5d4e8eb7476b8d7fc12a56dff300c1c986131'
+        vcpkgGitCommitId: 'a7b6122f6b6504d16d96117336a0562693579933'
 
     - uses: lukka/run-cmake@v10.6 # pin version to avoid failed glibc dependency on ubuntu 20 runners. go back to @latest when ubuntu 22+ is adopted for runner os.
       name: Configure CMake
