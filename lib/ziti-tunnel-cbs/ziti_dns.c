@@ -30,7 +30,6 @@ enum ns_q_type {
     NS_T_MX = 15,
     NS_T_TXT = 16,
     NS_T_SRV = 33,
-    NS_T_DNSKEY = 48,
 };
 
 typedef struct ziti_dns_client_s {
