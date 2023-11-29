@@ -278,8 +278,8 @@ static const char *compute_dst_protocol(const host_ctx_t *service, const tunnele
         dst_proto = service->proto_u.protocol;
     }
 
-    if ((*protocol_number = get_protocol_id(app_data->dst_protocol)) < 0) {
-        snprintf(err, err_sz, "requested protocol '%s' is not supported", app_data->dst_protocol);
+    if ((*protocol_number = get_protocol_id(dst_proto)) < 0) {
+        snprintf(err, err_sz, "requested protocol '%s' is not supported", dst_proto);
         return NULL;
     }
 
@@ -306,6 +306,9 @@ static const char *compute_dst_ip_or_hn(const host_ctx_t *service, const tunnele
                          DST_IP_KEY, DST_HOST_KEY);
                 return NULL;
             }
+        } else {
+            snprintf(err, sizeof(err), "config specifies 'forwardAddress', but client didn't send app_data");
+            return NULL;
         }
     } else {
         ZITI_LOG(VERBOSE, "using address from config");
