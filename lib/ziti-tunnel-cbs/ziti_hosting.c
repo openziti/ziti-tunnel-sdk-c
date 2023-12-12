@@ -35,6 +35,8 @@
 #endif
 #endif
 
+#define KEEPALIVE_DELAY 60
+
 /********** hosting **********/
 static void on_bridge_close(uv_handle_t *handle);
 
@@ -185,7 +187,9 @@ static void on_hosted_client_connect_complete(ziti_connection clt, int err) {
                  io_ctx->client_identity, req.host, req.service, fd, io_ctx->resolved_dst, len);
         int rc = ziti_conn_bridge(clt, (uv_handle_t *) &io_ctx->server, on_bridge_close);
         if (rc != 0) {
-            ZITI_LOG(ERROR, "failed to bridge client[%s] with hosted_service[%s]", io_ctx->client_identity, io_ctx->service->service_name);
+            ZITI_LOG(ERROR, "failed to bridge client[%s] with hosted_service[%s] laddr[%s:%s] fd[%d]: %s",
+                     io_ctx->client_identity, io_ctx->service->service_name,
+                     req.host, req.service, fd, uv_strerror(rc));
             hosted_server_close(io_ctx);
         }
     } else {
@@ -222,6 +226,18 @@ static void on_hosted_tcp_server_connect_complete(uv_connect_t *c, int status) {
     }
     ZITI_LOG(DEBUG, "hosted_service[%s], client[%s]: connected to server %s", io_ctx->service->service_name,
              io_ctx->client_identity, io_ctx->resolved_dst);
+
+    uv_tcp_t *tcp = &io_ctx->server.tcp;
+    
+    if (uv_tcp_keepalive(tcp, 1, KEEPALIVE_DELAY) != 0) {
+        ZITI_LOG(WARN, "hosted_service[%s], client[%s]: failed to set TCP keepalive", 
+                 io_ctx->service->service_name, io_ctx->client_identity);
+    }
+    if (uv_tcp_nodelay(tcp, 1) != 0)  {
+        ZITI_LOG(WARN, "hosted_service[%s], client[%s]: failed to set TCP nodelay",
+                 io_ctx->service->service_name, io_ctx->client_identity);
+    }
+    
     ziti_accept(io_ctx->client, on_hosted_client_connect_complete, NULL);
     free(c);
 }
