@@ -323,7 +323,7 @@ static const char *compute_dst_ip_or_hn(const host_ctx_t *service, const tunnele
                 return NULL;
             }
         } else {
-            snprintf(err, sizeof(err), "config specifies 'forwardAddress', but client didn't send app_data");
+            snprintf(err, err_sz, "config specifies 'forwardAddress', but client didn't send app_data");
             return NULL;
         }
     } else {
@@ -333,7 +333,7 @@ static const char *compute_dst_ip_or_hn(const host_ctx_t *service, const tunnele
 
     ziti_address dst;
     if (!ziti_address_from_string(&dst, ip_or_hn)) {
-        snprintf(err, sizeof(err), "failed to parse %s", ip_or_hn);
+        snprintf(err, err_sz, "failed to parse %s", ip_or_hn);
         return NULL;
     }
     *is_ip = (dst.type == ziti_address_cidr);
