@@ -1,8 +1,7 @@
 
 
 FetchContent_Declare(wintun
-        URL      https://www.wintun.net/builds/wintun-0.10.3.zip
-        URL_HASH SHA256=97de836805006c39c3c6ddf57bac0707d096cc88a9ca0b552cb95f1de08da060
+        URL      https://www.wintun.net/builds/wintun-0.13.zip
 )
 
 FetchContent_GetProperties(wintun)

@@ -35,6 +35,10 @@ jobs:
             preset: windows-x64
 
           - os: windows-latest
+            name: Windows x86
+            preset: windows-x86
+
+          - os: windows-latest
             name: Windows arm64
             preset: windows-arm64
 

@@ -95,6 +95,16 @@
       "hidden": true
     },
     {
+      "name": "ci-win86",
+      "inherits": [
+        "flags-windows",
+        "ci-std",
+        "vs-2022"
+      ],
+      "architecture": "Win32",
+      "hidden": true
+    },
+    {
       "name": "ci-win-arm64",
       "inherits": [
         "flags-windows",
@@ -193,6 +203,18 @@
         "vcpkg",
         "vcpkg-win64-static"
       ]
+    },
+    {
+      "name": "ci-windows-x86",
+      "inherits": [
+        "ci-build",
+        "ci-win86",
+        "dev-mode",
+        "vcpkg"
+      ],
+      "cacheVariables": {
+        "VCPKG_TARGET_TRIPLET": "x86-windows-static-md"
+      }
     },
     {
       "name": "ci-windows-arm64",
