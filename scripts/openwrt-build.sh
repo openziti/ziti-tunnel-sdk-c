@@ -112,7 +112,7 @@ cmake $CMAKE_OPTS "${ziti_src}"
 #echo
 
 echo
-echo Starting the buid
+echo Starting the build
 echo
 
 cmake --build . --target bundle
