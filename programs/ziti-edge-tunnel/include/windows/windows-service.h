@@ -23,7 +23,7 @@ VOID SvcInit( DWORD, LPTSTR * );
 VOID SvcReportEvent( LPTSTR, DWORD );
 VOID SvcDelete(void);
 DWORD WINAPI ServiceWorkerThread (LPVOID lpParam);
-DWORD LphandlerFunctionEx(
+DWORD WINAPI LphandlerFunctionEx(
         DWORD dwControl,
         DWORD dwEventType,
         LPVOID lpEventData,
