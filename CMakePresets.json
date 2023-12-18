@@ -213,7 +213,8 @@
         "vcpkg"
       ],
       "cacheVariables": {
-        "VCPKG_TARGET_TRIPLET": "x86-windows-static-md"
+        "VCPKG_TARGET_TRIPLET": "x86-windows-static-md",
+        "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/toolchains/Windows-x86.cmake"
       }
     },
     {
