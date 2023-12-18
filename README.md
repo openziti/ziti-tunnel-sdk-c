@@ -76,7 +76,7 @@ int main(int argc, char *argv[]) {
 ```
 
 Once the Ziti Tunneler SDK is initialized with a network device and ziti-sdk
-callbacks, a tunneler application only needs to indiciate which service(s)
+callbacks, a tunneler application only needs to indicate which service(s)
 that should be  
 
 ## Run with Docker

@@ -11,7 +11,7 @@ if [ "$1" = "purge" ]; then
         deb-systemd-helper unmask @SYSTEMD_UNIT_FILE_NAME@ >/dev/null || true
     fi
 fi
-# End copied seciton
+# End copied section
 
 if [ -L @SYSTEMD_UNIT_DIR@/@SYSTEMD_UNIT_FILE_NAME@ ]; then
     unlink @SYSTEMD_UNIT_DIR@/@SYSTEMD_UNIT_FILE_NAME@
