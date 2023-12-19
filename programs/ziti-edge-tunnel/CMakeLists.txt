@@ -11,7 +11,6 @@ if(CMAKE_SYSTEM_NAME STREQUAL Windows)
     include(wintun.cmake)
     set(tun_lib wintun)
     set(wintun_dll "${wintun_SOURCE_DIR}/bin/${CMAKE_SYSTEM_PROCESSOR}/wintun.dll")
-#    set(ziti-edge-tunnel_BUNDLE_COMPS wintun.dll)
     set(NETIF_DRIVER_SOURCE netif_driver/windows/tun.c netif_driver/windows/tun.h)
 endif()
 
