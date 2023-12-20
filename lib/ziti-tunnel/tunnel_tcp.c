@@ -25,8 +25,15 @@
 #define MIN(a,b) ((a)<(b) ? (a) : (b))
 #endif
 
-#define LOG_STATE(level, op, pcb, ...) \
-TNL_LOG(level, op " %p, state=%d(%s) flags=%#0x", ##__VA_ARGS__, pcb, pcb->state, tcp_state_str(pcb->state), pcb->flags)
+#define LOG_STATE(level, op, pcb, ...) do { \
+    io_ctx_t *io = ((io_ctx_t *)(pcb)->callback_arg); \
+    tunneler_io_context tnlr_io = io ? io->tnlr_io : NULL; \
+    const char *service_name = tnlr_io ? tnlr_io->service_name : ""; \
+    TNL_LOG(level, op " src[%s] dst[%s] state[%d/%s] flags[%#0x] service[%s]", ##__VA_ARGS__, \
+            tnlr_io ? tnlr_io->client : "", \
+            tnlr_io ? tnlr_io->intercepted : "", \
+            pcb->state, tcp_state_str(pcb->state), pcb->flags, service_name); \
+} while (0)
 
 #define tcp_states(XX)\
   XX(CLOSED)\
@@ -287,7 +294,7 @@ void tunneler_tcp_dial_completed(struct io_ctx_s *io, bool ok) {
     tcp_output(io->tnlr_io->tcp);
 }
 
-static tunneler_io_context new_tunneler_io_context(tunneler_context tnlr_ctx, const char *service_name, struct tcp_pcb *pcb) {
+static tunneler_io_context new_tunneler_io_context(tunneler_context tnlr_ctx, const char *service_name, const char *src, const char *dst, struct tcp_pcb *pcb) {
     struct tunneler_io_ctx_s *ctx = calloc(1, sizeof(struct tunneler_io_ctx_s));
     if (ctx == NULL) {
         TNL_LOG(ERR, "failed to allocate tunneler_io_ctx");
@@ -295,8 +302,8 @@ static tunneler_io_context new_tunneler_io_context(tunneler_context tnlr_ctx, co
     }
     ctx->tnlr_ctx = tnlr_ctx;
     ctx->service_name = strdup(service_name);
-    snprintf(ctx->client, sizeof(ctx->client), "tcp:%s:%d", ipaddr_ntoa(&pcb->remote_ip), pcb->remote_port);
-    snprintf(ctx->intercepted, sizeof(ctx->intercepted), "tcp:%s:%d", ipaddr_ntoa(&pcb->local_ip), pcb->local_port);
+    snprintf(ctx->client, sizeof(ctx->client), "tcp:%s:%d", src, pcb->remote_port);
+    snprintf(ctx->intercepted, sizeof(ctx->intercepted), "tcp:%s:%d", dst, pcb->local_port);
     ctx->proto = tun_tcp;
     ctx->tcp = pcb;
     return ctx;
@@ -339,12 +346,25 @@ u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     struct tcp_hdr *tcphdr = (struct tcp_hdr *)((char*)p->payload + iphdr_hlen);
     u16_t src_p = lwip_ntohs(tcphdr->src);
     u16_t dst_p = lwip_ntohs(tcphdr->dest);
+    char src_str[IPADDR_STRLEN_MAX];
     char dst_str[IPADDR_STRLEN_MAX];
+    ipaddr_ntoa_r(&src, src_str, sizeof(src_str));
     ipaddr_ntoa_r(&dst, dst_str, sizeof(dst_str));
-    TNL_LOG(TRACE, "received segment %s:%d->%s:%d",
-            ipaddr_ntoa(&src), src_p, dst_str, dst_p);
-
     u8_t flags = TCPH_FLAGS(tcphdr);
+    char flags_str[40] = { 0 };
+
+    if (flags & TCP_FIN) strcat(flags_str, "FIN,");
+    if (flags & TCP_SYN) strcat(flags_str, "SYN,");
+    if (flags & TCP_RST) strcat(flags_str, "RST,");
+    if (flags & TCP_PSH) strcat(flags_str, "PSH,");
+    if (flags & TCP_ACK) strcat(flags_str, "ACK,");
+    if (flags & TCP_URG) strcat(flags_str, "URG,");
+    if (flags & TCP_ECE) strcat(flags_str, "ECE,");
+    if (flags & TCP_CWR) strcat(flags_str, "CWR,");
+    if (strlen(flags_str) > 0) flags_str[strlen(flags_str)-1] = '\0'; // remove trailing comma
+
+    TNL_LOG(TRACE, "received segment %s:%d->%s:%d flags[%s]", src_str, src_p, dst_str, dst_p, flags_str);
+
     if (!(flags & TCP_SYN)) {
         /* this isn't a SYN segment, so let lwip process it */
         return 0;
@@ -353,7 +373,7 @@ u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     intercept_ctx_t *intercept_ctx = lookup_intercept_by_address(tnlr_ctx, "tcp", &dst, dst_p);
     if (intercept_ctx == NULL) {
         /* dst address is not being intercepted. don't consume */
-        TNL_LOG(TRACE, "no intercepted addresses match tcp:%s:%d", ipaddr_ntoa(&dst), dst_p);
+        TNL_LOG(TRACE, "no intercepted addresses match tcp:%s:%d", dst_str, dst_p);
         return 0;
     }
 
@@ -363,7 +383,7 @@ u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
             tpcb->local_port == dst_p &&
             ip_addr_cmp(&tpcb->remote_ip, &src) &&
             ip_addr_cmp(&tpcb->local_ip, &dst)) {
-            TNL_LOG(VERBOSE, "received SYN on active connection: client=tcp:%s:%d, service=%s", ipaddr_ntoa(&src), src_p, intercept_ctx->service_name);
+            TNL_LOG(VERBOSE, "received SYN on active connection: client=tcp:%s:%d, service=%s", src_str, src_p, intercept_ctx->service_name);
             /* Move this PCB to the front of the list so that subsequent
                lookups will be faster (we exploit locality in TCP segment
                arrivals). */
@@ -395,7 +415,7 @@ u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
         TNL_LOG(ERR, "failed to allocate io_context");
         goto done;
     }
-    io->tnlr_io = new_tunneler_io_context(tnlr_ctx, intercept_ctx->service_name, npcb);
+    io->tnlr_io = new_tunneler_io_context(tnlr_ctx, intercept_ctx->service_name, src_str, dst_str, npcb);
     if (io->tnlr_io == NULL) {
         TNL_LOG(ERR, "failed to allocate tunneler io context");
         goto done;
@@ -405,7 +425,6 @@ u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     io->close_write_fn = intercept_ctx->close_write_fn ? intercept_ctx->close_write_fn : tnlr_ctx->opts.ziti_close_write;
     io->close_fn = intercept_ctx->close_fn ? intercept_ctx->close_fn : tnlr_ctx->opts.ziti_close;
 
-    snprintf(io->tnlr_io->intercepted, sizeof(io->tnlr_io->intercepted), "tcp:%s:%d", ipaddr_ntoa(&dst), dst_p);
     TNL_LOG(DEBUG, "intercepted address[%s] client[%s] service[%s]", io->tnlr_io->intercepted, io->tnlr_io->client,
             intercept_ctx->service_name);
     void *ziti_io_ctx = zdial(intercept_ctx->app_intercept_ctx, io);
