@@ -390,7 +390,7 @@ static const char *compute_dst_port(const host_ctx_t *service, const tunneler_ap
 
 static int do_bind(hosted_io_context io, const char *addr, int socktype) {
     // split out the ip and port if port was specified
-    char *src_ip = strdup(io->app_data->source_addr);
+    char *src_ip = strdup(addr);
     char *port = strchr(src_ip, ':');
     if (port != NULL) {
         *port = '\0';
@@ -419,8 +419,6 @@ static int do_bind(hosted_io_context io, const char *addr, int socktype) {
 
     ziti_address src_za;
     ziti_address_from_sockaddr(&src_za, ai_req.addrinfo->ai_addr); // convert for easy validation
-    uv_freeaddrinfo(ai_req.addrinfo);
-
     if (!address_match(&src_za, &io->service->allowed_source_addresses)) {
         ZITI_LOG(ERROR, "hosted_service[%s], client[%s] client requested source IP %s is not allowed",
                  io->service->service_name, io->client_identity, io->app_data->source_addr);
@@ -437,8 +435,10 @@ static int do_bind(hosted_io_context io, const char *addr, int socktype) {
         default:
             ZITI_LOG(ERROR, "hosted_service[%s] client[%s] unsupported protocol %d when binding source address",
                      io->service->service_name, io->client_identity, hints.ai_protocol);
-            return -1;
+            uv_err = UV_EINVAL;
     }
+
+    uv_freeaddrinfo(ai_req.addrinfo);
 
     if (uv_err != 0) {
         ZITI_LOG(ERROR, "hosted_service[%s] client[%s]: bind failed: %s", io->service->service_name,
