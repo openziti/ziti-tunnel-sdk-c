@@ -363,7 +363,7 @@ u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     if (flags & TCP_CWR) strcat(flags_str, "CWR,");
     if (strlen(flags_str) > 0) flags_str[strlen(flags_str)-1] = '\0'; // remove trailing comma
 
-    TNL_LOG(TRACE, "received segment %s:%d->%s:%d flags[%s]", src_str, src_p, dst_str, dst_p, flags_str);
+    TNL_LOG(TRACE, "received segment src[tcp:%s:%d] dst[tcp:%s:%d] flags[%s]", src_str, src_p, dst_str, dst_p, flags_str);
 
     if (!(flags & TCP_SYN)) {
         /* this isn't a SYN segment, so let lwip process it */
