@@ -24,6 +24,11 @@
 // initiate orderly shutdown
 static void udp_timeout_cb(uv_timer_t *t) {
     struct io_ctx_s *io = t->data;
+    tunneler_io_context  tnlr_io = io->tnlr_io;
+    if (tnlr_io) {
+        TNL_LOG(TRACE, "initiating close idle_timeout[%d] src[%s] dst[%s] service[%s]", tnlr_io->idle_timeout,
+                tnlr_io->client, tnlr_io->intercepted, tnlr_io->service_name);
+    }
     io->close_fn(io->ziti_io);
 }
 
@@ -55,7 +60,8 @@ static void to_ziti(struct io_ctx_s *io, struct pbuf *p) {
     uv_timer_start(io->tnlr_io->conn_timer, udp_timeout_cb, UDP_TIMEOUT, 0);
 
     do {
-        TNL_LOG(TRACE, "writing %d bytes to ziti", recv_data->len);
+        TNL_LOG(TRACE, "writing %d bytes to ziti src[%s] dst[%s] service[%s]", recv_data->len,
+                io->tnlr_io->client, io->tnlr_io->intercepted, io->tnlr_io->service_name);
         struct write_ctx_s *wr_ctx = calloc(1, sizeof(struct write_ctx_s));
         wr_ctx->pbuf = recv_data;
         wr_ctx->udp = io->tnlr_io->udp.pcb;
@@ -95,7 +101,8 @@ void on_udp_client_data_enqueue(void *io_context, struct udp_pcb *pcb, struct pb
     } else {
         pbuf_chain(tnlr_io_ctx->udp.queued, p);
     }
-    TNL_LOG(VERBOSE, "queued %d bytes", tnlr_io_ctx->udp.queued->len);
+    TNL_LOG(VERBOSE, "queued %d bytes src[%s] dst[%s] service[%s]", tnlr_io_ctx->udp.queued->len,
+            tnlr_io_ctx->client, tnlr_io_ctx->intercepted, tnlr_io_ctx->service_name);
 }
 
 /** called by lwip when a packet arrives from a connected client and the ziti service is connected */
@@ -116,7 +123,8 @@ void tunneler_udp_ack(struct write_ctx_s *write_ctx) {
 int tunneler_udp_close(struct udp_pcb *pcb) {
     struct io_ctx_s *io_ctx = pcb->recv_arg;
     tunneler_io_context tnlr_io_ctx = io_ctx->tnlr_io;
-    TNL_LOG(DEBUG, "closing %s session", tnlr_io_ctx->service_name);
+    TNL_LOG(DEBUG, "closing src[%s] dst[%s] service[%s]",
+            tnlr_io_ctx->client, tnlr_io_ctx->intercepted, tnlr_io_ctx->service_name);
     udp_remove(pcb);
     if (tnlr_io_ctx->udp.queued != NULL) {
         pbuf_free(tnlr_io_ctx->udp.queued);
@@ -179,9 +187,11 @@ u8_t recv_udp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     struct udp_hdr *udphdr = (struct udp_hdr *)((char*)p->payload + iphdr_hlen);
     u16_t src_p = lwip_ntohs(udphdr->src);
     u16_t dst_p = lwip_ntohs(udphdr->dest);
-
-    TNL_LOG(TRACE, "received datagram %s:%d->%s:%d",
-            ipaddr_ntoa(&src), src_p, ipaddr_ntoa(&dst), dst_p);
+    char src_str[IPADDR_STRLEN_MAX];
+    char dst_str[IPADDR_STRLEN_MAX];
+    ipaddr_ntoa_r(&src, src_str, sizeof(src_str));
+    ipaddr_ntoa_r(&dst, dst_str, sizeof(dst_str));
+    TNL_LOG(TRACE, "received datagram src[%s:%d] dst[%s:%d]", src_str, src_p, dst_str, dst_p);
 
     /* first see if this datagram belongs to an active connection */
     for (struct udp_pcb *con_pcb = udp_pcbs, *prev = NULL; con_pcb != NULL; con_pcb = con_pcb->next) {
@@ -205,7 +215,7 @@ u8_t recv_udp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     /* is the dest address being intercepted? */
     intercept_ctx_t * intercept_ctx = lookup_intercept_by_address(tnlr_ctx, "udp", &dst, dst_p);
     if (intercept_ctx == NULL) {
-        TNL_LOG(TRACE, "no intercepted addresses match udp:%s:%d", ipaddr_ntoa(&dst), dst_p);
+        TNL_LOG(TRACE, "no intercepted addresses match udp:%s:%d", dst_str, dst_p);
         return 0;
     }
 
@@ -222,7 +232,7 @@ u8_t recv_udp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     npcb->local_port = dst_p;
     err_t err = udp_connect(npcb, &src, src_p);
     if (err != ERR_OK) {
-        TNL_LOG(ERR, "failed to udp_connect %s:%d: err: %d", ipaddr_ntoa(&src), src_p, err);
+        TNL_LOG(ERR, "failed to udp_connect %s:%d: err: %d", src_str, src_p, err);
         udp_remove(npcb);
         pbuf_free(p);
         return 1;
@@ -247,8 +257,8 @@ u8_t recv_udp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     io->tnlr_io->tnlr_ctx = tnlr_ctx;
     io->tnlr_io->proto = tun_udp;
     io->tnlr_io->service_name = strdup(intercept_ctx->service_name);
-    snprintf(io->tnlr_io->client, sizeof(io->tnlr_io->client), "udp:%s:%d", ipaddr_ntoa(&src), src_p);
-    snprintf(io->tnlr_io->intercepted, sizeof(io->tnlr_io->intercepted), "udp:%s:%d", ipaddr_ntoa(&dst), dst_p);
+    snprintf(io->tnlr_io->client, sizeof(io->tnlr_io->client), "udp:%s:%d", src_str, src_p);
+    snprintf(io->tnlr_io->intercepted, sizeof(io->tnlr_io->intercepted), "udp:%s:%d", dst_str, dst_p);
     io->tnlr_io->udp.pcb = npcb;
     io->tnlr_io->udp.queued = NULL;
     io->ziti_ctx = intercept_ctx->app_intercept_ctx;
