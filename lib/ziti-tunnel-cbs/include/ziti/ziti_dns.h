@@ -20,6 +20,7 @@
 #include <ziti/ziti_tunnel.h>
 
 #define DNS_NO_ERROR 0
+#define DNS_SERVFAIL 2
 #define DNS_NXDOMAIN 3
 #define DNS_NOT_IMPL 4
 #define DNS_REFUSE   5

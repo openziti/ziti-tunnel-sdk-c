@@ -615,6 +615,12 @@ ziti_connection intercept_resolve_connect(ziti_intercept_t *intercept, void *ctx
             .app_data_sz = strlen(RESOLVE_APP_DATA)
     };
 
-    ziti_dial_with_options(conn, intercept->service_name, &opts, conn_cb, data_cb);
+    int rc = ziti_dial_with_options(conn, intercept->service_name, &opts, conn_cb, data_cb);
+    if (rc != ZITI_OK) {
+        ZITI_LOG(WARN, "failed to establish proxy resolver connection: %s", ziti_errorstr(rc));
+        ziti_close(conn, NULL);
+        return NULL;
+    }
+
     return conn;
 }
