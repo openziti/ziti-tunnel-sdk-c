@@ -351,19 +351,20 @@ u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     ipaddr_ntoa_r(&src, src_str, sizeof(src_str));
     ipaddr_ntoa_r(&dst, dst_str, sizeof(dst_str));
     u8_t flags = TCPH_FLAGS(tcphdr);
-    char flags_str[40] = { 0 };
 
-    if (flags & TCP_FIN) strcat(flags_str, "FIN,");
-    if (flags & TCP_SYN) strcat(flags_str, "SYN,");
-    if (flags & TCP_RST) strcat(flags_str, "RST,");
-    if (flags & TCP_PSH) strcat(flags_str, "PSH,");
-    if (flags & TCP_ACK) strcat(flags_str, "ACK,");
-    if (flags & TCP_URG) strcat(flags_str, "URG,");
-    if (flags & TCP_ECE) strcat(flags_str, "ECE,");
-    if (flags & TCP_CWR) strcat(flags_str, "CWR,");
-    if (strlen(flags_str) > 0) flags_str[strlen(flags_str)-1] = '\0'; // remove trailing comma
-
-    TNL_LOG(TRACE, "received segment src[tcp:%s:%d] dst[tcp:%s:%d] flags[%s]", src_str, src_p, dst_str, dst_p, flags_str);
+    if (tunnel_log_level >= TRACE) {
+        char flags_str[40] = {0};
+        if (flags & TCP_FIN) strcat(flags_str, "FIN,");
+        if (flags & TCP_SYN) strcat(flags_str, "SYN,");
+        if (flags & TCP_RST) strcat(flags_str, "RST,");
+        if (flags & TCP_PSH) strcat(flags_str, "PSH,");
+        if (flags & TCP_ACK) strcat(flags_str, "ACK,");
+        if (flags & TCP_URG) strcat(flags_str, "URG,");
+        if (flags & TCP_ECE) strcat(flags_str, "ECE,");
+        if (flags & TCP_CWR) strcat(flags_str, "CWR,");
+        if (strlen(flags_str) > 0) flags_str[strlen(flags_str) - 1] = '\0'; // remove trailing comma
+        TNL_LOG(TRACE, "received segment src[tcp:%s:%d] dst[tcp:%s:%d] flags[%s]", src_str, src_p, dst_str, dst_p, flags_str);
+    }
 
     if (!(flags & TCP_SYN)) {
         /* this isn't a SYN segment, so let lwip process it */
