@@ -24,6 +24,11 @@
 // initiate orderly shutdown
 static void udp_timeout_cb(uv_timer_t *t) {
     struct io_ctx_s *io = t->data;
+    tunneler_io_context  tnlr_io = io->tnlr_io;
+    if (tnlr_io) {
+        TNL_LOG(TRACE, "initiating close idle_timeout[%d] src[%s] dst[%s] service[%s]", tnlr_io->idle_timeout,
+                tnlr_io->client, tnlr_io->intercepted, tnlr_io->service_name);
+    }
     io->close_fn(io->ziti_io);
 }
 
