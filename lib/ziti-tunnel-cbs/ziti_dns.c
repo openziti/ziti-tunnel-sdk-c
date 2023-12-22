@@ -17,7 +17,6 @@
 #include <ziti/ziti_tunnel.h>
 #include <ziti/ziti_log.h>
 #include <ziti/ziti_dns.h>
-#include <ziti/model_support.h>
 #include "ziti_instance.h"
 #include "dns_host.h"
 
@@ -56,7 +55,7 @@ struct dns_req {
 
 static void* on_dns_client(const void *app_intercept_ctx, io_ctx_t *io);
 static int on_dns_close(void *dns_io_ctx);
-static ssize_t on_dns_req(void *ziti_io_ctx, void *write_ctx, const void *q_packet, size_t len);
+static ssize_t on_dns_req(const void *ziti_io_ctx, void *write_ctx, const void *q_packet, size_t len);
 static int query_upstream(struct dns_req *req);
 static void udp_alloc(uv_handle_t *h, unsigned long reqlen, uv_buf_t *b);
 static void on_upstream_packet(uv_udp_t *h, ssize_t rc, const uv_buf_t *buf, const struct sockaddr* addr, unsigned int flags);
@@ -588,6 +587,7 @@ static void on_proxy_connect(ziti_connection conn, int status) {
     dns_domain_t *domain = ziti_conn_data(conn);
     if (status == ZITI_OK) {
         ZITI_LOG(INFO, "proxy resolve connection established for domain[%s]", domain->name);
+        domain->resolv_proxy = conn;
     } else {
         ZITI_LOG(ERROR, "failed to establish proxy resolve connection for domain[%s]", domain->name);
         domain->resolv_proxy = NULL;
@@ -595,9 +595,9 @@ static void on_proxy_connect(ziti_connection conn, int status) {
     }
 }
 
-static ssize_t on_proxy_data(ziti_connection conn, uint8_t* data, ssize_t status) {
+static ssize_t on_proxy_data(ziti_connection conn, const uint8_t* data, ssize_t status) {
     if (status >= 0) {
-        ZITI_LOG(INFO, "proxy resolve: %.*s", (int)status, data);
+        ZITI_LOG(DEBUG, "proxy resolve: %.*s", (int)status, data);
         dns_message msg = {0};
         int rc = parse_dns_message(&msg, data, status);
         if (rc < 0) {
@@ -624,7 +624,7 @@ static ssize_t on_proxy_data(ziti_connection conn, uint8_t* data, ssize_t status
 }
 
 static void on_proxy_write(ziti_connection conn, ssize_t status, void *ctx) {
-    ZITI_LOG(INFO, "proxy resolve write: %d", (int)status);
+    ZITI_LOG(DEBUG, "proxy resolve write: %d", (int)status);
     free(ctx);
 }
 
@@ -632,18 +632,36 @@ static void proxy_domain_req(struct dns_req *req, dns_domain_t *domain) {
     if (domain->resolv_proxy == NULL) {
         model_map_iter it = model_map_iterator(&domain->intercepts);
         void *intercept = model_map_it_value(it);
-
         domain->resolv_proxy = intercept_resolve_connect(intercept, domain, on_proxy_connect, on_proxy_data);
     }
 
+    char *json = NULL;
     size_t jsonlen;
-    char *json = dns_message_to_json(&req->msg, 0, &jsonlen);
-    ZITI_LOG(INFO, "writing proxy resolve [%s]", json);
-    ziti_write(domain->resolv_proxy, json, jsonlen, on_proxy_write, json);
+
+    if (domain->resolv_proxy != NULL) {
+        json = dns_message_to_json(&req->msg, MODEL_JSON_COMPACT, &jsonlen);
+        ZITI_LOG(DEBUG, "writing proxy resolve req[%04x]: %s", req->id, json);
+
+        // intercept_resolve_connect above can quick-fail if context does not have a valid API session
+        // in that case resolve_proxy connection will be in Closed state and write will fail
+        int rc = ziti_write(domain->resolv_proxy, json, jsonlen, on_proxy_write, json);
+        if (rc == ZITI_OK) {
+            return;
+        }
+
+        ZITI_LOG(WARN, "failed to write proxy resolve request[%04x]: %s", req->id, ziti_errorstr(rc));
+        ziti_close(domain->resolv_proxy, NULL);
+        domain->resolv_proxy = NULL;
+    }
+
+    free(json);
+    req->msg.status = DNS_SERVFAIL;
+    format_resp(req);
+    complete_dns_req(req);
 }
 
 
-ssize_t on_dns_req(void *ziti_io_ctx, void *write_ctx, const void *q_packet, size_t q_len) {
+ssize_t on_dns_req(const void *ziti_io_ctx, void *write_ctx, const void *q_packet, size_t q_len) {
     ziti_dns_client_t *clt = ziti_io_ctx;
     const uint8_t *dns_packet = q_packet;
     size_t dns_packet_len = q_len;
