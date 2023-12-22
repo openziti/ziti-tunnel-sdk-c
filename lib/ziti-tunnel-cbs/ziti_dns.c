@@ -339,7 +339,9 @@ static dns_entry_t *ziti_dns_lookup(const char *hostname) {
         if (domain && model_map_size(&domain->intercepts) > 0) {
             ZITI_LOG(DEBUG, "matching domain[%s] found for %s", domain->name, hostname);
             entry = new_ipv4_entry(clean);
-            entry->domain = domain;
+            if (entry) {
+                entry->domain = domain;
+            }
         }
     }
 
@@ -703,7 +705,7 @@ ssize_t on_dns_req(const void *ziti_io_ctx, void *write_ctx, const void *q_packe
 
     if (q->type == NS_T_A || q->type == NS_T_AAAA) {
         process_host_req(req);
-    } else {
+    } else if (q->type == NS_T_MX || q->type == NS_T_TXT || q->type == NS_T_SRV) {
         // find domain requires normalized name
         char reqname[MAX_DNS_NAME];
         check_name(q->name, reqname, NULL);
@@ -718,6 +720,10 @@ ssize_t on_dns_req(const void *ziti_io_ctx, void *write_ctx, const void *q_packe
                 complete_dns_req(req);
             }
         }
+    } else {
+        req->msg.status = DNS_NOT_IMPL;
+        format_resp(req);
+        complete_dns_req(req);
     }
 
     ziti_tunneler_ack(write_ctx);
