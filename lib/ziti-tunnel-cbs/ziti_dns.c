@@ -705,12 +705,12 @@ ssize_t on_dns_req(const void *ziti_io_ctx, void *write_ctx, const void *q_packe
 
     if (q->type == NS_T_A || q->type == NS_T_AAAA) {
         process_host_req(req);
-    } else if (q->type == NS_T_MX || q->type == NS_T_TXT || q->type == NS_T_SRV) {
+    } else if (req->msg.recursive) {
         // find domain requires normalized name
         char reqname[MAX_DNS_NAME];
         check_name(q->name, reqname, NULL);
         dns_domain_t *domain = find_domain(reqname);
-        if (domain) {
+        if (domain && (q->type == NS_T_MX || q->type == NS_T_TXT || q->type == NS_T_SRV)) {
             proxy_domain_req(req, domain);
         } else {
             int dns_status = query_upstream(req);
