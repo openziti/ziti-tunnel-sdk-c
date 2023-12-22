@@ -637,7 +637,7 @@ static void proxy_domain_req(struct dns_req *req, dns_domain_t *domain) {
         domain->resolv_proxy = intercept_resolve_connect(intercept, domain, on_proxy_connect, on_proxy_data);
     }
 
-    if (domain->resolv_proxy != NULL) {
+    if (domain->resolv_proxy != NULL && req->msg.recursive) {
         size_t jsonlen;
         char *json = dns_message_to_json(&req->msg, MODEL_JSON_COMPACT, &jsonlen);
         ZITI_LOG(DEBUG, "writing proxy resolve req[%04x]: %s", req->id, json);
@@ -708,9 +708,7 @@ ssize_t on_dns_req(const void *ziti_io_ctx, void *write_ctx, const void *q_packe
         check_name(q->name, reqname, NULL);
         dns_domain_t *domain = find_domain(reqname);
         if (domain) {
-            if (q->type == NS_T_MX || q->type == NS_T_TXT || q->type == NS_T_SRV) {
-                proxy_domain_req(req, domain);
-            }
+            proxy_domain_req(req, domain);
         } else {
             int dns_status = query_upstream(req);
             if (dns_status != DNS_NO_ERROR) {
