@@ -103,12 +103,12 @@ add_custom_target(bundle
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/bundle)
 
 macro(BUNDLE_COMP comp)
-    message("adding target to bundle ${comp} for ${CMAKE_SYSTEM_NAME}:${CMAKE_SYSTEM_PROCESSOR}")
     add_custom_target(${comp}-bundle
         BYPRODUCTS ${CMAKE_BINARY_DIR}/bundle/${comp}-${CMAKE_SYSTEM_NAME}_${CMAKE_SYSTEM_PROCESSOR}.zip
         DEPENDS ${comp}
-        # copy target file when linker output directory isn't "." (e.g. visual studio)
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:${comp}> $<TARGET_FILE_NAME:${comp}>
+        # use generator expression to set working directory to the target's build directory. this works for multi-config generators, e.g. when "--config" is specified at build time.
+        WORKING_DIRECTORY "$<TARGET_FILE_DIR:${comp}>"
+        COMMENT "adding components to bundle ${comp} for ${CMAKE_SYSTEM_NAME}:${CMAKE_SYSTEM_PROCESSOR}: $<TARGET_FILE_NAME:${comp}> ${${comp}_BUNDLE_COMPS}"
         COMMAND ${CMAKE_COMMAND} -E tar "cf" "${CMAKE_BINARY_DIR}/bundle/${comp}-${CMAKE_SYSTEM_NAME}_${CMAKE_SYSTEM_PROCESSOR}.zip" --format=zip -- $<TARGET_FILE_NAME:${comp}> ${${comp}_BUNDLE_COMPS})
     add_dependencies(bundle ${comp}-bundle)
 endmacro()

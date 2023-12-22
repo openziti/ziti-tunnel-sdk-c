@@ -437,7 +437,7 @@ DWORD get_process_path(LPTSTR lpBuffer, DWORD  nBufferLength) {
 // Return value:
 //   None
 //
-DWORD LphandlerFunctionEx(
+DWORD WINAPI LphandlerFunctionEx(
  DWORD dwControl,
  DWORD dwEventType,
  LPVOID lpEventData,
@@ -489,7 +489,7 @@ BOOL SetPrivilege(HANDLE hToken, LPCTSTR lpszPrivilege, BOOL bEnablePrivilege)
         //
         //  Enable the privilege or disable all privileges.
         //
-        if (AdjustTokenPrivileges(hToken, FALSE, &tp, NULL, (PTOKEN_PRIVILEGES)NULL, (PDWORD)NULL))
+        if (AdjustTokenPrivileges(hToken, FALSE, &tp, 0, (PTOKEN_PRIVILEGES)NULL, (PDWORD)NULL))
         {
             //
             //  Check to see if you have proper access.

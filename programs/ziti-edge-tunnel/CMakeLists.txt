@@ -10,8 +10,7 @@ endif()
 if(CMAKE_SYSTEM_NAME STREQUAL Windows)
     include(wintun.cmake)
     set(tun_lib wintun)
-    configure_file(${wintun_SOURCE_DIR}/bin/${CMAKE_SYSTEM_PROCESSOR}/wintun.dll ${CMAKE_CURRENT_BINARY_DIR}/wintun.dll COPYONLY)
-    set(ziti-edge-tunnel_BUNDLE_COMPS ${CMAKE_CURRENT_BINARY_DIR}/wintun.dll)
+    set(wintun_dll "${wintun_SOURCE_DIR}/bin/${CMAKE_SYSTEM_PROCESSOR}/wintun.dll")
     set(NETIF_DRIVER_SOURCE netif_driver/windows/tun.c netif_driver/windows/tun.h)
 endif()
 
@@ -32,6 +31,17 @@ endif ()
 
 add_executable(ziti-edge-tunnel ziti-edge-tunnel.c ${NETIF_DRIVER_SOURCE} ${ZITI_INSTANCE_COMMON} ${ZITI_INSTANCE_OS})
 set_property(TARGET ziti-edge-tunnel PROPERTY C_STANDARD 11)
+
+if(CMAKE_SYSTEM_NAME STREQUAL Windows)
+    # copy wintun.dll to the directory that contains ziti-edge-tunnel.exe
+    add_custom_command(
+            TARGET ziti-edge-tunnel POST_BUILD
+            COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${wintun_dll}" "$<TARGET_FILE_DIR:ziti-edge-tunnel>"
+            COMMENT "Copying ${wintun_dll} to $<TARGET_FILE_DIR:ziti-edge-tunnel>"
+    )
+    # bundle components are relative to the target's build directory. no directory is needed here since we copied the dll to the build directory.
+    set(ziti-edge-tunnel_BUNDLE_COMPS wintun.dll)
+endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     option(DISABLE_LIBSYSTEMD_FEATURE "libsystemd library integration toggle" OFF)

@@ -68,7 +68,7 @@ static int tun_add_route(netif_handle tun, const char *dest);
 static int tun_del_route(netif_handle tun, const char *dest);
 int set_dns(netif_handle tun, uint32_t dns_ip);
 static int tun_exclude_rt(netif_handle dev, uv_loop_t *loop, const char *dest);
-static void if_change_cb(PVOID CallerContext, PMIB_IPINTERFACE_ROW Row, MIB_NOTIFICATION_TYPE NotificationType);
+static void WINAPI if_change_cb(PVOID CallerContext, PMIB_IPINTERFACE_ROW Row, MIB_NOTIFICATION_TYPE NotificationType);
 static void refresh_routes(uv_timer_t *timer);
 static void cleanup_adapters(wchar_t *tun_name);
 static HANDLE if_change_handle;
@@ -393,7 +393,7 @@ int tun_del_route(netif_handle tun, const char *dest) {
     return 0;
 }
 
-static void if_change_cb(PVOID CallerContext, PMIB_IPINTERFACE_ROW Row, MIB_NOTIFICATION_TYPE NotificationType) {
+static void WINAPI if_change_cb(PVOID CallerContext, PMIB_IPINTERFACE_ROW Row, MIB_NOTIFICATION_TYPE NotificationType) {
     struct netif_handle_s *tun = CallerContext;
 
     MIB_IPFORWARD_ROW2 rt = {0};
@@ -507,7 +507,7 @@ static BOOL CALLBACK
 tun_delete_cb(_In_ WINTUN_ADAPTER_HANDLE adapter, _In_ LPARAM param) {
     wchar_t name[32];
     WintunGetAdapterName(adapter, name);
-    wchar_t *tun_name = param;
+    wchar_t *tun_name = (wchar_t *) param;
     if (wcsncmp(name, tun_name, wcslen(tun_name)) == 0) {
         WintunDeleteAdapter(adapter, true, NULL);
         ZITI_LOG(INFO, "Deleted wintun adapter %ls", name);
@@ -520,5 +520,5 @@ tun_delete_cb(_In_ WINTUN_ADAPTER_HANDLE adapter, _In_ LPARAM param) {
 
 static void cleanup_adapters(wchar_t *tun_name) {
     ZITI_LOG(INFO, "Cleaning up orphan wintun adapters");
-    WintunEnumAdapters(L"Ziti", tun_delete_cb, tun_name);
+    WintunEnumAdapters(L"Ziti", tun_delete_cb, (LPARAM) tun_name);
 }
