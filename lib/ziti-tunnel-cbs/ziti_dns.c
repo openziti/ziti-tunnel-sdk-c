@@ -655,7 +655,7 @@ static void proxy_domain_req(struct dns_req *req, dns_domain_t *domain) {
         free(json);
     }
 
-    req->msg.status = DNS_SERVFAIL;
+    req->msg.status = domain->resolv_proxy == NULL ? DNS_SERVFAIL : DNS_NOT_IMPL;
     format_resp(req);
     complete_dns_req(req);
 }
