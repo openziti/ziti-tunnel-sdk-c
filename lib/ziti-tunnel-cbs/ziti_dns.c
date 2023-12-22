@@ -637,11 +637,9 @@ static void proxy_domain_req(struct dns_req *req, dns_domain_t *domain) {
         domain->resolv_proxy = intercept_resolve_connect(intercept, domain, on_proxy_connect, on_proxy_data);
     }
 
-    char *json = NULL;
-    size_t jsonlen;
-
     if (domain->resolv_proxy != NULL) {
-        json = dns_message_to_json(&req->msg, MODEL_JSON_COMPACT, &jsonlen);
+        size_t jsonlen;
+        char *json = dns_message_to_json(&req->msg, MODEL_JSON_COMPACT, &jsonlen);
         ZITI_LOG(DEBUG, "writing proxy resolve req[%04x]: %s", req->id, json);
 
         // intercept_resolve_connect above can quick-fail if context does not have a valid API session
@@ -654,14 +652,13 @@ static void proxy_domain_req(struct dns_req *req, dns_domain_t *domain) {
         ZITI_LOG(WARN, "failed to write proxy resolve request[%04x]: %s", req->id, ziti_errorstr(rc));
         ziti_close(domain->resolv_proxy, NULL);
         domain->resolv_proxy = NULL;
+        free(json);
     }
 
-    free(json);
     req->msg.status = DNS_SERVFAIL;
     format_resp(req);
     complete_dns_req(req);
 }
-
 
 ssize_t on_dns_req(const void *ziti_io_ctx, void *write_ctx, const void *q_packet, size_t q_len) {
     ziti_dns_client_t *clt = ziti_io_ctx;
