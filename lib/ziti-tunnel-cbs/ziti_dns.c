@@ -639,15 +639,17 @@ static void proxy_domain_req(struct dns_req *req, dns_domain_t *domain) {
     size_t jsonlen;
 
     if (domain->resolv_proxy != NULL) {
-        json = dns_message_to_json(&req->msg, 0, &jsonlen);
-        ZITI_LOG(DEBUG, "writing proxy resolve [%s]", json);
+        json = dns_message_to_json(&req->msg, MODEL_JSON_COMPACT, &jsonlen);
+        ZITI_LOG(DEBUG, "writing proxy resolve req[%04x]: %s", req->id, json);
 
         // intercept_resolve_connect above can quick-fail if context does not have a valid API session
         // in that case resolve_proxy connection will be in Closed state and write will fail
-        if (ziti_write(domain->resolv_proxy, json, jsonlen, on_proxy_write, json) == ZITI_OK) {
+        int rc = ziti_write(domain->resolv_proxy, json, jsonlen, on_proxy_write, json);
+        if (rc == ZITI_OK) {
             return;
         }
 
+        ZITI_LOG(WARN, "failed to write proxy resolve request[%04x]: %s", req->id, ziti_errorstr(rc));
         ziti_close(domain->resolv_proxy, NULL);
         domain->resolv_proxy = NULL;
     }
