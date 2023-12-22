@@ -339,7 +339,9 @@ static dns_entry_t *ziti_dns_lookup(const char *hostname) {
         if (domain && model_map_size(&domain->intercepts) > 0) {
             ZITI_LOG(DEBUG, "matching domain[%s] found for %s", domain->name, hostname);
             entry = new_ipv4_entry(clean);
-            entry->domain = domain;
+            if (entry) {
+                entry->domain = domain;
+            }
         }
     }
 
@@ -634,12 +636,10 @@ static void proxy_domain_req(struct dns_req *req, dns_domain_t *domain) {
         void *intercept = model_map_it_value(it);
         domain->resolv_proxy = intercept_resolve_connect(intercept, domain, on_proxy_connect, on_proxy_data);
     }
-
-    char *json = NULL;
-    size_t jsonlen;
-
-    if (domain->resolv_proxy != NULL) {
-        json = dns_message_to_json(&req->msg, MODEL_JSON_COMPACT, &jsonlen);
+    dns_question *q = req->msg.question[0];
+    if (domain->resolv_proxy != NULL && (q->type == NS_T_MX || q->type == NS_T_SRV || q->type == NS_T_TXT)) {
+        size_t jsonlen;
+        char *json = dns_message_to_json(&req->msg, MODEL_JSON_COMPACT, &jsonlen);
         ZITI_LOG(DEBUG, "writing proxy resolve req[%04x]: %s", req->id, json);
 
         // intercept_resolve_connect above can quick-fail if context does not have a valid API session
@@ -652,14 +652,13 @@ static void proxy_domain_req(struct dns_req *req, dns_domain_t *domain) {
         ZITI_LOG(WARN, "failed to write proxy resolve request[%04x]: %s", req->id, ziti_errorstr(rc));
         ziti_close(domain->resolv_proxy, NULL);
         domain->resolv_proxy = NULL;
+        free(json);
     }
 
-    free(json);
-    req->msg.status = DNS_SERVFAIL;
+    req->msg.status = domain->resolv_proxy == NULL ? DNS_SERVFAIL : DNS_NOT_IMPL;
     format_resp(req);
     complete_dns_req(req);
 }
-
 
 ssize_t on_dns_req(const void *ziti_io_ctx, void *write_ctx, const void *q_packet, size_t q_len) {
     ziti_dns_client_t *clt = ziti_io_ctx;
@@ -702,7 +701,7 @@ ssize_t on_dns_req(const void *ziti_io_ctx, void *write_ctx, const void *q_packe
     dns_question *q = req->msg.question[0];
 
     if (q->type == NS_T_A || q->type == NS_T_AAAA) {
-        process_host_req(req);
+        process_host_req(req); // will send upstream if no local answer and req is recursive
     } else {
         // find domain requires normalized name
         char reqname[MAX_DNS_NAME];
@@ -737,7 +736,7 @@ int query_upstream(struct dns_req *req) {
     int rc = -1;
     uv_udp_send_t *sr = NULL;
 
-    if (avail) {
+    if (avail && req->msg.recursive) {
         sr = calloc(1, sizeof(uv_udp_send_t));
         sr->data = req;
         uv_buf_t buf = uv_buf_init((char *) req->req, req->req_len);
