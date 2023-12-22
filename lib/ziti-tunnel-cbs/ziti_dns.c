@@ -636,8 +636,8 @@ static void proxy_domain_req(struct dns_req *req, dns_domain_t *domain) {
         void *intercept = model_map_it_value(it);
         domain->resolv_proxy = intercept_resolve_connect(intercept, domain, on_proxy_connect, on_proxy_data);
     }
-
-    if (domain->resolv_proxy != NULL && req->msg.recursive) {
+    dns_question *q = req->msg.question[0];
+    if (domain->resolv_proxy != NULL && (q->type == NS_T_MX || q->type == NS_T_SRV || q->type == NS_T_TXT)) {
         size_t jsonlen;
         char *json = dns_message_to_json(&req->msg, MODEL_JSON_COMPACT, &jsonlen);
         ZITI_LOG(DEBUG, "writing proxy resolve req[%04x]: %s", req->id, json);
