@@ -704,14 +704,16 @@ ssize_t on_dns_req(const void *ziti_io_ctx, void *write_ctx, const void *q_packe
     dns_question *q = req->msg.question[0];
 
     if (q->type == NS_T_A || q->type == NS_T_AAAA) {
-        process_host_req(req);
-    } else if (req->msg.recursive) {
+        process_host_req(req); // will send upstream if no local answer and req is recursive
+    } else {
         // find domain requires normalized name
         char reqname[MAX_DNS_NAME];
         check_name(q->name, reqname, NULL);
         dns_domain_t *domain = find_domain(reqname);
-        if (domain && (q->type == NS_T_MX || q->type == NS_T_TXT || q->type == NS_T_SRV)) {
-            proxy_domain_req(req, domain);
+        if (domain) {
+            if (q->type == NS_T_MX || q->type == NS_T_TXT || q->type == NS_T_SRV) {
+                proxy_domain_req(req, domain);
+            }
         } else {
             int dns_status = query_upstream(req);
             if (dns_status != DNS_NO_ERROR) {
@@ -720,10 +722,6 @@ ssize_t on_dns_req(const void *ziti_io_ctx, void *write_ctx, const void *q_packe
                 complete_dns_req(req);
             }
         }
-    } else {
-        req->msg.status = DNS_NOT_IMPL;
-        format_resp(req);
-        complete_dns_req(req);
     }
 
     ziti_tunneler_ack(write_ctx);
@@ -743,7 +741,7 @@ int query_upstream(struct dns_req *req) {
     int rc = -1;
     uv_udp_send_t *sr = NULL;
 
-    if (avail) {
+    if (avail && req->msg.recursive) {
         sr = calloc(1, sizeof(uv_udp_send_t));
         sr->data = req;
         uv_buf_t buf = uv_buf_init((char *) req->req, req->req_len);
