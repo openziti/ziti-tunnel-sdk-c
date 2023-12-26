@@ -625,9 +625,25 @@ static ssize_t on_proxy_data(ziti_connection conn, const uint8_t* data, ssize_t 
     return status;
 }
 
+struct proxy_dns_req_wr_s {
+    struct dns_req *req;
+    char *json;
+};
+
 static void on_proxy_write(ziti_connection conn, ssize_t status, void *ctx) {
     ZITI_LOG(DEBUG, "proxy resolve write: %d", (int)status);
-    free(ctx);
+    if (ctx) {
+        struct proxy_dns_req_wr_s *wr = ctx;
+        if (status != ZITI_OK) {
+            ZITI_LOG(WARN, "proxy resolve write failed: %s/%zd", ziti_errorstr(status), status);
+            wr->req->msg.status = DNS_SERVFAIL;
+            format_resp(wr->req);
+            complete_dns_req(wr->req);
+
+        }
+        free(wr->json);
+        free(ctx);
+    }
 }
 
 static void proxy_domain_req(struct dns_req *req, dns_domain_t *domain) {
@@ -639,12 +655,14 @@ static void proxy_domain_req(struct dns_req *req, dns_domain_t *domain) {
     dns_question *q = req->msg.question[0];
     if (domain->resolv_proxy != NULL && (q->type == NS_T_MX || q->type == NS_T_SRV || q->type == NS_T_TXT)) {
         size_t jsonlen;
-        char *json = dns_message_to_json(&req->msg, MODEL_JSON_COMPACT, &jsonlen);
-        ZITI_LOG(DEBUG, "writing proxy resolve req[%04x]: %s", req->id, json);
+        struct proxy_dns_req_wr_s *wr = calloc(1, sizeof(struct proxy_dns_req_wr_s));
+        wr->req = req;
+        wr->json = dns_message_to_json(&req->msg, MODEL_JSON_COMPACT, &jsonlen);
+        ZITI_LOG(DEBUG, "writing proxy resolve req[%04x]: %s", req->id, wr->json);
 
         // intercept_resolve_connect above can quick-fail if context does not have a valid API session
         // in that case resolve_proxy connection will be in Closed state and write will fail
-        int rc = ziti_write(domain->resolv_proxy, json, jsonlen, on_proxy_write, json);
+        int rc = ziti_write(domain->resolv_proxy, wr->json, jsonlen, on_proxy_write, wr);
         if (rc == ZITI_OK) {
             return;
         }
@@ -652,7 +670,8 @@ static void proxy_domain_req(struct dns_req *req, dns_domain_t *domain) {
         ZITI_LOG(WARN, "failed to write proxy resolve request[%04x]: %s", req->id, ziti_errorstr(rc));
         ziti_close(domain->resolv_proxy, NULL);
         domain->resolv_proxy = NULL;
-        free(json);
+        free(wr->json);
+        free(wr);
     }
 
     req->msg.status = domain->resolv_proxy == NULL ? DNS_SERVFAIL : DNS_NOT_IMPL;
