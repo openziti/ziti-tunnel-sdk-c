@@ -10,14 +10,15 @@ mkdir ./dumps
 chgrp -R ziti "${PWD}"
 chmod -R g+rwX "${PWD}"
 
-NOW="$(date -u +'%Y-%m-%dT%H:%MZ')"
+NOW=$(date -u +'%Y-%m-%dT%H:%MZ')
 ZITI_VERSION=$(/opt/openziti/bin/ziti-edge-tunnel version)
-LOG_FILE=ziti-edge-tunnel-${ZITI_VERSION#v}-${NOW}.log
-BACKTRACE_FILE=ziti-edge-tunnel-${ZITI_VERSION#v}-${NOW}.backtrace
-STRACE_FILE=ziti-edge-tunnel-${ZITI_VERSION#v}-${NOW}.strace
-TUNNEL_STATUS_FILE=ziti-edge-tunnel-${ZITI_VERSION#v}-${NOW}.tunnel_status.json
-SYSTEMD_RESOLVED_FILE=ziti-edge-tunnel-${ZITI_VERSION#v}-${NOW}.systemd-resolved
-TARBALL=ziti-edge-tunnel-${ZITI_VERSION#v}-${NOW}.tgz
+PREFIX=ziti-edge-tunnel-${ZITI_VERSION#v}-${NOW}
+LOG_FILE=${PREFIX}.log
+BACKTRACE_FILE=${PREFIX}.backtrace
+STRACE_FILE=${PREFIX}.strace
+TUNNEL_STATUS_FILE=${PREFIX}.tunnel_status.json
+SYSTEMD_RESOLVED_FILE=${PREFIX}.systemd-resolved
+TARBALL=${PREFIX}.tgz
 
 # get the PID from systemd
 ZET_PID="$(systemctl show -p MainPID --value ziti-edge-tunnel.service)"
