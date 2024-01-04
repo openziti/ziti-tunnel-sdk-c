@@ -162,7 +162,7 @@ bool save_tunnel_status_to_file() {
         free(config_file_name);
         free(bkp_config_file_name);
         free(config_path);
-   }
+    }
     free(tunnel_status);
     return saved;
 }
