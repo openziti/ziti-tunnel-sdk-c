@@ -18,6 +18,7 @@ BACKTRACE_FILE=${PREFIX}.backtrace
 STRACE_FILE=${PREFIX}.strace
 TUNNEL_STATUS_FILE=${PREFIX}.tunnel_status.json
 SYSTEMD_RESOLVED_FILE=${PREFIX}.systemd-resolved
+HOST_INFO_FILE=${PREFIX}.host
 TARBALL=${PREFIX}.tgz
 
 # get the PID from systemd
@@ -40,12 +41,21 @@ fi
     cat /etc/resolv.conf
 ) &> "${SYSTEMD_RESOLVED_FILE}"
 
+# save host info
+(
+    set +e
+    set -x
+    hostnamectl
+    hostname
+    cat /etc/hosts /etc/*-release
+) &> "${HOST_INFO_FILE}"
+
 # save the current service unit invocation's log messages
 journalctl _SYSTEMD_INVOCATION_ID="$(systemctl show -p InvocationID --value ziti-edge-tunnel.service)" -l --no-pager \
 &> "${LOG_FILE}"
 
 # save the threads and backtrace
-timeout --signal=SIGKILL 3s \
+timeout --kill-after=1s 3s \
     gdb /opt/openziti/bin/ziti-edge-tunnel \
         --pid "${ZET_PID}" \
         --batch \
@@ -58,7 +68,7 @@ timeout --signal=SIGKILL 3s \
     || echo "WARN: gdb backtrace timed out" >&2
 
 # save 10s of strace calls
-timeout --signal=SIGKILL 10s \
+timeout --kill-after=1s 10s \
     strace --attach "${ZET_PID}" \
         --follow-forks \
         --absolute-timestamps=format:unix,precision:us \
@@ -74,12 +84,12 @@ timeout --signal=SIGKILL 10s \
         # --trace=%memory \
 
 # save the identity status dumps
-timeout --signal=SIGKILL 3s \
+timeout --kill-after=1s 3s \
     ziti-edge-tunnel dump -p ./dumps >/dev/null \
     || echo "WARN: failed to create dumps" >&2
 
 # save the tunnel_status JSON
-timeout --signal=SIGKILL 3s \
+timeout --kill-after=1s 3s \
     ziti-edge-tunnel tunnel_status \
     | sed -E "s/(^received\sresponse\s<|>$)//g" > "${TUNNEL_STATUS_FILE}" \
     || echo "WARN: failed to get tunnel_status" >&2
