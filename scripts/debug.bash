@@ -2,6 +2,7 @@
 #
 # create a debug bundle for systemd service unit ziti-edge-tunnel.service
 #
+# usage: sudo /opt/openziti/bin/debug.bash [UPLOAD_URL]
 
 set -o errexit
 set -o nounset
@@ -136,6 +137,12 @@ main() {
     echo -en ".]\n"
     
     echo "INFO: debug bundle created at /tmp/${TARBALL} from files in ${PWD}"
+
+    if [[ -n "${1:-}" ]]
+    then
+        echo "INFO: uploading debug bundle to ${1}"
+        curl -sSf -T "/tmp/${TARBALL}" "${1}"
+    fi
 }
 
 main "$@"
