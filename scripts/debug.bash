@@ -63,14 +63,14 @@ timeout --signal=SIGKILL 10s \
         --absolute-timestamps=format:unix,precision:us \
         --syscall-times \
         --string-limit 4096 \
-        --trace=%network \
-        --trace=%process \
-        --trace=%signal \
-        --trace=%ipc \
-        --trace=%desc \
-        --trace=%memory \
     &> "${STRACE_FILE}" \
     || true  # catch the expected timeout exit code
+        # --trace=%network \
+        # --trace=%process \
+        # --trace=%signal \
+        # --trace=%ipc \
+        # --trace=%desc \
+        # --trace=%memory \
 
 # save the identity status dumps
 timeout --signal=SIGKILL 3s \
