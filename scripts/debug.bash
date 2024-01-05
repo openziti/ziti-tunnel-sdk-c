@@ -54,8 +54,8 @@ main() {
         set -x
         systemctl status systemd-resolved.service
         resolvectl status
-        resolvectl dns ziti0
-        resolvectl domain ziti0
+        resolvectl dns
+        resolvectl domain
         ls -l /etc/resolv.conf
         cat /etc/resolv.conf
     ) &> "${SYSTEMD_RESOLVED_FILE}"
@@ -65,8 +65,8 @@ main() {
     (
         set +e
         set -x
-        hostnamectl
-        hostname
+        hostnamectl; hostname
+        ip link show; ip addr show; ip route show
         cat /etc/hosts /etc/*-release
     ) &> "${HOST_INFO_FILE}"
     echo -n "."
@@ -84,7 +84,7 @@ main() {
             --ex "set verbose on" \
             --ex "set pagination off" \
             --ex "info threads" \
-            --ex "backtrace" \
+            --ex "thread apply all backtrace" \
             --ex "quit" \
         &> "${BACKTRACE_FILE}" \
         || echo "WARN: gdb backtrace timed out" >&2
