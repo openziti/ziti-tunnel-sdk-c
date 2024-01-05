@@ -30,15 +30,22 @@ if [ "$1" = "configure" ]; then
   chmod 0770 "@ZITI_IDENTITY_DIR@"
   find "@ZITI_IDENTITY_DIR@" -maxdepth 1 -name "*.json" -type f -exec chown ziti:ziti "{}" + -exec chmod 0400 "{}" +
 
-  # use minor version as major version, ignoring the magic zero major version
-  policykit_version=$(dpkg-query -Wf '${Version}' policykit-1 | sed -E 's/^([0-9]+\.)?([0-9]+).*/\2/')
-  # use major version
-  systemd_version=$(dpkg-query -Wf '${Version}' systemd | sed -E 's/^([0-9]+)\..*/\1/')
+  # sort ascending the installed and max policykit versions, saving the highest version, so we
+  # can ensure the installed version is less than the max version
+  policykit_version="$(dpkg-query -Wf '${Version}' policykit-1)"
+  max_policykit_version="0.106"
+  highest_policykit_version="$(printf '%s\n' ${policykit_version} ${max_policykit_version} | sort -V | tail -n1)"
 
-  # install PolicyKit policy if using policykit < 0.106 (https://askubuntu.com/questions/1287924/whats-going-on-with-policykit)
-  if [ ${policykit_version} -lt 106 ]; then
-    # ... the set-llmnr action was exposed with v243 (https://github.com/systemd/systemd/commit/52aaef0f5dc81b9a08d720f551eac53ac88aa596)
-    if [ ${systemd_version} -ge 243 ]; then
+  # sort ascending the installed and min systemd versions, saving the lowest version, so we can ensure the installed
+  # version is greater than or equal to the min version
+  systemd_version=$(dpkg-query -Wf '${Version}' systemd)
+  min_systemd_version="243"
+  lowest_systemd_version="$(printf '%s\n' ${systemd_version} ${min_systemd_version} | sort -V | head -n1)"
+
+  # install PolicyKit policy if < v0.106 (https://askubuntu.com/questions/1287924/whats-going-on-with-policykit)
+  if [ ${policykit_version} != ${max_policykit_version} ] && [ ${max_policykit_version} = ${highest_policykit_version} ]; then
+    # run as root unless systemd > v242 (required set-llmnr introduced v243 https://github.com/systemd/systemd/commit/52aaef0f5dc81b9a08d720f551eac53ac88aa596)
+    if [ ${systemd_version} = ${min_systemd_version} ] || [ ${min_systemd_version} = ${lowest_systemd_version} ]; then
       cp "@CPACK_SHARE_DIR@/@ZITI_POLKIT_PKLA_FILE@.sample" "/var/lib/polkit-1/localauthority/10-vendor.d/@ZITI_POLKIT_PKLA_FILE@"
       db_set ziti_edge_tunnel/install_pkla true
     else
