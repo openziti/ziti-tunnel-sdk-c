@@ -44,7 +44,7 @@ if [ "$1" = "configure" ]; then
 
   # install PolicyKit policy if < v0.106 (https://askubuntu.com/questions/1287924/whats-going-on-with-policykit)
   if [ ${policykit_version} != ${max_policykit_version} ] && [ ${max_policykit_version} = ${highest_policykit_version} ]; then
-    # run as root unless systemd > v242 (required set-llmnr introduced v243 https://github.com/systemd/systemd/commit/52aaef0f5dc81b9a08d720f551eac53ac88aa596)
+    # run as root unless systemd >= v243 (required set-llmnr introduced v243 https://github.com/systemd/systemd/commit/52aaef0f5dc81b9a08d720f551eac53ac88aa596)
     if [ ${systemd_version} = ${min_systemd_version} ] || [ ${min_systemd_version} = ${lowest_systemd_version} ]; then
       cp "@CPACK_SHARE_DIR@/@ZITI_POLKIT_PKLA_FILE@.sample" "/var/lib/polkit-1/localauthority/10-vendor.d/@ZITI_POLKIT_PKLA_FILE@"
       db_set ziti_edge_tunnel/install_pkla true
