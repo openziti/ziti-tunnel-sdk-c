@@ -35,5 +35,5 @@ sudo chmod +r /usr/share/keyrings/openziti.gpg
 echo "deb [signed-by=/usr/share/keyrings/openziti.gpg] https://packages.openziti.org/zitipax-openziti-deb-stable ${UBUNTU_LTS} main" \
   | sudo tee /etc/apt/sources.list.d/openziti.list >/dev/null
 
-sudo apt update
-sudo apt install -y ziti-edge-tunnel
+sudo apt-get update
+sudo apt-get install --yes ziti-edge-tunnel
