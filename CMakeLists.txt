@@ -119,19 +119,6 @@ message("cross-compiling: ${CMAKE_CROSSCOMPILING}")
 link_directories(${CMAKE_BINARY_DIR}/lib)
 
 add_subdirectory(deps)
-
-find_package(libuv CONFIG QUIET)
-if (libuv_FOUND)
-    if (TARGET uv_a)
-        set(tunnel_libuv_lib uv_a)
-    else()
-        set(tunnel_libuv_lib uv)
-    endif()
-else()
-    find_path(tunnel_libuv_include_dir NAMES uv.h)
-    find_library(tunnel_libuv_lib uv_a NAMES uv)
-endif()
-
 add_subdirectory(lib/ziti-tunnel)
 
 if(NOT TUNNEL_SDK_ONLY)
