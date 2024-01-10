@@ -60,11 +60,11 @@ jobs:
         if: ${{ matrix.distro.name == 'ubuntu' }}
         shell: bash
         run: |
-          apt -y update
-          apt-get -y install software-properties-common
-          add-apt-repository -y ppa:git-core/ppa
-          apt -y update
-          apt -y install git
+          apt-get update
+          apt-get install --yes software-properties-common
+          add-apt-repository --yes ppa:git-core/ppa
+          apt-get update
+          apt-get install --yes git
           git --version
 
       - name: install contemporary Git in runner container if RedHat 8 or 9
@@ -123,7 +123,7 @@ jobs:
           DEBIAN_FRONTEND: noninteractive
         shell: bash
         run: |
-          apt -y install ./build/ziti-edge-tunnel-*.deb
+          apt-get -y install ./build/ziti-edge-tunnel-*.deb
 
       - name: install package artifact in runner container if RedHat
         if: ${{ matrix.arch.cmake == 'ci-linux-x64' && matrix.distro.name == 'redhat' }}
