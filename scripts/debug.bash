@@ -77,8 +77,11 @@ main() {
 
     # save the call stack at intervals
     BTRACE_COUNT=1
-    BTRACE_MAX=10
-    until [[ "${BTRACE_COUNT}" -gt "${BTRACE_MAX}" ]]
+    # allow parent env to override max count
+    : "${BTRACE_MAX:=10}"
+    BTRACE_MAX_LEN=$(( $(wc -c <<< "${BTRACE_MAX}") - 1 ))
+    # compare decimal form of iterator to decimal max
+    until [[ "10#${BTRACE_COUNT}" -gt "${BTRACE_MAX}" ]]
     do
         # save the threads and backtrace
         timeout --kill-after=1s 3s \
@@ -90,11 +93,14 @@ main() {
                 --ex "info threads" \
                 --ex "thread apply all backtrace" \
                 --ex "quit" \
-            &> "./backtrace/${BTRACE_COUNT}_of_${BTRACE_MAX}-$(date -u +'%Y-%m-%dT%H:%M:%SZ').backtrace" \
+            > "./backtrace/${BTRACE_COUNT}_of_${BTRACE_MAX}-$(date -u +'%Y-%m-%dT%H:%M:%SZ').backtrace" \
             || echo "WARN: gdb backtrace timed out" >&2
         echo -n "."
         sleep 1
-        (( BTRACE_COUNT++ ))
+        # increment decimal form of iterator
+        BTRACE_COUNT=$((10#${BTRACE_COUNT} + 1))
+        # pad the decimal form of iterator for filename sorting
+        BTRACE_COUNT=$(printf "%0${BTRACE_MAX_LEN}d" "${BTRACE_COUNT}")
     done
 
     # save 10s of strace calls
@@ -116,15 +122,22 @@ main() {
     
     # save the call stack at intervals
     STACK_COUNT=1
-    STACK_MAX=3
-    until [[ "${STACK_COUNT}" -gt "${STACK_MAX}" ]]
+    # allow parent env to override max count
+    : "${STACK_MAX:=3}"
+    # find width of decimal max
+    STACK_MAX_LEN=$(( $(wc -c <<< "${STACK_MAX}") - 1 ))
+    # compare decimal form of iterator to decimal max
+    until [[ "10#${STACK_COUNT}" -gt "${STACK_MAX}" ]]
     do
         cat "/proc/${ZET_PID}/stack" \
         > "./stack/${STACK_COUNT}_of_${STACK_MAX}-$(date -u +'%Y-%m-%dT%H:%M:%SZ').stack"
         echo -n "."
         # shellcheck disable=SC2034 # iterator is unused
         for i in {1..10}; do sleep 1; echo -n "."; done
-        (( STACK_COUNT++ ))
+        # increment decimal form of iterator
+        STACK_COUNT=$((10#${STACK_COUNT} + 1))
+        # pad the decimal form of iterator for filename sorting
+        STACK_COUNT=$(printf "%0${STACK_MAX_LEN}d" "${STACK_COUNT}")
     done
     
     # save the identity status dumps
