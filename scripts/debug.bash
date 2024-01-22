@@ -88,12 +88,13 @@ main() {
             gdb /opt/openziti/bin/ziti-edge-tunnel \
                 --pid "${ZET_PID}" \
                 --batch \
+                --ex "set sysroot /" \
                 --ex "set verbose on" \
                 --ex "set pagination off" \
                 --ex "info threads" \
                 --ex "thread apply all backtrace" \
                 --ex "quit" \
-            > "./backtrace/${BTRACE_COUNT}_of_${BTRACE_MAX}-$(date -u +'%Y-%m-%dT%H:%M:%SZ').backtrace" \
+            &> "./backtrace/${BTRACE_COUNT}_of_${BTRACE_MAX}-$(date -u +'%Y-%m-%dT%H:%M:%SZ').backtrace" \
             || echo "WARN: gdb backtrace timed out" >&2
         echo -n "."
         sleep 1
