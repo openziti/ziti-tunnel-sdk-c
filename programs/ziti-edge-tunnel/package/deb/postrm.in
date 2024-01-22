@@ -13,7 +13,13 @@ if [ "$1" = "purge" ]; then
 fi
 # End copied section
 
-if [ -L @SYSTEMD_UNIT_DIR@/@SYSTEMD_UNIT_FILE_NAME@ ]; then
+# delete the symlink to the executable that was created by the postinst scriptlet
+if [ -L /usr/bin/@CPACK_PACKAGE_NAME@ ]; then
+    unlink /usr/bin/@CPACK_PACKAGE_NAME@
+fi
+
+# delete the regular file of the service unit that was copied by the postinst scriptlet
+if [ -e @SYSTEMD_UNIT_DIR@/@SYSTEMD_UNIT_FILE_NAME@ ]; then
     unlink @SYSTEMD_UNIT_DIR@/@SYSTEMD_UNIT_FILE_NAME@
 fi
 
@@ -22,10 +28,6 @@ if [ -d /run/systemd/system ]; then
     systemctl --system daemon-reload >/dev/null || true
 fi
 # End copied section
-
-if [ -L /usr/bin/@CPACK_PACKAGE_NAME@ ]; then
-    unlink /usr/bin/@CPACK_PACKAGE_NAME@
-fi
 
 if [ -e /usr/share/debconf/confmodule ]; then
     # Source debconf library.
@@ -46,7 +48,7 @@ fi
 ###
 ### Unlikely all files and directories were removed.
 ### Some of the unremoved files and directories are likely owned by `ziti' user or group.
-### Conseequently, don't remove 'ziti` user and group as it will strand the files
+### Consequently, don't remove 'ziti` user and group as it will strand the files
 ###
 #if [ "$1" = "purge" ]; then
 #  if command -v deluser >/dev/null; then

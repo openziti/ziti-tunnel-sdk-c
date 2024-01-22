@@ -5,5 +5,9 @@ systemctl daemon-reload >/dev/null 2>&1 || :
 %systemd_postun_with_restart ${SYSTEMD_SERVICE_NAME}
 
 if [ $1 -eq 0 ]; then
-    rm %{_unitdir}/${SYSTEMD_UNIT_FILE_NAME}
+    # delete the symlink to the executable that was created by the post scriptlet
+    unlink /usr/bin/$SYSTEMD_SERVICE_NAME
+
+    # delete the regular file of the service unit that was copied by the post scriptlet
+    unlink %{_unitdir}/${SYSTEMD_UNIT_FILE_NAME}
 fi
