@@ -120,7 +120,7 @@ main() {
     until [[ "${STACK_COUNT}" -gt "${STACK_MAX}" ]]
     do
         cat "/proc/${ZET_PID}/stack" \
-        &> "./stack/${STACK_COUNT}_of_${STACK_MAX}-$(date -u +'%Y-%m-%dT%H:%M:%SZ').stack"
+        > "./stack/${STACK_COUNT}_of_${STACK_MAX}-$(date -u +'%Y-%m-%dT%H:%M:%SZ').stack"
         echo -n "."
         # shellcheck disable=SC2034 # iterator is unused
         for i in {1..10}; do sleep 1; echo -n "."; done
