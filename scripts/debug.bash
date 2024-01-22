@@ -17,7 +17,7 @@ checkCommand() {
 
 main() {
     # require commands
-    declare -a BINS=(sed gdb strace tar timeout /opt/openziti/bin/ziti-edge-tunnel systemctl journalctl resolvectl)
+    declare -a BINS=(sed gdb strace tar timeout /opt/openziti/bin/ziti-edge-tunnel systemctl journalctl)
     for BIN in "${BINS[@]}"; do
         checkCommand "$BIN"
     done
