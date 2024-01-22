@@ -23,7 +23,7 @@ main() {
     done
 
     cd "$(mktemp -d)"
-    mkdir ./dump ./stack
+    mkdir ./dump ./stack ./backtrace
     chgrp -R ziti "${PWD}"
     chmod -R g+rwX "${PWD}"
     
@@ -33,7 +33,6 @@ main() {
     ZITI_VERSION=$(/opt/openziti/bin/ziti-edge-tunnel version)
     PREFIX=ziti-edge-tunnel-${ZITI_VERSION#v}-${NOW}
     LOG_FILE=${PREFIX}.log
-    BACKTRACE_FILE=${PREFIX}.backtrace
     STRACE_FILE=${PREFIX}.strace
     TUNNEL_STATUS_FILE=${PREFIX}.tunnel_status.json
     SYSTEMD_RESOLVED_FILE=${PREFIX}.systemd-resolved
@@ -75,21 +74,29 @@ main() {
     journalctl _SYSTEMD_INVOCATION_ID="$(systemctl show -p InvocationID --value ziti-edge-tunnel.service)" -l --no-pager \
     &> "${LOG_FILE}"
     echo -n "."
-    
-    # save the threads and backtrace
-    timeout --kill-after=1s 3s \
-        gdb /opt/openziti/bin/ziti-edge-tunnel \
-            --pid "${ZET_PID}" \
-            --batch \
-            --ex "set verbose on" \
-            --ex "set pagination off" \
-            --ex "info threads" \
-            --ex "thread apply all backtrace" \
-            --ex "quit" \
-        &> "${BACKTRACE_FILE}" \
-        || echo "WARN: gdb backtrace timed out" >&2
-    echo -n "."
-    
+
+    # save the call stack at intervals
+    BTRACE_COUNT=1
+    BTRACE_MAX=10
+    until [[ "${BTRACE_COUNT}" -gt "${BTRACE_MAX}" ]]
+    do
+        # save the threads and backtrace
+        timeout --kill-after=1s 3s \
+            gdb /opt/openziti/bin/ziti-edge-tunnel \
+                --pid "${ZET_PID}" \
+                --batch \
+                --ex "set verbose on" \
+                --ex "set pagination off" \
+                --ex "info threads" \
+                --ex "thread apply all backtrace" \
+                --ex "quit" \
+            &> "./backtrace/${BTRACE_COUNT}_of_${BTRACE_MAX}-$(date -u +'%Y-%m-%dT%H:%M:%SZ').backtrace" \
+            || echo "WARN: gdb backtrace timed out" >&2
+        echo -n "."
+        sleep 1
+        (( BTRACE_COUNT++ ))
+    done
+
     # save 10s of strace calls
     timeout --kill-after=1s 10s \
         strace --attach "${ZET_PID}" \
