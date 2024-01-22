@@ -10,7 +10,7 @@ set -o pipefail
 
 checkCommand() {
     if ! command -v "$1" &>/dev/null; then
-        echo "ERROR: this script requires command '$1'. Please install on the search PATH and try again." >&2
+        echo "NOTICE: install '$1' and try again." >&2
         $1
     fi
 }
