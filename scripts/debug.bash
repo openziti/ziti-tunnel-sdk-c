@@ -10,20 +10,20 @@ set -o pipefail
 
 checkCommand() {
     if ! command -v "$1" &>/dev/null; then
-        echo "ERROR: this script requires command '$1'. Please install on the search PATH and try again." >&2
+        echo "NOTICE: install '$1' and try again." >&2
         $1
     fi
 }
 
 main() {
     # require commands
-    declare -a BINS=(sed gdb strace tar timeout /opt/openziti/bin/ziti-edge-tunnel systemctl journalctl resolvectl)
+    declare -a BINS=(sed gdb strace tar timeout /opt/openziti/bin/ziti-edge-tunnel systemctl journalctl)
     for BIN in "${BINS[@]}"; do
         checkCommand "$BIN"
     done
 
     cd "$(mktemp -d)"
-    mkdir ./dump ./stack
+    mkdir ./dump ./stack ./backtrace
     chgrp -R ziti "${PWD}"
     chmod -R g+rwX "${PWD}"
     
@@ -33,7 +33,6 @@ main() {
     ZITI_VERSION=$(/opt/openziti/bin/ziti-edge-tunnel version)
     PREFIX=ziti-edge-tunnel-${ZITI_VERSION#v}-${NOW}
     LOG_FILE=${PREFIX}.log
-    BACKTRACE_FILE=${PREFIX}.backtrace
     STRACE_FILE=${PREFIX}.strace
     TUNNEL_STATUS_FILE=${PREFIX}.tunnel_status.json
     SYSTEMD_RESOLVED_FILE=${PREFIX}.systemd-resolved
@@ -75,21 +74,36 @@ main() {
     journalctl _SYSTEMD_INVOCATION_ID="$(systemctl show -p InvocationID --value ziti-edge-tunnel.service)" -l --no-pager \
     &> "${LOG_FILE}"
     echo -n "."
-    
-    # save the threads and backtrace
-    timeout --kill-after=1s 3s \
-        gdb /opt/openziti/bin/ziti-edge-tunnel \
-            --pid "${ZET_PID}" \
-            --batch \
-            --ex "set verbose on" \
-            --ex "set pagination off" \
-            --ex "info threads" \
-            --ex "thread apply all backtrace" \
-            --ex "quit" \
-        &> "${BACKTRACE_FILE}" \
-        || echo "WARN: gdb backtrace timed out" >&2
-    echo -n "."
-    
+
+    # save the call stack at intervals
+    BTRACE_COUNT=1
+    # allow parent env to override max count
+    : "${BTRACE_MAX:=10}"
+    BTRACE_MAX_LEN=$(( $(wc -c <<< "${BTRACE_MAX}") - 1 ))
+    # compare decimal form of iterator to decimal max
+    until [[ "10#${BTRACE_COUNT}" -gt "${BTRACE_MAX}" ]]
+    do
+        # save the threads and backtrace
+        timeout --kill-after=1s 3s \
+            gdb /opt/openziti/bin/ziti-edge-tunnel \
+                --pid "${ZET_PID}" \
+                --batch \
+                --ex "set sysroot /" \
+                --ex "set verbose on" \
+                --ex "set pagination off" \
+                --ex "info threads" \
+                --ex "thread apply all backtrace" \
+                --ex "quit" \
+            &> "./backtrace/${BTRACE_COUNT}_of_${BTRACE_MAX}-$(date -u +'%Y-%m-%dT%H:%M:%SZ').backtrace" \
+            || echo "WARN: gdb backtrace timed out" >&2
+        echo -n "."
+        sleep 1
+        # increment decimal form of iterator
+        BTRACE_COUNT=$((10#${BTRACE_COUNT} + 1))
+        # pad the decimal form of iterator for filename sorting
+        BTRACE_COUNT=$(printf "%0${BTRACE_MAX_LEN}d" "${BTRACE_COUNT}")
+    done
+
     # save 10s of strace calls
     timeout --kill-after=1s 10s \
         strace --attach "${ZET_PID}" \
@@ -109,15 +123,22 @@ main() {
     
     # save the call stack at intervals
     STACK_COUNT=1
-    STACK_MAX=3
-    until [[ "${STACK_COUNT}" -gt "${STACK_MAX}" ]]
+    # allow parent env to override max count
+    : "${STACK_MAX:=3}"
+    # find width of decimal max
+    STACK_MAX_LEN=$(( $(wc -c <<< "${STACK_MAX}") - 1 ))
+    # compare decimal form of iterator to decimal max
+    until [[ "10#${STACK_COUNT}" -gt "${STACK_MAX}" ]]
     do
         cat "/proc/${ZET_PID}/stack" \
-        &> "./stack/${STACK_COUNT}_of_${STACK_MAX}-$(date -u +'%Y-%m-%dT%H:%M:%SZ').stack"
+        > "./stack/${STACK_COUNT}_of_${STACK_MAX}-$(date -u +'%Y-%m-%dT%H:%M:%SZ').stack"
         echo -n "."
         # shellcheck disable=SC2034 # iterator is unused
         for i in {1..10}; do sleep 1; echo -n "."; done
-        (( STACK_COUNT++ ))
+        # increment decimal form of iterator
+        STACK_COUNT=$((10#${STACK_COUNT} + 1))
+        # pad the decimal form of iterator for filename sorting
+        STACK_COUNT=$(printf "%0${STACK_MAX_LEN}d" "${STACK_COUNT}")
     done
     
     # save the identity status dumps
