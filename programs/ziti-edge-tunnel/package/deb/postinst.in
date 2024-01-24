@@ -28,7 +28,7 @@ if [ "$1" = "configure" ]; then
 
   chown root:ziti "@ZITI_IDENTITY_DIR@"
   chmod 0770 "@ZITI_IDENTITY_DIR@"
-  find "@ZITI_IDENTITY_DIR@" -maxdepth 1 -name "*.json" -type f -exec chown ziti:ziti "{}" + -exec chmod 0400 "{}" +
+  find "@ZITI_IDENTITY_DIR@" -maxdepth 1 -name "*.json" -type f -exec chown ziti:ziti "{}" + -exec chmod 0440 "{}" +
 
   # sort ascending the installed and max policykit versions, saving the highest version, so we
   # can ensure the installed version is less than the max version
