@@ -91,7 +91,12 @@ fi
 # End copied section
 
 if [ "$1" = "configure" ]; then
-    ssize=$(tput cols)
+    # if interactive and stdin is a tty
+    if [ $DEBIAN_FRONTEND != "noninteractive" -a -t 0 ]; then
+      ssize=$(tput cols)
+    else
+      ssize=80
+    fi
     printf '\n'
     printf %"$ssize"s | tr " " "-"
     echo "@SYSTEMD_SERVICE_NAME@ was installed..."
