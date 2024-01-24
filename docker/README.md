@@ -27,7 +27,7 @@ You may bind a host directory to the container filesystem in `/ziti-edge-tunnel`
 
 ## Use Case: Hosting OpenZiti Services
 
-This use case involves deploying the OpenZiti tunneler as a reverse proxy to publish regular network servers to your OpenZiti Network. You may locate the published servers in a Docker bridge network (use network mode `bridge`) or the Docker host's network (use network mode `host`). See [the Linux tunneler doc](https://docs.openziti.io/docs/reference/tunnelers/linux/) for general info about the OpenZiti tunneler. Use the `openziti/ziti-host` container image for this case.
+This use case involves deploying the OpenZiti tunneler as a reverse proxy to publish regular network servers to your OpenZiti Network. You may locate the published servers in a Docker bridge network (use network mode `bridge`) or the Docker host's network (use network mode `host`). See [the Linux tunneler doc](https://openziti.io/docs/reference/tunnelers/linux/) for general info about the OpenZiti tunneler. Use the `openziti/ziti-host` container image for this case.
 
 ### Container Image `openziti/ziti-host`
 
@@ -195,7 +195,7 @@ volumes:
 
 #### Kubernetes Deployments for `openziti/ziti-host`
 
-Refer to [the workload tunneling guides for Kubernetes](https://docs.openziti.io/docs/guides/kubernetes/workload-tunneling/).
+Refer to [the workload tunneling guides for Kubernetes](https://openziti.io/docs/guides/kubernetes/workload-tunneling/).
 
 ## Use Case: Intercepting Proxy and Nameserver
 
@@ -207,7 +207,7 @@ The "run" mode requires elevated privileges to configure the OS with a DNS resol
 
 This image runs `ziti-edge-tunnel run`, the intercepting proxy mode of the tunneler. The Red Hat 8 Universal Base Image (UBI) is the base image of this container.
 
-See [the Linux tunneler doc](https://docs.openziti.io/docs/reference/tunnelers/linux/) for general info about the OpenZiti tunneler.
+See [the Linux tunneler doc](https://openziti.io/docs/reference/tunnelers/linux/) for general info about the OpenZiti tunneler.
 
 #### Tags for `openziti/ziti-edge-tunnel`
 
@@ -281,4 +281,4 @@ services:
 
 #### Kubernetes Deployments for `openziti/ziti-edge-tunnel`
 
-Refer to [the workload tunneling guides for Kubernetes](https://docs.openziti.io/docs/guides/kubernetes/workload-tunneling/).
+Refer to [the workload tunneling guides for Kubernetes](https://openziti.io/docs/guides/kubernetes/workload-tunneling/).
