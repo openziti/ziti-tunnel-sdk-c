@@ -18,8 +18,14 @@ find "@ZITI_IDENTITY_DIR@" -maxdepth 1 -name "*.json" -type f -exec chown ziti:z
 # remove socket files that were created by older ziti-edge-tunnel versions
 rm -f /tmp/ziti-edge-tunnel.sock /tmp/ziti-edge-tunnel-event.sock
 
-if [ $1 -eq 1 ]; then
-    ssize=$(tput cols)
+# if not 0 (uninstall) then 1 or 2 (initial or upgrade)
+if [ $1 -ne 0 ]; then
+    # if stdin is a tty
+    if [ -t 0 ]; then
+        ssize=$(tput cols)
+    else
+        ssize=80
+    fi
     printf '\n'
     printf %"$ssize"s | tr " " "-"
     echo "$SYSTEMD_SERVICE_NAME was installed..."
