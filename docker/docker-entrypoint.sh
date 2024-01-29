@@ -67,11 +67,9 @@ if [[ -n "${ZITI_IDENTITY_JSON:-}" ]]; then
     fi
     IDENTITY_FILE="${IDENTITIES_DIR}/${ZITI_IDENTITY_BASENAME}.json"
     if [[ -s "${IDENTITY_FILE}" ]]; then
-        echo "ERROR: refusing to clobber non-empty Ziti identity file ${IDENTITY_FILE} with contents of env var ZITI_IDENTITY_JSON!" >&2
-        exit 1
-    else
-        echo "${ZITI_IDENTITY_JSON}" > "${IDENTITIES_DIR}/${ZITI_IDENTITY_BASENAME}.json"
+        echo "WARN: clobbering non-empty Ziti identity file ${IDENTITY_FILE} with contents of env var ZITI_IDENTITY_JSON!" >&2
     fi
+    echo "${ZITI_IDENTITY_JSON}" > "${IDENTITIES_DIR}/${ZITI_IDENTITY_BASENAME}.json"
 else
     # presumed to be a mountpoint for one or more identities
     IDENTITIES_DIR="/ziti-edge-tunnel"
