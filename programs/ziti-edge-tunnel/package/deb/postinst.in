@@ -1,10 +1,24 @@
-ln -sf @CPACK_BIN_DIR@/@CPACK_PACKAGE_NAME@ /usr/bin/@CPACK_PACKAGE_NAME@
-install -m 644 @CPACK_SHARE_DIR@/@SYSTEMD_UNIT_FILE_NAME@ @SYSTEMD_UNIT_DIR@/@SYSTEMD_UNIT_FILE_NAME@
+# always place a symlink to the installed executable in /usr/bin
+ln -sfn @CPACK_BIN_DIR@/@CPACK_PACKAGE_NAME@ /usr/bin/@CPACK_PACKAGE_NAME@
+
+# copy the unit file to the systemd unit directory as a regular file; buffer stderr together with stdout to avoid
+# confusing output line order where stderr appears after subsequent command's stdout; this also seems to influence order
+# of operations in an important way because, when stdout and stderr are buffered independently, the install command
+# always reports an error as if the subsequent ln command had already succeeded: "install:
+# '/opt/openziti/share/ziti-edge-tunnel.service' and '/lib/systemd/system/ziti-edge-tunnel.service' are the same file"
+install -m 644 @CPACK_SHARE_DIR@/@SYSTEMD_UNIT_FILE_NAME@ @SYSTEMD_UNIT_DIR@/@SYSTEMD_UNIT_FILE_NAME@ 2>&1
+
+# delete the old copy of the unit file to reduce confusion; this has the downside of an error during dpkg remove
+# operation because this file was specified to be installed with this package and no longer exists; modifying the file
+# with an explanation or warning or link is an alternative to removing it, but it would only work for this deb, not the
+# rpm, artifact of this build because rpm creates unwanted *.rpmsave backups of files that were modified after the
+# specified version was installed
+unlink @CPACK_SHARE_DIR@/@SYSTEMD_UNIT_FILE_NAME@
 
 # Source debconf library.
 . /usr/share/debconf/confmodule
 
-# Add user `ziti'
+# ensure user `ziti' exists if install or upgrade
 if [ "$1" = "configure" ]; then
   # create user / group
   # systemd-sysusers isn't on xenial, possibly others? test and fall back to useradd as a last ditch

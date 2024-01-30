@@ -1,8 +1,20 @@
 SYSTEMD_SERVICE_NAME=@SYSTEMD_SERVICE_NAME@
 SYSTEMD_UNIT_FILE_NAME=@SYSTEMD_UNIT_FILE_NAME@
-if [ $1 -eq 1 ]; then
+
+# if not 0 (uninstall) then 1 or 2 (initial or upgrade)
+if [ $1 -ne 0 ]; then
     [ -d @CPACK_ETC_DIR@ ] || %{__mkdir} @CPACK_ETC_DIR@
-    %{__install} -m 644 @CPACK_SHARE_DIR@/$SYSTEMD_UNIT_FILE_NAME %{_unitdir}/$SYSTEMD_UNIT_FILE_NAME
+    
+    # place a symlink in /usr/bin targeting the installed binary
+    ln -sfn @CPACK_BIN_DIR@/@CPACK_PACKAGE_NAME@ /usr/bin/@CPACK_PACKAGE_NAME@
+
+    # copy the unit file to the systemd unit directory as a regular file
+    %{__install} -m 644 @CPACK_SHARE_DIR@/$SYSTEMD_UNIT_FILE_NAME %{_unitdir}/$SYSTEMD_UNIT_FILE_NAME 2>&1
+
+    # delete the old copy of the unit file to reduce confusion; modifying the file with an explanation or warning or
+    # link is an alternative to removing it, but that causes unwanted *.rpmsave backups since it is then presumed to be
+    # a user modification
+    unlink @CPACK_SHARE_DIR@/$SYSTEMD_UNIT_FILE_NAME
 fi
 
 %systemd_post $SYSTEMD_SERVICE_NAME
