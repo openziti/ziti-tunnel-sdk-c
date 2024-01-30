@@ -16,103 +16,106 @@
 # limitations under the License.
 #
 
-set -e -u -o pipefail
+set -o errexit -o nounset -o pipefail
 
 function alldone() {
-    # if successfully sent to background then send SIGTERM to trigger a cleanup
-    # of resolver config, tun devices and associated routes
+    # if successfully sent to background then send SIGTERM because ZET does not respond to SIGINT
     [[ "${ZITI_EDGE_TUNNEL_PID:-}" =~ ^[0-9]+$ ]] && {
-        kill -TERM "$ZITI_EDGE_TUNNEL_PID"
-        # let entrypoint script exit after ziti-edge-tunnel PID
-        kill -0 "$ZITI_EDGE_TUNNEL_PID" && wait "$ZITI_EDGE_TUNNEL_PID"
+        kill -0 "$ZITI_EDGE_TUNNEL_PID" &>/dev/null && {
+            kill -TERM "$ZITI_EDGE_TUNNEL_PID"
+            # let entrypoint script exit after ziti-edge-tunnel PID
+            wait "$ZITI_EDGE_TUNNEL_PID"
+        }
     }
 }
 trap alldone SIGTERM SIGINT EXIT
 
-IDENTITIES_DIR="/ziti-edge-tunnel"
-if ! [[ -d "${IDENTITIES_DIR}" ]]; then
-    echo "ERROR: need directory ${IDENTITIES_DIR} to find tokens and identities" >&2
-    exit 1
-fi
+unset \
+    IDENTITIES_DIR \
+    IDENTITY_FILE \
+    JSON_FILES \
+    JWT_CANDIDATE \
+    JWT_FILE \
+    TUNNEL_OPTS \
+    TUNNEL_RUN_MODE
 
-if ! mountpoint "${IDENTITIES_DIR}" &>/dev/null; then
-    echo "WARN: the identities directory is only available inside this container because ${IDENTITIES_DIR} is not a mounted volume. Be careful to not publish this image with identity inside or lose access to the identity by removing the image prematurely." >&2
-else
-    if [[ -n "${ZITI_IDENTITY_JSON:-}" ]]; then
-        echo "WARNING: you supplied the Ziti identity as an env var and you mounted a volume on the identities dir. You may avoid this warning and future errors by not mounting a volume on ${IDENTITIES_DIR} when ZITI_IDENTITY_JSON is defined." >&2
+# adapt deprecated NF_REG_* env vars to undefined ZITI_* env vars
+if [[ -z "${ZITI_IDENTITY_BASENAME:-}" ]]; then
+    if [[ -n "${NF_REG_NAME:-}" ]]; then
+        echo "WARN: replacing deprecated NF_REG_NAME with ZITI_IDENTITY_BASENAME=${NF_REG_NAME}"
+        ZITI_IDENTITY_BASENAME="${NF_REG_NAME}"
+    elif [[ -n "${IOTEDGE_DEVICEID:-}" ]]; then
+        echo "WARN: replacing deprecated IOTEDGE_DEVICEID with ZITI_IDENTITY_BASENAME=${IOTEDGE_DEVICEID}"
+        ZITI_IDENTITY_BASENAME="${IOTEDGE_DEVICEID}"
     fi
 fi
-
-#
-## Map the preferred, Ziti var names to legacy NF names. This allows us to begin using the preferred vars right away 
-##  while minimizing immediate differences to the main control structure. This eases code review. Later, the legacy
-##  names can be retired and replaced.
-#
-if [[ -n "${ZITI_IDENTITY_BASENAME:-}" ]]; then
-    echo "INFO: setting NF_REG_NAME to \${ZITI_IDENTITY_BASENAME} (${ZITI_IDENTITY_BASENAME})"
-    NF_REG_NAME="${ZITI_IDENTITY_BASENAME}"
+if [[ -z "${ZITI_ENROLL_TOKEN:-}" && -n "${NF_REG_TOKEN:-}" ]]; then
+    echo "WARN: replacing deprecated NF_REG_TOKEN with ZITI_ENROLL_TOKEN=${NF_REG_TOKEN}"
+    ZITI_ENROLL_TOKEN="${NF_REG_TOKEN}"
 fi
-if [[ -n "${ZITI_ENROLL_TOKEN:-}" ]]; then
-    echo "INFO: setting NF_REG_TOKEN to \${ZITI_ENROLL_TOKEN} (${ZITI_ENROLL_TOKEN})"
-    NF_REG_TOKEN="${ZITI_ENROLL_TOKEN}"
-fi
-if [[ -n "${ZITI_IDENTITY_WAIT:-}" ]]; then
-    echo "INFO: setting NF_REG_WAIT to \${ZITI_IDENTITY_WAIT} (${ZITI_IDENTITY_WAIT})"
-    NF_REG_WAIT="${ZITI_IDENTITY_WAIT}"
+if [[ -z "${ZITI_IDENTITY_WAIT:-}" && -n "${NF_REG_WAIT:-}" ]]; then
+    echo "WARN: replacing deprecated var NF_REG_WAIT with ZITI_IDENTITY_WAIT=${NF_REG_WAIT}"
+    ZITI_IDENTITY_WAIT="${NF_REG_WAIT}"
 fi
 
-# treat IOTEDGE_DEVICEID, a standard var assigned by Azure IoT, as an alias for NF_REG_NAME
-if [[ -z "${NF_REG_NAME:-}" ]]; then
-    if [[ -n "${IOTEDGE_DEVICEID:-}" ]]; then
-        echo "INFO: setting NF_REG_NAME to \${IOTEDGE_DEVICEID} (${IOTEDGE_DEVICEID})"
-        NF_REG_NAME="${IOTEDGE_DEVICEID}"
-    fi
-fi
-
-# if identity JSON var is defined then write to a file
+# if identity env var is defined then do not look for mounted identities
 if [[ -n "${ZITI_IDENTITY_JSON:-}" ]]; then
-    # if the basename is not defined then use a default basename to write JSON to a file
-    if [[ -z "${NF_REG_NAME:-}" ]]; then
-        NF_REG_NAME="ziti_id"
+    IDENTITIES_DIR="/tmp/openziti"
+    mkdir -m0700 "${IDENTITIES_DIR}"
+    if [[ -z "${ZITI_IDENTITY_BASENAME:-}" ]]; then
+        ZITI_IDENTITY_BASENAME="ziti_id"
     fi
-    if [[ -s "${IDENTITIES_DIR}/${NF_REG_NAME}.json" ]]; then
-        echo "ERROR: refusing to clobber non-empty Ziti identity file ${NF_REG_NAME}.json with contents of env var ZITI_IDENTITY_JSON!" >&2
+    IDENTITY_FILE="${IDENTITIES_DIR}/${ZITI_IDENTITY_BASENAME}.json"
+    if [[ -s "${IDENTITY_FILE}" ]]; then
+        echo "WARN: clobbering non-empty Ziti identity file ${IDENTITY_FILE} with contents of env var ZITI_IDENTITY_JSON!" >&2
+    fi
+    echo "${ZITI_IDENTITY_JSON}" > "${IDENTITIES_DIR}/${ZITI_IDENTITY_BASENAME}.json"
+else
+    # presumed to be a mountpoint for one or more identities
+    IDENTITIES_DIR="/ziti-edge-tunnel"
+    if ! [[ -d "${IDENTITIES_DIR}" ]]; then
+        echo "ERROR: need directory ${IDENTITIES_DIR} to find tokens and identities" >&2
         exit 1
-    else
-        echo "${ZITI_IDENTITY_JSON}" > "${IDENTITIES_DIR}/${NF_REG_NAME}.json"
     fi
 fi
 
 typeset -a TUNNEL_OPTS
-# if identity file, else multiple identities dir
-if [[ -n "${NF_REG_NAME:-}" ]]; then
-    IDENTITY_FILE="${IDENTITIES_DIR}/${NF_REG_NAME}.json"
+# if identity basename is specified then look for an identity file with that name, else load all identities in the
+# identities dir mountpoint
+if [[ -n "${ZITI_IDENTITY_BASENAME:-}" ]]; then
+    : "${IDENTITY_FILE:=${IDENTITIES_DIR}/${ZITI_IDENTITY_BASENAME}.json}"
     TUNNEL_OPTS=("--identity" "${IDENTITY_FILE}")
-    : ${NF_REG_WAIT:=1}
-    if [[ "${NF_REG_WAIT}" =~ ^[0-9]+$ ]]; then
-        echo "DEBUG: waiting ${NF_REG_WAIT}s for ${IDENTITY_FILE} (or token) to appear"
-    elif (( "${NF_REG_WAIT}" < 0 )); then
+
+    # if wait is specified then wait for the identity file or token to appear
+    : "${ZITI_IDENTITY_WAIT:=3}"
+    # if a positive integer then wait that many seconds for the identity file or token to appear
+    if [[ "${ZITI_IDENTITY_WAIT}" =~ ^[0-9]+$ ]]; then
+        echo "DEBUG: waiting ${ZITI_IDENTITY_WAIT}s for ${IDENTITY_FILE} (or token) to appear"
+    # if a negative integer then wait forever for the identity file or token to appear
+    elif (( ZITI_IDENTITY_WAIT < 0 )); then
         echo "DEBUG: waiting forever for ${IDENTITY_FILE} (or token) to appear"
+    # error if not an integer
     else
-        echo "ERROR: need integer for NF_REG_WAIT" >&2
+        echo "ERROR: ZITI_IDENTITY_WAIT must be an integer (seconds to wait)" >&2
         exit 1
     fi
-    while (( $NF_REG_WAIT > 0 || $NF_REG_WAIT < 0)); do
+    while (( ZITI_IDENTITY_WAIT > 0 || ZITI_IDENTITY_WAIT < 0)); do
         # if non-empty identity file
         if [[ -s "${IDENTITY_FILE}" ]]; then
             echo "INFO: found identity file ${IDENTITY_FILE}"
             break 1
         # look for enrollment token
         else
-            echo "INFO: identity file ${IDENTITY_FILE} does not exist"
+            echo "DEBUG: identity file ${IDENTITY_FILE} not found"
             for dir in  "/var/run/secrets/netfoundry.io/enrollment-token" \
                         "/enrollment-token" \
                         "${IDENTITIES_DIR}"; do
-                JWT_CANDIDATE="${dir}/${NF_REG_NAME}.jwt"
-                echo "INFO: looking for ${JWT_CANDIDATE}"
+                JWT_CANDIDATE="${dir}/${ZITI_IDENTITY_BASENAME}.jwt"
                 if [[ -s "${JWT_CANDIDATE}" ]]; then
                     JWT_FILE="${JWT_CANDIDATE}"
                     break 1
+                else
+                    echo "DEBUG: ${JWT_CANDIDATE} not found"
                 fi
             done
             if [[ -n "${JWT_FILE:-}" ]]; then
@@ -121,12 +124,14 @@ if [[ -n "${NF_REG_NAME:-}" ]]; then
                     echo "ERROR: failed to enroll with token from ${JWT_FILE} ($(wc -c < "${JWT_FILE}")B)" >&2
                     exit 1
                 }
-            elif [[ -n "${NF_REG_TOKEN:-}" ]]; then
-                echo "INFO: attempting enrollment with NF_REG_TOKEN"
-                ziti-edge-tunnel enroll --jwt - --identity "${IDENTITY_FILE}" <<< "${NF_REG_TOKEN}" || {
-                    echo "ERROR: failed to enroll with token from NF_REG_TOKEN ($(wc -c <<<"${NF_REG_TOKEN}")B)" >&2
+            elif [[ -n "${ZITI_ENROLL_TOKEN:-}" ]]; then
+                echo "INFO: attempting enrollment with ZITI_ENROLL_TOKEN"
+                ziti-edge-tunnel enroll --jwt - --identity "${IDENTITY_FILE}" <<< "${ZITI_ENROLL_TOKEN}" || {
+                    echo "ERROR: failed to enroll with token from ZITI_ENROLL_TOKEN ($(wc -c <<<"${ZITI_ENROLL_TOKEN}")B)" >&2
                     exit 1
                 }
+            # this works but the legacy var name was never deprecated because of doubts about the utility of this
+            # feature
             elif [[ -n "${NF_REG_STDIN:-}" ]]; then
                 echo "INFO: trying to get token from stdin" >&2
                 ziti-edge-tunnel enroll --jwt - --identity "${IDENTITY_FILE}" || {
@@ -136,22 +141,24 @@ if [[ -n "${NF_REG_NAME:-}" ]]; then
             fi
         fi
         # decrement the wait seconds until zero or forever if negative
-        (( NF_REG_WAIT-- ))
+        (( ZITI_IDENTITY_WAIT-- ))
         sleep 1
     done
+# if no identity basename is specified then load all *.json files in the identities dir mountpoint, ignoring enrollment
+# tokens
 else
     typeset -a JSON_FILES
     mapfile -t JSON_FILES < <(ls -1 "${IDENTITIES_DIR}"/*.json)
     if [[ ${#JSON_FILES[*]} -gt 0 ]]; then
-        echo "INFO: NF_REG_NAME not set, loading ${#JSON_FILES[*]} identities from ${IDENTITIES_DIR}"
+        echo "INFO: loading ${#JSON_FILES[*]} identities from ${IDENTITIES_DIR}"
         TUNNEL_OPTS=("--identity-dir" "${IDENTITIES_DIR}")
     else
-        echo "ERROR: NF_REG_NAME not set and zero identities found in ${IDENTITIES_DIR}" >&2
+        echo "ERROR: ZITI_IDENTITY_BASENAME not set and zero identities found in ${IDENTITIES_DIR}" >&2
         exit 1
     fi
 fi
 
-echo "DEBUG: evaluating positionals: $*"
+echo "DEBUG: checking for run mode as first positional in: $*"
 if (( ${#} )) && [[ ${1:0:3} == run ]]; then
     TUNNEL_RUN_MODE=${1}
     shift
@@ -159,7 +166,8 @@ else
     TUNNEL_RUN_MODE=run
 fi
 
-echo "INFO: running ziti-edge-tunnel"
+echo "INFO: running: ziti-edge-tunnel ${TUNNEL_RUN_MODE} ${TUNNEL_OPTS[*]} ${*}"
 ziti-edge-tunnel "${TUNNEL_RUN_MODE}" "${TUNNEL_OPTS[@]}" "${@}" &
 ZITI_EDGE_TUNNEL_PID=$!
+echo "DEBUG: waiting for ziti-edge-tunnel PID: ${ZITI_EDGE_TUNNEL_PID}"
 wait $ZITI_EDGE_TUNNEL_PID
