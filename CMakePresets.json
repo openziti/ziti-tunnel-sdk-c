@@ -184,15 +184,24 @@
     },
     {
       "name": "ci-linux-x64-static-libssl",
-      "inherits": [ "ci-linux-static-libssl", "ci-linux-x64" ]
+      "inherits": [
+        "ci-linux-static-libssl",
+        "ci-linux-x64"
+      ]
     },
     {
       "name": "ci-linux-arm64-static-libssl",
-      "inherits": [ "ci-linux-static-libssl", "ci-linux-arm64" ]
+      "inherits": [
+        "ci-linux-static-libssl",
+        "ci-linux-arm64"
+      ]
     },
     {
       "name": "ci-linux-arm-static-libssl",
-      "inherits": [ "ci-linux-static-libssl", "ci-linux-arm" ]
+      "inherits": [
+        "ci-linux-static-libssl",
+        "ci-linux-arm"
+      ]
     },
     {
       "name": "ci-windows-x64",
