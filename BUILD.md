@@ -143,14 +143,6 @@ the number of jobs to use, which should ideally be specified to the number of
 threads your CPU has. You may also want to add that to your preset using the
 `jobs` property, see the [presets documentation][1] for more details.
 
-## How to Build with OpenSSL
-
-Some features, like PKCS11, require OpenSSL. Mbed-TLS is more tolerate of legacy deployment scenarios. If you want to
-build with OpenSSL, you can use the `ci-linux-x64-static-libssl` preset with the following modifications to substitute
-`openssl` for `mbedtls`.
-
-Build with OpenSSL by running `./scripts/openssl-build.bash [x64|arm64|arm]`.
-
 ## Cross-compile with Docker
 
 You can cross-compile the distribution-specific Linux package or the generic binary with Docker. Both approaches use an
