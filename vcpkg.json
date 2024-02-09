@@ -7,7 +7,7 @@
     "llhttp",
     "libsodium",
     "getopt",
-    "mbedtls"
+    "openssl"
   ],
   "features": {
     "test": {
