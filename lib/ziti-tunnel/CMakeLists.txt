@@ -46,7 +46,6 @@ target_include_directories(ziti-tunnel-sdk-c
 target_link_libraries(ziti-tunnel-sdk-c
         PUBLIC ziti
         PUBLIC lwipcore
-        PUBLIC ${tunnel_libuv_lib}
         )
 
 #copy relevant .h files to the include folder

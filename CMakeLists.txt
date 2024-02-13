@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.20)
 
 
 set(ZITI_SDK_DIR "" CACHE FILEPATH "developer option: use local ziti-sdk-c checkout")
-set(ZITI_SDK_VERSION "0.35.12" CACHE STRING "ziti-sdk-c version or branch to use")
+set(ZITI_SDK_VERSION "0.36.5" CACHE STRING "ziti-sdk-c version or branch to use")
 
 # if TUNNEL_SDK_ONLY then don't descend into programs/ziti-edge-tunnel
 option(TUNNEL_SDK_ONLY "build only ziti-tunnel-sdk (without ziti)" OFF)
@@ -119,19 +119,6 @@ message("cross-compiling: ${CMAKE_CROSSCOMPILING}")
 link_directories(${CMAKE_BINARY_DIR}/lib)
 
 add_subdirectory(deps)
-
-find_package(libuv CONFIG QUIET)
-if (libuv_FOUND)
-    if (TARGET uv_a)
-        set(tunnel_libuv_lib uv_a)
-    else()
-        set(tunnel_libuv_lib uv)
-    endif()
-else()
-    find_path(tunnel_libuv_include_dir NAMES uv.h)
-    find_library(tunnel_libuv_lib uv_a NAMES uv)
-endif()
-
 add_subdirectory(lib/ziti-tunnel)
 
 if(NOT TUNNEL_SDK_ONLY)
