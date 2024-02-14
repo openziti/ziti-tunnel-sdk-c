@@ -182,7 +182,7 @@ docker run \
   --volume "${PWD}:/github/workspace" \
   --workdir "/github/workspace" \
   --env "TLSUV_TLSLIB=openssl" \
-  bionic-builder \
+  jammy-builder \
     ci-linux-arm64
 ```
 
@@ -190,7 +190,7 @@ docker run \
 
 All of the Ziti projects that leverage Ziti's C-SDK are built with a shared builder image: `openziti/ziti-builder`. This
 project provides a wrapper script for cross-building the generic `ziti-edge-tunnel` binary using this builder image
-optimized for compatibility, i.e., libc 2.27 and static TLS library.
+optimized for compatibility, i.e., libc 2.27 and static Mbed-TLS library.
 
 Without any arguments, the `ziti-builder.sh` script will build the `bundle` target with the `ci-linux-x64` (amd64)
 preset, placing the resulting ZIP archive in `./build/bundle/`, and the bare executable in
@@ -201,6 +201,9 @@ Build the generic binary for arm64 with the `ci-linux-arm64` preset.
 ```bash
 ./scripts/ziti-builder.sh -p ci-linux-arm64
 ```
+
+To build with OpenSSL on this Ubuntu Bionic-based (glibc 2.27) builder image, `export TLSUV_TLSLIB=openssl` and change
+`vcpkg.json` to statically compile "openssl" instead of "mbedtls."
 
 [1]: https://cmake.org/cmake/help/latest/manual/cmake-presets.7.html
 [2]: https://cmake.org/download/

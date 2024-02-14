@@ -72,7 +72,8 @@ function set_workspace(){
             --volume "${REPODIR}:${WORKDIR}" \
             --platform "linux/amd64" \
             --env "VCPKG_DEFAULT_BINARY_CACHE=${WORKDIR}/.cache" \
-            openziti/ziti-builder \
+            --env "TLSUV_TLSLIB" \
+            "openziti/ziti-builder:${ZITI_BUILDER_TAG:-latest}" \
                 "${WORKDIR}/${SCRIPTSDIR}/${BASENAME}" "${@}"
     fi
 }
@@ -126,6 +127,7 @@ function main() {
             -DCMAKE_BUILD_TYPE="${CMAKE_CONFIG:-Release}" \
             -DBUILD_DIST_PACKAGES="${BUILD_DIST_PACKAGES:-OFF}" \
             -DVCPKG_OVERLAY_PORTS="./vcpkg-overlays/linux-syslibs/ubuntu18" \
+            "${TLSUV_TLSLIB:+-DTLSUV_TLSLIB=${TLSUV_TLSLIB}}" \
             -S . \
             -B ./build \
             "${CMAKE_EXTRA_ARGS:-}"
