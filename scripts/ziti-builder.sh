@@ -25,7 +25,7 @@ REPODIR="$(dirname "${BASEDIR}")"           # path to project root is parent of 
             "\ndefault target if no CMD is specified\n"\
             "\n    -c  [Release|Debug]  set CMAKE_BUILD_TYPE (default: Release)"\
             "\n    -p  CMAKE_PRESET     set CMAKE_TOOLCHAIN_FILE preset (default: ci-linux-x64)"\
-            "\n    -t  [bundle|package] set CMAKE_TARGET (default: bundle)"
+            "\n    -t  [bundle|package] set CMAKE_TARGET (default: ziti-edge-tunnel)"
     exit 0
 }
 
@@ -134,7 +134,7 @@ function main() {
         cmake \
             --build ./build \
             --config "${CMAKE_CONFIG:-Release}" \
-            --target "${CMAKE_TARGET:-bundle}" \
+            --target "${CMAKE_TARGET:-ziti-edge-tunnel}" \
             --verbose
     fi
     ls -lAh ./build/programs/ziti-edge-tunnel/Release/ziti-edge-tunnel
