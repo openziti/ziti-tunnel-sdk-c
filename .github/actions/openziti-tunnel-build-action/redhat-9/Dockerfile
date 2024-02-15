@@ -1,8 +1,10 @@
 ARG CMAKE_VERSION="3.26.3"
+ARG VCPKG_VERSION="2024.01.12"
 
 FROM rockylinux:9
 
 ARG CMAKE_VERSION
+ARG VCPKG_VERSION
 
 LABEL org.opencontainers.image.authors="support@netfoundry.io"
 
@@ -43,7 +45,7 @@ ENV VCPKG_ROOT=/usr/local/vcpkg
 ENV VCPKG_FORCE_SYSTEM_BINARIES=yes
 
 RUN cd /usr/local \
-    && git clone --branch 2023.12.12 https://github.com/microsoft/vcpkg \
+    && git clone --branch "${VCPKG_VERSION}" https://github.com/microsoft/vcpkg \
     && ./vcpkg/bootstrap-vcpkg.sh -disableMetrics \
     && chmod -R ugo+rwX /usr/local/vcpkg
 

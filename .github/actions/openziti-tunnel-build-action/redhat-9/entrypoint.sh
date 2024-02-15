@@ -45,6 +45,7 @@ done
         --preset "${cmake_preset}" \
         -DCMAKE_BUILD_TYPE="${cmake_config}" \
         -DBUILD_DIST_PACKAGES=ON \
+        "${TLSUV_TLSLIB:+-DTLSUV_TLSLIB=${TLSUV_TLSLIB}}" \
         -S . \
         -B ./build 
     cmake \
