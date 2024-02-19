@@ -61,7 +61,8 @@ fi
 # if identity env var is defined then do not look for mounted identities
 if [[ -n "${ZITI_IDENTITY_JSON:-}" ]]; then
     IDENTITIES_DIR="/tmp/openziti"
-    mkdir -m0700 "${IDENTITIES_DIR}"
+    # shellcheck disable=SC2174
+    mkdir -pm0700 "${IDENTITIES_DIR}"
     if [[ -z "${ZITI_IDENTITY_BASENAME:-}" ]]; then
         ZITI_IDENTITY_BASENAME="ziti_id"
     fi
