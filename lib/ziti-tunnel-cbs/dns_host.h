@@ -77,21 +77,8 @@ XX(comment, string, none, comment, __VA_ARGS__)
 extern "C" {
 #endif
 
-typedef struct dns_flags_s {
-    union {
-        uint16_t raw;
-        struct {
-            uint8_t is_response: 1;
-            uint8_t opcode: 4;
-            uint8_t aa: 1;
-            uint8_t tc: 1;
-            uint8_t rd: 1;
-            uint8_t ra: 1;
-            uint8_t z: 3;
-            uint8_t rcode: 4;
-        };
-    };
-} dns_flags_t;
+#define DNS_FLAG_QR(f) (((f) & 0x8000U) != 0)
+#define DNS_FLAG_RD(f) (((f) & 0x0100U) != 0)
 
 DECLARE_MODEL(dns_question, DNS_Q_MODEL)
 

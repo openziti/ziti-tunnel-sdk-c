@@ -51,15 +51,14 @@ static int parse_dns_q(dns_question *q, const unsigned char *buf, size_t buflen)
 int parse_dns_req(dns_message *msg, const unsigned char* buf, size_t buflen) {
 
     msg->id = ntohs(*((uint16_t*)buf));
-    dns_flags_t flags;
-    flags.raw = ntohs(*((uint16_t*)buf + 1));
+    uint16_t flags = ntohs(*((uint16_t*)buf + 1));
 
-    if (flags.is_response) return -1;
+    if (DNS_FLAG_QR(flags)) return -1;
 
     int qcount = ntohs(*((uint16_t*)buf + 2));
     if (qcount != 1) return -1;
 
-    msg->recursive = flags.rd;
+    msg->recursive = DNS_FLAG_RD(flags);
     msg->question = calloc(2, sizeof(dns_question*));
     msg->question[0] = calloc(1, sizeof(dns_question));
     parse_dns_q(msg->question[0], buf + 12, buflen - 12);
