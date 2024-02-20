@@ -51,5 +51,8 @@ RUN chmod +x /docker-entrypoint.sh
 RUN mkdir -m0777 /ziti-edge-tunnel
 RUN groupadd --system --gid 2171 ziti
 
+RUN UNINSTALL_PKGS="shadow-utils" && \
+    microdnf -y remove ${UNINSTALL_PKGS}
+
 ENTRYPOINT [ "/docker-entrypoint.sh" ]
 CMD [ "run" ]
