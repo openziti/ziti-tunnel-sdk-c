@@ -13,7 +13,10 @@ install -m 644 @CPACK_SHARE_DIR@/@SYSTEMD_UNIT_FILE_NAME@ @SYSTEMD_UNIT_DIR@/@SY
 # with an explanation or warning or link is an alternative to removing it, but it would only work for this deb, not the
 # rpm, artifact of this build because rpm creates unwanted *.rpmsave backups of files that were modified after the
 # specified version was installed
-unlink @CPACK_SHARE_DIR@/@SYSTEMD_UNIT_FILE_NAME@
+if [ -e @CPACK_SHARE_DIR@/@SYSTEMD_UNIT_FILE_NAME@ ]; then
+    unlink @CPACK_SHARE_DIR@/@SYSTEMD_UNIT_FILE_NAME@
+fi
+
 
 # Source debconf library.
 . /usr/share/debconf/confmodule
@@ -106,7 +109,7 @@ fi
 
 if [ "$1" = "configure" ]; then
     # if interactive and stdin is a tty
-    if [ $DEBIAN_FRONTEND != "noninteractive" -a -t 0 ]; then
+    if [ "$DEBIAN_FRONTEND" != "noninteractive" -a -t 0 ]; then
       ssize=$(tput cols)
     else
       ssize=80
