@@ -14,7 +14,9 @@ if [ $1 -ne 0 ]; then
     # delete the old copy of the unit file to reduce confusion; modifying the file with an explanation or warning or
     # link is an alternative to removing it, but that causes unwanted *.rpmsave backups since it is then presumed to be
     # a user modification
-    unlink @CPACK_SHARE_DIR@/$SYSTEMD_UNIT_FILE_NAME
+    if [ -e @CPACK_SHARE_DIR@/$SYSTEMD_UNIT_FILE_NAME ]; then
+        unlink @CPACK_SHARE_DIR@/$SYSTEMD_UNIT_FILE_NAME
+    fi
 fi
 
 %systemd_post $SYSTEMD_SERVICE_NAME
