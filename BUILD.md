@@ -163,8 +163,9 @@ parameters for the target distribution.
 
 #### Build the Package Builder Image
 
-Build the x64 package builder image for Ubuntu Bionic 18.04. There are builder images for several Ubuntu and RedHat
-vintages that will work with a wide variety of Debian and RPM family distros.
+Build the x64 package builder image for Ubuntu Jammy 22.04. There are builder images for several Ubuntu and RedHat
+vintages that will work with a wide variety of Debian and RPM family distros. Use an older builder image if your target
+distribution is older to ensure LIBC compatibility.
 
 ```bash
 cd ./.github/actions/openziti-tunnel-build-action/ubuntu-22.04/
@@ -179,6 +180,7 @@ architecture-specific CMake [preset][1], and the optional TLS library variable o
 ```bash
 docker run \
   --rm \
+  --platform linux/amd64 \
   --volume "${PWD}:/github/workspace" \
   --workdir "/github/workspace" \
   --env "TLSUV_TLSLIB=openssl" \
