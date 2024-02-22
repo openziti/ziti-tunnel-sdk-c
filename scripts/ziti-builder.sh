@@ -25,7 +25,7 @@ REPODIR="$(dirname "${BASEDIR}")"           # path to project root is parent of 
             "\ndefault target if no CMD is specified\n"\
             "\n    -c  [Release|Debug]  set CMAKE_BUILD_TYPE (default: Release)"\
             "\n    -p  CMAKE_PRESET     set CMAKE_TOOLCHAIN_FILE preset (default: ci-linux-x64)"\
-            "\n    -t  [bundle|package] set CMAKE_TARGET (default: bundle)"
+            "\n    -t  [bundle|package] set CMAKE_TARGET (default: ziti-edge-tunnel)"
     exit 0
 }
 
@@ -72,7 +72,8 @@ function set_workspace(){
             --volume "${REPODIR}:${WORKDIR}" \
             --platform "linux/amd64" \
             --env "VCPKG_DEFAULT_BINARY_CACHE=${WORKDIR}/.cache" \
-            openziti/ziti-builder \
+            --env "TLSUV_TLSLIB" \
+            "openziti/ziti-builder:${ZITI_BUILDER_TAG:-latest}" \
                 "${WORKDIR}/${SCRIPTSDIR}/${BASENAME}" "${@}"
     fi
 }
@@ -126,13 +127,14 @@ function main() {
             -DCMAKE_BUILD_TYPE="${CMAKE_CONFIG:-Release}" \
             -DBUILD_DIST_PACKAGES="${BUILD_DIST_PACKAGES:-OFF}" \
             -DVCPKG_OVERLAY_PORTS="./vcpkg-overlays/linux-syslibs/ubuntu18" \
+            "${TLSUV_TLSLIB:+-DTLSUV_TLSLIB=${TLSUV_TLSLIB}}" \
             -S . \
             -B ./build \
             "${CMAKE_EXTRA_ARGS:-}"
         cmake \
             --build ./build \
             --config "${CMAKE_CONFIG:-Release}" \
-            --target "${CMAKE_TARGET:-bundle}" \
+            --target "${CMAKE_TARGET:-ziti-edge-tunnel}" \
             --verbose
     fi
     ls -lAh ./build/programs/ziti-edge-tunnel/Release/ziti-edge-tunnel
