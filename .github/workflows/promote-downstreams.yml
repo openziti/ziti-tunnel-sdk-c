@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Debug action
-        uses: hmarr/debug-action@v2.1.0
+        uses: hmarr/debug-action@v3.0.0
 
       - name: Wait for all checks on this ref
         uses: lewagon/wait-on-check-action@v1.3.1
