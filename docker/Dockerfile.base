@@ -40,7 +40,7 @@ RUN mkdir -m0755 /licenses
 COPY ./LICENSE-Apache /licenses/apache.txt
 
 ### Add necessary Red Hat repos and packages
-RUN INSTALL_PKGS="iproute procps shadow-utils" && \
+RUN INSTALL_PKGS="iproute procps shadow-utils jq" && \
     microdnf -y update --setopt=install_weak_deps=0 --setopt=tsflags=nodocs && \
     microdnf -y install --setopt=install_weak_deps=0 --setopt=tsflags=nodocs ${INSTALL_PKGS}
 
