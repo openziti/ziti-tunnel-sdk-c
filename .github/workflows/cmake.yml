@@ -57,6 +57,10 @@ jobs:
       - name: Debug action
         uses: hmarr/debug-action@v2.1.0
 
+      - name: find pkgconfig
+        if: ${{ matrix.os == 'windows-latest' }}
+        run: where pkg-config
+
       - name: checkout workspace
         uses: actions/checkout@v3
         with:
