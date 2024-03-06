@@ -494,6 +494,24 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
                 break;
             }
 
+            if (tunnel_add_identity_cmd.jwtFileName == NULL) {
+                result.error = "identity filename not provided";
+                result.success = false;
+                break;
+            }
+
+            if (tunnel_add_identity_cmd.jwtContent == NULL) {
+                result.error = "jwt content not provided";
+                result.success = false;
+                break;
+            }
+
+            if (config_dir == NULL) {
+                result.error = "config directory not set";
+                result.success = false;
+                break;
+            }
+
             char* extension = strstr(tunnel_add_identity_cmd.jwtFileName, ".jwt");
             size_t length;
             if (extension != NULL) {
@@ -2983,9 +3001,9 @@ static CommandLine get_mfa_codes_cmd = make_command("get_mfa_codes", "Get MFA co
 static CommandLine get_status_cmd = make_command("tunnel_status", "Get Tunnel Status", "", "", get_status_opts, send_message_to_tunnel_fn);
 static CommandLine delete_id_cmd = make_command("delete", "delete the identities information", "[-i <identity>]",
                                                  "\t-i|--identity\tidentity info that needs to be deleted\n", delete_identity_opts, send_message_to_tunnel_fn);
-static CommandLine add_id_cmd = make_command("add", "enroll and load the identities information", "[-i <identity>]",
-                                                "\t-i|--identity\tfile name for the identity file that will be generated\n"
-                                                "\t-j|--jwt\tjwt content that needs to be enrolled\n", add_identity_opts, send_message_to_tunnel_fn);
+static CommandLine add_id_cmd = make_command("add", "enroll and load the identity", "-j <jwt_content> -i <identity_name>",
+                                                "\t-j|--jwt\tenrollment token content\n"
+                                                "\t-i|--identity\toutput identity .json file (relative to \"-I\" config directory)\n", add_identity_opts, send_message_to_tunnel_fn);
 static CommandLine set_log_level_cmd = make_command("set_log_level", "Set log level of the tunneler", "-l <level>",
                                                     "\t-l|--loglevel\tlog level of the tunneler\n", set_log_level_opts, send_message_to_tunnel_fn);
 static CommandLine update_tun_ip_cmd = make_command("update_tun_ip", "Update tun ip of the tunneler", "[-t <tunip>] [-p <prefixlength>] [-d <AddDNS>]",
