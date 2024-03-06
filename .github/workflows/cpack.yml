@@ -142,7 +142,7 @@ jobs:
           ./build/programs/ziti-edge-tunnel/Release/ziti-edge-tunnel version --verbose
 
       - name: Upload Package to Workflow Summary Page
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.distro.name }}-${{ matrix.distro.version }}-${{ matrix.arch.rpm }}-${{ matrix.distro.type }}
           path: ./build/ziti-edge-tunnel-*.${{ matrix.distro.type }}

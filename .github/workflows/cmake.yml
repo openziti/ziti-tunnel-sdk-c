@@ -77,7 +77,7 @@ jobs:
         working-directory: ./build/programs/ziti-edge-tunnel/
 
       - name: upload bundle artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.preset }}
           path: ./build/bundle/ziti-edge-tunnel-*.zip 
