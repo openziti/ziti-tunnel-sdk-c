@@ -58,7 +58,7 @@ if [[ -z "${ZITI_IDENTITY_WAIT:-}" && -n "${NF_REG_WAIT:-}" ]]; then
     ZITI_IDENTITY_WAIT="${NF_REG_WAIT}"
 fi
 
-# if identity env var is defined then do not look for mounted identities
+# if identity env vars are defined then do not look for mounted identities
 if [[ -n "${ZITI_IDENTITY_JSON:-}" ]]; then
     IDENTITIES_DIR="/tmp/openziti"
     # shellcheck disable=SC2174
@@ -68,9 +68,21 @@ if [[ -n "${ZITI_IDENTITY_JSON:-}" ]]; then
     fi
     IDENTITY_FILE="${IDENTITIES_DIR}/${ZITI_IDENTITY_BASENAME}.json"
     if [[ -s "${IDENTITY_FILE}" ]]; then
-        echo "WARN: clobbering non-empty Ziti identity file ${IDENTITY_FILE} with contents of env var ZITI_IDENTITY_JSON!" >&2
+        echo "WARN: clobbering non-empty Ziti identity file ${IDENTITY_FILE} with contents of env var ZITI_IDENTITY_JSON" >&2
     fi
-    echo "${ZITI_IDENTITY_JSON}" > "${IDENTITIES_DIR}/${ZITI_IDENTITY_BASENAME}.json"
+    echo "${ZITI_IDENTITY_JSON}" > "${IDENTITY_FILE}"
+elif [[ -n "${ZITI_ENROLL_TOKEN:-}" ]]; then
+    IDENTITIES_DIR="/tmp/openziti"
+    # shellcheck disable=SC2174
+    mkdir -pm0700 "${IDENTITIES_DIR}"
+    if [[ -z "${ZITI_IDENTITY_BASENAME:-}" ]]; then
+        ZITI_IDENTITY_BASENAME="ziti_id"
+    fi
+    JWT_FILE="${IDENTITIES_DIR}/${ZITI_IDENTITY_BASENAME}.jwt"
+    if [[ -s "${JWT_FILE}" ]]; then
+        echo "WARN: clobbering non-empty Ziti enrollment token file ${JWT_FILE} with contents of env var ZITI_ENROLL_TOKEN" >&2
+    fi
+    echo "${ZITI_ENROLL_TOKEN}" > "${JWT_FILE}"
 else
     # presumed to be a mountpoint for one or more identities
     IDENTITIES_DIR="/ziti-edge-tunnel"
