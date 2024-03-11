@@ -204,7 +204,7 @@ static int fmt_txt(const ns_msg *msg, const ns_rr* rr, dns_answer *ans, size_t m
 
 #endif
 
-static ssize_t on_dns_req(ziti_connection conn, uint8_t *data, ssize_t datalen) {
+static ssize_t on_dns_req(ziti_connection conn, const uint8_t *data, ssize_t datalen) {
     if (datalen < 0) {
         ziti_close(conn, on_close);
         return 0;
