@@ -28,6 +28,13 @@
       }
     },
     {
+      "name": "vcpkg-win64-mingw-static",
+      "hidden": true,
+      "cacheVariables": {
+        "VCPKG_TARGET_TRIPLET": "x64-mingw-static"
+      }
+    },
+    {
       "name": "ninja",
       "hidden": true,
       "generator": "Ninja"
@@ -64,7 +71,7 @@
       }
     },
     {
-      "name": "flags-windows",
+      "name": "flags-windows-vs2022",
       "description": "Note that all the flags after /W4 are required for MSVC to conform to the language standard",
       "hidden": true,
       "cacheVariables": {
@@ -72,6 +79,13 @@
         "CMAKE_CXX_FLAGS": "/utf-8 /W4 /permissive- /volatile:iso /Zc:preprocessor /Zc:__cplusplus /Zc:externConstexpr /Zc:throwingNew /EHsc"
       }
     },
+    {
+      "name": "flags-windows-mingw",
+      "hidden": true,
+      "cacheVariables": {
+      }
+    },
+
     {
       "name": "ci-unix",
       "hidden": true,
@@ -82,9 +96,9 @@
       ]
     },
     {
-      "name": "ci-win64",
+      "name": "ci-win64-vs2022",
       "inherits": [
-        "flags-windows",
+        "flags-windows-vs2022",
         "ci-std",
         "vs-2022"
       ],
@@ -95,9 +109,9 @@
       "hidden": true
     },
     {
-      "name": "ci-win86",
+      "name": "ci-win86-vs2022",
       "inherits": [
-        "flags-windows",
+        "flags-windows-vs2022",
         "ci-std",
         "vs-2022"
       ],
@@ -105,13 +119,26 @@
       "hidden": true
     },
     {
-      "name": "ci-win-arm64",
+      "name": "ci-win-arm64-vs2022",
       "inherits": [
-        "flags-windows",
+        "flags-windows-vs2022",
         "ci-std",
         "vs-2022"
       ],
       "architecture": "ARM64",
+      "hidden": true
+    },
+    {
+      "name": "ci-win64-mingw",
+      "inherits": [
+        "flags-windows-mingw",
+        "ci-std",
+        "ninja"
+      ],
+      "architecture": {
+        "value": "x64",
+        "strategy": "external"
+      },
       "hidden": true
     },
     {
@@ -196,9 +223,13 @@
     },
     {
       "name": "ci-windows-x64",
+      "inherits": "ci-windows-x64-vs2022"
+    },
+    {
+      "name": "ci-windows-x64-vs2022",
       "inherits": [
         "ci-build",
-        "ci-win64",
+        "ci-win64-vs2022",
         "dev-mode",
         "vcpkg",
         "vcpkg-win64-static"
@@ -206,9 +237,13 @@
     },
     {
       "name": "ci-windows-x86",
+      "inherits": "ci-windows-x86-vs2022"
+    },
+    {
+      "name": "ci-windows-x86-vs2022",
       "inherits": [
         "ci-build",
-        "ci-win86",
+        "ci-win86-vs2022",
         "dev-mode",
         "vcpkg"
       ],
@@ -219,9 +254,13 @@
     },
     {
       "name": "ci-windows-arm64",
+      "inherits": [ "ci-windows-arm64-vs2022" ]
+    },
+    {
+      "name": "ci-windows-arm64-vs2022",
       "inherits": [
         "ci-build",
-        "ci-win-arm64",
+        "ci-win-arm64-vs2022",
         "dev-mode",
         "vcpkg"
       ],
@@ -229,6 +268,16 @@
         "VCPKG_TARGET_TRIPLET": "arm64-windows-static-md",
         "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/toolchains/Windows-arm64.cmake"
       }
+    },
+    {
+      "name": "ci-windows-x64-mingw",
+      "inherits": [
+        "ci-build",
+        "ci-win64-mingw",
+        "dev-mode",
+        "vcpkg",
+        "vcpkg-win64-mingw-static"
+      ]
     }
   ]
 }

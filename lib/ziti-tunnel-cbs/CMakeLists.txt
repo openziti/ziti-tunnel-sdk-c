@@ -23,6 +23,13 @@ target_include_directories(ziti-tunnel-cbs-c
         PUBLIC include
         )
 
+if(MINGW)
+    # mingw's linker is single-pass, and we get undefined symbols from libmbedtls for symbols in winsock2 without this
+    # doing this here this is a bit of a hack, but I couldn't figure out how to influence cmake to get this right when
+    # we get mbledtls from vcpkg.
+    SET(socket_lib ws2_32)
+endif()
+
 if(CMAKE_SYSTEM_NAME STREQUAL Windows)
     SET(resolve_lib dnsapi)
 else()
@@ -32,7 +39,7 @@ endif()
 target_link_libraries(ziti-tunnel-cbs-c
         PUBLIC ziti
         PUBLIC ziti-tunnel-sdk-c
-        PUBLIC ${resolve_lib}
+        PUBLIC ${resolve_lib} ${socket_lib}
         )
 
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
