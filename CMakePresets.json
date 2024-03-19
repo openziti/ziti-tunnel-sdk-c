@@ -50,11 +50,6 @@
       "generator": "Visual Studio 17 2022"
     },
     {
-      "name": "mingw-makefiles",
-      "hidden": true,
-      "generator": "MinGW Makefiles"
-    },
-    {
       "name": "ci-std",
       "description": "This preset makes sure the project actually builds with at least the specified standard",
       "hidden": true,
@@ -138,7 +133,7 @@
       "inherits": [
         "flags-windows-mingw",
         "ci-std",
-        "mingw-makefiles"
+        "ninja"
       ],
       "architecture": {
         "value": "x64",
