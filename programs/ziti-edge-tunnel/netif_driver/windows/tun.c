@@ -27,6 +27,10 @@
 #define _Ret_bytecount_(n)
 #endif
 
+#ifndef _Post_maybenull_
+#define _Post_maybenull_
+#endif
+
 #include <wintun.h>
 #include <stdbool.h>
 #include <ziti/ziti_log.h>

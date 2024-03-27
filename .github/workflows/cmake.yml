@@ -32,11 +32,11 @@ jobs:
 
           - os: windows-latest
             name: Windows x86_64
-            preset: windows-x64
+            preset: windows-x64-mingw
 
           - os: windows-latest
             name: Windows arm64
-            preset: windows-arm64
+            preset: windows-arm64-vs2022
 
           - os: ubuntu-20.04
             container: openziti/ziti-builder:1.0.7
