@@ -59,6 +59,7 @@ struct ziti_intercept_s {
         ziti_intercept_cfg_v1 intercept_v1;
         ziti_client_cfg_v1 client_v1;
     } cfg;
+    bool address_forwarding; // the intercepted ip or hostname will be forwarded to the hosting tunneler.
 };
 
 #define CFGTYPE_DESC(name, cfgtype, type) { (name), (cfgtype), \
@@ -395,7 +396,17 @@ ziti_intercept_t *new_ziti_intercept(ziti_context ztx, ziti_service *service, zi
     ziti_intercept_t *zi_ctx = calloc(1, sizeof(ziti_intercept_t));
     zi_ctx->ztx = ztx;
     zi_ctx->service_name = strdup(service->name);
+    zi_ctx->address_forwarding = false;
     bool have_intercept = false;
+
+    // check service's host.v1 config (if any) to see if address forwarding is enabled.
+    const char *host_v1_cfg_json = ziti_service_get_raw_config(service, "host.v1");
+    if (host_v1_cfg_json != 0) {
+        ziti_host_cfg_v1 host_v1_cfg;
+        if (parse_ziti_host_cfg_v1(&host_v1_cfg, host_v1_cfg_json, strlen(host_v1_cfg_json)) > 0) {
+            zi_ctx->address_forwarding = host_v1_cfg.forward_address;
+        }
+    }
 
     for (int i = 0; i < sizeof(intercept_cfgtypes) / sizeof(cfgtype_desc_t); i++) {
         cfgtype_desc_t *cfgtype = &intercept_cfgtypes[i];
@@ -463,7 +474,6 @@ intercept_ctx_t *new_intercept_ctx(tunneler_context tnlr_ctx, ziti_intercept_t *
     intercept_ctx_t *i_ctx = intercept_ctx_new(tnlr_ctx, zi_ctx->service_name, zi_ctx);
     intercept_ctx_set_match_addr(i_ctx, intercept_match_addr);
 
-    int i;
     const ziti_address *intercept_addr;
     switch (zi_ctx->cfg_desc->cfgtype) {
         case CLIENT_CFG_V1:
@@ -609,6 +619,11 @@ static void ziti_conn_close_cb(ziti_connection zc) {
 #define RESOLVE_APP_DATA "{\"connType\":\"resolver\"}"
 ziti_connection intercept_resolve_connect(ziti_intercept_t *intercept, void *ctx, ziti_conn_cb conn_cb, ziti_data_cb data_cb) {
     ziti_connection conn;
+
+    if (!intercept->address_forwarding) {
+        return NULL;
+    }
+
     ziti_conn_init(intercept->ztx, &conn, ctx);
     ziti_dial_opts opts = {
             .app_data = RESOLVE_APP_DATA,
