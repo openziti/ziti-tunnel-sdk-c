@@ -150,7 +150,7 @@ static uint8_t *send_and_parse_query(const dns_question *q, int class, ns_msg *a
     uint8_t *resp_msg = NULL;
     int rc;
 
-    for (int i = 0; i < 2; i++) {
+    for (int attempt = 0; attempt < 2; attempt++) { // retry the query with a larger buffer if first attempt was truncated
         resp_msg = calloc(buf_sz, sizeof(uint8_t));
         memset(ans, 0, sizeof(dns_question));
         rc = res_nquery(resolver, q->name, class, q->type, resp_msg, buf_sz);
@@ -160,8 +160,10 @@ static uint8_t *send_and_parse_query(const dns_question *q, int class, ns_msg *a
         }
         ns_initparse(resp_msg, rc, ans);
         bool trunc = ns_msg_getflag(*ans, ns_f_tc);
-        if (trunc) {
-            if (i == 0) {
+        if (!trunc) {
+            break;
+        } else {
+            if (attempt == 0) {
                 ZITI_LOG(DEBUG, "dns response truncated, repeating query with %d byte buffer", rc);
                 free(resp_msg);
                 resp_msg = NULL;
