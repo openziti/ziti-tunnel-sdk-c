@@ -40,9 +40,9 @@ typedef struct ziti_dns_client_s {
 struct dns_req {
     uint16_t id;
     size_t req_len;
-    uint8_t req[512];
+    uint8_t req[4096];
     size_t resp_len;
-    uint8_t resp[512];
+    uint8_t resp[4096];
 
     dns_message msg;
 
@@ -426,7 +426,7 @@ const ip_addr_t *ziti_dns_register_hostname(const ziti_address *addr, void *inte
     }
 }
 
-static const char DNS_OPT[] = { 0x0, 0x0, 0x29, 0x02, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 };
+static const char DNS_OPT[] = { 0x0, 0x0, 0x29, 0x10, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 };
 
 #define DNS_HEADER_LEN 12
 #define DNS_ID(p) ((uint8_t)(p)[0] << 8 | (uint8_t)(p)[1])
@@ -436,6 +436,7 @@ static const char DNS_OPT[] = { 0x0, 0x0, 0x29, 0x02, 0x0, 0x0, 0x0, 0x0, 0x0, 0
 #define DNS_RD(p) ((p)[2] & 0x1)
 
 #define DNS_SET_RA(p) ((p)[3] = (p)[3] | 0x80)
+#define DNS_SET_TC(p) ((p)[2] = (p)[2] | 0x2)
 #define DNS_SET_CODE(p,c) ((p)[3] = (p)[3] | ((c) & 0xf))
 #define DNS_SET_ANS(p) ((p)[2] = (p)[2] | 0x80)
 #define DNS_SET_ARS(p,n) do{ (p)[6] = (n) >> 8; (p)[7] = (n) & 0xff; } while(0)
@@ -487,12 +488,20 @@ static void format_resp(struct dns_req *req) {
     memcpy(req->resp + DNS_HEADER_LEN, req->req + DNS_HEADER_LEN, query_section_len);
 
     uint8_t *rp = req->resp + DNS_HEADER_LEN + query_section_len;
+    uint8_t *resp_end = req->resp + sizeof(req->resp);
+    bool truncated = false;
 
     if (req->msg.status == DNS_NO_ERROR && req->msg.answer != NULL) {
         int ans_count = 0;
         for (int i = 0; req->msg.answer[i] != NULL; i++) {
             ans_count++;
             dns_answer *a = req->msg.answer[i];
+
+            if (resp_end - rp < 10) { // 2 bytes for name ref, 2 for type, 2 for class, and 4 for ttl
+                truncated = true;
+                goto done;
+            }
+
             // name ref
             *rp++ = 0xc0;
             *rp++ = 0x0c;
@@ -505,6 +514,10 @@ static void format_resp(struct dns_req *req) {
 
             switch (a->type) {
                 case NS_T_A: {
+                    if (resp_end - rp < (2 + sizeof(req->addr.s_addr))) {
+                        truncated = true;
+                        goto done;
+                    }
                     SET_U16(rp, sizeof(req->addr.s_addr));
                     memcpy(rp, &req->addr.s_addr, sizeof(req->addr.s_addr));
                     rp += sizeof(req->addr.s_addr);
@@ -514,6 +527,10 @@ static void format_resp(struct dns_req *req) {
                 case NS_T_TXT: {
                     uint16_t txtlen = strlen(a->data);
                     uint16_t datalen = 1 + txtlen;
+                    if (resp_end - rp < (3 + txtlen)) {
+                        truncated = true;
+                        goto done;
+                    }
                     SET_U16(rp, datalen);
                     SET_U8(rp, txtlen);
                     memcpy(rp, a->data, txtlen);
@@ -523,8 +540,11 @@ static void format_resp(struct dns_req *req) {
                 case NS_T_MX: {
                     uint8_t *hold = rp;
                     rp += 2;
-//                    uint16_t datalen = strlen(a->data) + 1 + 2;
-//                    SET_U16(rp, datalen);
+                    uint16_t datalen_est = strlen(a->data) + 1;
+                    if (resp_end - hold < (4 + datalen_est)) {
+                        truncated = true;
+                        goto done;
+                    }
                     SET_U16(rp, a->priority);
                     rp = format_name(rp, a->data);
                     uint16_t datalen = rp - hold - 2;
@@ -534,6 +554,11 @@ static void format_resp(struct dns_req *req) {
                 case NS_T_SRV: {
                     uint8_t *hold = rp;
                     rp += 2;
+                    uint16_t datalen_est = strlen(a->data) + 1;
+                    if (resp_end - hold < (8 + datalen_est)) {
+                        truncated = true;
+                        goto done;
+                    }
                     SET_U16(rp, a->priority);
                     SET_U16(rp, a->weight);
                     SET_U16(rp, a->port);
@@ -546,12 +571,19 @@ static void format_resp(struct dns_req *req) {
                     ZITI_LOG(WARN, "unhandled response type[%d]", a->type);
             }
         }
+        done:
+        if (truncated) {
+            ZITI_LOG(DEBUG, "dns response truncated");
+            DNS_SET_TC(req->resp);
+        }
         DNS_SET_ARS(req->resp, ans_count);
     }
 
     DNS_SET_AARS(req->resp, 1);
-    memcpy(rp, DNS_OPT, sizeof(DNS_OPT));
-    rp += sizeof(DNS_OPT);
+    if (resp_end - rp > 11) {
+        memcpy(rp, DNS_OPT, sizeof(DNS_OPT));
+        rp += sizeof(DNS_OPT);
+    }
     req->resp_len = rp - req->resp;
 }
 
