@@ -245,7 +245,7 @@ static void dns_update_systemd_resolve(const char* tun, unsigned int ifindex, co
 
 static void find_dns_updater() {
 #ifndef EXCLUDE_LIBSYSTEMD_RESOLVER
-    if(try_libsystemd_resolver()) {
+    if(try_libsystemd_resolver(dns_maintainer.tun_name)) {
         dns_updater = dns_update_systemd_resolved;
         return;
     }
