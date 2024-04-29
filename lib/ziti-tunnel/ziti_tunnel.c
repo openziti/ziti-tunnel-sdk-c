@@ -557,7 +557,7 @@ static void run_packet_loop(uv_loop_t *loop, tunneler_context tnlr_ctx) {
     }
 
     uv_timer_init(loop, &tnlr_ctx->lwip_timer_req);
-    uv_unref(&tnlr_ctx->lwip_timer_req);
+    uv_unref((uv_handle_t *) &tnlr_ctx->lwip_timer_req);
     uv_timer_start(&tnlr_ctx->lwip_timer_req, check_lwip_timeouts, 0, 10);
 }
 
