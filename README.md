@@ -9,7 +9,7 @@ that are useful to Ziti Tunnelers.
 
 ## What's a Ziti Tunneler?
 
-[The main article about tunnellers is here](https://openziti.io/docs/reference/tunnelers/linux/). Editors may follow the
+[The main article about tunnelers is here](https://openziti.io/docs/reference/tunnelers/linux/). Editors may follow the
 "Edit this page" link on every page.
 
 ## What is the Ziti Tunneler SDK?
