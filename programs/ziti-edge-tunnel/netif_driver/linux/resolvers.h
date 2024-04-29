@@ -46,7 +46,7 @@
 #endif
 
 #ifndef EXCLUDE_LIBSYSTEMD_RESOLVER
-bool try_libsystemd_resolver(void);
+bool try_libsystemd_resolver(const char *tun_name);
 #endif
 bool is_systemd_resolved_primary_resolver(void);
 bool is_resolvconf_systemd_resolved(void);
