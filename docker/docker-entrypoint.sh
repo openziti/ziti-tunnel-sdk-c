@@ -58,7 +58,7 @@ if [[ -z "${ZITI_IDENTITY_WAIT:-}" && -n "${NF_REG_WAIT:-}" ]]; then
     ZITI_IDENTITY_WAIT="${NF_REG_WAIT}"
 fi
 
-# assign default identities dir if not set; this is a writeable path within the container image
+# assign default identity dir if not set in parent env; this is a writeable path within the container image
 : "${ZITI_IDENTITY_DIR:="/ziti-edge-tunnel"}"
 
 # if enrolled identity JSON is provided then write it to a file in the identities dir
@@ -94,7 +94,7 @@ typeset -a TUNNEL_OPTS
 # if identity basename is specified then look for an identity file with that name, else load all identities in the
 # identities dir mountpoint
 if [[ -n "${ZITI_IDENTITY_BASENAME:-}" ]]; then
-    : "${IDENTITY_FILE:=${ZITI_IDENTITY_DIR}/${ZITI_IDENTITY_BASENAME}.json}"
+    IDENTITY_FILE="${ZITI_IDENTITY_DIR}/${ZITI_IDENTITY_BASENAME}.json}"
     TUNNEL_OPTS=("--identity" "${IDENTITY_FILE}")
 
     # if wait is specified then wait for the identity file or token to appear
