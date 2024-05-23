@@ -94,7 +94,7 @@ typeset -a TUNNEL_OPTS
 # if identity basename is specified then look for an identity file with that name, else load all identities in the
 # identities dir mountpoint
 if [[ -n "${ZITI_IDENTITY_BASENAME:-}" ]]; then
-    IDENTITY_FILE="${ZITI_IDENTITY_DIR}/${ZITI_IDENTITY_BASENAME}.json}"
+    IDENTITY_FILE="${ZITI_IDENTITY_DIR}/${ZITI_IDENTITY_BASENAME}.json"
     TUNNEL_OPTS=("--identity" "${IDENTITY_FILE}")
 
     # if wait is specified then wait for the identity file or token to appear
