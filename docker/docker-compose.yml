@@ -10,7 +10,6 @@ x-base-service: &base-service
     environment:
         - ZITI_IDENTITY_BASENAME  # inherit when run like this: ZITI_IDENTITY_BASENAME=AcmeIdentity docker-compose up ziti-tun
         - ZITI_ENROLL_TOKEN       # ZITI_IDENTITY_BASENAME=AcmeIdentity ZITI_ENROLL_TOKEN={JWT} docker-compose up ziti-tun
-        - PFXLOG_NO_JSON=true     # suppress JSON logging
     network_mode: host            # use the Docker host's network, not the Docker bridge
     privileged: true
 

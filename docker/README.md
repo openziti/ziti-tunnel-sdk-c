@@ -274,7 +274,6 @@ services:
             - /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket
         environment:
             - ZITI_IDENTITY_BASENAME=ziti_id
-            - PFXLOG_NO_JSON=true              # suppress JSON logging
         network_mode: host
         privileged: true
 ```
