@@ -227,6 +227,7 @@ static void complete_hosted_tcp_connection(hosted_io_context io_ctx) {
 static void on_hosted_tcp_server_connect_complete(uv_connect_t *c, int status) {
     if (c == NULL || c->handle == NULL || c->handle->data == NULL) {
         ZITI_LOG(ERROR, "null handle or io_ctx");
+        if (c) free(c);
         return;
     }
     struct hosted_io_ctx_s *io_ctx = c->handle->data;
