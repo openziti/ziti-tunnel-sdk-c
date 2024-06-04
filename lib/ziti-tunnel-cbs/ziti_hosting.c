@@ -261,7 +261,13 @@ static void on_proxy_connect(uv_os_sock_t sock, int status, void *ctx) {
         return;
     }
 
-    uv_tcp_open(&io->server.tcp, sock);
+    int uv_err = uv_tcp_open(&io->server.tcp, sock);
+    if (uv_err != 0) {
+        ZITI_LOG(ERROR, "uv_tcp_open failed: %s (e=%d)", uv_strerror(uv_err), uv_err);
+        hosted_server_close(io);
+        return;
+    }
+
     complete_hosted_tcp_connection(io);
 }
 
@@ -882,13 +888,12 @@ host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, uv_loop_t *loop, const char *service
             if (host_v1_cfg->proxy.type == ziti_proxy_server_type_http) {
                 const char *addr = host_v1_cfg->proxy.address;
                 if (addr != NULL && addr[0] != '\0') {
-                    const char *sep = strchr(addr, ':');
-                    if (sep) {
+                    struct tlsuv_url_s url = {0};
+                    if (tlsuv_parse_url(&url, addr) == 0) {
                         host_ctx->proxy_addr = host_v1_cfg->proxy.address;
-                        size_t hn_len = sep - addr;
                         char host[128], port[6];
-                        snprintf(host, sizeof(host), "%.*s", (int) hn_len, addr);
-                        snprintf(port, sizeof(port), "%s", sep + 1);
+                        snprintf(host, sizeof(host), "%.*s", (int) url.hostname_len, url.hostname);
+                        snprintf(port, sizeof(port), "%d", url.port);
                         host_ctx->proxy_connector = tlsuv_new_proxy_connector(tlsuv_PROXY_HTTP, host, port);
                     } else {
                         ZITI_LOG(ERROR, "hosted_service[%s] could not parse host.v1 proxy address '%s' as '<host>:<port>'",
