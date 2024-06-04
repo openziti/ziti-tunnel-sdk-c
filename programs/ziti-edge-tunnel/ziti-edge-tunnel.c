@@ -1824,62 +1824,50 @@ static const char* dns_upstream = NULL;
 static bool host_only = false;
 
 #include "tlsuv/http.h"
-static struct tlsuv_url_s *proxy_url = NULL;
 
-static int set_proxy_url(const char *str) {
-    struct tlsuv_url_s url;
-    if (proxy_url != NULL) {
-        free(proxy_url);
-        proxy_url = NULL;
-    }
-
-    int r = tlsuv_parse_url(&url, str);
-    if (r == 0) {
-        proxy_url = calloc(1, sizeof(struct tlsuv_url_s));
-        memcpy(proxy_url, &url, sizeof(struct tlsuv_url_s));
-    } else {
-        ZITI_LOG(ERROR, "failed to parse '%s' as proxy URL", str);
-    }
-
-    return r;
-}
-
-static int set_proxy_url_from_env(void) {
-    const char *val = NULL;
-    val = getenv("HTTP_PROXY");
-    if (!val) val = getenv("http_proxy");
-
-    if (val) {
-        return set_proxy_url(val);
-    }
-
-    return 0;
-}
-
-static void init_proxy_connector() {
-    if (proxy_url == NULL) {
+static int init_proxy_connector(const char *url) {
+    if (url == NULL) url = getenv("HTTP_PROXY");
+    if (url == NULL) url = getenv("http_proxy");
+    if (url == NULL) {
         ZITI_LOG(DEBUG, "proxy_url not set");
-        return;
+        return 0;
+    }
+
+    struct tlsuv_url_s proxy_url;
+    int r = tlsuv_parse_url(&proxy_url, url);
+    if (r == 0 && proxy_url.scheme != NULL) {
+    } else {
+        ZITI_LOG(ERROR, "failed to parse '%s' as 'type://[username[:password]@]hostname:port'", url);
+        return -1;
+    }
+
+    if (strncmp(proxy_url.scheme, "http", proxy_url.scheme_len) != 0) {
+        ZITI_LOG(ERROR, "proxy type '%.*s' is not supported. 'http' is currently the only supported type",
+                 (int)proxy_url.scheme_len, proxy_url.scheme);
+        return -1;
     }
 
     char host[128], port[6];
-    snprintf(host, sizeof(host), "%.*s", (int)proxy_url->hostname_len, proxy_url->hostname);
-    snprintf(port, sizeof(port), "%d", proxy_url->port);
+    snprintf(host, sizeof(host), "%.*s", (int)proxy_url.hostname_len, proxy_url.hostname);
+    snprintf(port, sizeof(port), "%d", proxy_url.port);
     tlsuv_connector_t *proxy = tlsuv_new_proxy_connector(tlsuv_PROXY_HTTP, host, port);
-    if (proxy_url->username) {
+    if (proxy_url.username) {
         char user[128], passwd[128];
-        snprintf(user, sizeof(user), "%.*s", (int)proxy_url->username_len, proxy_url->username);
-        snprintf(passwd, sizeof(passwd), "%.*s", (int)proxy_url->password_len, proxy_url->password);
+        snprintf(user, sizeof(user), "%.*s", (int)proxy_url.username_len, proxy_url.username);
+        snprintf(passwd, sizeof(passwd), "%.*s", (int)proxy_url.password_len, proxy_url.password);
         proxy->set_auth(proxy, tlsuv_PROXY_BASIC, user, passwd);
     }
     ZITI_LOG(INFO, "connecting to OpenZiti controller and edge routers through proxy '%s:%s'", host, port);
     tlsuv_set_global_connector(proxy);
+
+    return 0;
 }
 
 static int run_opts(int argc, char *argv[]) {
     int c, option_index, errors = 0;
     optind = 0;
     bool identity_provided = false;
+    const char *proxy_arg = NULL;
 
     while ((c = getopt_long(argc, argv, "i:I:v:r:d:u:x:",
                             run_options, &option_index)) != -1) {
@@ -1910,7 +1898,7 @@ static int run_opts(int argc, char *argv[]) {
                 dns_upstream = optarg;
                 break;
             case 'x':
-                set_proxy_url(optarg);
+                proxy_arg = optarg;
                 break;
             default: {
                 ZITI_LOG(ERROR, "Unknown option '%c'", c);
@@ -1918,6 +1906,10 @@ static int run_opts(int argc, char *argv[]) {
                 break;
             }
         }
+    }
+
+    if (init_proxy_connector(proxy_arg) != 0) {
+        errors++;
     }
 
     CHECK_COMMAND_ERRORS(errors);
@@ -2103,8 +2095,6 @@ static void run(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    init_proxy_connector();
-
     int rc;
     if (is_host_only()) {
         rc = run_tunnel_host_mode(ziti_loop);
@@ -2169,6 +2159,7 @@ static int parse_enroll_opts(int argc, char *argv[]) {
             { "proxy", required_argument, NULL, 'x' },
     };
     int c, option_index, errors = 0;
+    const char *proxy_arg = NULL;
     optind = 0;
 
     while ((c = getopt_long(argc, argv, "j:i:k:c:n:x:",
@@ -2194,7 +2185,7 @@ static int parse_enroll_opts(int argc, char *argv[]) {
                 config_file = optarg;
                 break;
             case 'x':
-                set_proxy_url(optarg);
+                proxy_arg = optarg;
                 break;
             default: {
                 fprintf(stderr, "Unknown option '%c'\n", c);
@@ -2202,6 +2193,10 @@ static int parse_enroll_opts(int argc, char *argv[]) {
                 break;
             }
         }
+    }
+
+    if (init_proxy_connector(proxy_arg) != 0) {
+        errors++;
     }
 
     if (enroll_opts.jwt == NULL || config_file == NULL) {
@@ -2283,8 +2278,6 @@ static void enroll(int argc, char *argv[]) {
         (void) close(outfd);
         exit(EXIT_FAILURE);
     }
-
-    init_proxy_connector();
 
     struct enroll_cb_params params = { 0 };
 
@@ -3017,7 +3010,7 @@ static int add_identity_opts(int argc, char *argv[]) {
 static CommandLine enroll_cmd = make_command("enroll", "enroll Ziti identity",
         "-j|--jwt <enrollment token> -i|--identity <identity> [-k|--key <private_key> [-c|--cert <certificate>]] [-n|--name <name>]",
         "\t-j|--jwt\tenrollment token file\n"
-        "\t-x|--proxy [username[:password]@]hostname_or_ip:port\tproxy to use when connecting to OpenZiti controller"
+        "\t-x|--proxy type://[username[:password]@]hostname_or_ip:port\tproxy to use when connecting to OpenZiti controller. 'http' is currently the only supported type."
         "\t-i|--identity\toutput identity file\n"
         "\t-k|--key\tprivate key for enrollment\n"
         "\t-c|--cert\tcertificate for enrollment\n"
@@ -3027,8 +3020,8 @@ static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required supe
                                           "-i <id.file> [-r N] [-v N] [-d|--dns-ip-range N.N.N.N/n]",
                                           "\t-i|--identity <identity>\trun with provided identity file (required)\n"
                                           "\t-I|--identity-dir <dir>\tload identities from provided directory\n"
-                                          "\t-x|--proxy [username[:password]@]hostname_or_ip:port\tproxy to use when"
-                                          " connecting to OpenZiti controller and edge routers"
+                                          "\t-x|--proxy type://[username[:password]@]hostname_or_ip:port\tproxy to use when"
+                                          " connecting to OpenZiti controller and edge routers. 'http' is currently the only supported type."
                                           "\t-v|--verbose N\tset log level, higher level -- more verbose (default 3)\n"
                                           "\t-r|--refresh N\tset service polling interval in seconds (default 10)\n"
                                           "\t-d|--dns-ip-range <ip range>\tspecify CIDR block in which service DNS names"
@@ -3298,7 +3291,7 @@ int main(int argc, char *argv[]) {
     }
 #endif
 
-    set_proxy_url_from_env();
+//    ziti_log_init(ziti_loop, log_level, NULL);
     commandline_run(&main_cmd, argc, argv);
     return 0;
 }
