@@ -3291,7 +3291,6 @@ int main(int argc, char *argv[]) {
     }
 #endif
 
-//    ziti_log_init(ziti_loop, log_level, NULL);
     commandline_run(&main_cmd, argc, argv);
     return 0;
 }
