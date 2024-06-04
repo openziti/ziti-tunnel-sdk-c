@@ -2193,6 +2193,9 @@ static int parse_enroll_opts(int argc, char *argv[]) {
             case 'i':
                 config_file = optarg;
                 break;
+            case 'x':
+                set_proxy_url(optarg);
+                break;
             default: {
                 fprintf(stderr, "Unknown option '%c'\n", c);
                 errors++;
