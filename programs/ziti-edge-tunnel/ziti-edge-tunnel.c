@@ -1835,10 +1835,15 @@ static int init_proxy_connector(const char *url) {
 
     struct tlsuv_url_s proxy_url;
     int r = tlsuv_parse_url(&proxy_url, url);
-    if (r == 0 && proxy_url.scheme != NULL) {
-    } else {
+    if (r != 0) {
         ZITI_LOG(ERROR, "failed to parse '%s' as 'type://[username[:password]@]hostname:port'", url);
         return -1;
+    }
+
+    // assume http if no protocol was specified
+    if (proxy_url.scheme == NULL) {
+        proxy_url.scheme = "http";
+        proxy_url.scheme_len = strlen(proxy_url.scheme);
     }
 
     if (strncmp(proxy_url.scheme, "http", proxy_url.scheme_len) != 0) {
