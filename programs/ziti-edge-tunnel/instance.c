@@ -772,6 +772,9 @@ int get_log_level(const char* log_level) {
             return (int) strtol(loglvl, NULL, 10);
         }
     }
+    if (isdigit(log_level[0])) {
+        return (int) strtol(log_level, NULL, 10);
+    }
     int lvl = 0;
     int num_levels = sizeof(level_labels) / sizeof(const char *);
     for (int i = 0;i < num_levels; i++) {
