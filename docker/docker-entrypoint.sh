@@ -31,7 +31,7 @@ function alldone() {
 trap alldone SIGTERM SIGINT EXIT
 
 unset \
-    IDENTITIES_DIR \
+    ZITI_IDENTITY_DIR \
     IDENTITY_FILE \
     JSON_FILES \
     JWT_CANDIDATE \
@@ -58,36 +58,34 @@ if [[ -z "${ZITI_IDENTITY_WAIT:-}" && -n "${NF_REG_WAIT:-}" ]]; then
     ZITI_IDENTITY_WAIT="${NF_REG_WAIT}"
 fi
 
-# if identity env vars are defined then do not look for mounted identities
+# assign default identity dir if not set in parent env; this is a writeable path within the container image
+: "${ZITI_IDENTITY_DIR:="/ziti-edge-tunnel"}"
+
+# if enrolled identity JSON is provided then write it to a file in the identities dir
 if [[ -n "${ZITI_IDENTITY_JSON:-}" ]]; then
-    IDENTITIES_DIR="/tmp/openziti"
-    # shellcheck disable=SC2174
-    mkdir -pm0700 "${IDENTITIES_DIR}"
     if [[ -z "${ZITI_IDENTITY_BASENAME:-}" ]]; then
         ZITI_IDENTITY_BASENAME="ziti_id"
     fi
-    IDENTITY_FILE="${IDENTITIES_DIR}/${ZITI_IDENTITY_BASENAME}.json"
+    IDENTITY_FILE="${ZITI_IDENTITY_DIR}/${ZITI_IDENTITY_BASENAME}.json"
     if [[ -s "${IDENTITY_FILE}" ]]; then
         echo "WARN: clobbering non-empty Ziti identity file ${IDENTITY_FILE} with contents of env var ZITI_IDENTITY_JSON" >&2
     fi
     echo "${ZITI_IDENTITY_JSON}" > "${IDENTITY_FILE}"
+# if an enrollment token is provided then write it to a file in the identities dir so it will be found in the next step
+# and used to enroll
 elif [[ -n "${ZITI_ENROLL_TOKEN:-}" ]]; then
-    IDENTITIES_DIR="/tmp/openziti"
-    # shellcheck disable=SC2174
-    mkdir -pm0700 "${IDENTITIES_DIR}"
     if [[ -z "${ZITI_IDENTITY_BASENAME:-}" ]]; then
         ZITI_IDENTITY_BASENAME="ziti_id"
     fi
-    JWT_FILE="${IDENTITIES_DIR}/${ZITI_IDENTITY_BASENAME}.jwt"
+    JWT_FILE="${ZITI_IDENTITY_DIR}/${ZITI_IDENTITY_BASENAME}.jwt"
     if [[ -s "${JWT_FILE}" ]]; then
         echo "WARN: clobbering non-empty Ziti enrollment token file ${JWT_FILE} with contents of env var ZITI_ENROLL_TOKEN" >&2
     fi
     echo "${ZITI_ENROLL_TOKEN}" > "${JWT_FILE}"
+# otherwise, assume the identities dir is a mounted volume with identity files or tokens
 else
-    # presumed to be a mountpoint for one or more identities
-    IDENTITIES_DIR="/ziti-edge-tunnel"
-    if ! [[ -d "${IDENTITIES_DIR}" ]]; then
-        echo "ERROR: need directory ${IDENTITIES_DIR} to find tokens and identities" >&2
+    if ! [[ -d "${ZITI_IDENTITY_DIR}" ]]; then
+        echo "ERROR: need directory ${ZITI_IDENTITY_DIR} to find tokens and identities" >&2
         exit 1
     fi
 fi
@@ -96,7 +94,7 @@ typeset -a TUNNEL_OPTS
 # if identity basename is specified then look for an identity file with that name, else load all identities in the
 # identities dir mountpoint
 if [[ -n "${ZITI_IDENTITY_BASENAME:-}" ]]; then
-    : "${IDENTITY_FILE:=${IDENTITIES_DIR}/${ZITI_IDENTITY_BASENAME}.json}"
+    IDENTITY_FILE="${ZITI_IDENTITY_DIR}/${ZITI_IDENTITY_BASENAME}.json"
     TUNNEL_OPTS=("--identity" "${IDENTITY_FILE}")
 
     # if wait is specified then wait for the identity file or token to appear
@@ -122,7 +120,7 @@ if [[ -n "${ZITI_IDENTITY_BASENAME:-}" ]]; then
             echo "DEBUG: identity file ${IDENTITY_FILE} not found"
             for dir in  "/var/run/secrets/netfoundry.io/enrollment-token" \
                         "/enrollment-token" \
-                        "${IDENTITIES_DIR}"; do
+                        "${ZITI_IDENTITY_DIR}"; do
                 JWT_CANDIDATE="${dir}/${ZITI_IDENTITY_BASENAME}.jwt"
                 if [[ -s "${JWT_CANDIDATE}" ]]; then
                     JWT_FILE="${JWT_CANDIDATE}"
@@ -161,12 +159,12 @@ if [[ -n "${ZITI_IDENTITY_BASENAME:-}" ]]; then
 # tokens
 else
     typeset -a JSON_FILES
-    mapfile -t JSON_FILES < <(ls -1 "${IDENTITIES_DIR}"/*.json)
+    mapfile -t JSON_FILES < <(ls -1 "${ZITI_IDENTITY_DIR}"/*.json)
     if [[ ${#JSON_FILES[*]} -gt 0 ]]; then
-        echo "INFO: loading ${#JSON_FILES[*]} identities from ${IDENTITIES_DIR}"
-        TUNNEL_OPTS=("--identity-dir" "${IDENTITIES_DIR}")
+        echo "INFO: loading ${#JSON_FILES[*]} identities from ${ZITI_IDENTITY_DIR}"
+        TUNNEL_OPTS=("--identity-dir" "${ZITI_IDENTITY_DIR}")
     else
-        echo "ERROR: ZITI_IDENTITY_BASENAME not set and zero identities found in ${IDENTITIES_DIR}" >&2
+        echo "ERROR: ZITI_IDENTITY_BASENAME not set and zero identities found in ${ZITI_IDENTITY_DIR}" >&2
         exit 1
     fi
 fi
