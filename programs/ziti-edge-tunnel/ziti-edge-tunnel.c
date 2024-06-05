@@ -132,7 +132,8 @@ static LIST_HEAD(ipc_list, ipc_conn_s) ipc_clients_list = LIST_HEAD_INITIALIZER(
 
 static long refresh_metrics = 5000;
 static long metrics_latency = 5000;
-static char* configured_cidr;
+static char *configured_cidr = NULL;
+static char *configured_log_level = NULL;
 static char *config_dir = NULL;
 
 static uv_pipe_t cmd_server;
@@ -147,7 +148,7 @@ static const ziti_tunnel_ctrl *CMD_CTRL;
 static bool started_by_scm = false;
 static bool tunnel_interrupted = false;
 
-uv_loop_t *main_ziti_loop;
+uv_loop_t *ziti_loop = NULL;
 tunneler_context tunneler;
 static uv_mutex_t stop_mutex;
 static uv_cond_t stop_cond;
@@ -256,7 +257,7 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
                             }
 
                             if (model_map_size(&hostnamesToRemove) > 0) {
-                                remove_nrpt_rules(main_ziti_loop, &hostnamesToRemove);
+                                remove_nrpt_rules(ziti_loop, &hostnamesToRemove);
                             }
                         }
 
@@ -546,7 +547,7 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
             add_id_req->identifier_file_name = strdup(new_identifier_name);
             add_id_req->jwt_content = strdup(tunnel_add_identity_cmd.jwtContent);
 
-            enroll_ziti_async(main_ziti_loop, add_id_req);
+            enroll_ziti_async(ziti_loop, add_id_req);
             free_tunnel_add_identity(&tunnel_add_identity_cmd);
             return true;
         }
@@ -568,7 +569,7 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
                 if (!stop_windows_service()) {
                     ZITI_LOG(INFO, "Could not send stop signal to scm, Tunnel must not be started as service");
                     stop_tunnel_and_cleanup();
-                    uv_stop(main_ziti_loop);
+                    uv_stop(ziti_loop);
                 }
             }
             free_tunnel_service_control(&tunnel_service_control_opts);
@@ -1319,13 +1320,13 @@ static void on_event(const base_event *ev) {
                 }
             }
             if (model_map_size(&hostnamesToEdit) > 0 && !is_host_only()) {
-                remove_and_add_nrpt_rules(main_ziti_loop, &hostnamesToEdit, get_dns_ip());
+                remove_and_add_nrpt_rules(ziti_loop, &hostnamesToEdit, get_dns_ip());
             }
             if (model_map_size(&hostnamesToAdd) > 0 && !is_host_only()) {
-                add_nrpt_rules(main_ziti_loop, &hostnamesToAdd, get_dns_ip());
+                add_nrpt_rules(ziti_loop, &hostnamesToAdd, get_dns_ip());
             }
             if (model_map_size(&hostnamesToRemove) > 0 && !is_host_only()) {
-                remove_nrpt_rules(main_ziti_loop, &hostnamesToRemove);
+                remove_nrpt_rules(ziti_loop, &hostnamesToRemove);
             }
 
 #endif
@@ -1889,7 +1890,8 @@ static int run_opts(int argc, char *argv[]) {
                 identity_provided = true;
                 break;
             case 'v':
-                setenv("ZITI_LOG", optarg, true);
+                configured_log_level = optarg;
+                ziti_log_set_level(get_log_level(optarg), NULL);
                 break;
             case 'r': {
                 unsigned long interval = strtoul(optarg, NULL, 10);
@@ -1945,7 +1947,8 @@ static int run_host_opts(int argc, char *argv[]) {
                 identity_provided = true;
                 break;
             case 'v':
-                setenv("ZITI_LOG", optarg, true);
+                configured_log_level = optarg;
+                ziti_log_set_level(get_log_level(optarg), NULL);
                 break;
             case 'r': {
                 unsigned long interval = strtoul(optarg, NULL, 10);
@@ -1990,9 +1993,6 @@ static void interrupt_handler(int sig) {
 #endif
 
 static void run(int argc, char *argv[]) {
-    setenv("UV_THREADPOOL_SIZE", "8", 0);
-    uv_loop_t *ziti_loop = uv_default_loop();
-    main_ziti_loop = ziti_loop;
     uv_cond_init(&stop_cond);
     uv_mutex_init(&stop_mutex);
 
@@ -2001,15 +2001,13 @@ static void run(int argc, char *argv[]) {
     //set log level in precedence: command line flag (-v/--verbose) -> env var (ZITI_LOG) -> config file
     int log_level = get_log_level(NULL);
 
-    //initialize logger to INFO here. logger will be set further down
 #if _WIN32
+    // initialize log function here. level will be set further down
     log_init(ziti_loop);
-    ziti_log_init(ziti_loop, INFO, ziti_log_writer);
+    ziti_log_set_logger(ziti_log_writer);
     remove_all_nrpt_rules();
 
     signal(SIGINT, interrupt_handler);
-#else
-    ziti_log_init(ziti_loop, log_level, NULL);
 #endif
 
     // generate tunnel status instance and save active state and start time
@@ -2086,19 +2084,16 @@ static void run(int argc, char *argv[]) {
     }
 #endif
 
-    // set log level from instance/config, if NULL is returned, the default log level will be used
-    const char* log_lvl = get_log_level_label();
-    if (log_lvl != NULL) {
-        ziti_log_set_level_by_label(log_lvl);
+    if (configured_log_level == NULL) {
+        // set log level from instance/config, if NULL is returned, the default log level will be used
+        const char *log_lvl = get_log_level_label();
+        if (log_lvl != NULL) {
+            ziti_log_set_level_by_label(log_lvl);
+        }
     }
-    ziti_tunnel_set_log_level(get_log_level(log_lvl));
+    ziti_tunnel_set_log_level(ziti_log_level(NULL, NULL));
     set_log_level(ziti_log_level_label());
     ziti_tunnel_set_logger(ziti_logger);
-
-    if (ziti_loop == NULL) {
-        ZITI_LOG(ERROR, "failed to initialize default uv loop");
-        exit(EXIT_FAILURE);
-    }
 
     int rc;
     if (is_host_only()) {
@@ -2259,7 +2254,7 @@ static int write_close(FILE *fp, const uv_buf_t *data)
 static void enroll(int argc, char *argv[]) {
     uv_loop_t *l = uv_loop_new();
     int log_level = get_log_level(NULL);
-    ziti_log_init(l, log_level, NULL);
+    ziti_log_set_level(log_level, NULL);
 
     if (config_file == 0) {
         ZITI_LOG(ERROR, "output file option(-i|--identity) is required");
@@ -3036,7 +3031,7 @@ static CommandLine run_host_cmd = make_command("run-host", "run Ziti tunnel to h
                                           "-i <id.file> [-r N] [-v N]",
                                           "\t-i|--identity <identity>\trun with provided identity file (required)\n"
                                           "\t-I|--identity-dir <dir>\tload identities from provided directory\n"
-                                          "\t-x|--proxy [username[:password]@]hostname_or_ip:port\tproxy to use when"
+                                          "\t-x|--proxy type://[username[:password]@]hostname_or_ip:port\tproxy to use when"
                                           " connecting to OpenZiti controller and edge routers"
                                           "\t-v|--verbose N\tset log level, higher level -- more verbose (default 3)\n"
                                           "\t-r|--refresh N\tset service polling interval in seconds (default 10)\n",
@@ -3296,6 +3291,13 @@ int main(int argc, char *argv[]) {
     }
 #endif
 
+    ziti_loop = uv_default_loop();
+    if (ziti_loop == NULL) {
+        ZITI_LOG(ERROR, "failed to initialize default uv loop");
+        exit(EXIT_FAILURE);
+    }
+
+    ziti_log_init(ziti_loop, get_log_level(NULL), NULL);
     commandline_run(&main_cmd, argc, argv);
     return 0;
 }
