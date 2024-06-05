@@ -257,7 +257,7 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
                             }
 
                             if (model_map_size(&hostnamesToRemove) > 0) {
-                                remove_nrpt_rules(main_ziti_loop, &hostnamesToRemove);
+                                remove_nrpt_rules(ziti_loop, &hostnamesToRemove);
                             }
                         }
 
@@ -569,7 +569,7 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
                 if (!stop_windows_service()) {
                     ZITI_LOG(INFO, "Could not send stop signal to scm, Tunnel must not be started as service");
                     stop_tunnel_and_cleanup();
-                    uv_stop(main_ziti_loop);
+                    uv_stop(ziti_loop);
                 }
             }
             free_tunnel_service_control(&tunnel_service_control_opts);
@@ -1320,13 +1320,13 @@ static void on_event(const base_event *ev) {
                 }
             }
             if (model_map_size(&hostnamesToEdit) > 0 && !is_host_only()) {
-                remove_and_add_nrpt_rules(main_ziti_loop, &hostnamesToEdit, get_dns_ip());
+                remove_and_add_nrpt_rules(ziti_loop, &hostnamesToEdit, get_dns_ip());
             }
             if (model_map_size(&hostnamesToAdd) > 0 && !is_host_only()) {
-                add_nrpt_rules(main_ziti_loop, &hostnamesToAdd, get_dns_ip());
+                add_nrpt_rules(ziti_loop, &hostnamesToAdd, get_dns_ip());
             }
             if (model_map_size(&hostnamesToRemove) > 0 && !is_host_only()) {
-                remove_nrpt_rules(main_ziti_loop, &hostnamesToRemove);
+                remove_nrpt_rules(ziti_loop, &hostnamesToRemove);
             }
 
 #endif
