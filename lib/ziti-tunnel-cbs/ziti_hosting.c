@@ -28,6 +28,7 @@
 #include <memory.h>
 #include <ziti/ziti_tunnel_cbs.h>
 #include "ziti_hosting.h"
+#include "tlsuv/tlsuv.h"
 
 #if _WIN32
 #ifndef strcasecmp
@@ -182,10 +183,10 @@ static void on_hosted_client_connect_complete(ziti_connection clt, int err) {
         uv_getnameinfo_t req = {0};
         uv_getnameinfo(io_ctx->service->loop, &req, NULL, name, NI_NUMERICHOST|NI_NUMERICSERV);
         uv_os_fd_t fd;
-        uv_fileno((uv_handle_t *) &io_ctx->server, &fd);
+        uv_fileno(server, &fd);
         ZITI_LOG(DEBUG, "hosted_service[%s] client[%s] local_addr[%s:%s] fd[%d] server[%s] connected %d", io_ctx->service->service_name,
                  io_ctx->client_identity, req.host, req.service, fd, io_ctx->resolved_dst, len);
-        int rc = ziti_conn_bridge(clt, (uv_handle_t *) &io_ctx->server, on_bridge_close);
+        int rc = ziti_conn_bridge(clt, server, on_bridge_close);
         if (rc != 0) {
             ZITI_LOG(ERROR, "failed to bridge client[%s] with hosted_service[%s] laddr[%s:%s] fd[%d]: %s",
                      io_ctx->client_identity, io_ctx->service->service_name,
@@ -198,6 +199,25 @@ static void on_hosted_client_connect_complete(ziti_connection clt, int err) {
     }
 }
 
+
+static void complete_hosted_tcp_connection(hosted_io_context io_ctx) {
+    ZITI_LOG(DEBUG, "hosted_service[%s], client[%s]: connected to server %s", io_ctx->service->service_name,
+             io_ctx->client_identity, io_ctx->resolved_dst);
+
+    uv_tcp_t *tcp = &io_ctx->server.tcp;
+
+    if (uv_tcp_keepalive(tcp, 1, KEEPALIVE_DELAY) != 0) {
+        ZITI_LOG(WARN, "hosted_service[%s], client[%s]: failed to set TCP keepalive",
+                 io_ctx->service->service_name, io_ctx->client_identity);
+    }
+    if (uv_tcp_nodelay(tcp, 1) != 0)  {
+        ZITI_LOG(WARN, "hosted_service[%s], client[%s]: failed to set TCP nodelay",
+                 io_ctx->service->service_name, io_ctx->client_identity);
+    }
+
+    ziti_accept(io_ctx->client, on_hosted_client_connect_complete, NULL);
+}
+
 /**
  * called by libuv when a connection is established (or failed) with a TCP server
  *
@@ -207,7 +227,8 @@ static void on_hosted_client_connect_complete(ziti_connection clt, int err) {
 static void on_hosted_tcp_server_connect_complete(uv_connect_t *c, int status) {
     if (c == NULL || c->handle == NULL || c->handle->data == NULL) {
         ZITI_LOG(ERROR, "null handle or io_ctx");
-        // todo get out
+        if (c) free(c);
+        return;
     }
     struct hosted_io_ctx_s *io_ctx = c->handle->data;
     if (io_ctx->client == NULL) {
@@ -224,23 +245,32 @@ static void on_hosted_tcp_server_connect_complete(uv_connect_t *c, int status) {
         free(c);
         return;
     }
-    ZITI_LOG(DEBUG, "hosted_service[%s], client[%s]: connected to server %s", io_ctx->service->service_name,
-             io_ctx->client_identity, io_ctx->resolved_dst);
-
-    uv_tcp_t *tcp = &io_ctx->server.tcp;
-    
-    if (uv_tcp_keepalive(tcp, 1, KEEPALIVE_DELAY) != 0) {
-        ZITI_LOG(WARN, "hosted_service[%s], client[%s]: failed to set TCP keepalive", 
-                 io_ctx->service->service_name, io_ctx->client_identity);
-    }
-    if (uv_tcp_nodelay(tcp, 1) != 0)  {
-        ZITI_LOG(WARN, "hosted_service[%s], client[%s]: failed to set TCP nodelay",
-                 io_ctx->service->service_name, io_ctx->client_identity);
-    }
-    
-    ziti_accept(io_ctx->client, on_hosted_client_connect_complete, NULL);
+    complete_hosted_tcp_connection(io_ctx);
     free(c);
 }
+
+/**
+ * called by tlsuv when a proxy connection to a hosted tcp server is established (or failed)
+ */
+static void on_proxy_connect(uv_os_sock_t sock, int status, void *ctx) {
+    hosted_io_context io = ctx;
+
+    if (status != 0) {
+        ZITI_LOG(ERROR, "proxy connect failed: %s (e=%d)", uv_strerror(status), status);
+        hosted_server_close(io);
+        return;
+    }
+
+    int uv_err = uv_tcp_open(&io->server.tcp, sock);
+    if (uv_err != 0) {
+        ZITI_LOG(ERROR, "uv_tcp_open failed: %s (e=%d)", uv_strerror(uv_err), uv_err);
+        hosted_server_close(io);
+        return;
+    }
+
+    complete_hosted_tcp_connection(io);
+}
+
 
 static int get_protocol_id(const char *protocol) {
     if (strcasecmp(protocol, "tcp") == 0) {
@@ -595,11 +625,24 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
     hints.ai_socktype = protocol_number == IPPROTO_UDP ? SOCK_DGRAM : SOCK_STREAM;
     hints.ai_flags = AI_NUMERICSERV;
     if (is_ip) hints.ai_flags |= AI_NUMERICHOST;
+    ziti_conn_set_data(clt, io);
+
+    if (service_ctx->proxy_connector) {
+        if (protocol_number == IPPROTO_TCP) {
+            ZITI_LOG(DEBUG, "hosted_service[%s] client[%s] dst_addr[%s:%s:%s] connecting through proxy %s",
+                     service_ctx->service_name, io->client_identity, protocol, ip_or_hn, port, service_ctx->proxy_addr);
+            service_ctx->proxy_connector->connect(service_ctx->loop, service_ctx->proxy_connector, ip_or_hn, port,
+            on_proxy_connect, io);
+        } else {
+            ZITI_LOG(WARN, "hosted_service[%s] client[%s] cannot use proxy for udp. dropping connection",
+                     service_ctx->service_name, io->client_identity);
+            hosted_server_close(io);
+        }
+        return;
+    }
 
     uv_getaddrinfo_t *ai_req = calloc(1, sizeof(uv_getaddrinfo_t));
     ai_req->data = io;
-    ziti_conn_set_data(clt, io);
-
     int s = uv_getaddrinfo(service_ctx->loop, ai_req, on_hosted_client_connect_resolved, ip_or_hn, port, &hints);
     if (s != 0) {
         ZITI_LOG(ERROR, "hosted_service[%s] client[%s]: getaddrinfo(%s:%s:%s) failed: %s",
@@ -840,6 +883,25 @@ host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, uv_loop_t *loop, const char *service
                 ziti_address_print(a->str, sizeof(a->str), allowed_src_addrs[i]);
                 memcpy(&a->za, allowed_src_addrs[i], sizeof(a->za));
                 STAILQ_INSERT_TAIL(&host_ctx->allowed_source_addresses, a, entries);
+            }
+
+            if (host_v1_cfg->proxy.type == ziti_proxy_server_type_http) {
+                const char *addr = host_v1_cfg->proxy.address;
+                if (addr != NULL && addr[0] != '\0') {
+                    struct tlsuv_url_s url = {0};
+                    if (tlsuv_parse_url(&url, addr) == 0) {
+                        host_ctx->proxy_addr = host_v1_cfg->proxy.address;
+                        char host[128], port[6];
+                        snprintf(host, sizeof(host), "%.*s", (int) url.hostname_len, url.hostname);
+                        snprintf(port, sizeof(port), "%d", url.port);
+                        host_ctx->proxy_connector = tlsuv_new_proxy_connector(tlsuv_PROXY_HTTP, host, port);
+                    } else {
+                        ZITI_LOG(ERROR, "hosted_service[%s] could not parse host.v1 proxy address '%s' as '<host>:<port>'",
+                                 host_ctx->service_name, host_v1_cfg->proxy.address);
+                        free_hosted_service_ctx(host_ctx);
+                        return NULL;
+                    }
+                }
             }
         }
             break;

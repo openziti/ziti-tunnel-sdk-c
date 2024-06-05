@@ -21,6 +21,7 @@
 #ifndef ZITI_TUNNEL_SDK_C_ZITI_HOSTING_H
 #define ZITI_TUNNEL_SDK_C_ZITI_HOSTING_H
 #include <ziti/ziti_tunnel.h>
+#include "tlsuv/http.h"
 // allowed address is one of:
 // - ip subnet address
 // - DNS name or wildcard
@@ -58,6 +59,8 @@ struct hosted_service_ctx_s {
         uint16_t port;
     } port_u;
     address_list_t    allowed_source_addresses;
+    char *proxy_addr;
+    tlsuv_connector_t *proxy_connector;
 };
 
 struct tunneled_service_s {
