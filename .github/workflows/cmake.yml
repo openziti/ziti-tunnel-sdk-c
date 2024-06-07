@@ -2,7 +2,9 @@ name: CI build
 
 on:
   pull_request:
-    branches: [ main ]
+    branches:
+      - main
+      - release-*
   workflow_dispatch:
   workflow_call:
 
