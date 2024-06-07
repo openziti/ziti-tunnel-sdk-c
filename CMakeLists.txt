@@ -50,9 +50,6 @@ else()
     # extract semver from pre-release tags like 2.0.0-alpha
     string(REGEX MATCH "([0-9]+.[0-9]+.[0-9]+)" PROJECT_SEMVER ${PROJECT_TAG})
 
-    message(NOTICE "tag = ${PROJECT_TAG}")
-    message(NOTICE "tweak = ${PROJECT_TWEAK}")
-    message(NOTICE "slug = ${PROJECT_SLUG}")
     if(NOT PROJECT_SEMVER)
         set(PROJECT_SEMVER "${DUMMY_SEMVER}")
         message(WARNING "SEMVER could not be parsed from GIT_VERSION: ${GIT_VERSION}. Setting to PROJECT_SEMVER: ${PROJECT_SEMVER}")
@@ -87,8 +84,6 @@ project(ziti-tunnel-sdk-c
         LANGUAGES C CXX)
 
 set(PROJECT_VERSION ${version})
-message(NOTICE "ver = ${PROJECT_VERSION}"
-)
 
 if(NOT BUILD_DIST_PACKAGES)
     include(CPack)
