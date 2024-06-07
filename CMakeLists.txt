@@ -83,7 +83,7 @@ project(ziti-tunnel-sdk-c
         HOMEPAGE_URL "https://github.com/openziti/ziti-tunneler-sdk-c"
         LANGUAGES C CXX)
 
-set(PROJECT_VERSION ${version})
+set(PROJECT_VERSION ${GIT_VERSION})
 
 if(NOT BUILD_DIST_PACKAGES)
     include(CPack)
