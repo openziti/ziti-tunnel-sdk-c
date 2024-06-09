@@ -19,7 +19,7 @@ if(NOT GIT_VERSION AND GIT_FOUND)
     message("Found Git executable \"${GIT_EXECUTABLE}\".")
     # Generate a git-describe version string from Git repository tags
     execute_process(
-        COMMAND ${GIT_EXECUTABLE} describe --tags --dirty=-local --match "v*"
+        COMMAND ${GIT_EXECUTABLE} describe --long --tags
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
         OUTPUT_VARIABLE GIT_VERSION
         RESULT_VARIABLE GIT_ERROR_CODE
@@ -42,7 +42,14 @@ if(NOT GIT_VERSION)
     set(PROJECT_SEMVER "${DUMMY_SEMVER}")
     message(WARNING "GIT_VERSION not set. Using dummy PROJECT_SEMVER: \"${PROJECT_SEMVER}\", GIT_VERSION: \"${GIT_VERSION}\".")
 else()
-    string(REGEX MATCH "([0-9]+\\.[0-9]+\\.[0-9]+)" PROJECT_SEMVER "${GIT_VERSION}")
+    # tag-tweak-slug
+    string(REGEX REPLACE "(.*)-([0-9]+)-(.*)" "\\1" PROJECT_TAG "${GIT_VERSION}")
+    string(REGEX REPLACE "(.*)-([0-9]+)-(.*)" "\\2" PROJECT_TWEAK "${GIT_VERSION}")
+    string(REGEX REPLACE "(.*)-([0-9]+)-(.*)" "\\3" PROJECT_SLUG "${GIT_VERSION}")
+
+    # extract semver from pre-release tags like 2.0.0-alpha
+    string(REGEX MATCH "([0-9]+.[0-9]+.[0-9]+)" PROJECT_SEMVER ${PROJECT_TAG})
+
     if(NOT PROJECT_SEMVER)
         set(PROJECT_SEMVER "${DUMMY_SEMVER}")
         message(WARNING "SEMVER could not be parsed from GIT_VERSION: ${GIT_VERSION}. Setting to PROJECT_SEMVER: ${PROJECT_SEMVER}")
@@ -64,9 +71,19 @@ if((NOT DISABLE_SEMVER_VERIFICATION) AND PROJECT_SEMVER VERSION_EQUAL "${DUMMY_S
     message(FATAL_ERROR "SEMVER Verification failed. A valid SEMVER is required for correct package version composition. To override, set DISABLE_SEMVER_VERIFICATION=ON.")
 endif()
 
+unset(GIT_VERSION CACHE)
+if (PROJECT_TWEAK STREQUAL "0")
+    set(GIT_VERSION ${PROJECT_TAG})
+else ()
+    set(GIT_VERSION "${PROJECT_TAG}.${PROJECT_TWEAK}")
+endif ()
+
 project(ziti-tunnel-sdk-c
-        VERSION "${PROJECT_SEMVER}"
+        DESCRIPTION "OpenZiti tunneler SDK"
+        HOMEPAGE_URL "https://github.com/openziti/ziti-tunneler-sdk-c"
         LANGUAGES C CXX)
+
+set(PROJECT_VERSION ${GIT_VERSION})
 
 if(NOT BUILD_DIST_PACKAGES)
     include(CPack)
