@@ -134,6 +134,7 @@ static long refresh_metrics = 5000;
 static long metrics_latency = 5000;
 static char *configured_cidr = NULL;
 static char *configured_log_level = NULL;
+static char *configured_proxy = NULL;
 static char *config_dir = NULL;
 
 static uv_pipe_t cmd_server;
@@ -1873,7 +1874,6 @@ static int run_opts(int argc, char *argv[]) {
     int c, option_index, errors = 0;
     optind = 0;
     bool identity_provided = false;
-    const char *proxy_arg = NULL;
 
     while ((c = getopt_long(argc, argv, "i:I:v:r:d:u:x:",
                             run_options, &option_index)) != -1) {
@@ -1891,7 +1891,6 @@ static int run_opts(int argc, char *argv[]) {
                 break;
             case 'v':
                 configured_log_level = optarg;
-                ziti_log_set_level(get_log_level(optarg), NULL);
                 break;
             case 'r': {
                 unsigned long interval = strtoul(optarg, NULL, 10);
@@ -1905,23 +1904,19 @@ static int run_opts(int argc, char *argv[]) {
                 dns_upstream = optarg;
                 break;
             case 'x':
-                proxy_arg = optarg;
+                configured_proxy = optarg;
                 break;
             default: {
-                ZITI_LOG(ERROR, "Unknown option '%c'", c);
+                fprintf(stderr, "Unknown option '%c'\n", c);
                 errors++;
                 break;
             }
         }
     }
 
-    if (init_proxy_connector(proxy_arg) != 0) {
-        errors++;
-    }
-
     CHECK_COMMAND_ERRORS(errors);
 
-    printf("About to run tunnel service... %s", main_cmd.name);
+    fprintf(stderr, "About to run tunnel service... %s\n", main_cmd.name);
     ziti_set_app_info(main_cmd.name, ziti_tunneler_version());
 
     return optind;
@@ -1948,15 +1943,17 @@ static int run_host_opts(int argc, char *argv[]) {
                 break;
             case 'v':
                 configured_log_level = optarg;
-                ziti_log_set_level(get_log_level(optarg), NULL);
                 break;
             case 'r': {
                 unsigned long interval = strtoul(optarg, NULL, 10);
                 ziti_set_refresh_interval(interval);
                 break;
             }
+            case 'x':
+                configured_proxy = optarg;
+                break;
             default: {
-                ZITI_LOG(ERROR, "Unknown option '%c'", c);
+                fprintf(stderr, "Unknown option '%c'\n", c);
                 errors++;
                 break;
             }
@@ -1969,7 +1966,7 @@ static int run_host_opts(int argc, char *argv[]) {
 
     CHECK_COMMAND_ERRORS(errors);
 
-    printf("About to run tunnel service that hosts services... %s", main_cmd.name);
+    fprintf(stderr, "About to run tunnel service that hosts services... %s\n", main_cmd.name);
     ziti_set_app_info(main_cmd.name, ziti_tunneler_version());
 
     host_only = true;
@@ -1999,16 +1996,19 @@ static void run(int argc, char *argv[]) {
     initialize_instance_config();
 
     //set log level in precedence: command line flag (-v/--verbose) -> env var (ZITI_LOG) -> config file
-    int log_level = get_log_level(NULL);
+    int log_level = get_log_level(configured_log_level);
+    log_writer log_fn = NULL;
 
 #if _WIN32
     // initialize log function here. level will be set further down
     log_init(ziti_loop);
-    ziti_log_set_logger(ziti_log_writer);
+    log_fn = ziti_log_writer;
     remove_all_nrpt_rules();
 
     signal(SIGINT, interrupt_handler);
 #endif
+
+    ziti_log_init(ziti_loop, get_log_level(configured_log_level), NULL);
 
     // generate tunnel status instance and save active state and start time
     if (config_dir != NULL) {
@@ -2094,6 +2094,10 @@ static void run(int argc, char *argv[]) {
     ziti_tunnel_set_log_level(ziti_log_level(NULL, NULL));
     set_log_level(ziti_log_level_label());
     ziti_tunnel_set_logger(ziti_logger);
+
+    if (init_proxy_connector(configured_proxy) != 0) {
+        exit(1);
+    }
 
     int rc;
     if (is_host_only()) {
@@ -2254,7 +2258,10 @@ static int write_close(FILE *fp, const uv_buf_t *data)
 static void enroll(int argc, char *argv[]) {
     uv_loop_t *l = uv_loop_new();
     int log_level = get_log_level(NULL);
-    ziti_log_set_level(log_level, NULL);
+    ziti_log_init(ziti_loop, log_level, NULL);
+    if (init_proxy_connector(configured_proxy) != 0) {
+        exit(EXIT_FAILURE);
+    }
 
     if (config_file == 0) {
         ZITI_LOG(ERROR, "output file option(-i|--identity) is required");
@@ -2383,7 +2390,7 @@ void send_message_to_pipe(uv_stream_t *pipe, char *msg) {
 
 void on_connect(uv_connect_t* connect, int status){
     if (status < 0) {
-        fprintf(stderr, "failed to connect: %d/%s", status, uv_strerror(status));
+        fprintf(stderr, "failed to connect: %d/%s\n", status, uv_strerror(status));
         free(connect->data);
     } else {
         int res = uv_read_start((uv_stream_t *) connect->handle, cmd_alloc, on_response);
@@ -2417,7 +2424,7 @@ static void send_message_to_tunnel(char* message) {
     uv_loop_t* loop = connect_and_send_cmd(sockfile, connect, &client_handle);
 
     if (loop == NULL) {
-        fprintf(stderr, "Cannot run UV loop, loop is null");
+        fprintf(stderr, "Cannot run UV loop, loop is null\n");
         return;
     }
 
@@ -3297,7 +3304,6 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    ziti_log_init(ziti_loop, get_log_level(NULL), NULL);
     commandline_run(&main_cmd, argc, argv);
     return 0;
 }
