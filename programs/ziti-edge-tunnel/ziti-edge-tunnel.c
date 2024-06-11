@@ -2008,7 +2008,7 @@ static void run(int argc, char *argv[]) {
     signal(SIGINT, interrupt_handler);
 #endif
 
-    ziti_log_init(ziti_loop, get_log_level(configured_log_level), NULL);
+    ziti_log_init(ziti_loop, log_level, log_fn);
 
     // generate tunnel status instance and save active state and start time
     if (config_dir != NULL) {
@@ -2257,7 +2257,7 @@ static int write_close(FILE *fp, const uv_buf_t *data)
 
 static void enroll(int argc, char *argv[]) {
     uv_loop_t *l = uv_loop_new();
-    int log_level = get_log_level(NULL);
+    int log_level = get_log_level(configured_log_level);
     ziti_log_init(ziti_loop, log_level, NULL);
     if (init_proxy_connector(configured_proxy) != 0) {
         exit(EXIT_FAILURE);
