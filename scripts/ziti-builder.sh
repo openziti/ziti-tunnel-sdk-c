@@ -70,9 +70,11 @@ function set_workspace(){
             --rm \
             --user "${UID}" \
             --volume "${REPODIR}:${WORKDIR}" \
+            "${ZITI_SDK_DIR:+--volume=${ZITI_SDK_DIR}:${ZITI_SDK_DIR}}" \
             --platform "linux/amd64" \
             --env "VCPKG_DEFAULT_BINARY_CACHE=${WORKDIR}/.cache" \
             --env "TLSUV_TLSLIB" \
+            --env "ZITI_SDK_DIR" \
             "openziti/ziti-builder:${ZITI_BUILDER_TAG:-latest}" \
                 "${WORKDIR}/${SCRIPTSDIR}/${BASENAME}" "${@}"
     fi
@@ -128,6 +130,7 @@ function main() {
             -DBUILD_DIST_PACKAGES="${BUILD_DIST_PACKAGES:-OFF}" \
             -DVCPKG_OVERLAY_PORTS="./vcpkg-overlays/linux-syslibs/ubuntu18" \
             "${TLSUV_TLSLIB:+-DTLSUV_TLSLIB=${TLSUV_TLSLIB}}" \
+            "${ZITI_SDK_DIR:+-DZITI_SDK_DIR=${ZITI_SDK_DIR}}" \
             -S . \
             -B ./build \
             "${CMAKE_EXTRA_ARGS:-}"
