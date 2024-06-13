@@ -438,20 +438,20 @@ static int do_bind(hosted_io_context io, const char *addr, int socktype) {
 
     if (uv_err != 0) {
         ZITI_LOG(ERROR, "hosted_service[%s], client[%s]: getaddrinfo(%s) failed: %s",
-                 io->service->service_name, io->client_identity, io->app_data->source_addr, uv_strerror(uv_err));
+                 io->service->service_name, io->client_identity, addr, uv_strerror(uv_err));
         return -1;
     }
 
     if (ai_req.addrinfo->ai_next != NULL) {
         ZITI_LOG(DEBUG, "hosted_service[%s], client[%s]: getaddrinfo(%s) returned multiple results; using first",
-                 io->service->service_name, io->client_identity, io->app_data->source_addr);
+                 io->service->service_name, io->client_identity, addr);
     }
 
     ziti_address src_za;
     ziti_address_from_sockaddr(&src_za, ai_req.addrinfo->ai_addr); // convert for easy validation
     if (!address_match(&src_za, &io->service->allowed_source_addresses)) {
         ZITI_LOG(ERROR, "hosted_service[%s], client[%s] client requested source IP %s is not allowed",
-                 io->service->service_name, io->client_identity, io->app_data->source_addr);
+                 io->service->service_name, io->client_identity, addr);
         return -1;
     }
 
