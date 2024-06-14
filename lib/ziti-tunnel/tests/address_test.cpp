@@ -89,3 +89,19 @@ TEST_CASE("address_match", "[address]") {
 
     // todo hostname and wildcard dns matching
 }
+
+TEST_CASE("address_conversion", "[address]") {
+    const char *ip6_str = "2768:8631:c02:ffc9::1308";
+    ip_addr_t ip6;
+    ipaddr_aton(ip6_str, &ip6);
+    ziti_address za_from_ip6;
+    ziti_address_from_ip_addr(&za_from_ip6, &ip6);
+
+    ziti_address za_from_str;
+    ziti_address_from_string(&za_from_str, ip6_str);
+
+    char za_str[128];
+    ziti_address_print(za_str, sizeof(za_str), &za_from_ip6);
+    fprintf(stderr, "%s converted to %s\n", ip6_str, za_str);
+    REQUIRE(ziti_address_match(&za_from_ip6, &za_from_str) == 0);
+}
