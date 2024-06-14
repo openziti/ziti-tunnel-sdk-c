@@ -53,7 +53,7 @@ void ziti_address_from_in6_addr(ziti_address *za, const struct in6_addr *a) {
     za->type = ziti_address_cidr;
     za->addr.cidr.af = AF_INET6;
     za->addr.cidr.bits = 128;
-    memcpy(&za->addr.cidr.ip, &a, sizeof(struct in6_addr));
+    memcpy(&za->addr.cidr.ip, &a->s6_addr, sizeof(struct in6_addr));
 }
 
 void ziti_address_from_sockaddr_in(ziti_address *za, const struct sockaddr_in *sin) {
