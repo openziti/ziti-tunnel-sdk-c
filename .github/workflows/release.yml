@@ -71,7 +71,7 @@ jobs:
           GITHUB_REF: ${{ github.ref }}
         run: |
           ZITI_VERSION="${GITHUB_REF#refs/*/v}"
-          if [[ "${ZITI_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          if [[ "${ZITI_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-.+)?$ ]]; then
             echo "DEBUG: ZITI_VERSION=${ZITI_VERSION}"
             echo ZITI_VERSION="${ZITI_VERSION}" >> $GITHUB_OUTPUT
           else
