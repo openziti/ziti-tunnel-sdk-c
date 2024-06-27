@@ -7,7 +7,10 @@
     "llhttp",
     "libsodium",
     "getopt",
-    "mbedtls",
+    {
+      "name": "openssl",
+      "$comment": "on linux we use system installed OpenSSL, as determined by vcpkg-overlays/linux-syslibs)"
+    },
     "json-c",
     "protobuf-c"
   ],
