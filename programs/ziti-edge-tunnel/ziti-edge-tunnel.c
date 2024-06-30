@@ -149,7 +149,7 @@ static const ziti_tunnel_ctrl *CMD_CTRL;
 static bool started_by_scm = false;
 static bool tunnel_interrupted = false;
 
-uv_loop_t *ziti_loop = NULL;
+uv_loop_t *global_loop_ref = NULL;
 tunneler_context tunneler;
 static uv_mutex_t stop_mutex;
 static uv_cond_t stop_cond;
@@ -214,6 +214,15 @@ static void cmd_alloc(uv_handle_t *s, size_t sugg, uv_buf_t *b) {
     b->len = sugg;
 }
 
+static void send_tunnel_status() {
+    tunnel_status_event tnl_sts_evt = {0};
+    tnl_sts_evt.Op = strdup("status");
+    tnl_sts_evt.Status = get_tunnel_status();
+    send_events_message(&tnl_sts_evt, (to_json_fn) tunnel_status_event_to_json, true);
+    tnl_sts_evt.Status = NULL; //don't free
+    free_tunnel_status_event(&tnl_sts_evt);
+}
+
 static void on_cmd_write(uv_write_t *wr, int len) {
     if (wr->data) {
         free(wr->data);
@@ -258,7 +267,7 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
                             }
 
                             if (model_map_size(&hostnamesToRemove) > 0) {
-                                remove_nrpt_rules(ziti_loop, &hostnamesToRemove);
+                                remove_nrpt_rules(global_loop_ref, &hostnamesToRemove);
                             }
                         }
 
@@ -358,6 +367,7 @@ void tunnel_enroll_cb(const ziti_config *cfg, int status, const char *err, void 
     send_tunnel_command(&tnl_cmd, add_id_req->cmd_ctx);
     free_tunnel_command(&tnl_cmd);
     free(add_id_req);
+    save_tunnel_status_to_file();
 }
 
 static void enroll_ziti_async(uv_loop_t *loop, void *arg) {
@@ -548,7 +558,7 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
             add_id_req->identifier_file_name = strdup(new_identifier_name);
             add_id_req->jwt_content = strdup(tunnel_add_identity_cmd.jwtContent);
 
-            enroll_ziti_async(ziti_loop, add_id_req);
+            enroll_ziti_async(global_loop_ref, add_id_req);
             free_tunnel_add_identity(&tunnel_add_identity_cmd);
             return true;
         }
@@ -570,7 +580,7 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
                 if (!stop_windows_service()) {
                     ZITI_LOG(INFO, "Could not send stop signal to scm, Tunnel must not be started as service");
                     stop_tunnel_and_cleanup();
-                    uv_stop(ziti_loop);
+                    uv_stop(global_loop_ref);
                 }
             }
             free_tunnel_service_control(&tunnel_service_control_opts);
@@ -734,13 +744,7 @@ static void on_events_client(uv_stream_t *s, int status) {
     ZITI_LOG(DEBUG,"Received events client connection request, count: %d", ++current_events_channels);
 
     // send status message immediately
-    tunnel_status_event tnl_sts_evt = {0};
-    tnl_sts_evt.Op = strdup("status");
-    tnl_sts_evt.Status = get_tunnel_status();
-    send_events_message(&tnl_sts_evt, (to_json_fn) tunnel_status_event_to_json, true);
-    tnl_sts_evt.Status = NULL;
-    free_tunnel_status_event(&tnl_sts_evt);
-
+    send_tunnel_status();
 }
 
 
@@ -750,7 +754,7 @@ void on_write_event(uv_write_t* req, int status) {
         if (status == UV_EPIPE) {
             struct event_conn_s *event_client;
             LIST_FOREACH(event_client, &event_clients_list, _next_event) {
-                if (event_client->event_client_conn == req->handle) {
+                if (event_client->event_client_conn == (uv_pipe_t*) req->handle) {
                     break;
                 }
             }
@@ -1321,13 +1325,13 @@ static void on_event(const base_event *ev) {
                 }
             }
             if (model_map_size(&hostnamesToEdit) > 0 && !is_host_only()) {
-                remove_and_add_nrpt_rules(ziti_loop, &hostnamesToEdit, get_dns_ip());
+                remove_and_add_nrpt_rules(global_loop_ref, &hostnamesToEdit, get_dns_ip());
             }
             if (model_map_size(&hostnamesToAdd) > 0 && !is_host_only()) {
-                add_nrpt_rules(ziti_loop, &hostnamesToAdd, get_dns_ip());
+                add_nrpt_rules(global_loop_ref, &hostnamesToAdd, get_dns_ip());
             }
             if (model_map_size(&hostnamesToRemove) > 0 && !is_host_only()) {
-                remove_nrpt_rules(ziti_loop, &hostnamesToRemove);
+                remove_nrpt_rules(global_loop_ref, &hostnamesToRemove);
             }
 
 #endif
@@ -1361,12 +1365,13 @@ static void on_event(const base_event *ev) {
 
         case TunnelEvent_MFAEvent: {
             const mfa_event *mfa_ev = (mfa_event *) ev;
-            ZITI_LOG(INFO, "ztx[%s] is requesting MFA code", ev->identifier);
+            ZITI_LOG(INFO, "ztx[%s] is requesting MFA code. Identity needs MFA", ev->identifier);
             tunnel_identity *id = find_tunnel_identity(ev->identifier);
             if (id == NULL) {
                 break;
             }
-            set_mfa_status(ev->identifier, true, true);
+            set_mfa_status(ev->identifier, id->MfaEnabled, true);
+            send_tunnel_status();
             mfa_status_event mfa_sts_event = {
                     .Op = strdup("mfa"),
                     .Action = strdup(mfa_ev->operation),
@@ -1411,9 +1416,11 @@ static void on_event(const base_event *ev) {
                         send_events_message(&id_event, (to_json_fn) identity_event_to_json, true);
                         id_event.Id = NULL;
                         free_identity_event(&id_event);
+                        save_tunnel_status_to_file(); // persist the mfa change
                         break;
                     case mfa_status_enrollment_remove:
                         set_mfa_status(ev->identifier, false, false);
+                        save_tunnel_status_to_file(); // persist the mfa change
                         break;
                     case mfa_status_enrollment_challenge:
                         mfa_sts_event.RecoveryCodes = mfa_ev->recovery_codes;
@@ -2001,19 +2008,19 @@ static void run(int argc, char *argv[]) {
 
 #if _WIN32
     // initialize log function here. level will be set further down
-    log_init(ziti_loop);
+    log_init(global_loop_ref);
     log_fn = ziti_log_writer;
     remove_all_nrpt_rules();
 
     signal(SIGINT, interrupt_handler);
 #endif
 
-    ziti_log_init(ziti_loop, log_level, log_fn);
+    ziti_log_init(global_loop_ref, log_level, log_fn);
 
     // generate tunnel status instance and save active state and start time
     if (config_dir != NULL) {
         set_identifier_path(config_dir);
-        load_tunnel_status_from_file(ziti_loop);
+        load_tunnel_status_from_file(global_loop_ref);
     }
 
     uint32_t tun_ip;
@@ -2075,7 +2082,7 @@ static void run(int argc, char *argv[]) {
     ZITI_LOG(INFO,"	- initialized at   : %s (local time), %s (UTC)", time_val, time_str);
     ZITI_LOG(INFO,"	- log file location: %s", get_log_file_name());
     ZITI_LOG(INFO,"============================================================================");
-    move_config_from_previous_windows_backup(ziti_loop);
+    move_config_from_previous_windows_backup(global_loop_ref);
 
     ZITI_LOG(DEBUG, "granting se_debug privilege to current process to allow access to privileged processes during posture checks");
     //ensure this process has the necessary access token to get the full path of privileged processes
@@ -2101,9 +2108,9 @@ static void run(int argc, char *argv[]) {
 
     int rc;
     if (is_host_only()) {
-        rc = run_tunnel_host_mode(ziti_loop);
+        rc = run_tunnel_host_mode(global_loop_ref);
     } else {
-        rc = run_tunnel(ziti_loop, tun_ip, dns_ip, configured_cidr, dns_upstream);
+        rc = run_tunnel(global_loop_ref, tun_ip, dns_ip, configured_cidr, dns_upstream);
     }
     exit(rc);
 }
@@ -2258,7 +2265,7 @@ static int write_close(FILE *fp, const uv_buf_t *data)
 static void enroll(int argc, char *argv[]) {
     uv_loop_t *l = uv_loop_new();
     int log_level = get_log_level(configured_log_level);
-    ziti_log_init(ziti_loop, log_level, NULL);
+    ziti_log_init(global_loop_ref, log_level, NULL);
     if (init_proxy_connector(configured_proxy) != 0) {
         exit(EXIT_FAILURE);
     }
@@ -3298,8 +3305,8 @@ int main(int argc, char *argv[]) {
     }
 #endif
 
-    ziti_loop = uv_default_loop();
-    if (ziti_loop == NULL) {
+    global_loop_ref = uv_default_loop();
+    if (global_loop_ref == NULL) {
         ZITI_LOG(ERROR, "failed to initialize default uv loop");
         exit(EXIT_FAILURE);
     }
