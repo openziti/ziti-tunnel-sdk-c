@@ -76,7 +76,7 @@ tunnel_identity *create_or_get_tunnel_identity(const char* identifier, char* fil
             snprintf(tnl_id->Name, length+1, "%s", fingerprint);
 
             tnl_id->IdFileStatus = true;
-
+            tnl_id->Active = true;
         }
         model_map_set(&tnl_identity_map, identifier, tnl_id);
         return tnl_id;
@@ -555,7 +555,6 @@ void set_identifier_from_identities() {
         }
         //on startup - set mfa needed to false to correctly reflect tunnel status. After the identity is loaded these
         //are set to true __if necessary__
-        tnl_id->MfaEnabled = false;
         tnl_id->MfaNeeded = false;
     }
 }
@@ -565,14 +564,9 @@ void initialize_tunnel_status() {
     tnl_status.Duration = 0;
     uv_timeval64_t now;
     uv_gettimeofday(&now);
-    tnl_status.StartTime.tv_sec = now.tv_sec;
+    tnl_status.StartTime.tv_sec = (long)now.tv_sec;
     tnl_status.StartTime.tv_usec = now.tv_usec;
-    if (tnl_status.ApiPageSize < MIN_API_PAGESIZE) {
-        tnl_status.ApiPageSize = DEFAULT_API_PAGESIZE;
-    }
-    if (tnl_status.LogLevel == NULL) {
-        tnl_status.LogLevel = "info";
-    }
+    tnl_status.ApiPageSize = DEFAULT_API_PAGESIZE;
 
 }
 
