@@ -26,7 +26,7 @@ jobs:
       matrix: ${{ steps.set_matrix.outputs.matrix }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - name: Set Matrix
@@ -52,7 +52,7 @@ jobs:
       ZITI_RPM_TEST_REPO: ${{ vars.ZITI_RPM_TEST_REPO || 'zitipax-openziti-rpm-test' }}
     steps:
       - name: Debug action
-        uses: hmarr/debug-action@v2.1.0
+        uses: hmarr/debug-action@v3
 
       # only focal-20.04 has >= 2.18, which is required by actions/checkout to clone
       # which enables cmake version discovery
@@ -91,7 +91,7 @@ jobs:
           update-alternatives --install /usr/bin/git git /root/git.sh 50
 
       - name: checkout workspace
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -142,7 +142,7 @@ jobs:
           ./build/programs/ziti-edge-tunnel/Release/ziti-edge-tunnel version --verbose
 
       - name: Upload Package to Workflow Summary Page
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.distro.name }}-${{ matrix.distro.version }}-${{ matrix.arch.rpm }}-${{ matrix.distro.type }}
           path: ./build/ziti-edge-tunnel-*.${{ matrix.distro.type }}
@@ -150,7 +150,7 @@ jobs:
 
       - name: Configure jFrog CLI
         if: ${{ github.event_name == 'release' && startsWith(github.ref, 'refs/tags/v') }}
-        uses: jfrog/setup-jfrog-cli@v3
+        uses: jfrog/setup-jfrog-cli@v4
         env:
           JF_ENV_1: ${{ secrets.ZITI_ARTIFACTORY_CLI_CONFIG_PACKAGE_UPLOAD }}
 

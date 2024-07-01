@@ -57,10 +57,10 @@ jobs:
 
     steps:
       - name: Debug action
-        uses: hmarr/debug-action@v2.1.0
+        uses: hmarr/debug-action@v3
 
       - name: checkout workspace
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -79,7 +79,7 @@ jobs:
         working-directory: ./build/programs/ziti-edge-tunnel/
 
       - name: upload bundle artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.preset }}
           path: ./build/bundle/ziti-edge-tunnel-*.zip 
