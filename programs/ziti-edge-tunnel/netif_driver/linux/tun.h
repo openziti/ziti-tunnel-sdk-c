@@ -24,6 +24,7 @@
 struct netif_handle_s {
     int  fd;
     char name[IFNAMSIZ];
+    ziti_address addr;
 
     model_map *route_updates;
 };
