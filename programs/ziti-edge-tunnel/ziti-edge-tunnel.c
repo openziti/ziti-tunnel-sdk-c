@@ -3292,7 +3292,7 @@ int main(int argc, char *argv[]) {
 
     global_loop_ref = uv_default_loop();
     if (global_loop_ref == NULL) {
-        ZITI_LOG(ERROR, "failed to initialize default uv loop");
+        printf("failed to initialize default uv loop"); //can't use ZITI_LOG here
         exit(EXIT_FAILURE);
     }
 
