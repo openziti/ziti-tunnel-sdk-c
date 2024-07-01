@@ -1023,14 +1023,16 @@ static void on_enable_mfa(ziti_context ztx, int status, ziti_mfa_enrollment *enr
         ev->provisioning_url = strdup(enrollment->provisioning_url);
         char **rc = enrollment->recovery_codes;
         int size = 0;
-        while (*rc != NULL) {
+        while (rc != NULL && *rc != NULL) {
             rc++;
             size++;
         }
         ev->recovery_codes = calloc((size + 1), sizeof(char *));
-        int idx;
-        for (idx=0; enrollment->recovery_codes[idx] !=0; idx++) {
-            ev->recovery_codes[idx] = strdup(enrollment->recovery_codes[idx]);
+        if(enrollment->recovery_codes != NULL) {
+            int idx;
+            for (idx = 0; enrollment->recovery_codes[idx] != 0; idx++) {
+                ev->recovery_codes[idx] = strdup(enrollment->recovery_codes[idx]);
+            }
         }
     }
 
