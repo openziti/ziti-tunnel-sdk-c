@@ -3290,6 +3290,12 @@ int main(int argc, char *argv[]) {
         name = name + 1;
     }
 
+    global_loop_ref = uv_default_loop();
+    if (global_loop_ref == NULL) {
+        printf("failed to initialize default uv loop"); //can't use ZITI_LOG here
+        exit(EXIT_FAILURE);
+    }
+
     main_cmd.name = name;
 #if _WIN32
     SvcStart();
@@ -3304,12 +3310,6 @@ int main(int argc, char *argv[]) {
         return 0;
     }
 #endif
-
-    global_loop_ref = uv_default_loop();
-    if (global_loop_ref == NULL) {
-        ZITI_LOG(ERROR, "failed to initialize default uv loop");
-        exit(EXIT_FAILURE);
-    }
 
     commandline_run(&main_cmd, argc, argv);
     return 0;
