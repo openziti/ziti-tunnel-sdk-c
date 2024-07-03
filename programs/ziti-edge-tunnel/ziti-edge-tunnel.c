@@ -78,6 +78,7 @@ static void send_tunnel_command_inline(const tunnel_command *tnl_cmd, void *ctx)
 static void scm_service_stop_event(uv_loop_t *loop, void *arg);
 static void stop_tunnel_and_cleanup();
 static bool is_host_only();
+static bool use_rt_main();
 static void run_tunneler_loop(uv_loop_t* ziti_loop);
 static tunneler_context initialize_tunneler(netif_driver tun, uv_loop_t* ziti_loop);
 
@@ -1545,7 +1546,8 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
 #if __APPLE__ && __MACH__
     tun = utun_open(tun_error, sizeof(tun_error), ip_range);
 #elif __linux__
-    tun = tun_open(ziti_loop, tun_ip, dns_ip, dns_subnet, tun_error, sizeof(tun_error));
+    tun = tun_open(ziti_loop, tun_ip, dns_ip, dns_subnet, tun_error, sizeof(tun_error),
+        &(struct netif_options){ .use_rt_main  = use_rt_main() });
 #elif _WIN32
     tun = tun_open(ziti_loop, tun_ip, dns_subnet, tun_error, sizeof(tun_error));
 #else
@@ -1810,6 +1812,8 @@ static void usage(int argc, char *argv[]) {
     commandline_run(&main_cmd, 3, help_args);
 }
 
+#define ZET__OPTVAL_PREFER_RT_MAIN 256
+
 static struct option run_options[] = {
         { "identity", required_argument, NULL, 'i' },
         { "identity-dir", required_argument, NULL, 'I'},
@@ -1818,6 +1822,7 @@ static struct option run_options[] = {
         { "dns-ip-range", required_argument, NULL, 'd'},
         { "dns-upstream", required_argument, NULL, 'u'},
         { "proxy", required_argument, NULL, 'x' },
+        { "use-main-routing-table", no_argument, NULL, ZET__OPTVAL_PREFER_RT_MAIN},
 };
 
 static struct option run_host_options[] = {
@@ -1826,6 +1831,7 @@ static struct option run_host_options[] = {
         { "verbose", required_argument, NULL, 'v'},
         { "refresh", required_argument, NULL, 'r'},
         { "proxy", required_argument, NULL, 'x' },
+        { "use-main-routing-table", no_argument, NULL, ZET__OPTVAL_PREFER_RT_MAIN},
 };
 
 #ifndef DEFAULT_DNS_CIDR
@@ -1833,6 +1839,8 @@ static struct option run_host_options[] = {
 #endif
 static const char* dns_upstream = NULL;
 static bool host_only = false;
+
+static int opt_prefer_rt_main = -1;
 
 #include "tlsuv/http.h"
 
@@ -1915,6 +1923,9 @@ static int run_opts(int argc, char *argv[]) {
             case 'x':
                 configured_proxy = optarg;
                 break;
+            case ZET__OPTVAL_PREFER_RT_MAIN:
+                opt_prefer_rt_main = 1;
+                break;
             default: {
                 fprintf(stderr, "Unknown option '%c'\n", c);
                 errors++;
@@ -1960,6 +1971,9 @@ static int run_host_opts(int argc, char *argv[]) {
             }
             case 'x':
                 configured_proxy = optarg;
+                break;
+            case ZET__OPTVAL_PREFER_RT_MAIN:
+                opt_prefer_rt_main = 1;
                 break;
             default: {
                 fprintf(stderr, "Unknown option '%c'\n", c);
@@ -3064,7 +3078,11 @@ static CommandLine enroll_cmd = make_command("enroll", "enroll Ziti identity",
         "\t-n|--name\tidentity name\n",
         parse_enroll_opts, enroll);
 static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required superuser access)",
-                                          "-i <id.file> [-r N] [-v N] [-d|--dns-ip-range N.N.N.N/n]",
+                                          "-i <id.file> [-r N] [-v N] [-d|--dns-ip-range N.N.N.N/n]"
+#ifdef __linux__
+                                          " [--use-main-routing-table]"
+#endif /*`__linux__ */
+                                          ,
                                           "\t-i|--identity <identity>\trun with provided identity file (required)\n"
                                           "\t-I|--identity-dir <dir>\tload identities from provided directory\n"
                                           "\t-x|--proxy type://[username[:password]@]hostname_or_ip:port\tproxy to use when"
@@ -3072,16 +3090,28 @@ static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required supe
                                           "\t-v|--verbose N\tset log level, higher level -- more verbose (default 3)\n"
                                           "\t-r|--refresh N\tset service polling interval in seconds (default 10)\n"
                                           "\t-d|--dns-ip-range <ip range>\tspecify CIDR block in which service DNS names"
-                                          " are assigned in N.N.N.N/n format (default " DEFAULT_DNS_CIDR ")\n",
+                                          " are assigned in N.N.N.N/n format (default " DEFAULT_DNS_CIDR ")\n"
+#ifdef __linux__
+                                          "\t--use-main-routing-table\tconfigure the main routing table\n"
+#endif /* __linux__ */
+                                          ,
         run_opts, run);
 static CommandLine run_host_cmd = make_command("run-host", "run Ziti tunnel to host services",
-                                          "-i <id.file> [-r N] [-v N]",
+                                          "-i <id.file> [-r N] [-v N]"
+#ifdef __linux__
+                                          " [--use-main-routing-table]"
+#endif /* __linux__ */
+                                          ,
                                           "\t-i|--identity <identity>\trun with provided identity file (required)\n"
                                           "\t-I|--identity-dir <dir>\tload identities from provided directory\n"
                                           "\t-x|--proxy type://[username[:password]@]hostname_or_ip:port\tproxy to use when"
                                           " connecting to OpenZiti controller and edge routers"
                                           "\t-v|--verbose N\tset log level, higher level -- more verbose (default 3)\n"
-                                          "\t-r|--refresh N\tset service polling interval in seconds (default 10)\n",
+                                          "\t-r|--refresh N\tset service polling interval in seconds (default 10)\n"
+#ifdef __linux__
+                                          "\t--use-main-routing-table\tconfigure the main routing table\n"
+#endif /* __linux__ */
+                                          ,
                                           run_host_opts, run);
 static CommandLine dump_cmd = make_command("dump", "dump the identities information", "[-i <identity>] [-p <dir>]",
                                            "\t-i|--identity\tdump identity info\n"
@@ -3323,6 +3353,10 @@ static void move_config_from_previous_windows_backup(uv_loop_t *loop) {
 
 static bool is_host_only() {
     return host_only;
+}
+
+bool use_rt_main(void) {
+    return opt_prefer_rt_main > 0;
 }
 
 int main(int argc, char *argv[]) {

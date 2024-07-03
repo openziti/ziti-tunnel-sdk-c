@@ -403,7 +403,8 @@ static void cleanup_sock(const int *fd) {
     }
 }
 
-netif_driver tun_open(uv_loop_t *loop, uint32_t tun_ip, uint32_t dns_ip, const char *dns_block, char *error, size_t error_len) {
+netif_driver tun_open(uv_loop_t *loop, uint32_t tun_ip, uint32_t dns_ip, const char *dns_block, char *error, size_t error_len,
+    const struct netif_options *opts) {
     if (error != NULL) {
         memset(error, 0, error_len * sizeof(char));
     }
@@ -436,6 +437,8 @@ netif_driver tun_open(uv_loop_t *loop, uint32_t tun_ip, uint32_t dns_ip, const c
     }
 
     strncpy(tun->name, ifr.ifr_name, sizeof(tun->name));
+
+    tun->rt_table = ZET__select_routing_table(opts);
 
     struct netif_driver_s *driver = calloc(1, sizeof(struct netif_driver_s));
     if (driver == NULL) {
