@@ -21,13 +21,19 @@
 #include <net/if.h>
 #include "ziti/netif_driver.h"
 
+struct netif_options {
+    bool use_rt_main;
+};
+
 struct netif_handle_s {
     int  fd;
     char name[IFNAMSIZ];
 
+    int rt_table;
+
     model_map *route_updates;
 };
 
-extern netif_driver tun_open(struct uv_loop_s *loop, uint32_t tun_ip, uint32_t dns_ip, const char *cidr, char *error, size_t error_len);
+extern netif_driver tun_open(struct uv_loop_s *loop, uint32_t tun_ip, uint32_t dns_ip, const char *cidr, char *error, size_t error_len, const struct netif_options *opts);
 
 #endif //ZITI_TUNNELER_SDK_TUN_H
