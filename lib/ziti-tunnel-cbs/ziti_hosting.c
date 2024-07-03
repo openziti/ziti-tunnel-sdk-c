@@ -545,7 +545,7 @@ static void on_hosted_client_connect_resolved(uv_getaddrinfo_t* req, int status,
  * - validate src address if specified
  * - initiate async dns resolution of dial address (if computed address is hostname?)
  */
-static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, int status, ziti_client_ctx *clt_ctx) {
+static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, int status, const ziti_client_ctx *clt_ctx) {
     struct hosted_service_ctx_s *service_ctx = ziti_conn_data(serv);
 
     if (service_ctx == NULL) {
