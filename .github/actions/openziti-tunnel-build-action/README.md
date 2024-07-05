@@ -15,13 +15,6 @@
           - name: ubuntu
             version: "20.04"
             type: deb
-          - name: ubuntu
-            version: "18.04"
-            type: deb
-          - name: redhat
-            version: "7"
-            type: rpm
-            container: docker.io/library/centos:7
           - name: redhat
             version: "8"
             type: rpm
