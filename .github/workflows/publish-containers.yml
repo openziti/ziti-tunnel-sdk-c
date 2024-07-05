@@ -25,10 +25,10 @@ jobs:
       ZITI_HOST_IMAGE: ${{ vars.ZITI_HOST_IMAGE || 'docker.io/openziti/ziti-host' }}
     steps:
       - name: Debug action
-        uses: hmarr/debug-action@v2.1.0
+        uses: hmarr/debug-action@v3
 
       - name: Checkout Workspace
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v2
