@@ -41,17 +41,20 @@ jobs:
             preset: windows-arm64-vs2022
 
           - os: ubuntu-20.04
-            container: openziti/ziti-builder:2.0.0
+            # container: openziti/ziti-builder:2.0.1
+            container: kbinghamnetfoundry/ziti-builder:focaltest
             name: Linux x86_64
             preset: linux-x64
 
           - os: ubuntu-20.04
-            container: openziti/ziti-builder:2.0.0
+            # container: openziti/ziti-builder:2.0.1
+            container: kbinghamnetfoundry/ziti-builder:focaltest
             name: Linux arm
             preset: linux-arm
 
           - os: ubuntu-20.04
-            container: openziti/ziti-builder:2.0.0
+            # container: openziti/ziti-builder:2.0.1
+            container: kbinghamnetfoundry/ziti-builder:focaltest
             name: Linux arm64
             preset: linux-arm64
 
