@@ -3,7 +3,8 @@
 # build this project in the ziti-builder container
 #
 
-set -euo pipefail
+set -o errexit -o nounset -o pipefail
+# set -o xtrace
 
 BASENAME="$(basename "${0}")"
 BASEDIR="$(cd "$(dirname "${0}")" && pwd)"  # full path to scripts dir
@@ -38,7 +39,7 @@ function set_git_safe_dirs() {
     local -a SAFE_DIRS=(
         "/github/workspace"
     )
-    # the container environment defines GIT_CONFIG_GLOBAL=/tmp/gitconfig
+    # the container environment defines GIT_CONFIG_GLOBAL=/tmp/ziti-builder-gitconfig
     for SAFE in "${SAFE_DIRS[@]}" "${@}"; do
         git config --file "$GIT_CONFIG_GLOBAL" --add safe.directory "${SAFE}"
     done
@@ -63,10 +64,10 @@ function set_workspace(){
             exit 1
         fi
     else
-        echo -e "INFO: project not mounted on ${WORKDIR}, re-running in container"\
-            "\nINFO: re-running in ziti-builder container"
+        echo -e "INFO: project not mounted on ${WORKDIR}"\
+                "\nINFO: re-running in ziti-builder container"
         set -x
-        exec docker run \
+        eval exec docker run \
             --rm \
             --user "${UID}" \
             --volume "${REPODIR}:${WORKDIR}" \
@@ -125,10 +126,10 @@ function main() {
             -E make_directory \
             ./build  
         cmake \
-            --preset "${CMAKE_PRESET:-ci-linux-x64}" \
+            --preset "${CMAKE_PRESET:-ci-linux-x64-static-libssl}" \
             -DCMAKE_BUILD_TYPE="${CMAKE_CONFIG:-Release}" \
             -DBUILD_DIST_PACKAGES="${BUILD_DIST_PACKAGES:-OFF}" \
-            -DVCPKG_OVERLAY_PORTS="./vcpkg-overlays/linux-syslibs/ubuntu18" \
+            -DVCPKG_OVERLAY_PORTS="./vcpkg-overlays/linux-syslibs/ubuntu20" \
             "${TLSUV_TLSLIB:+-DTLSUV_TLSLIB=${TLSUV_TLSLIB}}" \
             "${ZITI_SDK_DIR:+-DZITI_SDK_DIR=${ZITI_SDK_DIR}}" \
             -S . \
