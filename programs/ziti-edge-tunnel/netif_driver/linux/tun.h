@@ -29,7 +29,7 @@ struct netif_handle_s {
     int  fd;
     char name[IFNAMSIZ];
 
-    int rt_table;
+    int route_table;
 
     model_map *route_updates;
 };

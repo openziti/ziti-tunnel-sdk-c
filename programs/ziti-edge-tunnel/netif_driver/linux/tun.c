@@ -33,10 +33,35 @@
 #include "resolvers.h"
 #include "tun.h"
 #include "utils.h"
+#include "libiproute.h"
 
 #ifndef DEVTUN
 #define DEVTUN "/dev/net/tun"
 #endif
+
+/**
+ * Let's keep the ZET_RT_TABLE in 0..255:
+ * - busybox routing tables ids are restricted to 0..1023.
+ * - iproute2 stores table ids 0..255 in rtmsg.rtm_table; otherwise rtattr RTA_TABLE is used
+ */
+#ifndef ZET_RT_TABLE
+#define ZET_RT_TABLE ((unsigned char)'Z')
+#endif
+
+/**
+ * ZET_POLICY_PREF_BASE in 0..32767
+ * 0: local
+ * 32766: main
+ * 32767: default
+ *
+ * 'Ze' = 0x5A65 = 23141
+ */
+#ifndef ZET_POLICY_PREF_BASE
+#define ZET_POLICY_PREF_BASE (((unsigned char)'Z')<<8|'e')
+#endif
+
+#define ZET_BYPASS_MARK 0xC000000
+#define ZET_BYPASS_MASK 0xC000000
 
 /*
  * ip link set tun0 up
@@ -50,6 +75,9 @@
 #endif
 
 #define CHECK_UV(op) do{ int rc = op; if (rc < 0) ZITI_LOG(ERROR, "uv_err: %d/%s", rc, uv_strerror(rc)); } while(0)
+
+
+static int ZET__is_rt_table_main(struct netif_handle_s *tun);
 
 extern void dns_set_miss_status(int code);
 
@@ -127,7 +155,8 @@ static void route_updates_done(uv_work_t *wr, int status) {
 }
 
 static void process_routes_updates(uv_work_t *wr) {
-    struct rt_process_cmd *cmd = wr->data;
+    struct rt_process_cmd *const cmd = wr->data;
+    struct netif_handle_s *const tun = cmd->tun;
 
     uv_fs_t tmp_req = {0};
     uv_file routes_file = uv_fs_mkstemp(wr->loop, &tmp_req, "/tmp/ziti-tunnel-routes.XXXXXX", NULL);
@@ -142,6 +171,10 @@ static void process_routes_updates(uv_work_t *wr) {
         "delete",
         "add",
     };
+    static const char *const formats[2] = {
+        "route %s %s dev %s table %d\n",
+        "route %s %s dev %s"
+    };
     char buf[1024];
     for (size_t i = 0; i < sizeof verbs/sizeof verbs[0]; i++) {
         const char *const verb = verbs[i];
@@ -153,7 +186,10 @@ static void process_routes_updates(uv_work_t *wr) {
             // action == 1: add
             unsigned action = (uintptr_t) value;
             if (action == i) {
-                int len = snprintf(buf, sizeof(buf), "route %s %s dev %s\n", verb, prefix, cmd->tun->name);
+
+                int len = snprintf(buf, sizeof(buf),
+                    formats[!!ZET__is_rt_table_main(tun)],
+                    verb, prefix, tun->name, tun->route_table);
                 if (len < 0 || (size_t) len >= sizeof buf) {
                     if (len > 0) errno = ENOMEM;
                     ZITI_LOG(ERROR, "route updates failed %d/%s", -errno, strerror(errno));
@@ -397,6 +433,60 @@ static int tun_exclude_rt(netif_handle dev, uv_loop_t *l, const char *addr) {
     return run_command("ip route replace %s %s", addr, route);
 }
 
+static int tun_exclude_rt_noop(netif_handle dev, uv_loop_t *l, const char *addr) {
+  /**
+   * When the isolated routing table feature is active, communication between the controller and edge router does not need to be explicitly defined.
+   * These sockets are marked with SO_MARK, allowing them to bypass the Ziti-dedicated routing table, which contains the Ziti-specific routes, and use
+   * the routes available in the `main` routing table.
+   */
+    (void) dev;
+    (void) l;
+    (void) addr;
+    return 0;
+}
+
+static int
+ZET__route_table(const struct netif_options *opts)
+{
+    return (opts->use_rt_main || run_command("ip -4 rule show >/dev/null") != 0)
+      ? RT_TABLE_MAIN : ZET_RT_TABLE;
+}
+
+static int
+ZET__is_rt_table_main(struct netif_handle_s *tun)
+{
+  return tun->route_table == RT_TABLE_MAIN;
+}
+
+static void
+ZET__rpdb_init(struct netif_handle_s *tun)
+{
+    rtnetlink h;
+    int err;
+
+    if (ZET__is_rt_table_main(tun))
+        return;
+
+    if ((err = rtnetlink_new(&h)) < 0) {
+          ZITI_LOG(ERROR, "failed to open netlink socket: %d/%s", errno, strerror(errno));
+          return;
+    }
+
+    err = zt_iprule_modify(h, IPRULE_ADD,
+        "not from 0.0.0.0/0 fwmark 0x%x/0x%x pref %d lookup %d",
+        ZET_BYPASS_MARK, ZET_BYPASS_MASK, ZET_POLICY_PREF_BASE, tun->route_table);
+    if (err < 0 && err != -EEXIST)
+        ZITI_LOG(ERROR, "error(s) encountered while updating ipv4 routing policy database.");
+
+    err = zt_iprule_modify(h, IPRULE_ADD,
+        "not from ::/0 fwmark 0x%x/0x%x pref %d lookup %d",
+        ZET_BYPASS_MARK, ZET_BYPASS_MASK, ZET_POLICY_PREF_BASE, tun->route_table);
+    if (err < 0 && err != -EEXIST && err != -EAFNOSUPPORT)
+        ZITI_LOG(ERROR, "error(s) encountered while updating ipv6 routing policy database.");
+
+    rtnetlink_free(h);
+}
+
 static void cleanup_sock(const int *fd) {
     if (fd && *fd != -1) {
         close(*fd);
@@ -438,7 +528,7 @@ netif_driver tun_open(uv_loop_t *loop, uint32_t tun_ip, uint32_t dns_ip, const c
 
     strncpy(tun->name, ifr.ifr_name, sizeof(tun->name));
 
-    tun->rt_table = ZET__select_routing_table(opts);
+    tun->route_table = ZET__route_table(opts);
 
     struct netif_driver_s *driver = calloc(1, sizeof(struct netif_driver_s));
     if (driver == NULL) {
@@ -456,7 +546,7 @@ netif_driver tun_open(uv_loop_t *loop, uint32_t tun_ip, uint32_t dns_ip, const c
     driver->add_route    = tun_add_route;
     driver->delete_route = tun_delete_route;
     driver->close        = tun_close;
-    driver->exclude_rt   = tun_exclude_rt;
+    driver->exclude_rt   = ZET__is_rt_table_main(tun) ? tun_exclude_rt : tun_exclude_rt_noop;
     driver->commit_routes = tun_commit_routes;
 
     __attribute__((cleanup(cleanup_sock))) int netdev = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
@@ -485,12 +575,15 @@ netif_driver tun_open(uv_loop_t *loop, uint32_t tun_ip, uint32_t dns_ip, const c
         return NULL;
     }
 
+    ZET__rpdb_init(tun);
+
     if (dns_ip) {
         init_dns_maintainer(loop, tun->name, dns_ip);
     }
 
     if (dns_block) {
-        run_command("ip route add %s dev %s", dns_block, tun->name);
+        run_command("ip route add %s dev %s table %d",
+            dns_block, tun->name, tun->route_table);
     }
 
     return driver;
