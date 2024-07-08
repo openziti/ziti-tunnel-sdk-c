@@ -126,10 +126,9 @@ function main() {
             -E make_directory \
             ./build  
         cmake \
-            --preset "${CMAKE_PRESET:-ci-linux-x64-static-libssl}" \
+            --preset "${CMAKE_PRESET:-ci-linux-x64}" \
             -DCMAKE_BUILD_TYPE="${CMAKE_CONFIG:-Release}" \
             -DBUILD_DIST_PACKAGES="${BUILD_DIST_PACKAGES:-OFF}" \
-            -DVCPKG_OVERLAY_PORTS="./vcpkg-overlays/linux-syslibs/ubuntu20" \
             "${TLSUV_TLSLIB:+-DTLSUV_TLSLIB=${TLSUV_TLSLIB}}" \
             "${ZITI_SDK_DIR:+-DZITI_SDK_DIR=${ZITI_SDK_DIR}}" \
             -S . \
