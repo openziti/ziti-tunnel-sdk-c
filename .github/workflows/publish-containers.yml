@@ -28,7 +28,7 @@ jobs:
         uses: hmarr/debug-action@v2.1.0
 
       - name: Checkout Workspace
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v2
