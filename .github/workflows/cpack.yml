@@ -52,7 +52,7 @@ jobs:
       ZITI_RPM_TEST_REPO: ${{ vars.ZITI_RPM_TEST_REPO || 'zitipax-openziti-rpm-test' }}
     steps:
       - name: Debug action
-        uses: hmarr/debug-action@v2.1.0
+        uses: hmarr/debug-action@v3.0.0
 
       # only focal-20.04 has >= 2.18, which is required by actions/checkout to clone
       # which enables cmake version discovery
