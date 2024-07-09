@@ -759,8 +759,8 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
             ziti_ctx_event ev = {0};
             ev.event_type = TunnelEvents.ContextEvent;
             ev.identifier = instance->identifier;
-            ev.code = event->event.ctx.ctrl_status;
-            if (event->event.ctx.ctrl_status == ZITI_OK) {
+            ev.code = event->ctx.ctrl_status;
+            if (event->ctx.ctrl_status == ZITI_OK) {
                 ev.name = ziti_get_identity(ztx)->name;
                 ev.version = ziti_get_controller_version(ztx)->version;
                 ev.controller = (char *) ziti_get_controller(ztx);
@@ -778,8 +778,8 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
                 }
 
             } else {
-                ZITI_LOG(WARN, "ziti_ctx controller connections failed: %s", ziti_errorstr(event->event.ctx.ctrl_status));
-                ev.status = (char*)ziti_errorstr(event->event.ctx.ctrl_status);
+                ZITI_LOG(WARN, "ziti_ctx controller connections failed: %s", ziti_errorstr(event->ctx.ctrl_status));
+                ev.status = (char*)ziti_errorstr(event->ctx.ctrl_status);
             }
             CMD_CTX.on_event((const base_event *) &ev);
             break;
@@ -793,17 +793,17 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
             };
 
             bool send_event = false;
-            if (event->event.service.removed != NULL) {
-                ev.removed_services = event->event.service.removed;
-                for (zs = event->event.service.removed; *zs != NULL; zs++) {
+            if (event->service.removed != NULL) {
+                ev.removed_services = event->service.removed;
+                for (zs = event->service.removed; *zs != NULL; zs++) {
                     send_event = true;
                     on_service(ztx, *zs, ZITI_SERVICE_UNAVAILABLE, CMD_CTX.tunnel_ctx);
                 }
             }
 
-            if (event->event.service.added != NULL) {
-                ev.added_services = event->event.service.added;
-                for (zs = event->event.service.added; *zs != NULL; zs++) {
+            if (event->service.added != NULL) {
+                ev.added_services = event->service.added;
+                for (zs = event->service.added; *zs != NULL; zs++) {
                     send_event = true;
                     on_service(ztx, *zs, ZITI_OK, CMD_CTX.tunnel_ctx);
                 }
@@ -814,11 +814,11 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
                 CMD_CTX.on_event((const base_event *) &ev);
             }
 
-            if (event->event.service.changed != NULL) {
-                ev.added_services = event->event.service.changed;
-                ev.removed_services = event->event.service.changed;
+            if (event->service.changed != NULL) {
+                ev.added_services = event->service.changed;
+                ev.removed_services = event->service.changed;
                 send_event = false;
-                for (zs = event->event.service.changed; *zs != NULL; zs++) {
+                for (zs = event->service.changed; *zs != NULL; zs++) {
                     send_event = true;
                     on_service(ztx, *zs, ZITI_OK, CMD_CTX.tunnel_ctx);
                 }
@@ -832,7 +832,7 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
         }
 
         case ZitiRouterEvent: {
-            const struct ziti_router_event *rt_event = &event->event.router;
+            const struct ziti_router_event *rt_event = &event->router;
             const char *ctx_name = ziti_get_identity(ztx)->name;
             switch (rt_event->status) {
                 case EdgeRouterAdded:
@@ -856,8 +856,9 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
         }
 
         case ZitiMfaAuthEvent : {
-            const char *ctx_name = ziti_get_identity(ztx)->name;
-            ZITI_LOG(INFO, "ztx[%s] Mfa event received", ctx_name);
+            const ziti_identity *zid = ziti_get_identity(ztx);
+            const char *ctx_name = zid ? zid->name : "";
+            ZITI_LOG(INFO, "ztx[%s/%s] Mfa event received", instance->identifier, ctx_name);
             mfa_event ev = {0};
             ev.event_type = TunnelEvents.MFAEvent;
             ev.identifier = instance->identifier;
@@ -867,21 +868,21 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
         }
 
         case ZitiAPIEvent: {
-            if (event->event.api.new_ctrl_address || event->event.api.new_ca_bundle) {
+            if (event->api.new_ctrl_address || event->api.new_ca_bundle) {
                 if (instance->config_path) {
                     api_update_req *req = calloc(1, sizeof(api_update_req));
                     req->wr.data = req;
                     req->ztx = ztx;
-                    req->new_url = event->event.api.new_ctrl_address ? strdup(event->event.api.new_ctrl_address) : NULL;
-                    req->new_ca = event->event.api.new_ca_bundle ? strdup(event->event.api.new_ca_bundle) : NULL;
+                    req->new_url = event->api.new_ctrl_address ? strdup(event->api.new_ctrl_address) : NULL;
+                    req->new_ca = event->api.new_ca_bundle ? strdup(event->api.new_ca_bundle) : NULL;
                     uv_queue_work(CMD_CTX.loop, &req->wr, update_config, update_config_done);
                 }
 
                 api_event ev = {0};
                 ev.event_type = TunnelEvents.APIEvent;
                 ev.identifier = instance->identifier;
-                ev.new_ctrl_address = event->event.api.new_ctrl_address;
-                ev.new_ca_bundle = event->event.api.new_ca_bundle;
+                ev.new_ctrl_address = event->api.new_ctrl_address;
+                ev.new_ca_bundle = event->api.new_ca_bundle;
                 CMD_CTX.on_event((const base_event *) &ev);
             } else {
                 ZITI_LOG(WARN, "unexpected API event: new_ctrl_address is missing");
