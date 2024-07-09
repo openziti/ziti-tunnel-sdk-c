@@ -204,8 +204,5 @@ Build the generic binary for arm64 with the `ci-linux-arm64` preset.
 ./scripts/ziti-builder.sh -p ci-linux-arm64
 ```
 
-To build with OpenSSL on this Ubuntu Bionic-based (glibc 2.27) builder image, `export TLSUV_TLSLIB=openssl` and change
-`vcpkg.json` to statically compile "openssl" instead of "mbedtls."
-
 [1]: https://cmake.org/cmake/help/latest/manual/cmake-presets.7.html
 [2]: https://cmake.org/download/

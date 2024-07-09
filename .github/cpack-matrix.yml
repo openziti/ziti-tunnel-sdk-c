@@ -18,19 +18,6 @@ cpack_matrix:
       version: "20.04"
       release_name: focal
       type: deb
-    - name: ubuntu
-      version: "18.04"
-      release_name: bionic
-      type: deb
-    - name: ubuntu
-      version: "16.04"
-      release_name: xenial
-      type: deb
-    - name: redhat
-      version: "7"
-      release_name: ${{ null }}
-      type: rpm
-      container: docker.io/library/centos:7
     - name: redhat
       version: "8"
       release_name: ${{ null }}
@@ -42,21 +29,6 @@ cpack_matrix:
       type: rpm
       container: docker.io/library/rockylinux:9
   exclude:
-    - distro:
-        name: ubuntu
-        release_name: xenial
-      arch:
-        cmake: ci-linux-arm
-    - distro:
-        name: ubuntu
-        release_name: xenial
-      arch:
-        cmake: ci-linux-arm64
-    - distro:
-        name: ubuntu
-        release_name: bionic
-      arch:
-        cmake: ci-linux-arm
     - distro:
         name: redhat
       arch:
