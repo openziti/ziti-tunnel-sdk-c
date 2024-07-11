@@ -1711,10 +1711,12 @@ static int make_socket_path(uv_loop_t *loop) {
     return 0;
 }
 
+#if __linux__ || __APPLE__
 static void on_exit_signal(uv_signal_t *s, int sig) {
-    ZITI_LOG(WARN, "received signal: %s", sys_signame[sig]);
+    ZITI_LOG(WARN, "received signal: %s", strsignal(sig));
     exit(1);
 }
+#endif
 
 static void run_tunneler_loop(uv_loop_t* ziti_loop) {
 
