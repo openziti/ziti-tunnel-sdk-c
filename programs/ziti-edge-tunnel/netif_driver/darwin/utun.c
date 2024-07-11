@@ -14,6 +14,7 @@
  limitations under the License.
  */
 
+#include <stdbool.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -30,6 +31,7 @@
 #include <ziti/ziti_log.h>
 
 #include "utun.h"
+#include "ziti/model_collections.h"
 
 int utun_close(struct netif_handle_s *tun) {
     int r = 0;
@@ -100,19 +102,41 @@ int utun_uv_poll_init(netif_handle tun, uv_loop_t *loop, uv_poll_t *tun_poll_req
  */
 int utun_add_route(netif_handle tun, const char *dest) {
     char cmd[1024];
-    snprintf(cmd, sizeof(cmd), "route add %s -interface %s", dest, tun->name);
+    snprintf(cmd, sizeof(cmd), "route -n add %s -interface %s", dest, tun->name);
     int s = system(cmd);
     return s;
 }
 
 int utun_delete_route(netif_handle tun, const char *dest) {
     char cmd[1024];
-    snprintf(cmd, sizeof(cmd), "route delete %s -interface %s", dest, tun->name);
+    snprintf(cmd, sizeof(cmd), "route -n delete %s -interface %s", dest, tun->name);
     int s = system(cmd);
     return s;
 }
 
+static model_map excluded;
+static uv_once_t delete_once;
+
+static void delete_excluded() {
+    char cmd[1024];
+    const char *rt;
+    void *dummy;
+    MODEL_MAP_FOREACH(rt, dummy, &excluded) {
+        snprintf(cmd, sizeof(cmd), "route -q -n delete %s", rt);
+        system(cmd);
+    }
+    model_map_clear(&excluded, free);
+}
+static void delete_init() {
+    int rc = atexit(delete_excluded);
+    if (rc) {
+        ZITI_LOG(WARN, "failed to register route cleanup: %s", strerror(errno));
+    }
+}
+
 static int utun_exclude_rt(netif_handle dev, uv_loop_t *l, const char *addr) {
+    uv_once(&delete_once, delete_init);
+
     char gw[128] = {0};
     const char *get_gw_cmd = "route -n get default | awk '/gateway: / { printf \"%s\", $2 }'";
     ZITI_LOG(DEBUG, "executing '%s'", get_gw_cmd);
@@ -133,8 +157,10 @@ static int utun_exclude_rt(netif_handle dev, uv_loop_t *l, const char *addr) {
     }
     ZITI_LOG(DEBUG, "default route gw is '%s'", gw);
 
+    model_map_set(&excluded, addr, NULL);
+
     char cmd[1024];
-    snprintf(cmd, sizeof(cmd), "route add %s %s", addr, gw);
+    snprintf(cmd, sizeof(cmd), "route -n add %s %s", addr, gw);
     ZITI_LOG(DEBUG, "executing '%s'", cmd);
     s = system(cmd);
     return s;
@@ -252,7 +278,7 @@ netif_driver utun_open(char *error, size_t error_len, const char *cidr) {
 
         // add a route for the subnet if one was specified
         if (prefix_sep != NULL) {
-            snprintf(cmd, sizeof(cmd), "route add -net %s -interface %s", cidr, tun->name);
+            snprintf(cmd, sizeof(cmd), "route -n add -net %s -interface %s", cidr, tun->name);
             system(cmd);
         }
     }

@@ -1711,11 +1711,35 @@ static int make_socket_path(uv_loop_t *loop) {
     return 0;
 }
 
+#if __linux__ || __APPLE__
+static void on_exit_signal(uv_signal_t *s, int sig) {
+    ZITI_LOG(WARN, "received signal: %s", strsignal(sig));
+    exit(1);
+}
+#endif
+
 static void run_tunneler_loop(uv_loop_t* ziti_loop) {
 
 #if _WIN32
     // set the service to running state
     scm_running_event();
+#endif
+
+#if __linux__ || __APPLE__
+#define handle_sig(n, f) \
+    uv_signal_t sig_##n;                     \
+    uv_signal_init(ziti_loop, &sig_##n); \
+    uv_signal_start(&sig_##n, f, n); \
+    uv_unref((uv_handle_t *) &sig_##n);
+
+    handle_sig(SIGINT, on_exit_signal);
+    handle_sig(SIGTERM, on_exit_signal);
+    handle_sig(SIGABRT, on_exit_signal);
+    handle_sig(SIGSEGV, on_exit_signal);
+    handle_sig(SIGQUIT, on_exit_signal);
+
+#undef handle_sig
+
 #endif
 
     CMD_CTRL = ziti_tunnel_init_cmd(ziti_loop, tunneler, on_event);
