@@ -754,6 +754,9 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
         ZITI_LOG(ERROR, "something bad had happened: incorrect context");
     }
 
+    const ziti_identity *identity = ziti_get_identity(ztx);
+    const char *ctx_name = identity ? identity->name : instance->identifier;
+
     switch (event->type) {
         case ZitiContextEvent: {
             ziti_ctx_event ev = {0};
@@ -761,10 +764,10 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
             ev.identifier = instance->identifier;
             ev.code = event->ctx.ctrl_status;
             if (event->ctx.ctrl_status == ZITI_OK) {
-                ev.name = ziti_get_identity(ztx)->name;
+                ev.name = (char*)ctx_name;
                 ev.version = ziti_get_controller_version(ztx)->version;
                 ev.controller = (char *) ziti_get_controller(ztx);
-                ZITI_LOG(INFO, "ziti_ctx[%s] connected to controller", ziti_get_identity(ztx)->name);
+                ZITI_LOG(INFO, "ziti_ctx[%s] connected to controller", ctx_name);
                 ev.status = "OK";
                 const char *ctrl = ziti_get_controller(ztx);
 
@@ -833,7 +836,6 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
 
         case ZitiRouterEvent: {
             const struct ziti_router_event *rt_event = &event->router;
-            const char *ctx_name = ziti_get_identity(ztx)->name;
             switch (rt_event->status) {
                 case EdgeRouterAdded:
                     ZITI_LOG(INFO, "ztx[%s] added edge router %s@%s", ctx_name, rt_event->name, rt_event->address);
@@ -856,8 +858,6 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
         }
 
         case ZitiMfaAuthEvent : {
-            const ziti_identity *zid = ziti_get_identity(ztx);
-            const char *ctx_name = zid ? zid->name : "";
             ZITI_LOG(INFO, "ztx[%s/%s] Mfa event received", instance->identifier, ctx_name);
             mfa_event ev = {0};
             ev.event_type = TunnelEvents.MFAEvent;
@@ -930,28 +930,6 @@ static void load_ziti_async(uv_loop_t *loop, void *arg) {
         free(inst);
     }
 }
-
-/*
-static void on_mfa_query(ziti_context ztx, void* mfa_ctx, ziti_auth_query_mfa *aq_mfa, ziti_ar_mfa_cb response_cb) {
-    struct ziti_instance_s *inst = ziti_app_ctx(ztx);
-
-    struct mfa_request_s *mfar = calloc(1, sizeof(struct mfa_request_s));
-    mfar->ztx = ztx;
-    mfar->submit_f = response_cb;
-    mfar->submit_ctx = mfa_ctx;
-
-    inst->mfa_req = mfar;
-
-    mfa_event ev = {0};
-    ev.event_type = TunnelEvents.MFAEvent;
-    ev.provider = strdup(aq_mfa->provider);
-    ev.identifier = strdup(inst->identifier);
-
-    CMD_CTX.on_event((const base_event *) &ev);
-
-    free_mfa_event(&ev);
-}
- */
 
 static void on_submit_mfa(ziti_context ztx, int status, void *ctx) {
     struct tunnel_cb_s *req = ctx;
