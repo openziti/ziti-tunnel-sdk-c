@@ -52,7 +52,7 @@ jobs:
         run: echo DOCKER_TAGS="${IMAGE_REPO}:unstable,${IMAGE_REPO}:${ZITI_VERSION}" | tee -a $GITHUB_OUTPUT
 
       - name: Build & Push Multi-Platform Container Image to Hub
-        uses: docker/build-push-action@v3
+        uses: docker/build-push-action@v6
         with:
           builder: ${{ steps.buildx.outputs.name }}
           context: ${{ github.workspace }}/docker
@@ -72,7 +72,7 @@ jobs:
 
 
       - name: Build & Push Multi-Platform Container Image to Hub
-        uses: docker/build-push-action@v3
+        uses: docker/build-push-action@v6
         with:
           builder: ${{ steps.buildx.outputs.name }}
           context: ${{ github.workspace }}/docker
