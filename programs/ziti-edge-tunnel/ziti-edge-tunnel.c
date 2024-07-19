@@ -2360,7 +2360,9 @@ static int send_message_to_tunnel(char* message, bool show_result) {
     uv_os_sock_t cmd_soc = socket(AF_UNIX, SOCK_STREAM, 0);
     struct sockaddr_un addr = {
             .sun_family = AF_UNIX,
+#if __APPLE__
             .sun_len = sizeof(addr),
+#endif
     };
     strncpy(addr.sun_path, sockfile, sizeof(addr.sun_path));
 
