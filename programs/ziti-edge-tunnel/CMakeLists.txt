@@ -12,17 +12,10 @@ if(CMAKE_SYSTEM_NAME STREQUAL Windows)
     set(tun_lib wintun)
     set(wintun_dll "${wintun_SOURCE_DIR}/bin/${CMAKE_SYSTEM_PROCESSOR}/wintun.dll")
     set(NETIF_DRIVER_SOURCE netif_driver/windows/tun.c netif_driver/windows/tun.h)
+    find_package(unofficial-getopt-win32 REQUIRED)
+    set(getopt unofficial::getopt-win32::getopt)
 endif()
 
-if (MSVC)
-    message("using visual studio")
-    FetchContent_Declare(win-c
-            GIT_REPOSITORY https://github.com/netfoundry/win-c.git
-            GIT_TAG master
-            )
-    FetchContent_MakeAvailable(win-c)
-    set(getopt libwinc)
-endif()
 
 set(ZITI_INSTANCE_COMMON include/model/events.h include/model/dtos.h instance.c include/identity-utils.h config-utils.c include/config-utils.h instance-config.c include/instance-config.h)
 if (WIN32)

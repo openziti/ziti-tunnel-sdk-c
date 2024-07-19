@@ -6,7 +6,10 @@
     "zlib",
     "llhttp",
     "libsodium",
-    "getopt",
+    {
+      "name": "getopt-win32",
+      "platform": "windows"
+    },
     {
       "name": "openssl",
       "$comment": "on linux we use system installed OpenSSL, as determined by vcpkg-overlays/linux-syslibs)"

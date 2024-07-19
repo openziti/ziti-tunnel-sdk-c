@@ -74,7 +74,8 @@ DECLARE_ENUM(TunnelCommand, TUNNEL_COMMANDS)
 
 #define TUNNEL_CMD(XX, ...) \
 XX(command, TunnelCommand, none, Command, __VA_ARGS__) \
-XX(data, json, none, Data, __VA_ARGS__)
+XX(data, json, none, Data, __VA_ARGS__)                \
+XX(show_result, bool, none, , __VA_ARGS__)
 
 #define TUNNEL_CMD_RES(XX, ...) \
 XX(success, bool, none, Success, __VA_ARGS__) \
