@@ -107,8 +107,6 @@ struct enroll_cb_params {
     uv_buf_t config; /* out */
 };
 
-static char* ipc_cmd_buffered(ipc_cmd_ctx_t *ipc_cmd_ctx_new);
-
 struct cfg_instance_s {
     char *cfg;
     LIST_ENTRY(cfg_instance_s) _next;
@@ -622,15 +620,6 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
     }
 }
 
-static void queue_ipc_command(ipc_cmd_ctx_t *ipc_command_ctx, ssize_t len, char* base) {
-    struct ipc_cmd_s *cmd_new = calloc(1, sizeof(struct ipc_cmd_s));
-    cmd_new->cmd_data = strdup(base);
-    cmd_new->len = len;
-    uv_mutex_trylock(&ipc_command_ctx->cmd_lock);
-    STAILQ_INSERT_TAIL(&ipc_command_ctx->ipc_cmd_queue, cmd_new, _next);
-    uv_mutex_unlock(&ipc_command_ctx->cmd_lock);
-}
-
 static void process_ipc_command(uv_stream_t *s, json_object *json) {
     tunnel_command tnl_cmd = {0};
     if (tunnel_command_from_json(&tnl_cmd, json) >= 0) {
@@ -1121,7 +1110,7 @@ static void load_identities(uv_work_t *wr) {
                 continue;
             }
 
-            char* ext = get_filename_ext(file.name);
+            const char* ext = get_filename_ext(file.name);
 
             // ignore back up files
             if (strcasecmp(ext, ".bak") == 0 || strcasecmp(ext, ".original") == 0 || strcasecmp(ext, "json") != 0) {
@@ -1511,45 +1500,6 @@ static char* normalize_host(char* hostname) {
         sprintf(hostname_new,".%s", hostname);
     }
     return hostname_new;
-}
-
-static char* ipc_cmd_buffered(ipc_cmd_ctx_t *ipc_cmd_ctx_new) {
-
-    ipc_cmd_q cmd_q;
-    STAILQ_INIT(&cmd_q);
-
-    uv_mutex_trylock(&ipc_cmd_ctx_new->cmd_lock);
-    cmd_q = ipc_cmd_ctx_new->ipc_cmd_queue;
-    uv_mutex_unlock(&ipc_cmd_ctx_new->cmd_lock);
-
-    STAILQ_INIT(&ipc_cmd_ctx_new->ipc_cmd_queue);
-    struct ipc_cmd_s *ipc_cmd;
-
-    char buff[MAXIPCCOMMANDLEN] = {0};
-    ssize_t buff_len = 0;
-    while (!STAILQ_EMPTY(&cmd_q)) {
-        ipc_cmd = STAILQ_FIRST(&cmd_q);
-        STAILQ_REMOVE_HEAD(&cmd_q, _next);
-
-        if (ipc_cmd->cmd_data != NULL) {
-            strncat(buff, ipc_cmd->cmd_data, ipc_cmd->len);
-            buff_len += ipc_cmd->len;
-        }
-
-        free(ipc_cmd->cmd_data);
-        free(ipc_cmd);
-
-        char lastChar = buff[buff_len - 1];
-        if (lastChar == LAST_CHAR_IPC_CMD) {
-            // end of the ipc command
-            break;
-        }
-    }
-
-    char* buf_new = calloc(buff_len + 1, sizeof(char));
-    snprintf(buf_new, buff_len, buff);
-    return buf_new;
-
 }
 
 static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, const char *ip_range, const char *dns_upstream) {
