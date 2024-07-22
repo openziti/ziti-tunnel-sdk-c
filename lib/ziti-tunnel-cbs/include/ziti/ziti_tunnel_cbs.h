@@ -84,7 +84,8 @@ XX(code, int, none, Code, __VA_ARGS__)
 
 #define TNL_LOAD_IDENTITY(XX, ...) \
 XX(identifier, string, none, Identifier, __VA_ARGS__)\
-XX(path, string, none, Path, __VA_ARGS__) \
+XX(path, string, none, Path, __VA_ARGS__)            \
+XX(config, ziti_config, ptr, Config, __VA_ARGS__)    \
 XX(apiPageSize, int, none, ApiPageSize, __VA_ARGS__)
 
 #define TNL_ON_OFF_IDENTITY(XX, ...) \
