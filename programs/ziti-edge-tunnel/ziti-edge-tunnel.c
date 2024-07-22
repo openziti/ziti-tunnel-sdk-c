@@ -36,6 +36,7 @@
 #include "netif_driver/linux/tun.h"
 #elif _WIN32
 #include <time.h>
+#include <io.h>
 #include "netif_driver/windows/tun.h"
 #include "windows/windows-service.h"
 #include "windows/windows-scripts.h"
@@ -106,8 +107,6 @@ struct enroll_cb_params {
     uv_buf_t config; /* out */
 };
 
-static char* ipc_cmd_buffered(ipc_cmd_ctx_t *ipc_cmd_ctx_new);
-
 struct cfg_instance_s {
     char *cfg;
     LIST_ENTRY(cfg_instance_s) _next;
@@ -124,7 +123,7 @@ struct event_conn_s {
 static LIST_HEAD(events_list, event_conn_s) event_clients_list = LIST_HEAD_INITIALIZER(event_clients_list);
 
 struct ipc_conn_s {
-    uv_pipe_t *ipc_client_conn;
+    uv_pipe_t ipc;
     LIST_ENTRY(ipc_conn_s) _next_ipc_cmd;
 };
 // list to store the ipc connections
@@ -160,6 +159,7 @@ static char sockfile[] = "\\\\.\\pipe\\ziti-edge-tunnel.sock";
 static char eventsockfile[] = "\\\\.\\pipe\\ziti-edge-tunnel-event.sock";
 #elif __unix__ || unix || ( __APPLE__ && __MACH__ )
 #include <grp.h>
+#include <sys/un.h>
 #define SOCKET_PATH "/tmp/.ziti"
 static char sockfile[] = SOCKET_PATH "/ziti-edge-tunnel.sock";
 static char eventsockfile[] = SOCKET_PATH "/ziti-edge-tunnel-event.sock";
@@ -431,7 +431,7 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
                 break;
             }
             char* tun_ip_str = strdup(tunnel_tun_ip_v4_cmd.tunIP);
-            // make a copy so we can free it later - validating ip address input
+            // make a copy, so we can free it later - validating ip address input
             char* tun_ip_cpy = tun_ip_str;
             char* ip_ptr = strtok(tun_ip_str, "."); //cut the string using dot delimiter
             if (ip_ptr == NULL) {
@@ -620,18 +620,9 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
     }
 }
 
-static void queue_ipc_command(ipc_cmd_ctx_t *ipc_command_ctx, ssize_t len, char* base) {
-    struct ipc_cmd_s *cmd_new = calloc(1, sizeof(struct ipc_cmd_s));
-    cmd_new->cmd_data = strdup(base);
-    cmd_new->len = len;
-    uv_mutex_trylock(&ipc_command_ctx->cmd_lock);
-    STAILQ_INSERT_TAIL(&ipc_command_ctx->ipc_cmd_queue, cmd_new, _next);
-    uv_mutex_unlock(&ipc_command_ctx->cmd_lock);
-}
-
-static void process_ipc_command(uv_stream_t *s, ssize_t len, char* base) {
+static void process_ipc_command(uv_stream_t *s, json_object *json) {
     tunnel_command tnl_cmd = {0};
-    if (parse_tunnel_command(&tnl_cmd, base, len) >= 0) {
+    if (tunnel_command_from_json(&tnl_cmd, json) >= 0) {
         // process_tunnel_commands is used to update the log level and the tun ip information in the config file through IPC command.
         // So when the user restarts the tunnel, the new values will be taken.
         // The config file can be modified only from ziti-edge-tunnel.c file.
@@ -654,35 +645,42 @@ static void process_ipc_command(uv_stream_t *s, ssize_t len, char* base) {
 
 
 static void on_cmd(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
+    struct ipc_conn_s *ipc_client = (struct ipc_conn_s*)s;
     if (len < 0) {
-        ZITI_LOG(WARN, "received from client - %s. Closing connection.", uv_err_name(len));
-        struct ipc_conn_s *del_ipc_client = NULL;
-        LIST_FOREACH(del_ipc_client, &ipc_clients_list, _next_ipc_cmd) {
-            if((uv_stream_t *)del_ipc_client->ipc_client_conn == s) {
+        if (len != UV_EOF) {
+            ZITI_LOG(WARN, "received from client - %s. Closing connection.", uv_err_name(len));
+        }
+
+        LIST_REMOVE(ipc_client, _next_ipc_cmd);
+
+        json_tokener *tokener = s->data;
+        if (tokener) json_tokener_free(tokener);
+        uv_close((uv_handle_t *) &ipc_client->ipc, (uv_close_cb) free);
+        ZITI_LOG(DEBUG, "IPC client connection closed, count: %d", sizeof_ipc_clients_list());
+
+    } else {
+        ZITI_LOG(DEBUG, "received cmd <%.*s>", (int) len, b->base);
+
+        json_tokener *parser = s->data;
+
+        size_t processed = 0;
+        while (processed < len) {
+            json_object *json = json_tokener_parse_ex(parser, b->base + processed, (int) (len - processed));
+            size_t end = json_tokener_get_parse_end(parser);
+            processed += end;
+            if (json) {
+                process_ipc_command(s, json);
+                json_object_put(json);
+            } else if (json_tokener_get_error(parser) != json_tokener_continue) {
+                ZITI_LOG(ERROR, "failed to parse json command: %s, received[%.*s]",
+                         json_tokener_error_desc(json_tokener_get_error(parser)),
+                         (int) len, b->base);
+                json_tokener_free(parser);
+                LIST_REMOVE(ipc_client, _next_ipc_cmd);
+                uv_close((uv_handle_t *) &ipc_client->ipc, (uv_close_cb) free);
                 break;
             }
         }
-        if (del_ipc_client) {
-            LIST_REMOVE(del_ipc_client, _next_ipc_cmd);
-            free(del_ipc_client);
-        }
-        uv_close((uv_handle_t *) s, (uv_close_cb) free);
-        ZITI_LOG(WARN,"IPC client connection closed, count: %d", sizeof_ipc_clients_list());
-
-    } else {
-        ZITI_LOG(INFO, "received cmd <%.*s>", (int) len, b->base);
-
-#if LAST_CHAR_IPC_CMD == '\0'
-        process_ipc_command(s, len, b->base);
-#else
-        queue_ipc_command(ipc_cmd_ctx, len, b->base);
-        if (b->base[len-1] == LAST_CHAR_IPC_CMD) {
-            char* new_buff = ipc_cmd_buffered(ipc_cmd_ctx);
-            ZITI_LOG(TRACE, "buffered cmd <%.*s>", (int) (strlen(new_buff) + 1), new_buff);
-            process_ipc_command(s, strlen(new_buff) + 1, new_buff);
-            free(new_buff);
-        }
-#endif
     }
 
     free(b->base);
@@ -690,13 +688,12 @@ static void on_cmd(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
 
 static void on_cmd_client(uv_stream_t *s, int status) {
     int current_ipc_channels = sizeof_ipc_clients_list();
-    uv_pipe_t *cmd_conn = malloc(sizeof(uv_pipe_t));
-    uv_pipe_init(s->loop, cmd_conn, 0);
-    uv_accept(s, (uv_stream_t *) cmd_conn);
-    uv_read_start((uv_stream_t *) cmd_conn, cmd_alloc, on_cmd);
-    struct ipc_conn_s *ipc_conn = calloc(1, sizeof(struct ipc_conn_s));
-    ipc_conn->ipc_client_conn = cmd_conn;
-    LIST_INSERT_HEAD(&ipc_clients_list, ipc_conn, _next_ipc_cmd);
+    struct ipc_conn_s *cmd_conn = calloc(1, sizeof(struct ipc_conn_s));
+    cmd_conn->ipc.data = json_tokener_new();
+    uv_pipe_init(s->loop, &cmd_conn->ipc, 0);
+    uv_accept(s, (uv_stream_t *) &cmd_conn->ipc);
+    uv_read_start((uv_stream_t *) &cmd_conn->ipc, cmd_alloc, on_cmd);
+    LIST_INSERT_HEAD(&ipc_clients_list, cmd_conn, _next_ipc_cmd);
     ZITI_LOG(DEBUG,"Received IPC client connection request, count: %d", ++current_ipc_channels);
 }
 
@@ -731,7 +728,6 @@ static int start_cmd_socket(uv_loop_t *l) {
     uv_err:
     return -1;
 }
-
 
 static void on_events_client(uv_stream_t *s, int status) {
     int current_events_channels = sizeof_event_clients_list();
@@ -1114,7 +1110,7 @@ static void load_identities(uv_work_t *wr) {
                 continue;
             }
 
-            char* ext = get_filename_ext(file.name);
+            const char* ext = get_filename_ext(file.name);
 
             // ignore back up files
             if (strcasecmp(ext, ".bak") == 0 || strcasecmp(ext, ".original") == 0 || strcasecmp(ext, "json") != 0) {
@@ -1506,45 +1502,6 @@ static char* normalize_host(char* hostname) {
     return hostname_new;
 }
 
-static char* ipc_cmd_buffered(ipc_cmd_ctx_t *ipc_cmd_ctx_new) {
-
-    ipc_cmd_q cmd_q;
-    STAILQ_INIT(&cmd_q);
-
-    uv_mutex_trylock(&ipc_cmd_ctx_new->cmd_lock);
-    cmd_q = ipc_cmd_ctx_new->ipc_cmd_queue;
-    uv_mutex_unlock(&ipc_cmd_ctx_new->cmd_lock);
-
-    STAILQ_INIT(&ipc_cmd_ctx_new->ipc_cmd_queue);
-    struct ipc_cmd_s *ipc_cmd;
-
-    char buff[MAXIPCCOMMANDLEN] = {0};
-    ssize_t buff_len = 0;
-    while (!STAILQ_EMPTY(&cmd_q)) {
-        ipc_cmd = STAILQ_FIRST(&cmd_q);
-        STAILQ_REMOVE_HEAD(&cmd_q, _next);
-
-        if (ipc_cmd->cmd_data != NULL) {
-            strncat(buff, ipc_cmd->cmd_data, ipc_cmd->len);
-            buff_len += ipc_cmd->len;
-        }
-
-        free(ipc_cmd->cmd_data);
-        free(ipc_cmd);
-
-        char lastChar = buff[buff_len - 1];
-        if (lastChar == LAST_CHAR_IPC_CMD) {
-            // end of the ipc command
-            break;
-        }
-    }
-
-    char* buf_new = calloc(buff_len + 1, sizeof(char));
-    snprintf(buf_new, buff_len, buff);
-    return buf_new;
-
-}
-
 static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, const char *ip_range, const char *dns_upstream) {
     netif_driver tun;
     char tun_error[64];
@@ -1730,7 +1687,7 @@ static void run_tunneler_loop(uv_loop_t* ziti_loop) {
     uv_signal_t sig_##n;                     \
     uv_signal_init(ziti_loop, &sig_##n); \
     uv_signal_start(&sig_##n, f, n); \
-    uv_unref((uv_handle_t *) &sig_##n);
+    uv_unref((uv_handle_t *) &sig_##n)
 
     handle_sig(SIGINT, on_exit_signal);
     handle_sig(SIGTERM, on_exit_signal);
@@ -2343,7 +2300,9 @@ static void enroll(int argc, char *argv[]) {
     }
 }
 
-static tunnel_command *cmd;
+static tunnel_command cmd = {
+        .show_result = true, // consistent with old behaviour
+};
 
 static int dump_opts(int argc, char *argv[]) {
     static struct option opts[] = {
@@ -2354,8 +2313,7 @@ static int dump_opts(int argc, char *argv[]) {
     optind = 0;
 
     tunnel_ziti_dump *dump_options = calloc(1, sizeof(tunnel_ziti_dump));
-    cmd = calloc(1, sizeof(tunnel_command));
-    cmd->command = TunnelCommand_ZitiDump;
+    cmd.command = TunnelCommand_ZitiDump;
 
     while ((c = getopt_long(argc, argv, "i:p:",
                             opts, &option_index)) != -1) {
@@ -2377,7 +2335,7 @@ static int dump_opts(int argc, char *argv[]) {
     CHECK_COMMAND_ERRORS(errors);
 
     size_t json_len;
-    cmd->data = tunnel_ziti_dump_to_json(dump_options, MODEL_JSON_COMPACT, &json_len);
+    cmd.data = tunnel_ziti_dump_to_json(dump_options, MODEL_JSON_COMPACT, &json_len);
     if (dump_options != NULL) {
         free_tunnel_ziti_dump(dump_options);
         free(dump_options);
@@ -2386,92 +2344,98 @@ static int dump_opts(int argc, char *argv[]) {
     return optind;
 }
 
-static void on_response(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
-    if (len > 0) {
-        printf("received response <%.*s>\n", (int) len, b->base);
-    } else {
-        fprintf(stderr,"Read Response error %s\n", uv_err_name(len));
+static int send_message_to_tunnel(char* message, bool show_result) {
+#if _WIN32
+    HANDLE cmd_soc = CreateFileA(sockfile,
+                                 GENERIC_READ | GENERIC_WRITE,
+                                 0, NULL,
+                                 OPEN_EXISTING,
+                                 FILE_FLAG_OVERLAPPED, NULL);
+    if (cmd_soc == INVALID_HANDLE_VALUE) {
+        DWORD err = GetLastError();
+        fprintf(stderr, "failed to connect to pipe: %lu", err);
+        exit(1);
     }
-    uv_read_stop(s);
-    free(b->base);
-    uv_close((uv_handle_t *)s, NULL);
-}
+#else
+    uv_os_sock_t cmd_soc = socket(AF_UNIX, SOCK_STREAM, 0);
+    struct sockaddr_un addr = {
+            .sun_family = AF_UNIX,
+#if __APPLE__
+            .sun_len = sizeof(addr),
+#endif
+    };
+    strncpy(addr.sun_path, sockfile, sizeof(addr.sun_path));
 
-void on_write(uv_write_t* req, int status) {
-    if (status < 0) {
-        fprintf(stderr,"Could not sent message to the tunnel. Write error %s\n", uv_err_name(status));
+    if (connect(cmd_soc, (const struct sockaddr *) &addr, sizeof(addr))) {
+        perror("cmd socket connect");
     }
-    free(req);
-}
 
-void send_message_to_pipe(uv_stream_t *pipe, char *msg) {
-    ZITI_LOG(VERBOSE, "Message...%s\n", msg);
-    uv_write_t *req = (uv_write_t*) malloc(sizeof(uv_write_t));
-    req->data = msg;
-
-    uv_buf_t bufs[2];
-    bufs[0] = uv_buf_init(msg, strlen(msg));
-    bufs[1] = uv_buf_init("\n", 1);
-
-    int rc = uv_write(req, pipe, bufs, 2, on_write);
-    if (rc != 0) {
-        on_write(req, rc);
-    }
-}
-
-void on_connect(uv_connect_t* connect, int status){
-    if (status < 0) {
-        fprintf(stderr, "failed to connect: %d/%s\n", status, uv_strerror(status));
-        free(connect->data);
-    } else {
-        int res = uv_read_start((uv_stream_t *) connect->handle, cmd_alloc, on_response);
-        if (res != 0) {
-            fprintf(stderr, "UV read error %d/%s\n", res, uv_strerror(res));
+#endif
+    size_t msg_size = strlen(message);
+    size_t count = 0;
+    while (count < strlen(message)) {
+#if _WIN32
+        DWORD c;
+        if (!WriteFile(cmd_soc, message + count, msg_size - count, &c, NULL)) {
+            fprintf(stderr, "failed to write to pipe: %lu", GetLastError());
+            exit(1);
         }
-        send_message_to_pipe(connect->handle, connect->data);
-    }
-    free(connect);
-}
-
-static uv_loop_t* connect_and_send_cmd(char pipesockfile[],uv_connect_t* connect, uv_pipe_t* client_handle) {
-    uv_loop_t* loop = uv_default_loop();
-
-    int res = uv_pipe_init(loop, client_handle, 0);
-    if (res != 0) {
-        fprintf(stderr, "UV client handle init failed %d/%s\n", res, uv_strerror(res));
-        return NULL;
+#else
+        ssize_t c;
+        c = write(cmd_soc, message + count, msg_size - count);
+#endif
+        if (c < 0) {
+            perror("write command");
+            exit(1);
+        }
+        count += c;
     }
 
-    uv_pipe_connect(connect, client_handle, pipesockfile, on_connect);
-
-    return loop;
-}
-
-static void send_message_to_tunnel(char* message) {
-    uv_pipe_t client_handle;
-    uv_connect_t* connect = (uv_connect_t*)malloc(sizeof(uv_connect_t));
-    connect->data = strdup(message);
-
-    uv_loop_t* loop = connect_and_send_cmd(sockfile, connect, &client_handle);
-
-    if (loop == NULL) {
-        fprintf(stderr, "Cannot run UV loop, loop is null\n");
-        return;
+    struct json_tokener *parser = json_tokener_new();
+    char buf[8*1024];
+    struct json_object *json = NULL;
+    while(json == NULL) {
+#if _WIN32
+        DWORD c;
+        if (!ReadFile(cmd_soc, buf, sizeof(buf), &c, NULL)) {
+            fprintf(stderr, "failed to read from pipe: %lu", GetLastError());
+            exit(1);
+        }
+#else
+        ssize_t c = read(cmd_soc, buf, sizeof(buf));
+#endif
+        if (c < 0) {
+            perror("read resp");
+            exit(1);
+        }
+        json = json_tokener_parse_ex(parser, buf, (int) c);
+        if (json == NULL) {
+            enum json_tokener_error e = json_tokener_get_error(parser);
+            if (e != json_tokener_continue) {
+                fprintf(stderr, "JSON parsing error: %s\n in payload: %.*s",
+                        json_tokener_error_desc(e), (int)c, buf);
+                exit(1);
+            }
+        }
     }
 
-    int res = uv_run(loop, UV_RUN_DEFAULT);
-    if (res != 0) {
-        fprintf(stderr, "UV run error %s\n", uv_err_name(res));
+    if (show_result) {
+        printf("%s", json_object_to_json_string_ext(json, JSON_C_TO_STRING_PRETTY));
     }
+    int code = json_object_get_boolean(json_object_object_get(json, "Success")) ?
+            0 : json_object_get_int(json_object_object_get(json, "Code"));
+    json_object_put(json);
+    json_tokener_free(parser);
+
+    return code;
 }
 
 static void send_message_to_tunnel_fn(int argc, char *argv[]) {
-    char* json = tunnel_command_to_json(cmd, MODEL_JSON_COMPACT, NULL);
-    send_message_to_tunnel(json);
-    free_tunnel_command(cmd);
-    free(cmd);
-    cmd = NULL;
+    char* json = tunnel_command_to_json(&cmd, MODEL_JSON_COMPACT, NULL);
+    int result = send_message_to_tunnel(json, cmd.show_result);
+    free_tunnel_command(&cmd);
     free(json);
+    exit(result);
 }
 
 static int on_off_identity_opts(int argc, char *argv[]) {
@@ -2483,8 +2447,7 @@ static int on_off_identity_opts(int argc, char *argv[]) {
     optind = 0;
 
     tunnel_on_off_identity on_off_identity_options = {0};
-    cmd = calloc(1, sizeof(tunnel_command));
-    cmd->command = TunnelCommand_IdentityOnOff;
+    cmd.command = TunnelCommand_IdentityOnOff;
 
     while ((c = getopt_long(argc, argv, "i:o:",
                             opts, &option_index)) != -1) {
@@ -2511,7 +2474,7 @@ static int on_off_identity_opts(int argc, char *argv[]) {
     CHECK_COMMAND_ERRORS(errors);
 
     size_t json_len;
-    cmd->data = tunnel_on_off_identity_to_json(&on_off_identity_options, MODEL_JSON_COMPACT, &json_len);
+    cmd.data = tunnel_on_off_identity_to_json(&on_off_identity_options, MODEL_JSON_COMPACT, &json_len);
     on_off_identity_options.identifier = NULL; // don't try to free static memory (`optarg`)
     free_tunnel_on_off_identity(&on_off_identity_options);
 
@@ -2526,8 +2489,7 @@ static int enable_identity_opts(int argc, char *argv[]) {
     optind = 0;
 
     tunnel_load_identity load_identity_options = {0};
-    cmd = calloc(1, sizeof(tunnel_command));
-    cmd->command = TunnelCommand_LoadIdentity;
+    cmd.command = TunnelCommand_LoadIdentity;
 
     while ((c = getopt_long(argc, argv, "i:",
                             opts, &option_index)) != -1) {
@@ -2546,7 +2508,7 @@ static int enable_identity_opts(int argc, char *argv[]) {
     CHECK_COMMAND_ERRORS(errors);
 
     size_t json_len;
-    cmd->data = tunnel_load_identity_to_json(&load_identity_options, MODEL_JSON_COMPACT, &json_len);
+    cmd.data = tunnel_load_identity_to_json(&load_identity_options, MODEL_JSON_COMPACT, &json_len);
     free_tunnel_load_identity(&load_identity_options);
 
     return optind;
@@ -2560,8 +2522,7 @@ static int enable_mfa_opts(int argc, char *argv[]) {
     optind = 0;
 
     tunnel_enable_mfa *enable_mfa_options = calloc(1, sizeof(tunnel_enable_mfa));
-    cmd = calloc(1, sizeof(tunnel_command));
-    cmd->command = TunnelCommand_EnableMFA;
+    cmd.command = TunnelCommand_EnableMFA;
 
     while ((c = getopt_long(argc, argv, "i:",
                             opts, &option_index)) != -1) {
@@ -2580,7 +2541,7 @@ static int enable_mfa_opts(int argc, char *argv[]) {
     CHECK_COMMAND_ERRORS(errors);
 
     size_t json_len;
-    cmd->data = tunnel_enable_mfa_to_json(enable_mfa_options, MODEL_JSON_COMPACT, &json_len);
+    cmd.data = tunnel_enable_mfa_to_json(enable_mfa_options, MODEL_JSON_COMPACT, &json_len);
     free(enable_mfa_options);
 
     return optind;
@@ -2595,8 +2556,7 @@ static int verify_mfa_opts(int argc, char *argv[]) {
     optind = 0;
 
     tunnel_verify_mfa *verify_mfa_options = calloc(1, sizeof(tunnel_verify_mfa));
-    cmd = calloc(1, sizeof(tunnel_command));
-    cmd->command = TunnelCommand_VerifyMFA;
+    cmd.command = TunnelCommand_VerifyMFA;
 
     while ((c = getopt_long(argc, argv, "i:c:",
                             opts, &option_index)) != -1) {
@@ -2618,7 +2578,7 @@ static int verify_mfa_opts(int argc, char *argv[]) {
     CHECK_COMMAND_ERRORS(errors);
 
     size_t json_len;
-    cmd->data = tunnel_verify_mfa_to_json(verify_mfa_options, MODEL_JSON_COMPACT, &json_len);
+    cmd.data = tunnel_verify_mfa_to_json(verify_mfa_options, MODEL_JSON_COMPACT, &json_len);
     free(verify_mfa_options);
 
     return optind;
@@ -2633,8 +2593,7 @@ static int remove_mfa_opts(int argc, char *argv[]) {
     optind = 0;
 
     tunnel_remove_mfa *remove_mfa_options = calloc(1, sizeof(tunnel_remove_mfa));
-    cmd = calloc(1, sizeof(tunnel_command));
-    cmd->command = TunnelCommand_RemoveMFA;
+    cmd.command = TunnelCommand_RemoveMFA;
 
     while ((c = getopt_long(argc, argv, "i:c:",
                             opts, &option_index)) != -1) {
@@ -2656,7 +2615,7 @@ static int remove_mfa_opts(int argc, char *argv[]) {
     CHECK_COMMAND_ERRORS(errors);
 
     size_t json_len;
-    cmd->data = tunnel_remove_mfa_to_json(remove_mfa_options, MODEL_JSON_COMPACT, &json_len);
+    cmd.data = tunnel_remove_mfa_to_json(remove_mfa_options, MODEL_JSON_COMPACT, &json_len);
     free(remove_mfa_options);
 
     return optind;
@@ -2671,8 +2630,7 @@ static int submit_mfa_opts(int argc, char *argv[]) {
     optind = 0;
 
     tunnel_submit_mfa *submit_mfa_options = calloc(1, sizeof(tunnel_submit_mfa));
-    cmd = calloc(1, sizeof(tunnel_command));
-    cmd->command = TunnelCommand_SubmitMFA;
+    cmd.command = TunnelCommand_SubmitMFA;
 
     while ((c = getopt_long(argc, argv, "i:c:",
                             opts, &option_index)) != -1) {
@@ -2694,7 +2652,7 @@ static int submit_mfa_opts(int argc, char *argv[]) {
     CHECK_COMMAND_ERRORS(errors);
 
     size_t json_len;
-    cmd->data = tunnel_submit_mfa_to_json(submit_mfa_options, MODEL_JSON_COMPACT, &json_len);
+    cmd.data = tunnel_submit_mfa_to_json(submit_mfa_options, MODEL_JSON_COMPACT, &json_len);
     free(submit_mfa_options);
 
     return optind;
@@ -2709,8 +2667,7 @@ static int generate_mfa_codes_opts(int argc, char *argv[]) {
     optind = 0;
 
     tunnel_generate_mfa_codes *mfa_codes_options = calloc(1, sizeof(tunnel_generate_mfa_codes));
-    cmd = calloc(1, sizeof(tunnel_command));
-    cmd->command = TunnelCommand_GenerateMFACodes;
+    cmd.command = TunnelCommand_GenerateMFACodes;
 
     while ((c = getopt_long(argc, argv, "i:c:",
                             opts, &option_index)) != -1) {
@@ -2732,7 +2689,7 @@ static int generate_mfa_codes_opts(int argc, char *argv[]) {
     CHECK_COMMAND_ERRORS(errors);
 
     size_t json_len;
-    cmd->data = tunnel_generate_mfa_codes_to_json(mfa_codes_options, MODEL_JSON_COMPACT, &json_len);
+    cmd.data = tunnel_generate_mfa_codes_to_json(mfa_codes_options, MODEL_JSON_COMPACT, &json_len);
     free(mfa_codes_options);
 
     return optind;
@@ -2747,8 +2704,7 @@ static int get_mfa_codes_opts(int argc, char *argv[]) {
     optind = 0;
 
     tunnel_get_mfa_codes *get_mfa_codes_options = calloc(1, sizeof(tunnel_get_mfa_codes));
-    cmd = calloc(1, sizeof(tunnel_command));
-    cmd->command = TunnelCommand_GetMFACodes;
+    cmd.command = TunnelCommand_GetMFACodes;
 
     while ((c = getopt_long(argc, argv, "i:c:",
                             opts, &option_index)) != -1) {
@@ -2770,7 +2726,7 @@ static int get_mfa_codes_opts(int argc, char *argv[]) {
     CHECK_COMMAND_ERRORS(errors);
 
     size_t json_len;
-    cmd->data = tunnel_get_mfa_codes_to_json(get_mfa_codes_options, MODEL_JSON_COMPACT, &json_len);
+    cmd.data = tunnel_get_mfa_codes_to_json(get_mfa_codes_options, MODEL_JSON_COMPACT, &json_len);
     free(get_mfa_codes_options);
 
     return optind;
@@ -2805,11 +2761,10 @@ static int set_log_level_opts(int argc, char *argv[]) {
 
     CHECK_COMMAND_ERRORS(errors);
 
-    cmd = calloc(1, sizeof(tunnel_command));
-    cmd->command = TunnelCommand_SetLogLevel;
+    cmd.command = TunnelCommand_SetLogLevel;
 
     size_t json_len;
-    cmd->data = tunnel_set_log_level_to_json(&log_level_options, MODEL_JSON_COMPACT, &json_len);
+    cmd.data = tunnel_set_log_level_to_json(&log_level_options, MODEL_JSON_COMPACT, &json_len);
 
     return optind;
 }
@@ -2824,8 +2779,7 @@ static int update_tun_ip_opts(int argc, char *argv[]) {
     optind = 0;
 
     tunnel_tun_ip_v4 *tun_ip_v4_options = calloc(1, sizeof(tunnel_tun_ip_v4));
-    cmd = calloc(1, sizeof(tunnel_command));
-    cmd->command = TunnelCommand_UpdateTunIpv4;
+    cmd.command = TunnelCommand_UpdateTunIpv4;
 
     while ((c = getopt_long(argc, argv, "t:p:d:",
                             opts, &option_index)) != -1) {
@@ -2854,7 +2808,7 @@ static int update_tun_ip_opts(int argc, char *argv[]) {
     CHECK_COMMAND_ERRORS(errors);
 
     size_t json_len;
-    cmd->data = tunnel_tun_ip_v4_to_json(tun_ip_v4_options, MODEL_JSON_COMPACT, &json_len);
+    cmd.data = tunnel_tun_ip_v4_to_json(tun_ip_v4_options, MODEL_JSON_COMPACT, &json_len);
     free(tun_ip_v4_options);
 
     return optind;
@@ -2869,8 +2823,7 @@ static int endpoint_status_change_opts(int argc, char *argv[]) {
     optind = 0;
 
     tunnel_status_change *tunnel_status_change_opts = calloc(1, sizeof(tunnel_status_change));
-    cmd = calloc(1, sizeof(tunnel_command));
-    cmd->command = TunnelCommand_StatusChange;
+    cmd.command = TunnelCommand_StatusChange;
 
     while ((c = getopt_long(argc, argv, "w:u:",
                             opts, &option_index)) != -1) {
@@ -2900,7 +2853,7 @@ static int endpoint_status_change_opts(int argc, char *argv[]) {
     CHECK_COMMAND_ERRORS(errors);
 
     size_t json_len;
-    cmd->data = tunnel_status_change_to_json(tunnel_status_change_opts, MODEL_JSON_COMPACT, &json_len);
+    cmd.data = tunnel_status_change_to_json(tunnel_status_change_opts, MODEL_JSON_COMPACT, &json_len);
     free(tunnel_status_change_opts);
 
     return optind;
@@ -2910,7 +2863,7 @@ static int endpoint_status_change_opts(int argc, char *argv[]) {
 static void service_control(int argc, char *argv[]) {
 
     tunnel_service_control *tunnel_service_control_opt = calloc(1, sizeof(tunnel_service_control));
-    if (parse_tunnel_service_control(tunnel_service_control_opt, cmd->data, strlen(cmd->data)) < 0) {
+    if (parse_tunnel_service_control(tunnel_service_control_opt, cmd.data, strlen(cmd.data)) < 0) {
         fprintf(stderr, "Could not fetch service control data");
         return;
     }
@@ -2932,8 +2885,7 @@ static int svc_opts(int argc, char *argv[]) {
     };
 
     tunnel_service_control *tunnel_service_control_options = calloc(1, sizeof(tunnel_service_control));
-    cmd = calloc(1, sizeof(tunnel_command));
-    cmd->command = TunnelCommand_ServiceControl;
+    cmd.command = TunnelCommand_ServiceControl;
 
     int c, option_index, errors = 0;
     optind = 0;
@@ -2956,7 +2908,7 @@ static int svc_opts(int argc, char *argv[]) {
     CHECK_COMMAND_ERRORS(errors);
 
     size_t json_len;
-    cmd->data = tunnel_service_control_to_json(tunnel_service_control_options, MODEL_JSON_COMPACT, &json_len);
+    cmd.data = tunnel_service_control_to_json(tunnel_service_control_options, MODEL_JSON_COMPACT, &json_len);
 
     return optind;
 }
@@ -2965,8 +2917,7 @@ static int svc_opts(int argc, char *argv[]) {
 static int get_status_opts(int argc, char *argv[]) {
     optind = 0;
 
-    cmd = calloc(1, sizeof(tunnel_command));
-    cmd->command = TunnelCommand_Status;
+    cmd.command = TunnelCommand_Status;
 
     return optind;
 }
@@ -2979,8 +2930,7 @@ static int delete_identity_opts(int argc, char *argv[]) {
     optind = 0;
 
     tunnel_delete_identity *delete_identity_options = calloc(1, sizeof(tunnel_delete_identity));
-    cmd = calloc(1, sizeof(tunnel_command));
-    cmd->command = TunnelCommand_RemoveIdentity;
+    cmd.command = TunnelCommand_RemoveIdentity;
 
     while ((c = getopt_long(argc, argv, "i:",
                             opts, &option_index)) != -1) {
@@ -2999,7 +2949,7 @@ static int delete_identity_opts(int argc, char *argv[]) {
     CHECK_COMMAND_ERRORS(errors);
 
     size_t json_len;
-    cmd->data = tunnel_delete_identity_to_json(delete_identity_options, MODEL_JSON_COMPACT, &json_len);
+    cmd.data = tunnel_delete_identity_to_json(delete_identity_options, MODEL_JSON_COMPACT, &json_len);
     free(delete_identity_options);
 
     return optind;
@@ -3015,8 +2965,7 @@ static int add_identity_opts(int argc, char *argv[]) {
     optind = 0;
 
     tunnel_add_identity *tunnel_add_identity_opt = calloc(1, sizeof(tunnel_add_identity));
-    cmd = calloc(1, sizeof(tunnel_command));
-    cmd->command = TunnelCommand_AddIdentity;
+    cmd.command = TunnelCommand_AddIdentity;
 
     while ((c = getopt_long(argc, argv, "i:j:",
                             opts, &option_index)) != -1) {
@@ -3038,7 +2987,7 @@ static int add_identity_opts(int argc, char *argv[]) {
     CHECK_COMMAND_ERRORS(errors);
 
     size_t json_len;
-    cmd->data = tunnel_add_identity_to_json(tunnel_add_identity_opt, MODEL_JSON_COMPACT, &json_len);
+    cmd.data = tunnel_add_identity_to_json(tunnel_add_identity_opt, MODEL_JSON_COMPACT, &json_len);
     free(tunnel_add_identity_opt);
 
     return optind;

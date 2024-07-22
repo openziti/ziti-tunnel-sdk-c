@@ -15,14 +15,9 @@ if(CMAKE_SYSTEM_NAME STREQUAL Windows)
 endif()
 
 if (MSVC)
-    message("using visual studio")
-    FetchContent_Declare(win-c
-            GIT_REPOSITORY https://github.com/netfoundry/win-c.git
-            GIT_TAG master
-            )
-    FetchContent_MakeAvailable(win-c)
-    set(getopt libwinc)
-endif()
+    find_package(unofficial-getopt-win32 REQUIRED)
+    set(getopt unofficial::getopt-win32::getopt)
+endif ()
 
 set(ZITI_INSTANCE_COMMON include/model/events.h include/model/dtos.h instance.c include/identity-utils.h config-utils.c include/config-utils.h instance-config.c include/instance-config.h)
 if (WIN32)
