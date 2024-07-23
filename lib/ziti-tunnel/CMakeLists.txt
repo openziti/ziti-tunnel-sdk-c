@@ -26,7 +26,11 @@ else()
     set(lwip_sys_srcs ${LWIP_CONTRIB_DIR}/ports/unix/port/sys_arch.c)
 endif()
 
+if (ANDROID)
+    set(platform_lwip_include ${CMAKE_CURRENT_SOURCE_DIR}/lwip/ports/android)
+endif ()
 set (LWIP_INCLUDE_DIRS
+        "${platform_lwip_include}"
         "${LWIP_DIR}/src/include"
         "${LWIP_CONTRIB_INCLUDE}"
         "${CMAKE_CURRENT_SOURCE_DIR}/lwip"

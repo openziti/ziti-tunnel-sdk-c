@@ -57,7 +57,7 @@ static void* on_dns_client(const void *app_intercept_ctx, io_ctx_t *io);
 static int on_dns_close(void *dns_io_ctx);
 static ssize_t on_dns_req(const void *ziti_io_ctx, void *write_ctx, const void *q_packet, size_t len);
 static int query_upstream(struct dns_req *req);
-static void udp_alloc(uv_handle_t *h, unsigned long reqlen, uv_buf_t *b);
+static void udp_alloc(uv_handle_t *h, size_t reqlen, uv_buf_t *b);
 static void on_upstream_packet(uv_udp_t *h, ssize_t rc, const uv_buf_t *buf, const struct sockaddr* addr, unsigned int flags);
 static void complete_dns_req(struct dns_req *req);
 static void free_dns_req(struct dns_req *req);
@@ -825,7 +825,7 @@ int query_upstream(struct dns_req *req) {
     return rc == 0 ? DNS_NO_ERROR : DNS_REFUSE;
 }
 
-static void udp_alloc(uv_handle_t *h, unsigned long reqlen, uv_buf_t *b) {
+static void udp_alloc(uv_handle_t *h, size_t reqlen, uv_buf_t *b) {
     b->base = malloc(1024);
     b->len = 1024;
 }
