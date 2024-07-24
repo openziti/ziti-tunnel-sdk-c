@@ -32,6 +32,7 @@ endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL Windows)
     SET(resolve_lib dnsapi)
+elseif(CMAKE_SYSTEM_NAME STREQUAL Android)
 else()
     SET(resolve_lib resolv)
 endif()
