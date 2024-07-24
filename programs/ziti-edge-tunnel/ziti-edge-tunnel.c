@@ -241,8 +241,8 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
         if (parse_tunnel_command(&tnl_res_cmd, result->data, strlen(result->data)) >= 0) {
             switch (tnl_res_cmd.command) {
                 case TunnelCommand_RemoveIdentity: {
-                    tunnel_delete_identity tnl_delete_id;
-                    if (tnl_res_cmd.data != NULL && parse_tunnel_delete_identity(&tnl_delete_id, tnl_res_cmd.data, strlen(tnl_res_cmd.data)) >= 0) {
+                    tunnel_identity_id tnl_delete_id;
+                    if (tnl_res_cmd.data != NULL && parse_tunnel_identity_id(&tnl_delete_id, tnl_res_cmd.data, strlen(tnl_res_cmd.data)) >= 0) {
                         if (tnl_delete_id.identifier == NULL) {
                             ZITI_LOG(ERROR, "Identity filename is not found in the remove identity request, not deleting the identity file");
                             break;
@@ -273,7 +273,7 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
 
 #endif
                         delete_identity_from_instance(tnl_delete_id.identifier);
-                        free_tunnel_delete_identity(&tnl_delete_id);
+                        free_tunnel_identity_id(&tnl_delete_id);
                         // should be the last line in this function as it calls the mutex/lock
                         save_tunnel_status_to_file();
                     }
@@ -1011,13 +1011,13 @@ static void broadcast_metrics(uv_timer_t *timer) {
             if (tnl_id->Active && tnl_id->Loaded && tnl_id->IdFileStatus) {
                 active_identities = true;
 
-                tunnel_get_identity_metrics get_metrics = {
+                tunnel_identity_id get_metrics = {
                         .identifier = tnl_id->Identifier,
                 };
                 size_t json_len;
                 tunnel_command tnl_cmd = {
                         .command = TunnelCommand_GetMetrics,
-                        .data = tunnel_get_identity_metrics_to_json(&get_metrics, MODEL_JSON_COMPACT, &json_len),
+                        .data = tunnel_identity_id_to_json(&get_metrics, MODEL_JSON_COMPACT, &json_len),
                 };
 
                 tunnel_command_inline *tnl_cmd_inline = alloc_tunnel_command_inline();
@@ -2438,6 +2438,46 @@ static void send_message_to_tunnel_fn(int argc, char *argv[]) {
     exit(result);
 }
 
+// reusable parsing of a single required `-i` option
+static char* get_identity_opt(int argc, char *argv[]) {
+    static struct option opts[] = {
+            {"identity", required_argument, NULL, 'i'},
+    };
+    int c, option_index, errors = 0;
+    optind = 0;
+    char *id = NULL;
+    while ((c = getopt_long(argc, argv, "i:",
+                            opts, &option_index)) != -1) {
+        switch (c) {
+            case 'i':
+                id = optarg;
+                break;
+            default: {
+                fprintf(stderr, "Unknown option '%c'\n", c);
+                errors++;
+                break;
+            }
+        }
+    }
+
+    if (id == NULL) {
+        fprintf(stderr, "-i option is required");
+        errors++;
+    }
+    CHECK_COMMAND_ERRORS(errors);
+    return id;
+}
+
+static int ext_auth_opts(int argc, char *argv[]) {
+    tunnel_identity_id id = {
+            .identifier = (char*)get_identity_opt(argc, argv),
+    };
+
+    cmd.command = TunnelCommands.ExternalAuth;
+    cmd.data = tunnel_identity_id_to_json(&id, MODEL_JSON_COMPACT, NULL);
+    return optind;
+}
+
 static int on_off_identity_opts(int argc, char *argv[]) {
     static struct option opts[] = {
             {"identity", required_argument, NULL, 'i'},
@@ -2482,30 +2522,11 @@ static int on_off_identity_opts(int argc, char *argv[]) {
 }
 
 static int enable_identity_opts(int argc, char *argv[]) {
-    static struct option opts[] = {
-            {"identity", required_argument, NULL, 'i'},
+
+    tunnel_load_identity load_identity_options = {
+            .path = realpath(get_identity_opt(argc, argv), NULL),
     };
-    int c, option_index, errors = 0;
-    optind = 0;
-
-    tunnel_load_identity load_identity_options = {0};
     cmd.command = TunnelCommand_LoadIdentity;
-
-    while ((c = getopt_long(argc, argv, "i:",
-                            opts, &option_index)) != -1) {
-        switch (c) {
-            case 'i':
-                load_identity_options.path = realpath(optarg, NULL);
-                break;
-            default: {
-                fprintf(stderr, "Unknown option '%c'\n", c);
-                errors++;
-                break;
-            }
-        }
-    }
-
-    CHECK_COMMAND_ERRORS(errors);
 
     size_t json_len;
     cmd.data = tunnel_load_identity_to_json(&load_identity_options, MODEL_JSON_COMPACT, &json_len);
@@ -2515,34 +2536,13 @@ static int enable_identity_opts(int argc, char *argv[]) {
 }
 
 static int enable_mfa_opts(int argc, char *argv[]) {
-    static struct option opts[] = {
-            {"identity", required_argument, NULL, 'i'},
+    tunnel_identity_id id = {
+            .identifier = get_identity_opt(argc, argv),
     };
-    int c, option_index, errors = 0;
-    optind = 0;
-
-    tunnel_enable_mfa *enable_mfa_options = calloc(1, sizeof(tunnel_enable_mfa));
     cmd.command = TunnelCommand_EnableMFA;
 
-    while ((c = getopt_long(argc, argv, "i:",
-                            opts, &option_index)) != -1) {
-        switch (c) {
-            case 'i':
-                enable_mfa_options->identifier = optarg;
-                break;
-            default: {
-                fprintf(stderr, "Unknown option '%c'\n", c);
-                errors++;
-                break;
-            }
-        }
-    }
-
-    CHECK_COMMAND_ERRORS(errors);
-
     size_t json_len;
-    cmd.data = tunnel_enable_mfa_to_json(enable_mfa_options, MODEL_JSON_COMPACT, &json_len);
-    free(enable_mfa_options);
+    cmd.data = tunnel_identity_id_to_json(&id, MODEL_JSON_COMPACT, &json_len);
 
     return optind;
 }
@@ -2923,34 +2923,13 @@ static int get_status_opts(int argc, char *argv[]) {
 }
 
 static int delete_identity_opts(int argc, char *argv[]) {
-    static struct option opts[] = {
-            {"identity", required_argument, NULL, 'i'},
+    tunnel_identity_id id = {
+            .identifier = get_identity_opt(argc, argv),
     };
-    int c, option_index, errors = 0;
-    optind = 0;
-
-    tunnel_delete_identity *delete_identity_options = calloc(1, sizeof(tunnel_delete_identity));
     cmd.command = TunnelCommand_RemoveIdentity;
 
-    while ((c = getopt_long(argc, argv, "i:",
-                            opts, &option_index)) != -1) {
-        switch (c) {
-            case 'i':
-                delete_identity_options->identifier = optarg;
-                break;
-            default: {
-                fprintf(stderr, "Unknown option '%c'\n", c);
-                errors++;
-                break;
-            }
-        }
-    }
-
-    CHECK_COMMAND_ERRORS(errors);
-
     size_t json_len;
-    cmd.data = tunnel_delete_identity_to_json(delete_identity_options, MODEL_JSON_COMPACT, &json_len);
-    free(delete_identity_options);
+    cmd.data = tunnel_identity_id_to_json(&id, MODEL_JSON_COMPACT, &json_len);
 
     return optind;
 }
@@ -3063,6 +3042,12 @@ static CommandLine update_tun_ip_cmd = make_command("update_tun_ip", "Update tun
 static CommandLine ep_status_change_cmd = make_command("endpoint_sts_change", "send endpoint status change message to the tunneler", "[-w <wake>] [-u <unlock>]",
                                                     "\t-w|--wake\twake the tunneler\n"
                                                     "\t-u|--unlock\tunlock the tunneler\n", endpoint_status_change_opts, send_message_to_tunnel_fn);
+static CommandLine ext_auth_login = make_command(
+        "ext-jwt-login",
+        "login with ext JWT signer", "-i <identity>",
+        "\t-i|--identity\tidentity to authenticate\n",
+        ext_auth_opts, send_message_to_tunnel_fn);
+
 #if _WIN32
 static CommandLine service_control_cmd = make_command("service_control", "execute service control functions for Ziti tunnel (required superuser access)",
                                           "-o|--operation <option>",

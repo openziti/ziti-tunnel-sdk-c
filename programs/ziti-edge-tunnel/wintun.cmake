@@ -11,4 +11,4 @@ if(NOT wintun_POPULATED)
 endif()
 
 add_library(wintun INTERFACE)
-target_include_directories(subcommand INTERFACE ${wintun_SOURCE_DIR}/include)
+target_include_directories(wintun INTERFACE ${wintun_SOURCE_DIR}/include)
