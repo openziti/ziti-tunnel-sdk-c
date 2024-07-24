@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.21)
 
 
 set(ZITI_SDK_DIR "" CACHE FILEPATH "developer option: use local ziti-sdk-c checkout")
@@ -12,7 +12,6 @@ message("tunnel only = ${TUNNEL_SDK_ONLY}")
 option(EXCLUDE_PROGRAMS "exclude building the programs directory" OFF)
 message("exclude programs = ${EXCLUDE_PROGRAMS}")
 
-option(ZITI_TUNNEL_BUILD_TESTS "Build tests." ON)
 
 find_package(Git)
 if(NOT GIT_VERSION AND GIT_FOUND)
@@ -82,6 +81,8 @@ project(ziti-tunnel-sdk-c
         DESCRIPTION "OpenZiti tunneler SDK"
         HOMEPAGE_URL "https://github.com/openziti/ziti-tunneler-sdk-c"
         LANGUAGES C CXX)
+
+option(ZITI_TUNNEL_BUILD_TESTS "Build tests." "${${PROJECT_NAME}_IS_TOP_LEVEL}")
 
 set(PROJECT_VERSION ${GIT_VERSION})
 

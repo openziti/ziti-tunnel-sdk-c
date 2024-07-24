@@ -68,7 +68,8 @@ XX(ServiceControl, __VA_ARGS__) \
 XX(Status, __VA_ARGS__) \
 XX(RemoveIdentity, __VA_ARGS__) \
 XX(StatusChange, __VA_ARGS__)   \
-XX(AddIdentity, __VA_ARGS__)
+XX(AddIdentity, __VA_ARGS__)    \
+XX(ExternalAuth, __VA_ARGS__)
 
 DECLARE_ENUM(TunnelCommand, TUNNEL_COMMANDS)
 
@@ -106,7 +107,7 @@ XX(identities, tunnel_identity_info, array, Identities, __VA_ARGS__)
 XX(identifier, string, none, Identifier, __VA_ARGS__) \
 XX(dump_path, string, none, DumpPath, __VA_ARGS__)
 
-#define TNL_ENABLE_MFA(XX, ...) \
+#define TNL_IDENTITY_ID(XX, ...) \
 XX(identifier, string, none, Identifier, __VA_ARGS__)
 
 #define TNL_MFA_ENROL_RES(XX,...) \
@@ -141,9 +142,6 @@ XX(recovery_codes, string, array, RecoveryCodes, __VA_ARGS__)
 XX(identifier, string, none, Identifier, __VA_ARGS__) \
 XX(code, string, none, Code, __VA_ARGS__)
 
-#define TNL_GET_IDENTITY_METRICS(XX, ...) \
-XX(identifier, string, none, Identifier, __VA_ARGS__)
-
 #define TNL_IDENTITY_METRICS(XX, ...) \
 XX(identifier, string, none, Identifier, __VA_ARGS__) \
 XX(up, string, none, Up, __VA_ARGS__) \
@@ -152,9 +150,6 @@ XX(down, string, none, Down, __VA_ARGS__)
 #define TUNNEL_CMD_INLINE(XX, ...) \
 XX(identifier, string, none, Identifier, __VA_ARGS__) \
 XX(command, TunnelCommand, none, Command, __VA_ARGS__)
-
-#define TNL_DELETE_IDENTITY(XX, ...) \
-XX(identifier, string, none, Identifier, __VA_ARGS__)
 
 #define TUNNEL_SET_LOG_LEVEL(XX, ...) \
 XX(loglevel, string, none, Level, __VA_ARGS__)
@@ -182,7 +177,7 @@ DECLARE_MODEL(tunnel_identity_info, TNL_IDENTITY_INFO)
 DECLARE_MODEL(tunnel_identity_lst, TNL_IDENTITY_LIST)
 DECLARE_MODEL(tunnel_ziti_dump, TNL_ZITI_DUMP)
 DECLARE_MODEL(tunnel_on_off_identity, TNL_ON_OFF_IDENTITY)
-DECLARE_MODEL(tunnel_enable_mfa, TNL_ENABLE_MFA)
+DECLARE_MODEL(tunnel_identity_id, TNL_IDENTITY_ID)
 DECLARE_MODEL(tunnel_mfa_enrol_res, TNL_MFA_ENROL_RES)
 DECLARE_MODEL(tunnel_submit_mfa, TNL_SUBMIT_MFA)
 DECLARE_MODEL(tunnel_verify_mfa, TNL_VERIFY_MFA)
@@ -190,13 +185,11 @@ DECLARE_MODEL(tunnel_remove_mfa, TNL_REMOVE_MFA)
 DECLARE_MODEL(tunnel_generate_mfa_codes, TNL_GENERATE_MFA_CODES)
 DECLARE_MODEL(tunnel_mfa_recovery_codes, TNL_MFA_RECOVERY_CODES)
 DECLARE_MODEL(tunnel_get_mfa_codes, TNL_GET_MFA_CODES)
-DECLARE_MODEL(tunnel_get_identity_metrics, TNL_GET_IDENTITY_METRICS)
 DECLARE_MODEL(tunnel_identity_metrics, TNL_IDENTITY_METRICS)
 DECLARE_MODEL(tunnel_command_inline, TUNNEL_CMD_INLINE)
 DECLARE_MODEL(tunnel_set_log_level, TUNNEL_SET_LOG_LEVEL)
 DECLARE_MODEL(tunnel_tun_ip_v4, TUNNEL_TUN_IP_V4)
 DECLARE_MODEL(tunnel_service_control, TUNNEL_SERVICE_CONTROL)
-DECLARE_MODEL(tunnel_delete_identity, TNL_DELETE_IDENTITY)
 DECLARE_MODEL(tunnel_status_change, TUNNEL_STATUS_CHANGE)
 DECLARE_MODEL(tunnel_add_identity, TUNNEL_ADD_IDENTITY)
 

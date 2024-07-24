@@ -353,21 +353,21 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
         }
 
         case TunnelCommand_EnableMFA: {
-            tunnel_enable_mfa enable_mfa_cmd = {0};
-            if (cmd->data != NULL && parse_tunnel_enable_mfa(&enable_mfa_cmd, cmd->data, strlen(cmd->data)) < 0) {
+            tunnel_identity_id id = {0};
+            if (cmd->data != NULL && parse_tunnel_identity_id(&id, cmd->data, strlen(cmd->data)) < 0) {
                 result.success = false;
                 result.error = "invalid command";
-                free_tunnel_enable_mfa(&enable_mfa_cmd);
+                free_tunnel_identity_id(&id);
                 break;
             }
-            if (is_null(enable_mfa_cmd.identifier, "Identifier info is not found in the request", &result)) {
-                free_tunnel_enable_mfa(&enable_mfa_cmd);
+            if (is_null(id.identifier, "Identifier info is not found in the request", &result)) {
+                free_tunnel_identity_id(&id);
                 break;
             }
 
-            struct ziti_instance_s *inst = model_map_get(&instances, enable_mfa_cmd.identifier);
+            struct ziti_instance_s *inst = model_map_get(&instances, id.identifier);
             if (is_null(inst, "ziti context not found", &result) || is_null(inst->ztx, "ziti context is not loaded", &result)) {
-                free_tunnel_enable_mfa(&enable_mfa_cmd);
+                free_tunnel_identity_id(&id);
                 break;
             }
             if (inst->ztx == NULL) {
@@ -377,13 +377,14 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
             }
 
             struct tunnel_cb_s *req = malloc(sizeof(struct tunnel_cb_s));
-            req->ctx = strdup(enable_mfa_cmd.identifier);
+            req->ctx = id.identifier;
+            id.identifier = NULL;
             req->cmd_cb = cb;
             req->cmd_ctx = ctx;
 
             enable_mfa(inst->ztx, req);
 
-            free_tunnel_enable_mfa(&enable_mfa_cmd);
+            free_tunnel_identity_id(&id);
             return 0;
         }
 
@@ -541,47 +542,47 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
         }
 
         case TunnelCommand_GetMetrics: {
-            tunnel_get_identity_metrics get_identity_metrics_cmd = {0};
-            if (cmd->data == NULL || parse_tunnel_get_identity_metrics(&get_identity_metrics_cmd, cmd->data, strlen(cmd->data)) < 0) {
+            tunnel_identity_id get_identity_metrics_cmd = {0};
+            if (cmd->data == NULL || parse_tunnel_identity_id(&get_identity_metrics_cmd, cmd->data, strlen(cmd->data)) < 0) {
                 result.error = "invalid command";
                 result.success = false;
-                free_tunnel_get_identity_metrics(&get_identity_metrics_cmd);
+                free_tunnel_identity_id(&get_identity_metrics_cmd);
                 break;
             }
             if (is_null(get_identity_metrics_cmd.identifier, "Identifier info is not found in the request", &result)) {
-                free_tunnel_get_identity_metrics(&get_identity_metrics_cmd);
+                free_tunnel_identity_id(&get_identity_metrics_cmd);
                 break;
             }
 
             struct ziti_instance_s *inst = model_map_get(&instances, get_identity_metrics_cmd.identifier);
             if (is_null(inst, "ziti context not found", &result) || is_null(inst->ztx, "ziti context is not loaded", &result)) {
-                free_tunnel_get_identity_metrics(&get_identity_metrics_cmd);
+                free_tunnel_identity_id(&get_identity_metrics_cmd);
                 break;
             }
 
             get_transfer_rates(get_identity_metrics_cmd.identifier, (command_cb) cb, ctx);
-            free_tunnel_get_identity_metrics(&get_identity_metrics_cmd);
+            free_tunnel_identity_id(&get_identity_metrics_cmd);
             return 0;
         }
 
         case TunnelCommand_RemoveIdentity: {
-            tunnel_delete_identity delete_id = {0};
-            if (cmd->data == NULL || parse_tunnel_delete_identity(&delete_id, cmd->data, strlen(cmd->data)) < 0) {
+            tunnel_identity_id delete_id = {0};
+            if (cmd->data == NULL || parse_tunnel_identity_id(&delete_id, cmd->data, strlen(cmd->data)) < 0) {
                 result.success = false;
                 result.error = "invalid command";
-                free_tunnel_delete_identity(&delete_id);
+                free_tunnel_identity_id(&delete_id);
                 break;
             }
             result.data = tunnel_command_to_json(cmd, MODEL_JSON_COMPACT, NULL);
 
             if (is_null(delete_id.identifier, "Identifier info is not found in the remove identity request", &result)) {
-                free_tunnel_delete_identity(&delete_id);
+                free_tunnel_identity_id(&delete_id);
                 break;
             }
             struct ziti_instance_s *inst = model_map_get(&instances, delete_id.identifier);
 
             if (is_null(inst, "ziti context not found", &result) || is_null(inst->ztx, "ziti context is not loaded", &result)) {
-                free_tunnel_delete_identity(&delete_id);
+                free_tunnel_identity_id(&delete_id);
                 break;
             }
 
@@ -592,7 +593,7 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
             result.success = true;
             result.code = IPC_SUCCESS;
 
-            free_tunnel_delete_identity(&delete_id);
+            free_tunnel_identity_id(&delete_id);
             break;
         }
 
@@ -1342,7 +1343,7 @@ IMPL_MODEL(tunnel_identity_info, TNL_IDENTITY_INFO)
 IMPL_MODEL(tunnel_identity_lst, TNL_IDENTITY_LIST)
 IMPL_MODEL(tunnel_on_off_identity, TNL_ON_OFF_IDENTITY)
 IMPL_MODEL(tunnel_ziti_dump, TNL_ZITI_DUMP)
-IMPL_MODEL(tunnel_enable_mfa, TNL_ENABLE_MFA)
+IMPL_MODEL(tunnel_identity_id, TNL_IDENTITY_ID)
 IMPL_MODEL(tunnel_mfa_enrol_res, TNL_MFA_ENROL_RES)
 IMPL_MODEL(tunnel_submit_mfa, TNL_SUBMIT_MFA)
 IMPL_MODEL(tunnel_verify_mfa, TNL_VERIFY_MFA)
@@ -1350,9 +1351,7 @@ IMPL_MODEL(tunnel_remove_mfa, TNL_REMOVE_MFA)
 IMPL_MODEL(tunnel_generate_mfa_codes, TNL_GENERATE_MFA_CODES)
 IMPL_MODEL(tunnel_mfa_recovery_codes, TNL_MFA_RECOVERY_CODES)
 IMPL_MODEL(tunnel_get_mfa_codes, TNL_GET_MFA_CODES)
-IMPL_MODEL(tunnel_get_identity_metrics, TNL_GET_IDENTITY_METRICS)
 IMPL_MODEL(tunnel_identity_metrics, TNL_IDENTITY_METRICS)
-IMPL_MODEL(tunnel_delete_identity, TNL_DELETE_IDENTITY)
 IMPL_MODEL(tunnel_status_change, TUNNEL_STATUS_CHANGE)
 
 // ************** TUNNEL Events
