@@ -65,6 +65,8 @@ static ziti_context get_ziti(const char *identifier);
 static void update_config(uv_work_t *wr);
 static void update_config_done(uv_work_t *wr, int err);
 
+static void on_ext_auth(ziti_context ztx, const char *url, void *ctx);
+
 struct tunnel_cb_s {
     void *ctx;
     command_cb cmd_cb;
@@ -448,7 +450,6 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
             return 0;
         }
 
-        default: result.error = "command not implemented";
         case TunnelCommand_SubmitMFA: {
             tunnel_submit_mfa auth = {0};
             if (cmd->data == NULL || parse_tunnel_submit_mfa(&auth, cmd->data, strlen(cmd->data)) < 0) {
@@ -621,8 +622,36 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
             break;
         }
 
-        case TunnelCommand_Unknown: {
-            ZITI_LOG(VERBOSE, "Unknown tunnel command received");
+        case TunnelCommand_ExternalAuth: {
+            tunnel_identity_id id = {};
+            if (cmd->data == NULL ||
+                parse_tunnel_identity_id(&id, cmd->data, strlen(cmd->data)) < 0) {
+                result.error = "invalid command";
+                result.success = false;
+                free_tunnel_identity_id(&id);
+                break;
+            }
+
+            struct ziti_instance_s *inst = model_map_get(&instances, id.identifier);
+            if (is_null(inst, "ziti context not found", &result) ||
+                is_null(inst->ztx, "ziti context is not loaded", &result)) {
+                free_tunnel_identity_id(&id);
+                break;
+            }
+
+            struct tunnel_cb_s *req = calloc(1, sizeof(*req));
+            req->ctx = id.identifier;
+            req->cmd_cb = cb;
+            req->cmd_ctx = ctx;
+            ziti_ext_auth(inst->ztx, on_ext_auth, req);
+            return 0;
+        }
+        default: {
+            static char err[512];
+            snprintf(err, sizeof(err), "unsupported command %d[%s]",
+                     cmd->command, TunnelCommands.name(cmd->command));
+            ZITI_LOG(VERBOSE, "%s", err);
+            result.error = err;
             break;
         }
     }
@@ -1172,6 +1201,26 @@ static void generate_mfa_codes(ziti_context ztx, char *code, void *ctx) {
 
 static void get_mfa_codes(ziti_context ztx, char *code, void *ctx) {
     ziti_mfa_get_recovery_codes(ztx, code, on_mfa_recovery_codes, ctx);
+}
+
+static void on_ext_auth(ziti_context ztx, const char *url, void *ctx) {
+    struct tunnel_cb_s *req = ctx;
+    tunnel_result result = {
+            .success = true,
+            .code = IPC_SUCCESS,
+    };
+    if (req->cmd_cb) {
+        tunnel_ext_auth auth = {
+                .identifier = (char*)req->ctx,
+                .ext_auth_url = (char*)url,
+        };
+        result.data = tunnel_ext_auth_to_json(&auth, MODEL_JSON_COMPACT, NULL);
+
+        req->cmd_cb(&result, req->cmd_ctx);
+    }
+    FREE(result.data);
+    FREE(req->ctx);
+    free(req);
 }
 
 #define CHECK(lbl, op) do{ \

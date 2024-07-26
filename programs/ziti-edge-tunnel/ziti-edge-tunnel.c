@@ -3074,6 +3074,7 @@ static CommandLine *main_cmds[] = {
         &submit_mfa_cmd,
         &generate_mfa_codes_cmd,
         &get_mfa_codes_cmd,
+        &ext_auth_login,
         &get_status_cmd,
         &delete_id_cmd,
         &add_id_cmd,
@@ -3287,3 +3288,4 @@ IMPL_MODEL(mfa_status_event, MFA_STATUS_EVENT)
 IMPL_MODEL(tunnel_metrics_event, TUNNEL_METRICS_EVENT)
 IMPL_MODEL(notification_message, TUNNEL_NOTIFICATION_MESSAGE)
 IMPL_MODEL(notification_event, TUNNEL_NOTIFICATION_EVENT)
+

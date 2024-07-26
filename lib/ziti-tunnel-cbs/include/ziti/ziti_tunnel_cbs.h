@@ -170,6 +170,11 @@ XX(unlocked, bool, none, Unlocked, __VA_ARGS__)
 XX(jwtFileName, string, none, JwtFileName, __VA_ARGS__) \
 XX(jwtContent, string, none, JwtContent, __VA_ARGS__)
 
+#define TUNNEL_EXT_AUTH(XX, ...) \
+XX(identifier, string, none, identifier, __VA_ARGS__) \
+XX(ext_auth_url, string, none, url, __VA_ARGS__)
+
+
 DECLARE_MODEL(tunnel_command, TUNNEL_CMD)
 DECLARE_MODEL(tunnel_result, TUNNEL_CMD_RES)
 DECLARE_MODEL(tunnel_load_identity, TNL_LOAD_IDENTITY)
@@ -192,6 +197,8 @@ DECLARE_MODEL(tunnel_tun_ip_v4, TUNNEL_TUN_IP_V4)
 DECLARE_MODEL(tunnel_service_control, TUNNEL_SERVICE_CONTROL)
 DECLARE_MODEL(tunnel_status_change, TUNNEL_STATUS_CHANGE)
 DECLARE_MODEL(tunnel_add_identity, TUNNEL_ADD_IDENTITY)
+
+DECLARE_MODEL(tunnel_ext_auth, TUNNEL_EXT_AUTH)
 
 #define TUNNEL_EVENTS(XX, ...) \
 XX(ContextEvent, __VA_ARGS__) \
