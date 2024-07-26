@@ -886,15 +886,31 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
             break;
         }
 
-        case ZitiMfaAuthEvent : {
-            ZITI_LOG(INFO, "ztx[%s/%s] Mfa event received", instance->identifier, ctx_name);
-            mfa_event ev = {0};
-            ev.event_type = TunnelEvents.MFAEvent;
-            ev.identifier = instance->identifier;
-            ev.operation = mfa_status_name(mfa_status_auth_challenge);
-            CMD_CTX.on_event((const base_event *) &ev);
+        case ZitiAuthEvent :
+            if (event->auth.action == ziti_auth_prompt_totp) {
+                ZITI_LOG(INFO, "ztx[%s/%s] Mfa event received", instance->identifier, ctx_name);
+                mfa_event ev = {0};
+                ev.event_type = TunnelEvents.MFAEvent;
+                ev.identifier = instance->identifier;
+                ev.operation = mfa_status_name(mfa_status_auth_challenge);
+                CMD_CTX.on_event((const base_event *) &ev);
+            } else if (event->auth.action == ziti_auth_login_external) {
+                ZITI_LOG(INFO, "ztx[%s/%s] Mfa event received", instance->identifier, ctx_name);
+                ext_signer_event ev = {0};
+                ev.event_type = TunnelEvents.ExtJWTEvent;
+                ev.identifier = instance->identifier;
+
+                ziti_jwt_signer *signer;
+                MODEL_LIST_FOREACH(signer, event->auth.providers) {
+                    jwt_provider *provider = calloc(1, sizeof(*provider));
+                    provider->name = signer->name;
+                    provider->issuer = signer->provider_url;
+                    model_list_append(&ev.providers, provider);
+                }
+                CMD_CTX.on_event((const base_event *) &ev);
+                model_list_clear(&ev.providers, free);
+            }
             break;
-        }
 
         case ZitiAPIEvent: {
             if (event->api.new_ctrl_address || event->api.new_ca_bundle) {
@@ -1363,4 +1379,7 @@ IMPL_MODEL(mfa_event, MFA_EVENT_MODEL)
 IMPL_MODEL(service_event, ZTX_SVC_EVENT_MODEL)
 IMPL_MODEL(api_event, ZTX_API_EVENT_MODEL)
 IMPL_MODEL(tunnel_command_inline, TUNNEL_CMD_INLINE)
+
+IMPL_MODEL(jwt_provider, EXT_JWT_PROVIDER)
+IMPL_MODEL(ext_signer_event, EXT_SIGNER_EVENT_MODEL)
 
