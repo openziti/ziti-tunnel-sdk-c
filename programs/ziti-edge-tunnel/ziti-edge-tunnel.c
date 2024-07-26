@@ -2125,7 +2125,12 @@ static int version_opts(int argc, char *argv[]) {
 
 static void version() {
     if (verbose_version) {
-        printf("ziti-tunneler:\t%s\nziti-sdk:\t%s\n", ziti_tunneler_version(), ziti_get_version()->version);
+        tls_context *tls = default_tls_context("", 0);
+        printf("ziti-tunneler: %s\n"
+               "ziti-sdk:      %s\n"
+               "tlsuv:         %s[%s]\n",
+               ziti_tunneler_version(), ziti_get_version()->version, tlsuv_version(), tls->version());
+        tls->free_ctx(tls);
     } else {
         printf("%s\n", ziti_tunneler_version());
     }
