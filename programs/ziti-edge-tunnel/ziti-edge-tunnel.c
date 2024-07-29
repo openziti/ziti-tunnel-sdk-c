@@ -214,9 +214,9 @@ static void cmd_alloc(uv_handle_t *s, size_t sugg, uv_buf_t *b) {
     b->len = sugg;
 }
 
-static void send_tunnel_status() {
+static void send_tunnel_status(char* status) {
     tunnel_status_event tnl_sts_evt = {0};
-    tnl_sts_evt.Op = strdup("status");
+    tnl_sts_evt.Op = strdup(status);
     tnl_sts_evt.Status = get_tunnel_status();
     send_events_message(&tnl_sts_evt, (to_json_fn) tunnel_status_event_to_json, true);
     tnl_sts_evt.Status = NULL; //don't free
@@ -740,7 +740,7 @@ static void on_events_client(uv_stream_t *s, int status) {
     ZITI_LOG(DEBUG,"Received events client connection request, count: %d", ++current_events_channels);
 
     // send status message immediately
-    send_tunnel_status();
+    send_tunnel_status("status");
 }
 
 
@@ -1367,7 +1367,7 @@ static void on_event(const base_event *ev) {
                 break;
             }
             set_mfa_status(ev->identifier, id->MfaEnabled, true);
-            send_tunnel_status();
+            send_tunnel_status("status");
             mfa_status_event mfa_sts_event = {
                     .Op = strdup("mfa"),
                     .Action = strdup(mfa_ev->operation),
@@ -3102,12 +3102,7 @@ void endpoint_status_change_function(uv_loop_t *loop, void *ctx) {
     tunnel_status_change *status_change = ctx;
 
     // send status message immediately
-    tunnel_status_event tnl_sts_evt = {0};
-    tnl_sts_evt.Op = strdup("status");
-    tnl_sts_evt.Status = get_tunnel_status();
-    send_events_message(&tnl_sts_evt, (to_json_fn) tunnel_status_event_to_json, true);
-    tnl_sts_evt.Status = NULL;
-    free_tunnel_status_event(&tnl_sts_evt);
+    send_tunnel_status("status");
 
     // send endpoint status to the controller
     tunnel_command *tnl_cmd = calloc(1, sizeof(tunnel_command));
@@ -3150,6 +3145,9 @@ void scm_service_run(const char *name) {
 
 void stop_tunnel_and_cleanup() {
     ZITI_LOG(INFO, "Control request to stop tunnel service received...");
+
+    ZITI_LOG(INFO,"notifying any clients of impending shutdown");
+    send_tunnel_status("shutdown");
 
     // ziti dump to log file / stdout
     tunnel_command *tnl_cmd = calloc(1, sizeof(tunnel_command));
