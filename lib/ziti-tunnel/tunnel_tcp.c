@@ -248,14 +248,14 @@ int tunneler_tcp_close(struct tcp_pcb *pcb) {
         TNL_LOG(DEBUG, "null pcb");
         return 0;
     }
+    tcp_arg(pcb, NULL);
+    tcp_recv(pcb, NULL);
     // todo check io fields? io->client, io->intercepted are empty when we crash.
     //  but why wouldn't io (pcb->callback_arg) be null? maybe it is?
     LOG_STATE(DEBUG, "closing pcb=%p io=%p", pcb, pcb, pcb->callback_arg);
     if (pcb->state == CLOSED) {
         return 0;
     }
-    tcp_arg(pcb, NULL);
-    tcp_recv(pcb, NULL);
     if (pcb->state < ESTABLISHED) {
         TNL_LOG(DEBUG, "closing connection before handshake complete. sending RST to client");
         tcp_abandon(pcb, 1);
