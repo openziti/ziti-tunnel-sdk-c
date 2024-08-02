@@ -55,7 +55,7 @@ ENV VCPKG_FORCE_SYSTEM_BINARIES=yes
 
 RUN cd /usr/local \
     && git config --global advice.detachedHead false \
-    && git clone --branch 2023.12.12 https://github.com/microsoft/vcpkg \
+    && git clone --branch 2024.07.12 https://github.com/microsoft/vcpkg \
     && ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
 
 COPY ./entrypoint.sh /root/
