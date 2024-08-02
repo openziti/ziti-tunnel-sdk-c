@@ -20,6 +20,11 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: macOS tools
+      if: runner.os == 'macOS'
+      shell: bash
+      run: brew install autoconf autoconf-archive automake pkg-config
+
     - name: simple build
       run: echo "preset = ${{ inputs.preset }}"
       shell: bash
@@ -29,9 +34,9 @@ runs:
 
     - uses: lukka/run-vcpkg@v10
       with:
-        # use 2023.12.12 vcpkg baseline,
+        # use 2024.07.12 vcpkg baseline,
         # see https://learn.microsoft.com/en-us/vcpkg/users/examples/versioning.getting-started#builtin-baseline
-        vcpkgGitCommitId: 'c8696863d371ab7f46e213d8f5ca923c4aef2a00'
+        vcpkgGitCommitId: '1de2026f28ead93ff1773e6e680387643e914ea1'
 
     - uses: lukka/run-cmake@v10.6 # pin version to avoid failed glibc dependency on ubuntu 20 runners. go back to @latest when ubuntu 22+ is adopted for runner os.
       name: Configure CMake
