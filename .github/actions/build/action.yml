@@ -20,6 +20,11 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: macOS tools
+      if: runner.os == 'macOS'
+      shell: bash
+      run: brew install autoconf autoconf-archive automake pkg-config
+
     - name: simple build
       run: echo "preset = ${{ inputs.preset }}"
       shell: bash
