@@ -924,10 +924,11 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
                 ev.operation = mfa_status_name(mfa_status_auth_challenge);
                 CMD_CTX.on_event((const base_event *) &ev);
             } else if (event->auth.action == ziti_auth_login_external) {
-                ZITI_LOG(INFO, "ztx[%s/%s] Mfa event received", instance->identifier, ctx_name);
+                ZITI_LOG(INFO, "ztx[%s/%s] ext auth event received", instance->identifier, ctx_name);
                 ext_signer_event ev = {0};
                 ev.event_type = TunnelEvents.ExtJWTEvent;
                 ev.identifier = instance->identifier;
+                ev.status = "login_with_ext_signer";
 
                 ziti_jwt_signer *signer;
                 MODEL_LIST_FOREACH(signer, event->auth.providers) {
