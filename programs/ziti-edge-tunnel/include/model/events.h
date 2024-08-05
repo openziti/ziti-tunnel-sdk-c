@@ -84,7 +84,8 @@ XX(bulk, __VA_ARGS__) \
 XX(error, __VA_ARGS__) \
 XX(changed, __VA_ARGS__) \
 XX(normal, __VA_ARGS__) \
-XX(connected, __VA_ARGS__) \
+XX(connected, __VA_ARGS__)     \
+XX(needs_ext_login, __VA_ARGS__) \
 XX(disconnected, __VA_ARGS__)
 
 DECLARE_ENUM(event_severity, EVENT_SEVERITY)

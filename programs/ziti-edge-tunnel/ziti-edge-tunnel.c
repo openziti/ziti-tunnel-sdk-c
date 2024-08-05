@@ -1160,11 +1160,11 @@ static void load_identities_complete(uv_work_t * wr, int status) {
 }
 
 static void on_event(const base_event *ev) {
+    tunnel_identity *id = find_tunnel_identity(ev->identifier);
     switch (ev->event_type) {
         case TunnelEvent_ContextEvent: {
             const ziti_ctx_event *zev = (ziti_ctx_event *) ev;
             ZITI_LOG(INFO, "ztx[%s] context event : status is %s", ev->identifier, zev->status);
-            tunnel_identity *id = find_tunnel_identity(ev->identifier);
             if (id == NULL) {
                 break;
             }
@@ -1177,6 +1177,7 @@ static void on_event(const base_event *ev) {
                 id_event.Fingerprint = strdup(id_event.Id->FingerPrint);
             }
             id_event.Id->Loaded = true;
+            id_event.Id->NeedsExtAuth = false;
 
             action_event controller_event = {0};
             controller_event.Op = strdup("controller");
@@ -1233,7 +1234,6 @@ static void on_event(const base_event *ev) {
         case TunnelEvent_ServiceEvent: {
             const service_event *svc_ev = (service_event *) ev;
             ZITI_LOG(VERBOSE, "=============== ztx[%s] service event ===============", ev->identifier);
-            tunnel_identity *id = find_tunnel_identity(ev->identifier);
             if (id == NULL) {
                 break;
             }
@@ -1362,7 +1362,6 @@ static void on_event(const base_event *ev) {
         case TunnelEvent_MFAEvent: {
             const mfa_event *mfa_ev = (mfa_event *) ev;
             ZITI_LOG(INFO, "ztx[%s] is requesting MFA code. Identity needs MFA", ev->identifier);
-            tunnel_identity *id = find_tunnel_identity(ev->identifier);
             if (id == NULL) {
                 break;
             }
@@ -1432,7 +1431,9 @@ static void on_event(const base_event *ev) {
                 mfa_sts_event.Error = strdup(mfa_ev->status);
             }
 
-            tunnel_identity *id = create_or_get_tunnel_identity(ev->identifier, NULL);
+            if (id == NULL) {
+                id = create_or_get_tunnel_identity(ev->identifier, NULL);
+            }
             if (id->FingerPrint) {
                 mfa_sts_event.Fingerprint = strdup(id->FingerPrint);
             }
@@ -1449,7 +1450,6 @@ static void on_event(const base_event *ev) {
         case TunnelEvent_APIEvent: {
             const api_event *api_ev = (api_event *) ev;
             ZITI_LOG(INFO, "ztx[%s] API Event with controller address : %s", api_ev->identifier, api_ev->new_ctrl_address);
-            tunnel_identity *id = find_tunnel_identity(ev->identifier);
             if (id == NULL) {
                 break;
             }
@@ -1481,7 +1481,21 @@ static void on_event(const base_event *ev) {
             free_identity_event(&id_event);
             break;
         }
-
+        case TunnelEvent_ExtJWTEvent:
+            if (id != NULL){
+                const ext_signer_event *ese = (const ext_signer_event *) ev;
+                id->NeedsExtAuth = true;
+                ZITI_LOG(INFO, "ztx[%s] ext auth: %s", id->Identifier, ese->status);
+                identity_event id_event = {0};
+                id_event.Op = "identity";
+                id_event.Action = (char*)event_name(event_needs_ext_login);
+                id_event.Id = id;
+                if (id_event.Id->FingerPrint) {
+                    id_event.Fingerprint = id_event.Id->FingerPrint;
+                }
+                send_events_message(&id_event, (to_json_fn) identity_event_to_json, true);
+            }
+            break;
         case TunnelEvent_Unknown:
         default:
             ZITI_LOG(WARN, "unhandled event received: %d", ev->event_type);
@@ -3074,6 +3088,7 @@ static CommandLine *main_cmds[] = {
         &submit_mfa_cmd,
         &generate_mfa_codes_cmd,
         &get_mfa_codes_cmd,
+        &ext_auth_login,
         &get_status_cmd,
         &delete_id_cmd,
         &add_id_cmd,
@@ -3287,3 +3302,4 @@ IMPL_MODEL(mfa_status_event, MFA_STATUS_EVENT)
 IMPL_MODEL(tunnel_metrics_event, TUNNEL_METRICS_EVENT)
 IMPL_MODEL(notification_message, TUNNEL_NOTIFICATION_MESSAGE)
 IMPL_MODEL(notification_event, TUNNEL_NOTIFICATION_EVENT)
+

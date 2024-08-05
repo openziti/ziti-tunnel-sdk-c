@@ -40,6 +40,7 @@ XX(Loaded, bool, none, Loaded, __VA_ARGS__) \
 XX(Config, tunnel_config, ptr, Config, __VA_ARGS__) \
 XX(ControllerVersion, string, none, ControllerVersion, __VA_ARGS__) \
 XX(IdFileStatus, bool, none, IdFileStatus, __VA_ARGS__) \
+XX(NeedsExtAuth, bool, none, NeedsExtAuth, __VA_ARGS__) \
 XX(MfaEnabled, bool, none, MfaEnabled, __VA_ARGS__) \
 XX(MfaNeeded, bool, none, MfaNeeded, __VA_ARGS__) \
 XX(Services, tunnel_service, array, Services, __VA_ARGS__) \

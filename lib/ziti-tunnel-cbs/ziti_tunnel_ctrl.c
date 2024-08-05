@@ -65,6 +65,8 @@ static ziti_context get_ziti(const char *identifier);
 static void update_config(uv_work_t *wr);
 static void update_config_done(uv_work_t *wr, int err);
 
+static void on_ext_auth(ziti_context ztx, const char *url, void *ctx);
+
 struct tunnel_cb_s {
     void *ctx;
     command_cb cmd_cb;
@@ -448,7 +450,6 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
             return 0;
         }
 
-        default: result.error = "command not implemented";
         case TunnelCommand_SubmitMFA: {
             tunnel_submit_mfa auth = {0};
             if (cmd->data == NULL || parse_tunnel_submit_mfa(&auth, cmd->data, strlen(cmd->data)) < 0) {
@@ -621,8 +622,36 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
             break;
         }
 
-        case TunnelCommand_Unknown: {
-            ZITI_LOG(VERBOSE, "Unknown tunnel command received");
+        case TunnelCommand_ExternalAuth: {
+            tunnel_identity_id id = {};
+            if (cmd->data == NULL ||
+                parse_tunnel_identity_id(&id, cmd->data, strlen(cmd->data)) < 0) {
+                result.error = "invalid command";
+                result.success = false;
+                free_tunnel_identity_id(&id);
+                break;
+            }
+
+            struct ziti_instance_s *inst = model_map_get(&instances, id.identifier);
+            if (is_null(inst, "ziti context not found", &result) ||
+                is_null(inst->ztx, "ziti context is not loaded", &result)) {
+                free_tunnel_identity_id(&id);
+                break;
+            }
+
+            struct tunnel_cb_s *req = calloc(1, sizeof(*req));
+            req->ctx = id.identifier;
+            req->cmd_cb = cb;
+            req->cmd_ctx = ctx;
+            ziti_ext_auth(inst->ztx, on_ext_auth, req);
+            return 0;
+        }
+        default: {
+            static char err[512];
+            snprintf(err, sizeof(err), "unsupported command %d[%s]",
+                     cmd->command, TunnelCommands.name(cmd->command));
+            ZITI_LOG(VERBOSE, "%s", err);
+            result.error = err;
             break;
         }
     }
@@ -886,15 +915,32 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
             break;
         }
 
-        case ZitiMfaAuthEvent : {
-            ZITI_LOG(INFO, "ztx[%s/%s] Mfa event received", instance->identifier, ctx_name);
-            mfa_event ev = {0};
-            ev.event_type = TunnelEvents.MFAEvent;
-            ev.identifier = instance->identifier;
-            ev.operation = mfa_status_name(mfa_status_auth_challenge);
-            CMD_CTX.on_event((const base_event *) &ev);
+        case ZitiAuthEvent :
+            if (event->auth.action == ziti_auth_prompt_totp) {
+                ZITI_LOG(INFO, "ztx[%s/%s] Mfa event received", instance->identifier, ctx_name);
+                mfa_event ev = {0};
+                ev.event_type = TunnelEvents.MFAEvent;
+                ev.identifier = instance->identifier;
+                ev.operation = mfa_status_name(mfa_status_auth_challenge);
+                CMD_CTX.on_event((const base_event *) &ev);
+            } else if (event->auth.action == ziti_auth_login_external) {
+                ZITI_LOG(INFO, "ztx[%s/%s] ext auth event received", instance->identifier, ctx_name);
+                ext_signer_event ev = {0};
+                ev.event_type = TunnelEvents.ExtJWTEvent;
+                ev.identifier = instance->identifier;
+                ev.status = "login_with_ext_signer";
+
+                ziti_jwt_signer *signer;
+                MODEL_LIST_FOREACH(signer, event->auth.providers) {
+                    jwt_provider *provider = calloc(1, sizeof(*provider));
+                    provider->name = signer->name;
+                    provider->issuer = signer->provider_url;
+                    model_list_append(&ev.providers, provider);
+                }
+                CMD_CTX.on_event((const base_event *) &ev);
+                model_list_clear(&ev.providers, free);
+            }
             break;
-        }
 
         case ZitiAPIEvent: {
             if (event->api.new_ctrl_address || event->api.new_ca_bundle) {
@@ -1158,6 +1204,26 @@ static void get_mfa_codes(ziti_context ztx, char *code, void *ctx) {
     ziti_mfa_get_recovery_codes(ztx, code, on_mfa_recovery_codes, ctx);
 }
 
+static void on_ext_auth(ziti_context ztx, const char *url, void *ctx) {
+    struct tunnel_cb_s *req = ctx;
+    tunnel_result result = {
+            .success = true,
+            .code = IPC_SUCCESS,
+    };
+    if (req->cmd_cb) {
+        tunnel_ext_auth auth = {
+                .identifier = (char*)req->ctx,
+                .ext_auth_url = (char*)url,
+        };
+        result.data = tunnel_ext_auth_to_json(&auth, MODEL_JSON_COMPACT, NULL);
+
+        req->cmd_cb(&result, req->cmd_ctx);
+    }
+    FREE(result.data);
+    FREE(req->ctx);
+    free(req);
+}
+
 #define CHECK(lbl, op) do{ \
 int rc = (op);                  \
 if (rc < 0) {              \
@@ -1363,4 +1429,7 @@ IMPL_MODEL(mfa_event, MFA_EVENT_MODEL)
 IMPL_MODEL(service_event, ZTX_SVC_EVENT_MODEL)
 IMPL_MODEL(api_event, ZTX_API_EVENT_MODEL)
 IMPL_MODEL(tunnel_command_inline, TUNNEL_CMD_INLINE)
+
+IMPL_MODEL(jwt_provider, EXT_JWT_PROVIDER)
+IMPL_MODEL(ext_signer_event, EXT_SIGNER_EVENT_MODEL)
 

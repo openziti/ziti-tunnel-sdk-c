@@ -170,6 +170,11 @@ XX(unlocked, bool, none, Unlocked, __VA_ARGS__)
 XX(jwtFileName, string, none, JwtFileName, __VA_ARGS__) \
 XX(jwtContent, string, none, JwtContent, __VA_ARGS__)
 
+#define TUNNEL_EXT_AUTH(XX, ...) \
+XX(identifier, string, none, identifier, __VA_ARGS__) \
+XX(ext_auth_url, string, none, url, __VA_ARGS__)
+
+
 DECLARE_MODEL(tunnel_command, TUNNEL_CMD)
 DECLARE_MODEL(tunnel_result, TUNNEL_CMD_RES)
 DECLARE_MODEL(tunnel_load_identity, TNL_LOAD_IDENTITY)
@@ -193,12 +198,15 @@ DECLARE_MODEL(tunnel_service_control, TUNNEL_SERVICE_CONTROL)
 DECLARE_MODEL(tunnel_status_change, TUNNEL_STATUS_CHANGE)
 DECLARE_MODEL(tunnel_add_identity, TUNNEL_ADD_IDENTITY)
 
+DECLARE_MODEL(tunnel_ext_auth, TUNNEL_EXT_AUTH)
+
 #define TUNNEL_EVENTS(XX, ...) \
 XX(ContextEvent, __VA_ARGS__) \
 XX(ServiceEvent, __VA_ARGS__)  \
 XX(MFAEvent, __VA_ARGS__)      \
 XX(MFAStatusEvent, __VA_ARGS__) \
-XX(APIEvent, __VA_ARGS__)
+XX(APIEvent, __VA_ARGS__)      \
+XX(ExtJWTEvent, __VA_ARGS__)
 
 DECLARE_ENUM(TunnelEvent, TUNNEL_EVENTS)
 
@@ -244,11 +252,24 @@ BASE_EVENT_MODEL(XX, __VA_ARGS__)  \
 XX(new_ctrl_address, string, none, new_ctrl_address, __VA_ARGS__) \
 XX(new_ca_bundle, string, none, new_ca_bundle, __VA_ARGS__)
 
+
+#define EXT_JWT_PROVIDER(XX, ...) \
+XX(name, string, none, name, __VA_ARGS__) \
+XX(issuer, string, none, issuer, __VA_ARGS__)
+
+#define EXT_SIGNER_EVENT_MODEL(XX, ...)  \
+BASE_EVENT_MODEL(XX, __VA_ARGS__)               \
+XX(status, string, none, status, __VA_ARGS__)   \
+XX(providers, jwt_provider, list, providers, __VA_ARGS__)
+
 DECLARE_MODEL(base_event, BASE_EVENT_MODEL)
 DECLARE_MODEL(ziti_ctx_event, ZTX_EVENT_MODEL)
 DECLARE_MODEL(mfa_event, MFA_EVENT_MODEL)
 DECLARE_MODEL(service_event, ZTX_SVC_EVENT_MODEL)
 DECLARE_MODEL(api_event, ZTX_API_EVENT_MODEL)
+
+DECLARE_MODEL(jwt_provider, EXT_JWT_PROVIDER)
+DECLARE_MODEL(ext_signer_event, EXT_SIGNER_EVENT_MODEL)
 
 typedef struct tunneled_service_s tunneled_service_t;
 
