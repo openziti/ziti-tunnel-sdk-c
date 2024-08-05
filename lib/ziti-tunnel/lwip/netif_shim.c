@@ -30,8 +30,10 @@ static err_t netif_shim_output(struct netif *netif, struct pbuf *p, const ip4_ad
         return ERR_BUF; // ?
     }
 
+    uint64_t tid;
+    pthread_threadid_np(pthread_self(), &tid);
     if (ip_ver(shim_buffer) == 4)
-        TNL_LOG(TRACE, "writing packet " PACKET_FMT " len=%d", PACKET_FMT_ARGS(shim_buffer), copied);
+        TNL_LOG(TRACE, "writing packet " PACKET_FMT " len=%d t=%"PRIu64, PACKET_FMT_ARGS(shim_buffer), copied, tid);
     dev->write(dev->handle, shim_buffer, p->tot_len);
     return ERR_OK;
 }

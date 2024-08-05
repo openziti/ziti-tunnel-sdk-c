@@ -184,10 +184,10 @@ static void on_tcp_client_err(void *io_ctx, err_t err) {
         const char *client = "<unknown>";
         if (io->tnlr_io != NULL) {
             client = io->tnlr_io->client;
+            // null our pcb so tunneler_tcp_close doesn't try to close it.
+            io->tnlr_io->tcp = NULL;
         }
         TNL_LOG(ERR, "client=%s err=%d, terminating connection", client, err);
-        // null our pcb so tunneler_tcp_close doesn't try to close it.
-        io->tnlr_io->tcp = NULL;
         io->close_fn(io->ziti_io);
     }
 }
@@ -248,11 +248,9 @@ int tunneler_tcp_close(struct tcp_pcb *pcb) {
         TNL_LOG(DEBUG, "null pcb");
         return 0;
     }
+    LOG_STATE(DEBUG, "closing pcb=%p io=%p", pcb, pcb, pcb->callback_arg);
     tcp_arg(pcb, NULL);
     tcp_recv(pcb, NULL);
-    // todo check io fields? io->client, io->intercepted are empty when we crash.
-    //  but why wouldn't io (pcb->callback_arg) be null? maybe it is?
-    LOG_STATE(DEBUG, "closing pcb=%p io=%p", pcb, pcb, pcb->callback_arg);
     if (pcb->state == CLOSED) {
         return 0;
     }
