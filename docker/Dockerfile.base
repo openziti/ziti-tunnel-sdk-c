@@ -1,5 +1,5 @@
 # this builds docker.io/openziti/ziti-edge-tunnel
-FROM registry.access.redhat.com/ubi8/ubi-minimal as fetch-ziti-artifacts
+FROM registry.access.redhat.com/ubi9/ubi-minimal as fetch-ziti-artifacts
 # This build stage grabs artifacts that are copied into the final image.
 # It uses the same base as the final image to maximize docker cache hits.
 
@@ -11,7 +11,7 @@ ARG GITHUB_REPO
 WORKDIR /tmp
 
 ### Add necessary Red Hat repos and packages
-RUN INSTALL_PKGS="curl unzip" && \
+RUN INSTALL_PKGS="unzip" && \
     microdnf -y update --setopt=install_weak_deps=0 --setopt=tsflags=nodocs && \
     microdnf -y install --setopt=install_weak_deps=0 --setopt=tsflags=nodocs ${INSTALL_PKGS}
 
@@ -24,7 +24,7 @@ RUN bash ./fetch-github-releases.sh ziti-edge-tunnel
 #
 ################
 
-FROM registry.access.redhat.com/ubi8/ubi-minimal
+FROM registry.access.redhat.com/ubi9/ubi-minimal
 
 ### Required OpenShift Labels 
 LABEL name="openziti/ziti-edge-tunnel" \
