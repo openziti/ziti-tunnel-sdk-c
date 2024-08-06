@@ -14,15 +14,19 @@
  limitations under the License.
  */
 
-#include <string.h>
+
+#include <ziti/ziti_dns.h>
 #include <ziti/ziti_tunnel_cbs.h>
 #include <ziti/ziti_log.h>
 
 #include "ziti_hosting.h"
 #include "ziti_instance.h"
-#include "stdarg.h"
-#include <time.h>
+
 #include <tlsuv/http.h>
+
+#include <string.h>
+#include <stdarg.h>
+#include <time.h>
 
 #ifndef MAXBUFFERLEN
 #define MAXBUFFERLEN 8192
@@ -619,6 +623,22 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
             }
             result.success = true;
             free_tunnel_status_change(&tunnel_status_change_cmd);
+            break;
+        }
+
+        case TunnelCommand_SetUpstreamDNS: {
+            tunnel_upstream_dns dns = {};
+            int rc;
+            if (parse_tunnel_upstream_dns(&dns, cmd->data, strlen(cmd->data)) < 0) {
+                result.error = "invalid command";
+                result.success = false;
+            } else if ((rc = ziti_dns_set_upstream(CMD_CTX.loop, dns.host, dns.port)) != 0) {
+                result.error = (char*)uv_strerror(rc);
+                result.success = false;
+            } else {
+                result.success = true;
+            }
+            free_tunnel_upstream_dns(&dns);
             break;
         }
 
