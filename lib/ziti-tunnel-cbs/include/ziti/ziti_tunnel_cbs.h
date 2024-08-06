@@ -69,7 +69,8 @@ XX(Status, __VA_ARGS__) \
 XX(RemoveIdentity, __VA_ARGS__) \
 XX(StatusChange, __VA_ARGS__)   \
 XX(AddIdentity, __VA_ARGS__)    \
-XX(ExternalAuth, __VA_ARGS__)
+XX(ExternalAuth, __VA_ARGS__)   \
+XX(SetUpstreamDNS, __VA_ARGS__)
 
 DECLARE_ENUM(TunnelCommand, TUNNEL_COMMANDS)
 
@@ -174,6 +175,9 @@ XX(jwtContent, string, none, JwtContent, __VA_ARGS__)
 XX(identifier, string, none, identifier, __VA_ARGS__) \
 XX(ext_auth_url, string, none, url, __VA_ARGS__)
 
+#define TUNNEL_UPSTREAM_DNS(XX, ...) \
+XX(host, string, none, host, __VA_ARGS__) \
+XX(port, int, none, port, __VA_ARGS__)
 
 DECLARE_MODEL(tunnel_command, TUNNEL_CMD)
 DECLARE_MODEL(tunnel_result, TUNNEL_CMD_RES)
@@ -197,6 +201,7 @@ DECLARE_MODEL(tunnel_tun_ip_v4, TUNNEL_TUN_IP_V4)
 DECLARE_MODEL(tunnel_service_control, TUNNEL_SERVICE_CONTROL)
 DECLARE_MODEL(tunnel_status_change, TUNNEL_STATUS_CHANGE)
 DECLARE_MODEL(tunnel_add_identity, TUNNEL_ADD_IDENTITY)
+DECLARE_MODEL(tunnel_upstream_dns, TUNNEL_UPSTREAM_DNS)
 
 DECLARE_MODEL(tunnel_ext_auth, TUNNEL_EXT_AUTH)
 
