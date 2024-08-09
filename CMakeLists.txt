@@ -93,31 +93,7 @@ endif()
 
 set(CMAKE_C_STANDARD 99)
 
-# capture build date
-if (WIN32)
-    execute_process(
-            COMMAND powershell -Command "Write-Host ''"
-            OUTPUT_VARIABLE PS_OUTPUT
-            RESULT_VARIABLE PS_RESULT
-    )
-
-    # Check if the output is empty and the command was successful
-    if(NOT "${PS_OUTPUT}" MATCHES "^[ \t\r\n]*$")
-        message(FATAL_ERROR "PowerShell output IS NOT EMPTY:\n${PS_OUTPUT}.\nTo run cmake, make sure nothing is being echo'ed from your powershell profile. ")
-    endif()
-    execute_process(
-            COMMAND	powershell get-date -uf '+%a-%m/%d/%Y-%H:%M:%S-%Z'
-            OUTPUT_VARIABLE	BUILD_DATE
-            OUTPUT_STRIP_TRAILING_WHITESPACE
-    )
-else()
-    execute_process(
-            COMMAND	date +%a-%m/%d/%Y-%H:%M:%S-%Z
-            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-            OUTPUT_VARIABLE BUILD_DATE
-            OUTPUT_STRIP_TRAILING_WHITESPACE
-    )
-endif()
+string(TIMESTAMP BUILD_DATE "%a-%m/%d/%Y-%H:%M:%S-%Z")
 
 if (MSVC)
     add_compile_options(-Zi)
