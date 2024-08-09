@@ -69,6 +69,7 @@ XX(Status, __VA_ARGS__) \
 XX(RemoveIdentity, __VA_ARGS__) \
 XX(StatusChange, __VA_ARGS__)   \
 XX(AddIdentity, __VA_ARGS__)    \
+XX(Enroll, __VA_ARGS__)         \
 XX(ExternalAuth, __VA_ARGS__)   \
 XX(SetUpstreamDNS, __VA_ARGS__)
 
@@ -179,6 +180,13 @@ XX(ext_auth_url, string, none, url, __VA_ARGS__)
 XX(host, string, none, host, __VA_ARGS__) \
 XX(port, int, none, port, __VA_ARGS__)
 
+#define TNL_ENROLL(XX, ...) \
+XX(name, string, none, name, __VA_ARGS__) \
+XX(jwt, string, none, jwt, __VA_ARGS__) \
+XX(key, string, none, key, __VA_ARGS__) \
+XX(cert, string, none, cert, __VA_ARGS__) \
+XX(use_keychain, bool, none, useKeychain, __VA_ARGS__)
+
 DECLARE_MODEL(tunnel_command, TUNNEL_CMD)
 DECLARE_MODEL(tunnel_result, TUNNEL_CMD_RES)
 DECLARE_MODEL(tunnel_load_identity, TNL_LOAD_IDENTITY)
@@ -202,6 +210,7 @@ DECLARE_MODEL(tunnel_service_control, TUNNEL_SERVICE_CONTROL)
 DECLARE_MODEL(tunnel_status_change, TUNNEL_STATUS_CHANGE)
 DECLARE_MODEL(tunnel_add_identity, TUNNEL_ADD_IDENTITY)
 DECLARE_MODEL(tunnel_upstream_dns, TUNNEL_UPSTREAM_DNS)
+DECLARE_MODEL(tunnel_enroll, TNL_ENROLL)
 
 DECLARE_MODEL(tunnel_ext_auth, TUNNEL_EXT_AUTH)
 

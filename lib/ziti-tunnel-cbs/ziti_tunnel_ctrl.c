@@ -68,6 +68,7 @@ static void tunnel_status_event(TunnelEvent event, int status, void *event_data,
 static ziti_context get_ziti(const char *identifier);
 static void update_config(uv_work_t *wr);
 static void update_config_done(uv_work_t *wr, int err);
+static void on_cmd_enroll(const ziti_config *cfg, int status, const char *err_message, void *ctx);
 
 static void on_ext_auth(ziti_context ztx, const char *url, void *ctx);
 
@@ -624,6 +625,32 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
             result.success = true;
             free_tunnel_status_change(&tunnel_status_change_cmd);
             break;
+        }
+
+        case TunnelCommand_Enroll: {
+            tunnel_enroll enroll = {0};
+            int rc;
+            if (cmd->data == NULL || parse_tunnel_enroll(&enroll, cmd->data, strlen(cmd->data)) < 0) {
+                result.error = "invalid command";
+                result.success = false;
+                free_tunnel_enroll(&enroll);
+                break;
+            } else {
+                struct tunnel_cb_s *req = malloc(sizeof(struct tunnel_cb_s));
+                req->cmd_cb = cb;
+                req->cmd_ctx = ctx;
+
+                ziti_enroll_opts opts = {
+                        .enroll_name = enroll.name,
+                        .jwt_content = enroll.jwt,
+                        .enroll_key = enroll.key,
+                        .enroll_cert = enroll.cert,
+                        .use_keychain = enroll.use_keychain,
+                };
+                ziti_enroll(&opts, CMD_CTX.loop, on_cmd_enroll, req);
+                free_tunnel_enroll(&enroll);
+                return 0;
+            }
         }
 
         case TunnelCommand_SetUpstreamDNS: {
@@ -1222,6 +1249,21 @@ static void generate_mfa_codes(ziti_context ztx, char *code, void *ctx) {
 
 static void get_mfa_codes(ziti_context ztx, char *code, void *ctx) {
     ziti_mfa_get_recovery_codes(ztx, code, on_mfa_recovery_codes, ctx);
+}
+
+static void on_cmd_enroll(const ziti_config *cfg, int status, const char *err_message, void *ctx) {
+    struct tunnel_cb_s *req = ctx;
+    char *cfg_json = cfg ? ziti_config_to_json(cfg, MODEL_JSON_COMPACT, NULL) : NULL;
+
+    tunnel_result result = {
+            .success = (status == ZITI_OK),
+            .error = (char*)err_message,
+            .code = status,
+            .data = cfg_json,
+    };
+
+    req->cmd_cb(&result, req->cmd_ctx);
+    free(cfg_json);
 }
 
 static void on_ext_auth(ziti_context ztx, const char *url, void *ctx) {
