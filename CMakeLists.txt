@@ -96,16 +96,14 @@ set(CMAKE_C_STANDARD 99)
 # capture build date
 if (WIN32)
     execute_process(
-            COMMAND powershell -Command "Write-Host \" \""
+            COMMAND powershell -Command "Write-Host ''"
             OUTPUT_VARIABLE PS_OUTPUT
             RESULT_VARIABLE PS_RESULT
     )
 
     # Check if the output is empty and the command was successful
-    if("${PS_OUTPUT}" STREQUAL "" AND "${PS_RESULT}" STREQUAL "0")
-        message(STATUS "PowerShell output is empty and command executed successfully.")
-    else()
-        message(FATAL_ERROR "PowerShell output IS NOT EMPTY:\n${PS_OUTPUT}.\nTo run cmake, make sure nothing is being echo'ed from your powershell profile.")
+    if(NOT "${PS_OUTPUT}" MATCHES "^[ \t\r\n]*$")
+        message(FATAL_ERROR "PowerShell output IS NOT EMPTY:\n${PS_OUTPUT}.\nTo run cmake, make sure nothing is being echo'ed from your powershell profile. ")
     endif()
     execute_process(
             COMMAND	powershell get-date -uf '+%a-%m/%d/%Y-%H:%M:%S-%Z'
