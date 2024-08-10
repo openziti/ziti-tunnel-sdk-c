@@ -18,6 +18,7 @@
 #include <ziti/ziti_dns.h>
 #include <ziti/ziti_tunnel_cbs.h>
 #include <ziti/ziti_log.h>
+#include <ziti/ziti_buffer.h>
 
 #include "ziti_hosting.h"
 #include "ziti_instance.h"
@@ -138,14 +139,12 @@ static int ziti_dump_to_log_op(void* stringsBuilder, const char *fmt,  ...) {
     return 0;
 }
 
-static void ziti_dump_to_log(void *ctx) {
-    char* buffer;
-    buffer = malloc(MAXBUFFERLEN*sizeof(char));
-    buffer[0] = 0;
+static char * ziti_dump_to_string(void *ctx) {
+    string_buf_t *out = new_string_buf();
     //actually invoke ziti_dump here
-    ziti_dump(ctx, ziti_dump_to_log_op, buffer);
-    ZITI_LOG(INFO, "ziti dump to log %s", buffer);
-    free(buffer);
+    ziti_dump(ctx, (int (*)(void *, const char *, ...)) string_buf_fmt, out);
+    char *val =  string_buf_to_string(out, NULL);
+    return val;
 }
 
 static int ziti_dump_to_file_op(void* fp, const char *fmt,  ...) {
@@ -313,6 +312,9 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
             }
             const char *key;
             struct ziti_instance_s *inst;
+            struct json_object *json = dump.dump_path == NULL ? 
+                    json_object_new_object() : NULL;
+            bool success = true;
             MODEL_MAP_FOREACH(key, inst, &instances) {
                 if (inst->ztx == NULL) {
                     continue;
@@ -324,9 +326,11 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
                 if (dump.identifier != NULL && strcmp(dump.identifier, inst->identifier) != 0) {
                     continue;
                 }
-                bool success = true;
                 if (dump.dump_path == NULL) {
-                    ziti_dump_to_log(inst->ztx);
+                    char *dumpstr = ziti_dump_to_string(inst->ztx);
+                    struct json_object *s = json_object_new_string(dumpstr);
+                    json_object_object_add(json, inst->identifier, s);
+                    free(dumpstr);
                 } else {
                     char dump_file[MAXPATHLEN];
                     char* dump_path = realpath(dump.dump_path, NULL);
@@ -339,15 +343,19 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
                         success = false;
                     }
                 }
-                if (success) {
-                    result.success = true;
-                    result.code = IPC_SUCCESS;
-                } else {
-                    result.success = false;
-                    result.code = IPC_ERROR;
-                }
-
             }
+            if (success) {
+                result.success = true;
+                result.code = IPC_SUCCESS;
+                if (json) {
+                    result.data = strdup(json_object_to_json_string(json));
+                    json_object_put(json);
+                }
+            } else {
+                result.success = false;
+                result.code = IPC_ERROR;
+            }
+
             if (!result.success) {
                 char errorMsg[1024];
                 snprintf(errorMsg, sizeof(errorMsg),"No matching identifier found for %s", dump.identifier);
@@ -664,6 +672,7 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
                 result.success = false;
             } else {
                 result.success = true;
+                result.code = IPC_SUCCESS;
             }
             free_tunnel_upstream_dns(&dns);
             break;
