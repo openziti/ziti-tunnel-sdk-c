@@ -84,8 +84,10 @@ static tunneler_context initialize_tunneler(netif_driver tun, uv_loop_t* ziti_lo
 #if _WIN32
 static void move_config_from_previous_windows_backup(uv_loop_t *loop);
 #define LAST_CHAR_IPC_CMD '\n'
+#define PATH_SEP "\\"
 #else
 #define LAST_CHAR_IPC_CMD '\0'
+#define PATH_SEP "/"
 #endif
 
 struct ipc_cmd_s {
@@ -533,14 +535,14 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
             char new_identifier[FILENAME_MAX] = {0};
             char new_identifier_name[FILENAME_MAX] = {0};
             if ((strlen(config_dir) + length + 6) >  FILENAME_MAX - 1 ) {
-                ZITI_LOG(ERROR, "failed to create file %s/%s.json, The length of the file name is longer than %d", config_dir, tunnel_add_identity_cmd.jwtFileName, FILENAME_MAX);
+                ZITI_LOG(ERROR, "failed to create file %s%s%s.json, The length of the file name is longer than %d", config_dir, PATH_SEP, tunnel_add_identity_cmd.jwtFileName, FILENAME_MAX);
                 result.error = "invalid file name";
                 result.success = false;
                 free_tunnel_add_identity(&tunnel_add_identity_cmd);
                 break;
             }
             strncpy(new_identifier_name, tunnel_add_identity_cmd.jwtFileName, length);
-            sprintf(new_identifier, "%s/%s.json", config_dir, new_identifier_name);
+            sprintf(new_identifier, "%s%s%s.json", config_dir, PATH_SEP, new_identifier_name);
             FILE *outfile;
             if ((outfile = fopen(new_identifier, "wb")) == NULL) {
                 ZITI_LOG(ERROR, "failed to open file %s: %s(%d)", new_identifier, strerror(errno), errno);
@@ -1122,7 +1124,7 @@ static void load_identities(uv_work_t *wr) {
             if (file.type == UV_DIRENT_FILE) {
                 struct cfg_instance_s *inst = calloc(1, sizeof(struct cfg_instance_s));
                 inst->cfg = malloc(MAXPATHLEN);
-                snprintf(inst->cfg, MAXPATHLEN, "%s/%s", config_dir, file.name);
+                snprintf(inst->cfg, MAXPATHLEN, "%s%s%s", config_dir, PATH_SEP, file.name);
                 create_or_get_tunnel_identity(inst->cfg, file.name);
                 LIST_INSERT_HEAD(&load_list, inst, _next);
             }
