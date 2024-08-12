@@ -25,6 +25,13 @@
 #include "windows/windows-scripts.h"
 #include <direct.h>
 
+#if _WIN32
+#define PATH_SEP "\\"
+#else
+#define PATH_SEP "/"
+#endif
+
+
 static bool open_log(char* log_filename);
 static bool rotate_log();
 static char* log_filename;
@@ -56,11 +63,22 @@ static char* get_log_path() {
     _splitpath_s(process_full_path, drive, sizeof(drive), dir, sizeof(dir), NULL, 0, NULL, 0);
     _makepath_s(process_dir, sizeof(process_dir), drive, dir, NULL, NULL);
 
+    size_t process_dir_len = strlen(process_dir);
+    if(process_dir_len> 200) {
+        printf("Process directory is too long for logging. Please shorten the path where the binary is installed.\n");
+        exit(0);
+    }
+
     char* log_path = calloc(FILENAME_MAX, sizeof(char));
-    snprintf(log_path, FILENAME_MAX, "%s/logs", process_dir);
+    if(process_dir[strlen(process_dir)-1] != PATH_SEP[0]) {
+        snprintf(log_path, FILENAME_MAX, "%s%slogs", process_dir, PATH_SEP);
+    } else {
+        snprintf(log_path, FILENAME_MAX, "%slogs", process_dir);
+    }
     int check;
     mkdir(log_path);
-    strcat(log_path, "/service");
+    strcat(log_path, PATH_SEP);
+    strcat(log_path, "service");
     check = mkdir(log_path);
     if (check == 0) {
         printf("\nlog path is created at %s", log_path);
@@ -73,7 +91,7 @@ static char* get_log_path() {
 char* get_base_filename() {
     char* log_path = get_log_path();
     char* temp_log_filename = calloc(FILENAME_MAX, sizeof(char));
-    snprintf(temp_log_filename, FILENAME_MAX, "%s/%s", log_path, log_filename_base);
+    snprintf(temp_log_filename, FILENAME_MAX, "%s%s%s", log_path, PATH_SEP, log_filename_base);
     free(log_path);
     return temp_log_filename;
 }
@@ -300,7 +318,7 @@ static void delete_older_logs(uv_async_t *ar) {
         }
         if (old_log != NULL) {
             char logfile_to_delete[MAX_PATH];
-            snprintf(logfile_to_delete, MAX_PATH, "%s/%s", log_path, old_log);
+            snprintf(logfile_to_delete, MAX_PATH, "%s%s%s", log_path, PATH_SEP, old_log);
             ZITI_LOG(INFO, "Deleting old log file %s", logfile_to_delete);
             remove(logfile_to_delete);
             rotation_index--;

@@ -28,7 +28,7 @@ static char* identifier_path = NULL;
 char* get_system_config_path() {
     char* config_path = malloc(FILENAME_MAX * sizeof(char));
 #if _WIN32
-    sprintf(config_path, "%s/NetFoundry", getenv(app_data));
+    sprintf(config_path, "%s\\NetFoundry", getenv(app_data));
 #elif __linux__
     sprintf(config_path, "/var/lib/ziti");
 #else
