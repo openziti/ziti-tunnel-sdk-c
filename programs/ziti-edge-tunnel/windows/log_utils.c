@@ -64,13 +64,13 @@ static char* get_log_path() {
     _makepath_s(process_dir, sizeof(process_dir), drive, dir, NULL, NULL);
 
     size_t process_dir_len = strlen(process_dir);
-    if(process_dir_len> 200) {
+    if (process_dir_len > 200) {
         printf("Process directory is too long for logging. Please shorten the path where the binary is installed.\n");
         exit(0);
     }
 
-    char* log_path = calloc(FILENAME_MAX, sizeof(char));
-    if(process_dir[strlen(process_dir)-1] != PATH_SEP[0]) {
+    char *log_path = calloc(FILENAME_MAX, sizeof(char));
+    if (process_dir[strlen(process_dir) - 1] != PATH_SEP[0]) {
         snprintf(log_path, FILENAME_MAX, "%s%slogs", process_dir, PATH_SEP);
     } else {
         snprintf(log_path, FILENAME_MAX, "%slogs", process_dir);

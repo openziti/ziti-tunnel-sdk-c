@@ -432,10 +432,10 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
                 result.success = false;
                 break;
             }
-            char* tun_ip_str = strdup(tunnel_tun_ip_v4_cmd.tunIP);
+            char *tun_ip_str = strdup(tunnel_tun_ip_v4_cmd.tunIP);
             // make a copy, so we can free it later - validating ip address input
-            char* tun_ip_cpy = tun_ip_str;
-            char* ip_ptr = strtok(tun_ip_str, "."); //cut the string using dot delimiter
+            char *tun_ip_cpy = tun_ip_str;
+            char *ip_ptr = strtok(tun_ip_str, "."); //cut the string using dot delimiter
             if (ip_ptr == NULL) {
                 result.error = "Invalid IP address";
                 result.success = false;
@@ -445,9 +445,9 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
             bool validationStatus = true;
             while (ip_ptr) {
                 bool isInt = true;
-                char* ip_str = ip_ptr;
+                char *ip_str = ip_ptr;
                 while (*ip_str) {
-                    if(!isdigit(*ip_str)){ //if the character is not a number, break
+                    if (!isdigit(*ip_str)) { //if the character is not a number, break
                         isInt = false;
                         validationStatus = false;
                         break;
@@ -487,7 +487,7 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
         }
         case TunnelCommand_Status: {
             cmd_accepted = true;
-            tunnel_status* status = get_tunnel_status();
+            tunnel_status *status = get_tunnel_status();
             result.success = true;
             result.code = IPC_SUCCESS;
             size_t json_len;
@@ -525,7 +525,7 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
                 break;
             }
 
-            char* extension = strstr(tunnel_add_identity_cmd.jwtFileName, ".jwt");
+            char *extension = strstr(tunnel_add_identity_cmd.jwtFileName, ".jwt");
             size_t length;
             if (extension != NULL) {
                 length = extension - tunnel_add_identity_cmd.jwtFileName;
@@ -534,7 +534,7 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
             }
             char new_identifier[FILENAME_MAX] = {0};
             char new_identifier_name[FILENAME_MAX] = {0};
-            if ((strlen(config_dir) + length + 6) >  FILENAME_MAX - 1 ) {
+            if ((strlen(config_dir) + length + 6) > FILENAME_MAX - 1) {
                 ZITI_LOG(ERROR, "failed to create file %s%s%s.json, The length of the file name is longer than %d", config_dir, PATH_SEP, tunnel_add_identity_cmd.jwtFileName, FILENAME_MAX);
                 result.error = "invalid file name";
                 result.success = false;
