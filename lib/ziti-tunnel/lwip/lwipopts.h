@@ -51,10 +51,12 @@
 
 // APIs
 #define LWIP_RAW 1
+#define LWIP_ARP 0
 #define LWIP_NETCONN 0
 #define LWIP_SOCKET 0
 
 // protocols
+#define LWIP_IPV6_MLD 0
 #define LWIP_IPV6 1                       /* enable ipv6 */
 #define IPV6_FRAG_COPYHEADER 1            /* avoid assert in lwip code when ipv6 is enabled */
 

@@ -437,6 +437,7 @@ u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     /* now we wait for the tunneler app to call ziti_tunneler_dial_complete() */
 
 done:
+    check_tnlr_timer(tnlr_ctx);
     pbuf_free(p);
     return 1;
 }
