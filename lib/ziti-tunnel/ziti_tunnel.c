@@ -486,8 +486,30 @@ static void on_tun_data(uv_poll_t * req, int status, int events) {
     }
 }
 
-static void check_lwip_timeouts(uv_timer_t * handle) {
+static void check_lwip_timeouts(uv_timer_t * timer) {
+    // if timer is not active it may have been a while since
+    // we run timers, let LWIP adjust timeouts
+    if (!uv_is_active((const uv_handle_t *) timer)) {
+        sys_restart_timeouts();
+    }
+
+    // run timers before potentially pausing
     sys_check_timeouts();
+
+    if (tcp_active_pcbs == NULL && tcp_tw_pcbs == NULL) {
+        uv_timer_stop(timer);
+        return;
+    }
+
+    u32_t sleep = sys_timeouts_sleeptime();
+    TNL_LOG(TRACE, "next wake in %d millis", sleep);
+    // second sleep arg is only need to make timer `active` next time
+    // we hit this function to avoid calling sys_restart_timeouts()
+    uv_timer_start(timer, check_lwip_timeouts, sleep, sleep);
+}
+
+void check_tnlr_timer(tunneler_context tnlr_ctx) {
+    check_lwip_timeouts(&tnlr_ctx->lwip_timer_req);
 }
 
 /**
@@ -556,9 +578,9 @@ static void run_packet_loop(uv_loop_t *loop, tunneler_context tnlr_ctx) {
         exit(1);
     }
 
+    // don't run LWIP timers until we have active TCP connections
     uv_timer_init(loop, &tnlr_ctx->lwip_timer_req);
     uv_unref((uv_handle_t *) &tnlr_ctx->lwip_timer_req);
-    uv_timer_start(&tnlr_ctx->lwip_timer_req, check_lwip_timeouts, 0, 10);
 }
 
 typedef struct ziti_tunnel_async_call_s {
