@@ -601,7 +601,7 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
             }
 
             if (ziti_get_identity(inst->ztx)) {
-                disconnect_identity(inst->ztx, CMD_CTX.tunnel_ctx);
+                ziti_set_enabled(inst->ztx, false);
             }
             model_map_remove(&instances, delete_id.identifier);
             result.success = true;
