@@ -724,7 +724,7 @@ static int load_identity(const char *identifier, const char *path, bool disabled
         if (identifier == NULL) {
             identifier = path;
         }
-        rc = load_identity_cfg(identifier, &cfg, disabled, api_page_size, cb, ctx);  //xxxxx
+        rc = load_identity_cfg(identifier, &cfg, disabled, api_page_size, cb, ctx);
     }
 
     free_ziti_config(&cfg);
