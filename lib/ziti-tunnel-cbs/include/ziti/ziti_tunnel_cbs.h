@@ -302,7 +302,7 @@ typedef void (*event_cb)(const base_event* event);
 typedef void (*command_cb)(const tunnel_result *, void *ctx);
 typedef struct {
     int (*process)(const tunnel_command *cmd, command_cb cb, void *ctx);
-    int (*load_identity)(const char *identifier, const char *path, int api_page_size, command_cb, void *ctx);
+    int (*load_identity)(const char *identifier, const char *path, bool disabled, int api_page_size, command_cb cb, void *ctx);
     // do not use, temporary accessor
     ziti_context (*get_ziti)(const char *identifier);
 } ziti_tunnel_ctrl;

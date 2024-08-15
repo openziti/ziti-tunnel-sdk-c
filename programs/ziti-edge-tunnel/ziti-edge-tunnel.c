@@ -1010,7 +1010,7 @@ static void broadcast_metrics(uv_timer_t *timer) {
         model_map notification_map = {0};
         for(idx = 0; metrics_event.Identities[idx]; idx++) {
             tnl_id = metrics_event.Identities[idx];
-            if (tnl_id->Active && tnl_id->Loaded && tnl_id->IdFileStatus) {
+            if (tnl_id->Active && tnl_id->Loaded) {
                 active_identities = true;
 
                 tunnel_identity_id get_metrics = {
@@ -1134,6 +1134,7 @@ static void load_identities(uv_work_t *wr) {
 
 static void load_id_cb(const tunnel_result *res, void *ctx) {
     struct cfg_instance_s *inst = ctx;
+
     if (res->success) {
         ZITI_LOG(INFO, "identity[%s] loaded", inst->cfg);
     } else {
@@ -1147,7 +1148,13 @@ static void load_identities_complete(uv_work_t * wr, int status) {
         struct cfg_instance_s *inst = LIST_FIRST(&load_list);
         LIST_REMOVE(inst, _next);
 
-        CMD_CTRL->load_identity(NULL, inst->cfg, get_api_page_size(), load_id_cb, inst);
+        tunnel_identity *id = find_tunnel_identity(inst->cfg);
+        if(id != NULL) {
+            CMD_CTRL->load_identity(NULL, inst->cfg, !id->Active, get_api_page_size(), load_id_cb, inst);
+        } else {
+            ZITI_LOG(WARN, "identity not found? %s", inst->cfg);
+        }
+
         identity_loaded = true;
         if (config_dir == NULL) {
             create_or_get_tunnel_identity(inst->cfg, inst->cfg);
@@ -1189,7 +1196,6 @@ static void on_event(const base_event *ev) {
             }
 
             if (zev->code == ZITI_OK) {
-                id_event.Id->Active = true; // determine it from controller
                 if (zev->name) {
                     if (id_event.Id->Name != NULL && strcmp(id_event.Id->Name, zev->name) != 0) {
                         free(id_event.Id->Name);
@@ -1322,10 +1328,11 @@ static void on_event(const base_event *ev) {
                     }
                 }
             }
-            if (model_map_size(&hostnamesToEdit) > 0 && !is_host_only()) {
+            ZITI_LOG(ERROR, "id->Active: %d", id->Active);
+            if (id->Active && model_map_size(&hostnamesToEdit) > 0 && !is_host_only()) {
                 remove_and_add_nrpt_rules(global_loop_ref, &hostnamesToEdit, get_dns_ip());
             }
-            if (model_map_size(&hostnamesToAdd) > 0 && !is_host_only()) {
+            if (id->Active && model_map_size(&hostnamesToAdd) > 0 && !is_host_only()) {
                 add_nrpt_rules(global_loop_ref, &hostnamesToAdd, get_dns_ip());
             }
             if (model_map_size(&hostnamesToRemove) > 0 && !is_host_only()) {

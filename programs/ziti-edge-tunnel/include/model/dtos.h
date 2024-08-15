@@ -39,7 +39,6 @@ XX(Active, bool, none, Active, __VA_ARGS__) \
 XX(Loaded, bool, none, Loaded, __VA_ARGS__) \
 XX(Config, tunnel_config, ptr, Config, __VA_ARGS__) \
 XX(ControllerVersion, string, none, ControllerVersion, __VA_ARGS__) \
-XX(IdFileStatus, bool, none, IdFileStatus, __VA_ARGS__) \
 XX(NeedsExtAuth, bool, none, NeedsExtAuth, __VA_ARGS__) \
 XX(MfaEnabled, bool, none, MfaEnabled, __VA_ARGS__) \
 XX(MfaNeeded, bool, none, MfaNeeded, __VA_ARGS__) \
@@ -93,7 +92,6 @@ XX(TimeoutRemaining, int, none, TimeoutRemaining, __VA_ARGS__) \
 XX(Permissions, tunnel_service_permissions , none, Permissions, __VA_ARGS__)
 
 #define TUNNEL_STATUS(XX, ...) \
-XX(Active, bool, none, Active, __VA_ARGS__) \
 XX(Duration, int, none, Duration, __VA_ARGS__) \
 XX(StartTime, timestamp, none, StartTime, __VA_ARGS__) \
 XX(Identities, tunnel_identity, array, Identities, __VA_ARGS__) \
