@@ -56,9 +56,6 @@ tunnel_identity *create_or_get_tunnel_identity(const char* identifier, char* fil
     tunnel_identity *id = find_tunnel_identity(identifier);
 
     if (id != NULL) {
-        if (filename != NULL) {
-            id->IdFileStatus = true;
-        }
         return id;
     } else {
         tunnel_identity *tnl_id = calloc(1, sizeof(struct tunnel_identity_s));
@@ -81,7 +78,6 @@ tunnel_identity *create_or_get_tunnel_identity(const char* identifier, char* fil
             tnl_id->Name = calloc(length + 1, sizeof(char));
             snprintf(tnl_id->Name, length+1, "%s", fingerprint);
 
-            tnl_id->IdFileStatus = true;
             tnl_id->Active = true;
         }
         model_map_set(&tnl_identity_map, identifier, tnl_id);
@@ -438,9 +434,7 @@ tunnel_identity_array get_tunnel_identities() {
 
     int idx = 0;
     MODEL_MAP_FOREACH(id, tnl_id, &tnl_identity_map) {
-        if (tnl_id->IdFileStatus) {
-            tnl_id_arr[idx++] = tnl_id;
-        }
+        tnl_id_arr[idx++] = tnl_id;
     }
 
     return tnl_id_arr;
@@ -464,7 +458,6 @@ tunnel_identity_array get_tunnel_identities_for_metrics() {
         id_new->Active = id->Active;
         id_new->Loaded = id->Loaded;
         id_new->Metrics = id->Metrics;
-        id_new->IdFileStatus = id->IdFileStatus;
         tnl_id_arr[i] = id_new;
     }
     free(arr);
@@ -594,7 +587,6 @@ void set_identifier_from_identities() {
         }
         if (tnl_id->Identifier != NULL) {
             // set this field to false during initialization
-            tnl_id->IdFileStatus = false;
             normalize_identifier(tnl_id->Identifier);
             model_map_set(&tnl_identity_map, tnl_id->Identifier, tnl_id);
         }
@@ -605,7 +597,6 @@ void set_identifier_from_identities() {
 }
 
 void initialize_tunnel_status() {
-    tnl_status.Active = true;
     tnl_status.Duration = 0;
     uv_timeval64_t now;
     uv_gettimeofday(&now);
@@ -673,7 +664,6 @@ tunnel_status *get_tunnel_status() {
 char *get_tunnel_config(size_t *json_len) {
     tunnel_status tnl_config = {0};
     tunnel_status *tnl_sts = get_tunnel_status();
-    tnl_config.Active = tnl_sts->Active;
     tnl_config.Duration = tnl_sts->Duration;
     tnl_config.StartTime = tnl_sts->StartTime;
 
