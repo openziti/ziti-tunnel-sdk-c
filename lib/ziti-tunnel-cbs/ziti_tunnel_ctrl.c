@@ -185,8 +185,7 @@ static void ziti_dump_to_file(void *ctx, char* outputFile) {
 static void disconnect_identity(ziti_context ziti_ctx, void *tnlr_ctx) {
     ZITI_LOG(INFO, "Disconnecting Identity %s", ziti_get_identity(ziti_ctx)->name);
     remove_intercepts(ziti_ctx, tnlr_ctx);
-    // https://github.com/openziti/ziti-tunnel-sdk-c/issues/275 - not able to close tun gracefully, probably because of the crash from this statement
-    // ziti_shutdown(ziti_ctx); // causes the crash
+    ziti_set_enabled(ziti_ctx, false);
 }
 
 bool is_null(const void * field, char* message, tunnel_result* result) {
@@ -601,7 +600,7 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
             }
 
             if (ziti_get_identity(inst->ztx)) {
-                ziti_set_enabled(inst->ztx, false);
+                disconnect_identity(inst->ztx, CMD_CTX.tunnel_ctx);
             }
             model_map_remove(&instances, delete_id.identifier);
             result.success = true;

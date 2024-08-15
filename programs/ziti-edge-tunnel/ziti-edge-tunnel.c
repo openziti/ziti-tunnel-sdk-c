@@ -249,30 +249,31 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
                             ZITI_LOG(ERROR, "Identity filename is not found in the remove identity request, not deleting the identity file");
                             break;
                         }
-                        // delete identity file
-                        remove(tnl_delete_id.identifier);
-                        ZITI_LOG(INFO, "Identity file %s is deleted",tnl_delete_id.identifier);
 #if _WIN32
-                        tunnel_identity *id = create_or_get_tunnel_identity(tnl_delete_id.identifier, NULL);
-                        if (id->Services) {
-                            model_map hostnamesToRemove = {0};
-                            for (int index=0 ; id->Services[index]; index++ ) {
-                                tunnel_service *tnl_svc = id->Services[index];
-                                if (tnl_svc->Addresses != NULL) {
-                                    for (int i = 0; tnl_svc->Addresses[i]; i++) {
-                                        tunnel_address *addr = tnl_svc->Addresses[i];
-                                        if (addr->IsHost && model_map_get(&hostnamesToRemove, addr->HostName) == NULL) {
-                                            model_map_set(&hostnamesToRemove, addr->HostName, "TRUE");
+                        tunnel_identity *id = find_tunnel_identity(tnl_delete_id.identifier);
+                        if(id != NULL) {
+                            if (id->Services) {
+                                model_map hostnamesToRemove = {0};
+                                for (int index = 0; id->Services[index]; index++) {
+                                    tunnel_service *tnl_svc = id->Services[index];
+                                    if (tnl_svc->Addresses != NULL) {
+                                        for (int i = 0; tnl_svc->Addresses[i]; i++) {
+                                            tunnel_address *addr = tnl_svc->Addresses[i];
+                                            if (addr->IsHost &&
+                                                model_map_get(&hostnamesToRemove, addr->HostName) == NULL) {
+                                                model_map_set(&hostnamesToRemove, addr->HostName, "TRUE");
+                                            }
                                         }
                                     }
                                 }
-                            }
 
-                            if (model_map_size(&hostnamesToRemove) > 0) {
-                                remove_nrpt_rules(global_loop_ref, &hostnamesToRemove);
+                                if (model_map_size(&hostnamesToRemove) > 0) {
+//                                    remove_nrpt_rules(global_loop_ref, &hostnamesToRemove);
+                                }
                             }
+                        } else {
+                            ZITI_LOG(WARN, "asked to remove identity, but identity was not found: %s", tnl_delete_id.identifier);
                         }
-
 #endif
                         delete_identity_from_instance(tnl_delete_id.identifier);
                         free_tunnel_identity_id(&tnl_delete_id);
