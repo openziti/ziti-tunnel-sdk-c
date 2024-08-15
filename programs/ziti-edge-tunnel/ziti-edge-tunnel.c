@@ -1328,7 +1328,7 @@ static void on_event(const base_event *ev) {
                     }
                 }
             }
-            ZITI_LOG(ERROR, "id->Active: %d", id->Active);
+            
             if (id->Active && model_map_size(&hostnamesToEdit) > 0 && !is_host_only()) {
                 remove_and_add_nrpt_rules(global_loop_ref, &hostnamesToEdit, get_dns_ip());
             }
