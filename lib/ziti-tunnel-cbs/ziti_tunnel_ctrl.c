@@ -52,11 +52,11 @@ static const char * cfg_types[] = { "ziti-tunneler-client.v1", "intercept.v1", "
 static long refresh_interval = 10;
 
 static int process_cmd(const tunnel_command *cmd, void (*cb)(const tunnel_result *, void *ctx), void *ctx);
-static int load_identity_cfg(const char *identifier, const ziti_config *cfg,
+static int load_identity_cfg(const char *identifier, const ziti_config *cfg, bool disabled,
                              int api_page_size, command_cb cb, void *ctx);
-static int load_identity(const char *identifier, const char *path, int api_page_size, command_cb cb, void *ctx);
+static int load_identity(const char *identifier, const char *path, bool disabled, int api_page_size, command_cb cb, void *ctx);
 static void get_transfer_rates(const char *identifier, command_cb cb, void *ctx);
-static void load_ziti_async(uv_loop_t *loop, void *arg);
+static void load_ziti_async(uv_loop_t *loop, struct ziti_instance_s *inst);
 static void on_sigdump(uv_signal_t *sig, int signum);
 static void enable_mfa(ziti_context ztx, void *ctx);
 static void verify_mfa(ziti_context ztx, char *code, void *ctx);
@@ -225,10 +225,10 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
                     result.error = "identifier is required when loading with config";
                     break;
                 }
-                rc = load_identity_cfg(load.identifier, load.config, load.apiPageSize, cb, ctx);
+                rc = load_identity_cfg(load.identifier, load.config, false, load.apiPageSize, cb, ctx);
             } else if (load.path != NULL) {
                 const char *id = load.identifier ? load.identifier : load.path;
-                rc = load_identity(id, load.path, load.apiPageSize, cb, ctx);
+                rc = load_identity(id, load.path, false, load.apiPageSize, cb, ctx);
             }
 
             if (rc == ZITI_OK) {
@@ -717,24 +717,25 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
     return 0;
 }
 
-static int load_identity(const char *identifier, const char *path, int api_page_size, command_cb cb, void *ctx) {
+static int load_identity(const char *identifier, const char *path, bool disabled, int api_page_size, command_cb cb, void *ctx) {
     ziti_config cfg = {0};
     int rc = ziti_load_config(&cfg, path);
     if (rc == ZITI_OK) {
         if (identifier == NULL) {
             identifier = path;
         }
-        rc = load_identity_cfg(identifier, &cfg, api_page_size, cb, ctx);
+        rc = load_identity_cfg(identifier, &cfg, disabled, api_page_size, cb, ctx);  //xxxxx
     }
 
     free_ziti_config(&cfg);
     return rc;
 }
 
-static int load_identity_cfg(const char *identifier, const ziti_config *cfg, int api_page_size, command_cb cb, void *ctx) {
+static int load_identity_cfg(const char *identifier, const ziti_config *cfg, bool disabled, int api_page_size, command_cb cb, void *ctx) {
     struct ziti_instance_s *inst = new_ziti_instance(identifier ? identifier : cfg->cfg_source);
     ziti_options opts = {
             .api_page_size = api_page_size > 0 ? api_page_size : 0,
+            .disabled = disabled,
     };
     int rc = init_ziti_instance(inst, cfg, &opts);
     if (rc != ZITI_OK) {
@@ -1027,9 +1028,7 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
     }
 }
 
-static void load_ziti_async(uv_loop_t *loop, void *arg) {
-    struct ziti_instance_s *inst = arg;
-
+static void load_ziti_async(uv_loop_t *loop, struct ziti_instance_s *inst) {
     tunnel_result result = {
             .success = true,
             .error = NULL,
