@@ -268,7 +268,7 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
                                 }
 
                                 if (model_map_size(&hostnamesToRemove) > 0) {
-//                                    remove_nrpt_rules(global_loop_ref, &hostnamesToRemove);
+                                    remove_nrpt_rules(global_loop_ref, &hostnamesToRemove);
                                 }
                             }
                         } else {
