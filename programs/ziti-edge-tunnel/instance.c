@@ -842,6 +842,11 @@ void delete_identity_from_instance(char* identifier) {
     }
     model_map_remove(&tnl_identity_map, identifier);
     ZITI_LOG(DEBUG, "ztx[%s] is removed from the tunnel identity list", identifier);
+
+    // delete identity file
+    remove(identifier);
+    ZITI_LOG(INFO, "Identity file %s is deleted",identifier);
+
     free_tunnel_identity(id);
     free(id);
 }
