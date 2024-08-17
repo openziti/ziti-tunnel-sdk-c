@@ -229,7 +229,8 @@
       "description": "preset to link executable against static libs",
       "cacheVariables": {
         "CMAKE_EXE_LINKER_FLAGS": "-static",
-        "BUILD_SHARED_LIBS": "OFF"
+        "BUILD_SHARED_LIBS": "OFF",
+        "ZLIB_USE_STATIC_LIBS": "ON"
       },
       "hidden": true
     },
