@@ -235,15 +235,15 @@
     },
     {
       "name": "ci-linux-x64-static",
-      "inherits": [ "ci-linux-static", "ci-linux-x64" ]
+      "inherits": [ "ci-linux-static", "ci-linux-static-libssl", "ci-linux-x64" ]
     },
     {
       "name": "ci-linux-arm64-static",
-      "inherits": [ "ci-linux-static", "ci-linux-arm64" ]
+      "inherits": [ "ci-linux-static", "ci-linux-static-libssl", "ci-linux-arm64" ]
     },
     {
       "name": "ci-linux-arm-static",
-      "inherits": [ "ci-linux-static", "ci-linux-arm" ]
+      "inherits": [ "ci-linux-static", "ci-linux-static-libssl", "ci-linux-arm" ]
     },
     {
       "name": "ci-windows-x64",
