@@ -142,7 +142,7 @@ typedef enum {
 
 struct tunneler_io_ctx_s {
     tunneler_context tnlr_ctx;
-    const char *service_name;
+    char *service_name;
     char client[64];
     char intercepted[64];
     tunneler_proto_type proto;

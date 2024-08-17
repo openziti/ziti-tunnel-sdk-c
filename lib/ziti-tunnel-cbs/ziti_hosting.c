@@ -751,8 +751,8 @@ static void listen_opts_from_host_cfg_v1(ziti_listen_opts *opts, const ziti_host
 
     if (config && config->listen_options) {
         opts->bind_using_edge_identity = config->listen_options->bind_with_identity;
-        opts->identity = config->listen_options->identity;
-        opts->connect_timeout_seconds = config->listen_options->connect_timeout_seconds;
+        opts->identity = (char*)config->listen_options->identity;
+        opts->connect_timeout_seconds = (int)config->listen_options->connect_timeout_seconds;
         opts->terminator_cost = config->listen_options->cost;
 
         const char *prec = config->listen_options->precendence;
@@ -784,7 +784,8 @@ host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, uv_loop_t *loop, const char *service
     host_ctx->cfg_type = cfg_type;
     host_ctx->cfg = cfg;
 
-    char *display_proto = "?", *display_addr = "?", display_port[12] = { '?', '\0' };
+    const char *display_proto = "?", *display_addr = "?";
+    char display_port[12] = { '?', '\0' };
     ziti_listen_opts listen_opts;
     ziti_listen_opts *listen_opts_p = NULL;
     switch (cfg_type) {
@@ -797,7 +798,7 @@ host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, uv_loop_t *loop, const char *service
             host_ctx->forward_protocol = host_v1_cfg->forward_protocol;
             if (host_v1_cfg->forward_protocol) {
                 STAILQ_INIT(&host_ctx->proto_u.allowed_protocols);
-                string_array allowed_protos = host_v1_cfg->allowed_protocols;
+                model_string_array allowed_protos = host_v1_cfg->allowed_protocols;
                 for (i = 0; allowed_protos != NULL && allowed_protos[i] != NULL; i++) {
                     protocol_t *p = calloc(1, sizeof(protocol_t));
                     p->protocol = strdup(allowed_protos[i]);
@@ -863,7 +864,7 @@ host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, uv_loop_t *loop, const char *service
                 }
             } else {
                 host_ctx->port_u.port = host_v1_cfg->port;
-                snprintf(display_port, sizeof(display_port), "%d", host_v1_cfg->port);
+                snprintf(display_port, sizeof(display_port), "%d", (int)host_v1_cfg->port);
             }
 
             STAILQ_INIT(&host_ctx->allowed_source_addresses);

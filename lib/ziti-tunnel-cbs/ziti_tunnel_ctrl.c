@@ -49,7 +49,7 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event);
 
 static const char * cfg_types[] = { "ziti-tunneler-client.v1", "intercept.v1", "ziti-tunneler-server.v1", "host.v1", NULL };
 
-static long refresh_interval = 10;
+static unsigned long refresh_interval = 10;
 
 static int process_cmd(const tunnel_command *cmd, void (*cb)(const tunnel_result *, void *ctx), void *ctx);
 static int load_identity_cfg(const char *identifier, const ziti_config *cfg, bool disabled,
@@ -123,22 +123,6 @@ static ziti_context get_ziti(const char *identifier) {
     return inst ? inst->ztx : NULL;
 }
 
-static int ziti_dump_to_log_op(void* stringsBuilder, const char *fmt,  ...) {
-    static char line[4096];
-
-    va_list vargs;
-    va_start(vargs, fmt);
-    vsnprintf(line, sizeof(line), fmt, vargs);
-    va_end(vargs);
-
-    if (strlen(stringsBuilder) + strlen(line) > MAXBUFFERLEN) {
-        return -1;
-    }
-    // write/append to the buffer
-    strncat(stringsBuilder, line, sizeof(line));
-    return 0;
-}
-
 static char * ziti_dump_to_string(void *ctx) {
     string_buf_t *out = new_string_buf();
     //actually invoke ziti_dump here
@@ -171,7 +155,8 @@ static void ziti_dump_to_file(void *ctx, char* outputFile) {
     uv_gettimeofday(&dump_time);
 
     char time_str[32];
-    struct tm* start_tm = gmtime(&dump_time.tv_sec);
+    time_t sec = (time_t)dump_time.tv_sec;
+    struct tm* start_tm = gmtime(&sec);
     strftime(time_str, sizeof(time_str), "%a %b %d %Y, %X %p", start_tm);
 
     fprintf(fp, "Ziti Dump starting: %s\n",time_str);
@@ -188,7 +173,7 @@ static void disconnect_identity(ziti_context ziti_ctx, void *tnlr_ctx) {
     ziti_set_enabled(ziti_ctx, false);
 }
 
-bool is_null(const void * field, char* message, tunnel_result* result) {
+bool is_null(const void * field, const char* message, tunnel_result* result) {
     if (field == NULL) {
         result->error = message;
         result->success = false;
@@ -224,10 +209,10 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
                     result.error = "identifier is required when loading with config";
                     break;
                 }
-                rc = load_identity_cfg(load.identifier, load.config, false, load.apiPageSize, cb, ctx);
+                rc = load_identity_cfg(load.identifier, load.config, false, (int)load.apiPageSize, cb, ctx);
             } else if (load.path != NULL) {
                 const char *id = load.identifier ? load.identifier : load.path;
-                rc = load_identity(id, load.path, false, load.apiPageSize, cb, ctx);
+                rc = load_identity(id, load.path, false, (int)load.apiPageSize, cb, ctx);
             }
 
             if (rc == ZITI_OK) {
@@ -391,7 +376,7 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
             }
 
             struct tunnel_cb_s *req = malloc(sizeof(struct tunnel_cb_s));
-            req->ctx = id.identifier;
+            req->ctx = (void*)id.identifier;
             id.identifier = NULL;
             req->cmd_cb = cb;
             req->cmd_ctx = ctx;
@@ -695,7 +680,7 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
             }
 
             struct tunnel_cb_s *req = calloc(1, sizeof(*req));
-            req->ctx = id.identifier;
+            req->ctx = (void*)id.identifier;
             req->cmd_cb = cb;
             req->cmd_ctx = ctx;
             ziti_ext_auth(inst->ztx, on_ext_auth, req);
@@ -761,12 +746,14 @@ static void get_transfer_rates(const char *identifier, command_cb cb, void *ctx)
     };
     int metrics_len = 6;
     if (up > 0) {
-        id_metrics.up = calloc((metrics_len + 1), sizeof(char));
-        snprintf(id_metrics.up, metrics_len, "%.2lf", up);
+        char *ups = calloc((metrics_len + 1), sizeof(char));
+        id_metrics.up = ups;
+        snprintf(ups, metrics_len + 1, "%.2lf", up);
     }
     if (down > 0) {
-        id_metrics.down = calloc((metrics_len + 1), sizeof(char));
-        snprintf(id_metrics.down, metrics_len, "%.2lf", down);
+        char *downs = calloc((metrics_len + 1), sizeof(char));
+        id_metrics.down = downs;
+        snprintf(downs, metrics_len+1, "%.2lf", down);
     }
 
     tunnel_result result = {0};
@@ -813,7 +800,7 @@ int set_tnlr_options(struct ziti_instance_s *inst) {
             .config_types = cfg_types,
             .event_cb = on_ziti_event, // ensure ziti events are propagated (as tunnel events) via the command interface
             .events = -1,
-            .refresh_interval = refresh_interval,
+            .refresh_interval = (long)refresh_interval,
             .app_ctx = inst
     };
     int rc = ziti_context_set_options(inst->ztx, &tunneler_ziti_options);
@@ -1128,7 +1115,7 @@ static void on_enable_mfa(ziti_context ztx, int status, ziti_mfa_enrollment *enr
     if (status == ZITI_OK) {
         ev->operation_type = mfa_status_enrollment_challenge;
         ev->provisioning_url = strdup(enrollment->provisioning_url);
-        char **rc = enrollment->recovery_codes;
+        const char **rc = enrollment->recovery_codes;
         int size = 0;
         while (rc != NULL && *rc != NULL) {
             rc++;
@@ -1233,7 +1220,7 @@ static void on_mfa_recovery_codes(ziti_context ztx, int status, char **recovery_
 
         tunnel_mfa_recovery_codes mfa_recovery_codes = {0};
         mfa_recovery_codes.identifier = strdup(req->ctx);
-        mfa_recovery_codes.recovery_codes = recovery_codes;
+        mfa_recovery_codes.recovery_codes = (model_string_array) recovery_codes;
 
         size_t json_len;
         result.data = tunnel_mfa_recovery_codes_to_json(&mfa_recovery_codes, MODEL_JSON_COMPACT, &json_len);
@@ -1342,7 +1329,8 @@ static void on_sigdump(uv_signal_t *sig, int signum) {
     uv_gettimeofday(&dump_time);
 
     char time_str[32];
-    struct tm* start_tm = gmtime(&dump_time.tv_sec);
+    time_t sec = (time_t)dump_time.tv_sec;
+    struct tm* start_tm = gmtime(&sec);
     strftime(time_str, sizeof(time_str), "%Y-%m-%dT%H:%M:%S", start_tm);
 
     CHECK(cleanup, fprintf(dumpfile, "ZIti Dump starting: %s\n",time_str));
@@ -1436,14 +1424,14 @@ static void update_config(uv_work_t *wr) {
 
     bool write_new_cfg = false;
     if (req->new_url) {
-        free(cfg.controller_url);
+        free((char*)cfg.controller_url);
         cfg.controller_url = req->new_url;
         req->new_url = NULL;
         write_new_cfg = true;
     }
 
     if (req->new_ca) {
-        free(cfg.id.ca);
+        free((char*)cfg.id.ca);
         cfg.id.ca = req->new_ca;
         req->new_ca = NULL;
         write_new_cfg = true;

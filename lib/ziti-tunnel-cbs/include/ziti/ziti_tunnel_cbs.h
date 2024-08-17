@@ -37,14 +37,14 @@ XX(resolver, __VA_ARGS__)
 
 #define TUNNELER_APP_DATA_MODEL(XX, ...) \
 XX(conn_type, TunnelConnectionType, none, connType, __VA_ARGS__) \
-XX(dst_protocol, string, none, dst_protocol, __VA_ARGS__)\
-XX(dst_hostname, string, none, dst_hostname, __VA_ARGS__)\
-XX(dst_ip, string, none, dst_ip, __VA_ARGS__)\
-XX(dst_port, string, none, dst_port, __VA_ARGS__)\
-XX(src_protocol, string, none, src_protocol, __VA_ARGS__)\
-XX(src_ip, string, none, src_ip, __VA_ARGS__)\
-XX(src_port, string, none, src_port, __VA_ARGS__)\
-XX(source_addr, string, none, source_addr, __VA_ARGS__)
+XX(dst_protocol, model_string, none, dst_protocol, __VA_ARGS__)\
+XX(dst_hostname, model_string, none, dst_hostname, __VA_ARGS__)\
+XX(dst_ip, model_string, none, dst_ip, __VA_ARGS__)\
+XX(dst_port, model_string, none, dst_port, __VA_ARGS__)\
+XX(src_protocol, model_string, none, src_protocol, __VA_ARGS__)\
+XX(src_ip, model_string, none, src_ip, __VA_ARGS__)\
+XX(src_port, model_string, none, src_port, __VA_ARGS__)\
+XX(source_addr, model_string, none, source_addr, __VA_ARGS__)
 
 DECLARE_ENUM(TunnelConnectionType, TUNNELER_CONN_TYPE_ENUM)
 
@@ -78,114 +78,114 @@ DECLARE_ENUM(TunnelCommand, TUNNEL_COMMANDS)
 #define TUNNEL_CMD(XX, ...) \
 XX(command, TunnelCommand, none, Command, __VA_ARGS__) \
 XX(data, json, none, Data, __VA_ARGS__)                \
-XX(show_result, bool, none, , __VA_ARGS__)
+XX(show_result, model_bool, none, , __VA_ARGS__)
 
 #define TUNNEL_CMD_RES(XX, ...) \
-XX(success, bool, none, Success, __VA_ARGS__) \
-XX(error, string, none, Error, __VA_ARGS__)\
+XX(success, model_bool, none, Success, __VA_ARGS__) \
+XX(error, model_string, none, Error, __VA_ARGS__)\
 XX(data, json, none, Data, __VA_ARGS__) \
-XX(code, int, none, Code, __VA_ARGS__)
+XX(code, model_number, none, Code, __VA_ARGS__)
 
 #define TNL_LOAD_IDENTITY(XX, ...) \
-XX(identifier, string, none, Identifier, __VA_ARGS__)\
-XX(path, string, none, Path, __VA_ARGS__)            \
+XX(identifier, model_string, none, Identifier, __VA_ARGS__)\
+XX(path, model_string, none, Path, __VA_ARGS__)            \
 XX(config, ziti_config, ptr, Config, __VA_ARGS__)    \
-XX(apiPageSize, int, none, ApiPageSize, __VA_ARGS__)
+XX(apiPageSize, model_number, none, ApiPageSize, __VA_ARGS__)
 
 #define TNL_ON_OFF_IDENTITY(XX, ...) \
-XX(identifier, string, none, Identifier, __VA_ARGS__) \
-XX(onOff, bool, none, OnOff, __VA_ARGS__)
+XX(identifier, model_string, none, Identifier, __VA_ARGS__) \
+XX(onOff, model_bool, none, OnOff, __VA_ARGS__)
 
 #define TNL_IDENTITY_INFO(XX, ...) \
-XX(name, string, none, Name, __VA_ARGS__) \
-XX(config, string, none, Config, __VA_ARGS__) \
-XX(network, string, none, Network, __VA_ARGS__) \
-XX(id, string, none, Id, __VA_ARGS__)
+XX(name, model_string, none, Name, __VA_ARGS__) \
+XX(config, model_string, none, Config, __VA_ARGS__) \
+XX(network, model_string, none, Network, __VA_ARGS__) \
+XX(id, model_string, none, Id, __VA_ARGS__)
 
 #define TNL_IDENTITY_LIST(XX, ...) \
 XX(identities, tunnel_identity_info, array, Identities, __VA_ARGS__)
 
 #define TNL_ZITI_DUMP(XX, ...) \
-XX(identifier, string, none, Identifier, __VA_ARGS__) \
-XX(dump_path, string, none, DumpPath, __VA_ARGS__)
+XX(identifier, model_string, none, Identifier, __VA_ARGS__) \
+XX(dump_path, model_string, none, DumpPath, __VA_ARGS__)
 
 #define TNL_IDENTITY_ID(XX, ...) \
-XX(identifier, string, none, Identifier, __VA_ARGS__)
+XX(identifier, model_string, none, Identifier, __VA_ARGS__)
 
 #define TNL_MFA_ENROL_RES(XX,...) \
-XX(identifier, string, none, Identifier, __VA_ARGS__) \
-XX(is_verified, bool, none, IsVerified, __VA_ARGS__) \
-XX(provisioning_url, string, none, ProvisioningUrl, __VA_ARGS__) \
-XX(recovery_codes, string, array, RecoveryCodes, __VA_ARGS__)
+XX(identifier, model_string, none, Identifier, __VA_ARGS__) \
+XX(is_verified, model_bool, none, IsVerified, __VA_ARGS__) \
+XX(provisioning_url, model_string, none, ProvisioningUrl, __VA_ARGS__) \
+XX(recovery_codes, model_string, array, RecoveryCodes, __VA_ARGS__)
 
 // MFA auth command
 #define TNL_SUBMIT_MFA(XX, ...) \
-XX(identifier, string, none, Identifier, __VA_ARGS__) \
-XX(code, string, none, Code, __VA_ARGS__)
+XX(identifier, model_string, none, Identifier, __VA_ARGS__) \
+XX(code, model_string, none, Code, __VA_ARGS__)
 
 // MFA auth command
 #define TNL_VERIFY_MFA(XX, ...) \
-XX(identifier, string, none, Identifier, __VA_ARGS__) \
-XX(code, string, none, Code, __VA_ARGS__)
+XX(identifier, model_string, none, Identifier, __VA_ARGS__) \
+XX(code, model_string, none, Code, __VA_ARGS__)
 
 #define TNL_REMOVE_MFA(XX, ...) \
-XX(identifier, string, none, Identifier, __VA_ARGS__) \
-XX(code, string, none, Code, __VA_ARGS__)
+XX(identifier, model_string, none, Identifier, __VA_ARGS__) \
+XX(code, model_string, none, Code, __VA_ARGS__)
 
 #define TNL_GENERATE_MFA_CODES(XX, ...) \
-XX(identifier, string, none, Identifier, __VA_ARGS__) \
-XX(code, string, none, Code, __VA_ARGS__)
+XX(identifier, model_string, none, Identifier, __VA_ARGS__) \
+XX(code, model_string, none, Code, __VA_ARGS__)
 
 #define TNL_MFA_RECOVERY_CODES(XX, ...) \
-XX(identifier, string, none, Identifier, __VA_ARGS__) \
-XX(recovery_codes, string, array, RecoveryCodes, __VA_ARGS__)
+XX(identifier, model_string, none, Identifier, __VA_ARGS__) \
+XX(recovery_codes, model_string, array, RecoveryCodes, __VA_ARGS__)
 
 #define TNL_GET_MFA_CODES(XX, ...) \
-XX(identifier, string, none, Identifier, __VA_ARGS__) \
-XX(code, string, none, Code, __VA_ARGS__)
+XX(identifier, model_string, none, Identifier, __VA_ARGS__) \
+XX(code, model_string, none, Code, __VA_ARGS__)
 
 #define TNL_IDENTITY_METRICS(XX, ...) \
-XX(identifier, string, none, Identifier, __VA_ARGS__) \
-XX(up, string, none, Up, __VA_ARGS__) \
-XX(down, string, none, Down, __VA_ARGS__)
+XX(identifier, model_string, none, Identifier, __VA_ARGS__) \
+XX(up, model_string, none, Up, __VA_ARGS__) \
+XX(down, model_string, none, Down, __VA_ARGS__)
 
 #define TUNNEL_CMD_INLINE(XX, ...) \
-XX(identifier, string, none, Identifier, __VA_ARGS__) \
+XX(identifier, model_string, none, Identifier, __VA_ARGS__) \
 XX(command, TunnelCommand, none, Command, __VA_ARGS__)
 
 #define TUNNEL_SET_LOG_LEVEL(XX, ...) \
-XX(loglevel, string, none, Level, __VA_ARGS__)
+XX(loglevel, model_string, none, Level, __VA_ARGS__)
 
 #define TUNNEL_TUN_IP_V4(XX, ...) \
-XX(tunIP, string, none, TunIPv4, __VA_ARGS__) \
-XX(prefixLength, int, none, TunPrefixLength, __VA_ARGS__) \
-XX(addDns, bool, none, AddDns, __VA_ARGS__)
+XX(tunIP, model_string, none, TunIPv4, __VA_ARGS__) \
+XX(prefixLength, model_number, none, TunPrefixLength, __VA_ARGS__) \
+XX(addDns, model_bool, none, AddDns, __VA_ARGS__)
 
 #define TUNNEL_SERVICE_CONTROL(XX, ...) \
-XX(operation, string, none, Operation, __VA_ARGS__)
+XX(operation, model_string, none, Operation, __VA_ARGS__)
 
 #define TUNNEL_STATUS_CHANGE(XX, ...) \
-XX(woken, bool, none, Woke, __VA_ARGS__) \
-XX(unlocked, bool, none, Unlocked, __VA_ARGS__)
+XX(woken, model_bool, none, Woke, __VA_ARGS__) \
+XX(unlocked, model_bool, none, Unlocked, __VA_ARGS__)
 
 #define TUNNEL_ADD_IDENTITY(XX, ...) \
-XX(jwtFileName, string, none, JwtFileName, __VA_ARGS__) \
-XX(jwtContent, string, none, JwtContent, __VA_ARGS__)
+XX(jwtFileName, model_string, none, JwtFileName, __VA_ARGS__) \
+XX(jwtContent, model_string, none, JwtContent, __VA_ARGS__)
 
 #define TUNNEL_EXT_AUTH(XX, ...) \
-XX(identifier, string, none, identifier, __VA_ARGS__) \
-XX(ext_auth_url, string, none, url, __VA_ARGS__)
+XX(identifier, model_string, none, identifier, __VA_ARGS__) \
+XX(ext_auth_url, model_string, none, url, __VA_ARGS__)
 
 #define TUNNEL_UPSTREAM_DNS(XX, ...) \
-XX(host, string, none, host, __VA_ARGS__) \
-XX(port, int, none, port, __VA_ARGS__)
+XX(host, model_string, none, host, __VA_ARGS__) \
+XX(port, model_number, none, port, __VA_ARGS__)
 
 #define TNL_ENROLL(XX, ...) \
-XX(name, string, none, name, __VA_ARGS__) \
-XX(jwt, string, none, jwt, __VA_ARGS__) \
-XX(key, string, none, key, __VA_ARGS__) \
-XX(cert, string, none, cert, __VA_ARGS__) \
-XX(use_keychain, bool, none, useKeychain, __VA_ARGS__)
+XX(name, model_string, none, name, __VA_ARGS__) \
+XX(jwt, model_string, none, jwt, __VA_ARGS__) \
+XX(key, model_string, none, key, __VA_ARGS__) \
+XX(cert, model_string, none, cert, __VA_ARGS__) \
+XX(use_keychain, model_bool, none, useKeychain, __VA_ARGS__)
 
 DECLARE_MODEL(tunnel_command, TUNNEL_CMD)
 DECLARE_MODEL(tunnel_result, TUNNEL_CMD_RES)
@@ -234,46 +234,46 @@ XX(enrollment_challenge, __VA_ARGS__)
 DECLARE_ENUM(mfa_status, MFA_STATUS)
 
 #define BASE_EVENT_MODEL(XX, ...) \
-XX(identifier, string, none, identifier, __VA_ARGS__) \
+XX(identifier, model_string, none, identifier, __VA_ARGS__) \
 XX(event_type, TunnelEvent, none, type, __VA_ARGS__)
 
 #define ZTX_EVENT_MODEL(XX, ...)  \
 BASE_EVENT_MODEL(XX, __VA_ARGS__) \
-XX(status, string, none, status, __VA_ARGS__) \
-XX(name, string, none, name, __VA_ARGS__) \
-XX(version, string, none, version, __VA_ARGS__) \
-XX(controller, string, none, controller, __VA_ARGS__) \
-XX(code, int, none, code, __VA_ARGS__)
+XX(status, model_string, none, status, __VA_ARGS__) \
+XX(name, model_string, none, name, __VA_ARGS__) \
+XX(version, model_string, none, version, __VA_ARGS__) \
+XX(controller, model_string, none, controller, __VA_ARGS__) \
+XX(code, model_number, none, code, __VA_ARGS__)
 
 #define ZTX_SVC_EVENT_MODEL(XX, ...)  \
 BASE_EVENT_MODEL(XX, __VA_ARGS__)            \
-XX(status, string, none, status, __VA_ARGS__) \
+XX(status, model_string, none, status, __VA_ARGS__) \
 XX(added_services, ziti_service, array, added_services, __VA_ARGS__) \
 XX(removed_services, ziti_service, array, removed_services, __VA_ARGS__)
 
 #define MFA_EVENT_MODEL(XX, ...)  \
 BASE_EVENT_MODEL(XX, __VA_ARGS__)               \
-XX(provider, string, none, provider, __VA_ARGS__) \
-XX(status, string, none, status, __VA_ARGS__)   \
-XX(operation, string, none, operation, __VA_ARGS__) \
+XX(provider, model_string, none, provider, __VA_ARGS__) \
+XX(status, model_string, none, status, __VA_ARGS__)   \
+XX(operation, model_string, none, operation, __VA_ARGS__) \
 XX(operation_type, mfa_status, none, operation_type, __VA_ARGS__ ) \
-XX(provisioning_url, string, none, provisioning_url, __VA_ARGS__) \
-XX(recovery_codes, string, array, recovery_codes, __VA_ARGS__) \
-XX(code, int, none, code, __VA_ARGS__)
+XX(provisioning_url, model_string, none, provisioning_url, __VA_ARGS__) \
+XX(recovery_codes, model_string, array, recovery_codes, __VA_ARGS__) \
+XX(code, model_number, none, code, __VA_ARGS__)
 
 #define ZTX_API_EVENT_MODEL(XX, ...)  \
 BASE_EVENT_MODEL(XX, __VA_ARGS__)  \
-XX(new_ctrl_address, string, none, new_ctrl_address, __VA_ARGS__) \
-XX(new_ca_bundle, string, none, new_ca_bundle, __VA_ARGS__)
+XX(new_ctrl_address, model_string, none, new_ctrl_address, __VA_ARGS__) \
+XX(new_ca_bundle, model_string, none, new_ca_bundle, __VA_ARGS__)
 
 
 #define EXT_JWT_PROVIDER(XX, ...) \
-XX(name, string, none, name, __VA_ARGS__) \
-XX(issuer, string, none, issuer, __VA_ARGS__)
+XX(name, model_string, none, name, __VA_ARGS__) \
+XX(issuer, model_string, none, issuer, __VA_ARGS__)
 
 #define EXT_SIGNER_EVENT_MODEL(XX, ...)  \
 BASE_EVENT_MODEL(XX, __VA_ARGS__)               \
-XX(status, string, none, status, __VA_ARGS__)   \
+XX(status, model_string, none, status, __VA_ARGS__)   \
 XX(providers, jwt_provider, list, providers, __VA_ARGS__)
 
 DECLARE_MODEL(base_event, BASE_EVENT_MODEL)
@@ -334,9 +334,9 @@ void remove_intercepts(ziti_context ziti_ctx, void *tnlr_ctx);
 const ziti_tunnel_ctrl* ziti_tunnel_init_cmd(uv_loop_t *loop, tunneler_context, event_cb);
 
 struct add_identity_request_s {
-    string identifier;
-    string identifier_file_name;
-    string jwt_content;
+    model_string identifier;
+    model_string identifier_file_name;
+    model_string jwt_content;
     void *add_id_ctx;
     command_cb cmd_cb;
     void *cmd_ctx;

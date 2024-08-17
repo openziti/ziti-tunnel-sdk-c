@@ -25,13 +25,13 @@ extern "C" {
 #endif
 
 #define STATUS_EVENT(XX, ...) \
-XX(Op, string, none, Op, __VA_ARGS__)
+XX(Op, model_string, none, Op, __VA_ARGS__)
 
 #define ACTION_EVENT(XX, ...) \
 STATUS_EVENT(XX, __VA_ARGS__) \
-XX(Action, string, none, Action, __VA_ARGS__) \
-XX(Identifier, string, none, Identifier, __VA_ARGS__) \
-XX(Fingerprint, string, none, Fingerprint, __VA_ARGS__)
+XX(Action, model_string, none, Action, __VA_ARGS__) \
+XX(Identifier, model_string, none, Identifier, __VA_ARGS__) \
+XX(Fingerprint, model_string, none, Fingerprint, __VA_ARGS__)
 
 #define TUNNEL_STATUS_EVENT(XX, ...) \
 STATUS_EVENT(XX, __VA_ARGS__) \
@@ -48,23 +48,23 @@ XX(RemovedServices, tunnel_service, array, RemovedServices, __VA_ARGS__)
 
 #define MFA_STATUS_EVENT(XX, ...) \
 ACTION_EVENT(XX, __VA_ARGS__) \
-XX(Successful, bool, none, Successful, __VA_ARGS__) \
-XX(Error, string, none, Error, __VA_ARGS__) \
-XX(ProvisioningUrl, string, none, ProvisioningUrl, __VA_ARGS__) \
-XX(RecoveryCodes, string, array, RecoveryCodes, __VA_ARGS__)
+XX(Successful, model_bool, none, Successful, __VA_ARGS__) \
+XX(Error, model_string, none, Error, __VA_ARGS__) \
+XX(ProvisioningUrl, model_string, none, ProvisioningUrl, __VA_ARGS__) \
+XX(RecoveryCodes, model_string, array, RecoveryCodes, __VA_ARGS__)
 
 #define TUNNEL_METRICS_EVENT(XX, ...) \
 STATUS_EVENT(XX, __VA_ARGS__) \
 XX(Identities, tunnel_identity, array, Identities, __VA_ARGS__)
 
 #define TUNNEL_NOTIFICATION_MESSAGE(XX, ...) \
-XX(IdentityName, string, none, IdentityName, __VA_ARGS__) \
-XX(Identifier, string, none, Identifier, __VA_ARGS__) \
-XX(Fingerprint, string, none, Identifier, __VA_ARGS__) \
-XX(Message, string, none, Message, __VA_ARGS__) \
-XX(MfaMinimumTimeout, int, none, MfaMinimumTimeout, __VA_ARGS__) \
-XX(MfaMaximumTimeout, int, none, MfaMaximumTimeout, __VA_ARGS__) \
-XX(MfaTimeDuration, int, none, MfaTimeDuration, __VA_ARGS__) \
+XX(IdentityName, model_string, none, IdentityName, __VA_ARGS__) \
+XX(Identifier, model_string, none, Identifier, __VA_ARGS__) \
+XX(Fingerprint, model_string, none, Identifier, __VA_ARGS__) \
+XX(Message, model_string, none, Message, __VA_ARGS__) \
+XX(MfaMinimumTimeout, model_number, none, MfaMinimumTimeout, __VA_ARGS__) \
+XX(MfaMaximumTimeout, model_number, none, MfaMaximumTimeout, __VA_ARGS__) \
+XX(MfaTimeDuration, model_number, none, MfaTimeDuration, __VA_ARGS__) \
 XX(Severity, event_severity, none, Severity, __VA_ARGS__)
 
 #define TUNNEL_NOTIFICATION_EVENT(XX, ...) \

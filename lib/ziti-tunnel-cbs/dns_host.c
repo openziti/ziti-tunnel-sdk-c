@@ -153,7 +153,7 @@ static uint8_t *send_and_parse_query(const dns_question *q, int class, ns_msg *a
     for (int attempt = 0; attempt < 2; attempt++) { // retry the query with a larger buffer if first attempt was truncated
         resp_msg = calloc(buf_sz, sizeof(uint8_t));
         memset(ans, 0, sizeof(dns_question));
-        rc = res_nquery(resolver, q->name, class, q->type, resp_msg, buf_sz);
+        rc = res_nquery(resolver, q->name, class, (int)q->type, resp_msg, buf_sz);
         if (rc < 0) {
             ZITI_LOG(DEBUG, "res_query for %s failed", q->name);
             break;
@@ -218,13 +218,13 @@ static int fmt_srv(const ns_msg* msg, const ns_rr* rr, dns_answer *ans, size_t m
     ans->weight = ntohs(*(ptr + 1));
     ans->port = ntohs(*(ptr + 2));
 
-    return ns_name_uncompress(ns_msg_base(*msg), ns_msg_end(*msg), (uint8_t *)(ptr + 3), ans->data, max);
+    return ns_name_uncompress(ns_msg_base(*msg), ns_msg_end(*msg), (uint8_t *)(ptr + 3), (char*)ans->data, max);
 }
 
 static int fmt_mx(const ns_msg * msg, const ns_rr* rr, dns_answer *ans, size_t max) {
     uint16_t *ptr = (uint16_t *) ns_rr_rdata(*rr);
     ans->priority = ntohs(*ptr);
-    return ns_name_uncompress(ns_msg_base(*msg), ns_msg_end(*msg), (uint8_t *)(ptr + 1), ans->data, max);
+    return ns_name_uncompress(ns_msg_base(*msg), ns_msg_end(*msg), (uint8_t *)(ptr + 1), (char*)ans->data, max);
 }
 
 static int fmt_txt(const ns_msg *msg, const ns_rr* rr, dns_answer *ans, size_t max) {
@@ -234,8 +234,8 @@ static int fmt_txt(const ns_msg *msg, const ns_rr* rr, dns_answer *ans, size_t m
         len = (unsigned int)max;
     }
     len--;
-    memcpy(ans->data, ptr+1, len);
-    ans->data[len] = 0;
+    memcpy((char*)ans->data, ptr+1, len);
+    ((char*)ans->data)[len] = 0;
     return (int)len;
 }
 
@@ -261,7 +261,7 @@ static ssize_t on_dns_req(ziti_connection conn, const uint8_t *data, ssize_t dat
 
     size_t msg_len = 0;
     char *json = dns_message_to_json(&msg, 0, &msg_len);
-    ziti_write(conn, json, msg_len, on_write, json);
+    ziti_write(conn, (uint8_t *)json, msg_len, on_write, json);
     free_dns_message(&msg);
     return datalen;
 }
