@@ -55,6 +55,21 @@ jobs:
             name: Linux arm64
             preset: linux-arm64-static-libssl
 
+          - os: ubuntu-20.04
+            container: openziti/ziti-builder:v2
+            name: Linux x86_64
+            preset: linux-x64-static
+
+          - os: ubuntu-20.04
+            container: openziti/ziti-builder:v2
+            name: Linux arm
+            preset: linux-arm-static
+
+          - os: ubuntu-20.04
+            container: openziti/ziti-builder:v2
+            name: Linux arm64
+            preset: linux-arm64-static
+
     steps:
       - name: Debug action
         uses: hmarr/debug-action@v3
