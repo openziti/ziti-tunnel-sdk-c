@@ -230,7 +230,8 @@
       "cacheVariables": {
         "CMAKE_EXE_LINKER_FLAGS": "-static",
         "BUILD_SHARED_LIBS": "OFF",
-        "ZLIB_USE_STATIC_LIBS": "ON"
+        "ZLIB_USE_STATIC_LIBS": "ON",
+        "CMAKE_FIND_LIBRARY_SUFFIXES": ".a"
       },
       "hidden": true
     },
