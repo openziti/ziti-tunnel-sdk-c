@@ -1207,7 +1207,7 @@ static void remove_mfa(ziti_context ztx, char *code, void *ctx) {
     ziti_mfa_remove(ztx, code, on_remove_mfa, ctx);
 }
 
-static void on_mfa_recovery_codes(ziti_context ztx, int status, char **recovery_codes, void *ctx) {
+static void on_mfa_recovery_codes(ziti_context ztx, int status, const char **recovery_codes, void *ctx) {
     struct tunnel_cb_s *req = ctx;
     tunnel_result result = {0};
     if (status != ZITI_OK) {
