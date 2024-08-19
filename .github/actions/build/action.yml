@@ -38,7 +38,7 @@ runs:
         # see https://learn.microsoft.com/en-us/vcpkg/users/examples/versioning.getting-started#builtin-baseline
         vcpkgGitCommitId: '1de2026f28ead93ff1773e6e680387643e914ea1'
         
-    - name: [hack] force libpthread.a for static builds
+    - name: hack force libpthread.a for static builds
       if: contains(inputs.preset, "static")
       run: "grep -rl  . | xargs sed -i 's/libpthread.so/libpthread.a/g'"
       
