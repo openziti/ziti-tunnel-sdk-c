@@ -15,7 +15,6 @@
  */
 
 #include "model/dtos.h"
-#include <ziti/ziti_model.h>
 #include <ziti/ziti_log.h>
 #include <time.h>
 #include <config-utils.h>
@@ -52,7 +51,7 @@ tunnel_identity *find_tunnel_identity(const char* identifier) {
  * file name will be passed to this function, if this called by the load identities function.
  * file name will be null, if this is called any other time
  */
-tunnel_identity *create_or_get_tunnel_identity(const char* identifier, char* filename) {
+tunnel_identity *create_or_get_tunnel_identity(const char* identifier, const char* filename) {
     tunnel_identity *id = find_tunnel_identity(identifier);
 
     if (id != NULL) {
@@ -69,14 +68,13 @@ tunnel_identity *create_or_get_tunnel_identity(const char* identifier, char* fil
             } else {
                 length = strlen(filename);
             }
-            tnl_id->FingerPrint = calloc(length + 1, sizeof(char));
-            char fingerprint[FILENAME_MAX];
-            memcpy(&fingerprint, filename, length);
-            fingerprint[length] = '\0';
-            snprintf(tnl_id->FingerPrint, length+1, "%s", fingerprint);
+            char *fingerprint = calloc(length + 1, sizeof(char));
+            snprintf(fingerprint, length+1, "%s", filename);
+            tnl_id->FingerPrint = fingerprint;
 
-            tnl_id->Name = calloc(length + 1, sizeof(char));
-            snprintf(tnl_id->Name, length+1, "%s", fingerprint);
+            char *name = calloc(length + 1, sizeof(char));
+            snprintf(name, length+1, "%s", fingerprint);
+            tnl_id->Name = name;
 
             tnl_id->Active = true;
         }
@@ -98,20 +96,20 @@ void set_mfa_timeout(tunnel_identity *tnl_id) {
 
             if (tnl_svc->Timeout > -1) {
                 if (mfa_min_timeout == -1 || mfa_min_timeout > tnl_svc->Timeout) {
-                    mfa_min_timeout = tnl_svc->Timeout;
+                    mfa_min_timeout = (int)tnl_svc->Timeout;
                 }
                 if (mfa_max_timeout == -1 || mfa_max_timeout < tnl_svc->Timeout) {
-                    mfa_max_timeout = tnl_svc->Timeout;
+                    mfa_max_timeout = (int)tnl_svc->Timeout;
                 }
             } else {
                 no_timeout_svc = true;
             }
             if (tnl_svc->TimeoutRemaining > -1) {
                 if (mfa_min_timeout_rem == -1 || mfa_min_timeout_rem > tnl_svc->TimeoutRemaining) {
-                    mfa_min_timeout_rem = tnl_svc->TimeoutRemaining;
+                    mfa_min_timeout_rem = (int)tnl_svc->TimeoutRemaining;
                 }
                 if (mfa_max_timeout_rem == -1 || mfa_max_timeout_rem < tnl_svc->TimeoutRemaining) {
-                    mfa_max_timeout_rem = tnl_svc->TimeoutRemaining;
+                    mfa_max_timeout_rem = (int)tnl_svc->TimeoutRemaining;
                 }
             } else {
                 no_timeout_svc_rem = true;
@@ -231,12 +229,12 @@ static void setTunnelPostureDataTimeout(tunnel_service *tnl_svc, ziti_service *s
                 model_map_set(&postureCheckMap, pq->id, pq);
             }
 
-            int timeoutRemaining = *pqs->posture_queries[posture_query_idx]->timeoutRemaining;
+            int timeoutRemaining = (int)*pqs->posture_queries[posture_query_idx]->timeoutRemaining;
             if ((minTimeoutRemaining == -1) || (timeoutRemaining < minTimeoutRemaining)) {
                 minTimeoutRemaining = timeoutRemaining;
             }
 
-            int timeout = pqs->posture_queries[posture_query_idx]->timeout;
+            int timeout = (int)pqs->posture_queries[posture_query_idx]->timeout;
             if ((minTimeout == -1) || (timeout < minTimeout)) {
                 minTimeout = timeout;
             }
@@ -268,8 +266,9 @@ static tunnel_address *to_address(const ziti_address *za) {
     if (za->type == ziti_address_cidr) {
         tnl_address->IsHost = false;
         tnl_address->HostName = NULL;
-        tnl_address->IP = calloc(INET_ADDRSTRLEN+1, sizeof(char));
-        uv_inet_ntop(za->addr.cidr.af, &za->addr.cidr.ip, tnl_address->IP, INET_ADDRSTRLEN);
+        char *ip = calloc(INET_ADDRSTRLEN + 1, sizeof(char));
+        tnl_address->IP = ip;
+        uv_inet_ntop(za->addr.cidr.af, &za->addr.cidr.ip, ip, INET_ADDRSTRLEN);
         tnl_address->Prefix = (int) za->addr.cidr.bits;
         ZITI_LOG(TRACE, "IP address: %s", tnl_address->IP);
     } else {
@@ -330,7 +329,7 @@ static void setTunnelAllowedSourceAddress(tunnel_service *tnl_svc, ziti_service 
 static void setTunnelServiceAddress(tunnel_service *tnl_svc, ziti_service *service) {
     const char* cfg_json = ziti_service_get_raw_config(service, CFG_INTERCEPT_V1);
     tunnel_address_array tnl_addr_arr = NULL;
-    string_array protocols = NULL;
+    model_string_array protocols = NULL;
     tunnel_port_range_array tnl_port_range_arr;
     if (cfg_json != NULL && strlen(cfg_json) > 0) {
         ZITI_LOG(TRACE, "intercept.v1: %s", cfg_json);
@@ -397,7 +396,7 @@ static void setTunnelServiceAddress(tunnel_service *tnl_svc, ziti_service *servi
     tnl_svc->Protocols = protocols;
 }
 
-tunnel_service *find_tunnel_service(tunnel_identity* id, char* svc_id) {
+tunnel_service *find_tunnel_service(tunnel_identity* id, const char* svc_id) {
     int idx = 0;
     tunnel_service *svc = NULL;
     if (id->Services != NULL) {
@@ -587,7 +586,7 @@ void set_identifier_from_identities() {
         }
         if (tnl_id->Identifier != NULL) {
             // set this field to false during initialization
-            normalize_identifier(tnl_id->Identifier);
+            normalize_identifier((char*)tnl_id->Identifier);
             model_map_set(&tnl_identity_map, tnl_id->Identifier, tnl_id);
         }
         //on startup - set mfa needed to false to correctly reflect tunnel status. After the identity is loaded these
@@ -606,7 +605,7 @@ void initialize_tunnel_status() {
 
 }
 
-bool load_tunnel_status(char* config_data) {
+bool load_tunnel_status(const char* config_data) {
     if (parse_tunnel_status(&tnl_status, config_data, strlen(config_data)) < 0) {
         ZITI_LOG(ERROR, "Could not read tunnel status from config data");
         initialize_tunnel_status();
@@ -623,7 +622,7 @@ bool load_tunnel_status(char* config_data) {
             tnl_status.IpInfo = NULL;
         }
         if (tnl_status.TunIpv4) {
-            free(tnl_status.TunIpv4);
+            free((char*)tnl_status.TunIpv4);
             tnl_status.TunIpv4 = NULL;
         }
         if (tnl_status.ServiceVersion) {
@@ -717,7 +716,7 @@ char *get_tunnel_config(size_t *json_len) {
     return tunnel_config_json;
 }
 
-void set_mfa_status(char* identifier, bool mfa_enabled, bool mfa_needed) {
+void set_mfa_status(const char* identifier, bool mfa_enabled, bool mfa_needed) {
     tunnel_identity *tnl_id = find_tunnel_identity(identifier);
     if (tnl_id != NULL) {
         tnl_id->MfaEnabled = mfa_enabled;
@@ -727,7 +726,7 @@ void set_mfa_status(char* identifier, bool mfa_enabled, bool mfa_needed) {
     }
 }
 
-void update_mfa_time(char* identifier) {
+void update_mfa_time(const char* identifier) {
     tunnel_identity *tnl_id = find_tunnel_identity(identifier);
     if (tnl_id != NULL) {
         uv_timeval64_t now;
@@ -744,7 +743,7 @@ void update_mfa_time(char* identifier) {
 void set_ip_info(uint32_t dns_ip, uint32_t tun_ip, int bits) {
     tnl_status.TunPrefixLength = bits;
 
-    if (tnl_status.TunIpv4) free(tnl_status.TunIpv4);
+    if (tnl_status.TunIpv4) free((char*)tnl_status.TunIpv4);
     ip_addr_t tun_ip4 = IPADDR4_INIT(tun_ip);
     tnl_status.TunIpv4 = strdup(ipaddr_ntoa(&tun_ip4));
 
@@ -769,12 +768,12 @@ void set_log_level(const char* log_level) {
         return;
     }
     if (tnl_status.LogLevel) {
-        free(tnl_status.LogLevel);
+        free((char*)tnl_status.LogLevel);
         tnl_status.LogLevel = NULL;
     }
     tnl_status.LogLevel = strdup(log_level);
     for (int i = 0; tnl_status.LogLevel[i] != '\0'; i++) {
-        tnl_status.LogLevel[i] = (char)tolower(tnl_status.LogLevel[i]);
+        ((char*)tnl_status.LogLevel)[i] = (char)tolower(tnl_status.LogLevel[i]);
     }
 }
 
@@ -827,7 +826,7 @@ void set_service_version() {
         tnl_status.ServiceVersion->Version = strdup(version);
         char *revision_idx = strstr(version, "-");
         if (revision_idx != NULL) {
-            tnl_status.ServiceVersion->Version[revision_idx - version] = '\0';
+            ((char*)tnl_status.ServiceVersion->Version)[revision_idx - version] = '\0';
             tnl_status.ServiceVersion->Revision = strdup(revision_idx + 1);
         }
     }
@@ -835,7 +834,7 @@ void set_service_version() {
     tnl_status.ServiceVersion->BuildDate = strdup(ziti_tunneler_build_date());
 }
 
-void delete_identity_from_instance(char* identifier) {
+void delete_identity_from_instance(const char* identifier) {
     tunnel_identity *id = model_map_get(&tnl_identity_map, identifier);
     if (id == NULL) {
         return;
@@ -851,8 +850,8 @@ void delete_identity_from_instance(char* identifier) {
     free(id);
 }
 
-void set_tun_ipv4_into_instance(char* tun_ip, int prefixLength, bool addDns) {
-    if (tnl_status.TunIpv4 != NULL) free(tnl_status.TunIpv4);
+void set_tun_ipv4_into_instance(const char* tun_ip, int prefixLength, bool addDns) {
+    if (tnl_status.TunIpv4 != NULL) free((char*)tnl_status.TunIpv4);
     tnl_status.TunIpv4 = strdup(tun_ip);
 
     tnl_status.TunPrefixLength = prefixLength;
@@ -864,12 +863,12 @@ char* get_ip_range_from_config() {
     char* ip_range = NULL;
     if (tnl_status.TunIpv4 != NULL && tnl_status.TunPrefixLength > 0) {
         ip_range = calloc(30, sizeof(char));
-        snprintf(ip_range, 30 * sizeof(char), "%s/%d",tnl_status.TunIpv4, tnl_status.TunPrefixLength);
+        snprintf(ip_range, 30 * sizeof(char), "%s/%d",tnl_status.TunIpv4, (int)tnl_status.TunPrefixLength);
     }
     return ip_range;
 }
 
-char* get_dns_ip() {
+const char* get_dns_ip() {
     return tnl_status.IpInfo->DNS;
 }
 
@@ -877,7 +876,7 @@ bool get_add_dns_flag() {
     return tnl_status.AddDns;
 }
 
-void set_ziti_status(bool enabled, char* identifier) {
+void set_ziti_status(bool enabled, const char* identifier) {
     tunnel_identity *id = model_map_get(&tnl_identity_map, identifier);
     if (id == NULL) {
         return;

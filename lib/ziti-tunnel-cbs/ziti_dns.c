@@ -502,7 +502,8 @@ static void format_resp(struct dns_req *req) {
             *rp++ = 0xc0;
             *rp++ = 0x0c;
 
-            ZITI_LOG(INFO, "found record[%s] for query[%d:%s]", a->data, req->msg.question[0]->type, req->msg.question[0]->name);
+            ZITI_LOG(INFO, "found record[%s] for query[%d:%s]", a->data,
+                     (int)req->msg.question[0]->type, req->msg.question[0]->name);
 
             SET_U16(rp, a->type);
             SET_U16(rp, 1); // class IN
@@ -564,7 +565,7 @@ static void format_resp(struct dns_req *req) {
                     break;
                 }
                 default:
-                    ZITI_LOG(WARN, "unhandled response type[%d]", a->type);
+                    ZITI_LOG(WARN, "unhandled response type[%d]", (int)a->type);
             }
         }
         done:
@@ -723,7 +724,7 @@ static void proxy_domain_req(struct dns_req *req, dns_domain_t *domain) {
 }
 
 ssize_t on_dns_req(const void *ziti_io_ctx, void *write_ctx, const void *q_packet, size_t q_len) {
-    ziti_dns_client_t *clt = ziti_io_ctx;
+    ziti_dns_client_t *clt = (ziti_dns_client_t *)ziti_io_ctx;
     const uint8_t *dns_packet = q_packet;
     size_t dns_packet_len = q_len;
 
@@ -737,7 +738,7 @@ ssize_t on_dns_req(const void *ziti_io_ctx, void *write_ctx, const void *q_packe
     }
 
     req = calloc(1, sizeof(struct dns_req));
-    req->clt = ziti_io_ctx;
+    req->clt = clt;
 
     req->req_len = q_len;
     memcpy(req->req, q_packet, q_len);
@@ -753,7 +754,7 @@ ssize_t on_dns_req(const void *ziti_io_ctx, void *write_ctx, const void *q_packe
 
     ZITI_LOG(TRACE, "received DNS query q_len=%zd id[%04x] recursive[%s] type[%d] name[%s]", q_len, req->id,
              req->msg.recursive ? "true" : "false",
-             req->msg.question[0]->type,
+             (int)req->msg.question[0]->type,
              req->msg.question[0]->name);
 
     model_map_set_key(&req->clt->active_reqs, &req->id, sizeof(req->id), req);

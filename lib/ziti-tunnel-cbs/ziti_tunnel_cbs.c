@@ -225,7 +225,8 @@ static ssize_t get_app_data(char *buf, size_t bufsz, tunneler_io_context io, zit
     const char *client = get_client_address(io);
 
     if (intercepted != NULL) {
-        parse_socket_address(intercepted, &app_data->dst_protocol, &app_data->dst_ip, &app_data->dst_port);
+        parse_socket_address(intercepted, (char**)&app_data->dst_protocol, 
+                             (char**)&app_data->dst_ip, (char**)&app_data->dst_port);
         if (app_data->dst_ip) {
             const char *dst_hostname = ziti_dns_reverse_lookup(app_data->dst_ip);
             if (dst_hostname) {
@@ -234,19 +235,21 @@ static ssize_t get_app_data(char *buf, size_t bufsz, tunneler_io_context io, zit
         }
     }
     if (client != NULL) {
-        parse_socket_address(client, &app_data->src_protocol, &app_data->src_ip, &app_data->src_port);
+        parse_socket_address(client, (char**)&app_data->src_protocol, 
+                             (char**)&app_data->src_ip, (char**)&app_data->src_port);
     }
     if (source_ip != NULL && *source_ip != 0) {
         const ziti_identity *zid = ziti_get_identity(ziti_ctx);
         size_t source_addr_maxlen = 64;
         size_t source_addr_sz = source_addr_maxlen * sizeof(char);
-        app_data->source_addr = calloc(source_addr_maxlen, sizeof(char));
-        strncpy(app_data->source_addr, source_ip, source_addr_sz);
-        string_replace(app_data->source_addr, source_addr_sz, "$tunneler_id.name", zid->name);
-        string_replace(app_data->source_addr, source_addr_sz, "$dst_ip", app_data->dst_ip);
-        string_replace(app_data->source_addr, source_addr_sz, "$dst_port", app_data->dst_port);
-        string_replace(app_data->source_addr, source_addr_sz, "$src_ip", app_data->src_ip);
-        string_replace(app_data->source_addr, source_addr_sz, "$src_port", app_data->src_port);
+        char *srcAddr = calloc(source_addr_maxlen, sizeof(char));
+        strncpy(srcAddr, source_ip, source_addr_sz);
+        string_replace(srcAddr, source_addr_sz, "$tunneler_id.name", zid->name);
+        string_replace(srcAddr, source_addr_sz, "$dst_ip", app_data->dst_ip);
+        string_replace(srcAddr, source_addr_sz, "$dst_port", app_data->dst_port);
+        string_replace(srcAddr, source_addr_sz, "$src_ip", app_data->src_ip);
+        string_replace(srcAddr, source_addr_sz, "$src_port", app_data->src_port);
+        app_data->source_addr = srcAddr;
     }
     ssize_t json_len = tunneler_app_data_to_json_r(app_data, MODEL_JSON_COMPACT, buf, bufsz);
     return json_len;
@@ -387,7 +390,7 @@ ssize_t ziti_sdk_c_write(const void *ziti_io_ctx, void *write_ctx, const void *d
         return zs;
     }
 
-    ZITI_LOG(VERBOSE, "applying backpressure %lu pending bytes", _ziti_io_ctx->pending_wbytes);
+    ZITI_LOG(VERBOSE, "applying backpressure %" PRIu64 " pending bytes", _ziti_io_ctx->pending_wbytes);
     return ERR_WOULDBLOCK;
 }
 

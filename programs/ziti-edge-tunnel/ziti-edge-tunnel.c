@@ -481,7 +481,9 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
                 free_tunnel_tun_ip_v4(&tunnel_tun_ip_v4_cmd);
                 break;
             }
-            set_tun_ipv4_into_instance(tunnel_tun_ip_v4_cmd.tunIP, tunnel_tun_ip_v4_cmd.prefixLength, tunnel_tun_ip_v4_cmd.addDns);
+            set_tun_ipv4_into_instance(tunnel_tun_ip_v4_cmd.tunIP,
+                                       (int)tunnel_tun_ip_v4_cmd.prefixLength,
+                                       tunnel_tun_ip_v4_cmd.addDns);
             result.success = true;
             result.code = IPC_SUCCESS;
             break;
@@ -543,7 +545,7 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
                 break;
             }
             strncpy(new_identifier_name, tunnel_add_identity_cmd.jwtFileName, length);
-            sprintf(new_identifier, "%s%s%s.json", config_dir, PATH_SEP, new_identifier_name);
+            snprintf(new_identifier, FILENAME_MAX, "%s%s%s.json", config_dir, PATH_SEP, new_identifier_name);
             FILE *outfile;
             if ((outfile = fopen(new_identifier, "wb")) == NULL) {
                 ZITI_LOG(ERROR, "failed to open file %s: %s(%d)", new_identifier, strerror(errno), errno);
@@ -907,7 +909,7 @@ static char* addUnit(int count, char* unit) {
     return result;
 }
 
-static string convert_seconds_to_readable_format(int input) {
+static char* convert_seconds_to_readable_format(int input) {
     int seconds = input % (60 * 60 * 24);
     int hours = (int)((double) seconds / 60 / 60);
     seconds = input % (60 * 60);
@@ -950,10 +952,10 @@ static bool check_send_notification(tunnel_identity *tnl_id) {
         return false;
     }
     if (tnl_id->MfaMinTimeoutRem > 0) {
-        tnl_id->MfaMinTimeoutRem = get_remaining_timeout(tnl_id->MfaMinTimeout, tnl_id->MinTimeoutRemInSvcEvent, tnl_id);
+        tnl_id->MfaMinTimeoutRem = get_remaining_timeout((int)tnl_id->MfaMinTimeout, (int)tnl_id->MinTimeoutRemInSvcEvent, tnl_id);
     }
     if (tnl_id->MfaMaxTimeoutRem > 0) {
-        tnl_id->MfaMaxTimeoutRem = get_remaining_timeout(tnl_id->MfaMaxTimeout, tnl_id->MaxTimeoutRemInSvcEvent, tnl_id);
+        tnl_id->MfaMaxTimeoutRem = get_remaining_timeout((int)tnl_id->MfaMaxTimeout, (int)tnl_id->MaxTimeoutRemInSvcEvent, tnl_id);
     }
 
     if (tnl_id->Notified) {
@@ -971,21 +973,22 @@ static bool check_send_notification(tunnel_identity *tnl_id) {
 
 static notification_message *create_notification_message(tunnel_identity *tnl_id) {
     notification_message *notification = calloc(1, sizeof(struct notification_message_s));
-    notification->Message = calloc(MAXMESSAGELEN, sizeof(char));
+    char *Message = calloc(MAXMESSAGELEN, sizeof(char));
     if (tnl_id->MfaMaxTimeoutRem == 0) {
-        snprintf(notification->Message, MAXMESSAGELEN, "All of the services of identity %s have timed out", tnl_id->Name);
+        snprintf(Message, MAXMESSAGELEN, "All of the services of identity %s have timed out", tnl_id->Name);
         notification->Severity = event_severity_critical;
     } else if (tnl_id->MfaMinTimeoutRem == 0) {
-        snprintf(notification->Message, MAXMESSAGELEN, "Some of the services of identity %s have timed out", tnl_id->Name);
+        snprintf(Message, MAXMESSAGELEN, "Some of the services of identity %s have timed out", tnl_id->Name);
         notification->Severity = event_severity_major;
     } else if (tnl_id->MfaMinTimeoutRem <= 20*60) {
-        char* message = convert_seconds_to_readable_format(tnl_id->MfaMinTimeoutRem);
-        snprintf(notification->Message, MAXMESSAGELEN, "Some of the services of identity %s are timing out in %s", tnl_id->Name, message);
+        char* message = convert_seconds_to_readable_format((int)tnl_id->MfaMinTimeoutRem);
+        snprintf(Message, MAXMESSAGELEN, "Some of the services of identity %s are timing out in %s", tnl_id->Name, message);
         free(message);
         notification->Severity = event_severity_minor;
     } else {
         // do nothing
     }
+    notification->Message = Message;
 
     notification->IdentityName = strdup(tnl_id->Name);
     notification->Identifier = strdup(tnl_id->Identifier);
@@ -1199,7 +1202,7 @@ static void on_event(const base_event *ev) {
             if (zev->code == ZITI_OK) {
                 if (zev->name) {
                     if (id_event.Id->Name != NULL && strcmp(id_event.Id->Name, zev->name) != 0) {
-                        free(id_event.Id->Name);
+                        free((char*)id_event.Id->Name);
                         id_event.Id->Name = strdup(zev->name);
                     } else if (id_event.Id->Name == NULL) {
                         id_event.Id->Name = strdup(zev->name);
@@ -1207,7 +1210,7 @@ static void on_event(const base_event *ev) {
                 }
                 if (zev->version) {
                     if (id_event.Id->ControllerVersion != NULL && strcmp(id_event.Id->ControllerVersion, zev->version) != 0) {
-                        free(id_event.Id->ControllerVersion);
+                        free((char*)id_event.Id->ControllerVersion);
                         id_event.Id->ControllerVersion = strdup(zev->version);
                     } else if (id_event.Id->ControllerVersion == NULL) {
                         id_event.Id->ControllerVersion = strdup(zev->version);
@@ -1215,7 +1218,7 @@ static void on_event(const base_event *ev) {
                 }
                 if (zev->controller) {
                     if (id_event.Id->Config != NULL && id_event.Id->Config->ZtAPI != NULL && strcmp(id_event.Id->Config->ZtAPI, zev->controller) != 0) {
-                        free(id_event.Id->Config->ZtAPI);
+                        free((char*)id_event.Id->Config->ZtAPI);
                         id_event.Id->Config->ZtAPI = strdup(zev->controller);
                     } else if (id_event.Id->Config == NULL) {
                         id_event.Id->Config = calloc(1, sizeof(tunnel_config));
@@ -1395,7 +1398,7 @@ static void on_event(const base_event *ev) {
 
         case TunnelEvent_MFAStatusEvent:{
             const mfa_event *mfa_ev = (mfa_event *) ev;
-            ZITI_LOG(INFO, "ztx[%s] MFA Status code : %d", ev->identifier, mfa_ev->code);
+            ZITI_LOG(INFO, "ztx[%s] MFA Status code : %d", ev->identifier, (int)mfa_ev->code);
 
             mfa_status_event mfa_sts_event = {
                 .Op = strdup("mfa"),
@@ -1453,7 +1456,6 @@ static void on_event(const base_event *ev) {
             mfa_sts_event.RecoveryCodes = NULL;
             free_mfa_status_event(&mfa_sts_event);
             free_mfa_event((mfa_event *) mfa_ev);
-            free(mfa_ev);
             break;
         }
 
@@ -1479,7 +1481,7 @@ static void on_event(const base_event *ev) {
                     id_event.Id->Config->ZtAPI = strdup(api_ev->new_ctrl_address);
                     updated = true;
                 } else if (id_event.Id->Config->ZtAPI != NULL && strcmp(id_event.Id->Config->ZtAPI, api_ev->new_ctrl_address) != 0) {
-                    free(id_event.Id->Config->ZtAPI);
+                    free((char*)id_event.Id->Config->ZtAPI);
                     id_event.Id->Config->ZtAPI = strdup(api_ev->new_ctrl_address);
                     updated = true;
                 }
@@ -1521,7 +1523,7 @@ static char* normalize_host(char* hostname) {
         // remove the . from the end of the hostname
         snprintf(hostname_new, len * sizeof(char), ".%s", hostname);
     } else {
-        sprintf(hostname_new,".%s", hostname);
+        snprintf(hostname_new, len + 2, ".%s", hostname);
     }
     return hostname_new;
 }

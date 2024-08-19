@@ -54,24 +54,24 @@ typedef struct __res_state resolver_t;
 #include <ziti/model_support.h>
 
 #define DNS_Q_MODEL(XX, ...) \
-XX(name, string, none, name, __VA_ARGS__) \
-XX(type, int, none, type, __VA_ARGS__)
+XX(name, model_string, none, name, __VA_ARGS__) \
+XX(type, model_number, none, type, __VA_ARGS__)
 
 #define DNS_A_MODEL(XX, ...) \
 DNS_Q_MODEL(XX, __VA_ARGS__) \
-XX(ttl, int, none, ttl, __VA_ARGS__) \
-XX(priority, int, none, priority, __VA_ARGS__) \
-XX(weight, int, none, weight, __VA_ARGS__)     \
-XX(port, int, none, port, __VA_ARGS__)    \
-XX(data, string, none, data, __VA_ARGS__)
+XX(ttl, model_number, none, ttl, __VA_ARGS__) \
+XX(priority, model_number, none, priority, __VA_ARGS__) \
+XX(weight, model_number, none, weight, __VA_ARGS__)     \
+XX(port, model_number , none, port, __VA_ARGS__)    \
+XX(data, model_string, none, data, __VA_ARGS__)
 
 #define DNS_MSG_MODEL(XX,...) \
-XX(status, int, none, status, __VA_ARGS__) \
-XX(id, int, none, id, __VA_ARGS__)         \
-XX(recursive, int, none, recursive, __VA_ARGS__) \
+XX(status, model_number, none, status, __VA_ARGS__) \
+XX(id, model_number, none, id, __VA_ARGS__)         \
+XX(recursive, model_number, none, recursive, __VA_ARGS__) \
 XX(question, dns_question, array, question, __VA_ARGS__) \
 XX(answer, dns_answer, array, answer, __VA_ARGS__)       \
-XX(comment, string, none, comment, __VA_ARGS__)
+XX(comment, model_string, none, comment, __VA_ARGS__)
 
 #ifdef __cplusplus
 extern "C" {
