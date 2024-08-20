@@ -37,12 +37,17 @@ runs:
         # use 2024.07.12 vcpkg baseline,
         # see https://learn.microsoft.com/en-us/vcpkg/users/examples/versioning.getting-started#builtin-baseline
         vcpkgGitCommitId: '1de2026f28ead93ff1773e6e680387643e914ea1'
-
+      
     - uses: lukka/run-cmake@v10.6 # pin version to avoid failed glibc dependency on ubuntu 20 runners. go back to @latest when ubuntu 22+ is adopted for runner os.
       name: Configure CMake
       with:
         configurePreset: ci-${{ inputs.preset }}
         configurePresetAdditionalArgs: "[ `-B`, `./build` ]"
+        
+    - name: hack force libpthread.a for static builds
+      if: contains(inputs.preset, 'static')
+      shell: bash
+      run: "grep -rl  ./build | xargs sed -i 's/libpthread.so/libpthread.a/g'"
 
     - name: build ziti-edge-tunnel
       shell: bash
