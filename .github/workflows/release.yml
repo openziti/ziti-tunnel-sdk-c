@@ -36,8 +36,8 @@ jobs:
           # token: defaults to github.token
           fail_on_unmatched_files: true
           files: |
-            ${{ runner.workspace }}/downloads/linux-x64-static/ziti-edge-tunnel-Linux_x86_64.zip
-            ${{ runner.workspace }}/downloads/linux-arm-static/ziti-edge-tunnel-Linux_arm.zip
+            ${{ runner.workspace }}/downloads/linux-x64-static-libssl/ziti-edge-tunnel-Linux_x86_64.zip
+            ${{ runner.workspace }}/downloads/linux-arm-static-libssl/ziti-edge-tunnel-Linux_arm.zip
             ${{ runner.workspace }}/downloads/macOS-x64/ziti-edge-tunnel-Darwin_x86_64.zip
             ${{ runner.workspace }}/downloads/macOS-arm64/ziti-edge-tunnel-Darwin_arm64.zip
 
@@ -51,7 +51,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.get_release.outputs.upload_url }}
-          asset_path: ${{ runner.workspace }}/downloads/linux-arm64-static/ziti-edge-tunnel-Linux_aarch64.zip
+          asset_path: ${{ runner.workspace }}/downloads/linux-arm64-static-libssl/ziti-edge-tunnel-Linux_aarch64.zip
           asset_name: ziti-edge-tunnel-Linux_arm64.zip
           asset_content_type: application/octet-stream
 
