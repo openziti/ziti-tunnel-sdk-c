@@ -23,6 +23,12 @@
 #define MAX_DNS_NAME 256
 #define MAX_IP_LENGTH 16
 
+#ifndef IN6ADDR_V4MAPPED
+#define IN6ADDR_V4MAPPED(v4) \
+	{{{ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, \
+	    0x00, 0x00, 0xff, 0xff, v4[0], v4[1], v4[2], v4[3] }}}
+#endif
+
 enum ns_q_type {
     NS_T_A = 1,
     NS_T_AAAA = 28,
@@ -105,7 +111,8 @@ struct ziti_dns_s {
 
     model_map requests;
     uv_udp_t upstream;
-    struct sockaddr upstream_addr;
+    bool is_ipv4;
+    struct sockaddr_in6 upstream_addr;
 } ziti_dns;
 
 static uint32_t next_ipv4() {
@@ -201,25 +208,58 @@ return rc;} \
 int ziti_dns_set_upstream(uv_loop_t *l, const char *host, uint16_t port) {
     if (!uv_is_active((const uv_handle_t *) &ziti_dns.upstream)) {
         CHECK_UV(uv_udp_init(l, &ziti_dns.upstream));
+        int r = uv_udp_bind(&ziti_dns.upstream,
+                            (const struct sockaddr *) &(struct sockaddr_in6){
+                                    .sin6_family = AF_INET6,
+                                    .sin6_addr = in6addr_any,
+                            }, 0);
+        if (r != 0) {
+            ZITI_LOG(WARN, "failed to bind upstream socket to IPv6 address: %s", uv_strerror(r));
+            r = uv_udp_bind(&ziti_dns.upstream,
+                            (const struct sockaddr *) &(struct sockaddr_in){
+                                    .sin_family = AF_INET,
+                                    .sin_addr = INADDR_ANY,
+                            }, 0);
+            if (r != 0) {
+                ZITI_LOG(WARN, "failed to bind upstream socket to IPv4 address: %s", uv_strerror(r));
+                return r;
+            }
+            ziti_dns.is_ipv4 = true;
+        }
         CHECK_UV(uv_udp_recv_start(&ziti_dns.upstream, udp_alloc, on_upstream_packet));
         uv_unref((uv_handle_t *) &ziti_dns.upstream);
     }
 
     if (port == 0) port = 53;
 
-    if (uv_inet_pton(AF_INET6, host, &((struct sockaddr_in6*)&ziti_dns.upstream_addr)->sin6_addr) == 0) {
-        ((struct sockaddr_in6*)&ziti_dns.upstream_addr)->sin6_family = AF_INET6;
-        ((struct sockaddr_in6*)&ziti_dns.upstream_addr)->sin6_port = htons(port);
-    } else if (uv_inet_pton(AF_INET, host, &((struct sockaddr_in*)&ziti_dns.upstream_addr)->sin_addr) == 0) {
-        ((struct sockaddr_in*)&ziti_dns.upstream_addr)->sin_family = AF_INET;
-        ((struct sockaddr_in*)&ziti_dns.upstream_addr)->sin_port = htons(port);
+    union {
+        struct in_addr addr;
+        uint8_t a[4];
+    } ipv4;
+    if (ziti_dns.is_ipv4) {
+        if (uv_inet_pton(AF_INET, host, &ipv4) == 0) {
+            ((struct sockaddr_in*)&ziti_dns.upstream_addr)->sin_family = AF_INET;
+            ((struct sockaddr_in*)&ziti_dns.upstream_addr)->sin_addr = ipv4.addr;
+            ((struct sockaddr_in*)&ziti_dns.upstream_addr)->sin_port = htons(port);
+        } else {
+            ZITI_LOG(WARN, "cannot set non-IPv4 upstream on IPv4 only socket");
+        }
     } else {
-        ZITI_LOG(WARN, "upstream address[%s] is not IP format", host);
-        char port_str[6];
-        snprintf(port_str, sizeof(port_str), "%hu", port);
-        uv_getaddrinfo_t req = {0};
-        CHECK_UV(uv_getaddrinfo(l, &req, NULL, host, port_str, NULL));
-        memcpy(&ziti_dns.upstream_addr, req.addrinfo->ai_addr, sizeof(ziti_dns.upstream_addr));
+        // set IPv6 upstream address, mapping IPv4 target to IPv6 space (if needed)
+        ziti_dns.upstream_addr.sin6_family = AF_INET6;
+        ziti_dns.upstream_addr.sin6_port = htons(port);
+        if (uv_inet_pton(AF_INET6, host, &ziti_dns.upstream_addr.sin6_addr) != 0) {
+            if (uv_inet_pton(AF_INET, host, &ipv4) == 0) {
+                ziti_dns.upstream_addr.sin6_addr = (struct in6_addr) IN6ADDR_V4MAPPED(ipv4.a);
+            } else {
+                ZITI_LOG(WARN, "upstream address[%s] is not IP format", host);
+                char port_str[6];
+                snprintf(port_str, sizeof(port_str), "%hu", port);
+                uv_getaddrinfo_t req = {0};
+                CHECK_UV(uv_getaddrinfo(l, &req, NULL, host, port_str, NULL));
+                memcpy(&ziti_dns.upstream_addr, req.addrinfo->ai_addr, sizeof(ziti_dns.upstream_addr));
+            }
+        }
     }
     ZITI_LOG(INFO, "DNS upstream is set to %s:%hu", host, port);
     return 0;

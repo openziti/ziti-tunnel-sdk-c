@@ -1579,18 +1579,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     ip_addr_t dns_ip4 = IPADDR4_INIT(dns_ip);
     ziti_dns_setup(tunneler, ipaddr_ntoa(&dns_ip4), ip_range);
     if (dns_upstream) {
-        char *col = strchr(dns_upstream, ':');
-        if (col) {
-            char host[HOST_NAME_MAX];
-            snprintf(host, sizeof(host), "%.*s", (int)(col - dns_upstream), dns_upstream);
-            int port = atoi(col + 1);
-            if (port < 0 || port > UINT16_MAX) {
-                ZITI_LOG(ERROR, "invalid upstream DNS server port: %d", port);
-            }
-            ziti_dns_set_upstream(ziti_loop, host, port);
-        } else {
-            ziti_dns_set_upstream(ziti_loop, dns_upstream, 0);
-        }
+        ziti_dns_set_upstream(ziti_loop, dns_upstream, 0);
     }
     run_tunneler_loop(ziti_loop);
     if (tun->close) {

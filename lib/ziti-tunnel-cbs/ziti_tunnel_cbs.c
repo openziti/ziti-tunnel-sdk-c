@@ -261,7 +261,7 @@ static void dial_opts_from_intercept_cfg_v1(ziti_dial_opts *opts, const ziti_int
     tag *t = (tag *) model_map_get(&(config->dial_options), "identity");
     if (t != NULL) {
         if (t->type == tag_string) {
-            opts->identity = t->string_value;
+            opts->identity = (char*)t->string_value;
         } else {
             ZITI_LOG(WARN, "dial_options.identity has non-string type %d", t->type);
         }
@@ -270,7 +270,7 @@ static void dial_opts_from_intercept_cfg_v1(ziti_dial_opts *opts, const ziti_int
     t = (tag *)model_map_get(&(config->dial_options), "connect_timeout_seconds");
     if (t != NULL) {
         if (t->type == tag_number) {
-            opts->connect_timeout_seconds = t->num_value;
+            opts->connect_timeout_seconds = (int)t->num_value;
         } else {
             ZITI_LOG(WARN, "dial_options.connect_timeout_seconds has non-numeric type %d", t->type);
         }
@@ -466,7 +466,6 @@ intercept_ctx_t *new_intercept_ctx(tunneler_context tnlr_ctx, ziti_intercept_t *
     intercept_ctx_t *i_ctx = intercept_ctx_new(tnlr_ctx, zi_ctx->service_name, zi_ctx);
     intercept_ctx_set_match_addr(i_ctx, intercept_match_addr);
 
-    int i;
     const ziti_address *intercept_addr;
     switch (zi_ctx->cfg_desc->cfgtype) {
         case CLIENT_CFG_V1:
