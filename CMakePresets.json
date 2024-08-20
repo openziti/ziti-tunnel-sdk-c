@@ -232,7 +232,8 @@
         "BUILD_SHARED_LIBS": "OFF",
         "ZLIB_USE_STATIC_LIBS": "ON",
         "OPENSSL_USE_STATIC_LIBS": "ON",
-        "CMAKE_FIND_LIBRARY_SUFFIXES": ".a"
+        "CMAKE_SUPPRESS_REGENERATION": "ON",
+        "CMAKE_FIND_LIBRARY_SUFFIXES": ".a",
       },
       "hidden": true
     },
