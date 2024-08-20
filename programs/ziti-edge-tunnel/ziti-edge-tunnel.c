@@ -1152,6 +1152,10 @@ static void load_identities_complete(uv_work_t * wr, int status) {
         struct cfg_instance_s *inst = LIST_FIRST(&load_list);
         LIST_REMOVE(inst, _next);
 
+        if (config_dir == NULL) {
+            create_or_get_tunnel_identity(inst->cfg, inst->cfg);
+        }
+
         tunnel_identity *id = find_tunnel_identity(inst->cfg);
         if(id != NULL) {
             CMD_CTRL->load_identity(NULL, inst->cfg, !id->Active, get_api_page_size(), load_id_cb, inst);
@@ -1160,9 +1164,6 @@ static void load_identities_complete(uv_work_t * wr, int status) {
         }
 
         identity_loaded = true;
-        if (config_dir == NULL) {
-            create_or_get_tunnel_identity(inst->cfg, inst->cfg);
-        }
     }
     if (identity_loaded) {
         start_metrics_timer(wr->loop);
