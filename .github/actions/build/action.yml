@@ -39,6 +39,11 @@ runs:
         configurePreset: ci-${{ inputs.preset }}
         configurePresetAdditionalArgs: "[ `-B`, `./build` ]"
 
+    - name: hack force libpthread.a for static builds
+      if: contains(inputs.preset, 'static')
+      shell: bash
+      run: "grep -rl  ./build | xargs sed -i 's/libpthread.so/libpthread.a/g'"
+
     - name: build ziti-edge-tunnel
       shell: bash
       run: |
