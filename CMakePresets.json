@@ -225,6 +225,31 @@
       "inherits": [ "ci-linux-static-libssl", "ci-linux-arm" ]
     },
     {
+      "name": "ci-linux-static",
+      "description": "preset to link executable against static libs",
+      "cacheVariables": {
+        "CMAKE_EXE_LINKER_FLAGS": "-static",
+        "BUILD_SHARED_LIBS": "OFF",
+        "ZLIB_USE_STATIC_LIBS": "ON",
+        "OPENSSL_USE_STATIC_LIBS": "ON",
+        "CMAKE_SUPPRESS_REGENERATION": "ON",
+        "CMAKE_FIND_LIBRARY_SUFFIXES": ".a"
+      },
+      "hidden": true
+    },
+    {
+      "name": "ci-linux-x64-static",
+      "inherits": [ "ci-linux-static", "ci-linux-static-libssl", "ci-linux-x64" ]
+    },
+    {
+      "name": "ci-linux-arm64-static",
+      "inherits": [ "ci-linux-static", "ci-linux-static-libssl", "ci-linux-arm64" ]
+    },
+    {
+      "name": "ci-linux-arm-static",
+      "inherits": [ "ci-linux-static", "ci-linux-static-libssl", "ci-linux-arm" ]
+    },
+    {
       "name": "ci-windows-x64",
       "inherits": "ci-windows-x64-vs2022"
     },
