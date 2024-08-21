@@ -50,7 +50,7 @@ DECLARE_ENUM(TunnelConnectionType, TUNNELER_CONN_TYPE_ENUM)
 
 DECLARE_MODEL(tunneler_app_data, TUNNELER_APP_DATA_MODEL)
 
-#define TUNNEL_COMMANDS(XX,...) \
+#define TUNNEL_COMMANDS(XX, ...) \
 XX(ZitiDump, __VA_ARGS__)    \
 XX(LoadIdentity, __VA_ARGS__)   \
 XX(ListIdentities, __VA_ARGS__) \
@@ -66,6 +66,7 @@ XX(SetLogLevel, __VA_ARGS__) \
 XX(UpdateTunIpv4, __VA_ARGS__) \
 XX(ServiceControl, __VA_ARGS__) \
 XX(Status, __VA_ARGS__) \
+XX(RefreshIdentity, __VA_ARGS__) \
 XX(RemoveIdentity, __VA_ARGS__) \
 XX(StatusChange, __VA_ARGS__)   \
 XX(AddIdentity, __VA_ARGS__)    \

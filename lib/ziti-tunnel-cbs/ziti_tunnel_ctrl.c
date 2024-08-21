@@ -563,6 +563,23 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
             return 0;
         }
 
+        case TunnelCommand_RefreshIdentity: {
+            tunnel_identity_id id = {0};
+            if (cmd->data == NULL || parse_tunnel_identity_id(&id, cmd->data, strlen(cmd->data)) < 0) {
+                result.success = false;
+                result.error = "invalid command";
+            } else if (!is_null(id.identifier,
+                                "Identifier info is not found in the remove identity request",
+                                &result)) {
+                struct ziti_instance_s *inst = model_map_get(&instances, id.identifier);
+                result.code = ziti_refresh(inst->ztx);
+                result.success = result.code == ZITI_OK;
+                result.error = result.code == ZITI_OK ? NULL : ziti_errorstr((int) result.code);
+            }
+            free_tunnel_identity_id(&id);
+            break;
+        }
+
         case TunnelCommand_RemoveIdentity: {
             tunnel_identity_id delete_id = {0};
             if (cmd->data == NULL || parse_tunnel_identity_id(&delete_id, cmd->data, strlen(cmd->data)) < 0) {
