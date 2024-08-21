@@ -916,7 +916,7 @@ host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, uv_loop_t *loop, const char *service
             host_ctx->forward_address = false;
             host_ctx->addr_u.address = server_v1_cfg->hostname;
 
-            snprintf(display_port, sizeof(display_port), "%d", server_v1_cfg->port);
+            snprintf(display_port, sizeof(display_port), "%d", (int)server_v1_cfg->port);
             host_ctx->forward_port = false;
             host_ctx->port_u.port = server_v1_cfg->port;
         }
