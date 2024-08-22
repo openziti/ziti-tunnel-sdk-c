@@ -54,8 +54,10 @@ jobs:
             ${{ runner.workspace }}/downloads/linux-arm64-static/ziti-edge-tunnel-Linux_x86_64-static.zip
             ${{ runner.workspace }}/downloads/linux-x64-static-libssl/ziti-edge-tunnel-Linux_x86_64.zip
             ${{ runner.workspace }}/downloads/linux-arm-static-libssl/ziti-edge-tunnel-Linux_arm.zip
+            ${{ runner.workspace }}/downloads/linux-arm64-static-libssl/ziti-edge-tunnel-Linux_arm64.zip
             ${{ runner.workspace }}/downloads/macOS-x64/ziti-edge-tunnel-Darwin_x86_64.zip
             ${{ runner.workspace }}/downloads/macOS-arm64/ziti-edge-tunnel-Darwin_arm64.zip
+            ${{ runner.workspace }}/downloads/windows-x64-mingw/ziti-edge-tunnel-Windows_x86_64.zip
 
       - name: Get the Version String from Git Tag
         id: get_version
