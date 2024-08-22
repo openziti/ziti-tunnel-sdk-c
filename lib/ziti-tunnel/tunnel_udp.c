@@ -41,17 +41,7 @@ static void to_ziti(struct io_ctx_s *io, struct pbuf *p) {
         return;
     }
 
-    struct pbuf *recv_data = NULL;
-    if (io->tnlr_io->udp.queued != NULL) {
-        if (p != NULL) {
-            pbuf_cat(io->tnlr_io->udp.queued, p);
-        }
-        recv_data = io->tnlr_io->udp.queued;
-        io->tnlr_io->udp.queued = NULL;
-    } else {
-        recv_data = p;
-    }
-
+    struct pbuf *recv_data = p;
     if (recv_data == NULL) {
         TNL_LOG(TRACE, "no data to write");
         return;
@@ -64,7 +54,7 @@ static void to_ziti(struct io_ctx_s *io, struct pbuf *p) {
                 io->tnlr_io->client, io->tnlr_io->intercepted, io->tnlr_io->service_name);
         struct write_ctx_s *wr_ctx = calloc(1, sizeof(struct write_ctx_s));
         wr_ctx->pbuf = recv_data;
-        wr_ctx->udp = io->tnlr_io->udp.pcb;
+        wr_ctx->udp = io->tnlr_io->udp;
         wr_ctx->ack = tunneler_udp_ack;
 
         recv_data = recv_data->next;
@@ -73,7 +63,8 @@ static void to_ziti(struct io_ctx_s *io, struct pbuf *p) {
         if (s == ERR_WOULDBLOCK) {
             tunneler_udp_ack(wr_ctx);
             free(wr_ctx);
-            TNL_LOG(DEBUG, "ziti_write stalled: dropping UDP packet service=%s, client=%s, ret=%ld", io->tnlr_io->service_name, io->tnlr_io->client, s);
+            TNL_LOG(WARN, "ziti_write stalled: dropping UDP packet service=%s, client=%s, ret=%ld", io->tnlr_io->service_name, io->tnlr_io->client, s);
+            break;
         } else if (s < 0) {
             tunneler_udp_ack(wr_ctx);
             free(wr_ctx);
@@ -84,27 +75,6 @@ static void to_ziti(struct io_ctx_s *io, struct pbuf *p) {
     } while (recv_data != NULL);
 }
 
-/** called by lwip when a packet arrives from a connected client and the ziti service is not yet connected */
-void on_udp_client_data_enqueue(void *io_context, struct udp_pcb *pcb, struct pbuf *p, const ip_addr_t *addr, u16_t port) {
-    if (io_context == NULL) {
-        TNL_LOG(DEBUG, "null io_context");
-        return;
-    }
-    struct io_ctx_s *io_ctx = io_context;
-    tunneler_io_context tnlr_io_ctx = io_ctx->tnlr_io;
-    if (tnlr_io_ctx == NULL) {
-        TNL_LOG(INFO, "null tnlr_io_context");
-        return;
-    }
-    if (tnlr_io_ctx->udp.queued == NULL) {
-        tnlr_io_ctx->udp.queued = p;
-    } else {
-        pbuf_chain(tnlr_io_ctx->udp.queued, p);
-    }
-    TNL_LOG(VERBOSE, "queued %d bytes src[%s] dst[%s] service[%s]", tnlr_io_ctx->udp.queued->len,
-            tnlr_io_ctx->client, tnlr_io_ctx->intercepted, tnlr_io_ctx->service_name);
-}
-
 /** called by lwip when a packet arrives from a connected client and the ziti service is connected */
 void on_udp_client_data(void *io_context, struct udp_pcb *pcb, struct pbuf *p, const ip_addr_t *addr, u16_t port) {
     if (io_context == NULL) {
@@ -112,6 +82,13 @@ void on_udp_client_data(void *io_context, struct udp_pcb *pcb, struct pbuf *p, c
         return;
     }
     TNL_LOG(VERBOSE, "%d bytes from %s:%d", p->len, ipaddr_ntoa(addr), port);
+
+    struct io_ctx_s *io = io_context;
+    if (!io->tnlr_io->conn_timer) {
+        io->tnlr_io->conn_timer = calloc(1, sizeof(uv_timer_t));
+        io->tnlr_io->conn_timer->data = io;
+        uv_timer_init(io->tnlr_io->tnlr_ctx->loop, io->tnlr_io->conn_timer);
+    }
 
     to_ziti(io_context, p);
 }
@@ -126,26 +103,11 @@ int tunneler_udp_close(struct udp_pcb *pcb) {
     TNL_LOG(DEBUG, "closing src[%s] dst[%s] service[%s]",
             tnlr_io_ctx->client, tnlr_io_ctx->intercepted, tnlr_io_ctx->service_name);
     udp_remove(pcb);
-    if (tnlr_io_ctx->udp.queued != NULL) {
-        pbuf_free(tnlr_io_ctx->udp.queued);
-        tnlr_io_ctx->udp.queued = NULL;
-    }
     return 0;
 }
 
 void tunneler_udp_dial_completed(struct io_ctx_s *io, bool ok) {
-    struct udp_pcb *pcb = io->tnlr_io->udp.pcb;
-    /* change recv callback to send packets that arrive instead of queuing */
-    udp_recv(pcb, on_udp_client_data, io);
-
-    /* send any data that was queued while waiting for the dial to complete */
-    if (ok) {
-        io->tnlr_io->conn_timer = calloc(1, sizeof(uv_timer_t));
-        io->tnlr_io->conn_timer->data = io;
-        uv_timer_init(io->tnlr_io->tnlr_ctx->loop, io->tnlr_io->conn_timer);
-
-        to_ziti(io, NULL);
-    } else {
+    if (!ok) {
         ziti_tunneler_close(io->tnlr_io);
     }
 }
@@ -259,8 +221,7 @@ u8_t recv_udp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     io->tnlr_io->service_name = strdup(intercept_ctx->service_name);
     snprintf(io->tnlr_io->client, sizeof(io->tnlr_io->client), "udp:%s:%d", src_str, src_p);
     snprintf(io->tnlr_io->intercepted, sizeof(io->tnlr_io->intercepted), "udp:%s:%d", dst_str, dst_p);
-    io->tnlr_io->udp.pcb = npcb;
-    io->tnlr_io->udp.queued = NULL;
+    io->tnlr_io->udp = npcb;
     io->ziti_ctx = intercept_ctx->app_intercept_ctx;
     io->write_fn = intercept_ctx->write_fn ? intercept_ctx->write_fn : tnlr_ctx->opts.ziti_write;
     io->close_fn = intercept_ctx->close_fn ? intercept_ctx->close_fn : tnlr_ctx->opts.ziti_close;
@@ -269,7 +230,7 @@ u8_t recv_udp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     TNL_LOG(DEBUG, "intercepted address[%s] client[%s] service[%s]", io->tnlr_io->intercepted, io->tnlr_io->client,
             intercept_ctx->service_name);
 
-    udp_recv(npcb, on_udp_client_data_enqueue, io);
+    udp_recv(npcb, on_udp_client_data, io);
 
     void *ziti_io_ctx = zdial(intercept_ctx->app_intercept_ctx, io);
     if (ziti_io_ctx == NULL) {

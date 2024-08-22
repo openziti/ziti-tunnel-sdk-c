@@ -148,10 +148,7 @@ struct tunneler_io_ctx_s {
     tunneler_proto_type proto;
     union {
         struct tcp_pcb *tcp;
-        struct {
-            struct udp_pcb *pcb;
-            struct pbuf *queued;
-        } udp;
+        struct udp_pcb *udp;
     };
     uv_timer_t *conn_timer;
     uint32_t idle_timeout;
