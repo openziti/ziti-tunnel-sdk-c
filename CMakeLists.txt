@@ -19,7 +19,7 @@ if(NOT GIT_VERSION AND GIT_FOUND)
     # Generate a git-describe version string from Git repository tags
     execute_process(
         COMMAND ${GIT_EXECUTABLE} describe --long --tags
-        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+        WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
         OUTPUT_VARIABLE GIT_VERSION
         RESULT_VARIABLE GIT_ERROR_CODE
         OUTPUT_STRIP_TRAILING_WHITESPACE
