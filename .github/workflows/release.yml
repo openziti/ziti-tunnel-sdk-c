@@ -22,10 +22,9 @@ jobs:
         with:
           path: ${{ runner.workspace }}/downloads/
 
-      # This step is only necessary because we prefer a different
-      # release artifact name than is created by CMake, and so we could change
-      # the CMake configuration or add an inline (shell) run step to manipulate
-      # the filenames. The pre-release build doesn't rename the artifacts.
+      # This step is only necessary because we prefer a different release artifact name
+      # than is created by CMake, and so we could change the CMake configuration but for
+      # now this is easier. The pre-release build doesn't rename the artifacts.
       - name: Rename bundle assets
         working-directory: ${{ runner.workspace }}/downloads/
         run: |
