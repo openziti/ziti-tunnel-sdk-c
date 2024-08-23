@@ -25,12 +25,6 @@
 #define MIN_API_PAGESIZE 10
 #define DEFAULT_API_PAGESIZE 25
 
-#if _WIN32
-#define PATH_SEP '\\'
-#else
-#define PATH_SEP '/'
-#endif
-
 model_map tnl_identity_map = {0};
 static const char* CFG_INTERCEPT_V1 = "intercept.v1";
 static const char* CFG_HOST_V1 = "host.v1";
