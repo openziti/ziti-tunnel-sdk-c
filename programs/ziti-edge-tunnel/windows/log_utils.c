@@ -25,12 +25,6 @@
 #include "windows/windows-scripts.h"
 #include <direct.h>
 
-#if _WIN32
-#define PATH_SEP "\\"
-#else
-#define PATH_SEP "/"
-#endif
-
 
 static bool open_log(char* log_filename);
 static bool rotate_log();

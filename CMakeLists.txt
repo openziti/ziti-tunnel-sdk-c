@@ -12,6 +12,11 @@ message("tunnel only = ${TUNNEL_SDK_ONLY}")
 option(EXCLUDE_PROGRAMS "exclude building the programs directory" OFF)
 message("exclude programs = ${EXCLUDE_PROGRAMS}")
 
+if (WIN32)
+    add_compile_definitions(PATH_SEP="\\\\")
+else()
+    add_compile_definitions(PATH_SEP="/")
+endif()
 
 find_package(Git)
 if(NOT GIT_VERSION AND GIT_FOUND)

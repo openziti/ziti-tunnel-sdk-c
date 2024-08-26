@@ -84,10 +84,8 @@ static tunneler_context initialize_tunneler(netif_driver tun, uv_loop_t* ziti_lo
 #if _WIN32
 static void move_config_from_previous_windows_backup(uv_loop_t *loop);
 #define LAST_CHAR_IPC_CMD '\n'
-#define PATH_SEP "\\"
 #else
 #define LAST_CHAR_IPC_CMD '\0'
-#define PATH_SEP "/"
 #endif
 
 struct ipc_cmd_s {
