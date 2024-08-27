@@ -52,6 +52,7 @@ DECLARE_MODEL(tunneler_app_data, TUNNELER_APP_DATA_MODEL)
 
 #define TUNNEL_COMMANDS(XX, ...) \
 XX(ZitiDump, __VA_ARGS__)    \
+XX(IpDump, __VA_ARGS__) \
 XX(LoadIdentity, __VA_ARGS__)   \
 XX(ListIdentities, __VA_ARGS__) \
 XX(IdentityOnOff, __VA_ARGS__) \
@@ -108,6 +109,9 @@ XX(identities, tunnel_identity_info, array, Identities, __VA_ARGS__)
 
 #define TNL_ZITI_DUMP(XX, ...) \
 XX(identifier, model_string, none, Identifier, __VA_ARGS__) \
+XX(dump_path, model_string, none, DumpPath, __VA_ARGS__)
+
+#define TNL_IP_DUMP(XX, ...) \
 XX(dump_path, model_string, none, DumpPath, __VA_ARGS__)
 
 #define TNL_IDENTITY_ID(XX, ...) \
@@ -194,6 +198,7 @@ DECLARE_MODEL(tunnel_load_identity, TNL_LOAD_IDENTITY)
 DECLARE_MODEL(tunnel_identity_info, TNL_IDENTITY_INFO)
 DECLARE_MODEL(tunnel_identity_lst, TNL_IDENTITY_LIST)
 DECLARE_MODEL(tunnel_ziti_dump, TNL_ZITI_DUMP)
+DECLARE_MODEL(tunnel_ip_dump, TNL_IP_DUMP)
 DECLARE_MODEL(tunnel_on_off_identity, TNL_ON_OFF_IDENTITY)
 DECLARE_MODEL(tunnel_identity_id, TNL_IDENTITY_ID)
 DECLARE_MODEL(tunnel_mfa_enrol_res, TNL_MFA_ENROL_RES)

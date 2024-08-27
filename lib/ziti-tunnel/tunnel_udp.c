@@ -324,3 +324,19 @@ struct io_ctx_list_s *tunneler_udp_active(const void *zi_ctx) {
 
     return l;
 }
+
+void tunneler_udp_get_conn(tunnel_ip_conn *conn, struct udp_pcb *pcb) {
+    if (!conn || !pcb) return;
+    conn->protocol = strdup("udp");
+    conn->local_ip = strdup(ipaddr_ntoa(&pcb->local_ip));
+    conn->local_port = pcb->local_port;
+    conn->remote_ip = strdup(ipaddr_ntoa(&pcb->remote_ip));
+    conn->remote_port = pcb->remote_port;
+    conn->state = strdup("");
+    const char *service = "unknown";
+    struct io_ctx_s *io = pcb->recv_arg;
+    if (io && io->tnlr_io && io->tnlr_io->service_name) {
+        service = io->tnlr_io->service_name;
+    }
+    conn->service = strdup(service);
+}
