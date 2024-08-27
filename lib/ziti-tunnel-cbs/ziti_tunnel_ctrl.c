@@ -667,19 +667,19 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
         }
 
         case TunnelCommand_SetUpstreamDNS: {
-            tunnel_upstream_dns dns = {};
+            tunnel_upstream_dns_array upstreams = NULL;
             int rc;
-            if (parse_tunnel_upstream_dns(&dns, cmd->data, strlen(cmd->data)) < 0) {
+            if (parse_tunnel_upstream_dns_array(&upstreams, cmd->data, strlen(cmd->data)) < 0) {
                 result.error = "invalid command";
                 result.success = false;
-            } else if ((rc = ziti_dns_set_upstream(CMD_CTX.loop, dns.host, dns.port)) != 0) {
+            } else if ((rc = ziti_dns_set_upstream(CMD_CTX.loop,upstreams)) != 0) {
                 result.error = (char*)uv_strerror(rc);
                 result.success = false;
             } else {
                 result.success = true;
                 result.code = IPC_SUCCESS;
             }
-            free_tunnel_upstream_dns(&dns);
+            free_tunnel_upstream_dns_array(&upstreams);
             break;
         }
 

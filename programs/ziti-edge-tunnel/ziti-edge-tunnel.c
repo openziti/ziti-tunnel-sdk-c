@@ -1577,7 +1577,11 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     ip_addr_t dns_ip4 = IPADDR4_INIT(dns_ip);
     ziti_dns_setup(tunneler, ipaddr_ntoa(&dns_ip4), ip_range);
     if (dns_upstream) {
-        ziti_dns_set_upstream(ziti_loop, dns_upstream, 0);
+        tunnel_upstream_dns upstream = {
+                .host = dns_upstream
+        };
+        tunnel_upstream_dns *a[] = { &upstream, NULL};
+        ziti_dns_set_upstream(ziti_loop, a);
     }
     run_tunneler_loop(ziti_loop);
     if (tun->close) {
