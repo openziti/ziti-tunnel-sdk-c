@@ -17,7 +17,7 @@ on:
 # no need for concurrency group in callable workflows
 
 jobs:
-  publish-containers:
+  publish-container-images:
     runs-on: ubuntu-latest
     env:
       ZITI_VERSION: ${{ inputs.ziti-version || github.event.inputs.ziti-version }}
@@ -30,8 +30,22 @@ jobs:
       - name: Checkout Workspace
         uses: actions/checkout@v4
 
+      - name: Download CMake Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: linux-*
+          path: ./downloads
+
+      - name: Unpack CMake Artifacts
+        shell: bash
+        run: |
+          set -x
+          mkdir -p ./build/{arm64,amd64}/linux/
+          unzip -d ./build/arm64/linux/ ./downloads/linux-arm64/ziti-edge-tunnel-Linux_aarch64.zip
+          unzip -d ./build/amd64/linux/ ./downloads/linux-x64/ziti-edge-tunnel-Linux_x86_64.zip
+
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v2
+        uses: docker/setup-qemu-action@v3
         with:
           platforms: amd64,arm64
 
@@ -45,23 +59,23 @@ jobs:
           username: ${{ vars.DOCKER_HUB_API_USER || secrets.DOCKER_HUB_API_USER }}
           password: ${{ secrets.DOCKER_HUB_API_TOKEN }}
 
-      - name: Set up Docker image tags for "run" container
+      - name: Set up Docker image tags for ziti-edge-tunnel image
         env:
           IMAGE_REPO: ${{ env.ZITI_EDGE_TUNNEL_IMAGE }}
         id: tagprep_run
         run: echo DOCKER_TAGS="${IMAGE_REPO}:unstable,${IMAGE_REPO}:${ZITI_VERSION}" | tee -a $GITHUB_OUTPUT
 
-      - name: Build & Push Multi-Platform Container Image to Hub
+      - name: Build & Push Multi-Platform ziti-edge-tunnel Container Image
         uses: docker/build-push-action@v3
         with:
           builder: ${{ steps.buildx.outputs.name }}
-          context: ${{ github.workspace }}/docker
-          file: ${{ github.workspace }}/docker/Dockerfile.base
+          context: ${{ github.workspace }}/
+          file: ${{ github.workspace }}/docker/ziti-edge-tunnel.Dockerfile
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.tagprep_run.outputs.DOCKER_TAGS }}
           build-args: |
-            ZITI_VERSION=${{ env.ZITI_VERSION }}
-            GITHUB_REPO=${{ github.repository }}
+            ARTIFACTS_DIR=./build
+            DOCKER_BUILD_DIR=./docker
           push: true
 
       - name: Set up Docker image tags for "run-host" container
@@ -70,16 +84,15 @@ jobs:
         id: tagprep_run_host
         run: echo DOCKER_TAGS="${IMAGE_REPO}:unstable,${IMAGE_REPO}:${ZITI_VERSION}" | tee -a $GITHUB_OUTPUT
 
-
-      - name: Build & Push Multi-Platform Container Image to Hub
+      - name: Build & Push Multi-Platform ziti-host Container Image
         uses: docker/build-push-action@v3
         with:
           builder: ${{ steps.buildx.outputs.name }}
-          context: ${{ github.workspace }}/docker
-          file: ${{ github.workspace }}/docker/Dockerfile.ziti-host
+          context: ${{ github.workspace }}/
+          file: ${{ github.workspace }}/docker/ziti-host.Dockerfile
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.tagprep_run_host.outputs.DOCKER_TAGS }}
           build-args: |
-            ZITI_EDGE_TUNNEL_TAG=${{ env.ZITI_VERSION }}
             ZITI_EDGE_TUNNEL_IMAGE=${{ env.ZITI_EDGE_TUNNEL_IMAGE }}
+            ZITI_EDGE_TUNNEL_TAG=${{ env.ZITI_VERSION }}
           push: true
