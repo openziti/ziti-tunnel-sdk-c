@@ -13,7 +13,8 @@ ENV PATH="/usr/local/:${PATH}"
 ENV GIT_DISCOVERY_ACROSS_FILESYSTEM=1
 ENV TZ=UTC
 
-RUN dnf install -y \
+RUN dnf update -y \
+    && dnf install -y \
         "@Development Tools" \
         dnf-plugins-core \
         gcc-toolset-10 \
