@@ -418,7 +418,7 @@ ssize_t ziti_tunneler_write(tunneler_io_context tnlr_io_ctx, const void *data, s
             r = tunneler_tcp_write(tnlr_io_ctx->tcp, data, len);
             break;
         case tun_udp:
-            r = tunneler_udp_write(tnlr_io_ctx->udp.pcb, data, len);
+            r = tunneler_udp_write(tnlr_io_ctx->udp, data, len);
             break;
     }
 
@@ -439,8 +439,8 @@ int ziti_tunneler_close(tunneler_io_context tnlr_io_ctx) {
             tnlr_io_ctx->tcp = NULL;
             break;
         case tun_udp:
-            tunneler_udp_close(tnlr_io_ctx->udp.pcb);
-            tnlr_io_ctx->udp.pcb = NULL;
+            tunneler_udp_close(tnlr_io_ctx->udp);
+            tnlr_io_ctx->udp = NULL;
             break;
         default:
             TNL_LOG(ERR, "unknown proto %d", tnlr_io_ctx->proto);
