@@ -214,8 +214,7 @@ XX(local_port, int, none, LocalPort, __VA_ARGS__) \
 XX(remote_ip, string, none, RemoteIP, __VA_ARGS__) \
 XX(remote_port, int, none, RemotePort, __VA_ARGS__) \
 XX(state, string, none, State, __VA_ARGS__) \
-XX(service, string, none, Service, __VA_ARGS__) \
-XX(identity, string, none, Identity, __VA_ARGS__)
+XX(service, string, none, Service, __VA_ARGS__)
 
 #define TNL_IP_STATS(XX, ...) \
 XX(pools, tunnel_ip_mem_pool, array, Pools, __VA_ARGS__) \
