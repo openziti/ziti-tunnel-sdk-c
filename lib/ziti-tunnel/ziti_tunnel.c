@@ -36,8 +36,6 @@
 
 #include <string.h>
 
-#include "../ziti-tunnel-cbs/include/ziti/ziti_tunnel_cbs.h"
-
 const char *DST_PROTO_KEY = "dst_protocol";
 const char *DST_IP_KEY = "dst_ip";
 const char *DST_PORT_KEY = "dst_port";
