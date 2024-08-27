@@ -26,7 +26,7 @@ execute_process(COMMAND "${OS_RELEASE_EXECUTABLE}" "VERSION_ID"
 message("CPACK_OS_RELEASE_ID: ${CPACK_OS_RELEASE_ID}")
 message("CPACK_OS_RELEASE_VERSION: ${CPACK_OS_RELEASE_VERSION}")
 
-set(CPACK_RPM_DISTRIBUTIONS "redhat;rocky;centos;fedora;rhel")
+set(CPACK_RPM_DISTRIBUTIONS "redhat;rocky;almalinux;centos;fedora;rhel")
 set(CPACK_DEB_DISTRIBUTIONS "debian;ubuntu;mint;pop")
 
 if(CPACK_OS_RELEASE_ID IN_LIST CPACK_DEB_DISTRIBUTIONS)
