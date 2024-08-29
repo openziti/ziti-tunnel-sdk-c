@@ -1,7 +1,7 @@
 ARG CMAKE_VERSION="3.26.3"
 ARG VCPKG_VERSION="2024.01.12"
 
-FROM rockylinux:9
+FROM almalinux:9
 
 ARG CMAKE_VERSION
 ARG VCPKG_VERSION
@@ -15,7 +15,8 @@ ENV PATH="/usr/local/:${PATH}"
 ENV GIT_DISCOVERY_ACROSS_FILESYSTEM=1
 ENV TZ=UTC
 
-RUN dnf install -y \
+RUN dnf update -y \
+    && dnf install -y \
         "@Development Tools" \
         dnf-plugins-core \
         iproute \

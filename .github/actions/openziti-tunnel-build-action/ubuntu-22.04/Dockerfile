@@ -17,6 +17,7 @@ USER root
 WORKDIR /root/
 
 RUN apt-get update \
+    && apt-get -y upgrade \
     && apt-get -y install \
         gcc-arm-linux-gnueabihf \
         g++-arm-linux-gnueabihf \
