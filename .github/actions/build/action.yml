@@ -56,4 +56,4 @@ runs:
           --build ./build \
           --config ${{ inputs.config }} \
           --target ${{ inputs.target }} \
-          --verbose
+          --verbose; cat ./build/vcpkg-manifest-install.log
