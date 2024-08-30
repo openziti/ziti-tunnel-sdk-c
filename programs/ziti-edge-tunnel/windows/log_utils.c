@@ -64,7 +64,7 @@ static char* get_log_path() {
     }
 
     char* log_path = calloc(FILENAME_MAX, sizeof(char));
-    if(process_dir[strlen(process_dir)-1] != PATH_SEP[0]) {
+    if(process_dir[strlen(process_dir)-1] != PATH_SEP) {
         snprintf(log_path, FILENAME_MAX, "%s%slogs", process_dir, PATH_SEP);
     } else {
         snprintf(log_path, FILENAME_MAX, "%slogs", process_dir);
