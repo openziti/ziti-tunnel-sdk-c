@@ -536,14 +536,14 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
             char new_identifier[FILENAME_MAX] = {0};
             char new_identifier_name[FILENAME_MAX] = {0};
             if ((strlen(config_dir) + length + 6) >  FILENAME_MAX - 1 ) {
-                ZITI_LOG(ERROR, "failed to create file %s%s%s.json, The length of the file name is longer than %d", config_dir, PATH_SEP, tunnel_add_identity_cmd.jwtFileName, FILENAME_MAX);
+                ZITI_LOG(ERROR, "failed to create file %s%c%s.json, The length of the file name is longer than %d", config_dir, PATH_SEP, tunnel_add_identity_cmd.jwtFileName, FILENAME_MAX);
                 result.error = "invalid file name";
                 result.success = false;
                 free_tunnel_add_identity(&tunnel_add_identity_cmd);
                 break;
             }
             strncpy(new_identifier_name, tunnel_add_identity_cmd.jwtFileName, length);
-            snprintf(new_identifier, FILENAME_MAX, "%s%s%s.json", config_dir, PATH_SEP, new_identifier_name);
+            snprintf(new_identifier, FILENAME_MAX, "%s%c%s.json", config_dir, PATH_SEP, new_identifier_name);
             FILE *outfile;
             if ((outfile = fopen(new_identifier, "wb")) == NULL) {
                 ZITI_LOG(ERROR, "failed to open file %s: %s(%d)", new_identifier, strerror(errno), errno);
@@ -1126,7 +1126,7 @@ static void load_identities(uv_work_t *wr) {
             if (file.type == UV_DIRENT_FILE) {
                 struct cfg_instance_s *inst = calloc(1, sizeof(struct cfg_instance_s));
                 inst->cfg = malloc(MAXPATHLEN);
-                snprintf(inst->cfg, MAXPATHLEN, "%s%s%s", config_dir, PATH_SEP, file.name);
+                snprintf(inst->cfg, MAXPATHLEN, "%s%c%s", config_dir, PATH_SEP, file.name);
                 create_or_get_tunnel_identity(inst->cfg, file.name);
                 LIST_INSERT_HEAD(&load_list, inst, _next);
             }
