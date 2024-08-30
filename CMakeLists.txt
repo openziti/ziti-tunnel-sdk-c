@@ -13,9 +13,9 @@ option(EXCLUDE_PROGRAMS "exclude building the programs directory" OFF)
 message("exclude programs = ${EXCLUDE_PROGRAMS}")
 
 if (WIN32)
-    add_compile_definitions(PATH_SEP="\\\\")
+    add_compile_definitions(PATH_SEP='\\\\')
 else()
-    add_compile_definitions(PATH_SEP="/")
+    add_compile_definitions(PATH_SEP='/')
 endif()
 
 find_package(Git)

@@ -32,8 +32,8 @@ static char* log_filename;
 static void set_is_interactive();
 static BOOL is_interactive = TRUE;
 
-
-
+#define _str(x) #x
+#define str(x) _str(x)
 
 
 char* get_log_file_name(){
@@ -64,14 +64,15 @@ static char* get_log_path() {
     }
 
     char* log_path = calloc(FILENAME_MAX, sizeof(char));
-    if(process_dir[strlen(process_dir)-1] != PATH_SEP[0]) {
-        snprintf(log_path, FILENAME_MAX, "%s%slogs", process_dir, PATH_SEP);
+    if(process_dir[strlen(process_dir)-1] != PATH_SEP) {
+        snprintf(log_path, FILENAME_MAX, "%s%clogs", process_dir, PATH_SEP);
     } else {
         snprintf(log_path, FILENAME_MAX, "%slogs", process_dir);
     }
     int check;
     mkdir(log_path);
-    strcat(log_path, PATH_SEP);
+
+    strcat(log_path, str(PATH_SEP));
     strcat(log_path, "service");
     check = mkdir(log_path);
     if (check == 0) {
@@ -85,7 +86,7 @@ static char* get_log_path() {
 char* get_base_filename() {
     char* log_path = get_log_path();
     char* temp_log_filename = calloc(FILENAME_MAX, sizeof(char));
-    snprintf(temp_log_filename, FILENAME_MAX, "%s%s%s", log_path, PATH_SEP, log_filename_base);
+    snprintf(temp_log_filename, FILENAME_MAX, "%s%c%s", log_path, PATH_SEP, log_filename_base);
     free(log_path);
     return temp_log_filename;
 }
@@ -312,7 +313,7 @@ static void delete_older_logs(uv_async_t *ar) {
         }
         if (old_log != NULL) {
             char logfile_to_delete[MAX_PATH];
-            snprintf(logfile_to_delete, MAX_PATH, "%s%s%s", log_path, PATH_SEP, old_log);
+            snprintf(logfile_to_delete, MAX_PATH, "%s%c%s", log_path, PATH_SEP, old_log);
             ZITI_LOG(INFO, "Deleting old log file %s", logfile_to_delete);
             remove(logfile_to_delete);
             rotation_index--;
