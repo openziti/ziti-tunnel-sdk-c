@@ -21,6 +21,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: ${{ runner.workspace }}/downloads
+          merge_multiple: false  # some artifacts have the same name and so can not be aggregated in a single directory
 
       # This step is only necessary because we prefer a different release artifact name
       # than is created by CMake, and so we could change the CMake configuration but for
