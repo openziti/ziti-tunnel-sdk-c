@@ -3,8 +3,13 @@ name: CI package
 on: 
   workflow_dispatch:
   push:
-    branches:  # ignore push to tags
-      - '**'
+    branches:
+      - main
+      - release-*
+  pull_request:
+    branches:
+      - main
+      - release-*
     paths:
       - programs/ziti-edge-tunnel/package/*
       - .github/actions/openziti-tunnel-build-action/*

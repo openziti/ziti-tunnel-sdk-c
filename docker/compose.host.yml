@@ -1,0 +1,10 @@
+volumes:
+    ziti-host:
+
+services:
+    ziti-host:
+        image: ${ZITI_HOST_IMAGE:-openziti/ziti-host}:${ZITI_HOST_TAG:-latest}
+        volumes:
+            - ziti-host:/ziti-edge-tunnel
+        environment:
+            - ZITI_ENROLL_TOKEN

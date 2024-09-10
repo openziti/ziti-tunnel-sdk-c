@@ -2,14 +2,13 @@ name: Promote Downstream Releases
 
 on: 
   workflow_dispatch:
+  release:
+    types: [released]  # this release event activity type excludes prereleases
 
 # cancel older, redundant runs of same workflow on same branch
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
-
-env:
-  RELEASE_REF: ${{ github.ref}}
 
 jobs:
   wait_for_release:
@@ -22,7 +21,7 @@ jobs:
       - name: Wait for all checks on this ref
         uses: lewagon/wait-on-check-action@v1.3.1
         with:
-          ref: ${{ env.RELEASE_REF }}
+          ref: ${{ github.ref }}
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           # seconds between polling the checks api for job statuses
           wait-interval: 20
@@ -39,10 +38,12 @@ jobs:
       - name: Parse Release Version
         id: parse
         shell: bash
+        env:
+          RELEASE_REF: ${{ github.ref_name }}
         run: |
-          if [[ "${RELEASE_REF}" =~ ^refs\/tags\/v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          if [[ "${RELEASE_REF}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "RELEASE_REF=${RELEASE_REF} is a semver release ref"
-            echo "version=${RELEASE_REF#refs/tags/v}" | tee -a $GITHUB_OUTPUT
+            echo "version=${RELEASE_REF#v}" | tee -a $GITHUB_OUTPUT
           else
             echo "RELEASE_REF=${RELEASE_REF} is not a semver release ref" >&2
             exit 1
@@ -83,14 +84,14 @@ jobs:
           username: ${{ vars.DOCKER_HUB_API_USER || secrets.DOCKER_HUB_API_USER }}
           password: ${{ secrets.DOCKER_HUB_API_TOKEN }}
 
-      - name: Tag Latest zti-edge-tunnel 
+      - name: Tag Latest ziti-edge-tunnel 
         shell: bash
         run: >
           docker buildx imagetools create --tag
           ${{ env.ZITI_EDGE_TUNNEL_IMAGE }}:latest
           ${{ env.ZITI_EDGE_TUNNEL_IMAGE }}:${{ needs.parse_version.outputs.version }}
 
-      - name: Tag Latest zti-host
+      - name: Tag Latest ziti-host
         shell: bash
         run: >
           docker buildx imagetools create --tag

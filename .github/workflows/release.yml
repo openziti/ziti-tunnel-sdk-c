@@ -20,14 +20,17 @@ jobs:
       - name: download
         uses: actions/download-artifact@v4
         with:
-          path: ${{ runner.workspace }}/downloads/
+          path: ${{ runner.workspace }}/downloads
+          merge_multiple: false  # some artifacts have the same name and so can not be aggregated in a single directory
 
       # This step is only necessary because we prefer a different release artifact name
       # than is created by CMake, and so we could change the CMake configuration but for
       # now this is easier. The pre-release build doesn't rename the artifacts.
       - name: Rename bundle assets
         working-directory: ${{ runner.workspace }}/downloads/
+        shell: bash
         run: |
+          pwd
           mv linux-arm64/ziti-edge-tunnel-Linux_aarch64.zip linux-arm64/ziti-edge-tunnel-Linux_arm64.zip
           mv windows-x64-mingw/ziti-edge-tunnel-Windows_AMD64.zip windows-x64-mingw/ziti-edge-tunnel-Windows_x86_64.zip
           mv linux-arm-static/ziti-edge-tunnel-Linux_arm.zip linux-arm-static/ziti-edge-tunnel-Linux_arm-static.zip
@@ -48,34 +51,26 @@ jobs:
           # token: defaults to github.token
           fail_on_unmatched_files: true
           files: |
-            ${{ runner.workspace }}/downloads/linux-arm-static/ziti-edge-tunnel-Linux_arm-static.zip
-            ${{ runner.workspace }}/downloads/linux-arm64-static/ziti-edge-tunnel-Linux_arm64-static.zip
-            ${{ runner.workspace }}/downloads/linux-arm64-static/ziti-edge-tunnel-Linux_x86_64-static.zip
-            ${{ runner.workspace }}/downloads/linux-x64/ziti-edge-tunnel-Linux_x86_64.zip
-            ${{ runner.workspace }}/downloads/linux-arm/ziti-edge-tunnel-Linux_arm.zip
-            ${{ runner.workspace }}/downloads/linux-arm64/ziti-edge-tunnel-Linux_arm64.zip
-            ${{ runner.workspace }}/downloads/macOS-x64/ziti-edge-tunnel-Darwin_x86_64.zip
-            ${{ runner.workspace }}/downloads/macOS-arm64/ziti-edge-tunnel-Darwin_arm64.zip
+            ${{ runner.workspace }}/downloads/**/*.zip
 
       - name: Get the Version String from Git Tag
         id: get_version
         env:
-          GITHUB_REF: ${{ github.ref }}
+          RELEASE_REF: ${{ github.ref_name }}
         run: |
-          ZITI_VERSION="${GITHUB_REF#refs/*/v}"
+          ZITI_VERSION="${RELEASE_REF#v}"
           if [[ "${ZITI_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "DEBUG: ZITI_VERSION=${ZITI_VERSION}"
-            echo ZITI_VERSION="${ZITI_VERSION}" >> $GITHUB_OUTPUT
+            echo ZITI_VERSION="${ZITI_VERSION}" | tee -a $GITHUB_OUTPUT
           else
             # fail the job because we could not obtain a valid version string from the Git ref
-            echo "ERROR: ZITI_VERSION=${ZITI_VERSION} is not a semver"
+            echo "ERROR: ZITI_VERSION=${ZITI_VERSION} is not a release semver"
             exit 1
           fi
 
-  call-publish-containers:
+  call-publish-container-images:
     name: Publish Container Images
     needs: [ release ]
-    uses: ./.github/workflows/publish-containers.yml
+    uses: ./.github/workflows/publish-container-images.yml
     secrets: inherit
     with:
       ziti-version: ${{ needs.release.outputs.ZITI_VERSION }}
