@@ -41,8 +41,9 @@ jobs:
         shell: bash
         run: |
           set -x
+          ls -horRAS ./downloads
           mkdir -p ./build/{arm64,amd64}/linux/
-          unzip -d ./build/arm64/linux/ ./downloads/linux-arm64/ziti-edge-tunnel-Linux_aarch64.zip
+          unzip -d ./build/arm64/linux/ ./downloads/linux-arm64/ziti-edge-tunnel-Linux_arm64.zip
           unzip -d ./build/amd64/linux/ ./downloads/linux-x64/ziti-edge-tunnel-Linux_x86_64.zip
 
       - name: Set up QEMU

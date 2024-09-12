@@ -154,6 +154,7 @@ docker  compose up ziti-tun --detach
 
 ATTEMPTS=5
 DELAY=3
+
 curl_cmd="curl --fail --max-time 1 --silent --show-error --request POST --header 'Content-Type: application/json' --data '{\"ziti\": \"works\"}' http://httpbin.ziti.internal/post"
 until ! ((ATTEMPTS)) || eval "${curl_cmd}" &> /dev/null
 do
