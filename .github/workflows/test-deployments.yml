@@ -1,0 +1,32 @@
+name: Test Deployments
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - release-v*
+  pull_request:
+    branches:
+      - main
+      - release-v*
+
+# cancel older, redundant runs of same workflow on same branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  docker-deployments:
+    name: Test Docker Deployments
+    runs-on: ubuntu-latest
+    steps:
+      - name: Full Checkout to Allow CMake to Find Version with Git
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run the Compose Test Script
+        shell: bash
+        run: docker/docker.test.bash
+        env:
+          I_AM_ROBOT: 1
