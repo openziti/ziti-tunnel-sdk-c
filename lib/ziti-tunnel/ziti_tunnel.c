@@ -196,7 +196,7 @@ void free_tunneler_io_context(tunneler_io_context *tnlr_io_ctx_p) {
 
     if (*tnlr_io_ctx_p != NULL) {
         tunneler_io_context io = *tnlr_io_ctx_p;
-        if (io->service_name != NULL) free(io->service_name);
+        if (io->service_name != NULL) free((char *) io->service_name);
         free(io);
         *tnlr_io_ctx_p = NULL;
     }
@@ -615,6 +615,51 @@ void ziti_tunnel_async_send(tunneler_context tctx, ziti_tunnel_async_fn f, void 
     }
 
     uv_async_send(async);
+}
+
+IMPL_MODEL(tunnel_ip_mem_pool, TNL_IP_MEM_POOL)
+IMPL_MODEL(tunnel_ip_conn, TNL_IP_CONN)
+IMPL_MODEL(tunnel_ip_stats, TNL_IP_STATS)
+
+#define STR(x) #x
+static void ziti_tunnel_get_ip_mem_pool(tunnel_ip_mem_pool *pool, int pool_id, const char *pool_name) {
+    if (!pool) return;
+    TNL_LOG(VERBOSE, "getting IP mem pool %s", pool_name);
+    pool->name = strdup(pool_name);
+    pool->used = memp_pools[pool_id]->stats->used;
+    pool->max = memp_pools[pool_id]->stats->max;
+    pool->avail = memp_pools[pool_id]->stats->avail;
+}
+
+void ziti_tunnel_get_ip_stats(tunnel_ip_stats *stats) {
+    if (!stats) return;
+    TNL_LOG(DEBUG, "collecting ip statistics");
+    if (stats->pools) free(stats->pools);
+    stats->pools = calloc(4, sizeof(tunnel_ip_mem_pool *));
+    stats->pools[0] = calloc(1, sizeof(tunnel_ip_mem_pool));
+    ziti_tunnel_get_ip_mem_pool(stats->pools[0], MEMP_PBUF_POOL, STR(MEMP_PBUF_POOL));
+    stats->pools[1] = calloc(1, sizeof(tunnel_ip_mem_pool));
+    ziti_tunnel_get_ip_mem_pool(stats->pools[1], MEMP_TCP_PCB, STR(MEMP_TCP_PCB));
+    stats->pools[2] = calloc(1, sizeof(tunnel_ip_mem_pool));
+    ziti_tunnel_get_ip_mem_pool(stats->pools[2], MEMP_UDP_PCB, STR(MEMP_UDP_PCB));
+
+    int max_conns = MEMP_NUM_TCP_PCB + MEMP_NUM_UDP_PCB + 1; // todo double check this is enough
+    stats->connections = calloc(max_conns, sizeof(tunnel_ip_conn *));
+
+    int i= 0;
+    for (struct tcp_pcb *tpcb = tcp_tw_pcbs; tpcb != NULL; tpcb = tpcb->next) {
+        stats->connections[i] = calloc(1, sizeof(tunnel_ip_conn));
+        tunneler_tcp_get_conn(stats->connections[i++], tpcb);
+    }
+
+    for (struct tcp_pcb *tpcb = tcp_active_pcbs; tpcb != NULL; tpcb = tpcb->next) {
+        stats->connections[i] = calloc(1, sizeof(tunnel_ip_conn));
+        tunneler_tcp_get_conn(stats->connections[i++], tpcb);
+    }
+    for (struct udp_pcb *upcb = udp_pcbs; upcb != NULL; upcb = upcb->next) {
+        stats->connections[i] = calloc(1, sizeof(tunnel_ip_conn));
+        tunneler_udp_get_conn(stats->connections[i++], upcb);
+    }
 }
 
 #define _str(x) #x

@@ -29,4 +29,5 @@ extern int tunneler_udp_close(struct udp_pcb *pcb);
 /** return list of io contexts for active connections to the given service. caller must free the returned pointer */
 extern struct io_ctx_list_s *tunneler_udp_active(const void *zi_ctx);
 
+extern void tunneler_udp_get_conn(tunnel_ip_conn *conn, struct udp_pcb *pcb);
 #endif //ZITI_TUNNELER_SDK_TUNNELER_UDP_H
