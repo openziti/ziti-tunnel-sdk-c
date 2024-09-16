@@ -327,6 +327,8 @@ void * ziti_sdk_c_dial(const void *intercept_ctx, struct io_ctx_s *io) {
         return NULL;
     }
 
+    dial_opts.stream = strcmp(app_data.dst_protocol, "tcp") == 0;
+
     char resolved_dial_identity[128];
     if (dial_opts.identity != NULL && dial_opts.identity[0] != '\0') {
         strncpy(resolved_dial_identity, dial_opts.identity, sizeof(resolved_dial_identity));
