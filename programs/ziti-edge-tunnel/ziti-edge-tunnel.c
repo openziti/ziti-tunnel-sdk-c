@@ -1305,7 +1305,7 @@ static void on_event(const base_event *ev) {
                         for (int i = 0; svc->Addresses[i]; i++) {
                             tunnel_address *addr = svc->Addresses[i];
                             bool has_dial = ziti_service_has_permission(svc_ev->added_services[svc_idx], ziti_session_type_Dial);
-                            if (addr->IsHost && model_map_get(&hostnamesToAdd, addr->HostName) == NULL && svc_ev->added_services && has_dial) {
+                            if (addr->IsHost && model_map_get(&hostnamesToAdd, addr->HostName) == NULL && has_dial) {
                                 if (model_map_get(&hostnamesToRemove, addr->HostName) != NULL) {
                                     model_map_set(&hostnamesToEdit, addr->HostName, "TRUE");
                                 } else {
