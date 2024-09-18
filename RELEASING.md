@@ -15,8 +15,8 @@ A release produces these artifacts.
 
 * binary executables attached to [the GitHub Release](https://github.com/openziti/ziti-tunnel-sdk-c/releases/latest)
 * Linux packages in Artifactory
-  * DEBs for Debian distros ([doc](https://openziti.io/docs/reference/tunnelers/linux/#installing-the-deb))
-  * RPMs for RedHat distros ([doc](https://openziti.io/docs/reference/tunnelers/linux/#installing-the-rpm))
+  * DEBs for Debian distros ([doc](https://openziti.io/docs/reference/tunnelers/linux/debian-package))
+  * RPMs for RedHat distros ([doc](https://openziti.io/docs/reference/tunnelers/linux/redhat-package))
 * Docker images in Docker Hub
   * `openziti/ziti-edge-tunnel` for `run` proxy mode in a container ([K8S doc](https://openziti.io/docs/reference/tunnelers/kubernetes/kubernetes-daemonset))
   * `openziti/ziti-host` for `run-host` reverse-proxy mode in a container ([Docker doc](https://openziti.io/docs/reference/tunnelers/docker/), [K8S doc](https://openziti.io/docs/reference/tunnelers/kubernetes/kubernetes-host))
