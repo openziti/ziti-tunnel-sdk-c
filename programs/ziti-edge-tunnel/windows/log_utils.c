@@ -32,10 +32,6 @@ static char* log_filename;
 static void set_is_interactive();
 static BOOL is_interactive = TRUE;
 
-#define _str(x) #x
-#define str(x) _str(x)
-
-
 char* get_log_file_name(){
     return log_filename;
 }
@@ -65,16 +61,11 @@ static char* get_log_path() {
 
     char* log_path = calloc(FILENAME_MAX, sizeof(char));
     if(process_dir[strlen(process_dir)-1] != PATH_SEP) {
-        snprintf(log_path, FILENAME_MAX, "%s%clogs", process_dir, PATH_SEP);
+        snprintf(log_path, FILENAME_MAX, "%s%clogs%cservice", process_dir, PATH_SEP, PATH_SEP);
     } else {
-        snprintf(log_path, FILENAME_MAX, "%slogs", process_dir);
+        snprintf(log_path, FILENAME_MAX, "%slogs%cservice", process_dir, PATH_SEP);
     }
-    int check;
-    mkdir(log_path);
-
-    strcat(log_path, str(PATH_SEP));
-    strcat(log_path, "service");
-    check = mkdir(log_path);
+    int check = mkdir(log_path);
     if (check == 0) {
         printf("\nlog path is created at %s", log_path);
     } else {
