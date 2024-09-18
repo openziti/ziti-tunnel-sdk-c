@@ -3,9 +3,9 @@
 
 ## Releaser Steps
 
-1. [Create a release in GitHub](https://github.com/openziti/ziti-tunnel-sdk-c/releases).
-1. Run ["Promote Downstream Releases"](https://github.com/openziti/ziti-tunnel-sdk-c/actions/workflows/promote-downstreams.yml)
-   on the release tag you created in the first step.
+1. [Create a release in GitHub](https://github.com/openziti/ziti-tunnel-sdk-c/releases) with the "Set as a pre-release" box ticked. This finalizes the version of downstream packages and container images and stages them for immediate use by prerelease consumers.
+1. At your discretion, allow some time for prerelease consumers to validate the release.
+1. Promote the release by [editing it in GitHub](https://github.com/openziti/ziti-tunnel-sdk-c/releases) to un-tick the "Set as a pre-release" box. This triggers the promotion of downstream packages and container images.
 
 The rest of this document describes these two steps in greater detail.
 
@@ -18,8 +18,8 @@ A release produces these artifacts.
   * DEBs for Debian distros ([doc](https://openziti.io/docs/reference/tunnelers/linux/#installing-the-deb))
   * RPMs for RedHat distros ([doc](https://openziti.io/docs/reference/tunnelers/linux/#installing-the-rpm))
 * Docker images in Docker Hub
-  * `openziti/ziti-edge-tunnel` for `run` proxy mode in a container ([doc](https://openziti.io/docs/reference/tunnelers/linux/container/#use-case-intercepting-proxy-and-nameserver))
-  * `openziti/ziti-host` for `run-host` reverse-proxy mode in a container ([doc](https://openziti.io/docs/reference/tunnelers/linux/container/#use-case-hosting-openziti-services))
+  * `openziti/ziti-edge-tunnel` for `run` proxy mode in a container ([K8S doc](https://openziti.io/docs/reference/tunnelers/kubernetes/kubernetes-daemonset))
+  * `openziti/ziti-host` for `run-host` reverse-proxy mode in a container ([Docker doc](https://openziti.io/docs/reference/tunnelers/docker/), [K8S doc](https://openziti.io/docs/reference/tunnelers/kubernetes/kubernetes-host))
 
 ## Create a Release
 
@@ -35,7 +35,7 @@ Creating a release in GitHub triggers these workflows.
 
 ## Promote Downstream Releases
 
-Running the "Promote Downstream Releases" workflow has these effects in downstream repositories.
+Un-ticking the "Set as a pre-release" box on the GitHub release triggers the "Promote Downstream Releases" workflow that has these effects in downstream repositories.
 
 1. Linux packages in Artifactory are promoted to the release repositories in Artifactory.
     1. [the release repo for RPMs](https://netfoundry.jfrog.io/ui/repos/tree/General/zitipax-openziti-rpm-stable?projectKey=zitipax)
@@ -47,6 +47,5 @@ Running the "Promote Downstream Releases" workflow has these effects in downstre
 
 Newly-created GitHub Releases set as the "latest" release in GitHub by default. The Releaser may override the latest
 label by marking any release as "latest" in the GitHub UI or Releases API. The Releaser may mark a release as
-"prerelease" instead of "latest" when creating the release in the GitHub UI or Releases API. This has no effect on
-downstream builds for Artifactory or Docker Hub and only running the "Promote Downstream Releases" workflow will
-cause those downstreams to advertise a new release as "latest".
+"prerelease" instead of "latest" when creating the release in the GitHub UI or Releases API. The "Promote Downstream Releases" workflow will
+run as soon as the release is created if it is not marked as a prerelease or when an existing prerelease is unmarked, i.e., not a prerelease.
