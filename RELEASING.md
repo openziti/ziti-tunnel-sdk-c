@@ -7,7 +7,7 @@
 1. At your discretion, allow some time for prerelease consumers to validate the release.
 1. Promote the release by [editing it in GitHub](https://github.com/openziti/ziti-tunnel-sdk-c/releases) to un-tick the "Set as a pre-release" box. This triggers the promotion of downstream packages and container images.
 
-The rest of this document describes these two steps in greater detail.
+The rest of this document describes these steps in greater detail.
 
 ## Release Artifacts
 
@@ -35,17 +35,10 @@ Creating a release in GitHub triggers these workflows.
 
 ## Promote Downstream Releases
 
-Un-ticking the "Set as a pre-release" box on the GitHub release triggers the "Promote Downstream Releases" workflow that has these effects in downstream repositories.
+Newly created GitHub Releases default to a full "latest" release, implying `prerelease: false`. GitHub fires the one-time release event `released`, triggering the "Promote Downstream Releases" workflow when a release is created with `prerelease: false` (implied by and mutually exclusive to the default `make_latest: true`) or updated with `prerelease: false`.
 
-1. Linux packages in Artifactory are promoted to the release repositories in Artifactory.
+1. Linux packages in Artifactory are copied from the "test" repositories to the "stable" repositories in Artifactory.
     1. [the release repo for RPMs](https://netfoundry.jfrog.io/ui/repos/tree/General/zitipax-openziti-rpm-stable?projectKey=zitipax)
     1. [the release repo for DEBs](https://netfoundry.jfrog.io/ui/repos/tree/General/zitipax-openziti-deb-stable?projectKey=zitipax)
 1. Previously-uploaded Docker images in Docker Hub are tagged `:latest`.
 1. There are no effects for the executable binaries that were previously uploaded to the GitHub Release.
-
-## GitHub Pre-Release vs. Latest Release
-
-Newly-created GitHub Releases set as the "latest" release in GitHub by default. The Releaser may override the latest
-label by marking any release as "latest" in the GitHub UI or Releases API. The Releaser may mark a release as
-"prerelease" instead of "latest" when creating the release in the GitHub UI or Releases API. The "Promote Downstream Releases" workflow will
-run as soon as the release is created if it is not marked as a prerelease or when an existing prerelease is unmarked, i.e., not a prerelease.
