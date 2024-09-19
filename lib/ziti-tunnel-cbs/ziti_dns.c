@@ -291,6 +291,7 @@ static void remove_dns_req(void *p) {
     struct dns_req *req = p;
     if (req) {
         model_map_remove_key(&ziti_dns.requests, &req->id, sizeof(req->id));
+        free_dns_req(req);
     }
 }
 
