@@ -25,6 +25,14 @@
 #include "windows/windows-scripts.h"
 #include <direct.h>
 
+#if _WIN32
+#include <windows.h>
+#define mkdir(path, mode) CreateDirectory(path, NULL)
+#ifndef PATH_MAX
+#define PATH_MAX MAX_PATH
+#endif
+#define realpath(rel, abs) _fullpath(abs, rel, PATH_MAX)
+#endif
 
 static bool open_log(char* log_filename);
 static bool rotate_log();
@@ -43,6 +51,25 @@ static uv_check_t *log_flusher;
 static struct tm *start_time;
 static const char* log_filename_base = "ziti-tunneler.log";
 static int rotation_count = 7;
+
+static uint8_t mkdir_p(const char *path) {
+    char actualpath[PATH_MAX];
+    char *cur_path = realpath(path, actualpath);
+    char *p = cur_path;
+    struct stat info;
+    while(*p != '\0') {
+        if(*p == PATH_SEP) {
+            *p = 0;
+            if (stat(cur_path, &info) != 0){
+                mkdir(cur_path, NULL);
+            }
+            *p = PATH_SEP;
+        }
+        p++;
+    }
+
+    return mkdir(cur_path, NULL);
+}
 
 static char* get_log_path() {
     char process_dir[FILENAME_MAX]; //create string buffer to hold path
@@ -65,12 +92,15 @@ static char* get_log_path() {
     } else {
         snprintf(log_path, FILENAME_MAX, "%slogs%cservice", process_dir, PATH_SEP);
     }
-    int check = mkdir(log_path);
-    if (check == 0) {
-        printf("\nlog path is created at %s", log_path);
+    mkdir_p(log_path);
+
+    struct stat info;
+    if (stat(log_path, &info) != 0) {
+        fprintf(stderr,"\nlogging cannot proceed. the path could not be created: %s!\n", log_path);
     } else {
-        printf("\nlog path is found at %s", log_path);
+        fprintf(stderr,"\nlogs enabled at: %s\n", log_path);
     }
+
     return log_path;
 }
 
