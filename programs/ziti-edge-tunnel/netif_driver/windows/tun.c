@@ -35,15 +35,13 @@
 #include <stdbool.h>
 #include <ziti/ziti_log.h>
 #include <netioapi.h>
-#include <iphlpapi.h>
 #include <stdlib.h>
 #include <combaseapi.h>
 #include <ziti/model_support.h>
 
 #include "tun.h"
 
-#define ZITI_TUN_GUID L"2cbfd72d-370c-43b0-b0cd-c8f092a7e134"
-#define ZITI_TUN L"ziti-tun0"
+#define ZITI_TUN_NAME_BASE L"ziti-tun"
 
 #define ROUTE_LIFETIME (10 * 60) /* in seconds */
 #define ROUTE_REFRESH ((ROUTE_LIFETIME - (ROUTE_LIFETIME/10))*1000)
@@ -77,64 +75,79 @@ static void refresh_routes(uv_timer_t *timer);
 static void cleanup_adapters(wchar_t *tun_name);
 static HANDLE if_change_handle;
 
-static WINTUN_CREATE_ADAPTER_FUNC WintunCreateAdapter;
-static WINTUN_DELETE_ADAPTER_FUNC WintunDeleteAdapter;
-static WINTUN_DELETE_POOL_DRIVER_FUNC WintunDeletePoolDriver;
-static WINTUN_ENUM_ADAPTERS_FUNC WintunEnumAdapters;
-static WINTUN_FREE_ADAPTER_FUNC WintunFreeAdapter;
-static WINTUN_OPEN_ADAPTER_FUNC WintunOpenAdapter;
-static WINTUN_GET_ADAPTER_LUID_FUNC WintunGetAdapterLUID;
-static WINTUN_GET_ADAPTER_NAME_FUNC WintunGetAdapterName;
-static WINTUN_SET_ADAPTER_NAME_FUNC WintunSetAdapterName;
-static WINTUN_GET_RUNNING_DRIVER_VERSION_FUNC WintunGetRunningDriverVersion;
-static WINTUN_SET_LOGGER_FUNC WintunSetLogger;
-static WINTUN_START_SESSION_FUNC WintunStartSession;
-static WINTUN_END_SESSION_FUNC WintunEndSession;
-static WINTUN_GET_READ_WAIT_EVENT_FUNC WintunGetReadWaitEvent;
-static WINTUN_RECEIVE_PACKET_FUNC WintunReceivePacket;
-static WINTUN_RELEASE_RECEIVE_PACKET_FUNC WintunReleaseReceivePacket;
-static WINTUN_ALLOCATE_SEND_PACKET_FUNC WintunAllocateSendPacket;
-static WINTUN_SEND_PACKET_FUNC WintunSendPacket;
+static WINTUN_CREATE_ADAPTER_FUNC *WintunCreateAdapter;
+static WINTUN_CLOSE_ADAPTER_FUNC *WintunCloseAdapter;
+static WINTUN_OPEN_ADAPTER_FUNC *WintunOpenAdapter;
+static WINTUN_GET_ADAPTER_LUID_FUNC *WintunGetAdapterLUID;
+static WINTUN_GET_RUNNING_DRIVER_VERSION_FUNC *WintunGetRunningDriverVersion;
+static WINTUN_DELETE_DRIVER_FUNC *WintunDeleteDriver;
+static WINTUN_SET_LOGGER_FUNC *WintunSetLogger;
+static WINTUN_START_SESSION_FUNC *WintunStartSession;
+static WINTUN_END_SESSION_FUNC *WintunEndSession;
+static WINTUN_GET_READ_WAIT_EVENT_FUNC *WintunGetReadWaitEvent;
+static WINTUN_RECEIVE_PACKET_FUNC *WintunReceivePacket;
+static WINTUN_RELEASE_RECEIVE_PACKET_FUNC *WintunReleaseReceivePacket;
+static WINTUN_ALLOCATE_SEND_PACKET_FUNC *WintunAllocateSendPacket;
+static WINTUN_SEND_PACKET_FUNC *WintunSendPacket;
 
 static uv_once_t wintunInit;
 static HMODULE WINTUN;
 
 static MIB_IPFORWARD_ROW2 default_rt;
 
-static void InitializeWintun(void)
-{
+static void CALLBACK WintunLogger(_In_ WINTUN_LOGGER_LEVEL Level, _In_ DWORD64 Timestamp, _In_z_ const WCHAR *LogLine) {
+    switch (Level) {
+        case WINTUN_LOG_INFO:
+            ZITI_LOG(INFO, "%ls", LogLine);
+            break;
+        case WINTUN_LOG_WARN:
+            ZITI_LOG(WARN, "%ls", LogLine);
+            break;
+        case WINTUN_LOG_ERR:
+            ZITI_LOG(ERROR, "%ls", LogLine);
+            break;
+        default:
+            return;
+    }
+}
+
+static void InitializeWintun(void) {
     HMODULE Wintun =
             LoadLibraryExW(L"wintun.dll", NULL, LOAD_LIBRARY_SEARCH_APPLICATION_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32);
-    if (!Wintun)
+    if (!Wintun) {
+        DWORD error = GetLastError();
+        fprintf(stderr, "Failed to load wintun.dll. Error code: %lu\n", error);
         return;
-#define X(Name, Type) ((Name = (Type)GetProcAddress(Wintun, #Name)) == NULL)
-    if (X(WintunCreateAdapter, WINTUN_CREATE_ADAPTER_FUNC) ||
-        X(WintunDeleteAdapter, WINTUN_DELETE_ADAPTER_FUNC) ||
-        X(WintunDeletePoolDriver, WINTUN_DELETE_POOL_DRIVER_FUNC) ||
-        X(WintunEnumAdapters, WINTUN_ENUM_ADAPTERS_FUNC) ||
-        X(WintunFreeAdapter, WINTUN_FREE_ADAPTER_FUNC) ||
-        X(WintunOpenAdapter, WINTUN_OPEN_ADAPTER_FUNC) ||
-        X(WintunGetAdapterLUID, WINTUN_GET_ADAPTER_LUID_FUNC) ||
-        X(WintunGetAdapterName, WINTUN_GET_ADAPTER_NAME_FUNC) ||
-        X(WintunSetAdapterName, WINTUN_SET_ADAPTER_NAME_FUNC) ||
-        X(WintunGetRunningDriverVersion, WINTUN_GET_RUNNING_DRIVER_VERSION_FUNC) ||
-        X(WintunSetLogger, WINTUN_SET_LOGGER_FUNC) ||
-        X(WintunStartSession, WINTUN_START_SESSION_FUNC) ||
-        X(WintunEndSession, WINTUN_END_SESSION_FUNC) ||
-        X(WintunGetReadWaitEvent, WINTUN_GET_READ_WAIT_EVENT_FUNC) ||
-    X(WintunReceivePacket, WINTUN_RECEIVE_PACKET_FUNC) ||
-    X(WintunReleaseReceivePacket, WINTUN_RELEASE_RECEIVE_PACKET_FUNC) ||
-    X(WintunAllocateSendPacket, WINTUN_ALLOCATE_SEND_PACKET_FUNC) ||
-    X(WintunSendPacket, WINTUN_SEND_PACKET_FUNC))
-#undef X
-    {
-        DWORD LastError = GetLastError();
-        FreeLibrary(Wintun);
-        SetLastError(LastError);
-        Wintun = NULL;
     }
 
-    WINTUN = Wintun;
+#define X(Name) \
+    if ((*(FARPROC *)&Name = GetProcAddress(Wintun, #Name)) == NULL) \
+    { \
+        DWORD error = GetLastError(); \
+        fprintf(stderr, "Failed to get address of %s. Error code: %lu\n", #Name, error); \
+        FreeLibrary(Wintun); \
+        return; \
+    }
+
+    X(WintunCreateAdapter)
+    X(WintunCloseAdapter)
+    X(WintunOpenAdapter)
+    X(WintunGetAdapterLUID)
+    X(WintunGetRunningDriverVersion)
+    X(WintunDeleteDriver)
+    X(WintunSetLogger)
+    X(WintunStartSession)
+    X(WintunEndSession)
+    X(WintunGetReadWaitEvent)
+    X(WintunReceivePacket)
+    X(WintunReleaseReceivePacket)
+    X(WintunAllocateSendPacket)
+    X(WintunSendPacket)
+
+#undef X
+
+    WINTUN =  Wintun;
+    WintunSetLogger(WintunLogger);
 }
 
 static bool flush_dns() {
@@ -161,6 +174,13 @@ static bool flush_dns() {
     return result;
 }
 
+static WINTUN_ADAPTER_HANDLE adapter = NULL;
+
+void cleanup_resources() {
+    if (adapter) WintunCloseAdapter(adapter);
+    if (WINTUN) FreeLibrary(WINTUN);
+}
+
 netif_driver tun_open(struct uv_loop_s *loop, uint32_t tun_ip, const char *cidr, char *error, size_t error_len) {
     if (error != NULL) {
         memset(error, 0, error_len * sizeof(char));
@@ -181,26 +201,41 @@ netif_driver tun_open(struct uv_loop_s *loop, uint32_t tun_ip, const char *cidr,
         }
         return NULL;
     }
-    cleanup_adapters(ZITI_TUN);
     flush_dns();
 
-    BOOL rr;
-    GUID adapterGuid;
-    IIDFromString(ZITI_TUN_GUID, &adapterGuid);
-    WINTUN_ADAPTER_HANDLE adapter = WintunOpenAdapter(L"Ziti", ZITI_TUN);
-    if (adapter) {
-        WintunDeleteAdapter(adapter, true, &rr);
+    int tun_num = 0;
+    swprintf(tun->name, MAX_ADAPTER_NAME, L"%ls%d", ZITI_TUN_NAME_BASE, tun_num);
+    WINTUN_ADAPTER_HANDLE found = WintunOpenAdapter(tun->name);
+    while (found) {
+        tun_num++;
+        WintunCloseAdapter(found); // already exists. increment and try again
+        if (tun_num > 15) {
+            char* msg = "TOO MANY TUN DEVICES?";
+            size_t msg_len = strlen(msg);
+            snprintf(error, msg_len, "%s", msg);
+            return NULL;
+        }
+        swprintf(tun->name, MAX_ADAPTER_NAME, L"%ls%d", ZITI_TUN_NAME_BASE, tun_num);
+        found = WintunOpenAdapter(tun->name);
     }
 
-    tun->adapter = WintunCreateAdapter(L"Ziti", ZITI_TUN, &adapterGuid, NULL);
+
+    tun->adapter = WintunCreateAdapter(tun->name, L"OpenZiti", NULL); // Wintun adds "Tunnel" so this will be "OpenZiti Tunnel"
     if (!tun->adapter) {
         DWORD err = GetLastError();
-        snprintf(error, error_len, "Failed to create adapter: %d", err);
+        snprintf(error, error_len, "Failed to create adapter: %ld", err);
         return NULL;
     }
 
+    adapter = tun->adapter;
     WintunGetAdapterLUID(tun->adapter, &tun->luid);
-    WintunGetAdapterName(tun->adapter, tun->name);
+
+    if (atexit(cleanup_resources) != 0) {
+        char* msg = "Cannot set exit function";
+        size_t msg_len = strlen(msg);
+        snprintf(error, msg_len, "%s", msg);
+        return NULL;
+    }
 
     NotifyIpInterfaceChange(AF_INET, if_change_cb, tun, TRUE, &if_change_handle);
 
@@ -272,8 +307,7 @@ static int tun_close(struct netif_handle_s *tun) {
     }
 
     if (tun->adapter) {
-        WintunDeleteAdapter(tun->adapter, true, NULL);
-        WintunFreeAdapter(tun->adapter);
+        WintunCloseAdapter(tun->adapter);
         tun->adapter = NULL;
     }
     free(tun);
@@ -490,39 +524,29 @@ int set_dns(netif_handle tun, uint32_t dns_ip) {
     char cmd[1024];
     char ip[4];
     memcpy(ip, &dns_ip, 4);
+    wchar_t* tun_name = get_tun_name(tun);
     snprintf(cmd, sizeof(cmd),
              "powershell -Command Set-DnsClientServerAddress "
              "-InterfaceAlias %ls "
              "-ServerAddress %d.%d.%d.%d",
-             tun->name, ip[0], ip[1], ip[2], ip[3]);
+             tun_name, ip[0], ip[1], ip[2], ip[3]);
+    //free(tun_name);
     ZITI_LOG(INFO, "executing '%s'", cmd);
     int rc = system(cmd);
     if (rc != 0) {
-        ZITI_LOG(WARN, "set DNS: %d(err=%d)", rc, GetLastError());
+        ZITI_LOG(WARN, "set DNS: %d(err=%ld)", rc, GetLastError());
     }
     return rc;
 }
 
-char* get_tun_name(netif_handle tun) {
+wchar_t* get_tun_name(netif_handle tun) {
     return tun->name;
 }
 
 static BOOL CALLBACK
 tun_delete_cb(_In_ WINTUN_ADAPTER_HANDLE adapter, _In_ LPARAM param) {
-    wchar_t name[32];
-    WintunGetAdapterName(adapter, name);
-    wchar_t *tun_name = (wchar_t *) param;
-    if (wcsncmp(name, tun_name, wcslen(tun_name)) == 0) {
-        WintunDeleteAdapter(adapter, true, NULL);
-        ZITI_LOG(INFO, "Deleted wintun adapter %ls", name);
-    } else {
-        ZITI_LOG(INFO, "Not deleting wintun adapter %ls, name didn't match %ls", name, tun_name);
-    }
+    ZITI_LOG(INFO, "Deleting wintun adapter");
+    WintunCloseAdapter(adapter);
     // the call back should always return value greater than zero, so the cleanup function will continue
     return 1;
-}
-
-static void cleanup_adapters(wchar_t *tun_name) {
-    ZITI_LOG(INFO, "Cleaning up orphan wintun adapters");
-    WintunEnumAdapters(L"Ziti", tun_delete_cb, (LPARAM) tun_name);
 }
