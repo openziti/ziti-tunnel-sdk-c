@@ -601,13 +601,14 @@ static void ziti_conn_close_cb(ziti_connection zc) {
         ZITI_LOG(WARN, "null io. underlay connection possibly leaked. ziti_conn[%p]", zc);
         return;
     }
+    ziti_conn_set_data(zc, NULL);
+    ZITI_LOG(VERBOSE, "nulled data for ziti_conn[%p]", zc);
     if (io->ziti_io) {
         free(io->ziti_io);
+        io->ziti_io = NULL;
     }
     ziti_tunneler_close(io->tnlr_io);
     free(io);
-    ziti_conn_set_data(zc, NULL);
-    ZITI_LOG(VERBOSE, "nulled data for ziti_conn[%p]", zc);
 }
 
 #define RESOLVE_APP_DATA "{\"connType\":\"resolver\"}"

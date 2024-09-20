@@ -254,6 +254,7 @@ int tunneler_tcp_close(struct tcp_pcb *pcb) {
     }
     tcp_arg(pcb, NULL);
     tcp_recv(pcb, NULL);
+    tcp_err(pcb, NULL);
     if (pcb->state < ESTABLISHED) {
         TNL_LOG(DEBUG, "closing connection before handshake complete. sending RST to client");
         tcp_abandon(pcb, 1);
