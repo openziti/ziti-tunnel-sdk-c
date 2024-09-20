@@ -174,7 +174,7 @@ static bool flush_dns() {
     return result;
 }
 
-WINTUN_ADAPTER_HANDLE adapter = NULL;
+static WINTUN_ADAPTER_HANDLE adapter = NULL;
 
 void cleanup_resources() {
     if (adapter) WintunCloseAdapter(adapter);
@@ -231,7 +231,6 @@ netif_driver tun_open(struct uv_loop_s *loop, uint32_t tun_ip, const char *cidr,
     WintunGetAdapterLUID(tun->adapter, &tun->luid);
 
     if (atexit(cleanup_resources) != 0) {
-        //fprintf(stderr, "Cannot set exit function\n");
         char* msg = "Cannot set exit function";
         size_t msg_len = strlen(msg);
         snprintf(error, msg_len, "%s", msg);
@@ -308,8 +307,7 @@ static int tun_close(struct netif_handle_s *tun) {
     }
 
     if (tun->adapter) {
-        //xx WintunDeleteAdapter(tun->adapter, true, NULL);
-        //xx WintunFreeAdapter(tun->adapter);
+        WintunCloseAdapter(tun->adapter);
         tun->adapter = NULL;
     }
     free(tun);
