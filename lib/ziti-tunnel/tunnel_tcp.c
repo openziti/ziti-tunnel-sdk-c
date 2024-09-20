@@ -184,10 +184,10 @@ static void on_tcp_client_err(void *io_ctx, err_t err) {
         const char *client = "<unknown>";
         if (io->tnlr_io != NULL) {
             client = io->tnlr_io->client;
+            // null our pcb so tunneler_tcp_close doesn't try to close it.
+            io->tnlr_io->tcp = NULL;
         }
         TNL_LOG(ERR, "client=%s err=%d, terminating connection", client, err);
-        // null our pcb so tunneler_tcp_close doesn't try to close it.
-        io->tnlr_io->tcp = NULL;
         io->close_fn(io->ziti_io);
     }
 }
@@ -276,14 +276,18 @@ void tunneler_tcp_dial_completed(struct io_ctx_s *io, bool ok) {
     }
 
     struct tcp_pcb *pcb = io->tnlr_io->tcp;
-    tcp_arg(pcb, io);
+    if (pcb == NULL) {
+        TNL_LOG(ERR, "tcp connection with %s is no longer viable. closing ziti connection", io->tnlr_io->client);
+        io->close_fn(io->ziti_io);
+        return;
+    }
+
     if (!ok) {
         TNL_LOG(VERBOSE, "ziti dial failed. not sending SYN to client.");
         return;
     }
     ip_set_option(pcb, SOF_KEEPALIVE);
     tcp_recv(pcb, on_tcp_client_data);
-    tcp_err(pcb, on_tcp_client_err);
 
     /* Send a SYN|ACK together with the MSS option. */
     err_t rc = tcp_enqueue_flags(pcb, TCP_SYN | TCP_ACK);
@@ -426,6 +430,10 @@ u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     io->write_fn = intercept_ctx->write_fn ? intercept_ctx->write_fn : tnlr_ctx->opts.ziti_write;
     io->close_write_fn = intercept_ctx->close_write_fn ? intercept_ctx->close_write_fn : tnlr_ctx->opts.ziti_close_write;
     io->close_fn = intercept_ctx->close_fn ? intercept_ctx->close_fn : tnlr_ctx->opts.ziti_close;
+
+    // set error cb and link io context so we can tell if there was a tcp error before the ziti dial completed
+    tcp_err(npcb, on_tcp_client_err);
+    tcp_arg(npcb, io);
 
     TNL_LOG(DEBUG, "intercepted address[%s] client[%s] service[%s]", io->tnlr_io->intercepted, io->tnlr_io->client,
             intercept_ctx->service_name);
