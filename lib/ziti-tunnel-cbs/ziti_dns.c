@@ -240,10 +240,20 @@ void* on_dns_client(const void *app_intercept_ctx, io_ctx_t *io) {
     return clt;
 }
 
+static void remove_dns_req(void *p) {
+    struct dns_req *req = p;
+    if (req) {
+        model_map_remove_key(&ziti_dns.requests, &req->id, sizeof(req->id));
+        free_dns_req(req);
+    }
+}
+
 int on_dns_close(void *dns_io_ctx) {
     ZITI_LOG(TRACE, "DNS client close");
     ziti_dns_client_t *clt = dns_io_ctx;
-    model_map_clear(&clt->active_reqs, NULL);
+    // we may be here due to udp timeout, and reqs may have been sent to upstream.
+    // remove reqs from ziti_dns to prevent completion (with invalid io_ctx) if upstream should respond after udp timeout.
+    model_map_clear(&clt->active_reqs, remove_dns_req);
     ziti_tunneler_close(clt->io_ctx->tnlr_io);
     free(clt->io_ctx);
     free(dns_io_ctx);
