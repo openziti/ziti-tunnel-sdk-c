@@ -1304,6 +1304,8 @@ static void on_event(const base_event *ev) {
                                             if(svc->AllowedSourceAddresses && svc->AllowedSourceAddresses[0] != NULL){
                                                 diverter_update(ip, prefix_len,  low_port, high_port, svc->Protocols[j], svc->Id, "-D");
                                                 bind_route(svc->Addresses[x]->IP, svc->Addresses[x]->Prefix, ztun->handle->name);
+                                            }else if(firewall){
+                                                diverter_update(ip, prefix_len,  low_port, high_port, svc->Protocols[j], svc->Id, "-D");
                                             }
                                         }
                                     }
@@ -1359,6 +1361,8 @@ static void on_event(const base_event *ev) {
                                             if(svc->AllowedSourceAddresses && svc->AllowedSourceAddresses[0] != NULL){
                                                 diverter_update(ip, prefix_len,  low_port, high_port, svc->Protocols[j], svc->Id, "-I");
                                                 unbind_route(svc->Addresses[x]->IP, svc->Addresses[x]->Prefix, ztun->handle->name);
+                                            }else if(firewall){
+                                                diverter_update(ip, prefix_len,  low_port, high_port, svc->Protocols[j], svc->Id, "-I");
                                             }
                                         }
                                     }
