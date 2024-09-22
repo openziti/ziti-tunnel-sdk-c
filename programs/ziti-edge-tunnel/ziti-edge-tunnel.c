@@ -29,6 +29,9 @@
 #include "instance-config.h"
 #include <config-utils.h>
 #include <service-utils.h>
+#include <sys/wait.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 #if __APPLE__ && __MACH__
 #include "netif_driver/darwin/utun.h"
@@ -78,8 +81,14 @@ static void scm_service_stop_event(uv_loop_t *loop, void *arg);
 static void stop_tunnel_and_cleanup();
 static bool is_host_only();
 static void run_tunneler_loop(uv_loop_t* ziti_loop);
+static void unbind_route(char* ip, int prefix, char *dev);
+void bind_route(char* ip, int prefix_len, char *dev);
+void bind_diverter_route(char *ip, int prefix_len);
+void unbind_diverter_route(char *ip, int prefix_len);
+void diverter_binding_flush();
 static tunneler_context initialize_tunneler(netif_driver tun, uv_loop_t* ziti_loop);
-
+static void diverter_update(char *ip, char *mask, char *lowport, char *highport, char *protocol, char *service_id, char *action);
+static netif_driver ztun;
 #if _WIN32
 static void move_config_from_previous_windows_backup(uv_loop_t *loop);
 #define LAST_CHAR_IPC_CMD '\n'
@@ -136,6 +145,9 @@ static char *configured_cidr = NULL;
 static char *configured_log_level = NULL;
 static char *configured_proxy = NULL;
 static char *config_dir = NULL;
+static char *diverterIf = NULL;
+static bool diverter = false;
+static bool firewall = false; 
 
 static uv_pipe_t cmd_server;
 static uv_pipe_t event_server;
@@ -1268,7 +1280,41 @@ static void on_event(const base_event *ev) {
                     if (svc == NULL) {
                         svc = get_tunnel_service(id, svc_ev->removed_services[svc_idx]);
                     }
+#if __linux__
+                    if(svc && diverter){
+                        if(svc->Permissions.Bind){
+                            for(int x = 0; svc->AllowedSourceAddresses && (svc->AllowedSourceAddresses[x] != NULL); x++){
+                                if(!svc->AllowedSourceAddresses[x]->IsHost){
+                                    unbind_diverter_route(svc->AllowedSourceAddresses[x]->IP, svc->AllowedSourceAddresses[x]->Prefix);
+                                }
+                            }
+                        }
+                        if(svc->Permissions.Dial){
+                            for(int x = 0; svc->Addresses && (svc->Addresses[x] != NULL); x++){
+                                if(!svc->Addresses[x]->IsHost){
+                                    char *ip = svc->Addresses[x]->IP;
+                                    char prefix_len[4];
+                                    sprintf(prefix_len, "%d", svc->Addresses[x]->Prefix);
+                                    for(int i =  0; (svc->Ports != NULL) && (svc->Ports[i] != NULL); i++){
+                                        char low_port[6];
+                                        char high_port[6];
+                                        sprintf(low_port, "%d", svc->Ports[i]->Low);
+                                        sprintf(high_port,"%d", svc->Ports[i]->High);
+                                        for(int j =  0; (svc->Protocols != NULL) && (svc->Protocols[j] != NULL); j++){
+                                            if(svc->AllowedSourceAddresses && svc->AllowedSourceAddresses[0] != NULL){
+                                                diverter_update(ip, prefix_len,  low_port, high_port, svc->Protocols[j], svc->Id, "-D");
+                                                bind_route(svc->Addresses[x]->IP, svc->Addresses[x]->Prefix, ztun->handle->name);
+                                            }
+                                        }
+                                    }
+                                    
+                                }
+                            }
+                        }
+                    }
+#endif
                     ZITI_LOG(INFO, "=============== service event (removed) - %s:%s ===============", svc->Name, svc->Id);
+
 #if _WIN32
                     if (svc->Addresses != NULL) {
                         for (int i = 0; svc->Addresses[i]; i++) {
@@ -1283,7 +1329,8 @@ static void on_event(const base_event *ev) {
                 }
             }
 
-            if (svc_ev->added_services != NULL) {
+            if (svc_ev->added_services != NULL) 
+            {
                 int svc_array_length = 0;
                 for (zs = svc_ev->added_services; *zs != NULL; zs++) {
                     svc_array_length++;
@@ -1292,7 +1339,42 @@ static void on_event(const base_event *ev) {
                 for (int svc_idx = 0; svc_ev->added_services[svc_idx]; svc_idx++) {
                     tunnel_service *svc = get_tunnel_service(id, svc_ev->added_services[svc_idx]);
                     svc_event.AddedServices[svc_idx] = svc;
+
                     ZITI_LOG(INFO, "=============== service event (added) - %s:%s ===============", svc->Name, svc->Id);
+#if __linux__
+                    if(svc && diverter){
+                        if(svc->Permissions.Dial){
+                            ztun->commit_routes(ztun->handle, global_loop_ref);
+                            for(int x = 0; svc->Addresses && (svc->Addresses[x] != NULL); x++){
+                                if(!svc->Addresses[x]->IsHost){
+                                    char *ip = svc->Addresses[x]->IP;
+                                    char prefix_len[4];
+                                    sprintf(prefix_len, "%d", svc->Addresses[x]->Prefix);
+                                    for(int i =  0; (svc->Ports != NULL) && (svc->Ports[i] != NULL); i++){
+                                        char low_port[6];
+                                        char high_port[6];
+                                        sprintf(low_port, "%d", svc->Ports[i]->Low);
+                                        sprintf(high_port,"%d", svc->Ports[i]->High);
+                                        for(int j =  0; (svc->Protocols != NULL) && (svc->Protocols[j] != NULL); j++){
+                                            if(svc->AllowedSourceAddresses && svc->AllowedSourceAddresses[0] != NULL){
+                                                diverter_update(ip, prefix_len,  low_port, high_port, svc->Protocols[j], svc->Id, "-I");
+                                                unbind_route(svc->Addresses[x]->IP, svc->Addresses[x]->Prefix, ztun->handle->name);
+                                            }
+                                        }
+                                    }
+                                    
+                                }
+                            }
+                        }
+                        else if(svc->Permissions.Bind){
+                            for(int x = 0; svc->AllowedSourceAddresses && (svc->AllowedSourceAddresses[x] != NULL); x++){
+                                if(!svc->AllowedSourceAddresses[x]->IsHost){
+                                     bind_diverter_route(svc->AllowedSourceAddresses[x]->IP, svc->AllowedSourceAddresses[x]->Prefix);
+                                }
+                            }
+                        }
+                    }
+#endif
 #if _WIN32
                     if (svc->Addresses != NULL) {
                         for (int i = 0; svc->Addresses[i]; i++) {
@@ -1571,7 +1653,6 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
         ZITI_LOG(ERROR, "failed to open network interface: %s", tun_error);
         return 1;
     }
-
 #if _WIN32
     bool nrpt_effective = is_nrpt_policies_effective(get_dns_ip());
     if (!nrpt_effective || get_add_dns_flag()) {
@@ -1591,7 +1672,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
 #endif
 
     tunneler = initialize_tunneler(tun, ziti_loop);
-
+    
     ip_addr_t dns_ip4 = IPADDR4_INIT(dns_ip);
     ziti_dns_setup(tunneler, ipaddr_ntoa(&dns_ip4), ip_range);
     if (dns_upstream) {
@@ -1608,6 +1689,12 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
             ziti_dns_set_upstream(ziti_loop, dns_upstream, 0);
         }
     }
+    #if __linux__
+        if(diverter && tun){
+            ztun = tun;
+            set_diverter(tun->handle->name);
+        }
+    #endif
     run_tunneler_loop(ziti_loop);
     if (tun->close) {
         tun->close(tun->handle);
@@ -1816,6 +1903,8 @@ static struct option run_options[] = {
         { "dns-ip-range", required_argument, NULL, 'd'},
         { "dns-upstream", required_argument, NULL, 'u'},
         { "proxy", required_argument, NULL, 'x' },
+        { "diverter", required_argument, NULL, 'D' },
+        { "diverterFw", required_argument, NULL, 'f' },
 };
 
 static struct option run_host_options[] = {
@@ -1882,9 +1971,18 @@ static int run_opts(int argc, char *argv[]) {
     optind = 0;
     bool identity_provided = false;
 
-    while ((c = getopt_long(argc, argv, "i:I:v:r:d:u:x:",
+    while ((c = getopt_long(argc, argv, "i:I:v:r:d:u:x:D:f:",
                             run_options, &option_index)) != -1) {
         switch (c) {
+            case 'D':
+                diverter = true;
+                diverterIf = optarg;
+                break;
+            case 'f':
+                diverter = true;
+                firewall = true;
+                diverterIf = optarg;
+                break;
             case 'i': {
                 struct cfg_instance_s *inst = calloc(1, sizeof(struct cfg_instance_s));
                 inst->cfg = strdup(optarg);
@@ -1995,6 +2093,669 @@ static void interrupt_handler(int sig) {
     ziti_tunnel_async_send(tunneler, scm_service_stop_event, "interrupted");
 }
 #endif
+
+void diverter_update(char *ip, char *mask, char *lowport, char *highport, char *protocol, char *service_id, char *action){
+    unsigned short random_port = 0;
+    unsigned char count = 0;
+    random_port = htons(1024 + rand() % (65535 - 1023));
+    char tproxy_port[6];
+    sprintf(tproxy_port, "%u", random_port);
+    if (access("/usr/sbin/zfw", F_OK) != 0)
+    {
+        ZITI_LOG(INFO,"diverter not installed: Cannot find /usr/sbin/zfw");
+        return;
+    }
+    pid_t pid;
+    ZITI_LOG(INFO,"%s -c %s -m %s -l %s -h %s -t %s -p %s -s %s", action,ip, mask, lowport, highport, tproxy_port, protocol,service_id);
+    int o_std_out = dup(STDOUT_FILENO);
+    int o_std_err = dup(STDERR_FILENO);
+    int fd = open("/dev/null", O_WRONLY);
+    if (fd == -1){
+        return; 
+    }
+    dup2(fd, STDOUT_FILENO);
+    dup2(fd, STDERR_FILENO);
+    close(fd);
+    char *const parmList[17] = {"/usr/sbin/zfw", action, "-c", ip, "-m", mask, "-l",
+     lowport, "-h", highport, "-t", tproxy_port, "-p", protocol, "-s", service_id, NULL};
+    if ((pid = fork()) == -1){
+        perror("fork error: can't spawn bind");
+    }else if (pid == 0) {
+       execv("/usr/sbin/zfw", parmList);
+       printf("execv error: unknown error binding\n");
+    }else{
+        int status =0;
+        if(!(waitpid(pid, &status, 0) > 0)){
+            if(WIFEXITED(status) && !WEXITSTATUS(status)){
+                printf("diverter %s action for : %s set\n", action,  ip);
+            }
+        }
+    }
+    dup2(o_std_out, STDOUT_FILENO);
+    dup2(o_std_err, STDERR_FILENO);
+    close(o_std_out);
+    close(o_std_err);
+}
+
+void bind_route(char* ip, int prefix_len, char *dev)
+{
+    char *cidr_block[19];
+    sprintf(cidr_block, "%s/%d", ip, prefix_len);
+    ZITI_LOG(INFO,"restoring route to %s via dev %s", cidr_block, dev);
+    pid_t pid;
+    int o_std_out = dup(STDOUT_FILENO);
+    int o_std_err = dup(STDERR_FILENO);
+    int fd = open("/dev/null", O_WRONLY);
+    if (fd == -1){
+        return; 
+    }
+    dup2(fd, STDOUT_FILENO);
+    dup2(fd, STDERR_FILENO);
+    close(fd);
+    char *const parmList[] = {"/usr/sbin/ip", "route", "add", cidr_block, "dev", dev, "scope", "link", NULL};
+    if ((pid = fork()) == -1)
+    {
+        perror("fork error: can't spawn bind");
+    }
+    else if (pid == 0)
+    {
+        execv("/usr/sbin/ip", parmList);
+        printf("execv error: unknown error rebinding route");
+    }else{
+        int status =0;
+        if(!(waitpid(pid, &status, 0) > 0)){
+            if(WIFEXITED(status) && !WEXITSTATUS(status)){
+                printf("bound %s to dev %s\n", cidr_block, dev);
+            }
+        }
+    }
+    dup2(o_std_out, STDOUT_FILENO);
+    dup2(o_std_err, STDERR_FILENO);
+    close(o_std_out);
+    close(o_std_err); 
+}
+
+void unbind_route(char* ip, int prefix_len, char *dev)
+{
+    char *cidr_block[19];
+    sprintf(cidr_block, "%s/%d", ip, prefix_len);
+    ZITI_LOG(INFO,"unbinding route to %s via dev %s for transparency support", cidr_block, dev);
+    pid_t pid;
+    int o_std_out = dup(STDOUT_FILENO);
+    int o_std_err = dup(STDERR_FILENO);
+    int fd = open("/dev/null", O_WRONLY);
+    if (fd == -1){
+        return; 
+    }
+    dup2(fd, STDOUT_FILENO);
+    dup2(fd, STDERR_FILENO);
+    close(fd);
+    char *const parmList[] = {"/usr/sbin/ip", "route", "delete", cidr_block, "dev", dev, "scope", "link", NULL};
+    if ((pid = fork()) == -1)
+    {
+        perror("fork error: can't spawn unbind");
+    }
+    else if (pid == 0)
+    {
+        execv("/usr/sbin/ip", parmList);
+        printf("execv error: unknown error unbinding route");
+    }else{
+        int status =0;
+        if(!(waitpid(pid, &status, 0) > 0)){
+            if(WIFEXITED(status) && !WEXITSTATUS(status)){
+                printf("unbound %s from dev %s\n", cidr_block, dev);
+            }
+        }
+    }
+    dup2(o_std_out, STDOUT_FILENO);
+    dup2(o_std_err, STDERR_FILENO);
+    close(o_std_out);
+    close(o_std_err); 
+}
+
+void diverter_quit(){
+    pid_t pid;
+    int o_std_out = dup(STDOUT_FILENO);
+    int o_std_err = dup(STDERR_FILENO);
+    int fd = open("/dev/null", O_WRONLY);
+    if (fd == -1){
+        return; 
+    }
+    dup2(fd, STDOUT_FILENO);
+    dup2(fd, STDERR_FILENO);
+    close(fd);
+    char *const parmList[] = {"/usr/sbin/zfw", "-Q", NULL};
+    if ((pid = fork()) == -1)
+    {
+        perror("fork error: can't spawn bind");
+    }
+    else if (pid == 0)
+    {
+        execv("/usr/sbin/zfw", parmList);
+        printf("execv error: unknown error removing diverter");
+    }else{
+        int status =0;
+        if(!(waitpid(pid, &status, 0) < 0)){
+            if(!(WIFEXITED(status) && !WEXITSTATUS(status))){
+                printf("Unable to remove diverter from: %s\n", diverterIf);
+            }
+        }
+    }
+    dup2(o_std_out, STDOUT_FILENO);
+    dup2(o_std_err, STDERR_FILENO);
+    close(o_std_out);
+    close(o_std_err); 
+}
+
+void set_diverter_in(){
+    ZITI_LOG(INFO,"diverter tc inbound enabled on %s", diverterIf);
+    pid_t pid;
+    int o_std_out = dup(STDOUT_FILENO);
+    int o_std_err = dup(STDERR_FILENO);
+    int fd = open("/dev/null", O_WRONLY);
+    if (fd == -1){
+        return; 
+    }
+    dup2(fd, STDOUT_FILENO);
+    dup2(fd, STDERR_FILENO);
+    close(fd);
+    char *const parmList[] = {"/usr/sbin/zfw", "-X", diverterIf, "-O",  "/opt/openziti/bin/zfw_tc_ingress.o", "-z", "ingress", NULL};
+    if ((pid = fork()) == -1)
+    {
+        perror("fork error: can't spawn bind");
+    }
+    else if (pid == 0)
+    {
+        execv("/usr/sbin/zfw", parmList);
+        printf("execv error: unknown error adding diverter ingress filters");
+    }else{
+        int status =0;
+
+        if(!(waitpid(pid, &status, 0) < 0)){
+            if(!(WIFEXITED(status) && !WEXITSTATUS(status))){
+                printf("zfw not set inbound on dev %s\n", diverterIf);
+            }
+        }
+    }
+    dup2(o_std_out, STDOUT_FILENO);
+    dup2(o_std_err, STDERR_FILENO);
+    close(o_std_out);
+    close(o_std_err); 
+}
+
+void bind_diverter_route(char *ip, int prefix_len){
+    char mask[4];
+    sprintf(mask, "%d", prefix_len);
+    ZITI_LOG(INFO,"binding transparency route to %s/%s on lo", ip, mask);
+    pid_t pid;
+    int o_std_out = dup(STDOUT_FILENO);
+    int o_std_err = dup(STDERR_FILENO);
+    int fd = open("/dev/null", O_WRONLY);
+    if (fd == -1){
+        return; 
+    }
+    dup2(fd, STDOUT_FILENO);
+    dup2(fd, STDERR_FILENO);
+    close(fd);
+    char *const parmList[] = {"/usr/sbin/zfw", "-B", ip, "-m", mask, NULL};
+    if ((pid = fork()) == -1)
+    {
+        ZITI_LOG(DEBUG, "fork error: can't spawn bind");
+    }
+    else if (pid == 0)
+    {
+        execv("/usr/sbin/zfw", parmList);
+        ZITI_LOG(DEBUG,"error binding %s/%s to lo\n", ip, mask);
+    }else{
+        int status =0;
+        if(!(waitpid(pid, &status, 0) < 0)){
+            if(!(WIFEXITED(status) && !WEXITSTATUS(status))){
+                ZITI_LOG(DEBUG,"error binding %s/%s to lo\n", ip, mask);
+            }
+        }
+    }
+    dup2(o_std_out, STDOUT_FILENO);
+    dup2(o_std_err, STDERR_FILENO);
+    close(o_std_out);
+    close(o_std_err); 
+}
+
+void unbind_diverter_route(char *ip, int prefix_len){
+    char mask[4];
+    sprintf(mask, "%d", prefix_len);
+    ZITI_LOG(INFO,"unbinding transparency route %s/%s from lo", ip, mask);
+    pid_t pid;
+    int o_std_out = dup(STDOUT_FILENO);
+    int o_std_err = dup(STDERR_FILENO);
+    int fd = open("/dev/null", O_WRONLY);
+    if (fd == -1){
+        return; 
+    }
+    dup2(fd, STDOUT_FILENO);
+    dup2(fd, STDERR_FILENO);
+    close(fd);
+    char *const parmList[] = {"/usr/sbin/zfw", "-J", ip, "-m", mask, NULL};
+    if ((pid = fork()) == -1)
+    {
+        ZITI_LOG(DEBUG, "fork error: can't spawn unbind");
+    }
+    else if (pid == 0)
+    {
+        execv("/usr/sbin/zfw", parmList);
+        ZITI_LOG(DEBUG,"error unbinding %s/%s from lo\n", ip, mask);
+    }else{
+        int status =0;
+        if(!(waitpid(pid, &status, 0) < 0)){
+            if(!(WIFEXITED(status) && !WEXITSTATUS(status))){
+                ZITI_LOG(DEBUG,"error unbinding %s/%s from lo\n", ip, mask);
+            }
+        }
+    }
+    dup2(o_std_out, STDOUT_FILENO);
+    dup2(o_std_err, STDERR_FILENO);
+    close(o_std_out);
+    close(o_std_err); 
+}
+
+void diverter_binding_flush(){
+    ZITI_LOG(INFO,"unbinding transparency routes from lo");
+    pid_t pid;
+    int o_std_out = dup(STDOUT_FILENO);
+    int o_std_err = dup(STDERR_FILENO);
+    int fd = open("/dev/null", O_WRONLY);
+    if (fd == -1){
+        return; 
+    }
+    dup2(fd, STDOUT_FILENO);
+    dup2(fd, STDERR_FILENO);
+    close(fd);
+    char *const parmList[] = {"/usr/sbin/zfw", "-F", "-j", NULL};
+    if ((pid = fork()) == -1)
+    {
+        ZITI_LOG(DEBUG, "fork error: can't spawn unbind");
+    }
+    else if (pid == 0)
+    {
+        execv("/usr/sbin/zfw", parmList);
+        ZITI_LOG(DEBUG,"error flushing diverter routes from lo\n");
+    }else{
+        int status =0;
+        if(!(waitpid(pid, &status, 0) < 0)){
+            if(!(WIFEXITED(status) && !WEXITSTATUS(status))){
+                ZITI_LOG(DEBUG,"error flushing diverter routes");
+            }
+        }
+    }
+    dup2(o_std_out, STDOUT_FILENO);
+    dup2(o_std_err, STDERR_FILENO);
+    close(o_std_out);
+    close(o_std_err); 
+}
+
+void diverter_ingress_flush(){
+    ZITI_LOG(INFO,"flushing diverter intercepts");
+    pid_t pid;
+    int o_std_out = dup(STDOUT_FILENO);
+    int o_std_err = dup(STDERR_FILENO);
+    int fd = open("/dev/null", O_WRONLY);
+    if (fd == -1){
+        return; 
+    }
+    dup2(fd, STDOUT_FILENO);
+    dup2(fd, STDERR_FILENO);
+    close(fd);
+    char *const parmList[] = {"/usr/sbin/zfw", "-F", "-z", "ingress", NULL};
+    if ((pid = fork()) == -1)
+    {
+        ZITI_LOG(DEBUG, "fork error: can't spawn unbind");
+    }
+    else if (pid == 0)
+    {
+        execv("/usr/sbin/zfw", parmList);
+        ZITI_LOG(DEBUG,"error flushing diverter ingress intercepts\n");
+    }else{
+        int status =0;
+        if(!(waitpid(pid, &status, 0) < 0)){
+            if(!(WIFEXITED(status) && !WEXITSTATUS(status))){
+                ZITI_LOG(DEBUG,"error flushing diverter ingress intercepts");
+            }
+        }
+    }
+    dup2(o_std_out, STDOUT_FILENO);
+    dup2(o_std_err, STDERR_FILENO);
+    close(o_std_out);
+    close(o_std_err); 
+}
+
+void set_diverter_out(){
+    ZITI_LOG(INFO,"diverter tc outbound enabled on %s", diverterIf);
+    pid_t pid;
+    int o_std_out = dup(STDOUT_FILENO);
+    int o_std_err = dup(STDERR_FILENO);
+    int fd = open("/dev/null", O_WRONLY);
+    if (fd == -1){
+        return; 
+    }
+    dup2(fd, STDOUT_FILENO);
+    dup2(fd, STDERR_FILENO);
+    close(fd);
+    char *const parmList[] = {"/usr/sbin/zfw", "-X", diverterIf, "-O",  "/opt/openziti/bin/zfw_tc_outbound_track.o", "-z", "egress", NULL};
+    if ((pid = fork()) == -1)
+    {
+        perror("fork error: can't spawn bind");
+    }
+    else if (pid == 0)
+    {
+        execv("/usr/sbin/zfw", parmList);
+        printf("execv error: unknown error adding diverter egress filters");
+    }else{
+        int status =0;
+        if(!(waitpid(pid, &status, 0) < 0)){
+            if(!(WIFEXITED(status) && !WEXITSTATUS(status))){
+                printf("diverter not set outbound on dev %s\n", diverterIf);
+            }
+        }
+    }
+    dup2(o_std_out, STDOUT_FILENO);
+    dup2(o_std_err, STDERR_FILENO);
+    close(o_std_out);
+    close(o_std_err); 
+}
+
+void pass_non_tuple(){
+    pid_t pid;
+    int o_std_out = dup(STDOUT_FILENO);
+    int o_std_err = dup(STDERR_FILENO);
+    int fd = open("/dev/null", O_WRONLY);
+    if (fd == -1){
+        return; 
+    }
+    dup2(fd, STDOUT_FILENO);
+    dup2(fd, STDERR_FILENO);
+    close(fd);
+    char *const parmList[] = {"/usr/sbin/zfw", "-q", diverterIf, NULL};
+    if ((pid = fork()) == -1)
+    {
+        perror("fork error: can't spawn bind");
+    }
+    else if (pid == 0)
+    {
+        execv("/usr/sbin/zfw", parmList);
+        printf("execv error: unknown error removing non-tuple filters");
+    }else{
+        int status =0;
+        if(!(waitpid(pid, &status, 0) < 0)){
+            if(!(WIFEXITED(status) && !WEXITSTATUS(status))){
+                printf("diverter non-tuple firewall not disabled on dev %s\n", diverterIf);
+            }
+        }
+    }
+    dup2(o_std_out, STDOUT_FILENO);
+    dup2(o_std_err, STDERR_FILENO);
+    close(o_std_out);
+    close(o_std_err); 
+}
+
+void enable_ipv6(){
+    pid_t pid;
+    int o_std_out = dup(STDOUT_FILENO);
+    int o_std_err = dup(STDERR_FILENO);
+    int fd = open("/dev/null", O_WRONLY);
+    if (fd == -1){
+        return; 
+    }
+    dup2(fd, STDOUT_FILENO);
+    dup2(fd, STDERR_FILENO);
+    close(fd);
+    char *const parmList[] = {"/usr/sbin/zfw", "-6", diverterIf, NULL};
+    if ((pid = fork()) == -1)
+    {
+        perror("fork error: can't spawn bind");
+    }
+    else if (pid == 0)
+    {
+        execv("/usr/sbin/zfw", parmList);
+        printf("execv error: unknown error enabling ipv6 filters");
+    }else{
+        int status =0;
+        if(!(waitpid(pid, &status, 0) < 0)){
+            if(!(WIFEXITED(status) && !WEXITSTATUS(status))){
+                printf("diverter IPv6 not enabled on dev %s\n", diverterIf);
+            }
+        }
+    }
+    dup2(o_std_out, STDOUT_FILENO);
+    dup2(o_std_err, STDERR_FILENO);
+    close(o_std_out);
+    close(o_std_err); 
+}
+
+void pass_tcp_ipv4(){
+    pid_t pid;
+    int o_std_out = dup(STDOUT_FILENO);
+    int o_std_err = dup(STDERR_FILENO);
+    int fd = open("/dev/null", O_WRONLY);
+    if (fd == -1){
+        return; 
+    }
+    dup2(fd, STDOUT_FILENO);
+    dup2(fd, STDERR_FILENO);
+    close(fd);
+    char *const parmList[] = {"/usr/sbin/zfw", "-I", "-c", "0.0.0.0", "-m", "0", "-l", "1" , "-h", "65535", "-t", "0", "-p", "tcp", NULL};
+    if ((pid = fork()) == -1)
+    {
+        perror("fork error: can't spawn bind");
+    }
+    else if (pid == 0)
+    {
+        execv("/usr/sbin/zfw", parmList);
+        printf("execv error: unknown error binding ipv4 tcp filters");
+    }else{
+        int status =0;
+        if(!(waitpid(pid, &status, 0) < 0)){
+            if(!(WIFEXITED(status) && !WEXITSTATUS(status))){
+                printf("diverter IPv4 TCP firewall not disabled on dev %s\n", diverterIf);
+            }
+        }
+    }
+    dup2(o_std_out, STDOUT_FILENO);
+    dup2(o_std_err, STDERR_FILENO);
+    close(o_std_out);
+    close(o_std_err); 
+}
+
+void pass_udp_ipv4(){
+    pid_t pid;
+    int o_std_out = dup(STDOUT_FILENO);
+    int o_std_err = dup(STDERR_FILENO);
+    int fd = open("/dev/null", O_WRONLY);
+    if (fd == -1){
+        return; 
+    }
+    dup2(fd, STDOUT_FILENO);
+    dup2(fd, STDERR_FILENO);
+    close(fd);
+    char *const parmList[] = {"/usr/sbin/zfw", "-I", "-c", "0.0.0.0", "-m", "0", "-l", "1" , "-h", "65535", "-t", "0", "-p", "udp", NULL};
+    if ((pid = fork()) == -1)
+    {
+        perror("fork error: can't spawn bind");
+    }
+    else if (pid == 0)
+    {
+        execv("/usr/sbin/zfw", parmList);
+        printf("execv error: unknown error binding ipv4 udp filters");
+    }else{
+        int status =0;
+        if(!(waitpid(pid, &status, 0) < 0)){
+            if(!(WIFEXITED(status) && !WEXITSTATUS(status))){
+                printf("diverter IPv4 UDP firewall not disabled on dev %s\n", diverterIf);
+            }
+        }
+    }
+    dup2(o_std_out, STDOUT_FILENO);
+    dup2(o_std_err, STDERR_FILENO);
+    close(o_std_out);
+    close(o_std_err); 
+}
+
+void pass_tcp_ipv6(){
+    pid_t pid;
+    int o_std_out = dup(STDOUT_FILENO);
+    int o_std_err = dup(STDERR_FILENO);
+    int fd = open("/dev/null", O_WRONLY);
+    if (fd == -1){
+        return; 
+    }
+    dup2(fd, STDOUT_FILENO);
+    dup2(fd, STDERR_FILENO);
+    close(fd);
+    char *const parmList[] = {"/usr/sbin/zfw", "-I", "-c", "::", "-m", "0", "-l", "1" , "-h", "65535", "-t", "0", "-p", "tcp", NULL};
+    if ((pid = fork()) == -1)
+    {
+        perror("fork error: can't spawn bind");
+    }
+    else if (pid == 0)
+    {
+        execv("/usr/sbin/zfw", parmList);
+        printf("execv error: unknown error binding ipv6 tcp filters");
+    }else{
+        int status =0;
+        if(!(waitpid(pid, &status, 0) < 0)){
+            if(!(WIFEXITED(status) && !WEXITSTATUS(status))){
+                printf("diverter IPv6 TCP firewall not disabled on dev %s\n", diverterIf);
+            }
+        }
+    }
+    dup2(o_std_out, STDOUT_FILENO);
+    dup2(o_std_err, STDERR_FILENO);
+    close(o_std_out);
+    close(o_std_err); 
+}
+
+void set_tun_mode(){
+    ZITI_LOG(INFO,"setting diverter to run in tun mode");
+    pid_t pid;
+    int o_std_out = dup(STDOUT_FILENO);
+    int o_std_err = dup(STDERR_FILENO);
+    int fd = open("/dev/null", O_WRONLY);
+    if (fd == -1){
+        return; 
+    }
+    dup2(fd, STDOUT_FILENO);
+    dup2(fd, STDERR_FILENO);
+    close(fd);
+    char *const parmList[] = {"/usr/sbin/zfw", "-T", diverterIf, NULL};
+    if ((pid = fork()) == -1)
+    {
+        perror("fork error: can't spawn bind");
+    }
+    else if (pid == 0)
+    {
+        execv("/usr/sbin/zfw", parmList);
+        printf("execv error: unknown error setting tunnel mode");
+    }else{
+        int status =0;
+        if(!(waitpid(pid, &status, 0) < 0)){
+            if(!(WIFEXITED(status) && !WEXITSTATUS(status))){
+                printf("diverter tunnel mode intercept not set on dev %s\n", diverterIf);
+            }
+        }
+    }
+    dup2(o_std_out, STDOUT_FILENO);
+    dup2(o_std_err, STDERR_FILENO);
+    close(o_std_out);
+    close(o_std_err); 
+}
+
+void setup_xdp(char *tun_name){
+    ZITI_LOG(INFO,"adding diverter xdp to %s", tun_name);
+    pid_t pid;
+    int o_std_out = dup(STDOUT_FILENO);
+    int o_std_err = dup(STDERR_FILENO);
+    int fd = open("/dev/null", O_WRONLY);
+    if (fd == -1){
+        return; 
+    }
+    dup2(fd, STDOUT_FILENO);
+    dup2(fd, STDERR_FILENO);
+    close(fd);
+    char *const parmList[] = {"/usr/sbin/ip", "link", "set", tun_name, "xdpgeneric", "obj", "/opt/openziti/bin/zfw_xdp_tun_ingress.o", "sec", "xdp_redirect", NULL};
+    if ((pid = fork()) == -1)
+    {
+        perror("fork error: can't spawn bind");
+    }
+    else if (pid == 0)
+    {
+        execv("/usr/sbin/ip", parmList);
+        printf("execv error: unknown error binding xdp to %s", tun_name);
+    }else{
+        int status =0;
+        if(!(waitpid(pid, &status, 0) < 0)){
+            if(!(WIFEXITED(status) && !WEXITSTATUS(status))){
+                printf("diverter xdp tunnel redirect not set on dev %s\n","ziti0");
+            }
+        }
+    }
+    dup2(o_std_out, STDOUT_FILENO);
+    dup2(o_std_err, STDERR_FILENO);
+    close(o_std_out);
+    close(o_std_err); 
+}
+
+void pass_udp_ipv6(){
+    pid_t pid;
+    int o_std_out = dup(STDOUT_FILENO);
+    int o_std_err = dup(STDERR_FILENO);
+    int fd = open("/dev/null", O_WRONLY);
+    if (fd == -1){
+        return; 
+    }
+    dup2(fd, STDOUT_FILENO);
+    dup2(fd, STDERR_FILENO);
+    close(fd);
+    char *const parmList[] = {"/usr/sbin/zfw", "-I", "-c", "::", "-m", "0", "-l", "1" , "-h", "65535", "-t", "0", "-p", "udp", NULL};
+    if ((pid = fork()) == -1)
+    {
+        perror("fork error: can't spawn bind");
+    }
+    else if (pid == 0)
+    {
+        execv("/usr/sbin/zfw", parmList);
+        printf("execv error: unknown error binding ipv6 udp filters");
+    }else{
+        int status =0;
+        if(!(waitpid(pid, &status, 0) < 0)){
+            if(!(WIFEXITED(status) && !WEXITSTATUS(status))){
+                printf("diverter IPv6 UDP firewall not disabled on dev %s\n", diverterIf);
+            }
+        }
+    }
+    dup2(o_std_out, STDOUT_FILENO);
+    dup2(o_std_err, STDERR_FILENO);
+    close(o_std_out);
+    close(o_std_err); 
+}
+
+void disable_firewall(){
+    pass_tcp_ipv4();
+    pass_udp_ipv4();
+    enable_ipv6();
+    pass_tcp_ipv6();
+    pass_udp_ipv6();
+    pass_non_tuple();
+}
+
+void set_diverter(char *tun_name)
+{
+    ZITI_LOG(INFO,"starting ziti-edge-tunnel in diverter mode");
+    set_diverter_in();
+    set_diverter_out();
+    set_tun_mode();
+    if(!firewall){
+        disable_firewall();
+    }
+    setup_xdp(tun_name);
+}
 
 static void run(int argc, char *argv[]) {
     uv_cond_init(&stop_cond);
@@ -3068,7 +3829,7 @@ static CommandLine enroll_cmd = make_command("enroll", "enroll Ziti identity",
         "\t-n|--name\tidentity name\n",
         parse_enroll_opts, enroll);
 static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required superuser access)",
-                                          "-i <id.file> [-r N] [-v N] [-d|--dns-ip-range N.N.N.N/n]",
+                                          "-i <id.file> [-r N] [-v N] [-d|--dns-ip-range N.N.N.N/n] [-D|--diverter <interface>] [-f|--diverterFw <interface>]",
                                           "\t-i|--identity <identity>\trun with provided identity file (required)\n"
                                           "\t-I|--identity-dir <dir>\tload identities from provided directory\n"
                                           "\t-x|--proxy type://[username[:password]@]hostname_or_ip:port\tproxy to use when"
@@ -3076,7 +3837,9 @@ static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required supe
                                           "\t-v|--verbose N\tset log level, higher level -- more verbose (default 3)\n"
                                           "\t-r|--refresh N\tset service polling interval in seconds (default 10)\n"
                                           "\t-d|--dns-ip-range <ip range>\tspecify CIDR block in which service DNS names"
-                                          " are assigned in N.N.N.N/n format (default " DEFAULT_DNS_CIDR ")\n",
+                                          " are assigned in N.N.N.N/n format (default " DEFAULT_DNS_CIDR ")\n"
+                                          "\t-D|--diverter <interface>\tset diverter mode to true on <interface>\n"
+                                          "\t-f|--diverterFw <interface>\tset diverter to true in firewall mode on <interface>)\n",
         run_opts, run);
 static CommandLine run_host_cmd = make_command("run-host", "run Ziti tunnel to host services",
                                           "-i <id.file> [-r N] [-v N]",
@@ -3318,11 +4081,30 @@ static void move_config_from_previous_windows_backup(uv_loop_t *loop) {
 }
 #endif
 
+#if __linux__ 
+void INThandler(int sig){
+    
+    if(diverter && !firewall){
+        diverter_binding_flush();
+        diverter_quit();
+    }else if (firewall){
+        diverter_binding_flush();
+        diverter_ingress_flush();
+    }
+    exit(0);
+}
+#endif
+
 static bool is_host_only() {
     return host_only;
 }
 
 int main(int argc, char *argv[]) {
+#if __linux__
+    signal(SIGINT, INThandler);
+    signal(SIGTERM, INThandler);
+    signal(SIGABRT, INThandler);
+#endif
     const char *name = strrchr(argv[0], '/');
     if (name == NULL) {
         name = argv[0];
