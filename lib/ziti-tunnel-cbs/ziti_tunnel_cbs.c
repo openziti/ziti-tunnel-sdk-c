@@ -603,6 +603,7 @@ static void ziti_conn_close_cb(ziti_connection zc) {
     }
     if (io->ziti_io) {
         free(io->ziti_io);
+        io->ziti_io = NULL;
     }
     ziti_tunneler_close(io->tnlr_io);
     free(io);
