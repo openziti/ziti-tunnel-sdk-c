@@ -2696,7 +2696,7 @@ void setup_xdp(char *tun_name){
         int status =0;
         if(!(waitpid(pid, &status, 0) < 0)){
             if(!(WIFEXITED(status) && !WEXITSTATUS(status))){
-                printf("diverter xdp tunnel redirect not set on dev %s\n","ziti0");
+                printf("diverter xdp tunnel redirect not set on dev %s\n", tun_name);
             }
         }
     }
