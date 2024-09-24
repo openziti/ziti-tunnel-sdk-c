@@ -123,15 +123,20 @@ static ziti_context get_ziti(const char *identifier) {
     return inst ? inst->ztx : NULL;
 }
 
-static char * ziti_dump_to_string(void *ctx) {
+/** typedef for e.g. `string_buf_fmt`, `dump_file_op` */
+typedef int (*dump_writer)(void *writer_ctx, const char *, ...);
+/** typedef for dump fn, e.g. `ziti_dump`, `ip_dump` */
+typedef void (*dumper)(void *dumper_ctx, dump_writer writer, void *writer_ctx);
+
+static char * dump_to_string(dumper dump, void *dump_ctx) {
     string_buf_t *out = new_string_buf();
-    //actually invoke ziti_dump here
-    ziti_dump(ctx, (int (*)(void *, const char *, ...)) string_buf_fmt, out);
+    dump(dump_ctx, (int (*)(void *, const char *, ...)) string_buf_fmt, out);
     char *val =  string_buf_to_string(out, NULL);
+    free(out);
     return val;
 }
 
-static int ziti_dump_to_file_op(void* fp, const char *fmt,  ...) {
+static int dump_to_file_op(void* fp, const char *fmt, ...) {
     static char line[4096];
 
     va_list vargs;
@@ -143,7 +148,7 @@ static int ziti_dump_to_file_op(void* fp, const char *fmt,  ...) {
     return 0;
 }
 
-static void ziti_dump_to_file(void *ctx, char* outputFile) {
+static void dump_to_file(dumper dump, void *dump_ctx, char* outputFile) {
     FILE *fp;
     fp = fopen(outputFile, "w+");
     if(fp == NULL)
@@ -159,12 +164,36 @@ static void ziti_dump_to_file(void *ctx, char* outputFile) {
     struct tm* start_tm = gmtime(&sec);
     strftime(time_str, sizeof(time_str), "%a %b %d %Y, %X %p", start_tm);
 
-    fprintf(fp, "Ziti Dump starting: %s\n",time_str);
+    fprintf(fp, "Dump starting: %s\n",time_str);
 
-    //actually invoke ziti_dump here
-    ziti_dump(ctx, ziti_dump_to_file_op, fp);
+    dump(dump_ctx, dump_to_file_op, fp);
     fflush(fp);
     fclose(fp);
+}
+
+static void ip_dump(const tunnel_ip_stats *stats, dump_writer writer, void *writer_ctx) {
+    int i;
+
+    writer(writer_ctx, "\n=================\nMemory Pools:\n");
+    writer(writer_ctx, "%-16s%-12s%-12s%-12s\n", "Pool Name", "In Use", "Max Used", "Limit");
+    tunnel_ip_mem_pool_array pools = stats->pools;
+    for (i = 0; pools[i] != NULL; i++) {
+        writer(writer_ctx, "%-16s%-12d%-12d%-12d\n", pools[i]->name, pools[i]->used, pools[i]->max, pools[i]->avail);
+    }
+
+    writer(writer_ctx, "\n=================\nIP Connections:\n");
+    writer(writer_ctx, "%-12s%-40s%-40s%-16s%-24s\n",
+           "Protocol", "Local Address", "Remote Address", "State", "Ziti Service");
+    tunnel_ip_conn_array conns = stats->connections;
+    char local_addr[64];
+    char remote_addr[64];
+    for (i = 0; conns[i] != NULL; i++) {
+        snprintf(local_addr, sizeof(local_addr), "%s:%lld", conns[i]->local_ip, conns[i]->local_port);
+        snprintf(remote_addr, sizeof(remote_addr), "%s:%lld", conns[i]->remote_ip, conns[i]->remote_port);
+        writer(writer_ctx, "%-12s%-40s%-40s%-16s%-24s\n",
+               conns[i]->protocol, local_addr, remote_addr, conns[i]->state, conns[i]->service);
+    }
+
 }
 
 static void disconnect_identity(ziti_context ziti_ctx, void *tnlr_ctx) {
@@ -311,7 +340,7 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
                     continue;
                 }
                 if (dump.dump_path == NULL) {
-                    char *dumpstr = ziti_dump_to_string(inst->ztx);
+                    char *dumpstr = dump_to_string((dumper) ziti_dump, inst->ztx);
                     struct json_object *s = json_object_new_string(dumpstr);
                     json_object_object_add(json, inst->identifier, s);
                     free(dumpstr);
@@ -321,7 +350,7 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
 
                     if (dump_path != NULL) {
                         snprintf(dump_file, sizeof(dump_file), "%s/%s.ziti", dump_path, identity->name);
-                        ziti_dump_to_file(inst->ztx, dump_file);
+                        dump_to_file((dumper) ziti_dump, inst->ztx, dump_file);
                     } else {
                         ZITI_LOG(WARN, "Could not generate the ziti dump file, because the path is not found");
                         success = false;
@@ -348,6 +377,53 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
             }
             ZITI_LOG(INFO, "ziti dump finished ");
             free_tunnel_ziti_dump(&dump);
+            break;
+        }
+
+        case TunnelCommand_IpDump: {
+            ZITI_LOG(INFO, "ip dump started");
+            tunnel_ip_dump dump = {0};
+            if (cmd->data != NULL && parse_tunnel_ip_dump(&dump, cmd->data, strlen(cmd->data)) < 0) {
+                result.success = false;
+                result.error = "invalid command";
+                free_tunnel_ip_dump(&dump);
+                break;
+            }
+            tunnel_ip_stats stats = {0};
+            ziti_tunnel_get_ip_stats(&stats);
+            result.data = tunnel_ip_stats_to_json(&stats, MODEL_JSON_COMPACT, NULL);
+            bool success = true;
+            if (dump.dump_path != NULL) {
+                char dump_file[MAXPATHLEN];
+                char* dump_path = realpath(dump.dump_path, NULL);
+                if (dump_path != NULL) {
+                    uv_timeval64_t now;
+                    uv_gettimeofday(&now);
+                    struct tm *tm = gmtime(&now.tv_sec);
+                    snprintf(dump_file, sizeof(dump_file), "%s/%04d-%02d-%02dT%02d:%02d:%02d.%03dZ.ip_dump", dump_path,
+                             1900 + tm->tm_year, tm->tm_mon + 1, tm->tm_mday,
+                             tm->tm_hour, tm->tm_min, tm->tm_sec, now.tv_usec / 1000);
+                    dump_to_file((dumper) ip_dump, &stats, dump_file);
+                    free(dump_path);
+                } else {
+                    ZITI_LOG(WARN, "Could not generate the ip dump file, because the path is not found");
+                    success = false;
+                }
+            }
+            if (success) {
+                result.success = true;
+                result.code = IPC_SUCCESS;
+            } else {
+                result.success = false;
+                result.code = IPC_ERROR;
+            }
+            if (!result.success) {
+                result.error = "ip dump failed";
+                ZITI_LOG(WARN, "%s", result.error);
+            } else {
+                ZITI_LOG(INFO, "ip dump finished");
+            }
+            free_tunnel_ip_stats(&stats);
             break;
         }
 
@@ -1354,13 +1430,19 @@ static void on_sigdump(uv_signal_t *sig, int signum) {
     struct tm* start_tm = gmtime(&sec);
     strftime(time_str, sizeof(time_str), "%Y-%m-%dT%H:%M:%S", start_tm);
 
-    CHECK(cleanup, fprintf(dumpfile, "ZIti Dump starting: %s\n",time_str));
+    CHECK(cleanup, fprintf(dumpfile, "Ziti Dump starting: %s\n", time_str));
     const char *k;
     struct ziti_instance_s *inst;
     MODEL_MAP_FOREACH(k, inst, &instances) {
         CHECK(cleanup, fprintf(dumpfile, "instance: %s\n", k));
-        ziti_dump(inst->ztx, (int (*)(void *, const char *, ...)) fprintf, dumpfile);
+        ziti_dump(inst->ztx, (dump_writer) fprintf, dumpfile);
     }
+
+    CHECK(cleanup, fprintf(dumpfile, "IP Dump starting: %s\n", time_str));
+    tunnel_ip_stats stats = {0};
+    ziti_tunnel_get_ip_stats(&stats);
+    ip_dump(&stats, (dump_writer) fprintf, dumpfile);
+    free_tunnel_ip_stats(&stats);
 
     CHECK(cleanup, fflush(dumpfile));
     cleanup:
@@ -1487,6 +1569,7 @@ IMPL_MODEL(tunnel_identity_info, TNL_IDENTITY_INFO)
 IMPL_MODEL(tunnel_identity_lst, TNL_IDENTITY_LIST)
 IMPL_MODEL(tunnel_on_off_identity, TNL_ON_OFF_IDENTITY)
 IMPL_MODEL(tunnel_ziti_dump, TNL_ZITI_DUMP)
+IMPL_MODEL(tunnel_ip_dump, TNL_IP_DUMP)
 IMPL_MODEL(tunnel_identity_id, TNL_IDENTITY_ID)
 IMPL_MODEL(tunnel_mfa_enrol_res, TNL_MFA_ENROL_RES)
 IMPL_MODEL(tunnel_submit_mfa, TNL_SUBMIT_MFA)

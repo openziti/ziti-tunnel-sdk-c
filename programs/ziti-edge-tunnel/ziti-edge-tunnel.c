@@ -2368,6 +2368,41 @@ static int dump_opts(int argc, char *argv[]) {
     return optind;
 }
 
+static int ip_dump_opts(int argc, char *argv[]) {
+    static struct option opts[] = {
+            {"dump_path", required_argument, NULL, 'p'},
+    };
+    int c, option_index, errors = 0;
+    optind = 0;
+
+    tunnel_ip_dump *dump_options = calloc(1, sizeof(tunnel_ip_dump));
+    cmd.command = TunnelCommand_IpDump;
+
+    while ((c = getopt_long(argc, argv, "p:", opts, &option_index)) != -1) {
+        switch (c) {
+            case 'p':
+                dump_options->dump_path = realpath(optarg, NULL);
+                break;
+            default: {
+                fprintf(stderr, "Unknown option '%c'\n", c);
+                errors++;
+                break;
+            }
+        }
+    }
+
+    CHECK_COMMAND_ERRORS(errors);
+
+    size_t json_len;
+    cmd.data = tunnel_ip_dump_to_json(dump_options, MODEL_JSON_COMPACT, &json_len);
+    if (dump_options != NULL) {
+        free_tunnel_ip_dump(dump_options);
+        free(dump_options);
+    }
+
+    return optind;
+}
+
 static int send_message_to_tunnel(char* message, bool show_result) {
 #if _WIN32
     HANDLE cmd_soc = CreateFileA(sockfile,
@@ -2444,7 +2479,7 @@ static int send_message_to_tunnel(char* message, bool show_result) {
     }
 
     if (show_result) {
-        printf("%s", json_object_to_json_string_ext(json, JSON_C_TO_STRING_PRETTY));
+        printf("%s\n", json_object_to_json_string_ext(json, JSON_C_TO_STRING_PRETTY));
     }
     int code = json_object_get_boolean(json_object_object_get(json, "Success")) ?
             0 : json_object_get_int(json_object_object_get(json, "Code"));
@@ -3029,6 +3064,8 @@ static CommandLine run_host_cmd = make_command("run-host", "run Ziti tunnel to h
 static CommandLine dump_cmd = make_command("dump", "dump the identities information", "[-i <identity>] [-p <dir>]",
                                            "\t-i|--identity\tdump identity info\n"
                                            "\t-p|--dump_path\tdump into path\n", dump_opts, send_message_to_tunnel_fn);
+static CommandLine ip_dump_cmd = make_command("ip_dump", "dump ip stack information", "[-p <dir>]",
+                                              "\t-p|--dump_path\tdump into path\n", ip_dump_opts, send_message_to_tunnel_fn);
 static CommandLine on_off_id_cmd = make_command("on_off_identity", "enable/disable the identities information", "-i <identity> -o t|f",
                                            "\t-i|--identity\tidentity info that needs to be enabled/disabled\n"
                                                 "\t-o|--onoff\t't' or 'f' to enable or disable the identity\n", on_off_identity_opts, send_message_to_tunnel_fn);
@@ -3087,6 +3124,7 @@ static CommandLine *main_cmds[] = {
         &on_off_id_cmd,
         &enable_id_cmd,
         &dump_cmd,
+        &ip_dump_cmd,
         &enable_mfa_cmd,
         &verify_mfa_cmd,
         &remove_mfa_cmd,
