@@ -2378,8 +2378,7 @@ static int ip_dump_opts(int argc, char *argv[]) {
     tunnel_ip_dump *dump_options = calloc(1, sizeof(tunnel_ip_dump));
     cmd.command = TunnelCommand_IpDump;
 
-    while ((c = getopt_long(argc, argv, "i:p:",
-                            opts, &option_index)) != -1) {
+    while ((c = getopt_long(argc, argv, "p:", opts, &option_index)) != -1) {
         switch (c) {
             case 'p':
                 dump_options->dump_path = realpath(optarg, NULL);
@@ -2480,7 +2479,7 @@ static int send_message_to_tunnel(char* message, bool show_result) {
     }
 
     if (show_result) {
-        printf("%s", json_object_to_json_string_ext(json, JSON_C_TO_STRING_PRETTY));
+        printf("%s\n", json_object_to_json_string_ext(json, JSON_C_TO_STRING_PRETTY));
     }
     int code = json_object_get_boolean(json_object_object_get(json, "Success")) ?
             0 : json_object_get_int(json_object_object_get(json, "Code"));
