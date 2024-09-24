@@ -2271,7 +2271,7 @@ void init_diverter(){
     dup2(fd, STDOUT_FILENO);
     dup2(fd, STDERR_FILENO);
     close(fd);
-    char *const parmList[] = {diverter_path, "-V", diverterIf, NULL};
+    char *const parmList[] = {diverter_path, "-H", diverterIf, NULL};
     if ((pid = fork()) == -1)
     {
         ZITI_LOG(DEBUG,"fork error: can't spawn bind");
