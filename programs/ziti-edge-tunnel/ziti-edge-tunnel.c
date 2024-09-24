@@ -1347,7 +1347,10 @@ static void on_event(const base_event *ev) {
 #if __linux__
                     if(svc && diverter){
                         if(svc->Permissions.Dial){
-                            ztun->commit_routes(ztun->handle, global_loop_ref);
+                            if(svc->AllowedSourceAddresses && svc->AllowedSourceAddresses[0] != NULL){
+                                ztun->commit_routes(ztun->handle, global_loop_ref);
+                                sleep(1);
+                            }
                             for(int x = 0; svc->Addresses && (svc->Addresses[x] != NULL); x++){
                                 if(!svc->Addresses[x]->IsHost){
                                     char *ip = svc->Addresses[x]->IP;
