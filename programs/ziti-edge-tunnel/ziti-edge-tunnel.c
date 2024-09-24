@@ -2129,15 +2129,15 @@ void diverter_update(char *ip, char *mask, char *lowport, char *highport, char *
     char *const parmList[17] = {diverter_path, action, "-c", ip, "-m", mask, "-l",
      lowport, "-h", highport, "-t", tproxy_port, "-p", protocol, "-s", service_id, NULL};
     if ((pid = fork()) == -1){
-        perror("fork error: can't spawn bind");
+        ZITI_LOG(DEBUG,"fork error: can't spawn bind");
     }else if (pid == 0) {
        execv(diverter_path, parmList);
-       printf("execv error: unknown error binding\n");
+       ZITI_LOG(DEBUG, "execv error: unknown error binding");
     }else{
         int status =0;
         if(!(waitpid(pid, &status, 0) > 0)){
             if(WIFEXITED(status) && !WEXITSTATUS(status)){
-                printf("diverter %s action for : %s set\n", action,  ip);
+                ZITI_LOG(DEBUG,"waitpid error: diverter %s action for : %s set", action,  ip);
             }
         }
     }
@@ -2165,17 +2165,17 @@ void bind_route(char* ip, int prefix_len, char *dev)
     char *const parmList[] = {"/usr/sbin/ip", "route", "add", cidr_block, "dev", dev, "scope", "link", NULL};
     if ((pid = fork()) == -1)
     {
-        perror("fork error: can't spawn bind");
+        ZITI_LOG(DEBUG,"fork error: can't spawn bind");
     }
     else if (pid == 0)
     {
         execv("/usr/sbin/ip", parmList);
-        printf("execv error: unknown error rebinding route");
+        ZITI_LOG(DEBUG, "execv error: unknown error rebinding route\n");
     }else{
         int status =0;
         if(!(waitpid(pid, &status, 0) > 0)){
             if(WIFEXITED(status) && !WEXITSTATUS(status)){
-                printf("bound %s to dev %s\n", cidr_block, dev);
+                ZITI_LOG(DEBUG,"waitpid error: binding %s to dev %s", cidr_block, dev);
             }
         }
     }
@@ -2203,17 +2203,17 @@ void unbind_route(char* ip, int prefix_len, char *dev)
     char *const parmList[] = {"/usr/sbin/ip", "route", "delete", cidr_block, "dev", dev, "scope", "link", NULL};
     if ((pid = fork()) == -1)
     {
-        perror("fork error: can't spawn unbind");
+        ZITI_LOG(DEBUG,"fork error: can't spawn unbind");
     }
     else if (pid == 0)
     {
         execv("/usr/sbin/ip", parmList);
-        printf("execv error: unknown error unbinding route");
+        ZITI_LOG(DEBUG, "execv error: unknown error unbinding route");
     }else{
         int status =0;
         if(!(waitpid(pid, &status, 0) > 0)){
             if(WIFEXITED(status) && !WEXITSTATUS(status)){
-                printf("unbound %s from dev %s\n", cidr_block, dev);
+                ZITI_LOG(DEBUG,"waitpid error: unbinding %s from dev %s", cidr_block, dev);
             }
         }
     }
@@ -2237,17 +2237,17 @@ void diverter_quit(){
     char *const parmList[] = {diverter_path, "-Q", NULL};
     if ((pid = fork()) == -1)
     {
-        perror("fork error: can't spawn bind");
+        ZITI_LOG(DEBUG,"fork error: can't spawn bind");
     }
     else if (pid == 0)
     {
         execv(diverter_path, parmList);
-        printf("execv error: unknown error removing diverter");
+        ZITI_LOG(DEBUG, "execv error: unknown error removing diverter");
     }else{
         int status =0;
         if(!(waitpid(pid, &status, 0) < 0)){
             if(!(WIFEXITED(status) && !WEXITSTATUS(status))){
-                printf("Unable to remove diverter from: %s\n", diverterIf);
+                ZITI_LOG(DEBUG,"waitpid error: Unable to remove diverter from: %s", diverterIf);
             }
         }
     }
@@ -2272,18 +2272,18 @@ void init_diverter(){
     char *const parmList[] = {diverter_path, "-V", diverterIf, NULL};
     if ((pid = fork()) == -1)
     {
-        perror("fork error: can't spawn bind");
+        ZITI_LOG(DEBUG,"fork error: can't spawn bind");
     }
     else if (pid == 0)
     {
         execv(diverter_path, parmList);
-        printf("execv error: unknown error adding diverter ingress filters");
+        ZITI_LOG(DEBUG, "execv error: unknown error adding diverter ingress filters");
     }else{
         int status =0;
 
         if(!(waitpid(pid, &status, 0) < 0)){
             if(!(WIFEXITED(status) && !WEXITSTATUS(status))){
-                printf("zfw not set on dev %s\n", diverterIf);
+                ZITI_LOG(DEBUG,"waitpid error: zfw not set on dev %s", diverterIf);
             }
         }
     }
@@ -2315,12 +2315,12 @@ void bind_diverter_route(char *ip, int prefix_len){
     else if (pid == 0)
     {
         execv(diverter_path, parmList);
-        ZITI_LOG(DEBUG,"error binding %s/%s to lo\n", ip, mask);
+        ZITI_LOG(DEBUG,"error binding %s/%s to lo", ip, mask);
     }else{
         int status =0;
         if(!(waitpid(pid, &status, 0) < 0)){
             if(!(WIFEXITED(status) && !WEXITSTATUS(status))){
-                ZITI_LOG(DEBUG,"error binding %s/%s to lo\n", ip, mask);
+                ZITI_LOG(DEBUG,"waitpid error: error binding %s/%s to lo", ip, mask);
             }
         }
     }
@@ -2352,12 +2352,12 @@ void unbind_diverter_route(char *ip, int prefix_len){
     else if (pid == 0)
     {
         execv(diverter_path, parmList);
-        ZITI_LOG(DEBUG,"error unbinding %s/%s from lo\n", ip, mask);
+        ZITI_LOG(DEBUG,"error unbinding %s/%s from lo", ip, mask);
     }else{
         int status =0;
         if(!(waitpid(pid, &status, 0) < 0)){
             if(!(WIFEXITED(status) && !WEXITSTATUS(status))){
-                ZITI_LOG(DEBUG,"error unbinding %s/%s from lo\n", ip, mask);
+                ZITI_LOG(DEBUG,"waitpid error: error unbinding %s/%s from lo", ip, mask);
             }
         }
     }
@@ -2392,7 +2392,7 @@ void diverter_binding_flush(){
         int status =0;
         if(!(waitpid(pid, &status, 0) < 0)){
             if(!(WIFEXITED(status) && !WEXITSTATUS(status))){
-                ZITI_LOG(DEBUG,"error flushing diverter routes");
+                ZITI_LOG(DEBUG,"waitpid error: error flushing diverter routes");
             }
         }
     }
@@ -2427,7 +2427,7 @@ void diverter_ingress_flush(){
         int status =0;
         if(!(waitpid(pid, &status, 0) < 0)){
             if(!(WIFEXITED(status) && !WEXITSTATUS(status))){
-                ZITI_LOG(DEBUG,"error flushing diverter ingress intercepts");
+                ZITI_LOG(DEBUG,"waitpid error: error flushing diverter ingress intercepts");
             }
         }
     }
@@ -2451,17 +2451,17 @@ void pass_non_tuple(){
     char *const parmList[] = {diverter_path, "-q", diverterIf, NULL};
     if ((pid = fork()) == -1)
     {
-        perror("fork error: can't spawn bind");
+        ZITI_LOG(DEBUG,"fork error: can't spawn bind");
     }
     else if (pid == 0)
     {
         execv(diverter_path, parmList);
-        printf("execv error: unknown error removing non-tuple filters");
+        ZITI_LOG(DEBUG, "execv error: unknown error removing non-tuple filters\n");
     }else{
         int status =0;
         if(!(waitpid(pid, &status, 0) < 0)){
             if(!(WIFEXITED(status) && !WEXITSTATUS(status))){
-                printf("diverter non-tuple firewall not disabled on dev %s\n", diverterIf);
+                ZITI_LOG(DEBUG,"waitpid error: diverter non-tuple firewall not disabled on dev %s\n", diverterIf);
             }
         }
     }
@@ -2485,17 +2485,17 @@ void enable_ipv6(){
     char *const parmList[] = {diverter_path, "-6", diverterIf, NULL};
     if ((pid = fork()) == -1)
     {
-        perror("fork error: can't spawn bind");
+        ZITI_LOG(DEBUG,"fork error: can't spawn bind");
     }
     else if (pid == 0)
     {
         execv(diverter_path, parmList);
-        printf("execv error: unknown error enabling ipv6 filters");
+        ZITI_LOG(DEBUG, "execv error: unknown error enabling ipv6 filters");
     }else{
         int status =0;
         if(!(waitpid(pid, &status, 0) < 0)){
             if(!(WIFEXITED(status) && !WEXITSTATUS(status))){
-                printf("diverter IPv6 not enabled on dev %s\n", diverterIf);
+                ZITI_LOG(DEBUG,"waitpid error: diverter IPv6 not enabled on dev %s", diverterIf);
             }
         }
     }
@@ -2519,17 +2519,17 @@ void pass_tcp_ipv4(){
     char *const parmList[] = {diverter_path, "-I", "-c", "0.0.0.0", "-m", "0", "-l", "1" , "-h", "65535", "-t", "0", "-p", "tcp", NULL};
     if ((pid = fork()) == -1)
     {
-        perror("fork error: can't spawn bind");
+        ZITI_LOG(DEBUG,"fork error: can't spawn bind");
     }
     else if (pid == 0)
     {
         execv(diverter_path, parmList);
-        printf("execv error: unknown error binding ipv4 tcp filters");
+        ZITI_LOG(DEBUG, "execv error: unknown error binding ipv4 tcp filters\n");
     }else{
         int status =0;
         if(!(waitpid(pid, &status, 0) < 0)){
             if(!(WIFEXITED(status) && !WEXITSTATUS(status))){
-                printf("diverter IPv4 TCP firewall not disabled on dev %s\n", diverterIf);
+                ZITI_LOG(DEBUG,"waitpid error: diverter IPv4 TCP firewall not disabled on dev %s", diverterIf);
             }
         }
     }
@@ -2553,17 +2553,17 @@ void pass_udp_ipv4(){
     char *const parmList[] = {diverter_path, "-I", "-c", "0.0.0.0", "-m", "0", "-l", "1" , "-h", "65535", "-t", "0", "-p", "udp", NULL};
     if ((pid = fork()) == -1)
     {
-        perror("fork error: can't spawn bind");
+        ZITI_LOG(DEBUG,"fork error: can't spawn bind");
     }
     else if (pid == 0)
     {
         execv(diverter_path, parmList);
-        printf("execv error: unknown error binding ipv4 udp filters");
+        ZITI_LOG(DEBUG, "execv error: unknown error binding ipv4 udp filters");
     }else{
         int status =0;
         if(!(waitpid(pid, &status, 0) < 0)){
             if(!(WIFEXITED(status) && !WEXITSTATUS(status))){
-                printf("diverter IPv4 UDP firewall not disabled on dev %s\n", diverterIf);
+                ZITI_LOG(DEBUG,"waitpid error: diverter IPv4 UDP firewall not disabled on dev %s\n", diverterIf);
             }
         }
     }
@@ -2587,17 +2587,17 @@ void pass_tcp_ipv6(){
     char *const parmList[] = {diverter_path, "-I", "-c", "::", "-m", "0", "-l", "1" , "-h", "65535", "-t", "0", "-p", "tcp", NULL};
     if ((pid = fork()) == -1)
     {
-        perror("fork error: can't spawn bind");
+        ZITI_LOG(DEBUG,"fork error: can't spawn bind");
     }
     else if (pid == 0)
     {
         execv(diverter_path, parmList);
-        printf("execv error: unknown error binding ipv6 tcp filters");
+        ZITI_LOG(DEBUG, "execv error: unknown error binding ipv6 tcp filters\n");
     }else{
         int status =0;
         if(!(waitpid(pid, &status, 0) < 0)){
             if(!(WIFEXITED(status) && !WEXITSTATUS(status))){
-                printf("diverter IPv6 TCP firewall not disabled on dev %s\n", diverterIf);
+                ZITI_LOG(DEBUG,"waitpid error: diverter IPv6 TCP firewall not disabled on dev %s\n", diverterIf);
             }
         }
     }
@@ -2622,17 +2622,17 @@ void set_tun_mode(){
     char *const parmList[] = {diverter_path, "-T", diverterIf, NULL};
     if ((pid = fork()) == -1)
     {
-        perror("fork error: can't spawn bind");
+        ZITI_LOG(DEBUG,"fork error: can't spawn bind");
     }
     else if (pid == 0)
     {
         execv(diverter_path, parmList);
-        printf("execv error: unknown error setting tunnel mode");
+        ZITI_LOG(DEBUG, "execv error: unknown error setting tunnel mode\n");
     }else{
         int status =0;
         if(!(waitpid(pid, &status, 0) < 0)){
             if(!(WIFEXITED(status) && !WEXITSTATUS(status))){
-                printf("diverter tunnel mode intercept not set on dev %s\n", diverterIf);
+                ZITI_LOG(DEBUG,"waitpid error: diverter tunnel mode intercept not set on dev %s\n", diverterIf);
             }
         }
     }
@@ -2657,17 +2657,17 @@ void setup_xdp(char *tun_name){
     char *const parmList[] = {diverter_path, "-Z", tun_name, NULL};
     if ((pid = fork()) == -1)
     {
-        perror("fork error: can't spawn bind");
+        ZITI_LOG(DEBUG,"fork error: can't spawn bind");
     }
     else if (pid == 0)
     {
         execv(diverter_path, parmList);
-        printf("execv error: unknown error binding xdp to %s", tun_name);
+        ZITI_LOG(DEBUG, "execv error: unknown error binding xdp to %s", tun_name);
     }else{
         int status =0;
         if(!(waitpid(pid, &status, 0) < 0)){
             if(!(WIFEXITED(status) && !WEXITSTATUS(status))){
-                printf("diverter xdp not set on dev %s\n", tun_name);
+                ZITI_LOG(DEBUG,"waitpid error: diverter xdp not set on dev %s\n", tun_name);
             }
         }
     }
@@ -2691,17 +2691,51 @@ void pass_udp_ipv6(){
     char *const parmList[] = {diverter_path, "-I", "-c", "::", "-m", "0", "-l", "1" , "-h", "65535", "-t", "0", "-p", "udp", NULL};
     if ((pid = fork()) == -1)
     {
-        perror("fork error: can't spawn bind");
+        ZITI_LOG(DEBUG,"fork error: can't spawn bind");
     }
     else if (pid == 0)
     {
         execv(diverter_path, parmList);
-        printf("execv error: unknown error binding ipv6 udp filters");
+        ZITI_LOG(DEBUG, "execv error: unknown error binding ipv6 udp filters\n");
     }else{
         int status =0;
         if(!(waitpid(pid, &status, 0) < 0)){
             if(!(WIFEXITED(status) && !WEXITSTATUS(status))){
-                printf("diverter IPv6 UDP firewall not disabled on dev %s\n", diverterIf);
+                ZITI_LOG(DEBUG,"waitpid error: diverter IPv6 UDP firewall not disabled on dev %s", diverterIf);
+            }
+        }
+    }
+    dup2(o_std_out, STDOUT_FILENO);
+    dup2(o_std_err, STDERR_FILENO);
+    close(o_std_out);
+    close(o_std_err); 
+}
+
+void add_user_rules(){
+    pid_t pid;
+    int o_std_out = dup(STDOUT_FILENO);
+    int o_std_err = dup(STDERR_FILENO);
+    int fd = open("/dev/null", O_WRONLY);
+    if (fd == -1){
+        return; 
+    }
+    dup2(fd, STDOUT_FILENO);
+    dup2(fd, STDERR_FILENO);
+    close(fd);
+    char *const parmList[] = {diverter_path, "-A",NULL};
+    if ((pid = fork()) == -1)
+    {
+        ZITI_LOG(DEBUG,"fork error: can't spawn bind");
+    }
+    else if (pid == 0)
+    {
+        execv("/opt/openziti/bin/user/user_rules.sh", parmList);
+        ZITI_LOG(DEBUG, "execv error: unknown error adding user defined rules\n");
+    }else{
+        int status =0;
+        if(!(waitpid(pid, &status, 0) < 0)){
+            if(!(WIFEXITED(status) && !WEXITSTATUS(status))){
+                ZITI_LOG(DEBUG,"waitpid error: error adding user defined rules\n");
             }
         }
     }
@@ -2727,6 +2761,13 @@ void set_diverter(char *tun_name)
     set_tun_mode();
     if(!firewall){
         disable_firewall();
+    }else{
+        if (access("/opt/openziti/bin/user/user_rules.sh", F_OK) == 0){
+            ZITI_LOG(INFO,"loading user defined FW rules");
+            add_user_rules();
+        }else{
+            ZITI_LOG(DEBUG, "Diverter user defined FW rules not found");
+        }
     }
     setup_xdp(tun_name);
 }
