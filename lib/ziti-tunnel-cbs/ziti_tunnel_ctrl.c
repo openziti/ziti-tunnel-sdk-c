@@ -164,7 +164,7 @@ static void dump_to_file(dumper dump, void *dump_ctx, char* outputFile) {
     struct tm* start_tm = gmtime(&sec);
     strftime(time_str, sizeof(time_str), "%a %b %d %Y, %X %p", start_tm);
 
-    fprintf(fp, "Ziti Dump starting: %s\n",time_str);
+    fprintf(fp, "Dump starting: %s\n",time_str);
 
     dump(dump_ctx, dump_to_file_op, fp);
     fflush(fp);
@@ -182,7 +182,7 @@ static void ip_dump(const tunnel_ip_stats *stats, dump_writer writer, void *writ
     }
 
     writer(writer_ctx, "\n=================\nIP Connections:\n");
-    writer(writer_ctx, "%-12s%-48s%-48s%-16s%-24s\n",
+    writer(writer_ctx, "%-12s%-40s%-40s%-16s%-24s\n",
            "Protocol", "Local Address", "Remote Address", "State", "Ziti Service");
     tunnel_ip_conn_array conns = stats->connections;
     char local_addr[64];
@@ -190,7 +190,7 @@ static void ip_dump(const tunnel_ip_stats *stats, dump_writer writer, void *writ
     for (i = 0; conns[i] != NULL; i++) {
         snprintf(local_addr, sizeof(local_addr), "%s:%lld", conns[i]->local_ip, conns[i]->local_port);
         snprintf(remote_addr, sizeof(remote_addr), "%s:%lld", conns[i]->remote_ip, conns[i]->remote_port);
-        writer(writer_ctx, "%-12s%-48s%-48s%-16s%-24s\n",
+        writer(writer_ctx, "%-12s%-40s%-40s%-16s%-24s\n",
                conns[i]->protocol, local_addr, remote_addr, conns[i]->state, conns[i]->service);
     }
 
@@ -1430,13 +1430,19 @@ static void on_sigdump(uv_signal_t *sig, int signum) {
     struct tm* start_tm = gmtime(&sec);
     strftime(time_str, sizeof(time_str), "%Y-%m-%dT%H:%M:%S", start_tm);
 
-    CHECK(cleanup, fprintf(dumpfile, "ZIti Dump starting: %s\n",time_str));
+    CHECK(cleanup, fprintf(dumpfile, "Ziti Dump starting: %s\n", time_str));
     const char *k;
     struct ziti_instance_s *inst;
     MODEL_MAP_FOREACH(k, inst, &instances) {
         CHECK(cleanup, fprintf(dumpfile, "instance: %s\n", k));
-        ziti_dump(inst->ztx, (int (*)(void *, const char *, ...)) fprintf, dumpfile);
+        ziti_dump(inst->ztx, (dump_writer) fprintf, dumpfile);
     }
+
+    CHECK(cleanup, fprintf(dumpfile, "IP Dump starting: %s\n", time_str));
+    tunnel_ip_stats stats = {0};
+    ziti_tunnel_get_ip_stats(&stats);
+    ip_dump(&stats, (dump_writer) fprintf, dumpfile);
+    free_tunnel_ip_stats(&stats);
 
     CHECK(cleanup, fflush(dumpfile));
     cleanup:
