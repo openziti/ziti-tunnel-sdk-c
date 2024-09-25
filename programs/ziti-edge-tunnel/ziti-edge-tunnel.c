@@ -377,6 +377,7 @@ static void enroll_ziti_async(uv_loop_t *loop, void *arg) {
     ziti_enroll_opts enroll_opts = {0};
     enroll_opts.enroll_name = add_id_req->identifier;
     enroll_opts.jwt_content = add_id_req->jwt_content;
+    enroll_opts.use_keychain = add_id_req->use_keychain;
 
     ziti_enroll(&enroll_opts, loop, tunnel_enroll_cb, add_id_req);
 }
@@ -560,6 +561,7 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
             add_id_req->identifier = strdup(new_identifier);
             add_id_req->identifier_file_name = strdup(new_identifier_name);
             add_id_req->jwt_content = strdup(tunnel_add_identity_cmd.jwtContent);
+            add_id_req->use_keychain = tunnel_add_identity_cmd.useKeychain;
 
             enroll_ziti_async(global_loop_ref, add_id_req);
             free_tunnel_add_identity(&tunnel_add_identity_cmd);
@@ -2169,6 +2171,7 @@ static int parse_enroll_opts(int argc, char *argv[]) {
     static struct option opts[] = {
             { "jwt", required_argument, NULL, 'j'},
             { "identity", required_argument, NULL, 'i'},
+            { "use-keychain", no_argument, NULL, 'K' },
             { "key", required_argument, NULL, 'k'},
             { "cert", required_argument, NULL, 'c'},
             { "name", required_argument, NULL, 'n'},
@@ -2178,19 +2181,27 @@ static int parse_enroll_opts(int argc, char *argv[]) {
     const char *proxy_arg = NULL;
     optind = 0;
 
-    while ((c = getopt_long(argc, argv, "j:i:k:c:n:x:",
+    while ((c = getopt_long(argc, argv, "j:i:Kk:c:n:x:",
                             opts, &option_index)) != -1) {
         switch (c) {
             case 'j':
                 enroll_opts.jwt = optarg;
                 break;
-            case 'k':
-                enroll_opts.enroll_key = realpath(optarg, NULL);
-                if (enroll_opts.enroll_key == NULL) {
-                    // may be pkcs11 key ref
+            case 'K':
+                enroll_opts.use_keychain = true;
+                break;
+            case 'k': {
+                uv_fs_t req = {};
+                if (uv_fs_stat(NULL, &req, optarg, NULL) == 0 &&
+                    (S_ISREG(req.statbuf.st_mode) || S_ISLNK(req.statbuf.st_mode))) {
+                    enroll_opts.enroll_key = realpath(optarg, NULL);
+                } else {
+                    // may be key ref (keychain/pkcs11)
                     enroll_opts.enroll_key = optarg;
                 }
+                uv_fs_req_cleanup(&req);
                 break;
+            }
             case 'c':
                 enroll_opts.enroll_cert = realpath(optarg, NULL);
                 break;
@@ -2996,6 +3007,7 @@ static int delete_identity_opts(int argc, char *argv[]) {
 
 static int add_identity_opts(int argc, char *argv[]) {
     static struct option opts[] = {
+            {"use-keychain", no_argument, NULL, 'K' },
             {"identity", required_argument, NULL, 'i'},
             {"jwt", required_argument, NULL, 'j'},
     };
@@ -3005,9 +3017,12 @@ static int add_identity_opts(int argc, char *argv[]) {
     tunnel_add_identity *tunnel_add_identity_opt = calloc(1, sizeof(tunnel_add_identity));
     cmd.command = TunnelCommand_AddIdentity;
 
-    while ((c = getopt_long(argc, argv, "i:j:",
+    while ((c = getopt_long(argc, argv, "Ki:j:",
                             opts, &option_index)) != -1) {
         switch (c) {
+            case 'K':
+                tunnel_add_identity_opt->useKeychain = true;
+                break;
             case 'i':
                 tunnel_add_identity_opt->jwtFileName = optarg;
                 break;
@@ -3031,12 +3046,12 @@ static int add_identity_opts(int argc, char *argv[]) {
     return optind;
 }
 
-
 static CommandLine enroll_cmd = make_command("enroll", "enroll Ziti identity",
         "-j|--jwt <enrollment token> -i|--identity <identity> [-k|--key <private_key> [-c|--cert <certificate>]] [-n|--name <name>]",
         "\t-j|--jwt\tenrollment token file\n"
-        "\t-x|--proxy type://[username[:password]@]hostname_or_ip:port\tproxy to use when connecting to OpenZiti controller. 'http' is currently the only supported type."
+        "\t-x|--proxy type://[username[:password]@]hostname_or_ip:port\tproxy to use when connecting to OpenZiti controller. 'http' is currently the only supported type.\n"
         "\t-i|--identity\toutput identity file\n"
+        "\t-K|--use-keychain\tuse keychain to generate/store private key\n"
         "\t-k|--key\tprivate key for enrollment\n"
         "\t-c|--cert\tcertificate for enrollment\n"
         "\t-n|--name\tidentity name\n",
@@ -3092,8 +3107,10 @@ static CommandLine get_status_cmd = make_command("tunnel_status", "Get Tunnel St
 static CommandLine delete_id_cmd = make_command("delete", "delete the identities information", "[-i <identity>]",
                                                  "\t-i|--identity\tidentity info that needs to be deleted\n", delete_identity_opts, send_message_to_tunnel_fn);
 static CommandLine add_id_cmd = make_command("add", "enroll and load the identity", "-j <jwt_content> -i <identity_name>",
+                                                "\t-K|--use-keychain\tuse keychain to generate/store private key\n"
                                                 "\t-j|--jwt\tenrollment token content\n"
-                                                "\t-i|--identity\toutput identity .json file (relative to \"-I\" config directory)\n", add_identity_opts, send_message_to_tunnel_fn);
+                                                "\t-i|--identity\toutput identity .json file (relative to \"-I\" config directory)\n",
+                                                add_identity_opts, send_message_to_tunnel_fn);
 static CommandLine set_log_level_cmd = make_command("set_log_level", "Set log level of the tunneler", "-l <level>",
                                                     "\t-l|--loglevel\tlog level of the tunneler\n", set_log_level_opts, send_message_to_tunnel_fn);
 static CommandLine update_tun_ip_cmd = make_command("update_tun_ip", "Update tun ip of the tunneler", "[-t <tunip>] [-p <prefixlength>] [-d <AddDNS>]",
