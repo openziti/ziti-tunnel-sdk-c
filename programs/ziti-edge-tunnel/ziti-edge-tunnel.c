@@ -86,10 +86,13 @@ void bind_route(char* ip, int prefix_len, char *dev);
 void bind_diverter_route(char *ip, int prefix_len);
 void unbind_diverter_route(char *ip, int prefix_len);
 void diverter_binding_flush();
+char check_alt[IF_NAMESIZE];
 char *diverter_path = "/opt/openziti/bin/zfw";
 static tunneler_context initialize_tunneler(netif_driver tun, uv_loop_t* ziti_loop);
 static void diverter_update(char *ip, char *mask, char *lowport, char *highport, char *protocol, char *service_id, char *action);
 static netif_driver ztun;
+uint32_t dns_prefix = 0;
+unsigned char dns_prefix_range = 0;
 #if _WIN32
 static void move_config_from_previous_windows_backup(uv_loop_t *loop);
 #define LAST_CHAR_IPC_CMD '\n'
@@ -1701,6 +1704,15 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
         if(diverter && tun){
             ztun = tun;
             if (access(diverter_path, F_OK) == 0){
+                uint32_t idx = if_nametoindex(diverterIf);
+                if (!idx)
+                {
+                    printf("Diverter interface not found: %s\n", diverterIf);
+                    exit(1);
+                }
+                if(if_indextoname(idx, check_alt)){
+                   diverterIf = check_alt;
+                }
                 set_diverter(tun->handle->name);
             }else{
                 ZITI_LOG(INFO, "Diverter binary not found");
@@ -2542,6 +2554,51 @@ void pass_tcp_ipv4(){
     close(o_std_err); 
 }
 
+void pass_dns_range(){
+    pid_t pid;
+    char prefix[INET_ADDRSTRLEN];
+    char prefix_len[4];
+    if(dns_prefix && dns_prefix_range){
+        sprintf(prefix_len, "%u", dns_prefix_range);
+        inet_ntop(AF_INET, &dns_prefix, prefix, INET_ADDRSTRLEN);
+        int o_std_out = dup(STDOUT_FILENO);
+        int o_std_err = dup(STDERR_FILENO);
+        int fd = open("/dev/null", O_WRONLY);
+        if (fd == -1){
+            return; 
+        }
+        dup2(fd, STDOUT_FILENO);
+        dup2(fd, STDERR_FILENO);
+        close(fd);
+        char *protocols[2] = {"tcp", "udp"};
+        for(int x = 0; x < 2; x++){
+            char *const parmList[] = {diverter_path, "-I", "-c", prefix, "-m", prefix_len, "-l", "1" , "-h", "65535", "-t", "0", "-p", protocols[x], NULL};
+            if ((pid = fork()) == -1)
+            {
+                ZITI_LOG(DEBUG,"fork error: can't spawn bind");
+            }
+            else if (pid == 0)
+            {
+                execv(diverter_path, parmList);
+                ZITI_LOG(DEBUG, "execv error: unknown error binding ipv4 tcp filters\n");
+            }else{
+                int status =0;
+                if(!(waitpid(pid, &status, 0) < 0)){
+                    if(!(WIFEXITED(status) && !WEXITSTATUS(status))){
+                        ZITI_LOG(DEBUG,"waitpid error: diverter IPv4 TCP firewall not disabled on dev %s", diverterIf);
+                    }
+                }
+            }
+        }
+        dup2(o_std_out, STDOUT_FILENO);
+        dup2(o_std_err, STDERR_FILENO);
+        close(o_std_out);
+        close(o_std_err); 
+    }else{
+        ZITI_LOG(INFO,"Invalid dns prefix range");
+    }
+}
+
 void pass_udp_ipv4(){
     pid_t pid;
     int o_std_out = dup(STDOUT_FILENO);
@@ -2771,6 +2828,7 @@ void set_diverter(char *tun_name)
         }else{
             ZITI_LOG(DEBUG, "Diverter user defined FW rules not found");
         }
+        pass_dns_range();
     }
     setup_xdp(tun_name);
 }
@@ -2832,6 +2890,12 @@ static void run(int argc, char *argv[]) {
 
         tun_ip = htonl(mask);
         dns_ip = htonl(mask + 1);
+#if __linux__
+        if(firewall){
+            dns_prefix = ntohl(htonl(tun_ip)-1);
+            dns_prefix_range = (unsigned char)bits;
+        }
+#endif
 
         // set ip info into instance
         set_ip_info(dns_ip, tun_ip, bits);
@@ -4108,6 +4172,7 @@ void INThandler(int sig){
     }else if (firewall){
         diverter_binding_flush();
         diverter_ingress_flush();
+        add_user_rules();
     }
     exit(0);
 }
