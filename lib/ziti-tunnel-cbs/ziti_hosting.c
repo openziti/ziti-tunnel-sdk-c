@@ -296,6 +296,7 @@ static bool allowed_hostname_match(const char *hostname, const allowed_hostnames
     struct allowed_hostname_s *entry;
     LIST_FOREACH(entry, hostnames, _next) {
         if (entry->domain_name[0] == '*') {
+            if (entry->domain_name[1] == '\0') return true;
             for (char *dot = strchr(hostname, '.'); dot != NULL; dot = strchr(dot + 1, '.')) {
                 if (strcmp(dot, entry->domain_name + 1) == 0) return true;
             }
