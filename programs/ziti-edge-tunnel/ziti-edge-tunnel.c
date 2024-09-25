@@ -622,8 +622,9 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
 
 static void queue_ipc_command(ipc_cmd_ctx_t *ipc_command_ctx, ssize_t len, char* base) {
     struct ipc_cmd_s *cmd_new = calloc(1, sizeof(struct ipc_cmd_s));
-    cmd_new->cmd_data = strdup(base);
-    cmd_new->len = len;
+    cmd_new->cmd_data = calloc(len + 1, sizeof(char));
+    memcpy(cmd_new->cmd_data, base, len);
+    cmd_new->len = (int)len;
     uv_mutex_trylock(&ipc_command_ctx->cmd_lock);
     STAILQ_INSERT_TAIL(&ipc_command_ctx->ipc_cmd_queue, cmd_new, _next);
     uv_mutex_unlock(&ipc_command_ctx->cmd_lock);
