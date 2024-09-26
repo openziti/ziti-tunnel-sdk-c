@@ -33,9 +33,6 @@ jobs:
           pwd
           mv linux-arm64/ziti-edge-tunnel-Linux_aarch64.zip linux-arm64/ziti-edge-tunnel-Linux_arm64.zip
           mv windows-x64-mingw/ziti-edge-tunnel-Windows_AMD64.zip windows-x64-mingw/ziti-edge-tunnel-Windows_x86_64.zip
-          mv linux-arm-static/ziti-edge-tunnel-Linux_arm.zip linux-arm-static/ziti-edge-tunnel-Linux_arm-static.zip
-          mv linux-arm64-static/ziti-edge-tunnel-Linux_aarch64.zip linux-arm64-static/ziti-edge-tunnel-Linux_arm64-static.zip
-          mv linux-x64-static/ziti-edge-tunnel-Linux_x86_64.zip linux-arm64-static/ziti-edge-tunnel-Linux_x86_64-static.zip
 
       - name: List Release Artifacts
         run: ls -horRAS ${{runner.workspace}}/downloads/
