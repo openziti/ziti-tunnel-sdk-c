@@ -2572,7 +2572,7 @@ void pass_dns_range(){
         close(fd);
         char *protocols[2] = {"tcp", "udp"};
         for(int x = 0; x < 2; x++){
-            char *const parmList[] = {diverter_path, "-I", "-c", prefix, "-m", prefix_len, "-l", "1" , "-h", "65535", "-t", "0", "-p", protocols[x], NULL};
+            char *const parmList[] = {diverter_path, "-I", "-c", prefix, "-m", prefix_len, "-l", "1" , "-h", "65535", "-t", "65535", "-p", protocols[x], NULL};
             if ((pid = fork()) == -1)
             {
                 ZITI_LOG(DEBUG,"fork error: can't spawn bind");
