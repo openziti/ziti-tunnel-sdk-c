@@ -2192,8 +2192,15 @@ static int parse_enroll_opts(int argc, char *argv[]) {
                 break;
             case 'k': {
                 uv_fs_t req = {};
-                if (uv_fs_stat(NULL, &req, optarg, NULL) == 0 &&
-                    (S_ISREG(req.statbuf.st_mode) || S_ISLNK(req.statbuf.st_mode))) {
+                if (uv_fs_stat(NULL, &req, optarg, NULL) == 0
+#if defined(S_ISREG)
+                    && (S_ISREG(req.statbuf.st_mode)
+#if defined(S_ISLNK)
+                    || S_ISLNK(req.statbuf.st_mode)
+#endif
+                                           )
+#endif
+                        ) {
                     enroll_opts.enroll_key = realpath(optarg, NULL);
                 } else {
                     // may be key ref (keychain/pkcs11)
