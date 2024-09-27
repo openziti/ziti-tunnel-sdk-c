@@ -178,21 +178,30 @@ static void on_hosted_client_connect_complete(ziti_connection clt, int err) {
     if (io_ctx == NULL) {
         ZITI_LOG(WARN, "missing io_ctx");
         ziti_close(clt, ziti_conn_close_cb);
+        return;
     }
 
     if (err == ZITI_OK) {
+        int rc;
         uv_handle_t *server = (uv_handle_t *) &io_ctx->server.tcp;
+        uv_os_fd_t fd;
+        if ((rc = uv_fileno(server, &fd)) != 0) {
+            ZITI_LOG(ERROR, "failed to bridge client[%s] with hosted_service[%s] fd[%d]: %s",
+                     io_ctx->client_identity, io_ctx->service->service_name,
+                     fd, uv_strerror(rc));
+            hosted_server_close(io_ctx);
+            return;
+        }
+
         struct sockaddr_storage name_storage;
         struct sockaddr *name = (struct sockaddr *) &name_storage;
         int len = sizeof(name_storage);
         local_addr(server, name, &len);
         uv_getnameinfo_t req = {0};
         uv_getnameinfo(io_ctx->service->loop, &req, NULL, name, NI_NUMERICHOST|NI_NUMERICSERV);
-        uv_os_fd_t fd;
-        uv_fileno(server, &fd);
         ZITI_LOG(DEBUG, "hosted_service[%s] client[%s] local_addr[%s:%s] fd[%d] server[%s] connected %d", io_ctx->service->service_name,
                  io_ctx->client_identity, req.host, req.service, fd, io_ctx->resolved_dst, len);
-        int rc = ziti_conn_bridge(clt, server, on_bridge_close);
+        rc = ziti_conn_bridge(clt, server, on_bridge_close);
         if (rc != 0) {
             ZITI_LOG(ERROR, "failed to bridge client[%s] with hosted_service[%s] laddr[%s:%s] fd[%d]: %s",
                      io_ctx->client_identity, io_ctx->service->service_name,
