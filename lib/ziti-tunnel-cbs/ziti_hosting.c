@@ -728,8 +728,7 @@ static void on_hosted_client_connect_resolved(uv_getaddrinfo_t* ai_req, int stat
                 ZITI_LOG(ERROR, "hosted_service[%s], client[%s]: uv_udp_connect failed: %s",
                          io->service->service_name, io->client_identity, uv_strerror(uv_err));
                 hosted_server_close(io);
-            }
-            if (ziti_accept(io->client, on_hosted_client_connect_complete, NULL) != ZITI_OK) {
+            } else if (ziti_accept(io->client, on_hosted_client_connect_complete, NULL) != ZITI_OK) {
                 ZITI_LOG(ERROR, "ziti_accept failed");
                 hosted_server_close(io);
             }
