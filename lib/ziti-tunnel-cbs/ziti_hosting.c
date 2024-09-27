@@ -718,6 +718,7 @@ static void on_hosted_client_connect_resolved(uv_getaddrinfo_t* ai_req, int stat
                     ZITI_LOG(ERROR, "hosted_service[%s], client[%s]: uv_tcp_connect failed: %s",
                              io->service->service_name, io->client_identity, uv_strerror(uv_err));
                     hosted_server_close(io);
+                    free(c);
                 }
             }
             break;
