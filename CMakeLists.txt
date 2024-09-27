@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.20)
 
 
 set(ZITI_SDK_DIR "" CACHE FILEPATH "developer option: use local ziti-sdk-c checkout")
-set(ZITI_SDK_VERSION "1.0.9" CACHE STRING "ziti-sdk-c version or branch to use")
+set(ZITI_SDK_VERSION "fix-crash-with-no-datacb" CACHE STRING "ziti-sdk-c version or branch to use")
 
 # if TUNNEL_SDK_ONLY then don't descend into programs/ziti-edge-tunnel
 option(TUNNEL_SDK_ONLY "build only ziti-tunnel-sdk (without ziti)" OFF)

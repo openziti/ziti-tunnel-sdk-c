@@ -174,6 +174,12 @@ void *local_addr(uv_handle_t *h, struct sockaddr *name, int *len) {
 /** called by ziti sdk when a client connection is established (or fails) */
 static void on_hosted_client_connect_complete(ziti_connection clt, int err) {
     struct hosted_io_ctx_s *io_ctx = ziti_conn_data(clt);
+
+    if (io_ctx == NULL) {
+        ZITI_LOG(WARN, "missing io_ctx");
+        ziti_close(clt, ziti_conn_close_cb);
+    }
+
     if (err == ZITI_OK) {
         uv_handle_t *server = (uv_handle_t *) &io_ctx->server.tcp;
         struct sockaddr_storage name_storage;
@@ -196,6 +202,7 @@ static void on_hosted_client_connect_complete(ziti_connection clt, int err) {
     } else {
         ZITI_LOG(ERROR, "hosted_service[%s] client[%s] failed to connect: %s", io_ctx->service->service_name,
                  io_ctx->client_identity, ziti_errorstr(err));
+        hosted_server_close(io_ctx);
     }
 }
 
