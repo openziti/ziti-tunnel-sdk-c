@@ -27,6 +27,10 @@
 #include <unistd.h>
 #include <stdarg.h>
 
+#include <sysexits.h>
+
+#include <uv.h>
+
 #include <ziti/ziti_log.h>
 #include <ziti/ziti_dns.h>
 
@@ -629,22 +633,18 @@ static int make_bypass_socket(const struct addrinfo *ai, bool blocking)
  */
 uv_os_sock_t tlsuv_socket(const struct addrinfo *ai, bool blocking)
 {
-    int blockopt = blocking ? 0 : SOCK_NONBLOCK;
     uv_os_sock_t /* int */ sd;
 
-    sd = socket(ai->ai_family, ai->ai_socktype|SOCK_CLOEXEC|blockopt, ai->ai_protocol);
-    if (sd < 0) {
+    sd = make_bypass_socket(ai, blocking);
+    if (sd < 0)
+        exit(EX_OSERR);
+
+    int nodelay = 1;
+    if (setsockopt(sd, SOL_TCP, TCP_NODELAY, &nodelay, sizeof nodelay) < 0
+        && errno != ENOPROTOOPT) {
         int uv_err = uv_translate_sys_error(errno);
 
-        ZITI_LOG(ERROR, "socket: %d/%s", uv_err, uv_strerror(uv_err));
-        return -1;
-    }
-
-    int mark = ZET_BYPASS_MARK;
-    if (setsockopt(sd, SOL_SOCKET, SO_MARK, &mark, sizeof mark) < 0) {
-        int uv_err = uv_translate_sys_error(errno);
-
-        ZITI_LOG(WARN, "setsockopt(SO_MARK): %d/%s", uv_err, uv_strerror(uv_err));
+        ZITI_LOG(WARN, "Failed to set TCP_NODELAY on socket: %d/%s", uv_err, uv_strerror(uv_err));
     }
 
     return sd;
