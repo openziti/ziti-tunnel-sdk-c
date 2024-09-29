@@ -4,7 +4,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL Darwin)
     set(NETIF_DRIVER_SOURCE netif_driver/darwin/utun.c)
 endif()
 if(CMAKE_SYSTEM_NAME STREQUAL Linux)
-    set(NETIF_DRIVER_SOURCE netif_driver/linux/tun.c netif_driver/linux/resolvers.c netif_driver/linux/utils.c)
+    set(NETIF_DRIVER_SOURCE netif_driver/linux/tun.c netif_driver/linux/resolvers.c netif_driver/linux/utils.c netif_driver/linux/libiproute.c)
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL Windows)
