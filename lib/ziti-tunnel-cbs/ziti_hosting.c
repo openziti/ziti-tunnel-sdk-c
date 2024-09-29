@@ -38,6 +38,15 @@
 
 #define KEEPALIVE_DELAY 60
 
+#ifndef WIN32
+#  define closesocket(s) close(s)
+#endif /* WIN32 */
+
+/**
+ * Override socket creation
+ */
+extern int ziti_tunnel_hosting_socket(/* out */ uv_os_sock_t *, /* in */ const struct addrinfo *);
+
 /********** hosting **********/
 static void on_bridge_close(uv_handle_t *handle);
 
@@ -54,6 +63,7 @@ struct hosted_io_ctx_s {
         uv_tcp_t tcp;
         uv_udp_t udp;
     } server;
+    struct addrinfo *bind_address;
 };
 
 static void hosted_io_context_free(hosted_io_context io) {
@@ -61,6 +71,7 @@ static void hosted_io_context_free(hosted_io_context io) {
         if (io->app_data) {
             free_tunneler_app_data_ptr(io->app_data);
         }
+        uv_freeaddrinfo(io->bind_address);
         free(io);
     }
 }
@@ -435,9 +446,21 @@ static const char *compute_dst_port(const host_ctx_t *service, const tunneler_ap
     return port_from_config;
 }
 
-static int do_bind(hosted_io_context io, const char *addr, int socktype) {
+static int resolve_bind_address(hosted_io_context io, const tunneler_app_data *app_data, int socktype) {
+    // if app_data includes source ip[:port], verify that it is allowed before attempting to bind
+    if (!app_data || !app_data->source_addr || !app_data->source_addr[0])
+        return 0;
+
+    const char *addr = app_data->source_addr;
+    int uv_err = 0;
+
     // split out the ip and port if port was specified
     char *src_ip = strdup(addr);
+    if (src_ip == NULL) {
+        uv_err = UV_ENOMEM;
+        goto gai_fail;
+    }
+
     char *port = strchr(src_ip, ':');
     if (port != NULL) {
         *port = '\0';
@@ -446,17 +469,19 @@ static int do_bind(hosted_io_context io, const char *addr, int socktype) {
 
     uv_getaddrinfo_t ai_req = {0};
     struct addrinfo hints = {0};
+    hints.ai_family = AF_UNSPEC;
     hints.ai_flags = AI_NUMERICHOST | AI_NUMERICSERV;
     hints.ai_protocol = get_protocol_id(io->computed_dst_protocol);
     hints.ai_socktype = socktype;
 
-    int uv_err = uv_getaddrinfo(io->service->loop, &ai_req, NULL, src_ip, port, &hints);
+    uv_err = uv_getaddrinfo(io->service->loop, &ai_req, NULL, src_ip, port, &hints);
+gai_fail:
     free(src_ip);
 
     if (uv_err != 0) {
         ZITI_LOG(ERROR, "hosted_service[%s], client[%s]: getaddrinfo(%s) failed: %s",
                  io->service->service_name, io->client_identity, addr, uv_strerror(uv_err));
-        return -1;
+        return uv_err;
     }
 
     if (ai_req.addrinfo->ai_next != NULL) {
@@ -469,36 +494,38 @@ static int do_bind(hosted_io_context io, const char *addr, int socktype) {
     if (!address_match(&src_za, &io->service->allowed_source_addresses)) {
         ZITI_LOG(ERROR, "hosted_service[%s], client[%s] client requested source IP %s is not allowed",
                  io->service->service_name, io->client_identity, addr);
-        return -1;
+        uv_err = UV_EPERM;
+        goto free_and_exit;
     }
 
     switch (hints.ai_protocol) {
         case IPPROTO_TCP:
-            uv_err = uv_tcp_bind(&io->server.tcp, ai_req.addrinfo->ai_addr, 0);
             break;
         case IPPROTO_UDP:
-            uv_err = uv_udp_bind(&io->server.udp, ai_req.addrinfo->ai_addr, 0);
             break;
         default:
-            ZITI_LOG(ERROR, "hosted_service[%s] client[%s] unsupported protocol %d when binding source address",
+            ZITI_LOG(ERROR, "hosted_service[%s] client[%s] unsupported protocol %d",
                      io->service->service_name, io->client_identity, hints.ai_protocol);
-            uv_err = UV_EINVAL;
+            uv_err = UV_EPROTONOSUPPORT;
+            goto free_and_exit;
     }
 
-    uv_freeaddrinfo(ai_req.addrinfo);
-
-    if (uv_err != 0) {
-        ZITI_LOG(ERROR, "hosted_service[%s] client[%s]: bind failed: %s", io->service->service_name,
-                 io->client_identity, uv_strerror(uv_err));
-        return -1;
-    }
+    io->bind_address = ai_req.addrinfo;
 
     return 0;
+
+free_and_exit:
+     uv_freeaddrinfo(ai_req.addrinfo);
+     return uv_err;
 }
 
 static hosted_io_context hosted_io_context_new(struct hosted_service_ctx_s *service_ctx, ziti_connection client,
         tunneler_app_data *app_data, const char *dst_protocol, const char *dst_ip_or_hn, const char *dst_port) {
     hosted_io_context io = calloc(1, sizeof(struct hosted_io_ctx_s));
+
+    if (!io)
+        return NULL;
+
     io->service = service_ctx;
 
     // include underlay details in client identity if available
@@ -526,25 +553,21 @@ static hosted_io_context hosted_io_context_new(struct hosted_service_ctx_s *serv
             io->server.udp.data = io;
             break;
         default:
-            ZITI_LOG(ERROR, "hosted_service[%s] client[%s] unsupported protocol '%s''", service_ctx->service_name,
-                     io->client_identity, dst_protocol);
-            free(io);
-            return NULL;
+            uv_err = UV_EPROTONOSUPPORT;
     }
+
     if (uv_err != 0) {
         ZITI_LOG(ERROR, "hosted_service[%s] client[%s] dst[%s:%s:%s] failed to initialize underlay handle: %s",
                  service_ctx->service_name, io->client_identity, dst_protocol, dst_ip_or_hn, dst_port, uv_strerror(uv_err));
         free(io);
         return NULL;
     }
+
     // uv handle has been initialized and must be closed before freeing `io` now.
 
-    // if app_data includes source ip[:port], verify that it is allowed before attempting to bind
-    if (app_data && app_data->source_addr && app_data->source_addr[0] != '\0') {
-        if (do_bind(io, app_data->source_addr, socktype) != 0) {
-            hosted_server_close(io);
-            return NULL;
-        }
+    if (resolve_bind_address(io, app_data, socktype) != 0) {
+        hosted_server_close(io);
+        return NULL;
     }
 
     // success. now set references to ziti connection and app_data so cleanup happens in ziti_conn_close_cb
@@ -637,10 +660,14 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
     ZITI_LOG(INFO, "hosted_service[%s] client[%s] dst_addr[%s:%s:%s]: incoming connection",
              service_ctx->service_name, io->client_identity, protocol, ip_or_hn, port);
 
+    /**
+     * make remote_address compatible with supplied bind_address
+     */
     struct addrinfo hints = {0};
+    hints.ai_family = io->bind_address ? io->bind_address->ai_family : AF_UNSPEC;
     hints.ai_protocol = protocol_number;
     hints.ai_socktype = protocol_number == IPPROTO_UDP ? SOCK_DGRAM : SOCK_STREAM;
-    hints.ai_flags = AI_NUMERICSERV;
+    hints.ai_flags = AI_V4MAPPED | AI_NUMERICSERV;
     if (is_ip) hints.ai_flags |= AI_NUMERICHOST;
     ziti_conn_set_data(clt, io);
 
@@ -668,6 +695,65 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
         hosted_server_close(io);
         return;
     }
+}
+
+static int do_tcp_connect(hosted_io_context io, const struct addrinfo *remote_address, uv_connect_cb cb)
+{
+    uv_connect_t *request;
+    uv_os_sock_t sock;
+    int uv_err;
+
+    if ((request = calloc(1, sizeof *request)) == NULL)
+        return UV_ENOMEM;
+
+    /**
+     * remote_address is made compatible with bind_address
+     */
+    uv_err = ziti_tunnel_hosting_socket(&sock, remote_address);
+    if (uv_err < 0 && uv_err != UV_ENOSYS)
+        goto free_request_and_exit;
+
+    if (uv_err == 0 && (uv_err = uv_tcp_open(&io->server.tcp, sock)) < 0) {
+        (void) closesocket(sock);
+        goto free_request_and_exit;
+    }
+
+    if (io->bind_address && (uv_err = uv_tcp_bind(&io->server.tcp, io->bind_address->ai_addr, 0)))
+        goto free_request_and_exit;
+
+    uv_err = uv_tcp_connect(request, &io->server.tcp, remote_address->ai_addr, cb);
+    if (uv_err < 0)
+        goto free_request_and_exit;
+
+    return 0;
+
+free_request_and_exit:
+
+    free(request);
+    return uv_err;
+}
+
+static int do_udp_connect(hosted_io_context io, const struct addrinfo *remote_address)
+{
+    uv_os_sock_t sock;
+    int uv_err;
+
+    uv_err = ziti_tunnel_hosting_socket(&sock, remote_address);
+    if (uv_err < 0 && uv_err != UV_ENOSYS)
+        return uv_err;
+
+    if (uv_err == 0 && (uv_err = uv_udp_open(&io->server.udp, sock)) < 0) {
+        (void) closesocket(sock);
+        return uv_err;
+    }
+
+    if (io->bind_address && (uv_err = uv_udp_bind(&io->server.udp, io->bind_address->ai_addr, 0)) < 0)
+        return uv_err;
+
+    if ((uv_err = udp_connect(&io->server.udp, remote_address->ai_addr)) < 0)
+        return uv_err;
+
+    return 0;
 }
 
 static void on_hosted_client_connect_resolved(uv_getaddrinfo_t* ai_req, int status, struct addrinfo* res) {
@@ -711,22 +797,18 @@ static void on_hosted_client_connect_resolved(uv_getaddrinfo_t* ai_req, int stat
 
     switch (res->ai_protocol) {
         case IPPROTO_TCP:
-            {
-                uv_connect_t *c = malloc(sizeof(uv_connect_t));
-                uv_err = uv_tcp_connect(c, &io->server.tcp, res->ai_addr, on_hosted_tcp_server_connect_complete);
-                if (uv_err != 0) {
-                    ZITI_LOG(ERROR, "hosted_service[%s], client[%s]: uv_tcp_connect failed: %s",
-                             io->service->service_name, io->client_identity, uv_strerror(uv_err));
-                    hosted_server_close(io);
-                    free(c);
-                }
+            uv_err = do_tcp_connect(io, res, on_hosted_tcp_server_connect_complete);
+            if (uv_err != 0) {
+                ZITI_LOG(ERROR, "hosted_service[%s] client[%s]: TCP connection failed: %s",
+                    io->service->service_name, io->client_identity, uv_strerror(uv_err));
+                hosted_server_close(io);
             }
             break;
         case IPPROTO_UDP:
-            uv_err = uv_udp_connect(&io->server.udp, res->ai_addr);
+            uv_err = do_udp_connect(io, res);
             if (uv_err != 0) {
-                ZITI_LOG(ERROR, "hosted_service[%s], client[%s]: uv_udp_connect failed: %s",
-                         io->service->service_name, io->client_identity, uv_strerror(uv_err));
+                ZITI_LOG(ERROR, "hosted_service[%s] client[%s]: uv_udp_open failed: %s",
+                    io->service->service_name, io->client_identity, uv_strerror(uv_err));
                 hosted_server_close(io);
             } else if (ziti_accept(io->client, on_hosted_client_connect_complete, NULL) != ZITI_OK) {
                 ZITI_LOG(ERROR, "ziti_accept failed");
@@ -737,6 +819,9 @@ static void on_hosted_client_connect_resolved(uv_getaddrinfo_t* ai_req, int stat
 
     uv_freeaddrinfo(res);
     free(ai_req);
+
+    uv_freeaddrinfo(io->bind_address);
+    io->bind_address = NULL;
 }
 
 /** called by ziti SDK when a hosted service listener is ready */
