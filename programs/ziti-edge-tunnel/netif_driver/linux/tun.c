@@ -649,3 +649,25 @@ uv_os_sock_t tlsuv_socket(const struct addrinfo *ai, bool blocking)
 
     return sd;
 }
+
+/**
+ * Override ziti_hosting_cbs socket factory. This factory is used to create
+ * the sockets used for `hosted` services.
+ */
+int
+ziti_tunnel_hosting_socket(uv_os_sock_t *psock, const struct addrinfo *ai)
+{
+    uv_os_sock_t sd;
+
+    sd = make_bypass_socket(ai, true);
+    if (sd < 0) {
+        int uv_err = uv_translate_sys_error(errno);
+
+        *psock = -1;
+        return uv_err;
+    }
+
+    *psock = sd;
+
+    return 0;
+}
