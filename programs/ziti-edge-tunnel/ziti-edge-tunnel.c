@@ -1368,6 +1368,9 @@ static void on_event(const base_event *ev) {
                                     char *ip = svc->Addresses[x]->IP;
                                     char prefix_len[4];
                                     sprintf(prefix_len, "%d", svc->Addresses[x]->Prefix);
+                                    if(svc->AllowedSourceAddresses && svc->AllowedSourceAddresses[0] != NULL){
+                                        unbind_route(svc->Addresses[x]->IP, svc->Addresses[x]->Prefix, ztun->handle->name);
+                                    }
                                     for(int i =  0; (svc->Ports != NULL) && (svc->Ports[i] != NULL); i++){
                                         char low_port[6];
                                         char high_port[6];
@@ -1376,7 +1379,6 @@ static void on_event(const base_event *ev) {
                                         for(int j =  0; (svc->Protocols != NULL) && (svc->Protocols[j] != NULL); j++){
                                             if(svc->AllowedSourceAddresses && svc->AllowedSourceAddresses[0] != NULL){
                                                 diverter_update(ip, prefix_len,  low_port, high_port, svc->Protocols[j], svc->Id, "-I");
-                                                unbind_route(svc->Addresses[x]->IP, svc->Addresses[x]->Prefix, ztun->handle->name);
                                             }else if(firewall){
                                                 diverter_update(ip, prefix_len,  low_port, high_port, svc->Protocols[j], svc->Id, "-I");
                                             }
