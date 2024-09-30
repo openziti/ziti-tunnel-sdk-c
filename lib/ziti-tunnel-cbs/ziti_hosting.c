@@ -174,19 +174,34 @@ void *local_addr(uv_handle_t *h, struct sockaddr *name, int *len) {
 /** called by ziti sdk when a client connection is established (or fails) */
 static void on_hosted_client_connect_complete(ziti_connection clt, int err) {
     struct hosted_io_ctx_s *io_ctx = ziti_conn_data(clt);
+
+    if (io_ctx == NULL) {
+        ZITI_LOG(WARN, "missing io_ctx");
+        ziti_close(clt, ziti_conn_close_cb);
+        return;
+    }
+
     if (err == ZITI_OK) {
+        int rc;
         uv_handle_t *server = (uv_handle_t *) &io_ctx->server.tcp;
+        uv_os_fd_t fd;
+        if ((rc = uv_fileno(server, &fd)) != 0) {
+            ZITI_LOG(ERROR, "failed to bridge client[%s] with hosted_service[%s] fd[%d]: %s",
+                     io_ctx->client_identity, io_ctx->service->service_name,
+                     fd, uv_strerror(rc));
+            hosted_server_close(io_ctx);
+            return;
+        }
+
         struct sockaddr_storage name_storage;
         struct sockaddr *name = (struct sockaddr *) &name_storage;
         int len = sizeof(name_storage);
         local_addr(server, name, &len);
         uv_getnameinfo_t req = {0};
         uv_getnameinfo(io_ctx->service->loop, &req, NULL, name, NI_NUMERICHOST|NI_NUMERICSERV);
-        uv_os_fd_t fd;
-        uv_fileno(server, &fd);
         ZITI_LOG(DEBUG, "hosted_service[%s] client[%s] local_addr[%s:%s] fd[%d] server[%s] connected %d", io_ctx->service->service_name,
                  io_ctx->client_identity, req.host, req.service, fd, io_ctx->resolved_dst, len);
-        int rc = ziti_conn_bridge(clt, server, on_bridge_close);
+        rc = ziti_conn_bridge(clt, server, on_bridge_close);
         if (rc != 0) {
             ZITI_LOG(ERROR, "failed to bridge client[%s] with hosted_service[%s] laddr[%s:%s] fd[%d]: %s",
                      io_ctx->client_identity, io_ctx->service->service_name,
@@ -196,6 +211,7 @@ static void on_hosted_client_connect_complete(ziti_connection clt, int err) {
     } else {
         ZITI_LOG(ERROR, "hosted_service[%s] client[%s] failed to connect: %s", io_ctx->service->service_name,
                  io_ctx->client_identity, ziti_errorstr(err));
+        hosted_server_close(io_ctx);
     }
 }
 
@@ -296,6 +312,7 @@ static bool allowed_hostname_match(const char *hostname, const allowed_hostnames
     struct allowed_hostname_s *entry;
     LIST_FOREACH(entry, hostnames, _next) {
         if (entry->domain_name[0] == '*') {
+            if (entry->domain_name[1] == '\0') return true;
             for (char *dot = strchr(hostname, '.'); dot != NULL; dot = strchr(dot + 1, '.')) {
                 if (strcmp(dot, entry->domain_name + 1) == 0) return true;
             }
@@ -701,6 +718,7 @@ static void on_hosted_client_connect_resolved(uv_getaddrinfo_t* ai_req, int stat
                     ZITI_LOG(ERROR, "hosted_service[%s], client[%s]: uv_tcp_connect failed: %s",
                              io->service->service_name, io->client_identity, uv_strerror(uv_err));
                     hosted_server_close(io);
+                    free(c);
                 }
             }
             break;
@@ -710,8 +728,7 @@ static void on_hosted_client_connect_resolved(uv_getaddrinfo_t* ai_req, int stat
                 ZITI_LOG(ERROR, "hosted_service[%s], client[%s]: uv_udp_connect failed: %s",
                          io->service->service_name, io->client_identity, uv_strerror(uv_err));
                 hosted_server_close(io);
-            }
-            if (ziti_accept(io->client, on_hosted_client_connect_complete, NULL) != ZITI_OK) {
+            } else if (ziti_accept(io->client, on_hosted_client_connect_complete, NULL) != ZITI_OK) {
                 ZITI_LOG(ERROR, "ziti_accept failed");
                 hosted_server_close(io);
             }
