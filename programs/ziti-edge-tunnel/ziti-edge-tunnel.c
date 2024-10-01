@@ -86,14 +86,15 @@ static void unbind_route(char* ip, int prefix, char *dev);
 void bind_route(char* ip, int prefix_len, char *dev);
 void bind_diverter_route(char *ip, int prefix_len);
 void unbind_diverter_route(char *ip, int prefix_len);
+void enable_ipv6(char *interface);
+void set_tun_mode(char *interface);
+void pass_non_tuple(char *interface);
 void diverter_binding_flush();
 char check_alt[IF_NAMESIZE];
 char *diverter_path = "/opt/openziti/bin/zfw";
 static tunneler_context initialize_tunneler(netif_driver tun, uv_loop_t* ziti_loop);
 static void diverter_update(char *ip, char *mask, char *lowport, char *highport, char *protocol, char *service_id, char *action);
 static netif_driver ztun;
-uint32_t dns_prefix = 0;
-unsigned char dns_prefix_range = 0;
 #if _WIN32
 static void move_config_from_previous_windows_backup(uv_loop_t *loop);
 #define LAST_CHAR_IPC_CMD '\n'
@@ -1307,6 +1308,9 @@ static void on_event(const base_event *ev) {
                                 if(!svc->Addresses[x]->IsHost){
                                     char *ip = svc->Addresses[x]->IP;
                                     char prefix_len[4];
+                                    if(svc->AllowedSourceAddresses && svc->AllowedSourceAddresses[0] != NULL){
+                                        bind_route(svc->Addresses[x]->IP, svc->Addresses[x]->Prefix, ztun->handle->name);
+                                    }
                                     sprintf(prefix_len, "%d", svc->Addresses[x]->Prefix);
                                     for(int i =  0; (svc->Ports != NULL) && (svc->Ports[i] != NULL); i++){
                                         char low_port[6];
@@ -1314,10 +1318,7 @@ static void on_event(const base_event *ev) {
                                         sprintf(low_port, "%d", svc->Ports[i]->Low);
                                         sprintf(high_port,"%d", svc->Ports[i]->High);
                                         for(int j =  0; (svc->Protocols != NULL) && (svc->Protocols[j] != NULL); j++){
-                                            if(svc->AllowedSourceAddresses && svc->AllowedSourceAddresses[0] != NULL){
-                                                diverter_update(ip, prefix_len,  low_port, high_port, svc->Protocols[j], svc->Id, "-D");
-                                                bind_route(svc->Addresses[x]->IP, svc->Addresses[x]->Prefix, ztun->handle->name);
-                                            }else if(firewall){
+                                            if((svc->AllowedSourceAddresses && svc->AllowedSourceAddresses[0] != NULL) || firewall){
                                                 diverter_update(ip, prefix_len,  low_port, high_port, svc->Protocols[j], svc->Id, "-D");
                                             }
                                         }
@@ -1377,9 +1378,7 @@ static void on_event(const base_event *ev) {
                                         sprintf(low_port, "%d", svc->Ports[i]->Low);
                                         sprintf(high_port,"%d", svc->Ports[i]->High);
                                         for(int j =  0; (svc->Protocols != NULL) && (svc->Protocols[j] != NULL); j++){
-                                            if(svc->AllowedSourceAddresses && svc->AllowedSourceAddresses[0] != NULL){
-                                                diverter_update(ip, prefix_len,  low_port, high_port, svc->Protocols[j], svc->Id, "-I");
-                                            }else if(firewall){
+                                            if((svc->AllowedSourceAddresses && svc->AllowedSourceAddresses[0] != NULL) || firewall){
                                                 diverter_update(ip, prefix_len,  low_port, high_port, svc->Protocols[j], svc->Id, "-I");
                                             }
                                         }
@@ -1681,19 +1680,47 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
         ziti_dns_set_upstream(ziti_loop, a);
     }
     #if __linux__
+        if(!diverter && !firewall){
+            diverterIf = getenv("ZITI_DIVERTER");
+            if(diverterIf){
+                diverter = true;
+            }
+            char *zifi_firewall = getenv("ZITI_FIREWALL");
+            if(zifi_firewall){
+                diverter = true;
+                firewall = true;
+                diverterIf = getenv("ZITI_FIREWALL");
+            }
+        }
         if(diverter && tun){
             ztun = tun;
+            if(!firewall){
+                diverter_quit();
+            }
             if (access(diverter_path, F_OK) == 0){
-                uint32_t idx = if_nametoindex(diverterIf);
-                if (!idx)
-                {
-                    printf("Diverter interface not found: %s\n", diverterIf);
-                    exit(1);
+                int count = 0;
+                char *interface = strtok(diverterIf,",");
+                while(interface != NULL){
+                    uint32_t idx = if_nametoindex(interface);
+                    if (!idx)
+                    {
+                        ZITI_LOG(INFO,"Diverter interface not found: %s", interface);
+                        interface = strtok(NULL,",");
+                        continue;
+                    }
+                    if(if_indextoname(idx, check_alt)){
+                        interface = check_alt;
+                    }
+                    init_diverter_interface(interface);
+                    interface = strtok(NULL,",");
+                    count++;
                 }
-                if(if_indextoname(idx, check_alt)){
-                   diverterIf = check_alt;
+                if(count){
+                    set_diverter(dns_subnet_in->s_addr, dns_subnet_zaddr.addr.cidr.bits, tun->handle->name);
+                }else{
+                   ZITI_LOG(INFO,"No valid diverter interfaces found");
+                   exit(1);  
                 }
-                set_diverter(tun->handle->name);
             }else{
                 ZITI_LOG(INFO, "Diverter binary not found");
                 exit(1);
@@ -2276,8 +2303,8 @@ void diverter_quit(){
     close(o_std_err); 
 }
 
-void init_diverter(){
-    ZITI_LOG(INFO,"diverter tc enabled on %s", diverterIf);
+void init_diverter_interface(char * interface){
+    ZITI_LOG(INFO,"diverter tc enabled on %s", interface);
     pid_t pid;
     int o_std_out = dup(STDOUT_FILENO);
     int o_std_err = dup(STDERR_FILENO);
@@ -2288,7 +2315,7 @@ void init_diverter(){
     dup2(fd, STDOUT_FILENO);
     dup2(fd, STDERR_FILENO);
     close(fd);
-    char *const parmList[] = {diverter_path, "-H", diverterIf, NULL};
+    char *const parmList[] = {diverter_path, "-H", interface, NULL};
     if ((pid = fork()) == -1)
     {
         ZITI_LOG(DEBUG,"fork error: can't spawn bind");
@@ -2302,7 +2329,7 @@ void init_diverter(){
 
         if(!(waitpid(pid, &status, 0) < 0)){
             if(!(WIFEXITED(status) && !WEXITSTATUS(status))){
-                ZITI_LOG(DEBUG,"waitpid error: zfw not set on dev %s", diverterIf);
+                ZITI_LOG(DEBUG,"waitpid error: zfw not set on dev %s", interface);
             }
         }
     }
@@ -2310,6 +2337,11 @@ void init_diverter(){
     dup2(o_std_err, STDERR_FILENO);
     close(o_std_out);
     close(o_std_err); 
+    set_tun_mode(interface);
+    if(!firewall){
+        enable_ipv6(interface);
+        pass_non_tuple(interface);
+    }
 }
 
 void bind_diverter_route(char *ip, int prefix_len){
@@ -2456,7 +2488,7 @@ void diverter_ingress_flush(){
     close(o_std_err); 
 }
 
-void pass_non_tuple(){
+void pass_non_tuple(char *interface){
     pid_t pid;
     int o_std_out = dup(STDOUT_FILENO);
     int o_std_err = dup(STDERR_FILENO);
@@ -2467,7 +2499,7 @@ void pass_non_tuple(){
     dup2(fd, STDOUT_FILENO);
     dup2(fd, STDERR_FILENO);
     close(fd);
-    char *const parmList[] = {diverter_path, "-q", diverterIf, NULL};
+    char *const parmList[] = {diverter_path, "-q", interface, NULL};
     if ((pid = fork()) == -1)
     {
         ZITI_LOG(DEBUG,"fork error: can't spawn bind");
@@ -2480,7 +2512,7 @@ void pass_non_tuple(){
         int status =0;
         if(!(waitpid(pid, &status, 0) < 0)){
             if(!(WIFEXITED(status) && !WEXITSTATUS(status))){
-                ZITI_LOG(DEBUG,"waitpid error: diverter non-tuple firewall not disabled on dev %s\n", diverterIf);
+                ZITI_LOG(DEBUG,"waitpid error: diverter non-tuple firewall not disabled on dev %s\n", interface);
             }
         }
     }
@@ -2490,7 +2522,7 @@ void pass_non_tuple(){
     close(o_std_err); 
 }
 
-void enable_ipv6(){
+void enable_ipv6(char *interface){
     pid_t pid;
     int o_std_out = dup(STDOUT_FILENO);
     int o_std_err = dup(STDERR_FILENO);
@@ -2501,7 +2533,7 @@ void enable_ipv6(){
     dup2(fd, STDOUT_FILENO);
     dup2(fd, STDERR_FILENO);
     close(fd);
-    char *const parmList[] = {diverter_path, "-6", diverterIf, NULL};
+    char *const parmList[] = {diverter_path, "-6", interface, NULL};
     if ((pid = fork()) == -1)
     {
         ZITI_LOG(DEBUG,"fork error: can't spawn bind");
@@ -2514,7 +2546,7 @@ void enable_ipv6(){
         int status =0;
         if(!(waitpid(pid, &status, 0) < 0)){
             if(!(WIFEXITED(status) && !WEXITSTATUS(status))){
-                ZITI_LOG(DEBUG,"waitpid error: diverter IPv6 not enabled on dev %s", diverterIf);
+                ZITI_LOG(DEBUG,"waitpid error: diverter IPv6 not enabled on dev %s", interface);
             }
         }
     }
@@ -2558,49 +2590,45 @@ void pass_tcp_ipv4(){
     close(o_std_err); 
 }
 
-void pass_dns_range(){
+void pass_dns_range(uint32_t dns_prefix, unsigned char dns_prefix_range){
     pid_t pid;
     char prefix[INET_ADDRSTRLEN];
     char prefix_len[4];
-    if(dns_prefix && dns_prefix_range){
-        sprintf(prefix_len, "%u", dns_prefix_range);
-        inet_ntop(AF_INET, &dns_prefix, prefix, INET_ADDRSTRLEN);
-        int o_std_out = dup(STDOUT_FILENO);
-        int o_std_err = dup(STDERR_FILENO);
-        int fd = open("/dev/null", O_WRONLY);
-        if (fd == -1){
-            return; 
+    sprintf(prefix_len, "%u", dns_prefix_range);
+    inet_ntop(AF_INET, &dns_prefix, prefix, INET_ADDRSTRLEN);
+    int o_std_out = dup(STDOUT_FILENO);
+    int o_std_err = dup(STDERR_FILENO);
+    int fd = open("/dev/null", O_WRONLY);
+    if (fd == -1){
+        return; 
+    }
+    dup2(fd, STDOUT_FILENO);
+    dup2(fd, STDERR_FILENO);
+    close(fd);
+    char *protocols[2] = {"tcp", "udp"};
+    for(int x = 0; x < 2; x++){
+        char *const parmList[] = {diverter_path, "-I", "-c", prefix, "-m", prefix_len, "-l", "1" , "-h", "65535", "-t", "65535", "-p", protocols[x], NULL};
+        if ((pid = fork()) == -1)
+        {
+            ZITI_LOG(DEBUG,"fork error: can't spawn bind");
         }
-        dup2(fd, STDOUT_FILENO);
-        dup2(fd, STDERR_FILENO);
-        close(fd);
-        char *protocols[2] = {"tcp", "udp"};
-        for(int x = 0; x < 2; x++){
-            char *const parmList[] = {diverter_path, "-I", "-c", prefix, "-m", prefix_len, "-l", "1" , "-h", "65535", "-t", "65535", "-p", protocols[x], NULL};
-            if ((pid = fork()) == -1)
-            {
-                ZITI_LOG(DEBUG,"fork error: can't spawn bind");
-            }
-            else if (pid == 0)
-            {
-                execv(diverter_path, parmList);
-                ZITI_LOG(DEBUG, "execv error: unknown error binding ipv4 tcp filters\n");
-            }else{
-                int status =0;
-                if(!(waitpid(pid, &status, 0) < 0)){
-                    if(!(WIFEXITED(status) && !WEXITSTATUS(status))){
-                        ZITI_LOG(DEBUG,"waitpid error: diverter IPv4 TCP firewall not disabled on dev %s", diverterIf);
-                    }
+        else if (pid == 0)
+        {
+            execv(diverter_path, parmList);
+            ZITI_LOG(DEBUG, "execv error: unknown error binding ipv4 tcp filters\n");
+        }else{
+            int status =0;
+            if(!(waitpid(pid, &status, 0) < 0)){
+                if(!(WIFEXITED(status) && !WEXITSTATUS(status))){
+                    ZITI_LOG(DEBUG,"waitpid error: diverter IPv4 TCP firewall not disabled on dev %s", diverterIf);
                 }
             }
         }
-        dup2(o_std_out, STDOUT_FILENO);
-        dup2(o_std_err, STDERR_FILENO);
-        close(o_std_out);
-        close(o_std_err); 
-    }else{
-        ZITI_LOG(INFO,"Invalid dns prefix range");
     }
+    dup2(o_std_out, STDOUT_FILENO);
+    dup2(o_std_err, STDERR_FILENO);
+    close(o_std_out);
+    close(o_std_err); 
 }
 
 void pass_udp_ipv4(){
@@ -2671,8 +2699,8 @@ void pass_tcp_ipv6(){
     close(o_std_err); 
 }
 
-void set_tun_mode(){
-    ZITI_LOG(INFO,"setting diverter to run in tun mode");
+void set_tun_mode(char *interface){
+    ZITI_LOG(INFO,"setting diverter interface %s to run in tun mode", interface);
     pid_t pid;
     int o_std_out = dup(STDOUT_FILENO);
     int o_std_err = dup(STDERR_FILENO);
@@ -2683,7 +2711,7 @@ void set_tun_mode(){
     dup2(fd, STDOUT_FILENO);
     dup2(fd, STDERR_FILENO);
     close(fd);
-    char *const parmList[] = {diverter_path, "-T", diverterIf, NULL};
+    char *const parmList[] = {diverter_path, "-T", interface, NULL};
     if ((pid = fork()) == -1)
     {
         ZITI_LOG(DEBUG,"fork error: can't spawn bind");
@@ -2696,7 +2724,7 @@ void set_tun_mode(){
         int status =0;
         if(!(waitpid(pid, &status, 0) < 0)){
             if(!(WIFEXITED(status) && !WEXITSTATUS(status))){
-                ZITI_LOG(DEBUG,"waitpid error: diverter tunnel mode intercept not set on dev %s\n", diverterIf);
+                ZITI_LOG(DEBUG,"waitpid error: diverter tunnel mode intercept not set on dev %s\n", interface);
             }
         }
     }
@@ -2812,17 +2840,13 @@ void add_user_rules(){
 void disable_firewall(){
     pass_tcp_ipv4();
     pass_udp_ipv4();
-    enable_ipv6();
     pass_tcp_ipv6();
     pass_udp_ipv6();
-    pass_non_tuple();
 }
 
-void set_diverter(char *tun_name)
+void set_diverter(uint32_t dns_prefix, unsigned char dns_prefix_range, char *tun_name)
 {
     ZITI_LOG(INFO,"starting ziti-edge-tunnel in diverter mode");
-    init_diverter();
-    set_tun_mode();
     if(!firewall){
         disable_firewall();
     }else{
@@ -2832,7 +2856,7 @@ void set_diverter(char *tun_name)
         }else{
             ZITI_LOG(DEBUG, "Diverter user defined FW rules not found");
         }
-        pass_dns_range();
+        pass_dns_range(dns_prefix, dns_prefix_range);
     }
     setup_xdp(tun_name);
 }
@@ -2894,12 +2918,6 @@ static void run(int argc, char *argv[]) {
 
         tun_ip = htonl(mask);
         dns_ip = htonl(mask + 1);
-#if __linux__
-        if(firewall){
-            dns_prefix = ntohl(htonl(tun_ip)-1);
-            dns_prefix_range = (unsigned char)bits;
-        }
-#endif
 
         // set ip info into instance
         set_ip_info(dns_ip, tun_ip, bits);
