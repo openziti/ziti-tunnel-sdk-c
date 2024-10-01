@@ -4022,7 +4022,7 @@ static CommandLine enroll_cmd = make_command("enroll", "enroll Ziti identity",
         "\t-n|--name\tidentity name\n",
         parse_enroll_opts, enroll);
 static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required superuser access)",
-                                          "-i <id.file> [-r N] [-v N] [-d|--dns-ip-range N.N.N.N/n] [-D|--diverter <interface>] [-f|--diverterFw <interface>]",
+                                          "-i <id.file> [-r N] [-v N] [-d|--dns-ip-range N.N.N.N/n] [-D|--diverter <interface list>] [-f|--diverterFw <interface list>]",
                                           "\t-i|--identity <identity>\trun with provided identity file (required)\n"
                                           "\t-I|--identity-dir <dir>\tload identities from provided directory\n"
                                           "\t-x|--proxy type://[username[:password]@]hostname_or_ip:port\tproxy to use when"
