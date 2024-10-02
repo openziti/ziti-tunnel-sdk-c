@@ -174,6 +174,7 @@ XX(woken, model_bool, none, Woke, __VA_ARGS__) \
 XX(unlocked, model_bool, none, Unlocked, __VA_ARGS__)
 
 #define TUNNEL_ADD_IDENTITY(XX, ...) \
+XX(useKeychain, model_bool, none, UseKeychain, __VA_ARGS__) \
 XX(jwtFileName, model_string, none, JwtFileName, __VA_ARGS__) \
 XX(jwtContent, model_string, none, JwtContent, __VA_ARGS__)
 
@@ -343,6 +344,7 @@ struct add_identity_request_s {
     model_string identifier;
     model_string identifier_file_name;
     model_string jwt_content;
+    bool use_keychain;
     void *add_id_ctx;
     command_cb cmd_cb;
     void *cmd_ctx;
