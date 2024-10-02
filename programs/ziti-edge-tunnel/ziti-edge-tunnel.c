@@ -1710,11 +1710,11 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
 #if __linux__
     if(!diverter && !firewall){
         diverterIf = getenv("ZITI_DIVERTER");
-        if(diverterIf){
+        if(diverterIf && strlen(diverterIf)){
             diverter = true;
         }
         char *zifi_firewall = getenv("ZITI_FIREWALL");
-        if(zifi_firewall){
+        if(zifi_firewall && strlen(zifi_firewall)){
             diverter = true;
             firewall = true;
             diverterIf = getenv("ZITI_FIREWALL");
