@@ -18,6 +18,7 @@ WORKDIR /root/
 
 RUN apt-get update \
     && apt-get -y install \
+        autoconf automake autopoint \
         gcc-arm-linux-gnueabihf \
         g++-arm-linux-gnueabihf \
         gcc-aarch64-linux-gnu \
@@ -29,6 +30,7 @@ RUN apt-get update \
         git \
         graphviz \
         libsystemd-dev \
+        libtool \
         pkg-config \
         python3 \
         zlib1g-dev \
