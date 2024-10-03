@@ -97,7 +97,7 @@ jobs:
         uses: ./.github/actions/openziti-tunnel-build-action
         with:
           arch: ${{ matrix.arch.cmake }}
-          config: Release
+          config: RelWithDebInfo
 
       - name: list artifacts
         shell: bash
