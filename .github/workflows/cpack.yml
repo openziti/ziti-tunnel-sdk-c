@@ -105,7 +105,7 @@ jobs:
           set -x
           cat /etc/*-release
           ls -horAS ./build/*.${{ matrix.distro.type }}
-          ls -horAS ./build/programs/ziti-edge-tunnel/Release/ziti-edge-tunnel
+          ls -horAS ./build/programs/ziti-edge-tunnel/RelWithDebInfo/ziti-edge-tunnel
 
       - name: install package artifact in runner container if Ubuntu x86_64
         if: ${{ matrix.arch.cmake == 'ci-linux-x64' && matrix.distro.name == 'ubuntu' }}
@@ -129,7 +129,7 @@ jobs:
           set -x
           cat /etc/*-release
           ldd ./build/programs/ziti-edge-tunnel/Release/ziti-edge-tunnel
-          ./build/programs/ziti-edge-tunnel/Release/ziti-edge-tunnel version --verbose
+          ./build/programs/ziti-edge-tunnel/RelWithDebInfo/ziti-edge-tunnel version --verbose
 
       - name: Upload Package to Workflow Summary Page
         uses: actions/upload-artifact@v4
