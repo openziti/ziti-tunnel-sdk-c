@@ -39,7 +39,7 @@ done
 cmake -E make_directory ./build
 (
     [[ -d ./build ]] && rm -r ./build
-    cmake -E make_directory ./build
+    cmake -E make_directory ./build  
     # allow unset for scl_source scripts
     set +u
     source scl_source enable gcc-toolset-10 \
@@ -47,9 +47,8 @@ cmake -E make_directory ./build
             --preset "${cmake_preset}" \
             -DCMAKE_BUILD_TYPE="${cmake_config}" \
             -DBUILD_DIST_PACKAGES=ON \
-            -DVCPKG_OVERLAY_PORTS="./vcpkg-overlays/linux-syslibs/default;./vcpkg-overlays/linux-syslibs/redhat8" \
             -S . \
-            -B ./build
+            -B ./build 
     source scl_source enable gcc-toolset-10 \
         && cmake \
             --build ./build \

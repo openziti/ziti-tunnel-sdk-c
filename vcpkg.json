@@ -6,6 +6,10 @@
       "name": "acl",
       "platform": "linux"
     },
+    {
+      "name": "libcap",
+      "platform": "linux"
+    },
     "libuv",
     "zlib",
     "llhttp",

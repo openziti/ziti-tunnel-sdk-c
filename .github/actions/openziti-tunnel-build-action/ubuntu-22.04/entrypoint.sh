@@ -39,13 +39,12 @@ done
 [[ -d ./build ]] && rm -r ./build
 cmake \
     -E make_directory \
-    ./build
+    ./build  
 cmake \
     --preset "${cmake_preset}" \
     -DCMAKE_BUILD_TYPE="${cmake_config}" \
     -DBUILD_DIST_PACKAGES=ON \
     "${TLSUV_TLSLIB:+-DTLSUV_TLSLIB=${TLSUV_TLSLIB}}" \
-    -DVCPKG_OVERLAY_PORTS="./vcpkg-overlays/linux-syslibs/default;./vcpkg-overlays/linux-syslibs/ubuntu22" \
     -S "${PWD}/" \
     -B ./build
 cmake \
