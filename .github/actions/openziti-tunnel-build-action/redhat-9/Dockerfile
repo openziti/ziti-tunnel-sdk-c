@@ -1,5 +1,5 @@
 ARG CMAKE_VERSION="3.26.3"
-ARG VCPKG_VERSION="2024.07.12"
+ARG VCPKG_VERSION="2024.08.23"
 
 FROM rockylinux:9
 
@@ -25,6 +25,7 @@ RUN dnf install -y \
         systemd-rpm-macros \
         cmake-rpm-macros  \
         openssl-devel \
+        perl-FindBin perl-IPC-Cmd perl-File-Compare perl-File-Copy \
         libatomic \
     && dnf config-manager --set-enabled crb \
     && dnf install -y \

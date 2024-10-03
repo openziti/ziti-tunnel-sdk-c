@@ -1,5 +1,5 @@
 ARG CMAKE_VERSION="3.26.3"
-ARG VCPKG_VERSION="2024.07.12"
+ARG VCPKG_VERSION="2024.08.23"
 
 # Ubuntu Jammy 22.04 LTS
 FROM ubuntu:jammy
@@ -18,6 +18,7 @@ WORKDIR /root/
 
 RUN apt-get update \
     && apt-get -y install \
+        autoconf automake autopoint \
         gcc-arm-linux-gnueabihf \
         g++-arm-linux-gnueabihf \
         gcc-aarch64-linux-gnu \
@@ -29,6 +30,7 @@ RUN apt-get update \
         git \
         graphviz \
         libsystemd-dev \
+        libtool \
         pkg-config \
         python3 \
         zlib1g-dev \
