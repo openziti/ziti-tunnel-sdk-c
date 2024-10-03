@@ -30,7 +30,7 @@ jobs:
       # artifacts that do not need to be renamed
       - name: Release
         id: get_release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           # name: defaults to tag name
           # tag_name: defaults to github.ref
