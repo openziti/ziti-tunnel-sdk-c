@@ -32,8 +32,8 @@ cpack_matrix:
     - distro:
         name: redhat
       arch:
-        cmake: ci-linux-arm
+        cmake: ci-linux-arm-static-libssl
     - distro:
         name: redhat
       arch:
-        cmake: ci-linux-arm64
+        cmake: ci-linux-arm64-static-libssl
