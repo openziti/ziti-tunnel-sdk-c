@@ -1297,11 +1297,6 @@ static void on_event(const base_event *ev) {
                                 if(!svc->Addresses[x]->IsHost){
                                     char *ip = svc->Addresses[x]->IP;
                                     char prefix_len[4];
-                                    if(svc->AllowedSourceAddresses && svc->AllowedSourceAddresses[0] != NULL){
-                                        char cidr[44];
-                                        sprintf(cidr, "%s/%d", ip, svc->Addresses[x]->Prefix);
-                                        ztun->add_route(ztun->handle, cidr);
-                                    }
                                     sprintf(prefix_len, "%d", svc->Addresses[x]->Prefix);
                                     for(int i =  0; (svc->Ports != NULL) && (svc->Ports[i] != NULL); i++){
                                         char low_port[6];
@@ -1351,20 +1346,11 @@ static void on_event(const base_event *ev) {
 #if __linux__
                     if(svc && diverter){
                         if(svc->Permissions.Dial){
-                            if(svc->AllowedSourceAddresses && svc->AllowedSourceAddresses[0] != NULL){
-                                ztun->commit_routes(ztun->handle, global_loop_ref);
-                                sleep(1);
-                            }
                             for(int x = 0; svc->Addresses && (svc->Addresses[x] != NULL); x++){
                                 if(!svc->Addresses[x]->IsHost){
                                     char *ip = svc->Addresses[x]->IP;
                                     char prefix_len[4];
                                     sprintf(prefix_len, "%d", svc->Addresses[x]->Prefix);
-                                    if(svc->AllowedSourceAddresses && svc->AllowedSourceAddresses[0] != NULL){
-                                        char cidr[44];
-                                        sprintf(cidr, "%s/%d", ip, svc->Addresses[x]->Prefix);
-                                        ztun->delete_route(ztun->handle, cidr);
-                                    }
                                     for(int i =  0; (svc->Ports != NULL) && (svc->Ports[i] != NULL); i++){
                                         char low_port[6];
                                         char high_port[6];
