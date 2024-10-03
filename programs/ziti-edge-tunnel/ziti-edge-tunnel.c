@@ -148,7 +148,7 @@ static char *configured_cidr = NULL;
 static char *configured_log_level = NULL;
 static char *configured_proxy = NULL;
 static char *config_dir = NULL;
-static char *diverterIf = NULL;
+static char *diverter_if = NULL;
 static bool diverter = false;
 static bool firewall = false; 
 
@@ -1697,15 +1697,15 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
 #endif
 #if __linux__
     if(!diverter && !firewall){
-        diverterIf = getenv("ZITI_DIVERTER");
-        if(diverterIf && strlen(diverterIf)){
+        diverter_if = getenv("ZITI_DIVERTER");
+        if(diverter_if && strlen(diverter_if)){
             diverter = true;
         }
         char *zifi_firewall = getenv("ZITI_FIREWALL");
         if(zifi_firewall && strlen(zifi_firewall)){
             diverter = true;
             firewall = true;
-            diverterIf = getenv("ZITI_FIREWALL");
+            diverter_if = getenv("ZITI_FIREWALL");
         }
     }
     char zfw_path[PATH_MAX];
@@ -1722,7 +1722,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
         if(getenv)
         if (access(diverter_path, F_OK) == 0){
             int count = 0;
-            char *interface = strtok(diverterIf,",");
+            char *interface = strtok(diverter_if,",");
             while(interface != NULL){
                 uint32_t idx = if_nametoindex(interface);
                 if (!idx)
@@ -1959,7 +1959,7 @@ static struct option run_options[] = {
         { "dns-upstream", required_argument, NULL, 'u'},
         { "proxy", required_argument, NULL, 'x' },
         { "diverter", required_argument, NULL, 'D' },
-        { "diverterFw", required_argument, NULL, 'f' },
+        { "diverter-fw", required_argument, NULL, 'f' },
 };
 
 static struct option run_host_options[] = {
@@ -2031,12 +2031,12 @@ static int run_opts(int argc, char *argv[]) {
         switch (c) {
             case 'D':
                 diverter = true;
-                diverterIf = optarg;
+                diverter_if = optarg;
                 break;
             case 'f':
                 diverter = true;
                 firewall = true;
-                diverterIf = optarg;
+                diverter_if = optarg;
                 break;
             case 'i': {
                 struct cfg_instance_s *inst = calloc(1, sizeof(struct cfg_instance_s));
@@ -3932,7 +3932,7 @@ static CommandLine enroll_cmd = make_command("enroll", "enroll Ziti identity",
         "\t-n|--name\tidentity name\n",
         parse_enroll_opts, enroll);
 static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required superuser access)",
-                                          "-i <id.file> [-r N] [-v N] [-d|--dns-ip-range N.N.N.N/n] [-D|--diverter <interface list>] [-f|--diverterFw <interface list>]",
+                                          "-i <id.file> [-r N] [-v N] [-d|--dns-ip-range N.N.N.N/n] [-D|--diverter <interface list>] [-f|--diverter-fw <interface list>]",
                                           "\t-i|--identity <identity>\trun with provided identity file (required)\n"
                                           "\t-I|--identity-dir <dir>\tload identities from provided directory\n"
                                           "\t-x|--proxy type://[username[:password]@]hostname_or_ip:port\tproxy to use when"
@@ -3942,7 +3942,7 @@ static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required supe
                                           "\t-d|--dns-ip-range <ip range>\tspecify CIDR block in which service DNS names"
                                           " are assigned in N.N.N.N/n format (default " DEFAULT_DNS_CIDR ")\n"
                                           "\t-D|--diverter <interface>\tset diverter mode to true on <interface>\n"
-                                          "\t-f|--diverterFw <interface>\tset diverter to true in firewall mode on <interface>)\n",
+                                          "\t-f|--diverter-fw <interface>\tset diverter to true in firewall mode on <interface>)\n",
         run_opts, run);
 static CommandLine run_host_cmd = make_command("run-host", "run Ziti tunnel to host services",
                                           "-i <id.file> [-r N] [-v N]",
