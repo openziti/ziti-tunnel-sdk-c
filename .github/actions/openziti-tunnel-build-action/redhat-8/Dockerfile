@@ -43,7 +43,7 @@ ENV VCPKG_ROOT=/usr/local/vcpkg
 ENV VCPKG_FORCE_SYSTEM_BINARIES=yes
 
 RUN cd /usr/local \
-    && git clone --branch 2024.07.12 https://github.com/microsoft/vcpkg \
+    && git clone --branch 2024.08.23 https://github.com/microsoft/vcpkg \
     && ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
 
 WORKDIR /github/workspace
