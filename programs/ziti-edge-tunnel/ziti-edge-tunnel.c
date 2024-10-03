@@ -82,8 +82,6 @@ static void scm_service_stop_event(uv_loop_t *loop, void *arg);
 static void stop_tunnel_and_cleanup();
 static bool is_host_only();
 static void run_tunneler_loop(uv_loop_t* ziti_loop);
-static void unbind_route(char* ip, int prefix, char *dev);
-void bind_route(char* ip, int prefix_len, char *dev);
 void bind_diverter_route(char *ip, int prefix_len);
 void unbind_diverter_route(char *ip, int prefix_len);
 void enable_ipv6(char *interface);
@@ -1309,7 +1307,9 @@ static void on_event(const base_event *ev) {
                                     char *ip = svc->Addresses[x]->IP;
                                     char prefix_len[4];
                                     if(svc->AllowedSourceAddresses && svc->AllowedSourceAddresses[0] != NULL){
-                                        bind_route(svc->Addresses[x]->IP, svc->Addresses[x]->Prefix, ztun->handle->name);
+                                        char cidr[44];
+                                        sprintf(cidr, "%s/%d", ip, svc->Addresses[x]->Prefix);
+                                        ztun->add_route(ztun->handle, cidr);
                                     }
                                     sprintf(prefix_len, "%d", svc->Addresses[x]->Prefix);
                                     for(int i =  0; (svc->Ports != NULL) && (svc->Ports[i] != NULL); i++){
@@ -1370,7 +1370,9 @@ static void on_event(const base_event *ev) {
                                     char prefix_len[4];
                                     sprintf(prefix_len, "%d", svc->Addresses[x]->Prefix);
                                     if(svc->AllowedSourceAddresses && svc->AllowedSourceAddresses[0] != NULL){
-                                        unbind_route(svc->Addresses[x]->IP, svc->Addresses[x]->Prefix, ztun->handle->name);
+                                        char cidr[44];
+                                        sprintf(cidr, "%s/%d", ip, svc->Addresses[x]->Prefix);
+                                        ztun->delete_route(ztun->handle, cidr);
                                     }
                                     for(int i =  0; (svc->Ports != NULL) && (svc->Ports[i] != NULL); i++){
                                         char low_port[6];
@@ -2202,91 +2204,6 @@ void diverter_update(char *ip, char *mask, char *lowport, char *highport, char *
         ZITI_LOG(INFO,"%s -c %s -m %s -l %s -h %s -t %s -p %s -s %s", action,ip, mask, lowport, highport, tproxy_port, protocol,service_id);
     }else{
         ZITI_LOG(DEBUG,"Failed insert: %s -c %s -m %s -l %s -h %s -t %s -p %s -s %s", action,ip, mask, lowport, highport, tproxy_port, protocol,service_id);
-    }
-}
-
-void bind_route(char* ip, int prefix_len, char *dev)
-{
-    bool state = true;
-    char *cidr_block[19];
-    sprintf(cidr_block, "%s/%d", ip, prefix_len);
-    pid_t pid;
-    int o_std_out = dup(STDOUT_FILENO);
-    int o_std_err = dup(STDERR_FILENO);
-    int fd = open("/dev/null", O_WRONLY);
-    if (fd == -1){
-        return; 
-    }
-    dup2(fd, STDOUT_FILENO);
-    dup2(fd, STDERR_FILENO);
-    close(fd);
-    char *const parmList[] = {"/usr/sbin/ip", "route", "add", cidr_block, "dev", dev, "scope", "link", NULL};
-    if ((pid = fork()) == -1)
-    {
-        ZITI_LOG(DEBUG,"fork error: can't spawn bind");
-    }
-    else if (pid == 0)
-    {
-        execv("/usr/sbin/ip", parmList);
-        state = false;
-    }else{
-        int status =0;
-        if(!(waitpid(pid, &status, 0) > 0)){
-            if(WIFEXITED(status) && !WEXITSTATUS(status)){
-                state = false;
-            }
-        }
-    }
-    dup2(o_std_out, STDOUT_FILENO);
-    dup2(o_std_err, STDERR_FILENO);
-    close(o_std_out);
-    close(o_std_err); 
-    if(state){
-        ZITI_LOG(DEBUG,"Diverter restoring route to %s via dev %s", cidr_block, dev);
-    }else{
-        ZITI_LOG(DEBUG,"Diverter failed restoring route to %s via dev %s", cidr_block, dev);
-    }
-}
-
-void unbind_route(char* ip, int prefix_len, char *dev)
-{
-    bool state = true;
-    char *cidr_block[19];
-    sprintf(cidr_block, "%s/%d", ip, prefix_len);
-    pid_t pid;
-    int o_std_out = dup(STDOUT_FILENO);
-    int o_std_err = dup(STDERR_FILENO);
-    int fd = open("/dev/null", O_WRONLY);
-    if (fd == -1){
-        return; 
-    }
-    dup2(fd, STDOUT_FILENO);
-    dup2(fd, STDERR_FILENO);
-    close(fd);
-    char *const parmList[] = {"/usr/sbin/ip", "route", "delete", cidr_block, "dev", dev, "scope", "link", NULL};
-    if ((pid = fork()) == -1)
-    {
-        state = false;
-    }
-    else if (pid == 0)
-    {
-        execv("/usr/sbin/ip", parmList);
-    }else{
-        int status =0;
-        if(!(waitpid(pid, &status, 0) > 0)){
-            if(WIFEXITED(status) && !WEXITSTATUS(status)){
-                state = false;
-            }
-        }
-    }
-    dup2(o_std_out, STDOUT_FILENO);
-    dup2(o_std_err, STDERR_FILENO);
-    close(o_std_out);
-    close(o_std_err); 
-    if(state){
-        ZITI_LOG(INFO,"Diverter unbinding route to %s via dev %s for transparency support", cidr_block, dev);
-    }else{
-        ZITI_LOG(INFO,"Diverter failed unbinding route to %s via dev %s for transparency support", cidr_block, dev);
     }
 }
 
