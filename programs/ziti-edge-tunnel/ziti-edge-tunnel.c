@@ -1720,11 +1720,18 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
             diverterIf = getenv("ZITI_FIREWALL");
         }
     }
+    char zfw_path[PATH_MAX];
+    char *dpath = getenv("ZFW_OBJECT_PATH");
+    if(dpath && strlen(dpath)){
+        sprintf(zfw_path, "%s/%s", dpath, "zfw");
+        diverter_path = zfw_path;
+    } 
     if(diverter && tun){
         ztun = tun;
         if(!firewall){
             diverter_quit();
         }
+        if(getenv)
         if (access(diverter_path, F_OK) == 0){
             int count = 0;
             char *interface = strtok(diverterIf,",");
@@ -2354,8 +2361,8 @@ void init_diverter_interface(char * interface){
     close(o_std_out);
     close(o_std_err); 
     set_tun_mode(interface);
+    enable_ipv6(interface);
     if(!firewall){
-        enable_ipv6(interface);
         pass_non_tuple(interface);
     }
     if(state){
