@@ -4186,7 +4186,6 @@ static void move_config_from_previous_windows_backup(uv_loop_t *loop) {
 
 #if __linux__ 
 void INThandler(int sig){
-    
     if(diverter && !firewall){
         diverter_binding_flush();
         diverter_quit();
