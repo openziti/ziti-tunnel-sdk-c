@@ -29,7 +29,9 @@
 #include "instance-config.h"
 #include <config-utils.h>
 #include <service-utils.h>
+#if __linux__
 #include <sys/wait.h>
+#endif
 #include <fcntl.h>
 #include <unistd.h>
 
@@ -81,17 +83,18 @@ static void scm_service_stop_event(uv_loop_t *loop, void *arg);
 static void stop_tunnel_and_cleanup();
 static bool is_host_only();
 static void run_tunneler_loop(uv_loop_t* ziti_loop);
+#if __linux__
 void bind_diverter_route(char *ip, int prefix_len);
 void unbind_diverter_route(char *ip, int prefix_len);
 void enable_ipv6(char *interface);
 void set_tun_mode(char *interface);
 void pass_non_tuple(char *interface);
 void diverter_binding_flush();
+void diverter_update(char *ip, char *mask, char *lowport, char *highport, char *protocol, char *service_id, char *action);
 char check_alt[IF_NAMESIZE];
 char *diverter_path = "/opt/openziti/bin/zfw";
+#endif
 static tunneler_context initialize_tunneler(netif_driver tun, uv_loop_t* ziti_loop);
-static void diverter_update(char *ip, char *mask, char *lowport, char *highport, char *protocol, char *service_id, char *action);
-static netif_driver ztun;
 #if _WIN32
 static void move_config_from_previous_windows_backup(uv_loop_t *loop);
 #define LAST_CHAR_IPC_CMD '\n'
@@ -1715,7 +1718,6 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
         diverter_path = zfw_path;
     } 
     if(diverter && tun){
-        ztun = tun;
         if(!firewall){
             diverter_quit();
         }
@@ -2149,6 +2151,7 @@ static void interrupt_handler(int sig) {
 }
 #endif
 
+#if __linux__
 void diverter_update(char *ip, char *mask, char *lowport, char *highport, char *protocol, char *service_id, char *action){
     bool state = true;
     unsigned short random_port = 0;
@@ -2859,6 +2862,7 @@ void set_diverter(uint32_t dns_prefix, unsigned char dns_prefix_range, char *tun
     }
     setup_xdp(tun_name);
 }
+#endif
 
 static void run(int argc, char *argv[]) {
     uv_cond_init(&stop_cond);
