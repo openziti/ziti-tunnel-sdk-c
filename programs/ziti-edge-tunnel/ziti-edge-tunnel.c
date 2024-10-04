@@ -31,9 +31,9 @@
 #include <service-utils.h>
 #if __linux__
 #include <sys/wait.h>
-#endif
 #include <fcntl.h>
 #include <unistd.h>
+#endif
 
 #if __APPLE__ && __MACH__
 #include "netif_driver/darwin/utun.h"
