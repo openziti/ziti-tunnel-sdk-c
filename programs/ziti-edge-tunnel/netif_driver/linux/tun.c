@@ -270,7 +270,7 @@ static void find_dns_updater() {
         // On newer systems, RESOLVCONF is a symlink to RESOLVECTL
         // By now, we know systemd-resolved is not available
         // This resolver is only supported when running as root due
-        // to the large set of capabilies required.
+        // to the large set of capabilities required.
         uid_t euid = geteuid();
         if (euid == 0 && is_executable(RESOLVCONF) && !(is_resolvconf_systemd_resolved())) {
             dns_updater = dns_update_resolvconf;
