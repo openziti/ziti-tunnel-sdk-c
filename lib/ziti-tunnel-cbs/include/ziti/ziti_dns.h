@@ -19,7 +19,11 @@
 
 #include <ziti/ziti_tunnel.h>
 
+#include "ziti_tunnel_cbs.h"
+
 #define DNS_NO_ERROR 0
+#define DNS_FORMERR  1
+#define DNS_SERVFAIL 2
 #define DNS_NXDOMAIN 3
 #define DNS_NOT_IMPL 4
 #define DNS_REFUSE   5
@@ -31,7 +35,7 @@ extern "C" {
 
 int ziti_dns_setup(tunneler_context tnlr, const char *dns_addr, const char *dns_cidr);
 
-int ziti_dns_set_upstream(uv_loop_t *l, const char *host, uint16_t port);
+int ziti_dns_set_upstream(uv_loop_t *l, tunnel_upstream_dns_array upstreams);
 
 const ip_addr_t *ziti_dns_register_hostname(const ziti_address *addr, void *intercept);
 

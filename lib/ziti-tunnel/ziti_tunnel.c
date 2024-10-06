@@ -196,7 +196,7 @@ void free_tunneler_io_context(tunneler_io_context *tnlr_io_ctx_p) {
 
     if (*tnlr_io_ctx_p != NULL) {
         tunneler_io_context io = *tnlr_io_ctx_p;
-        if (io->service_name != NULL) free(io->service_name);
+        if (io->service_name != NULL) free((char*)io->service_name);
         free(io);
         *tnlr_io_ctx_p = NULL;
     }
@@ -418,7 +418,7 @@ ssize_t ziti_tunneler_write(tunneler_io_context tnlr_io_ctx, const void *data, s
             r = tunneler_tcp_write(tnlr_io_ctx->tcp, data, len);
             break;
         case tun_udp:
-            r = tunneler_udp_write(tnlr_io_ctx->udp.pcb, data, len);
+            r = tunneler_udp_write(tnlr_io_ctx->udp, data, len);
             break;
     }
 
@@ -439,8 +439,8 @@ int ziti_tunneler_close(tunneler_io_context tnlr_io_ctx) {
             tnlr_io_ctx->tcp = NULL;
             break;
         case tun_udp:
-            tunneler_udp_close(tnlr_io_ctx->udp.pcb);
-            tnlr_io_ctx->udp.pcb = NULL;
+            tunneler_udp_close(tnlr_io_ctx->udp);
+            tnlr_io_ctx->udp = NULL;
             break;
         default:
             TNL_LOG(ERR, "unknown proto %d", tnlr_io_ctx->proto);
@@ -486,8 +486,30 @@ static void on_tun_data(uv_poll_t * req, int status, int events) {
     }
 }
 
-static void check_lwip_timeouts(uv_timer_t * handle) {
+static void check_lwip_timeouts(uv_timer_t * timer) {
+    // if timer is not active it may have been a while since
+    // we run timers, let LWIP adjust timeouts
+    if (!uv_is_active((const uv_handle_t *) timer)) {
+        sys_restart_timeouts();
+    }
+
+    // run timers before potentially pausing
     sys_check_timeouts();
+
+    if (tcp_active_pcbs == NULL && tcp_tw_pcbs == NULL) {
+        uv_timer_stop(timer);
+        return;
+    }
+
+    u32_t sleep = sys_timeouts_sleeptime();
+    TNL_LOG(TRACE, "next wake in %d millis", sleep);
+    // second sleep arg is only need to make timer `active` next time
+    // we hit this function to avoid calling sys_restart_timeouts()
+    uv_timer_start(timer, check_lwip_timeouts, sleep, sleep);
+}
+
+void check_tnlr_timer(tunneler_context tnlr_ctx) {
+    check_lwip_timeouts(&tnlr_ctx->lwip_timer_req);
 }
 
 /**
@@ -556,9 +578,9 @@ static void run_packet_loop(uv_loop_t *loop, tunneler_context tnlr_ctx) {
         exit(1);
     }
 
+    // don't run LWIP timers until we have active TCP connections
     uv_timer_init(loop, &tnlr_ctx->lwip_timer_req);
-    uv_unref(&tnlr_ctx->lwip_timer_req);
-    uv_timer_start(&tnlr_ctx->lwip_timer_req, check_lwip_timeouts, 0, 10);
+    uv_unref((uv_handle_t *) &tnlr_ctx->lwip_timer_req);
 }
 
 typedef struct ziti_tunnel_async_call_s {
@@ -619,6 +641,52 @@ void ziti_tunnel_async_send(tunneler_context tctx, ziti_tunnel_async_fn f, void 
 
 #define _str(x) #x
 #define str(x) _str(x)
+
+IMPL_MODEL(tunnel_ip_mem_pool, TNL_IP_MEM_POOL)
+IMPL_MODEL(tunnel_ip_conn, TNL_IP_CONN)
+IMPL_MODEL(tunnel_ip_stats, TNL_IP_STATS)
+
+static void ziti_tunnel_get_ip_mem_pool(tunnel_ip_mem_pool *pool, int pool_id, const char *pool_name) {
+    if (!pool) return;
+    TNL_LOG(VERBOSE, "getting IP mem pool %s", pool_name);
+    pool->name = strdup(pool_name);
+    pool->used = memp_pools[pool_id]->stats->used;
+    pool->max = memp_pools[pool_id]->stats->max;
+    pool->avail = memp_pools[pool_id]->stats->avail;
+}
+
+void ziti_tunnel_get_ip_stats(tunnel_ip_stats *stats) {
+    if (!stats) return;
+    TNL_LOG(DEBUG, "collecting ip statistics");
+    if (stats->pools) free(stats->pools);
+    stats->pools = calloc(4, sizeof(tunnel_ip_mem_pool *));
+    stats->pools[0] = calloc(1, sizeof(tunnel_ip_mem_pool));
+    ziti_tunnel_get_ip_mem_pool(stats->pools[0], MEMP_PBUF_POOL, _str(MEMP_PBUF_POOL));
+    stats->pools[1] = calloc(1, sizeof(tunnel_ip_mem_pool));
+    ziti_tunnel_get_ip_mem_pool(stats->pools[1], MEMP_TCP_PCB, _str(MEMP_TCP_PCB));
+    stats->pools[2] = calloc(1, sizeof(tunnel_ip_mem_pool));
+    ziti_tunnel_get_ip_mem_pool(stats->pools[2], MEMP_UDP_PCB, _str(MEMP_UDP_PCB));
+
+    int max_conns = MEMP_NUM_TCP_PCB + MEMP_NUM_UDP_PCB + 1;
+    stats->connections = calloc(max_conns, sizeof(tunnel_ip_conn *));
+
+    int i= 0;
+    for (struct tcp_pcb *tpcb = tcp_tw_pcbs; tpcb != NULL; tpcb = tpcb->next) {
+        stats->connections[i] = calloc(1, sizeof(tunnel_ip_conn));
+        tunneler_tcp_get_conn(stats->connections[i++], tpcb);
+    }
+
+    for (struct tcp_pcb *tpcb = tcp_active_pcbs; tpcb != NULL; tpcb = tpcb->next) {
+        stats->connections[i] = calloc(1, sizeof(tunnel_ip_conn));
+        tunneler_tcp_get_conn(stats->connections[i++], tpcb);
+    }
+    for (struct udp_pcb *upcb = udp_pcbs; upcb != NULL; upcb = upcb->next) {
+        stats->connections[i] = calloc(1, sizeof(tunnel_ip_conn));
+        tunneler_udp_get_conn(stats->connections[i++], upcb);
+    }
+}
+
+
 const char* ziti_tunneler_version() {
     return str(GIT_VERSION);
 }

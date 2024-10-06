@@ -1,0 +1,39 @@
+cpack_matrix:
+  arch:
+    - cmake: ci-linux-x64-static-libssl  # selects cmake preset
+      rpm: x86_64          # yum $basearch
+      deb: amd64           # dpkg --print-architecture
+    - cmake: ci-linux-arm-static-libssl
+      rpm: armhfp
+      deb: armhf
+    - cmake: ci-linux-arm64-static-libssl
+      rpm: aarch64
+      deb: arm64
+  distro:
+    - name: ubuntu
+      version: "22.04"
+      release_name: jammy
+      type: deb
+    - name: ubuntu
+      version: "20.04"
+      release_name: focal
+      type: deb
+    - name: redhat
+      version: "8"
+      release_name: ${{ null }}
+      type: rpm
+      container: docker.io/library/rockylinux:8
+    - name: redhat
+      version: "9"
+      release_name: ${{ null }}
+      type: rpm
+      container: docker.io/library/rockylinux:9
+  exclude:
+    - distro:
+        name: redhat
+      arch:
+        cmake: ci-linux-arm-static-libssl
+    - distro:
+        name: redhat
+      arch:
+        cmake: ci-linux-arm64-static-libssl

@@ -3,13 +3,24 @@
 # build this project in the ziti-builder container
 #
 
-set -euo pipefail
+set -o errexit -o nounset -o pipefail
+# set -o xtrace
 
 BASENAME="$(basename "${0}")"
-BASEDIR="$(cd "$(dirname "${0}")" && pwd)"
+BASEDIR="$(cd "$(dirname "${0}")" && pwd)"  # full path to scripts dir
+SCRIPTSDIR="$(basename "${BASEDIR}")"       # relative path to scripts dir, only works if executable is homed in a top-level dir of the project, .e.g. "/scripts"
+REPODIR="$(dirname "${BASEDIR}")"           # path to project root is parent of scripts dir
+
+[[ -x ${REPODIR}/${SCRIPTSDIR}/${BASENAME} ]] || {
+    echo "ERROR: ${REPODIR}/${SCRIPTSDIR}/${BASENAME} is not executable" >&2
+    exit 1
+}
+
 # set in ziti-builder image, but this default allows hacking the script to run
 # outside the ziti-builder container
 : "${GIT_CONFIG_GLOBAL:=/tmp/ziti-builder-gitconfig}"
+: "${UID:=$(id -u)}"
+: "${GID:=$(id -g)}"
 
 [[ ${1:-} =~ -h|(--)?help ]] && {
     echo -e "\nUsage: ${BASENAME} [CMD] [ARGS...]"\
@@ -17,7 +28,7 @@ BASEDIR="$(cd "$(dirname "${0}")" && pwd)"
             "\ndefault target if no CMD is specified\n"\
             "\n    -c  [Release|Debug]  set CMAKE_BUILD_TYPE (default: Release)"\
             "\n    -p  CMAKE_PRESET     set CMAKE_TOOLCHAIN_FILE preset (default: ci-linux-x64)"\
-            "\n    -t  [bundle|package] set CMAKE_TARGET (default: bundle)"
+            "\n    -t  [bundle|package] set CMAKE_TARGET (default: ziti-edge-tunnel)"
     exit 0
 }
 
@@ -30,56 +41,58 @@ function set_git_safe_dirs() {
     local -a SAFE_DIRS=(
         "/github/workspace"
     )
-    # the container environment defines GIT_CONFIG_GLOBAL=/tmp/gitconfig
+    # the container environment defines GIT_CONFIG_GLOBAL=/tmp/ziti-builder-gitconfig
     for SAFE in "${SAFE_DIRS[@]}" "${@}"; do
         git config --file "$GIT_CONFIG_GLOBAL" --add safe.directory "${SAFE}"
     done
 }
 
 function set_workspace(){
-    # let GitHub Actions override the workspace dir
-    if [[ -n "${GITHUB_WORKSPACE:-}" ]]; then
-        WORKDIR="${GITHUB_WORKSPACE}"
-    else
-        export WORKDIR="/github/workspace"
-    fi
-
-    # if project is mounted on WORKDIR then build, else restart in container
-    if [[ -x "${WORKDIR}/${BASENAME}" ]]; then
+    WORKSPACE="/workspace"
+    # if project is mounted then build, else mount and run container
+    if [[ -x "${WORKSPACE}/${SCRIPTSDIR}/${BASENAME}" ]]; then
         # container environment defines BUILD_ENVIRONMENT=ziti-builder-docker
         if [[ "${BUILD_ENVIRONMENT:-}" == "ziti-builder-docker" ]]; then
             echo "INFO: running in ziti-builder container"
-            set_git_safe_dirs "${WORKDIR}"
+            set_git_safe_dirs "${WORKSPACE}"
         else
             echo "ERROR: not running in ziti-builder container" >&2
             exit 1
         fi
     else
-        echo -e "INFO: project not mounted on ${WORKDIR}, re-running in container"\
-            "\nINFO: 'docker run --user ${UID} --volume ${BASEDIR}:${WORKDIR} openziti/ziti-builder ${WORKDIR}/${BASENAME} ${*}'"
-        exec docker run \
+        echo -e "INFO: project not mounted on ${WORKSPACE}"\
+                "\nINFO: mounting on ziti-builder container"
+        docker pull "openziti/ziti-builder:${ZITI_BUILDER_TAG:-latest}"
+        set -x
+        eval exec docker run \
             --rm \
-            --user "${UID}" \
-            --volume "${BASEDIR}:${WORKDIR}" \
+            --user "${UID}:${GID}" \
+            --volume "${REPODIR}:${WORKSPACE}" \
+            "${ZITI_SDK_DIR:+--volume=${ZITI_SDK_DIR}:${ZITI_SDK_DIR}}" \
             --platform "linux/amd64" \
-            openziti/ziti-builder \
-                "${WORKDIR}/${BASENAME}" "${@}"
+            --env "VCPKG_DEFAULT_BINARY_CACHE=${WORKSPACE}/.cache" \
+            --env "TLSUV_TLSLIB" \
+            --env "ZITI_SDK_DIR" \
+            "openziti/ziti-builder:${ZITI_BUILDER_TAG:-latest}" \
+                "${WORKSPACE}/${SCRIPTSDIR}/${BASENAME}" "${@}"
     fi
 }
 
 function main() {
     echo "INFO: GIT_DISCOVERY_ACROSS_FILESYSTEM=${GIT_DISCOVERY_ACROSS_FILESYSTEM:-}"
-    echo "INFO: WORKDIR=${PWD}"
+    echo "INFO: WORKSPACE=${PWD}"
     echo "INFO: $(git --version)"
     echo "INFO: GIT_CONFIG_GLOBAL=${GIT_CONFIG_GLOBAL:-}"
     # use this value to detect whether any options were passed so we can warn if
     # they're being ignored when an override command is sent at the same time
     : "${OPTS:=0}"
 
-    while getopts 'c::p:t:' OPT; do
+    while getopts 'c:e:p:t:' OPT; do
         case "${OPT}" in
             c)  CMAKE_CONFIG="${OPTARG}"
                 OPTS=1
+            ;;
+            e)  CMAKE_EXTRA_ARGS="${OPTARG}"
             ;;
             p)  CMAKE_PRESET="${OPTARG}"
                 OPTS=1
@@ -101,9 +114,11 @@ function main() {
         if (( OPTS )); then
             echo "WARN: ignoring options because override command is present" >&2
         fi
+        cd "${REPODIR}"
         exec "${@}"
     else
         [[ -d ./build ]] && rm -rf ./build
+        [[ -d ./.cache ]] || mkdir -v ./.cache
         cmake \
             -E make_directory \
             ./build  
@@ -111,20 +126,23 @@ function main() {
             --preset "${CMAKE_PRESET:-ci-linux-x64}" \
             -DCMAKE_BUILD_TYPE="${CMAKE_CONFIG:-Release}" \
             -DBUILD_DIST_PACKAGES="${BUILD_DIST_PACKAGES:-OFF}" \
-            -DVCPKG_OVERLAY_PORTS="./vcpkg-overlays/linux-syslibs/ubuntu18" \
+            "${TLSUV_TLSLIB:+-DTLSUV_TLSLIB=${TLSUV_TLSLIB}}" \
+            "${ZITI_SDK_DIR:+-DZITI_SDK_DIR=${ZITI_SDK_DIR}}" \
             -S . \
-            -B ./build
+            -B ./build \
+            "${CMAKE_EXTRA_ARGS:-}"
         cmake \
             --build ./build \
             --config "${CMAKE_CONFIG:-Release}" \
-            --target "${CMAKE_TARGET:-bundle}" \
+            --target "${CMAKE_TARGET:-ziti-edge-tunnel}" \
             --verbose
     fi
+    ls -lAh ./build/programs/ziti-edge-tunnel/Release/ziti-edge-tunnel
 }
 
-# set global WORKDIR
+# set global WORKSPACE
 set_workspace "${@}"
 
-# run main() in WORKDIR
-cd "${WORKDIR}"
+# run main() in WORKSPACE
+cd "${WORKSPACE}"
 main "${@}"

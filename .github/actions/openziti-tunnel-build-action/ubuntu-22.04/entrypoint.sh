@@ -15,13 +15,13 @@ echo "INFO: $(git --version)"
 if [ ${#} -ge 1 ]; then
     cmake_preset="${1}"
 else
-    cmake_preset="ci-linux-x64"
+    cmake_preset="ci-linux-x64-static-libssl"
 fi
 
 if [ ${#} -ge 2 ]; then
     cmake_config="${2}"
 else
-    cmake_config="Release"
+    cmake_config="RelWithDebInfo"
 fi
 
 # workspace dir for each build env is added to "safe" dirs in global config e.g.
@@ -44,6 +44,7 @@ cmake \
     --preset "${cmake_preset}" \
     -DCMAKE_BUILD_TYPE="${cmake_config}" \
     -DBUILD_DIST_PACKAGES=ON \
+    "${TLSUV_TLSLIB:+-DTLSUV_TLSLIB=${TLSUV_TLSLIB}}" \
     -S "${PWD}/" \
     -B ./build
 cmake \

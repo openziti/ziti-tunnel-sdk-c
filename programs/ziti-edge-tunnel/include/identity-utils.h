@@ -34,19 +34,19 @@ extern "C" {
 
 extern tunnel_identity *find_tunnel_identity(const char* identifier);
 
-extern tunnel_identity *create_or_get_tunnel_identity(const char* identifier, char* fingerprint) ;
+extern tunnel_identity *create_or_get_tunnel_identity(const char* identifier, const char* fingerprint) ;
 
-extern void set_mfa_status(char* identifier, bool mfa_enabled, bool mfa_needed);
+extern void set_mfa_status(const char* identifier, bool mfa_enabled, bool mfa_needed);
 
-extern void update_mfa_time(char* identifier);
+extern void update_mfa_time(const char* identifier);
 
 extern tunnel_service *get_tunnel_service(tunnel_identity* identifier, ziti_service* zs);
 
-extern tunnel_service *find_tunnel_service(tunnel_identity* id, char* svc_id);
+extern tunnel_service *find_tunnel_service(tunnel_identity* id, const char* svc_id);
 
 extern void add_or_remove_services_from_tunnel(tunnel_identity *id, tunnel_service_array added_services, tunnel_service_array removed_services);
 
-extern bool load_tunnel_status(char* config_data);
+extern bool load_tunnel_status(const char* config_data);
 
 extern tunnel_status *get_tunnel_status();
 
@@ -54,7 +54,7 @@ extern tunnel_identity_array get_tunnel_identities();
 
 extern int get_remaining_timeout(int timeout, int timeout_rem, tunnel_identity *tnl_id);
 
-void delete_identity_from_instance(char* identifier);
+void delete_identity_from_instance(const char* identifier);
 
 void set_ip_info(uint32_t dns_ip, uint32_t tun_ip, int bits);
 
@@ -66,13 +66,13 @@ const char* get_log_level_label();
 
 int get_log_level(const char* log_level);
 
-void set_ziti_status(bool enabled, char* identifier);
+void set_ziti_status(bool enabled, const char* identifier);
 
-void set_tun_ipv4_into_instance(char* tun_ip, int prefixLength, bool addDns);
+void set_tun_ipv4_into_instance(const char* tun_ip, int prefixLength, bool addDns);
 
 char* get_ip_range_from_config();
 
-char* get_dns_ip();
+const char* get_dns_ip();
 
 bool get_add_dns_flag();
 

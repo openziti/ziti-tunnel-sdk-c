@@ -201,6 +201,32 @@ extern void ziti_tunnel_set_log_level(int lvl);
 typedef void (*ziti_tunnel_async_fn)(uv_loop_t *loop, void *ctx);
 extern void ziti_tunnel_async_send(tunneler_context tctx, ziti_tunnel_async_fn f, void *arg);
 
+
+#define TNL_IP_MEM_POOL(XX, ...) \
+XX(name, model_string, none, Name, __VA_ARGS__) \
+XX(max, model_number, none, Max, __VA_ARGS__) \
+XX(used, model_number, none, Used, __VA_ARGS__) \
+XX(avail, model_number, none, Avail, __VA_ARGS__)
+
+#define TNL_IP_CONN(XX, ...) \
+XX(protocol, model_string, none, Protocol, __VA_ARGS__) \
+XX(local_ip, model_string, none, LocalIP, __VA_ARGS__) \
+XX(local_port, model_number, none, LocalPort, __VA_ARGS__) \
+XX(remote_ip, model_string, none, RemoteIP, __VA_ARGS__) \
+XX(remote_port, model_number, none, RemotePort, __VA_ARGS__) \
+XX(state, model_string, none, State, __VA_ARGS__) \
+XX(service, model_string, none, Service, __VA_ARGS__)
+
+#define TNL_IP_STATS(XX, ...) \
+XX(pools, tunnel_ip_mem_pool, array, Pools, __VA_ARGS__) \
+XX(connections, tunnel_ip_conn, array, Connections, __VA_ARGS__)
+
+DECLARE_MODEL(tunnel_ip_mem_pool, TNL_IP_MEM_POOL)
+DECLARE_MODEL(tunnel_ip_conn, TNL_IP_CONN)
+DECLARE_MODEL(tunnel_ip_stats, TNL_IP_STATS)
+
+extern void ziti_tunnel_get_ip_stats(tunnel_ip_stats *stats);
+
 #ifdef __cplusplus
 }
 #endif

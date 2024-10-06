@@ -25,15 +25,20 @@
 #include "windows/windows-scripts.h"
 #include <direct.h>
 
+#if _WIN32
+#include <windows.h>
+#define mkdir(path, mode) CreateDirectory(path, NULL)
+#ifndef PATH_MAX
+#define PATH_MAX MAX_PATH
+#endif
+#define realpath(rel, abs) _fullpath(abs, rel, PATH_MAX)
+#endif
+
 static bool open_log(char* log_filename);
 static bool rotate_log();
 static char* log_filename;
 static void set_is_interactive();
 static BOOL is_interactive = TRUE;
-
-
-
-
 
 char* get_log_file_name(){
     return log_filename;
@@ -47,6 +52,25 @@ static struct tm *start_time;
 static const char* log_filename_base = "ziti-tunneler.log";
 static int rotation_count = 7;
 
+static uint8_t mkdir_p(const char *path) {
+    char actualpath[PATH_MAX];
+    char *cur_path = realpath(path, actualpath);
+    char *p = cur_path;
+    struct stat info;
+    while(*p != '\0') {
+        if(*p == PATH_SEP) {
+            *p = 0;
+            if (stat(cur_path, &info) != 0){
+                mkdir(cur_path, NULL);
+            }
+            *p = PATH_SEP;
+        }
+        p++;
+    }
+
+    return mkdir(cur_path, NULL);
+}
+
 static char* get_log_path() {
     char process_dir[FILENAME_MAX]; //create string buffer to hold path
     char process_full_path[FILENAME_MAX];
@@ -56,24 +80,34 @@ static char* get_log_path() {
     _splitpath_s(process_full_path, drive, sizeof(drive), dir, sizeof(dir), NULL, 0, NULL, 0);
     _makepath_s(process_dir, sizeof(process_dir), drive, dir, NULL, NULL);
 
-    char* log_path = calloc(FILENAME_MAX, sizeof(char));
-    snprintf(log_path, FILENAME_MAX, "%s/logs", process_dir);
-    int check;
-    mkdir(log_path);
-    strcat(log_path, "/service");
-    check = mkdir(log_path);
-    if (check == 0) {
-        printf("\nlog path is created at %s", log_path);
-    } else {
-        printf("\nlog path is found at %s", log_path);
+    size_t process_dir_len = strlen(process_dir);
+    if(process_dir_len> 200) {
+        printf("Process directory is too long for logging. Please shorten the path where the binary is installed.\n");
+        exit(0);
     }
+
+    char* log_path = calloc(FILENAME_MAX, sizeof(char));
+    if(process_dir[strlen(process_dir)-1] != PATH_SEP) {
+        snprintf(log_path, FILENAME_MAX, "%s%clogs%cservice", process_dir, PATH_SEP, PATH_SEP);
+    } else {
+        snprintf(log_path, FILENAME_MAX, "%slogs%cservice", process_dir, PATH_SEP);
+    }
+    mkdir_p(log_path);
+
+    struct stat info;
+    if (stat(log_path, &info) != 0) {
+        fprintf(stderr,"\nlogging cannot proceed. the path could not be created: %s!\n", log_path);
+    } else {
+        fprintf(stderr,"\nlogs enabled at: %s\n", log_path);
+    }
+
     return log_path;
 }
 
 char* get_base_filename() {
     char* log_path = get_log_path();
     char* temp_log_filename = calloc(FILENAME_MAX, sizeof(char));
-    snprintf(temp_log_filename, FILENAME_MAX, "%s/%s", log_path, log_filename_base);
+    snprintf(temp_log_filename, FILENAME_MAX, "%s%c%s", log_path, PATH_SEP, log_filename_base);
     free(log_path);
     return temp_log_filename;
 }
@@ -300,7 +334,7 @@ static void delete_older_logs(uv_async_t *ar) {
         }
         if (old_log != NULL) {
             char logfile_to_delete[MAX_PATH];
-            snprintf(logfile_to_delete, MAX_PATH, "%s/%s", log_path, old_log);
+            snprintf(logfile_to_delete, MAX_PATH, "%s%c%s", log_path, PATH_SEP, old_log);
             ZITI_LOG(INFO, "Deleting old log file %s", logfile_to_delete);
             remove(logfile_to_delete);
             rotation_index--;

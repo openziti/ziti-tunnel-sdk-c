@@ -9,7 +9,7 @@ that are useful to Ziti Tunnelers.
 
 ## What's a Ziti Tunneler?
 
-[The main article about tunnellers is here](https://docs.openziti.io/docs/reference/tunnelers/linux/). Editors may follow the
+[The main article about tunnelers is here](https://openziti.io/docs/reference/tunnelers/linux/). Editors may follow the
 "Edit this page" link on every page.
 
 ## What is the Ziti Tunneler SDK?
@@ -76,7 +76,7 @@ int main(int argc, char *argv[]) {
 ```
 
 Once the Ziti Tunneler SDK is initialized with a network device and ziti-sdk
-callbacks, a tunneler application only needs to indiciate which service(s)
+callbacks, a tunneler application only needs to indicate which service(s)
 that should be  
 
 ## Run with Docker

@@ -21,7 +21,7 @@ fi
 if [ ${#} -ge 2 ]; then
     cmake_config="${2}"
 else
-    cmake_config="Release"
+    cmake_config="RelWithDebInfo"
 fi
 
 # workspace dir for each build env is added to "safe" dirs in global config e.g.
@@ -45,6 +45,7 @@ done
         --preset "${cmake_preset}" \
         -DCMAKE_BUILD_TYPE="${cmake_config}" \
         -DBUILD_DIST_PACKAGES=ON \
+        "${TLSUV_TLSLIB:+-DTLSUV_TLSLIB=${TLSUV_TLSLIB}}" \
         -S . \
         -B ./build 
     cmake \

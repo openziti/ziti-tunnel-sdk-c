@@ -1,9 +1,11 @@
 ARG CMAKE_VERSION="3.26.3"
+ARG VCPKG_VERSION="2024.08.23"
 
 # Ubuntu Jammy 22.04 LTS
 FROM ubuntu:jammy
 
 ARG CMAKE_VERSION
+ARG VCPKG_VERSION
 
 LABEL org.opencontainers.image.authors="support@netfoundry.io"
 
@@ -16,6 +18,7 @@ WORKDIR /root/
 
 RUN apt-get update \
     && apt-get -y install \
+        autoconf automake autopoint \
         gcc-arm-linux-gnueabihf \
         g++-arm-linux-gnueabihf \
         gcc-aarch64-linux-gnu \
@@ -27,6 +30,7 @@ RUN apt-get update \
         git \
         graphviz \
         libsystemd-dev \
+        libtool \
         pkg-config \
         python3 \
         zlib1g-dev \
@@ -45,7 +49,7 @@ RUN apt-get update \
         zlib1g-dev:armhf \
     && rm -rf /var/lib/apt/lists/*
 
-RUN curl -sSfL https://cmake.org/files/v${CMAKE_VERSION%.*}/cmake-${CMAKE_VERSION}-linux-$(uname -m).sh -o cmake.sh \
+RUN curl -sSfL "https://cmake.org/files/v${CMAKE_VERSION%.*}/cmake-${CMAKE_VERSION}-linux-$(uname -m).sh" -o cmake.sh \
     && (bash cmake.sh --skip-license --prefix=/usr/local) \
     && rm cmake.sh
 
@@ -55,7 +59,7 @@ ENV VCPKG_FORCE_SYSTEM_BINARIES=yes
 
 RUN cd /usr/local \
     && git config --global advice.detachedHead false \
-    && git clone --branch 2023.04.15 https://github.com/microsoft/vcpkg \
+    && git clone --branch "${VCPKG_VERSION}" https://github.com/microsoft/vcpkg \
     && ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
 
 COPY ./entrypoint.sh /root/

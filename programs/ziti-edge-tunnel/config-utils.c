@@ -28,11 +28,11 @@ static char* identifier_path = NULL;
 char* get_system_config_path() {
     char* config_path = malloc(FILENAME_MAX * sizeof(char));
 #if _WIN32
-    sprintf(config_path, "%s/NetFoundry", getenv(app_data));
+    snprintf(config_path, FILENAME_MAX, "%s\\NetFoundry", getenv(app_data));
 #elif __linux__
-    sprintf(config_path, "/var/lib/ziti");
+    snprintf(config_path, FILENAME_MAX, "/var/lib/ziti");
 #else
-    sprintf(config_path, "/tmp");
+    snprintf(config_path, FILENAME_MAX, "/tmp");
 #endif
     return config_path;
 }

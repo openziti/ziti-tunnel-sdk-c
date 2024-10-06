@@ -219,14 +219,14 @@ static void parse_socket_address(const char *address, char **proto, char **ip, c
     }
 }
 
-/** render app_data as string (json) */
-static ssize_t get_app_data_json(char *buf, size_t bufsz, tunneler_io_context io, ziti_context ziti_ctx, const char *source_ip, tunneler_app_data *app_data) {
+/** initialize app_data and render json for a dial request. */
+static ssize_t get_app_data(char *buf, size_t bufsz, tunneler_io_context io, ziti_context ziti_ctx, const char *source_ip, tunneler_app_data *app_data) {
     const char *intercepted = get_intercepted_address(io);
     const char *client = get_client_address(io);
-    char source_addr[64];
 
     if (intercepted != NULL) {
-        parse_socket_address(intercepted, &app_data->dst_protocol, &app_data->dst_ip, &app_data->dst_port);
+        parse_socket_address(intercepted, (char**)&app_data->dst_protocol, 
+                             (char**)&app_data->dst_ip, (char**)&app_data->dst_port);
         if (app_data->dst_ip) {
             const char *dst_hostname = ziti_dns_reverse_lookup(app_data->dst_ip);
             if (dst_hostname) {
@@ -235,22 +235,23 @@ static ssize_t get_app_data_json(char *buf, size_t bufsz, tunneler_io_context io
         }
     }
     if (client != NULL) {
-        parse_socket_address(client, &app_data->src_protocol, &app_data->src_ip, &app_data->src_port);
+        parse_socket_address(client, (char**)&app_data->src_protocol, 
+                             (char**)&app_data->src_ip, (char**)&app_data->src_port);
     }
     if (source_ip != NULL && *source_ip != 0) {
         const ziti_identity *zid = ziti_get_identity(ziti_ctx);
-        strncpy(source_addr, source_ip, sizeof(source_addr));
-        string_replace(source_addr, sizeof(source_addr), "$tunneler_id.name", zid->name);
-        string_replace(source_addr, sizeof(source_addr), "$dst_ip", app_data->dst_ip);
-        string_replace(source_addr, sizeof(source_addr), "$dst_port", app_data->dst_port);
-        string_replace(source_addr, sizeof(source_addr), "$src_ip", app_data->src_ip);
-        string_replace(source_addr, sizeof(source_addr), "$src_port", app_data->src_port);
-        app_data->source_addr = source_addr;
+        size_t source_addr_maxlen = 64;
+        size_t source_addr_sz = source_addr_maxlen * sizeof(char);
+        char *srcAddr = calloc(source_addr_maxlen, sizeof(char));
+        strncpy(srcAddr, source_ip, source_addr_sz);
+        string_replace(srcAddr, source_addr_sz, "$tunneler_id.name", zid->name);
+        string_replace(srcAddr, source_addr_sz, "$dst_ip", app_data->dst_ip);
+        string_replace(srcAddr, source_addr_sz, "$dst_port", app_data->dst_port);
+        string_replace(srcAddr, source_addr_sz, "$src_ip", app_data->src_ip);
+        string_replace(srcAddr, source_addr_sz, "$src_port", app_data->src_port);
+        app_data->source_addr = srcAddr;
     }
     ssize_t json_len = tunneler_app_data_to_json_r(app_data, MODEL_JSON_COMPACT, buf, bufsz);
-
-    // value points to stack buffer
-    app_data->source_addr = NULL;
     return json_len;
 }
 
@@ -260,7 +261,7 @@ static void dial_opts_from_intercept_cfg_v1(ziti_dial_opts *opts, const ziti_int
     tag *t = (tag *) model_map_get(&(config->dial_options), "identity");
     if (t != NULL) {
         if (t->type == tag_string) {
-            opts->identity = t->string_value;
+            opts->identity = (char*)t->string_value;
         } else {
             ZITI_LOG(WARN, "dial_options.identity has non-string type %d", t->type);
         }
@@ -269,7 +270,7 @@ static void dial_opts_from_intercept_cfg_v1(ziti_dial_opts *opts, const ziti_int
     t = (tag *)model_map_get(&(config->dial_options), "connect_timeout_seconds");
     if (t != NULL) {
         if (t->type == tag_number) {
-            opts->connect_timeout_seconds = t->num_value;
+            opts->connect_timeout_seconds = (int)t->num_value;
         } else {
             ZITI_LOG(WARN, "dial_options.connect_timeout_seconds has non-numeric type %d", t->type);
         }
@@ -302,8 +303,7 @@ void * ziti_sdk_c_dial(const void *intercept_ctx, struct io_ctx_s *io) {
         return NULL;
     }
 
-    ziti_dial_opts dial_opts;
-    memset(&dial_opts, 0, sizeof(dial_opts));
+    ziti_dial_opts dial_opts = {0};
     char app_data_json[256];
     const char *source_ip = NULL;
 
@@ -320,32 +320,29 @@ void * ziti_sdk_c_dial(const void *intercept_ctx, struct io_ctx_s *io) {
     }
     
     tunneler_app_data app_data = {0};
-    ssize_t json_len = get_app_data_json(app_data_json, sizeof(app_data_json), io->tnlr_io, ziti_ctx, source_ip, &app_data);
+    ssize_t json_len = get_app_data(app_data_json, sizeof(app_data_json), io->tnlr_io, ziti_ctx, source_ip, &app_data);
     if (json_len < 0) {
         ZITI_LOG(ERROR, "service[%s] failed to encode app_data", zi_ctx->service_name);
         free(ziti_io_ctx);
         return NULL;
     }
 
+    dial_opts.stream = strcmp(app_data.dst_protocol, "tcp") == 0;
+
     char resolved_dial_identity[128];
     if (dial_opts.identity != NULL && dial_opts.identity[0] != '\0') {
-        const char *dst_addr = get_intercepted_address(io->tnlr_io);
-        if (dst_addr != NULL) {
-            strncpy(resolved_dial_identity, dial_opts.identity, sizeof(resolved_dial_identity));
-            if (parse_tunneler_app_data(&app_data, (char *)app_data_json, json_len) >= 0){
-                if (app_data.dst_protocol != NULL) {
-                    string_replace(resolved_dial_identity, sizeof(resolved_dial_identity), "$dst_protocol", app_data.dst_protocol);
-                }
-                if (app_data.dst_ip != NULL) {
-                    string_replace(resolved_dial_identity, sizeof(resolved_dial_identity), "$dst_ip", app_data.dst_ip);
-                }
-                if (app_data.dst_port != NULL) {
-                    string_replace(resolved_dial_identity, sizeof(resolved_dial_identity), "$dst_port", app_data.dst_port);
-                }
-                if (app_data.dst_hostname != NULL){
-                    string_replace(resolved_dial_identity, sizeof(resolved_dial_identity), "$dst_hostname", app_data.dst_hostname);
-                }
-            }
+        strncpy(resolved_dial_identity, dial_opts.identity, sizeof(resolved_dial_identity));
+        if (app_data.dst_protocol != NULL) {
+            string_replace(resolved_dial_identity, sizeof(resolved_dial_identity), "$dst_protocol", app_data.dst_protocol);
+        }
+        if (app_data.dst_ip != NULL) {
+            string_replace(resolved_dial_identity, sizeof(resolved_dial_identity), "$dst_ip", app_data.dst_ip);
+        }
+        if (app_data.dst_port != NULL) {
+            string_replace(resolved_dial_identity, sizeof(resolved_dial_identity), "$dst_port", app_data.dst_port);
+        }
+        if (app_data.dst_hostname != NULL) {
+            string_replace(resolved_dial_identity, sizeof(resolved_dial_identity), "$dst_hostname", app_data.dst_hostname);
         }
         dial_opts.identity = resolved_dial_identity;
     }
@@ -395,7 +392,7 @@ ssize_t ziti_sdk_c_write(const void *ziti_io_ctx, void *write_ctx, const void *d
         return zs;
     }
 
-    ZITI_LOG(VERBOSE, "applying backpressure %lu pending bytes", _ziti_io_ctx->pending_wbytes);
+    ZITI_LOG(VERBOSE, "applying backpressure %" PRIu64 " pending bytes", _ziti_io_ctx->pending_wbytes);
     return ERR_WOULDBLOCK;
 }
 
@@ -471,7 +468,6 @@ intercept_ctx_t *new_intercept_ctx(tunneler_context tnlr_ctx, ziti_intercept_t *
     intercept_ctx_t *i_ctx = intercept_ctx_new(tnlr_ctx, zi_ctx->service_name, zi_ctx);
     intercept_ctx_set_match_addr(i_ctx, intercept_match_addr);
 
-    int i;
     const ziti_address *intercept_addr;
     switch (zi_ctx->cfg_desc->cfgtype) {
         case CLIENT_CFG_V1:
@@ -607,6 +603,7 @@ static void ziti_conn_close_cb(ziti_connection zc) {
     }
     if (io->ziti_io) {
         free(io->ziti_io);
+        io->ziti_io = NULL;
     }
     ziti_tunneler_close(io->tnlr_io);
     free(io);
@@ -623,6 +620,12 @@ ziti_connection intercept_resolve_connect(ziti_intercept_t *intercept, void *ctx
             .app_data_sz = strlen(RESOLVE_APP_DATA)
     };
 
-    ziti_dial_with_options(conn, intercept->service_name, &opts, conn_cb, data_cb);
+    int rc = ziti_dial_with_options(conn, intercept->service_name, &opts, conn_cb, data_cb);
+    if (rc != ZITI_OK) {
+        ZITI_LOG(WARN, "failed to establish proxy resolver connection: %s", ziti_errorstr(rc));
+        ziti_close(conn, NULL);
+        return NULL;
+    }
+
     return conn;
 }

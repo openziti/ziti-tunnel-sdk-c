@@ -34,7 +34,7 @@
 #ifdef TCP_MSS
 #undef TCP_MSS  /* cleanup warnings */
 #endif
-#define TCP_MSS               32768       /* TCP Maximum segment size (536) */
+#define TCP_MSS               16382       /* TCP Maximum segment size (536). 16382 avoids u16_t underflow in TCP_SNDLOWAT calculation */
 #define TCP_SND_BUF           (2*TCP_MSS) /* TCP sender buffer space in bytes (2 * TCP_MSS) */
 #define TCP_SND_QUEUELEN      64          /* TCP sender buffer space in pbufs ((4 * (TCP_SND_BUF) + (TCP_MSS - 1))/(TCP_MSS)) */
 // TCP_SNDQUEUELEN_OVERFLOW = 0xffffu - 3
@@ -51,10 +51,12 @@
 
 // APIs
 #define LWIP_RAW 1
+#define LWIP_ARP 0
 #define LWIP_NETCONN 0
 #define LWIP_SOCKET 0
 
 // protocols
+#define LWIP_IPV6_MLD 0
 #define LWIP_IPV6 1                       /* enable ipv6 */
 #define IPV6_FRAG_COPYHEADER 1            /* avoid assert in lwip code when ipv6 is enabled */
 

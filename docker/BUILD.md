@@ -1,4 +1,7 @@
-The Dockerfile and scripts in this directory build a `ziti-edge-tunnel` (tunneler from C-SDK) Docker image. This procedure is highly similar to that of the `ziti-tunnel` (Go tunneler) Docker image [documented here](https://github.com/openziti/ziti/blob/main/ziti-tunnel/docker/BUILD.md).
+
+# Building the ziti-edge-tunnel Docker Images
+
+The Dockerfile and scripts in this directory build a `ziti-edge-tunnel` (tunneler from C-SDK) Docker image.
 
 Ziti binaries are downloaded from https://github.com/openziti/ziti-tunnel-sdk-c/
 by default. The following build arguments are supported:
@@ -24,46 +27,56 @@ the image to a public registry.
 
 1. Enable Docker Experimental Features
 
-   See https://docs.docker.com/engine/reference/commandline/cli/#experimental-features
+    See https://docs.docker.com/engine/reference/commandline/cli/#experimental-features
 
 2. Install & Enable qemu Emulation for Arm (Docker CE / Linux only)
 
-   This is taken care of by Docker Desktop if you're building on macOS or Windows,
-   but you'll need to install qemu emulation support and register Arm binaries to
-   run on your (presumably) x86_64 build host if you are running Docker CE on Linux:
+    This is taken care of by Docker Desktop if you're building on macOS or Windows,
+    but you'll need to install qemu emulation support and register Arm binaries to
+    run on your (presumably) x86_64 build host if you are running Docker CE on Linux:
 
-        $ sudo dnf install -y qemu-system-arm
-        $ docker run --rm --privileged docker/binfmt:66f9012c56a8316f9244ffd7622d7c21c1f6f28d
+    ```bash
+    sudo dnf install -y qemu-system-arm
+    docker run --rm --privileged docker/binfmt:66f9012c56a8316f9244ffd7622d7c21c1f6f28d
+    ```
 
 3. Verify that the Arm qemu handler is registered. The first line of the file is "enabled".
 
-        $ cat /proc/sys/fs/binfmt_misc/qemu-arm
-        enabled
-        interpreter /usr/bin/qemu-arm
+    ```bash
+    $ cat /proc/sys/fs/binfmt_misc/qemu-arm
+    enabled
+    interpreter /usr/bin/qemu-arm
+    ```
 
-Optionally, run an ARM arch container and print system information to test qemu-arm
+    Optionally, run an ARM arch container and print system information to test qemu-arm
 
-        $ docker run --rm arm64v8/alpine uname -a
-        Linux 00eea7912eb1 5.11.0-7612-generic #13~1617215757~20.10~97a8d1a-Ubuntu SMP Thu Apr 1 21:09:17 UTC 2 aarch64 Linux
-
-        $ docker run --rm arm32v7/alpine uname -a
-        Linux 6fcaad6c8b37 5.11.0-7612-generic #13~1617215757~20.10~97a8d1a-Ubuntu SMP Thu Apr 1 21:09:17 UTC 2 armv7l Linux
+    ```bash
+    $ docker run --rm arm64v8/alpine uname -a
+    Linux 00eea7912eb1 5.11.0-7612-generic #13~1617215757~20.10~97a8d1a-Ubuntu SMP Thu Apr 1 21:09:17 UTC 2 aarch64 Linux
+    
+    $ docker run --rm arm32v7/alpine uname -a
+    Linux 6fcaad6c8b37 5.11.0-7612-generic #13~1617215757~20.10~97a8d1a-Ubuntu SMP Thu Apr 1 21:09:17 UTC 2 armv7l Linux
+    ```
 
 4. Create a Builder Instance
 
-        $ docker buildx create --use --name=ziti-builder
+    ```bash
+    docker buildx create --use --name=ziti-builder
+    ```
 
 ## Building
 
 Run `docker buildx` like this:
 
-        $ git fetch --tags && git tag -l | sort -Vr | head -1
-        v0.16.1
-        $ ZITI_VERSION="0.16.1"
-        $ docker buildx build \
-            --platform linux/amd64,linux/arm/v7,linux/aarch64 \
-            --build-arg ZITI_VERSION="${ZITI_VERSION}" \
-            -t "netfoundry/ziti-edge-tunnel:${ZITI_VERSION}" .
+```bash
+$ git fetch --tags && git tag -l | sort -Vr | head -1
+v0.16.1
+$ ZITI_VERSION="0.16.1"
+$ docker buildx build \
+    --platform linux/amd64,linux/arm/v7,linux/aarch64 \
+    --build-arg ZITI_VERSION="${ZITI_VERSION}" \
+    -t "netfoundry/ziti-edge-tunnel:${ZITI_VERSION}" .
+```
 
 Notes:
 
@@ -93,24 +106,44 @@ This build method produces an image for the CPU that is running the build host
 (typically amd64), and places the resulting image into your local Docker image
 cache.
 
-        $ ZITI_VERSION="0.16.1" \
-        $ docker build \
-            --build-arg ZITI_VERSION="${ZITI_VERSION}" \
-            -t "netfoundry/ziti-edge-tunnel:${ZITI_VERSION}" .
+```bash
+ZITI_VERSION=$(
+    curl -sSf https://api.github.com/repos/openziti/ziti-tunnel-sdk-c/releases/latest \
+    | jq -r '.tag_name' \
+    | sed -E 's/^v//'
+);
+
+docker buildx build \
+    --tag ziti-edge-tunnel:${ZITI_VERSION} \
+    --build-arg ZITI_VERSION=${ZITI_VERSION} \
+    --file ./docker/Dockerfile.base \
+    --load \
+    ./docker
+
+docker buildx build \
+    --tag ziti-host:${ZITI_VERSION} \
+    --build-arg ZITI_EDGE_TUNNEL_IMAGE=ziti-edge-tunnel \
+    --build-arg ZITI_EDGE_TUNNEL_TAG=${ZITI_VERSION} \
+    --file ./docker/Dockerfile.ziti-host \
+    --load \
+    ./docker
+```
 
 ## Shell Script for Linux
 
-        $ ./buildx.sh -h
-        Usage: VARIABLES ./buildx.sh [OPTION]...
+```bash
+$ ./buildx.sh -h
+Usage: VARIABLES ./buildx.sh [OPTION]...
 
-        Build multi-platform Docker container image on Linux.
+Build multi-platform Docker container image on Linux.
 
-        VARIABLES
-            ZITI_VERSION      e.g. "0.16.1" corresponding to Git tag "v0.16.1"
+VARIABLES
+    ZITI_VERSION      e.g. "0.16.1" corresponding to Git tag "v0.16.1"
 
-        OPTIONS
-            -r REPO           container image repository e.g. netfoundry/ziti-edge-tunnel
-            -c                don't check out v${ZITI_VERSION} (use Git working copy)
+OPTIONS
+    -r REPO           container image repository e.g. netfoundry/ziti-edge-tunnel
+    -c                don't check out v${ZITI_VERSION} (use Git working copy)
 
-        EXAMPLES
-            ZITI_VERSION=0.16.1 ./buildx.sh -r netfoundry/ziti-edge-tunnel
+EXAMPLES
+    ZITI_VERSION=0.16.1 ./buildx.sh -r netfoundry/ziti-edge-tunnel
+```

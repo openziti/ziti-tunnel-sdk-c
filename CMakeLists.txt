@@ -1,8 +1,8 @@
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.21)
 
 
 set(ZITI_SDK_DIR "" CACHE FILEPATH "developer option: use local ziti-sdk-c checkout")
-set(ZITI_SDK_VERSION "0.33.4" CACHE STRING "ziti-sdk-c version or branch to use")
+set(ZITI_SDK_VERSION "2.0.0-alpha28" CACHE STRING "ziti-sdk-c version or branch to use")
 
 # if TUNNEL_SDK_ONLY then don't descend into programs/ziti-edge-tunnel
 option(TUNNEL_SDK_ONLY "build only ziti-tunnel-sdk (without ziti)" OFF)
@@ -12,15 +12,19 @@ message("tunnel only = ${TUNNEL_SDK_ONLY}")
 option(EXCLUDE_PROGRAMS "exclude building the programs directory" OFF)
 message("exclude programs = ${EXCLUDE_PROGRAMS}")
 
-option(ZITI_TUNNEL_BUILD_TESTS "Build tests." ON)
+if (WIN32)
+    add_compile_definitions(PATH_SEP='\\\\')
+else()
+    add_compile_definitions(PATH_SEP='/')
+endif()
 
 find_package(Git)
 if(NOT GIT_VERSION AND GIT_FOUND)
     message("Found Git executable \"${GIT_EXECUTABLE}\".")
     # Generate a git-describe version string from Git repository tags
     execute_process(
-        COMMAND ${GIT_EXECUTABLE} describe --tags --dirty=-local --match "v*"
-        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+        COMMAND ${GIT_EXECUTABLE} describe --long --tags
+        WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
         OUTPUT_VARIABLE GIT_VERSION
         RESULT_VARIABLE GIT_ERROR_CODE
         OUTPUT_STRIP_TRAILING_WHITESPACE
@@ -42,7 +46,14 @@ if(NOT GIT_VERSION)
     set(PROJECT_SEMVER "${DUMMY_SEMVER}")
     message(WARNING "GIT_VERSION not set. Using dummy PROJECT_SEMVER: \"${PROJECT_SEMVER}\", GIT_VERSION: \"${GIT_VERSION}\".")
 else()
-    string(REGEX MATCH "([0-9]+\\.[0-9]+\\.[0-9]+)" PROJECT_SEMVER "${GIT_VERSION}")
+    # tag-tweak-slug
+    string(REGEX REPLACE "(.*)-([0-9]+)-(.*)" "\\1" PROJECT_TAG "${GIT_VERSION}")
+    string(REGEX REPLACE "(.*)-([0-9]+)-(.*)" "\\2" PROJECT_TWEAK "${GIT_VERSION}")
+    string(REGEX REPLACE "(.*)-([0-9]+)-(.*)" "\\3" PROJECT_SLUG "${GIT_VERSION}")
+
+    # extract semver from pre-release tags like 2.0.0-alpha
+    string(REGEX MATCH "([0-9]+.[0-9]+.[0-9]+)" PROJECT_SEMVER ${PROJECT_TAG})
+
     if(NOT PROJECT_SEMVER)
         set(PROJECT_SEMVER "${DUMMY_SEMVER}")
         message(WARNING "SEMVER could not be parsed from GIT_VERSION: ${GIT_VERSION}. Setting to PROJECT_SEMVER: ${PROJECT_SEMVER}")
@@ -54,8 +65,8 @@ endif()
 option(DISABLE_SEMVER_VERIFICATION "Toggle SEMVER verification for BUILD_DIST_PACKAGES" OFF)
 option(BUILD_DIST_PACKAGES "Build packages for distribution package managers" OFF)
 
-# Require explicitly disabling SEMVER verification for building DIST packages.
-if(NOT DISABLE_SEMVER_VERIFICATION AND BUILD_DIST_PACKAGES AND PROJECT_SEMVER VERSION_EQUAL "${DUMMY_SEMVER}")
+# verify the semver unless DISABLE option is set
+if((NOT DISABLE_SEMVER_VERIFICATION) AND PROJECT_SEMVER VERSION_EQUAL "${DUMMY_SEMVER}")
     unset(GIT_VERSION CACHE)
     unset(GIT_ERROR_CODE CACHE)
     unset(PROJECT_SEMVER CACHE)
@@ -64,9 +75,21 @@ if(NOT DISABLE_SEMVER_VERIFICATION AND BUILD_DIST_PACKAGES AND PROJECT_SEMVER VE
     message(FATAL_ERROR "SEMVER Verification failed. A valid SEMVER is required for correct package version composition. To override, set DISABLE_SEMVER_VERIFICATION=ON.")
 endif()
 
+unset(GIT_VERSION CACHE)
+if (PROJECT_TWEAK STREQUAL "0")
+    set(GIT_VERSION ${PROJECT_TAG})
+else ()
+    set(GIT_VERSION "${PROJECT_TAG}.${PROJECT_TWEAK}")
+endif ()
+
 project(ziti-tunnel-sdk-c
-        VERSION "${PROJECT_SEMVER}"
+        DESCRIPTION "OpenZiti tunneler SDK"
+        HOMEPAGE_URL "https://github.com/openziti/ziti-tunneler-sdk-c"
         LANGUAGES C CXX)
+
+option(ZITI_TUNNEL_BUILD_TESTS "Build tests." "${${PROJECT_NAME}_IS_TOP_LEVEL}")
+
+set(PROJECT_VERSION ${GIT_VERSION})
 
 if(NOT BUILD_DIST_PACKAGES)
     include(CPack)
@@ -75,21 +98,7 @@ endif()
 
 set(CMAKE_C_STANDARD 99)
 
-# capture build date
-if (WIN32)
-    execute_process(
-            COMMAND	powershell get-date -uf '+%a-%m/%d/%Y-%H:%M:%S-%Z'
-            OUTPUT_VARIABLE	BUILD_DATE
-            OUTPUT_STRIP_TRAILING_WHITESPACE
-    )
-else()
-    execute_process(
-            COMMAND	date +%a-%m/%d/%Y-%H:%M:%S-%Z
-            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-            OUTPUT_VARIABLE BUILD_DATE
-            OUTPUT_STRIP_TRAILING_WHITESPACE
-    )
-endif()
+string(TIMESTAMP BUILD_DATE "%a-%m/%d/%Y-%H:%M:%S-%Z")
 
 if (MSVC)
     add_compile_options(-Zi)
@@ -103,12 +112,12 @@ add_custom_target(bundle
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/bundle)
 
 macro(BUNDLE_COMP comp)
-    message("adding target to bundle ${comp} for ${CMAKE_SYSTEM_NAME}:${CMAKE_SYSTEM_PROCESSOR}")
     add_custom_target(${comp}-bundle
         BYPRODUCTS ${CMAKE_BINARY_DIR}/bundle/${comp}-${CMAKE_SYSTEM_NAME}_${CMAKE_SYSTEM_PROCESSOR}.zip
         DEPENDS ${comp}
-        # copy target file when linker output directory isn't "." (e.g. visual studio)
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:${comp}> $<TARGET_FILE_NAME:${comp}>
+        # use generator expression to set working directory to the target's build directory. this works for multi-config generators, e.g. when "--config" is specified at build time.
+        WORKING_DIRECTORY "$<TARGET_FILE_DIR:${comp}>"
+        COMMENT "adding components to bundle ${comp} for ${CMAKE_SYSTEM_NAME}:${CMAKE_SYSTEM_PROCESSOR}: $<TARGET_FILE_NAME:${comp}> ${${comp}_BUNDLE_COMPS}"
         COMMAND ${CMAKE_COMMAND} -E tar "cf" "${CMAKE_BINARY_DIR}/bundle/${comp}-${CMAKE_SYSTEM_NAME}_${CMAKE_SYSTEM_PROCESSOR}.zip" --format=zip -- $<TARGET_FILE_NAME:${comp}> ${${comp}_BUNDLE_COMPS})
     add_dependencies(bundle ${comp}-bundle)
 endmacro()
@@ -119,19 +128,6 @@ message("cross-compiling: ${CMAKE_CROSSCOMPILING}")
 link_directories(${CMAKE_BINARY_DIR}/lib)
 
 add_subdirectory(deps)
-
-find_package(libuv CONFIG QUIET)
-if (libuv_FOUND)
-    if (TARGET uv_a)
-        set(tunnel_libuv_lib uv_a)
-    else()
-        set(tunnel_libuv_lib uv)
-    endif()
-else()
-    find_path(tunnel_libuv_include_dir NAMES uv.h)
-    find_library(tunnel_libuv_lib uv_a NAMES uv)
-endif()
-
 add_subdirectory(lib/ziti-tunnel)
 
 if(NOT TUNNEL_SDK_ONLY)

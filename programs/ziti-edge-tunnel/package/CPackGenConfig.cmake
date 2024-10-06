@@ -14,7 +14,7 @@ if(CPACK_GENERATOR MATCHES "RPM")
     set(CPACK_RPM_PACKAGE_LICENSE "Apache-2.0")
     set(CPACK_RPM_PACKAGE_RELEASE_DIST "OFF")
     set(CPACK_RPM_PACKAGE_SUMMARY "OpenZiti Edge Tunneling Software Client")
-    set(CPACK_RPM_PACKAGE_URL "https://openziti.github.io/")
+    set(CPACK_RPM_PACKAGE_URL "https://openziti.io/")
     
     set(CPACK_RPM_PRE_INSTALL_SCRIPT_FILE "${CPACK_RPM_PRE_INSTALL}")
     set(CPACK_RPM_POST_INSTALL_SCRIPT_FILE "${CPACK_RPM_POST_INSTALL}")

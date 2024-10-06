@@ -1,0 +1,15 @@
+volumes:
+    ziti-edge-tunnel:
+
+services:
+    ziti-tun:
+        image: ${ZITI_EDGE_TUNNEL_IMAGE:-openziti/ziti-edge-tunnel}:${ZITI_EDGE_TUNNEL_TAG:-latest}
+        devices:
+            - /dev/net/tun:/dev/net/tun
+        volumes:
+            - ziti-edge-tunnel:/ziti-edge-tunnel
+            - /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket
+        environment:
+            - ZITI_ENROLL_TOKEN       # ZITI_IDENTITY_BASENAME=AcmeIdentity ZITI_ENROLL_TOKEN={JWT} docker-compose up ziti-tun
+        network_mode: host            # use the Docker host's network, not the Docker bridge
+        privileged: true

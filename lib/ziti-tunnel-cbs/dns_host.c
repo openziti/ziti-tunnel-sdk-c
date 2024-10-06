@@ -145,14 +145,50 @@ static int fmt_txt(const ns_msg *msg, const ns_rr* rr, dns_answer *ans, size_t m
 
 #else
 
-void do_query(const dns_question *q, dns_message *resp, resolver_t *resolver) {
-    uint8_t resp_msg[PACKETSZ];
-    int rc = res_nquery(resolver, q->name, ns_c_in, q->type, resp_msg, PACKETSZ);
+static uint8_t *send_and_parse_query(const dns_question *q, int class, ns_msg *ans, resolver_t *resolver) {
+    int buf_sz = PACKETSZ;
+    uint8_t *resp_msg = NULL;
+    int rc;
+
+    for (int attempt = 0; attempt < 2; attempt++) { // retry the query with a larger buffer if first attempt was truncated
+        resp_msg = calloc(buf_sz, sizeof(uint8_t));
+        memset(ans, 0, sizeof(dns_question));
+        rc = res_nquery(resolver, q->name, class, (int)q->type, resp_msg, buf_sz);
+        if (rc < 0) {
+            ZITI_LOG(DEBUG, "res_query for %s failed", q->name);
+            break;
+        }
+        ns_initparse(resp_msg, rc, ans);
+        bool trunc = ns_msg_getflag(*ans, ns_f_tc);
+        if (!trunc) {
+            break;
+        } else {
+            if (attempt == 0) {
+                ZITI_LOG(DEBUG, "dns response truncated, repeating query with %d byte buffer", rc);
+                free(resp_msg);
+                resp_msg = NULL;
+                buf_sz = rc; // try again with large enough buffer
+            } else {
+                rc = -1;
+            }
+        }
+    }
+
     if (rc < 0) {
+        free(resp_msg);
+        resp_msg = NULL;
+    }
+
+    return resp_msg;
+}
+
+void do_query(const dns_question *q, dns_message *resp, resolver_t *resolver) {
+    ns_msg ans = {0};
+    uint8_t *resp_msg = send_and_parse_query(q, ns_c_in, &ans, resolver);
+    if (resp_msg == NULL) {
         resp->status = ns_r_servfail;
+        return;
     } else {
-        ns_msg ans = {0};
-        ns_initparse(resp_msg, rc, &ans);
         resp->status = ns_msg_getflag(ans, ns_f_rcode);
         int rr_count = ns_msg_count(ans, ns_s_an);
         if (rr_count > 0) {
@@ -172,6 +208,7 @@ void do_query(const dns_question *q, dns_message *resp, resolver_t *resolver) {
                 }
             }
         }
+        free(resp_msg);
     }
 }
 
@@ -181,13 +218,13 @@ static int fmt_srv(const ns_msg* msg, const ns_rr* rr, dns_answer *ans, size_t m
     ans->weight = ntohs(*(ptr + 1));
     ans->port = ntohs(*(ptr + 2));
 
-    return ns_name_uncompress(ns_msg_base(*msg), ns_msg_end(*msg), (uint8_t *)(ptr + 3), ans->data, max);
+    return ns_name_uncompress(ns_msg_base(*msg), ns_msg_end(*msg), (uint8_t *)(ptr + 3), (char*)ans->data, max);
 }
 
 static int fmt_mx(const ns_msg * msg, const ns_rr* rr, dns_answer *ans, size_t max) {
     uint16_t *ptr = (uint16_t *) ns_rr_rdata(*rr);
     ans->priority = ntohs(*ptr);
-    return ns_name_uncompress(ns_msg_base(*msg), ns_msg_end(*msg), (uint8_t *)(ptr + 1), ans->data, max);
+    return ns_name_uncompress(ns_msg_base(*msg), ns_msg_end(*msg), (uint8_t *)(ptr + 1), (char*)ans->data, max);
 }
 
 static int fmt_txt(const ns_msg *msg, const ns_rr* rr, dns_answer *ans, size_t max) {
@@ -197,14 +234,14 @@ static int fmt_txt(const ns_msg *msg, const ns_rr* rr, dns_answer *ans, size_t m
         len = (unsigned int)max;
     }
     len--;
-    memcpy(ans->data, ptr+1, len);
-    ans->data[len] = 0;
+    memcpy((char*)ans->data, ptr+1, len);
+    ((char*)ans->data)[len] = 0;
     return (int)len;
 }
 
 #endif
 
-static ssize_t on_dns_req(ziti_connection conn, uint8_t *data, ssize_t datalen) {
+static ssize_t on_dns_req(ziti_connection conn, const uint8_t *data, ssize_t datalen) {
     if (datalen < 0) {
         ziti_close(conn, on_close);
         return 0;
@@ -224,7 +261,7 @@ static ssize_t on_dns_req(ziti_connection conn, uint8_t *data, ssize_t datalen) 
 
     size_t msg_len = 0;
     char *json = dns_message_to_json(&msg, 0, &msg_len);
-    ziti_write(conn, json, msg_len, on_write, json);
+    ziti_write(conn, (uint8_t *)json, msg_len, on_write, json);
     free_dns_message(&msg);
     return datalen;
 }

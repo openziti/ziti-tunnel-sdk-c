@@ -1,8 +1,8 @@
 
 
 FetchContent_Declare(wintun
-        URL      https://www.wintun.net/builds/wintun-0.10.3.zip
-        URL_HASH SHA256=97de836805006c39c3c6ddf57bac0707d096cc88a9ca0b552cb95f1de08da060
+        URL      https://www.wintun.net/builds/wintun-0.14.1.zip
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
 )
 
 FetchContent_GetProperties(wintun)
@@ -11,4 +11,4 @@ if(NOT wintun_POPULATED)
 endif()
 
 add_library(wintun INTERFACE)
-target_include_directories(subcommand INTERFACE ${wintun_SOURCE_DIR}/include)
+target_include_directories(wintun INTERFACE ${wintun_SOURCE_DIR}/include)

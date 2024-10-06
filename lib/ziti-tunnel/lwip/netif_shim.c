@@ -37,6 +37,13 @@ static err_t netif_shim_output(struct netif *netif, struct pbuf *p, const ip4_ad
 }
 
 /**
+ * This function is called by the TCP/IP stack when an IP6 packet should be sent.
+ */
+static err_t netif_shim_output_ip6(struct netif *netif, struct pbuf *p, const ip6_addr_t *ipaddr) {
+    return netif_shim_output(netif, p, NULL);
+}
+
+/**
  * This function should be called when a packet is ready to be read
  * from the interface. It uses the function low_level_input() that
  * should handle the actual reception of bytes from the network
@@ -93,6 +100,7 @@ err_t netif_shim_init(struct netif *netif) {
     netif->name[0] = IFNAME0;
     netif->name[1] = IFNAME1;
     netif->output = netif_shim_output;
+    netif->output_ip6 = netif_shim_output_ip6;
 
     return ERR_OK;
 }

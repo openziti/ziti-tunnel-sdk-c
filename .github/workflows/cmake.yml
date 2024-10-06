@@ -2,7 +2,9 @@ name: CI build
 
 on:
   pull_request:
-    branches: [ main ]
+    branches:
+      - main
+      - release-*
   workflow_dispatch:
   workflow_call:
 
@@ -22,40 +24,43 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macOS-11
+          - os: macOS-12
             name: macOS x86_64
             preset: macOS-x64
 
-          - os: macOS-11
+          - os: macOS-12
             name: macOS arm64
             preset: macOS-arm64
 
           - os: windows-latest
             name: Windows x86_64
-            preset: windows-x64
+            preset: windows-x64-mingw
 
           - os: windows-latest
             name: Windows arm64
-            preset: windows-arm64
+            preset: windows-arm64-vs2022
 
           - os: ubuntu-20.04
-            container: openziti/ziti-builder:1.0.3
+            container: openziti/ziti-builder:v2
             name: Linux x86_64
             preset: linux-x64-static-libssl
 
           - os: ubuntu-20.04
-            container: openziti/ziti-builder:1.0.3
+            container: openziti/ziti-builder:v2
             name: Linux arm
             preset: linux-arm-static-libssl
 
           - os: ubuntu-20.04
-            container: openziti/ziti-builder:1.0.3
+            container: openziti/ziti-builder:v2
             name: Linux arm64
             preset: linux-arm64-static-libssl
 
     steps:
+      - name: Debug action
+        uses: hmarr/debug-action@v3
+
       - name: checkout workspace
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -74,9 +79,8 @@ jobs:
         working-directory: ./build/programs/ziti-edge-tunnel/
 
       - name: upload bundle artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.preset }}
-          path: |
-            ./build/bundle/ziti-edge-tunnel-*.zip
+          path: ./build/bundle/ziti-edge-tunnel-*.zip 
           if-no-files-found: error

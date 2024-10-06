@@ -436,7 +436,7 @@ void remove_single_nrpt_rule(char* nrpt_rule) {
     }
 }
 
-bool is_nrpt_policies_effective(char* tns_ip) {
+bool is_nrpt_policies_effective(const char* tns_ip) {
     char add_cmd[MAX_POWERSHELL_COMMAND_LEN];
     size_t buf_len = sprintf(add_cmd, "powershell -Command \"Add-DnsClientNrptRule -Namespace '.ziti.test' -NameServers '%s' -Comment 'Added by ziti-edge-tunnel' -DisplayName 'ziti-edge-tunnel:.ziti.test'\"",tns_ip);
     ZITI_LOG(TRACE, "add test nrpt rule. total script size: %zd", buf_len);
@@ -477,9 +477,9 @@ bool is_nrpt_policies_effective(char* tns_ip) {
     }
 }
 
-void update_interface_metric(uv_loop_t *ziti_loop, char* tun_name, int metric) {
+void update_interface_metric(uv_loop_t *ziti_loop, wchar_t* tun_name, int metric) {
     char script[MAX_POWERSHELL_SCRIPT_LEN] = { 0 };
-    size_t buf_len = sprintf(script, "$i=Get-NetIPInterface | Where -FilterScript {$_.InterfaceAlias -Eq \"%ls\"}\n", tun_name);
+    size_t buf_len = sprintf(script, "$i=Get-NetIPInterface | Where -FilterScript {$_.InterfaceAlias -Eq \"%ls\"}; ", tun_name);
     size_t copied = buf_len;
     buf_len = sprintf(script + copied, "Set-NetIPInterface -InterfaceIndex $i.ifIndex -InterfaceMetric %d", metric);
     copied += buf_len;

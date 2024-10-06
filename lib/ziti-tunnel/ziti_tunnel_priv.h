@@ -142,21 +142,19 @@ typedef enum {
 
 struct tunneler_io_ctx_s {
     tunneler_context tnlr_ctx;
-    const char *service_name;
+    char *service_name;
     char client[64];
     char intercepted[64];
     tunneler_proto_type proto;
     union {
         struct tcp_pcb *tcp;
-        struct {
-            struct udp_pcb *pcb;
-            struct pbuf *queued;
-        } udp;
+        struct udp_pcb *udp;
     };
     uv_timer_t *conn_timer;
     uint32_t idle_timeout;
 };
 
+extern void check_tnlr_timer(tunneler_context tnlr_ctx);
 extern void free_tunneler_io_context(tunneler_io_context *tnlr_io_ctx_p);
 
 extern void free_intercept(intercept_ctx_t *intercept);

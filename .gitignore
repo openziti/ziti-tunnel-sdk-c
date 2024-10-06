@@ -22,3 +22,6 @@ compile_commands.json
 /docker/*.jwt
 /docker/*.json
 /docker/*.json.orig
+
+.run
+CMakeFiles/

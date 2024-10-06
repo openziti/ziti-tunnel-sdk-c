@@ -7,7 +7,7 @@ inputs:
     description: vcpkg build preset, e.g, windows-arm64
 
   config:
-    default: Release
+    default: RelWithDebInfo
     description: build type
 
   target:
@@ -20,20 +20,25 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: macOS tools
+      if: runner.os == 'macOS'
+      shell: bash
+      run: brew install autoconf autoconf-archive automake pkg-config
+
     - name: simple build
       run: echo "preset = ${{ inputs.preset }}"
       shell: bash
 
     - name: install contemporary cmake
-      uses: lukka/get-cmake@latest
+      uses: lukka/get-cmake@v3.27.7 # pin version to avoid failed glibc dependency on ubuntu 20 runners. go back to @latest when ubuntu 22+ is adopted for runner os.
 
-    - uses: lukka/run-vcpkg@v10
+    - uses: lukka/run-vcpkg@v11
       with:
-        # use 2023.02.24 vcpkg baseline,
+        # use 2024.08.23 vcpkg baseline,
         # see https://learn.microsoft.com/en-us/vcpkg/users/examples/versioning.getting-started#builtin-baseline
-        vcpkgGitCommitId: 'a7b6122f6b6504d16d96117336a0562693579933'
+        vcpkgGitCommitId: '3508985146f1b1d248c67ead13f8f54be5b4f5da'
 
-    - uses: lukka/run-cmake@v10
+    - uses: lukka/run-cmake@v10.6 # pin version to avoid failed glibc dependency on ubuntu 20 runners. go back to @latest when ubuntu 22+ is adopted for runner os.
       name: Configure CMake
       with:
         configurePreset: ci-${{ inputs.preset }}

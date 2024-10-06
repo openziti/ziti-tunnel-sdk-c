@@ -1,6 +1,9 @@
 # this builds docker.io/openziti/ziti-host
-FROM docker.io/openziti/ziti-edge-tunnel
+ARG ZITI_EDGE_TUNNEL_IMAGE="docker.io/openziti/ziti-edge-tunnel"
+ARG ZITI_EDGE_TUNNEL_TAG="latest"
 
+# this builds docker.io/openziti/ziti-host
+FROM ${ZITI_EDGE_TUNNEL_IMAGE}:${ZITI_EDGE_TUNNEL_TAG}
 
 ### Required OpenShift Labels 
 LABEL name="openziti/ziti-host" \

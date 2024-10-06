@@ -137,7 +137,53 @@ static bool set_systemd_resolved_link_setting(sd_bus *bus, const char *tun, cons
     return true;
 }
 
-bool try_libsystemd_resolver(void) {
+// wait for systemd to recognize the tun device before configuring, lest the configuration get overwritten
+static bool wait_for_tun(const char *name, sd_bus *bus, unsigned int timeout_ms) {
+    const unsigned int delay_ms = 250;
+    char systemd_path[128];
+    unsigned int iterations = timeout_ms / delay_ms;
+    bool active = false;
+    snprintf(systemd_path, sizeof(systemd_path), "/org/freedesktop/systemd1/unit/sys_2dsubsystem_2dnet_2ddevices_2d%s_2edevice", name);
+
+    ZITI_LOG(DEBUG, "waiting %d ms for systemd path '%s' to become active", timeout_ms, systemd_path);
+
+    for (int count = 0; count < iterations && active == false; count++, uv_sleep(delay_ms)) {
+        sd_bus_message *message = NULL;
+
+        int r = sd_bus_get_property_f(
+                bus,
+                "org.freedesktop.systemd1",
+                systemd_path,
+                "org.freedesktop.systemd1.Unit",
+                "ActiveState",
+                NULL,
+                &message,
+                "s"
+        );
+        if (r < 0) {
+            ZITI_LOG(VERBOSE, "failed to get ActiveState property: %s", strerror(-r));
+            continue;
+        }
+
+        const char *state = NULL;
+        r = sd_bus_message_read_f(message, "s", &state);
+        if (r < 0) {
+            ZITI_LOG(VERBOSE, "failed to read property: %s", strerror(-r));
+        } else {
+            if (state) {
+                ZITI_LOG(DEBUG, "device state (c=%d): %s", count, state);
+                if (strcmp(state, "active") == 0) {
+                    active = true;
+                }
+            }
+        }
+        sd_bus_message_unref_f(message);
+    }
+
+    return false;
+}
+
+bool try_libsystemd_resolver(const char *tun_name) {
     if (!libsystemd_dl_success) {
         return false;
     }
@@ -155,15 +201,14 @@ bool try_libsystemd_resolver(void) {
     r = sd_bus_open_system_f(&bus);
     if ((r >= 0) && (sd_bus_is_bus_client_f(bus) > 0)) {
         ZITI_LOG(DEBUG, "Connected to system DBus");
+        wait_for_tun(tun_name, bus, 3000);
         r = sd_bus_is_acquired_name(bus, RESOLVED_DBUS_NAME);
         if (r != 0) {
             ZITI_LOG(WARN, "libsystemd resolver unsuccessful. Falling back to legacy resolvers");
             return false;
         }
-        if (r == 0) {
-            ZITI_LOG(INFO, "systemd-resolved selected as DNS resolver manager");
-            return true;
-        }
+        ZITI_LOG(INFO, "systemd-resolved selected as DNS resolver manager");
+        return true;
     } else {
         ZITI_LOG(DEBUG, "Could not create system DBus client");
     }
@@ -228,25 +273,25 @@ void dns_update_resolvconf(const char *tun, unsigned int ifindex, const char *ad
 
 static bool make_copy(const char *src, const char *dst) {
 
-    uv_fs_t *req = (uv_fs_t *)malloc(sizeof(uv_fs_t));
+    uv_fs_t req = {0};
 
     ZITI_LOG(INFO, "attempting copy of: %s", src);
 
-    int ret = uv_fs_copyfile(uv_default_loop(), req, src, dst, UV_FS_COPYFILE_EXCL, NULL);
+    int ret = uv_fs_copyfile(uv_default_loop(), &req, src, dst, UV_FS_COPYFILE_EXCL, NULL);
 
-    if (req->result < 0) {
-        if (req->result == UV_EEXIST) {
-            ZITI_LOG(DEBUG, "%s has already been copied", req->path);
+    if (req.result < 0) {
+        if (req.result == UV_EEXIST) {
+            ZITI_LOG(DEBUG, "%s has already been copied", req.path);
         } else {
-            ZITI_LOG(WARN, "could not create copy[%s]: %s", req->new_path, uv_strerror(req->result));
-            uv_fs_req_cleanup(req);
+            ZITI_LOG(WARN, "could not create copy[%s]: %s", req.new_path, uv_strerror(req.result));
+            uv_fs_req_cleanup(&req);
             return false;
         }
     }
 
-    ZITI_LOG(INFO, "copy successful: %s", req->new_path);
+    ZITI_LOG(INFO, "copy successful: %s", req.new_path);
 
-    uv_fs_req_cleanup(req);
+    uv_fs_req_cleanup(&req);
 
     return true;
 }
@@ -288,7 +333,7 @@ void dns_update_etc_resolv(const char *tun, unsigned int ifindex, const char *ad
           return;
       }
 
-      char *buffer = NULL;
+      _cleanup_(cleanup_bufferp) char *buffer = NULL;
       size_t buffer_size;
       ssize_t line_size;
       off_t match_start_offset = -1;
@@ -296,7 +341,7 @@ void dns_update_etc_resolv(const char *tun, unsigned int ifindex, const char *ad
       while((line_size = getline(&buffer, &buffer_size, file)) != -1) {
           if(strstr(buffer, match) != NULL) {
               if(strstr(buffer, replace) != NULL) {
-                  ZITI_LOG(TRACE, "ziti nameserver is already in %s", RESOLV_CONF_FILE);
+                  ZITI_LOG(DEBUG, "ziti nameserver is already in %s", RESOLV_CONF_FILE);
                   return;
               }
               match_start_offset = ftell(file) - line_size;
@@ -345,11 +390,8 @@ void dns_update_etc_resolv(const char *tun, unsigned int ifindex, const char *ad
               CLEANUP_ETC_RESOLV();
           }
 
-          // Handle case in which realloc moves the memory block
-          // and calls free()
-          if (rptr != replace) {
-              replace = NULL;
-          }
+          // prevent double free() when cleanup_bufferp() is called
+          replace = NULL;
 
           strcat(rptr, remaining_content);
 
@@ -368,16 +410,17 @@ void dns_update_etc_resolv(const char *tun, unsigned int ifindex, const char *ad
                   CLEANUP_ETC_RESOLV();
               }
           }
-          ZITI_LOG(DEBUG, "Added ziti DNS resolver to %s", RESOLV_CONF_FILE);
 
-          return;
+      } else {
+          // If no nameserver directives to prepend, just append to the file.
+          if (fputs(replace, file) == EOF) {
+              ZITI_LOG(ERROR, "EOF received while appending to: %s", RESOLV_CONF_FILE);
+              CLEANUP_ETC_RESOLV();
+          }
       }
 
-      // If no nameserver directives to prepend, just append to the file.
-      if (fputs(replace, file) == EOF) {
-          ZITI_LOG(ERROR, "EOF received while appending to: %s", RESOLV_CONF_FILE);
-          CLEANUP_ETC_RESOLV();
-      }
+      ZITI_LOG(DEBUG, "Added ziti DNS resolver to %s", RESOLV_CONF_FILE);
+
       return;
 }
 

@@ -103,7 +103,6 @@ install(FILES "${INSTALL_OUT_DIR}/${SYSTEMD_UNIT_FILE_NAME}"
         DESTINATION "${CPACK_SHARE_DIR}"
         COMPONENT "${COMPONENT_NAME}")
 
-
 install(FILES "${INSTALL_OUT_DIR}/${SYSTEMD_EXECSTARTPRE}"
         DESTINATION "${CPACK_BIN_DIR}"
         PERMISSIONS
@@ -124,47 +123,52 @@ install(FILES "${INSTALL_OUT_DIR}/${ZITI_POLKIT_RULES_FILE}.sample"
         COMPONENT "${COMPONENT_NAME}"
         RENAME "${ZITI_POLKIT_RULES_FILE}")
 
+install(FILES "${CMAKE_SOURCE_DIR}/scripts/debug.bash"
+        COMPONENT "${COMPONENT_NAME}"
+        DESTINATION "${CPACK_BIN_DIR}"
+        PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ
+                    GROUP_EXECUTE GROUP_READ)
+
 if("RPM" IN_LIST CPACK_GENERATOR)
-    set(CPACK_RPM_EXCLUDE_FROM_AUTO_FILELIST_ADDITION "/usr/share/polkit-1/rules.d")
+        set(CPACK_RPM_EXCLUDE_FROM_AUTO_FILELIST_ADDITION "/usr/share/polkit-1/rules.d")
 
-    set(RPM_IN_DIR "${PACKAGING_BASE}/rpm")
-    set(RPM_PRE_INSTALL_IN "${RPM_IN_DIR}/pre.sh.in")
-    set(RPM_POST_INSTALL_IN "${RPM_IN_DIR}/post.sh.in")
-    set(RPM_PRE_UNINSTALL_IN "${RPM_IN_DIR}/preun.sh.in")
-    set(RPM_POST_UNINSTALL_IN "${RPM_IN_DIR}/postun.sh.in")
+        set(RPM_IN_DIR "${PACKAGING_BASE}/rpm")
+        set(RPM_PRE_INSTALL_IN "${RPM_IN_DIR}/pre.sh.in")
+        set(RPM_POST_INSTALL_IN "${RPM_IN_DIR}/post.sh.in")
+        set(RPM_PRE_UNINSTALL_IN "${RPM_IN_DIR}/preun.sh.in")
+        set(RPM_POST_UNINSTALL_IN "${RPM_IN_DIR}/postun.sh.in")
 
-    set(CPACK_RPM_PRE_INSTALL "${INSTALL_OUT_DIR}/pre.sh")
-    set(CPACK_RPM_POST_INSTALL "${INSTALL_OUT_DIR}/post.sh")
-    set(CPACK_RPM_PRE_UNINSTALL "${INSTALL_OUT_DIR}/preun.sh")
-    set(CPACK_RPM_POST_UNINSTALL "${INSTALL_OUT_DIR}/postun.sh")
+        set(CPACK_RPM_PRE_INSTALL "${INSTALL_OUT_DIR}/pre.sh")
+        set(CPACK_RPM_POST_INSTALL "${INSTALL_OUT_DIR}/post.sh")
+        set(CPACK_RPM_PRE_UNINSTALL "${INSTALL_OUT_DIR}/preun.sh")
+        set(CPACK_RPM_POST_UNINSTALL "${INSTALL_OUT_DIR}/postun.sh")
 
-    configure_file("${RPM_PRE_INSTALL_IN}" "${CPACK_RPM_PRE_INSTALL}" @ONLY)
-    configure_file("${RPM_POST_INSTALL_IN}" "${CPACK_RPM_POST_INSTALL}" @ONLY)
-    configure_file("${RPM_PRE_UNINSTALL_IN}" "${CPACK_RPM_PRE_UNINSTALL}" @ONLY)
-    configure_file("${RPM_POST_UNINSTALL_IN}" "${CPACK_RPM_POST_UNINSTALL}" @ONLY)
+        configure_file("${RPM_PRE_INSTALL_IN}" "${CPACK_RPM_PRE_INSTALL}" @ONLY)
+        configure_file("${RPM_POST_INSTALL_IN}" "${CPACK_RPM_POST_INSTALL}" @ONLY)
+        configure_file("${RPM_PRE_UNINSTALL_IN}" "${CPACK_RPM_PRE_UNINSTALL}" @ONLY)
+        configure_file("${RPM_POST_UNINSTALL_IN}" "${CPACK_RPM_POST_UNINSTALL}" @ONLY)
 endif()
 
 if("DEB" IN_LIST CPACK_GENERATOR)
+        set(DEB_IN_DIR "${PACKAGING_BASE}/deb")
+        set(DEB_CONFFILES_IN "${DEB_IN_DIR}/conffiles.in")
+        set(DEB_PRE_INSTALL_IN "${DEB_IN_DIR}/preinst.in")
+        set(DEB_POST_INSTALL_IN "${DEB_IN_DIR}/postinst.in")
+        set(DEB_PRE_UNINSTALL_IN "${DEB_IN_DIR}/prerm.in")
+        set(DEB_POST_UNINSTALL_IN "${DEB_IN_DIR}/postrm.in")
+        set(DEB_TEMPLATES_IN "${DEB_IN_DIR}/templates.in")
 
-    set(DEB_IN_DIR "${PACKAGING_BASE}/deb")
-    set(DEB_CONFFILES_IN "${DEB_IN_DIR}/conffiles.in")
-    set(DEB_PRE_INSTALL_IN "${DEB_IN_DIR}/preinst.in")
-    set(DEB_POST_INSTALL_IN "${DEB_IN_DIR}/postinst.in")
-    set(DEB_PRE_UNINSTALL_IN "${DEB_IN_DIR}/prerm.in")
-    set(DEB_POST_UNINSTALL_IN "${DEB_IN_DIR}/postrm.in")
-    set(DEB_TEMPLATES_IN "${DEB_IN_DIR}/templates.in")
+        set(CPACK_DEB_CONFFILES "${INSTALL_OUT_DIR}/conffiles")
+        set(CPACK_DEB_PRE_INSTALL "${INSTALL_OUT_DIR}/preinst")
+        set(CPACK_DEB_POST_INSTALL "${INSTALL_OUT_DIR}/postinst")
+        set(CPACK_DEB_PRE_UNINSTALL "${INSTALL_OUT_DIR}/prerm")
+        set(CPACK_DEB_POST_UNINSTALL "${INSTALL_OUT_DIR}/postrm")
+        set(CPACK_DEB_TEMPLATES "${INSTALL_OUT_DIR}/templates")
 
-    set(CPACK_DEB_CONFFILES "${INSTALL_OUT_DIR}/conffiles")
-    set(CPACK_DEB_PRE_INSTALL "${INSTALL_OUT_DIR}/preinst")
-    set(CPACK_DEB_POST_INSTALL "${INSTALL_OUT_DIR}/postinst")
-    set(CPACK_DEB_PRE_UNINSTALL "${INSTALL_OUT_DIR}/prerm")
-    set(CPACK_DEB_POST_UNINSTALL "${INSTALL_OUT_DIR}/postrm")
-    set(CPACK_DEB_TEMPLATES "${INSTALL_OUT_DIR}/templates")
-
-    configure_file("${DEB_CONFFILES_IN}" "${CPACK_DEB_CONFFILES}" @ONLY)
-    configure_file("${DEB_PRE_INSTALL_IN}" "${CPACK_DEB_PRE_INSTALL}" @ONLY)
-    configure_file("${DEB_POST_INSTALL_IN}" "${CPACK_DEB_POST_INSTALL}" @ONLY)
-    configure_file("${DEB_PRE_UNINSTALL_IN}" "${CPACK_DEB_PRE_UNINSTALL}" @ONLY)
-    configure_file("${DEB_POST_UNINSTALL_IN}" "${CPACK_DEB_POST_UNINSTALL}" @ONLY)
-    configure_file("${DEB_TEMPLATES_IN}" "${CPACK_DEB_TEMPLATES}" @ONLY)
+        configure_file("${DEB_CONFFILES_IN}" "${CPACK_DEB_CONFFILES}" @ONLY)
+        configure_file("${DEB_PRE_INSTALL_IN}" "${CPACK_DEB_PRE_INSTALL}" @ONLY)
+        configure_file("${DEB_POST_INSTALL_IN}" "${CPACK_DEB_POST_INSTALL}" @ONLY)
+        configure_file("${DEB_PRE_UNINSTALL_IN}" "${CPACK_DEB_PRE_UNINSTALL}" @ONLY)
+        configure_file("${DEB_POST_UNINSTALL_IN}" "${CPACK_DEB_POST_UNINSTALL}" @ONLY)
+        configure_file("${DEB_TEMPLATES_IN}" "${CPACK_DEB_TEMPLATES}" @ONLY)
 endif()
