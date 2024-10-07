@@ -24,11 +24,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macOS-12
+          - os: macOS-13
             name: macOS x86_64
             preset: macOS-x64
 
-          - os: macOS-12
+          - os: macOS-13
             name: macOS arm64
             preset: macOS-arm64
 
