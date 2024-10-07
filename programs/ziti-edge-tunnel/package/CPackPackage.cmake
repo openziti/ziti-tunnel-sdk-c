@@ -47,7 +47,7 @@ set(CPACK_PACKAGE_RELEASE 1)
 
 # set the package release serial if alpha|beta and running in github actions
 # where releases are uploaded because filename must be unique in artifactory and
-# alpha|beta re-use the major.minor.patch from PROJECT_SEMVER for each release
+# alpha|beta reuse the major.minor.patch from PROJECT_SEMVER for each release
 if(DEFINED ENV{GITHUB_RUN_NUMBER})
         # Extract the suffix from PROJECT_TAG
         string(REGEX REPLACE ".*-([^-]+)$" "\\1" PROJECT_TAG_SUFFIX "${PROJECT_TAG}")
