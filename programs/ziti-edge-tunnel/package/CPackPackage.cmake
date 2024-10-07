@@ -41,7 +41,23 @@ set(CPACK_PROJECT_CONFIG_FILE ${PACKAGING_BASE}/CPackGenConfig.cmake)
 
 set(CPACK_PACKAGE_CONTACT "support@netfoundry.io")
 set(CPACK_PACKAGE_NAME "${COMPONENT_NAME}")
+
+# Default release value
 set(CPACK_PACKAGE_RELEASE 1)
+
+# set the package release serial if alpha|beta and running in github actions
+# where releases are uploaded because filename must be unique in artifactory and
+# alpha|beta re-use the major.minor.patch from PROJECT_SEMVER for each release
+if(DEFINED ENV{GITHUB_RUN_NUMBER})
+        # Extract the suffix from PROJECT_TAG
+        string(REGEX REPLACE ".*-([^-]+)$" "\\1" PROJECT_TAG_SUFFIX "${PROJECT_TAG}")
+        # Check if the suffix starts with "alpha" or "beta"
+        if(PROJECT_TAG_SUFFIX MATCHES "^(alpha|beta)")
+                # Set the release to GITHUB_RUN_NUMBER if both conditions are met
+                set(CPACK_PACKAGE_RELEASE $ENV{GITHUB_RUN_NUMBER})
+        endif()
+endif()
+
 set(CPACK_PACKAGE_VENDOR "NetFoundry")
 set(CPACK_PACKAGE_VERSION ${PROJECT_SEMVER})
 set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}-${CPACK_PACKAGE_VERSION}-${CPACK_PACKAGE_RELEASE}")
