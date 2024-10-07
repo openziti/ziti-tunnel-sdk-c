@@ -85,13 +85,16 @@ static void stop_tunnel_and_cleanup();
 static bool is_host_only();
 static void run_tunneler_loop(uv_loop_t* ziti_loop);
 #if __linux__
-void bind_diverter_route(char *ip, int prefix_len);
-void unbind_diverter_route(char *ip, int prefix_len);
-void enable_ipv6(char *interface);
-void set_tun_mode(char *interface);
-void pass_non_tuple(char *interface);
-void diverter_binding_flush();
-void diverter_update(char *ip, char *mask, char *lowport, char *highport, char *protocol, char *service_id, char *action);
+static void diverter_quit();
+static void init_diverter_interface(char *interface);
+static void bind_diverter_route(char *ip, int prefix_len);
+static void unbind_diverter_route(char *ip, int prefix_len);
+static void enable_ipv6(char *interface);
+static void set_tun_mode(char *interface);
+static void pass_non_tuple(char *interface);
+static void diverter_binding_flush();
+static void diverter_update(char *ip, char *mask, char *lowport, char *highport, char *protocol, char *service_id, char *action);
+static void set_diverter(uint32_t dns_prefix, unsigned char dns_prefix_range, const char *tun_name);
 char check_alt[IF_NAMESIZE];
 char *diverter_path = "/opt/openziti/bin/zfw";
 #endif
@@ -2154,11 +2157,13 @@ static void interrupt_handler(int sig) {
 #endif
 
 #if __linux__
-void diverter_update(char *ip, char *mask, char *lowport, char *highport, char *protocol, char *service_id, char *action){
+static void diverter_update(char *ip, char *mask, char *lowport, char *highport, char *protocol, char *service_id, char *action){
     bool state = true;
     unsigned short random_port = 0;
     unsigned char count = 0;
-    random_port = htons(1024 + rand() % (65535 - 1023));
+    int rndm;
+    uv_random(NULL, NULL, &rndm, sizeof(rndm), 0, NULL);
+    random_port = htons(1024 + rndm % (65535 - 1023));
     char tproxy_port[6];
     sprintf(tproxy_port, "%u", random_port);
     pid_t pid;
@@ -2235,7 +2240,7 @@ void diverter_quit(){
     }
 }
 
-void init_diverter_interface(char * interface){
+static void init_diverter_interface(char *interface){
     bool state = true;
     pid_t pid;
     int o_std_out = dup(STDOUT_FILENO);
@@ -2280,7 +2285,7 @@ void init_diverter_interface(char * interface){
     }
 }
 
-void bind_diverter_route(char *ip, int prefix_len){
+static void bind_diverter_route(char *ip, int prefix_len){
     bool state = true;
     char mask[4];
     sprintf(mask, "%d", prefix_len);
@@ -2321,7 +2326,7 @@ void bind_diverter_route(char *ip, int prefix_len){
     }
 }
 
-void unbind_diverter_route(char *ip, int prefix_len){
+static void unbind_diverter_route(char *ip, int prefix_len){
     bool state = true;
     char mask[4];
     sprintf(mask, "%d", prefix_len);
@@ -2844,7 +2849,7 @@ void disable_firewall(){
     pass_udp_ipv6();
 }
 
-void set_diverter(uint32_t dns_prefix, unsigned char dns_prefix_range, char *tun_name)
+static void set_diverter(uint32_t dns_prefix, unsigned char dns_prefix_range, const char *tun_name)
 {
     if(!firewall){
         ZITI_LOG(INFO,"Starting ziti-edge-tunnel in diverter mode");
