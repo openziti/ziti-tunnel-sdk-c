@@ -1,11 +1,9 @@
 ARG CMAKE_VERSION="3.26.3"
-ARG VCPKG_VERSION="2024.08.23"
 
 # Ubuntu Jammy 22.04 LTS
 FROM ubuntu:jammy
 
 ARG CMAKE_VERSION
-ARG VCPKG_VERSION
 
 LABEL org.opencontainers.image.authors="support@netfoundry.io"
 
@@ -59,7 +57,7 @@ ENV VCPKG_FORCE_SYSTEM_BINARIES=yes
 
 RUN cd /usr/local \
     && git config --global advice.detachedHead false \
-    && git clone --branch "${VCPKG_VERSION}" https://github.com/microsoft/vcpkg \
+    && git clone https://github.com/microsoft/vcpkg \
     && ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
 
 COPY ./entrypoint.sh /root/
