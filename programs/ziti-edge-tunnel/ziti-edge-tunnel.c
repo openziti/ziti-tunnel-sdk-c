@@ -86,7 +86,8 @@ static bool is_host_only();
 static void run_tunneler_loop(uv_loop_t* ziti_loop);
 #if __linux__
 static void diverter_quit();
-static void init_diverter_interface(char *interface);
+static void init_diverter_interface_ingress(char *interface);
+static void init_diverter_interface_egress(char *interface);
 static void bind_diverter_route(char *ip, int prefix_len);
 static void unbind_diverter_route(char *ip, int prefix_len);
 static void enable_ipv6(char *interface);
@@ -96,7 +97,11 @@ static void diverter_binding_flush();
 static void diverter_update(char *ip, char *mask, char *lowport, char *highport, char *protocol, char *service_id, char *action);
 static void set_diverter(uint32_t dns_prefix, unsigned char dns_prefix_range, const char *tun_name);
 char check_alt[IF_NAMESIZE];
-char *diverter_path = "/opt/openziti/bin/zfw";
+char *diverter_path = "/opt/openziti/bin";
+char zfw_path[PATH_MAX];
+char *tc_ingress_object = "zfw_tc_ingress.o";
+char *tc_egress_object = "zfw_tc_outbound_track.o";
+char *xdp_ingress_object = "zfw_xdp_tun_ingress.o";
 #endif
 static tunneler_context initialize_tunneler(netif_driver tun, uv_loop_t* ziti_loop);
 #if _WIN32
@@ -1692,18 +1697,18 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
             diverter_if = getenv("ZITI_FIREWALL");
         }
     }
-    char zfw_path[PATH_MAX];
-    char *dpath = getenv("ZFW_OBJECT_PATH");
-    if(dpath && strlen(dpath)){
-        sprintf(zfw_path, "%s/%s", dpath, "zfw");
-        diverter_path = zfw_path;
-    } 
+    char *diverter_env_path = getenv("ZFW_OBJECT_PATH");
+    if(diverter_env_path && strlen(diverter_env_path)){
+        diverter_path = diverter_env_path;
+        sprintf(zfw_path, "%s/%s", diverter_env_path, "zfw");
+    }else{
+        sprintf(zfw_path, "%s/%s", diverter_path, "zfw");
+    }
     if(diverter && tun){
         if(!firewall){
             diverter_quit();
         }
-        if(getenv)
-        if (access(diverter_path, F_OK) == 0){
+        if (access(zfw_path, F_OK) == 0){
             int count = 0;
             char *interface = strtok(diverter_if,",");
             while(interface != NULL){
@@ -1717,7 +1722,8 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
                 if(if_indextoname(idx, check_alt)){
                     interface = check_alt;
                 }
-                init_diverter_interface(interface);
+                init_diverter_interface_ingress(interface);
+                init_diverter_interface_egress(interface);
                 interface = strtok(NULL,",");
                 count++;
             }
@@ -2176,12 +2182,12 @@ static void diverter_update(char *ip, char *mask, char *lowport, char *highport,
     dup2(fd, STDOUT_FILENO);
     dup2(fd, STDERR_FILENO);
     close(fd);
-    char *const parmList[17] = {diverter_path, action, "-c", ip, "-m", mask, "-l",
+    char *const parmList[17] = {zfw_path, action, "-c", ip, "-m", mask, "-l",
      lowport, "-h", highport, "-t", tproxy_port, "-p", protocol, "-s", service_id, NULL};
     if ((pid = fork()) == -1){
         state = false;
     }else if (pid == 0) {
-       execv(diverter_path, parmList);
+       execv(zfw_path, parmList);
     }else{
         int status =0;
         if(!(waitpid(pid, &status, 0) > 0)){
@@ -2213,14 +2219,14 @@ void diverter_quit(){
     dup2(fd, STDOUT_FILENO);
     dup2(fd, STDERR_FILENO);
     close(fd);
-    char *const parmList[] = {diverter_path, "-Q", NULL};
+    char *const parmList[] = {zfw_path, "-Q", NULL};
     if ((pid = fork()) == -1)
     {
         state = false;
     }
     else if (pid == 0)
     {
-        execv(diverter_path, parmList);
+        execv(zfw_path, parmList);
     }else{
         int status =0;
         if(!(waitpid(pid, &status, 0) < 0)){
@@ -2240,7 +2246,7 @@ void diverter_quit(){
     }
 }
 
-static void init_diverter_interface(char *interface){
+static void init_diverter_interface_ingress(char *interface){
     bool state = true;
     pid_t pid;
     int o_std_out = dup(STDOUT_FILENO);
@@ -2252,14 +2258,16 @@ static void init_diverter_interface(char *interface){
     dup2(fd, STDOUT_FILENO);
     dup2(fd, STDERR_FILENO);
     close(fd);
-    char *const parmList[] = {diverter_path, "-H", interface, NULL};
+    char tc_ingress_object_path[PATH_MAX];
+    sprintf(tc_ingress_object_path, "%s/%s", diverter_path, tc_ingress_object);
+    char *const parmList[] = {zfw_path, "-X",interface, "-O", tc_ingress_object_path, "-z", "ingress" , NULL};
     if ((pid = fork()) == -1)
     {
         state = false;
     }
     else if (pid == 0)
     {
-        execv(diverter_path, parmList);
+        execv(zfw_path, parmList);
     }else{
         int status =0;
 
@@ -2279,9 +2287,56 @@ static void init_diverter_interface(char *interface){
         pass_non_tuple(interface);
     }
     if(state){
-        ZITI_LOG(INFO,"diverter tc enabled on %s", interface);
+        ZITI_LOG(INFO,"diverter tc ingress enabled on %s", interface);
     }else{
-        ZITI_LOG(INFO,"diverter tc not enabled on %s", interface);
+        ZITI_LOG(INFO,"diverter tc ingress not enabled on %s", interface);
+    }
+}
+
+static void init_diverter_interface_egress(char *interface){
+    bool state = true;
+    pid_t pid;
+    int o_std_out = dup(STDOUT_FILENO);
+    int o_std_err = dup(STDERR_FILENO);
+    int fd = open("/dev/null", O_WRONLY);
+    if (fd == -1){
+        return; 
+    }
+    dup2(fd, STDOUT_FILENO);
+    dup2(fd, STDERR_FILENO);
+    close(fd);
+    char tc_egress_object_path[PATH_MAX];
+    sprintf(tc_egress_object_path, "%s/%s", diverter_path, tc_egress_object);
+    char *const parmList[] = {zfw_path, "-X",interface, "-O", tc_egress_object_path, "-z", "egress" , NULL};
+    if ((pid = fork()) == -1)
+    {
+        state = false;
+    }
+    else if (pid == 0)
+    {
+        execv(zfw_path, parmList);
+    }else{
+        int status =0;
+
+        if(!(waitpid(pid, &status, 0) < 0)){
+            if(!(WIFEXITED(status) && !WEXITSTATUS(status))){
+                state = false;
+            }
+        }
+    }
+    dup2(o_std_out, STDOUT_FILENO);
+    dup2(o_std_err, STDERR_FILENO);
+    close(o_std_out);
+    close(o_std_err); 
+    set_tun_mode(interface);
+    enable_ipv6(interface);
+    if(!firewall){
+        pass_non_tuple(interface);
+    }
+    if(state){
+        ZITI_LOG(INFO,"diverter tc egress enabled on %s", interface);
+    }else{
+        ZITI_LOG(INFO,"diverter tc egress not enabled on %s", interface);
     }
 }
 
@@ -2299,14 +2354,14 @@ static void bind_diverter_route(char *ip, int prefix_len){
     dup2(fd, STDOUT_FILENO);
     dup2(fd, STDERR_FILENO);
     close(fd);
-    char *const parmList[] = {diverter_path, "-B", ip, "-m", mask, NULL};
+    char *const parmList[] = {zfw_path, "-B", ip, "-m", mask, NULL};
     if ((pid = fork()) == -1)
     {
         state = false;
     }
     else if (pid == 0)
     {
-        execv(diverter_path, parmList);
+        execv(zfw_path, parmList);
     }else{
         int status =0;
         if(!(waitpid(pid, &status, 0) < 0)){
@@ -2340,14 +2395,14 @@ static void unbind_diverter_route(char *ip, int prefix_len){
     dup2(fd, STDOUT_FILENO);
     dup2(fd, STDERR_FILENO);
     close(fd);
-    char *const parmList[] = {diverter_path, "-J", ip, "-m", mask, NULL};
+    char *const parmList[] = {zfw_path, "-J", ip, "-m", mask, NULL};
     if ((pid = fork()) == -1)
     {
         state = false;
     }
     else if (pid == 0)
     {
-        execv(diverter_path, parmList);
+        execv(zfw_path, parmList);
     }else{
         int status =0;
         if(!(waitpid(pid, &status, 0) < 0)){
@@ -2379,14 +2434,14 @@ void diverter_binding_flush(){
     dup2(fd, STDOUT_FILENO);
     dup2(fd, STDERR_FILENO);
     close(fd);
-    char *const parmList[] = {diverter_path, "-F", "-j", NULL};
+    char *const parmList[] = {zfw_path, "-F", "-j", NULL};
     if ((pid = fork()) == -1)
     {
         state = false;
     }
     else if (pid == 0)
     {
-        execv(diverter_path, parmList);
+        execv(zfw_path, parmList);
     }else{
         int status =0;
         if(!(waitpid(pid, &status, 0) < 0)){
@@ -2418,14 +2473,14 @@ void diverter_ingress_flush(){
     dup2(fd, STDOUT_FILENO);
     dup2(fd, STDERR_FILENO);
     close(fd);
-    char *const parmList[] = {diverter_path, "-F", "-z", "ingress", NULL};
+    char *const parmList[] = {zfw_path, "-F", "-z", "ingress", NULL};
     if ((pid = fork()) == -1)
     {
         state = false;
     }
     else if (pid == 0)
     {
-        execv(diverter_path, parmList);
+        execv(zfw_path, parmList);
     }else{
         int status =0;
         if(!(waitpid(pid, &status, 0) < 0)){
@@ -2457,14 +2512,14 @@ void pass_non_tuple(char *interface){
     dup2(fd, STDOUT_FILENO);
     dup2(fd, STDERR_FILENO);
     close(fd);
-    char *const parmList[] = {diverter_path, "-q", interface, NULL};
+    char *const parmList[] = {zfw_path, "-q", interface, NULL};
     if ((pid = fork()) == -1)
     {
         state = false;
     }
     else if (pid == 0)
     {
-        execv(diverter_path, parmList);
+        execv(zfw_path, parmList);
     }else{
         int status =0;
         if(!(waitpid(pid, &status, 0) < 0)){
@@ -2496,14 +2551,14 @@ void enable_ipv6(char *interface){
     dup2(fd, STDOUT_FILENO);
     dup2(fd, STDERR_FILENO);
     close(fd);
-    char *const parmList[] = {diverter_path, "-6", interface, NULL};
+    char *const parmList[] = {zfw_path, "-6", interface, NULL};
     if ((pid = fork()) == -1)
     {
         state = false;
     }
     else if (pid == 0)
     {
-        execv(diverter_path, parmList);
+        execv(zfw_path, parmList);
     }else{
         int status =0;
         if(!(waitpid(pid, &status, 0) < 0)){
@@ -2535,14 +2590,14 @@ void pass_tcp_ipv4(){
     dup2(fd, STDOUT_FILENO);
     dup2(fd, STDERR_FILENO);
     close(fd);
-    char *const parmList[] = {diverter_path, "-I", "-c", "0.0.0.0", "-m", "0", "-l", "1" , "-h", "65535", "-t", "0", "-p", "tcp", NULL};
+    char *const parmList[] = {zfw_path, "-I", "-c", "0.0.0.0", "-m", "0", "-l", "1" , "-h", "65535", "-t", "0", "-p", "tcp", NULL};
     if ((pid = fork()) == -1)
     {
         state = false;
     }
     else if (pid == 0)
     {
-        execv(diverter_path, parmList);
+        execv(zfw_path, parmList);
     }else{
         int status =0;
         if(!(waitpid(pid, &status, 0) < 0)){
@@ -2580,14 +2635,14 @@ void pass_dns_range(uint32_t dns_prefix, unsigned char dns_prefix_range){
     close(fd);
     char *protocols[2] = {"tcp", "udp"};
     for(int x = 0; x < 2; x++){
-        char *const parmList[] = {diverter_path, "-I", "-c", prefix, "-m", prefix_len, "-l", "1" , "-h", "65535", "-t", "65535", "-p", protocols[x], NULL};
+        char *const parmList[] = {zfw_path, "-I", "-c", prefix, "-m", prefix_len, "-l", "1" , "-h", "65535", "-t", "65535", "-p", protocols[x], NULL};
         if ((pid = fork()) == -1)
         {
             state = false;
         }
         else if (pid == 0)
         {
-            execv(diverter_path, parmList);
+            execv(zfw_path, parmList);
         }else{
             int status =0;
             if(!(waitpid(pid, &status, 0) < 0)){
@@ -2620,14 +2675,14 @@ void pass_udp_ipv4(){
     dup2(fd, STDOUT_FILENO);
     dup2(fd, STDERR_FILENO);
     close(fd);
-    char *const parmList[] = {diverter_path, "-I", "-c", "0.0.0.0", "-m", "0", "-l", "1" , "-h", "65535", "-t", "0", "-p", "udp", NULL};
+    char *const parmList[] = {zfw_path, "-I", "-c", "0.0.0.0", "-m", "0", "-l", "1" , "-h", "65535", "-t", "0", "-p", "udp", NULL};
     if ((pid = fork()) == -1)
     {
         state = false;
     }
     else if (pid == 0)
     {
-        execv(diverter_path, parmList);
+        execv(zfw_path, parmList);
     }else{
         int status =0;
         if(!(waitpid(pid, &status, 0) < 0)){
@@ -2659,14 +2714,14 @@ void pass_tcp_ipv6(){
     dup2(fd, STDOUT_FILENO);
     dup2(fd, STDERR_FILENO);
     close(fd);
-    char *const parmList[] = {diverter_path, "-I", "-c", "::", "-m", "0", "-l", "1" , "-h", "65535", "-t", "0", "-p", "tcp", NULL};
+    char *const parmList[] = {zfw_path, "-I", "-c", "::", "-m", "0", "-l", "1" , "-h", "65535", "-t", "0", "-p", "tcp", NULL};
     if ((pid = fork()) == -1)
     {
         state = false;
     }
     else if (pid == 0)
     {
-        execv(diverter_path, parmList);
+        execv(zfw_path, parmList);
     }else{
         int status =0;
         if(!(waitpid(pid, &status, 0) < 0)){
@@ -2698,14 +2753,14 @@ void set_tun_mode(char *interface){
     dup2(fd, STDOUT_FILENO);
     dup2(fd, STDERR_FILENO);
     close(fd);
-    char *const parmList[] = {diverter_path, "-T", interface, NULL};
+    char *const parmList[] = {zfw_path, "-T", interface, NULL};
     if ((pid = fork()) == -1)
     {
        state = false;
     }
     else if (pid == 0)
     {
-        execv(diverter_path, parmList);
+        execv(zfw_path, parmList);
     }else{
         int status =0;
         if(!(waitpid(pid, &status, 0) < 0)){
@@ -2737,14 +2792,16 @@ void setup_xdp(char *tun_name){
     dup2(fd, STDOUT_FILENO);
     dup2(fd, STDERR_FILENO);
     close(fd);
-    char *const parmList[] = {diverter_path, "-Z", tun_name, NULL};
+    char xdp_ingress_object_path[PATH_MAX];
+    sprintf(xdp_ingress_object_path, "%s/%s", diverter_path, xdp_ingress_object);
+    char *const parmList[] = {"/usr/sbin/ip", "link", "set", tun_name, "xdpgeneric", "obj", xdp_ingress_object_path, "sec", "xdp_redirect", NULL};
     if ((pid = fork()) == -1)
     {
         state = false;
     }
     else if (pid == 0)
     {
-        execv(diverter_path, parmList);
+        execv("/usr/sbin/ip", parmList);
     }else{
         int status =0;
         if(!(waitpid(pid, &status, 0) < 0)){
@@ -2758,9 +2815,9 @@ void setup_xdp(char *tun_name){
     close(o_std_out);
     close(o_std_err); 
     if(state){
-        ZITI_LOG(DEBUG,"Adding diverter xdp to %s", tun_name);
+        ZITI_LOG(INFO,"Adding diverter xdp to %s", tun_name);
     }else{
-        ZITI_LOG(DEBUG,"Failed adding diverter xdp to %s", tun_name);
+        ZITI_LOG(INFO,"Failed adding diverter xdp to %s", tun_name);
     }
 }
 
@@ -2776,14 +2833,14 @@ void pass_udp_ipv6(){
     dup2(fd, STDOUT_FILENO);
     dup2(fd, STDERR_FILENO);
     close(fd);
-    char *const parmList[] = {diverter_path, "-I", "-c", "::", "-m", "0", "-l", "1" , "-h", "65535", "-t", "0", "-p", "udp", NULL};
+    char *const parmList[] = {zfw_path, "-I", "-c", "::", "-m", "0", "-l", "1" , "-h", "65535", "-t", "0", "-p", "udp", NULL};
     if ((pid = fork()) == -1)
     {
         state = false;
     }
     else if (pid == 0)
     {
-        execv(diverter_path, parmList);
+        execv(zfw_path, parmList);
     }else{
         int status =0;
         if(!(waitpid(pid, &status, 0) < 0)){
@@ -2815,7 +2872,7 @@ void add_user_rules(){
     dup2(fd, STDOUT_FILENO);
     dup2(fd, STDERR_FILENO);
     close(fd);
-    char *const parmList[] = {diverter_path, "-A",NULL};
+    char *const parmList[] = {zfw_path, "-A",NULL};
     if ((pid = fork()) == -1)
     {
         state = false;
