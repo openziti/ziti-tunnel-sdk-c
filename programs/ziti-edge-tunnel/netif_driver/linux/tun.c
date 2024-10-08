@@ -397,6 +397,12 @@ static int tun_exclude_rt(netif_handle dev, uv_loop_t *l, const char *addr) {
     return run_command("ip route replace %s %s", addr, route);
 }
 
+static void cleanup_sock(const int *fd) {
+    if (fd && *fd != -1) {
+        close(*fd);
+    }
+}
+
 netif_driver tun_open(uv_loop_t *loop, uint32_t tun_ip, uint32_t dns_ip, const char *dns_block, char *error, size_t error_len) {
     if (error != NULL) {
         memset(error, 0, error_len * sizeof(char));
@@ -450,8 +456,31 @@ netif_driver tun_open(uv_loop_t *loop, uint32_t tun_ip, uint32_t dns_ip, const c
     driver->exclude_rt   = tun_exclude_rt;
     driver->commit_routes = tun_commit_routes;
 
-    run_command("ip link set %s up", tun->name);
-    run_command("ip addr add %s dev %s", inet_ntoa(*(struct in_addr*)&tun_ip), tun->name);
+    __attribute__((cleanup(cleanup_sock))) int netdev = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
+    if (netdev == -1) {
+        snprintf(error, error_len, "failed to create netdevice socket: %s", strerror(errno));
+        tun_close(tun);
+        return NULL;
+    }
+
+    struct sockaddr_in *ifr_addrp = (struct sockaddr_in* ) &ifr.ifr_addr;
+    memset(ifr_addrp, 0, sizeof(struct sockaddr));
+    ifr_addrp->sin_family = AF_INET;
+    ifr_addrp->sin_addr.s_addr = tun_ip;
+
+    if (ioctl(netdev, SIOCSIFADDR, &ifr) == -1) {
+        snprintf(error, error_len, "failed to set tun address: %s", strerror(errno));
+        tun_close(tun);
+        return NULL;
+    }
+
+    ifr.ifr_flags = IFF_UP | IFF_RUNNING | IFF_NOARP | IFF_MULTICAST;
+
+    if (ioctl(netdev, SIOCSIFFLAGS, &ifr) == -1) {
+        snprintf(error, error_len, "failed to set tun up/running: %s", strerror(errno));
+        tun_close(tun);
+        return NULL;
+    }
 
     if (dns_ip) {
         init_dns_maintainer(loop, tun->name, dns_ip);
