@@ -82,6 +82,7 @@ int get_api_page_size();
 
 tunnel_identity_array get_tunnel_identities_for_metrics();
 
+void normalize_identifier(char *str);
 
 #ifdef __cplusplus
 }

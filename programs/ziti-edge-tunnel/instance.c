@@ -52,7 +52,9 @@ tunnel_identity *create_or_get_tunnel_identity(const char* identifier, const cha
         return id;
     } else {
         tunnel_identity *tnl_id = calloc(1, sizeof(struct tunnel_identity_s));
-        tnl_id->Identifier = strdup(identifier);
+        char* dup_identifier = strdup(identifier);
+        normalize_identifier(dup_identifier);
+        tnl_id->Identifier = dup_identifier;
         if (filename != NULL) {
             char* extension = strstr(filename, ".json");
 
@@ -557,9 +559,10 @@ void normalize_identifier(char *str) {
         if (*str == find) {
             *str = replace;
         }
+        *str = (char)tolower((unsigned char)*str); // Convert to lowercase
     }
 #else
-    return; // nothing to normalize at this time
+    // nothing to normalize at this time
 #endif
     remove_duplicate_path_separators(init_pos, PATH_SEP);
 }
@@ -581,7 +584,14 @@ void set_identifier_from_identities() {
         if (tnl_id->Identifier != NULL) {
             // set this field to false during initialization
             normalize_identifier((char*)tnl_id->Identifier);
-            model_map_set(&tnl_identity_map, tnl_id->Identifier, tnl_id);
+            // verify the identity file is still there before adding to the map
+
+            struct stat buffer;
+            if (stat(tnl_id->Identifier, &buffer) == 0) {
+                model_map_set(&tnl_identity_map, tnl_id->Identifier, tnl_id);
+            } else {
+                ZITI_LOG(WARN, "identity was in config, but file no longer exists. identifier=%s", tnl_id->Identifier);
+            }
         }
         //on startup - set mfa needed to false to correctly reflect tunnel status. After the identity is loaded these
         //are set to true __if necessary__

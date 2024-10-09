@@ -160,7 +160,7 @@ VOID WINAPI SvcMain( DWORD dwArgc, LPTSTR *lpszArgv )
     ReportSvcStatus( SERVICE_START_PENDING, NO_ERROR, 3000 );
 
     // Perform service-specific initialization and work.
-    char* config_dir = get_system_config_path();
+    char* config_dir = get_system_config_path(getenv("APPDATA"));
     scm_service_init(config_dir);
 
     SvcInit( dwArgc, lpszArgv );
