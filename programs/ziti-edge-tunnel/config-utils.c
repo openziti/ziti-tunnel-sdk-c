@@ -29,7 +29,7 @@
 static char* identifier_path = NULL;
 
 char* get_system_config_path(const char* base_dir) {
-    char actual_base_path[PATH_MAX];
+    char actual_base_path[FILENAME_MAX];
     realpath(base_dir, actual_base_path);
 
     char* config_path = malloc(FILENAME_MAX * sizeof(char));

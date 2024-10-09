@@ -43,7 +43,7 @@ void initialize_instance_config(const char* config_dir) {
         return;
     }
 
-    char actual_config_dir[PATH_MAX];
+    char actual_config_dir[FILENAME_MAX];
     realpath(config_dir, actual_config_dir);
 
     base_dir = strdup(actual_config_dir); //save the location of the config dir
