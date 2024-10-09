@@ -25,6 +25,8 @@
 static char* const namespace_template = "%s@{n='%s';}";
 static char* const exe_name = "ziti-edge-tunnel";
 
+bool other_tunnelers_active(const char* path);
+
 struct hostname_s {
     char *hostname;
     LIST_ENTRY(hostname_s) _next;
@@ -179,7 +181,7 @@ void chunked_add_nrpt_rules(uv_loop_t *ziti_loop, hostname_list_t *hostnames, ch
     }
 }
 
-void add_nrpt_rules(uv_loop_t *nrpt_loop, model_map *hostnames, const char* dns_ip) {
+void add_nrpt_rules(uv_loop_t *nrpt_loop, model_map *hostnames, const char* dns_ip, const char* discriminator) {
     ZITI_LOG(VERBOSE, "Add nrpt rules");
 
     if (hostnames == NULL || model_map_size(hostnames) == 0) {
@@ -211,7 +213,7 @@ void add_nrpt_rules(uv_loop_t *nrpt_loop, model_map *hostnames, const char* dns_
     }
 }
 
-void chunked_remove_nrpt_rules(uv_loop_t *ziti_loop, hostname_list_t *hostnames) {
+void chunked_remove_nrpt_rules(uv_loop_t *ziti_loop, hostname_list_t *hostnames, const char* discriminator) {
     char script[MAX_POWERSHELL_SCRIPT_LEN] = { 0 };
     size_t buf_len = snprintf(script, MAX_POWERSHELL_SCRIPT_LEN, "$toRemove = @(\n");
     if (!is_buffer_available(buf_len, MAX_POWERSHELL_SCRIPT_LEN, script)) {
@@ -270,7 +272,7 @@ void chunked_remove_nrpt_rules(uv_loop_t *ziti_loop, hostname_list_t *hostnames)
     }
 }
 
-void remove_nrpt_rules(uv_loop_t *nrpt_loop, model_map *hostnames) {
+void remove_nrpt_rules(uv_loop_t *nrpt_loop, model_map *hostnames, const char* discriminator) {
     ZITI_LOG(VERBOSE, "Remove nrpt rules");
 
     if (hostnames == NULL || model_map_size(hostnames) == 0) {
@@ -285,7 +287,7 @@ void remove_nrpt_rules(uv_loop_t *nrpt_loop, model_map *hostnames) {
     while(it != NULL) {
         const char* hostname = model_map_it_key(it);
         if (current_size > MAX_BUCKET_SIZE || rule_size > MAX_POWERSHELL_SCRIPT_LEN) {
-            chunked_remove_nrpt_rules(nrpt_loop, &host_names_list);
+            chunked_remove_nrpt_rules(nrpt_loop, &host_names_list, discriminator);
             rule_size = MIN_BUFFER_LEN;
             current_size = 0;
         }
@@ -298,11 +300,17 @@ void remove_nrpt_rules(uv_loop_t *nrpt_loop, model_map *hostnames) {
         it = model_map_it_remove(it);
     }
     if (current_size > 0) {
-        chunked_remove_nrpt_rules(nrpt_loop, &host_names_list);
+        chunked_remove_nrpt_rules(nrpt_loop, &host_names_list, discriminator);
     }
 }
 
 void remove_all_nrpt_rules() {
+    //find all zet process, contact them and get their respective discriminator
+    if(other_tunnelers_active("\\\\.\\pipe\\ziti-edge-tunnel.sock*")) {
+        ZITI_LOG(INFO, "Other ziti-edge-tunnels are running");
+        return;
+    }
+
     char remove_cmd[MAX_POWERSHELL_COMMAND_LEN];
     size_t buf_len = sprintf(remove_cmd, "powershell -Command \"Get-DnsClientNrptRule | Where { $_.Comment.StartsWith('Added by %s') } | Remove-DnsClientNrptRule -ErrorAction SilentlyContinue -Force\"", exe_name);
     ZITI_LOG(TRACE, "Removing all nrpt rules. total script size: %zd", buf_len);
@@ -390,7 +398,7 @@ void chunked_remove_and_add_nrpt_rules(uv_loop_t *ziti_loop, hostname_list_t *ho
     }
 }
 
-void remove_and_add_nrpt_rules(uv_loop_t *nrpt_loop, model_map *hostnames, const char* dns_ip) {
+void remove_and_add_nrpt_rules(uv_loop_t *nrpt_loop, model_map *hostnames, const char* dns_ip, const char* discriminator) {
     ZITI_LOG(VERBOSE, "Remove and add nrpt rules");
 
     if (hostnames == NULL || model_map_size(hostnames) == 0) {
@@ -502,9 +510,9 @@ void update_interface_metric(uv_loop_t *ziti_loop, wchar_t* tun_name, int metric
 
 void update_symlink(uv_loop_t *symlink_loop, char* symlink, char* filename) {
     char script[MAX_POWERSHELL_SCRIPT_LEN] = { 0 };
-    size_t buf_len = sprintf(script, "Get-Item -Path \"%s\" | Remove-Item\n", symlink);
+    size_t buf_len = sprintf(script, "Get-Item -Path \"%s\" | Remove-Item;", symlink);
     size_t copied = buf_len;
-    buf_len = sprintf(script + copied, "New-Item -Itemtype SymbolicLink -Path \"%s\" -Target \"%s\"", symlink, filename);
+    buf_len = sprintf(script + copied, "New-Item -Itemtype SymbolicLink -Path \"%s\" -Target \"%s\" | Out-Null", symlink, filename);
     copied += buf_len;
 
     ZITI_LOG(TRACE, "Updating symlink using script. total script size: %zd", copied);
@@ -521,4 +529,28 @@ void update_symlink(uv_loop_t *symlink_loop, char* symlink, char* filename) {
     } else {
         ZITI_LOG(DEBUG, "Updated symlink script");
     }
+}
+
+bool other_tunnelers_active(const char* path) {
+    WIN32_FIND_DATA findFileData;
+    HANDLE hFind = FindFirstFile(path, &findFileData);
+
+    if (hFind == INVALID_HANDLE_VALUE) {
+        DWORD err = GetLastError();
+        if(err == ERROR_NO_MORE_FILES) {
+            //expected when nothing is running
+        } else {
+            ZITI_LOG(ERROR, "Unexpected error when trying to find other ziti-edge-tunnel instances. error=%d", err);
+        }
+        return false;
+    }
+
+    do {
+        if (findFileData.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) {
+            return true;
+        }
+    } while (FindNextFile(hFind, &findFileData) != 0);
+
+    FindClose(hFind);
+    return false;
 }

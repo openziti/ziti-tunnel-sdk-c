@@ -16,10 +16,13 @@
 
 #ifndef ZITI_TUNNEL_SDK_C_INSTANCE_CONFIG_H
 #define ZITI_TUNNEL_SDK_C_INSTANCE_CONFIG_H
+#include <uv.h>
+#include <stdbool.h>
 
 bool load_tunnel_status_from_file(uv_loop_t *ziti_loop);
 bool save_tunnel_status_to_file();
-void initialize_instance_config();
+void initialize_instance_config(const char* config_dir);
 void cleanup_instance_config();
 
+char* get_config_file_name();
 #endif //ZITI_TUNNEL_SDK_C_INSTANCE_CONFIG_H
