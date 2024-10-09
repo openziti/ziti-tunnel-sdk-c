@@ -155,14 +155,14 @@ static uv_cond_t stop_cond;
 IMPL_ENUM(event, EVENT_ACTIONS)
 
 #if _WIN32
-static char sockfile__[] = "\\\\.\\pipe\\ziti-edge-tunnel.sock";
-static char eventsockfile__[] = "\\\\.\\pipe\\ziti-edge-tunnel-event.sock";
+static char sockfilebase[] = "\\\\.\\pipe\\ziti-edge-tunnel.sock";
+static char eventsockfilebase[] = "\\\\.\\pipe\\ziti-edge-tunnel-event.sock";
 #elif __unix__ || unix || ( __APPLE__ && __MACH__ )
 #include <grp.h>
 #include <sys/un.h>
 #define SOCKET_PATH "/tmp/.ziti"
-static char sockfile[] = SOCKET_PATH "/ziti-edge-tunnel.sock";
-static char eventsockfile[] = SOCKET_PATH "/ziti-edge-tunnel-event.sock";
+static char sockfilebase[] = SOCKET_PATH "/ziti-edge-tunnel.sock";
+static char eventsockfilebase[] = SOCKET_PATH "/ziti-edge-tunnel-event.sock";
 #endif
 
 static char* sockfile;
@@ -2020,14 +2020,14 @@ static void configure_ipc() {
         ipc_discriminator = malloc(10);
         snprintf(ipc_discriminator, 10, "%d", pid);
     }
-    sockfile = calloc(strlen(sockfile__) + 1 + strlen(ipc_discriminator), sizeof(char));
-    eventsockfile = calloc(strlen(eventsockfile__) + 1 + strlen(ipc_discriminator), sizeof(char));
+    sockfile = calloc(strlen(sockfilebase) + 1 + strlen(ipc_discriminator), sizeof(char));
+    eventsockfile = calloc(strlen(eventsockfilebase) + 1 + strlen(ipc_discriminator), sizeof(char));
 
-    strcat(sockfile, sockfile__);
+    strcat(sockfile, sockfilebase);
 //    strcat(sockfile, ".");
 //    strcat(sockfile, ipc_discriminator);
 
-    strcat(eventsockfile, eventsockfile__);
+    strcat(eventsockfile, eventsockfilebase);
 //    strcat(eventsockfile, ".");
 //    strcat(eventsockfile, ipc_discriminator);
 }
