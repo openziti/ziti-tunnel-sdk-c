@@ -48,6 +48,12 @@ for SAFE in \
         git config --global --add safe.directory ${SAFE}
 done
 
+export VCPKG_ROOT=./vcpkg
+if [ ! -d "${VCPKG_ROOT}" ]; then
+  git clone https://github.com/microsoft/vcpkg
+  ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
+fi
+
 cmake -E make_directory ./build
 cmake \
   --preset "${cmake_preset}" \
