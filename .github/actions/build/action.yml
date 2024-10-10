@@ -26,7 +26,7 @@ runs:
       run: brew install autoconf autoconf-archive automake pkg-config
 
     - name: simple build
-      run: echo "preset = ${{ inputs.preset }}"
+      run: echo "preset = ${{ inputs.preset }} os = ${{ runner.os }}"
       shell: bash
 
     - name: install contemporary cmake
