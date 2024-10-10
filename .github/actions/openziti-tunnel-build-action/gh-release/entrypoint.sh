@@ -48,12 +48,12 @@ for SAFE in \
         git config --global --add safe.directory ${SAFE}
 done
 
-export VCPKG_ROOT=./vcpkg
+export VCPKG_ROOT="${PWD}/vcpkg"
 git config --global --add safe.directory "${VCPKG_ROOT}"
 echo "git config --list"
 git config --list
-echo "ls -alR ."
-ls -alR .
+#echo "ls -alR ."
+#ls -alR .
 
 if [ ! -d "${VCPKG_ROOT}/ports" ]; then
     # the packages/ directory may have been populated from cache by now
