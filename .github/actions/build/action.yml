@@ -62,6 +62,11 @@ runs:
           --target ${{ inputs.target }} \
           --verbose
 
+    - name: configure build action for github release binaries
+      shell: bash
+      run: |
+        mv -v ./.github/actions/openziti-tunnel-build-action/gh-release/* ./.github/actions/openziti-tunnel-build-action/
+
     - name: build ziti-edge-tunnel (linux)
       if: runner.os == 'Linux'
       uses: ./.github/actions/openziti-tunnel-build-action
