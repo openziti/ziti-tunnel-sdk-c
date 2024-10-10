@@ -42,7 +42,9 @@ runs:
     - uses: actions/cache@v4
       with:
         key: deps-${{ inputs.preset }}-${{ hashFiles('./vcpkg.json') }}
-        path: './vcpkg/packages'
+        path: |
+          './vcpkg/packages'
+          './build/vcpkg_installed'
 
     - uses: lukka/run-cmake@v10.6 # pin version to avoid failed glibc dependency on ubuntu 20 runners. go back to @latest when ubuntu 22+ is adopted for runner os.
       if: runner.os != 'Linux'
