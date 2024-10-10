@@ -49,8 +49,14 @@ for SAFE in \
 done
 
 export VCPKG_ROOT=./vcpkg
-git clone https://github.com/microsoft/vcpkg
-./vcpkg/bootstrap-vcpkg.sh -disableMetrics
+if [ ! -d "${VCPKG_ROOT}/ports" ]; then
+    # the packages/ directory may have been populated from cache by now
+    # but git clone refuses to clone into a non-empty directory, so get
+    # vcpkg without using clone
+    git init "${VCPKG_ROOT}"
+    (cd "${VCPKG_ROOT}"; git remote add -f origin https://github.com/microsoft/vcpkg; git checkout master)
+    "${VCPKG_ROOT}/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
+]
 
 cmake -E make_directory ./build
 cmake \
