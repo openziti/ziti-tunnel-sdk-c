@@ -71,5 +71,5 @@ runs:
       if: runner.os == 'Linux'
       uses: ./.github/actions/openziti-tunnel-build-action
       with:
-        arch: ${{ inputs.preset }}
+        arch: ci-${{ inputs.preset }}
         config: ${{ inputs.config }}
