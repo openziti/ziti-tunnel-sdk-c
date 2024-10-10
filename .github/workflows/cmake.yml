@@ -69,6 +69,9 @@ jobs:
           preset: ${{ matrix.preset }}
           target: bundle
 
+      - name: debug ls
+        run: ls -l .; ls -l ./build
+
       - name: list bundle artifacts
         run: ls -R
         working-directory: ./build/bundle/
