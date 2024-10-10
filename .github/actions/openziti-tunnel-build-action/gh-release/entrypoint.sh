@@ -56,7 +56,7 @@ if [ ! -d "${VCPKG_ROOT}/ports" ]; then
     git init "${VCPKG_ROOT}"
     (cd "${VCPKG_ROOT}"; git remote add -f origin https://github.com/microsoft/vcpkg; git checkout master)
     "${VCPKG_ROOT}/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
-]
+fi
 
 cmake -E make_directory ./build
 cmake \
