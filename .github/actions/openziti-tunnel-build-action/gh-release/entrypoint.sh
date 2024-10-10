@@ -15,10 +15,6 @@
 # limitations under the License.
 #
 
-#
-# RedHat 8
-#
-
 set -euo pipefail
 
 # these commands must be in the entrypoint so they are run after workspace is mounted on Docker workdir
@@ -53,22 +49,14 @@ for SAFE in \
 done
 
 cmake -E make_directory ./build
-(
-    [[ -d ./build ]] && rm -r ./build
-    cmake -E make_directory ./build
-    # allow unset for scl_source scripts
-    set +u
-    source scl_source enable gcc-toolset-10 \
-        && cmake \
-            --preset "${cmake_preset}" \
-            -DCMAKE_BUILD_TYPE="${cmake_config}" \
-            -DBUILD_DIST_PACKAGES=ON \
-            -S . \
-            -B ./build
-    source scl_source enable gcc-toolset-10 \
-        && cmake \
-            --build ./build \
-            --config "${cmake_config}" \
-            --target package \
-            --verbose
-)
+cmake \
+  --preset "${cmake_preset}" \
+  -DCMAKE_BUILD_TYPE="${cmake_config}" \
+  -DBUILD_DIST_PACKAGES=ON \
+  -S . \
+  -B ./build
+cmake \
+  --build ./build \
+  --config "${cmake_config}" \
+  --target bundle \
+  --verbose
