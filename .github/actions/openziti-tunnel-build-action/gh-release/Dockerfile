@@ -5,4 +5,5 @@ ARG VCPKG_VERSION="master"
 FROM openziti/ziti-builder:v1
 
 COPY ./entrypoint.sh /root/
+RUN chmod +x /root/entrypoint.sh
 ENTRYPOINT [ "/root/entrypoint.sh" ]
