@@ -50,6 +50,11 @@ done
 
 export VCPKG_ROOT=./vcpkg
 git config --global --add safe.directory "${VCPKG_ROOT}"
+echo "git config --list"
+git config --list
+echo "ls -alR ."
+ls -alR .
+
 if [ ! -d "${VCPKG_ROOT}/ports" ]; then
     # the packages/ directory may have been populated from cache by now
     # but git clone refuses to clone into a non-empty directory, so get
