@@ -2,6 +2,6 @@
 FROM openziti/ziti-builder:v1
 
 COPY ./entrypoint.sh /root/
-RUN cd "${VCPKG_ROOT}" && git checkout master && git pull && ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
+RUN cd "${VCPKG_ROOT}" && git checkout master && git pull && ./bootstrap-vcpkg.sh -disableMetrics
 RUN chmod +x /root/entrypoint.sh
 ENTRYPOINT [ "/root/entrypoint.sh" ]
