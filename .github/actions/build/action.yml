@@ -30,27 +30,30 @@ runs:
       shell: bash
 
     - name: install contemporary cmake
+      if: runner.os != 'Ubuntu'
       uses: lukka/get-cmake@v3.27.7 # pin version to avoid failed glibc dependency on ubuntu 20 runners. go back to @latest when ubuntu 22+ is adopted for runner os.
 
     - uses: lukka/run-vcpkg@v11
+      if: runner.os != 'Ubuntu'
       with:
         # get baseline from vcpkg
         vcpkgJsonGlob: './vcpkg.json'
 
     - uses: actions/cache@v4
+      if: runner.os != 'Ubuntu'
       with:
         key: deps-${{ inputs.preset }}-${{ hashFiles('./vcpkg.json') }}
         path: './vcpkg/packages'
 
     - uses: lukka/run-cmake@v10.6 # pin version to avoid failed glibc dependency on ubuntu 20 runners. go back to @latest when ubuntu 22+ is adopted for runner os.
-      if: runner.os != 'ubuntu'
+      if: runner.os != 'Ubuntu'
       name: Configure CMake
       with:
         configurePreset: ci-${{ inputs.preset }}
         configurePresetAdditionalArgs: "[ `-B`, `./build` ]"
 
     - name: build ziti-edge-tunnel (non-linux)
-      if: runner.os != 'ubuntu'
+      if: runner.os != 'Ubuntu'
       shell: bash
       run: |
         cmake \
@@ -60,7 +63,7 @@ runs:
           --verbose
 
     - name: build ziti-edge-tunnel (linux)
-      if: runner.os == 'ubuntu'
+      if: runner.os == 'Ubuntu'
       uses: ./.github/actions/openziti-tunnel-build-action
       with:
         arch: ${{ inputs.preset }}
