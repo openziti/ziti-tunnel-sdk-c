@@ -43,12 +43,14 @@ runs:
         path: './vcpkg/packages'
 
     - uses: lukka/run-cmake@v10.6 # pin version to avoid failed glibc dependency on ubuntu 20 runners. go back to @latest when ubuntu 22+ is adopted for runner os.
+      if: runner.os != 'ubuntu'
       name: Configure CMake
       with:
         configurePreset: ci-${{ inputs.preset }}
         configurePresetAdditionalArgs: "[ `-B`, `./build` ]"
 
-    - name: build ziti-edge-tunnel
+    - name: build ziti-edge-tunnel (non-linux)
+      if: runner.os != 'ubuntu'
       shell: bash
       run: |
         cmake \
@@ -56,3 +58,10 @@ runs:
           --config ${{ inputs.config }} \
           --target ${{ inputs.target }} \
           --verbose
+
+    - name: build ziti-edge-tunnel (linux)
+      if: runner.os == 'ubuntu'
+      uses: ./.github/actions/openziti-tunnel-build-action
+      with:
+        arch: ${{ inputs.preset }}
+        config: ${{ inputs.config }}
