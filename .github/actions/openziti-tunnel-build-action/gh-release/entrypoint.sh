@@ -49,10 +49,8 @@ for SAFE in \
 done
 
 export VCPKG_ROOT=./vcpkg
-if [ ! -d "${VCPKG_ROOT}" ]; then
-  git clone https://github.com/microsoft/vcpkg
-  ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
-fi
+git clone https://github.com/microsoft/vcpkg
+./vcpkg/bootstrap-vcpkg.sh -disableMetrics
 
 cmake -E make_directory ./build
 cmake \
