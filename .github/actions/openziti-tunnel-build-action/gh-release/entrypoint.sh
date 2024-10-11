@@ -61,6 +61,13 @@ if [ ! -d "${VCPKG_ROOT}/ports" ]; then
     "${VCPKG_ROOT}/bootstrap-vcpkg.sh" -disableMetrics
 fi
 
+echo "======== here comes the env"
+env
+echo "======== that is all"
+echo "======== here comes the df"
+df
+echo "======== that is it"
+
 cmake -E make_directory ./build
 cmake \
   --preset "${cmake_preset}" \

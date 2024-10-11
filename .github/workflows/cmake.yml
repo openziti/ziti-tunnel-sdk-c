@@ -20,7 +20,8 @@ jobs:
   build:
     runs-on: ${{ matrix.os }}
     name: build ${{ matrix.preset }}
-    env: {}
+    env:
+      "_VCPKG_BINARY_SOURCES": "clear;file,${{ github.workspace }}/vcpkg_cache,readwrite"
 
     strategy:
       fail-fast: false
