@@ -21,7 +21,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     name: build ${{ matrix.preset }}
     env:
-      "_VCPKG_BINARY_SOURCES": "clear;file,${{ github.workspace }}/vcpkg_cache,readwrite"
+      "VCPKG_BINARY_SOURCES": "clear;files,${{ github.workspace }}/vcpkg_cache,readwrite"
 
     strategy:
       fail-fast: false

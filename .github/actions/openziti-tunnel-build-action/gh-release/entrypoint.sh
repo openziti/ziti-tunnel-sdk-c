@@ -48,25 +48,12 @@ for SAFE in \
         git config --global --add safe.directory ${SAFE}
 done
 
-export VCPKG_ROOT="${PWD}/vcpkg"
-# ${VCPKG_ROOT}/packages  will have been populated from outside of the container, by a different user. tell git it's ok.
-git config --global --add safe.directory "${VCPKG_ROOT}"
-
-if [ ! -d "${VCPKG_ROOT}/ports" ]; then
-    # the packages/ directory may have been populated from cache by now
-    # but git clone refuses to clone into a non-empty directory, so get
-    # vcpkg without using clone
-    git init "${VCPKG_ROOT}"
-    (cd "${VCPKG_ROOT}"; git remote add -f origin https://github.com/microsoft/vcpkg; git checkout master)
-    "${VCPKG_ROOT}/bootstrap-vcpkg.sh" -disableMetrics
-fi
-
-echo "======== here comes the env"
-env
-echo "======== that is all"
-echo "======== here comes the df"
-df
-echo "======== that is it"
+(
+  cd "${VCPKG_ROOT}"
+  git checkout master
+  git pull
+  ./bootstrap-vcpkg.sh -disableMetrics
+)
 
 cmake -E make_directory ./build
 cmake \

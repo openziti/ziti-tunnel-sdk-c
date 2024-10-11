@@ -36,6 +36,13 @@ for SAFE in \
         git config --global --add safe.directory ${SAFE}
 done
 
+(
+  cd "${VCPKG_ROOT}"
+  git checkout master
+  git pull
+  ./bootstrap-vcpkg.sh -disableMetrics
+)
+
 [[ -d ./build ]] && rm -r ./build
 cmake \
     -E make_directory \
