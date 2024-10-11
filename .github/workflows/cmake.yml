@@ -19,7 +19,6 @@ concurrency:
 jobs:
   build:
     runs-on: ${{ matrix.os }}
-    container: ${{ matrix.container }}
     name: build ${{ matrix.preset }}
     env: {}
 
@@ -44,17 +43,14 @@ jobs:
             preset: windows-arm64-vs2022
 
           - os: ubuntu-20.04
-            container: openziti/ziti-builder:v2
             name: Linux x86_64
             preset: linux-x64-static-libssl
 
           - os: ubuntu-20.04
-            container: openziti/ziti-builder:v2
             name: Linux arm
             preset: linux-arm-static-libssl
 
           - os: ubuntu-20.04
-            container: openziti/ziti-builder:v2
             name: Linux arm64
             preset: linux-arm64-static-libssl
 

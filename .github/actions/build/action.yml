@@ -30,9 +30,11 @@ runs:
       shell: bash
 
     - name: install contemporary cmake
+      if: runner.os != 'Linux'
       uses: lukka/get-cmake@v3.27.7 # pin version to avoid failed glibc dependency on ubuntu 20 runners. go back to @latest when ubuntu 22+ is adopted for runner os.
 
     - uses: lukka/run-vcpkg@v11
+      if: runner.os != 'Linux'
       with:
         # get baseline from vcpkg
         vcpkgJsonGlob: './vcpkg.json'
@@ -40,15 +42,19 @@ runs:
     - uses: actions/cache@v4
       with:
         key: deps-${{ inputs.preset }}-${{ hashFiles('./vcpkg.json') }}
-        path: './vcpkg/packages'
+        path: |
+          ./vcpkg/packages
+          ./build/vcpkg_installed
 
     - uses: lukka/run-cmake@v10.6 # pin version to avoid failed glibc dependency on ubuntu 20 runners. go back to @latest when ubuntu 22+ is adopted for runner os.
+      if: runner.os != 'Linux'
       name: Configure CMake
       with:
         configurePreset: ci-${{ inputs.preset }}
         configurePresetAdditionalArgs: "[ `-B`, `./build` ]"
 
-    - name: build ziti-edge-tunnel
+    - name: build ziti-edge-tunnel (non-linux)
+      if: runner.os != 'Linux'
       shell: bash
       run: |
         cmake \
@@ -56,3 +62,15 @@ runs:
           --config ${{ inputs.config }} \
           --target ${{ inputs.target }} \
           --verbose
+
+    - name: configure build action for github release binaries
+      shell: bash
+      run: |
+        mv -v ./.github/actions/openziti-tunnel-build-action/gh-release/* ./.github/actions/openziti-tunnel-build-action/
+
+    - name: build ziti-edge-tunnel (linux)
+      if: runner.os == 'Linux'
+      uses: ./.github/actions/openziti-tunnel-build-action
+      with:
+        arch: ci-${{ inputs.preset }}
+        config: ${{ inputs.config }}
