@@ -47,6 +47,8 @@ jobs:
     needs: set_matrix
     name: ${{ matrix.arch.rpm }} ${{ matrix.distro.name }} ${{ matrix.distro.version }}
     runs-on: ubuntu-20.04
+    # build image name it from matrix values name:version unless override container is specified
+    container: ${{ matrix.distro.container || format('{0}:{1}', matrix.distro.name, matrix.distro.version) }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.set_matrix.outputs.matrix) }}
