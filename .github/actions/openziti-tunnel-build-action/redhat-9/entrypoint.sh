@@ -37,6 +37,13 @@ for SAFE in \
 done
 
 (
+  cd "${VCPKG_ROOT}"
+  git checkout master
+  git pull
+  ./bootstrap-vcpkg.sh -disableMetrics
+)
+
+(
     [[ -d ./build ]] && rm -r ./build
     cmake -E make_directory ./build  
     # allow unset for scl_source scripts

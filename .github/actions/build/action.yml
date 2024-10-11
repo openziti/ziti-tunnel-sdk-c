@@ -42,9 +42,7 @@ runs:
     - uses: actions/cache@v4
       with:
         key: deps-${{ inputs.preset }}-${{ hashFiles('./vcpkg.json') }}
-        path: |
-          ./vcpkg/packages
-          ./build/vcpkg_installed
+        path: ./vcpkg_cache
 
     - uses: lukka/run-cmake@v10.6 # pin version to avoid failed glibc dependency on ubuntu 20 runners. go back to @latest when ubuntu 22+ is adopted for runner os.
       if: runner.os != 'Linux'
@@ -71,6 +69,9 @@ runs:
     - name: build ziti-edge-tunnel (linux)
       if: runner.os == 'Linux'
       uses: ./.github/actions/openziti-tunnel-build-action
+      env:
+        # map vcpkg cache so container uses the same directory as the rest of the workflow
+        "VCPKG_BINARY_SOURCES": "clear;files,/github/workspace/vcpkg_cache,readwrite"
       with:
         arch: ci-${{ inputs.preset }}
         config: ${{ inputs.config }}
