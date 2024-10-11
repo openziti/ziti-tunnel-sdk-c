@@ -15,24 +15,31 @@ ENV TZ=UTC
 
 RUN dnf install -y \
         "@Development Tools" \
+        autoconf \
+        automake \
+        cmake-rpm-macros  \
         dnf-plugins-core \
         gcc-toolset-10 \
         gcc-toolset-10-libatomic-devel \
+        gettext-devel \
         iproute \
-        python3 \
-        systemd-devel \
-        zlib-devel \
-        systemd-rpm-macros \
-        cmake-rpm-macros  \
+        libacl-devel \
+        libcap-devel \
+        libtool \
         openssl-devel \
         perl \
+        perl-IPC-Cmd \
+        python3 \
+        systemd-devel \
+        systemd-rpm-macros \
+        zlib-devel \
     && dnf config-manager --set-enabled powertools \
     && dnf install -y \
         doxygen \
-        graphviz \
         git \
+        graphviz \
         ninja-build \
-    && dnf clean all 
+    && dnf clean all
 
 RUN curl -sSfL https://cmake.org/files/v${CMAKE_VERSION%.*}/cmake-${CMAKE_VERSION}-linux-$(uname -m).sh -o cmake.sh \
     && (bash cmake.sh --skip-license --prefix=/usr/local) \

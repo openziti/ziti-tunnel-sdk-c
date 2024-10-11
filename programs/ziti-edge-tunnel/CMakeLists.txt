@@ -54,13 +54,29 @@ if(CMAKE_SYSTEM_NAME STREQUAL Windows)
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+
+    find_package(PkgConfig REQUIRED)
+
+    pkg_check_modules(LIBACL IMPORTED_TARGET "libacl")
+    pkg_check_modules(LIBCAP IMPORTED_TARGET "libcap")
+
+    if (LIBACL_FOUND)
+        target_compile_definitions(ziti-edge-tunnel PRIVATE HAVE_LIBACL_PKG)
+        target_link_libraries(ziti-edge-tunnel PRIVATE PkgConfig::LIBACL)
+    endif()
+
+    if (LIBCAP_FOUND)
+        target_compile_definitions(ziti-edge-tunnel PRIVATE HAVE_LIBCAP_PKG)
+        target_link_libraries(ziti-edge-tunnel PRIVATE PkgConfig::LIBCAP)
+    endif()
+
+
     option(DISABLE_LIBSYSTEMD_FEATURE "libsystemd library integration toggle" OFF)
     message("DISABLE_LIBSYSTEMD_FEATURE: ${DISABLE_LIBSYSTEMD_FEATURE}")
 
     if (DISABLE_LIBSYSTEMD_FEATURE)
         target_compile_definitions(ziti-edge-tunnel PRIVATE EXCLUDE_LIBSYSTEMD_RESOLVER)
     else()
-        find_package(PkgConfig REQUIRED)
         pkg_check_modules(LIBSYSTEMD IMPORTED_TARGET "libsystemd")
 
         if(LIBSYSTEMD_FOUND)
