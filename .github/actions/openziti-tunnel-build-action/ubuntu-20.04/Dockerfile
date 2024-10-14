@@ -27,7 +27,6 @@ RUN apt-get update \
         doxygen \
         git \
         graphviz \
-        libjson-c-dev \
         libprotobuf-c-dev \
         libsystemd-dev \
         libtool \
