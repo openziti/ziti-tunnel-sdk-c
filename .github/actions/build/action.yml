@@ -72,7 +72,7 @@ runs:
       if: runner.os == 'Linux'
       shell: bash
       run: |
-        mv -v ./.github/actions/openziti-tunnel-build-action/gh-release/* ./.github/actions/openziti-tunnel-build-action/
+        cp -vr ./.github/actions/openziti-tunnel-build-action/gh-release/* ./.github/actions/openziti-tunnel-build-action/
 
     - name: build ziti-edge-tunnel (linux)
       if: runner.os == 'Linux'
