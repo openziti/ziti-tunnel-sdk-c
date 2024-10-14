@@ -1,10 +1,13 @@
 project(ziti-edge-tunnel)
 
+include(CheckFunctionExists)
+
 if(CMAKE_SYSTEM_NAME STREQUAL Darwin)
     set(NETIF_DRIVER_SOURCE netif_driver/darwin/utun.c)
 endif()
 if(CMAKE_SYSTEM_NAME STREQUAL Linux)
-    set(NETIF_DRIVER_SOURCE netif_driver/linux/tun.c netif_driver/linux/resolvers.c netif_driver/linux/utils.c netif_driver/linux/libiproute.c)
+    set(NETIF_DRIVER_SOURCE netif_driver/linux/tun.c netif_driver/linux/resolvers.c netif_driver/linux/utils.c netif_driver/linux/libiproute.c netif_driver/linux/capability.c)
+    check_function_exists(capget ZITI_TUNNELER_SDK_HAVE_CAPGET)
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL Windows)
