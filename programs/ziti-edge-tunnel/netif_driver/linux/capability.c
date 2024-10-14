@@ -147,17 +147,23 @@ ziti_cap_assert(unsigned long cap_mask)
     unsigned long linux_cap_mask =
       ((cap_mask & ZITI_CAP_NETADMIN) ? CAP_TO_MASK(CAP_NET_ADMIN) : 0)
       | ((cap_mask & ZITI_CAP_SYSADMIN) ? CAP_TO_MASK(CAP_SYS_ADMIN) : 0);
+    int saved_errno = errno;
 
     if (ziti__cap_assert(linux_cap_mask, 0) < 0)
         exit(EX_NOPERM);
+
+    errno = saved_errno;
 }
 
 void
 ziti_cap_restore(void)
 {
+    int saved_errno = errno;
     int sys_rc;
 
     sys_rc = ziti__cap_restore();
     if (sys_rc < 0)
         exit(EX_NOPERM);
+
+    errno = saved_errno;
 }
