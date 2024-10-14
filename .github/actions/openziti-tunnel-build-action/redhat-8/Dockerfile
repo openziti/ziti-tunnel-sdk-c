@@ -25,7 +25,6 @@ RUN dnf install -y \
         systemd-rpm-macros \
         protobuf-c-devel \
         cmake-rpm-macros  \
-        json-c-devel \
         protobuf-c-devel \
         perl \
     && dnf config-manager --set-enabled powertools \
@@ -33,6 +32,7 @@ RUN dnf install -y \
         doxygen \
         graphviz \
         git \
+        json-c-devel \
         ninja-build \
     && dnf clean all 
 
