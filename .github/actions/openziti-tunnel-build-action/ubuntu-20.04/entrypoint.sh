@@ -15,7 +15,7 @@ echo "INFO: $(git --version)"
 if [ ${#} -ge 1 ]; then
     cmake_preset="${1}"
 else
-    cmake_preset="ci-linux-x64-static-libssl"
+    cmake_preset="ci-linux-x64"
 fi
 
 if [ ${#} -ge 2 ]; then
@@ -50,6 +50,7 @@ cmake \
 cmake \
     --preset "${cmake_preset}" \
     -DCMAKE_BUILD_TYPE="${cmake_config}" \
+    -DVCPKG_OVERLAY_PORTS=./.github/actions/openziti-tunnel-build-action/ubuntu-20.04/vcpkg-overlays \
     -DBUILD_DIST_PACKAGES=ON \
     -S "${PWD}/" \
     -B ./build/

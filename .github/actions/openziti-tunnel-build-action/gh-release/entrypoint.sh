@@ -59,6 +59,7 @@ cmake -E make_directory ./build
 cmake \
   --preset "${cmake_preset}" \
   -DCMAKE_BUILD_TYPE="${cmake_config}" \
+  -DVCPKG_OVERLAY_PORTS=./.github/actions/openziti-tunnel-build-action/gh-release/vcpkg-overlays \
   -S . \
   -B ./build
 cmake \

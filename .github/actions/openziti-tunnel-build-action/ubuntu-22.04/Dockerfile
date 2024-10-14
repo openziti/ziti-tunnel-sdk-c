@@ -32,7 +32,6 @@ RUN apt-get update \
         pkg-config \
         python3 \
         zlib1g-dev \
-        libssl-dev \
         ninja-build \
     && rm -rf /var/lib/apt/lists/*
 
@@ -41,8 +40,6 @@ RUN sed -Ei 's/^deb/deb [arch=amd64]/g' /etc/apt/sources.list
 RUN dpkg --add-architecture arm64 && dpkg --add-architecture armhf
 RUN apt-get update \
     && apt-get -y install \
-        libssl-dev:arm64 \
-        libssl-dev:armhf \
         zlib1g-dev:arm64 \
         zlib1g-dev:armhf \
     && rm -rf /var/lib/apt/lists/*

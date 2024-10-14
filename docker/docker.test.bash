@@ -50,7 +50,7 @@ done
 : "${ZITI_ROUTER_PORT:=30224}"
 # : "${ZIGGY_UID:=$(id -u)}"
 
-bash -x ./scripts/ziti-builder.sh -p ci-linux-x64-static-libssl
+bash -x ./scripts/ziti-builder.sh -p ci-linux-x64
 mkdir -p ./build/amd64/linux
 cp ./build/programs/ziti-edge-tunnel/Release/ziti-edge-tunnel ./build/amd64/linux/ziti-edge-tunnel
 

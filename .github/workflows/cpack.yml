@@ -91,11 +91,11 @@ jobs:
           DISTRO_LABEL: ${{ format('{0}-{1}', matrix.distro.name, matrix.distro.version) }}
         shell: bash
         run: |
-          mv -v ./.github/actions/openziti-tunnel-build-action/${DISTRO_LABEL}/* ./.github/actions/openziti-tunnel-build-action/
+          cp -vr ./.github/actions/openziti-tunnel-build-action/${DISTRO_LABEL}/* ./.github/actions/openziti-tunnel-build-action/
 
       - uses: actions/cache@v4
         with:
-          key: deps-cpack-${{ matrix.arch.rpm }}-${{ matrix.distro.name }}-${{ matrix.distro.version }}-${{ hashFiles('./vcpkg.json') }}
+          key: deps-cpack-${{ matrix.arch.rpm }}-${{ matrix.distro.name }}-${{ matrix.distro.version }}-${{ hashFiles('./vcpkg.json', './.github/actions/openziti-tunnel-build-action/vcpkg-overlays/**/vcpkg.json') }}
           path: ./vcpkg_cache
 
         # entrypoint.sh uses the value of arch to select the cmake preset
@@ -137,7 +137,7 @@ jobs:
         run: |
           set -x
           cat /etc/*-release
-          ldd ./build/programs/ziti-edge-tunnel/Release/ziti-edge-tunnel
+          ldd ./build/programs/ziti-edge-tunnel/RelWithDebInfo/ziti-edge-tunnel
           ./build/programs/ziti-edge-tunnel/RelWithDebInfo/ziti-edge-tunnel version --verbose
 
       - name: Upload Package to Workflow Summary Page
