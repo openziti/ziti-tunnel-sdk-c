@@ -22,7 +22,6 @@ RUN dnf install -y \
         zlib-devel \
         systemd-rpm-macros \
         cmake-rpm-macros  \
-        openssl-devel \
         perl-FindBin perl-IPC-Cmd perl-File-Compare perl-File-Copy \
         libatomic \
     && dnf config-manager --set-enabled crb \
