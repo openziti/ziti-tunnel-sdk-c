@@ -23,6 +23,7 @@ RUN dnf install -y \
         systemd-devel \
         zlib-devel \
         systemd-rpm-macros \
+        protobuf-c-devel \
         cmake-rpm-macros  \
         perl \
     && dnf config-manager --set-enabled powertools \
