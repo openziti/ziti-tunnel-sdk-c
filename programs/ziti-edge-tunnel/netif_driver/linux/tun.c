@@ -36,6 +36,7 @@
 #include "tun.h"
 #include "utils.h"
 #include "libiproute.h"
+#include "capability.h"
 
 #ifndef DEVTUN
 #define DEVTUN "/dev/net/tun"
@@ -608,7 +609,13 @@ ziti_tunnel_hosting_socket(uv_os_sock_t *psock, const struct addrinfo *ai)
     }
 
     int mark = ZET_BYPASS_MARK;
-    if (setsockopt(sd, SOL_SOCKET, SO_MARK, &mark, sizeof mark) < 0) {
+    int sys_rc;
+
+    ziti_cap_assert(ZITI_CAP_NETADMIN);
+    sys_rc = setsockopt(sd, SOL_SOCKET, SO_MARK, &mark, sizeof mark);
+    ziti_cap_restore();
+
+    if (sys_rc < 0) {
         int uv_err = uv_translate_sys_error(errno);
 
         ZITI_LOG(WARN, "setsockopt(SO_MARK): %d/%s", uv_err, uv_strerror(uv_err));
