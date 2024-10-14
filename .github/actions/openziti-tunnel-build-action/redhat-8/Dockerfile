@@ -23,7 +23,6 @@ RUN dnf install -y \
         systemd-devel \
         zlib-devel \
         systemd-rpm-macros \
-        protobuf-c-devel \
         cmake-rpm-macros  \
         protobuf-c-devel \
         perl \
