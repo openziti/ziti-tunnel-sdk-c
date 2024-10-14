@@ -45,15 +45,15 @@ jobs:
 
           - os: ubuntu-20.04
             name: Linux x86_64
-            preset: linux-x64-static-libssl
+            preset: linux-x64
 
           - os: ubuntu-20.04
             name: Linux arm
-            preset: linux-arm-static-libssl
+            preset: linux-arm
 
           - os: ubuntu-20.04
             name: Linux arm64
-            preset: linux-arm64-static-libssl
+            preset: linux-arm64
 
     steps:
       - name: Debug action

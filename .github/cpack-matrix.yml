@@ -1,12 +1,12 @@
 cpack_matrix:
   arch:
-    - cmake: ci-linux-x64-static-libssl  # selects cmake preset
+    - cmake: ci-linux-x64  # selects cmake preset
       rpm: x86_64          # yum $basearch
       deb: amd64           # dpkg --print-architecture
-    - cmake: ci-linux-arm-static-libssl
+    - cmake: ci-linux-arm
       rpm: armhfp
       deb: armhf
-    - cmake: ci-linux-arm64-static-libssl
+    - cmake: ci-linux-arm64
       rpm: aarch64
       deb: arm64
   distro:
@@ -32,8 +32,8 @@ cpack_matrix:
     - distro:
         name: redhat
       arch:
-        cmake: ci-linux-arm-static-libssl
+        cmake: ci-linux-arm
     - distro:
         name: redhat
       arch:
-        cmake: ci-linux-arm64-static-libssl
+        cmake: ci-linux-arm64

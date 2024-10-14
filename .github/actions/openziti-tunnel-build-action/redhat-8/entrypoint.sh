@@ -53,6 +53,7 @@ cmake -E make_directory ./build
         && cmake \
             --preset "${cmake_preset}" \
             -DCMAKE_BUILD_TYPE="${cmake_config}" \
+            -DVCPKG_OVERLAY_PORTS=./vcpkg-overlays \
             -DBUILD_DIST_PACKAGES=ON \
             -S . \
             -B ./build 

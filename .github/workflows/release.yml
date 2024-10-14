@@ -49,7 +49,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.get_release.outputs.upload_url }}
-          asset_path: ${{ runner.workspace }}/downloads/linux-arm64-static-libssl/ziti-edge-tunnel-Linux_aarch64.zip
+          asset_path: ${{ runner.workspace }}/downloads/linux-arm64/ziti-edge-tunnel-Linux_aarch64.zip
           asset_name: ziti-edge-tunnel-Linux_arm64.zip
           asset_content_type: application/octet-stream
 
