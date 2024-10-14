@@ -22,6 +22,7 @@ RUN dnf install -y \
         zlib-devel \
         systemd-rpm-macros \
         cmake-rpm-macros  \
+        json-c-devel \
         protobuf-c-devel \
         perl-FindBin perl-IPC-Cmd perl-File-Compare perl-File-Copy \
         libatomic \

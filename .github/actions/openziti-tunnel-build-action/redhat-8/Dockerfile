@@ -25,6 +25,8 @@ RUN dnf install -y \
         systemd-rpm-macros \
         protobuf-c-devel \
         cmake-rpm-macros  \
+        json-c-devel \
+        protobuf-c-devel \
         perl \
     && dnf config-manager --set-enabled powertools \
     && dnf install -y \
