@@ -50,7 +50,7 @@ cmake \
 cmake \
     --preset "${cmake_preset}" \
     -DCMAKE_BUILD_TYPE="${cmake_config}" \
-    -DVCPKG_OVERLAY_PORTS=./vcpkg-overlays \
+    -DVCPKG_OVERLAY_PORTS="${PWD}/vcpkg-overlays" \
     -DBUILD_DIST_PACKAGES=ON \
     -S "${PWD}/" \
     -B ./build/
