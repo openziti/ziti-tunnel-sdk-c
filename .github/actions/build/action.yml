@@ -40,8 +40,15 @@ runs:
         vcpkgJsonGlob: './vcpkg.json'
 
     - uses: actions/cache@v4
+      if: runner.os != 'Linux'
       with:
         key: deps-${{ inputs.preset }}-${{ hashFiles('./vcpkg.json') }}
+        path: ./vcpkg_cache
+
+    - uses: actions/cache@v4
+      if: runner.os == 'Linux'
+      with:
+        key: deps=${{ inputs.preset }}-${{ hashFiles('./vcpkg.json', '.github/actions/openziti-tunnel-build-action/gh-release/vcpkg-overlays/**/vcpkg.json') }}
         path: ./vcpkg_cache
 
     - uses: lukka/run-cmake@v10.6 # pin version to avoid failed glibc dependency on ubuntu 20 runners. go back to @latest when ubuntu 22+ is adopted for runner os.
@@ -62,6 +69,7 @@ runs:
           --verbose
 
     - name: configure build action for github release binaries
+      if: runner.os == 'Linux'
       shell: bash
       run: |
         mv -v ./.github/actions/openziti-tunnel-build-action/gh-release/* ./.github/actions/openziti-tunnel-build-action/
