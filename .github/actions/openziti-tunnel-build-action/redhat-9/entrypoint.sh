@@ -51,7 +51,7 @@ done
     cmake \
         --preset "${cmake_preset}" \
         -DCMAKE_BUILD_TYPE="${cmake_config}" \
-        -DVCPKG_OVERLAY_PORTS="${PWD}/vcpkg-overlays" \
+        -DVCPKG_OVERLAY_PORTS=./.github/actions/openziti-tunnel-build-action/redhat-9/vcpkg-overlays \
         -DBUILD_DIST_PACKAGES=ON \
         "${TLSUV_TLSLIB:+-DTLSUV_TLSLIB=${TLSUV_TLSLIB}}" \
         -S . \
