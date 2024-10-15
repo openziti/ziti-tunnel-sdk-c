@@ -17,10 +17,10 @@
 #include "model/dtos.h"
 #include <ziti/ziti_log.h>
 #include <time.h>
-#include <config-utils.h>
 #include "lwip/ip_addr.h"
 #include "ziti/ziti_tunnel.h"
-#include "identity-utils.h"
+#include "instance.h"
+#include "instance-config.h"
 
 #define MIN_API_PAGESIZE 10
 #define DEFAULT_API_PAGESIZE 25
@@ -52,7 +52,9 @@ tunnel_identity *create_or_get_tunnel_identity(const char* identifier, const cha
         return id;
     } else {
         tunnel_identity *tnl_id = calloc(1, sizeof(struct tunnel_identity_s));
-        tnl_id->Identifier = strdup(identifier);
+        char* dup_identifier = strdup(identifier);
+        normalize_identifier(dup_identifier);
+        tnl_id->Identifier = dup_identifier;
         if (filename != NULL) {
             char* extension = strstr(filename, ".json");
 
@@ -557,9 +559,10 @@ void normalize_identifier(char *str) {
         if (*str == find) {
             *str = replace;
         }
+        *str = (char)tolower((unsigned char)*str); // Convert to lowercase
     }
 #else
-    return; // nothing to normalize at this time
+    // nothing to normalize at this time
 #endif
     remove_duplicate_path_separators(init_pos, PATH_SEP);
 }
@@ -581,7 +584,14 @@ void set_identifier_from_identities() {
         if (tnl_id->Identifier != NULL) {
             // set this field to false during initialization
             normalize_identifier((char*)tnl_id->Identifier);
-            model_map_set(&tnl_identity_map, tnl_id->Identifier, tnl_id);
+            // verify the identity file is still there before adding to the map
+
+            struct stat buffer;
+            if (stat(tnl_id->Identifier, &buffer) == 0) {
+                model_map_set(&tnl_identity_map, tnl_id->Identifier, tnl_id);
+            } else {
+                ZITI_LOG(WARN, "identity was in config, but file no longer exists. identifier=%s", tnl_id->Identifier);
+            }
         }
         //on startup - set mfa needed to false to correctly reflect tunnel status. After the identity is loaded these
         //are set to true __if necessary__
@@ -596,7 +606,6 @@ void initialize_tunnel_status() {
     tnl_status.StartTime.tv_sec = (long)now.tv_sec;
     tnl_status.StartTime.tv_usec = now.tv_usec;
     tnl_status.ApiPageSize = DEFAULT_API_PAGESIZE;
-
 }
 
 bool load_tunnel_status(const char* config_data) {
@@ -882,6 +891,33 @@ int get_api_page_size() {
     return tnl_status.ApiPageSize;
 }
 
+void set_config_dir(const char *path) {
+    tnl_status.ConfigDir = strdup(path);
+}
+
+void set_tun_name(const char *name) {
+    tnl_status.TunName = strdup(name);
+}
+
+char* get_zet_instance_id(const char* discriminator) {
+    char empty_delim[] = "";
+    char delim[] = ".";
+
+    char *delim_to_use = empty_delim;
+    if (discriminator != NULL) {
+        delim_to_use = delim;
+    } else {
+        discriminator = empty_delim; // can't use NULL so use the empty delim
+    }
+
+    size_t prefix_len = strlen(DEFAULT_EXECUTABLE_NAME);
+    size_t discrim_len = strlen(discriminator);
+    size_t delim_len = strlen(delim_to_use);
+
+    char *zet_instance_id = calloc(prefix_len + delim_len + discrim_len + 1, sizeof(char));
+    sprintf(zet_instance_id, "%s%s%s", DEFAULT_EXECUTABLE_NAME, delim_to_use, discriminator);
+    return zet_instance_id;
+}
 // ************** TUNNEL BROADCAST MESSAGES
 IMPL_MODEL(tunnel_identity, TUNNEL_IDENTITY)
 IMPL_MODEL(tunnel_config, TUNNEL_CONFIG)

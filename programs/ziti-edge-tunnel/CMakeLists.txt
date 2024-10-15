@@ -23,7 +23,7 @@ set(ZITI_INSTANCE_COMMON
         include/model/events.h
         include/model/dtos.h
         instance.c
-        include/identity-utils.h
+        include/instance.h
         config-utils.c
         include/config-utils.h
         instance-config.c

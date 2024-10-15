@@ -201,6 +201,7 @@ extern void ziti_tunnel_set_log_level(int lvl);
 typedef void (*ziti_tunnel_async_fn)(uv_loop_t *loop, void *ctx);
 extern void ziti_tunnel_async_send(tunneler_context tctx, ziti_tunnel_async_fn f, void *arg);
 
+size_t find_other_zets(model_list* ipcs, const char* base, const char* prefix);
 
 #define TNL_IP_MEM_POOL(XX, ...) \
 XX(name, model_string, none, Name, __VA_ARGS__) \
