@@ -29,6 +29,8 @@ RUN dnf install -y \
         doxygen \
         graphviz \
         git \
+        json-c-devel \
+        protobuf-c-devel \
         ninja-build \
     && dnf clean all 
 

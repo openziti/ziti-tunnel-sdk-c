@@ -27,6 +27,8 @@ RUN apt-get update \
         doxygen \
         git \
         graphviz \
+        libjson-c-dev \
+        libprotobuf-c-dev \
         libsystemd-dev \
         libtool \
         pkg-config \
@@ -40,6 +42,10 @@ RUN sed -Ei 's/^deb/deb [arch=amd64]/g' /etc/apt/sources.list
 RUN dpkg --add-architecture arm64 && dpkg --add-architecture armhf
 RUN apt-get update \
     && apt-get -y install \
+        libjson-c-dev:arm64 \
+        libjson-c-dev:armhf \
+        libprotobuf-c-dev:arm64 \
+        libprotobuf-c-dev:armhf \
         zlib1g-dev:arm64 \
         zlib1g-dev:armhf \
     && rm -rf /var/lib/apt/lists/*
