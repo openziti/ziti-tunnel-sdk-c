@@ -559,7 +559,7 @@ void normalize_identifier(char *str) {
         if (*str == find) {
             *str = replace;
         }
-        *str = (char)tolower((unsigned char)*str); // Convert to lowercase
+        *str = (char)tolower((unsigned char)*str); // Convert to lowercase when on windows
     }
 #else
     // nothing to normalize at this time
@@ -584,7 +584,7 @@ void set_identifier_from_identities() {
         if (tnl_id->Identifier != NULL) {
             // set this field to false during initialization
             normalize_identifier((char*)tnl_id->Identifier);
-            // verify the identity file is still there before adding to the map
+            // verify the identity file is still there before adding to the map. This handles the case when the fle is removed manually
 
             struct stat buffer;
             if (stat(tnl_id->Identifier, &buffer) == 0) {

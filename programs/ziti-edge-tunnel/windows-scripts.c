@@ -303,13 +303,20 @@ void remove_nrpt_rules(uv_loop_t *nrpt_loop, model_map *hostnames, const char* d
 }
 
 char* get_nrpt_comment(char* zet_id, bool exact) {
-    size_t tot_chars = 40 + strlen(zet_id);
-    char* nrpt_filter = calloc(tot_chars+1, sizeof(char));
-    if(exact) {
-        snprintf(nrpt_filter, tot_chars, "$_.Comment -eq 'Added by %s'", zet_id);
+    char *nrpt_filter;
+    char *name;
+    char *format;
+    if (exact) {
+        name = zet_id;
+        format = "$_.Comment -eq 'Added by %s'";
     } else {
-        snprintf(nrpt_filter, tot_chars, "$_.Comment.StartsWith('Added by %s')", zet_id);
+        // remove any rules starting with the common prefix
+        name = DEFAULT_EXECUTABLE_NAME;
+        format = "$_.Comment.StartsWith('Added by %s')";
     }
+    size_t tot_chars = strlen(format) + strlen(name);
+    nrpt_filter = calloc(tot_chars + 1, sizeof(char));
+    snprintf(nrpt_filter, tot_chars, format, name);
     return nrpt_filter;
 }
 

@@ -158,7 +158,7 @@ bool save_tunnel_status_to_file() {
             }
             saved = true;
             fclose(config);
-            ZITI_LOG(INFO, "Saved current tunnel status into Config file %s", config_file_name);
+            ZITI_LOG(DEBUG, "Saved current tunnel status into Config file %s", config_file_name);
         }
         uv_sem_post(&sem);
 
