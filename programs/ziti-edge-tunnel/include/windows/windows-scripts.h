@@ -35,7 +35,7 @@ void remove_nrpt_rules(uv_loop_t *nrpt_loop, model_map *hostnames, const char* d
 void remove_and_add_nrpt_rules(uv_loop_t *nrpt_loop, model_map *hostnames, const char* dns_ip, const char* discriminator);
 void remove_all_nrpt_rules(char* zet_id, bool exact);
 
-void update_interface_metric(uv_loop_t *ziti_loop, wchar_t* tun_name, int metric);
+void update_interface_metric(uv_loop_t *ziti_loop, const wchar_t* tun_name, int metric);
 void update_symlink(uv_loop_t *symlink_loop, char* symlink, char* filename);
 
 #endif //ZITI_TUNNEL_SDK_C_WINDOWS_SCRIPTS_H

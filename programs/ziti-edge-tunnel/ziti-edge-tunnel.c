@@ -1573,14 +1573,14 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
         ZITI_LOG(ERROR, "failed to open network interface: %s", tun_error);
         return 1;
     }
+
+#if _WIN32
     const wchar_t* tun_name = get_tun_name(tun->handle);
     size_t tun_name_len = wcslen(tun_name);
     char* name = calloc(tun_name_len, sizeof(char) + 1);
     wcstombs(name, tun_name, tun_name_len + 1);
-    set_tun_name(name);
+    set_tun_name(name); //sets the tunnel status, tun name...
     free(name);
-
-#if _WIN32
 
     char* zet_id = get_zet_instance_id(ipc_discriminator);
     bool nrpt_effective = is_nrpt_policies_effective(get_dns_ip(), zet_id);
@@ -1599,6 +1599,9 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
         ZITI_LOG(INFO, "Setting interface metric to 255");
         update_interface_metric(ziti_loop, tun_name, 255);
     }
+#else
+    const char* name = get_tun_name(tun->handle);
+    set_tun_name(name); //sets the tunnel status, tun name...
 #endif
 
     tunneler = initialize_tunneler(tun, ziti_loop);
@@ -2647,11 +2650,15 @@ static struct json_object* send_message_to_tunnel(char* message, char* ipc) {
         count += c;
     }
 
+#if _WIN32
     DWORD c;
     if (!WriteFile(cmd_soc, LAST_CHAR_IPC_CMD, 1, &c, NULL)) {
         fprintf(stderr, "failed to write to pipe: %lu", GetLastError());
         exit(1);
     }
+#else
+    //empty on purpose
+#endif
     struct json_tokener *parser = json_tokener_new();
     char buf[8*1024];
     struct json_object *json = NULL;
@@ -2685,10 +2692,6 @@ static struct json_object* send_message_to_tunnel(char* message, char* ipc) {
 }
 
 static void send_message_to_tunnel_fn(int argc, char *argv[]) {
-    int log_level = get_log_level(configured_log_level);
-    log_writer log_fn = ziti_log_writer;
-    log_init(uv_default_loop());
-
     configure_ipc(false);
     char* json = tunnel_command_to_json(&cmd, MODEL_JSON_COMPACT, NULL);
     struct json_object *jsonobj = send_message_to_tunnel(json, sockfile);
