@@ -31,17 +31,24 @@
 
 #if __APPLE__ && __MACH__
 #include "netif_driver/darwin/utun.h"
+#define LAST_CHAR_IPC_CMD "\0"
 #elif __linux__
 #include "netif_driver/linux/tun.h"
+#define LAST_CHAR_IPC_CMD "\0"
 #elif _WIN32
 #include <time.h>
 #include <io.h>
 #include "netif_driver/windows/tun.h"
 #include "windows/windows-service.h"
 #include "windows/windows-scripts.h"
-
+#define LAST_CHAR_IPC_CMD "\n"
+#define realpath(rel, abs) _fullpath(abs, rel, MAX_PATH)
 #define setenv(n,v,o) do {if(o || getenv(n) == NULL) _putenv_s(n,v); } while(0)
-
+//functions for logging on windows
+bool log_init(uv_loop_t *);
+void ziti_log_writer(int , const char *, const char *, size_t);
+char* get_log_file_name();
+#include <stdint.h>
 #endif
 
 #ifndef MAXIPCCOMMANDLEN
@@ -54,26 +61,13 @@
 
 #ifndef HOST_NAME_MAX
 #define HOST_NAME_MAX 254
+#endif
 
 #ifndef S_IRUSR
 #define	S_IRUSR		_S_IREAD
 #endif
 #ifndef S_IWUSR
 #define	S_IWUSR	_S_IWRITE
-#endif
-
-#if _WIN32
-#define LAST_CHAR_IPC_CMD "\n"
-#define realpath(rel, abs) _fullpath(abs, rel, MAX_PATH)
-#else
-#define LAST_CHAR_IPC_CMD "\0"
-#endif
-
-//functions for logging on windows
-bool log_init(uv_loop_t *);
-void ziti_log_writer(int , const char *, const char *, size_t);
-char* get_log_file_name();
-#include <stdint.h>
 #endif
 
 static int dns_miss_status = DNS_REFUSE;
