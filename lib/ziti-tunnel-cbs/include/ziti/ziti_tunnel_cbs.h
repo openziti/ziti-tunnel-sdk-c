@@ -91,7 +91,8 @@ XX(code, model_number, none, Code, __VA_ARGS__)
 #define TNL_LOAD_IDENTITY(XX, ...) \
 XX(identifier, model_string, none, Identifier, __VA_ARGS__)\
 XX(path, model_string, none, Path, __VA_ARGS__)            \
-XX(config, ziti_config, ptr, Config, __VA_ARGS__)    \
+XX(config, ziti_config, ptr, Config, __VA_ARGS__)          \
+XX(disabled, model_bool, none, Disabled, __VA_ARGS__)      \
 XX(apiPageSize, model_number, none, ApiPageSize, __VA_ARGS__)
 
 #define TNL_ON_OFF_IDENTITY(XX, ...) \
