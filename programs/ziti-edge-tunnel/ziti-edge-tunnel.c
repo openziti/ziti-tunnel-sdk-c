@@ -28,6 +28,7 @@
 #include "instance.h"
 #include "instance-config.h"
 #include <service-utils.h>
+#include <limits.h>
 
 #if __APPLE__ && __MACH__
 #include "netif_driver/darwin/utun.h"
