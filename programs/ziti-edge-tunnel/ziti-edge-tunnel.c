@@ -2338,7 +2338,7 @@ static ziti_enroll_opts enroll_opts;
 static char* config_file;
 
 #if _WIN32
-#define realpath(rel, abs) _fullpath(abs, rel, PATH_MAX)
+#define realpath(rel, abs) _fullpath(abs, rel, FILENAME_MAX)
 #endif
 
 static int parse_enroll_opts(int argc, char *argv[]) {
