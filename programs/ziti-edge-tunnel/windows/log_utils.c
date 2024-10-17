@@ -93,14 +93,6 @@ static char* get_log_path() {
         snprintf(log_path, FILENAME_MAX, "%slogs%cservice", process_dir, PATH_SEP);
     }
     mkdir_p(log_path);
-
-    struct stat info;
-    if (stat(log_path, &info) != 0) {
-        fprintf(stderr,"\nlogging cannot proceed. the path could not be created: %s!\n", log_path);
-    } else {
-        fprintf(stderr,"\nlogs enabled at: %s\n", log_path);
-    }
-
     return log_path;
 }
 

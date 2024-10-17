@@ -103,7 +103,9 @@ XX(ServiceVersion, service_version, ptr, ServiceVersion, __VA_ARGS__) \
 XX(TunIpv4, model_string, none, TunIpv4, __VA_ARGS__) \
 XX(TunPrefixLength, model_number, none, TunIpv4Mask, __VA_ARGS__) \
 XX(AddDns, model_bool, none, AddDns, __VA_ARGS__) \
-XX(ApiPageSize, model_number, none, ApiPageSize, __VA_ARGS__)
+XX(ApiPageSize, model_number, none, ApiPageSize, __VA_ARGS__) \
+XX(TunName, model_string, none, TunName, __VA_ARGS__)\
+XX(ConfigDir, model_string, none, ConfigDir, __VA_ARGS__)
 
 #define IP_INFO(XX, ...) \
 XX(Ip, model_string, none, Ip, __VA_ARGS__) \

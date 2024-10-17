@@ -539,7 +539,7 @@ int set_dns(netif_handle tun, uint32_t dns_ip) {
     return rc;
 }
 
-wchar_t* get_tun_name(netif_handle tun) {
+const wchar_t* get_tun_name(netif_handle tun) {
     return tun->name;
 }
 
