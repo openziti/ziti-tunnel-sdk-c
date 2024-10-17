@@ -28,7 +28,6 @@
 #include "instance.h"
 #include "instance-config.h"
 #include <service-utils.h>
-#include <limits.h>
 
 #if __APPLE__ && __MACH__
 #include "netif_driver/darwin/utun.h"
@@ -2057,8 +2056,8 @@ size_t find_other_zets(model_list* ipcs, const char* ipc_base, const char* ipc_p
 }
 
 static bool same_dir(const char* path1, const char* path2) {
-    char resolved_path1[PATH_MAX];
-    char resolved_path2[PATH_MAX];
+    char resolved_path1[FILENAME_MAX];
+    char resolved_path2[FILENAME_MAX];
 
     if (realpath(path1, resolved_path1) == NULL) {
         ZITI_LOG(ERROR, "error resolving path1");
@@ -2339,9 +2338,6 @@ static ziti_enroll_opts enroll_opts;
 static char* config_file;
 
 #if _WIN32
-#ifndef PATH_MAX
-#define PATH_MAX MAX_PATH
-#endif
 #define realpath(rel, abs) _fullpath(abs, rel, PATH_MAX)
 #endif
 
