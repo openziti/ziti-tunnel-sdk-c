@@ -25,23 +25,30 @@
 #include <ziti/ziti_log.h>
 #include <ziti/ziti_dns.h>
 #include "model/events.h"
-#include "identity-utils.h"
+#include "instance.h"
 #include "instance-config.h"
-#include <config-utils.h>
 #include <service-utils.h>
 
 #if __APPLE__ && __MACH__
 #include "netif_driver/darwin/utun.h"
+#define LAST_CHAR_IPC_CMD "\0"
 #elif __linux__
 #include "netif_driver/linux/tun.h"
+#define LAST_CHAR_IPC_CMD "\0"
 #elif _WIN32
 #include <time.h>
 #include <io.h>
 #include "netif_driver/windows/tun.h"
 #include "windows/windows-service.h"
 #include "windows/windows-scripts.h"
-
+#define LAST_CHAR_IPC_CMD "\n"
+#define realpath(rel, abs) _fullpath(abs, rel, MAX_PATH)
 #define setenv(n,v,o) do {if(o || getenv(n) == NULL) _putenv_s(n,v); } while(0)
+//functions for logging on windows
+bool log_init(uv_loop_t *);
+void ziti_log_writer(int , const char *, const char *, size_t);
+char* get_log_file_name();
+#include <stdint.h>
 #endif
 
 #ifndef MAXIPCCOMMANDLEN
@@ -54,19 +61,13 @@
 
 #ifndef HOST_NAME_MAX
 #define HOST_NAME_MAX 254
+#endif
 
 #ifndef S_IRUSR
 #define	S_IRUSR		_S_IREAD
 #endif
 #ifndef S_IWUSR
 #define	S_IWUSR	_S_IWRITE
-#endif
-
-//functions for logging on windows
-bool log_init(uv_loop_t *);
-void ziti_log_writer(int , const char *, const char *, size_t);
-char* get_log_file_name();
-#include <stdint.h>
 #endif
 
 static int dns_miss_status = DNS_REFUSE;
@@ -80,13 +81,11 @@ static void stop_tunnel_and_cleanup();
 static bool is_host_only();
 static void run_tunneler_loop(uv_loop_t* ziti_loop);
 static tunneler_context initialize_tunneler(netif_driver tun, uv_loop_t* ziti_loop);
+static struct json_object* send_message_to_tunnel(char* message, char* ipc);
 
-#if _WIN32
-static void move_config_from_previous_windows_backup(uv_loop_t *loop);
-#define LAST_CHAR_IPC_CMD '\n'
-#else
-#define LAST_CHAR_IPC_CMD '\0'
-#endif
+static tunnel_command cmd = {
+        .show_result = true, // consistent with old behaviour
+};
 
 struct ipc_cmd_s {
     char *cmd_data;
@@ -135,6 +134,7 @@ static char *configured_cidr = NULL;
 static char *configured_log_level = NULL;
 static char *configured_proxy = NULL;
 static char *config_dir = NULL;
+static char *ipc_discriminator = NULL;
 
 static uv_pipe_t cmd_server;
 static uv_pipe_t event_server;
@@ -155,15 +155,19 @@ static uv_cond_t stop_cond;
 IMPL_ENUM(event, EVENT_ACTIONS)
 
 #if _WIN32
-static char sockfile[] = "\\\\.\\pipe\\ziti-edge-tunnel.sock";
-static char eventsockfile[] = "\\\\.\\pipe\\ziti-edge-tunnel-event.sock";
+static char SOCKET_PATH[] = "\\\\.\\pipe\\";
+static char sockfilebase[] = "ziti-edge-tunnel.sock";
+static char eventsockfilebase[] = "ziti-edge-tunnel-event.sock";
 #elif __unix__ || unix || ( __APPLE__ && __MACH__ )
 #include <grp.h>
 #include <sys/un.h>
-#define SOCKET_PATH "/tmp/.ziti"
-static char sockfile[] = SOCKET_PATH "/ziti-edge-tunnel.sock";
-static char eventsockfile[] = SOCKET_PATH "/ziti-edge-tunnel-event.sock";
+static char SOCKET_PATH[] = "/tmp/.ziti/";
+static char sockfilebase[] = "ziti-edge-tunnel.sock";
+static char eventsockfilebase[] = "ziti-edge-tunnel-event.sock";
 #endif
+
+static char* sockfile;
+static char* eventsockfile;
 
 static int sizeof_event_clients_list() {
     struct event_conn_s *event_client;
@@ -266,7 +270,7 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
                                 }
 
                                 if (model_map_size(&hostnamesToRemove) > 0) {
-                                    remove_nrpt_rules(global_loop_ref, &hostnamesToRemove);
+                                    remove_nrpt_rules(global_loop_ref, &hostnamesToRemove, ipc_discriminator);
                                 }
                             }
                         } else {
@@ -305,7 +309,7 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
 
     if (uv_is_active((const uv_handle_t *) ctx)) {
         uv_buf_t buf;
-        size_t data_len = json_len + strlen("\n") + 1;
+        size_t data_len = json_len + strlen(LAST_CHAR_IPC_CMD) + 1;
         buf.base = calloc(data_len, sizeof(char));
         snprintf(buf.base, data_len, "%s\n", json);
         buf.len = strlen(buf.base);
@@ -390,6 +394,7 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
             .code = IPC_ERROR,
     };
     bool cmd_accepted = false;
+    bool save_config = true;
     switch (tnl_cmd->command) {
         case TunnelCommand_SetLogLevel: {
             cmd_accepted = true;
@@ -489,6 +494,7 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
         }
         case TunnelCommand_Status: {
             cmd_accepted = true;
+            save_config = false; // no need to save the file
             tunnel_status* status = get_tunnel_status();
             result.success = true;
             result.code = IPC_SUCCESS;
@@ -561,9 +567,9 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
             add_id_req->identifier = strdup(new_identifier);
             add_id_req->identifier_file_name = strdup(new_identifier_name);
             add_id_req->jwt_content = strdup(tunnel_add_identity_cmd.jwtContent);
-            add_id_req->use_keychain = tunnel_add_identity_cmd.useKeychain;
-
+            add_id_req->use_keychain = true;
             enroll_ziti_async(global_loop_ref, add_id_req);
+
             free_tunnel_add_identity(&tunnel_add_identity_cmd);
             return true;
         }
@@ -614,7 +620,11 @@ static bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb
         cb(&result, ctx);
         if (result.success) {
             // should be the last line in this function as it calls the mutex/lock
-            save_tunnel_status_to_file();
+            if(save_config) {
+                save_tunnel_status_to_file();
+            } else {
+
+            }
         }
         if (result.data) {
             free(result.data);
@@ -702,26 +712,26 @@ static void on_cmd_client(uv_stream_t *s, int status) {
     ZITI_LOG(DEBUG,"Received IPC client connection request, count: %d", ++current_ipc_channels);
 }
 
-static int start_cmd_socket(uv_loop_t *l) {
+static int start_cmd_socket(uv_loop_t *l, const char* ipc) {
 
     if (uv_is_active((const uv_handle_t *) &cmd_server)) {
         return 0;
     }
 
     uv_fs_t fs;
-    uv_fs_unlink(l, &fs, sockfile, NULL);
+    uv_fs_unlink(l, &fs, ipc, NULL);
 
 #define CHECK_UV(op) do{ \
     int uv_rc = (op);    \
     if (uv_rc != 0) {    \
-       ZITI_LOG(WARN, "failed to open IPC socket op=[%s] err=%d[%s]", #op, uv_rc, uv_strerror(uv_rc));\
+       ZITI_LOG(WARN, "failed to open IPC socket path=[%s] op=[%s] err=%d[%s]", ipc, #op, uv_rc, uv_strerror(uv_rc));\
        goto uv_err; \
     }                    \
     } while(0)
 
 
     CHECK_UV(uv_pipe_init(l, &cmd_server, 0));
-    CHECK_UV(uv_pipe_bind(&cmd_server, sockfile));
+    CHECK_UV(uv_pipe_bind(&cmd_server, ipc));
     CHECK_UV(uv_pipe_chmod(&cmd_server, UV_WRITABLE | UV_READABLE));
 
     uv_unref((uv_handle_t *) &cmd_server);
@@ -822,17 +832,17 @@ static void send_events_message(const void *message, to_json_fn to_json_f, bool 
     free(json);
 }
 
-static int start_event_socket(uv_loop_t *l) {
+static int start_event_socket(uv_loop_t *l, const char* ipc) {
 
     if (uv_is_active((const uv_handle_t *) &event_server)) {
         return 0;
     }
 
     uv_fs_t fs;
-    uv_fs_unlink(l, &fs, eventsockfile, NULL);
+    uv_fs_unlink(l, &fs, ipc, NULL);
 
     CHECK_UV(uv_pipe_init(l, &event_server, 0));
-    CHECK_UV(uv_pipe_bind(&event_server, eventsockfile));
+    CHECK_UV(uv_pipe_bind(&event_server, ipc));
     CHECK_UV(uv_pipe_chmod(&event_server, UV_WRITABLE | UV_READABLE));
 
     uv_unref((uv_handle_t *) &event_server);
@@ -1102,36 +1112,39 @@ static void load_identities(uv_work_t *wr) {
 
         uv_dirent_t file;
         while (uv_fs_scandir_next(&fs, &file) == 0) {
-            ZITI_LOG(TRACE, "processing file: %s %d", file.name, rc);
+            char* file_as_identifier = malloc(MAXPATHLEN);
+            snprintf(file_as_identifier, MAXPATHLEN, "%s%c%s", config_dir, PATH_SEP, file.name);
+            normalize_identifier(file_as_identifier);
+            ZITI_LOG(TRACE, "processing file: %s %d", file_as_identifier, rc);
             if(file.type != UV_DIRENT_FILE) {
-                ZITI_LOG(DEBUG, "skipping file in config dir as it's not the proper type. type: %d. file: %s", file.type, file.name);
-                continue;
+                ZITI_LOG(DEBUG, "skipping file in config dir as it's not the proper type. type: %d. file: %s", file.type, file_as_identifier);
+                goto exit_loop;
             }
-
-            if (strcasecmp(file.name, get_config_file_name(NULL)) == 0) {
-                ZITI_LOG(DEBUG, "skipping the configuration file: %s", file.name);
-                continue;
-            } else if(strcasecmp(file.name, get_backup_config_file_name(NULL)) == 0 ) {
-                ZITI_LOG(DEBUG, "skipping the backup configuration file: %s", file.name);
-                continue;
+            char* cfg_file_name = get_config_file_name();
+            normalize_identifier(cfg_file_name);
+            if (strcasecmp(file_as_identifier, cfg_file_name) == 0) {
+                ZITI_LOG(DEBUG, "skipping the configuration file: %s", file_as_identifier);
+                goto exit_loop;
             }
+            free(cfg_file_name);
 
-            const char* ext = get_filename_ext(file.name);
+            const char* ext = get_filename_ext(file_as_identifier);
 
             // ignore back up files
             if (strcasecmp(ext, ".bak") == 0 || strcasecmp(ext, ".original") == 0 || strcasecmp(ext, "json") != 0) {
-                ZITI_LOG(DEBUG, "skipping backup file: %s", file.name);
-                continue;
+                ZITI_LOG(DEBUG, "skipping backup file: %s", file_as_identifier);
+                goto exit_loop;
             }
 
-            ZITI_LOG(INFO, "loading identity file: %s", file.name);
+            ZITI_LOG(INFO, "loading identity file: %s", file_as_identifier);
             if (file.type == UV_DIRENT_FILE) {
                 struct cfg_instance_s *inst = calloc(1, sizeof(struct cfg_instance_s));
-                inst->cfg = malloc(MAXPATHLEN);
-                snprintf(inst->cfg, MAXPATHLEN, "%s%c%s", config_dir, PATH_SEP, file.name);
-                create_or_get_tunnel_identity(inst->cfg, file.name);
+                inst->cfg = strdup(file_as_identifier);
+                create_or_get_tunnel_identity(inst->cfg, file_as_identifier);
                 LIST_INSERT_HEAD(&load_list, inst, _next);
             }
+            exit_loop:
+            free(file_as_identifier);
         }
     }
 }
@@ -1151,6 +1164,8 @@ static void load_identities_complete(uv_work_t * wr, int status) {
     while(!LIST_EMPTY(&load_list)) {
         struct cfg_instance_s *inst = LIST_FIRST(&load_list);
         LIST_REMOVE(inst, _next);
+
+        normalize_identifier(inst->cfg);
 
         if (config_dir == NULL) {
             create_or_get_tunnel_identity(inst->cfg, inst->cfg);
@@ -1336,13 +1351,15 @@ static void on_event(const base_event *ev) {
             }
             
             if (id->Active && model_map_size(&hostnamesToEdit) > 0 && !is_host_only()) {
-                remove_and_add_nrpt_rules(global_loop_ref, &hostnamesToEdit, get_dns_ip());
+                remove_and_add_nrpt_rules(global_loop_ref, &hostnamesToEdit, get_dns_ip(), ipc_discriminator);
             }
             if (id->Active && model_map_size(&hostnamesToAdd) > 0 && !is_host_only()) {
-                add_nrpt_rules(global_loop_ref, &hostnamesToAdd, get_dns_ip());
+                char* zet_id = get_zet_instance_id(ipc_discriminator);
+                add_nrpt_rules(global_loop_ref, &hostnamesToAdd, get_dns_ip(), zet_id);
+                free(zet_id);
             }
             if (model_map_size(&hostnamesToRemove) > 0 && !is_host_only()) {
-                remove_nrpt_rules(global_loop_ref, &hostnamesToRemove);
+                remove_nrpt_rules(global_loop_ref, &hostnamesToRemove, ipc_discriminator);
             }
 
 #endif
@@ -1517,7 +1534,7 @@ static void on_event(const base_event *ev) {
     }
 }
 
-static char* normalize_host(char* hostname) {
+static char* normalize_host(const char* hostname) {
     size_t len = strlen(hostname);
     char* hostname_new = calloc(len+2, sizeof(char));
     // add . in the beginning of the hostname
@@ -1558,7 +1575,16 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     }
 
 #if _WIN32
-    bool nrpt_effective = is_nrpt_policies_effective(get_dns_ip());
+    const wchar_t* tun_name = get_tun_name(tun->handle);
+    size_t tun_name_len = wcslen(tun_name);
+    char* name = calloc(tun_name_len, sizeof(char) + 1);
+    wcstombs(name, tun_name, tun_name_len + 1);
+    set_tun_name(name); //sets the tunnel status, tun name...
+    free(name);
+
+    char* zet_id = get_zet_instance_id(ipc_discriminator);
+    bool nrpt_effective = is_nrpt_policies_effective(get_dns_ip(), zet_id);
+    free(zet_id);
     if (!nrpt_effective || get_add_dns_flag()) {
         if (get_add_dns_flag()) {
             ZITI_LOG(INFO, "DNS is enabled for the TUN interface, because apply Dns flag in the config file is true");
@@ -1568,11 +1594,14 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
         }
         set_dns(tun->handle, dns_ip);
         ZITI_LOG(INFO, "Setting interface metric to 5");
-        update_interface_metric(ziti_loop, get_tun_name(tun->handle), 5);
+        update_interface_metric(ziti_loop, tun_name, 5);
     } else {
         ZITI_LOG(INFO, "Setting interface metric to 255");
-        update_interface_metric(ziti_loop, get_tun_name(tun->handle), 255);
+        update_interface_metric(ziti_loop, tun_name, 255);
     }
+#else
+    const char* name = get_tun_name(tun->handle);
+    set_tun_name(name); //sets the tunnel status, tun name...
 #endif
 
     tunneler = initialize_tunneler(tun, ziti_loop);
@@ -1732,8 +1761,8 @@ static void run_tunneler_loop(uv_loop_t* ziti_loop) {
     int rc0 = 0, rc1;
     rc0 = rc1 = make_socket_path(ziti_loop);
     if (rc0 == 0) {
-        rc0 = start_cmd_socket(ziti_loop);
-        rc1 = start_event_socket(ziti_loop);
+        rc0 = start_cmd_socket(ziti_loop, sockfile);
+        rc1 = start_event_socket(ziti_loop, eventsockfile);
     }
 
     if (rc0 < 0 || rc1 < 0) {
@@ -1803,7 +1832,7 @@ static void usage(int argc, char *argv[]) {
         return;
     }
     char *help_args[] = {
-            "ziti-edge-tunnel",
+            DEFAULT_EXECUTABLE_NAME,
             argv[0],
             "-h"
     };
@@ -1818,6 +1847,7 @@ static struct option run_options[] = {
         { "dns-ip-range", required_argument, NULL, 'd'},
         { "dns-upstream", required_argument, NULL, 'u'},
         { "proxy", required_argument, NULL, 'x' },
+        { "ipc-discriminator", required_argument, NULL, 'P' },
 };
 
 static struct option run_host_options[] = {
@@ -1884,17 +1914,20 @@ static int run_opts(int argc, char *argv[]) {
     optind = 0;
     bool identity_provided = false;
 
-    while ((c = getopt_long(argc, argv, "i:I:v:r:d:u:x:",
+    while ((c = getopt_long(argc, argv, "i:I:v:r:d:u:x:p:P:",
                             run_options, &option_index)) != -1) {
         switch (c) {
             case 'i': {
                 struct cfg_instance_s *inst = calloc(1, sizeof(struct cfg_instance_s));
+                normalize_identifier(optarg);
                 inst->cfg = strdup(optarg);
+                create_or_get_tunnel_identity(inst->cfg, inst->cfg);
                 LIST_INSERT_HEAD(&load_list, inst, _next);
                 identity_provided = true;
                 break;
             }
             case 'I':
+                normalize_identifier(optarg);
                 config_dir = optarg;
                 identity_provided = true;
                 break;
@@ -1914,6 +1947,9 @@ static int run_opts(int argc, char *argv[]) {
                 break;
             case 'x':
                 configured_proxy = optarg;
+                break;
+            case 'P':
+                ipc_discriminator = optarg;
                 break;
             default: {
                 fprintf(stderr, "Unknown option '%c'\n", c);
@@ -1936,12 +1972,13 @@ static int run_host_opts(int argc, char *argv[]) {
     optind = 0;
     bool identity_provided = false;
 
-    while ((c = getopt_long(argc, argv, "i:I:v:r:x:",
+    while ((c = getopt_long(argc, argv, "i:I:v:r:x:P:",
                             run_host_options, &option_index)) != -1) {
         switch (c) {
             case 'i': {
                 struct cfg_instance_s *inst = calloc(1, sizeof(struct cfg_instance_s));
                 inst->cfg = strdup(optarg);
+                create_or_get_tunnel_identity(inst->cfg, inst->cfg);
                 LIST_INSERT_HEAD(&load_list, inst, _next);
                 identity_provided = true;
                 break;
@@ -1960,6 +1997,9 @@ static int run_host_opts(int argc, char *argv[]) {
             }
             case 'x':
                 configured_proxy = optarg;
+                break;
+            case 'P':
+                ipc_discriminator = optarg;
                 break;
             default: {
                 fprintf(stderr, "Unknown option '%c'\n", c);
@@ -1998,11 +2038,86 @@ static void interrupt_handler(int sig) {
 }
 #endif
 
+size_t find_other_zets(model_list* ipcs, const char* ipc_base, const char* ipc_prefix) {
+    uv_fs_t fs;
+    int rc = uv_fs_scandir(uv_default_loop(), &fs, SOCKET_PATH, 0, NULL);
+    if (rc < 0) {
+        ZITI_LOG(ERROR, "failed to scan dir[%s]: %d/%s", ipc_base, rc, uv_strerror(rc));
+        return 0;
+    }
+    uv_dirent_t file;
+    while (uv_fs_scandir_next(&fs, &file) == 0) {
+        size_t len = strlen(ipc_prefix);
+        if(strncmp(file.name, ipc_prefix, len) == 0) {
+            model_list_append(ipcs, strdup(file.name));
+        }
+    }
+    return model_list_size(ipcs);
+}
+
+static bool same_dir(const char* path1, const char* path2) {
+    char resolved_path1[FILENAME_MAX];
+    char resolved_path2[FILENAME_MAX];
+
+    if (realpath(path1, resolved_path1) == NULL) {
+        ZITI_LOG(ERROR, "error resolving path1");
+        return 0;
+    }
+
+    if (realpath(path2, resolved_path2) == NULL) {
+        ZITI_LOG(ERROR, "error resolving path2");
+        return 0;
+    }
+
+    return strcmp(resolved_path1, resolved_path2) == 0;
+}
+
+static void configure_ipc(bool automatic_ipc_discriminator) {
+    if(ipc_discriminator == NULL && automatic_ipc_discriminator) {
+        int pid = getpid();
+        ipc_discriminator = calloc(10, sizeof(char));
+        snprintf(ipc_discriminator, 10, "%d", pid);
+    }
+
+    size_t socket_path_len = strlen(SOCKET_PATH);
+    size_t ipc_discriminator_len = 0;
+    if (ipc_discriminator != NULL) {
+        ipc_discriminator_len = strlen(ipc_discriminator);
+    }
+    size_t sockfilebase_len = strlen(sockfilebase);
+    size_t eventsockfilebase_len = strlen(eventsockfilebase);
+
+    sockfile = calloc(socket_path_len + sockfilebase_len + ipc_discriminator_len + 1, sizeof(char));
+    eventsockfile = calloc(socket_path_len + eventsockfilebase_len + ipc_discriminator_len + 1, sizeof(char));
+
+    model_list ipc_list = {0};
+    size_t count = find_other_zets(&ipc_list, SOCKET_PATH, sockfilebase);
+    if(count > 0 && ipc_discriminator != NULL) {
+        ZITI_LOG(INFO, "multiple ziti-edge-tunnels are running. %zu found. applying ipc discriminator", count);
+        char *f;
+        model_list_iter it = model_list_iterator(&ipc_list);
+        int idx = 0;
+        while (it) {
+            f = model_list_it_element(it);
+            it = model_list_it_remove(it);
+            ZITI_LOG(INFO, "zet [%d] IPC found at: %s%c%s", idx++, SOCKET_PATH, PATH_SEP, f);
+        }
+
+        sprintf(sockfile, "%s%s.%s", SOCKET_PATH, sockfilebase, ipc_discriminator);
+        sprintf(eventsockfile, "%s%s.%s", SOCKET_PATH, eventsockfilebase, ipc_discriminator);
+    } else {
+        ZITI_LOG(INFO, "using default paths for IPC. resetting ipc_discriminator from %s to NULL", ipc_discriminator);
+        ipc_discriminator = NULL; // reset back to NULL
+        sprintf(sockfile, "%s%s", SOCKET_PATH, sockfilebase);
+        sprintf(eventsockfile, "%s%s", SOCKET_PATH, eventsockfilebase);
+    }
+    ZITI_LOG(INFO, "ipc command path: %s", sockfile);
+    ZITI_LOG(INFO, "ipc events  path: %s", eventsockfile);
+}
+
 static void run(int argc, char *argv[]) {
     uv_cond_init(&stop_cond);
     uv_mutex_init(&stop_mutex);
-
-    initialize_instance_config();
 
     //set log level in precedence: command line flag (-v/--verbose) -> env var (ZITI_LOG) -> config file
     int log_level = get_log_level(configured_log_level);
@@ -2012,15 +2127,70 @@ static void run(int argc, char *argv[]) {
     // initialize log function here. level will be set further down
     log_init(global_loop_ref);
     log_fn = ziti_log_writer;
-    remove_all_nrpt_rules();
-
     signal(SIGINT, interrupt_handler);
 #endif
 
     ziti_log_init(global_loop_ref, log_level, log_fn);
 
+    configure_ipc(true);
+
+    initialize_instance_config(config_dir);
+
+    model_list ipc_list = {0};
+    size_t other_zets = find_other_zets(&ipc_list, SOCKET_PATH, sockfilebase);
+
     // generate tunnel status instance and save active state and start time
     if (config_dir != NULL) {
+        // xx disable config save here
+        if (other_zets > 0) {
+            model_list_iter it = model_list_iterator(&ipc_list);
+            int idx = 0;
+            char *f;
+            while (it) {
+                f = model_list_it_element(it);
+                it = model_list_it_remove(it);
+                ZITI_LOG(INFO, "zet [%d] IPC found at: %s%c%s", idx++, SOCKET_PATH, PATH_SEP, f);
+                char *ipc = calloc(100, sizeof(char));
+                sprintf(ipc, "%s%c%s", SOCKET_PATH, PATH_SEP, f);
+                cmd.command = TunnelCommand_Status;
+                char *json = tunnel_command_to_json(&cmd, MODEL_JSON_COMPACT, NULL);
+
+                struct json_object *result = send_message_to_tunnel(json, ipc);
+                struct json_object *ts_obj;
+                if (!json_object_object_get_ex(result, "Data", &ts_obj)) {
+                    ZITI_LOG(WARN, "unable to extract response from %s", ipc);
+                    goto end_while;
+                }
+
+                const char *data = json_object_to_json_string_ext(ts_obj, JSON_C_TO_STRING_PRETTY);
+                size_t dlen = strlen(data);
+
+                tunnel_status s = {0};
+                int r = parse_tunnel_status(&s, data, dlen);
+                if (r < 0) {
+                    ZITI_LOG(WARN, "unable to parse tunnel_status response from %s", ipc);
+                    goto end_while;
+                }
+
+                if (same_dir(s.ConfigDir, config_dir)) {
+                    ZITI_LOG(ERROR, "another running ziti-edge-tunnel is configured to use the same config dir.");
+                    ZITI_LOG(ERROR, "running ziti-eddge-tunnel has TunName: %s", s.TunName);
+                    ZITI_LOG(ERROR, "running ziti-eddge-tunnel has ipc=%s", ipc);
+                    ZITI_LOG(ERROR, "exiting");
+                    ZITI_LOG(ERROR, "===========================================================================");
+                    exit(-1);
+                }
+
+                end_while:
+                free_tunnel_status(&s);
+                free(ipc);
+                free_tunnel_command(&cmd);
+                free(json);
+                if (result) {
+                    json_object_put(result);
+                }
+            }
+        }
         set_identifier_path(config_dir);
         load_tunnel_status_from_file(global_loop_ref);
     }
@@ -2070,6 +2240,11 @@ static void run(int argc, char *argv[]) {
     set_service_version();
 
 #if _WIN32
+    if (other_zets == 0) {
+        remove_all_nrpt_rules(DEFAULT_EXECUTABLE_NAME, false); //remove all rules starting with ziti-edge-tunnel
+    } else {
+        ZITI_LOG(INFO, "not removing existing rules on startup [%zu] other %s instances running", other_zets, DEFAULT_EXECUTABLE_NAME);
+    }
     uv_timeval64_t dump_time;
     uv_gettimeofday(&dump_time);
     char time_str[32];
@@ -2084,7 +2259,6 @@ static void run(int argc, char *argv[]) {
     ZITI_LOG(INFO,"	- initialized at   : %s (local time), %s (UTC)", time_val, time_str);
     ZITI_LOG(INFO,"	- log file location: %s", get_log_file_name());
     ZITI_LOG(INFO,"============================================================================");
-    move_config_from_previous_windows_backup(global_loop_ref);
 
     ZITI_LOG(DEBUG, "granting se_debug privilege to current process to allow access to privileged processes during posture checks");
     //ensure this process has the necessary access token to get the full path of privileged processes
@@ -2125,11 +2299,14 @@ static int version_opts(int argc, char *argv[]) {
     int c, option_index, errors = 0;
     optind = 0;
 
-    while ((c = getopt_long(argc, argv, "v",
+    while ((c = getopt_long(argc, argv, "v:P:",
                             version_options, &option_index)) != -1) {
         switch (c) {
             case 'v':
                 verbose_version = 1;
+                break;
+            case 'P':
+                ipc_discriminator = optarg;
                 break;
             default: {
                 fprintf(stderr, "Unknown option '%c'\n", c);
@@ -2161,10 +2338,7 @@ static ziti_enroll_opts enroll_opts;
 static char* config_file;
 
 #if _WIN32
-#ifndef PATH_MAX
-#define PATH_MAX MAX_PATH
-#endif
-#define realpath(rel, abs) _fullpath(abs, rel, PATH_MAX)
+#define realpath(rel, abs) _fullpath(abs, rel, FILENAME_MAX)
 #endif
 
 static int parse_enroll_opts(int argc, char *argv[]) {
@@ -2176,12 +2350,13 @@ static int parse_enroll_opts(int argc, char *argv[]) {
             { "cert", required_argument, NULL, 'c'},
             { "name", required_argument, NULL, 'n'},
             { "proxy", required_argument, NULL, 'x' },
+            { "ipc-discriminator", required_argument, NULL, 'P' },
     };
     int c, option_index, errors = 0;
     const char *proxy_arg = NULL;
     optind = 0;
 
-    while ((c = getopt_long(argc, argv, "j:i:Kk:c:n:x:",
+    while ((c = getopt_long(argc, argv, "j:i:Kk:c:n:x:P:",
                             opts, &option_index)) != -1) {
         switch (c) {
             case 'j':
@@ -2220,6 +2395,9 @@ static int parse_enroll_opts(int argc, char *argv[]) {
                 break;
             case 'x':
                 proxy_arg = optarg;
+                break;
+            case 'P':
+                ipc_discriminator = optarg;
                 break;
             default: {
                 fprintf(stderr, "Unknown option '%c'\n", c);
@@ -2342,14 +2520,11 @@ static void enroll(int argc, char *argv[]) {
     }
 }
 
-static tunnel_command cmd = {
-        .show_result = true, // consistent with old behaviour
-};
-
 static int dump_opts(int argc, char *argv[]) {
     static struct option opts[] = {
             {"identity", required_argument, NULL, 'i'},
             {"dump_path", required_argument, NULL, 'p'},
+            { "ipc-discriminator", required_argument, NULL, 'P' },
     };
     int c, option_index, errors = 0;
     optind = 0;
@@ -2357,7 +2532,7 @@ static int dump_opts(int argc, char *argv[]) {
     tunnel_ziti_dump *dump_options = calloc(1, sizeof(tunnel_ziti_dump));
     cmd.command = TunnelCommand_ZitiDump;
 
-    while ((c = getopt_long(argc, argv, "i:p:",
+    while ((c = getopt_long(argc, argv, "i:p:d:P:",
                             opts, &option_index)) != -1) {
         switch (c) {
             case 'i':
@@ -2365,6 +2540,9 @@ static int dump_opts(int argc, char *argv[]) {
                 break;
             case 'p':
                 dump_options->dump_path = realpath(optarg, NULL);
+                break;
+            case 'P':
+                ipc_discriminator = optarg;
                 break;
             default: {
                 fprintf(stderr, "Unknown option '%c'\n", c);
@@ -2389,6 +2567,7 @@ static int dump_opts(int argc, char *argv[]) {
 static int ip_dump_opts(int argc, char *argv[]) {
     static struct option opts[] = {
             {"dump_path", required_argument, NULL, 'p'},
+            { "ipc-discriminator", required_argument, NULL, 'P' },
     };
     int c, option_index, errors = 0;
     optind = 0;
@@ -2421,16 +2600,16 @@ static int ip_dump_opts(int argc, char *argv[]) {
     return optind;
 }
 
-static int send_message_to_tunnel(char* message, bool show_result) {
+static struct json_object* send_message_to_tunnel(char* message, char* ipc) {
 #if _WIN32
-    HANDLE cmd_soc = CreateFileA(sockfile,
+    HANDLE cmd_soc = CreateFileA(ipc,
                                  GENERIC_READ | GENERIC_WRITE,
                                  0, NULL,
                                  OPEN_EXISTING,
                                  FILE_FLAG_OVERLAPPED, NULL);
     if (cmd_soc == INVALID_HANDLE_VALUE) {
         DWORD err = GetLastError();
-        fprintf(stderr, "failed to connect to pipe: %lu", err);
+        fprintf(stderr, "failed to connect to pipe: %lu - pipe %s", err, ipc);
         exit(1);
     }
 #else
@@ -2441,7 +2620,7 @@ static int send_message_to_tunnel(char* message, bool show_result) {
             .sun_len = sizeof(addr),
 #endif
     };
-    strncpy(addr.sun_path, sockfile, sizeof(addr.sun_path));
+    strncpy(addr.sun_path, ipc, sizeof(addr.sun_path));
 
     if (connect(cmd_soc, (const struct sockaddr *) &addr, sizeof(addr))) {
         perror("cmd socket connect");
@@ -2468,12 +2647,20 @@ static int send_message_to_tunnel(char* message, bool show_result) {
         count += c;
     }
 
+#if _WIN32
+    DWORD c;
+    if (!WriteFile(cmd_soc, LAST_CHAR_IPC_CMD, 1, &c, NULL)) {
+        fprintf(stderr, "failed to write to pipe: %lu", GetLastError());
+        exit(1);
+    }
+#else
+    //empty on purpose
+#endif
     struct json_tokener *parser = json_tokener_new();
     char buf[8*1024];
     struct json_object *json = NULL;
     while(json == NULL) {
 #if _WIN32
-        DWORD c;
         if (!ReadFile(cmd_soc, buf, sizeof(buf), &c, NULL)) {
             fprintf(stderr, "failed to read from pipe: %lu", GetLastError());
             exit(1);
@@ -2496,42 +2683,50 @@ static int send_message_to_tunnel(char* message, bool show_result) {
         }
     }
 
-    if (show_result) {
-        printf("%s\n", json_object_to_json_string_ext(json, JSON_C_TO_STRING_PRETTY));
-    }
-    int code = json_object_get_boolean(json_object_object_get(json, "Success")) ?
-            0 : json_object_get_int(json_object_object_get(json, "Code"));
-    json_object_put(json);
     json_tokener_free(parser);
 
-    return code;
+    return json;
 }
 
 static void send_message_to_tunnel_fn(int argc, char *argv[]) {
+    configure_ipc(false);
     char* json = tunnel_command_to_json(&cmd, MODEL_JSON_COMPACT, NULL);
-    int result = send_message_to_tunnel(json, cmd.show_result);
+    struct json_object *jsonobj = send_message_to_tunnel(json, sockfile);
+
+    printf("%s\n", json_object_to_json_string_ext(jsonobj, JSON_C_TO_STRING_PRETTY));
+    int code = json_object_get_boolean(json_object_object_get(jsonobj, "Success")) ?
+               0 : json_object_get_int(json_object_object_get(jsonobj, "Code"));
     free_tunnel_command(&cmd);
     free(json);
-    exit(result);
+    if(jsonobj) {
+        json_object_put(jsonobj);
+        exit(0);
+    } else {
+        exit(-1);
+    }
 }
 
 // reusable parsing of a single required `-i` option
 static char* get_identity_opt(int argc, char *argv[]) {
     static struct option opts[] = {
             {"identity", required_argument, NULL, 'i'},
+            { "ipc-discriminator", required_argument, NULL, 'P' },
     };
     int c, option_index, errors = 0;
     optind = 0;
     char *id = NULL;
-    while ((c = getopt_long(argc, argv, "i:",
+    while ((c = getopt_long(argc, argv, "i:P:",
                             opts, &option_index)) != -1) {
         switch (c) {
             case 'i':
                 id = optarg;
                 break;
+            case 'P':
+                ipc_discriminator = optarg;
+                break;
             default: {
-                fprintf(stderr, "Unknown option '%c'\n", c);
-                errors++;
+                // not an error -- fprintf(stderr, "Unknown option '%c'\n", c);
+                //errors++;
                 break;
             }
         }
@@ -2547,9 +2742,34 @@ static char* get_identity_opt(int argc, char *argv[]) {
 
 static int ext_auth_opts(int argc, char *argv[]) {
     tunnel_identity_id id = {
-            .identifier = (char*)get_identity_opt(argc, argv),
-    };
 
+    };
+    optind = 0;
+
+    static struct option opts[] = {
+            {"identity", required_argument, NULL, 'i'},
+            { "verbose", required_argument, NULL, 'v'},
+            { "ipc-discriminator", required_argument, NULL, 'P' },
+    };
+    int c, option_index, errors = 0;
+    while ((c = getopt_long(argc, argv, "i:p:v:P:", opts, &option_index)) != -1) {
+        switch (c) {
+            case 'i':
+                id.identifier = optarg;
+                break;
+            case 'v':
+                configured_log_level = optarg;
+                break;
+            case 'P':
+                ipc_discriminator = optarg;
+                break;
+            default: {
+                fprintf(stderr, "Unknown option '%c'\n", c);
+                errors++;
+                break;
+            }
+        }
+    }
     cmd.command = TunnelCommands.ExternalAuth;
     cmd.data = tunnel_identity_id_to_json(&id, MODEL_JSON_COMPACT, NULL);
     return optind;
@@ -2558,7 +2778,8 @@ static int ext_auth_opts(int argc, char *argv[]) {
 static int on_off_identity_opts(int argc, char *argv[]) {
     static struct option opts[] = {
             {"identity", required_argument, NULL, 'i'},
-            {"onoff", required_argument, NULL, 'o'}
+            {"onoff", required_argument, NULL, 'o'},
+            { "ipc-discriminator", required_argument, NULL, 'P' },
     };
     int c, option_index, errors = 0;
     optind = 0;
@@ -2566,7 +2787,7 @@ static int on_off_identity_opts(int argc, char *argv[]) {
     tunnel_on_off_identity on_off_identity_options = {0};
     cmd.command = TunnelCommand_IdentityOnOff;
 
-    while ((c = getopt_long(argc, argv, "i:o:",
+    while ((c = getopt_long(argc, argv, "i:o:P:",
                             opts, &option_index)) != -1) {
         switch (c) {
             case 'i':
@@ -2580,6 +2801,9 @@ static int on_off_identity_opts(int argc, char *argv[]) {
                 }
                 break;
             }
+            case 'P':
+                ipc_discriminator = optarg;
+                break;
             default: {
                 fprintf(stderr, "Unknown option '%c'\n", c);
                 errors++;
@@ -2628,6 +2852,7 @@ static int verify_mfa_opts(int argc, char *argv[]) {
     static struct option opts[] = {
             {"identity", required_argument, NULL, 'i'},
             {"authcode", required_argument, NULL, 'c'},
+            { "ipc-discriminator", required_argument, NULL, 'P' },
     };
     int c, option_index, errors = 0;
     optind = 0;
@@ -2635,7 +2860,7 @@ static int verify_mfa_opts(int argc, char *argv[]) {
     tunnel_verify_mfa *verify_mfa_options = calloc(1, sizeof(tunnel_verify_mfa));
     cmd.command = TunnelCommand_VerifyMFA;
 
-    while ((c = getopt_long(argc, argv, "i:c:",
+    while ((c = getopt_long(argc, argv, "i:c:P:",
                             opts, &option_index)) != -1) {
         switch (c) {
             case 'i':
@@ -2643,6 +2868,9 @@ static int verify_mfa_opts(int argc, char *argv[]) {
                 break;
             case 'c':
                 verify_mfa_options->code = optarg;
+                break;
+            case 'P':
+                ipc_discriminator = optarg;
                 break;
             default: {
                 fprintf(stderr, "Unknown option '%c'\n", c);
@@ -2665,6 +2893,7 @@ static int remove_mfa_opts(int argc, char *argv[]) {
     static struct option opts[] = {
             {"identity", required_argument, NULL, 'i'},
             {"authcode", required_argument, NULL, 'c'},
+            { "ipc-discriminator", required_argument, NULL, 'P' },
     };
     int c, option_index, errors = 0;
     optind = 0;
@@ -2672,7 +2901,7 @@ static int remove_mfa_opts(int argc, char *argv[]) {
     tunnel_remove_mfa *remove_mfa_options = calloc(1, sizeof(tunnel_remove_mfa));
     cmd.command = TunnelCommand_RemoveMFA;
 
-    while ((c = getopt_long(argc, argv, "i:c:",
+    while ((c = getopt_long(argc, argv, "i:c:P:",
                             opts, &option_index)) != -1) {
         switch (c) {
             case 'i':
@@ -2680,6 +2909,9 @@ static int remove_mfa_opts(int argc, char *argv[]) {
                 break;
             case 'c':
                 remove_mfa_options->code = optarg;
+                break;
+            case 'P':
+                ipc_discriminator = optarg;
                 break;
             default: {
                 fprintf(stderr, "Unknown option '%c'\n", c);
@@ -2702,6 +2934,7 @@ static int submit_mfa_opts(int argc, char *argv[]) {
     static struct option opts[] = {
             {"identity", required_argument, NULL, 'i'},
             {"authcode", required_argument, NULL, 'c'},
+            { "ipc-discriminator", required_argument, NULL, 'P' },
     };
     int c, option_index, errors = 0;
     optind = 0;
@@ -2709,7 +2942,7 @@ static int submit_mfa_opts(int argc, char *argv[]) {
     tunnel_submit_mfa *submit_mfa_options = calloc(1, sizeof(tunnel_submit_mfa));
     cmd.command = TunnelCommand_SubmitMFA;
 
-    while ((c = getopt_long(argc, argv, "i:c:",
+    while ((c = getopt_long(argc, argv, "i:c:P:",
                             opts, &option_index)) != -1) {
         switch (c) {
             case 'i':
@@ -2717,6 +2950,9 @@ static int submit_mfa_opts(int argc, char *argv[]) {
                 break;
             case 'c':
                 submit_mfa_options->code = optarg;
+                break;
+            case 'P':
+                ipc_discriminator = optarg;
                 break;
             default: {
                 fprintf(stderr, "Unknown option '%c'\n", c);
@@ -2739,6 +2975,7 @@ static int generate_mfa_codes_opts(int argc, char *argv[]) {
     static struct option opts[] = {
             {"identity", required_argument, NULL, 'i'},
             {"authcode", required_argument, NULL, 'c'},
+            { "ipc-discriminator", required_argument, NULL, 'P' },
     };
     int c, option_index, errors = 0;
     optind = 0;
@@ -2746,7 +2983,7 @@ static int generate_mfa_codes_opts(int argc, char *argv[]) {
     tunnel_generate_mfa_codes *mfa_codes_options = calloc(1, sizeof(tunnel_generate_mfa_codes));
     cmd.command = TunnelCommand_GenerateMFACodes;
 
-    while ((c = getopt_long(argc, argv, "i:c:",
+    while ((c = getopt_long(argc, argv, "i:c:P:",
                             opts, &option_index)) != -1) {
         switch (c) {
             case 'i':
@@ -2754,6 +2991,9 @@ static int generate_mfa_codes_opts(int argc, char *argv[]) {
                 break;
             case 'c':
                 mfa_codes_options->code = optarg;
+                break;
+            case 'P':
+                ipc_discriminator = optarg;
                 break;
             default: {
                 fprintf(stderr, "Unknown option '%c'\n", c);
@@ -2776,6 +3016,7 @@ static int get_mfa_codes_opts(int argc, char *argv[]) {
     static struct option opts[] = {
             {"identity", required_argument, NULL, 'i'},
             {"authcode", required_argument, NULL, 'c'},
+            { "ipc-discriminator", required_argument, NULL, 'P' },
     };
     int c, option_index, errors = 0;
     optind = 0;
@@ -2783,7 +3024,7 @@ static int get_mfa_codes_opts(int argc, char *argv[]) {
     tunnel_get_mfa_codes *get_mfa_codes_options = calloc(1, sizeof(tunnel_get_mfa_codes));
     cmd.command = TunnelCommand_GetMFACodes;
 
-    while ((c = getopt_long(argc, argv, "i:c:",
+    while ((c = getopt_long(argc, argv, "i:c:P:",
                             opts, &option_index)) != -1) {
         switch (c) {
             case 'i':
@@ -2791,6 +3032,9 @@ static int get_mfa_codes_opts(int argc, char *argv[]) {
                 break;
             case 'c':
                 get_mfa_codes_options->code = optarg;
+                break;
+            case 'P':
+                ipc_discriminator = optarg;
                 break;
             default: {
                 fprintf(stderr, "Unknown option '%c'\n", c);
@@ -2812,16 +3056,20 @@ static int get_mfa_codes_opts(int argc, char *argv[]) {
 static int set_log_level_opts(int argc, char *argv[]) {
     static struct option opts[] = {
             {"loglevel", required_argument, NULL, 'l'},
+            { "ipc-discriminator", required_argument, NULL, 'P' },
     };
     int c, option_index, errors = 0;
     optind = 0;
 
     tunnel_set_log_level log_level_options = {0};
-    while ((c = getopt_long(argc, argv, "l:",
+    while ((c = getopt_long(argc, argv, "l:P:",
                             opts, &option_index)) != -1) {
         switch (c) {
             case 'l':
                 log_level_options.loglevel = optarg;
+                break;
+            case 'P':
+                ipc_discriminator = optarg;
                 break;
             default: {
                 fprintf(stderr, "Unknown option '%c'\n", c);
@@ -2851,6 +3099,7 @@ static int update_tun_ip_opts(int argc, char *argv[]) {
             {"tunip", required_argument, NULL, 't'},
             {"prefixlength", required_argument, NULL, 'p'},
             {"addDNS", required_argument, NULL, 'd'},
+            { "ipc-discriminator", required_argument, NULL, 'P' },
     };
     int c, option_index, errors = 0;
     optind = 0;
@@ -2895,6 +3144,7 @@ static int endpoint_status_change_opts(int argc, char *argv[]) {
     static struct option opts[] = {
             {"wake", optional_argument, NULL, 'w'},
             {"unlock", optional_argument, NULL, 'u'},
+            { "ipc-discriminator", required_argument, NULL, 'P' },
     };
     int c, option_index, errors = 0;
     optind = 0;
@@ -2902,7 +3152,7 @@ static int endpoint_status_change_opts(int argc, char *argv[]) {
     tunnel_status_change *tunnel_status_change_opts = calloc(1, sizeof(tunnel_status_change));
     cmd.command = TunnelCommand_StatusChange;
 
-    while ((c = getopt_long(argc, argv, "w:u:",
+    while ((c = getopt_long(argc, argv, "w:u:P:",
                             opts, &option_index)) != -1) {
         switch (c) {
             case 'w':
@@ -2918,6 +3168,9 @@ static int endpoint_status_change_opts(int argc, char *argv[]) {
                 } else {
                     tunnel_status_change_opts->unlocked = false;
                 }
+                break;
+            case 'P':
+                ipc_discriminator = optarg;
                 break;
             default: {
                 fprintf(stderr, "Unknown option '%c'\n", c);
@@ -2967,13 +3220,16 @@ static int svc_opts(int argc, char *argv[]) {
     int c, option_index, errors = 0;
     optind = 0;
 
-    while ((c = getopt_long(argc, argv, "o:",
+    while ((c = getopt_long(argc, argv, "o:P:",
                             svc_opts, &option_index)) != -1) {
         switch (c) {
             case 'o': {
                 tunnel_service_control_options->operation = optarg;
                 break;
             }
+            case 'P':
+                ipc_discriminator = optarg;
+                break;
             default: {
                 ZITI_LOG(ERROR, "Unknown option '%c'", c);
                 errors++;
@@ -2992,10 +3248,31 @@ static int svc_opts(int argc, char *argv[]) {
 #endif
 
 static int get_status_opts(int argc, char *argv[]) {
+    static struct option opts[] = {
+            { "ipc-discriminator", required_argument, NULL, 'P' },
+            { "verbose", required_argument, NULL, 'v'},
+    };
+    int c, option_index, errors = 0;
     optind = 0;
 
     cmd.command = TunnelCommand_Status;
 
+    while ((c = getopt_long(argc, argv, "P:v:",
+                            opts, &option_index)) != -1) {
+        switch (c) {
+            case 'P':
+                ipc_discriminator = optarg;
+                break;
+            case 'v':
+                configured_log_level = optarg;
+                break;
+            default: {
+                ZITI_LOG(ERROR, "Unknown option '%c'", c);
+                errors++;
+                break;
+            }
+        }
+    }
     return optind;
 }
 
@@ -3017,6 +3294,7 @@ static int add_identity_opts(int argc, char *argv[]) {
             {"use-keychain", no_argument, NULL, 'K' },
             {"identity", required_argument, NULL, 'i'},
             {"jwt", required_argument, NULL, 'j'},
+            { "ipc-discriminator", required_argument, NULL, 'P' },
     };
     int c, option_index, errors = 0;
     optind = 0;
@@ -3024,7 +3302,7 @@ static int add_identity_opts(int argc, char *argv[]) {
     tunnel_add_identity *tunnel_add_identity_opt = calloc(1, sizeof(tunnel_add_identity));
     cmd.command = TunnelCommand_AddIdentity;
 
-    while ((c = getopt_long(argc, argv, "Ki:j:",
+    while ((c = getopt_long(argc, argv, "Ki:j:P:",
                             opts, &option_index)) != -1) {
         switch (c) {
             case 'K':
@@ -3035,6 +3313,9 @@ static int add_identity_opts(int argc, char *argv[]) {
                 break;
             case 'j':
                 tunnel_add_identity_opt->jwtContent = optarg;
+                break;
+            case 'P':
+                ipc_discriminator = optarg;
                 break;
             default: {
                 fprintf(stderr, "Unknown option '%c'\n", c);
@@ -3053,84 +3334,119 @@ static int add_identity_opts(int argc, char *argv[]) {
     return optind;
 }
 
+
 static CommandLine enroll_cmd = make_command("enroll", "enroll Ziti identity",
-        "-j|--jwt <enrollment token> -i|--identity <identity> [-k|--key <private_key> [-c|--cert <certificate>]] [-n|--name <name>]",
+        "-j|--jwt <enrollment token> -i|--identity <identity> [-k|--key <private_key> [-c|--cert <certificate>]] [-n|--name <name>]\n",
         "\t-j|--jwt\tenrollment token file\n"
         "\t-x|--proxy type://[username[:password]@]hostname_or_ip:port\tproxy to use when connecting to OpenZiti controller. 'http' is currently the only supported type.\n"
         "\t-i|--identity\toutput identity file\n"
         "\t-K|--use-keychain\tuse keychain to generate/store private key\n"
         "\t-k|--key\tprivate key for enrollment\n"
         "\t-c|--cert\tcertificate for enrollment\n"
-        "\t-n|--name\tidentity name\n",
+        "\t-n|--name\tidentity name\n"
+        "\t-P|--ipc-discriminator\ta discriminator to apply to the IPC sockets\n",
         parse_enroll_opts, enroll);
 static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required superuser access)",
                                           "-i <id.file> [-r N] [-v N] [-d|--dns-ip-range N.N.N.N/n]",
                                           "\t-i|--identity <identity>\trun with provided identity file (required)\n"
                                           "\t-I|--identity-dir <dir>\tload identities from provided directory\n"
                                           "\t-x|--proxy type://[username[:password]@]hostname_or_ip:port\tproxy to use when"
-                                          " connecting to OpenZiti controller and edge routers. 'http' is currently the only supported type."
+                                          " connecting to OpenZiti controller and edge routers. 'http' is currently the only supported type.\n"
                                           "\t-v|--verbose N\tset log level, higher level -- more verbose (default 3)\n"
                                           "\t-r|--refresh N\tset service polling interval in seconds (default 10)\n"
                                           "\t-d|--dns-ip-range <ip range>\tspecify CIDR block in which service DNS names"
-                                          " are assigned in N.N.N.N/n format (default " DEFAULT_DNS_CIDR ")\n",
+                                          " are assigned in N.N.N.N/n format (default " DEFAULT_DNS_CIDR ")\n"
+                                          "\t-P|--ipc-discriminator\ta discriminator to apply to the IPC sockets\n",
         run_opts, run);
 static CommandLine run_host_cmd = make_command("run-host", "run Ziti tunnel to host services",
                                           "-i <id.file> [-r N] [-v N]",
                                           "\t-i|--identity <identity>\trun with provided identity file (required)\n"
                                           "\t-I|--identity-dir <dir>\tload identities from provided directory\n"
                                           "\t-x|--proxy type://[username[:password]@]hostname_or_ip:port\tproxy to use when"
-                                          " connecting to OpenZiti controller and edge routers"
+                                          " connecting to OpenZiti controller and edge routers\n"
                                           "\t-v|--verbose N\tset log level, higher level -- more verbose (default 3)\n"
-                                          "\t-r|--refresh N\tset service polling interval in seconds (default 10)\n",
+                                          "\t-r|--refresh N\tset service polling interval in seconds (default 10)\n"
+                                          "\t-P|--ipc-discriminator\ta discriminator to apply to the IPC sockets\n",
                                           run_host_opts, run);
 static CommandLine dump_cmd = make_command("dump", "dump the identities information", "[-i <identity>] [-p <dir>]",
                                            "\t-i|--identity\tdump identity info\n"
-                                           "\t-p|--dump_path\tdump into path\n", dump_opts, send_message_to_tunnel_fn);
+                                           "\t-p|--dump_path\tdump into path\n"
+                                           "\t-d|--ipc-discriminator\ta discriminator to apply to the IPC sockets\n",
+                                           dump_opts, send_message_to_tunnel_fn);
 static CommandLine ip_dump_cmd = make_command("ip_dump", "dump ip stack information", "[-p <dir>]",
-                                              "\t-p|--dump_path\tdump into path\n", ip_dump_opts, send_message_to_tunnel_fn);
+                                              "\t-p|--dump_path\tdump into path\n"
+                                              "\t-d|--ipc-discriminator\ta discriminator to apply to the IPC sockets\n",
+                                              ip_dump_opts, send_message_to_tunnel_fn);
 static CommandLine on_off_id_cmd = make_command("on_off_identity", "enable/disable the identities information", "-i <identity> -o t|f",
                                            "\t-i|--identity\tidentity info that needs to be enabled/disabled\n"
-                                                "\t-o|--onoff\t't' or 'f' to enable or disable the identity\n", on_off_identity_opts, send_message_to_tunnel_fn);
+                                           "\t-o|--onoff\t't' or 'f' to enable or disable the identity\n"
+                                           "\t-P|--ipc-discriminator\ta discriminator to apply to the IPC sockets\n",
+                                           on_off_identity_opts, send_message_to_tunnel_fn);
 static CommandLine enable_id_cmd = make_command("enable", "enable the identities information", "[-i <identity>]",
-                                                 "\t-i|--identity\tidentity info that needs to be enabled\n", enable_identity_opts, send_message_to_tunnel_fn);
+                                                 "\t-i|--identity\tidentity info that needs to be enabled\n"
+                                                 "\t-P|--ipc-discriminator\ta discriminator to apply to the IPC sockets\n",
+                                                enable_identity_opts, send_message_to_tunnel_fn);
 static CommandLine enable_mfa_cmd = make_command("enable_mfa", "Enable MFA function fetches the totp url from the controller", "[-i <identity>]",
-                                           "\t-i|--identity\tidentity info for enabling mfa\n", enable_mfa_opts, send_message_to_tunnel_fn);
+                                           "\t-i|--identity\tidentity info for enabling mfa\n"
+                                           "\t-P|--ipc-discriminator\ta discriminator to apply to the IPC sockets\n",
+                                                 enable_mfa_opts, send_message_to_tunnel_fn);
 static CommandLine verify_mfa_cmd = make_command("verify_mfa", "Verify the mfa login using the auth code while enabling mfa", "[-i <identity>] [-c <code>]",
                                                  "\t-i|--identity\tidentity info to verify mfa login\n"
-                                                 "\t-c|--authcode\tauth code to verify mfa login\n", verify_mfa_opts, send_message_to_tunnel_fn);
+                                                 "\t-c|--authcode\tauth code to verify mfa login\n"
+                                                 "\t-P|--ipc-discriminator\ta discriminator to apply to the IPC sockets\n",
+                                                 verify_mfa_opts, send_message_to_tunnel_fn);
 static CommandLine remove_mfa_cmd = make_command("remove_mfa", "Removes MFA registration from the controller", "[-i <identity>] [-c <code>]",
                                                  "\t-i|--identity\tidentity info for removing mfa\n"
-                                                 "\t-c|--authcode\tauth code to verify mfa login\n", remove_mfa_opts, send_message_to_tunnel_fn);
+                                                 "\t-c|--authcode\tauth code to verify mfa login\n"
+                                                 "\t-P|--ipc-discriminator\ta discriminator to apply to the IPC sockets\n",
+                                                 remove_mfa_opts, send_message_to_tunnel_fn);
 static CommandLine submit_mfa_cmd = make_command("submit_mfa", "Submit MFA code to authenticate to the controller", "[-i <identity>] [-c <code>]",
                                                  "\t-i|--identity\tidentity info for submitting mfa\n"
-                                                 "\t-c|--authcode\tauth code to authenticate mfa login\n", submit_mfa_opts, send_message_to_tunnel_fn);
+                                                 "\t-c|--authcode\tauth code to authenticate mfa login\n"
+                                                 "\t-P|--ipc-discriminator\ta discriminator to apply to the IPC sockets\n",
+                                                 submit_mfa_opts, send_message_to_tunnel_fn);
 static CommandLine generate_mfa_codes_cmd = make_command("generate_mfa_codes", "Generate MFA codes", "[-i <identity>] [-c <code>]",
                                                  "\t-i|--identity\tidentity info for generating mfa codes\n"
-                                                 "\t-c|--authcode\tauth code to authenticate the request for generating mfa codes\n", generate_mfa_codes_opts, send_message_to_tunnel_fn);
+                                                 "\t-c|--authcode\tauth code to authenticate the request for generating mfa codes\n"
+                                                 "\t-P|--ipc-discriminator\ta discriminator to apply to the IPC sockets\n",
+                                                         generate_mfa_codes_opts, send_message_to_tunnel_fn);
 static CommandLine get_mfa_codes_cmd = make_command("get_mfa_codes", "Get MFA codes", "[-i <identity>] [-c <code>]",
                                                          "\t-i|--identity\tidentity info for fetching mfa codes\n"
                                                          "\t-c|--authcode\tauth code to authenticate the request for fetching mfa codes\n", get_mfa_codes_opts, send_message_to_tunnel_fn);
-static CommandLine get_status_cmd = make_command("tunnel_status", "Get Tunnel Status", "", "", get_status_opts, send_message_to_tunnel_fn);
+static CommandLine get_status_cmd = make_command("tunnel_status", "Get Tunnel Status", "", ""
+                                                 "\t-P|--ipc-discriminator\ta discriminator to apply to the IPC sockets\n",
+                                                 get_status_opts, send_message_to_tunnel_fn);
 static CommandLine delete_id_cmd = make_command("delete", "delete the identities information", "[-i <identity>]",
-                                                 "\t-i|--identity\tidentity info that needs to be deleted\n", delete_identity_opts, send_message_to_tunnel_fn);
+                                                 "\t-i|--identity\tidentity info that needs to be deleted\n"
+                                                 "\t-P|--ipc-discriminator\ta discriminator to apply to the IPC sockets\n",
+                                                delete_identity_opts, send_message_to_tunnel_fn);
 static CommandLine add_id_cmd = make_command("add", "enroll and load the identity", "-j <jwt_content> -i <identity_name>",
                                                 "\t-K|--use-keychain\tuse keychain to generate/store private key\n"
                                                 "\t-j|--jwt\tenrollment token content\n"
-                                                "\t-i|--identity\toutput identity .json file (relative to \"-I\" config directory)\n",
-                                                add_identity_opts, send_message_to_tunnel_fn);
+                                                "\t-i|--identity\toutput identity .json file (relative to \"-I\" config directory)\n"
+                                                "\t-P|--ipc-discriminator\ta discriminator to apply to the IPC sockets\n",
+                                             add_identity_opts, send_message_to_tunnel_fn);
 static CommandLine set_log_level_cmd = make_command("set_log_level", "Set log level of the tunneler", "-l <level>",
-                                                    "\t-l|--loglevel\tlog level of the tunneler\n", set_log_level_opts, send_message_to_tunnel_fn);
+                                                    "\t-l|--loglevel\tlog level of the tunneler\n"
+                                                    "\t-P|--ipc-discriminator\ta discriminator to apply to the IPC sockets\n",
+                                                    set_log_level_opts, send_message_to_tunnel_fn);
 static CommandLine update_tun_ip_cmd = make_command("update_tun_ip", "Update tun ip of the tunneler", "[-t <tunip>] [-p <prefixlength>] [-d <AddDNS>]",
                                                     "\t-t|--tunip\ttun ipv4 of the tunneler\n"
                                                     "\t-p|--prefixlength\ttun ipv4 prefix length of the tunneler\n"
-                                                    "\t-d|--addDNS\tAdd Dns to the tunneler\n", update_tun_ip_opts, send_message_to_tunnel_fn);
+                                                    "\t-d|--addDNS\tAdd Dns to the tunneler\n"
+                                                    "\t-P|--ipc-discriminator\ta discriminator to apply to the IPC sockets\n",
+                                                    update_tun_ip_opts, send_message_to_tunnel_fn);
 static CommandLine ep_status_change_cmd = make_command("endpoint_sts_change", "send endpoint status change message to the tunneler", "[-w <wake>] [-u <unlock>]",
                                                     "\t-w|--wake\twake the tunneler\n"
-                                                    "\t-u|--unlock\tunlock the tunneler\n", endpoint_status_change_opts, send_message_to_tunnel_fn);
+                                                    "\t-u|--unlock\tunlock the tunneler\n"
+                                                    "\t-P|--ipc-discriminator\ta discriminator to apply to the IPC sockets\n",
+                                                       endpoint_status_change_opts, send_message_to_tunnel_fn);
 static CommandLine ext_auth_login = make_command(
         "ext-jwt-login",
         "login with ext JWT signer", "-i <identity>",
-        "\t-i|--identity\tidentity to authenticate\n",
+        "\t-i|--identity\tidentity to authenticate\n"
+        "\t-v|--verbose N\tset log level, higher level -- more verbose (default 3)\n"
+        "\t-p|--ipc-discriminator\ta discriminator to apply to the IPC sockets\n",
         ext_auth_opts, send_message_to_tunnel_fn);
 
 #if _WIN32
@@ -3228,7 +3544,7 @@ void scm_service_run(const char *name) {
 void stop_tunnel_and_cleanup() {
     ZITI_LOG(INFO, "Control request to stop tunnel service received...");
 
-    ZITI_LOG(INFO,"notifying any clients of impending shutdown");
+    ZITI_LOG(INFO, "notifying any clients of impending shutdown");
     send_tunnel_status("shutdown");
 
     // ziti dump to log file / stdout
@@ -3236,8 +3552,16 @@ void stop_tunnel_and_cleanup() {
     tnl_cmd->command = TunnelCommand_ZitiDump;
     send_tunnel_command_inline(tnl_cmd, NULL);
 
-    ZITI_LOG(INFO,"removing nrpt rules");
-    remove_all_nrpt_rules();
+    model_list ipc_list = {0};
+    size_t other_zets = find_other_zets(&ipc_list, SOCKET_PATH, sockfilebase);
+    char* zet_id = get_zet_instance_id(ipc_discriminator);
+    if(other_zets > 1) {
+        ZITI_LOG(INFO, "removing nrpt rules");
+        remove_all_nrpt_rules(zet_id, true);
+    } else {
+        remove_all_nrpt_rules(DEFAULT_EXECUTABLE_NAME, false); // no other tunnelers, clean all rules
+    }
+    free(zet_id);
 
     ZITI_LOG(INFO,"cleaning instance config ");
     cleanup_instance_config();
@@ -3264,60 +3588,6 @@ void scm_service_stop() {
     ZITI_LOG(INFO,"service stop waiting on condition...");
     uv_cond_wait(&stop_cond, &stop_mutex);
     uv_mutex_unlock(&stop_mutex);
-}
-
-static void move_config_from_previous_windows_backup(uv_loop_t *loop) {
-    char *backup_folders[] = {
-        "Windows.~BT\\Windows\\System32\\config\\systemprofile\\AppData\\Roaming\\NetFoundry",
-        "Windows.old\\Windows\\System32\\config\\systemprofile\\AppData\\Roaming\\NetFoundry",
-        NULL
-    };
-
-    char* system_drive = getenv("SystemDrive");
-
-    for (int i =0; backup_folders[i]; i++) {
-        char* config_dir_bkp = calloc(FILENAME_MAX, sizeof(char));
-        sprintf(config_dir_bkp, "%s\\%s", system_drive, backup_folders[i]);
-        uv_fs_t fs;
-        int rc = uv_fs_access(loop, &fs, config_dir_bkp, 0, NULL);
-        if (rc < 0) {
-            uv_fs_req_cleanup(&fs);
-            continue;
-        }
-        rc = uv_fs_scandir(loop, &fs, config_dir_bkp, 0, NULL);
-        if (rc < 0) {
-            ZITI_LOG(ERROR, "failed to scan dir[%s]: %d/%s", config_dir_bkp, rc, uv_strerror(rc));
-            uv_fs_req_cleanup(&fs);
-            continue;
-        } else if (rc == 0) {
-            uv_fs_req_cleanup(&fs);
-            continue;
-        }
-        ZITI_LOG(TRACE, "scan dir %s, file count: %d", config_dir_bkp, rc);
-
-        uv_dirent_t file;
-        while (uv_fs_scandir_next(&fs, &file) == 0) {
-            if (file.type == UV_DIRENT_FILE) {
-                char old_file[FILENAME_MAX];
-                snprintf(old_file, FILENAME_MAX, "%s\\%s", config_dir_bkp, file.name);
-                char new_file[FILENAME_MAX];
-                snprintf(new_file, FILENAME_MAX, "%s\\%s", config_dir, file.name);
-                uv_fs_t fs_cpy;
-                rc = uv_fs_copyfile(loop, &fs_cpy, old_file, new_file, 0, NULL);
-                if (rc == 0) {
-                    ZITI_LOG(INFO, "Restored old identity from the backup path - %s to new path - %s", old_file , new_file);
-                    ZITI_LOG(INFO, "Removing old identity from the backup path - %s", old_file);
-                    remove(old_file);
-                } else {
-                    ZITI_LOG(ERROR, "failed to copy backup identity file[%s]: %d/%s", old_file, rc, uv_strerror(rc));
-                }
-                uv_fs_req_cleanup(&fs_cpy);
-            }
-        }
-        free(config_dir_bkp);
-        config_dir_bkp = NULL;
-        uv_fs_req_cleanup(&fs);
-    }
 }
 #endif
 
