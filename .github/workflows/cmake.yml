@@ -1,6 +1,9 @@
 name: CI build
 
 on:
+  push:
+    branches:
+      - main
   pull_request:
     branches:
       - main
@@ -16,19 +19,19 @@ concurrency:
 jobs:
   build:
     runs-on: ${{ matrix.os }}
-    container: ${{ matrix.container }}
     name: build ${{ matrix.preset }}
-    env: {}
+    env:
+      "VCPKG_BINARY_SOURCES": "clear;files,${{ github.workspace }}/vcpkg_cache,readwrite"
 
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: macOS-12
+          - os: macOS-13
             name: macOS x86_64
             preset: macOS-x64
 
-          - os: macOS-12
+          - os: macOS-13
             name: macOS arm64
             preset: macOS-arm64
 
@@ -41,19 +44,16 @@ jobs:
             preset: windows-arm64-vs2022
 
           - os: ubuntu-20.04
-            container: openziti/ziti-builder:v2
             name: Linux x86_64
-            preset: linux-x64-static-libssl
+            preset: linux-x64
 
           - os: ubuntu-20.04
-            container: openziti/ziti-builder:v2
             name: Linux arm
-            preset: linux-arm-static-libssl
+            preset: linux-arm
 
           - os: ubuntu-20.04
-            container: openziti/ziti-builder:v2
             name: Linux arm64
-            preset: linux-arm64-static-libssl
+            preset: linux-arm64
 
     steps:
       - name: Debug action

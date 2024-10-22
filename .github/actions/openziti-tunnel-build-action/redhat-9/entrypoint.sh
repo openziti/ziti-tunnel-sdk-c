@@ -37,6 +37,13 @@ for SAFE in \
 done
 
 (
+  cd "${VCPKG_ROOT}"
+  git checkout master
+  git pull
+  ./bootstrap-vcpkg.sh -disableMetrics
+)
+
+(
     [[ -d ./build ]] && rm -r ./build
     cmake -E make_directory ./build  
     # allow unset for scl_source scripts
@@ -44,6 +51,7 @@ done
     cmake \
         --preset "${cmake_preset}" \
         -DCMAKE_BUILD_TYPE="${cmake_config}" \
+        -DVCPKG_OVERLAY_PORTS=./.github/actions/openziti-tunnel-build-action/redhat-9/vcpkg-overlays \
         -DBUILD_DIST_PACKAGES=ON \
         "${TLSUV_TLSLIB:+-DTLSUV_TLSLIB=${TLSUV_TLSLIB}}" \
         -S . \

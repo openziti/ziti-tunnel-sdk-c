@@ -17,7 +17,7 @@ RUN dnf install -y \
         "@Development Tools" \
         autoconf \
         automake \
-        cmake-rpm-macros  \
+        cmake-rpm-macros \
         dnf-plugins-core \
         gcc-toolset-10 \
         gcc-toolset-10-libatomic-devel \
@@ -26,7 +26,6 @@ RUN dnf install -y \
         libacl-devel \
         libcap-devel \
         libtool \
-        openssl-devel \
         perl \
         perl-IPC-Cmd \
         python3 \
@@ -50,7 +49,7 @@ ENV VCPKG_ROOT=/usr/local/vcpkg
 ENV VCPKG_FORCE_SYSTEM_BINARIES=yes
 
 RUN cd /usr/local \
-    && git clone --branch 2024.08.23 https://github.com/microsoft/vcpkg \
+    && git clone https://github.com/microsoft/vcpkg \
     && ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
 
 WORKDIR /github/workspace

@@ -36,6 +36,13 @@ for SAFE in \
         git config --global --add safe.directory ${SAFE}
 done
 
+(
+  cd "${VCPKG_ROOT}"
+  git checkout master
+  git pull
+  ./bootstrap-vcpkg.sh -disableMetrics
+)
+
 cmake -E make_directory ./build
 (
     [[ -d ./build ]] && rm -r ./build
@@ -46,6 +53,7 @@ cmake -E make_directory ./build
         && cmake \
             --preset "${cmake_preset}" \
             -DCMAKE_BUILD_TYPE="${cmake_config}" \
+            -DVCPKG_OVERLAY_PORTS=./.github/actions/openziti-tunnel-build-action/redhat-8/vcpkg-overlays \
             -DBUILD_DIST_PACKAGES=ON \
             -S . \
             -B ./build 

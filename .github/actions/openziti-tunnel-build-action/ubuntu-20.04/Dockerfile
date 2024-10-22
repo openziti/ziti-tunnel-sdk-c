@@ -31,7 +31,6 @@ RUN apt-get update \
         graphviz \
         libacl1-dev \
         libcap-dev \
-        libssl-dev \
         libsystemd-dev \
         libtool \
         ninja-build \
@@ -52,8 +51,6 @@ RUN apt-get update \
         libacl1-dev:arm64 \
         libcap-dev:armhf \
         libcap-dev:arm64 \
-        libssl-dev:arm64 \
-        libssl-dev:armhf \
         zlib1g-dev:arm64 \
         zlib1g-dev:armhf \
     && rm -rf /var/lib/apt/lists/*
@@ -68,7 +65,7 @@ ENV VCPKG_FORCE_SYSTEM_BINARIES=yes
 
 RUN cd /usr/local \
     && git config --global advice.detachedHead false \
-    && git clone --branch 2024.08.23 https://github.com/microsoft/vcpkg \
+    && git clone https://github.com/microsoft/vcpkg \
     && ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
 
 COPY ./entrypoint.sh /root/

@@ -238,7 +238,7 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
                     result.error = "identifier is required when loading with config";
                     break;
                 }
-                rc = load_identity_cfg(load.identifier, load.config, false, (int)load.apiPageSize, cb, ctx);
+                rc = load_identity_cfg(load.identifier, load.config, load.disabled, (int)load.apiPageSize, cb, ctx);
             } else if (load.path != NULL) {
                 const char *id = load.identifier ? load.identifier : load.path;
                 rc = load_identity(id, load.path, false, (int)load.apiPageSize, cb, ctx);

@@ -15,7 +15,7 @@ echo "INFO: $(git --version)"
 if [ ${#} -ge 1 ]; then
     cmake_preset="${1}"
 else
-    cmake_preset="ci-linux-x64-static-libssl"
+    cmake_preset="ci-linux-x64"
 fi
 
 if [ ${#} -ge 2 ]; then
@@ -36,6 +36,13 @@ for SAFE in \
         git config --global --add safe.directory ${SAFE}
 done
 
+(
+  cd "${VCPKG_ROOT}"
+  git checkout master
+  git pull
+  ./bootstrap-vcpkg.sh -disableMetrics
+)
+
 [[ -d ./build ]] && rm -r ./build
 cmake \
     -E make_directory \
@@ -43,6 +50,7 @@ cmake \
 cmake \
     --preset "${cmake_preset}" \
     -DCMAKE_BUILD_TYPE="${cmake_config}" \
+    -DVCPKG_OVERLAY_PORTS=./.github/actions/openziti-tunnel-build-action/ubuntu-20.04/vcpkg-overlays \
     -DBUILD_DIST_PACKAGES=ON \
     -S "${PWD}/" \
     -B ./build/
