@@ -48,7 +48,7 @@ runs:
     - uses: actions/cache@v4
       if: runner.os == 'Linux'
       with:
-        key: deps-${{ inputs.preset }}-${{ hashFiles('./vcpkg.json', '.github/actions/openziti-tunnel-build-action/gh-release/vcpkg-overlays/**/vcpkg.json') }}-ImageVersion=${{ env.ImageVersion }}
+        key: deps-${{ inputs.preset }}-${{ hashFiles('./vcpkg.json', '.github/actions/openziti-tunnel-build-action/gh-release/vcpkg-overlays/**/vcpkg.json') }}-ImageVersion=${{ env.IMAGE_VERSION }}
         path: ./vcpkg_cache
 
     - uses: lukka/run-cmake@v10.6 # pin version to avoid failed glibc dependency on ubuntu 20 runners. go back to @latest when ubuntu 22+ is adopted for runner os.
