@@ -746,9 +746,11 @@ static int do_udp_connect(hosted_io_context io, const struct addrinfo *remote_ad
         return uv_err;
     }
 
-    if (io->bind_address && (uv_err = uv_udp_bind(&io->server.udp, io->bind_address->ai_addr, 0)) < 0) {
+    if (io->bind_address && (uv_err = uv_udp_bind(&io->server.udp, io->bind_address->ai_addr, 0)) < 0)
         return uv_err;
-    }
+
+    if ((uv_err = udp_connect(&io->server.udp, remote_address->ai_addr)) < 0)
+        return uv_err;
 
     return 0;
 }
