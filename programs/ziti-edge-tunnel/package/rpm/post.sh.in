@@ -52,5 +52,5 @@ if [ $1 -ne 0 ]; then
         echo '  ziti-edge-tunnel add --jwt "$(< ziti_id.jwt)" --identity "ziti_id"'
     fi
     printf %"$ssize"s | tr " " "-"
-    printf '\n'
+    printf '\n\n'
 fi
