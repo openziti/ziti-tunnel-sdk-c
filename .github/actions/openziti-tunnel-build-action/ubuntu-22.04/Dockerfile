@@ -16,19 +16,24 @@ WORKDIR /root/
 
 RUN apt-get update \
     && apt-get -y install \
-        autoconf automake autopoint \
-        gcc-arm-linux-gnueabihf \
-        g++-arm-linux-gnueabihf \
-        gcc-aarch64-linux-gnu \
+        autoconf \
+        automake \
+        autopoint \
+        build-essential \
         crossbuild-essential-arm64 \
         crossbuild-essential-armhf \
-        build-essential \
         curl zip unzip tar \
         doxygen \
+        g++-arm-linux-gnueabihf \
+        gcc-aarch64-linux-gnu \
+        gcc-arm-linux-gnueabihf \
         git \
         graphviz \
+        libacl1-dev \
+        libcap-dev \
         libsystemd-dev \
         libtool \
+        ninja-build \
         pkg-config \
         python3 \
         zlib1g-dev \
@@ -40,6 +45,10 @@ RUN sed -Ei 's/^deb/deb [arch=amd64]/g' /etc/apt/sources.list
 RUN dpkg --add-architecture arm64 && dpkg --add-architecture armhf
 RUN apt-get update \
     && apt-get -y install \
+        libacl1-dev:armhf \
+        libacl1-dev:arm64 \
+        libcap-dev:armhf \
+        libcap-dev:arm64 \
         zlib1g-dev:arm64 \
         zlib1g-dev:armhf \
     && rm -rf /var/lib/apt/lists/*

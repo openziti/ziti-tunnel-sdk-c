@@ -15,22 +15,32 @@ ENV TZ=UTC
 
 RUN dnf install -y \
         "@Development Tools" \
+        autoconf \
+        automake \
+        cmake-rpm-macros  \
         dnf-plugins-core \
+        gettext-devel \
         iproute \
+        libacl-devel \
+        libatomic \
+        libcap-devel \
+        libtool \
+        openssl-devel \
+        perl-File-Compare \
+        perl-File-Copy \
+        perl-FindBin \
+        perl-IPC-Cmd \
         python3 \
         systemd-devel \
-        zlib-devel \
         systemd-rpm-macros \
-        cmake-rpm-macros  \
-        perl-FindBin perl-IPC-Cmd perl-File-Compare perl-File-Copy \
-        libatomic \
+        zlib-devel \
     && dnf config-manager --set-enabled crb \
     && dnf install -y \
         doxygen \
-        graphviz \
         git \
+        graphviz \
         ninja-build \
-    && dnf clean all 
+    && dnf clean all
 
 RUN curl -sSfL https://cmake.org/files/v${CMAKE_VERSION%.*}/cmake-${CMAKE_VERSION}-linux-$(uname -m).sh -o cmake.sh \
     && (bash cmake.sh --skip-license --prefix=/usr/local) \
