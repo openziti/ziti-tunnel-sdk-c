@@ -29,10 +29,8 @@ char* get_system_config_path() {
     char* config_path = malloc(FILENAME_MAX * sizeof(char));
 #if _WIN32
     snprintf(config_path, FILENAME_MAX, "%s\\NetFoundry", getenv(app_data));
-#elif __linux__
-    snprintf(config_path, FILENAME_MAX, "/var/lib/ziti");
 #else
-    snprintf(config_path, FILENAME_MAX, "/tmp");
+    snprintf(config_path, FILENAME_MAX, "/var/lib/ziti");
 #endif
     return config_path;
 }
