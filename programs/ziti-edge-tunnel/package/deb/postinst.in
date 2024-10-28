@@ -123,7 +123,7 @@ if [ "$1" = "configure" ]; then
       echo  "Completed clean install of @SYSTEMD_SERVICE_NAME@."\
             "Get started by adding an identity: Start @SYSTEMD_UNIT_FILE_NAME@ and run:" \
       | fold -w $ssize
-      echo "  ziti-edge-tunnel add --jwt \"\$(< ziti_id.jwt)\" --identity \"ziti_id\""
+      echo '  ziti-edge-tunnel add --jwt "$(< ziti_id.jwt)" --identity "ziti_id"'
     fi
     if [ "${service_user}" = "root" ]; then
       echo "@SYSTEMD_SERVICE_NAME@ will run as root, since policykit cannot be configured to authorize set-llmnr on this system". | fold -w $ssize
