@@ -100,9 +100,9 @@ jobs:
           DISTRO_LABEL: ${{ format('{0}-{1}', matrix.distro.name, matrix.distro.version) }}
           KEY_PREFIX: vcpkg_cache-cpack-${{ matrix.arch.rpm }}-${{ matrix.distro.name }}-${{ matrix.distro.version }}
         run: |
-          key_prefix="${KEY_PREFIX}-vcpkg_json_md5=$(md5sum --quiet ./vcpkg.json)"
+          key_prefix="${KEY_PREFIX}-vcpkg_json_md5=$(md5sum ./vcpkg.json | awk '{ print $1 }')"
           # Express the vcpkg overlays, dockerfile, and entry point that the action will use as a single hash
-          build_action_md5="$(find ./.github/actions/openziti-tunnel-build-action/${DISTRO_LABEL} -type f -print | xargs md5sum --quiet | sort | md5sum --quiet)"
+          build_action_md5="$(find ./.github/actions/openziti-tunnel-build-action/${DISTRO_LABEL} -type f -print | xargs md5sum | awk '{ print $1 }' | sort | md5sum | awk '{ print $1 }')"
           echo "key=${key_prefix}-build_action_md5=${build_action_md5}" | tee -a $GITHUB_OUTPUT
 
       - uses: actions/cache@v4
