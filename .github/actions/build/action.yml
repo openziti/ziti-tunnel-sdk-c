@@ -24,9 +24,7 @@ runs:
       if: runner.os == 'macOS'
       shell: bash
       run: |
-        brew install autoconf autoconf-archive automake pkg-config
-        # get md5sum
-        echo /sbin >> $GITHUB_PATH
+        brew install autoconf autoconf-archive automake pkg-config md5sha1sum
 
     - name: simple build
       run: echo "preset = ${{ inputs.preset }}"
