@@ -26,7 +26,7 @@ runs:
       run: brew install autoconf autoconf-archive automake pkg-config
 
     - name: simple build
-      run: echo "preset = ${{ inputs.preset }}"; env
+      run: echo "preset = ${{ inputs.preset }}"
       shell: bash
 
     - name: install contemporary cmake
@@ -39,16 +39,26 @@ runs:
         # get baseline from vcpkg
         vcpkgJsonGlob: './vcpkg.json'
 
-    - uses: actions/cache@v4
-      if: runner.os != 'Linux'
-      with:
-        key: deps-${{ inputs.preset }}-${{ hashFiles('./vcpkg.json') }}-ImageVersion=$env:ImageVersion
-        path: ./vcpkg_cache
+    - name: get vcpkg cache key
+      id: get_vcpkg_cache_key
+      shell: bash
+      env:
+        DISTRO_LABEL: ${{ format('{0}-{1}', matrix.distro.name, matrix.distro.version) }}
+        KEY_PREFIX: vcpkg_cache-cmake-${{ inputs.preset }}
+      run: |
+        common_key="${KEY_PREFIX}-vcpkg_json_md5=$(md5sum --quiet ./vcpkg.json)"
+        if [ "${RUNNER_OS}" != "Linux" ]; then
+          echo "key=${common_key}-ImageVersion=${ImageVersion}" | tee -a $GITHUB_OUTPUT      
+        else
+          # ImageVersion is irrelevant since the build action runs in a container
+          # Express the vcpkg overlays, dockerfile, and entry point that the action will use as a single hash
+          build_action_hash="$(find ./.github/actions/openziti-tunnel-build-action/gh-release -type f -print | xargs md5sum --quiet | sort | md5sum --quiet)"
+          echo "key=${common_key}-build_action_md5=${build_action_hash}" | tee -a $GITHUB_OUTPUT
+        fi
 
     - uses: actions/cache@v4
-      if: runner.os == 'Linux'
       with:
-        key: deps-${{ inputs.preset }}-${{ hashFiles('./vcpkg.json', '.github/actions/openziti-tunnel-build-action/gh-release/vcpkg-overlays/**/vcpkg.json') }}-ImageVersion=${{ env.IMAGE_VERSION }}
+        key: ${{ steps.get_vcpkg_cache_key.outputs.key }}
         path: ./vcpkg_cache
 
     - uses: lukka/run-cmake@v10.6 # pin version to avoid failed glibc dependency on ubuntu 20 runners. go back to @latest when ubuntu 22+ is adopted for runner os.
