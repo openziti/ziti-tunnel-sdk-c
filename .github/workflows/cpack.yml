@@ -78,7 +78,7 @@ jobs:
         shell: bash
         run: |
           dnf -y update
-          dnf -y install git
+          dnf -y install git findutils
           git --version
 
       - name: checkout workspace

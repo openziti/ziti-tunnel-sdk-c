@@ -16,7 +16,6 @@ ENV TZ=UTC
 RUN dnf install -y \
         "@Development Tools" \
         dnf-plugins-core \
-        findutils \
         gcc-toolset-10 \
         gcc-toolset-10-libatomic-devel \
         iproute \
