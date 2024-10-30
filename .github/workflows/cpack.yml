@@ -78,7 +78,7 @@ jobs:
         shell: bash
         run: |
           dnf -y update
-          dnf -y install git
+          dnf -y install git findutils
           git --version
 
       - name: checkout workspace
@@ -93,9 +93,21 @@ jobs:
         run: |
           cp -vr ./.github/actions/openziti-tunnel-build-action/${DISTRO_LABEL}/* ./.github/actions/openziti-tunnel-build-action/
 
+      - name: get vcpkg cache key
+        id: get_vcpkg_cache_key
+        shell: bash
+        env:
+          DISTRO_LABEL: ${{ format('{0}-{1}', matrix.distro.name, matrix.distro.version) }}
+          KEY_PREFIX: vcpkg_cache-cpack-${{ matrix.arch.rpm }}-${{ matrix.distro.name }}-${{ matrix.distro.version }}
+        run: |
+          key_prefix="${KEY_PREFIX}-vcpkg_json_md5=$(md5sum ./vcpkg.json | awk '{ print $1 }')"
+          # Express the vcpkg overlays, dockerfile, and entry point that the action will use as a single hash
+          build_action_md5="$(find ./.github/actions/openziti-tunnel-build-action/${DISTRO_LABEL} -type f -print | xargs md5sum | awk '{ print $1 }' | sort | md5sum | awk '{ print $1 }')"
+          echo "key=${key_prefix}-build_action_md5=${build_action_md5}" | tee -a $GITHUB_OUTPUT
+
       - uses: actions/cache@v4
         with:
-          key: deps-cpack-${{ matrix.arch.rpm }}-${{ matrix.distro.name }}-${{ matrix.distro.version }}-${{ hashFiles('./vcpkg.json', './.github/actions/openziti-tunnel-build-action/vcpkg-overlays/**/vcpkg.json') }}
+          key: ${{ steps.get_vcpkg_cache_key.outputs.key }}
           path: ./vcpkg_cache
 
         # entrypoint.sh uses the value of arch to select the cmake preset
