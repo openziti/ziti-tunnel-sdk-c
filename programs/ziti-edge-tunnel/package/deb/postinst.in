@@ -116,12 +116,18 @@ if [ "$1" = "configure" ]; then
     fi
     printf '\n'
     printf %"$ssize"s | tr " " "-"
-    echo "@SYSTEMD_SERVICE_NAME@ was installed..."
-    if [ "${service_user}" = "root" ]; then
-      echo "@SYSTEMD_SERVICE_NAME@ will run as root, since policykit cannot be configured to authorize set-llmnr on this system".
-    fi
-    echo "First install an OpenZiti identity or enroll token in: @ZITI_IDENTITY_DIR@"
-    echo "then start or restart this systemd service unit."
-    printf %"$ssize"s | tr " " "-"
     printf '\n'
+    if [ -n "$2" ]; then
+      echo "Completed configuration of @SYSTEMD_SERVICE_NAME@ (previous version: $2)."
+    else
+      echo  "Completed clean install of @SYSTEMD_SERVICE_NAME@."\
+            "Get started by adding an identity: Start @SYSTEMD_UNIT_FILE_NAME@ and run:" \
+      | fold -w $ssize
+      echo '  ziti-edge-tunnel add --jwt "$(< ziti_id.jwt)" --identity "ziti_id"'
+    fi
+    if [ "${service_user}" = "root" ]; then
+      echo "@SYSTEMD_SERVICE_NAME@ will run as root, since policykit cannot be configured to authorize set-llmnr on this system". | fold -w $ssize
+    fi
+    printf %"$ssize"s | tr " " "-"
+    printf '\n\n'
 fi
