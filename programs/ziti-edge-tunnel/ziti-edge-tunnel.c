@@ -1842,9 +1842,16 @@ static int make_socket_path(uv_loop_t *loop) {
     return 0;
 }
 
+#if __linux__
+void diverter_cleanup(void);
+#endif
+
 #if __linux__ || __APPLE__
 static void on_exit_signal(uv_signal_t *s, int sig) {
     ZITI_LOG(WARN, "received signal: %s", strsignal(sig));
+#if __linux__
+    diverter_cleanup();
+#endif
     exit(1);
 }
 #endif
@@ -4254,7 +4261,7 @@ static void move_config_from_previous_windows_backup(uv_loop_t *loop) {
 #endif
 
 #if __linux__ 
-void INThandler(int sig){
+void diverter_cleanup(void){
     if(diverter && !firewall){
         diverter_binding_flush();
         diverter_quit();
@@ -4263,7 +4270,6 @@ void INThandler(int sig){
         diverter_ingress_flush();
         add_user_rules();
     }
-    exit(0);
 }
 #endif
 
@@ -4272,11 +4278,6 @@ static bool is_host_only() {
 }
 
 int main(int argc, char *argv[]) {
-#if __linux__
-    signal(SIGINT, INThandler);
-    signal(SIGTERM, INThandler);
-    signal(SIGABRT, INThandler);
-#endif
     const char *name = strrchr(argv[0], '/');
     if (name == NULL) {
         name = argv[0];
