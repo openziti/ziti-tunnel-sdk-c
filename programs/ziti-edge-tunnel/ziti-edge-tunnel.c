@@ -3068,7 +3068,7 @@ static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required supe
                                           "\t-i|--identity <identity>\trun with provided identity file (required)\n"
                                           "\t-I|--identity-dir <dir>\tload identities from provided directory\n"
                                           "\t-x|--proxy type://[username[:password]@]hostname_or_ip:port\tproxy to use when"
-                                          " connecting to OpenZiti controller and edge routers. 'http' is currently the only supported type."
+                                          " connecting to OpenZiti controller and edge routers. 'http' is currently the only supported type.\n"
                                           "\t-v|--verbose N\tset log level, higher level -- more verbose (default 3)\n"
                                           "\t-r|--refresh N\tset service polling interval in seconds (default 10)\n"
                                           "\t-d|--dns-ip-range <ip range>\tspecify CIDR block in which service DNS names"
