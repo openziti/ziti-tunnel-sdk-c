@@ -74,7 +74,6 @@ static int dns_miss_status = DNS_REFUSE;
 typedef char * (*to_json_fn)(const void * msg, int flags, size_t *len);
 void send_tunnel_command_inline(const tunnel_command *tnl_cmd, void *ctx);
 static void scm_service_stop_event(uv_loop_t *loop, void *arg);
-static void stop_tunnel_and_cleanup();
 static bool is_host_only();
 static void run_tunneler_loop(uv_loop_t* ziti_loop);
 static tunneler_context initialize_tunneler(netif_driver tun, uv_loop_t* ziti_loop);
