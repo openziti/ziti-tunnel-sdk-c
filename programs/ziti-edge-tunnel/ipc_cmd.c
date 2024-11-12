@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <json_tokener.h>
+#include <json-c/json_tokener.h>
 #include <stdlib.h>
 #include <uv.h>
 #include <tlsuv/queue.h>
