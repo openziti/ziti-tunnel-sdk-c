@@ -34,6 +34,7 @@
 #include "netif_driver/darwin/utun.h"
 #elif __linux__
 #include "netif_driver/linux/tun.h"
+#include "netif_driver/linux/utils.h"
 #elif _WIN32
 #include <time.h>
 #include <io.h>
@@ -76,6 +77,28 @@ static void scm_service_stop_event(uv_loop_t *loop, void *arg);
 static bool is_host_only();
 static void run_tunneler_loop(uv_loop_t* ziti_loop);
 static tunneler_context initialize_tunneler(netif_driver tun, uv_loop_t* ziti_loop);
+
+#if __linux__
+static void diverter_quit();
+static void init_diverter_interface(const char *interface, const char *direction);
+static void bind_diverter_route(const char *ip, int prefix_len);
+static void unbind_diverter_route(const char *ip, int prefix_len);
+static void diverter_binding_flush();
+static void diverter_update(const char *ip, const char *mask, const char *lowport, const char *highport, const char *protocol, const char *service_id, const char *action);
+static void set_diverter(uint32_t dns_prefix, unsigned char dns_prefix_range, const char *tun_name);
+static void diverter_cleanup();
+
+char check_alt[IF_NAMESIZE];
+char *diverter_path = "/opt/openziti/bin";
+char zfw_path[PATH_MAX];
+char *tc_ingress_object = "zfw_tc_ingress.o";
+char *tc_egress_object = "zfw_tc_outbound_track.o";
+char *xdp_ingress_object = "zfw_xdp_tun_ingress.o";
+
+static char *diverter_if = NULL;
+static bool diverter = false;
+static bool firewall = false;
+#endif
 
 #if _WIN32
 static void move_config_from_previous_windows_backup(uv_loop_t *loop);
@@ -551,6 +574,38 @@ static void on_event(const base_event *ev) {
                         svc = get_tunnel_service(id, svc_ev->removed_services[svc_idx]);
                     }
                     ZITI_LOG(INFO, "=============== service event (removed) - %s:%s ===============", svc->Name, svc->Id);
+#if __linux__
+                    if(svc && diverter){
+                        if(svc->Permissions.Bind){
+                            for(int x = 0; svc->AllowedSourceAddresses && (svc->AllowedSourceAddresses[x] != NULL); x++){
+                                if(!svc->AllowedSourceAddresses[x]->IsHost){
+                                    unbind_diverter_route(svc->AllowedSourceAddresses[x]->IP, svc->AllowedSourceAddresses[x]->Prefix);
+                                }
+                            }
+                        }
+                        if(svc->Permissions.Dial){
+                            for(int x = 0; svc->Addresses && (svc->Addresses[x] != NULL); x++){
+                                if(!svc->Addresses[x]->IsHost){
+                                    char *ip = svc->Addresses[x]->IP;
+                                    char prefix_len[4];
+                                    sprintf(prefix_len, "%ld", svc->Addresses[x]->Prefix);
+                                    for(int i =  0; (svc->Ports != NULL) && (svc->Ports[i] != NULL); i++){
+                                        char low_port[6];
+                                        char high_port[6];
+                                        sprintf(low_port, "%ld", svc->Ports[i]->Low);
+                                        sprintf(high_port,"%ld", svc->Ports[i]->High);
+                                        for(int j =  0; (svc->Protocols != NULL) && (svc->Protocols[j] != NULL); j++){
+                                            if((svc->AllowedSourceAddresses && svc->AllowedSourceAddresses[0] != NULL) || firewall){
+                                                diverter_update(ip, prefix_len,  low_port, high_port, svc->Protocols[j], svc->Id, "-D");
+                                            }
+                                        }
+                                    }
+
+                                }
+                            }
+                        }
+                    }
+#endif
 #if _WIN32
                     if (svc->Addresses != NULL) {
                         for (int i = 0; svc->Addresses[i]; i++) {
@@ -575,6 +630,38 @@ static void on_event(const base_event *ev) {
                     tunnel_service *svc = get_tunnel_service(id, svc_ev->added_services[svc_idx]);
                     svc_event.AddedServices[svc_idx] = svc;
                     ZITI_LOG(INFO, "=============== service event (added) - %s:%s ===============", svc->Name, svc->Id);
+#if __linux__
+                    if(svc && diverter){
+                        if(svc->Permissions.Dial){
+                            for(int x = 0; svc->Addresses && (svc->Addresses[x] != NULL); x++){
+                                if(!svc->Addresses[x]->IsHost){
+                                    char *ip = svc->Addresses[x]->IP;
+                                    char prefix_len[4];
+                                    sprintf(prefix_len, "%ld", svc->Addresses[x]->Prefix);
+                                    for(int i =  0; (svc->Ports != NULL) && (svc->Ports[i] != NULL); i++){
+                                        char low_port[6];
+                                        char high_port[6];
+                                        sprintf(low_port, "%ld", svc->Ports[i]->Low);
+                                        sprintf(high_port,"%ld", svc->Ports[i]->High);
+                                        for(int j =  0; (svc->Protocols != NULL) && (svc->Protocols[j] != NULL); j++){
+                                            if((svc->AllowedSourceAddresses && svc->AllowedSourceAddresses[0] != NULL) || firewall){
+                                                diverter_update(ip, prefix_len,  low_port, high_port, svc->Protocols[j], svc->Id, "-I");
+                                            }
+                                        }
+                                    }
+
+                                }
+                            }
+                        }
+                        else if(svc->Permissions.Bind){
+                            for(int x = 0; svc->AllowedSourceAddresses && (svc->AllowedSourceAddresses[x] != NULL); x++){
+                                if(!svc->AllowedSourceAddresses[x]->IsHost){
+                                    bind_diverter_route(svc->AllowedSourceAddresses[x]->IP, svc->AllowedSourceAddresses[x]->Prefix);
+                                }
+                            }
+                        }
+                    }
+#endif
 #if _WIN32
                     if (svc->Addresses != NULL) {
                         for (int i = 0; svc->Addresses[i]; i++) {
@@ -873,6 +960,66 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
         tunnel_upstream_dns *a[] = { &upstream, NULL};
         ziti_dns_set_upstream(ziti_loop, a);
     }
+#if __linux__
+    if(!diverter && !firewall){
+        diverter_if = getenv("ZITI_DIVERTER");
+        if(diverter_if && strlen(diverter_if)){
+            diverter = true;
+        }
+        char *zifi_firewall = getenv("ZITI_FIREWALL");
+        if(zifi_firewall && strlen(zifi_firewall)){
+            diverter = true;
+            firewall = true;
+            diverter_if = getenv("ZITI_FIREWALL");
+        }
+    }
+    char *diverter_env_path = getenv("ZFW_OBJECT_PATH");
+    if(diverter_env_path && strlen(diverter_env_path)){
+        diverter_path = diverter_env_path;
+        sprintf(zfw_path, "%s/%s", diverter_env_path, "zfw");
+    }else{
+        sprintf(zfw_path, "%s/%s", diverter_path, "zfw");
+    }
+    if(diverter && tun){
+        if(!firewall){
+            diverter_quit();
+        }
+        if (access(zfw_path, F_OK) == 0){
+            int count = 0;
+            char *interface = strtok(diverter_if,",");
+            while(interface != NULL){
+                uint32_t idx = if_nametoindex(interface);
+                if (!idx)
+                {
+                    ZITI_LOG(INFO,"Diverter interface not found: %s", interface);
+                    interface = strtok(NULL,",");
+                    continue;
+                }
+                if(if_indextoname(idx, check_alt)){
+                    interface = check_alt;
+                }
+                init_diverter_interface(interface, "ingress");
+                init_diverter_interface(interface, "egress");
+                interface = strtok(NULL,",");
+                count++;
+            }
+            if(count){
+                set_diverter(dns_subnet_in->s_addr, dns_subnet_zaddr.addr.cidr.bits, tun->handle->name);
+            }else{
+                ZITI_LOG(INFO,"No valid diverter interfaces found");
+                exit(1);
+            }
+        }else{
+            ZITI_LOG(INFO, "Diverter binary not found");
+            exit(1);
+        }
+    }
+#else
+    if (diverter) {
+        ZITI_LOG(INFO,"Diverter features only supported on Linux");
+        exit(1);
+    }
+#endif
     run_tunneler_loop(ziti_loop);
     if (tun->close) {
         tun->close(tun->handle);
@@ -979,6 +1126,9 @@ static int make_socket_path(uv_loop_t *loop) {
 #if __linux__ || __APPLE__
 static void on_exit_signal(uv_signal_t *s, int sig) {
     ZITI_LOG(WARN, "received signal: %s", strsignal(sig));
+#if __linux__
+    diverter_cleanup();
+#endif
     exit(1);
 }
 #endif
@@ -1105,6 +1255,10 @@ static struct option run_options[] = {
         { "dns-ip-range", required_argument, NULL, 'd'},
         { "dns-upstream", required_argument, NULL, 'u'},
         { "proxy", required_argument, NULL, 'x' },
+#if __linux__
+        { "diverter", required_argument, NULL, 'D' },
+        { "diverter-fw", required_argument, NULL, 'f' },
+#endif
 };
 
 static struct option run_host_options[] = {
@@ -1300,6 +1454,181 @@ static void interrupt_handler(int sig) {
     ZITI_LOG(WARN,"Received signal to interrupt");
     tunnel_interrupted = true;
     ziti_tunnel_async_send(tunneler, scm_service_stop_event, "interrupted");
+}
+#endif
+
+#if __linux__
+// support interactions with zfw command line utility
+
+struct zfw_cmd_s {
+    char *description;
+    char *args;
+    char *interface;
+    int exitcode;
+};
+
+static void do_zfw_cmd(uv_work_t *wr) {
+    struct zfw_cmd_s *cmd = wr->data;
+    cmd->exitcode = run_command(zfw_path, cmd->args);
+}
+
+static void after_zfw_cmd(uv_work_t *wr, int status) {
+    struct zfw_cmd_s *cmd = wr->data;
+    if (cmd) {
+        if (WIFEXITED(cmd->exitcode) && WEXITSTATUS(cmd->exitcode) == 0) {
+            ZITI_LOG(INFO, "%s %s successful", zfw_path, cmd->args);
+        } else {
+            ZITI_LOG(WARN, "%s %s failed", zfw_path, cmd->args);
+        }
+
+        free(cmd->args);
+        if (cmd->interface) free(cmd->interface);
+        free(wr->data);
+    }
+    free(wr);
+}
+
+static void diverter_update(const char *ip, const char *mask, const char *lowport, const char *highport, const char *protocol, const char *service_id, const char *action) {
+    int rndm;
+    uv_random(NULL, NULL, &rndm, sizeof(rndm), 0, NULL);
+    unsigned short random_port = 1024 + rndm % (65535 - 1023);
+    uv_work_t *wr = calloc(1, sizeof(uv_work_t));
+    struct zfw_cmd_s *cmd = wr->data = calloc(1, sizeof(struct zfw_cmd_s));
+    asprintf(&cmd->args, "%s -c %s -m %s -l %s -h %s -t %u -p %s -s %s", action, ip, mask, lowport, highport, random_port, protocol, service_id);
+    uv_queue_work(uv_default_loop(), wr, do_zfw_cmd, after_zfw_cmd);
+}
+
+static void diverter_quit() {
+    uv_work_t *wr = calloc(1, sizeof(uv_work_t));
+    struct zfw_cmd_s *cmd = wr->data = calloc(1, sizeof(struct zfw_cmd_s));
+    cmd->args = strdup("-Q");
+    uv_queue_work(uv_default_loop(), wr, do_zfw_cmd, after_zfw_cmd);
+}
+
+static void do_init_diverter_interface(uv_work_t *wr) {
+    struct zfw_cmd_s *cmd = wr->data;
+    int exitcode = run_command(zfw_path, cmd->args);
+    exitcode = run_command(zfw_path, "-T", cmd->interface); // todo check error
+    exitcode = run_command(zfw_path, "-6", cmd->interface);
+    if (!firewall) {
+        exitcode = run_command(zfw_path, "-q", cmd->interface); // pass_non_tuple(cmd->interface);
+    }
+}
+
+static void init_diverter_interface(const char *interface, const char *direction) {
+    char tc_ingress_object_path[PATH_MAX];
+    sprintf(tc_ingress_object_path, "%s/%s", diverter_path, tc_ingress_object);
+    uv_work_t *wr = calloc(1, sizeof(uv_work_t));
+    struct zfw_cmd_s *cmd = wr->data = calloc(1, sizeof(struct zfw_cmd_s));
+    cmd->interface = strdup(interface);
+    asprintf(&cmd->args, "-X %s -D %s/%s -z %s", interface, diverter_path, tc_ingress_object, direction);
+    uv_queue_work(uv_default_loop(), wr, do_init_diverter_interface, after_zfw_cmd);
+}
+
+static void bind_diverter_route(const char *ip, int prefix_len) {
+    uv_work_t *wr = calloc(1, sizeof(uv_work_t));
+    struct zfw_cmd_s *cmd = wr->data = calloc(1, sizeof(struct zfw_cmd_s));
+    asprintf(&cmd->args, "-B %s, -m %d", ip, prefix_len);
+    uv_queue_work(uv_default_loop(), wr, do_zfw_cmd, after_zfw_cmd);
+}
+
+static void unbind_diverter_route(const char *ip, int prefix_len) {
+    uv_work_t *wr = calloc(1, sizeof(uv_work_t));
+    struct zfw_cmd_s *cmd = wr->data = calloc(1, sizeof(struct zfw_cmd_s));
+    asprintf(&cmd->args, "-J %s, -m %d", ip, prefix_len);
+    uv_queue_work(uv_default_loop(), wr, do_zfw_cmd, after_zfw_cmd);
+}
+
+static void diverter_binding_flush() {
+    uv_work_t *wr = calloc(1, sizeof(uv_work_t));
+    struct zfw_cmd_s *cmd = wr->data = calloc(1, sizeof(struct zfw_cmd_s));
+    cmd->args = strdup("-F -j");
+    uv_queue_work(uv_default_loop(), wr, do_zfw_cmd, after_zfw_cmd);
+}
+
+static void diverter_ingress_flush() {
+    uv_work_t *wr = calloc(1, sizeof(uv_work_t));
+    struct zfw_cmd_s *cmd = wr->data = calloc(1, sizeof(struct zfw_cmd_s));
+    cmd->args = strdup("-F, -z ingress");
+    uv_queue_work(uv_default_loop(), wr, do_zfw_cmd, after_zfw_cmd);
+}
+
+static void do_setup_xdp(uv_work_t *wr) {
+    struct zfw_cmd_s *cmd = wr->data;
+    cmd->exitcode = run_command("/usr/sbin/ip", cmd->args);
+}
+
+static void setup_xdp(const char *tun_name) {
+    uv_work_t *wr = calloc(1, sizeof(uv_work_t));
+    struct zfw_cmd_s *cmd = wr->data = calloc(1, sizeof(struct zfw_cmd_s));
+    asprintf(&cmd->args, "link set %s xdppgeneric obj %s/%s sec xdp_redirect", tun_name, diverter_path, xdp_ingress_object);
+    uv_queue_work(uv_default_loop(), wr, do_setup_xdp, after_zfw_cmd);
+}
+
+static void add_user_rules() {
+    uv_work_t *wr = calloc(1, sizeof(uv_work_t));
+    struct zfw_cmd_s *cmd = wr->data = calloc(1, sizeof(struct zfw_cmd_s));
+    cmd->args = strdup("-A");
+    uv_queue_work(uv_default_loop(), wr, do_zfw_cmd, after_zfw_cmd);
+}
+
+static void do_disable_firewall(uv_work_t *wr) {
+    run_command(zfw_path, "-I", "-c", "0.0.0.0", "-m", "0", "-l", "1" , "-h", "65535", "-t", "0", "-p", "tcp");
+    run_command(zfw_path, "-I", "-c", "0.0.0.0", "-m", "0", "-l", "1" , "-h", "65535", "-t", "0", "-p", "udp");
+    run_command(zfw_path, "-I", "-c", "::", "-m", "0", "-l", "1" , "-h", "65535", "-t", "0", "-p", "tcp");
+    run_command(zfw_path, "-I", "-c", "::", "-m", "0", "-l", "1" , "-h", "65535", "-t", "0", "-p", "udp");
+}
+
+static void disable_firewall() {
+    uv_work_t *wr = calloc(1, sizeof(uv_work_t));
+    uv_queue_work(uv_default_loop(), wr, do_disable_firewall, after_zfw_cmd);
+}
+
+static void do_pass_dns_range(uv_work_t *wr) {
+    struct zfw_cmd_s *cmd = wr->data;
+    run_command(zfw_path, "-I", cmd->args, "-l 1 -h 65535 -t 65535 -p tcp");
+    run_command(zfw_path, "-I", cmd->args, "-l 1 -h 65535 -t 65535 -p udp");
+}
+
+static void pass_dns_range(uint32_t dns_prefix, unsigned char dns_prefix_range) {
+    uv_work_t *wr = calloc(1, sizeof(uv_work_t));
+    struct zfw_cmd_s *cmd = wr->data = calloc(1, sizeof(struct zfw_cmd_s));
+    char prefix[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, &dns_prefix, prefix, INET_ADDRSTRLEN);
+    asprintf(&cmd->args, "-c %s -m %d", prefix, dns_prefix_range);
+    uv_queue_work(uv_default_loop(), wr, do_pass_dns_range, after_zfw_cmd);
+}
+
+static void set_diverter(uint32_t dns_prefix, unsigned char dns_prefix_range, const char *tun_name)
+{
+    if(!firewall){
+        ZITI_LOG(INFO,"Starting ziti-edge-tunnel in diverter mode");
+    }else{
+        ZITI_LOG(INFO,"Starting ziti-edge-tunnel in diverter firewall mode");
+    }
+    if(!firewall){
+        disable_firewall();
+    }else{
+        if (access("/opt/openziti/bin/user/user_rules.sh", F_OK) == 0){
+            ZITI_LOG(INFO,"loading user defined FW rules");
+            add_user_rules();
+        }else{
+            ZITI_LOG(DEBUG, "Diverter user defined FW rules not found");
+        }
+        pass_dns_range(dns_prefix, dns_prefix_range);
+    }
+    setup_xdp(tun_name);
+}
+
+static void diverter_cleanup(void) {
+    if (diverter && !firewall) {
+        diverter_binding_flush();
+        diverter_quit();
+    } else if (firewall) {
+        diverter_binding_flush();
+        diverter_ingress_flush();
+        add_user_rules();
+    }
 }
 #endif
 
@@ -2431,7 +2760,7 @@ static CommandLine enroll_cmd = make_command(
     "\t-v|--verbose N\tset log level, higher level -- more verbose (default 3)\n",
     parse_enroll_opts, enroll);
 static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required superuser access)",
-                                          "-i <id.file> [-r N] [-v N] [-d|--dns-ip-range N.N.N.N/N] [-u|--dns-upstream N.N.N.N]\n",
+                                          "-i <id.file> [-r N] [-v N] [-d|--dns-ip-range N.N.N.N/N] [-u|--dns-upstream N.N.N.N] [-D|--diverter <interface list>] [-f|--diverter-fw <interface list>]\n",
                                           "\t-i|--identity <identity>\trun with provided identity file (required)\n"
                                           "\t-I|--identity-dir <dir>\tload identities from provided directory\n"
                                           "\t-x|--proxy type://[username[:password]@]hostname_or_ip:port\tproxy to use when"
@@ -2440,7 +2769,9 @@ static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required supe
                                           "\t-r|--refresh N\tset service polling interval in seconds (default 10)\n"
                                           "\t-d|--dns-ip-range <ip range>\tspecify CIDR block in which service DNS names"
                                           " are assigned in N.N.N.N/n format (default " DEFAULT_DNS_CIDR ")\n"
-                                          "\t-u|--dns-upstream <ip addr>\tresolver listening on 53/udp for DNS queries that do not match a Ziti service\n",
+                                          "\t-u|--dns-upstream <ip addr>\tresolver listening on 53/udp for DNS queries that do not match a Ziti service\n"
+                                          "\t-D|--diverter <interface>\tset diverter mode to true on <interface>\n"
+                                          "\t-f|--diverter-fw <interface>\tset diverter to true in firewall mode on <interface>)\n",
                                           run_opts, run);
 static CommandLine run_host_cmd = make_command("run-host", "run Ziti tunnel to host services",
                                           "-i <id.file> [-r N] [-v N]",
