@@ -817,6 +817,7 @@ static int load_identity_cfg(const char *identifier, const ziti_config *cfg, boo
     ziti_options opts = {
             .api_page_size = api_page_size > 0 ? api_page_size : 0,
             .disabled = disabled,
+            .refresh_interval = (long)refresh_interval
     };
     int rc = init_ziti_instance(inst, cfg, &opts);
     if (rc != ZITI_OK) {
@@ -897,7 +898,6 @@ int set_tnlr_options(struct ziti_instance_s *inst) {
             .config_types = cfg_types,
             .event_cb = on_ziti_event, // ensure ziti events are propagated (as tunnel events) via the command interface
             .events = -1,
-            .refresh_interval = (long)refresh_interval,
             .app_ctx = inst
     };
     int rc = ziti_context_set_options(inst->ztx, &tunneler_ziti_options);
