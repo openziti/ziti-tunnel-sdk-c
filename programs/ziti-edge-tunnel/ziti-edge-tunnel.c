@@ -1428,23 +1428,27 @@ static char* config_file;
 
 static int parse_enroll_opts(int argc, char *argv[]) {
     static struct option opts[] = {
-            { "jwt", required_argument, NULL, 'j'},
-            { "identity", required_argument, NULL, 'i'},
-            { "use-keychain", no_argument, NULL, 'K' },
-            { "key", required_argument, NULL, 'k'},
-            { "cert", required_argument, NULL, 'c'},
-            { "name", required_argument, NULL, 'n'},
-            { "proxy", required_argument, NULL, 'x' },
+        {"url", required_argument, NULL, 'u'},
+        { "jwt", required_argument, NULL, 'j'},
+        { "identity", required_argument, NULL, 'i'},
+        { "use-keychain", no_argument, NULL, 'K' },
+        { "key", required_argument, NULL, 'k'},
+        { "cert", required_argument, NULL, 'c'},
+        { "name", required_argument, NULL, 'n'},
+        { "proxy", required_argument, NULL, 'x' },
     };
     int c, option_index, errors = 0;
     const char *proxy_arg = NULL;
     optind = 0;
 
-    while ((c = getopt_long(argc, argv, "j:i:Kk:c:n:x:",
+    while ((c = getopt_long(argc, argv, "j:i:Kk:c:n:x:u:",
                             opts, &option_index)) != -1) {
         switch (c) {
+            case 'u':
+                enroll_opts.url = optarg;
+                break;
             case 'j':
-                enroll_opts.jwt = optarg;
+                enroll_opts.token = optarg;
                 break;
             case 'K':
                 enroll_opts.use_keychain = true;
@@ -1460,19 +1464,19 @@ static int parse_enroll_opts(int argc, char *argv[]) {
                                            )
 #endif
                         ) {
-                    enroll_opts.enroll_key = realpath(optarg, NULL);
+                    enroll_opts.key = realpath(optarg, NULL);
                 } else {
                     // may be key ref (keychain/pkcs11)
-                    enroll_opts.enroll_key = optarg;
+                    enroll_opts.key = optarg;
                 }
                 uv_fs_req_cleanup(&req);
                 break;
             }
             case 'c':
-                enroll_opts.enroll_cert = realpath(optarg, NULL);
+                enroll_opts.cert = realpath(optarg, NULL);
                 break;
             case 'n':
-                enroll_opts.enroll_name = optarg;
+                enroll_opts.name = optarg;
                 break;
             case 'i':
                 config_file = optarg;
@@ -1492,7 +1496,13 @@ static int parse_enroll_opts(int argc, char *argv[]) {
         errors++;
     }
 
-    if (enroll_opts.jwt == NULL || config_file == NULL) {
+    if (enroll_opts.token == NULL && enroll_opts.url == NULL) {
+        fprintf(stderr, "enrollment token option(-j|--jwt) or controller URL(-u|--url) is required\n");
+        errors++;
+    }
+
+    if (config_file == NULL) {
+        fprintf(stderr, "output file option(-i|--identity) is required\n");
         errors++;
     }
 
@@ -1557,8 +1567,8 @@ static void enroll(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    if (enroll_opts.jwt == NULL) {
-        ZITI_LOG(ERROR, "JWT file option(-j|--jwt) is required");
+    if (enroll_opts.token == NULL && enroll_opts.url == NULL) {
+        ZITI_LOG(ERROR, "enrollment token option(-j|--jwt) or controller URL(-u|--url) is required");
         exit(EXIT_FAILURE);
     }
 
@@ -2273,9 +2283,12 @@ static int delete_identity_opts(int argc, char *argv[]) {
 
 static int add_identity_opts(int argc, char *argv[]) {
     static struct option opts[] = {
-            {"use-keychain", no_argument, NULL, 'K' },
-            {"identity", required_argument, NULL, 'i'},
-            {"jwt", required_argument, NULL, 'j'},
+        {"use-keychain", no_argument, NULL, 'K' },
+        {"identity", required_argument, NULL, 'i'},
+        {"jwt", required_argument, NULL, 'j'},
+        {"key", required_argument, NULL, 'k'},
+        {"cert", required_argument, NULL, 'c'},
+        {"url", required_argument, NULL, 'u'},
     };
     int c, option_index, errors = 0;
     optind = 0;
@@ -2283,7 +2296,7 @@ static int add_identity_opts(int argc, char *argv[]) {
     tunnel_add_identity *tunnel_add_identity_opt = calloc(1, sizeof(tunnel_add_identity));
     cmd.command = TunnelCommand_AddIdentity;
 
-    while ((c = getopt_long(argc, argv, "Ki:j:",
+    while ((c = getopt_long(argc, argv, "Ki:j:k:c:u:",
                             opts, &option_index)) != -1) {
         switch (c) {
             case 'K':
@@ -2294,6 +2307,15 @@ static int add_identity_opts(int argc, char *argv[]) {
                 break;
             case 'j':
                 tunnel_add_identity_opt->jwtContent = optarg;
+                break;
+            case 'k':
+                tunnel_add_identity_opt->key = optarg;
+                break;
+            case 'c':
+                tunnel_add_identity_opt->cert = optarg;
+                break;
+            case 'u':
+                tunnel_add_identity_opt->controllerURL = optarg;
                 break;
             default: {
                 fprintf(stderr, "Unknown option '%c'\n", c);
@@ -2312,16 +2334,18 @@ static int add_identity_opts(int argc, char *argv[]) {
     return optind;
 }
 
-static CommandLine enroll_cmd = make_command("enroll", "enroll Ziti identity",
-        "-j|--jwt <enrollment token> -i|--identity <identity> [-k|--key <private_key> [-c|--cert <certificate>]] [-n|--name <name>]",
-        "\t-j|--jwt\tenrollment token file\n"
-        "\t-x|--proxy type://[username[:password]@]hostname_or_ip:port\tproxy to use when connecting to OpenZiti controller. 'http' is currently the only supported type.\n"
-        "\t-i|--identity\toutput identity file\n"
-        "\t-K|--use-keychain\tuse keychain to generate/store private key\n"
-        "\t-k|--key\tprivate key for enrollment\n"
-        "\t-c|--cert\tcertificate for enrollment\n"
-        "\t-n|--name\tidentity name\n",
-        parse_enroll_opts, enroll);
+static CommandLine enroll_cmd = make_command(
+    "enroll", "enroll Ziti identity",
+    "( -u|--url <controller URL> | -j|--jwt <enrollment token> ) -i|--identity <identity> [-k|--key <private_key> [-c|--cert <certificate>]] [-n|--name <name>]",
+    "\t-u|--url\tenroll with controller (3rd party IDP required for auth). Ignored if --jwt is provided\n"
+    "\t-j|--jwt\tenrollment token file\n"
+    "\t-x|--proxy type://[username[:password]@]hostname_or_ip:port\tproxy to use when connecting to OpenZiti controller. 'http' is currently the only supported type.\n"
+    "\t-i|--identity\toutput identity file\n"
+    "\t-K|--use-keychain\tuse keychain to generate/store private key\n"
+    "\t-k|--key\tprivate key for enrollment\n"
+    "\t-c|--cert\tcertificate for enrollment\n"
+    "\t-n|--name\tidentity name\n",
+    parse_enroll_opts, enroll);
 static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required superuser access)",
                                           "-i <id.file> [-r N] [-v N] [-d|--dns-ip-range N.N.N.N/N] [-u|--dns-upstream N.N.N.N]\n",
                                           "\t-i|--identity <identity>\trun with provided identity file (required)\n"
@@ -2375,7 +2399,10 @@ static CommandLine delete_id_cmd = make_command("delete", "delete the identities
                                                  "\t-i|--identity\tidentity info that needs to be deleted\n", delete_identity_opts, send_message_to_tunnel_fn);
 static CommandLine add_id_cmd = make_command("add", "enroll and load the identity", "-j <jwt_content> -i <identity_name>",
                                                 "\t-K|--use-keychain\tuse keychain to generate/store private key\n"
+                                                "\t-u|--url\tenroll with controller (3rd party IDP required for auth). Ignored if --jwt is provided\n"
                                                 "\t-j|--jwt\tenrollment token content\n"
+                                                "\t-k|--key\tprivate key to use (required if --cert option is used)\n"
+                                                "\t-c|--cert\tcertificate to use (required for ca and caott enrollments, otherwise ignored)\n"
                                                 "\t-i|--identity\toutput identity .json file (relative to \"-I\" config directory)\n",
                                                 add_identity_opts, send_message_to_tunnel_fn);
 static CommandLine set_log_level_cmd = make_command("set_log_level", "Set log level of the tunneler", "-l <level>",

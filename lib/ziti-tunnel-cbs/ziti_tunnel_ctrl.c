@@ -730,10 +730,10 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
                 req->cmd_ctx = ctx;
 
                 ziti_enroll_opts opts = {
-                        .enroll_name = enroll.name,
-                        .jwt_content = enroll.jwt,
-                        .enroll_key = enroll.key,
-                        .enroll_cert = enroll.cert,
+                        .name = enroll.name,
+                        .token = enroll.jwt,
+                        .key = enroll.key,
+                        .cert = enroll.cert,
                         .use_keychain = enroll.use_keychain,
                 };
                 ziti_enroll(&opts, CMD_CTX.loop, on_cmd_enroll, req);
