@@ -118,6 +118,10 @@ XX(dump_path, model_string, none, DumpPath, __VA_ARGS__)
 #define TNL_IDENTITY_ID(XX, ...) \
 XX(identifier, model_string, none, Identifier, __VA_ARGS__)
 
+#define TNL_ID_EXT_AUTH(XX, ...) \
+TNL_IDENTITY_ID(XX, __VA_ARGS__) \
+XX(provider, model_string, none, Provider, __VA_ARGS__)
+
 #define TNL_MFA_ENROL_RES(XX,...) \
 XX(identifier, model_string, none, Identifier, __VA_ARGS__) \
 XX(is_verified, model_bool, none, IsVerified, __VA_ARGS__) \
@@ -207,6 +211,7 @@ DECLARE_MODEL(tunnel_ziti_dump, TNL_ZITI_DUMP)
 DECLARE_MODEL(tunnel_ip_dump, TNL_IP_DUMP)
 DECLARE_MODEL(tunnel_on_off_identity, TNL_ON_OFF_IDENTITY)
 DECLARE_MODEL(tunnel_identity_id, TNL_IDENTITY_ID)
+DECLARE_MODEL(tunnel_id_ext_auth, TNL_ID_EXT_AUTH)
 DECLARE_MODEL(tunnel_mfa_enrol_res, TNL_MFA_ENROL_RES)
 DECLARE_MODEL(tunnel_submit_mfa, TNL_SUBMIT_MFA)
 DECLARE_MODEL(tunnel_verify_mfa, TNL_VERIFY_MFA)

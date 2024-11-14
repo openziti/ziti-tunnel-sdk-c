@@ -766,6 +766,13 @@ static void on_event(const base_event *ev) {
                 if (id_event.Id->FingerPrint) {
                     id_event.Fingerprint = id_event.Id->FingerPrint;
                 }
+                if (model_list_size(&ese->providers) > 0) {
+                    model_list_clear(&id->ExtAuthProviders, free);
+                    const jwt_provider* ext_provider;
+                    MODEL_LIST_FOREACH(ext_provider, ese->providers) {
+                        model_list_append(&id->ExtAuthProviders, strdup(ext_provider->name));
+                    }
+                }
                 send_events_message(&id_event, (to_json_fn) identity_event_to_json, true);
             }
             break;
@@ -1815,12 +1822,36 @@ static char* get_identity_opt(int argc, char *argv[]) {
 }
 
 static int ext_auth_opts(int argc, char *argv[]) {
-    tunnel_identity_id id = {
-            .identifier = (char*)get_identity_opt(argc, argv),
+    static struct option opts[] = {
+        {"identity", required_argument, NULL, 'i'},
+        {"provider", required_argument, NULL, 'p'}
     };
+    tunnel_id_ext_auth auth = {};
 
+    int c, option_index, errors = 0;
+    optind = 0;
+
+    while ((c = getopt_long(argc, argv, "i:p:",
+                            opts, &option_index)) != -1) {
+        switch (c) {
+        case 'i':
+            auth.identifier = optarg;
+            break;
+        case 'p':
+            auth.provider = optarg;
+            break;
+        default:
+            fprintf(stderr, "Unknown option '%c'\n", c);
+            errors++;
+            break;
+        }
+    }
+
+    CHECK_COMMAND_ERRORS(errors);
+
+    size_t json_len;
     cmd.command = TunnelCommands.ExternalAuth;
-    cmd.data = tunnel_identity_id_to_json(&id, MODEL_JSON_COMPACT, NULL);
+    cmd.data = tunnel_id_ext_auth_to_json(&auth, MODEL_JSON_COMPACT, &json_len);
     return optind;
 }
 
