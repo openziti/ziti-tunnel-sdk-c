@@ -730,10 +730,10 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
                 req->cmd_ctx = ctx;
 
                 ziti_enroll_opts opts = {
-                        .enroll_name = enroll.name,
-                        .jwt_content = enroll.jwt,
-                        .enroll_key = enroll.key,
-                        .enroll_cert = enroll.cert,
+                        .name = enroll.name,
+                        .token = enroll.jwt,
+                        .key = enroll.key,
+                        .cert = enroll.cert,
                         .use_keychain = enroll.use_keychain,
                 };
                 ziti_enroll(&opts, CMD_CTX.loop, on_cmd_enroll, req);
@@ -760,28 +760,41 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
         }
 
         case TunnelCommand_ExternalAuth: {
-            tunnel_identity_id id = {};
+            tunnel_id_ext_auth auth = {};
             if (cmd->data == NULL ||
-                parse_tunnel_identity_id(&id, cmd->data, strlen(cmd->data)) < 0) {
+                parse_tunnel_id_ext_auth(&auth, cmd->data, strlen(cmd->data)) < 0) {
                 result.error = "invalid command";
                 result.success = false;
-                free_tunnel_identity_id(&id);
+                free_tunnel_id_ext_auth(&auth);
                 break;
             }
 
-            struct ziti_instance_s *inst = model_map_get(&instances, id.identifier);
+            struct ziti_instance_s *inst = model_map_get(&instances, auth.identifier);
             if (is_null(inst, "ziti context not found", &result) ||
                 is_null(inst->ztx, "ziti context is not loaded", &result)) {
-                free_tunnel_identity_id(&id);
+                free_tunnel_id_ext_auth(&auth);
+                break;
+            }
+
+            if (auth.provider != NULL &&
+                ziti_use_ext_jwt_signer(inst->ztx, auth.provider) != ZITI_OK) {
+                ZITI_LOG(ERROR, "invalid provider");
+                result.success = false;
+                result.error = "invalid provider";
+                free_tunnel_id_ext_auth(&auth);
                 break;
             }
 
             struct tunnel_cb_s *req = calloc(1, sizeof(*req));
-            req->ctx = (void*)id.identifier;
+            req->ctx = (void*)auth.identifier;
             req->cmd_cb = cb;
             req->cmd_ctx = ctx;
-            ziti_ext_auth(inst->ztx, on_ext_auth, req);
-            return 0;
+            if (ziti_ext_auth(inst->ztx, on_ext_auth, req) == 0) {
+                return 0;
+            }
+            result.success = false;
+            result.error = "failed to start external auth";
+            break;
         }
         default: {
             static char err[512];
@@ -1063,15 +1076,16 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
                 ev.identifier = instance->identifier;
                 ev.operation = mfa_status_name(mfa_status_auth_challenge);
                 CMD_CTX.on_event((const base_event *) &ev);
-            } else if (event->auth.action == ziti_auth_login_external) {
+            } else if (event->auth.action == ziti_auth_login_external ||
+                       event->auth.action == ziti_auth_select_external) {
                 ZITI_LOG(INFO, "ztx[%s/%s] ext auth event received", instance->identifier, ctx_name);
                 ext_signer_event ev = {0};
                 ev.event_type = TunnelEvents.ExtJWTEvent;
                 ev.identifier = instance->identifier;
                 ev.status = "login_with_ext_signer";
 
-                ziti_jwt_signer *signer;
-                MODEL_LIST_FOREACH(signer, event->auth.providers) {
+                for (int idx = 0; event->auth.providers && event->auth.providers[idx]; idx++) {
+                    ziti_jwt_signer *signer = event->auth.providers[idx];
                     jwt_provider *provider = calloc(1, sizeof(*provider));
                     provider->name = signer->name;
                     provider->issuer = signer->provider_url;

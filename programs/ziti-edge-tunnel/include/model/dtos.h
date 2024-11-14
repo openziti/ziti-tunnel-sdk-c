@@ -41,6 +41,7 @@ XX(Config, tunnel_config, ptr, Config, __VA_ARGS__) \
 XX(ControllerVersion, model_string, none, ControllerVersion, __VA_ARGS__) \
 XX(IdFileStatus, model_bool, none, IdFileStatus, __VA_ARGS__) \
 XX(NeedsExtAuth, model_bool, none, NeedsExtAuth, __VA_ARGS__) \
+XX(ExtAuthProviders, model_string, list, ExtAuthProviders, __VA_ARGS__) \
 XX(MfaEnabled, model_bool, none, MfaEnabled, __VA_ARGS__) \
 XX(MfaNeeded, model_bool, none, MfaNeeded, __VA_ARGS__) \
 XX(Services, tunnel_service, array, Services, __VA_ARGS__) \

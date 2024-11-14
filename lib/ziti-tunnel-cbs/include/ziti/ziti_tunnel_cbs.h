@@ -118,6 +118,10 @@ XX(dump_path, model_string, none, DumpPath, __VA_ARGS__)
 #define TNL_IDENTITY_ID(XX, ...) \
 XX(identifier, model_string, none, Identifier, __VA_ARGS__)
 
+#define TNL_ID_EXT_AUTH(XX, ...) \
+TNL_IDENTITY_ID(XX, __VA_ARGS__) \
+XX(provider, model_string, none, Provider, __VA_ARGS__)
+
 #define TNL_MFA_ENROL_RES(XX,...) \
 XX(identifier, model_string, none, Identifier, __VA_ARGS__) \
 XX(is_verified, model_bool, none, IsVerified, __VA_ARGS__) \
@@ -177,7 +181,10 @@ XX(unlocked, model_bool, none, Unlocked, __VA_ARGS__)
 #define TUNNEL_ADD_IDENTITY(XX, ...) \
 XX(useKeychain, model_bool, none, UseKeychain, __VA_ARGS__) \
 XX(jwtFileName, model_string, none, JwtFileName, __VA_ARGS__) \
-XX(jwtContent, model_string, none, JwtContent, __VA_ARGS__)
+XX(jwtContent, model_string, none, JwtContent, __VA_ARGS__) \
+XX(key, model_string, none, Key, __VA_ARGS__) \
+XX(cert, model_string, none, Certificate, __VA_ARGS__) \
+XX(controllerURL, model_string, none, ControllerURL, __VA_ARGS__)
 
 #define TUNNEL_EXT_AUTH(XX, ...) \
 XX(identifier, model_string, none, identifier, __VA_ARGS__) \
@@ -188,9 +195,10 @@ XX(host, model_string, none, host, __VA_ARGS__) \
 XX(port, model_number, none, port, __VA_ARGS__)
 
 #define TNL_ENROLL(XX, ...) \
+XX(url, model_string, none, url, __VA_ARGS__)   \
 XX(name, model_string, none, name, __VA_ARGS__) \
-XX(jwt, model_string, none, jwt, __VA_ARGS__) \
-XX(key, model_string, none, key, __VA_ARGS__) \
+XX(jwt, model_string, none, jwt, __VA_ARGS__)   \
+XX(key, model_string, none, key, __VA_ARGS__)   \
 XX(cert, model_string, none, cert, __VA_ARGS__) \
 XX(use_keychain, model_bool, none, useKeychain, __VA_ARGS__)
 
@@ -203,6 +211,7 @@ DECLARE_MODEL(tunnel_ziti_dump, TNL_ZITI_DUMP)
 DECLARE_MODEL(tunnel_ip_dump, TNL_IP_DUMP)
 DECLARE_MODEL(tunnel_on_off_identity, TNL_ON_OFF_IDENTITY)
 DECLARE_MODEL(tunnel_identity_id, TNL_IDENTITY_ID)
+DECLARE_MODEL(tunnel_id_ext_auth, TNL_ID_EXT_AUTH)
 DECLARE_MODEL(tunnel_mfa_enrol_res, TNL_MFA_ENROL_RES)
 DECLARE_MODEL(tunnel_submit_mfa, TNL_SUBMIT_MFA)
 DECLARE_MODEL(tunnel_verify_mfa, TNL_VERIFY_MFA)
@@ -345,6 +354,10 @@ struct add_identity_request_s {
     model_string identifier;
     model_string identifier_file_name;
     model_string jwt_content;
+    model_string key;
+    model_string certificate;
+    model_string url;
+
     bool use_keychain;
     void *add_id_ctx;
     command_cb cmd_cb;

@@ -80,9 +80,12 @@ static void enroll_ziti_async(uv_loop_t *loop, void *arg) {
     struct add_identity_request_s *add_id_req = arg;
 
     ziti_enroll_opts enroll_opts = {0};
-    enroll_opts.enroll_name = add_id_req->identifier;
-    enroll_opts.jwt_content = add_id_req->jwt_content;
+    enroll_opts.name = add_id_req->identifier;
+    enroll_opts.token = add_id_req->jwt_content;
     enroll_opts.use_keychain = add_id_req->use_keychain;
+    enroll_opts.key = add_id_req->key;
+    enroll_opts.cert = add_id_req->certificate;
+    enroll_opts.url = add_id_req->url;
 
     ziti_enroll(&enroll_opts, loop, tunnel_enroll_cb, add_id_req);
 }
@@ -214,20 +217,20 @@ bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void 
                 break;
             }
 
+            if (config_dir == NULL) {
+                result.error = "config directory not set";
+                result.success = false;
+                break;
+            }
+
             if (tunnel_add_identity_cmd.jwtFileName == NULL) {
                 result.error = "identity filename not provided";
                 result.success = false;
                 break;
             }
 
-            if (tunnel_add_identity_cmd.jwtContent == NULL) {
+            if (tunnel_add_identity_cmd.jwtContent == NULL && tunnel_add_identity_cmd.controllerURL == NULL) {
                 result.error = "jwt content not provided";
-                result.success = false;
-                break;
-            }
-
-            if (config_dir == NULL) {
-                result.error = "config directory not set";
                 result.success = false;
                 break;
             }
@@ -259,14 +262,18 @@ bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void 
                 break;
             }
 
+#define s_dup(s) ((s) ? strdup(s) : NULL)
             struct add_identity_request_s *add_id_req = calloc(1, sizeof(struct add_identity_request_s));
             add_id_req->cmd_ctx = ctx;
             add_id_req->cmd_cb = cb;
             add_id_req->add_id_ctx = outfile;
             add_id_req->identifier = strdup(new_identifier);
             add_id_req->identifier_file_name = strdup(new_identifier_name);
-            add_id_req->jwt_content = strdup(tunnel_add_identity_cmd.jwtContent);
+            add_id_req->jwt_content = s_dup(tunnel_add_identity_cmd.jwtContent);
             add_id_req->use_keychain = tunnel_add_identity_cmd.useKeychain;
+            add_id_req->key = s_dup(tunnel_add_identity_cmd.key);
+            add_id_req->certificate = s_dup(tunnel_add_identity_cmd.cert);
+            add_id_req->url = s_dup(tunnel_add_identity_cmd.controllerURL);
 
             enroll_ziti_async(global_loop_ref, add_id_req);
             free_tunnel_add_identity(&tunnel_add_identity_cmd);
