@@ -2428,14 +2428,15 @@ static CommandLine get_mfa_codes_cmd = make_command("get_mfa_codes", "Get MFA co
 static CommandLine get_status_cmd = make_command("tunnel_status", "Get Tunnel Status", "", "", get_status_opts, send_message_to_tunnel_fn);
 static CommandLine delete_id_cmd = make_command("delete", "delete the identities information", "[-i <identity>]",
                                                  "\t-i|--identity\tidentity info that needs to be deleted\n", delete_identity_opts, send_message_to_tunnel_fn);
-static CommandLine add_id_cmd = make_command("add", "enroll and load the identity", "-j <jwt_content> -i <identity_name>",
-                                                "\t-K|--use-keychain\tuse keychain to generate/store private key\n"
-                                                "\t-u|--url\tenroll with controller (3rd party IDP required for auth). Ignored if --jwt is provided\n"
-                                                "\t-j|--jwt\tenrollment token content\n"
-                                                "\t-k|--key\tprivate key to use (required if --cert option is used)\n"
-                                                "\t-c|--cert\tcertificate to use (required for ca and caott enrollments, otherwise ignored)\n"
-                                                "\t-i|--identity\toutput identity .json file (relative to \"-I\" config directory)\n",
-                                                add_identity_opts, send_message_to_tunnel_fn);
+static CommandLine add_id_cmd = make_command(
+        "add", "enroll and load the identity", "-i <identity_name> ( -j <jwt> | -u <URL> ) [-K] [-k <key> [-c cert] ] ",
+        "\t-K|--use-keychain\tuse keychain to generate/store private key\n"
+        "\t-u|--url\tenroll with controller (3rd party IDP required for auth). Ignored if --jwt is provided\n"
+        "\t-j|--jwt\tenrollment token content\n"
+        "\t-k|--key\tprivate key to use (required if --cert option is used)\n"
+        "\t-c|--cert\tcertificate to use (required for ca and caott enrollments, otherwise ignored)\n"
+        "\t-i|--identity\toutput identity .json file (relative to \"-I\" config directory)\n",
+        add_identity_opts, send_message_to_tunnel_fn);
 static CommandLine set_log_level_cmd = make_command("set_log_level", "Set log level of the tunneler", "-l <level>",
                                                     "\t-l|--loglevel\tlog level of the tunneler\n", set_log_level_opts, send_message_to_tunnel_fn);
 static CommandLine update_tun_ip_cmd = make_command("update_tun_ip", "Update tun ip of the tunneler", "[-t <tunip>] [-p <prefixlength>] [-d <AddDNS>]",
