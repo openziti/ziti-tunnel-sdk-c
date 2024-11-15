@@ -1,8 +1,8 @@
 # How to Avoid Building All Dependencies with vcpkg
 
-vcpkg supports a trick that lets toy get a dependency from an external source  (like a package manager) instead of
-building it. The only explanation of the trick that I've seen is a [blog post from microsoft], but I've put it to
-use it on Linux (with apt/dnf dependencies), macOS (homebrew), and Windows (msys2).
+vcpkg supports a trick that lets you get a dependency from an external source (like a package manager) instead of
+building it. The only explanation of the trick that I've seen is a [blog post from microsoft](https://devblogs.microsoft.com/cppblog/using-system-package-manager-dependencies-with-vcpkg/),
+but I've put it to use it on Linux (with apt/dnf dependencies), macOS (homebrew), and Windows (msys2).
 
 You can probably get away with using a different package manager, as long as the packages that it installs are
 registered with the pkg-config that your build uses. I've been getting pkg-config from msys2 on Windows, so I
