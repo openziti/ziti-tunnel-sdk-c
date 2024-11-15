@@ -17,18 +17,18 @@ Anyway, here's what worked for me:
        pacman -S mingw-w64-x86_64-pkg-config mingw-w64-x86_64-protobuf-c mingw-w64-x86_64-json-c mingw-w64-x86_64-libuv \
            mingw-w64-x86_64-libsodium mingw-w64-x86_64-openssl 
 
-3. Add `c:\msys64\mingw64\bin` to your PATH.
-
-4. Add the following to your cmake preset:
+3. Add the following to your cmake preset:
 
        "cacheVariables": {
+          "PKG_CONFIG_EXECUTABLE": "c:/msys64/mingw64/bin/pkg-config.exe",
           "VCPKG_OVERLAY_PORTS": "${sourceDir}/vcpkg-overlays/full-distro/windows-11"
        },
        "environment": {
           "OPENSSL_ROOT_DIR": "c:/msys64/mingw64"
        },
 
-   The openssl variable was needed because [cmake's FindOpenSSL module](https://cmake.org/cmake/help/latest/module/FindOpenSSL.html)
-   does not consult `pkg-config` on Windows.
+   - Note that the `PKG_CONFIG_EXECUTABLE` setting depends on where you installed `msys2`.
+   - The openssl variable was needed because [cmake's FindOpenSSL module](https://cmake.org/cmake/help/latest/module/FindOpenSSL.html)
+     does not consult `pkg-config` on Windows.
 
 5. Remove your build directory, and re-run cmake.
