@@ -21,7 +21,7 @@ fi
 
 %systemd_post $SYSTEMD_SERVICE_NAME
 
-# update permissions
+# update permissions in /var/lib/ziti, /opt/openziti/etc/identities
 chown ziti:ziti "@ZITI_STATE_DIR@" || :
 chmod -R u=rwX,g=rwX,o= "@ZITI_STATE_DIR@" || :
 
