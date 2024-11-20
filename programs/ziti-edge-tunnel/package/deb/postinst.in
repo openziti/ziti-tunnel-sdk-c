@@ -39,7 +39,7 @@ if [ "$1" = "configure" ]; then
     fi
   fi
 
-  # update permissions
+  # update permissions in /var/lib/ziti, /opt/openziti/etc/identities
   chown -R ziti:ziti "@ZITI_STATE_DIR@"
   chmod -R u=rwX,g=rwX,o= "@ZITI_STATE_DIR@"
 
