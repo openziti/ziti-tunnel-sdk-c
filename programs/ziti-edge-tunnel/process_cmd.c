@@ -19,7 +19,14 @@
 #include "identity-utils.h"
 #include "instance-config.h"
 
-extern char *config_dir;
+extern char *config_file;
+extern bool uses_config_dir;
+
+#if _WIN32
+#include "service-utils.h"
+#include "windows/windows-service.h"
+#define realpath(rel, abs) _fullpath(abs, rel, MAX_PATH)
+#endif
 
 void free_add_id_req(struct add_identity_request_s * req) {
     if (req) {
@@ -41,17 +48,29 @@ static void tunnel_enroll_cb(const ziti_config *cfg, int status, const char *err
         .error = NULL,
         .data = NULL,
         .code = IPC_ERROR,
-};
-
-    if (status != ZITI_OK) {
-        ZITI_LOG(ERROR, "enrollment failed: %s(%d)", err, status);
-        result.error = "enrollment failed";
-        add_id_req->cmd_cb(&result, add_id_req->cmd_ctx);
-        free(add_id_req);
-        return;
-    }
+    };
 
     FILE *f = add_id_req->add_id_ctx;
+
+    if (status != ZITI_OK) {
+        fflush(f);
+        fclose(f);
+        ZITI_LOG(ERROR, "enrollment failed: %s(%d)", err, status);
+        char *e = calloc(1024, sizeof(char));
+        sprintf(e, "enrollment failed: %s", err);
+        result.error = e;
+
+        if(add_id_req != NULL) {
+            add_id_req->cmd_cb(&result, add_id_req->cmd_ctx);
+            if(add_id_req->identifier != NULL) {
+                ZITI_LOG(ERROR, "removing failed identity file: %s", add_id_req->identifier);
+                remove(add_id_req->identifier);
+            }
+        }
+        free(add_id_req);
+        free(e);
+        return;
+    }
 
     size_t len;
     char *cfg_json = ziti_config_to_json(cfg, 0, &len);
@@ -99,10 +118,29 @@ static void enroll_ziti_async(uv_loop_t *loop, void *arg) {
     enroll_opts.cert = add_id_req->certificate;
     enroll_opts.url = add_id_req->url;
 
-    ziti_enroll(&enroll_opts, loop, tunnel_enroll_cb, add_id_req);
+    int enroll_result = ziti_enroll(&enroll_opts, loop, tunnel_enroll_cb, add_id_req);
+    if (enroll_result == ZITI_OK) {
+        ZITI_LOG(INFO, "enrollment started. identity file will be written to: %s", add_id_req->identifier);
+    } else {
+        ZITI_LOG(ERROR, "cannot enroll: %d", enroll_result);
+        tunnel_enroll_cb(NULL, ZITI_INVALID_STATE, "enrollment JWT or verifiable controller URL is required", add_id_req);
+    }
+}
+
+size_t len_without_extension(const char* input, const char* extension) {
+    if(input == NULL || extension == NULL) {
+        return 0;
+    }
+    char* ext = strstr(input, extension);
+    if (ext != NULL) {
+        return ext - input;
+    } else {
+        return strlen(input);
+    }
 }
 
 bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void *ctx) {
+    char dynamic_err[1024];
     tunnel_result result = {
             .success = false,
             .error = NULL,
@@ -219,55 +257,109 @@ bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void 
 
         case TunnelCommand_AddIdentity : {
             cmd_accepted = true;
-            tunnel_add_identity tunnel_add_identity_cmd = {0};
-            if (tnl_cmd->data == NULL ||
-                parse_tunnel_add_identity(&tunnel_add_identity_cmd, tnl_cmd->data, strlen(tnl_cmd->data)) < 0 ||
-                (tunnel_add_identity_cmd.jwtFileName == NULL && tunnel_add_identity_cmd.jwtContent == NULL)) {
+            if (tnl_cmd->data == NULL) {
                 result.error = "invalid command";
                 result.success = false;
+                break;
+            }
+
+            if (!uses_config_dir) {
+                result.error = "config directory not set, add command requires an identity-dir";
+                result.success = false;
+                break;
+            }
+
+            tunnel_add_identity tunnel_add_identity_cmd = {0};
+            int parse_result = parse_tunnel_add_identity(&tunnel_add_identity_cmd, tnl_cmd->data, strlen(tnl_cmd->data));
+
+            if (parse_result < 0) {
+                result.error = "invalid command - could not parse";
+                result.success = false;
+                free_tunnel_add_identity(&tunnel_add_identity_cmd);
+                break;
+            }
+            char *null = NULL;
+            bool is_jwt = tunnel_add_identity_cmd.jwtFileName != null || tunnel_add_identity_cmd.jwtContent != null;
+            bool is_url = tunnel_add_identity_cmd.controllerURL != null;
+            bool is_3rd_party_ca = tunnel_add_identity_cmd.cert != null || tunnel_add_identity_cmd.key != null;
+            int enrollment_methods_supplied = (is_jwt + is_url + is_3rd_party_ca);
+
+            if (enrollment_methods_supplied == 0) {
+                result.error = "no enrollment options detected. either JWT or URL must be specified.";
+                result.success = false;
                 free_tunnel_add_identity(&tunnel_add_identity_cmd);
                 break;
             }
 
-            if (config_dir == NULL) {
-                result.error = "config directory not set";
-                result.success = false;
-                break;
-            }
+            char new_identifier_without_ext[FILENAME_MAX] = {0};
+            char new_identifier_with_ext[FILENAME_MAX] = {0};
+            char new_identifier_path[FILENAME_MAX] = {0};
+            if(is_jwt) {
+                if (tunnel_add_identity_cmd.jwtFileName == NULL) {
+                    result.error = "identity filename not provided";
+                    result.success = false;
+                    break;
+                }
 
-            if (tunnel_add_identity_cmd.jwtFileName == NULL) {
-                result.error = "identity filename not provided";
-                result.success = false;
-                break;
-            }
+                if (tunnel_add_identity_cmd.jwtContent == NULL &&
+                    tunnel_add_identity_cmd.controllerURL == NULL) {
+                    result.error = "jwt content not provided";
+                    result.success = false;
+                    break;
+                }
 
-            if (tunnel_add_identity_cmd.jwtContent == NULL && tunnel_add_identity_cmd.controllerURL == NULL) {
-                result.error = "jwt content not provided";
-                result.success = false;
-                break;
-            }
-
-            char* extension = strstr(tunnel_add_identity_cmd.jwtFileName, ".jwt");
-            size_t length;
-            if (extension != NULL) {
-                length = extension - tunnel_add_identity_cmd.jwtFileName;
+                size_t length = len_without_extension(tunnel_add_identity_cmd.jwtFileName, ".jwt");
+                if ((strlen(config_file) + length + 6) > FILENAME_MAX - 1 ) {
+                    ZITI_LOG(ERROR, "failed to create file %s%c%s.json, The length of the file name is longer than %d", config_file, PATH_SEP, tunnel_add_identity_cmd.jwtFileName, FILENAME_MAX);
+                    result.error = "invalid file name";
+                    result.success = false;
+                    free_tunnel_add_identity(&tunnel_add_identity_cmd);
+                    break;
+                }
+                if(tunnel_add_identity_cmd.alias != NULL) {
+                    snprintf(new_identifier_without_ext, FILENAME_MAX, "%s", tunnel_add_identity_cmd.alias);
+                } else {
+                    strncpy(new_identifier_without_ext, tunnel_add_identity_cmd.jwtFileName, length);
+                }
+            } else if (is_3rd_party_ca) {
+                if (tunnel_add_identity_cmd.cert == NULL) {
+                    result.error = "certificate content not provided";
+                    result.success = false;
+                    free_tunnel_add_identity(&tunnel_add_identity_cmd);
+                    break;
+                }
+                if (tunnel_add_identity_cmd.key == NULL) {
+                    result.error = "key content not provided";
+                    result.success = false;
+                    free_tunnel_add_identity(&tunnel_add_identity_cmd);
+                    break;
+                }
+                snprintf(new_identifier_without_ext, FILENAME_MAX, "%s", tunnel_add_identity_cmd.alias);
+            } else if (is_url) {
+                snprintf(new_identifier_without_ext, FILENAME_MAX, "%s", tunnel_add_identity_cmd.alias);
             } else {
-                length = strlen(tunnel_add_identity_cmd.jwtFileName);
-            }
-            char new_identifier[FILENAME_MAX] = {0};
-            char new_identifier_name[FILENAME_MAX] = {0};
-            if ((strlen(config_dir) + length + 6) >  FILENAME_MAX - 1 ) {
-                ZITI_LOG(ERROR, "failed to create file %s%c%s.json, The length of the file name is longer than %d", config_dir, PATH_SEP, tunnel_add_identity_cmd.jwtFileName, FILENAME_MAX);
-                result.error = "invalid file name";
+                result.error = "programming error. this case should not be hit. please file an issue";
                 result.success = false;
                 free_tunnel_add_identity(&tunnel_add_identity_cmd);
                 break;
             }
-            strncpy(new_identifier_name, tunnel_add_identity_cmd.jwtFileName, length);
-            snprintf(new_identifier, FILENAME_MAX, "%s%c%s.json", config_dir, PATH_SEP, new_identifier_name);
+
+            snprintf(new_identifier_with_ext, FILENAME_MAX, "%s.json", new_identifier_without_ext);
+            snprintf(new_identifier_path, FILENAME_MAX, "%s%c%s", config_file, PATH_SEP, new_identifier_with_ext);
+            normalize_identifier(new_identifier_path);
+
+            struct stat file_exists;
+            if (stat(new_identifier_path, &file_exists) == 0) {
+                snprintf(dynamic_err, sizeof(dynamic_err), "identity exists with the same name: %s", new_identifier_without_ext);
+                result.error = dynamic_err;
+                result.success = false;
+                free_tunnel_add_identity(&tunnel_add_identity_cmd);
+                break;
+            }
+
             FILE *outfile;
-            if ((outfile = fopen(new_identifier, "wb")) == NULL) {
-                ZITI_LOG(ERROR, "failed to open file %s: %s(%d)", new_identifier, strerror(errno), errno);
+            if ((outfile = fopen(new_identifier_path, "wb")) == NULL) {
+                ZITI_LOG(ERROR, "failed to open file %s: %s(%d)", new_identifier_path, strerror(errno), errno);
                 result.error = "invalid file name";
                 result.success = false;
                 free_tunnel_add_identity(&tunnel_add_identity_cmd);
@@ -279,8 +371,8 @@ bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void 
             add_id_req->cmd_ctx = ctx;
             add_id_req->cmd_cb = cb;
             add_id_req->add_id_ctx = outfile;
-            add_id_req->identifier = strdup(new_identifier);
-            add_id_req->identifier_file_name = strdup(new_identifier_name);
+            add_id_req->identifier = strdup(new_identifier_path);
+            add_id_req->identifier_file_name = strdup(new_identifier_with_ext);
             add_id_req->jwt_content = s_dup(tunnel_add_identity_cmd.jwtContent);
             add_id_req->use_keychain = tunnel_add_identity_cmd.useKeychain;
             add_id_req->key = s_dup(tunnel_add_identity_cmd.key);
@@ -289,7 +381,7 @@ bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void 
 
             enroll_ziti_async(global_loop_ref, add_id_req);
             free_tunnel_add_identity(&tunnel_add_identity_cmd);
-            return true;
+            return true; // do not break here. add_id_req->cmd_cb will respond with success/fail when executed
         }
 #if _WIN32
         case TunnelCommand_ServiceControl: {
@@ -333,6 +425,25 @@ bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void 
             free_tunnel_status_change(&tunnel_status_change_opts);
         }
 #endif
+        case TunnelCommand_Unknown:
+        case TunnelCommand_ZitiDump:
+        case TunnelCommand_IpDump:
+        case TunnelCommand_LoadIdentity:
+        case TunnelCommand_ListIdentities:
+        case TunnelCommand_IdentityOnOff:
+        case TunnelCommand_EnableMFA:
+        case TunnelCommand_SubmitMFA:
+        case TunnelCommand_VerifyMFA:
+        case TunnelCommand_RemoveMFA:
+        case TunnelCommand_GenerateMFACodes:
+        case TunnelCommand_GetMFACodes:
+        case TunnelCommand_GetMetrics:
+        case TunnelCommand_RefreshIdentity:
+        case TunnelCommand_RemoveIdentity:
+        case TunnelCommand_Enroll:
+        case TunnelCommand_ExternalAuth:
+        case TunnelCommand_SetUpstreamDNS:
+            break;
     }
     if (cmd_accepted) {
         cb(&result, ctx);
