@@ -190,10 +190,9 @@ close_file: ; /* declaration is not a statement */
 }
 
 int tun_commit_routes(netif_handle tun, uv_loop_t *l) {
+    uv_work_t *wr = calloc(1, sizeof(uv_work_t));
+    struct rt_process_cmd *cmd = calloc(1, sizeof(struct rt_process_cmd));
     if (tun->route_updates && model_map_size(tun->route_updates) > 0) {
-        uv_work_t *wr = calloc(1, sizeof(uv_work_t));
-        struct rt_process_cmd *cmd = calloc(1, sizeof(struct rt_process_cmd));
-
         ZITI_LOG(INFO, "starting %zd route updates", model_map_size(tun->route_updates));
         cmd->tun = tun;
         cmd->updates = tun->route_updates;

@@ -289,3 +289,7 @@ netif_driver utun_open(char *error, size_t error_len, const char *cidr) {
     }
     return driver;
 }
+
+const char* get_tun_name(netif_handle tun) {
+    return tun->name;
+}
