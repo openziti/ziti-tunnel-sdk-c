@@ -19,17 +19,8 @@ endif()
 FetchContent_Declare(lwip
         GIT_REPOSITORY https://github.com/lwip-tcpip/lwip.git
         GIT_TAG STABLE-2_2_0_RELEASE
+        # lwip's CMakeLists.txt does a lot of stuff that we don't need, so prevent FetchContent_MakeAvailable from loading it.
+        # we include ${LWIP_DIR}/src/Filelists.cmake instead.
+        SOURCE_SUBDIR dont/load/lwip/cmakelists
         )
-FetchContent_GetProperties(lwip)
-if(NOT lwip_POPULATED)
-    FetchContent_Populate(lwip)
-endif()
-
-FetchContent_Declare(lwip-contrib
-        GIT_REPOSITORY https://github.com/netfoundry/lwip-contrib.git
-        GIT_TAG STABLE-2_1_0_RELEASE
-        )
-FetchContent_GetProperties(lwip-contrib)
-if(NOT lwip-contrib_POPULATED)
-    FetchContent_Populate(lwip-contrib)
-endif()
+FetchContent_MakeAvailable(lwip)
