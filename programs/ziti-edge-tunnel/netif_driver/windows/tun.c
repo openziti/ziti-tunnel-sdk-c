@@ -544,9 +544,9 @@ wchar_t* get_tun_name(netif_handle tun) {
 }
 
 static BOOL CALLBACK
-tun_delete_cb(_In_ WINTUN_ADAPTER_HANDLE adapter, _In_ LPARAM param) {
+tun_delete_cb(_In_ WINTUN_ADAPTER_HANDLE to_delete, _In_ LPARAM param) {
     ZITI_LOG(INFO, "Deleting wintun adapter");
-    WintunCloseAdapter(adapter);
+    WintunCloseAdapter(to_delete);
     // the call back should always return value greater than zero, so the cleanup function will continue
     return 1;
 }
