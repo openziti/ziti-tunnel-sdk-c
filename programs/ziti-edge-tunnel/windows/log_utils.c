@@ -23,14 +23,10 @@
 #include <time.h>
 #include "windows/windows-service.h"
 #include "windows/windows-scripts.h"
-#include <direct.h>
 
 #if _WIN32
 #include <windows.h>
 #define mkdir(path, mode) CreateDirectory(path, NULL)
-#ifndef PATH_MAX
-#define PATH_MAX MAX_PATH
-#endif
 #define realpath(rel, abs) _fullpath(abs, rel, PATH_MAX)
 #endif
 
@@ -38,7 +34,8 @@ static bool open_log(char* log_filename);
 static bool rotate_log();
 static char* log_filename;
 static void set_is_interactive();
-static BOOL is_interactive = TRUE;
+static bool is_interactive = TRUE;
+static bool initialized = false;
 
 char* get_log_file_name(){
     return log_filename;
@@ -158,7 +155,8 @@ void flush_log(uv_check_t *handle) {
 
 }
 
-bool log_init(uv_loop_t *ziti_loop) {
+bool log_init(uv_loop_t *ziti_loop, int level, log_writer log_func) {
+    if(initialized) return true;
 
     set_is_interactive();
     uv_timeval64_t file_time;
@@ -185,7 +183,9 @@ bool log_init(uv_loop_t *ziti_loop) {
     uv_async_t *ar_update = calloc(1, sizeof(uv_async_t));
     uv_async_init(ziti_loop, ar_update, update_symlink_async);
     uv_async_send(ar_update);
-    return true;
+    ziti_log_init(ziti_loop, level, log_func);
+    initialized = true;
+    return initialized;
 }
 
 static const char* parse_level(int level) {
