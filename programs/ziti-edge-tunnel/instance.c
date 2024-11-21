@@ -17,7 +17,6 @@
 #include "model/dtos.h"
 #include <ziti/ziti_log.h>
 #include <time.h>
-#include <config-utils.h>
 #include "lwip/ip_addr.h"
 #include "ziti/ziti_tunnel.h"
 #include "identity-utils.h"
@@ -32,7 +31,10 @@ static const char* CFG_ZITI_TUNNELER_CLIENT_V1 = "ziti-tunneler-client.v1";
 static tunnel_status tnl_status = {0};
 
 tunnel_identity *find_tunnel_identity(const char* identifier) {
-    tunnel_identity *tnl_id = model_map_get(&tnl_identity_map, identifier);
+    char* normalized_identifier = strdup(identifier);
+    normalize_identifier(normalized_identifier);
+    tunnel_identity *tnl_id = model_map_get(&tnl_identity_map, normalized_identifier);
+    free(normalized_identifier);
     if (tnl_id != NULL) {
         return tnl_id;
     } else {
@@ -52,7 +54,9 @@ tunnel_identity *create_or_get_tunnel_identity(const char* identifier, const cha
         return id;
     } else {
         tunnel_identity *tnl_id = calloc(1, sizeof(struct tunnel_identity_s));
-        tnl_id->Identifier = strdup(identifier);
+        char* normalized_identifier = strdup(identifier);
+        normalize_identifier(normalized_identifier);
+        tnl_id->Identifier = normalized_identifier;
         if (filename != NULL) {
             char* extension = strstr(filename, ".json");
 
@@ -556,10 +560,12 @@ void normalize_identifier(char *str) {
     for (; *str != '\0'; str++) {
         if (*str == find) {
             *str = replace;
+        } else {
+            *str = (char)tolower((unsigned char)*str); // Convert to lowercase when on windows
         }
     }
 #else
-    return; // nothing to normalize at this time
+    // nothing to normalize at this time, fall through to remove duplicate path separators
 #endif
     remove_duplicate_path_separators(init_pos, PATH_SEP);
 }
@@ -575,13 +581,20 @@ void set_identifier_from_identities() {
         tunnel_identity *tnl_id = tnl_status.Identities[idx];
         if (tnl_id->Identifier == NULL && tnl_id->FingerPrint != NULL) {
             char identifier[FILENAME_MAX];
-            snprintf(identifier, sizeof(identifier), "%s/%s.json", get_identifier_path(), tnl_id->FingerPrint);
+            snprintf(identifier, sizeof(identifier), "%s/%s.json", "get_identifier_path()", tnl_id->FingerPrint);
             tnl_id->Identifier = strdup(identifier);
         }
         if (tnl_id->Identifier != NULL) {
             // set this field to false during initialization
             normalize_identifier((char*)tnl_id->Identifier);
-            model_map_set(&tnl_identity_map, tnl_id->Identifier, tnl_id);
+            // verify the identity file is still there before adding to the map. This handles the case when the file is removed manually
+
+            struct stat buffer;
+            if (stat(tnl_id->Identifier, &buffer) == 0) {
+                model_map_set(&tnl_identity_map, tnl_id->Identifier, tnl_id);
+            } else {
+                ZITI_LOG(WARN, "identity was in config, but file no longer exists. identifier=%s", tnl_id->Identifier);
+            }
         }
         //on startup - set mfa needed to false to correctly reflect tunnel status. After the identity is loaded these
         //are set to true __if necessary__
@@ -880,6 +893,33 @@ void set_ziti_status(bool enabled, const char* identifier) {
 
 int get_api_page_size() {
     return tnl_status.ApiPageSize;
+}
+void set_config_dir(const char *path) {
+    tnl_status.ConfigDir = strdup(path);
+}
+
+void set_tun_name(const char *name) {
+    tnl_status.TunName = strdup(name);
+}
+
+char* get_zet_instance_id(const char* discriminator) {
+    char empty_delim[] = "";
+    char delim[] = ".";
+
+    char *delim_to_use = empty_delim;
+    if (discriminator != NULL) {
+        delim_to_use = delim;
+    } else {
+        discriminator = empty_delim; // can't use NULL so use the empty delim
+    }
+
+    size_t prefix_len = strlen(DEFAULT_EXECUTABLE_NAME);
+    size_t discrim_len = strlen(discriminator);
+    size_t delim_len = strlen(delim_to_use);
+
+    char *zet_instance_id = calloc(prefix_len + delim_len + discrim_len + 1, sizeof(char));
+    sprintf(zet_instance_id, "%s%s%s", DEFAULT_EXECUTABLE_NAME, delim_to_use, discriminator);
+    return zet_instance_id;
 }
 
 // ************** TUNNEL BROADCAST MESSAGES
