@@ -18,6 +18,9 @@
 #include <tlsuv/queue.h>
 #include <ziti/ziti_log.h>
 #include <ziti/ziti_tunnel_cbs.h>
+#if _WIN32
+#include "windows/windows-scripts.h"
+#endif
 
 #include "identity-utils.h"
 #include "instance-config.h"
