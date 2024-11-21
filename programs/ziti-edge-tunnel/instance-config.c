@@ -16,10 +16,10 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <config-utils.h>
 #include <string.h>
 #include "identity-utils.h"
 #include <ziti/ziti_log.h>
+#include "instance-config.h"
 
 // to store the whole tunnel status data
 #define MIN_BUFFER_LEN 512
@@ -28,6 +28,7 @@ static uv_sem_t sem;
 static unsigned int sem_value = 1;
 static int sem_initialized = -1;
 
+extern char config_file[];
 void initialize_instance_config() {
     sem_initialized = uv_sem_init(&sem, sem_value);
     if (sem_initialized < 0) {
@@ -65,23 +66,9 @@ bool load_config_from_file(char* config_file_name) {
     return loaded;
 }
 
-bool load_tunnel_status_from_file(uv_loop_t* ziti_loop) {
-    char* config_path = get_system_config_path();
-
-    uv_fs_t fs;
-    int check = uv_fs_mkdir(ziti_loop, &fs, config_path, 0755, NULL);
-    if (check == 0) {
-        ZITI_LOG(TRACE, "config path is created at %s", config_path);
-    } else if (check == UV_EEXIST) {
-        ZITI_LOG(TRACE, "config path exists at %s", config_path);
-    } else {
-        ZITI_LOG(ERROR, "error creating %s: %s", config_path, uv_strerror(check));
-        return false;
-    }
+bool load_tunnel_status_from_file(uv_loop_t* ziti_loop, char* config_file_name) {
     bool loaded = false;
 
-    char* config_file_name = get_config_file_name(config_path);
-    char* bkp_config_file_name = get_backup_config_file_name(config_path);
     ZITI_LOG(INFO,"Loading config file from %s", config_file_name);
 
     // try to load tunnel status from config file
@@ -89,17 +76,10 @@ bool load_tunnel_status_from_file(uv_loop_t* ziti_loop) {
 
     // try to load tunnel status from backup config file
     if (!loaded) {
-        loaded = load_config_from_file(bkp_config_file_name);
+        // couldn't load the config file - only should happen on first startup
+        ZITI_LOG(WARN, "Config files could not be loaded: %s", config_file_name);
     }
 
-    // not able to load the tunnel status from both the config and backup files
-    if (!loaded) {
-        ZITI_LOG(WARN, "Config files %s and the backup file cannot be read or they do not exist, will create a new config file or the old one will be overwritten", config_file_name);
-    }
-
-    free(config_file_name);
-    free(bkp_config_file_name);
-    free(config_path);
     return loaded;
 }
 
@@ -109,36 +89,18 @@ bool save_tunnel_status_to_file() {
     bool saved = false;
 
     if (json_len > 0) {
-        char* config_path = get_system_config_path();
-
-        char* config_file_name = get_config_file_name(config_path);
-        char* bkp_config_file_name = get_backup_config_file_name(config_path);
-
         if (sem_initialized == 0) {
             uv_sem_wait(&sem);
         } else {
-            ZITI_LOG(ZITI_WTF, "Could not save the config file [%s] due to semaphore lock not initialized error.", config_file_name);
-            free(config_file_name);
-            free(bkp_config_file_name);
-            free(config_path);
+            ZITI_LOG(ZITI_WTF, "Could not save the config file [%s] due to semaphore lock not initialized error.", config_file);
             free(tunnel_status);
             return saved;
         }
-        //copy config to backup file
-        int rem = remove(bkp_config_file_name);
-        if (rem == 0) {
-            ZITI_LOG(DEBUG, "Deleted backup config file %s", bkp_config_file_name);
-        }
-        if (rename(config_file_name, bkp_config_file_name) == 0) {
-            ZITI_LOG(DEBUG, "Copied config file to backup config file %s", bkp_config_file_name);
-        } else {
-            ZITI_LOG(ERROR, "Could not copy config file [%s] to backup config file, the config might not exists at the moment", config_file_name);
-        }
 
         // write tunnel status to the config file
-        FILE* config = fopen(config_file_name, "w");
+        FILE* config = fopen(config_file, "w");
         if (config == NULL) {
-            ZITI_LOG(ERROR, "Could not open config file %s to store the tunnel status data", config_file_name);
+            ZITI_LOG(ERROR, "Could not open config file %s to store the tunnel status data", config_file);
         } else {
             char* tunnel_status_data = tunnel_status;
             for (int i =0; i< json_len; i=i+MIN_BUFFER_LEN-1, tunnel_status_data=tunnel_status_data+MIN_BUFFER_LEN-1) {
@@ -152,15 +114,11 @@ bool save_tunnel_status_to_file() {
             }
             saved = true;
             fclose(config);
-            ZITI_LOG(DEBUG, "Saved current tunnel status into Config file %s", config_file_name);
+            ZITI_LOG(DEBUG, "Saved current tunnel status into Config file %s", config_file);
         }
         uv_sem_post(&sem);
         
-        ZITI_LOG(TRACE, "Cleaning up resources used for the backup of tunnel config file %s", config_file_name);
-
-        free(config_file_name);
-        free(bkp_config_file_name);
-        free(config_path);
+        ZITI_LOG(TRACE, "Cleaning up resources used for the backup of tunnel config file %s", config_file);
     }
     free(tunnel_status);
     return saved;
