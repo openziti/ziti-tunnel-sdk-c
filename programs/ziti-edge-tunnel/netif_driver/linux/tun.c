@@ -493,3 +493,7 @@ netif_driver tun_open(uv_loop_t *loop, uint32_t tun_ip, uint32_t dns_ip, const c
 
     return driver;
 }
+
+const char* get_tun_name(netif_handle tun) {
+    return tun->name;
+}
