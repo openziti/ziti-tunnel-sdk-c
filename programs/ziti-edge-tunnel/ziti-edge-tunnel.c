@@ -2311,6 +2311,17 @@ static int delete_identity_opts(int argc, char *argv[]) {
     return optind;
 }
 
+static int refresh_identity_opts(int argc, char *argv[]) {
+    tunnel_identity_id id = {
+            .identifier = get_identity_opt(argc, argv),
+    };
+    cmd.command = TunnelCommand_RefreshIdentity;
+
+    size_t json_len;
+    cmd.data = tunnel_identity_id_to_json(&id, MODEL_JSON_COMPACT, &json_len);
+
+    return optind;
+}
 
 static int add_identity_opts(int argc, char *argv[]) {
     static struct option opts[] = {
@@ -2452,6 +2463,11 @@ static CommandLine ext_auth_login = make_command(
         "\t-i|--identity\tidentity to authenticate\n",
         ext_auth_opts, send_message_to_tunnel_fn);
 
+static CommandLine refresh_cmd = make_command(
+        "refresh", "refresh identity", "[-i <identity>]",
+        "\t-i|--identity\tidentity to be refreshed\n",
+        refresh_identity_opts, send_message_to_tunnel_fn);
+
 #if _WIN32
 static CommandLine service_control_cmd = make_command("service_control", "execute service control functions for Ziti tunnel (required superuser access)",
                                           "-o|--operation <option>",
@@ -2476,6 +2492,7 @@ static CommandLine *main_cmds[] = {
         &get_mfa_codes_cmd,
         &ext_auth_login,
         &get_status_cmd,
+        &refresh_cmd,
         &delete_id_cmd,
         &add_id_cmd,
         &set_log_level_cmd,
