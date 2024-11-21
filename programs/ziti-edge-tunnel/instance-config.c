@@ -28,7 +28,7 @@ static uv_sem_t sem;
 static unsigned int sem_value = 1;
 static int sem_initialized = -1;
 
-extern char config_file[];
+extern char *config_file;
 void initialize_instance_config() {
     sem_initialized = uv_sem_init(&sem, sem_value);
     if (sem_initialized < 0) {
@@ -39,11 +39,11 @@ void initialize_instance_config() {
 bool load_config_from_file(char* config_file_name) {
     bool loaded = false;
 
-    FILE* config_file = fopen(config_file_name, "r");
-    if (config_file != NULL) {
+    FILE* cfg_file = fopen(config_file_name, "r");
+    if (cfg_file != NULL) {
         char* config_buffer = calloc(1024*1024, sizeof(char));
         char line[512];
-        while ((fgets(line, sizeof(line), config_file)) != NULL) {
+        while ((fgets(line, sizeof(line), cfg_file)) != NULL) {
             strcat(config_buffer, line);
         }
 
@@ -54,7 +54,7 @@ bool load_config_from_file(char* config_file_name) {
             }
         }
         config_buffer[0] = '\0';
-        fclose(config_file);
+        fclose(cfg_file);
         free(config_buffer);
     } else {
         if (errno != 0) {
