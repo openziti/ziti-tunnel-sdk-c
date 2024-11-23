@@ -19,6 +19,7 @@
 #include "identity-utils.h"
 #include "instance-config.h"
 
+extern char *config_dir;
 extern char *config_file;
 extern bool uses_config_dir;
 
@@ -136,6 +137,7 @@ bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void 
             .code = IPC_ERROR,
     };
     bool cmd_accepted = false;
+    bool cmd_forces_save_file = true;
     switch (tnl_cmd->command) {
         case TunnelCommand_SetLogLevel: {
             cmd_accepted = true;
@@ -235,6 +237,7 @@ bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void 
         }
         case TunnelCommand_Status: {
             cmd_accepted = true;
+            cmd_forces_save_file = false;
             tunnel_status* status = get_tunnel_status();
             result.success = true;
             result.code = IPC_SUCCESS;
@@ -333,7 +336,7 @@ bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void 
             }
 
             snprintf(new_identifier_with_ext, FILENAME_MAX, "%s.json", new_identifier_without_ext);
-            snprintf(new_identifier_path, FILENAME_MAX, "%s%c%s", config_file, PATH_SEP, new_identifier_with_ext);
+            snprintf(new_identifier_path, FILENAME_MAX, "%s%c%s", config_dir, PATH_SEP, new_identifier_with_ext);
             normalize_identifier(new_identifier_path);
 
             struct stat file_exists;
@@ -437,7 +440,9 @@ bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void 
         cb(&result, ctx);
         if (result.success) {
             // should be the last line in this function as it calls the mutex/lock
-            save_tunnel_status_to_file();
+            if(cmd_forces_save_file) {
+                save_tunnel_status_to_file();
+            }
         }
         if (result.data) {
             free(result.data);
