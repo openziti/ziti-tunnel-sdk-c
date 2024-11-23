@@ -111,11 +111,10 @@ struct cfg_instance_s {
 // temporary list to pass info between parse and run
 static LIST_HEAD(instance_list, cfg_instance_s) load_list;
 
-bool uses_config_dir = false;
-
 static ziti_enroll_opts enroll_opts;
-static char* config_dir;
+char* config_dir;
 char* config_file;
+bool uses_config_dir = false;
 
 static long refresh_metrics = 5000;
 static long metrics_latency = 5000;
@@ -403,6 +402,7 @@ static void load_identities(uv_work_t *wr) {
                 struct cfg_instance_s *inst = calloc(1, sizeof(struct cfg_instance_s));
                 inst->cfg = malloc(MAXPATHLEN);
                 snprintf(inst->cfg, MAXPATHLEN, "%s%c%s", config_dir, PATH_SEP, file.name);
+                normalize_identifier(inst->cfg);
                 create_or_get_tunnel_identity(inst->cfg, file.name);
                 LIST_INSERT_HEAD(&load_list, inst, _next);
             }
@@ -2609,6 +2609,7 @@ void endpoint_status_change(bool woken, bool unlocked) {
 }
 
 void scm_service_init(char *config_path) {
+    uses_config_dir = true;
     log_init(global_loop_ref, INFO, ziti_log_writer);
     started_by_scm = true;
     if (config_path != NULL) {
