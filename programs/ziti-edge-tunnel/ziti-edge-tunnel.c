@@ -112,7 +112,7 @@ struct cfg_instance_s {
 static LIST_HEAD(instance_list, cfg_instance_s) load_list;
 
 static ziti_enroll_opts enroll_opts;
-static char* config_dir;
+char* config_dir;
 char* config_file;
 bool uses_config_dir = false;
 
