@@ -275,8 +275,6 @@ int start_cmd_socket(uv_loop_t *l, const char *sockfile) {
     uv_fs_t fs;
     uv_fs_unlink(l, &fs, sockfile, NULL);
 
-
-
     CHECK_UV(uv_pipe_init(l, &cmd_server, 0));
     CHECK_UV(uv_pipe_bind(&cmd_server, sockfile));
     CHECK_UV(uv_pipe_chmod(&cmd_server, UV_WRITABLE | UV_READABLE));
