@@ -1663,7 +1663,7 @@ static void enroll(int argc, char *argv[]) {
         free(params.config.base);
         if (rc < 0) {
             ZITI_LOG(ERROR, "failed to write config file %s: %s (%d)",
-                     config_file, strerror(-rc), -rc);
+                config_file, strerror(-rc), -rc);
         }
     } else {
         (void) fclose(outfile);

@@ -446,6 +446,7 @@ bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void 
         case TunnelCommand_Enroll:
         case TunnelCommand_ExternalAuth:
         case TunnelCommand_SetUpstreamDNS:
+            ZITI_LOG(DEBUG, "command not implemented: %d", tnl_cmd->command);
             break;
     }
     if (cmd_accepted) {
