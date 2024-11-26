@@ -13,7 +13,8 @@ target_compile_definitions(ziti-tunnel-sdk-c
 
 FetchContent_GetProperties(lwip)
 set (LWIP_DIR "${lwip_SOURCE_DIR}")
-set (LWIP_CONTRIB_DIR "${lwip_SOURCE_DIR}/contrib")
+FetchContent_GetProperties(lwip-contrib)
+set (LWIP_CONTRIB_DIR "${lwip-contrib_SOURCE_DIR}")
 
 if(WIN32)
     set(LWIP_CONTRIB_INCLUDE "${LWIP_CONTRIB_DIR}/ports/win32/include")
