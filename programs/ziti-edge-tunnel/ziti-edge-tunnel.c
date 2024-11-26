@@ -1320,13 +1320,15 @@ static void run(int argc, char *argv[]) {
 
     //set log level in precedence: command line flag (-v/--verbose) -> env var (ZITI_LOG) -> config file
     int log_level = get_log_level(configured_log_level);
+    log_writer log_fn = NULL;
 
 #if _WIN32
     signal(SIGINT, interrupt_handler);
     log_init(global_loop_ref, log_level, ziti_log_writer); // level from config file set below
+    log_fn = ziti_log_writer;
     remove_all_nrpt_rules(DEFAULT_EXECUTABLE_NAME, false); //remove all rules starting with ziti-edge-tunnel
 #else
-    ziti_log_init(global_loop_ref, log_level, ziti_log_writer);
+    ziti_log_init(global_loop_ref, log_level, log_fn);
 #endif
 
     // generate tunnel status instance and save active state and start time
