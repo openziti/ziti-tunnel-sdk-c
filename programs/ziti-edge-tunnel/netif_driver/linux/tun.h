@@ -29,5 +29,6 @@ struct netif_handle_s {
 };
 
 extern netif_driver tun_open(struct uv_loop_s *loop, uint32_t tun_ip, uint32_t dns_ip, const char *cidr, char *error, size_t error_len);
+extern const char* get_tun_name(netif_handle tun);
 
 #endif //ZITI_TUNNELER_SDK_TUN_H
