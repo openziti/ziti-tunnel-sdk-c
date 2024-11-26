@@ -1014,11 +1014,6 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
             exit(1);
         }
     }
-#else
-    if (diverter) {
-        ZITI_LOG(INFO,"Diverter features only supported on Linux");
-        exit(1);
-    }
 #endif
     run_tunneler_loop(ziti_loop);
     if (tun->close) {
@@ -1507,11 +1502,27 @@ static void diverter_quit() {
 
 static void do_init_diverter_interface(uv_work_t *wr) {
     struct zfw_cmd_s *cmd = wr->data;
-    int exitcode = run_command(zfw_path, cmd->args);
-    exitcode = run_command(zfw_path, "-T", cmd->interface); // todo check error
-    exitcode = run_command(zfw_path, "-6", cmd->interface);
+    cmd->exitcode = run_command(zfw_path, cmd->args);
+    if (!(WIFEXITED(cmd->exitcode) && WEXITSTATUS(cmd->exitcode))) {
+        return;
+    }
+
+    free(cmd->args); asprintf(&cmd->args, "-T %s", cmd->interface);
+    cmd->exitcode = run_command(zfw_path, cmd->args);
+    if (!(WIFEXITED(cmd->exitcode) && WEXITSTATUS(cmd->exitcode))) {
+        return;
+    }
+
+    free(cmd->args); asprintf(&cmd->args, "-6 %s", cmd->interface);
+    cmd->exitcode = run_command(zfw_path, cmd->args);
+    if (!(WIFEXITED(cmd->exitcode) && WEXITSTATUS(cmd->exitcode))) {
+        return;
+    }
+
     if (!firewall) {
-        exitcode = run_command(zfw_path, "-q", cmd->interface); // pass_non_tuple(cmd->interface);
+        free(cmd->args);
+        asprintf(&cmd->args, "-q %s", cmd->interface);
+        cmd->exitcode = run_command(zfw_path, cmd->args);
     }
 }
 
@@ -2759,8 +2770,14 @@ static CommandLine enroll_cmd = make_command(
     "\t-n|--name\tidentity name\n"
     "\t-v|--verbose N\tset log level, higher level -- more verbose (default 3)\n",
     parse_enroll_opts, enroll);
+#if __linux__
+#define DIVERTER_OPTS_SUMMARY "[-D|--diverter <interface list>] [-f|--diverter-fw <interface list>] "
+#else
+#define DIVERTER_OPTS_SUMMARY ""
+#endif
+
 static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required superuser access)",
-                                          "-i <id.file> [-r N] [-v N] [-d|--dns-ip-range N.N.N.N/N] [-u|--dns-upstream N.N.N.N] [-D|--diverter <interface list>] [-f|--diverter-fw <interface list>]\n",
+                                          "-i <id.file> [-r N] [-v N] [-d|--dns-ip-range N.N.N.N/N] " DIVERTER_OPTS_SUMMARY "[-u|--dns-upstream N.N.N.N]\n",
                                           "\t-i|--identity <identity>\trun with provided identity file (required)\n"
                                           "\t-I|--identity-dir <dir>\tload identities from provided directory\n"
                                           "\t-x|--proxy type://[username[:password]@]hostname_or_ip:port\tproxy to use when"
@@ -2769,9 +2786,11 @@ static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required supe
                                           "\t-r|--refresh N\tset service polling interval in seconds (default 10)\n"
                                           "\t-d|--dns-ip-range <ip range>\tspecify CIDR block in which service DNS names"
                                           " are assigned in N.N.N.N/n format (default " DEFAULT_DNS_CIDR ")\n"
-                                          "\t-u|--dns-upstream <ip addr>\tresolver listening on 53/udp for DNS queries that do not match a Ziti service\n"
+#if __linux__
                                           "\t-D|--diverter <interface>\tset diverter mode to true on <interface>\n"
-                                          "\t-f|--diverter-fw <interface>\tset diverter to true in firewall mode on <interface>)\n",
+                                          "\t-f|--diverter-fw <interface>\tset diverter to true in firewall mode on <interface>)\n"
+#endif
+                                          "\t-u|--dns-upstream <ip addr>\tresolver listening on 53/udp for DNS queries that do not match a Ziti service\n",
                                           run_opts, run);
 static CommandLine run_host_cmd = make_command("run-host", "run Ziti tunnel to host services",
                                           "-i <id.file> [-r N] [-v N]",
