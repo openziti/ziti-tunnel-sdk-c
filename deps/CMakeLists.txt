@@ -24,3 +24,9 @@ FetchContent_Declare(lwip
         SOURCE_SUBDIR dont/load/lwip/cmakelists
         )
 FetchContent_MakeAvailable(lwip)
+
+FetchContent_Declare(lwip-contrib
+        GIT_REPOSITORY https://github.com/netfoundry/lwip-contrib.git
+        GIT_TAG STABLE-2_1_0_RELEASE
+)
+FetchContent_MakeAvailable(lwip-contrib)
