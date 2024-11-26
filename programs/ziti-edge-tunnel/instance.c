@@ -29,6 +29,7 @@ static const char* CFG_INTERCEPT_V1 = "intercept.v1";
 static const char* CFG_HOST_V1 = "host.v1";
 static const char* CFG_ZITI_TUNNELER_CLIENT_V1 = "ziti-tunneler-client.v1";
 static tunnel_status tnl_status = {0};
+extern char *config_dir;
 
 tunnel_identity *find_tunnel_identity(const char* identifier) {
     char* normalized_identifier = strdup(identifier);
@@ -581,7 +582,7 @@ void set_identifier_from_identities() {
         tunnel_identity *tnl_id = tnl_status.Identities[idx];
         if (tnl_id->Identifier == NULL && tnl_id->FingerPrint != NULL) {
             char identifier[FILENAME_MAX];
-            snprintf(identifier, sizeof(identifier), "%s/%s.json", "get_identifier_path()", tnl_id->FingerPrint);
+            snprintf(identifier, sizeof(identifier), "%s%c%s.json", config_dir, PATH_SEP, tnl_id->FingerPrint);
             tnl_id->Identifier = strdup(identifier);
         }
         if (tnl_id->Identifier != NULL) {
