@@ -27,7 +27,7 @@
 #if _WIN32
 #include <windows.h>
 #define mkdir(path, mode) CreateDirectory(path, NULL)
-#define realpath(rel, abs) _fullpath(abs, rel, PATH_MAX)
+#define realpath(rel, abs) _fullpath(abs, rel, FILENAME_MAX)
 #endif
 
 static bool open_log(char* log_filename);
@@ -49,8 +49,8 @@ static const char* log_filename_base = "ziti-tunneler.log";
 static int rotation_count = 7;
 
 static uint8_t mkdir_p(const char *path) {
-    char actualpath[PATH_MAX];
-    char *cur_path = realpath(path, actualpath);
+    char actual_path[FILENAME_MAX];
+    char *cur_path = realpath(path, actual_path);
     char *p = cur_path;
     struct stat info;
     while(*p != '\0') {

@@ -1567,7 +1567,7 @@ static void update_config_done(uv_work_t *wr, int err) {
     if (req->err != 0) {
         ZITI_LOG(ERROR, "failed to update config file: %d(%s)", req->err, req->errmsg);
     } else {
-        ZITI_LOG(ERROR, "updated config file with new URL");
+        ZITI_LOG(INFO, "updated config file with new URL");
     }
     free(req);
 }

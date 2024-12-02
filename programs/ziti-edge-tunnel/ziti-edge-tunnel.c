@@ -79,7 +79,7 @@ static tunneler_context initialize_tunneler(netif_driver tun, uv_loop_t* ziti_lo
 #if _WIN32
 static void move_config_from_previous_windows_backup(uv_loop_t *loop);
 #define LAST_CHAR_IPC_CMD '\n'
-#define realpath(rel, abs) _fullpath(abs, rel, PATH_MAX)
+#define realpath(rel, abs) _fullpath(abs, rel, FILENAME_MAX)
 #else
 #define LAST_CHAR_IPC_CMD '\0'
 #endif
