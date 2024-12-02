@@ -79,6 +79,15 @@ struct tunnel_cb_s {
     void *cmd_ctx;
 };
 
+typedef struct api_update_req_s {
+    uv_work_t wr;
+    ziti_context ztx;
+    char *new_url;
+    char *new_ca;
+    int err;
+    const char *errmsg;
+} api_update_req;
+
 static uv_signal_t sigusr1;
 
 const ziti_tunnel_ctrl* ziti_tunnel_init_cmd(uv_loop_t *loop, tunneler_context tunnel_ctx, event_cb on_event) {
@@ -1454,7 +1463,114 @@ static void on_sigdump(uv_signal_t *sig, int signum) {
 }
 
 
+static int update_file(const char *path, char *content, size_t content_len) {
+#define CHECK_UV(desc, op) do{ \
+    uv_fs_req_cleanup(&fs_req); \
+    rc = op;             \
+    if (rc < 0) {           \
+        ZITI_LOG(ERROR, "op[" desc "] failed: %d(%s)", rc, uv_strerror(rc)); \
+        goto DONE;               \
+    }} while(0)
 
+    int rc = 0;
+    uv_fs_t fs_req = {0};
+    CHECK_UV("check exiting config", uv_fs_stat(NULL, &fs_req, path, NULL));
+    uint64_t mode = fs_req.statbuf.st_mode;
+
+    char backup[FILENAME_MAX];
+    snprintf(backup, sizeof(backup), "%s.bak", path);
+    CHECK_UV("create backup", uv_fs_rename(NULL, &fs_req, path, backup, NULL));
+
+    uv_os_fd_t f;
+    CHECK_UV("open new config", f = uv_fs_open(NULL, &fs_req, path, UV_FS_O_WRONLY | UV_FS_O_CREAT, (int) mode, NULL));
+    uv_buf_t buf = uv_buf_init(content, content_len);
+    CHECK_UV("write new config", uv_fs_write(NULL, &fs_req, f, &buf, 1, 0, NULL));
+    CHECK_UV("close new config", uv_fs_close(NULL, &fs_req, f, NULL));
+
+    DONE:
+    return rc;
+#undef CHECK_UV
+}
+
+#define CHECK_UV(desc, op) do{ \
+int rc = op;             \
+if (rc < 0) {           \
+req->err = rc;           \
+req->errmsg = uv_strerror(rc); \
+ZITI_LOG(ERROR, "op[" desc "] failed: %d(%s)", req->err, req->errmsg); \
+goto DONE;               \
+}} while(0)
+
+static void update_config(uv_work_t *wr) {
+    api_update_req *req = wr->data;
+    struct ziti_instance_s *inst = ziti_app_ctx(req->ztx);
+    const char *config_file = inst->identifier;
+    size_t cfg_len;
+    char *cfg_buf = NULL;
+    uv_file f;
+
+    uv_fs_t fs_req;
+    CHECK_UV("check exiting config", uv_fs_stat(wr->loop, &fs_req, config_file, NULL));
+    cfg_len = fs_req.statbuf.st_size;
+
+    cfg_buf = malloc(cfg_len);
+    CHECK_UV("open existing config", f = uv_fs_open(wr->loop, &fs_req, config_file, UV_FS_O_RDONLY, 0, NULL));
+    uv_buf_t buf = uv_buf_init(cfg_buf, cfg_len);
+    CHECK_UV("read existing config", uv_fs_read(wr->loop, &fs_req, f, &buf, 1, 0, NULL));
+    CHECK_UV("close existing config", uv_fs_close(wr->loop, &fs_req, f, NULL));
+
+    ziti_config cfg = {0};
+    if (parse_ziti_config(&cfg, cfg_buf, fs_req.statbuf.st_size) < 0) {
+        ZITI_LOG(ERROR, "failed to parse config file[%s]", config_file);
+        req->err = -1;
+        req->errmsg = "failed to parse existing config";
+        goto DONE;
+    }
+    FREE(cfg_buf);
+
+    // attempt to update CA bundle external to config file
+    if (req->new_ca && strncmp(cfg.id.ca, "file://", strlen("file://")) == 0) {
+        struct tlsuv_url_s path_uri;
+        char path[FILENAME_MAX];
+        CHECK_UV("parse CA bundle path", tlsuv_parse_url(&path_uri, cfg.id.ca));
+        strncpy(path, path_uri.path, path_uri.path_len);
+        CHECK_UV("update CA bundle file", update_file(path, req->new_ca, strlen(req->new_ca)));
+        FREE(req->new_ca);
+    }
+
+    bool write_new_cfg = false;
+    if (req->new_url) {
+        free((char*)cfg.controller_url);
+        cfg.controller_url = req->new_url;
+        req->new_url = NULL;
+        write_new_cfg = true;
+    }
+
+    if (req->new_ca) {
+        free((char*)cfg.id.ca);
+        cfg.id.ca = req->new_ca;
+        req->new_ca = NULL;
+        write_new_cfg = true;
+    }
+
+    if (write_new_cfg) {
+        cfg_buf = ziti_config_to_json(&cfg, 0, &cfg_len);
+        CHECK_UV("update config", update_file(config_file, cfg_buf, cfg_len));
+    }
+    DONE:
+    free_ziti_config(&cfg);
+    FREE(cfg_buf);
+}
+
+static void update_config_done(uv_work_t *wr, int err) {
+    api_update_req *req = wr->data;
+    if (req->err != 0) {
+        ZITI_LOG(ERROR, "failed to update config file: %d(%s)", req->err, req->errmsg);
+    } else {
+        ZITI_LOG(ERROR, "updated config file with new URL");
+    }
+    free(req);
+}
 
 IMPL_ENUM(TunnelCommand, TUNNEL_COMMANDS)
 
