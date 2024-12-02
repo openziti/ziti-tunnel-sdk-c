@@ -370,7 +370,6 @@ struct add_identity_request_s {
 
 struct ziti_instance_s {
     char *identifier;
-    char *config_path;
     command_cb load_cb;
     void *load_ctx;
 
