@@ -1,5 +1,5 @@
 /*
- Copyright 2021 NetFoundry Inc.
+ Copyright 2021-2024 NetFoundry Inc.
 
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
@@ -79,7 +79,7 @@ static tunneler_context initialize_tunneler(netif_driver tun, uv_loop_t* ziti_lo
 #if _WIN32
 static void move_config_from_previous_windows_backup(uv_loop_t *loop);
 #define LAST_CHAR_IPC_CMD '\n'
-#define realpath(rel, abs) _fullpath(abs, rel, PATH_MAX)
+#define realpath(rel, abs) _fullpath(abs, rel, FILENAME_MAX)
 #else
 #define LAST_CHAR_IPC_CMD '\0'
 #endif
@@ -1333,14 +1333,13 @@ static void run(int argc, char *argv[]) {
 
     // generate tunnel status instance and save active state and start time
     if (config_dir != NULL) {
-        // if the config_dir was supplied but doesn't exist, exit...
-        struct stat st = {0};
-
         if (!realpath(config_dir, config_dir)) {
             ZITI_LOG(ERROR, "Failed to resolve base directory");
             return;
         }
 
+        // if the config_dir was supplied but doesn't exist, exit...
+        struct stat st = {0};
         if (stat(config_dir, &st) == -1) {
             ZITI_LOG(ERROR, "cannot continue, specified config dir does not exist: %s", config_dir);
             return;

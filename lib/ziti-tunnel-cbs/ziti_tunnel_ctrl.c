@@ -179,8 +179,8 @@ static void ip_dump(const tunnel_ip_stats *stats, dump_writer writer, void *writ
     char local_addr[64];
     char remote_addr[64];
     for (i = 0; conns[i] != NULL; i++) {
-        snprintf(local_addr, sizeof(local_addr), "%s:%lu", conns[i]->local_ip, (unsigned long)conns[i]->local_port);
-        snprintf(remote_addr, sizeof(remote_addr), "%s:%lu", conns[i]->remote_ip, (unsigned long)conns[i]->remote_port);
+        snprintf(local_addr, sizeof(local_addr), "%s:%lld", conns[i]->local_ip, conns[i]->local_port);
+        snprintf(remote_addr, sizeof(remote_addr), "%s:%lld", conns[i]->remote_ip, conns[i]->remote_port);
         writer(writer_ctx, "%-12s%-40s%-40s%-16s%-24s\n",
                conns[i]->protocol, local_addr, remote_addr, conns[i]->state, conns[i]->service);
     }
@@ -962,7 +962,7 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
     }
 
     const ziti_identity *identity = ziti_get_identity(ztx);
-    const char *ctx_name = identity ? identity->name : "<not loaded>";
+    const char *ctx_name = identity ? identity->name : instance->identifier;
 
     switch (event->type) {
         case ZitiContextEvent: {
