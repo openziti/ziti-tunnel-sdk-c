@@ -1323,6 +1323,17 @@ static int run_opts(int argc, char *argv[]) {
     while ((c = getopt_long(argc, argv, "i:I:v:r:d:u:x:",
                             run_options, &option_index)) != -1) {
         switch (c) {
+#if __linux__
+            case 'D':
+                diverter = true;
+                diverter_if = optarg;
+                break;
+            case 'f':
+                diverter = true;
+                firewall = true;
+                diverter_if = optarg;
+                break;
+#endif
             case 'i': {
                 struct cfg_instance_s *inst = calloc(1, sizeof(struct cfg_instance_s));
                 inst->cfg = strdup(optarg);
@@ -2772,8 +2783,8 @@ static CommandLine enroll_cmd = make_command(
     parse_enroll_opts, enroll);
 #if __linux__
 #define DIVERTER_OPTS_SUMMARY "[-D|--diverter <interface list>] [-f|--diverter-fw <interface list>] "
-#define DIVERTER_OPTS_DETAIL "\t-D|--diverter <interface>\tset diverter mode to true on <interface>\n" \
-                             "\t-f|--diverter-fw <interface>\tset diverter to true in firewall mode on <interface>)\n"
+#define DIVERTER_OPTS_DETAIL "\t-D|--diverter <interface list>\tset diverter mode to true on <interface list>\n" \
+                             "\t-f|--diverter-fw <interface list>\tset diverter to true in firewall mode on <interface list>)\n"
 #else
 #define DIVERTER_OPTS_SUMMARY ""
 #define DIVERTER_OPTS_DETAIL ""
