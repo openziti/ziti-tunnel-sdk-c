@@ -899,10 +899,6 @@ void set_config_dir(const char *path) {
     tnl_status.ConfigDir = strdup(path);
 }
 
-void set_tun_name(const char *name) {
-    tnl_status.TunName = strdup(name);
-}
-
 char* get_zet_instance_id(const char* discriminator) {
     char *zet_instance_id = NULL;
     if (discriminator) {
