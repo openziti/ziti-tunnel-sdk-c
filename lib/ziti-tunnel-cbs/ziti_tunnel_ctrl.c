@@ -37,7 +37,7 @@
 #define HOST_NAME_MAX 254
 #endif
 
-#define FREE(x) do { if(x) free(x); x = NULL; } while(0)
+#define FREE(x) do { if(x) free((void*)(x)); (x) = NULL; } while(0)
 
 // temporary list to pass info between parse and run
 // static LIST_HEAD(instance_list, ziti_instance_s) instance_init_list;
@@ -81,9 +81,8 @@ struct tunnel_cb_s {
 
 typedef struct api_update_req_s {
     uv_work_t wr;
-    ziti_context ztx;
-    char *new_url;
-    char *new_ca;
+    struct ziti_instance_s *inst;
+    char *config_json;
     int err;
     const char *errmsg;
 } api_update_req;
@@ -188,8 +187,8 @@ static void ip_dump(const tunnel_ip_stats *stats, dump_writer writer, void *writ
     char local_addr[64];
     char remote_addr[64];
     for (i = 0; conns[i] != NULL; i++) {
-        snprintf(local_addr, sizeof(local_addr), "%s:%lld", conns[i]->local_ip, conns[i]->local_port);
-        snprintf(remote_addr, sizeof(remote_addr), "%s:%lld", conns[i]->remote_ip, conns[i]->remote_port);
+        snprintf(local_addr, sizeof(local_addr), "%s:%lu", conns[i]->local_ip, (unsigned long)conns[i]->local_port);
+        snprintf(remote_addr, sizeof(remote_addr), "%s:%lu", conns[i]->remote_ip, (unsigned long)conns[i]->remote_port);
         writer(writer_ctx, "%-12s%-40s%-40s%-16s%-24s\n",
                conns[i]->protocol, local_addr, remote_addr, conns[i]->state, conns[i]->service);
     }
@@ -236,6 +235,7 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
                     result.success = false;
                     result.code = rc;
                     result.error = "identifier is required when loading with config";
+                    free_tunnel_load_identity(&load);
                     break;
                 }
                 rc = load_identity_cfg(load.identifier, load.config, load.disabled, (int)load.apiPageSize, cb, ctx);
@@ -243,6 +243,7 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
                 const char *id = load.identifier ? load.identifier : load.path;
                 rc = load_identity(id, load.path, false, (int)load.apiPageSize, cb, ctx);
             }
+            free_tunnel_load_identity(&load);
 
             if (rc == ZITI_OK) {
                 return 0;
@@ -787,13 +788,16 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
 
             struct tunnel_cb_s *req = calloc(1, sizeof(*req));
             req->ctx = (void*)auth.identifier;
+            auth.identifier = NULL;
             req->cmd_cb = cb;
             req->cmd_ctx = ctx;
             if (ziti_ext_auth(inst->ztx, on_ext_auth, req) == 0) {
+                free_tunnel_id_ext_auth(&auth);
                 return 0;
             }
             result.success = false;
             result.error = "failed to start external auth";
+            free_tunnel_id_ext_auth(&auth);
             break;
         }
         default: {
@@ -966,7 +970,7 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
     }
 
     const ziti_identity *identity = ziti_get_identity(ztx);
-    const char *ctx_name = identity ? identity->name : instance->identifier;
+    const char *ctx_name = identity ? identity->name : "<not loaded>";
 
     switch (event->type) {
         case ZitiContextEvent: {
@@ -1096,25 +1100,24 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
             }
             break;
 
-        case ZitiAPIEvent: {
-            if (event->api.new_ctrl_address || event->api.new_ca_bundle) {
+        case ZitiConfigEvent: {
+            if (event->cfg.config) {
                 if (instance->identifier) {
                     api_update_req *req = calloc(1, sizeof(api_update_req));
                     req->wr.data = req;
-                    req->ztx = ztx;
-                    req->new_url = event->api.new_ctrl_address ? strdup(event->api.new_ctrl_address) : NULL;
-                    req->new_ca = event->api.new_ca_bundle ? strdup(event->api.new_ca_bundle) : NULL;
+                    req->inst = instance;
+                    req->config_json = ziti_config_to_json(event->cfg.config, 0, NULL);
                     uv_queue_work(CMD_CTX.loop, &req->wr, update_config, update_config_done);
                 }
 
                 api_event ev = {0};
                 ev.event_type = TunnelEvents.APIEvent;
                 ev.identifier = instance->identifier;
-                ev.new_ctrl_address = event->api.new_ctrl_address;
-                ev.new_ca_bundle = event->api.new_ca_bundle;
+                ev.new_ctrl_address = event->cfg.config->controller_url;
+                ev.new_ca_bundle = event->cfg.config->id.ca;
                 CMD_CTX.on_event((const base_event *) &ev);
             } else {
-                ZITI_LOG(WARN, "unexpected API event: new_ctrl_address is missing");
+                ZITI_LOG(WARN, "unexpected config event: config is missing");
             }
             break;
         }
@@ -1504,72 +1507,53 @@ goto DONE;               \
 
 static void update_config(uv_work_t *wr) {
     api_update_req *req = wr->data;
-    struct ziti_instance_s *inst = ziti_app_ctx(req->ztx);
-    const char *config_file = inst->identifier;
+    const char *config_file = req->inst->identifier;
     size_t cfg_len;
     char *cfg_buf = NULL;
     uv_file f;
 
-    uv_fs_t fs_req;
-    CHECK_UV("check exiting config", uv_fs_stat(wr->loop, &fs_req, config_file, NULL));
-    cfg_len = fs_req.statbuf.st_size;
-
-    cfg_buf = malloc(cfg_len);
-    CHECK_UV("open existing config", f = uv_fs_open(wr->loop, &fs_req, config_file, UV_FS_O_RDONLY, 0, NULL));
-    uv_buf_t buf = uv_buf_init(cfg_buf, cfg_len);
-    CHECK_UV("read existing config", uv_fs_read(wr->loop, &fs_req, f, &buf, 1, 0, NULL));
-    CHECK_UV("close existing config", uv_fs_close(wr->loop, &fs_req, f, NULL));
-
     ziti_config cfg = {0};
-    if (parse_ziti_config(&cfg, cfg_buf, fs_req.statbuf.st_size) < 0) {
+    if (ziti_load_config(&cfg, config_file) != ZITI_OK) {
         ZITI_LOG(ERROR, "failed to parse config file[%s]", config_file);
         req->err = -1;
         req->errmsg = "failed to parse existing config";
         goto DONE;
     }
-    FREE(cfg_buf);
+
+    ziti_config new_cfg = {0};
+    parse_ziti_config(&new_cfg, req->config_json, strlen(req->config_json));
 
     // attempt to update CA bundle external to config file
-    if (req->new_ca && strncmp(cfg.id.ca, "file://", strlen("file://")) == 0) {
+    if (strncmp(cfg.id.ca, "file://", strlen("file://")) == 0) {
         struct tlsuv_url_s path_uri;
-        char path[FILENAME_MAX];
         CHECK_UV("parse CA bundle path", tlsuv_parse_url(&path_uri, cfg.id.ca));
-        strncpy(path, path_uri.path, path_uri.path_len);
-        CHECK_UV("update CA bundle file", update_file(path, req->new_ca, strlen(req->new_ca)));
-        FREE(req->new_ca);
+        const char *path = path_uri.path;
+        CHECK_UV("update CA bundle file", update_file(path, (char*)new_cfg.id.ca, strlen(new_cfg.id.ca)));
+        FREE(new_cfg.id.ca);
+        new_cfg.id.ca = cfg.id.ca;
+        cfg.id.ca = NULL;
     }
 
-    bool write_new_cfg = false;
-    if (req->new_url) {
-        free((char*)cfg.controller_url);
-        cfg.controller_url = req->new_url;
-        req->new_url = NULL;
-        write_new_cfg = true;
-    }
-
-    if (req->new_ca) {
-        free((char*)cfg.id.ca);
-        cfg.id.ca = req->new_ca;
-        req->new_ca = NULL;
-        write_new_cfg = true;
-    }
+    bool write_new_cfg = true;
 
     if (write_new_cfg) {
-        cfg_buf = ziti_config_to_json(&cfg, 0, &cfg_len);
+        cfg_buf = ziti_config_to_json(&new_cfg, 0, &cfg_len);
         CHECK_UV("update config", update_file(config_file, cfg_buf, cfg_len));
     }
     DONE:
     free_ziti_config(&cfg);
+    free_ziti_config(&new_cfg);
     FREE(cfg_buf);
 }
 
 static void update_config_done(uv_work_t *wr, int err) {
     api_update_req *req = wr->data;
     if (req->err != 0) {
-        ZITI_LOG(ERROR, "failed to update config file: %d(%s)", req->err, req->errmsg);
+        ZITI_LOG(ERROR, "failed to update config file[%s]: %d(%s)", req->inst->identifier, req->err, req->errmsg);
     } else {
-        ZITI_LOG(ERROR, "updated config file with new URL");
+        ZITI_LOG(INFO, "updated config file ztx[%s]", req->inst->identifier);
     }
+    free(req->config_json);
     free(req);
 }
 

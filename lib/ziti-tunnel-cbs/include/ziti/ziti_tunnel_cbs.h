@@ -351,12 +351,12 @@ void remove_intercepts(ziti_context ziti_ctx, void *tnlr_ctx);
 const ziti_tunnel_ctrl* ziti_tunnel_init_cmd(uv_loop_t *loop, tunneler_context, event_cb);
 
 struct add_identity_request_s {
-    model_string identifier;
-    model_string identifier_file_name;
-    model_string jwt_content;
-    model_string key;
-    model_string certificate;
-    model_string url;
+    char* identifier;
+    char* identifier_file_name;
+    char* jwt_content;
+    char* key;
+    char* certificate;
+    char* url;
 
     bool use_keychain;
     void *add_id_ctx;
