@@ -21,6 +21,18 @@
 
 extern char *config_dir;
 
+void free_add_id_req(struct add_identity_request_s * req) {
+    if (req) {
+        free(req->identifier);
+        free(req->identifier_file_name);
+        free(req->jwt_content);
+        free(req->url);
+        free(req->key);
+        free(req->certificate);
+        free(req);
+    }
+}
+
 static void tunnel_enroll_cb(const ziti_config *cfg, int status, const char *err, void *ctx) {
     struct add_identity_request_s *add_id_req = ctx;
 
@@ -49,7 +61,7 @@ static void tunnel_enroll_cb(const ziti_config *cfg, int status, const char *err
         fclose(f);
         result.error = "failed to write config file";
         add_id_req->cmd_cb(&result,  add_id_req->cmd_ctx);
-        free(add_id_req);
+        free_add_id_req(add_id_req);
         return;
     }
 
@@ -72,7 +84,7 @@ static void tunnel_enroll_cb(const ziti_config *cfg, int status, const char *err
 };
     send_tunnel_command(&tnl_cmd, add_id_req->cmd_ctx);
     free_tunnel_command(&tnl_cmd);
-    free(add_id_req);
+    free_add_id_req(add_id_req);
     save_tunnel_status_to_file();
 }
 
