@@ -41,13 +41,13 @@
 
 #include "tun.h"
 
-#define ZITI_TUN_NAME_BASE L"ziti-tun"
+#define ZITI_TUN_NAME_BASE "ziti-tun"
 
 #define ROUTE_LIFETIME (10 * 60) /* in seconds */
 #define ROUTE_REFRESH ((ROUTE_LIFETIME - (ROUTE_LIFETIME/10))*1000)
 
 struct netif_handle_s {
-    wchar_t name[MAX_ADAPTER_NAME];
+    char name[MAX_ADAPTER_NAME];
     NET_LUID luid;
     WINTUN_ADAPTER_HANDLE adapter;
     WINTUN_SESSION_HANDLE session;
@@ -68,11 +68,10 @@ static int tun_setup_read(netif_handle tun, uv_loop_t *loop, packet_cb on_packet
 static ssize_t tun_write(netif_handle tun, const void *buf, size_t len);
 static int tun_add_route(netif_handle tun, const char *dest);
 static int tun_del_route(netif_handle tun, const char *dest);
-int set_dns(netif_handle tun, uint32_t dns_ip);
 static int tun_exclude_rt(netif_handle dev, uv_loop_t *loop, const char *dest);
+
 static void WINAPI if_change_cb(PVOID CallerContext, PMIB_IPINTERFACE_ROW Row, MIB_NOTIFICATION_TYPE NotificationType);
 static void refresh_routes(uv_timer_t *timer);
-static void cleanup_adapters(wchar_t *tun_name);
 static HANDLE if_change_handle;
 
 static WINTUN_CREATE_ADAPTER_FUNC *WintunCreateAdapter;
@@ -181,6 +180,10 @@ void cleanup_resources() {
     if (WINTUN) FreeLibrary(WINTUN);
 }
 
+static const char *get_tun_name(netif_handle tun) {
+    return tun->name;
+}
+
 netif_driver tun_open(struct uv_loop_s *loop, uint32_t tun_ip, const char *cidr, char *error, size_t error_len) {
     if (error != NULL) {
         memset(error, 0, error_len * sizeof(char));
@@ -204,8 +207,12 @@ netif_driver tun_open(struct uv_loop_s *loop, uint32_t tun_ip, const char *cidr,
     flush_dns();
 
     int tun_num = 0;
-    swprintf(tun->name, MAX_ADAPTER_NAME, L"%ls%d", ZITI_TUN_NAME_BASE, tun_num);
-    WINTUN_ADAPTER_HANDLE found = WintunOpenAdapter(tun->name);
+    snprintf(tun->name, MAX_ADAPTER_NAME, "%s%d", ZITI_TUN_NAME_BASE, tun_num);
+
+    wchar_t w_adapter_name[MAX_ADAPTER_NAME];
+    swprintf(w_adapter_name, MAX_ADAPTER_NAME, L"%hs", tun->name);
+
+    WINTUN_ADAPTER_HANDLE found = WintunOpenAdapter(w_adapter_name);
     while (found) {
         tun_num++;
         WintunCloseAdapter(found); // already exists. increment and try again
@@ -215,12 +222,13 @@ netif_driver tun_open(struct uv_loop_s *loop, uint32_t tun_ip, const char *cidr,
             snprintf(error, msg_len, "%s", msg);
             return NULL;
         }
-        swprintf(tun->name, MAX_ADAPTER_NAME, L"%ls%d", ZITI_TUN_NAME_BASE, tun_num);
-        found = WintunOpenAdapter(tun->name);
+        snprintf(tun->name, MAX_ADAPTER_NAME, "%s%d", ZITI_TUN_NAME_BASE, tun_num);
+        found = WintunOpenAdapter(w_adapter_name);
     }
 
 
-    tun->adapter = WintunCreateAdapter(tun->name, L"OpenZiti", NULL); // Wintun adds "Tunnel" so this will be "OpenZiti Tunnel"
+    tun->adapter = WintunCreateAdapter(w_adapter_name, L"OpenZiti",
+                                       NULL); // Wintun adds "Tunnel" so this will be "OpenZiti Tunnel"
     if (!tun->adapter) {
         DWORD err = GetLastError();
         snprintf(error, error_len, "Failed to create adapter: %ld", err);
@@ -284,6 +292,7 @@ netif_driver tun_open(struct uv_loop_s *loop, uint32_t tun_ip, const char *cidr,
     driver->delete_route = tun_del_route;
     driver->close        = tun_close;
     driver->exclude_rt   = tun_exclude_rt;
+    driver->get_name = get_tun_name;
     uv_timer_init(loop, &tun->route_timer);
     tun->route_timer.data = tun;
     uv_unref((uv_handle_t *) &tun->route_timer);
@@ -519,28 +528,23 @@ void refresh_routes(uv_timer_t *timer) {
     }
 }
 
-int set_dns(netif_handle tun, uint32_t dns_ip) {
+int set_dns(netif_driver tun, uint32_t dns_ip) {
     // TODO maybe call winapi SetInterfaceDnsSetting
     char cmd[1024];
     char ip[4];
     memcpy(ip, &dns_ip, 4);
-    wchar_t* tun_name = get_tun_name(tun);
+    const char *tun_name = get_tun_name(tun->handle);
     snprintf(cmd, sizeof(cmd),
              "powershell -Command Set-DnsClientServerAddress "
-             "-InterfaceAlias %ls "
+             "-InterfaceAlias %s "
              "-ServerAddress %d.%d.%d.%d",
              tun_name, ip[0], ip[1], ip[2], ip[3]);
-    //free(tun_name);
     ZITI_LOG(INFO, "executing '%s'", cmd);
     int rc = system(cmd);
     if (rc != 0) {
         ZITI_LOG(WARN, "set DNS: %d(err=%ld)", rc, GetLastError());
     }
     return rc;
-}
-
-wchar_t* get_tun_name(netif_handle tun) {
-    return tun->name;
 }
 
 static BOOL CALLBACK

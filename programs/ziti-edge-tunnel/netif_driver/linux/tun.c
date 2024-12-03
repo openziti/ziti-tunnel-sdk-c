@@ -403,6 +403,10 @@ static void cleanup_sock(const int *fd) {
     }
 }
 
+static const char *get_tun_name(netif_handle tun) {
+    return tun->name;
+}
+
 netif_driver tun_open(uv_loop_t *loop, uint32_t tun_ip, uint32_t dns_ip, const char *dns_block, char *error, size_t error_len) {
     if (error != NULL) {
         memset(error, 0, error_len * sizeof(char));
@@ -455,6 +459,7 @@ netif_driver tun_open(uv_loop_t *loop, uint32_t tun_ip, uint32_t dns_ip, const c
     driver->close        = tun_close;
     driver->exclude_rt   = tun_exclude_rt;
     driver->commit_routes = tun_commit_routes;
+    driver->get_name = get_tun_name;
 
     __attribute__((cleanup(cleanup_sock))) int netdev = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
     if (netdev == -1) {
@@ -491,8 +496,4 @@ netif_driver tun_open(uv_loop_t *loop, uint32_t tun_ip, uint32_t dns_ip, const c
     }
 
     return driver;
-}
-
-const char* get_tun_name(netif_handle tun) {
-    return tun->name;
 }
