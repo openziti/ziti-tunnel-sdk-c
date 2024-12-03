@@ -2772,8 +2772,11 @@ static CommandLine enroll_cmd = make_command(
     parse_enroll_opts, enroll);
 #if __linux__
 #define DIVERTER_OPTS_SUMMARY "[-D|--diverter <interface list>] [-f|--diverter-fw <interface list>] "
+#define DIVERTER_OPTS_DETAIL "\t-D|--diverter <interface>\tset diverter mode to true on <interface>\n" \
+                             "\t-f|--diverter-fw <interface>\tset diverter to true in firewall mode on <interface>)\n"
 #else
 #define DIVERTER_OPTS_SUMMARY ""
+#define DIVERTER_OPTS_DETAIL ""
 #endif
 
 static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required superuser access)",
@@ -2786,10 +2789,7 @@ static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required supe
                                           "\t-r|--refresh N\tset service polling interval in seconds (default 10)\n"
                                           "\t-d|--dns-ip-range <ip range>\tspecify CIDR block in which service DNS names"
                                           " are assigned in N.N.N.N/n format (default " DEFAULT_DNS_CIDR ")\n"
-#if __linux__
-                                          "\t-D|--diverter <interface>\tset diverter mode to true on <interface>\n"
-                                          "\t-f|--diverter-fw <interface>\tset diverter to true in firewall mode on <interface>)\n"
-#endif
+                                          DIVERTER_OPTS_DETAIL
                                           "\t-u|--dns-upstream <ip addr>\tresolver listening on 53/udp for DNS queries that do not match a Ziti service\n",
                                           run_opts, run);
 static CommandLine run_host_cmd = make_command("run-host", "run Ziti tunnel to host services",
