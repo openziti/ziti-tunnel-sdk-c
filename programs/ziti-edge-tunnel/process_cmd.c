@@ -26,6 +26,7 @@ extern bool uses_config_dir;
 #if _WIN32
 #include "service-utils.h"
 #include "windows/windows-service.h"
+
 #define realpath(rel, abs) _fullpath(abs, rel, MAX_PATH)
 #endif
 
@@ -281,10 +282,9 @@ bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void 
                 free_tunnel_add_identity(&tunnel_add_identity_cmd);
                 break;
             }
-            char *null = NULL;
-            bool is_jwt = tunnel_add_identity_cmd.jwtFileName != null || tunnel_add_identity_cmd.jwtContent != null;
-            bool is_url = tunnel_add_identity_cmd.controllerURL != null;
-            bool is_3rd_party_ca = tunnel_add_identity_cmd.cert != null || tunnel_add_identity_cmd.key != null;
+            bool is_jwt = tunnel_add_identity_cmd.jwtFileName != NULL || tunnel_add_identity_cmd.jwtContent != NULL;
+            bool is_url = tunnel_add_identity_cmd.controllerURL != NULL;
+            bool is_3rd_party_ca = tunnel_add_identity_cmd.cert != NULL || tunnel_add_identity_cmd.key != NULL;
             int enrollment_methods_supplied = (is_jwt + is_url + is_3rd_party_ca);
 
             if (enrollment_methods_supplied == 0) {
