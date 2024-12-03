@@ -532,7 +532,7 @@ int set_dns(netif_driver tun, uint32_t dns_ip) {
     char cmd[1024];
     char ip[4];
     memcpy(ip, &dns_ip, 4);
-    const char *tun_name = tun->get_name(tun->handle);
+    const char *tun_name = get_tun_name(tun->handle);
     snprintf(cmd, sizeof(cmd),
              "powershell -Command Set-DnsClientServerAddress "
              "-InterfaceAlias %s "
