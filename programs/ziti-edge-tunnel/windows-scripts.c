@@ -495,9 +495,8 @@ bool is_nrpt_policies_effective(const char* tns_ip, char* zet_id) {
             ZITI_LOG(INFO, "NRPT policies are ineffective in this system");
             return false;
         }
-
     }
-}  
+}
 
 void update_interface_metric(uv_loop_t *ziti_loop, const wchar_t* tun_name, int metric) {
     char script[MAX_POWERSHELL_SCRIPT_LEN] = { 0 };
