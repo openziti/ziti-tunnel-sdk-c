@@ -26,6 +26,5 @@ struct netif_handle_s {
 };
 
 extern netif_driver utun_open(char *error, size_t error_len, const char *cidr);
-extern const char* get_tun_name(netif_handle tun);
 
 #endif //ZITI_TUNNELER_SDK_UTUN_H

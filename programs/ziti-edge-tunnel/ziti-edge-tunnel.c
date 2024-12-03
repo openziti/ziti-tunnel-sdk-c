@@ -839,13 +839,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     }
 
 #if _WIN32
-    const wchar_t* tun_name = get_tun_name(tun->handle);
-    size_t tun_name_len = wcslen(tun_name);
-    char* name = calloc(tun_name_len, sizeof(char) + 1);
-    wcstombs(name, tun_name, tun_name_len + 1);
-    set_tun_name(name); //sets the tunnel status, tun name...
-    free(name);
-
+    const char *tun_name = tun->get_name(tun->handle);
     char* zet_id = get_zet_instance_id(ipc_discriminator);
     bool nrpt_effective = is_nrpt_policies_effective(get_dns_ip(), zet_id);
     free(zet_id);
@@ -856,7 +850,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
         if (!nrpt_effective && !get_add_dns_flag()) {
             ZITI_LOG(INFO, "DNS is enabled for the TUN interface, because Ziti policies test result in this client is false");
         }
-        set_dns(tun->handle, dns_ip);
+        set_dns(tun, dns_ip);
         ZITI_LOG(INFO, "Setting interface metric to 5");
         update_interface_metric(ziti_loop, tun_name, 5);
     } else {
@@ -864,8 +858,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
         update_interface_metric(ziti_loop, tun_name, 255);
     }
 #else
-    const char* name = get_tun_name(tun->handle);
-    set_tun_name(name); //sets the tunnel status, tun name...
+    //empty on purpose
 #endif
 
     tunneler = initialize_tunneler(tun, ziti_loop);
