@@ -860,8 +860,9 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
         ZITI_LOG(INFO, "Setting interface metric to 255");
         update_interface_metric(ziti_loop, tun_name, 255);
     }
+    set_tun_name(tun_name); //sets the tunnel status's, tun name...
 #else
-    //empty on purpose
+    set_tun_name(tun->get_name(tun->handle)); //sets the tunnel status's, tun name...
 #endif
 
     tunneler = initialize_tunneler(tun, ziti_loop);
