@@ -166,6 +166,10 @@ static int utun_exclude_rt(netif_handle dev, uv_loop_t *l, const char *addr) {
     return s;
 }
 
+static const char *get_tun_name(netif_handle tun) {
+    return tun->name;
+}
+
 /**
  * open a utun device
  * @param num populated with the unit number of the utun device that was opened
@@ -264,6 +268,7 @@ netif_driver utun_open(char *error, size_t error_len, const char *cidr) {
     driver->delete_route = utun_delete_route;
     driver->exclude_rt   = utun_exclude_rt;
     driver->close        = utun_close;
+    driver->get_name = get_tun_name;
 
     if (cidr) {
         char cmd[1024];
@@ -283,8 +288,4 @@ netif_driver utun_open(char *error, size_t error_len, const char *cidr) {
         }
     }
     return driver;
-}
-
-const char* get_tun_name(netif_handle tun) {
-    return tun->name;
 }
