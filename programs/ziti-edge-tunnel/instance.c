@@ -904,22 +904,13 @@ void set_tun_name(const char *name) {
 }
 
 char* get_zet_instance_id(const char* discriminator) {
-    char empty_delim[] = "";
-    char delim[] = ".";
-
-    char *delim_to_use = empty_delim;
-    if (discriminator != NULL) {
-        delim_to_use = delim;
+    char *zet_instance_id = NULL;
+    if (discriminator) {
+        zet_instance_id = calloc(strlen(DEFAULT_EXECUTABLE_NAME) + strlen(discriminator) + 2 /* separator + nul */,sizeof(char));
+        sprintf(zet_instance_id, "%s.%s", DEFAULT_EXECUTABLE_NAME, discriminator);
     } else {
-        discriminator = empty_delim; // can't use NULL so use the empty delim
+        zet_instance_id = strdup(DEFAULT_EXECUTABLE_NAME);
     }
-
-    size_t prefix_len = strlen(DEFAULT_EXECUTABLE_NAME);
-    size_t discrim_len = strlen(discriminator);
-    size_t delim_len = strlen(delim_to_use);
-
-    char *zet_instance_id = calloc(prefix_len + delim_len + discrim_len + 1, sizeof(char));
-    sprintf(zet_instance_id, "%s%s%s", DEFAULT_EXECUTABLE_NAME, delim_to_use, discriminator);
     return zet_instance_id;
 }
 

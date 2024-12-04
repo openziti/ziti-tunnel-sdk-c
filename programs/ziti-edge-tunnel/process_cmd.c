@@ -273,9 +273,9 @@ bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void 
             bool is_jwt = tunnel_add_identity_cmd.jwtFileName != NULL || tunnel_add_identity_cmd.jwtContent != NULL;
             bool is_url = tunnel_add_identity_cmd.controllerURL != NULL;
             bool is_3rd_party_ca = tunnel_add_identity_cmd.cert != NULL || tunnel_add_identity_cmd.key != NULL;
-            int enrollment_methods_supplied = (is_jwt + is_url + is_3rd_party_ca);
+            bool enrollment_methods_supplied = is_jwt || is_url;
 
-            if (enrollment_methods_supplied == 0) {
+            if (!enrollment_methods_supplied) {
                 result.error = "no enrollment options detected. either JWT or URL must be specified.";
                 result.success = false;
                 free_tunnel_add_identity(&tunnel_add_identity_cmd);
@@ -300,14 +300,14 @@ bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void 
                 }
 
                 size_t length = len_without_extension(tunnel_add_identity_cmd.jwtFileName, ".jwt");
-                if ((strlen(config_file) + length + 6) > FILENAME_MAX - 1 ) {
+                if ((strlen(config_file) + length + 6) > FILENAME_MAX - 1) {
                     ZITI_LOG(ERROR, "failed to create file %s%c%s.json, The length of the file name is longer than %d", config_file, PATH_SEP, tunnel_add_identity_cmd.jwtFileName, FILENAME_MAX);
                     result.error = "invalid file name";
                     result.success = false;
                     free_tunnel_add_identity(&tunnel_add_identity_cmd);
                     break;
                 }
-                if(tunnel_add_identity_cmd.alias != NULL) {
+                if (tunnel_add_identity_cmd.alias != NULL) {
                     snprintf(new_identifier_without_ext, FILENAME_MAX, "%s", tunnel_add_identity_cmd.alias);
                 } else {
                     strncpy(new_identifier_without_ext, tunnel_add_identity_cmd.jwtFileName, length);

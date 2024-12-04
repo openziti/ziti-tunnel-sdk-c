@@ -363,7 +363,7 @@ bool ends_with(const char *str, const char *suffix) {
         return false;
     }
 
-    return strcmp(str + str_len - suffix_len, suffix) == 0;
+    return strcasecmp(str + str_len - suffix_len, suffix) == 0;
 }
 
 static void load_identities(uv_work_t *wr) {
