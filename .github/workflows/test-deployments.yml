@@ -16,7 +16,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  call-cmake-build:
+    uses: ./.github/workflows/cmake.yml
+
   docker-deployments:
+    needs: [ call-cmake-build ]
     name: Test Docker Deployments
     runs-on: ubuntu-latest
     steps:
@@ -25,8 +29,23 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Download CMake Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: linux-x64
+          path: ./downloads
+
+      - name: Unpack CMake Artifacts
+        shell: bash
+        run: |
+          set -x
+          ls -horRAS ./downloads
+          mkdir -p ./build/amd64/linux/
+          unzip -d ./build/amd64/linux/ ./downloads/linux-x64/ziti-edge-tunnel-Linux_x86_64.zip
+
       - name: Run the Compose Test Script
         shell: bash
         run: docker/docker.test.bash
         env:
           I_AM_ROBOT: 1
+          ZITI_EDGE_TUNNEL_BIN: ./build/amd64/linux/ziti-edge-tunnel
