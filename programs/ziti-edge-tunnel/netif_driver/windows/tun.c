@@ -223,12 +223,11 @@ netif_driver tun_open(struct uv_loop_s *loop, uint32_t tun_ip, const char *cidr,
             return NULL;
         }
         snprintf(tun->name, MAX_ADAPTER_NAME, "%s%d", ZITI_TUN_NAME_BASE, tun_num);
+        swprintf(w_adapter_name, MAX_ADAPTER_NAME, L"%hs", tun->name);
         found = WintunOpenAdapter(w_adapter_name);
     }
 
-
-    tun->adapter = WintunCreateAdapter(w_adapter_name, L"OpenZiti",
-                                       NULL); // Wintun adds "Tunnel" so this will be "OpenZiti Tunnel"
+    tun->adapter = WintunCreateAdapter(w_adapter_name, L"OpenZiti", NULL); // Wintun adds "Tunnel" so this will be "OpenZiti Tunnel"
     if (!tun->adapter) {
         DWORD err = GetLastError();
         snprintf(error, error_len, "Failed to create adapter: %ld", err);

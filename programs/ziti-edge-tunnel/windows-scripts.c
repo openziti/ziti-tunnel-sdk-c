@@ -289,21 +289,22 @@ void remove_nrpt_rules(uv_loop_t *nrpt_loop, model_map *hostnames) {
             current_size = 0;
         }
 
-        struct hostname_s *hostname_data = calloc(1, sizeof (struct hostname_s));
-        hostname_data->hostname = strdup(hostname);
-        LIST_INSERT_HEAD(&host_names_list, hostname_data, _next);
+        struct hostname_s hostname_data = {0};
+        hostname_data.hostname = strdup(hostname);
+        LIST_INSERT_HEAD(&host_names_list, &hostname_data, _next);
         current_size++;
         rule_size += strlen(hostname) + namespace_template_padding;
         it = model_map_it_remove(it);
+        free(hostname_data.hostname);
     }
     if (current_size > 0) {
         chunked_remove_nrpt_rules(nrpt_loop, &host_names_list);
     }
 }
 
-char* get_nrpt_comment(char* zet_id, bool exact) {
+char* get_nrpt_comment(const char* zet_id, bool exact) {
     char *nrpt_filter;
-    char *name;
+    const char *name;
     char *format;
     if (exact) {
         name = zet_id;
@@ -319,7 +320,7 @@ char* get_nrpt_comment(char* zet_id, bool exact) {
     return nrpt_filter;
 }
 
-void remove_all_nrpt_rules(char* zet_id, bool exact) {
+void remove_all_nrpt_rules(const char* zet_id, bool exact) {
     char remove_cmd[MAX_POWERSHELL_COMMAND_LEN];
 
     char* nrpt_filter = get_nrpt_comment(zet_id, exact);
@@ -432,12 +433,13 @@ void remove_and_add_nrpt_rules(uv_loop_t *nrpt_loop, model_map *hostnames, const
             current_size = 0;
         }
 
-        struct hostname_s *hostname_data = calloc(1, sizeof (struct hostname_s));
-        hostname_data->hostname = strdup(hostname);
-        LIST_INSERT_HEAD(&host_names_list, hostname_data, _next);
+        struct hostname_s hostname_data = {0};
+        hostname_data.hostname = strdup(hostname);
+        LIST_INSERT_HEAD(&host_names_list, &hostname_data, _next);
         current_size++;
         rule_size += strlen(hostname) + namespace_template_padding;
         it = model_map_it_remove(it);
+        free(hostname_data.hostname);
     }
     if (current_size > 0) {
         chunked_remove_and_add_nrpt_rules(nrpt_loop, &host_names_list, dns_ip);
@@ -500,7 +502,7 @@ bool is_nrpt_policies_effective(const char* tns_ip, char* zet_id) {
 
 void update_interface_metric(uv_loop_t *ziti_loop, const char *tun_name, int metric) {
     char script[MAX_POWERSHELL_SCRIPT_LEN] = { 0 };
-    size_t buf_len = sprintf(script, "$i=Get-NetIPInterface | Where -FilterScript {$_.InterfaceAlias -Eq \"%ls\"}; ", tun_name);
+    size_t buf_len = sprintf(script, "$i=Get-NetIPInterface | Where -FilterScript {$_.InterfaceAlias -Eq \"%s\"}; ", tun_name);
     size_t copied = buf_len;
     buf_len = sprintf(script + copied, "Set-NetIPInterface -InterfaceIndex $i.ifIndex -InterfaceMetric %d", metric);
     copied += buf_len;
