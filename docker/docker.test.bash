@@ -50,9 +50,14 @@ done
 : "${ZITI_ROUTER_PORT:=30224}"
 # : "${ZIGGY_UID:=$(id -u)}"
 
-bash -x ./scripts/ziti-builder.sh -p ci-linux-x64
-mkdir -p ./build/amd64/linux
-cp ./build/programs/ziti-edge-tunnel/Release/ziti-edge-tunnel ./build/amd64/linux/ziti-edge-tunnel
+if [[ -n "${ZITI_EDGE_TUNNEL_BIN:-}" && -s "${ZITI_EDGE_TUNNEL_BIN}" ]]; then
+    mkdir -p ./build/amd64/linux
+    cp "${ZITI_EDGE_TUNNEL_BIN}" ./build/amd64/linux/ziti-edge-tunnel
+else
+    bash -x ./scripts/ziti-builder.sh -p ci-linux-x64
+    mkdir -p ./build/amd64/linux
+    cp ./build/programs/ziti-edge-tunnel/Release/ziti-edge-tunnel ./build/amd64/linux/ziti-edge-tunnel
+fi
 
 ZITI_EDGE_TUNNEL_IMAGE="ziti-edge-tunnel"
 ZITI_EDGE_TUNNEL_TAG="local"
