@@ -1320,7 +1320,12 @@ static int run_opts(int argc, char *argv[]) {
     optind = 0;
     bool identity_provided = false;
 
-    while ((c = getopt_long(argc, argv, "i:I:v:r:d:u:x:",
+#if __linux__
+#define DIVERTER_SHORT_OPTS "D:f:"
+#else
+#define DIVERTER_SHORT_OPTS ""
+#endif
+    while ((c = getopt_long(argc, argv, "i:I:v:r:d:u:x:"DIVERTER_SHORT_OPTS,
                             run_options, &option_index)) != -1) {
         switch (c) {
 #if __linux__
@@ -1475,7 +1480,10 @@ struct zfw_cmd_s {
 
 static void do_zfw_cmd(uv_work_t *wr) {
     struct zfw_cmd_s *cmd = wr->data;
-    cmd->exitcode = run_command(zfw_path, cmd->args);
+    char *c = NULL;
+    asprintf(&c, "%s %%s", zfw_path);
+    cmd->exitcode = run_command(c, cmd->args);
+    free(c);
 }
 
 static void after_zfw_cmd(uv_work_t *wr, int status) {
