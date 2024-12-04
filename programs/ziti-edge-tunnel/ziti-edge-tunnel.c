@@ -81,11 +81,11 @@ static tunneler_context initialize_tunneler(netif_driver tun, uv_loop_t* ziti_lo
 #if __linux__
 static void diverter_quit();
 static void init_diverter_interface(const char *interface, const char *direction);
-static void bind_diverter_route(const char *ip, int prefix_len);
-static void unbind_diverter_route(const char *ip, int prefix_len);
+static void bind_diverter_route(const char *ip, uint8_t prefix_len);
+static void unbind_diverter_route(const char *ip, uint8_t prefix_len);
 static void diverter_binding_flush();
-static void diverter_update(const char *ip, const char *mask, const char *lowport, const char *highport, const char *protocol, const char *service_id, const char *action);
-static void set_diverter(uint32_t dns_prefix, unsigned char dns_prefix_range, const char *tun_name);
+static void diverter_update(const char *ip, uint8_t prefix_len, uint16_t lowport, uint16_t highport, const char *protocol, const char *service_id, const char *action);
+static void set_diverter(uint32_t dns_prefix, unsigned char dns_prefix_len, const char *tun_name);
 static void diverter_cleanup();
 
 char check_alt[IF_NAMESIZE];
@@ -586,17 +586,10 @@ static void on_event(const base_event *ev) {
                         if(svc->Permissions.Dial){
                             for(int x = 0; svc->Addresses && (svc->Addresses[x] != NULL); x++){
                                 if(!svc->Addresses[x]->IsHost){
-                                    char *ip = svc->Addresses[x]->IP;
-                                    char prefix_len[4];
-                                    sprintf(prefix_len, "%ld", svc->Addresses[x]->Prefix);
                                     for(int i =  0; (svc->Ports != NULL) && (svc->Ports[i] != NULL); i++){
-                                        char low_port[6];
-                                        char high_port[6];
-                                        sprintf(low_port, "%ld", svc->Ports[i]->Low);
-                                        sprintf(high_port,"%ld", svc->Ports[i]->High);
                                         for(int j =  0; (svc->Protocols != NULL) && (svc->Protocols[j] != NULL); j++){
                                             if((svc->AllowedSourceAddresses && svc->AllowedSourceAddresses[0] != NULL) || firewall){
-                                                diverter_update(ip, prefix_len,  low_port, high_port, svc->Protocols[j], svc->Id, "-D");
+                                                diverter_update(svc->Addresses[x]->IP, svc->Addresses[x]->Prefix, svc->Ports[i]->Low, svc->Ports[i]->High, svc->Protocols[j], svc->Id, "-D");
                                             }
                                         }
                                     }
@@ -635,17 +628,10 @@ static void on_event(const base_event *ev) {
                         if(svc->Permissions.Dial){
                             for(int x = 0; svc->Addresses && (svc->Addresses[x] != NULL); x++){
                                 if(!svc->Addresses[x]->IsHost){
-                                    char *ip = svc->Addresses[x]->IP;
-                                    char prefix_len[4];
-                                    sprintf(prefix_len, "%ld", svc->Addresses[x]->Prefix);
                                     for(int i =  0; (svc->Ports != NULL) && (svc->Ports[i] != NULL); i++){
-                                        char low_port[6];
-                                        char high_port[6];
-                                        sprintf(low_port, "%ld", svc->Ports[i]->Low);
-                                        sprintf(high_port,"%ld", svc->Ports[i]->High);
                                         for(int j =  0; (svc->Protocols != NULL) && (svc->Protocols[j] != NULL); j++){
                                             if((svc->AllowedSourceAddresses && svc->AllowedSourceAddresses[0] != NULL) || firewall){
-                                                diverter_update(ip, prefix_len,  low_port, high_port, svc->Protocols[j], svc->Id, "-I");
+                                                diverter_update(svc->Addresses[x]->IP, svc->Addresses[x]->Prefix, svc->Ports[i]->Low, svc->Ports[i]->High, svc->Protocols[j], svc->Id, "-I");
                                             }
                                         }
                                     }
@@ -984,7 +970,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
         if(!firewall){
             diverter_quit();
         }
-        if (access(zfw_path, F_OK) == 0){
+        if (is_executable(zfw_path)){
             int count = 0;
             char *interface = strtok(diverter_if,",");
             while(interface != NULL){
@@ -1471,165 +1457,92 @@ static void interrupt_handler(int sig) {
 #if __linux__
 // support interactions with zfw command line utility
 
-struct zfw_cmd_s {
-    char *description;
-    char *args;
-    char *interface;
-    int exitcode;
-};
-
-static void do_zfw_cmd(uv_work_t *wr) {
-    struct zfw_cmd_s *cmd = wr->data;
-    char *c = NULL;
-    asprintf(&c, "%s %%s", zfw_path);
-    cmd->exitcode = run_command(c, cmd->args);
-    free(c);
-}
-
-static void after_zfw_cmd(uv_work_t *wr, int status) {
-    struct zfw_cmd_s *cmd = wr->data;
-    if (cmd) {
-        if (WIFEXITED(cmd->exitcode) && WEXITSTATUS(cmd->exitcode) == 0) {
-            ZITI_LOG(INFO, "%s %s successful", zfw_path, cmd->args);
-        } else {
-            ZITI_LOG(WARN, "%s %s failed", zfw_path, cmd->args);
-        }
-
-        free(cmd->args);
-        if (cmd->interface) free(cmd->interface);
-        free(wr->data);
-    }
-    free(wr);
-}
-
-static void diverter_update(const char *ip, const char *mask, const char *lowport, const char *highport, const char *protocol, const char *service_id, const char *action) {
+static void diverter_update(const char *ip, uint8_t prefix_len, uint16_t lowport, uint16_t highport, const char *protocol, const char *service_id, const char *action) {
     int rndm;
     uv_random(NULL, NULL, &rndm, sizeof(rndm), 0, NULL);
     unsigned short random_port = 1024 + rndm % (65535 - 1023);
-    uv_work_t *wr = calloc(1, sizeof(uv_work_t));
-    struct zfw_cmd_s *cmd = wr->data = calloc(1, sizeof(struct zfw_cmd_s));
-    asprintf(&cmd->args, "%s -c %s -m %s -l %s -h %s -t %u -p %s -s %s", action, ip, mask, lowport, highport, random_port, protocol, service_id);
-    uv_queue_work(uv_default_loop(), wr, do_zfw_cmd, after_zfw_cmd);
+    // called while uv loop is running, so queue the command to prevent i/o stalls
+    queue_command("%s %s -c %s -m %d -l %d -h %d -t %d -p %s -s %s", zfw_path, action, ip, prefix_len, lowport, highport, random_port, protocol, service_id);
 }
 
 static void diverter_quit() {
-    uv_work_t *wr = calloc(1, sizeof(uv_work_t));
-    struct zfw_cmd_s *cmd = wr->data = calloc(1, sizeof(struct zfw_cmd_s));
-    cmd->args = strdup("-Q");
-    uv_queue_work(uv_default_loop(), wr, do_zfw_cmd, after_zfw_cmd);
+    run_command("%s -Q", zfw_path);
 }
 
-static void do_init_diverter_interface(uv_work_t *wr) {
-    struct zfw_cmd_s *cmd = wr->data;
-    cmd->exitcode = run_command(zfw_path, cmd->args);
-    if (!(WIFEXITED(cmd->exitcode) && WEXITSTATUS(cmd->exitcode))) {
+static void init_diverter_interface(const char *interface, const char *direction) {
+    // run_command is ok here because the uv loop is not yet running when this is called
+    int ec = run_command("%s -X %s -D %s/%s -z %s", zfw_path, interface, diverter_path, tc_ingress_object, direction);
+    if (!(WIFEXITED(ec) && WEXITSTATUS(ec))) {
         return;
     }
 
-    free(cmd->args); asprintf(&cmd->args, "-T %s", cmd->interface);
-    cmd->exitcode = run_command(zfw_path, cmd->args);
-    if (!(WIFEXITED(cmd->exitcode) && WEXITSTATUS(cmd->exitcode))) {
+    ec = run_command("%s -X %s -D %s", zfw_path, interface, diverter_path);
+    if (!(WIFEXITED(ec) && WEXITSTATUS(ec))) {
         return;
     }
 
-    free(cmd->args); asprintf(&cmd->args, "-6 %s", cmd->interface);
-    cmd->exitcode = run_command(zfw_path, cmd->args);
-    if (!(WIFEXITED(cmd->exitcode) && WEXITSTATUS(cmd->exitcode))) {
+    ec = run_command("%s -T %s", zfw_path, interface);
+    if (!(WIFEXITED(ec) && WEXITSTATUS(ec))) {
+        return;
+    }
+
+    ec = run_command("%s -6 %s", zfw_path, interface);
+    if (!(WIFEXITED(ec) && WEXITSTATUS(ec))) {
         return;
     }
 
     if (!firewall) {
-        free(cmd->args);
-        asprintf(&cmd->args, "-q %s", cmd->interface);
-        cmd->exitcode = run_command(zfw_path, cmd->args);
+        run_command("%s -q %s", zfw_path, interface);
     }
 }
 
-static void init_diverter_interface(const char *interface, const char *direction) {
-    char tc_ingress_object_path[PATH_MAX];
-    sprintf(tc_ingress_object_path, "%s/%s", diverter_path, tc_ingress_object);
-    uv_work_t *wr = calloc(1, sizeof(uv_work_t));
-    struct zfw_cmd_s *cmd = wr->data = calloc(1, sizeof(struct zfw_cmd_s));
-    cmd->interface = strdup(interface);
-    asprintf(&cmd->args, "-X %s -D %s/%s -z %s", interface, diverter_path, tc_ingress_object, direction);
-    uv_queue_work(uv_default_loop(), wr, do_init_diverter_interface, after_zfw_cmd);
+static void bind_diverter_route(const char *ip, uint8_t prefix_len) {
+    // called while uv loop is running, so queue the command to prevent i/o stalls
+    queue_command("%s -B %s -m %d", zfw_path, ip, prefix_len);
 }
 
-static void bind_diverter_route(const char *ip, int prefix_len) {
-    uv_work_t *wr = calloc(1, sizeof(uv_work_t));
-    struct zfw_cmd_s *cmd = wr->data = calloc(1, sizeof(struct zfw_cmd_s));
-    asprintf(&cmd->args, "-B %s, -m %d", ip, prefix_len);
-    uv_queue_work(uv_default_loop(), wr, do_zfw_cmd, after_zfw_cmd);
-}
-
-static void unbind_diverter_route(const char *ip, int prefix_len) {
-    uv_work_t *wr = calloc(1, sizeof(uv_work_t));
-    struct zfw_cmd_s *cmd = wr->data = calloc(1, sizeof(struct zfw_cmd_s));
-    asprintf(&cmd->args, "-J %s, -m %d", ip, prefix_len);
-    uv_queue_work(uv_default_loop(), wr, do_zfw_cmd, after_zfw_cmd);
+static void unbind_diverter_route(const char *ip, uint8_t prefix_len) {
+    // called while uv loop is running, so queue the command to prevent i/o stalls
+    queue_command("%s -J %s -m %d", zfw_path, ip, prefix_len);
 }
 
 static void diverter_binding_flush() {
-    uv_work_t *wr = calloc(1, sizeof(uv_work_t));
-    struct zfw_cmd_s *cmd = wr->data = calloc(1, sizeof(struct zfw_cmd_s));
-    cmd->args = strdup("-F -j");
-    uv_queue_work(uv_default_loop(), wr, do_zfw_cmd, after_zfw_cmd);
+    // called by exit handler, so run_command is appropriate
+    run_command("%s -F -j", zfw_path);
 }
 
 static void diverter_ingress_flush() {
-    uv_work_t *wr = calloc(1, sizeof(uv_work_t));
-    struct zfw_cmd_s *cmd = wr->data = calloc(1, sizeof(struct zfw_cmd_s));
-    cmd->args = strdup("-F, -z ingress");
-    uv_queue_work(uv_default_loop(), wr, do_zfw_cmd, after_zfw_cmd);
-}
-
-static void do_setup_xdp(uv_work_t *wr) {
-    struct zfw_cmd_s *cmd = wr->data;
-    cmd->exitcode = run_command("/usr/sbin/ip", cmd->args);
+    // called by exit handler, so run_command is appropriate
+    run_command("%s -F, -z ingress", zfw_path);
 }
 
 static void setup_xdp(const char *tun_name) {
-    uv_work_t *wr = calloc(1, sizeof(uv_work_t));
-    struct zfw_cmd_s *cmd = wr->data = calloc(1, sizeof(struct zfw_cmd_s));
-    asprintf(&cmd->args, "link set %s xdppgeneric obj %s/%s sec xdp_redirect", tun_name, diverter_path, xdp_ingress_object);
-    uv_queue_work(uv_default_loop(), wr, do_setup_xdp, after_zfw_cmd);
+    // run_command is ok here because the uv loop is not yet running when this is called
+    run_command("/usr/sbin/ip link set %s xdppgeneric obj %s/%s sec xdp_redirect", tun_name, diverter_path, xdp_ingress_object);
 }
 
 static void add_user_rules() {
-    uv_work_t *wr = calloc(1, sizeof(uv_work_t));
-    struct zfw_cmd_s *cmd = wr->data = calloc(1, sizeof(struct zfw_cmd_s));
-    cmd->args = strdup("-A");
-    uv_queue_work(uv_default_loop(), wr, do_zfw_cmd, after_zfw_cmd);
-}
-
-static void do_disable_firewall(uv_work_t *wr) {
-    run_command(zfw_path, "-I", "-c", "0.0.0.0", "-m", "0", "-l", "1" , "-h", "65535", "-t", "0", "-p", "tcp");
-    run_command(zfw_path, "-I", "-c", "0.0.0.0", "-m", "0", "-l", "1" , "-h", "65535", "-t", "0", "-p", "udp");
-    run_command(zfw_path, "-I", "-c", "::", "-m", "0", "-l", "1" , "-h", "65535", "-t", "0", "-p", "tcp");
-    run_command(zfw_path, "-I", "-c", "::", "-m", "0", "-l", "1" , "-h", "65535", "-t", "0", "-p", "udp");
+    // called by exit handler, so run_command is appropriate
+    run_command("%s -A");
 }
 
 static void disable_firewall() {
-    uv_work_t *wr = calloc(1, sizeof(uv_work_t));
-    uv_queue_work(uv_default_loop(), wr, do_disable_firewall, after_zfw_cmd);
+    // run_command is ok here because the uv loop is not yet running when this is called
+    run_command("%s -I -c 0.0.0.0 -m 0 -l 1 -h 65535 -t 0 -p tcp", zfw_path);
+    run_command("%s -I -c 0.0.0.0 -m 0 -l 1 -h 65535 -t 0 -p udp", zfw_path);
+    run_command("%s -I -c :: -m 0 -l 1 -h 65535 -t 0 -p tcp", zfw_path);
+    run_command("%s -I -c :: -m 0 -l 1 -h 65535 -t 0 -p udp", zfw_path);
 }
 
-static void do_pass_dns_range(uv_work_t *wr) {
-    struct zfw_cmd_s *cmd = wr->data;
-    run_command(zfw_path, "-I", cmd->args, "-l 1 -h 65535 -t 65535 -p tcp");
-    run_command(zfw_path, "-I", cmd->args, "-l 1 -h 65535 -t 65535 -p udp");
-}
-
-static void pass_dns_range(uint32_t dns_prefix, unsigned char dns_prefix_range) {
-    uv_work_t *wr = calloc(1, sizeof(uv_work_t));
-    struct zfw_cmd_s *cmd = wr->data = calloc(1, sizeof(struct zfw_cmd_s));
+static void pass_dns_range(uint32_t dns_prefix, uint8_t dns_prefix_len) {
+    // run_command is ok here because the uv loop is not yet running when this is called
     char prefix[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &dns_prefix, prefix, INET_ADDRSTRLEN);
-    asprintf(&cmd->args, "-c %s -m %d", prefix, dns_prefix_range);
-    uv_queue_work(uv_default_loop(), wr, do_pass_dns_range, after_zfw_cmd);
+    run_command("%s -I -c %s -m %d -l 1 -h 65535 -t 65535 -p tcp", zfw_path, prefix, dns_prefix_len);
+    run_command("%s -I -c %s -m %d -l 1 -h 65535 -t 65535 -p udp", zfw_path, prefix, dns_prefix_len);
 }
 
-static void set_diverter(uint32_t dns_prefix, unsigned char dns_prefix_range, const char *tun_name)
+static void set_diverter(uint32_t dns_prefix, uint8_t dns_prefix_len, const char *tun_name)
 {
     if(!firewall){
         ZITI_LOG(INFO,"Starting ziti-edge-tunnel in diverter mode");
@@ -1645,7 +1558,7 @@ static void set_diverter(uint32_t dns_prefix, unsigned char dns_prefix_range, co
         }else{
             ZITI_LOG(DEBUG, "Diverter user defined FW rules not found");
         }
-        pass_dns_range(dns_prefix, dns_prefix_range);
+        pass_dns_range(dns_prefix, dns_prefix_len);
     }
     setup_xdp(tun_name);
 }
