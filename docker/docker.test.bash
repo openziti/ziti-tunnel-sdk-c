@@ -51,8 +51,10 @@ done
 # : "${ZIGGY_UID:=$(id -u)}"
 
 if [[ -n "${ZITI_EDGE_TUNNEL_BIN:-}" && -s "${ZITI_EDGE_TUNNEL_BIN}" ]]; then
-    mkdir -p ./build/amd64/linux
-    cp "${ZITI_EDGE_TUNNEL_BIN}" ./build/amd64/linux/ziti-edge-tunnel
+    if ! [[ "$(realpath "${ZITI_EDGE_TUNNEL_BIN}")" == "$(realpath "./build/amd64/linux/ziti-edge-tunnel")" ]]; then
+        mkdir -p ./build/amd64/linux
+        cp "${ZITI_EDGE_TUNNEL_BIN}" ./build/amd64/linux/ziti-edge-tunnel
+    fi
 else
     bash -x ./scripts/ziti-builder.sh -p ci-linux-x64
     mkdir -p ./build/amd64/linux
