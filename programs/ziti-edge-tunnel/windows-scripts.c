@@ -289,13 +289,12 @@ void remove_nrpt_rules(uv_loop_t *nrpt_loop, model_map *hostnames) {
             current_size = 0;
         }
 
-        struct hostname_s hostname_data = {0};
-        hostname_data.hostname = strdup(hostname);
-        LIST_INSERT_HEAD(&host_names_list, &hostname_data, _next);
+        struct hostname_s *hostname_data = calloc(1, sizeof (struct hostname_s));
+        hostname_data->hostname = strdup(hostname);
+        LIST_INSERT_HEAD(&host_names_list, hostname_data, _next);
         current_size++;
         rule_size += strlen(hostname) + namespace_template_padding;
         it = model_map_it_remove(it);
-        free(hostname_data.hostname);
     }
     if (current_size > 0) {
         chunked_remove_nrpt_rules(nrpt_loop, &host_names_list);
@@ -433,13 +432,12 @@ void remove_and_add_nrpt_rules(uv_loop_t *nrpt_loop, model_map *hostnames, const
             current_size = 0;
         }
 
-        struct hostname_s hostname_data = {0};
-        hostname_data.hostname = strdup(hostname);
-        LIST_INSERT_HEAD(&host_names_list, &hostname_data, _next);
+        struct hostname_s *hostname_data = calloc(1, sizeof (struct hostname_s));
+        hostname_data->hostname = strdup(hostname);
+        LIST_INSERT_HEAD(&host_names_list, hostname_data, _next);
         current_size++;
         rule_size += strlen(hostname) + namespace_template_padding;
         it = model_map_it_remove(it);
-        free(hostname_data.hostname);
     }
     if (current_size > 0) {
         chunked_remove_and_add_nrpt_rules(nrpt_loop, &host_names_list, dns_ip);
