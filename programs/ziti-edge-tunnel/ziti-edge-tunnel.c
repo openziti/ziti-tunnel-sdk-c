@@ -1477,7 +1477,7 @@ static void diverter_ingress_flush() {
 
 static void setup_xdp(const char *tun_name) {
     // run_command is ok here because the uv loop is not yet running when this is called
-    run_command("/usr/sbin/ip link set %s xdppgeneric obj %s/%s sec xdp_redirect", tun_name, diverter_path, xdp_ingress_object);
+    run_command("/usr/sbin/ip link set %s xdpgeneric obj %s/%s sec xdp_redirect", tun_name, diverter_path, xdp_ingress_object);
 }
 
 static void add_user_rules() {
