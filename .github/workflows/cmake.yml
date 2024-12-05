@@ -11,10 +11,7 @@ on:
   workflow_dispatch:
   workflow_call:
 
-# cancel older, redundant runs of same workflow on same branch
-concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
-  cancel-in-progress: true
+# no concurrency constraints for callable workflows, set in caller instead
 
 jobs:
   build:
