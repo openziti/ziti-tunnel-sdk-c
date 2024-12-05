@@ -1,5 +1,5 @@
 /*
- Copyright 2019-2022 NetFoundry Inc.
+ Copyright 2019-2024 NetFoundry Inc.
 
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
@@ -23,22 +23,18 @@
 #include <time.h>
 #include "windows/windows-service.h"
 #include "windows/windows-scripts.h"
-#include <direct.h>
 
 #if _WIN32
 #include <windows.h>
 #define mkdir(path, mode) CreateDirectory(path, NULL)
-#ifndef PATH_MAX
-#define PATH_MAX MAX_PATH
-#endif
-#define realpath(rel, abs) _fullpath(abs, rel, PATH_MAX)
+#define realpath(rel, abs) _fullpath(abs, rel, FILENAME_MAX)
 #endif
 
 static bool open_log(char* log_filename);
 static bool rotate_log();
 static char* log_filename;
 static void set_is_interactive();
-static BOOL is_interactive = TRUE;
+static bool is_interactive = TRUE;
 
 char* get_log_file_name(){
     return log_filename;
@@ -53,8 +49,8 @@ static const char* log_filename_base = "ziti-tunneler.log";
 static int rotation_count = 7;
 
 static uint8_t mkdir_p(const char *path) {
-    char actualpath[PATH_MAX];
-    char *cur_path = realpath(path, actualpath);
+    char actual_path[FILENAME_MAX];
+    char *cur_path = realpath(path, actual_path);
     char *p = cur_path;
     struct stat info;
     while(*p != '\0') {
@@ -97,8 +93,6 @@ static char* get_log_path() {
     struct stat info;
     if (stat(log_path, &info) != 0) {
         fprintf(stderr,"\nlogging cannot proceed. the path could not be created: %s!\n", log_path);
-    } else {
-        fprintf(stderr,"\nlogs enabled at: %s\n", log_path);
     }
 
     return log_path;
@@ -158,7 +152,9 @@ void flush_log(uv_check_t *handle) {
 
 }
 
-bool log_init(uv_loop_t *ziti_loop) {
+bool log_init(uv_loop_t *ziti_loop, int level, log_writer log_func) {
+    static bool initialized = false;
+    if (initialized) return true;
 
     set_is_interactive();
     uv_timeval64_t file_time;
@@ -185,7 +181,9 @@ bool log_init(uv_loop_t *ziti_loop) {
     uv_async_t *ar_update = calloc(1, sizeof(uv_async_t));
     uv_async_init(ziti_loop, ar_update, update_symlink_async);
     uv_async_send(ar_update);
-    return true;
+    ziti_log_init(ziti_loop, level, log_func);
+    initialized = true;
+    return initialized;
 }
 
 static const char* parse_level(int level) {
@@ -229,17 +227,17 @@ void ziti_log_writer(int level, const char *loc, const char *msg, size_t msglen)
              tm->tm_hour, tm->tm_min, tm->tm_sec, now.tv_usec / 1000
     );
 
-    if ( ziti_tunneler_log != NULL) {
-        fprintf(ziti_tunneler_log, "[%s] %7s %s %.*s\n", curr_time, parse_level(level), loc, msglen, msg);
-        if(is_interactive) {
-            fprintf(stderr, "[%s] %7s %s %.*s\n", curr_time, parse_level(level), loc, msglen, msg);
+    if (ziti_tunneler_log != NULL) {
+        fprintf(ziti_tunneler_log, "[%s] %7s %s %.*s\n", curr_time, parse_level(level), loc, (int) msglen, msg);
+        if (is_interactive) {
+            fprintf(stderr, "[%s] %7s %s %.*s\n", curr_time, parse_level(level), loc, (int) msglen, msg);
             fflush(stderr);
         }
     }
 }
 
 bool open_log(char* filename) {
-    if((ziti_tunneler_log=fopen(filename,"a")) == NULL) {
+    if ((ziti_tunneler_log = fopen(filename, "a")) == NULL) {
         printf("Could not open logs file %s, due to %s", filename, strerror(errno));
         return false;
     }

@@ -9,4 +9,6 @@ if (NOT TARGET subcommand)
     target_include_directories(subcommand INTERFACE ${subcommand_SOURCE_DIR})
 endif ()
 
+add_compile_definitions(DEFAULT_EXECUTABLE_NAME="ziti-edge-tunnel")
 add_subdirectory(ziti-edge-tunnel)
+

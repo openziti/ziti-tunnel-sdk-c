@@ -23,8 +23,6 @@
 
 extern netif_driver tun_open(struct uv_loop_s *loop, uint32_t tun_ip, const char *cidr, char *error, size_t error_len);
 
-extern int set_dns(netif_handle tun, uint32_t dns_ip);
-
-extern wchar_t* get_tun_name(netif_handle tun);
+extern int set_dns(netif_driver tun, uint32_t dns_ip);
 
 #endif //ZITI_TUNNEL_SDK_C_TUN_H
