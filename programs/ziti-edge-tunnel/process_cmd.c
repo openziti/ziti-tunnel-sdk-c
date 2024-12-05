@@ -129,16 +129,20 @@ static void enroll_ziti_async(uv_loop_t *loop, void *arg) {
     }
 }
 
-size_t len_without_extension(const char* input, const char* extension) {
-    if(input == NULL || extension == NULL) {
-        return 0;
+// Function to check if the resultant file path is within the config_dir
+bool is_within_config_dir(const char *file_path) {
+    char resolved_file_path[FILENAME_MAX];
+
+    // Resolve the file path
+    realpath(file_path, resolved_file_path);
+
+    // Compare if the resolved file path is within the config_dir
+    int cmp = strncmp(resolved_file_path, config_dir, strlen(config_dir));
+    if (cmp == 0) {
+        return true; // File is within the config_dir
     }
-    char* ext = strstr(input, extension);
-    if (ext != NULL) {
-        return ext - input;
-    } else {
-        return strlen(input);
-    }
+
+    return false;  // File is not within the config_dir
 }
 
 bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void *ctx) {
@@ -294,9 +298,8 @@ bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void 
                 break;
             }
 
-            char new_identifier_without_ext[FILENAME_MAX] = {0};
-            char new_identifier_with_ext[FILENAME_MAX] = {0};
-            char new_identifier_path[FILENAME_MAX] = {0};
+            char new_identifier_with_ext[PATH_MAX] = {0};
+            char new_identifier_path[PATH_MAX] = {0};
             if(is_jwt) {
                 if (tunnel_add_identity_cmd.identityFilename == NULL) {
                     result.error = "identity filename not provided";
@@ -304,25 +307,12 @@ bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void 
                     break;
                 }
 
-                if (tunnel_add_identity_cmd.jwtContent == NULL &&
-                    tunnel_add_identity_cmd.controllerURL == NULL) {
-                    result.error = "jwt content not provided";
-                    result.success = false;
-                    break;
-                }
-
-                size_t length = len_without_extension(tunnel_add_identity_cmd.identityFilename, ".jwt");
-                if ((strlen(config_file) + length + 6) > FILENAME_MAX - 1) {
-                    ZITI_LOG(ERROR, "failed to create file %s%c%s.json, The length of the file name is longer than %d", config_file, PATH_SEP, tunnel_add_identity_cmd.identityFilename, FILENAME_MAX);
+                if ((strlen(config_dir) + strlen(tunnel_add_identity_cmd.identityFilename) + 6 /* 6 == ".json\0" */) >= PATH_MAX) {
+                    ZITI_LOG(ERROR, "failed to identity file: %s%c%s.json, The file name is longer than the max allowed: %d", config_file, PATH_SEP, tunnel_add_identity_cmd.identityFilename, PATH_MAX);
                     result.error = "invalid file name";
                     result.success = false;
                     free_tunnel_add_identity(&tunnel_add_identity_cmd);
                     break;
-                }
-                if (tunnel_add_identity_cmd.alias != NULL) {
-                    snprintf(new_identifier_without_ext, FILENAME_MAX, "%s", tunnel_add_identity_cmd.alias);
-                } else {
-                    strncpy(new_identifier_without_ext, tunnel_add_identity_cmd.identityFilename, length);
                 }
             } else if (is_3rd_party_ca) {
                 if (tunnel_add_identity_cmd.cert == NULL) {
@@ -337,9 +327,8 @@ bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void 
                     free_tunnel_add_identity(&tunnel_add_identity_cmd);
                     break;
                 }
-                snprintf(new_identifier_without_ext, FILENAME_MAX, "%s", tunnel_add_identity_cmd.alias);
             } else if (is_url) {
-                snprintf(new_identifier_without_ext, FILENAME_MAX, "%s", tunnel_add_identity_cmd.alias);
+                // empty on purpose for now
             } else {
                 result.error = "programming error. this case should not be hit. please file an issue";
                 result.success = false;
@@ -347,13 +336,22 @@ bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void 
                 break;
             }
 
-            snprintf(new_identifier_with_ext, FILENAME_MAX, "%s.json", new_identifier_without_ext);
+            snprintf(new_identifier_with_ext, FILENAME_MAX, "%s.json", tunnel_add_identity_cmd.identityFilename);
             snprintf(new_identifier_path, FILENAME_MAX, "%s%c%s", config_dir, PATH_SEP, new_identifier_with_ext);
+
+            //verify the resolved file is within the config_dir
+            if (!is_within_config_dir(new_identifier_path)) {
+                result.error = "identity file invalid. not within the configuration directory";
+                result.success = false;
+                free_tunnel_add_identity(&tunnel_add_identity_cmd);
+                break;
+            }
+
             normalize_identifier(new_identifier_path);
 
             struct stat file_exists;
             if (stat(new_identifier_path, &file_exists) == 0) {
-                snprintf(dynamic_err, sizeof(dynamic_err), "identity exists with the same name: %s", new_identifier_without_ext);
+                snprintf(dynamic_err, sizeof(dynamic_err), "identity exists with the same name: %s", tunnel_add_identity_cmd.identityFilename);
                 result.error = dynamic_err;
                 result.success = false;
                 free_tunnel_add_identity(&tunnel_add_identity_cmd);
