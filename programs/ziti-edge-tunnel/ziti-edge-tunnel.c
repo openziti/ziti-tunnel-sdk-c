@@ -1471,26 +1471,24 @@ static void diverter_quit() {
 
 static void init_diverter_interface(const char *interface, const char *direction) {
     // run_command is ok here because the uv loop is not yet running when this is called
-    int ec = run_command("%s -X %s -D %s/%s -z %s", zfw_path, interface, diverter_path, tc_ingress_object, direction);
+    int ec = run_command("%s -X %s -O %s/%s -z %s", zfw_path, interface, diverter_path, tc_ingress_object, direction);
     if (!(WIFEXITED(ec) && WEXITSTATUS(ec))) {
         return;
     }
 
-    ec = run_command("%s -X %s -D %s", zfw_path, interface, diverter_path);
-    if (!(WIFEXITED(ec) && WEXITSTATUS(ec))) {
-        return;
-    }
-
+    // set tun mode
     ec = run_command("%s -T %s", zfw_path, interface);
     if (!(WIFEXITED(ec) && WEXITSTATUS(ec))) {
         return;
     }
 
+    // enable ipv6
     ec = run_command("%s -6 %s", zfw_path, interface);
     if (!(WIFEXITED(ec) && WEXITSTATUS(ec))) {
         return;
     }
 
+    // pass non-tuple
     if (!firewall) {
         run_command("%s -q %s", zfw_path, interface);
     }
