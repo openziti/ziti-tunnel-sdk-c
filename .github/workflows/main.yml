@@ -1,4 +1,4 @@
-name: Test Deployments
+name: Main Test Workflow
 on:
   workflow_dispatch:
   push:
@@ -17,11 +17,12 @@ concurrency:
 
 jobs:
   call-cmake-build:
+    name: Call CMake Build
     uses: ./.github/workflows/cmake.yml
 
   docker-deployments:
     needs: [ call-cmake-build ]
-    name: Test Docker Deployments
+    name: Exercise CMake Artifacts
     runs-on: ubuntu-latest
     steps:
       - name: Full Checkout to Allow CMake to Find Version with Git

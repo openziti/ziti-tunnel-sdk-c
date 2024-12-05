@@ -1,4 +1,5 @@
-name: ziti-mattermost-action-py
+name: Alert Mattermost ~dev-notifications
+
 on:
   issues:
   issue_comment:
@@ -15,7 +16,7 @@ on:
 jobs:
   ziti-webhook:
     runs-on: ubuntu-latest
-    name: Ziti Mattermost Action - Py
+    name: Alert Mattermost - All Events Except PR Events That are Not Approvals
     env:
       ZHOOK_URL: ${{ secrets.ZHOOK_URL }}
     steps:
