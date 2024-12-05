@@ -180,7 +180,7 @@ XX(unlocked, model_bool, none, Unlocked, __VA_ARGS__)
 
 #define TUNNEL_ADD_IDENTITY(XX, ...) \
 XX(useKeychain, model_bool, none, UseKeychain, __VA_ARGS__) \
-XX(jwtFileName, model_string, none, JwtFileName, __VA_ARGS__) \
+XX(identityFilename, model_string, none, JwtFileName, __VA_ARGS__) \
 XX(jwtContent, model_string, none, JwtContent, __VA_ARGS__) \
 XX(key, model_string, none, Key, __VA_ARGS__) \
 XX(cert, model_string, none, Certificate, __VA_ARGS__) \

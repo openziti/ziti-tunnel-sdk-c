@@ -282,7 +282,7 @@ bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void 
                 free_tunnel_add_identity(&tunnel_add_identity_cmd);
                 break;
             }
-            bool is_jwt = tunnel_add_identity_cmd.jwtFileName != NULL || tunnel_add_identity_cmd.jwtContent != NULL;
+            bool is_jwt = tunnel_add_identity_cmd.identityFilename != NULL || tunnel_add_identity_cmd.jwtContent != NULL;
             bool is_url = tunnel_add_identity_cmd.controllerURL != NULL;
             bool is_3rd_party_ca = tunnel_add_identity_cmd.cert != NULL || tunnel_add_identity_cmd.key != NULL;
             bool enrollment_methods_supplied = is_jwt || is_url;
@@ -298,7 +298,7 @@ bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void 
             char new_identifier_with_ext[FILENAME_MAX] = {0};
             char new_identifier_path[FILENAME_MAX] = {0};
             if(is_jwt) {
-                if (tunnel_add_identity_cmd.jwtFileName == NULL) {
+                if (tunnel_add_identity_cmd.identityFilename == NULL) {
                     result.error = "identity filename not provided";
                     result.success = false;
                     break;
@@ -311,9 +311,9 @@ bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void 
                     break;
                 }
 
-                size_t length = len_without_extension(tunnel_add_identity_cmd.jwtFileName, ".jwt");
+                size_t length = len_without_extension(tunnel_add_identity_cmd.identityFilename, ".jwt");
                 if ((strlen(config_file) + length + 6) > FILENAME_MAX - 1) {
-                    ZITI_LOG(ERROR, "failed to create file %s%c%s.json, The length of the file name is longer than %d", config_file, PATH_SEP, tunnel_add_identity_cmd.jwtFileName, FILENAME_MAX);
+                    ZITI_LOG(ERROR, "failed to create file %s%c%s.json, The length of the file name is longer than %d", config_file, PATH_SEP, tunnel_add_identity_cmd.identityFilename, FILENAME_MAX);
                     result.error = "invalid file name";
                     result.success = false;
                     free_tunnel_add_identity(&tunnel_add_identity_cmd);
@@ -322,7 +322,7 @@ bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void 
                 if (tunnel_add_identity_cmd.alias != NULL) {
                     snprintf(new_identifier_without_ext, FILENAME_MAX, "%s", tunnel_add_identity_cmd.alias);
                 } else {
-                    strncpy(new_identifier_without_ext, tunnel_add_identity_cmd.jwtFileName, length);
+                    strncpy(new_identifier_without_ext, tunnel_add_identity_cmd.identityFilename, length);
                 }
             } else if (is_3rd_party_ca) {
                 if (tunnel_add_identity_cmd.cert == NULL) {
