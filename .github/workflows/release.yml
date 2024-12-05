@@ -1,4 +1,4 @@
-name: Build release artifacts
+name: Build and Publish Release Artifacts
 on:
   release:
     types:
@@ -43,7 +43,7 @@ jobs:
       # release artifact name than is created by CMake, and so we could change
       # the CMake configuration or add an inline (shell) run step to manipulate
       # the filenames. The pre-release build doesn't rename the artifacts.
-      - name: upload Linux ARM64 with different name
+      - name: Upload Linux ARM64 With a Different Name
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -53,7 +53,7 @@ jobs:
           asset_name: ziti-edge-tunnel-Linux_arm64.zip
           asset_content_type: application/octet-stream
 
-      - name: upload Windows with different name
+      - name: Upload Windows With a Different Name
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
