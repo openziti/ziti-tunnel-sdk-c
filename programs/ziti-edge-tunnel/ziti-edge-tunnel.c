@@ -1434,19 +1434,22 @@ static void init_diverter_interface(const char *interface, const char *direction
     // run_command is ok here because the uv loop is not yet running when this is called
     const char *obj = (strcmp(direction, "ingress") == 0 ? tc_ingress_object : tc_egress_object);
     int ec = run_command("%s -X %s -O %s/%s -z %s", zfw_path, interface, diverter_path, obj, direction);
-    if (!(WIFEXITED(ec) && WEXITSTATUS(ec))) {
+    if (ec != 0) {
+        ZITI_LOG(WARN, "zfw -X failed");
         return;
     }
 
     // set tun mode
     ec = run_command("%s -T %s", zfw_path, interface);
-    if (!(WIFEXITED(ec) && WEXITSTATUS(ec))) {
+    if (ec != 0) {
+        ZITI_LOG(WARN, "zfw -T failed");
         return;
     }
 
     // enable ipv6
     ec = run_command("%s -6 %s", zfw_path, interface);
-    if (!(WIFEXITED(ec) && WEXITSTATUS(ec))) {
+    if (ec != 0) {
+        ZITI_LOG(WARN, "zfw -6 failed");
         return;
     }
 
