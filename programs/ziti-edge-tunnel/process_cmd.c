@@ -298,8 +298,8 @@ bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void 
                 break;
             }
 
-            char new_identifier_with_ext[FILENAME_MAX] = {0};
-            char new_identifier_path[FILENAME_MAX] = {0};
+            char new_identifier_with_ext[PATH_MAX] = {0};
+            char new_identifier_path[PATH_MAX] = {0};
             if(is_jwt) {
                 if (tunnel_add_identity_cmd.identityFilename == NULL) {
                     result.error = "identity filename not provided";
@@ -307,8 +307,8 @@ bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void 
                     break;
                 }
 
-                if ((strlen(config_dir) + strlen(tunnel_add_identity_cmd.identityFilename) + 6 /* 6 == ".json\0" */) >= FILENAME_MAX) {
-                    ZITI_LOG(ERROR, "failed to identity file: %s%c%s.json, The file name is longer than the max allowed: %d", config_file, PATH_SEP, tunnel_add_identity_cmd.identityFilename, FILENAME_MAX);
+                if ((strlen(config_dir) + strlen(tunnel_add_identity_cmd.identityFilename) + 6 /* 6 == ".json\0" */) >= PATH_MAX) {
+                    ZITI_LOG(ERROR, "failed to identity file: %s%c%s.json, The file name is longer than the max allowed: %d", config_file, PATH_SEP, tunnel_add_identity_cmd.identityFilename, PATH_MAX);
                     result.error = "invalid file name";
                     result.success = false;
                     free_tunnel_add_identity(&tunnel_add_identity_cmd);
