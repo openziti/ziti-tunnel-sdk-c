@@ -2400,7 +2400,7 @@ static int add_identity_opts(int argc, char *argv[]) {
                 tunnel_add_identity_opt->useKeychain = true;
                 break;
             case 'i':
-                tunnel_add_identity_opt->jwtFileName = optarg;
+                tunnel_add_identity_opt->identityFilename = optarg;
                 break;
             case 'j':
                 tunnel_add_identity_opt->jwtContent = optarg;
@@ -2502,7 +2502,7 @@ static CommandLine add_id_cmd = make_command(
         "\t-j|--jwt\tenrollment token content\n"
         "\t-k|--key\tprivate key to use (required if --cert option is used)\n"
         "\t-c|--cert\tcertificate to use (required for ca and caott enrollments, otherwise ignored)\n"
-        "\t-i|--identity\toutput identity .json file (relative to \"-I\" config directory)\n",
+        "\t-i|--identity\tfilename to write to the --identity-dir (-I) with \".json\" suffix\n",
         add_identity_opts, send_message_to_tunnel_fn);
 static CommandLine set_log_level_cmd = make_command("set_log_level", "Set log level of the tunneler", "-l <level>",
                                                     "\t-l|--loglevel\tlog level of the tunneler\n", set_log_level_opts, send_message_to_tunnel_fn);
