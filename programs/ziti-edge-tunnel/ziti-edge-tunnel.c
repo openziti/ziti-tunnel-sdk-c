@@ -1432,7 +1432,8 @@ static void diverter_quit() {
 
 static void init_diverter_interface(const char *interface, const char *direction) {
     // run_command is ok here because the uv loop is not yet running when this is called
-    int ec = run_command("%s -X %s -O %s/%s -z %s", zfw_path, interface, diverter_path, tc_ingress_object, direction);
+    const char *obj = (strcmp(direction, "ingress") == 0 ? tc_ingress_object : tc_egress_object);
+    int ec = run_command("%s -X %s -O %s/%s -z %s", zfw_path, interface, diverter_path, obj, direction);
     if (!(WIFEXITED(ec) && WEXITSTATUS(ec))) {
         return;
     }
