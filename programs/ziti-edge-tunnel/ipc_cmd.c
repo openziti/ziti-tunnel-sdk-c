@@ -153,14 +153,13 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
                     if (!result->success) {
                         break;
                     }
-                    tunnel_on_off_identity on_off_id;
-                    if (tnl_res_cmd.data == NULL || parse_tunnel_on_off_identity(&on_off_id, tnl_res_cmd.data, strlen(tnl_res_cmd.data)) < 0) {
-                        free_tunnel_on_off_identity(&on_off_id);
-                        break;
+                    tunnel_on_off_identity on_off_id = {};
+                    if (tnl_res_cmd.data && parse_tunnel_on_off_identity(&on_off_id, tnl_res_cmd.data, strlen(tnl_res_cmd.data)) > 0) {
+                        set_ziti_status(on_off_id.onOff, on_off_id.identifier);
+                        // should be the last line in this function as it calls the mutex/lock
+                        save_tunnel_status_to_file();
                     }
-                    set_ziti_status(on_off_id.onOff, on_off_id.identifier);
-                    // should be the last line in this function as it calls the mutex/lock
-                    save_tunnel_status_to_file();
+                    free_tunnel_on_off_identity(&on_off_id);
                     break;
                 }
                 case TunnelCommand_Unknown: {
