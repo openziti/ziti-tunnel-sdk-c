@@ -1486,7 +1486,7 @@ static void setup_xdp(const char *tun_name) {
 
 static void add_user_rules() {
     // called by exit handler, so run_command is appropriate
-    run_command("%s -A");
+    run_command("%s -A", zfw_path);
 }
 
 static void disable_firewall() {
@@ -1507,18 +1507,18 @@ static void pass_dns_range(uint32_t dns_prefix, uint8_t dns_prefix_len) {
 
 static void set_diverter(uint32_t dns_prefix, uint8_t dns_prefix_len, const char *tun_name)
 {
-    if(!firewall){
+    if (!firewall) {
         ZITI_LOG(INFO,"Starting ziti-edge-tunnel in diverter mode");
-    }else{
+    } else {
         ZITI_LOG(INFO,"Starting ziti-edge-tunnel in diverter firewall mode");
     }
-    if(!firewall){
+    if (!firewall) {
         disable_firewall();
-    }else{
-        if (access("/opt/openziti/bin/user/user_rules.sh", F_OK) == 0){
+    } else {
+        if (is_executable(zfw_path)) {
             ZITI_LOG(INFO,"loading user defined FW rules");
             add_user_rules();
-        }else{
+        } else {
             ZITI_LOG(DEBUG, "Diverter user defined FW rules not found");
         }
         pass_dns_range(dns_prefix, dns_prefix_len);
