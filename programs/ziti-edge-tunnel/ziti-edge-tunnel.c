@@ -1476,7 +1476,7 @@ static void diverter_binding_flush() {
 
 static void diverter_ingress_flush() {
     // called by exit handler, so run_command is appropriate
-    run_command("%s -F, -z ingress", zfw_path);
+    run_command("%s -F -z ingress", zfw_path);
 }
 
 static void setup_xdp(const char *tun_name) {
