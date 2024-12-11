@@ -941,9 +941,9 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     char *diverter_env_path = getenv("ZFW_OBJECT_PATH");
     if(diverter_env_path && strlen(diverter_env_path)){
         diverter_path = diverter_env_path;
-        sprintf(zfw_path, "%s/%s", diverter_env_path, "zfw");
+        snprintf(zfw_path, sizeof(zfw_path), "%s/%s", diverter_env_path, "zfw");
     }else{
-        sprintf(zfw_path, "%s/%s", diverter_path, "zfw");
+        snprintf(zfw_path, sizeof(zfw_path), "%s/%s", diverter_path, "zfw");
     }
     if(diverter && tun){
         if(!firewall){
@@ -956,7 +956,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
                 uint32_t idx = if_nametoindex(interface);
                 if (!idx)
                 {
-                    ZITI_LOG(INFO,"Diverter interface not found: %s", interface);
+                    ZITI_LOG(WARN,"Diverter interface not found: %s", interface);
                     interface = strtok(NULL,",");
                     continue;
                 }
@@ -971,11 +971,11 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
             if(count){
                 set_diverter(dns_subnet_in->s_addr, dns_subnet_zaddr.addr.cidr.bits, tun->handle->name);
             }else{
-                ZITI_LOG(INFO,"No valid diverter interfaces found");
+                ZITI_LOG(ERROR,"No valid diverter interfaces found");
                 exit(1);
             }
         }else{
-            ZITI_LOG(INFO, "Diverter binary not found");
+            ZITI_LOG(ERROR, "Diverter binary not found");
             exit(1);
         }
     }
