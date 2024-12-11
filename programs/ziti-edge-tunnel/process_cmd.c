@@ -294,9 +294,9 @@ bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void 
                 break;
             }
 
-            char new_identifier_without_ext[FILENAME_MAX] = {0};
-            char new_identifier_with_ext[FILENAME_MAX] = {0};
-            char new_identifier_path[FILENAME_MAX] = {0};
+            char new_identifier_without_ext[PATH_MAX] = {0};
+            char new_identifier_with_ext[PATH_MAX] = {0};
+            char new_identifier_path[PATH_MAX] = {0};
             if(is_jwt) {
                 if (tunnel_add_identity_cmd.jwtFileName == NULL) {
                     result.error = "identity filename not provided";
@@ -312,15 +312,15 @@ bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void 
                 }
 
                 size_t length = len_without_extension(tunnel_add_identity_cmd.jwtFileName, ".jwt");
-                if ((strlen(config_file) + length + 6) > FILENAME_MAX - 1) {
-                    ZITI_LOG(ERROR, "failed to create file %s%c%s.json, The length of the file name is longer than %d", config_file, PATH_SEP, tunnel_add_identity_cmd.jwtFileName, FILENAME_MAX);
+                if ((strlen(config_file) + length + 6) > PATH_MAX - 1) {
+                    ZITI_LOG(ERROR, "failed to create file %s%c%s.json, The length of the file name is longer than %d", config_file, PATH_SEP, tunnel_add_identity_cmd.jwtFileName, PATH_MAX);
                     result.error = "invalid file name";
                     result.success = false;
                     free_tunnel_add_identity(&tunnel_add_identity_cmd);
                     break;
                 }
                 if (tunnel_add_identity_cmd.alias != NULL) {
-                    snprintf(new_identifier_without_ext, FILENAME_MAX, "%s", tunnel_add_identity_cmd.alias);
+                    snprintf(new_identifier_without_ext, PATH_MAX, "%s", tunnel_add_identity_cmd.alias);
                 } else {
                     strncpy(new_identifier_without_ext, tunnel_add_identity_cmd.jwtFileName, length);
                 }
@@ -337,9 +337,9 @@ bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void 
                     free_tunnel_add_identity(&tunnel_add_identity_cmd);
                     break;
                 }
-                snprintf(new_identifier_without_ext, FILENAME_MAX, "%s", tunnel_add_identity_cmd.alias);
+                snprintf(new_identifier_without_ext, PATH_MAX, "%s", tunnel_add_identity_cmd.alias);
             } else if (is_url) {
-                snprintf(new_identifier_without_ext, FILENAME_MAX, "%s", tunnel_add_identity_cmd.alias);
+                snprintf(new_identifier_without_ext, PATH_MAX, "%s", tunnel_add_identity_cmd.alias);
             } else {
                 result.error = "programming error. this case should not be hit. please file an issue";
                 result.success = false;
@@ -347,8 +347,8 @@ bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void 
                 break;
             }
 
-            snprintf(new_identifier_with_ext, FILENAME_MAX, "%s.json", new_identifier_without_ext);
-            snprintf(new_identifier_path, FILENAME_MAX, "%s%c%s", config_dir, PATH_SEP, new_identifier_with_ext);
+            snprintf(new_identifier_with_ext, PATH_MAX, "%s.json", new_identifier_without_ext);
+            snprintf(new_identifier_path, PATH_MAX, "%s%c%s", config_dir, PATH_SEP, new_identifier_with_ext);
             normalize_identifier(new_identifier_path);
 
             struct stat file_exists;

@@ -79,7 +79,7 @@ static tunneler_context initialize_tunneler(netif_driver tun, uv_loop_t* ziti_lo
 #if _WIN32
 static void move_config_from_previous_windows_backup(uv_loop_t *loop);
 #define LAST_CHAR_IPC_CMD '\n'
-#define realpath(rel, abs) _fullpath(abs, rel, FILENAME_MAX)
+#define realpath(rel, abs) _fullpath(abs, rel, PATH_MAX)
 #else
 #define LAST_CHAR_IPC_CMD '\0'
 #endif
@@ -1338,9 +1338,9 @@ static void run(int argc, char *argv[]) {
             return;
         }
         if(config_file == NULL) {
-            config_file = calloc(FILENAME_MAX + 1, sizeof(char));
+            config_file = calloc(PATH_MAX + 1, sizeof(char));
         }
-        snprintf(config_file, FILENAME_MAX - 1, "%s%c%s", config_dir, PATH_SEP, "config.json");
+        snprintf(config_file, PATH_MAX - 1, "%s%c%s", config_dir, PATH_SEP, "config.json");
         normalize_identifier(config_file);
 
         load_tunnel_status_from_file(global_loop_ref, config_file);
@@ -2608,8 +2608,8 @@ void scm_service_init(char *config_path) {
     log_init(global_loop_ref, INFO, ziti_log_writer);
     started_by_scm = true;
     if (config_path != NULL) {
-        config_dir = calloc(FILENAME_MAX, sizeof(char));
-        strncpy_s(config_dir, FILENAME_MAX - 1, config_path, FILENAME_MAX - 1);
+        config_dir = calloc(PATH_MAX, sizeof(char));
+        strncpy_s(config_dir, PATH_MAX - 1, config_path, PATH_MAX - 1);
     }
 }
 
@@ -2669,7 +2669,7 @@ static void move_config_from_previous_windows_backup(uv_loop_t *loop) {
     char* system_drive = getenv("SystemDrive");
 
     for (int i =0; backup_folders[i]; i++) {
-        char* config_dir_bkp = calloc(FILENAME_MAX, sizeof(char));
+        char* config_dir_bkp = calloc(PATH_MAX, sizeof(char));
         sprintf(config_dir_bkp, "%s\\%s", system_drive, backup_folders[i]);
         uv_fs_t fs;
         int rc = uv_fs_access(loop, &fs, config_dir_bkp, 0, NULL);
@@ -2691,10 +2691,10 @@ static void move_config_from_previous_windows_backup(uv_loop_t *loop) {
         uv_dirent_t file;
         while (uv_fs_scandir_next(&fs, &file) == 0) {
             if (file.type == UV_DIRENT_FILE) {
-                char old_file[FILENAME_MAX];
-                snprintf(old_file, FILENAME_MAX, "%s\\%s", config_dir_bkp, file.name);
-                char new_file[FILENAME_MAX];
-                snprintf(new_file, FILENAME_MAX, "%s\\%s", config_dir, file.name);
+                char old_file[PATH_MAX];
+                snprintf(old_file, PATH_MAX, "%s\\%s", config_dir_bkp, file.name);
+                char new_file[PATH_MAX];
+                snprintf(new_file, PATH_MAX, "%s\\%s", config_dir, file.name);
                 uv_fs_t fs_cpy;
                 rc = uv_fs_copyfile(loop, &fs_cpy, old_file, new_file, 0, NULL);
                 if (rc == 0) {

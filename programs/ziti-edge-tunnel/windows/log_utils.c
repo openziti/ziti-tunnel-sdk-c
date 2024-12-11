@@ -27,7 +27,7 @@
 #if _WIN32
 #include <windows.h>
 #define mkdir(path, mode) CreateDirectory(path, NULL)
-#define realpath(rel, abs) _fullpath(abs, rel, FILENAME_MAX)
+#define realpath(rel, abs) _fullpath(abs, rel, PATH_MAX)
 #endif
 
 static bool open_log(char* log_filename);
@@ -49,7 +49,7 @@ static const char* log_filename_base = "ziti-tunneler.log";
 static int rotation_count = 7;
 
 static uint8_t mkdir_p(const char *path) {
-    char actual_path[FILENAME_MAX];
+    char actual_path[PATH_MAX];
     char *cur_path = realpath(path, actual_path);
     char *p = cur_path;
     struct stat info;
@@ -68,11 +68,11 @@ static uint8_t mkdir_p(const char *path) {
 }
 
 static char* get_log_path() {
-    char process_dir[FILENAME_MAX]; //create string buffer to hold path
-    char process_full_path[FILENAME_MAX];
+    char process_dir[PATH_MAX]; //create string buffer to hold path
+    char process_full_path[PATH_MAX];
     char drive[_MAX_DRIVE];
     char dir[_MAX_DIR];
-    get_process_path(process_full_path, FILENAME_MAX);
+    get_process_path(process_full_path, PATH_MAX);
     _splitpath_s(process_full_path, drive, sizeof(drive), dir, sizeof(dir), NULL, 0, NULL, 0);
     _makepath_s(process_dir, sizeof(process_dir), drive, dir, NULL, NULL);
 
@@ -82,11 +82,11 @@ static char* get_log_path() {
         exit(0);
     }
 
-    char* log_path = calloc(FILENAME_MAX, sizeof(char));
+    char* log_path = calloc(PATH_MAX, sizeof(char));
     if(process_dir[strlen(process_dir)-1] != PATH_SEP) {
-        snprintf(log_path, FILENAME_MAX, "%s%clogs%cservice", process_dir, PATH_SEP, PATH_SEP);
+        snprintf(log_path, PATH_MAX, "%s%clogs%cservice", process_dir, PATH_SEP, PATH_SEP);
     } else {
-        snprintf(log_path, FILENAME_MAX, "%slogs%cservice", process_dir, PATH_SEP);
+        snprintf(log_path, PATH_MAX, "%slogs%cservice", process_dir, PATH_SEP);
     }
     mkdir_p(log_path);
 
@@ -100,8 +100,8 @@ static char* get_log_path() {
 
 char* get_base_filename() {
     char* log_path = get_log_path();
-    char* temp_log_filename = calloc(FILENAME_MAX, sizeof(char));
-    snprintf(temp_log_filename, FILENAME_MAX, "%s%c%s", log_path, PATH_SEP, log_filename_base);
+    char* temp_log_filename = calloc(PATH_MAX, sizeof(char));
+    snprintf(temp_log_filename, PATH_MAX, "%s%c%s", log_path, PATH_SEP, log_filename_base);
     free(log_path);
     return temp_log_filename;
 }
@@ -112,7 +112,7 @@ static char* create_log_filename() {
     char time_val[32];
     strftime(time_val, sizeof(time_val), "%Y%m%d0000", start_time);
 
-    char* temp_log_filename = calloc(FILENAME_MAX, sizeof(char));
+    char* temp_log_filename = calloc(PATH_MAX, sizeof(char));
     sprintf(temp_log_filename, "%s.%s.log", base_log_filename, time_val);
     free(base_log_filename);
     return temp_log_filename;
