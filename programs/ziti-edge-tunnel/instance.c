@@ -23,13 +23,14 @@
 
 #define MIN_API_PAGESIZE 10
 #define DEFAULT_API_PAGESIZE 25
-
 #if _WIN32
-#ifndef PATH_MAX //normalize to PATH_MAX even on vs 2022 and arm
-#ifdef _MAX_PATH
-#define PATH_MAX _MAX_PATH // https://learn.microsoft.com/en-us/cpp/c-runtime-library/path-field-limits
-#endif
-#endif
+    #ifndef PATH_MAX //normalize to PATH_MAX even on vs 2022 and arm
+        #ifdef _MAX_PATH
+            #define PATH_MAX _MAX_PATH // https://learn.microsoft.com/en-us/cpp/c-runtime-library/path-field-limits
+        #else
+            #define PATH_MAX 260 // this should not be necessary...
+        #endif
+    #endif
 #endif
 
 model_map tnl_identity_map = {0};
