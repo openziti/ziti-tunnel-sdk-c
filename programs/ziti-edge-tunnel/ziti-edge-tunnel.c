@@ -41,6 +41,12 @@
 #include "windows/windows-service.h"
 #include "windows/windows-scripts.h"
 
+#ifndef PATH_MAX //normalize to PATH_MAX even on vs 2022 and arm
+#ifdef _MAX_PATH
+#define PATH_MAX _MAX_PATH // https://learn.microsoft.com/en-us/cpp/c-runtime-library/path-field-limits
+#endif
+#endif
+
 #endif
 
 #ifndef MAXIPCCOMMANDLEN
