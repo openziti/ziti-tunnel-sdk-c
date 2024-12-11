@@ -581,7 +581,7 @@ void set_identifier_from_identities() {
     for(int idx = 0; tnl_status.Identities[idx]; idx++) {
         tunnel_identity *tnl_id = tnl_status.Identities[idx];
         if (tnl_id->Identifier == NULL && tnl_id->FingerPrint != NULL) {
-            char identifier[FILENAME_MAX];
+            char identifier[PATH_MAX];
             snprintf(identifier, sizeof(identifier), "%s%c%s.json", config_dir, PATH_SEP, tnl_id->FingerPrint);
             tnl_id->Identifier = strdup(identifier);
         }

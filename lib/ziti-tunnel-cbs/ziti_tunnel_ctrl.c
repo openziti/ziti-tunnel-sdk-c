@@ -1481,7 +1481,7 @@ static int update_file(const char *path, char *content, size_t content_len) {
     CHECK_UV("check exiting config", uv_fs_stat(NULL, &fs_req, path, NULL));
     uint64_t mode = fs_req.statbuf.st_mode;
 
-    char backup[FILENAME_MAX];
+    char backup[PATH_MAX];
     snprintf(backup, sizeof(backup), "%s.bak", path);
     CHECK_UV("create backup", uv_fs_rename(NULL, &fs_req, path, backup, NULL));
 

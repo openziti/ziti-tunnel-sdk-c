@@ -160,8 +160,8 @@ VOID WINAPI SvcMain( DWORD dwArgc, LPTSTR *lpszArgv )
 
     // Perform service-specific initialization and work.
     char *appdata = getenv("APPDATA");
-    char* config_dir = calloc(FILENAME_MAX, sizeof(char));
-    snprintf(config_dir, FILENAME_MAX, "%s%cNetFoundry", appdata, PATH_SEP);
+    char* config_dir = calloc(PATH_MAX, sizeof(char));
+    snprintf(config_dir, PATH_MAX, "%s%cNetFoundry", appdata, PATH_SEP);
     scm_service_init(config_dir);
     free(config_dir);
 
