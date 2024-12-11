@@ -24,6 +24,14 @@
 #define MIN_API_PAGESIZE 10
 #define DEFAULT_API_PAGESIZE 25
 
+#if _WIN32
+#ifndef PATH_MAX //normalize to PATH_MAX even on vs 2022 and arm
+#ifdef _MAX_PATH
+#define PATH_MAX _MAX_PATH // https://learn.microsoft.com/en-us/cpp/c-runtime-library/path-field-limits
+#endif
+#endif
+#endif
+
 model_map tnl_identity_map = {0};
 static const char* CFG_INTERCEPT_V1 = "intercept.v1";
 static const char* CFG_HOST_V1 = "host.v1";
