@@ -112,7 +112,7 @@ static char* create_log_filename() {
     char time_val[32];
     strftime(time_val, sizeof(time_val), "%Y%m%d0000", start_time);
 
-    char* temp_log_filename = calloc(FILENAME_MAX, sizeof(char));
+    char* temp_log_filename = calloc(PATH_MAX, sizeof(char));
     sprintf(temp_log_filename, "%s.%s.log", base_log_filename, time_val);
     free(base_log_filename);
     return temp_log_filename;
