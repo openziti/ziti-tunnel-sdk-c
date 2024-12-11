@@ -279,7 +279,8 @@ XX(recovery_codes, model_string, array, recovery_codes, __VA_ARGS__) \
 XX(code, model_number, none, code, __VA_ARGS__)
 
 #define ZTX_API_EVENT_MODEL(XX, ...)  \
-BASE_EVENT_MODEL(XX, __VA_ARGS__)  \
+BASE_EVENT_MODEL(XX, __VA_ARGS__)     \
+XX(config_json, model_string, none, config_json, __VA_ARGS__) \
 XX(new_ctrl_address, model_string, none, new_ctrl_address, __VA_ARGS__) \
 XX(new_ca_bundle, model_string, none, new_ca_bundle, __VA_ARGS__)
 

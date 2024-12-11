@@ -729,6 +729,7 @@ static void on_event(const base_event *ev) {
                 break;
             }
 
+            update_identity_config(global_loop_ref, api_ev->identifier, api_ev->config_json);
             identity_event id_event = {0};
             id_event.Op = strdup("identity");
             id_event.Action = strdup(event_name(event_updated));
