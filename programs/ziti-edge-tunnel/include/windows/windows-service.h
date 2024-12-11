@@ -1,16 +1,18 @@
 #ifndef ZITI_TUNNEL_SDK_C_WINDOWS_SERVICE_H
 #define ZITI_TUNNEL_SDK_C_WINDOWS_SERVICE_H
 
-#ifndef PATH_MAX //normalize to PATH_MAX even on vs 2022 and arm
-#ifdef _MAX_PATH
-#define PATH_MAX _MAX_PATH // https://learn.microsoft.com/en-us/cpp/c-runtime-library/path-field-limits
-#endif
-#endif
-
 #if _WIN32
 #include <stdbool.h>
 #include <winsock2.h>
 #include <windows.h>
+
+#ifndef PATH_MAX //normalize to PATH_MAX even on vs 2022 and arm
+#ifdef MAX_PATH
+#define PATH_MAX MAX_PATH
+#else
+#error "PATH_MAX and MAX_PATH are not defined, PATH_MAX cannot be set
+#endif
+#endif
 
 #define SVCNAME TEXT("ziti")
 #define DISPLAYSVCNAME TEXT("Ziti Desktop Edge Service")
