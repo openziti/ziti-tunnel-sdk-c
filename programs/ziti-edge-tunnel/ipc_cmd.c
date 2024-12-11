@@ -18,6 +18,9 @@
 #include <tlsuv/queue.h>
 #include <ziti/ziti_log.h>
 #include <ziti/ziti_tunnel_cbs.h>
+#if _WIN32
+#include "windows/windows-scripts.h"
+#endif
 
 #include "identity-utils.h"
 #include "instance-config.h"
@@ -271,8 +274,6 @@ int start_cmd_socket(uv_loop_t *l, const char *sockfile) {
 
     uv_fs_t fs;
     uv_fs_unlink(l, &fs, sockfile, NULL);
-
-
 
     CHECK_UV(uv_pipe_init(l, &cmd_server, 0));
     CHECK_UV(uv_pipe_bind(&cmd_server, sockfile));

@@ -36,6 +36,8 @@ typedef int (*delete_route_cb)(netif_handle dev, const char *dest);
 typedef int (*exclude_route_fn)(netif_handle dev, uv_loop_t *loop, const char *dest);
 typedef int (*commit_routes_fn)(netif_handle dev, uv_loop_t *loop);
 
+typedef const char *(*name_fn)(netif_handle dev);
+
 typedef struct netif_driver_s {
     netif_handle handle;
     netif_read_cb read;
@@ -47,9 +49,9 @@ typedef struct netif_driver_s {
     delete_route_cb delete_route;
     exclude_route_fn exclude_rt;
     commit_routes_fn commit_routes;
+    name_fn get_name;
 } netif_driver_t;
 typedef netif_driver_t *netif_driver;
 
-extern int prefix_to_ipv4_subnet(int prefix_len, char *subnet, size_t subnet_sz);
-
+extern int prefix_to_ipv4_subnet(int prefix_len, char *subnet, size_t subnet_sz);;
 #endif //ZITI_TUNNELER_SDK_NETIF_DRIVER_H

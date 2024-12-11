@@ -18,12 +18,6 @@
 #define ZITI_TUNNEL_SDK_C_CONFIG_UTILS_H
 #include <uv.h>
 
-char* get_system_config_path();
-void set_identifier_path(char* id_dir);
-char* get_identifier_path();
-char* get_config_file_name(char* config_path);
-char* get_backup_config_file_name(char* config_path);
-
 void update_identity_config(uv_loop_t *l, const char *identifier, const char *cfg_json);
 
 #endif //ZITI_TUNNEL_SDK_C_CONFIG_UTILS_H

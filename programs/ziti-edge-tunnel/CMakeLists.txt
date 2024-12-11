@@ -24,9 +24,9 @@ set(ZITI_INSTANCE_COMMON
         include/model/dtos.h
         instance.c
         model.c
-        include/identity-utils.h
-        config-utils.c
         include/config-utils.h
+        config-utils.c
+        include/identity-utils.h
         instance-config.c
         include/instance-config.h
         process_cmd.c
