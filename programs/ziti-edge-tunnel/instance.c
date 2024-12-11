@@ -414,9 +414,7 @@ tunnel_service *get_tunnel_service(tunnel_identity* id, ziti_service* zs) {
     svc->Permissions.Dial = ziti_service_has_permission(zs, ziti_session_type_Dial);
     setTunnelPostureDataTimeout(svc, zs);
     setTunnelServiceAddress(svc, zs);
-    if(svc->Permissions.Bind){
-        setTunnelAllowedSourceAddress(svc, zs);
-    }
+    setTunnelAllowedSourceAddress(svc, zs);
     return svc;
 }
 
