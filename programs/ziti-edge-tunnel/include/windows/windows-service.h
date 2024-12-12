@@ -6,6 +6,14 @@
 #include <winsock2.h>
 #include <windows.h>
 
+#ifndef PATH_MAX //normalize to PATH_MAX even on vs 2022 and arm
+#ifdef MAX_PATH
+#define PATH_MAX MAX_PATH
+#else
+#error "PATH_MAX and MAX_PATH are not defined, PATH_MAX cannot be set
+#endif
+#endif
+
 #define SVCNAME TEXT("ziti")
 #define DISPLAYSVCNAME TEXT("Ziti Desktop Edge Service")
 #define SVCDESCRIPTION TEXT("Access your Networks Secured by Ziti")

@@ -16,7 +16,6 @@ limitations under the License.
 
 #include <windows/windows-service.h>
 #include <stdio.h>
-#include <config-utils.h>
 
 #include <winuser.h>
 #include <service-utils.h>
@@ -160,8 +159,11 @@ VOID WINAPI SvcMain( DWORD dwArgc, LPTSTR *lpszArgv )
     ReportSvcStatus( SERVICE_START_PENDING, NO_ERROR, 3000 );
 
     // Perform service-specific initialization and work.
-    char* config_dir = get_system_config_path();
+    char *appdata = getenv("APPDATA");
+    char* config_dir = calloc(PATH_MAX, sizeof(char));
+    snprintf(config_dir, PATH_MAX, "%s%cNetFoundry", appdata, PATH_SEP);
     scm_service_init(config_dir);
+    free(config_dir);
 
     SvcInit( dwArgc, lpszArgv );
 }

@@ -190,10 +190,9 @@ close_file: ; /* declaration is not a statement */
 }
 
 int tun_commit_routes(netif_handle tun, uv_loop_t *l) {
+    uv_work_t *wr = calloc(1, sizeof(uv_work_t));
+    struct rt_process_cmd *cmd = calloc(1, sizeof(struct rt_process_cmd));
     if (tun->route_updates && model_map_size(tun->route_updates) > 0) {
-        uv_work_t *wr = calloc(1, sizeof(uv_work_t));
-        struct rt_process_cmd *cmd = calloc(1, sizeof(struct rt_process_cmd));
-
         ZITI_LOG(INFO, "starting %zd route updates", model_map_size(tun->route_updates));
         cmd->tun = tun;
         cmd->updates = tun->route_updates;
@@ -404,6 +403,10 @@ static void cleanup_sock(const int *fd) {
     }
 }
 
+static const char *get_tun_name(netif_handle tun) {
+    return tun->name;
+}
+
 netif_driver tun_open(uv_loop_t *loop, uint32_t tun_ip, uint32_t dns_ip, const char *dns_block, char *error, size_t error_len) {
     if (error != NULL) {
         memset(error, 0, error_len * sizeof(char));
@@ -456,6 +459,7 @@ netif_driver tun_open(uv_loop_t *loop, uint32_t tun_ip, uint32_t dns_ip, const c
     driver->close        = tun_close;
     driver->exclude_rt   = tun_exclude_rt;
     driver->commit_routes = tun_commit_routes;
+    driver->get_name = get_tun_name;
 
     __attribute__((cleanup(cleanup_sock))) int netdev = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
     if (netdev == -1) {

@@ -1,5 +1,5 @@
 /*
- Copyright 2021 NetFoundry Inc.
+ Copyright 2021-2024 NetFoundry Inc.
 
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
@@ -27,8 +27,8 @@
 #include "model/events.h"
 #include "identity-utils.h"
 #include "instance-config.h"
-#include <config-utils.h>
 #include <service-utils.h>
+#include <config-utils.h>
 
 #if __APPLE__ && __MACH__
 #include "netif_driver/darwin/utun.h"
@@ -41,7 +41,6 @@
 #include "windows/windows-service.h"
 #include "windows/windows-scripts.h"
 
-#define setenv(n,v,o) do {if(o || getenv(n) == NULL) _putenv_s(n,v); } while(0)
 #endif
 
 #ifndef MAXIPCCOMMANDLEN
@@ -63,7 +62,7 @@
 #endif
 
 //functions for logging on windows
-bool log_init(uv_loop_t *);
+bool log_init(uv_loop_t *, int, log_writer);
 void ziti_log_writer(int , const char *, const char *, size_t);
 char* get_log_file_name();
 #include <stdint.h>
@@ -81,6 +80,7 @@ static tunneler_context initialize_tunneler(netif_driver tun, uv_loop_t* ziti_lo
 #if _WIN32
 static void move_config_from_previous_windows_backup(uv_loop_t *loop);
 #define LAST_CHAR_IPC_CMD '\n'
+#define realpath(rel, abs) _fullpath(abs, rel, PATH_MAX)
 #else
 #define LAST_CHAR_IPC_CMD '\0'
 #endif
@@ -112,12 +112,17 @@ struct cfg_instance_s {
 // temporary list to pass info between parse and run
 static LIST_HEAD(instance_list, cfg_instance_s) load_list;
 
+static ziti_enroll_opts enroll_opts;
+char* config_dir;
+char* config_file;
+bool uses_config_dir = false;
+
 static long refresh_metrics = 5000;
 static long metrics_latency = 5000;
 static char *configured_cidr = NULL;
 static char *configured_log_level = NULL;
 static char *configured_proxy = NULL;
-char *config_dir = NULL;
+static char *ipc_discriminator = NULL;
 
 //timer
 static uv_timer_t metrics_timer;
@@ -349,8 +354,21 @@ const char *get_filename_ext(const char *filename) {
     return dot + 1;
 }
 
+bool ends_with(const char *str, const char *suffix) {
+    if (!str || !suffix) return false;
+
+    size_t str_len = strlen(str);
+    size_t suffix_len = strlen(suffix);
+
+    if (suffix_len > str_len) {
+        return false;
+    }
+
+    return strcasecmp(str + str_len - suffix_len, suffix) == 0;
+}
+
 static void load_identities(uv_work_t *wr) {
-    if (config_dir != NULL) {
+    if (uses_config_dir) {
         uv_fs_t fs;
         int rc = uv_fs_scandir(wr->loop, &fs, config_dir, 0, NULL);
         if (rc < 0) {
@@ -367,11 +385,8 @@ static void load_identities(uv_work_t *wr) {
                 continue;
             }
 
-            if (strcasecmp(file.name, get_config_file_name(NULL)) == 0) {
+            if (ends_with(config_file, file.name)) {
                 ZITI_LOG(DEBUG, "skipping the configuration file: %s", file.name);
-                continue;
-            } else if(strcasecmp(file.name, get_backup_config_file_name(NULL)) == 0 ) {
-                ZITI_LOG(DEBUG, "skipping the backup configuration file: %s", file.name);
                 continue;
             }
 
@@ -388,6 +403,7 @@ static void load_identities(uv_work_t *wr) {
                 struct cfg_instance_s *inst = calloc(1, sizeof(struct cfg_instance_s));
                 inst->cfg = malloc(MAXPATHLEN);
                 snprintf(inst->cfg, MAXPATHLEN, "%s%c%s", config_dir, PATH_SEP, file.name);
+                normalize_identifier(inst->cfg);
                 create_or_get_tunnel_identity(inst->cfg, file.name);
                 LIST_INSERT_HEAD(&load_list, inst, _next);
             }
@@ -403,8 +419,6 @@ static void load_id_cb(const tunnel_result *res, void *ctx) {
     } else {
         ZITI_LOG(ERROR, "identity[%s] failed to load: %s", inst->cfg, res->error);
     }
-    free(inst->cfg);
-    free(inst);
 }
 
 static void load_identities_complete(uv_work_t * wr, int status) {
@@ -413,25 +427,23 @@ static void load_identities_complete(uv_work_t * wr, int status) {
         struct cfg_instance_s *inst = LIST_FIRST(&load_list);
         LIST_REMOVE(inst, _next);
 
-        if (config_dir == NULL) {
-            create_or_get_tunnel_identity(inst->cfg, inst->cfg);
-        }
+        create_or_get_tunnel_identity(inst->cfg, inst->cfg);
 
         tunnel_identity *id = find_tunnel_identity(inst->cfg);
         if(id != NULL) {
             CMD_CTRL->load_identity(NULL, inst->cfg, !id->Active, get_api_page_size(), load_id_cb, inst);
-        } else {
-            ZITI_LOG(WARN, "identity not found? %s", inst->cfg);
         }
-
         identity_loaded = true;
     }
+
     if (identity_loaded) {
         start_metrics_timer(wr->loop);
     }
 
-    // should be the last line in this function as it calls the mutex/lock
-    save_tunnel_status_to_file();
+    if(uses_config_dir) {
+        // should be the last line in this function as it calls the mutex/lock
+        save_tunnel_status_to_file();
+    }
 }
 
 static void on_event(const base_event *ev) {
@@ -597,13 +609,13 @@ static void on_event(const base_event *ev) {
             }
             
             if (id->Active && model_map_size(&hostnamesToEdit) > 0 && !is_host_only()) {
-                remove_and_add_nrpt_rules(global_loop_ref, &hostnamesToEdit, get_dns_ip());
+                remove_and_add_nrpt_rules(global_loop_ref, &hostnamesToEdit, get_dns_ip()/*, ipc_discriminator*/);
             }
             if (id->Active && model_map_size(&hostnamesToAdd) > 0 && !is_host_only()) {
-                add_nrpt_rules(global_loop_ref, &hostnamesToAdd, get_dns_ip());
+                add_nrpt_rules(global_loop_ref, &hostnamesToAdd, get_dns_ip()/*, ipc_discriminator*/);
             }
             if (model_map_size(&hostnamesToRemove) > 0 && !is_host_only()) {
-                remove_nrpt_rules(global_loop_ref, &hostnamesToRemove);
+                remove_nrpt_rules(global_loop_ref, &hostnamesToRemove/*, ipc_discriminator*/);
             }
 
 #endif
@@ -827,7 +839,10 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     }
 
 #if _WIN32
-    bool nrpt_effective = is_nrpt_policies_effective(get_dns_ip());
+    const char *tun_name = tun->get_name(tun->handle);
+    char* zet_id = get_zet_instance_id(ipc_discriminator);
+    bool nrpt_effective = is_nrpt_policies_effective(get_dns_ip(), zet_id);
+    free(zet_id);
     if (!nrpt_effective || get_add_dns_flag()) {
         if (get_add_dns_flag()) {
             ZITI_LOG(INFO, "DNS is enabled for the TUN interface, because apply Dns flag in the config file is true");
@@ -835,13 +850,16 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
         if (!nrpt_effective && !get_add_dns_flag()) {
             ZITI_LOG(INFO, "DNS is enabled for the TUN interface, because Ziti policies test result in this client is false");
         }
-        set_dns(tun->handle, dns_ip);
+        set_dns(tun, dns_ip);
         ZITI_LOG(INFO, "Setting interface metric to 5");
-        update_interface_metric(ziti_loop, get_tun_name(tun->handle), 5);
+        update_interface_metric(ziti_loop, tun_name, 5);
     } else {
         ZITI_LOG(INFO, "Setting interface metric to 255");
-        update_interface_metric(ziti_loop, get_tun_name(tun->handle), 255);
+        update_interface_metric(ziti_loop, tun_name, 255);
     }
+    set_tun_name(tun_name); //sets the tunnel status's, tun name...
+#else
+    set_tun_name(tun->get_name(tun->handle)); //sets the tunnel status's, tun name...
 #endif
 
     tunneler = initialize_tunneler(tun, ziti_loop);
@@ -991,7 +1009,7 @@ static void run_tunneler_loop(uv_loop_t* ziti_loop) {
 
     CMD_CTRL = ziti_tunnel_init_cmd(ziti_loop, tunneler, on_event);
 
-    if (config_dir != NULL) {
+    if (uses_config_dir) {
         ZITI_LOG(INFO, "Loading identity files from %s", config_dir);
     }
 
@@ -1164,8 +1182,14 @@ static int run_opts(int argc, char *argv[]) {
                 break;
             }
             case 'I':
+                if (config_dir) {
+                    fprintf(stderr, "Only one config dir allowed, multiple specified\n");
+                    errors++;
+                    break;
+                }
                 config_dir = optarg;
                 identity_provided = true;
+                uses_config_dir = true;
                 break;
             case 'v':
                 configured_log_level = optarg;
@@ -1192,6 +1216,11 @@ static int run_opts(int argc, char *argv[]) {
         }
     }
 
+    if (!identity_provided) {
+        fprintf(stderr, "at least one -i or -I required\n");
+        errors++;
+    }
+
     CHECK_COMMAND_ERRORS(errors);
 
     fprintf(stderr, "About to run tunnel service... %s\n", main_cmd.name);
@@ -1216,8 +1245,14 @@ static int run_host_opts(int argc, char *argv[]) {
                 break;
             }
             case 'I':
+                if (config_dir) {
+                    fprintf(stderr, "Only one config dir allowed, multiple specified\n");
+                    errors++;
+                    break;
+                }
                 config_dir = optarg;
                 identity_provided = true;
+                uses_config_dir = true;
                 break;
             case 'v':
                 configured_log_level = optarg;
@@ -1239,6 +1274,7 @@ static int run_host_opts(int argc, char *argv[]) {
     }
 
     if (!identity_provided) {
+        fprintf(stderr, "at least one -i or -I required\n");
         errors++;
     }
 
@@ -1278,20 +1314,34 @@ static void run(int argc, char *argv[]) {
     log_writer log_fn = NULL;
 
 #if _WIN32
-    // initialize log function here. level will be set further down
-    log_init(global_loop_ref);
-    log_fn = ziti_log_writer;
-    remove_all_nrpt_rules();
-
     signal(SIGINT, interrupt_handler);
-#endif
-
+    log_init(global_loop_ref, log_level, ziti_log_writer); // level from config file set below
+    log_fn = ziti_log_writer;
+    remove_all_nrpt_rules(DEFAULT_EXECUTABLE_NAME, false); //remove all rules starting with ziti-edge-tunnel
+#else
     ziti_log_init(global_loop_ref, log_level, log_fn);
+#endif
 
     // generate tunnel status instance and save active state and start time
     if (config_dir != NULL) {
-        set_identifier_path(config_dir);
-        load_tunnel_status_from_file(global_loop_ref);
+        if (!realpath(config_dir, config_dir)) {
+            ZITI_LOG(ERROR, "Failed to resolve base directory");
+            return;
+        }
+
+        // if the config_dir was supplied but doesn't exist, exit...
+        struct stat st = {0};
+        if (stat(config_dir, &st) == -1) {
+            ZITI_LOG(ERROR, "cannot continue, specified config dir does not exist: %s", config_dir);
+            return;
+        }
+        if(config_file == NULL) {
+            config_file = calloc(PATH_MAX + 1, sizeof(char));
+        }
+        snprintf(config_file, PATH_MAX - 1, "%s%c%s", config_dir, PATH_SEP, "config.json");
+        normalize_identifier(config_file);
+
+        load_tunnel_status_from_file(global_loop_ref, config_file);
     }
 
     uint32_t tun_ip;
@@ -1350,8 +1400,14 @@ static void run(int argc, char *argv[]) {
     strftime(time_val, sizeof(time_val), "%a %b %d %Y, %X %p", start_tm);
     ZITI_LOG(INFO,"============================ service begins ================================");
     ZITI_LOG(INFO,"Logger initialization");
+    if(config_file != NULL) {
+        ZITI_LOG(INFO, "	- config file      : %s", config_file);
+    }
     ZITI_LOG(INFO,"	- initialized at   : %s (local time), %s (UTC)", time_val, time_str);
     ZITI_LOG(INFO,"	- log file location: %s", get_log_file_name());
+    char *csdk_version = "" to_str(ZITI_VERSION) ":" to_str(ZITI_BRANCH) "@" to_str(ZITI_COMMIT);
+    ZITI_LOG(INFO,"	- C SDK Version    : %s", csdk_version);
+    ZITI_LOG(INFO,"	- Tunneler SDK     : %s", ziti_tunneler_version());
     ZITI_LOG(INFO,"============================================================================");
     move_config_from_previous_windows_backup(global_loop_ref);
 
@@ -1426,16 +1482,6 @@ static void version() {
     }
 }
 
-static ziti_enroll_opts enroll_opts;
-static char* config_file;
-
-#if _WIN32
-#ifndef PATH_MAX
-#define PATH_MAX MAX_PATH
-#endif
-#define realpath(rel, abs) _fullpath(abs, rel, PATH_MAX)
-#endif
-
 static int parse_enroll_opts(int argc, char *argv[]) {
     static struct option opts[] = {
         {"url", required_argument, NULL, 'u'},
@@ -1493,6 +1539,9 @@ static int parse_enroll_opts(int argc, char *argv[]) {
                 break;
             case 'x':
                 proxy_arg = optarg;
+                break;
+            case 'v':
+                configured_log_level = optarg;
                 break;
             default: {
                 fprintf(stderr, "Unknown option '%c'\n", c);
@@ -2348,7 +2397,7 @@ static int add_identity_opts(int argc, char *argv[]) {
                 tunnel_add_identity_opt->useKeychain = true;
                 break;
             case 'i':
-                tunnel_add_identity_opt->jwtFileName = optarg;
+                tunnel_add_identity_opt->identityFilename = optarg;
                 break;
             case 'j':
                 tunnel_add_identity_opt->jwtContent = optarg;
@@ -2389,7 +2438,8 @@ static CommandLine enroll_cmd = make_command(
     "\t-K|--use-keychain\tuse keychain to generate/store private key\n"
     "\t-k|--key\tprivate key for enrollment\n"
     "\t-c|--cert\tcertificate for enrollment\n"
-    "\t-n|--name\tidentity name\n",
+    "\t-n|--name\tidentity name\n"
+    "\t-v|--verbose N\tset log level, higher level -- more verbose (default 3)\n",
     parse_enroll_opts, enroll);
 static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required superuser access)",
                                           "-i <id.file> [-r N] [-v N] [-d|--dns-ip-range N.N.N.N/N] [-u|--dns-upstream N.N.N.N]\n",
@@ -2449,7 +2499,7 @@ static CommandLine add_id_cmd = make_command(
         "\t-j|--jwt\tenrollment token content\n"
         "\t-k|--key\tprivate key to use (required if --cert option is used)\n"
         "\t-c|--cert\tcertificate to use (required for ca and caott enrollments, otherwise ignored)\n"
-        "\t-i|--identity\toutput identity .json file (relative to \"-I\" config directory)\n",
+        "\t-i|--identity\tfilename to write to the --identity-dir (-I) with \".json\" suffix\n",
         add_identity_opts, send_message_to_tunnel_fn);
 static CommandLine set_log_level_cmd = make_command("set_log_level", "Set log level of the tunneler", "-l <level>",
                                                     "\t-l|--loglevel\tlog level of the tunneler\n", set_log_level_opts, send_message_to_tunnel_fn);
@@ -2552,14 +2602,16 @@ void endpoint_status_change(bool woken, bool unlocked) {
 }
 
 void scm_service_init(char *config_path) {
+    uses_config_dir = true;
+    log_init(global_loop_ref, INFO, ziti_log_writer);
     started_by_scm = true;
     if (config_path != NULL) {
-        config_dir = config_path;
+        config_dir = calloc(PATH_MAX, sizeof(char));
+        strncpy_s(config_dir, PATH_MAX - 1, config_path, PATH_MAX - 1);
     }
 }
 
 void scm_service_run(const char *name) {
-    ZITI_LOG(INFO, "About to run tunnel service... %s", name);
     ziti_set_app_info(name, ziti_tunneler_version());
     run(0, NULL);
 }
@@ -2576,7 +2628,7 @@ void stop_tunnel_and_cleanup() {
     send_tunnel_command_inline(tnl_cmd, NULL);
 
     ZITI_LOG(INFO,"removing nrpt rules");
-    remove_all_nrpt_rules();
+    remove_all_nrpt_rules(DEFAULT_EXECUTABLE_NAME, false); //remove all rules starting with ziti-edge-tunnel
 
     ZITI_LOG(INFO,"cleaning instance config ");
     cleanup_instance_config();
@@ -2615,7 +2667,7 @@ static void move_config_from_previous_windows_backup(uv_loop_t *loop) {
     char* system_drive = getenv("SystemDrive");
 
     for (int i =0; backup_folders[i]; i++) {
-        char* config_dir_bkp = calloc(FILENAME_MAX, sizeof(char));
+        char* config_dir_bkp = calloc(PATH_MAX, sizeof(char));
         sprintf(config_dir_bkp, "%s\\%s", system_drive, backup_folders[i]);
         uv_fs_t fs;
         int rc = uv_fs_access(loop, &fs, config_dir_bkp, 0, NULL);
@@ -2637,10 +2689,10 @@ static void move_config_from_previous_windows_backup(uv_loop_t *loop) {
         uv_dirent_t file;
         while (uv_fs_scandir_next(&fs, &file) == 0) {
             if (file.type == UV_DIRENT_FILE) {
-                char old_file[FILENAME_MAX];
-                snprintf(old_file, FILENAME_MAX, "%s\\%s", config_dir_bkp, file.name);
-                char new_file[FILENAME_MAX];
-                snprintf(new_file, FILENAME_MAX, "%s\\%s", config_dir, file.name);
+                char old_file[PATH_MAX];
+                snprintf(old_file, PATH_MAX, "%s\\%s", config_dir_bkp, file.name);
+                char new_file[PATH_MAX];
+                snprintf(new_file, PATH_MAX, "%s\\%s", config_dir, file.name);
                 uv_fs_t fs_cpy;
                 rc = uv_fs_copyfile(loop, &fs_cpy, old_file, new_file, 0, NULL);
                 if (rc == 0) {

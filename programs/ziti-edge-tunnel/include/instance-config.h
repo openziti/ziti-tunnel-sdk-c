@@ -21,15 +21,13 @@
 
 typedef char * (*to_json_fn)(const void * msg, int flags, size_t *len);
 
-bool load_tunnel_status_from_file(uv_loop_t *ziti_loop);
+bool load_tunnel_status_from_file(uv_loop_t *ziti_loop, const char* config_file_name);
 bool save_tunnel_status_to_file();
 void initialize_instance_config();
 void cleanup_instance_config();
 void stop_tunnel_and_cleanup();
-
 bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void *ctx);
 void send_tunnel_command(const tunnel_command *tnl_cmd, void *ctx);
-
 void send_events_message(const void *message, to_json_fn to_json_f, bool displayEvent);
 
 extern uv_loop_t *global_loop_ref;

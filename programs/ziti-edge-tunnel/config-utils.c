@@ -28,50 +28,6 @@
 #include <unistd.h>
 #endif
 
-const char* app_data = "APPDATA";
-static char* identifier_path = NULL;
-
-char* get_system_config_path() {
-    char* config_path = malloc(FILENAME_MAX * sizeof(char));
-#if _WIN32
-    snprintf(config_path, FILENAME_MAX, "%s\\NetFoundry", getenv(app_data));
-#else
-    snprintf(config_path, FILENAME_MAX, "/var/lib/ziti");
-#endif
-    return config_path;
-}
-
-char* get_identifier_path() {
-    return identifier_path;
-}
-
-void set_identifier_path(char* id_path) {
-    if (id_path != NULL) {
-        identifier_path = strdup(id_path);
-    }
-}
-
-char* get_config_file_name(char* config_path) {
-    if (config_path != NULL) {
-        char* config_file_name = calloc(FILENAME_MAX, sizeof(char));
-        snprintf(config_file_name, FILENAME_MAX, "%s/config.json", config_path);
-        return config_file_name;
-    } else {
-        return "config.json";
-    }
-
-}
-
-char* get_backup_config_file_name(char* config_path) {
-    if (config_path != NULL) {
-        char* bkp_config_file_name = calloc(FILENAME_MAX, sizeof(char));
-        snprintf(bkp_config_file_name, FILENAME_MAX, "%s/config.json.backup", config_path);
-        return bkp_config_file_name;
-    } else {
-        return "config.json.backup";
-    }
-}
-
 typedef struct api_update_req_s {
     uv_work_t wr;
     char *identifier;
