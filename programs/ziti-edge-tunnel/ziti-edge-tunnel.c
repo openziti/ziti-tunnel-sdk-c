@@ -419,8 +419,6 @@ static void load_id_cb(const tunnel_result *res, void *ctx) {
     } else {
         ZITI_LOG(ERROR, "identity[%s] failed to load: %s", inst->cfg, res->error);
     }
-    free(inst->cfg);
-    free(inst);
 }
 
 static void load_identities_complete(uv_work_t * wr, int status) {
@@ -429,25 +427,23 @@ static void load_identities_complete(uv_work_t * wr, int status) {
         struct cfg_instance_s *inst = LIST_FIRST(&load_list);
         LIST_REMOVE(inst, _next);
 
-        if (uses_config_dir) {
-            create_or_get_tunnel_identity(inst->cfg, inst->cfg);
-        }
+        create_or_get_tunnel_identity(inst->cfg, inst->cfg);
 
         tunnel_identity *id = find_tunnel_identity(inst->cfg);
         if(id != NULL) {
             CMD_CTRL->load_identity(NULL, inst->cfg, !id->Active, get_api_page_size(), load_id_cb, inst);
-        } else {
-            ZITI_LOG(WARN, "identity not found? %s", inst->cfg);
         }
-
         identity_loaded = true;
     }
+
     if (identity_loaded) {
         start_metrics_timer(wr->loop);
     }
 
-    // should be the last line in this function as it calls the mutex/lock
-    save_tunnel_status_to_file();
+    if(uses_config_dir) {
+        // should be the last line in this function as it calls the mutex/lock
+        save_tunnel_status_to_file();
+    }
 }
 
 static void on_event(const base_event *ev) {
