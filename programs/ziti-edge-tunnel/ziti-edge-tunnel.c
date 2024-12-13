@@ -990,7 +990,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
                 count++;
             }
             if(count){
-                set_diverter(dns_subnet_in->s_addr, dns_subnet_zaddr.addr.cidr.bits, tun->handle->name);
+                set_diverter(dns_ip4_addr.u_addr.ip4.addr, dns_subnet_zaddr.addr.cidr.bits, tun->handle->name);
             }else{
                 ZITI_LOG(ERROR,"No valid diverter interfaces found");
                 exit(1);
