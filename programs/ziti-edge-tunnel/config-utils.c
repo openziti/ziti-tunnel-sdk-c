@@ -27,6 +27,9 @@
 #include <pwd.h>
 #include <unistd.h>
 #endif
+#if _WIN32
+#define realpath(rel, abs) _fullpath(abs, rel, PATH_MAX)
+#endif
 
 typedef struct api_update_req_s {
     uv_work_t wr;
@@ -148,17 +151,11 @@ char* resolve_directory(const char* path) {
             exit(1);
         }
     } else {
-        char* current_dir = getcwd(NULL, 0);
-        if (current_dir == NULL) {
-            printf("getcwd failed?");
-            exit(1);
-        }
-
         if (realpath(path, resolved_path) == NULL) {
+            //how could we get here?
             printf("path does not exist or permission denied: %s\n", resolved_path);
             exit(1);
         }
-        free(current_dir);
     }
     return resolved_path;
 }
