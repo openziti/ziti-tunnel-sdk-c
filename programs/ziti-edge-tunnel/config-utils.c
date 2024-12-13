@@ -138,3 +138,28 @@ void update_identity_config(uv_loop_t *l, const char *identifier, const char *cf
     }
 }
 
+char* resolve_directory(const char* path) {
+    char* resolved_path = (char*)malloc(PATH_MAX);
+    if (access(path, F_OK) != -1) {
+        //means the file exists right where it is, use realpath and normalize it and continue
+        if (realpath(path, resolved_path) == NULL) {
+            //how could we get here?
+            printf("path does not exist or permission denied: %s\n", resolved_path);
+            exit(1);
+        }
+    } else {
+        char* current_dir = getcwd(NULL, 0);
+        if (current_dir == NULL) {
+            printf("getcwd failed?");
+            exit(1);
+        }
+
+        if (realpath(path, resolved_path) == NULL) {
+            printf("path does not exist or permission denied: %s\n", resolved_path);
+            exit(1);
+        }
+        free(current_dir);
+    }
+    return resolved_path;
+}
+

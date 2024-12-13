@@ -1187,7 +1187,7 @@ static int run_opts(int argc, char *argv[]) {
                     errors++;
                     break;
                 }
-                config_dir = optarg;
+                config_dir = resolve_directory(optarg);
                 identity_provided = true;
                 uses_config_dir = true;
                 break;
@@ -1250,7 +1250,7 @@ static int run_host_opts(int argc, char *argv[]) {
                     errors++;
                     break;
                 }
-                config_dir = optarg;
+                config_dir = resolve_directory(optarg);
                 identity_provided = true;
                 uses_config_dir = true;
                 break;
@@ -1324,7 +1324,7 @@ static void run(int argc, char *argv[]) {
 
     // generate tunnel status instance and save active state and start time
     if (config_dir != NULL) {
-        if (!realpath(config_dir, config_dir)) {
+        if (!realpath(config_dir, NULL)) {
             ZITI_LOG(ERROR, "Failed to resolve base directory");
             return;
         }
