@@ -153,13 +153,19 @@ char* resolve_directory(const char* path) {
     if (access(path, F_OK) != -1) {
         //means the file exists right where it is, use realpath and normalize it and continue
         if (realpath(path, resolved_path) == NULL) {
-            //how could we get here?
+            //how could we get here? seems like this shouldn't be possible but protect for it anyway
             printf("path does not exist or permission denied: %s\n", resolved_path);
             exit(1);
         }
     } else {
         if (realpath(path, resolved_path) == NULL) {
-            //how could we get here?
+            printf("path does not exist or permission denied: %s\n", resolved_path);
+            exit(1);
+        }
+        // due to realpath not existing on windows, apparently `_fullpath` doesn't return NULL
+        // if the _fullpath doesn't exist... so this access is necessary for windows but redundant
+        // for linux/macOS
+        if (access(path, F_OK) == -1) {
             printf("path does not exist or permission denied: %s\n", resolved_path);
             exit(1);
         }
