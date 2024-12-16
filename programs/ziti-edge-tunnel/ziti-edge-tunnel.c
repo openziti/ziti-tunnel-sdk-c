@@ -742,35 +742,54 @@ static void on_event(const base_event *ev) {
             break;
         }
 
-        case TunnelEvent_APIEvent: {
-            const api_event *api_ev = (api_event *) ev;
-            ZITI_LOG(INFO, "ztx[%s] API Event with controller address : %s", api_ev->identifier, api_ev->new_ctrl_address);
+        case TunnelEvent_ConfigEvent: {
+            const config_event *config_ev = (config_event *) ev;
+            ZITI_LOG(INFO, "ztx[%s] Config Event", config_ev->identifier);
             if (id == NULL) {
                 break;
             }
 
-            update_identity_config(global_loop_ref, api_ev->identifier, api_ev->config_json);
+            update_identity_config(global_loop_ref, config_ev->identifier, config_ev->config_json);
+            ziti_config zc;
+            int rc = parse_ziti_config(&zc, config_ev->config_json, strlen(config_ev->config_json));
+            if (rc < 0) {
+                ZITI_LOG(ERROR, "unable to parse '%s' as ziti_config", config_ev->config_json);
+                break;
+            }
+
             identity_event id_event = {0};
             id_event.Op = strdup("identity");
             id_event.Action = strdup(event_name(event_updated));
             id_event.Id = id;
-            if (id_event.Id->FingerPrint) {
-                id_event.Fingerprint = strdup(id_event.Id->FingerPrint);
+            if (id->FingerPrint) {
+                id_event.Fingerprint = strdup(id->FingerPrint);
             }
-            id_event.Id->Loaded = true;
-            bool updated = false;
-            if (api_ev->new_ctrl_address) {
-                if (id_event.Id->Config == NULL) {
-                    id_event.Id->Config = calloc(1, sizeof(tunnel_config));
-                    id_event.Id->Config->ZtAPI = strdup(api_ev->new_ctrl_address);
-                    updated = true;
-                } else if (id_event.Id->Config->ZtAPI != NULL && strcmp(id_event.Id->Config->ZtAPI, api_ev->new_ctrl_address) != 0) {
-                    free((char*)id_event.Id->Config->ZtAPI);
-                    id_event.Id->Config->ZtAPI = strdup(api_ev->new_ctrl_address);
-                    updated = true;
-                }
+            id->Loaded = true;
+
+            if (id->Config == NULL) {
+                id->Config = calloc(1, sizeof(tunnel_config));
             }
-            if (updated) {
+
+            free((char *) id->Config->ZtAPI);
+            id->Config->ZtAPI = strdup(zc.controller_url);
+
+            // free previous controllers
+            int i;
+            for (i = 0; id->Config->ZtAPIs != NULL && id->Config->ZtAPIs[i] != NULL; i++) {
+                free((char *) id->Config->ZtAPIs[i]);
+            }
+            free(id->Config->ZtAPIs);
+
+            // copy new controllers into the identity
+            size_t num_ctrls = model_list_size(&zc.controllers);
+            id->Config->ZtAPIs = calloc(num_ctrls + 1, sizeof(model_string));
+            i = 0;
+            model_string ctrl;
+            MODEL_LIST_FOREACH(ctrl, zc.controllers) {
+                id->Config->ZtAPIs[i++] = strdup(ctrl);
+            }
+
+            if (true /* for now assume something was updated or else this event would not have arrived */) {
                 send_events_message(&id_event, (to_json_fn) identity_event_to_json, true);
             }
             id_event.Id = NULL;

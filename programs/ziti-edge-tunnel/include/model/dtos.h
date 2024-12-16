@@ -25,6 +25,7 @@ extern "C" {
 
 #define TUNNEL_CONFIG(XX, ...) \
 XX(ZtAPI, model_string, none, ztAPI, __VA_ARGS__) \
+XX(ZtAPIs, model_string, array, ztAPIs, __VA_ARGS__) \
 XX(ConfigTypes, model_string, array, ConfigTypes, __VA_ARGS__)
 
 #define TUNNEL_METRICS(XX, ...) \
