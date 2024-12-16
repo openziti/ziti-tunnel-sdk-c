@@ -1187,7 +1187,7 @@ static int run_opts(int argc, char *argv[]) {
                     errors++;
                     break;
                 }
-                config_dir = optarg;
+                config_dir = resolve_directory(optarg);
                 identity_provided = true;
                 uses_config_dir = true;
                 break;
@@ -1250,7 +1250,7 @@ static int run_host_opts(int argc, char *argv[]) {
                     errors++;
                     break;
                 }
-                config_dir = optarg;
+                config_dir = resolve_directory(optarg);
                 identity_provided = true;
                 uses_config_dir = true;
                 break;
@@ -1324,18 +1324,7 @@ static void run(int argc, char *argv[]) {
 
     // generate tunnel status instance and save active state and start time
     if (config_dir != NULL) {
-        if (!realpath(config_dir, config_dir)) {
-            ZITI_LOG(ERROR, "Failed to resolve base directory");
-            return;
-        }
-
-        // if the config_dir was supplied but doesn't exist, exit...
-        struct stat st = {0};
-        if (stat(config_dir, &st) == -1) {
-            ZITI_LOG(ERROR, "cannot continue, specified config dir does not exist: %s", config_dir);
-            return;
-        }
-        if(config_file == NULL) {
+        if (config_file == NULL) {
             config_file = calloc(PATH_MAX + 1, sizeof(char));
         }
         snprintf(config_file, PATH_MAX - 1, "%s%c%s", config_dir, PATH_SEP, "config.json");

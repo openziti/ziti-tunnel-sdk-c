@@ -27,6 +27,16 @@
 #include <pwd.h>
 #include <unistd.h>
 #endif
+#if _WIN32
+#ifndef PATH_MAX //normalize to PATH_MAX even on vs 2022 and arm
+#ifdef MAX_PATH
+#define PATH_MAX MAX_PATH
+#else
+#error "PATH_MAX and MAX_PATH are not defined, PATH_MAX cannot be set
+#endif
+#endif
+#define realpath(rel, abs) _fullpath(abs, rel, PATH_MAX)
+#endif
 
 typedef struct api_update_req_s {
     uv_work_t wr;
@@ -136,5 +146,30 @@ void update_identity_config(uv_loop_t *l, const char *identifier, const char *cf
         req->config_json = strdup(cfg_json);
         uv_queue_work(l, &req->wr, update_config, update_config_done);
     }
+}
+
+char* resolve_directory(const char* path) {
+    char *resolved_path = (char *) malloc(PATH_MAX);
+    if (access(path, F_OK) != -1) {
+        //means the file exists right where it is, use realpath and normalize it and continue
+        if (realpath(path, resolved_path) == NULL) {
+            //how could we get here? seems like this shouldn't be possible but protect for it anyway
+            printf("path does not exist or permission denied: %s\n", resolved_path);
+            exit(1);
+        }
+    } else {
+        if (realpath(path, resolved_path) == NULL) {
+            printf("path does not exist or permission denied: %s\n", resolved_path);
+            exit(1);
+        }
+        // due to realpath not existing on windows, apparently `_fullpath` doesn't return NULL
+        // if the _fullpath doesn't exist... so this access is necessary for windows but redundant
+        // for linux/macOS
+        if (access(path, F_OK) == -1) {
+            printf("path does not exist or permission denied: %s\n", resolved_path);
+            exit(1);
+        }
+    }
+    return resolved_path;
 }
 

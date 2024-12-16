@@ -19,5 +19,6 @@
 #include <uv.h>
 
 void update_identity_config(uv_loop_t *l, const char *identifier, const char *cfg_json);
+char* resolve_directory(const char* path);
 
 #endif //ZITI_TUNNEL_SDK_C_CONFIG_UTILS_H
