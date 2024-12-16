@@ -149,7 +149,7 @@ void update_identity_config(uv_loop_t *l, const char *identifier, const char *cf
 }
 
 char* resolve_directory(const char* path) {
-    char* resolved_path = (char*)malloc(PATH_MAX);
+    char *resolved_path = (char *) malloc(PATH_MAX);
     if (access(path, F_OK) != -1) {
         //means the file exists right where it is, use realpath and normalize it and continue
         if (realpath(path, resolved_path) == NULL) {
