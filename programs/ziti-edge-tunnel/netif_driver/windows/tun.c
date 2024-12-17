@@ -146,7 +146,6 @@ static void InitializeWintun(void) {
 #undef X
 
     WINTUN =  Wintun;
-    WintunSetLogger(WintunLogger);
 }
 
 static bool flush_dns() {
@@ -226,6 +225,7 @@ netif_driver tun_open(struct uv_loop_s *loop, uint32_t tun_ip, const char *cidr,
         swprintf(w_adapter_name, MAX_ADAPTER_NAME, L"%hs", tun->name);
         found = WintunOpenAdapter(w_adapter_name);
     }
+    WintunSetLogger(WintunLogger); //set the logger here exclusively to avoid these errors from WinTun: Failed to find matching adapter name: Element not found. (Code 0x00000490)
 
     tun->adapter = WintunCreateAdapter(w_adapter_name, L"OpenZiti", NULL); // Wintun adds "Tunnel" so this will be "OpenZiti Tunnel"
     if (!tun->adapter) {
