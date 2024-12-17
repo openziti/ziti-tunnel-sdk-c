@@ -146,7 +146,6 @@ static void InitializeWintun(void) {
 #undef X
 
     WINTUN =  Wintun;
-    WintunSetLogger(WintunLogger);
 }
 
 static bool flush_dns() {
@@ -213,6 +212,7 @@ netif_driver tun_open(struct uv_loop_s *loop, uint32_t tun_ip, const char *cidr,
     swprintf(w_adapter_name, MAX_ADAPTER_NAME, L"%hs", tun->name);
 
     WINTUN_ADAPTER_HANDLE found = WintunOpenAdapter(w_adapter_name);
+    WintunSetLogger(WintunLogger); //set the logger here exclusively to avoid the error: Failed to find matching adapter name: Element not found. (Code 0x00000490)
     while (found) {
         tun_num++;
         WintunCloseAdapter(found); // already exists. increment and try again
