@@ -753,7 +753,7 @@ static void on_event(const base_event *ev) {
             ziti_config zc;
             int rc = parse_ziti_config(&zc, config_ev->config_json, strlen(config_ev->config_json));
             if (rc < 0) {
-                ZITI_LOG(ERROR, "unable to parse '%s' as ziti_config", config_ev->config_json);
+                ZITI_LOG(ERROR, "unable to parse '%s' as ziti_config", config_ev->config_json); // todo don't log key
                 break;
             }
 
