@@ -948,7 +948,7 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
 
         case ZitiAPIEvent: {
             if (event->event.api.new_ctrl_address || event->event.api.new_ca_bundle) {
-                if (instance->config_path) {
+                if (instance->identifier) {
                     api_update_req *req = calloc(1, sizeof(api_update_req));
                     req->wr.data = req;
                     req->ztx = ztx;
@@ -1337,7 +1337,7 @@ goto DONE;               \
 static void update_config(uv_work_t *wr) {
     api_update_req *req = wr->data;
     struct ziti_instance_s *inst = ziti_app_ctx(req->ztx);
-    const char *config_file = inst->config_path;
+    const char *config_file = inst->identifier;
     size_t cfg_len;
     char *cfg_buf = NULL;
     uv_file f;
