@@ -17,6 +17,39 @@ cleanup(){
     echo "DEBUG: cleanup complete"
 }
 
+debug(){
+
+    set -o errexit
+    docker compose logs
+    docker compose exec -T quickstart bash << BASH
+
+set -o errexit
+set -o nounset
+set -o pipefail
+set -o xtrace
+
+ziti edge list edge-routers
+ziti edge list terminators
+ziti edge policy-advisor services httpbin-service --quiet
+
+BASH
+
+    for SVC in ziti-{host,tun}
+    do
+        docker compose exec -T "${SVC}" bash << BASH || true
+
+set -o errexit
+set -o nounset
+set -o pipefail
+set -o xtrace
+
+ziti-edge-tunnel tunnel_status | jq
+
+BASH
+    done
+
+}
+
 checkCommand() {
     if ! command -v "$1" &>/dev/null; then
         logError "this script requires command '$1'."
@@ -85,7 +118,7 @@ export \
 ZITI_EDGE_TUNNEL_IMAGE \
 ZITI_EDGE_TUNNEL_TAG \
 ZITI_HOST_IMAGE \
-ZITI_HOST_TAG \
+ZITI_HOST_TAG
 
 export COMPOSE_FILE="docker/compose.intercept.yml:docker/compose.host.yml:docker/compose.test.yml"
 
@@ -154,23 +187,31 @@ BASH
 
 ZITI_ENROLL_TOKEN="$(docker compose exec quickstart cat /tmp/httpbin-host.ott.jwt)" \
 docker compose up ziti-host --detach
-docker compose up httpbin --detach
 
 ZITI_ENROLL_TOKEN="$(docker compose exec quickstart cat /tmp/httpbin-client.ott.jwt)" \
 docker  compose up ziti-tun --detach
 
-ATTEMPTS=5
-DELAY=3
+ATTEMPTS=2
+DELAY=1
 
-curl_cmd="curl --fail --max-time 1 --silent --show-error --request POST --header 'Content-Type: application/json' --data '{\"ziti\": \"works\"}' http://httpbin.ziti.internal/post"
+curl_cmd="curl --fail --connect-timeout 1 --silent --show-error --request POST --header 'Content-Type: application/json' --data '{\"ziti\": \"works\"}' http://httpbin.ziti.internal/post"
 until ! ((ATTEMPTS)) || eval "${curl_cmd}" &> /dev/null
 do
     (( ATTEMPTS-- ))
-    echo "Waiting for httpbin service"
+    : $ATTEMPTS remaining attempts - waiting for httpbin service
+    docker compose ps
     sleep ${DELAY}
 done
-eval "${curl_cmd}" | jq .json
 
-(( I_AM_ROBOT )) || read -p "Press [Enter] to continue..."
-
-cleanup
+if eval "${curl_cmd}" | jq .json
+then
+    (( I_AM_ROBOT )) || read -rp "Press [Enter] to continue..."
+    cleanup
+    : PASSED
+    exit 0
+else
+    debug
+    cleanup
+    : FAILED
+    exit 1
+fi
