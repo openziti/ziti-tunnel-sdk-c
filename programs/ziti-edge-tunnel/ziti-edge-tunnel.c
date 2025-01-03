@@ -34,7 +34,6 @@
 #include "netif_driver/darwin/utun.h"
 #elif __linux__
 #include "netif_driver/linux/tun.h"
-#include "netif_driver/linux/utils.h"
 #include "linux/diverter.h"
 #elif _WIN32
 #include <time.h>
