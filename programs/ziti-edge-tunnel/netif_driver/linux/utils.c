@@ -24,7 +24,7 @@
 
 int run_command_va(bool log_nonzero_ec, const char* cmd, va_list args) {
     char cmdline[1024];
-    vsprintf(cmdline, cmd, args);
+    vsnprintf(cmdline, sizeof(cmdline), cmd, args);
 
     int rc = system(cmdline);
     if (rc != 0 && log_nonzero_ec) {
