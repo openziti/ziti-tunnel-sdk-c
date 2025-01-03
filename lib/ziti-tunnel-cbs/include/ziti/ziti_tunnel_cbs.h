@@ -246,7 +246,8 @@ XX(mfa_auth_status, __VA_ARGS__) \
 XX(auth_challenge, __VA_ARGS__)  \
 XX(enrollment_verification, __VA_ARGS__) \
 XX(enrollment_remove, __VA_ARGS__) \
-XX(enrollment_challenge, __VA_ARGS__)
+XX(enrollment_challenge, __VA_ARGS__)    \
+XX(key_pass_challenge, __VA_ARGS__)
 
 DECLARE_ENUM(mfa_status, MFA_STATUS)
 
