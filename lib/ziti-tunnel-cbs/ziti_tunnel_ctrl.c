@@ -1074,30 +1074,59 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
         }
 
         case ZitiAuthEvent :
-            if (event->auth.action == ziti_auth_prompt_totp) {
-                ZITI_LOG(INFO, "ztx[%s/%s] Mfa event received", instance->identifier, ctx_name);
-                mfa_event ev = {0};
-                ev.event_type = TunnelEvents.MFAEvent;
-                ev.identifier = instance->identifier;
-                ev.operation = mfa_status_name(mfa_status_auth_challenge);
-                CMD_CTX.on_event((const base_event *) &ev);
-            } else if (event->auth.action == ziti_auth_login_external ||
-                       event->auth.action == ziti_auth_select_external) {
-                ZITI_LOG(INFO, "ztx[%s/%s] ext auth event received", instance->identifier, ctx_name);
-                ext_signer_event ev = {0};
-                ev.event_type = TunnelEvents.ExtJWTEvent;
-                ev.identifier = instance->identifier;
-                ev.status = "login_with_ext_signer";
-
-                for (int idx = 0; event->auth.providers && event->auth.providers[idx]; idx++) {
-                    ziti_jwt_signer *signer = event->auth.providers[idx];
-                    jwt_provider *provider = calloc(1, sizeof(*provider));
-                    provider->name = signer->name;
-                    provider->issuer = signer->provider_url;
-                    model_list_append(&ev.providers, provider);
+            switch (event->auth.action) {
+                case ziti_auth_cannot_continue: {
+                    ZITI_LOG(ERROR, "ztx[%s/%s] authorization flow cannot continue: %s",
+                             instance->identifier, ctx_name, event->auth.detail);
+                    ziti_ctx_event ev = {
+                            .event_type = TunnelEvent_ContextEvent,
+                            .identifier = instance->identifier,
+                            .status = event->auth.detail,
+                            .code = ZITI_AUTHENTICATION_FAILED,
+                    };
+                    break;
                 }
-                CMD_CTX.on_event((const base_event *) &ev);
-                model_list_clear(&ev.providers, free);
+                case ziti_auth_prompt_totp: {
+                    ZITI_LOG(INFO, "ztx[%s/%s] Mfa event received", instance->identifier, ctx_name);
+                    mfa_event ev = {0};
+                    ev.event_type = TunnelEvents.MFAEvent;
+                    ev.identifier = instance->identifier;
+                    ev.operation = mfa_status_name(mfa_status_auth_challenge);
+                    CMD_CTX.on_event((const base_event *) &ev);
+                    break;
+                }
+                case ziti_auth_prompt_pin: {
+                    ZITI_LOG(INFO, "ztx[%s/%s] key pin/password requested", instance->identifier, ctx_name);
+                    mfa_event ev = {0};
+                    ev.event_type = TunnelEvents.MFAEvent;
+                    ev.identifier = instance->identifier;
+                    ev.operation = mfa_status_name(mfa_status_key_pass_challenge);
+                    CMD_CTX.on_event((const base_event *) &ev);
+                    break;
+                }
+                case ziti_auth_select_external:
+                case ziti_auth_login_external: {
+                    ZITI_LOG(INFO, "ztx[%s/%s] ext auth event received", instance->identifier, ctx_name);
+                    ext_signer_event ev = {0};
+                    ev.event_type = TunnelEvents.ExtJWTEvent;
+                    ev.identifier = instance->identifier;
+                    ev.status = "login_with_ext_signer";
+
+                    for (int idx = 0; event->auth.providers && event->auth.providers[idx]; idx++) {
+                        ziti_jwt_signer *signer = event->auth.providers[idx];
+                        jwt_provider *provider = calloc(1, sizeof(*provider));
+                        provider->name = signer->name;
+                        provider->issuer = signer->provider_url;
+                        model_list_append(&ev.providers, provider);
+                    }
+                    CMD_CTX.on_event((const base_event *) &ev);
+                    model_list_clear(&ev.providers, free);
+                    break;
+                }
+                default:
+                    ZITI_LOG(WARN, "ztx[%s/%s] unsupported auth request[%d]",
+                             instance->identifier, ctx_name, event->auth.action);
+                    break;
             }
             break;
 
