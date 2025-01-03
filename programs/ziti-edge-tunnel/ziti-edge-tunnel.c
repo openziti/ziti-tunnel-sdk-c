@@ -34,6 +34,7 @@
 #include "netif_driver/darwin/utun.h"
 #elif __linux__
 #include "netif_driver/linux/tun.h"
+#include "linux/diverter.h"
 #elif _WIN32
 #include <time.h>
 #include <io.h>
@@ -551,6 +552,9 @@ static void on_event(const base_event *ev) {
                         svc = get_tunnel_service(id, svc_ev->removed_services[svc_idx]);
                     }
                     ZITI_LOG(INFO, "=============== service event (removed) - %s:%s ===============", svc->Name, svc->Id);
+#if __linux__
+                    diverter_remove_svc(svc);
+#endif
 #if _WIN32
                     if (svc->Addresses != NULL) {
                         for (int i = 0; svc->Addresses[i]; i++) {
@@ -575,6 +579,9 @@ static void on_event(const base_event *ev) {
                     tunnel_service *svc = get_tunnel_service(id, svc_ev->added_services[svc_idx]);
                     svc_event.AddedServices[svc_idx] = svc;
                     ZITI_LOG(INFO, "=============== service event (added) - %s:%s ===============", svc->Name, svc->Id);
+#if __linux__
+                    diverter_add_svc(svc);
+#endif
 #if _WIN32
                     if (svc->Addresses != NULL) {
                         for (int i = 0; svc->Addresses[i]; i++) {
@@ -873,6 +880,9 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
         tunnel_upstream_dns *a[] = { &upstream, NULL};
         ziti_dns_set_upstream(ziti_loop, a);
     }
+#if __linux__
+    diverter_init(dns_ip4_addr.u_addr.ip4.addr, dns_subnet_zaddr.addr.cidr.bits, tun->get_name(tun->handle));
+#endif
     run_tunneler_loop(ziti_loop);
     if (tun->close) {
         tun->close(tun->handle);
@@ -979,6 +989,9 @@ static int make_socket_path(uv_loop_t *loop) {
 #if __linux__ || __APPLE__
 static void on_exit_signal(uv_signal_t *s, int sig) {
     ZITI_LOG(WARN, "received signal: %s", strsignal(sig));
+#if __linux__
+    diverter_cleanup();
+#endif
     exit(1);
 }
 #endif
@@ -1105,6 +1118,10 @@ static struct option run_options[] = {
         { "dns-ip-range", required_argument, NULL, 'd'},
         { "dns-upstream", required_argument, NULL, 'u'},
         { "proxy", required_argument, NULL, 'x' },
+#if __linux__
+        { "diverter", required_argument, NULL, 'D' },
+        { "diverter-fw", required_argument, NULL, 'f' },
+#endif
 };
 
 static struct option run_host_options[] = {
@@ -1171,9 +1188,25 @@ static int run_opts(int argc, char *argv[]) {
     optind = 0;
     bool identity_provided = false;
 
-    while ((c = getopt_long(argc, argv, "i:I:v:r:d:u:x:",
+#if __linux__
+#define DIVERTER_SHORT_OPTS "D:f:"
+#else
+#define DIVERTER_SHORT_OPTS ""
+#endif
+    while ((c = getopt_long(argc, argv, "i:I:v:r:d:u:x:"DIVERTER_SHORT_OPTS,
                             run_options, &option_index)) != -1) {
         switch (c) {
+#if __linux__
+            case 'D':
+                diverter = true;
+                diverter_if = optarg;
+                break;
+            case 'f':
+                diverter = true;
+                firewall = true;
+                diverter_if = optarg;
+                break;
+#endif
             case 'i': {
                 struct cfg_instance_s *inst = calloc(1, sizeof(struct cfg_instance_s));
                 inst->cfg = strdup(optarg);
@@ -2430,8 +2463,17 @@ static CommandLine enroll_cmd = make_command(
     "\t-n|--name\tidentity name\n"
     "\t-v|--verbose N\tset log level, higher level -- more verbose (default 3)\n",
     parse_enroll_opts, enroll);
+#if __linux__
+#define DIVERTER_OPTS_SUMMARY "[-D|--diverter <interface list>] [-f|--diverter-fw <interface list>] "
+#define DIVERTER_OPTS_DETAIL "\t-D|--diverter <interface list>\tset diverter mode to true on <interface list>\n" \
+                             "\t-f|--diverter-fw <interface list>\tset diverter to true in firewall mode on <interface list>)\n"
+#else
+#define DIVERTER_OPTS_SUMMARY ""
+#define DIVERTER_OPTS_DETAIL ""
+#endif
+
 static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required superuser access)",
-                                          "-i <id.file> [-r N] [-v N] [-d|--dns-ip-range N.N.N.N/N] [-u|--dns-upstream N.N.N.N]\n",
+                                          "-i <id.file> [-r N] [-v N] [-d|--dns-ip-range N.N.N.N/N] " DIVERTER_OPTS_SUMMARY "[-u|--dns-upstream N.N.N.N]\n",
                                           "\t-i|--identity <identity>\trun with provided identity file (required)\n"
                                           "\t-I|--identity-dir <dir>\tload identities from provided directory\n"
                                           "\t-x|--proxy type://[username[:password]@]hostname_or_ip:port\tproxy to use when"
@@ -2440,6 +2482,7 @@ static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required supe
                                           "\t-r|--refresh N\tset service polling interval in seconds (default 10)\n"
                                           "\t-d|--dns-ip-range <ip range>\tspecify CIDR block in which service DNS names"
                                           " are assigned in N.N.N.N/n format (default " DEFAULT_DNS_CIDR ")\n"
+                                          DIVERTER_OPTS_DETAIL
                                           "\t-u|--dns-upstream <ip addr>\tresolver listening on 53/udp for DNS queries that do not match a Ziti service\n",
                                           run_opts, run);
 static CommandLine run_host_cmd = make_command("run-host", "run Ziti tunnel to host services",

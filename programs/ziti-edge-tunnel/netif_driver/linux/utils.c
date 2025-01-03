@@ -24,7 +24,7 @@
 
 int run_command_va(bool log_nonzero_ec, const char* cmd, va_list args) {
     char cmdline[1024];
-    vsprintf(cmdline, cmd, args);
+    vsnprintf(cmdline, sizeof(cmdline), cmd, args);
 
     int rc = system(cmdline);
     if (rc != 0 && log_nonzero_ec) {
@@ -46,6 +46,49 @@ int run_command_ex(bool log_nonzero_ec, const char *cmd, ...) {
     va_list args;
     va_start(args, cmd);
     int r = run_command_va(log_nonzero_ec, cmd, args);
+    va_end(args);
+    return r;
+}
+
+struct queued_command_s {
+    char *cmdline;
+    int exitcode;
+};
+
+static void do_queued_command(uv_work_t *wr) {
+    struct queued_command_s *qcmd = wr->data;
+    ZITI_LOG(DEBUG, "running '%s'", qcmd->cmdline);
+    qcmd->exitcode = system(qcmd->cmdline);
+    ZITI_LOG(DEBUG, "system(%s) returned %d", qcmd->cmdline, qcmd->exitcode);
+}
+
+static void default_after_queued_command(uv_work_t *wr, int status) {
+    struct queued_command_s *qcmd = wr->data;
+    free(qcmd->cmdline);
+    free(qcmd);
+    free(wr);
+}
+
+int queue_command_va(uv_after_work_cb after, const char *cmd, va_list args) {
+    uv_work_t *wr = calloc(1, sizeof(uv_work_t));
+    struct queued_command_s *qcmd = calloc(1, sizeof(struct queued_command_s));
+    wr->data = qcmd;
+    vasprintf(&qcmd->cmdline, cmd, args);
+    return uv_queue_work(uv_default_loop(), wr, do_queued_command, after);
+}
+
+int queue_command(const char *cmd, ...) {
+    va_list args;
+    va_start(args, cmd);
+    int r = queue_command_va(default_after_queued_command, cmd, args);
+    va_end(args);
+    return r;
+}
+
+int queue_command_ex(uv_after_work_cb after, const char *cmd, ...) {
+    va_list args;
+    va_start(args, cmd);
+    int r = queue_command_va(after, cmd, args);
     va_end(args);
     return r;
 }

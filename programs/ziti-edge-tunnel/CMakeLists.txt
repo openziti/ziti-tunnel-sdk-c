@@ -42,6 +42,9 @@ if (WIN32)
             windows/log_utils.c
             include/service-utils.h)
 endif ()
+if (LINUX)
+    set(ZITI_INSTANCE_OS linux/diverter.c include/linux/diverter.h)
+endif ()
 
 add_executable(ziti-edge-tunnel ziti-edge-tunnel.c ${NETIF_DRIVER_SOURCE} ${ZITI_INSTANCE_COMMON} ${ZITI_INSTANCE_OS})
 set_property(TARGET ziti-edge-tunnel PROPERTY C_STANDARD 11)
