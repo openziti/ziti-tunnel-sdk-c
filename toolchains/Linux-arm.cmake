@@ -7,6 +7,6 @@ set(CMAKE_C_COMPILER ${triple}-gcc)
 set(CMAKE_CXX_COMPILER ${triple}-g++)
 
 set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE armhf)
-set(CPACK_RPM_PACKAGE_ARCHITECTURE armv7l)
+set(CPACK_RPM_PACKAGE_ARCHITECTURE armv7hl)
 
 set(ENV{PKG_CONFIG_PATH} /usr/lib/${triple}/pkgconfig)
