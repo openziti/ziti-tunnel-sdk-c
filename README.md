@@ -81,48 +81,8 @@ that should be
 
 ## Run with Docker
 
-Please refer to [the Docker README](./docker/README.md) for instructions to run `ziti-edge-tunnel` with Docker.
+Refer to [the Docker README](./docker/README.md) for instructions to run `ziti-edge-tunnel` with Docker.
 
 ## Multi-Platform Linux Crossbuild Container
 
-The purpose of this container is to document the process of building locally the Linux executables in the same way as the GitHub Actions workflow (CI). By default, this produces executables for each supported platform architecture: amd64, arm64. You may instead build for a particular architecture only by specifying the architecture as a parameter to the `docker run` command as shown below.
-
-### Build the Linux Crossbuild Container Image
-
-You only need to build the container image once unless you change the Dockerfile or `./docker/linux-build.sh` (the container's entrypoint).
-
-```bash
-# build a container image named "ziti-edge-tunnel-builder" with the Dockerfile
-docker build \
-    --tag=ziti-edge-tunnel-builder \
-    --file=./docker/Dockerfile.linux-build \
-    --build-arg uid=$UID \
-    --build-arg gid=$GID .
-```
-
-### Run the Linux Crossbuild Container
-
-Executing the following `docker run` command will:
-1. Mount the top-level of this repo on the container's `/mnt`
-2. Run `/mnt/docker/linux-build.sh ${@}` inside the container
-3. Deposit built executables in `/mnt/build` which is a top-level dir in this repo after running the container
-
-```bash
-# build for all architectures: amd64 arm64
-docker run \
-    --rm \
-    --name=ziti-edge-tunnel-builder \
-    --volume=$PWD:/mnt \
-    ziti-edge-tunnel-builder \
-        arm arm64 amd64
-
-# build only amd64 with openssl instead of default mbedtls
-docker run \
-    --rm \
-    --name=ziti-edge-tunnel-builder \
-    --volume=$PWD:/mnt \
-    ziti-edge-tunnel-builder \
-        --use-openssl amd64
-```
-
-You will find each artifact in `./build-${ARCH}/programs/ziti-edge-tunnel/ziti-edge-tunnel`.
+Refer to [the BUILD article](./BUILD.md) for instructions to build `ziti-edge-tunnel`, including the crossbuild container image.
