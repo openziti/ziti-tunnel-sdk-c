@@ -465,7 +465,6 @@ static void on_event(const base_event *ev) {
                 id_event.Fingerprint = strdup(id_event.Id->FingerPrint);
             }
             id_event.Id->Loaded = true;
-            id_event.Id->NeedsExtAuth = false;
 
             action_event controller_event = {0};
             controller_event.Op = strdup("controller");
@@ -475,6 +474,7 @@ static void on_event(const base_event *ev) {
             }
 
             if (zev->code == ZITI_OK) {
+                id_event.Id->NeedsExtAuth = false;
                 if (zev->name) {
                     if (id_event.Id->Name != NULL && strcmp(id_event.Id->Name, zev->name) != 0) {
                         free((char*)id_event.Id->Name);
