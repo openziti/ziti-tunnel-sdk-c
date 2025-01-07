@@ -1,4 +1,5 @@
 services:
+
     httpbin:
         image: mccutchen/go-httpbin
         expose:
@@ -9,13 +10,19 @@ services:
     ziti-tun:
         pull_policy: never
         command: run --verbose=4 --dns-ip-range=100.95.255.128/25
+        environment:
+            - ZITI_LOG=4
 
     ziti-host:
         pull_policy: never
+        depends_on:
+            httpbin:
+                condition: service_started
         networks:
             - quickstart
         command: run-host --verbose=4
-        # entrypoint: ["bash", "-x", "/docker-entrypoint.sh"]
+        environment:
+            - ZITI_LOG=4
 
     quickstart:
         image: ${ZITI_CLI_IMAGE:-docker.io/openziti/ziti-controller}:${ZITI_CLI_TAG:-latest}

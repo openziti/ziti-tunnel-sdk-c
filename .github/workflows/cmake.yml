@@ -1,4 +1,5 @@
-name: CI build
+# callable workflows' jobs appear in the calling workflow's run, so clicking this workflow in GitHub shows no runs
+name: Callable CMake Build
 
 on:
   workflow_dispatch:
