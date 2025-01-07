@@ -464,7 +464,6 @@ static void on_event(const base_event *ev) {
                 id_event.Fingerprint = strdup(id_event.Id->FingerPrint);
             }
             id_event.Id->Loaded = true;
-            id_event.Id->NeedsExtAuth = false;
 
             action_event controller_event = {0};
             controller_event.Op = strdup("controller");
@@ -474,6 +473,7 @@ static void on_event(const base_event *ev) {
             }
 
             if (zev->code == ZITI_OK) {
+                id_event.Id->NeedsExtAuth = false;
                 if (zev->name) {
                     if (id_event.Id->Name != NULL && strcmp(id_event.Id->Name, zev->name) != 0) {
                         free((char*)id_event.Id->Name);
@@ -503,14 +503,14 @@ static void on_event(const base_event *ev) {
                 }
                 controller_event.Action = strdup(event_name(event_connected));
                 ZITI_LOG(DEBUG, "ztx[%s] controller connected", ev->identifier);
-
-                send_events_message(&id_event, (to_json_fn) identity_event_to_json, true);
-                id_event.Id = NULL;
-                free_identity_event(&id_event);
             } else {
                 controller_event.Action = strdup(event_name(event_disconnected));
                 ZITI_LOG(ERROR, "ztx[%s] failed to connect to controller due to %s", ev->identifier, zev->status);
             }
+
+            send_events_message(&id_event, (to_json_fn) identity_event_to_json, true);
+            id_event.Id = NULL;
+            free_identity_event(&id_event);
 
             send_events_message(&controller_event, (to_json_fn) action_event_to_json, true);
             free_action_event(&controller_event);
