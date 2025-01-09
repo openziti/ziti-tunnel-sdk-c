@@ -41,6 +41,7 @@
 #include "netif_driver/windows/tun.h"
 #include "windows/windows-service.h"
 #include "windows/windows-scripts.h"
+#include "windows/minidump.h"
 
 #endif
 
@@ -2749,6 +2750,11 @@ static bool is_host_only() {
 }
 
 int main(int argc, char *argv[]) {
+#if _WIN32
+    //register a crash handler for Windows
+    SetUnhandledExceptionFilter(CrashFilter);
+#endif
+
     const char *name = strrchr(argv[0], '/');
     if (name == NULL) {
         name = argv[0];
