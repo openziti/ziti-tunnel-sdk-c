@@ -20,8 +20,8 @@
 
 extern char* get_log_path();
 LONG WINAPI CrashFilter(EXCEPTION_POINTERS *pExceptionInfo) {
-    char* mini_dump_path = calloc(PATH_MAX, sizeof(char));
-    snprintf(mini_dump_path, PATH_MAX, "%s%cziti-edge-tunnel.crash.dmp", get_log_path(), PATH_SEP);
+    char* mini_dump_path = calloc(MAX_PATH, sizeof(char));
+    snprintf(mini_dump_path, MAX_PATH, "%s%cziti-edge-tunnel.crash.dmp", get_log_path(), PATH_SEP);
 
     printf("minidump created at: %s", mini_dump_path);
     HANDLE hFile = CreateFile(mini_dump_path, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
