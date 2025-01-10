@@ -40,7 +40,10 @@ if (WIN32)
             include/windows/windows-scripts.h
             windows-scripts.c
             windows/log_utils.c
-            include/service-utils.h)
+            include/service-utils.h
+            windows/minidump.c
+            windows/minidump.h
+    )
 endif ()
 if (LINUX)
     set(ZITI_INSTANCE_OS linux/diverter.c include/linux/diverter.h)

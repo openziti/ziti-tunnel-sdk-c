@@ -67,7 +67,7 @@ static uint8_t mkdir_p(const char *path) {
     return mkdir(cur_path, NULL);
 }
 
-static char* get_log_path() {
+char* get_log_path() {
     char process_dir[PATH_MAX]; //create string buffer to hold path
     char process_full_path[PATH_MAX];
     char drive[_MAX_DRIVE];
