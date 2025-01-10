@@ -125,7 +125,7 @@ jobs:
           jf rt copy
           --recursive=false
           --flat=true
-          ${{ env.ZITI_RPM_TEST_REPO }}/redhat${{ matrix.distro.version }}/${{ matrix.arch.rpm }}/ziti-edge-tunnel-${{ needs.parse_version.outputs.version }}-*.${{ matrix.arch.rpm }}.rpm
+          ${{ env.ZITI_RPM_TEST_REPO }}/redhat${{ matrix.distro.version }}/${{ matrix.arch.rpm }}/ziti-edge-tunnel-${{ needs.parse_version.outputs.version }}-1.${{ matrix.arch.rpm }}.rpm
           ${{ env.ZITI_RPM_PROD_REPO }}/redhat${{ matrix.distro.version }}/${{ matrix.arch.rpm }}/
 
       - name: Copy DEB from testing to release Artifactory repo with jFrog CLI
@@ -135,5 +135,5 @@ jobs:
           jf rt copy
           --recursive=false
           --flat=true
-          ${{ env.ZITI_DEB_TEST_REPO }}/pool/ziti-edge-tunnel/${{ matrix.distro.release_name }}/${{ matrix.arch.deb }}/ziti-edge-tunnel-${{ needs.parse_version.outputs.version }}-*.deb
+          ${{ env.ZITI_DEB_TEST_REPO }}/pool/ziti-edge-tunnel/${{ matrix.distro.release_name }}/${{ matrix.arch.deb }}/ziti-edge-tunnel-${{ needs.parse_version.outputs.version }}-1.deb
           ${{ env.ZITI_DEB_PROD_REPO }}/pool/ziti-edge-tunnel/${{ matrix.distro.release_name }}/${{ matrix.arch.deb }}/
