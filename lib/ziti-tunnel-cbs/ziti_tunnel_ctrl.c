@@ -1133,12 +1133,11 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
         case ZitiConfigEvent: {
             if (event->cfg.config) {
                 char *cfg_json = ziti_config_to_json(event->cfg.config, 0, NULL);
-                api_event ev = {0};
-                ev.event_type = TunnelEvents.APIEvent;
+                config_event ev = {0};
+                ev.event_type = TunnelEvents.ConfigEvent;
                 ev.identifier = instance->identifier;
-                ev.new_ctrl_address = event->cfg.config->controller_url;
-                ev.new_ca_bundle = event->cfg.config->id.ca;
                 ev.config_json = cfg_json;
+                ev.identity_name = event->cfg.identity_name;
                 CMD_CTX.on_event((const base_event *) &ev);
                 free(cfg_json);
             } else {
@@ -1529,7 +1528,7 @@ IMPL_MODEL(base_event, BASE_EVENT_MODEL)
 IMPL_MODEL(ziti_ctx_event, ZTX_EVENT_MODEL)
 IMPL_MODEL(mfa_event, MFA_EVENT_MODEL)
 IMPL_MODEL(service_event, ZTX_SVC_EVENT_MODEL)
-IMPL_MODEL(api_event, ZTX_API_EVENT_MODEL)
+IMPL_MODEL(config_event, CONFIG_EVENT_MODEL)
 IMPL_MODEL(tunnel_command_inline, TUNNEL_CMD_INLINE)
 
 IMPL_MODEL(jwt_provider, EXT_JWT_PROVIDER)
