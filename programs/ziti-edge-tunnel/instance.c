@@ -203,7 +203,7 @@ static tunnel_posture_check *getTunnelPostureCheck(ziti_posture_query *pq){
     tunnel_posture_check *pc = calloc(1, sizeof(struct tunnel_posture_check_s));
     pc->Id = strdup(pq->id);
     pc->IsPassing = pq->is_passing;
-    pc->QueryType = strdup(pq->query_type);
+    pc->QueryType = strdup(ziti_posture_query_types.name(pq->query_type));
     pc->Timeout = pq->timeout;
     pc->TimeoutRemaining = *pq->timeoutRemaining;
     return pc;
