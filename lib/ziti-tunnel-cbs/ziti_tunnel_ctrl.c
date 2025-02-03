@@ -132,7 +132,7 @@ static char * dump_to_string(dumper dump, void *dump_ctx) {
     string_buf_t *out = new_string_buf();
     dump(dump_ctx, (int (*)(void *, const char *, ...)) string_buf_fmt, out);
     char *val =  string_buf_to_string(out, NULL);
-    free(out);
+    delete_string_buf(out);
     return val;
 }
 
