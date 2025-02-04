@@ -132,7 +132,7 @@ static char * dump_to_string(dumper dump, void *dump_ctx) {
     string_buf_t *out = new_string_buf();
     dump(dump_ctx, (int (*)(void *, const char *, ...)) string_buf_fmt, out);
     char *val =  string_buf_to_string(out, NULL);
-    free(out);
+    delete_string_buf(out);
     return val;
 }
 
@@ -188,8 +188,8 @@ static void ip_dump(const tunnel_ip_stats *stats, dump_writer writer, void *writ
     char local_addr[64];
     char remote_addr[64];
     for (i = 0; conns[i] != NULL; i++) {
-        snprintf(local_addr, sizeof(local_addr), "%s:%lld", conns[i]->local_ip, conns[i]->local_port);
-        snprintf(remote_addr, sizeof(remote_addr), "%s:%lld", conns[i]->remote_ip, conns[i]->remote_port);
+        snprintf(local_addr, sizeof(local_addr), "%s:%ld", conns[i]->local_ip, conns[i]->local_port);
+        snprintf(remote_addr, sizeof(remote_addr), "%s:%ld", conns[i]->remote_ip, conns[i]->remote_port);
         writer(writer_ctx, "%-12s%-40s%-40s%-16s%-24s\n",
                conns[i]->protocol, local_addr, remote_addr, conns[i]->state, conns[i]->service);
     }
