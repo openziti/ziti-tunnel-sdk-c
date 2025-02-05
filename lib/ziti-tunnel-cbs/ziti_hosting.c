@@ -574,6 +574,10 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
     if (status != ZITI_OK) {
         ZITI_LOG(ERROR, "hosted_service[%s] incoming connection failed: %s", service_ctx->service_name, ziti_errorstr(status));
         ziti_close(clt, NULL);
+        if (status == ZITI_SERVICE_UNAVAILABLE) {
+            ziti_close(serv, NULL);
+            free_hosted_service_ctx(service_ctx);
+        }
         return;
     }
 
