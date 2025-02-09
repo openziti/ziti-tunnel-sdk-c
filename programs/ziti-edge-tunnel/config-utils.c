@@ -32,7 +32,7 @@
 #ifdef MAX_PATH
 #define PATH_MAX MAX_PATH
 #else
-#error "PATH_MAX and MAX_PATH are not defined, PATH_MAX cannot be set
+#error "PATH_MAX and MAX_PATH are not defined, PATH_MAX cannot be set"
 #endif
 #endif
 #define realpath(rel, abs) _fullpath(abs, rel, PATH_MAX)

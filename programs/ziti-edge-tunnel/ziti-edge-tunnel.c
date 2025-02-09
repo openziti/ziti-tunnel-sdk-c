@@ -1383,7 +1383,7 @@ static void run(int argc, char *argv[]) {
         snprintf(config_file, PATH_MAX - 1, "%s%c%s", config_dir, PATH_SEP, "config.json");
         normalize_identifier(config_file);
 
-        load_tunnel_status_from_file(global_loop_ref, config_file);
+        load_tunnel_status_from_file(config_file);
     }
 
     uint32_t tun_ip;

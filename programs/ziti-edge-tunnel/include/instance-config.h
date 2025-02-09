@@ -21,7 +21,7 @@
 
 typedef char * (*to_json_fn)(const void * msg, int flags, size_t *len);
 
-bool load_tunnel_status_from_file(uv_loop_t *ziti_loop, const char* config_file_name);
+bool load_tunnel_status_from_file(const char *config_file_name);
 bool save_tunnel_status_to_file();
 void initialize_instance_config();
 void cleanup_instance_config();

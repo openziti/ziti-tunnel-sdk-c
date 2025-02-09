@@ -36,7 +36,7 @@ void initialize_instance_config() {
     }
 }
 
-bool load_config_from_file(char* config_file_name) {
+bool load_config_from_file(const char *config_file_name) {
     bool loaded = false;
 
     FILE* cfg_file = fopen(config_file_name, "r");
@@ -66,7 +66,7 @@ bool load_config_from_file(char* config_file_name) {
     return loaded;
 }
 
-bool load_tunnel_status_from_file(uv_loop_t* ziti_loop, const char* config_file_name) {
+bool load_tunnel_status_from_file(const char *config_file_name) {
     bool loaded = false;
 
     ZITI_LOG(INFO,"Loading config file from %s", config_file_name);
