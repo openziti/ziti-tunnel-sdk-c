@@ -76,8 +76,7 @@ main() {
     echo -n "."
 
     # if stack then save it; else try backtrace
-    # if [[ -f "/proc/${ZET_PID}/stack" ]]; then
-    if false; then
+    if [[ -f "/proc/${ZET_PID}/stack" ]]; then
         mkdir ./stack
         # save the call stack at intervals
         STACK_COUNT=1
