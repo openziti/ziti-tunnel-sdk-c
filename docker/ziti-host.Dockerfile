@@ -12,7 +12,7 @@ LABEL name="openziti/ziti-host" \
       summary="OpenZiti Hosting Tunneler" \
       description="Configure a reverse proxy for OpenZiti Services"
 
-USER nobody
+USER nobody:ziti
 
 ENTRYPOINT [ "/docker-entrypoint.sh" ]
 CMD [ "run-host" ]
