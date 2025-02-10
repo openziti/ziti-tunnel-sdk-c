@@ -139,7 +139,7 @@ install(FILES "${INSTALL_OUT_DIR}/${ZITI_POLKIT_RULES_FILE}.sample"
         COMPONENT "${COMPONENT_NAME}"
         RENAME "${ZITI_POLKIT_RULES_FILE}")
 
-install(FILES "${CMAKE_SOURCE_DIR}/scripts/debug.bash"
+install(FILES "${CMAKE_SOURCE_DIR}/scripts/ziti-edge-tunnel-debug.bash"
         COMPONENT "${COMPONENT_NAME}"
         DESTINATION "${CPACK_BIN_DIR}"
         PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ
