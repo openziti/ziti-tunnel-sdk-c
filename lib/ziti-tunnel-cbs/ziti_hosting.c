@@ -759,13 +759,12 @@ static void hosted_listen_cb(ziti_connection serv, int status) {
     }
 }
 
-static ziti_listen_opts DEFAULT_LISTEN_OPTS = {
-        .bind_using_edge_identity = false,
-        .identity = NULL,
-        .connect_timeout_seconds = 5,
-        .terminator_precedence = PRECEDENCE_DEFAULT,
-        .terminator_cost = 0,
-};
+#define DEFAULT_LISTEN_OPTS (ziti_listen_opts){ \
+.bind_using_edge_identity = false,              \
+.identity = NULL,                               \
+.connect_timeout_seconds = 5,                   \
+.terminator_precedence = PRECEDENCE.DEFAULT,    \
+.terminator_cost = 0, }
 
 static void listen_opts_from_host_cfg_v1(ziti_listen_opts *opts, const ziti_host_cfg_v1 *config) {
     *opts = DEFAULT_LISTEN_OPTS;
@@ -779,11 +778,11 @@ static void listen_opts_from_host_cfg_v1(ziti_listen_opts *opts, const ziti_host
         const char *prec = config->listen_options->precendence;
         if (prec) {
             if (strcmp(prec, "default") == 0) {
-                opts->terminator_precedence = PRECEDENCE_DEFAULT;
+                opts->terminator_precedence = PRECEDENCE.DEFAULT;
             } else if (strcmp(prec, "required") == 0) {
-                opts->terminator_precedence = PRECEDENCE_REQUIRED;
+                opts->terminator_precedence = PRECEDENCE.REQUIRED;
             } else if (strcmp(prec, "failed") == 0) {
-                opts->terminator_precedence = PRECEDENCE_FAILED;
+                opts->terminator_precedence = PRECEDENCE.FAILED;
             } else {
                 ZITI_LOG(WARN, "unsupported terminator precedence '%s'", prec);
             }
