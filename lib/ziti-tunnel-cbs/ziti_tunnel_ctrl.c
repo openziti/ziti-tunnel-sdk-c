@@ -37,6 +37,9 @@
 #define HOST_NAME_MAX 254
 #endif
 
+// renew identity certificate if expired/expiring in the next 30 days
+#define CERT_EXT_WINDOW 30
+
 #define FREE(x) do { if(x) free((void*)(x)); (x) = NULL; } while(0)
 
 // temporary list to pass info between parse and run
@@ -835,7 +838,8 @@ static int load_identity_cfg(const char *identifier, const ziti_config *cfg, boo
     ziti_options opts = {
             .api_page_size = api_page_size > 0 ? api_page_size : 0,
             .disabled = disabled,
-            .refresh_interval = (long)refresh_interval
+            .refresh_interval = (long)refresh_interval,
+            .cert_extension_window = CERT_EXT_WINDOW,
     };
     int rc = init_ziti_instance(inst, cfg, &opts);
     if (rc != ZITI_OK) {
