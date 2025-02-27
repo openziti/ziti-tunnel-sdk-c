@@ -2564,8 +2564,9 @@ static CommandLine ep_status_change_cmd = make_command("endpoint_sts_change", "s
                                                     "\t-u|--unlock\tunlock the tunneler\n", endpoint_status_change_opts, send_message_to_tunnel_fn);
 static CommandLine ext_auth_login = make_command(
         "ext-jwt-login",
-        "login with ext JWT signer", "-i <identity>",
-        "\t-i|--identity\tidentity to authenticate\n",
+        "login with ext JWT signer", "-i|--identity <identity> [-p|--provider <provider>]",
+        "\t-i|--identity\tidentity to authenticate\n"
+        "\t-p|--provider\texternal provider to use\n",
         ext_auth_opts, send_message_to_tunnel_fn);
 
 static CommandLine refresh_cmd = make_command(
