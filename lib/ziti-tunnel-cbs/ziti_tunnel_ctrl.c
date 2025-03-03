@@ -795,11 +795,9 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
             auth.identifier = NULL;
             req->cmd_cb = cb;
             req->cmd_ctx = ctx;
-            if (ziti_ext_auth(inst->ztx, on_ext_auth, req) == 0) {
+            if (ziti_ext_auth(inst->ztx, on_ext_auth, req) == ZITI_OK) {
+                // on_ext_auth completes the callback
                 free_tunnel_id_ext_auth(&auth);
-                result.code = 0;
-                result.success = true;
-                cb(&result, ctx);
                 return 0;
             }
             result.success = false;
