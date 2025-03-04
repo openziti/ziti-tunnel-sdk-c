@@ -1089,6 +1089,7 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
                             .status = event->auth.detail,
                             .code = ZITI_AUTHENTICATION_FAILED,
                     };
+                    CMD_CTX.on_event((const base_event *) &ev);
                     break;
                 }
                 case ziti_auth_prompt_totp: {
