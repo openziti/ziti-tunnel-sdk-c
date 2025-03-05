@@ -58,9 +58,10 @@ static void tunnel_enroll_cb(const ziti_config *cfg, int status, const char *err
         fflush(f);
         fclose(f);
         ZITI_LOG(ERROR, "enrollment failed: %s(%d)", err, status);
-        char *e = calloc(1024, sizeof(char));
-        sprintf(e, "enrollment failed: %s", err);
-        result.error = e;
+
+        if (status == ZITI_KEY_GENERATION_FAILED) {
+            result.error = "ZITI_KEY_GENERATION_FAILED";
+        }
 
         if(add_id_req != NULL) {
             add_id_req->cmd_cb(&result, add_id_req->cmd_ctx);
@@ -70,7 +71,6 @@ static void tunnel_enroll_cb(const ziti_config *cfg, int status, const char *err
             }
         }
         free(add_id_req);
-        free(e);
         return;
     }
 
