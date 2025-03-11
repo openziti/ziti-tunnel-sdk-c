@@ -70,17 +70,30 @@ void netif_shim_input(struct netif *netif) {
 }
 
 void on_packet(const char *buf, ssize_t nr, void *ctx) {
+    static bool log_pbuf_errors = true;
     struct netif *netif = ctx;
     struct pbuf *p;
     /* We allocate a pbuf chain of pbufs from the pool. */
     p = pbuf_alloc(PBUF_LINK, (u16_t) nr, PBUF_POOL);
 
     if (p != NULL) {
-        pbuf_take(p, buf, (u16_t) nr);
+        if (!log_pbuf_errors) {
+            TNL_LOG(INFO, "pbufs are now available. packets will no longer be dropped");
+            log_pbuf_errors = true;
+        }
+        err_t e = pbuf_take(p, buf, (u16_t) nr);
+        if (e != ERR_OK) {
+            TNL_LOG(ERR, "pbuf_take failed: %d", e);
+            pbuf_free(p);
+            return;
+        }
         /* acknowledge that packet has been read(); */
     } else {
         /* drop packet(); */
-        TNL_LOG(ERR, "pbuf_alloc failed");
+        if (log_pbuf_errors) {
+            TNL_LOG(ERR, "pbuf_alloc failed. dropping packets until pbufs become available");
+            log_pbuf_errors = false;
+        }
         return;
     }
 
