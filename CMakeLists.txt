@@ -18,7 +18,7 @@ else()
     add_compile_definitions(PATH_SEP='/')
 endif()
 
-if(DEFINED ENV{ZITI_DEBUG})
+if(ZITI_DEBUG)
     add_compile_definitions(ZITI_DEBUG)
 endif()
 
