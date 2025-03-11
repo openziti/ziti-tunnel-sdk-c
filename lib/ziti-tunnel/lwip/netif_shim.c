@@ -77,16 +77,16 @@ void on_packet(const char *buf, ssize_t nr, void *ctx) {
     p = pbuf_alloc(PBUF_LINK, (u16_t) nr, PBUF_POOL);
 
     if (p != NULL) {
+        if (!log_pbuf_errors) {
+            TNL_LOG(INFO, "pbufs are now available. packets will no longer be dropped");
+            log_pbuf_errors = true;
+        }
         err_t e = pbuf_take(p, buf, (u16_t) nr);
         if (e != ERR_OK) {
             TNL_LOG(ERR, "pbuf_take failed: %d", e);
             pbuf_free(p);
             return;
         }
-        if (!log_pbuf_errors) {
-            TNL_LOG(INFO, "pbufs are now available. packets will no longer be dropped");
-        }
-        log_pbuf_errors = true;
         /* acknowledge that packet has been read(); */
     } else {
         /* drop packet(); */
