@@ -30,6 +30,7 @@ main() {
     echo -n "(estimated runtime 60s) [."
     
     NOW=$(date -u +'%Y-%m-%dT%H:%MZ')
+    SYSTEMD_SERVICE_UNIT="ziti-edge-tunnel.service"
     ZITI_VERSION=$(/opt/openziti/bin/ziti-edge-tunnel version)
     PREFIX=ziti-edge-tunnel-${ZITI_VERSION#v}-${NOW}
     LOG_FILE=${PREFIX}.log
@@ -39,11 +40,15 @@ main() {
     HOST_INFO_FILE=${PREFIX}.host
     TARBALL=${PREFIX}.tgz
     
+    # get the aggregate service unit definition
+    # shellcheck disable=SC2094
+    systemctl cat "${SYSTEMD_SERVICE_UNIT}" > "${SYSTEMD_SERVICE_UNIT}"
+
     # get the PID from systemd
-    ZET_PID="$(systemctl show -p MainPID --value ziti-edge-tunnel.service)"
+    ZET_PID="$(systemctl show -p MainPID --value "${SYSTEMD_SERVICE_UNIT}")"
     if [[ -z "${ZET_PID}" ]] || [[ "${ZET_PID}" == "0" ]];
     then
-        echo "ERROR: failed to get ziti-edge-tunnel.service PID" >&2
+        echo -e "\nERROR: failed to get ${SYSTEMD_SERVICE_UNIT} PID\n" >&2
         exit 1
     fi
     
@@ -71,12 +76,12 @@ main() {
     echo -n "."
     
     # save the current service unit invocation's log messages
-    journalctl _SYSTEMD_INVOCATION_ID="$(systemctl show -p InvocationID --value ziti-edge-tunnel.service)" -l --no-pager \
+    journalctl _SYSTEMD_INVOCATION_ID="$(systemctl show -p InvocationID --value "${SYSTEMD_SERVICE_UNIT}")" -l --no-pager \
     &> "${LOG_FILE}"
     echo -n "."
 
     # if stack then save it; else try backtrace
-    if [[ -f "/proc/${ZET_PID}/stack" ]]; then
+    if [[ -s "/proc/${ZET_PID}/stack" ]]; then
         mkdir ./stack
         # save the call stack at intervals
         STACK_COUNT=1
@@ -108,8 +113,11 @@ main() {
             # pad the decimal form of iterator for filename sorting
             STACK_COUNT=$(printf "%0${STACK_MAX_LEN}d" "${STACK_COUNT}")
         done
+    else
+        echo -e "\nWARN: failed to get call stack in /proc/${ZET_PID}/stack because it doesn't exist or is empty\n" >&2
+    fi
 
-    elif command -v gdb &>/dev/null; then
+    if command -v gdb &>/dev/null; then
         mkdir ./backtrace
         # save the call stack at intervals
         BTRACE_COUNT=1
@@ -131,7 +139,7 @@ main() {
                     --ex "thread apply all backtrace" \
                     --ex "quit" \
                 &> "./backtrace/${BTRACE_COUNT}_of_${BTRACE_MAX}-$(date -u +'%Y-%m-%dT%H:%M:%SZ').backtrace" \
-                || echo "WARN: gdb backtrace timed out" >&2
+                || echo -e "\nWARN: gdb backtrace timed out\n" >&2
             echo -n "."
             sleep 1
             # increment decimal form of iterator
@@ -140,7 +148,7 @@ main() {
             BTRACE_COUNT=$(printf "%0${BTRACE_MAX_LEN}d" "${BTRACE_COUNT}")
         done
     else
-        echo "WARN: install gdb to include a backtrace in the debug bundle" >&2
+        echo -e "\nWARN: install gdb to include a backtrace in the debug bundle\n" >&2
     fi
 
     if command -v strace &>/dev/null; then
@@ -160,19 +168,21 @@ main() {
                 # --trace=%desc \
                 # --trace=%memory \
         echo -n "."
+    else
+        echo -e "\nWARN: install strace to include a strace in the debug bundle\n" >&2
     fi
 
     # save the identity status dumps
     timeout --kill-after=1s 3s \
         ziti-edge-tunnel dump -p ./dump >/dev/null \
-        || echo "WARN: failed to create dumps" >&2
+        || echo -e "\nWARN: failed to create dumps\n" >&2
     echo -n "."
     
     # save the tunnel_status JSON
     timeout --kill-after=1s 3s \
         ziti-edge-tunnel tunnel_status \
         | sed -E "s/(^received\sresponse\s<|>$)//g" > "${TUNNEL_STATUS_FILE}" \
-        || echo "WARN: failed to get tunnel_status" >&2
+        || echo -e "\nWARN: failed to get tunnel_status\n" >&2
     echo -n "."
     
     tar -czf "/tmp/${TARBALL}" .
