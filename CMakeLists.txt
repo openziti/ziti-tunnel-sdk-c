@@ -18,6 +18,10 @@ else()
     add_compile_definitions(PATH_SEP='/')
 endif()
 
+if(ZITI_DEBUG)
+    add_compile_definitions(ZITI_DEBUG)
+endif()
+
 find_package(Git)
 if(NOT GIT_VERSION AND GIT_FOUND)
     message("Found Git executable \"${GIT_EXECUTABLE}\".")
