@@ -762,6 +762,7 @@ static void hosted_listen_cb(ziti_connection serv, int status) {
 #define DEFAULT_LISTEN_OPTS (ziti_listen_opts){ \
 .bind_using_edge_identity = false,              \
 .identity = NULL,                               \
+.max_connections = 3,                           \
 .connect_timeout_seconds = 5,                   \
 .terminator_precedence = PRECEDENCE.DEFAULT,    \
 .terminator_cost = 0, }
@@ -772,7 +773,10 @@ static void listen_opts_from_host_cfg_v1(ziti_listen_opts *opts, const ziti_host
     if (config && config->listen_options) {
         opts->bind_using_edge_identity = config->listen_options->bind_with_identity;
         opts->identity = (char*)config->listen_options->identity;
-        opts->connect_timeout_seconds = (int)config->listen_options->connect_timeout_seconds;
+        int cfg_max_conns = (int)config->listen_options->max_connections;
+        opts->max_connections = cfg_max_conns > 0 ? cfg_max_conns : DEFAULT_LISTEN_OPTS.max_connections;
+        int cfg_to = (int)config->listen_options->connect_timeout_seconds;
+        opts->connect_timeout_seconds = cfg_to > 0 ? cfg_to : DEFAULT_LISTEN_OPTS.connect_timeout_seconds;
         opts->terminator_cost = config->listen_options->cost;
 
         const char *prec = config->listen_options->precendence;
