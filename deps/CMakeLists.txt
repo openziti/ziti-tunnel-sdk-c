@@ -18,7 +18,7 @@ endif()
 
 FetchContent_Declare(lwip
         GIT_REPOSITORY https://github.com/lwip-tcpip/lwip.git
-        GIT_TAG STABLE-2_2_0_RELEASE
+        GIT_TAG STABLE-2_2_1_RELEASE
         # lwip's CMakeLists.txt does a lot of stuff that we don't need, so prevent FetchContent_MakeAvailable from loading it.
         # we include ${LWIP_DIR}/src/Filelists.cmake instead.
         SOURCE_SUBDIR dont/load/lwip/cmakelists
