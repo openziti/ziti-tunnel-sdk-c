@@ -74,7 +74,7 @@ void on_packet(const char *buf, ssize_t nr, void *ctx) {
     struct netif *netif = ctx;
     struct pbuf *p;
     /* We allocate a pbuf chain of pbufs from the pool. */
-    p = pbuf_alloc(PBUF_LINK, (u16_t) nr, PBUF_POOL);
+    p = pbuf_alloc(PBUF_RAW, (u16_t) nr, PBUF_POOL);
 
     if (p != NULL) {
         if (!log_pbuf_errors) {
