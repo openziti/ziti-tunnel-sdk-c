@@ -47,33 +47,41 @@ static void to_ziti(struct io_ctx_s *io, struct pbuf *p) {
         return;
     }
 
+    struct pbuf *recv_data = p;
     uv_timer_start(io->tnlr_io->conn_timer, udp_timeout_cb, UDP_TIMEOUT, 0);
 
-    p = pbuf_coalesce(p, PBUF_RAW);
-    TNL_LOG(TRACE, "writing %d bytes to ziti src[%s] dst[%s] service[%s]", p->len,
-            io->tnlr_io->client, io->tnlr_io->intercepted, io->tnlr_io->service_name);
-    struct write_ctx_s *wr_ctx = calloc(1, sizeof(struct write_ctx_s));
-    wr_ctx->pbuf = p;
-    wr_ctx->udp = io->tnlr_io->udp;
-    wr_ctx->ack = tunneler_udp_ack;
+    do {
+        TNL_LOG(TRACE, "writing %d bytes to ziti src[%s] dst[%s] service[%s]", recv_data->len,
+                io->tnlr_io->client, io->tnlr_io->intercepted, io->tnlr_io->service_name);
+        struct write_ctx_s *wr_ctx = calloc(1, sizeof(struct write_ctx_s));
+        wr_ctx->pbuf = recv_data;
+        wr_ctx->udp = io->tnlr_io->udp;
+        wr_ctx->ack = tunneler_udp_ack;
+        struct pbuf *next = recv_data->next;
+        // break the chain to prevent pbuf_free from iterating and freeing subsequent pbufs
+        recv_data->next = NULL;
+        recv_data = next;
 
-    ssize_t s = io->write_fn(io->ziti_io, wr_ctx, wr_ctx->pbuf->payload, wr_ctx->pbuf->len);
-    if (s == ERR_WOULDBLOCK) {
-        tunneler_udp_ack(wr_ctx);
-        free(wr_ctx);
-        if (log_stalled_warns) {
-            TNL_LOG(WARN, "ziti_write stalled: dropping UDP packets until buffers are released service=%s, client=%s, ret=%ld",
-                    io->tnlr_io->service_name, io->tnlr_io->client, s);
+        ssize_t s = io->write_fn(io->ziti_io, wr_ctx, wr_ctx->pbuf->payload, wr_ctx->pbuf->len);
+        if (s == ERR_WOULDBLOCK) {
+            tunneler_udp_ack(wr_ctx);
+            free(wr_ctx);
+            if (log_stalled_warns) {
+                TNL_LOG(WARN, "ziti_write stalled: dropping UDP packets until buffers are released service=%s, client=%s, ret=%ld",
+                        io->tnlr_io->service_name, io->tnlr_io->client, s);
+            }
+            break;
+        } else if (s < 0) {
+            tunneler_udp_ack(wr_ctx);
+            free(wr_ctx);
+            TNL_LOG(ERR, "ziti_write failed: service=%s, client=%s, ret=%ld", io->tnlr_io->service_name, io->tnlr_io->client, s);
+            io->close_fn(io->ziti_io);
+            break;
+        } else if (s == 0 && !log_stalled_warns) {
+            TNL_LOG(INFO, "ziti_write un-stalled: service=%s client=%s", io->tnlr_io->service_name, io->tnlr_io->client);
+            log_stalled_warns = true;
         }
-    } else if (s < 0) {
-        tunneler_udp_ack(wr_ctx);
-        free(wr_ctx);
-        TNL_LOG(ERR, "ziti_write failed: service=%s, client=%s, ret=%ld", io->tnlr_io->service_name, io->tnlr_io->client, s);
-        io->close_fn(io->ziti_io);
-    } else if (s == 0 && !log_stalled_warns) {
-        TNL_LOG(INFO, "ziti_write un-stalled: service=%s client=%s", io->tnlr_io->service_name, io->tnlr_io->client);
-        log_stalled_warns = true;
-    }
+    } while (recv_data != NULL);
 }
 
 /** called by lwip when a packet arrives from a connected client and the ziti service is connected */
