@@ -86,7 +86,7 @@ tunnel_identity *create_or_get_tunnel_identity(const char* identifier, const cha
 
             tnl_id->Active = true;
         }
-        model_map_set(&tnl_identity_map, identifier, tnl_id);
+        model_map_set(&tnl_identity_map, normalized_identifier, tnl_id);
         return tnl_id;
     }
 }
