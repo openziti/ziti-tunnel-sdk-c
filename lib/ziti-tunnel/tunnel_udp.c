@@ -42,12 +42,12 @@ static void to_ziti(struct io_ctx_s *io, struct pbuf *p) {
         return;
     }
 
-    struct pbuf *recv_data = p;
-    if (recv_data == NULL) {
+    if (p == NULL) {
         TNL_LOG(TRACE, "no data to write");
         return;
     }
 
+    struct pbuf *recv_data = p;
     uv_timer_start(io->tnlr_io->conn_timer, udp_timeout_cb, UDP_TIMEOUT, 0);
 
     do {
@@ -57,8 +57,10 @@ static void to_ziti(struct io_ctx_s *io, struct pbuf *p) {
         wr_ctx->pbuf = recv_data;
         wr_ctx->udp = io->tnlr_io->udp;
         wr_ctx->ack = tunneler_udp_ack;
-
-        recv_data = recv_data->next;
+        struct pbuf *next = recv_data->next;
+        // break the chain to prevent pbuf_free from iterating and freeing subsequent pbufs
+        recv_data->next = NULL;
+        recv_data = next;
 
         ssize_t s = io->write_fn(io->ziti_io, wr_ctx, wr_ctx->pbuf->payload, wr_ctx->pbuf->len);
         if (s == ERR_WOULDBLOCK) {
