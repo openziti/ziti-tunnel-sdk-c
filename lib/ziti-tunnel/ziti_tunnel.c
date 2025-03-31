@@ -245,6 +245,7 @@ intercept_ctx_t* intercept_ctx_new(tunneler_context tnlr_ctx, const char *app_id
     STAILQ_INIT(&ictx->protocols);
     STAILQ_INIT(&ictx->addresses);
     STAILQ_INIT(&ictx->port_ranges);
+    STAILQ_INIT(&ictx->allowed_source_addresses);
 
     return ictx;
 }
@@ -267,6 +268,16 @@ void intercept_ctx_add_address(intercept_ctx_t *i_ctx, const ziti_address *za) {
     memcpy(&a->za, za, sizeof(ziti_address));
     ziti_address_print(a->str, sizeof(a->str), za);
     STAILQ_INSERT_TAIL(&i_ctx->addresses, a, entries);
+}
+
+void intercept_ctx_add_allowed_source_address(intercept_ctx_t *i_ctx, const ziti_address *za) {
+    if (!i_ctx || !za) {
+        return;
+    }
+    address_t *a = calloc(1, sizeof(address_t));
+    memcpy(&a->za, za, sizeof(ziti_address));
+    ziti_address_print(a->str, sizeof(a->str), za);
+    STAILQ_INSERT_TAIL(&i_ctx->allowed_source_addresses, a, entries);
 }
 
 port_range_t *parse_port_range(uint16_t low, uint16_t high) {

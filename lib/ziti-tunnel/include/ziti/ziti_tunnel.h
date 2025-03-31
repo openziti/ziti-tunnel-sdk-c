@@ -110,6 +110,7 @@ extern void intercept_ctx_set_match_addr(intercept_ctx_t *intercept, intercept_m
 extern void intercept_ctx_add_protocol(intercept_ctx_t *ctx, const char *protocol);
 /** parse address string as hostname|ip|cidr and add result to list of intercepted addresses */
 extern void intercept_ctx_add_address(intercept_ctx_t *i_ctx, const ziti_address *address);
+extern void intercept_ctx_add_allowed_source_address(intercept_ctx_t *i_ctx, const ziti_address *address);
 extern port_range_t *intercept_ctx_add_port_range(intercept_ctx_t *i_ctx, uint16_t low, uint16_t high);
 extern void intercept_ctx_override_cbs(intercept_ctx_t *i_ctx, ziti_sdk_dial_cb dial, ziti_sdk_write_cb write, ziti_sdk_close_cb close_write, ziti_sdk_close_cb close);
 

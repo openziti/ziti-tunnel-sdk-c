@@ -103,6 +103,7 @@ struct intercept_ctx_s {
     protocol_list_t protocols;
     address_list_t addresses;
     port_range_list_t port_ranges;
+    address_list_t allowed_source_addresses;
 
     ziti_sdk_dial_cb dial_fn;
     ziti_sdk_write_cb write_fn;
@@ -133,7 +134,7 @@ typedef struct tunneler_ctx_s {
 
 /** return the intercept context for a packet based on its destination ip:port */
 extern intercept_ctx_t *
-lookup_intercept_by_address(tunneler_context tnlr_ctx, const char *protocol, ip_addr_t *dst_addr, uint16_t dst_port);
+lookup_intercept_by_address(tunneler_context tnlr_ctx, const char *protocol, ip_addr_t *src_addr, ip_addr_t *dst_addr, uint16_t dst_port);
 
 typedef enum {
     tun_tcp,
