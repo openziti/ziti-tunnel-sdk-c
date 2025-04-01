@@ -65,10 +65,8 @@ jobs:
 
       - name: Get the Version String from Git Tag
         id: get_version
-        env:
-          RELEASE_REF: ${{ github.ref_name }}
         run: |
-          ZITI_VERSION="${RELEASE_REF#v}"
+          ZITI_VERSION="${GITHUB_REF_NAME#v}"
           if [[ "${ZITI_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-.+)?$ ]]; then
             echo ZITI_VERSION="${ZITI_VERSION}" | tee -a $GITHUB_OUTPUT
           else
