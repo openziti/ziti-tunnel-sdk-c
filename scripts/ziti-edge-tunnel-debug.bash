@@ -31,6 +31,7 @@ main() {
     
     NOW=$(date -u +'%Y-%m-%dT%H:%MZ')
     SYSTEMD_SERVICE_UNIT="ziti-edge-tunnel.service"
+    SYSTEMD_ENV_FILE="/opt/openziti/etc/ziti-edge-tunnel.env"
     ZITI_VERSION=$(/opt/openziti/bin/ziti-edge-tunnel version)
     PREFIX=ziti-edge-tunnel-${ZITI_VERSION#v}-${NOW}
     LOG_FILE=${PREFIX}.log
@@ -43,6 +44,10 @@ main() {
     # get the aggregate service unit definition
     # shellcheck disable=SC2094
     systemctl cat "${SYSTEMD_SERVICE_UNIT}" > "${SYSTEMD_SERVICE_UNIT}"
+    if [[ -s "${SYSTEMD_ENV_FILE}" ]]; then
+        cp "${SYSTEMD_ENV_FILE}" "$(basename "${SYSTEMD_ENV_FILE}")"
+    fi
+
 
     # get the PID from systemd
     ZET_PID="$(systemctl show -p MainPID --value "${SYSTEMD_SERVICE_UNIT}")"
