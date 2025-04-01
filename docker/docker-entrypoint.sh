@@ -31,7 +31,6 @@ function alldone() {
 trap alldone SIGTERM SIGINT EXIT
 
 unset \
-    ZITI_IDENTITY_DIR \
     IDENTITY_FILE \
     JSON_FILES \
     JWT_CANDIDATE \
