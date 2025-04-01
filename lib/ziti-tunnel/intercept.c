@@ -154,7 +154,8 @@ struct addr_match {
 };
 
 /** return the intercept context with the smallest address range for a packet based on its destination ip:port */
-intercept_ctx_t * lookup_intercept_by_address(tunneler_context tnlr_ctx, const char *protocol, ip_addr_t *dst_addr, uint16_t dst_port) {
+intercept_ctx_t * lookup_intercept_by_address(tunneler_context tnlr_ctx, const char *protocol,
+                                              ip_addr_t *src_addr, ip_addr_t *dst_addr, uint16_t dst_port) {
     if (tnlr_ctx == NULL) {
         TNL_LOG(DEBUG, "null tnlr_ctx");
         return NULL;
@@ -163,8 +164,12 @@ intercept_ctx_t * lookup_intercept_by_address(tunneler_context tnlr_ctx, const c
     char key[3+1+IPADDR_STRLEN_MAX+1+6+1]; // [proto]:[ip]:[port]
     snprintf(key, sizeof(key), "%s:%s:%d", protocol, ipaddr_ntoa(dst_addr), dst_port);
     intercept_ctx_t *intercept = model_map_get(&tnlr_ctx->intercepts_cache, key);
+    ziti_address src_za;
+    ziti_address_from_ip_addr(&src_za, src_addr);
     if (intercept != NULL) {
-        return intercept;
+        if (address_match(&src_za, &intercept->allowed_source_addresses) != NULL) {
+            return intercept;
+        }
     }
 
     ziti_address za;
@@ -173,6 +178,12 @@ intercept_ctx_t * lookup_intercept_by_address(tunneler_context tnlr_ctx, const c
 
     LIST_FOREACH(intercept, &tnlr_ctx->intercepts, entries) {
         if (!protocol_match(protocol, &intercept->protocols)) continue;
+
+        // enforce the source address whitelist if it isn't empty
+        bool has_allowed_source_addresses = STAILQ_FIRST(&intercept->allowed_source_addresses) != NULL;
+        if (has_allowed_source_addresses && address_match(&src_za, &intercept->allowed_source_addresses) == NULL) {
+            continue;
+        }
 
         curr.intercept = intercept;
         // try IP or hostname match
@@ -237,6 +248,12 @@ void free_intercept(intercept_ctx_t *intercept) {
         port_range_t *pr = STAILQ_FIRST(&intercept->port_ranges);
         STAILQ_REMOVE_HEAD(&intercept->port_ranges, entries);
         free(pr);
+    }
+    while(!STAILQ_EMPTY(&intercept->allowed_source_addresses)) {
+        address_t *a = STAILQ_FIRST(&intercept->allowed_source_addresses);
+        STAILQ_REMOVE_HEAD(&intercept->allowed_source_addresses, entries);
+        free_ziti_address(&a->za);
+        free(a);
     }
 
     free(intercept->service_name);

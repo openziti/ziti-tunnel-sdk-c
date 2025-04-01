@@ -468,13 +468,13 @@ intercept_ctx_t *new_intercept_ctx(tunneler_context tnlr_ctx, ziti_intercept_t *
     intercept_ctx_t *i_ctx = intercept_ctx_new(tnlr_ctx, zi_ctx->service_name, zi_ctx);
     intercept_ctx_set_match_addr(i_ctx, intercept_match_addr);
 
-    const ziti_address *intercept_addr;
+    const ziti_address *za;
     switch (zi_ctx->cfg_desc->cfgtype) {
         case CLIENT_CFG_V1:
             intercept_ctx_add_protocol(i_ctx, "udp");
             intercept_ctx_add_protocol(i_ctx, "tcp");
-            intercept_addr = intercept_addr_from_cfg_addr(&zi_ctx->cfg.client_v1.hostname, zi_ctx);
-            intercept_ctx_add_address(i_ctx, intercept_addr);
+            za = intercept_addr_from_cfg_addr(&zi_ctx->cfg.client_v1.hostname, zi_ctx);
+            intercept_ctx_add_address(i_ctx, za);
             intercept_ctx_add_port_range(i_ctx, zi_ctx->cfg.client_v1.port, zi_ctx->cfg.client_v1.port);
             break;
         case INTERCEPT_CFG_V1:
@@ -486,8 +486,12 @@ intercept_ctx_t *new_intercept_ctx(tunneler_context tnlr_ctx, ziti_intercept_t *
             }
             ziti_address *addr;
             MODEL_LIST_FOREACH(addr, config->addresses) {
-                intercept_addr = intercept_addr_from_cfg_addr(addr, zi_ctx);
-                intercept_ctx_add_address(i_ctx, intercept_addr);
+                za = intercept_addr_from_cfg_addr(addr, zi_ctx);
+                intercept_ctx_add_address(i_ctx, za);
+            }
+            MODEL_LIST_FOREACH(addr, config->allowed_source_addresses) {
+                za = intercept_addr_from_cfg_addr(addr, zi_ctx);
+                intercept_ctx_add_allowed_source_address(i_ctx, za);
             }
             ziti_port_range *pr;
             MODEL_LIST_FOREACH(pr, config->port_ranges) {

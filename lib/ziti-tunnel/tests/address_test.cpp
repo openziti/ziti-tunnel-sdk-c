@@ -36,10 +36,10 @@ TEST_CASE("address_match", "[address]") {
     intercept_ctx_add_port_range(intercept_s1, 80, 80);
 
     IP_ADDR4(&ip, 127, 0, 0, 1);
-    REQUIRE(lookup_intercept_by_address(&tctx, "tcp", &ip, 80) == nullptr);
+    REQUIRE(lookup_intercept_by_address(&tctx, "tcp", &ip, &ip, 80) == nullptr);
 
     IP_ADDR4(&ip, 192, 168, 0, 88);
-    REQUIRE(lookup_intercept_by_address(&tctx, "tcp", &ip, 80) == intercept_s1);
+    REQUIRE(lookup_intercept_by_address(&tctx, "tcp", &ip, &ip, 80) == intercept_s1);
 
     intercept_ctx_t *intercept_s2 = intercept_ctx_new(&tctx, "s2", nullptr);
     LIST_INSERT_HEAD(&tctx.intercepts, intercept_s2, entries);
@@ -48,11 +48,11 @@ TEST_CASE("address_match", "[address]") {
     intercept_ctx_add_port_range(intercept_s2, 80, 80);
 
     // s2 should be overlooked even though it matches and precedes s1 in the intercept list
-    REQUIRE(lookup_intercept_by_address(&tctx, "tcp", &ip, 80) == intercept_s1);
+    REQUIRE(lookup_intercept_by_address(&tctx, "tcp", &ip, &ip, 80) == intercept_s1);
 
     // s2 should match CIDR address
     IP_ADDR4(&ip, 192, 168, 0, 10);
-    REQUIRE(lookup_intercept_by_address(&tctx, "tcp", &ip, 80) == intercept_s2);
+    REQUIRE(lookup_intercept_by_address(&tctx, "tcp", &ip, &ip, 80) == intercept_s2);
 
     intercept_ctx_t *intercept_s3 = intercept_ctx_new(&tctx, "s3", nullptr);
     LIST_INSERT_HEAD(&tctx.intercepts, intercept_s3, entries);
@@ -62,7 +62,7 @@ TEST_CASE("address_match", "[address]") {
 
     // s2 should still win due to smaller cidr range
     IP_ADDR4(&ip, 192, 168, 0, 10);
-    REQUIRE(lookup_intercept_by_address(&tctx, "tcp", &ip, 80) == intercept_s2);
+    REQUIRE(lookup_intercept_by_address(&tctx, "tcp", &ip, &ip, 80) == intercept_s2);
 
     intercept_ctx_t *intercept_s4 = intercept_ctx_new(&tctx, "s4", nullptr);
     LIST_INSERT_HEAD(&tctx.intercepts, intercept_s4, entries);
@@ -73,13 +73,23 @@ TEST_CASE("address_match", "[address]") {
     // s2 should be overlooked despite CIDR match with smaller prefix due to port mismatch
     // s3 should win over s4 due to smaller port range
     IP_ADDR4(&ip, 192, 168, 0, 10);
-    REQUIRE(lookup_intercept_by_address(&tctx, "tcp", &ip, 81) == intercept_s3);
+    REQUIRE(lookup_intercept_by_address(&tctx, "tcp", &ip, &ip, 81) == intercept_s3);
 
     // s3 should win due to smaller port range with matching cidr
     // s1 should be overlooked despite IP match due to port mismatch
     // s4 should be overlooked due to larger port range
     IP_ADDR4(&ip, 192, 168, 0, 88);
-    REQUIRE(lookup_intercept_by_address(&tctx, "tcp", &ip, 83) == intercept_s3);
+    REQUIRE(lookup_intercept_by_address(&tctx, "tcp", &ip, &ip, 83) == intercept_s3);
+
+    // test source IP whitelist
+    ip_addr_t src_allowed;
+    ip_addr_t src_denied;
+    IP_ADDR4(&src_allowed, 10, 0, 10, 1);
+    IP_ADDR4(&src_denied, 10, 0, 10, 2);
+    intercept_ctx_add_allowed_source_address(intercept_s3, ZA_INIT_STR(&za, "10.0.10.1"));
+    REQUIRE(lookup_intercept_by_address(&tctx, "tcp", &src_allowed, &ip, 83) == intercept_s3);
+    // s4 has a larger port range than s3, but no source ip whitelist
+    REQUIRE(lookup_intercept_by_address(&tctx, "tcp", &src_denied, &ip, 83) == intercept_s4);
 
     // verify the intercept cache is populated
     REQUIRE(model_map_get(&tctx.intercepts_cache, "tcp:127.0.0.1:80") == nullptr);
