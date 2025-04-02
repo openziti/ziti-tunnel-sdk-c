@@ -73,6 +73,9 @@ runs:
       if: runner.os != 'Linux'
       shell: bash
       run: |
+        echo "PATH=${PATH}"; \
+        export VCPKG_FORCE_SYSTEM_BINARIES=1; \
+        cmake --version; \
         cmake \
           --build ./build \
           --config ${{ inputs.config }} \
