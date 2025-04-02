@@ -18,6 +18,9 @@
       "hidden": true,
       "cacheVariables": {
         "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+      },
+      "environment": {
+        "VCPKG_FORCE_SYSTEM_BINARIES": "yes"
       }
     },
     {
