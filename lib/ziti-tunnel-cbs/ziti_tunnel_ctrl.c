@@ -740,6 +740,7 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
                         .key = enroll.key,
                         .cert = enroll.cert,
                         .use_keychain = enroll.use_keychain,
+                        .url = enroll.url,
                 };
                 ziti_enroll(&opts, CMD_CTX.loop, on_cmd_enroll, req);
                 free_tunnel_enroll(&enroll);
