@@ -93,6 +93,13 @@ project(ziti-tunnel-sdk-c
 
 option(ZITI_TUNNEL_BUILD_TESTS "Build tests." "${${PROJECT_NAME}_IS_TOP_LEVEL}")
 
+set(asan_compilers GNU Clang AppleClang)
+if (CMAKE_C_COMPILER_ID IN_LIST asan_compilers)
+    option(ZITI_TUNNEL_ASAN "dev option: build with sanitizers")
+    option(ZITI_TUNNEL_PROF "dev option: enable profiling")
+endif ()
+unset(asan_compilers)
+
 set(PROJECT_VERSION ${GIT_VERSION})
 
 if(NOT BUILD_DIST_PACKAGES)
@@ -109,6 +116,21 @@ if (MSVC)
 else()
     add_compile_options(-g)
 endif()
+
+if (ZITI_TUNNEL_ASAN)
+    add_compile_options(-fsanitize=address -fno-omit-frame-pointer)
+    add_link_options(-fsanitize=address)
+endif (ZITI_TUNNEL_ASAN)
+
+if (ZITI_TUNNEL_PROF)
+    if (CMAKE_C_COMPILER_ID STREQUAL GNU)
+        add_compile_options(-pg)
+        add_link_options(-pg)
+    else ()
+        add_compile_options(-fprofile-instr-generate)
+        add_link_options(-fprofile-instr-generate)
+    endif ()
+endif (ZITI_TUNNEL_PROF)
 
 add_custom_target(bundle
         COMMENT "creates publishable artifacts")
