@@ -15,6 +15,8 @@ USER root
 WORKDIR /root/
 
 RUN apt-get update \
+    && apt-get install -y software-properties-common \
+    && add-apt-repository --yes ppa:git-core/ppa && apt-get update \
     && apt-get -y install \
         autoconf automake autopoint \
         gcc-arm-linux-gnueabihf \
