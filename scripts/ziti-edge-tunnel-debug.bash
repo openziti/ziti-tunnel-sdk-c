@@ -45,7 +45,7 @@ main() {
     # shellcheck disable=SC2094
     systemctl cat "${SYSTEMD_SERVICE_UNIT}" > "${SYSTEMD_SERVICE_UNIT}"
     if [[ -s "${SYSTEMD_ENV_FILE}" ]]; then
-        cp "${SYSTEMD_ENV_FILE}" "$(basename "${SYSTEMD_ENV_FILE}")"
+        cp "${SYSTEMD_ENV_FILE}" .
     fi
 
 
