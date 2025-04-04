@@ -27,6 +27,8 @@ jobs:
           wait-interval: 20
           # confusingly, this means "pause this step until all jobs from all workflows in same run have completed"
           running-workflow-name: Wait for Release Builds to Succeed
+          # comma-separated list of check names to ignore
+          ignore-checks: Alert Mattermost - All Events Except PR Events That are Not Approvals
 
   parse_version:
     needs: wait_for_release
@@ -38,14 +40,12 @@ jobs:
       - name: Parse Release Version
         id: parse
         shell: bash
-        env:
-          RELEASE_REF: ${{ github.ref_name }}
         run: |
-          if [[ "${RELEASE_REF}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "RELEASE_REF=${RELEASE_REF} is a semver release ref"
-            echo "version=${RELEASE_REF#v}" | tee -a $GITHUB_OUTPUT
+          if [[ "${GITHUB_REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "GITHUB_REF_NAME=${GITHUB_REF_NAME} is a semver release ref"
+            echo "version=${GITHUB_REF_NAME#v}" | tee -a $GITHUB_OUTPUT
           else
-            echo "RELEASE_REF=${RELEASE_REF} is not a semver release ref" >&2
+            echo "GITHUB_REF_NAME=${GITHUB_REF_NAME} is not a semver release ref" >&2
             exit 1
           fi
 
@@ -125,6 +125,7 @@ jobs:
           jf rt copy
           --recursive=false
           --flat=true
+          --fail-no-op=true
           ${{ env.ZITI_RPM_TEST_REPO }}/redhat${{ matrix.distro.version }}/${{ matrix.arch.rpm }}/ziti-edge-tunnel-${{ needs.parse_version.outputs.version }}-1.${{ matrix.arch.rpm }}.rpm
           ${{ env.ZITI_RPM_PROD_REPO }}/redhat${{ matrix.distro.version }}/${{ matrix.arch.rpm }}/
 
@@ -135,5 +136,6 @@ jobs:
           jf rt copy
           --recursive=false
           --flat=true
+          --fail-no-op=true
           ${{ env.ZITI_DEB_TEST_REPO }}/pool/ziti-edge-tunnel/${{ matrix.distro.release_name }}/${{ matrix.arch.deb }}/ziti-edge-tunnel-${{ needs.parse_version.outputs.version }}-1.deb
           ${{ env.ZITI_DEB_PROD_REPO }}/pool/ziti-edge-tunnel/${{ matrix.distro.release_name }}/${{ matrix.arch.deb }}/
