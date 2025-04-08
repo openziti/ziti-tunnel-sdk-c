@@ -728,12 +728,7 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
                 result.error = "invalid command";
                 result.success = false;
                 free_tunnel_enroll(&enroll);
-                break;
             } else {
-                struct tunnel_cb_s *req = malloc(sizeof(struct tunnel_cb_s));
-                req->cmd_cb = cb;
-                req->cmd_ctx = ctx;
-
                 ziti_enroll_opts opts = {
                         .name = enroll.name,
                         .token = enroll.jwt,
@@ -742,10 +737,21 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
                         .use_keychain = enroll.use_keychain,
                         .url = enroll.url,
                 };
-                ziti_enroll(&opts, CMD_CTX.loop, on_cmd_enroll, req);
+
+                struct tunnel_cb_s *req = malloc(sizeof(struct tunnel_cb_s));
+                req->cmd_cb = cb;
+                req->cmd_ctx = ctx;
+
+                rc = ziti_enroll(&opts, CMD_CTX.loop, on_cmd_enroll, req);
                 free_tunnel_enroll(&enroll);
-                return 0;
+                if (rc == 0) {
+                    return 0;
+                } else {
+                    result.success = false;
+                    result.error = ziti_errorstr(rc);
+                }
             }
+            break;
         }
 
         case TunnelCommand_SetUpstreamDNS: {
