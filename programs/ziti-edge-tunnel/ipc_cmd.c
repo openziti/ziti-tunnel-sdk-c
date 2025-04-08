@@ -31,6 +31,7 @@ static uv_pipe_t cmd_server;
 
 struct ipc_conn_s {
     uv_pipe_t ipc;
+    int cmds;
     LIST_ENTRY(ipc_conn_s) _next_ipc_cmd;
 };
 // list to store the ipc connections
@@ -94,14 +95,45 @@ static void on_command_inline_resp(const tunnel_result* result, void *ctx) {
     }
 }
 
+static void close_ipc(struct ipc_conn_s *ipc_client, const char *msg) {
+    if (ipc_client->cmds != 0) {
+        ZITI_LOG(DEBUG, "waiting for completion: %d commands in progress", ipc_client->cmds);
+    } else {
+        LIST_REMOVE(ipc_client, _next_ipc_cmd);
+        ZITI_LOG(DEBUG, "closing client: %s", msg ? msg : "OK");
+        if (ipc_client->ipc.data) json_tokener_free(ipc_client->ipc.data);
+        uv_close((uv_handle_t *) &ipc_client->ipc, (uv_close_cb) free);
+    }
+}
+
 static void on_cmd_write(uv_write_t *wr, int len) {
+    uv_stream_t *s = wr->handle;
+    struct ipc_conn_s *ipc_client = (struct ipc_conn_s*)s;
+    ipc_client->cmds -= 1;
+
+    ZITI_LOG(DEBUG, "IPC write complete");
+    if (len < 0) {
+        ZITI_LOG(WARN, "failed to write command response");
+    }
+
     if (wr->data) {
         free(wr->data);
     }
     free(wr);
+
+    if (!uv_is_active((const uv_handle_t *) s)) { // peer sent EOF, we can close now
+        close_ipc(ipc_client, "EOF received");
+    }
 }
 
 static void on_command_resp(const tunnel_result* result, void *ctx) {
+    struct ipc_conn_s *ipc = ctx;
+
+    if (uv_is_closing((const uv_handle_t *) &ipc->ipc)) {
+        ZITI_LOG(WARN, "failed to send command response: handle is closing");
+        return;
+    }
+
     size_t json_len;
     char *json = tunnel_result_to_json(result, MODEL_JSON_COMPACT, &json_len);
     ZITI_LOG(TRACE, "resp[%d,len=%zd] = %.*s",
@@ -173,24 +205,26 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
         free_tunnel_command(&tnl_res_cmd);
     }
 
-    if (uv_is_active((const uv_handle_t *) ctx)) {
-        uv_buf_t buf;
-        size_t data_len = json_len + strlen("\n") + 1;
-        buf.base = calloc(data_len, sizeof(char));
-        snprintf(buf.base, data_len, "%s\n", json);
-        buf.len = strlen(buf.base);
-        uv_write_t *wr = calloc(1, sizeof(uv_write_t));
-        wr->data = buf.base;
-        uv_write(wr, (uv_stream_t *) ctx, &buf, 1, on_cmd_write);
+    uv_buf_t buf[2];
+    buf[0] = uv_buf_init(json, json_len);
+    buf[1] = uv_buf_init("\n", 1);
+    uv_write_t *wr = calloc(1, sizeof(*wr));
+    wr->data = json;
+    int rc = uv_write(wr, (uv_stream_t *) &ipc->ipc, buf, 2, on_cmd_write);
+    if (rc < 0) {
+        ZITI_LOG(WARN, "failed to write command response");
+        free(wr->data);
+        free(wr);
+
     }
-    free(json);
 }
 
 
 
-static void process_ipc_command(uv_stream_t *s, json_object *json) {
+static void process_ipc_command(struct ipc_conn_s *s, json_object *json) {
     tunnel_command tnl_cmd = {0};
     if (tunnel_command_from_json(&tnl_cmd, json) >= 0) {
+        s->cmds += 1;
         // process_tunnel_commands is used to update the log level and the tun ip information in the config file through IPC command.
         // So when the user restarts the tunnel, the new values will be taken.
         // The config file can be modified only from ziti-edge-tunnel.c file.
@@ -214,18 +248,18 @@ static void process_ipc_command(uv_stream_t *s, json_object *json) {
 static void on_cmd(uv_stream_t *s, ssize_t len, const uv_buf_t *b)
 {
     struct ipc_conn_s *ipc_client = (struct ipc_conn_s*)s;
-    if (len < 0) {
-        if (len != UV_EOF) {
-            ZITI_LOG(WARN, "received from client - %s. Closing connection.", uv_err_name(len));
+    if (len == UV_EOF) {
+        if (s->data && json_tokener_get_error(s->data) == json_tokener_continue) {
+            close_ipc(ipc_client, "EOF before completed JSON payload");
+            ZITI_LOG(DEBUG, "IPC client connection closed, count: %d", sizeof_ipc_clients_list());
+        } else {
+            ZITI_LOG(VERBOSE, "EOF on IPC stream");
+            close_ipc(ipc_client, "processed all commands");
         }
-
-        LIST_REMOVE(ipc_client, _next_ipc_cmd);
-
-        json_tokener *tokener = s->data;
-        if (tokener) json_tokener_free(tokener);
-        uv_close((uv_handle_t *) &ipc_client->ipc, (uv_close_cb) free);
+    } else if (len < 0) {
+        ZITI_LOG(WARN, "received from client - %s. Closing connection.", uv_err_name(len));
+        close_ipc(ipc_client, uv_strerror((int)len));
         ZITI_LOG(DEBUG, "IPC client connection closed, count: %d", sizeof_ipc_clients_list());
-
     } else {
         ZITI_LOG(DEBUG, "received cmd <%.*s>", (int) len, b->base);
 
@@ -239,13 +273,12 @@ static void on_cmd(uv_stream_t *s, ssize_t len, const uv_buf_t *b)
             if (json) {
                 process_ipc_command(s, json);
                 json_object_put(json);
+                json_tokener_reset(parser);
             } else if (json_tokener_get_error(parser) != json_tokener_continue) {
                 ZITI_LOG(ERROR, "failed to parse json command: %s, received[%.*s]",
                          json_tokener_error_desc(json_tokener_get_error(parser)),
                          (int) len, b->base);
-                json_tokener_free(parser);
-                LIST_REMOVE(ipc_client, _next_ipc_cmd);
-                uv_close((uv_handle_t *) &ipc_client->ipc, (uv_close_cb) free);
+                close_ipc(ipc_client, "failed to parse JSON");
                 break;
             }
         }
