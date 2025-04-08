@@ -34,15 +34,15 @@ jobs:
             name: Windows arm64
             preset: windows-arm64-vs2022
 
-          - os: ubuntu-20.04
+          - os: ubuntu-22.04
             name: Linux x86_64
             preset: linux-x64
 
-          - os: ubuntu-20.04
+          - os: ubuntu-22.04
             name: Linux arm
             preset: linux-arm
 
-          - os: ubuntu-20.04
+          - os: ubuntu-22.04
             name: Linux arm64
             preset: linux-arm64
 
