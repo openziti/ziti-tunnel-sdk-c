@@ -1032,8 +1032,6 @@ static void run_tunneler_loop(uv_loop_t* ziti_loop) {
 
     handle_sig(SIGINT, on_exit_signal);
     handle_sig(SIGTERM, on_exit_signal);
-    handle_sig(SIGABRT, on_exit_signal);
-    handle_sig(SIGSEGV, on_exit_signal);
     handle_sig(SIGQUIT, on_exit_signal);
 
 #undef handle_sig
