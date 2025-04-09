@@ -30,6 +30,10 @@
 #include <service-utils.h>
 #include <config-utils.h>
 
+#if __APPLE__ || __linux__
+#include <execinfo.h>
+#endif
+
 #if __APPLE__ && __MACH__
 #include "netif_driver/darwin/utun.h"
 #elif __linux__
@@ -1007,13 +1011,32 @@ static int make_socket_path(uv_loop_t *loop) {
 }
 
 #if __linux__ || __APPLE__
-static void on_exit_signal(uv_signal_t *s, int sig) {
+static void on_exit_signal(int sig, siginfo_t *info, void *ctx) {
     ZITI_LOG(WARN, "received signal: %s", strsignal(sig));
 #if __linux__
     diverter_cleanup();
 #endif
     exit(1);
 }
+
+static void on_crash(int sig, siginfo_t * siginfo, void *context) {
+    ZITI_LOG(ERROR, "received signal: %s", strsignal(sig));
+
+    void* stack[128];
+    int count = backtrace(stack, 128);
+    char **symbols = backtrace_symbols(stack, count);
+    for (int i = 0; i < count; i++) {
+        fprintf(stderr,   "%s\n", symbols[i]);
+    }
+    free(symbols);
+
+#if __linux__
+    diverter_cleanup();
+#endif
+
+    exit(1);
+}
+
 #endif
 
 static void run_tunneler_loop(uv_loop_t* ziti_loop) {
@@ -1025,14 +1048,15 @@ static void run_tunneler_loop(uv_loop_t* ziti_loop) {
 
 #if __linux__ || __APPLE__
 #define handle_sig(n, f) \
-    uv_signal_t sig_##n;                     \
-    uv_signal_init(ziti_loop, &sig_##n); \
-    uv_signal_start(&sig_##n, f, n); \
-    uv_unref((uv_handle_t *) &sig_##n)
+    struct sigaction sig_##n = { .sa_sigaction = f}; \
+    sigaction(n, &sig_##n, NULL)\
 
     handle_sig(SIGINT, on_exit_signal);
     handle_sig(SIGTERM, on_exit_signal);
     handle_sig(SIGQUIT, on_exit_signal);
+
+    handle_sig(SIGABRT, on_crash);
+    handle_sig(SIGSEGV, on_crash);
 
 #undef handle_sig
 
