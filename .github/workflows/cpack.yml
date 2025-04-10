@@ -55,7 +55,7 @@ jobs:
     env:
       ZITI_DEB_TEST_REPO: ${{ vars.ZITI_DEB_TEST_REPO || 'zitipax-openziti-deb-test' }}
       ZITI_RPM_TEST_REPO: ${{ vars.ZITI_RPM_TEST_REPO || 'zitipax-openziti-rpm-test' }}
-      "VCPKG_BINARY_SOURCES": "clear;files,${{ github.workspace }}/vcpkg_cache,readwrite"
+      VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/vcpkg_cache,readwrite
     steps:
       - name: Debug action
         uses: hmarr/debug-action@v3

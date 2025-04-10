@@ -191,13 +191,12 @@ docker compose up ziti-host --detach
 ZITI_ENROLL_TOKEN="$(docker compose exec quickstart cat /tmp/httpbin-client.ott.jwt)" \
 docker  compose up ziti-tun --detach
 
-ATTEMPTS=2
+ATTEMPTS=3
 DELAY=1
 
 curl_cmd="curl --fail --connect-timeout 1 --silent --show-error --request POST --header 'Content-Type: application/json' --data '{\"ziti\": \"works\"}' http://httpbin.ziti.internal/post"
-until ! ((ATTEMPTS)) || eval "${curl_cmd}" &> /dev/null
+until ! (( --ATTEMPTS )) || eval "${curl_cmd}" &> /dev/null
 do
-    (( ATTEMPTS-- ))
     : $ATTEMPTS remaining attempts - waiting for httpbin service
     docker compose ps
     sleep ${DELAY}
