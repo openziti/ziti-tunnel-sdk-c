@@ -271,7 +271,7 @@ static void on_cmd(uv_stream_t *s, ssize_t len, const uv_buf_t *b)
             size_t end = json_tokener_get_parse_end(parser);
             processed += end;
             if (json) {
-                process_ipc_command(s, json);
+                process_ipc_command(ipc_client, json);
                 json_object_put(json);
                 json_tokener_reset(parser);
             } else if (json_tokener_get_error(parser) != json_tokener_continue) {
