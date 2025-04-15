@@ -6,7 +6,11 @@
 
 set -eu
 
-for JWT in @ZITI_IDENTITY_DIR@/*.jwt; do
+if [ -z "${ZITI_IDENTITY_DIR:-}" ]; then
+    ZITI_IDENTITY_DIR="@ZITI_IDENTITY_DIR@"
+fi
+
+for JWT in "${ZITI_IDENTITY_DIR}"/*.jwt; do
     # handle case where JWT='@ZITI_IDENTITY_DIR@/*.jwt'
     [ -e "${JWT}" ] || {
         echo "NOTICE: no new JWT files in ${JWT}" >&2
