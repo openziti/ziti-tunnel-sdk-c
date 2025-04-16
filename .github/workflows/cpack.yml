@@ -61,6 +61,19 @@ jobs:
       - name: Debug action
         uses: hmarr/debug-action@v3
 
+      # only focal-20.04 has >= 2.18, which is required by actions/checkout to clone
+      # which enables cmake version discovery
+      - name: install contemporary Git in runner container if Ubuntu
+        if: ${{ matrix.distro.name == 'ubuntu' }}
+        shell: bash
+        run: |
+          apt-get update
+          apt-get install --yes software-properties-common
+          add-apt-repository --yes ppa:git-core/ppa
+          apt-get update
+          apt-get install --yes git
+          git --version
+
       - name: install contemporary Git in runner container if RedHat 8 or 9
         if: ${{ matrix.distro.name == 'redhat' && (matrix.distro.version == '8' || matrix.distro.version == '9') }}
         shell: bash
