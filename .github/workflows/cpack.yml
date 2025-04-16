@@ -14,6 +14,7 @@ on:
       - programs/ziti-edge-tunnel/package/*
       - .github/actions/openziti-tunnel-build-action/*
       - .github/workflows/cpack.yml
+      - .github/cpack-matrix.yml
   release:
     types:
       - published
