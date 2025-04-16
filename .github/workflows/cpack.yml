@@ -46,8 +46,8 @@ jobs:
   package:
     needs: set_matrix
     name: ${{ matrix.arch.rpm }} ${{ matrix.distro.name }} ${{ matrix.distro.version }}
-    runs-on: ubuntu-20.04
-    # build image name it from matrix values name:version unless override container is specified
+    runs-on: ubuntu-22.04  # pin oldest available Docker host for ABI compatibility
+    # build image name is from matrix values (name:version) unless override (container) is specified
     container: ${{ matrix.distro.container || format('{0}:{1}', matrix.distro.name, matrix.distro.version) }}
     strategy:
       fail-fast: false
@@ -59,19 +59,6 @@ jobs:
     steps:
       - name: Debug action
         uses: hmarr/debug-action@v3
-
-      # only focal-20.04 has >= 2.18, which is required by actions/checkout to clone
-      # which enables cmake version discovery
-      - name: install contemporary Git in runner container if Ubuntu
-        if: ${{ matrix.distro.name == 'ubuntu' }}
-        shell: bash
-        run: |
-          apt-get update
-          apt-get install --yes software-properties-common
-          add-apt-repository --yes ppa:git-core/ppa
-          apt-get update
-          apt-get install --yes git
-          git --version
 
       - name: install contemporary Git in runner container if RedHat 8 or 9
         if: ${{ matrix.distro.name == 'redhat' && (matrix.distro.version == '8' || matrix.distro.version == '9') }}
@@ -134,6 +121,7 @@ jobs:
           DEBIAN_FRONTEND: noninteractive
         shell: bash
         run: |
+          set -x
           apt-get -y install ./build/ziti-edge-tunnel-*.deb
 
       - name: install package artifact in runner container if RedHat
