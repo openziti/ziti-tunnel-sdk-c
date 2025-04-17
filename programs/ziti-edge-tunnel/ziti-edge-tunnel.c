@@ -798,6 +798,7 @@ static void on_event(const base_event *ev) {
             }
             id_event.Id = NULL;
             free_identity_event(&id_event);
+            free_ziti_config(&zc);
             break;
         }
         case TunnelEvent_ExtJWTEvent:
