@@ -58,3 +58,10 @@ Copy this module into standard OpenSSL module directory --
 ## OpenSSL FIPS configuration
 Follow instructions in [OpenSSL FIPS User Guide](https://docs.openssl.org/master/man7/fips_module) 
 to configure OpenSSL FIPS module.
+
+## Running with FIPS
+If everything is configured correctly, you should see the following in the log:
+```
+(9729)[        0.010]    INFO ziti-sdk:ziti.c:540 ziti_start_internal() ztx[0] enabling Ziti Context
+(9729)[        0.010]    INFO ziti-sdk:ziti.c:557 ziti_start_internal() ztx[0] using tlsuv[v0.33.9.1/OpenSSL 3.3.1 4 Jun 2024 [FIPS]]
+```
