@@ -1,7 +1,4 @@
-deb [arch=arm64,armhf] http://ports.ubuntu.com/ jammy main restricted
-deb [arch=arm64,armhf] http://ports.ubuntu.com/ jammy-updates main restricted
-deb [arch=arm64,armhf] http://ports.ubuntu.com/ jammy universe
-deb [arch=arm64,armhf] http://ports.ubuntu.com/ jammy-updates universe
-deb [arch=arm64,armhf] http://ports.ubuntu.com/ jammy multiverse
-deb [arch=arm64,armhf] http://ports.ubuntu.com/ jammy-updates multiverse
+deb [arch=arm64,armhf] http://ports.ubuntu.com/ jammy main restricted universe multiverse
+deb [arch=arm64,armhf] http://ports.ubuntu.com/ jammy-updates main restricted universe multiverse
 deb [arch=arm64,armhf] http://ports.ubuntu.com/ jammy-backports main restricted universe multiverse
+deb [arch=arm64,armhf] http://ports.ubuntu.com/ jammy-security main restricted universe multiverse
