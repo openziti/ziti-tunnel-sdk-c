@@ -22,7 +22,6 @@ RUN apt-get -y install \
         gcc-aarch64-linux-gnu \
         crossbuild-essential-arm64 \
         crossbuild-essential-armhf \
-        build-essential \
         curl zip unzip tar \
         doxygen \
         git \
@@ -46,6 +45,9 @@ RUN apt-get -y install \
         zlib1g-dev:armhf \
         linux-libc-dev:arm64 \
         linux-libc-dev:armhf
+
+# Ensure native build tools are installed correctly after multi-arch setup
+RUN apt-get -y install build-essential
 
 RUN curl -sSfL https://cmake.org/files/v${CMAKE_VERSION%.*}/cmake-${CMAKE_VERSION}-linux-$(uname -m).sh -o cmake.sh \
     && (bash cmake.sh --skip-license --prefix=/usr/local) \
