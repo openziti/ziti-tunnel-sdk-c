@@ -81,6 +81,7 @@ done
 : "${I_AM_ROBOT:=0}"
 : "${ZITI_CTRL_ADVERTISED_PORT:=12802}"
 : "${ZITI_ROUTER_PORT:=30224}"
+: "${ZITI_TEST_INTERCEPT:=httpbin.docker-test.ziti.internal}"
 # : "${ZIGGY_UID:=$(id -u)}"
 
 if [[ -n "${ZITI_EDGE_TUNNEL_BIN:-}" && -s "${ZITI_EDGE_TUNNEL_BIN}" ]]; then
@@ -167,7 +168,7 @@ ziti edge create identity "httpbin-host" \
     --role-attributes httpbin-hosts
 
 ziti edge create config "httpbin-intercept-config" intercept.v1 \
-    '{"protocols":["tcp"],"addresses":["httpbin.ziti.internal"], "portRanges":[{"low":80, "high":80}]}'
+    '{"protocols":["tcp"],"addresses":["'${ZITI_TEST_INTERCEPT}'"], "portRanges":[{"low":80, "high":80}]}'
 
 ziti edge create config "httpbin-host-config" host.v1 \
     '{"protocol":"tcp", "address":"httpbin","port":8080}'
@@ -192,9 +193,9 @@ ZITI_ENROLL_TOKEN="$(docker compose exec quickstart cat /tmp/httpbin-client.ott.
 docker  compose up ziti-tun --detach
 
 ATTEMPTS=3
-DELAY=1
+DELAY=3
 
-curl_cmd="curl --fail --connect-timeout 1 --silent --show-error --request POST --header 'Content-Type: application/json' --data '{\"ziti\": \"works\"}' http://httpbin.ziti.internal/post"
+curl_cmd="curl --fail --connect-timeout 1 --silent --show-error --request POST --header 'Content-Type: application/json' --data '{\"ziti\": \"works\"}' http://${ZITI_TEST_INTERCEPT}/post"
 until ! (( --ATTEMPTS )) || eval "${curl_cmd}" &> /dev/null
 do
     : $ATTEMPTS remaining attempts - waiting for httpbin service
