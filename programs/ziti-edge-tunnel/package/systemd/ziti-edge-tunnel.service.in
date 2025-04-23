@@ -5,7 +5,7 @@ After=network-online.target
 [Service]
 Type=simple
 # default values
-Environment="ZITI_IDENTITY_DIR=/opt/openziti/etc/identities" "ZITI_DNS_IP_RANGE=100.64.0.1/10" "ZITI_VERBOSE=3"
+Environment="ZITI_IDENTITY_DIR=/opt/openziti/etc/identities" "ZITI_DNS_IP_RANGE=100.64.0.1/10" "ZITI_VERBOSE=info"
 # optional override values
 EnvironmentFile=-@CPACK_ETC_DIR@/@SYSTEMD_SERVICE_NAME@.env
 User=ziti
