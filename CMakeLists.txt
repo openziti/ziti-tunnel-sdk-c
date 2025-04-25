@@ -183,6 +183,16 @@ target_compile_definitions(lwipcore
     PUBLIC MEMP_NUM_UDP_PCB=${UDP_MAX_CONNECTIONS}
 )
 
+# if EXECINFO is present set a flag for later inclusion
+include(CheckIncludeFile)
+check_include_file("execinfo.h" HAVE_EXECINFO_H)
+if(HAVE_EXECINFO_H)
+    message(STATUS "debug output: execinfo.h is available")
+    target_compile_definitions(ziti-edge-tunnel PRIVATE $<$<BOOL:${HAVE_EXECINFO_H}>:HAVE_EXECINFO_H>)
+else()
+    message(STATUS "debug output: execinfo.h is NOT available")
+endif()
+
 if (ZITI_TUNNEL_BUILD_TESTS)
     add_subdirectory(tests)
     add_subdirectory(lib/tests)

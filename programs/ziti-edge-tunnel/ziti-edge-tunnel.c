@@ -30,7 +30,7 @@
 #include <service-utils.h>
 #include <config-utils.h>
 
-#if __APPLE__ || __linux__
+#ifdef HAVE_EXECINFO_H
 #include <execinfo.h>
 #endif
 
@@ -619,7 +619,7 @@ static void on_event(const base_event *ev) {
                     }
                 }
             }
-            
+
             if (id->Active && model_map_size(&hostnamesToEdit) > 0 && !is_host_only()) {
                 remove_and_add_nrpt_rules(global_loop_ref, &hostnamesToEdit, get_dns_ip()/*, ipc_discriminator*/);
             }
@@ -1023,6 +1023,7 @@ static void on_exit_signal(int sig, siginfo_t *info, void *ctx) {
 static void on_crash(int sig, siginfo_t * siginfo, void *context) {
     ZITI_LOG(ERROR, "received signal: %s", strsignal(sig));
 
+#ifdef HAVE_EXECINFO_H
     void* stack[128];
     int count = backtrace(stack, 128);
     char **symbols = backtrace_symbols(stack, count);
@@ -1030,6 +1031,7 @@ static void on_crash(int sig, siginfo_t * siginfo, void *context) {
         fprintf(stderr,   "%s\n", symbols[i]);
     }
     free(symbols);
+#endif
 
 #if __linux__
     diverter_cleanup();
