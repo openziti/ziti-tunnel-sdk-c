@@ -187,10 +187,7 @@ target_compile_definitions(lwipcore
 include(CheckIncludeFile)
 check_include_file("execinfo.h" HAVE_EXECINFO_H)
 if(HAVE_EXECINFO_H)
-    message(STATUS "debug output: execinfo.h is available")
     target_compile_definitions(ziti-edge-tunnel PRIVATE $<$<BOOL:${HAVE_EXECINFO_H}>:HAVE_EXECINFO_H>)
-else()
-    message(STATUS "debug output: execinfo.h is NOT available")
 endif()
 
 if (ZITI_TUNNEL_BUILD_TESTS)
