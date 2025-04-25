@@ -203,6 +203,14 @@
       }
     },
     {
+      "name": "ci-linux-mipsel",
+      "inherits": "ci-linux-x64",
+      "cacheVariables": {
+        "VCPKG_TARGET_TRIPLET": "mipsel-linux",
+        "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/toolchains/Linux-arm.cmake"
+      }
+    },
+    {
       "name": "ci-windows-x64",
       "inherits": "ci-windows-x64-vs2022"
     },
