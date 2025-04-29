@@ -21,6 +21,7 @@ RUN mkdir -m0755 /licenses
 COPY ${DOCKER_BUILD_DIR}/LICENSE-Apache /licenses/apache.txt
 
 ### Add necessary Red Hat repos and packages
+# installing util-linux adds 20MB to the image size and doesn't seem worthwhile just for the mountpoint command...
 RUN INSTALL_PKGS="iproute procps shadow-utils jq" \
     && microdnf -y update --setopt=install_weak_deps=0 --setopt=tsflags=nodocs \
     && microdnf -y install --setopt=install_weak_deps=0 --setopt=tsflags=nodocs ${INSTALL_PKGS}

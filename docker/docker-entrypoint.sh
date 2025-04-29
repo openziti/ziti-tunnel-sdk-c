@@ -60,6 +60,7 @@ fi
 # assign default identity dir if not set in parent env; this is a writeable path within the container image
 : "${ZITI_IDENTITY_DIR:="/ziti-edge-tunnel"}"
 
+# approximates the functionality of the mountpoint command, which could be installed with util-linux at the expense of 20MB additional image footprint
 if [ "$(stat -c %d:%i "${ZITI_IDENTITY_DIR}")" = "$(stat -c %d:%i "$(dirname "${ZITI_IDENTITY_DIR}")")" ]; then
     echo "WARN: ${ZITI_IDENTITY_DIR} is not a mounted volume; identity renewals and updates will NOT be preserved across container restarts" >&2
 fi
