@@ -60,6 +60,13 @@ fi
 # assign default identity dir if not set in parent env; this is a writeable path within the container image
 : "${ZITI_IDENTITY_DIR:="/ziti-edge-tunnel"}"
 
+if [ "$(stat -c %d:%i "${ZITI_IDENTITY_DIR}")" = "$(stat -c %d:%i "$(dirname "${ZITI_IDENTITY_DIR}")")" ]; then
+    echo "WARN: ${ZITI_IDENTITY_DIR} is not a mounted volume; identity renewals and updates will NOT be preserved across container restarts" >&2
+fi
+if ! [ -w "${ZITI_IDENTITY_DIR}" ]; then
+    echo "WARN: ${ZITI_IDENTITY_DIR} is not writable; identity renewals and updates will NOT be preserved across container restarts" >&2
+fi
+
 # if enrolled identity JSON is provided then write it to a file in the identities dir
 if [[ -n "${ZITI_IDENTITY_JSON:-}" ]]; then
     if [[ -z "${ZITI_IDENTITY_BASENAME:-}" ]]; then
@@ -67,9 +74,10 @@ if [[ -n "${ZITI_IDENTITY_JSON:-}" ]]; then
     fi
     IDENTITY_FILE="${ZITI_IDENTITY_DIR}/${ZITI_IDENTITY_BASENAME}.json"
     if [[ -s "${IDENTITY_FILE}" ]]; then
-        echo "WARN: clobbering non-empty Ziti identity file ${IDENTITY_FILE} with contents of env var ZITI_IDENTITY_JSON" >&2
+        echo "WARN: not clobbering existing identity file ${IDENTITY_FILE} with contents of env var ZITI_IDENTITY_JSON" >&2
+    else
+        echo "${ZITI_IDENTITY_JSON}" > "${IDENTITY_FILE}"
     fi
-    echo "${ZITI_IDENTITY_JSON}" > "${IDENTITY_FILE}"
 # if an enrollment token is provided then write it to a file in the identities dir so it will be found in the next step
 # and used to enroll
 elif [[ -n "${ZITI_ENROLL_TOKEN:-}" ]]; then
