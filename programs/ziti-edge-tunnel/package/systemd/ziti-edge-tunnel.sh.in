@@ -10,6 +10,14 @@ if [ -z "${ZITI_IDENTITY_DIR:-}" ]; then
     ZITI_IDENTITY_DIR="@ZITI_IDENTITY_DIR@"
 fi
 
+if ! [ -w "${ZITI_IDENTITY_DIR}" ]; then
+    echo "WARN: identity directory '${ZITI_IDENTITY_DIR}' is not writable so identities cannot be added via IPC" >&2
+fi
+if ! [ -r "${ZITI_IDENTITY_DIR}" ] || ! [ -x "${ZITI_IDENTITY_DIR}" ]; then
+    echo "ERROR: identity directory '${ZITI_IDENTITY_DIR}' is not readable or executable (listable)" >&2
+    exit 1
+fi
+
 for JWT in "${ZITI_IDENTITY_DIR}"/*.jwt; do
     # handle case where JWT='@ZITI_IDENTITY_DIR@/*.jwt'
     [ -e "${JWT}" ] || {
@@ -26,20 +34,28 @@ for JWT in "${ZITI_IDENTITY_DIR}"/*.jwt; do
     }
     # equivalent to BASH's ${JWT%.jwt}.json
     CONFIG="$(echo "${JWT}" | sed -E 's|(.*).jwt|\1.json|')"
-    if @CPACK_BIN_DIR@/@SYSTEMD_SERVICE_NAME@ enroll --jwt "${JWT}" --identity "${CONFIG}"; then
-        rm --force "${JWT}"
+    if [ -s "${CONFIG}" ]; then
+        echo "INFO: skipping '${JWT}' because '${CONFIG}' already exists" >&2
+        continue
+    elif @CPACK_BIN_DIR@/@SYSTEMD_SERVICE_NAME@ enroll --jwt "${JWT}" --identity "${CONFIG}"; then
+        if ! [ -w "${JWT}" ]; then
+            echo "WARN: JWT file '${JWT}' is not writable so it cannot be deleted" >&2
+        else
+            rm --force "${JWT}"
+        fi
+        # chmod 0660 "${CONFIG}" # TODO in ZET?
         echo "INFO: enrolled $(basename "${JWT}") in ${CONFIG}"
     else
         echo "ERROR: failed to enroll $(basename "${JWT}") in $(dirname "${JWT}")" >&2
         exit 1
     fi
 done
-
-if ! [ -w "${ZITI_IDENTITY_DIR}" ]; then
-    echo "WARN: identity directory '${ZITI_IDENTITY_DIR}' is not writable so identities cannot be added via IPC" >&2
-fi
-
 for JSON in "${ZITI_IDENTITY_DIR}"/*.json; do
+    # handle case where JSON='@ZITI_IDENTITY_DIR@/*.json'
+    [ -e "${JSON}" ] || {
+        echo "NOTICE: no identity files in ${JSON}" >&2
+        continue
+    }
     if ! [ -w "${JSON}" ]; then
         echo "WARN: identity file '${JSON}' is not writable so it cannot be renewed" >&2
     fi
