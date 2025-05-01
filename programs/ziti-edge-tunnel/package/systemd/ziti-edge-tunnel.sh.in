@@ -34,3 +34,13 @@ for JWT in "${ZITI_IDENTITY_DIR}"/*.jwt; do
         exit 1
     fi
 done
+
+if ! [ -w "${ZITI_IDENTITY_DIR}" ]; then
+    echo "WARN: identity directory '${ZITI_IDENTITY_DIR}' is not writable so identities cannot be added via IPC" >&2
+fi
+
+for JSON in "${ZITI_IDENTITY_DIR}"/*.json; do
+    if ! [ -w "${JSON}" ]; then
+        echo "WARN: identity file '${JSON}' is not writable so it cannot be renewed" >&2
+    fi
+done
