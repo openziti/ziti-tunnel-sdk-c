@@ -117,6 +117,8 @@ static void free_hosted_service_ctx(struct hosted_service_ctx_s *hosted_ctx) {
             safe_free(dns_entry->domain_name);
             safe_free(dns_entry);
         }
+
+        safe_free(hosted_ctx->addr_u.translations);
     }
 
     if (hosted_ctx->forward_port) {
@@ -349,6 +351,67 @@ static const char *compute_dst_protocol(const host_ctx_t *service, const tunnele
     return dst_proto;
 }
 
+// Copies prefix_len bits from src1, rest from src2 into dest
+static void combine_prefix(const uint8_t *src1, const uint8_t *src2, uint8_t *dest, int prefix_len, int max_len_bits) {
+    int full_bytes = prefix_len / 8;
+    int remaining_bits = prefix_len % 8;
+
+    for (int i = 0; i < full_bytes; i++) {
+        dest[i] = src1[i];
+    }
+
+    if (remaining_bits > 0 && full_bytes < max_len_bits / 8) {
+        uint8_t mask = 0xFF << (8 - remaining_bits);
+        dest[full_bytes] = (src1[full_bytes] & mask) | (src2[full_bytes] & ~mask);
+        full_bytes++;
+    }
+
+    for (int i = full_bytes; i < max_len_bits / 8; i++) {
+        dest[i] = src2[i];
+    }
+}
+
+// Unified translate function for IPv4/IPv6
+static int translate_ip(const char *from_ip_str, const char *to_prefix_str,
+                        int prefix_len, char *to_ip_str, int af) {
+#define IPV6_LEN 16
+    uint8_t original_bin[IPV6_LEN] = {0};
+    uint8_t prefix_bin[IPV6_LEN] = {0};
+    uint8_t result_bin[IPV6_LEN] = {0};
+
+    int max_len_bits = (af == AF_INET) ? 32 : 128;
+
+    if (prefix_len < 0 || prefix_len > max_len_bits) {
+        fprintf(stderr, "Invalid prefix length.\n");
+        return -1;
+    }
+
+    if (inet_pton(af, from_ip_str, original_bin) != 1 ||
+        inet_pton(af, to_prefix_str, prefix_bin) != 1) {
+        fprintf(stderr, "Invalid IP address format.\n");
+        return -1;
+    }
+
+    combine_prefix(prefix_bin, original_bin, result_bin, prefix_len, max_len_bits);
+
+    if (inet_ntop(af, result_bin, to_ip_str,
+                  (af == AF_INET) ? INET_ADDRSTRLEN : INET6_ADDRSTRLEN) == NULL) {
+        perror("inet_ntop");
+        return -1;
+    }
+
+    return 0;
+}
+
+static ziti_address_translation *find_best_translation(const ziti_address *ip, ziti_address_translation_array trs) {
+    for (int i = 0; trs != NULL && trs[i] != NULL; i++) {
+        if (ziti_address_match(ip, &trs[i]->from) >= 0) {
+            return trs[i];
+        }
+    }
+    return NULL;
+}
+
 static const char *compute_dst_ip_or_hn(const host_ctx_t *service, const tunneler_app_data *app_data,
                                         bool *is_ip, char *err, size_t err_sz) {
     const char *ip_or_hn;
@@ -404,6 +467,18 @@ static const char *compute_dst_ip_or_hn(const host_ctx_t *service, const tunnele
             if (!address_match(&dst, &service->addr_u.allowed_addresses)) {
                 snprintf(err, err_sz, "requested address '%s' is not in allowedAddresses", app_data->dst_ip);
                 return NULL;
+            }
+            // check for a matching translation
+            const ziti_address_translation *translation = find_best_translation(&dst, service->addr_u.translations);
+            if (translation) {
+                char to_prefix[128];
+                ziti_address_print(to_prefix, sizeof(to_prefix), &translation->to);
+                char *slash = strchr(to_prefix, '/');
+                if (slash) *slash = '\0';
+                static char translated_ip[128];
+                if (translate_ip(ip_or_hn, to_prefix, (int) translation->prefix_length, translated_ip, dst.addr.cidr.af) == 0) {
+                    ip_or_hn = translated_ip;
+                }
             }
         }
     }
@@ -794,6 +869,12 @@ static void listen_opts_from_host_cfg_v1(ziti_listen_opts *opts, const ziti_host
     }
 }
 
+static int ziti_address_translation_compare(const void *a, const void *b) {
+    const ziti_address_translation * const *xa = a;
+    const ziti_address_translation * const *xb = b;
+    return (int)((*xb)->prefix_length - (*xa)->prefix_length);
+}
+
 /** called by the tunneler sdk when a hosted service becomes available */
 host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, uv_loop_t *loop, const char *service_name, cfg_type_e cfg_type, const void *cfg) {
     if (service_name == NULL) {
@@ -867,6 +948,22 @@ host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, uv_loop_t *loop, const char *service
                              host_ctx->service_name);
                     free_hosted_service_ctx(host_ctx);
                     return NULL;
+                }
+                // sort address translations for easy lookups
+                ziti_address_translation_array cfg_translations = host_v1_cfg->forward_address_translations;
+                for (i = 0; cfg_translations != NULL && cfg_translations[i] != NULL; i++);
+                if (i > 0) {
+                    ziti_address_translation_array ctx_translations = host_ctx->addr_u.translations = calloc(i+1, sizeof(ziti_address_translation *));
+                    memcpy(ctx_translations, cfg_translations, i * sizeof(ziti_address_translation *));
+                    qsort(ctx_translations, i, sizeof(ziti_address_translation *), ziti_address_translation_compare);
+                    for (int n = 0; n < i; n++) {
+                        char from[128], to[128];
+                        ctx_translations[n]->from.addr.cidr.bits = ctx_translations[n]->prefix_length;
+                        ctx_translations[n]->to.addr.cidr.bits = ctx_translations[n]->prefix_length;
+                        ziti_address_print(from, sizeof(from), &ctx_translations[n]->from);
+                        ziti_address_print(to, sizeof(to), &ctx_translations[n]->to);
+                        ZITI_LOG(TRACE, "translating %s --> %s", from, to);
+                    }
                 }
             } else {
                 host_ctx->addr_u.address = host_v1_cfg->address;
