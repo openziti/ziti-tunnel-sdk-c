@@ -135,6 +135,7 @@
     {
       "name": "ci-windows-x64-dynamic-libssl",
       "inherits": [
+        "vcpkg-base",
         "flags-windows-mingw",
         "ninja"
       ],
