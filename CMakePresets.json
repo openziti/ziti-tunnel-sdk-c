@@ -133,7 +133,7 @@
       "hidden": true
     },
     {
-      "name": "win64-dynamic-libssl",
+      "name": "ci-windows-x64-dynamic-libssl",
       "inherits": [
         "flags-windows-mingw",
         "ninja"
