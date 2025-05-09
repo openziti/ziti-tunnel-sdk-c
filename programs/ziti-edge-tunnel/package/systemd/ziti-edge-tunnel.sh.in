@@ -38,12 +38,11 @@ for JWT in "${ZITI_IDENTITY_DIR}"/*.jwt; do
         echo "INFO: skipping '${JWT}' because '${CONFIG}' already exists" >&2
         continue
     elif @CPACK_BIN_DIR@/@SYSTEMD_SERVICE_NAME@ enroll --jwt "${JWT}" --identity "${CONFIG}"; then
-        if ! [ -w "${JWT}" ]; then
-            echo "WARN: JWT file '${JWT}' is not writable so it cannot be deleted" >&2
+        if ! [ -w "${ZITI_IDENTITY_DIR}" ]; then
+            echo "WARN: identity directory '${ZITI_IDENTITY_DIR}' is not writable, so the consumed enrollment token '${JWT}' cannot be deleted" >&2
         else
             rm --force "${JWT}"
         fi
-        # chmod 0660 "${CONFIG}" # TODO in ZET?
         echo "INFO: enrolled $(basename "${JWT}") in ${CONFIG}"
     else
         echo "ERROR: failed to enroll $(basename "${JWT}") in $(dirname "${JWT}")" >&2
