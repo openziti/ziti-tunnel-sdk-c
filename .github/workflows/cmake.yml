@@ -55,12 +55,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install OpenSSL and set OPENSSL_ROOT_DIR (Windows dynamic libssl)
-        if: runner.os == 'Windows' && startsWith(inputs.preset, 'win64-dynamic-libssl')
-        run: |
-          choco install openssl --no-progress -y
-          echo "OPENSSL_ROOT_DIR=C:\Program Files\OpenSSL-Win64" >> $GITHUB_ENV
-
       - name: Run CMake Composite Action
         uses: ./.github/actions/build
         with:
