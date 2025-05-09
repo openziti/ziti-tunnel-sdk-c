@@ -133,6 +133,23 @@
       "hidden": true
     },
     {
+      "name": "win64-dynamic-libssl",
+      "inherits": [
+        "flags-windows-mingw",
+        "ninja"
+      ],
+      "architecture": {
+        "value": "x64",
+        "strategy": "external"
+      },
+      "cacheVariables": {
+        "TLSUV_TLSLIB": "openssl",
+        "OPENSSL_USE_STATIC_LIBS": "OFF"
+      },
+      "description": "Windows x64 build dynamically linking to system-provided OpenSSL DLLs (FIPS-updatable). Requires FIPS-enabled OpenSSL DLLs in PATH at runtime.",
+      "hidden": false
+    },
+    {
       "name": "ci-win64-mingw",
       "inherits": [
         "flags-windows-mingw",
