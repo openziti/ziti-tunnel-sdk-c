@@ -147,6 +147,7 @@
         "OPENSSL_USE_STATIC_LIBS": "OFF"
       },
       "description": "Windows x64 build dynamically linking to system-provided OpenSSL DLLs (FIPS-updatable). Requires FIPS-enabled OpenSSL DLLs in PATH at runtime.",
+      "binaryDir": "${sourceDir}/build",
       "hidden": false
     },
     {

@@ -31,10 +31,6 @@ jobs:
             preset: windows-x64-mingw
 
           - os: windows-latest
-            name: Windows x86_64
-            preset: windows-x64-dynamic-libssl
-
-          - os: windows-latest
             name: Windows arm64
             preset: windows-arm64-vs2022
 
@@ -58,6 +54,12 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Install OpenSSL and set OPENSSL_ROOT_DIR (Windows dynamic libssl)
+        if: runner.os == 'Windows' && startsWith(inputs.preset, 'win64-dynamic-libssl')
+        run: |
+          choco install openssl --no-progress -y
+          echo "OPENSSL_ROOT_DIR=C:\Program Files\OpenSSL-Win64" >> $GITHUB_ENV
 
       - name: Run CMake Composite Action
         uses: ./.github/actions/build
