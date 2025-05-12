@@ -1,7 +1,7 @@
 # Run The OpenZiti Tunneler with Docker
 
-> [!NOTE]
-> Persistent, writeable volumes are necessary for the tunneler to manage identity files, e.g., certificate renewal.
+> [!IMPORTANT]
+> Persistent, writable volumes are necessary for the tunneler to manage identity files, e.g., certificate renewal.
 
 ## Host Services with Docker
 
@@ -41,9 +41,9 @@ volumes:
     ziti-host:
 ```
 
-### Mount a Writeable Identity File
+### Mount a Writable Identity File
 
-You may mount an existing, writeable identity file from the host's filesystem. The default path in the container's filesystem is `/ziti-edge-tunnel/ziti_id.json`. Optionally, set `ZITI_IDENTITY_BASENAME` to another filename prefix (default: `ziti_id`). Ensure the run-as UID:GID has permission to read and write the file so that the tunneler can automatically renew its certificate.
+You may mount an existing, writable identity file from the host's filesystem. The default path in the container's filesystem is `/ziti-edge-tunnel/ziti_id.json`. Optionally, set `ZITI_IDENTITY_BASENAME` to another filename prefix (default: `ziti_id`). Ensure the run-as UID:GID has permission to read and write the file so that the tunneler can automatically renew its certificate.
 
 ```bash
 $ ls -ln ziti_id.json
@@ -59,9 +59,9 @@ services:
             - ./ziti_id.json:/ziti-edge-tunnel/ziti_id.json
 ```
 
-### Mount a Writeable Directory of Identity Files
+### Mount a Writable Directory of Identity Files
 
-You may mount a writeable directory containing existing identities from the host's filesystem. The tunneler will load all valid, readable identities named `/ziti-edge-tunnel/*.json` at startup. Ensure the run-as UID:GID has permission to read, write, and list the files so that the tunneler can automatically renew its certificates.
+You may mount a writable directory containing existing identities from the host's filesystem. The tunneler will load all valid, readable identities named `/ziti-edge-tunnel/*.json` at startup. Ensure the run-as UID:GID has permission to read, write, and list the files so that the tunneler can automatically renew its certificates.
 
 ```bash
 $ ls -lna identities
