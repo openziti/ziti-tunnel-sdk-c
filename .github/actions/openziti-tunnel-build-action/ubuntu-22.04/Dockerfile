@@ -27,6 +27,7 @@ RUN apt-get -y install \
         doxygen \
         git \
         graphviz \
+        libssl-dev \
         libjson-c-dev \
         libprotobuf-c-dev \
         libsystemd-dev \
