@@ -3,9 +3,9 @@ Using ziti-edge-tunnel in FIPS mode.
 
 >[!NOTE]
 >A release binary linked to the system's OpenSSL v3 library is provided as a Linux package for Ubuntu 22.04 and later LTS
->releases that are FIPS certified through Ubuntu Pro.
+>releases that are FIPS certified through Ubuntu Pro, and for RedHat 9.
 
-This document describes how to build and run ziti-edge-tunnel in FIPS mode.
+This document describes how to build and run ziti-edge-tunnel in FIPS mode if a package is not available for your Linux distribution.
 
 Using FIPS mode requires the following:
 
