@@ -117,6 +117,8 @@ static void free_hosted_service_ctx(struct hosted_service_ctx_s *hosted_ctx) {
             safe_free(dns_entry->domain_name);
             safe_free(dns_entry);
         }
+
+        STAILQ_CLEAR(&hosted_ctx->addr_u.translations, safe_free);
     }
 
     if (hosted_ctx->forward_port) {
@@ -349,6 +351,60 @@ static const char *compute_dst_protocol(const host_ctx_t *service, const tunnele
     return dst_proto;
 }
 
+// Copies prefix_len bits from src1 ("to"), rest from src2 ("dst") into dest
+static void combine_prefix(const uint8_t *src1, const uint8_t *src2, uint8_t *dest, int prefix_len, int max_len_bits) {
+    int full_bytes = prefix_len / 8;
+    int remaining_bits = prefix_len % 8;
+
+    for (int i = 0; i < full_bytes; i++) {
+        dest[i] = src1[i];
+    }
+
+    if (remaining_bits > 0 && full_bytes < max_len_bits / 8) {
+        uint8_t mask = 0xFF << (8 - remaining_bits);
+        dest[full_bytes] = (src1[full_bytes] & mask) | (src2[full_bytes] & ~mask);
+        full_bytes++;
+    }
+
+    for (int i = full_bytes; i < max_len_bits / 8; i++) {
+        dest[i] = src2[i];
+    }
+}
+
+/** replace prefix bits in `dst_inout` with those from `to_prefix` */
+static bool ziti_address_translate(ziti_address *dst_ip_inout, const ziti_address *to_prefix) {
+    if (to_prefix->type != ziti_address_cidr || to_prefix->addr.cidr.af != dst_ip_inout->addr.cidr.af) {
+        return false;
+    }
+
+    uint8_t prefix_bytes = to_prefix->addr.cidr.bits / 8;
+    uint8_t prefix_spare_bits = to_prefix->addr.cidr.bits % 8;
+    uint8_t all_bits = to_prefix->addr.cidr.af == AF_INET ? 32 : 128;
+    uint8_t *dst_ip_bytes = dst_ip_inout->addr.cidr.ip.s6_addr;
+
+    for (int i = 0; i < prefix_bytes; i++) {
+        dst_ip_bytes[i] = to_prefix->addr.cidr.ip.s6_addr[i];
+    }
+    if (prefix_spare_bits > 0 && prefix_bytes < all_bits / 8) {
+        uint8_t mask = 0xff << (8 - prefix_spare_bits);
+        dst_ip_bytes[prefix_bytes] =
+                (to_prefix->addr.cidr.ip.s6_addr[prefix_bytes]) & mask | (dst_ip_bytes[prefix_bytes] & ~mask);
+    }
+    return true;
+}
+static address_translation_t *find_translation(const ziti_address *ip, const address_translation_list_t *trs) {
+    address_translation_t *entry;
+    char ip_str[128];
+    ziti_address_print(ip_str, sizeof(ip_str), ip);
+    STAILQ_FOREACH(entry, trs, entries) {
+        ZITI_LOG(TRACE, "comparing '%s' with %s'", ip_str, entry->from.str);
+        if (ziti_address_match(ip, &entry->from.za) >= 0) {
+            return entry;
+        }
+    }
+    return NULL;
+}
+
 static const char *compute_dst_ip_or_hn(const host_ctx_t *service, const tunneler_app_data *app_data,
                                         bool *is_ip, char *err, size_t err_sz) {
     const char *ip_or_hn;
@@ -404,6 +460,17 @@ static const char *compute_dst_ip_or_hn(const host_ctx_t *service, const tunnele
             if (!address_match(&dst, &service->addr_u.allowed_addresses)) {
                 snprintf(err, err_sz, "requested address '%s' is not in allowedAddresses", app_data->dst_ip);
                 return NULL;
+            }
+            // check for a matching translation
+            const address_translation_t *x = find_translation(&dst, &service->addr_u.translations);
+            if (x) {
+                if (ziti_address_translate(&dst, &x->to.za)) {
+                    static char translated_ip[IP6ADDR_STRLEN_MAX];
+                    ziti_address_print(translated_ip, sizeof(translated_ip), &dst);
+                    char *slash = strchr(translated_ip, '/');
+                    if (slash) *slash = '\0';
+                    ip_or_hn = translated_ip;
+                }
             }
         }
     }
@@ -794,6 +861,13 @@ static void listen_opts_from_host_cfg_v1(ziti_listen_opts *opts, const ziti_host
     }
 }
 
+static int ziti_address_translation_cmp(const void *a, const void *b) {
+    const ziti_address_translation * const *xa = a;
+    const ziti_address_translation * const *xb = b;
+    return (int)((*xb)->prefix_length - (*xa)->prefix_length);
+}
+
+
 /** called by the tunneler sdk when a hosted service becomes available */
 host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, uv_loop_t *loop, const char *service_name, cfg_type_e cfg_type, const void *cfg) {
     if (service_name == NULL) {
@@ -867,6 +941,30 @@ host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, uv_loop_t *loop, const char *service
                              host_ctx->service_name);
                     free_hosted_service_ctx(host_ctx);
                     return NULL;
+                }
+
+                ziti_address_translation_array cfg_translations = host_v1_cfg->forward_address_translations;
+                ziti_address_translation_array sorted_cfg_translations = NULL;
+                STAILQ_INIT(&host_ctx->addr_u.translations);
+                for (i = 0; cfg_translations != NULL && cfg_translations[i] != NULL; i++);
+                // sort address translations for easy lookups
+                if (i > 0) {
+                    sorted_cfg_translations = calloc(i + 1, sizeof(ziti_address_translation *));
+                    memcpy(sorted_cfg_translations, cfg_translations, i * sizeof(ziti_address_translation *));
+                    qsort(sorted_cfg_translations, i, sizeof(ziti_address_translation *), ziti_address_translation_cmp);
+
+                    for (i = 0; sorted_cfg_translations != NULL && sorted_cfg_translations[i] != NULL; i++) {
+                        address_translation_t *x = calloc(1, sizeof(address_translation_t));
+                        sorted_cfg_translations[i]->from.addr.cidr.bits = sorted_cfg_translations[i]->prefix_length;
+                        memcpy(&x->from.za, &sorted_cfg_translations[i]->from, sizeof(ziti_address));
+                        sorted_cfg_translations[i]->to.addr.cidr.bits = sorted_cfg_translations[i]->prefix_length;
+                        memcpy(&x->to.za, &sorted_cfg_translations[i]->to, sizeof(ziti_address));
+                        ziti_address_print(x->from.str, sizeof(x->from.str), &sorted_cfg_translations[i]->from);
+                        ziti_address_print(x->to.str, sizeof(x->to.str), &sorted_cfg_translations[i]->to);
+                        STAILQ_INSERT_TAIL(&host_ctx->addr_u.translations, x, entries);
+                        ZITI_LOG(TRACE, "translating %s --> %s", x->from.str, x->to.str);
+                    }
+                    free(sorted_cfg_translations);
                 }
             } else {
                 host_ctx->addr_u.address = host_v1_cfg->address;
