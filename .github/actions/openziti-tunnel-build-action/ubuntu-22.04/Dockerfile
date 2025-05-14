@@ -49,6 +49,8 @@ RUN apt-get -y install \
         libprotobuf-c-dev:armhf \
         zlib1g-dev:arm64 \
         zlib1g-dev:armhf \
+        libssl-dev:arm64 \
+        libssl-dev:armhf \
         linux-libc-dev:arm64 \
         linux-libc-dev:armhf
 
