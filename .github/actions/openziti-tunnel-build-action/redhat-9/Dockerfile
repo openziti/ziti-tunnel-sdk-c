@@ -31,6 +31,7 @@ RUN dnf install -y \
         git \
         json-c-devel \
         protobuf-c-devel \
+        openssl-devel \
         ninja-build \
     && dnf clean all 
 

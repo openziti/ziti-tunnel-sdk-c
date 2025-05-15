@@ -62,7 +62,7 @@ function set_workspace(){
     else
         echo -e "INFO: project not mounted on ${WORKSPACE}"\
                 "\nINFO: mounting on ziti-builder container"
-        docker pull "openziti/ziti-builder:${ZITI_BUILDER_TAG:-latest}"
+        docker pull "openziti/ziti-builder:${ZITI_BUILDER_TAG:-latest}" &>/dev/null || true
         set -x
         eval exec docker run \
             --rm \

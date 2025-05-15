@@ -53,7 +53,7 @@ runs:
         else
           # ImageVersion is irrelevant since the build action runs in a container
           # Express the vcpkg overlays, dockerfile, and entry point that the action will use as a single hash
-          build_action_hash="$(find ./.github/actions/openziti-tunnel-build-action/gh-release -type f -print | xargs md5sum | awk '{ print $1 }' | sort | md5sum | awk '{ print $1 }')"
+          build_action_hash="$(find ./.github/actions/openziti-tunnel-build-action/gh-release -type f -print0 | xargs -r0 md5sum | awk '{ print $1 }' | sort | md5sum | awk '{ print $1 }')"
           echo "key=${common_key}-build_action_md5=${build_action_hash}" | tee -a $GITHUB_OUTPUT
         fi
 
@@ -90,7 +90,7 @@ runs:
       uses: ./.github/actions/openziti-tunnel-build-action
       env:
         # map vcpkg cache so container uses the same directory as the rest of the workflow
-        "VCPKG_BINARY_SOURCES": "clear;files,/github/workspace/vcpkg_cache,readwrite"
+        VCPKG_BINARY_SOURCES: "clear;files,/github/workspace/vcpkg_cache,readwrite"
       with:
         arch: ci-${{ inputs.preset }}
         config: ${{ inputs.config }}
