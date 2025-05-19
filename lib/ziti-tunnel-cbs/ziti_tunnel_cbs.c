@@ -520,8 +520,6 @@ tunneled_service_t *ziti_sdk_c_on_service(ziti_context ziti_ctx, ziti_service *s
     current_tunneled_service.intercept = NULL;
     current_tunneled_service.host = NULL;
 
-    ZITI_LOG(ERROR, "HERE!");
-
     struct ziti_instance_s *ziti_instance = ziti_app_ctx(ziti_ctx);
 
     if (status == ZITI_OK) {
