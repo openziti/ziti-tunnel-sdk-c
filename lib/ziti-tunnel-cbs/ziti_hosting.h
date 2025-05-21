@@ -33,14 +33,6 @@ struct allowed_hostname_s {
 
 typedef LIST_HEAD(allowed_addr_list, allowed_hostname_s) allowed_hostnames_t;
 
-typedef struct address_translation_s {
-    address_t from;
-    address_t to;
-    STAILQ_ENTRY(address_translation_s) entries;
-} address_translation_t;
-
-typedef STAILQ_HEAD(address_translation_list_s, address_translation_s) address_translation_list_t;
-
 struct hosted_service_ctx_s {
     char *       service_name;
     const void * ziti_ctx;
@@ -58,7 +50,7 @@ struct hosted_service_ctx_s {
         struct {
             address_list_t allowed_addresses;
             allowed_hostnames_t allowed_hostnames;
-            address_translation_list_t translations;
+            ziti_address_translation_array translations;
         };
         const char *address;
     } addr_u;
