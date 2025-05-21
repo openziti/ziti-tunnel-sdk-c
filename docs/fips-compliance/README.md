@@ -15,7 +15,8 @@ https://csrc.nist.gov/Projects/cryptographic-module-validation-program/faqs:
 
 FIPS-compliance can be initiated in one of two ways: environment variable or by placing an `openssl.cnf` file adjacent to 
 the ziti-edge-tunnel executable. Both options will trigger the statically linked OpenSSL code within the ziti-edge-tunnel
-to attempt to initialize FIPS-compliance.
+to attempt to initialize FIPS-compliance. If specified, the `OPENSSL_CONF` environment variable takes precedence over 
+an `openssl.cnf` file located adjacent to the ziti-edge-tunnel binary.
 
 The format of the OpenSSL configuration file is specified by the OpenSSL doc located at
 https://docs.openssl.org/master/man7/fips_module/#making-all-applications-use-the-fips-module-by-default
