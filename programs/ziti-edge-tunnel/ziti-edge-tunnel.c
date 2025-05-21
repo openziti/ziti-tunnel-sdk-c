@@ -1454,6 +1454,42 @@ static void run(int argc, char *argv[]) {
 
     // set the service version in instance
     set_service_version();
+    
+    char openssl_conf[PATH_MAX];
+    char *openssl_conf_env = getenv("OPENSSL_CONF");
+    char *openssl_conf_found_by = NULL;
+    if (openssl_conf_env == NULL) {
+        openssl_conf_found_by = "default location";
+        size_t size = sizeof(openssl_conf);
+
+        if (uv_exepath(openssl_conf, &size) == 0) {
+            openssl_conf[size] = '\0';
+
+            char *last_sep = strrchr(openssl_conf, PATH_SEP);
+            if (last_sep) {
+                *(last_sep + 1) = '\0';
+            }
+
+            const char *ossl_conf_file_name = "openssl.cnf";
+            if (strlen(openssl_conf) + strlen(ossl_conf_file_name) < sizeof(openssl_conf)) {
+                strcat(openssl_conf, ossl_conf_file_name);
+            } else {
+                fprintf(stderr, "Path too long\n");
+                exit(1);
+            }
+        }
+    } else {
+        openssl_conf_found_by = "environment variable";
+        strncpy(openssl_conf, openssl_conf_env, sizeof(openssl_conf) - 1);
+    }
+
+    char *openssl_conf_resolved = NULL;
+    uv_fs_t req;
+    if (uv_fs_realpath(NULL, &req, openssl_conf, NULL) == 0) {
+        openssl_conf_resolved = strdup(req.ptr);
+        tlsuv_set_config_path(openssl_conf_resolved);
+    }
+    uv_fs_req_cleanup(&req);
 
 #if _WIN32
     uv_timeval64_t dump_time;
@@ -1475,6 +1511,9 @@ static void run(int argc, char *argv[]) {
     char *csdk_version = "" to_str(ZITI_VERSION) ":" to_str(ZITI_BRANCH) "@" to_str(ZITI_COMMIT);
     ZITI_LOG(INFO,"	- C SDK Version    : %s", csdk_version);
     ZITI_LOG(INFO,"	- Tunneler SDK     : %s", ziti_tunneler_version());
+    if(openssl_conf_resolved != NULL) {
+        ZITI_LOG(INFO, "	- FIPS compliance  : OPENSSL_CONF configured using %s found by %s", openssl_conf_resolved, openssl_conf_found_by);
+    }
     ZITI_LOG(INFO,"============================================================================");
     move_config_from_previous_windows_backup(global_loop_ref);
 
