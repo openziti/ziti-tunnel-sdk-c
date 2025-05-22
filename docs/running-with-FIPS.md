@@ -38,7 +38,8 @@ that are actually validated. Per the referenced page:
 
 The source reference page contains links to the 
 [FIPS CMVP](https://csrc.nist.gov/Projects/Cryptographic-Module-Validation-Program) certificate as well. The OpenZiti 
-project provides this software as is and is not responsible if you erroneously claim FIPS validation or  
+project provides this software as is and is not responsible if you erroneously claim FIPS validation or use/build/deploy
+a FIPS module erroneously.
 
 ### Building an OpenSSL FIPS Module From Source for Development
 
