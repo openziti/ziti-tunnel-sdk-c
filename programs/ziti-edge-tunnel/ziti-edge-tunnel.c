@@ -1456,7 +1456,7 @@ static void run(int argc, char *argv[]) {
     set_service_version();
     
     char openssl_conf[PATH_MAX];
-    char *openssl_conf_env = getenv("OPENSSL_CONF");
+    const char *openssl_conf_env = getenv("OPENSSL_CONF");
     char *openssl_conf_found_by = NULL;
     if (openssl_conf_env == NULL) {
         openssl_conf_found_by = "default location";
@@ -1474,7 +1474,7 @@ static void run(int argc, char *argv[]) {
             if (strlen(openssl_conf) + strlen(ossl_conf_file_name) < sizeof(openssl_conf)) {
                 strcat(openssl_conf, ossl_conf_file_name);
             } else {
-                fprintf(stderr, "Path too long\n");
+                ZITI_LOG(ERROR,"Resolved path to openssl.cnf is too long");
                 exit(1);
             }
         }
@@ -1512,7 +1512,7 @@ static void run(int argc, char *argv[]) {
     ZITI_LOG(INFO,"	- C SDK Version    : %s", csdk_version);
     ZITI_LOG(INFO,"	- Tunneler SDK     : %s", ziti_tunneler_version());
     if(openssl_conf_resolved != NULL) {
-        ZITI_LOG(INFO, "	- FIPS compliance  : OPENSSL_CONF configured using %s found by %s", openssl_conf_resolved, openssl_conf_found_by);
+        ZITI_LOG(INFO, "	- openssl config   : configured using %s found by %s", openssl_conf_resolved, openssl_conf_found_by);
     }
     ZITI_LOG(INFO,"============================================================================");
     move_config_from_previous_windows_backup(global_loop_ref);
