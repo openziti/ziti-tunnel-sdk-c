@@ -50,6 +50,7 @@ struct hosted_service_ctx_s {
         struct {
             address_list_t allowed_addresses;
             allowed_hostnames_t allowed_hostnames;
+            ziti_address_translation_array translations;
         };
         const char *address;
     } addr_u;

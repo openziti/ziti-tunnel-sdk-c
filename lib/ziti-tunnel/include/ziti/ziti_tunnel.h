@@ -79,7 +79,6 @@ typedef STAILQ_HEAD(protocol_list_s, protocol_s) protocol_list_t;
 typedef struct address_s {
     ziti_address za;
     char         str[64];
-//    ip_addr_t  _netmask;
     STAILQ_ENTRY(address_s) entries;
 } address_t;
 typedef STAILQ_HEAD(address_list_s, address_s) address_list_t;
@@ -105,7 +104,7 @@ typedef host_ctx_t * (*ziti_sdk_host_cb)(void *ziti_ctx, uv_loop_t *loop, const 
 typedef struct intercept_ctx_s  intercept_ctx_t;
 typedef const ziti_address * (*intercept_match_addr_fn)(ip_addr_t *addr, void *app_intercept_ctx);
 
-extern intercept_ctx_t* intercept_ctx_new(tunneler_context tnlr_ctx, const char *app_id, void *app_intercept_ctx);
+extern intercept_ctx_t *intercept_ctx_new(tunneler_context tnlr_ctx, const char *app_id, void *app_intercept_ctx);
 extern void intercept_ctx_set_match_addr(intercept_ctx_t *intercept, intercept_match_addr_fn pred);
 extern void intercept_ctx_add_protocol(intercept_ctx_t *ctx, const char *protocol);
 /** parse address string as hostname|ip|cidr and add result to list of intercepted addresses */
