@@ -121,7 +121,7 @@ default_properties = fips=yes
 ```text
 openssl_conf = openssl_init
 
-.include "/tmp/fipsmodule.cnf"
+.include "C:/path/to/fips/config/fipsmodule.cnf"
 
 [openssl_init]
 providers = provider_sect
@@ -131,7 +131,7 @@ alg_section = algorithm_sect
 fips = fips_sect
 
 [fips_sect]
-module = "/home/cd/gitwsl/github/microsoft/vcpkg/installed/x64-linux-dynamic/lib/ossl-modules/fips.so"
+module = "C:/path/to/shared-library/fips.dll"
 activate = 1
 
 [algorithm_sect]
