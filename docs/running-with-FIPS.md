@@ -65,7 +65,7 @@ vcpkg install "openssl[core,fips,tools]:<platform>-dynamic"
 
 **Windows**
 ```
-# windows will most likely **require** tools to build openssl.exe as it's generally not availalbe by default
+# windows will most likely **require** tools to build openssl.exe as it's generally not available by default
 .\vcpkg.exe install "openssl[core,fips,tools]:x64-windows"
 ```
 

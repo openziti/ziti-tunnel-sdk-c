@@ -1523,6 +1523,7 @@ static void run(int argc, char *argv[]) {
         ZITI_LOG(WARN, "could not set se debug access token on process. if process posture checks seem inconsistent this may be why");
     }
 #endif
+    free(openssl_conf_resolved);
 
     if (configured_log_level == NULL) {
         // set log level from instance/config, if NULL is returned, the default log level will be used
