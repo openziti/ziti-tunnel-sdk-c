@@ -14,7 +14,7 @@ https://csrc.nist.gov/Projects/cryptographic-module-validation-program/faqs:
 ## Enabling FIPS Compliance
 
 FIPS-compliance can be initiated in one of two ways: environment variable or by placing an `openssl.cnf` file adjacent to
-the ziti-edge-tunnel executable. Both options will trigger the statically linked OpenSSL code within the ziti-edge-tunnel
+the ziti-edge-tunnel executable. Both options will trigger OpenSSL used by the ziti-edge-tunnel
 to attempt to initialize FIPS-compliance. If specified, the `OPENSSL_CONF` environment variable takes precedence over
 an `openssl.cnf` file located adjacent to the ziti-edge-tunnel binary.
 
@@ -39,22 +39,22 @@ that are actually validated. Per the referenced page:
 The source reference page contains links to the 
 [FIPS CMVP](https://csrc.nist.gov/Projects/Cryptographic-Module-Validation-Program) certificate as well. The OpenZiti 
 project provides this software as is and is not responsible if you erroneously claim FIPS validation or use/build/deploy
-a FIPS module erroneously.
+a FIPS module non compliantly.
 
 ### Building an OpenSSL FIPS Module From Source for Development
 
 It's relatively straightforward to build OpenSSL from source and the OpenSSL doc site provides clear instructions.
-Since vcpkg is necessary to build ziti-edge-tunnel. You can opt to use vcpkg to build an openssl executable and the fips
+Since vcpkg is necessary to build ziti-edge-tunnel, you can opt to use vcpkg to build an openssl executable and the fips
 shared library using vcpkg.
 
 Using vcpkg -- replace `<platform>` with `x64-linux`, `arm64-osx`, `x64-windows` etc., depending on your target
 platform. This will generate a shared object into the vcpkg directory under 
 `installed/openssl_<platform>-dynamic/lib/ossl-modules` or `./installed/x64-windows/bin/fips.dll` (on Windows).
 
-These example commands build/retrieves:
+These example commands build/retrieve:
 * core: Base OpenSSL components (libraries, headers).
 * fips: Enables building the FIPS provider (`fips.dll`, `fips.so`, or `fips.dylib`).
-* [optional] tools: Includes CLI tools like `openssl.exe` or `openssl` binary.
+* [optional] tools: Includes CLI tools, such as `openssl.exe`/`openssl`.
 
 **Linux/MacOS**
 ```sh
