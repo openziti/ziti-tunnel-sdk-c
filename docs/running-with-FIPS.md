@@ -107,7 +107,11 @@ providers = provider_sect
 alg_section = algorithm_sect
 
 [provider_sect]
+base = base_sect
 fips = fips_sect
+
+[base_sect]
+activate = 1
 
 [fips_sect]
 module = "/home/cd/gitwsl/github/microsoft/vcpkg/installed/x64-linux-dynamic/lib/ossl-modules/fips.so"
@@ -129,7 +133,11 @@ providers = provider_sect
 alg_section = algorithm_sect
 
 [provider_sect]
+base = base_sect
 fips = fips_sect
+
+[base_sect]
+activate = 1
 
 [fips_sect]
 module = "C:/path/to/shared-library/fips.dll"
