@@ -73,6 +73,7 @@ function set_workspace(){
             --env "VCPKG_DEFAULT_BINARY_CACHE=${WORKSPACE}/.cache" \
             --env "TLSUV_TLSLIB" \
             --env "ZITI_SDK_DIR" \
+            --env "ZITI_SDK_VERSION" \
             "openziti/ziti-builder:${ZITI_BUILDER_TAG:-latest}" \
                 "${WORKSPACE}/${SCRIPTSDIR}/${BASENAME}" "${@}"
     fi
@@ -128,6 +129,7 @@ function main() {
             -DBUILD_DIST_PACKAGES="${BUILD_DIST_PACKAGES:-OFF}" \
             "${TLSUV_TLSLIB:+-DTLSUV_TLSLIB=${TLSUV_TLSLIB}}" \
             "${ZITI_SDK_DIR:+-DZITI_SDK_DIR=${ZITI_SDK_DIR}}" \
+            "${ZITI_SDK_VERSION:+-DZITI_SDK_VERSION=${ZITI_SDK_VERSION}}" \
             -S . \
             -B ./build \
             "${CMAKE_EXTRA_ARGS:-}"
