@@ -93,6 +93,13 @@ target_compile_definitions(ziti-edge-tunnel
         PRIVATE ZITI_LOG_MODULE="ziti-edge-tunnel"
         )
 
+# if EXECINFO is present set a flag for later inclusion
+include(CheckIncludeFile)
+check_include_file("execinfo.h" HAVE_EXECINFO_H)
+if(HAVE_EXECINFO_H)
+    target_compile_definitions(ziti-edge-tunnel PRIVATE $<$<BOOL:${HAVE_EXECINFO_H}>:HAVE_EXECINFO_H>)
+endif()
+
 target_link_libraries(ziti-edge-tunnel
         PUBLIC ziti ziti-tunnel-sdk-c ziti-tunnel-cbs-c
         PUBLIC ${tun_lib}
