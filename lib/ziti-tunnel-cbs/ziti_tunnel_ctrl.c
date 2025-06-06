@@ -781,6 +781,12 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
                 break;
             }
 
+            if (is_null(auth.identifier, "identifier not specified", &result)) {
+                ZITI_LOG(ERROR, "invalid identifier");
+                free_tunnel_id_ext_auth(&auth);
+                break;
+            }
+
             struct ziti_instance_s *inst = model_map_get(&instances, auth.identifier);
             if (is_null(inst, "ziti context not found", &result) ||
                 is_null(inst->ztx, "ziti context is not loaded", &result)) {
