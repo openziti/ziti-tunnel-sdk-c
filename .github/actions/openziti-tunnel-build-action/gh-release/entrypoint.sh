@@ -61,7 +61,7 @@ cmake \
   -DCMAKE_BUILD_TYPE="${cmake_config}" \
   -DVCPKG_OVERLAY_PORTS=./.github/actions/openziti-tunnel-build-action/gh-release/vcpkg-overlays \
   -S . \
-  -B ./build || cat /usr/local/vcpkg/buildtrees/abseil/install-arm64-linux-dbg-out.log
+  -B ./build
 cmake \
   --build ./build \
   --config "${cmake_config}" \
