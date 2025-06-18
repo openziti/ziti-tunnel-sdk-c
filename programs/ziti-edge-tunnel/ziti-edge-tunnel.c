@@ -1301,8 +1301,8 @@ static int run_opts(int argc, char *argv[]) {
 
     CHECK_COMMAND_ERRORS(errors);
 
-    fprintf(stderr, "About to run tunnel service... %s\n", main_cmd.name);
-    ziti_set_app_info(main_cmd.name, ziti_tunneler_version());
+    fprintf(stderr, "About to run tunnel service... %s\n", APPNAME);
+    ziti_set_app_info(APPNAME, ziti_tunneler_version());
 
     return optind;
 }
