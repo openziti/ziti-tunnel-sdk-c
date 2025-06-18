@@ -150,8 +150,7 @@
       "binaryDir": "${sourceDir}/build",
       "hidden": true,
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
-        "TLSUV_TLSLIB": "openssl"
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
       }
     },
     {
