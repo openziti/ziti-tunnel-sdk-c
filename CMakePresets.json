@@ -154,29 +154,9 @@
       }
     },
     {
-      "name": "openssl",
-      "hidden": true,
-      "cacheVariables": {
-        "TLSUV_TLSLIB": "openssl"
-      },
-      "inherits": [
-        "ci-build"
-      ]
-    },
-    {
-      "name": "win32crypto",
-      "hidden": true,
-      "inherits": [
-        "ci-build"
-      ],
-      "cacheVariables": {
-        "TLSUV_TLSLIB": "win32crypto"
-      }
-    },
-    {
       "name": "ci-macOS-x64",
       "inherits": [
-        "openssl",
+        "ci-build",
         "ci-unix",
         "dev-mode",
         "vcpkg"
@@ -185,7 +165,7 @@
     {
       "name": "ci-macOS-arm64",
       "inherits": [
-        "openssl",
+        "ci-build",
         "ci-unix",
         "dev-mode",
         "vcpkg"
@@ -199,7 +179,7 @@
     {
       "name": "ci-linux-x64",
       "inherits": [
-        "openssl",
+        "ci-build",
         "ci-unix",
         "vcpkg",
         "dev-mode"
@@ -236,7 +216,7 @@
     {
       "name": "ci-windows-x64-vs2022",
       "inherits": [
-        "win32crypto",
+        "ci-build",
         "ci-win64-vs2022",
         "dev-mode",
         "vcpkg",
@@ -250,7 +230,7 @@
     {
       "name": "ci-windows-x86-vs2022",
       "inherits": [
-        "win32crypto",
+        "ci-build",
         "ci-win86-vs2022",
         "dev-mode",
         "vcpkg"
@@ -267,7 +247,7 @@
     {
       "name": "ci-windows-arm64-vs2022",
       "inherits": [
-        "win32crypto",
+        "ci-build",
         "ci-win-arm64-vs2022",
         "dev-mode",
         "vcpkg"
@@ -280,7 +260,7 @@
     {
       "name": "ci-windows-x64-mingw",
       "inherits": [
-        "win32crypto",
+        "ci-build",
         "ci-win64-mingw",
         "dev-mode",
         "vcpkg",
