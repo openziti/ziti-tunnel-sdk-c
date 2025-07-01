@@ -12,7 +12,6 @@
     },
     {
       "name": "openssl",
-      "platform": "!windows & !mingw",
       "$comment": "on linux we use system installed OpenSSL, as determined by vcpkg-overlays/linux-syslibs)"
     },
     "json-c",
