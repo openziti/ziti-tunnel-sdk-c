@@ -32,7 +32,7 @@ jobs:
 
           - os: windows-latest
             name: Windows x86_64(win32crypto)
-            preset: windows-x64-win32cryptoo
+            preset: windows-x64-win32crypto
 
           - os: windows-latest
             name: Windows arm64
