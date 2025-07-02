@@ -19,7 +19,7 @@ jobs:
         uses: hmarr/debug-action@v3
 
       - name: Wait for all checks on this ref
-        uses: lewagon/wait-on-check-action@v1.3.4
+        uses: lewagon/wait-on-check-action@v1.4.0
         with:
           ref: ${{ github.ref }}
           repo-token: ${{ secrets.GITHUB_TOKEN }}
