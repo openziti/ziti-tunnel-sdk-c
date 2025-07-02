@@ -31,6 +31,10 @@ jobs:
             preset: windows-x64-mingw
 
           - os: windows-latest
+            name: Windows x86_64(win32crypto)
+            preset: windows-x64-win32crypto
+
+          - os: windows-latest
             name: Windows arm64
             preset: windows-arm64-vs2022
 

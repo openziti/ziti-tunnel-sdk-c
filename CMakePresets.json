@@ -150,6 +150,7 @@
       "binaryDir": "${sourceDir}/build",
       "hidden": true,
       "cacheVariables": {
+        "TLSUV_TLSLIB": "openssl",
         "CMAKE_BUILD_TYPE": "RelWithDebInfo"
       }
     },
@@ -266,6 +267,20 @@
         "vcpkg",
         "vcpkg-win64-mingw-static"
       ]
+    },
+    {
+      "name": "ci-windows-x64-win32crypto",
+      "inherits": [
+        "ci-build",
+        "ci-win64-mingw",
+        "dev-mode",
+        "vcpkg",
+        "vcpkg-win64-mingw-static"
+      ],
+      "cacheVariables": {
+        "TLSUV_TLSLIB": "win32crypto"
+      }
     }
+
   ]
 }
