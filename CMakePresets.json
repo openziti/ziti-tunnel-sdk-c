@@ -269,7 +269,7 @@
       ]
     },
     {
-      "name": "ci-windows-x64-win32cryptoo",
+      "name": "ci-windows-x64-win32crypto",
       "inherits": [
         "ci-build",
         "ci-win64-mingw",
