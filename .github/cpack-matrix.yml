@@ -28,6 +28,11 @@ cpack_matrix:
       release_name: ${{ null }}
       type: rpm
       container: docker.io/library/rockylinux:9
+    - name: redhat
+      version: "10"
+      release_name: ${{ null }}
+      type: rpm
+      container: quay.io/almalinuxorg/almalinux:10
   exclude:
     - distro:
         name: redhat
