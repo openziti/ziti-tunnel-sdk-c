@@ -32,15 +32,23 @@ fi
 for SAFE in \
     /github/workspace \
     /__w/ziti-tunnel-sdk-c/ziti-tunnel-sdk-c \
-    /mnt ; do
-        git config --global --add safe.directory ${SAFE}
+    /mnt \
+    /usr/local/vcpkg
+do
+    git config --global --add safe.directory ${SAFE}
+done
+
+for CACHE in \
+    /github/workspace/vcpkg_cache/{archives,downloads,installed}
+do
+    mkdir -p ${CACHE}
 done
 
 (
-  cd "${VCPKG_ROOT}"
-  git checkout master
-  git pull
-  ./bootstrap-vcpkg.sh -disableMetrics
+    cd "${VCPKG_ROOT}"
+    git checkout master
+    git pull
+    ./bootstrap-vcpkg.sh -disableMetrics
 )
 
 cmake -E make_directory ./build

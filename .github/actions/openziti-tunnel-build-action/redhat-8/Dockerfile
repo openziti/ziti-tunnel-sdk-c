@@ -44,7 +44,7 @@ ENV VCPKG_FORCE_SYSTEM_BINARIES=yes
 
 RUN cd /usr/local \
     && git clone https://github.com/microsoft/vcpkg \
-    && ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
+    && chmod -R ugo+rwX /usr/local/vcpkg
 
 WORKDIR /github/workspace
 COPY ./entrypoint.sh /root/
