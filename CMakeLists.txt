@@ -143,7 +143,7 @@ if (TLSUV_TLSLIB AND NOT TLSUV_TLSLIB STREQUAL "openssl")
     message(NOTICE "binary marker: ${comp-flavor}")
 endif ()
 
-if(CMAKE_SYSTEM_PROCESSOR} STREQUAL AMD64)
+if(CMAKE_SYSTEM_PROCESSOR STREQUAL AMD64)
     set(bundle_processor "x86_64")
 elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL aarch64)
     set(bundle_processor "arm64")
