@@ -39,30 +39,6 @@ jobs:
           files: |
             ${{ runner.workspace }}/downloads/**/*.zip
 
-      # These final two steps are only necessary because we prefer a different
-      # release artifact name than is created by CMake, and so we could change
-      # the CMake configuration or add an inline (shell) run step to manipulate
-      # the filenames. The pre-release build doesn't rename the artifacts.
-      - name: Upload Linux ARM64 With a Different Name
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.get_release.outputs.upload_url }}
-          asset_path: ${{ runner.workspace }}/downloads/linux-arm64/ziti-edge-tunnel-Linux_aarch64.zip
-          asset_name: ziti-edge-tunnel-Linux_arm64.zip
-          asset_content_type: application/octet-stream
-
-      - name: Upload Windows With a Different Name
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.get_release.outputs.upload_url }}
-          asset_path: ${{ runner.workspace }}/downloads/windows-x64-mingw/ziti-edge-tunnel-Windows_AMD64.zip
-          asset_name: ziti-edge-tunnel-Windows_x86_64.zip
-          asset_content_type: application/octet-stream
-
       - name: Get the Version String from Git Tag
         id: get_version
         run: |
