@@ -63,9 +63,8 @@ ENV VCPKG_ROOT=/usr/local/vcpkg
 ENV VCPKG_FORCE_SYSTEM_BINARIES=yes
 
 RUN cd /usr/local \
-    && git config --global advice.detachedHead false \
     && git clone https://github.com/microsoft/vcpkg \
-    && ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
+    && chmod -R ugo+rwX /usr/local/vcpkg
 
 COPY ./entrypoint.sh /root/
 ENTRYPOINT [ "/root/entrypoint.sh" ]

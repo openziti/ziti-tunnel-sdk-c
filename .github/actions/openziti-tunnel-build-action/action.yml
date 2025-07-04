@@ -1,16 +1,16 @@
-name: 'OpenZiti Tunneler Build Action'
-description: 'Builds ziti-edge-tunnel binary and install package for Linux'
-author: 'NetFoundry'
+name: OpenZiti Tunneler Build Action
+description: Builds ziti-edge-tunnel binary and Linux package
+author: NetFoundry
 inputs:
   arch:
-    description: 'The cmake preset used by entrypoint.sh when running cmake'
+    description: The cmake preset used by entrypoint.sh when running cmake
     required: false
   config:
-    description: 'The cmake build configuration used by entrypoint.sh when running cmake'
+    description: The cmake build configuration used by entrypoint.sh when running cmake
     required: false
 runs:
-  using: 'docker'
-  image: 'Dockerfile'
+  using: docker
+  image: Dockerfile
   args:
     - ${{ inputs.arch }}
     - ${{ inputs.config }}
