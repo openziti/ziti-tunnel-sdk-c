@@ -191,6 +191,7 @@
       "inherits": "ci-linux-x64",
       "cacheVariables": {
         "VCPKG_TARGET_TRIPLET": "arm64-linux",
+        "ZITI_TUNNEL_ASAN": true,
         "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/toolchains/Linux-arm64.cmake"
       }
     },
