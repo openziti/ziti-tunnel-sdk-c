@@ -112,7 +112,9 @@ jobs:
         run: |
           set -o pipefail
           set -o xtrace
-          echo "key=${KEY_PREFIX}-config_hash-${CONFIG_HASH}-action_hash-${ACTION_HASH}" | tee -a $GITHUB_OUTPUT
+          ACTION_HASH_SHORT=${ACTION_HASH:0:8}
+          CONFIG_HASH_SHORT=${CONFIG_HASH:0:8}
+          echo "key=${KEY_PREFIX}-vcpkg_json=${CONFIG_HASH_SHORT}-build_action=${ACTION_HASH_SHORT}" | tee -a $GITHUB_OUTPUT
 
       - name: Create a Vcpkg Cache with the Defined Key for this Matrix Job
         id: vcpkg_cache
