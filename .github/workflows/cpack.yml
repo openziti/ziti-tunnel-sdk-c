@@ -106,7 +106,7 @@ jobs:
         id: get_vcpkg_cache_key
         shell: bash
         env:
-          KEY_PREFIX: vcpkg_cache-cpack-${{ matrix.arch.rpm }}-${{ matrix.distro.name }}-${{ matrix.distro.version }}
+          KEY_PREFIX: vcpkg_cache-cpack-${{ matrix.arch.rpm }}_${{ matrix.distro.name }}_${{ matrix.distro.version }}
           ACTION_HASH: ${{ hashFiles(format('./.github/actions/openziti-tunnel-build-action/{0}-{1}', matrix.distro.name, matrix.distro.version)) }}
           CONFIG_HASH: ${{ hashFiles('./vcpkg.json') }}
         run: |
