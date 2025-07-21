@@ -41,11 +41,7 @@ do
     git config --global --add safe.directory ${SAFE}
 done
 
-for CACHE in \
-    /github/workspace/vcpkg_cache/{archives,downloads,installed}
-do
-    mkdir -p ${CACHE}
-done
+mkdir -p /github/workspace/vcpkg_cache
 
 (
     cd "${VCPKG_ROOT}"

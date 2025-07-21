@@ -58,9 +58,7 @@ jobs:
     env:
       ZITI_DEB_TEST_REPO: ${{ vars.ZITI_DEB_TEST_REPO || 'zitipax-openziti-deb-test' }}
       ZITI_RPM_TEST_REPO: ${{ vars.ZITI_RPM_TEST_REPO || 'zitipax-openziti-rpm-test' }}
-      VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/vcpkg_cache/archives,readwrite
-      VCPKG_DOWNLOADS: ${{ github.workspace }}/vcpkg_cache/downloads
-      VCPKG_INSTALLED_DIR: ${{ github.workspace }}/vcpkg_cache/installed
+      VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/vcpkg_cache,readwrite
     steps:
       - name: Print Environment Variables and Event JSON
         uses: hmarr/debug-action@v3
@@ -128,9 +126,7 @@ jobs:
         uses: ./.github/actions/openziti-tunnel-build-action
         env:
           # map vcpkg cache in the CPack Docker Action container to the mounted directory used by the rest of the workflow
-          VCPKG_BINARY_SOURCES: clear;files,/github/workspace/vcpkg_cache/archives,readwrite
-          VCPKG_DOWNLOADS: /github/workspace/vcpkg_cache/downloads
-          VCPKG_INSTALLED_DIR: /github/workspace/vcpkg_cache/installed
+          VCPKG_BINARY_SOURCES: clear;files,/github/workspace/vcpkg_cache,readwrite
         with:
           arch: ${{ matrix.arch.cmake }}
           config: RelWithDebInfo
