@@ -40,8 +40,8 @@ RUN curl -sSfL https://cmake.org/files/v${CMAKE_VERSION%.*}/cmake-${CMAKE_VERSIO
 
 ENV VCPKG_ROOT=/usr/local/vcpkg
 # this must be set on arm. see https://learn.microsoft.com/en-us/vcpkg/users/config-environment#vcpkg_force_system_binaries
-ENV VCPKG_BINARY_SOURCES="clear;files,/github/workspace/vcpkg_cache,readwrite"
 ENV VCPKG_FORCE_SYSTEM_BINARIES=yes
+ENV VCPKG_BINARY_SOURCES="clear;files,/github/workspace/vcpkg_cache,readwrite"
 
 RUN cd /usr/local \
     && git clone https://github.com/microsoft/vcpkg \
