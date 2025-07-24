@@ -44,26 +44,30 @@ fi
 for SAFE in \
     /github/workspace \
     /__w/ziti-tunnel-sdk-c/ziti-tunnel-sdk-c \
-    /mnt ; do
-        git config --global --add safe.directory ${SAFE}
+    /mnt \
+    /usr/local/vcpkg
+do
+    git config --global --add safe.directory ${SAFE}
 done
 
+mkdir -p /github/workspace/vcpkg_cache
+
 (
-  cd "${VCPKG_ROOT}"
-  git checkout master
-  git pull
-  ./bootstrap-vcpkg.sh -disableMetrics
+    cd "${VCPKG_ROOT}"
+    git checkout master
+    git pull
+    ./bootstrap-vcpkg.sh -disableMetrics
 )
 
 cmake -E make_directory ./build
 cmake \
-  --preset "${cmake_preset}" \
-  -DCMAKE_BUILD_TYPE="${cmake_config}" \
-  -DVCPKG_OVERLAY_PORTS=./.github/actions/openziti-tunnel-build-action/gh-release/vcpkg-overlays \
-  -S . \
-  -B ./build
+    --preset "${cmake_preset}" \
+    -DCMAKE_BUILD_TYPE="${cmake_config}" \
+    -DVCPKG_OVERLAY_PORTS=./.github/actions/openziti-tunnel-build-action/gh-release/vcpkg-overlays \
+    -S . \
+    -B ./build
 cmake \
-  --build ./build \
-  --config "${cmake_config}" \
-  --target bundle \
-  --verbose
+    --build ./build \
+    --config "${cmake_config}" \
+    --target bundle \
+    --verbose

@@ -41,6 +41,8 @@ jobs:
         id: parse
         shell: bash
         run: |
+          set -o pipefail
+          set -o xtrace
           if [[ "${GITHUB_REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "GITHUB_REF_NAME=${GITHUB_REF_NAME} is a semver release ref"
             echo "version=${GITHUB_REF_NAME#v}" | tee -a $GITHUB_OUTPUT
@@ -64,6 +66,8 @@ jobs:
         id: set_matrix
         shell: bash
         run: |
+          set -o pipefail
+          set -o xtrace
           matrix="$(
             yq --output-format json .github/cpack-matrix.yml \
             | jq --compact-output '.cpack_matrix'
@@ -87,6 +91,8 @@ jobs:
       - name: Tag Latest ziti-edge-tunnel 
         shell: bash
         run: >
+          set -o pipefail;
+          set -o xtrace;
           docker buildx imagetools create --tag
           ${{ env.ZITI_EDGE_TUNNEL_IMAGE }}:latest
           ${{ env.ZITI_EDGE_TUNNEL_IMAGE }}:${{ needs.parse_version.outputs.version }}
@@ -94,6 +100,8 @@ jobs:
       - name: Tag Latest ziti-host
         shell: bash
         run: >
+          set -o pipefail;
+          set -o xtrace;
           docker buildx imagetools create --tag
           ${{ env.ZITI_HOST_IMAGE }}:latest
           ${{ env.ZITI_HOST_IMAGE }}:${{ needs.parse_version.outputs.version }}
@@ -122,6 +130,8 @@ jobs:
         if: matrix.distro.type == 'rpm'
         shell: bash
         run: >
+          set -o pipefail;
+          set -o xtrace;
           jf rt copy
           --recursive=false
           --flat=true
@@ -133,6 +143,8 @@ jobs:
         if: matrix.distro.type == 'deb'
         shell: bash
         run: >
+          set -o pipefail;
+          set -o xtrace;
           jf rt copy
           --recursive=false
           --flat=true

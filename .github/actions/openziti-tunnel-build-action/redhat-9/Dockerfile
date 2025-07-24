@@ -1,6 +1,6 @@
 ARG CMAKE_VERSION="3.26.3"
 
-FROM rockylinux:9
+FROM quay.io/almalinuxorg/almalinux:9.6-20250611
 
 ARG CMAKE_VERSION
 
@@ -13,7 +13,8 @@ ENV PATH="/usr/local/:${PATH}"
 ENV GIT_DISCOVERY_ACROSS_FILESYSTEM=1
 ENV TZ=UTC
 
-RUN dnf install -y \
+RUN dnf update --assumeyes --nobest \
+    && dnf install --assumeyes --nobest \
         "@Development Tools" \
         dnf-plugins-core \
         iproute \
@@ -25,7 +26,7 @@ RUN dnf install -y \
         perl-FindBin perl-IPC-Cmd perl-File-Compare perl-File-Copy \
         libatomic \
     && dnf config-manager --set-enabled crb \
-    && dnf install -y \
+    && dnf install --assumeyes --nobest \
         doxygen \
         graphviz \
         git \
@@ -33,7 +34,7 @@ RUN dnf install -y \
         protobuf-c-devel \
         openssl-devel \
         ninja-build \
-    && dnf clean all 
+    && dnf clean all
 
 RUN curl -sSfL https://cmake.org/files/v${CMAKE_VERSION%.*}/cmake-${CMAKE_VERSION}-linux-$(uname -m).sh -o cmake.sh \
     && (bash cmake.sh --skip-license --prefix=/usr/local) \
@@ -44,10 +45,10 @@ ENV GIT_CONFIG_GLOBAL="/tmp/ziti-builder-gitconfig"
 ENV VCPKG_ROOT=/usr/local/vcpkg
 # this must be set on arm. see https://learn.microsoft.com/en-us/vcpkg/users/config-environment#vcpkg_force_system_binaries
 ENV VCPKG_FORCE_SYSTEM_BINARIES=yes
+ENV VCPKG_BINARY_SOURCES="clear;files,/github/workspace/vcpkg_cache,readwrite"
 
 RUN cd /usr/local \
     && git clone https://github.com/microsoft/vcpkg \
-    && ./vcpkg/bootstrap-vcpkg.sh -disableMetrics \
     && chmod -R ugo+rwX /usr/local/vcpkg
 
 WORKDIR /github/workspace
