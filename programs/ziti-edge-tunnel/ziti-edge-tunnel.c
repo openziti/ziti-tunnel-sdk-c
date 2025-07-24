@@ -665,21 +665,17 @@ static void on_event(const base_event *ev) {
             if (id == NULL) {
                 break;
             }
-            set_mfa_status(ev->identifier, id->MfaEnabled, true);
+            set_mfa_status(ev->identifier, true, true);
             send_tunnel_status("status");
             mfa_status_event mfa_sts_event = {
-                    .Op = strdup("mfa"),
-                    .Action = strdup(mfa_ev->operation),
-                    .Identifier = strdup(mfa_ev->identifier),
+                    .Op = "mfa",
+                    .Action = mfa_ev->operation,
+                    .Identifier = mfa_ev->identifier,
+                    .Fingerprint = id->FingerPrint,
                     .Successful = false
             };
 
-            if (id->FingerPrint) {
-                mfa_sts_event.Fingerprint = strdup(id->FingerPrint);
-            }
-
             send_events_message(&mfa_sts_event, (to_json_fn) mfa_status_event_to_json, true);
-            free_mfa_status_event(&mfa_sts_event);
             break;
         }
 
@@ -2167,17 +2163,17 @@ static int submit_mfa_opts(int argc, char *argv[]) {
     int c, option_index, errors = 0;
     optind = 0;
 
-    tunnel_submit_mfa *submit_mfa_options = calloc(1, sizeof(tunnel_submit_mfa));
+    tunnel_submit_mfa submit_mfa_options = {};
     cmd.command = TunnelCommand_SubmitMFA;
 
     while ((c = getopt_long(argc, argv, "i:c:",
                             opts, &option_index)) != -1) {
         switch (c) {
             case 'i':
-                submit_mfa_options->identifier = optarg;
+                submit_mfa_options.identifier = optarg;
                 break;
             case 'c':
-                submit_mfa_options->code = optarg;
+                submit_mfa_options.code = optarg;
                 break;
             default: {
                 fprintf(stderr, "Unknown option '%c'\n", c);
@@ -2190,8 +2186,7 @@ static int submit_mfa_opts(int argc, char *argv[]) {
     CHECK_COMMAND_ERRORS(errors);
 
     size_t json_len;
-    cmd.data = tunnel_submit_mfa_to_json(submit_mfa_options, MODEL_JSON_COMPACT, &json_len);
-    free(submit_mfa_options);
+    cmd.data = tunnel_submit_mfa_to_json(&submit_mfa_options, MODEL_JSON_COMPACT, &json_len);
 
     return optind;
 }
