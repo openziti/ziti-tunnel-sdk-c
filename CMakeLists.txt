@@ -148,7 +148,7 @@ if(CMAKE_SYSTEM_PROCESSOR STREQUAL AMD64)
 elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL aarch64)
     set(bundle_processor "arm64")
 else()
-    set(bundle_processor ${CMAKE_SYSTEM_PROCESSOR})
+    string(TOLOWER ${CMAKE_SYSTEM_PROCESSOR} bundle_processor)
 endif()
 
 macro(BUNDLE_COMP comp)
