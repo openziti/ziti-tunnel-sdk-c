@@ -492,12 +492,13 @@ static void WINAPI if_change_cb(PVOID CallerContext, PMIB_IPINTERFACE_ROW Row, M
             route->NextHop = default_rt.NextHop;
             route->InterfaceIndex = default_rt.InterfaceIndex;
             route->InterfaceLuid = default_rt.InterfaceLuid;
-            if (SetIpForwardEntry2(route) != NO_ERROR) {
+            DWORD rc = SetIpForwardEntry2(route);
+            if (rc != NO_ERROR) {
                 char err[256];
-                FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM, NULL, GetLastError(),
+                FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM, NULL, rc,
                               MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
                               err, sizeof(err), NULL);
-                ZITI_LOG(WARN, "failed to update route[%s]: %s", dest, err);
+                ZITI_LOG(WARN, "failed to update route[%s]: %lu(%s)", dest, rc, err);
             }
         }
     }
