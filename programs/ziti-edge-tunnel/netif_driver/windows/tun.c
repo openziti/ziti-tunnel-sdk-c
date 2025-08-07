@@ -34,7 +34,6 @@
 #include <ziti/ziti_log.h>
 #include <netioapi.h>
 #include <stdlib.h>
-#include <combaseapi.h>
 #include <ziti/model_support.h>
 
 #include "tun.h"
@@ -437,43 +436,71 @@ int tun_del_route(netif_handle tun, const char *dest) {
     return 0;
 }
 
-static void WINAPI if_change_cb(PVOID CallerContext, PMIB_IPINTERFACE_ROW Row, MIB_NOTIFICATION_TYPE NotificationType) {
-    struct netif_handle_s *tun = CallerContext;
-
-    MIB_IPFORWARD_ROW2 rt = {0};
-    rt.DestinationPrefix.Prefix.Ipv4.sin_family = AF_INET;
-    ZITI_LOG(DEBUG, "interface change: if_idx = %d, change = %d", Row ? Row->InterfaceIndex : 0, NotificationType);
-    int rc = GetIpForwardEntry2(&rt);
-    if (rc == NO_ERROR) {
-        if (default_rt.InterfaceIndex != rt.InterfaceIndex) {
-            ZITI_LOG(INFO, "default route is now via if_idx[%d]", rt.InterfaceIndex);
-            default_rt.InterfaceIndex = rt.InterfaceIndex;
-            default_rt.InterfaceLuid = rt.InterfaceLuid;
-            default_rt.Metric = rt.Metric;
-            default_rt.NextHop = rt.NextHop;
-
-            ZITI_LOG(INFO, "updating excluded routes");
-            const char *dest;
-            MIB_IPFORWARD_ROW2 *route;
-            MODEL_MAP_FOREACH(dest, route, &tun->excluded_routes) {
-                route->NextHop = rt.NextHop;
-                route->InterfaceIndex = rt.InterfaceIndex;
-                route->InterfaceLuid = rt.InterfaceLuid;
-                if (SetIpForwardEntry2(route) != NO_ERROR) {
-                    char err[256];
-                    FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM, NULL, GetLastError(),
-                                  MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-                                  err, sizeof(err), NULL);
-                    ZITI_LOG(WARN, "failed to update route[%s]: %d(%s)", dest, rc, err);
-                }
-            }
-        }
-    } else {
+static bool update_default_route(void) {
+    PMIB_IPFORWARD_TABLE2 table;
+    ULONG rc = GetIpForwardTable2(AF_INET, &table);
+    if (rc != NO_ERROR) {
         char err[256];
         FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM, NULL, GetLastError(),
                       MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
                       err, sizeof(err), NULL);
-        ZITI_LOG(WARN, "failed to get default route: %d(%s)", rc, err);
+        ZITI_LOG(WARN, "failed to get forward table: %lu(%s)", rc, err);
+        return false;
+    }
+
+    MIB_IPFORWARD_ROW2 *best_rt = NULL;
+
+    // Find 0.0.0.0/0 route with the lowest metric
+    for (ULONG i = 0; i < table->NumEntries; i++) {
+        MIB_IPFORWARD_ROW2 *rt = &table->Table[i];
+
+        if (rt->DestinationPrefix.PrefixLength == 0 &&
+            rt->DestinationPrefix.Prefix.Ipv4.sin_family == AF_INET) {
+
+            if (best_rt == NULL || rt->Metric < best_rt->Metric) {
+                best_rt = rt;
+            }
+        }
+    }
+
+    bool changed = false;
+    if (best_rt) {
+        if (default_rt.InterfaceIndex != best_rt->InterfaceIndex || default_rt.Metric != best_rt->Metric) {
+            ZITI_LOG(INFO, "default route is now via if_idx[%lu], metric=%lu",
+                     best_rt->InterfaceIndex, best_rt->Metric);
+            memcpy(&default_rt, best_rt, sizeof(MIB_IPFORWARD_ROW2));
+            changed = true;
+        }
+    } else {
+        ZITI_LOG(WARN, "no default route found");
+    }
+
+    FreeMibTable(table);
+    return changed;
+}
+
+static void WINAPI if_change_cb(PVOID CallerContext, PMIB_IPINTERFACE_ROW Row, MIB_NOTIFICATION_TYPE NotificationType) {
+    struct netif_handle_s *tun = CallerContext;
+
+    ZITI_LOG(DEBUG, "interface change: if_idx = %lu, change = %d", Row ? Row->InterfaceIndex : 0, NotificationType);
+    bool changed = update_default_route();
+    if (changed) {
+        ZITI_LOG(INFO, "updating excluded routes");
+        const char *dest;
+        MIB_IPFORWARD_ROW2 *route;
+        MODEL_MAP_FOREACH(dest, route, &tun->excluded_routes) {
+            route->NextHop = default_rt.NextHop;
+            route->InterfaceIndex = default_rt.InterfaceIndex;
+            route->InterfaceLuid = default_rt.InterfaceLuid;
+            DWORD rc = SetIpForwardEntry2(route);
+            if (rc != NO_ERROR) {
+                char err[256];
+                FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM, NULL, rc,
+                              MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+                              err, sizeof(err), NULL);
+                ZITI_LOG(WARN, "failed to update route[%s]: %lu(%s)", dest, rc, err);
+            }
+        }
     }
 }
 
