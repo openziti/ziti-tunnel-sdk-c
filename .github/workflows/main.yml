@@ -42,7 +42,7 @@ jobs:
           set -x
           ls -horRAS ./downloads
           mkdir -p ./build/amd64/linux/
-          unzip -d ./build/amd64/linux/ ./downloads/linux-x64/ziti-edge-tunnel-Linux_x86_64.zip
+          unzip -d ./build/amd64/linux/ ./downloads/ziti-edge-tunnel-Linux_x86_64.zip
 
       - name: Run the Compose Test Script
         shell: bash
