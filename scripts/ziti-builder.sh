@@ -70,7 +70,7 @@ function set_workspace(){
             --volume "${REPODIR}:${WORKSPACE}" \
             "${ZITI_SDK_DIR:+--volume=${ZITI_SDK_DIR}:${ZITI_SDK_DIR}}" \
             --platform "linux/amd64" \
-            --env "VCPKG_DEFAULT_BINARY_CACHE=${WORKSPACE}/.cache" \
+            --env "VCPKG_BINARY_SOURCES=clear;files,${WORKSPACE}/vcpkg_cache,readwrite" \
             --env "TLSUV_TLSLIB" \
             --env "ZITI_SDK_DIR" \
             --env "ZITI_SDK_VERSION" \
@@ -119,10 +119,10 @@ function main() {
         exec "${@}"
     else
         [[ -d ./build ]] && rm -rf ./build
-        [[ -d ./.cache ]] || mkdir -v ./.cache
+        mkdir -pv ./vcpkg_cache
         cmake \
             -E make_directory \
-            ./build  
+            ./build
         cmake \
             --preset "${CMAKE_PRESET:-ci-linux-x64}" \
             -DCMAKE_BUILD_TYPE="${CMAKE_CONFIG:-Release}" \
