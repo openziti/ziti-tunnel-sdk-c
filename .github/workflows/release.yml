@@ -21,13 +21,11 @@ jobs:
         uses: actions/download-artifact@v5
         with:
           path: ${{ runner.workspace }}/downloads
-          merge-multiple: false  # some artifacts have the same name and so can not be aggregated in a single directory
 
       - name: List Release Artifacts
         run: ls -horRAS ${{runner.workspace}}/downloads/
 
-      # the purpose of this step is to identify the release that was created for the current tag and upload the
-      # artifacts that do not need to be renamed
+      # the purpose of this step is to upload the artifacts to the GH Release for the current tag
       - name: Release
         id: get_release
         uses: softprops/action-gh-release@v2

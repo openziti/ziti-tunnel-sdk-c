@@ -35,7 +35,6 @@ jobs:
         with:
           pattern: linux-*
           path: ./downloads
-          merge-multiple: false  # some artifacts have the same name and so can not be aggregated in a single directory
 
       - name: Unpack CMake Artifacts
         shell: bash
@@ -43,8 +42,8 @@ jobs:
           set -x
           ls -horRAS ./downloads
           mkdir -p ./build/{arm64,amd64}/linux/
-          unzip -d ./build/arm64/linux/ ./downloads/ziti-edge-tunnel-Linux_arm64.zip
-          unzip -d ./build/amd64/linux/ ./downloads/ziti-edge-tunnel-Linux_x86_64.zip
+          unzip -d ./build/arm64/linux/ ./downloads/linux-arm64/ziti-edge-tunnel-Linux_arm64.zip
+          unzip -d ./build/amd64/linux/ ./downloads/linux-x64/ziti-edge-tunnel-Linux_x86_64.zip
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
