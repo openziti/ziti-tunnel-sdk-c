@@ -21,7 +21,7 @@ jobs:
         uses: actions/download-artifact@v5
         with:
           path: ${{ runner.workspace }}/downloads
-          merge_multiple: false  # some artifacts have the same name and so can not be aggregated in a single directory
+          merge-multiple: false  # some artifacts have the same name and so can not be aggregated in a single directory
 
       - name: List Release Artifacts
         run: ls -horRAS ${{runner.workspace}}/downloads/
