@@ -47,32 +47,36 @@ if [ "$1" = "configure" ]; then
   chmod 0770 "@ZITI_IDENTITY_DIR@"
   find "@ZITI_IDENTITY_DIR@" -maxdepth 1 -name "*.json" -type f -exec chown ziti:ziti "{}" + -exec chmod 0660 "{}" +
 
-  # If polkitd is installed, skip PolicyKit-1 evaluation and do not place a .pkla file
-  if dpkg-query -W -f='${Status}' polkitd 2>/dev/null | grep -q "install ok installed"; then
-    : # no-op when polkitd is present
-  else
-    # determine PolicyKit-1 version robustly
-    policykit_version="$(dpkg-query -Wf '${Version}' policykit-1 2>/dev/null || true)"
-    max_policykit_version="0.106"
-    highest_policykit_version="$(printf '%s\n' "${policykit_version}" "${max_policykit_version}" | sort -V | tail -n1)"
+  # Determine installed policy kit version:
+  # Prefer polkitd if installed; otherwise fall back to policykit-1 (older releases)
+  polkit_pkg=""
+  if dpkg-query -W -f='${Status}' polkitd 2>/dev/null | grep -q '^install ok installed$'; then
+    polkit_pkg="polkitd"
+  elif dpkg-query -W -f='${Status}' policykit-1 2>/dev/null | grep -q '^install ok installed$'; then
+    polkit_pkg="policykit-1"
+  fi
 
-    # determine installed systemd version robustly
-    systemd_version="$(dpkg-query -Wf '${Version}' systemd 2>/dev/null || true)"
-    min_systemd_version="243"
-    lowest_systemd_version="$(printf '%s\n' "${systemd_version}" "${min_systemd_version}" | sort -V | head -n1)"
+  polkit_version="$(dpkg-query -Wf '${Version}' "${polkit_pkg}" 2>/dev/null || true)"
+  max_polkit_version="0.106"
+  highest_polkit_version="$(printf '%s\n' "${polkit_version}" "${max_polkit_version}" | sort -V | tail -n1)"
 
-    # install PolicyKit localauthority policy if PolicyKit-1 < v0.106 (https://askubuntu.com/questions/1287924/whats-going-on-with-policykit)
-    if [ -n "${policykit_version}" ] && [ "${policykit_version}" != "${max_policykit_version}" ] && [ "${max_policykit_version}" = "${highest_policykit_version}" ]; then
-      # run as root unless systemd >= v243 (required set-llmnr introduced v243 https://github.com/systemd/systemd/commit/52aaef0f5dc81b9a08d720f551eac53ac88aa596)
-      if [ -n "${systemd_version}" ] && { [ "${systemd_version}" = "${min_systemd_version}" ] || [ "${min_systemd_version}" = "${lowest_systemd_version}" ]; }; then
-        cp "@CPACK_SHARE_DIR@/@ZITI_POLKIT_PKLA_FILE@.sample" "/var/lib/polkit-1/localauthority/10-vendor.d/@ZITI_POLKIT_PKLA_FILE@"
-        db_set ziti_edge_tunnel/install_pkla true
-      else
-        service_user=root
-        override_dir="@SYSTEMD_UNIT_DIR@/@SYSTEMD_UNIT_FILE_NAME@.d"
-        mkdir -p "${override_dir}/"
-        ( echo '[Service]'; echo "User=root" ) > "${override_dir}/10-run-as-root.conf"
-      fi
+  # determine installed systemd version robustly
+  systemd_version="$(dpkg-query -Wf '${Version}' systemd 2>/dev/null || true)"
+  min_systemd_version="243"
+  lowest_systemd_version="$(printf '%s\n' "${systemd_version}" "${min_systemd_version}" | sort -V | head -n1)"
+
+  # install PolicyKit localauthority policy if polkitd < v0.106 (https://askubuntu.com/questions/1287924/whats-going-on-with-policykit)
+  if [ -n "${polkit_version}" ] && [ "${polkit_version}" != "${max_polkit_version}" ] && [ "${max_polkit_version}" = "${highest_polkit_version}" ]; then
+    # run as root unless systemd >= v243 (required set-llmnr introduced v243 https://github.com/systemd/systemd/commit/52aaef0f5dc81b9a08d720f551eac53ac88aa596)
+    if [ -n "${systemd_version}" ] && { [ "${systemd_version}" = "${min_systemd_version}" ] || [ "${min_systemd_version}" = "${lowest_systemd_version}" ]; }; then
+      install -D -m 0644 "@CPACK_SHARE_DIR@/@ZITI_POLKIT_PKLA_FILE@.sample" \
+        "/var/lib/polkit-1/localauthority/10-vendor.d/@ZITI_POLKIT_PKLA_FILE@"
+      db_set ziti_edge_tunnel/install_pkla true
+    else
+      service_user=root
+      override_dir="@SYSTEMD_UNIT_DIR@/@SYSTEMD_UNIT_FILE_NAME@.d"
+      mkdir -p "${override_dir}/"
+      ( echo '[Service]'; echo "User=root" ) > "${override_dir}/10-run-as-root.conf"
     fi
   fi
 
