@@ -70,7 +70,7 @@ function set_workspace(){
             --volume "${REPODIR}:${WORKSPACE}" \
             "${ZITI_SDK_DIR:+--volume=${ZITI_SDK_DIR}:${ZITI_SDK_DIR}}" \
             --platform "linux/amd64" \
-            --env "VCPKG_BINARY_SOURCES=clear;files,${WORKSPACE}/vcpkg_cache,readwrite" \
+            --env "VCPKG_BINARY_SOURCES=clear\;files,${WORKSPACE}/vcpkg_cache,readwrite" \
             --env "TLSUV_TLSLIB" \
             --env "ZITI_SDK_DIR" \
             --env "ZITI_SDK_VERSION" \
