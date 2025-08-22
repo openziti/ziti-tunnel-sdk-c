@@ -425,6 +425,9 @@ bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void 
 
             free_tunnel_status_change(&tunnel_status_change_opts);
         }
+#else
+        case TunnelCommand_ServiceControl:
+        case TunnelCommand_StatusChange:
 #endif
         case TunnelCommand_Unknown:
         case TunnelCommand_ZitiDump:
