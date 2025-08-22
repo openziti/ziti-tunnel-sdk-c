@@ -197,6 +197,8 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
                     free_tunnel_on_off_identity(&on_off_id);
                     break;
                 }
+                default:
+                    ZITI_LOG(DEBUG, "ignoring command %s", TunnelCommands.name(tnl_res_cmd.command));
                 case TunnelCommand_Unknown: {
                     break;
                 }
