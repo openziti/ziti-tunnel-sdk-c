@@ -390,7 +390,7 @@ static bool ziti_address_translate(ziti_address *dst_ip_inout, const ziti_addres
     }
     return true;
 }
-static ziti_address_translation *find_translation(const ziti_address *ip, const ziti_address_translation_array zats) {
+static ziti_address_translation *find_translation(const ziti_address *ip, ziti_address_translation_array zats) {
     char ip_str[64], from_str[64];
     ziti_address_print(ip_str, sizeof(ip_str), ip);
     for (int i = 0; zats != NULL && zats[i] != NULL; i++) {
@@ -577,7 +577,7 @@ static hosted_io_context hosted_io_context_new(struct hosted_service_ctx_s *serv
     io->computed_dst_ip_or_hn = dst_ip_or_hn;
     io->computed_dst_port = dst_port;
 
-    int socktype, uv_err = -1;
+    int socktype, uv_err;
     int protocol_number = get_protocol_id(dst_protocol);
     switch (protocol_number) {
         case IPPROTO_TCP:
