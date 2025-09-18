@@ -45,7 +45,7 @@ static bool is_buffer_available(size_t buf_len, size_t max_size, char* script) {
     return true;
 }
 
-static bool exec_process(uv_loop_t *ziti_loop, const char* program, const char* args[]) {
+static bool exec_process(uv_loop_t *ziti_loop, const char* program, char* args[]) {
     uv_process_t* process = calloc(1, sizeof(uv_process_t));
     uv_process_options_t options = {0};
     uv_stdio_container_t stdio[3];
@@ -169,7 +169,7 @@ void chunked_add_nrpt_rules(uv_loop_t *ziti_loop, hostname_list_t *hostnames, co
 
     ZITI_LOG(DEBUG, "Executing Add domains NRPT script :");
     ZITI_LOG(DEBUG, "%s", cmd);
-    const char* args[] = {"powershell", "-Command", script, NULL};
+    char* args[] = {"powershell", "-Command", script, NULL};
     bool result = exec_process(ziti_loop, args[0], args);
     if (!result) {
         ZITI_LOG(WARN, "Add domains NRPT script: %d(err=%lu)", result, GetLastError());
@@ -260,7 +260,7 @@ void chunked_remove_nrpt_rules(uv_loop_t *ziti_loop, hostname_list_t *hostnames)
 
     ZITI_LOG(DEBUG, "Executing Remove domains NRPT script: ");
     ZITI_LOG(DEBUG, "%s", cmd);
-    const char* args[] = {"powershell", "-Command", script, NULL};
+    char* args[] = {"powershell", "-Command", script, NULL};
     bool result = exec_process(ziti_loop, args[0], args);
     if (!result) {
         ZITI_LOG(WARN, "Remove domains NRPT script: %d(err=%lu)", result, GetLastError());
@@ -403,7 +403,7 @@ void chunked_remove_and_add_nrpt_rules(uv_loop_t *ziti_loop, hostname_list_t *ho
 
     ZITI_LOG(DEBUG, "Executing Remove and add domains NRPT script: ");
     ZITI_LOG(DEBUG, "%s", cmd);
-    const char* args[] = {"powershell", "-Command", script, NULL};
+    char* args[] = {"powershell", "-Command", script, NULL};
     bool result = exec_process(ziti_loop, args[0], args);
     if (!result) {
         ZITI_LOG(WARN, "Remove and add domains NRPT script: %d(err=%lu)", result, GetLastError());
@@ -512,7 +512,7 @@ void update_interface_metric(uv_loop_t *ziti_loop, const char *tun_name, int met
 
     ZITI_LOG(DEBUG, "Executing Update Interface metric script :");
     ZITI_LOG(DEBUG, "%s", cmd);
-    const char* args[] = {"powershell", "-Command", script, NULL};
+    char* args[] = {"powershell", "-Command", script, NULL};
     bool result = exec_process(ziti_loop, args[0], args);
     if (!result) {
         ZITI_LOG(WARN, "Update Interface metric script: %d(err=%lu)", result, GetLastError());
