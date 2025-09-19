@@ -65,7 +65,7 @@ static int update_file(const char *path, char *content, size_t content_len) {
     snprintf(backup, sizeof(backup), "%s.bak", path);
     CHECK_UV("create backup", uv_fs_rename(NULL, &fs_req, path, backup, NULL));
 
-    uv_os_fd_t f;
+    uv_file f;
     CHECK_UV("open new config", f = uv_fs_open(NULL, &fs_req, path, UV_FS_O_WRONLY | UV_FS_O_CREAT, (int) mode, NULL));
     uv_buf_t buf = uv_buf_init(content, content_len);
     CHECK_UV("write new config", uv_fs_write(NULL, &fs_req, f, &buf, 1, 0, NULL));
