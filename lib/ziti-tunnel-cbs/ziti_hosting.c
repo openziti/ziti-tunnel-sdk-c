@@ -41,21 +41,6 @@
 /********** hosting **********/
 static void on_bridge_close(uv_handle_t *handle);
 
-struct hosted_io_ctx_s {
-    struct hosted_service_ctx_s *service;
-    ziti_connection client;
-    tunneler_app_data *app_data;
-    char client_identity[80];
-    const char *computed_dst_protocol;
-    const char *computed_dst_ip_or_hn;
-    const char *computed_dst_port;
-    char resolved_dst[80];
-    union {
-        uv_tcp_t tcp;
-        uv_udp_t udp;
-    } server;
-};
-
 static void hosted_io_context_free(hosted_io_context io) {
     if (io) {
         if (io->app_data) {
@@ -126,15 +111,15 @@ static void free_hosted_service_ctx(struct hosted_service_ctx_s *hosted_ctx) {
     STAILQ_CLEAR(&hosted_ctx->allowed_source_addresses, safe_free);
 }
 
-static void hosted_server_close_cb(uv_handle_t *handle) {
-    struct hosted_io_ctx_s *io_ctx = handle->data;
+static void hosted_server_close_cb(underlay_conn_t *c) {
+    struct hosted_io_ctx_s *io_ctx = c->impl->get_data(c);
     if (io_ctx->client) {
         ziti_close(io_ctx->client, ziti_conn_close_cb);
         ZITI_LOG(TRACE, "hosted_service[%s] client[%s] server_conn[%p] closed",
-                 io_ctx->service->service_name, io_ctx->client_identity, handle);
+                 io_ctx->service->service_name, io_ctx->client_identity, c->handle);
     } else {
-        ZITI_LOG(TRACE, "server_conn[%p] closed", handle);
-        handle->data = NULL;
+        ZITI_LOG(TRACE, "server_conn[%p] closed", c->handle);
+        c->impl->set_data(c, NULL);
         safe_free(io_ctx);
     }
 }
@@ -145,7 +130,7 @@ static void hosted_server_close(struct hosted_io_ctx_s *io_ctx) {
         return;
     }
 
-    safe_close(&io_ctx->server, hosted_server_close_cb);
+    io_ctx->underlay->impl->close(io_ctx->underlay, hosted_server_close_cb);
 }
 
 void *local_addr(uv_handle_t *h, struct sockaddr *name, int *len) {
@@ -171,6 +156,36 @@ void *local_addr(uv_handle_t *h, struct sockaddr *name, int *len) {
     return name;
 }
 
+static void start_bridge(ziti_connection clt, struct hosted_io_ctx_s *io_ctx) {
+    int rc;
+    uv_handle_t *tun_poll = NULL;
+    uv_handle_t *server = (uv_handle_t *) io_ctx->underlay->handle;
+    uv_os_fd_t fd;
+    if ((rc = uv_fileno(server, &fd)) != 0) {
+        ZITI_LOG(ERROR, "failed to bridge client[%s] with hosted_service[%s] fd[%d]: %s",
+                 io_ctx->client_identity, io_ctx->service->service_name,
+                 fd, uv_strerror(rc));
+        hosted_server_close(io_ctx);
+        return;
+    }
+
+    struct sockaddr_storage name_storage;
+    struct sockaddr *name = (struct sockaddr *) &name_storage;
+    int len = sizeof(name_storage);
+    local_addr(server, name, &len);
+    uv_getnameinfo_t req = {0};
+    uv_getnameinfo(io_ctx->service->loop, &req, NULL, name, NI_NUMERICHOST|NI_NUMERICSERV);
+    ZITI_LOG(DEBUG, "hosted_service[%s] client[%s] local_addr[%s:%s] fd[%d] server[%s] connected %d", io_ctx->service->service_name,
+             io_ctx->client_identity, req.host, req.service, fd, io_ctx->resolved_dst, len);
+    rc = ziti_conn_bridge(clt, server, on_bridge_close);
+    if (rc != 0) {
+        ZITI_LOG(ERROR, "failed to bridge client[%s] with hosted_service[%s] laddr[%s:%s] fd[%d]: %s",
+                 io_ctx->client_identity, io_ctx->service->service_name,
+                 req.host, req.service, fd, uv_strerror(rc));
+        hosted_server_close(io_ctx);
+    }
+}
+
 /** called by ziti sdk when a client connection is established (or fails) */
 static void on_hosted_client_connect_complete(ziti_connection clt, int err) {
     struct hosted_io_ctx_s *io_ctx = ziti_conn_data(clt);
@@ -182,31 +197,10 @@ static void on_hosted_client_connect_complete(ziti_connection clt, int err) {
     }
 
     if (err == ZITI_OK) {
-        int rc;
-        uv_handle_t *server = (uv_handle_t *) &io_ctx->server.tcp;
-        uv_os_fd_t fd;
-        if ((rc = uv_fileno(server, &fd)) != 0) {
-            ZITI_LOG(ERROR, "failed to bridge client[%s] with hosted_service[%s] fd[%d]: %s",
-                     io_ctx->client_identity, io_ctx->service->service_name,
-                     fd, uv_strerror(rc));
-            hosted_server_close(io_ctx);
-            return;
-        }
-
-        struct sockaddr_storage name_storage;
-        struct sockaddr *name = (struct sockaddr *) &name_storage;
-        int len = sizeof(name_storage);
-        local_addr(server, name, &len);
-        uv_getnameinfo_t req = {0};
-        uv_getnameinfo(io_ctx->service->loop, &req, NULL, name, NI_NUMERICHOST|NI_NUMERICSERV);
-        ZITI_LOG(DEBUG, "hosted_service[%s] client[%s] local_addr[%s:%s] fd[%d] server[%s] connected %d", io_ctx->service->service_name,
-                 io_ctx->client_identity, req.host, req.service, fd, io_ctx->resolved_dst, len);
-        rc = ziti_conn_bridge(clt, server, on_bridge_close);
-        if (rc != 0) {
-            ZITI_LOG(ERROR, "failed to bridge client[%s] with hosted_service[%s] laddr[%s:%s] fd[%d]: %s",
-                     io_ctx->client_identity, io_ctx->service->service_name,
-                     req.host, req.service, fd, uv_strerror(rc));
-            hosted_server_close(io_ctx);
+        if (!io_ctx->masquerading) {
+            start_bridge(clt, io_ctx);
+        } else {
+            // todo start lwip
         }
     } else {
         ZITI_LOG(ERROR, "hosted_service[%s] client[%s] failed to connect: %s", io_ctx->service->service_name,
@@ -216,11 +210,11 @@ static void on_hosted_client_connect_complete(ziti_connection clt, int err) {
 }
 
 
-static void complete_hosted_tcp_connection(hosted_io_context io_ctx) {
+static void complete_hosted_uv_tcp_connection(hosted_io_context io_ctx) {
     ZITI_LOG(DEBUG, "hosted_service[%s], client[%s]: connected to server %s", io_ctx->service->service_name,
              io_ctx->client_identity, io_ctx->resolved_dst);
 
-    uv_tcp_t *tcp = &io_ctx->server.tcp;
+    uv_tcp_t *tcp = io_ctx->underlay->handle;
 
     if (uv_tcp_keepalive(tcp, 1, KEEPALIVE_DELAY) != 0) {
         ZITI_LOG(WARN, "hosted_service[%s], client[%s]: failed to set TCP keepalive",
@@ -231,38 +225,54 @@ static void complete_hosted_tcp_connection(hosted_io_context io_ctx) {
                  io_ctx->service->service_name, io_ctx->client_identity);
     }
 
-    ziti_accept(io_ctx->client, on_hosted_client_connect_complete, NULL);
+    ziti_accept(io_ctx->client, on_hosted_client_connect_complete, NULL); // no read cb needed b/c the bridge will handle i/o
+}
+
+static bool do_hosted_server_connect_complete(underlay_conn_t *c, int status);
+
+static void on_hosted_udp_server_connect_complete(underlay_conn_t *c, int status) {
+    bool complete = do_hosted_server_connect_complete(c, status);
+    if (complete) {
+        hosted_io_context io = c->impl->get_data(c);
+        ziti_accept(io->client, on_hosted_client_connect_complete, NULL);
+    }
 }
 
 /**
- * called by libuv when a connection is established (or failed) with a TCP server
+ * called by the underlay implementation when a connection is established (or failed) with a TCP server
  *
  *  c is the uv_tcp_connect_t that was initialized in on_hosted_client_connect_complete
  *  c->handle is the uv_tcp_t (server stream) that was initialized in on_hosted_client_connect
  */
-static void on_hosted_tcp_server_connect_complete(uv_connect_t *c, int status) {
-    if (c == NULL || c->handle == NULL || c->handle->data == NULL) {
-        ZITI_LOG(ERROR, "null handle or io_ctx");
-        if (c) free(c);
-        return;
+static void on_hosted_tcp_server_connect_complete(underlay_conn_t *c, int status) {
+    bool complete = do_hosted_server_connect_complete(c, status);
+    if (complete) {
+        hosted_io_context io = c->impl->get_data(c);
+        complete_hosted_uv_tcp_connection(io);
+        ziti_accept(io->client, on_hosted_client_connect_complete, NULL);
     }
-    struct hosted_io_ctx_s *io_ctx = c->handle->data;
+}
+
+static bool do_hosted_server_connect_complete(underlay_conn_t *c, int status) {
+    if (c == NULL || c->handle == NULL || c->impl->get_data(c) == NULL) {
+        ZITI_LOG(ERROR, "null handle or io_ctx");
+        return false;
+    }
+    struct hosted_io_ctx_s *io_ctx = c->impl->get_data(c);
     if (io_ctx->client == NULL) {
         ZITI_LOG(ERROR, "client closed before server connection was established");
         hosted_server_close(io_ctx);
-        free(c);
-        return;
+        return false;
     }
 
     if (status < 0) {
         ZITI_LOG(ERROR, "hosted_service[%s], client[%s]: connect to %s failed: %s", io_ctx->service->service_name,
                  io_ctx->client_identity, io_ctx->resolved_dst, uv_strerror(status));
         hosted_server_close(io_ctx);
-        free(c);
-        return;
+        return false;
     }
-    complete_hosted_tcp_connection(io_ctx);
-    free(c);
+
+    return true;
 }
 
 /**
@@ -277,14 +287,15 @@ static void on_proxy_connect(uv_os_sock_t sock, int status, void *ctx) {
         return;
     }
 
-    int uv_err = uv_tcp_open(&io->server.tcp, sock);
+    int uv_err = uv_tcp_open(io->underlay->handle, sock); // todo only for uv(?)
     if (uv_err != 0) {
         ZITI_LOG(ERROR, "uv_tcp_open failed: %s (e=%d)", uv_strerror(uv_err), uv_err);
         hosted_server_close(io);
         return;
     }
 
-    complete_hosted_tcp_connection(io);
+    complete_hosted_uv_tcp_connection(io);
+    ziti_accept(io->client, on_hosted_client_connect_complete, NULL);
 }
 
 
@@ -537,24 +548,13 @@ static int do_bind(hosted_io_context io, const char *addr, int socktype) {
         return -1;
     }
 
-    switch (hints.ai_protocol) {
-        case IPPROTO_TCP:
-            uv_err = uv_tcp_bind(&io->server.tcp, ai_req.addrinfo->ai_addr, 0);
-            break;
-        case IPPROTO_UDP:
-            uv_err = uv_udp_bind(&io->server.udp, ai_req.addrinfo->ai_addr, 0);
-            break;
-        default:
-            ZITI_LOG(ERROR, "hosted_service[%s] client[%s] unsupported protocol %d when binding source address",
-                     io->service->service_name, io->client_identity, hints.ai_protocol);
-            uv_err = UV_EINVAL;
-    }
+    int err = io->underlay->impl->bind(io->underlay, ai_req.addrinfo->ai_addr, 0);
 
     uv_freeaddrinfo(ai_req.addrinfo);
 
-    if (uv_err != 0) {
+    if (!io->underlay->impl->is_ok(err)) {
         ZITI_LOG(ERROR, "hosted_service[%s] client[%s]: bind failed: %s", io->service->service_name,
-                 io->client_identity, uv_strerror(uv_err));
+                 io->client_identity, io->underlay->impl->strerror(err));
         return -1;
     }
 
@@ -577,18 +577,18 @@ static hosted_io_context hosted_io_context_new(struct hosted_service_ctx_s *serv
     io->computed_dst_ip_or_hn = dst_ip_or_hn;
     io->computed_dst_port = dst_port;
 
+    io->masquerading = app_data && app_data->source_addr && app_data->source_addr[0] != '\0';
+    char err[128];
     int socktype, uv_err;
     int protocol_number = get_protocol_id(dst_protocol);
     switch (protocol_number) {
         case IPPROTO_TCP:
-            uv_err = uv_tcp_init(service_ctx->loop, &io->server.tcp);
+            io->underlay = underlay_uv_tcp_init(io->service->loop, err, sizeof(err));
             socktype = SOCK_STREAM;
-            io->server.tcp.data = io;
             break;
         case IPPROTO_UDP:
-            uv_err = uv_udp_init(service_ctx->loop, &io->server.udp);
+            io->underlay = underlay_uv_udp_init(io->service->loop, err, sizeof(err));
             socktype = SOCK_DGRAM;
-            io->server.udp.data = io;
             break;
         default:
             ZITI_LOG(ERROR, "hosted_service[%s] client[%s] unsupported protocol '%s''", service_ctx->service_name,
@@ -596,12 +596,13 @@ static hosted_io_context hosted_io_context_new(struct hosted_service_ctx_s *serv
             free(io);
             return NULL;
     }
-    if (uv_err != 0) {
+    if (io->underlay == NULL) {
         ZITI_LOG(ERROR, "hosted_service[%s] client[%s] dst[%s:%s:%s] failed to initialize underlay handle: %s",
-                 service_ctx->service_name, io->client_identity, dst_protocol, dst_ip_or_hn, dst_port, uv_strerror(uv_err));
+                 service_ctx->service_name, io->client_identity, dst_protocol, dst_ip_or_hn, dst_port, err);
         free(io);
         return NULL;
     }
+    io->underlay->impl->set_data(io->underlay, io);
     // uv handle has been initialized and must be closed before freeing `io` now.
 
     // if app_data includes source ip[:port], verify that it is allowed before attempting to bind
@@ -714,7 +715,7 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
     ziti_conn_set_data(clt, io);
 
     if (service_ctx->proxy_connector) {
-        if (protocol_number == IPPROTO_TCP) {
+        if (protocol_number == IPPROTO_TCP) { // todo only libuv
             ZITI_LOG(DEBUG, "hosted_service[%s] client[%s] dst_addr[%s:%s:%s] connecting through proxy %s",
                      service_ctx->service_name, io->client_identity, protocol, ip_or_hn, port, service_ctx->proxy_addr);
             service_ctx->proxy_connector->connect(service_ctx->loop, service_ctx->proxy_connector, ip_or_hn, port,
@@ -778,30 +779,20 @@ static void on_hosted_client_connect_resolved(uv_getaddrinfo_t* ai_req, int stat
     ZITI_LOG(DEBUG, "hosted_service[%s] client[%s] initiating connection to %s",
              io->service->service_name, io->client_identity, io->resolved_dst);
 
+    underlay_connected_fn on_connect = NULL;
     switch (res->ai_protocol) {
         case IPPROTO_TCP:
-            {
-                uv_connect_t *c = malloc(sizeof(uv_connect_t));
-                uv_err = uv_tcp_connect(c, &io->server.tcp, res->ai_addr, on_hosted_tcp_server_connect_complete);
-                if (uv_err != 0) {
-                    ZITI_LOG(ERROR, "hosted_service[%s], client[%s]: uv_tcp_connect failed: %s",
-                             io->service->service_name, io->client_identity, uv_strerror(uv_err));
-                    hosted_server_close(io);
-                    free(c);
-                }
-            }
+            on_connect = on_hosted_tcp_server_connect_complete;
             break;
         case IPPROTO_UDP:
-            uv_err = uv_udp_connect(&io->server.udp, res->ai_addr);
-            if (uv_err != 0) {
-                ZITI_LOG(ERROR, "hosted_service[%s], client[%s]: uv_udp_connect failed: %s",
-                         io->service->service_name, io->client_identity, uv_strerror(uv_err));
-                hosted_server_close(io);
-            } else if (ziti_accept(io->client, on_hosted_client_connect_complete, NULL) != ZITI_OK) {
-                ZITI_LOG(ERROR, "ziti_accept failed");
-                hosted_server_close(io);
-            }
+            on_connect = on_hosted_udp_server_connect_complete;
             break;
+    }
+    int e = io->underlay->impl->connect(io->underlay, res->ai_addr, on_connect);
+    if (!io->underlay->impl->is_ok(e)) {
+        ZITI_LOG(ERROR, "hosted_service[%s], client[%s]: underlay connect failed: %s",
+                 io->service->service_name, io->client_identity, io->underlay->impl->strerror(e));
+        hosted_server_close(io);
     }
 
     uv_freeaddrinfo(res);

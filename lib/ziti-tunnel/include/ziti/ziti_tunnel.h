@@ -147,10 +147,15 @@ extern bool ziti_address_from_string(ziti_address *za, const char *hn_or_cidr);
 /** convert from internet address types */
 extern void ziti_address_from_in_addr(ziti_address *za, const struct in_addr *a);
 extern void ziti_address_from_in6_addr(ziti_address *za, const struct in6_addr *a);
+extern void ip4_addr_from_in_addr(ip4_addr_t *ip, const struct in_addr *a);
+extern void ip6_addr_from_in6_addr(ip6_addr_t *ip, const struct in6_addr *a);
 /** convert from socket address types */
 extern bool ziti_address_from_sockaddr(ziti_address *za, const struct sockaddr *sa);
 extern void ziti_address_from_sockaddr_in(ziti_address *za, const struct sockaddr_in *sin);
 extern void ziti_address_from_sockaddr_in6(ziti_address *za, const struct sockaddr_in6 *sin6);
+extern bool ip_addr_from_sockaddr(ip_addr_t *ip, u16_t *port, const struct sockaddr *sa);
+extern void ip4_addr_from_sockaddr_in(ip4_addr_t *ip, u16_t *port, const struct sockaddr_in *sin);
+extern void ip6_addr_from_sockaddr_in6(ip6_addr_t *ip, u16_t *port, const struct sockaddr_in6 *sin6);
 /** convert from lwip ip_addr types */
 extern bool ziti_address_from_ip_addr(ziti_address *zaddr, const ip_addr_t *ip);
 extern void ziti_address_from_ip4_addr(ziti_address *za, const ip4_addr_t *ip4);

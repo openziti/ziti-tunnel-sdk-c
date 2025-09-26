@@ -64,6 +64,22 @@ struct hosted_service_ctx_s {
     tlsuv_connector_t *proxy_connector;
 };
 
+#include "underlay.h"
+#include "ziti/ziti_tunnel_cbs.h"
+
+struct hosted_io_ctx_s {
+    struct hosted_service_ctx_s *service;
+    ziti_connection client;
+    tunneler_app_data *app_data;
+    char client_identity[80];
+    const char *computed_dst_protocol;
+    const char *computed_dst_ip_or_hn;
+    const char *computed_dst_port;
+    char resolved_dst[80];
+    underlay_conn_t *underlay;
+    bool masquerading;
+};
+
 struct tunneled_service_s {
     intercept_ctx_t *intercept;
     host_ctx_t      *host;

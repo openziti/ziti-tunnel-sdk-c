@@ -76,6 +76,46 @@ bool ziti_address_from_sockaddr(ziti_address *za, const struct sockaddr *sa) {
 
     return true;
 }
+void ip4_addr_from_in_addr(ip4_addr_t *ip, const struct in_addr *a) {
+    ip->addr = a->s_addr;
+}
+
+void ip6_addr_from_in6_addr(ip6_addr_t *ip, const struct in6_addr *a) {
+    memcpy(&ip->addr, a->s6_addr, sizeof(ip->addr));
+}
+
+void ip4_addr_from_sockaddr_in(ip4_addr_t *ip, u16_t *port, const struct sockaddr_in *sin) {
+    if (ip != NULL) {
+        ip4_addr_from_in_addr(ip, &sin->sin_addr);
+    }
+    if (port != NULL) {
+        *port = sin->sin_port;
+    }
+}
+
+void ip6_addr_from_sockaddr_in6(ip6_addr_t *ip, u16_t *port, const struct sockaddr_in6 *sin6) {
+    if (ip != NULL) {
+        ip6_addr_from_in6_addr(ip, &sin6->sin6_addr);
+    }
+    if (port != NULL) {
+        *port = sin6->sin6_port;
+    }
+}
+
+bool ip_addr_from_sockaddr(ip_addr_t *ip, u16_t *port, const struct sockaddr *sa) {
+    switch (sa->sa_family) {
+        case AF_INET:
+            ip4_addr_from_sockaddr_in(&ip->u_addr.ip4, port, (struct sockaddr_in *)sa);
+            break;
+        case AF_INET6:
+            ip6_addr_from_sockaddr_in6(&ip->u_addr.ip6, port, (struct sockaddr_in6 *)sa);
+            break;
+        default:
+            TNL_LOG(WARN, "unrecognized address family %d", sa->sa_family);
+            return false;
+    }
+    return true;
+}
 
 void ziti_address_from_ip4_addr(ziti_address *za, const ip4_addr_t *ip4) {
     struct in_addr in = { 0 };
