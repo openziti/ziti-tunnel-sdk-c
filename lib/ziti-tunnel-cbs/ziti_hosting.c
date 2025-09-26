@@ -158,7 +158,6 @@ void *local_addr(uv_handle_t *h, struct sockaddr *name, int *len) {
 
 static void start_bridge(ziti_connection clt, struct hosted_io_ctx_s *io_ctx) {
     int rc;
-    uv_handle_t *tun_poll = NULL;
     uv_handle_t *server = (uv_handle_t *) io_ctx->underlay->handle;
     uv_os_fd_t fd;
     if ((rc = uv_fileno(server, &fd)) != 0) {
@@ -579,7 +578,7 @@ static hosted_io_context hosted_io_context_new(struct hosted_service_ctx_s *serv
 
     io->masquerading = app_data && app_data->source_addr && app_data->source_addr[0] != '\0';
     char err[128];
-    int socktype, uv_err;
+    int socktype;
     int protocol_number = get_protocol_id(dst_protocol);
     switch (protocol_number) {
         case IPPROTO_TCP:
