@@ -130,7 +130,7 @@ static int underlay_uv_udp_bind(underlay_conn_t *c, const struct sockaddr *addr,
 
 static int underlay_uv_udp_connect(underlay_conn_t *c, const struct sockaddr *addr, underlay_connected_fn on_connect) {
     int e = uv_udp_connect(c->handle, addr);
-    on_connect(c->handle, e);
+    on_connect(c, e);
     return e;
 }
 
