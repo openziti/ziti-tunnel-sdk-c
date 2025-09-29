@@ -98,7 +98,7 @@ typedef STAILQ_HEAD(port_range_list_s, port_range_s) port_range_list_t;
 typedef void * (*ziti_sdk_dial_cb)(const void *app_intercept_ctx, io_ctx_t *io);
 typedef int (*ziti_sdk_close_cb)(void *ziti_io_ctx);
 typedef ssize_t (*ziti_sdk_write_cb)(const void *ziti_io_ctx, void *write_ctx, const void *data, size_t len);
-typedef host_ctx_t * (*ziti_sdk_host_cb)(void *ziti_ctx, uv_loop_t *loop, const char *service_name, cfg_type_e cfg_type, const void *cfg);
+typedef host_ctx_t * (*ziti_sdk_host_cb)(void *ziti_ctx, tunneler_context tnlr_ctx, const char *service_name, cfg_type_e cfg_type, const void *cfg);
 
 /** data needed to intercept packets and dial the associated ziti service */
 typedef struct intercept_ctx_s  intercept_ctx_t;
@@ -139,6 +139,22 @@ typedef struct tunneler_sdk_options_s {
     ziti_sdk_write_cb   ziti_write;
     ziti_sdk_host_cb    ziti_host;
 } tunneler_sdk_options;
+
+#include "lwip/netif.h"
+
+typedef struct tunneler_ctx_s {
+    tunneler_sdk_options opts; // this must be first - it is accessed opaquely through tunneler_context*
+    struct netif netif;
+    struct raw_pcb *tcp;
+    struct raw_pcb *udp;
+    uv_loop_t *loop;
+    uv_sem_t sem;
+    uv_poll_t netif_poll_req;
+    uv_timer_t lwip_timer_req;
+    LIST_HEAD(intercept_ctx_list_s, intercept_ctx_s) intercepts;
+    model_map intercepts_cache; // cached intercept_ctx lookup keyed by [proto]:[ip]:[port]
+} *tunneler_context;
+
 
 extern port_range_t *parse_port_range(uint16_t low, uint16_t high);
 

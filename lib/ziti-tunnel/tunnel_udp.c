@@ -121,6 +121,27 @@ void tunneler_udp_dial_completed(struct io_ctx_s *io, bool ok) {
     }
 }
 
+tunneler_io_context new_udp_tunneler_io_context(tunneler_context tnlr_ctx, io_ctx_t *io, const char *service_name, const char *src, const char *dst, struct udp_pcb *pcb) {
+    struct tunneler_io_ctx_s *ctx = calloc(1, sizeof(struct tunneler_io_ctx_s));
+    if (ctx == NULL) {
+        TNL_LOG(ERR, "failed to allocate tunneler_io_ctx");
+        return NULL;
+    }
+    ctx->tnlr_ctx = tnlr_ctx;
+    ctx->service_name = strdup(service_name);
+    snprintf(ctx->client, sizeof(ctx->client), "udp:%s:%d", src, pcb->remote_port);
+    snprintf(ctx->intercepted, sizeof(ctx->intercepted), "udp:%s:%d", dst, pcb->local_port);
+    ctx->proto = tun_udp;
+    ctx->udp = pcb;
+    ctx->idle_timeout = UDP_TIMEOUT;
+
+    ctx->conn_timer = calloc(1, sizeof(uv_timer_t));
+    ctx->conn_timer->data = io;
+    uv_timer_init(ctx->tnlr_ctx->loop, ctx->conn_timer);
+
+    return ctx;
+}
+
 /** called by lwip when a udp datagram arrives. return 1 to indicate that the IP packet was consumed. */
 u8_t recv_udp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_addr_t *addr) {
     tunneler_context tnlr_ctx = tnlr_ctx_arg;
@@ -218,23 +239,16 @@ u8_t recv_udp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
         pbuf_free(p);
         return 1;
     }
-    io->tnlr_io = (tunneler_io_context)calloc(1, sizeof(struct tunneler_io_ctx_s));
+    io->tnlr_io = new_udp_tunneler_io_context(tnlr_ctx, io, intercept_ctx->service_name, src_str, dst_str, npcb);
     if (io->tnlr_io == NULL) {
         TNL_LOG(ERR, "failed to allocate tunneler io context");
         udp_remove(npcb);
         pbuf_free(p);
         return 1;
     }
-    io->tnlr_io->tnlr_ctx = tnlr_ctx;
-    io->tnlr_io->proto = tun_udp;
-    io->tnlr_io->service_name = strdup(intercept_ctx->service_name);
-    snprintf(io->tnlr_io->client, sizeof(io->tnlr_io->client), "udp:%s:%d", src_str, src_p);
-    snprintf(io->tnlr_io->intercepted, sizeof(io->tnlr_io->intercepted), "udp:%s:%d", dst_str, dst_p);
-    io->tnlr_io->udp = npcb;
     io->ziti_ctx = intercept_ctx->app_intercept_ctx;
     io->write_fn = intercept_ctx->write_fn ? intercept_ctx->write_fn : tnlr_ctx->opts.ziti_write;
     io->close_fn = intercept_ctx->close_fn ? intercept_ctx->close_fn : tnlr_ctx->opts.ziti_close;
-    io->tnlr_io->idle_timeout = UDP_TIMEOUT;
 
     TNL_LOG(DEBUG, "intercepted address[%s] client[%s] service[%s]", io->tnlr_io->intercepted, io->tnlr_io->client,
             intercept_ctx->service_name);

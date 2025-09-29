@@ -18,7 +18,6 @@
 #define ZITI_TUNNELER_SDK_ZITI_TUNNELER_PRIV_H
 
 #include "ziti/ziti_tunnel.h"
-#include "lwip/netif.h"
 
 #include "ziti/ziti_model.h"
 
@@ -118,19 +117,6 @@ struct intercept_ctx_s {
 struct excluded_route_s {
     char route[MAX_ROUTE_LEN];
 };
-
-typedef struct tunneler_ctx_s {
-    tunneler_sdk_options opts; // this must be first - it is accessed opaquely through tunneler_context*
-    struct netif netif;
-    struct raw_pcb *tcp;
-    struct raw_pcb *udp;
-    uv_loop_t *loop;
-    uv_sem_t sem;
-    uv_poll_t netif_poll_req;
-    uv_timer_t lwip_timer_req;
-    LIST_HEAD(intercept_ctx_list_s, intercept_ctx_s) intercepts;
-    model_map intercepts_cache; // cached intercept_ctx lookup keyed by [proto]:[ip]:[port]
-} *tunneler_context;
 
 /** return the intercept context for a packet based on its destination ip:port */
 extern intercept_ctx_t *

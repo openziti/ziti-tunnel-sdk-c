@@ -234,7 +234,7 @@ void ziti_tunneler_dial_completed(struct io_ctx_s *io, bool ok) {
 }
 
 host_ctx_t *ziti_tunneler_host(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_name, cfg_type_e cfg_type, void *config) {
-    return tnlr_ctx->opts.ziti_host((void *) ziti_ctx, tnlr_ctx->loop, service_name, cfg_type, config);
+    return tnlr_ctx->opts.ziti_host((void *) ziti_ctx, tnlr_ctx, service_name, cfg_type, config);
 }
 
 intercept_ctx_t* intercept_ctx_new(tunneler_context tnlr_ctx, const char *app_id, void *app_intercept_ctx) {

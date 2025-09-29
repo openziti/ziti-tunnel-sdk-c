@@ -89,7 +89,7 @@ void ip4_addr_from_sockaddr_in(ip4_addr_t *ip, u16_t *port, const struct sockadd
         ip4_addr_from_in_addr(ip, &sin->sin_addr);
     }
     if (port != NULL) {
-        *port = sin->sin_port;
+        *port = htons(sin->sin_port);
     }
 }
 
@@ -98,7 +98,7 @@ void ip6_addr_from_sockaddr_in6(ip6_addr_t *ip, u16_t *port, const struct sockad
         ip6_addr_from_in6_addr(ip, &sin6->sin6_addr);
     }
     if (port != NULL) {
-        *port = sin6->sin6_port;
+        *port = htons(sin6->sin6_port);
     }
 }
 
@@ -106,9 +106,11 @@ bool ip_addr_from_sockaddr(ip_addr_t *ip, u16_t *port, const struct sockaddr *sa
     switch (sa->sa_family) {
         case AF_INET:
             ip4_addr_from_sockaddr_in(&ip->u_addr.ip4, port, (struct sockaddr_in *)sa);
+            ip->type = IPADDR_TYPE_V4;
             break;
         case AF_INET6:
             ip6_addr_from_sockaddr_in6(&ip->u_addr.ip6, port, (struct sockaddr_in6 *)sa);
+            ip->type = IPADDR_TYPE_V6;
             break;
         default:
             TNL_LOG(WARN, "unrecognized address family %d", sa->sa_family);

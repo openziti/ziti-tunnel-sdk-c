@@ -19,6 +19,7 @@
 
 #include <stdbool.h>
 #include "uv.h"
+#include "lwip/netif.h"
 
 typedef struct underlay_s underlay_t;
 
@@ -51,6 +52,6 @@ underlay_conn_t *underlay_uv_tcp_init(uv_loop_t *loop, char *err, size_t err_sz)
 underlay_conn_t *underlay_uv_udp_init(uv_loop_t *loop, char *err, size_t err_sz);
 
 underlay_conn_t *underlay_lwip_tcp_init();
-underlay_conn_t *underlay_lwip_udp_init();
+underlay_conn_t *underlay_lwip_udp_init(const struct netif *netif);
 
 #endif // UNDERLAY_H_INCLUDED

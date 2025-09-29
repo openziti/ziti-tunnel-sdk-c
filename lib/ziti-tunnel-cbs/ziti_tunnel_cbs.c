@@ -106,7 +106,7 @@ static void on_ziti_connect(ziti_connection conn, int status) {
 }
 
 /** called by ziti SDK when ziti service has data for the client */
-static ssize_t on_ziti_data(ziti_connection conn, const uint8_t *data, ssize_t len) {
+ssize_t on_ziti_data(ziti_connection conn, const uint8_t *data, ssize_t len) {
     struct io_ctx_s *io = ziti_conn_data(conn);
     ZITI_LOG(TRACE, "got %zd bytes from ziti", len);
     if (io == NULL) {

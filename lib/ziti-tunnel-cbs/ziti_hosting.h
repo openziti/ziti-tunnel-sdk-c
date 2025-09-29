@@ -36,7 +36,7 @@ typedef LIST_HEAD(allowed_addr_list, allowed_hostname_s) allowed_hostnames_t;
 struct hosted_service_ctx_s {
     char *       service_name;
     const void * ziti_ctx;
-    uv_loop_t *  loop;
+    tunneler_context tnlr_ctx;
     cfg_type_e   cfg_type;
     const void * cfg;
     char display_address[64];
@@ -77,7 +77,7 @@ struct hosted_io_ctx_s {
     const char *computed_dst_port;
     char resolved_dst[80];
     underlay_conn_t *underlay;
-    bool masquerading;
+    io_ctx_t *tunneled_io;
 };
 
 struct tunneled_service_s {

@@ -333,6 +333,7 @@ char *string_replace(char *source, size_t sourceSize, const char *substring, con
 /** called by tunneler SDK after a client connection is intercepted */
 void *ziti_sdk_c_dial(const void *app_intercept_ctx, struct io_ctx_s *io);
 
+ssize_t on_ziti_data(ziti_connection conn, const uint8_t *data, ssize_t len);
 /** called from tunneler SDK when intercepted client sends data */
 ssize_t ziti_sdk_c_write(const void *ziti_io_ctx, void *write_ctx, const void *data, size_t len);
 
@@ -341,7 +342,7 @@ ssize_t ziti_sdk_c_write(const void *ziti_io_ctx, void *write_ctx, const void *d
 int ziti_sdk_c_close(void *io_ctx);
 int ziti_sdk_c_close_write(void *io_ctx);
 
-host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, uv_loop_t *loop, const char *service_name, cfg_type_e cfgtype, const void *cfg);
+host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, tunneler_context tnlr_ctx, const char *service_name, cfg_type_e cfgtype, const void *cfg);
 
 /** passed to ziti-sdk via ziti_options.service_cb */
 tunneled_service_t *ziti_sdk_c_on_service(ziti_context ziti_ctx, ziti_service *service, int status, void *tnlr_ctx);

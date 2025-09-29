@@ -173,7 +173,7 @@ static void start_bridge(ziti_connection clt, struct hosted_io_ctx_s *io_ctx) {
     int len = sizeof(name_storage);
     local_addr(server, name, &len);
     uv_getnameinfo_t req = {0};
-    uv_getnameinfo(io_ctx->service->loop, &req, NULL, name, NI_NUMERICHOST|NI_NUMERICSERV);
+    uv_getnameinfo(io_ctx->service->tnlr_ctx->loop, &req, NULL, name, NI_NUMERICHOST|NI_NUMERICSERV);
     ZITI_LOG(DEBUG, "hosted_service[%s] client[%s] local_addr[%s:%s] fd[%d] server[%s] connected %d", io_ctx->service->service_name,
              io_ctx->client_identity, req.host, req.service, fd, io_ctx->resolved_dst, len);
     rc = ziti_conn_bridge(clt, server, on_bridge_close);
@@ -196,10 +196,11 @@ static void on_hosted_client_connect_complete(ziti_connection clt, int err) {
     }
 
     if (err == ZITI_OK) {
-        if (!io_ctx->masquerading) {
+        if (io_ctx->tunneled_io == NULL) {
             start_bridge(clt, io_ctx);
         } else {
-            // todo start lwip
+            ziti_conn_set_data(clt, io_ctx->tunneled_io);
+            // handled by tunneler context
         }
     } else {
         ZITI_LOG(ERROR, "hosted_service[%s] client[%s] failed to connect: %s", io_ctx->service->service_name,
@@ -232,8 +233,10 @@ static bool do_hosted_server_connect_complete(underlay_conn_t *c, int status);
 static void on_hosted_udp_server_connect_complete(underlay_conn_t *c, int status) {
     bool complete = do_hosted_server_connect_complete(c, status);
     if (complete) {
-        hosted_io_context io = c->impl->get_data(c);
-        ziti_accept(io->client, on_hosted_client_connect_complete, NULL);
+        io_ctx_t *io = c->impl->get_data(c);
+        struct ziti_io_ctx_s *zio = io->ziti_io;
+        int err = ziti_accept(zio->ziti_conn, on_hosted_client_connect_complete, on_ziti_data);
+        ZITI_LOG(INFO, "ziti_accept %d", err);
     }
 }
 
@@ -525,7 +528,7 @@ static int do_bind(hosted_io_context io, const char *addr, int socktype) {
     hints.ai_protocol = get_protocol_id(io->computed_dst_protocol);
     hints.ai_socktype = socktype;
 
-    int uv_err = uv_getaddrinfo(io->service->loop, &ai_req, NULL, src_ip, port, &hints);
+    int uv_err = uv_getaddrinfo(io->service->tnlr_ctx->loop, &ai_req, NULL, src_ip, port, &hints);
     free(src_ip);
 
     if (uv_err != 0) {
@@ -560,6 +563,8 @@ static int do_bind(hosted_io_context io, const char *addr, int socktype) {
     return 0;
 }
 
+#include "../tunnel_udp.h"
+
 static hosted_io_context hosted_io_context_new(struct hosted_service_ctx_s *service_ctx, ziti_connection client,
         tunneler_app_data *app_data, const char *dst_protocol, const char *dst_ip_or_hn, const char *dst_port) {
     hosted_io_context io = calloc(1, sizeof(struct hosted_io_ctx_s));
@@ -576,17 +581,39 @@ static hosted_io_context hosted_io_context_new(struct hosted_service_ctx_s *serv
     io->computed_dst_ip_or_hn = dst_ip_or_hn;
     io->computed_dst_port = dst_port;
 
-    io->masquerading = app_data && app_data->source_addr && app_data->source_addr[0] != '\0';
+    bool masquerading = app_data && app_data->source_addr && app_data->source_addr[0] != '\0';
     char err[128];
     int socktype;
     int protocol_number = get_protocol_id(dst_protocol);
     switch (protocol_number) {
         case IPPROTO_TCP:
-            io->underlay = underlay_uv_tcp_init(io->service->loop, err, sizeof(err));
+            if (masquerading) {
+                io->underlay = underlay_lwip_tcp_init();
+            } else {
+                io->underlay = underlay_uv_tcp_init(io->service->tnlr_ctx->loop, err, sizeof(err));
+            }
             socktype = SOCK_STREAM;
             break;
         case IPPROTO_UDP:
-            io->underlay = underlay_uv_udp_init(io->service->loop, err, sizeof(err));
+            if (masquerading) {
+                underlay_conn_t *lwip_udp = underlay_lwip_udp_init(&io->service->tnlr_ctx->netif);
+                io_ctx_t *ioctx = calloc(1, sizeof(io_ctx_t));
+                ioctx->tnlr_io = new_udp_tunneler_io_context(io->service->tnlr_ctx, ioctx, io->service->service_name, "todo:srcip", dst_ip_or_hn, lwip_udp->handle);
+io->client = NULL;
+                struct ziti_io_ctx_s *zio = calloc(1, sizeof(ziti_io_context));
+                ioctx->ziti_io = zio;
+                zio->ziti_conn = client;
+                zio->ziti_eof = false;
+                zio->tnlr_eof = false;
+                //ioctx->ziti_ctx = intercept_ctx->app_intercept_ctx;
+                ioctx->write_fn = io->service->tnlr_ctx->opts.ziti_write;
+                ioctx->close_fn = io->service->tnlr_ctx->opts.ziti_close;
+                udp_recv(lwip_udp->handle, on_udp_client_data, ioctx);
+                io->underlay = lwip_udp;
+                io->tunneled_io = ioctx;
+            } else {
+                io->underlay = underlay_uv_udp_init(io->service->tnlr_ctx->loop, err, sizeof(err));
+            }
             socktype = SOCK_DGRAM;
             break;
         default:
@@ -601,7 +628,10 @@ static hosted_io_context hosted_io_context_new(struct hosted_service_ctx_s *serv
         free(io);
         return NULL;
     }
-    io->underlay->impl->set_data(io->underlay, io);
+    ziti_conn_set_data(client, io);
+    if (!masquerading) {
+        io->underlay->impl->set_data(io->underlay, io);
+    }
     // uv handle has been initialized and must be closed before freeing `io` now.
 
     // if app_data includes source ip[:port], verify that it is allowed before attempting to bind
@@ -717,7 +747,7 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
         if (protocol_number == IPPROTO_TCP) { // todo only libuv
             ZITI_LOG(DEBUG, "hosted_service[%s] client[%s] dst_addr[%s:%s:%s] connecting through proxy %s",
                      service_ctx->service_name, io->client_identity, protocol, ip_or_hn, port, service_ctx->proxy_addr);
-            service_ctx->proxy_connector->connect(service_ctx->loop, service_ctx->proxy_connector, ip_or_hn, port,
+            service_ctx->proxy_connector->connect(service_ctx->tnlr_ctx->loop, service_ctx->proxy_connector, ip_or_hn, port,
             on_proxy_connect, io);
         } else {
             ZITI_LOG(WARN, "hosted_service[%s] client[%s] cannot use proxy for udp. dropping connection",
@@ -729,7 +759,7 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
 
     uv_getaddrinfo_t *ai_req = calloc(1, sizeof(uv_getaddrinfo_t));
     ai_req->data = io;
-    int s = uv_getaddrinfo(service_ctx->loop, ai_req, on_hosted_client_connect_resolved, ip_or_hn, port, &hints);
+    int s = uv_getaddrinfo(service_ctx->tnlr_ctx->loop, ai_req, on_hosted_client_connect_resolved, ip_or_hn, port, &hints);
     if (s != 0) {
         ZITI_LOG(ERROR, "hosted_service[%s] client[%s]: getaddrinfo(%s:%s:%s) failed: %s",
                  service_ctx->service_name, io->client_identity, protocol, ip_or_hn, port, uv_strerror(s));
@@ -765,7 +795,7 @@ static void on_hosted_client_connect_resolved(uv_getaddrinfo_t* ai_req, int stat
     }
 
     uv_getnameinfo_t ni_req = {0};
-    int uv_err = uv_getnameinfo(io->service->loop, &ni_req, NULL, res->ai_addr, NI_NUMERICHOST | NI_NUMERICSERV);
+    int uv_err = uv_getnameinfo(io->service->tnlr_ctx->loop, &ni_req, NULL, res->ai_addr, NI_NUMERICHOST | NI_NUMERICSERV);
     if (uv_err == 0) {
         snprintf(io->resolved_dst, sizeof(io->resolved_dst), "%s:%s:%s",
                  get_protocol_str(res->ai_protocol), ni_req.host, ni_req.service);
@@ -857,7 +887,7 @@ static int ziti_address_translation_cmp(const void *a, const void *b) {
 
 
 /** called by the tunneler sdk when a hosted service becomes available */
-host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, uv_loop_t *loop, const char *service_name, cfg_type_e cfg_type, const void *cfg) {
+host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, tunneler_context tnlr_ctx, const char *service_name, cfg_type_e cfg_type, const void *cfg) {
     if (service_name == NULL) {
         ZITI_LOG(ERROR, "null service_name");
         return NULL;
@@ -866,7 +896,7 @@ host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, uv_loop_t *loop, const char *service
     struct hosted_service_ctx_s *host_ctx = calloc(1, sizeof(struct hosted_service_ctx_s));
     host_ctx->service_name = strdup(service_name);
     host_ctx->ziti_ctx = ziti_ctx;
-    host_ctx->loop = loop;
+    host_ctx->tnlr_ctx = tnlr_ctx;
     host_ctx->cfg_type = cfg_type;
     host_ctx->cfg = cfg;
 
@@ -1062,7 +1092,7 @@ static void on_bridge_close(uv_handle_t *handle) {
         struct sockaddr *name = (struct sockaddr *) &name_storage;
         int len = sizeof(name_storage);
         local_addr(handle, name, &len);
-        uv_getnameinfo(io_ctx->service->loop, &req, NULL, name, NI_NUMERICHOST | NI_NUMERICSERV);
+        uv_getnameinfo(io_ctx->service->tnlr_ctx->loop, &req, NULL, name, NI_NUMERICHOST | NI_NUMERICSERV);
     }
     uv_os_fd_t fd;
     uv_fileno(handle, &fd);
