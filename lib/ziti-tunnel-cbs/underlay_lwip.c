@@ -89,6 +89,7 @@ static int underlay_lwip_udp_bind(underlay_conn_t *c, const struct sockaddr *add
         return ERR_VAL;
     }
     ip_addr_set_ipaddr(&pcb->local_ip, &local_ip);
+    pcb->local_port = local_port;
     err_t e = ERR_OK; //udp_bind(pcb, &local_ip, local_port);
     return e;
 }

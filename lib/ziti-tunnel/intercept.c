@@ -89,7 +89,7 @@ void ip4_addr_from_sockaddr_in(ip4_addr_t *ip, u16_t *port, const struct sockadd
         ip4_addr_from_in_addr(ip, &sin->sin_addr);
     }
     if (port != NULL) {
-        *port = htons(sin->sin_port);
+        *port = ntohs(sin->sin_port);
     }
 }
 
@@ -98,7 +98,7 @@ void ip6_addr_from_sockaddr_in6(ip6_addr_t *ip, u16_t *port, const struct sockad
         ip6_addr_from_in6_addr(ip, &sin6->sin6_addr);
     }
     if (port != NULL) {
-        *port = htons(sin6->sin6_port);
+        *port = ntohs(sin6->sin6_port);
     }
 }
 
