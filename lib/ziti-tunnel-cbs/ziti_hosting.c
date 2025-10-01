@@ -530,6 +530,8 @@ static int do_bind(hosted_io_context io, const char *addr, int socktype) {
 
     int uv_err = uv_getaddrinfo(io->service->tnlr_ctx->loop, &ai_req, NULL, src_ip, port, &hints);
     free(src_ip);
+    src_ip = NULL;
+    port = NULL;
 
     if (uv_err != 0) {
         ZITI_LOG(ERROR, "hosted_service[%s], client[%s]: getaddrinfo(%s) failed: %s",
