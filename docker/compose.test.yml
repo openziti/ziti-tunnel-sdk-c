@@ -9,9 +9,9 @@ services:
 
     ziti-tun:
         pull_policy: never
-        command: run --verbose=4 --dns-ip-range=100.95.255.128/25
+        command: run --verbose=6 --dns-ip-range=100.95.255.128/25
         environment:
-            - ZITI_LOG=4
+            - ZITI_LOG="6;tlsuv=6"
 
     ziti-host:
         pull_policy: never
@@ -20,9 +20,9 @@ services:
                 condition: service_started
         networks:
             - quickstart
-        command: run-host --verbose=4
+        command: run-host --verbose=6
         environment:
-            - ZITI_LOG=4
+            - ZITI_LOG="6;tlsuv=6"
 
     quickstart:
         image: ${ZITI_CLI_IMAGE:-docker.io/openziti/ziti-controller}:${ZITI_CLI_TAG:-latest}

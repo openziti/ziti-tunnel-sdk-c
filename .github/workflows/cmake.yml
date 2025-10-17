@@ -26,11 +26,11 @@ jobs:
             name: macOS arm64
             preset: macOS-arm64
 
-          - os: windows-latest
+          - os: windows-2022
             name: Windows x86_64
             preset: windows-x64-mingw
 
-          - os: windows-latest
+          - os: windows-2022
             name: Windows x86_64(win32crypto)
             preset: windows-x64-win32crypto
 
