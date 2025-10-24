@@ -1,7 +1,7 @@
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -202,6 +202,12 @@
- exec_program(${CMAKE_C_COMPILER} ARGS -dumpmachine OUTPUT_VARIABLE CMAKE_GNU_C_MACHINE)
+@@ -183,6 +183,12 @@
+ 
  if (CMAKE_GNU_C_MACHINE MATCHES "uclibc")
  	message(STATUS "Detected uClibc compiler, disabling locale handling")
 +	set(HAVE_SETLOCALE 0)
