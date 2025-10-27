@@ -1,4 +1,4 @@
-FROM registry.access.redhat.com/ubi10/ubi-minimal
+FROM registry.access.redhat.com/ubi9/ubi-minimal
 
 ARG ARTIFACTS_DIR=./build
 ARG DOCKER_BUILD_DIR=.
