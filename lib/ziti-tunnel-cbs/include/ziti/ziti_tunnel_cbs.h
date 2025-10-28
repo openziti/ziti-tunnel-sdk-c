@@ -237,6 +237,7 @@ XX(ServiceEvent, __VA_ARGS__)  \
 XX(MFAEvent, __VA_ARGS__)      \
 XX(MFAStatusEvent, __VA_ARGS__) \
 XX(ConfigEvent, __VA_ARGS__)      \
+XX(RouterEvent, __VA_ARGS__) \
 XX(ExtJWTEvent, __VA_ARGS__)
 
 DECLARE_ENUM(TunnelEvent, TUNNEL_EVENTS)
@@ -293,11 +294,25 @@ BASE_EVENT_MODEL(XX, __VA_ARGS__)               \
 XX(status, model_string, none, status, __VA_ARGS__)   \
 XX(providers, jwt_provider, list, providers, __VA_ARGS__)
 
+#define ROUTER_STATUS_ENUM(XX, ...) \
+XX(added, __VA_ARGS__) \
+XX(connected, __VA_ARGS__) \
+XX(disconnected, __VA_ARGS__) \
+XX(removed, __VA_ARGS__)
+
+DECLARE_ENUM(rt_status, ROUTER_STATUS_ENUM)
+
+#define ROUTER_EVENT_MODEL(XX, ...)             \
+BASE_EVENT_MODEL(XX, __VA_ARGS__)               \
+XX(name, model_string, none, name, __VA_ARGS__) \
+XX(status, rt_status, none, status, __VA_ARGS__)
+
 DECLARE_MODEL(base_event, BASE_EVENT_MODEL)
 DECLARE_MODEL(ziti_ctx_event, ZTX_EVENT_MODEL)
 DECLARE_MODEL(mfa_event, MFA_EVENT_MODEL)
 DECLARE_MODEL(service_event, ZTX_SVC_EVENT_MODEL)
 DECLARE_MODEL(config_event, CONFIG_EVENT_MODEL)
+DECLARE_MODEL(router_event, ROUTER_EVENT_MODEL)
 
 DECLARE_MODEL(jwt_provider, EXT_JWT_PROVIDER)
 DECLARE_MODEL(ext_signer_event, EXT_SIGNER_EVENT_MODEL)

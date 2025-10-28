@@ -1070,24 +1070,35 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
 
         case ZitiRouterEvent: {
             const struct ziti_router_event *rt_event = &event->router;
+            router_event ev = {
+                .event_type = TunnelEvents.RouterEvent,
+                .identifier = instance->identifier,
+                .name = rt_event->name,
+            };
             switch (rt_event->status) {
                 case EdgeRouterAdded:
                     ZITI_LOG(INFO, "ztx[%s] added edge router %s@%s", ctx_name, rt_event->name, rt_event->address);
                     ziti_tunneler_exclude_route(CMD_CTX.tunnel_ctx, rt_event->address);
+                    ev.status = rt_status_added;
                     break;
                 case EdgeRouterConnected:
                     ZITI_LOG(INFO, "ztx[%s] router %s connected", ctx_name, rt_event->name);
+                    ev.status = rt_status_connected;
                     break;
                 case EdgeRouterDisconnected:
                     ZITI_LOG(INFO, "ztx[%s] router %s disconnected", ctx_name, rt_event->name);
+                    ev.status = rt_status_disconnected;
                     break;
                 case EdgeRouterRemoved:
                     ZITI_LOG(INFO, "ztx[%s] router %s removed", ctx_name, rt_event->name);
+                    ev.status = rt_status_removed;
                     break;
-                case EdgeRouterUnavailable:
+                default:
+                    ev.status = rt_status_Unknown;
                     ZITI_LOG(INFO, "ztx[%s] router %s is unavailable", ctx_name, rt_event->name);
                     break;
             }
+            CMD_CTX.on_event((const base_event *) &ev);
             break;
         }
 
@@ -1542,12 +1553,14 @@ IMPL_MODEL(tunnel_status_change, TUNNEL_STATUS_CHANGE)
 
 // ************** TUNNEL Events
 IMPL_ENUM(TunnelEvent, TUNNEL_EVENTS)
+IMPL_ENUM(rt_status, ROUTER_STATUS_ENUM)
 
 IMPL_MODEL(base_event, BASE_EVENT_MODEL)
 IMPL_MODEL(ziti_ctx_event, ZTX_EVENT_MODEL)
 IMPL_MODEL(mfa_event, MFA_EVENT_MODEL)
 IMPL_MODEL(service_event, ZTX_SVC_EVENT_MODEL)
 IMPL_MODEL(config_event, CONFIG_EVENT_MODEL)
+IMPL_MODEL(router_event, ROUTER_EVENT_MODEL)
 IMPL_MODEL(tunnel_command_inline, TUNNEL_CMD_INLINE)
 
 IMPL_MODEL(jwt_provider, EXT_JWT_PROVIDER)
