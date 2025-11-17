@@ -55,6 +55,12 @@
 #define LWIP_NETCONN 0
 #define LWIP_SOCKET 0
 
+/* do not export byteorder functions */
+/* on Apple LWIP does it by default */
+#ifndef __APPLE__
+#define LWIP_DONT_PROVIDE_BYTEORDER_FUNCTIONS 1
+#endif
+
 // protocols
 #define LWIP_IPV6_MLD 0
 #define LWIP_IPV6 1                       /* enable ipv6 */
