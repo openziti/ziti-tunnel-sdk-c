@@ -913,8 +913,9 @@ void set_tun_name(const char *name) {
 char* get_zet_instance_id(const char* discriminator) {
     char *zet_instance_id = NULL;
     if (discriminator) {
-        zet_instance_id = calloc(strlen(DEFAULT_EXECUTABLE_NAME) + strlen(discriminator) + 2 /* separator + nul */,sizeof(char));
-        sprintf(zet_instance_id, "%s.%s", DEFAULT_EXECUTABLE_NAME, discriminator);
+        size_t len = strlen(DEFAULT_EXECUTABLE_NAME) + strlen(discriminator) + 2; /* separator + nul */
+        zet_instance_id = calloc(len, sizeof(char));
+        snprintf(zet_instance_id, len, "%s.%s", DEFAULT_EXECUTABLE_NAME, discriminator);
     } else {
         zet_instance_id = strdup(DEFAULT_EXECUTABLE_NAME);
     }
