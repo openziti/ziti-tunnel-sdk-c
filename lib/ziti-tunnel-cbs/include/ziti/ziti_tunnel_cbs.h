@@ -357,6 +357,7 @@ int ziti_sdk_c_close(void *io_ctx);
 int ziti_sdk_c_close_write(void *io_ctx);
 
 host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, uv_loop_t *loop, const char *service_name, cfg_type_e cfgtype, const void *cfg);
+void ziti_hosted_serv_conn_close_cb(ziti_connection serv);
 
 /** passed to ziti-sdk via ziti_options.service_cb */
 tunneled_service_t *ziti_sdk_c_on_service(ziti_context ziti_ctx, ziti_service *service, int status, void *tnlr_ctx);
@@ -390,6 +391,7 @@ struct ziti_instance_s {
     ziti_context ztx;
     struct mfa_request_s *mfa_req;
     model_map intercepts;
+    model_map hosts;
     LIST_ENTRY(ziti_instance_s) _next;
 };
 
@@ -401,6 +403,7 @@ int init_ziti_instance(struct ziti_instance_s *inst, const ziti_config *cfg, con
 int set_tnlr_options(struct ziti_instance_s *inst);
 void set_ziti_instance(const char *identifier, struct ziti_instance_s *inst);
 void remove_ziti_instance(const char *identifier);
+void ziti_host_set_conn(ziti_context ztx, const char *service_name, ziti_connection serv);
 
 #ifdef __cplusplus
 }

@@ -40,6 +40,7 @@ struct mfa_request_s {
 };
 
 typedef struct ziti_intercept_s ziti_intercept_t;
+typedef struct ziti_host_s ziti_host_t;
 
 ziti_connection intercept_resolve_connect(ziti_intercept_t *intercept, void *ctx, ziti_conn_cb conn_cb, ziti_data_cb data_cb);
 
