@@ -61,6 +61,18 @@ struct ziti_intercept_s {
     } cfg;
 };
 
+struct ziti_host_s {
+    char *service_name;
+    ziti_context ztx;
+    ziti_connection serv;
+    host_ctx_t *host_ctx;
+    struct cfgtype_desc_s *cfg_desc;
+    union {
+        ziti_host_cfg_v1 host_v1;
+        ziti_server_cfg_v1 server_v1;
+    } cfg;
+};
+
 #define CFGTYPE_DESC(name, cfgtype, type) { (name), (cfgtype), \
 (cfg_alloc_fn)alloc_##type,                                    \
 (cfg_free_fn)free_##type,                                      \
@@ -84,10 +96,17 @@ static void free_ziti_intercept(ziti_intercept_t *zi) {
     if (zi->cfg_desc) {
         zi->cfg_desc->free(&zi->cfg);
     }
-
     free(zi);
 }
 
+static void free_ziti_host(ziti_host_t *zh) {
+    if (zh == NULL) return;
+    free(zh->service_name);
+    if (zh->cfg_desc) {
+        zh->cfg_desc->free(&zh->cfg);
+    }
+    free(zh);
+}
 
 static void on_ziti_connect(ziti_connection conn, int status) {
     ZITI_LOG(VERBOSE, "on_ziti_connect status: %d", status);
@@ -396,6 +415,7 @@ ssize_t ziti_sdk_c_write(const void *ziti_io_ctx, void *write_ctx, const void *d
     return ERR_WOULDBLOCK;
 }
 
+/** returns new ziti_intercept_t if the service intercept configuration differs from the one in curr_i */
 ziti_intercept_t *new_ziti_intercept(ziti_context ztx, ziti_service *service, ziti_intercept_t *curr_i) {
     ziti_intercept_t *zi_ctx = calloc(1, sizeof(ziti_intercept_t));
     zi_ctx->ztx = ztx;
@@ -424,6 +444,48 @@ ziti_intercept_t *new_ziti_intercept(ziti_context ztx, ziti_service *service, zi
         return NULL;
     }
     return zi_ctx;
+}
+
+ziti_host_t *new_ziti_host(ziti_context ztx, ziti_service *service, ziti_host_t *curr_h) {
+    ziti_host_t *zh = calloc(1, sizeof(ziti_host_t));
+    zh->ztx = ztx;
+    zh->service_name = strdup(service->name);
+    bool have_host = false;
+
+    for (int i = 0; i < sizeof(host_cfgtypes) / sizeof(cfgtype_desc_t); i++) {
+        cfgtype_desc_t *cfgtype = &host_cfgtypes[i];
+        const char *cfg_json = ziti_service_get_raw_config(service, cfgtype->name);
+        if (cfg_json != 0 && cfgtype->parse(&zh->cfg, cfg_json, strlen(cfg_json)) > 0) {
+            zh->cfg_desc = cfgtype;
+
+            if (curr_h && cfgtype == curr_h->cfg_desc && cfgtype->compare(&zh->cfg, &curr_h->cfg) == 0) {
+                ZITI_LOG(DEBUG, "configuration[%s] was not changed for service[%s]", cfgtype->name, service->name);
+            } else {
+                ZITI_LOG(INFO, "%s host for service[%s] with %s = %s", curr_h ? "changing" : "creating", service->name, cfgtype->name, cfg_json);
+                have_host = true;
+            }
+            break;
+        }
+    }
+
+    if (!have_host) {
+        free_ziti_host(zh);
+        return NULL;
+    }
+    return zh;
+}
+
+/** called by listen_cb with server connection when ziti_listen succeeds */
+void ziti_host_set_conn(ziti_context ztx, const char *service_name, ziti_connection serv) {
+    struct ziti_instance_s *ziti_instance = ziti_app_ctx(ztx);
+    ziti_host_t *zh = model_map_get(&ziti_instance->hosts, service_name);
+    if (zh == NULL) {
+        ZITI_LOG(WARN, "service[%s] not found in ziti_instance->hosts", service_name);
+        return;
+    }
+
+    ZITI_LOG(DEBUG, "hosted_service[%s] saving connection handle", service_name);
+    zh->serv = serv;
 }
 
 // only do matching on based on wildcard domain here
@@ -513,6 +575,14 @@ static void stop_intercept(struct tunneler_ctx_s *tnlr, struct ziti_instance_s *
     free_ziti_intercept(zi);
 }
 
+static void stop_hosting(struct ziti_instance_s *inst, ziti_host_t *zh) {
+    model_map_remove(&inst->hosts, zh->service_name);
+    if (zh->serv) {
+        ziti_close(zh->serv, ziti_hosted_serv_conn_close_cb);
+    }
+    free_ziti_host(zh);
+}
+
 static tunneled_service_t current_tunneled_service;
 
 /** set up intercept or host context according to service permissions and configuration */
@@ -538,7 +608,7 @@ tunneled_service_t *ziti_sdk_c_on_service(ziti_context ziti_ctx, ziti_service *s
 
             if (zi_ctx) {
                 if (curr_i) {
-                    ZITI_LOG(DEBUG, "replacing intercept for service[%s]", service->name);
+                    ZITI_LOG(DEBUG, "replacing intercept configuration for service[%s]", service->name);
                     stop_intercept(tnlr_ctx, ziti_instance, curr_i);
                 }
 
@@ -556,17 +626,27 @@ tunneled_service_t *ziti_sdk_c_on_service(ziti_context ziti_ctx, ziti_service *s
             }
         }
 
-        if (service->perm_flags & ZITI_CAN_BIND) {
-            for (i = 0; i < sizeof(host_cfgtypes) / sizeof(cfgtype_desc_t); i++) {
-                cfgtype = &host_cfgtypes[i];
-                config = cfgtype->alloc();
-                get_config_rc = ziti_service_get_config(service, cfgtype->name, config, cfgtype->parse);
-                if (get_config_rc == 0) {
-                    current_tunneled_service.host = ziti_tunneler_host(tnlr_ctx, ziti_ctx, service->name, cfgtype->cfgtype, config);
-                    break;
+        ziti_host_t *curr_h = model_map_get(&ziti_instance->hosts, service->name);
+        if ((service->perm_flags & ZITI_CAN_BIND) == 0) {
+            ZITI_LOG(DEBUG, "stopping host: can no longer bind service[%s]", service->name);
+            if (curr_h) {
+                curr_h->serv = NULL; // ziti-sdk-c has already closed and released the connection
+                stop_hosting(ziti_instance, curr_h);
+            }
+        } else {
+            ziti_host_t *zh = new_ziti_host(ziti_ctx, service, curr_h);
+            if (zh) {
+                if (curr_h) {
+                    ZITI_LOG(DEBUG, "replacing host configuration for service[%s]", service->name);
+                    stop_hosting(ziti_instance, curr_h);
                 }
-                cfgtype->free(config);
-                free(config);
+                model_map_set(&ziti_instance->hosts, service->name, zh);
+                current_tunneled_service.host = ziti_tunneler_host(tnlr_ctx, ziti_ctx, service->name, zh->cfg_desc->cfgtype, &zh->cfg);
+                zh->host_ctx = current_tunneled_service.host;
+            } else {
+                if (curr_h) {
+                    current_tunneled_service.host = curr_h->host_ctx;
+                }
             }
             if (!current_tunneled_service.host) {
                 ZITI_LOG(DEBUG, "service[%s] can be bound, but lacks host configuration; not hosting", service->name);

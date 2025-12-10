@@ -126,6 +126,11 @@ static void free_hosted_service_ctx(struct hosted_service_ctx_s *hosted_ctx) {
     STAILQ_CLEAR(&hosted_ctx->allowed_source_addresses, safe_free);
 }
 
+void ziti_hosted_serv_conn_close_cb(ziti_connection serv) {
+    struct hosted_service_ctx_s *hosted_ctx = ziti_conn_data(serv);
+    free_hosted_service_ctx(hosted_ctx);
+}
+
 static void hosted_server_close_cb(uv_handle_t *handle) {
     struct hosted_io_ctx_s *io_ctx = handle->data;
     if (io_ctx->client) {
@@ -640,8 +645,7 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
         ZITI_LOG(ERROR, "hosted_service[%s] incoming connection failed: %s", service_ctx->service_name, ziti_errorstr(status));
         ziti_close(clt, NULL);
         if (status == ZITI_SERVICE_UNAVAILABLE) {
-            ziti_close(serv, NULL);
-            free_hosted_service_ctx(service_ctx);
+            ziti_close(serv, ziti_hosted_serv_conn_close_cb);
         }
         return;
     }
@@ -810,6 +814,7 @@ static void on_hosted_client_connect_resolved(uv_getaddrinfo_t* ai_req, int stat
 
 /** called by ziti SDK when a hosted service listener is ready */
 static void hosted_listen_cb(ziti_connection serv, int status) {
+    ZITI_LOG(DEBUG, "status[%d]", status);
     struct hosted_service_ctx_s *host_ctx = ziti_conn_data(serv);
     if (host_ctx == NULL) {
         ZITI_LOG(DEBUG, "null host_ctx");
@@ -818,10 +823,11 @@ static void hosted_listen_cb(ziti_connection serv, int status) {
 
     if (status != ZITI_OK) {
         ZITI_LOG(ERROR, "unable to host service %s: %s", host_ctx->service_name, ziti_errorstr(status));
-        ziti_conn_set_data(serv, NULL);
-        ziti_close(serv, NULL);
-        free_hosted_service_ctx(host_ctx);
+        ziti_close(serv, ziti_hosted_serv_conn_close_cb);
+        return;
     }
+
+    ziti_host_set_conn((ziti_context) host_ctx->ziti_ctx, host_ctx->service_name, serv);
 }
 
 #define DEFAULT_LISTEN_OPTS (ziti_listen_opts){ \
