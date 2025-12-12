@@ -658,6 +658,11 @@ tunneled_service_t *ziti_sdk_c_on_service(ziti_context ziti_ctx, ziti_service *s
         if (zi_ctx) {
             stop_intercept(tnlr_ctx, ziti_instance, zi_ctx);
         }
+        ziti_host_t *zh = model_map_remove(&ziti_instance->hosts, service->name);
+        if (zh) {
+            zh->serv = NULL;
+            stop_hosting(ziti_instance, zh);
+        }
     }
 
     return &current_tunneled_service;

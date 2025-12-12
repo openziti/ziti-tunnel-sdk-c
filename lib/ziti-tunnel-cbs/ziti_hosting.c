@@ -338,7 +338,7 @@ static const char *compute_dst_protocol(const host_ctx_t *service, const tunnele
             return NULL;
         }
         if (!protocol_match(app_data->dst_protocol, &service->proto_u.allowed_protocols)) {
-            snprintf(err, err_sz, "requested protocol '%s' is not in 'allowedProtocols", app_data->dst_protocol);
+            snprintf(err, err_sz, "requested protocol '%s' is not in 'allowedProtocols'", app_data->dst_protocol);
             return NULL;
         }
         dst_proto = app_data->dst_protocol;
