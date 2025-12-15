@@ -176,7 +176,7 @@ jobs:
           ./build/programs/ziti-edge-tunnel/RelWithDebInfo/ziti-edge-tunnel version --verbose
 
       - name: Upload the Linux Package
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.distro.name }}-${{ matrix.distro.version }}-${{ matrix.arch.rpm }}-${{ matrix.distro.type }}
           path: ./build/ziti-edge-tunnel-*.${{ matrix.distro.type }}
