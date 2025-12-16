@@ -2,6 +2,7 @@
   "name": "ziti",
   "version-semver": "1.0.0",
   "dependencies": [
+    "stc",
     "libuv",
     "zlib",
     "llhttp",
@@ -15,7 +16,6 @@
       "$comment": "on linux we use system installed OpenSSL, as determined by vcpkg-overlays/linux-syslibs)"
     },
     "json-c",
-    "stc",
     "protobuf-c"
   ],
   "features": {

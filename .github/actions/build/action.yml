@@ -20,6 +20,16 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: linux tools
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        lsb_release -a
+        type -a python
+        /usr/bin/python --version
+        type -a python3
+        /usr/bin/python3 --version
+
     - name: macOS tools
       if: runner.os == 'macOS'
       shell: bash
@@ -62,7 +72,7 @@ runs:
         key: ${{ steps.get_vcpkg_cache_key.outputs.key }}
         path: ./vcpkg_cache
 
-    - uses: lukka/run-cmake@v10.6 # pin version to avoid failed glibc dependency on ubuntu 20 runners. go back to @latest when ubuntu 22+ is adopted for runner os.
+    - uses: lukka/run-cmake@v10
       if: runner.os != 'Linux'
       name: Configure CMake
       with:
