@@ -319,9 +319,9 @@ static bool allowed_hostname_match(const char *hostname, const allowed_hostnames
         if (entry->domain_name[0] == '*') {
             if (entry->domain_name[1] == '\0') return true;
             for (char *dot = strchr(hostname, '.'); dot != NULL; dot = strchr(dot + 1, '.')) {
-                if (strcmp(dot, entry->domain_name + 1) == 0) return true;
+                if (strcasecmp(dot, entry->domain_name + 1) == 0) return true;
             }
-        } else if (strcmp(hostname, entry->domain_name) == 0) {
+        } else if (strcasecmp(hostname, entry->domain_name) == 0) {
             return true;
         }
     }
