@@ -118,7 +118,7 @@ jobs:
 
       - name: Create a Vcpkg Cache with the Defined Key for this Matrix Job
         id: vcpkg_cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           key: ${{ steps.get_vcpkg_cache_key.outputs.key }}
           path: ./vcpkg_cache
