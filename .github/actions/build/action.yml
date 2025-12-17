@@ -20,16 +20,6 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: linux tools
-      if: runner.os == 'Linux'
-      shell: bash
-      run: |
-        lsb_release -a
-        type -a python
-        /usr/bin/python --version
-        type -a python3
-        /usr/bin/python3 --version
-
     - name: macOS tools
       if: runner.os == 'macOS'
       shell: bash
