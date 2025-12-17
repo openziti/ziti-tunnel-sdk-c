@@ -19,7 +19,7 @@ RUN dnf install -y \
         gcc-toolset-10 \
         gcc-toolset-10-libatomic-devel \
         iproute \
-        python3 \
+        python38 \
         systemd-devel \
         zlib-devel \
         systemd-rpm-macros \
