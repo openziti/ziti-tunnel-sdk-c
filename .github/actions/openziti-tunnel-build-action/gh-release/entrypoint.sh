@@ -55,7 +55,7 @@ mkdir -p /github/workspace/vcpkg_cache
 (
     cd "${VCPKG_ROOT}"
     git checkout master
-    git pull
+    git pull --quiet
     ./bootstrap-vcpkg.sh -disableMetrics
 )
 

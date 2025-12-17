@@ -62,7 +62,7 @@ runs:
         key: ${{ steps.get_vcpkg_cache_key.outputs.key }}
         path: ./vcpkg_cache
 
-    - uses: lukka/run-cmake@v10.6 # pin version to avoid failed glibc dependency on ubuntu 20 runners. go back to @latest when ubuntu 22+ is adopted for runner os.
+    - uses: lukka/run-cmake@v10
       if: runner.os != 'Linux'
       name: Configure CMake
       with:
