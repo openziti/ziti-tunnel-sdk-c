@@ -18,7 +18,7 @@
       "hidden": true,
       "cacheVariables": {
         "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
-        "VCPKG_OVERLAY_PORTS": "${sourceDir}/vcpkg-overlays/omit-json-c-apps"
+        "VCPKG_OVERLAY_PORTS": "${sourceDir}/vcpkg-overlays/json-c-disable-duplocale"
       }
     },
     {
