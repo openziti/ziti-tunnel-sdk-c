@@ -156,8 +156,16 @@ main() {
             } | column -t -s $'\t'
             echo ""
         else
+            cmd=$(ps -o args= -p "$ZET_PID" 2>/dev/null | sed 's|/opt/openziti/bin/||' | cut -d' ' -f1 || echo "unknown")
+            fd_listing=$(ls -l "/proc/${ZET_PID}/fd" 2>/dev/null | sed '1d')
+            total_open=$(echo "$fd_listing" | wc -l)
+            sock_count=$(echo "$fd_listing" | grep -c 'socket:\[' || true)
+
             echo "=== Summary ==="
-            echo "lsof not available for summary"
+            {
+                echo -e "Open\tSock\tUnix\tFile\tCommand"
+                printf '%d\t%d\t%s\t%s\t%s\n' "$total_open" "$sock_count" "-" "-" "$cmd"
+            } | column -t -s $'\t'
             echo ""
         fi
 
