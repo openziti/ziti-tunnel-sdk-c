@@ -506,31 +506,31 @@ static void WINAPI if_change_cb(PVOID CallerContext, PMIB_IPINTERFACE_ROW Row, M
 
 static int tun_exclude_rt(netif_handle dev, uv_loop_t *loop, const char *dest) {
 
-    MIB_IPFORWARD_ROW2 *route = calloc(1, sizeof(MIB_IPFORWARD_ROW2));
-    route->DestinationPrefix.Prefix.si_family = AF_INET;
-    parse_route(&route->DestinationPrefix, dest);
-    int rc = GetIpForwardEntry2(route);
-    if (rc == NO_ERROR) {
-        ZITI_LOG(DEBUG, "route to %s found", dest);
-        DeleteIpForwardEntry2(route);
-    }
+    // MIB_IPFORWARD_ROW2 *route = calloc(1, sizeof(MIB_IPFORWARD_ROW2));
+    // route->DestinationPrefix.Prefix.si_family = AF_INET;
+    // parse_route(&route->DestinationPrefix, dest);
+    // int rc = GetIpForwardEntry2(route);
+    // if (rc == NO_ERROR) {
+    //     ZITI_LOG(DEBUG, "route to %s found", dest);
+    //     DeleteIpForwardEntry2(route);
+    // }
 
-    route->InterfaceIndex = default_rt.InterfaceIndex;
-    route->InterfaceLuid = default_rt.InterfaceLuid;
-    route->Metric = 0;
-    route->NextHop = default_rt.NextHop;
-    route->ValidLifetime = ROUTE_LIFETIME;
-    route->PreferredLifetime = ROUTE_LIFETIME;
+    // route->InterfaceIndex = default_rt.InterfaceIndex;
+    // route->InterfaceLuid = default_rt.InterfaceLuid;
+    // route->Metric = 0;
+    // route->NextHop = default_rt.NextHop;
+    // route->ValidLifetime = ROUTE_LIFETIME;
+    // route->PreferredLifetime = ROUTE_LIFETIME;
 
-    rc = CreateIpForwardEntry2(route);
-    if (rc != NO_ERROR) {
-        char err[256];
-        FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM, NULL, GetLastError(),
-                      MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-                      err, sizeof(err), NULL);
-        ZITI_LOG(WARN, "failed to create exclusion route: %d(%s)", rc, err);
-    }
-    model_map_set(&dev->excluded_routes, dest, route);
+    // rc = CreateIpForwardEntry2(route);
+    // if (rc != NO_ERROR) {
+    //     char err[256];
+    //     FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM, NULL, GetLastError(),
+    //                   MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+    //                   err, sizeof(err), NULL);
+    //     ZITI_LOG(WARN, "failed to create exclusion route: %d(%s)", rc, err);
+    // }
+    // model_map_set(&dev->excluded_routes, dest, route);
     return 0;
 }
 
