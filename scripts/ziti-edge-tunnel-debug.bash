@@ -114,7 +114,28 @@ main() {
         
         # First, capture summary if lsof is available
         if command -v lsof &>/dev/null; then
-            lsof_output=$(lsof -Pnp "$ZET_PID" 2>/dev/null)
+            LSOF_DNS_TIMEOUT_SECONDS=10
+            lsof_tmp=$(mktemp)
+            lsof_rc=0
+            lsof_dns_timed_out=false
+
+            if command -v timeout &>/dev/null; then
+                timeout "${LSOF_DNS_TIMEOUT_SECONDS}s" lsof -Pp "$ZET_PID" &>"$lsof_tmp"
+                lsof_rc=$?
+            else
+                lsof -Pp "$ZET_PID" &>"$lsof_tmp"
+                lsof_rc=$?
+            fi
+
+            if [[ $lsof_rc -eq 124 ]]; then
+                lsof_dns_timed_out=true
+                echo "WARNING: lsof DNS resolution took longer than ${LSOF_DNS_TIMEOUT_SECONDS}s; re-running with -n (no name resolution)." >&2
+                lsof -nPp "$ZET_PID" &>"$lsof_tmp"
+                lsof_rc=$?
+            fi
+
+            lsof_output=$(cat "$lsof_tmp")
+            rm -f "$lsof_tmp"
             
             # Total open files
             total_open=$(echo "$lsof_output" | wc -l)
@@ -140,7 +161,14 @@ main() {
             echo ""
         fi
 
-        echo -e "=== Open File Descriptors ==="
+        echo -e "=== Open Sockets ==="
+
+        PEER_DNS_TIMEOUT_SECONDS=10
+        peer_dns_enabled=false
+        peer_dns_timed_out=false
+        if command -v getent &>/dev/null; then
+            peer_dns_enabled=true
+        fi
         
         # Iterate through all file descriptors
         for fd_dir in "/proc/${ZET_PID}/fd"/*; do
@@ -163,6 +191,7 @@ main() {
             fd_type="unknown"
             inode=""
             peer_addr=""
+            peer_name=""
             peer_port=""
             path=""
             
@@ -273,18 +302,49 @@ main() {
             out_mode=${fd_mode:-"-"}
             out_inode=${inode:-"-"}
             out_peer_addr=${peer_addr:-"-"}
+            out_peer_name=${peer_name:-"-"}
             out_peer_port=${peer_port:-"-"}
             out_path=${path:-"-"}
             out_cmd=${cmd:-"-"}
             
+            # Keep this table focused on sockets
+            if [[ "$fd_type" != "socket" ]]; then
+                continue
+            fi
+
+            # Attempt to resolve peer address (one-time timeout disables further lookups)
+            if [[ "${peer_dns_enabled}" == "true" && "${peer_dns_timed_out}" != "true" ]]; then
+                if [[ -n "${peer_addr}" && "${peer_addr}" != "-" && "${peer_addr}" != unix:* ]]; then
+                    if command -v timeout &>/dev/null; then
+                        resolved_line=$(timeout "${PEER_DNS_TIMEOUT_SECONDS}s" getent hosts "${peer_addr}" 2>/dev/null)
+                        rc=$?
+                        if [[ $rc -eq 124 ]]; then
+                            peer_dns_timed_out=true
+                            echo "WARNING: peer DNS resolution took longer than ${PEER_DNS_TIMEOUT_SECONDS}s; continuing without name resolution." >&2
+                        else
+                            resolved_name=$(echo "$resolved_line" | awk '{print $2}' | head -1)
+                            if [[ -n "$resolved_name" ]]; then
+                                out_peer_name="$resolved_name"
+                            fi
+                        fi
+                    else
+                        resolved_line=$(getent hosts "${peer_addr}" 2>/dev/null)
+                        resolved_name=$(echo "$resolved_line" | awk '{print $2}' | head -1)
+                        if [[ -n "$resolved_name" ]]; then
+                            out_peer_name="$resolved_name"
+                        fi
+                    fi
+                fi
+            fi
+
             # Write to temp file
-            printf '%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-                "$fd" "$fd_type" "$out_mode" "$out_inode" "$out_peer_addr" "$out_peer_port" "$out_path" "$out_cmd" >> "$temp_file"
+            printf '%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+                "$fd" "$fd_type" "$out_mode" "$out_inode" "$out_peer_addr" "$out_peer_name" "$out_peer_port" "$out_path" "$out_cmd" >> "$temp_file"
         done
         
         # Format detailed list with column (include header in same formatter for alignment)
         {
-            echo -e "FD\tType\tMode\tInode\tPeerAddr\tPeerPort\tPath\tCommand"
+            echo -e "FD\tType\tMode\tInode\tPeerAddr\tPeerName\tPeerPort\tPath\tCommand"
             cat "$temp_file"
         } | column -t -s $'\t'
         rm -f "$temp_file"
