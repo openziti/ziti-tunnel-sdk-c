@@ -341,6 +341,11 @@ main() {
                 fi
             fi
 
+            # Only include IP peers (exclude unix domain sockets) and require a non-empty port
+            if [[ "${out_peer_addr}" == unix:* || "${out_peer_port}" == "-" || -z "${out_peer_port}" ]]; then
+                continue
+            fi
+
             # Write to temp file
             printf '%s\t%s\t%s\n' \
                 "$out_peer_name" "$out_peer_addr" "$out_peer_port" >> "$temp_file"
