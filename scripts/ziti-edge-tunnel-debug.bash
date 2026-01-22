@@ -307,13 +307,9 @@ main() {
             cmd=$(ps -o args= -p "$ZET_PID" 2>/dev/null | sed 's|/opt/openziti/bin/||' | cut -d' ' -f1 || echo "unknown")
 
             # Ensure stable columns (avoid empty fields collapsing in `column`)
-            out_mode=${fd_mode:-"-"}
-            out_inode=${inode:-"-"}
             out_peer_addr=${peer_addr:-"-"}
             out_peer_name=${peer_name:-"-"}
             out_peer_port=${peer_port:-"-"}
-            out_path=${path:-"-"}
-            out_cmd=${cmd:-"-"}
             
             # Keep this table focused on sockets
             if [[ "$fd_type" != "socket" ]]; then
@@ -346,13 +342,13 @@ main() {
             fi
 
             # Write to temp file
-            printf '%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-                "$fd" "$fd_type" "$out_mode" "$out_inode" "$out_peer_addr" "$out_peer_name" "$out_peer_port" "$out_path" "$out_cmd" >> "$temp_file"
+            printf '%s\t%s\t%s\n' \
+                "$out_peer_name" "$out_peer_addr" "$out_peer_port" >> "$temp_file"
         done
         
         # Format detailed list with column (include header in same formatter for alignment)
         {
-            echo -e "FD\tType\tMode\tInode\tPeerAddr\tPeerName\tPeerPort\tPath\tCommand"
+            echo -e "PeerName\tPeerAddr\tPeerPort"
             cat "$temp_file"
         } | column -t -s $'\t'
         rm -f "$temp_file"
