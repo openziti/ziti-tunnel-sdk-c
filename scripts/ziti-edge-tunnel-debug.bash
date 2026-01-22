@@ -111,11 +111,14 @@ main() {
         
         # Create a temporary file to collect all data before formatting
         temp_file=$(mktemp)
+        lsof_tmp=""
+        lsof_cmd_used=""
         
         # First, capture summary if lsof is available
         if command -v lsof &>/dev/null; then
             LSOF_DNS_TIMEOUT_SECONDS=10
             lsof_tmp=$(mktemp)
+            lsof_cmd_used="lsof -Pp"
             lsof_rc=0
             lsof_dns_timed_out=false
 
@@ -131,11 +134,11 @@ main() {
                 lsof_dns_timed_out=true
                 echo "WARNING: lsof DNS resolution took longer than ${LSOF_DNS_TIMEOUT_SECONDS}s; re-running with -n (no name resolution)." >&2
                 lsof -nPp "$ZET_PID" &>"$lsof_tmp"
+                lsof_cmd_used="lsof -nPp"
                 lsof_rc=$?
             fi
 
             lsof_output=$(cat "$lsof_tmp")
-            rm -f "$lsof_tmp"
             
             # Total open files
             total_open=$(echo "$lsof_output" | wc -l)
@@ -358,6 +361,15 @@ main() {
         } | column -t -s $'\t'
         rm -f "$temp_file"
         
+        if [[ -n "${lsof_tmp}" && -s "${lsof_tmp}" ]]; then
+            echo ""
+            echo -e "=== ${lsof_cmd_used:-lsof -nPp} ==="
+            cat "${lsof_tmp}"
+        fi
+        if [[ -n "${lsof_tmp}" ]]; then
+            rm -f "${lsof_tmp}"
+        fi
+        
     ) &> "${OPEN_FILES_FILE}"
     echo -n "."
     
@@ -365,7 +377,7 @@ main() {
     journalctl _SYSTEMD_INVOCATION_ID="$(systemctl show -p InvocationID --value "${SYSTEMD_SERVICE_UNIT}")" -l --no-pager \
     &> "${LOG_FILE}"
     echo -n "."
-
+    
     # if stack then save it; else try backtrace
     if [[ -s "/proc/${ZET_PID}/stack" ]]; then
         mkdir ./stack
