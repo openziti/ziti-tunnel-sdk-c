@@ -842,8 +842,13 @@ static void listen_opts_from_host_cfg_v1(ziti_listen_opts *opts, const ziti_host
     *opts = DEFAULT_LISTEN_OPTS;
 
     if (config && config->listen_options) {
-        opts->bind_using_edge_identity = config->listen_options->bind_with_identity;
-        opts->identity = (char*)config->listen_options->identity;
+        if (config->listen_options->bind_with_identity_wildcard) {
+            opts->identity = "*:$tunneler_id.name";
+            opts->bind_using_edge_identity = false;
+        } else {
+            opts->bind_using_edge_identity = config->listen_options->bind_with_identity;
+            opts->identity = (char*)config->listen_options->identity;
+        }
         int cfg_max_conns = (int)config->listen_options->max_connections;
         opts->max_connections = cfg_max_conns > 0 ? cfg_max_conns : DEFAULT_LISTEN_OPTS.max_connections;
         int cfg_to = (int)config->listen_options->connect_timeout_seconds;
