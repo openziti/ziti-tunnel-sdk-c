@@ -3,6 +3,7 @@
   stdenv,
   fetchFromGitHub,
   callPackage,
+  writeShellScript,
   cmake,
   json_c,
   libsodium,
@@ -19,6 +20,58 @@ let
   inherit (lib) cmakeBool cmakeFeature;
 
   stc = callPackage ./stc.nix { };
+
+  installServiceScript = writeShellScript "install-ziti-edge-tunnel-service" ''
+    set -euo pipefail
+
+    PKG="${placeholder "out"}"
+    IDENTITY_DIR="/opt/openziti/etc/identities"
+    ETC_DIR="/etc/opt/openziti"
+
+    echo "==> Creating ziti user and group..."
+    id -u ziti &>/dev/null || useradd --system --user-group ziti
+
+    echo "==> Creating directories..."
+    mkdir -p "$IDENTITY_DIR" "$ETC_DIR"
+    chown ziti:ziti "$IDENTITY_DIR"
+    chmod 0770 "$IDENTITY_DIR"
+
+    echo "==> Installing systemd service..."
+    cp "$PKG/lib/systemd/system/ziti-edge-tunnel.service" /etc/systemd/system/
+    cp "$PKG/share/ziti-edge-tunnel/ziti-edge-tunnel.env" "$ETC_DIR/"
+    cp "$PKG/share/ziti-edge-tunnel/ziti-edge-tunnel.sh" "$ETC_DIR/"
+
+    echo "==> Enabling service..."
+    systemctl daemon-reload
+    systemctl enable ziti-edge-tunnel
+
+    echo ""
+    echo "Done! Place .jwt files in $IDENTITY_DIR and start the service:"
+    echo "  sudo systemctl start ziti-edge-tunnel"
+  '';
+
+  uninstallServiceScript = writeShellScript "uninstall-ziti-edge-tunnel-service" ''
+    set -euo pipefail
+
+    echo "==> Stopping and disabling service..."
+    systemctl stop ziti-edge-tunnel 2>/dev/null || true
+    systemctl disable ziti-edge-tunnel 2>/dev/null || true
+
+    echo "==> Removing systemd service..."
+    rm -f /etc/systemd/system/ziti-edge-tunnel.service
+    systemctl daemon-reload
+
+    echo "==> Removing config files..."
+    rm -f /etc/opt/openziti/ziti-edge-tunnel.env
+    rm -f /etc/opt/openziti/ziti-edge-tunnel.sh
+    rmdir /etc/opt/openziti 2>/dev/null || true
+
+    echo ""
+    echo "Done! The ziti user and /opt/openziti/etc/identities were left intact."
+    echo "Remove them manually if no longer needed:"
+    echo "  sudo userdel ziti"
+    echo "  sudo rm -rf /opt/openziti"
+  '';
 
   ziti_sdk_src = fetchFromGitHub {
     owner = "openziti";
@@ -118,6 +171,38 @@ stdenv.mkDerivation (finalAttrs: {
     stc
     zlib
   ];
+
+  postInstall = let
+    systemdDir = "../programs/ziti-edge-tunnel/package/systemd";
+  in ''
+    # Install templated systemd unit files for non-NixOS Linux distros
+    install -Dm644 -t $out/lib/systemd/system \
+      ${systemdDir}/ziti-edge-tunnel.service.in
+    install -Dm644 -t $out/share/ziti-edge-tunnel \
+      ${systemdDir}/ziti-edge-tunnel.env.in
+    install -Dm755 -t $out/share/ziti-edge-tunnel \
+      ${systemdDir}/ziti-edge-tunnel.sh.in
+
+    mv $out/lib/systemd/system/ziti-edge-tunnel.service{.in,}
+    mv $out/share/ziti-edge-tunnel/ziti-edge-tunnel.env{.in,}
+    mv $out/share/ziti-edge-tunnel/ziti-edge-tunnel.sh{.in,}
+
+    substituteInPlace $out/lib/systemd/system/ziti-edge-tunnel.service \
+      --replace-fail '@CPACK_BIN_DIR@/@SYSTEMD_SERVICE_NAME@' "$out/bin/ziti-edge-tunnel" \
+      --replace-fail '@CPACK_ETC_DIR@/@SYSTEMD_SERVICE_NAME@' "$out/share/ziti-edge-tunnel/ziti-edge-tunnel"
+
+    substituteInPlace $out/share/ziti-edge-tunnel/ziti-edge-tunnel.env \
+      --replace-fail '@ZITI_IDENTITY_DIR@' '/opt/openziti/etc/identities' \
+      --replace-fail '@ZITI_STATE_DIR@' '/var/lib/ziti-edge-tunnel'
+
+    substituteInPlace $out/share/ziti-edge-tunnel/ziti-edge-tunnel.sh \
+      --replace-fail '@ZITI_IDENTITY_DIR@' '/opt/openziti/etc/identities' \
+      --replace-fail '@CPACK_BIN_DIR@/@SYSTEMD_SERVICE_NAME@' "$out/bin/ziti-edge-tunnel"
+
+    # Install service scripts for non-NixOS Linux
+    install -Dm755 ${installServiceScript} $out/bin/install-ziti-edge-tunnel-service
+    install -Dm755 ${uninstallServiceScript} $out/bin/uninstall-ziti-edge-tunnel-service
+  '';
 
   doInstallCheck = true;
   nativeInstallCheckInputs = [ versionCheckHook ];
