@@ -172,37 +172,39 @@ stdenv.mkDerivation (finalAttrs: {
     zlib
   ];
 
-  postInstall = let
-    systemdDir = "../programs/ziti-edge-tunnel/package/systemd";
-  in ''
-    # Install templated systemd unit files for non-NixOS Linux distros
-    install -Dm644 -t $out/lib/systemd/system \
-      ${systemdDir}/ziti-edge-tunnel.service.in
-    install -Dm644 -t $out/share/ziti-edge-tunnel \
-      ${systemdDir}/ziti-edge-tunnel.env.in
-    install -Dm755 -t $out/share/ziti-edge-tunnel \
-      ${systemdDir}/ziti-edge-tunnel.sh.in
+  postInstall =
+    let
+      systemdDir = "../programs/ziti-edge-tunnel/package/systemd";
+    in
+    ''
+      # Install templated systemd unit files for non-NixOS Linux distros
+      install -Dm644 -t $out/lib/systemd/system \
+        ${systemdDir}/ziti-edge-tunnel.service.in
+      install -Dm644 -t $out/share/ziti-edge-tunnel \
+        ${systemdDir}/ziti-edge-tunnel.env.in
+      install -Dm755 -t $out/share/ziti-edge-tunnel \
+        ${systemdDir}/ziti-edge-tunnel.sh.in
 
-    mv $out/lib/systemd/system/ziti-edge-tunnel.service{.in,}
-    mv $out/share/ziti-edge-tunnel/ziti-edge-tunnel.env{.in,}
-    mv $out/share/ziti-edge-tunnel/ziti-edge-tunnel.sh{.in,}
+      mv $out/lib/systemd/system/ziti-edge-tunnel.service{.in,}
+      mv $out/share/ziti-edge-tunnel/ziti-edge-tunnel.env{.in,}
+      mv $out/share/ziti-edge-tunnel/ziti-edge-tunnel.sh{.in,}
 
-    substituteInPlace $out/lib/systemd/system/ziti-edge-tunnel.service \
-      --replace-fail '@CPACK_BIN_DIR@/@SYSTEMD_SERVICE_NAME@' "$out/bin/ziti-edge-tunnel" \
-      --replace-fail '@CPACK_ETC_DIR@/@SYSTEMD_SERVICE_NAME@' "$out/share/ziti-edge-tunnel/ziti-edge-tunnel"
+      substituteInPlace $out/lib/systemd/system/ziti-edge-tunnel.service \
+        --replace-fail '@CPACK_BIN_DIR@/@SYSTEMD_SERVICE_NAME@' "$out/bin/ziti-edge-tunnel" \
+        --replace-fail '@CPACK_ETC_DIR@/@SYSTEMD_SERVICE_NAME@' "$out/share/ziti-edge-tunnel/ziti-edge-tunnel"
 
-    substituteInPlace $out/share/ziti-edge-tunnel/ziti-edge-tunnel.env \
-      --replace-fail '@ZITI_IDENTITY_DIR@' '/opt/openziti/etc/identities' \
-      --replace-fail '@ZITI_STATE_DIR@' '/var/lib/ziti-edge-tunnel'
+      substituteInPlace $out/share/ziti-edge-tunnel/ziti-edge-tunnel.env \
+        --replace-fail '@ZITI_IDENTITY_DIR@' '/opt/openziti/etc/identities' \
+        --replace-fail '@ZITI_STATE_DIR@' '/var/lib/ziti-edge-tunnel'
 
-    substituteInPlace $out/share/ziti-edge-tunnel/ziti-edge-tunnel.sh \
-      --replace-fail '@ZITI_IDENTITY_DIR@' '/opt/openziti/etc/identities' \
-      --replace-fail '@CPACK_BIN_DIR@/@SYSTEMD_SERVICE_NAME@' "$out/bin/ziti-edge-tunnel"
+      substituteInPlace $out/share/ziti-edge-tunnel/ziti-edge-tunnel.sh \
+        --replace-fail '@ZITI_IDENTITY_DIR@' '/opt/openziti/etc/identities' \
+        --replace-fail '@CPACK_BIN_DIR@/@SYSTEMD_SERVICE_NAME@' "$out/bin/ziti-edge-tunnel"
 
-    # Install service scripts for non-NixOS Linux
-    install -Dm755 ${installServiceScript} $out/bin/install-ziti-edge-tunnel-service
-    install -Dm755 ${uninstallServiceScript} $out/bin/uninstall-ziti-edge-tunnel-service
-  '';
+      # Install service scripts for non-NixOS Linux
+      install -Dm755 ${installServiceScript} $out/bin/install-ziti-edge-tunnel-service
+      install -Dm755 ${uninstallServiceScript} $out/bin/uninstall-ziti-edge-tunnel-service
+    '';
 
   doInstallCheck = true;
   nativeInstallCheckInputs = [ versionCheckHook ];
