@@ -41,38 +41,41 @@ in
 {
   options.programs.ziti-edge-tunnel = {
     enable = lib.mkEnableOption "Ziti Edge Tunnel";
-    service = {
-      enable = lib.mkEnableOption "Ziti Edge Tunnel service";
-      identityDir = lib.mkOption {
-        type = lib.types.str;
-        default = "/opt/openziti/etc/identities";
-        description = "Directory containing Ziti identities used by the tunnel";
-      };
-      user = lib.mkOption {
-        type = lib.types.str;
-        default = "ziti";
-        description = "User to run the tunnel service as";
-      };
-      group = lib.mkOption {
-        type = lib.types.str;
-        default = "ziti";
-        description = "Group owning identities; contents are writable by this group";
-      };
-      dnsIpRange = lib.mkOption {
-        type = lib.types.str;
-        default = "100.64.0.1/10";
-        description = "CIDR range for Ziti DNS intercept";
-      };
-      verbose = lib.mkOption {
-        type = lib.types.str;
-        default = "info";
-        description = "Log verbosity level (e.g. info, debug, trace)";
-      };
-      environmentFile = lib.mkOption {
-        type = lib.types.nullOr lib.types.str;
-        default = null;
-        description = "Optional environment file for overriding service defaults";
-      };
+
+    identityDir = lib.mkOption {
+      type = lib.types.str;
+      default = "/opt/openziti/etc/identities";
+      description = "Directory containing Ziti identities used by the tunnel";
+    };
+
+    user = lib.mkOption {
+      type = lib.types.str;
+      default = "ziti";
+      description = "User to run the tunnel service as";
+    };
+
+    group = lib.mkOption {
+      type = lib.types.str;
+      default = "ziti";
+      description = "Group owning identities; contents are writable by this group";
+    };
+
+    dnsIpRange = lib.mkOption {
+      type = lib.types.str;
+      default = "100.64.0.1/10";
+      description = "CIDR range for Ziti DNS intercept";
+    };
+
+    verbose = lib.mkOption {
+      type = lib.types.str;
+      default = "info";
+      description = "Log verbosity level (e.g. info, debug, trace)";
+    };
+
+    environmentFile = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = "Optional environment file for overriding service defaults";
     };
 
     enrollment = {
@@ -89,11 +92,13 @@ in
                     `config.sops.secrets."ziti-''${name}-jwt".path`.
                   '';
                 };
+
                 identityFile = lib.mkOption {
                   type = lib.types.str;
                   default = "${cfg.service.identityDir}/${name}.json";
                   description = "Absolute path of the enrolled identity JSON to create if missing.";
                 };
+
                 extraArgs = lib.mkOption {
                   type = lib.types.listOf lib.types.str;
                   default = [ ];
@@ -140,7 +145,7 @@ in
         };
       };
 
-      ziti-edge-tunnel = lib.mkIf cfg.service.enable {
+      ziti-edge-tunnel = lib.mkIf cfg.enable {
         description = "Ziti Edge Tunnel";
         wantedBy = [ "multi-user.target" ];
         after = [ "network-online.target" ] ++ enrollmentServiceNames;
