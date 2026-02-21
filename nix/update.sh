@@ -28,8 +28,8 @@ gh_raw() {
 
 prefetch() {
   local owner="$1" repo="$2" rev="$3"
-  nix-prefetch-github "$owner" "$repo" --rev "$rev" --json 2>/dev/null \
-    | jq -r '.hash'
+  nix-prefetch-github "$owner" "$repo" --rev "$rev" --json 2>/dev/null |
+    jq -r '.hash'
 }
 
 update_field() {
@@ -63,13 +63,13 @@ TUNNEL_VERSION="${TUNNEL_TAG#v}"
 echo "    ziti-tunnel-sdk-c: $TUNNEL_VERSION"
 
 echo "==> Reading ZITI_SDK_VERSION from CMakeLists.txt..."
-SDK_VERSION=$(gh_raw openziti ziti-tunnel-sdk-c "$TUNNEL_TAG" CMakeLists.txt \
-  | grep -oP 'set\(ZITI_SDK_VERSION\s+"\K[^"]+')
+SDK_VERSION=$(gh_raw openziti ziti-tunnel-sdk-c "$TUNNEL_TAG" CMakeLists.txt |
+  grep -oP 'set\(ZITI_SDK_VERSION\s+"\K[^"]+')
 echo "    ziti-sdk-c: $SDK_VERSION"
 
 echo "==> Reading tlsuv version from ziti-sdk-c..."
-TLSUV_VERSION=$(gh_raw openziti ziti-sdk-c "$SDK_VERSION" CMakeLists.txt \
-  | grep -oP 'set\(tlsuv_VERSION\s+"\K[^"]+')
+TLSUV_VERSION=$(gh_raw openziti ziti-sdk-c "$SDK_VERSION" CMakeLists.txt |
+  grep -oP 'set\(tlsuv_VERSION\s+"\K[^"]+')
 echo "    tlsuv: $TLSUV_VERSION"
 
 echo "==> Getting latest subcommands.c commit..."
