@@ -5,7 +5,7 @@
 - [Determinate Systems installer](https://zero-to-nix.com/start/install):
 
 This enables flakes and the unified `nix` CLI out of the box. If you already
-have Nix installed, make sure `experimental-features = nix-command flakes` is in
+have Nix installed, make sure `experimental-features = [ "nix-command" "flakes" ];` is in
 your `~/.config/nix/nix.conf`.
 
 ## Usage
@@ -44,7 +44,6 @@ Then enable the module:
 
   programs.ziti-edge-tunnel = {
     enable = true;
-    service.enable = true;
 
     # Optional: enroll identities at boot
     enrollment.identities = {
@@ -68,14 +67,6 @@ When a new version of ziti-edge-tunnel is released, run the update script:
 # Or pin to a specific version
 ./nix/update.sh v1.11.0
 ```
-
-The script automatically:
-
-1. Fetches the latest (or specified) tag from GitHub
-2. Reads `ZITI_SDK_VERSION` and `tlsuv_VERSION` from the upstream CMake files
-3. Pins the latest `subcommands.c` commit
-4. Computes Nix source hashes for all dependencies
-5. Updates `nix/packages/ziti-edge-tunnel.nix` in-place
 
 Then verify the build:
 
