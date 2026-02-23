@@ -21,8 +21,8 @@ let
       before = [ "ziti-edge-tunnel.service" ];
       serviceConfig = {
         Type = "oneshot";
+        RemainAfterExit = true;
         UMask = "0007";
-        ConditionPathExists = "!${cfg.identityDir}/${icfg.identityFileName}";
         ExecStart = lib.concatStringsSep " " (
           [
             "${lib.getExe ziti-edge-tunnel}"
@@ -32,6 +32,9 @@ let
           ]
           ++ map lib.escapeShellArg icfg.extraArgs
         );
+      };
+      unitConfig = {
+        ConditionPathExists = "!${cfg.identityDir}/${icfg.identityFileName}";
       };
     }
   ) cfg.enrollment.identities;
