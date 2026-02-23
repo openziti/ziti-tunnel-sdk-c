@@ -1,3 +1,4 @@
+self:
 {
   lib,
   config,
@@ -16,19 +17,18 @@ let
         "local-fs.target"
         "ziti-edge-tunnel-identities-perms.service"
       ];
-      wants = [ "network-online.target" ];
+      requires = [ "network-online.target" ];
       before = [ "ziti-edge-tunnel.service" ];
       serviceConfig = {
         Type = "oneshot";
-        User = cfg.user;
         UMask = "0007";
-        ConditionPathExists = "!${icfg.identityFile}";
+        ConditionPathExists = "!${cfg.identityDir}/${icfg.identityFileName}";
         ExecStart = lib.concatStringsSep " " (
           [
-            "${pkgs.ziti-edge-tunnel}/bin/ziti-edge-tunnel"
+            "${lib.getExe ziti-edge-tunnel}"
             "enroll"
             "--jwt ${lib.escapeShellArg icfg.jwtFile}"
-            "--identity ${lib.escapeShellArg icfg.identityFile}"
+            "--identity ${lib.escapeShellArg "${cfg.identityDir}/${icfg.identityFileName}"}"
           ]
           ++ map lib.escapeShellArg icfg.extraArgs
         );
@@ -37,6 +37,8 @@ let
   ) cfg.enrollment.identities;
 
   enrollmentServiceNames = map (n: "${n}.service") (lib.attrNames enrollmentServices);
+
+  ziti-edge-tunnel = self.packages.${pkgs.system}.ziti-edge-tunnel;
 in
 {
   options.programs.ziti-edge-tunnel = {
@@ -46,18 +48,6 @@ in
       type = lib.types.str;
       default = "/opt/openziti/etc/identities";
       description = "Directory containing Ziti identities used by the tunnel";
-    };
-
-    user = lib.mkOption {
-      type = lib.types.str;
-      default = "ziti";
-      description = "User to run the tunnel service as";
-    };
-
-    group = lib.mkOption {
-      type = lib.types.str;
-      default = "ziti";
-      description = "Group owning identities; contents are writable by this group";
     };
 
     dnsIpRange = lib.mkOption {
@@ -78,6 +68,12 @@ in
       description = "Optional environment file for overriding service defaults";
     };
 
+    extraUsers = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      description = "Users to add to the ziti group, granting access to the Ziti socket.";
+    };
+
     enrollment = {
       identities = lib.mkOption {
         type = lib.types.attrsOf (
@@ -93,10 +89,11 @@ in
                   '';
                 };
 
-                identityFile = lib.mkOption {
+                identityFileName = lib.mkOption {
                   type = lib.types.str;
-                  default = "${cfg.identityDir}/${name}.json";
-                  description = "Absolute path of the enrolled identity JSON to create if missing.";
+                  default = "${name}.json";
+                  defaultText = lib.literalExpression ''"$${config.program.ziti-edge-tunnel.enrollment.identities.*.name}.json"'';
+                  description = "Name of the identity file. File lives in `program.ziti-edge-tunnel.identityDir`";
                 };
 
                 extraArgs = lib.mkOption {
@@ -115,18 +112,13 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    environment.systemPackages = [ pkgs.ziti-edge-tunnel ];
+    environment.systemPackages = [ ziti-edge-tunnel ];
 
-    # Declare the user and group to ensure they exist
-    users.users.${cfg.user} = {
-      isSystemUser = true;
-      group = cfg.group;
-    };
-    users.groups.${cfg.group} = { };
+    users.users = lib.mkMerge (map (u: { ${u}.extraGroups = [ "ziti" ]; }) cfg.extraUsers);
+    users.groups.ziti = { };
 
-    # Ensure identity directory exists with secure defaults and proper group
     systemd.tmpfiles.rules = [
-      "d ${cfg.identityDir} 0770 ${cfg.user} ${cfg.group} -"
+      "d ${cfg.identityDir} 0770 root root -"
     ];
 
     systemd.services = {
@@ -139,7 +131,7 @@ in
         serviceConfig = {
           Type = "oneshot";
           ExecStart = [
-            "${pkgs.coreutils}/bin/chgrp -cR ${cfg.group} ${cfg.identityDir}"
+            "${pkgs.coreutils}/bin/chgrp -cR root ${cfg.identityDir}"
             "${pkgs.coreutils}/bin/chmod -cR ug=rwX,o-rwx ${cfg.identityDir}"
           ];
         };
@@ -160,10 +152,9 @@ in
 
         serviceConfig = {
           Type = "simple";
-          User = cfg.user;
           UMask = "0007";
           AmbientCapabilities = [ "CAP_NET_ADMIN" ];
-          ExecStart = "${pkgs.ziti-edge-tunnel}/bin/ziti-edge-tunnel run --verbose=${cfg.verbose} --dns-ip-range=${cfg.dnsIpRange} --identity-dir=${cfg.identityDir}";
+          ExecStart = "${lib.getExe ziti-edge-tunnel} run --verbose=${cfg.verbose} --dns-ip-range=${cfg.dnsIpRange} --identity-dir=${cfg.identityDir}";
           Restart = "always";
           RestartSec = 3;
         }
