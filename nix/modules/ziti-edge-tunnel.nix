@@ -20,7 +20,7 @@ let
       before = [ "ziti-edge-tunnel.service" ];
       serviceConfig = {
         Type = "oneshot";
-        User = cfg.service.user;
+        User = cfg.user;
         UMask = "0007";
         ConditionPathExists = "!${icfg.identityFile}";
         ExecStart = lib.concatStringsSep " " (
@@ -95,7 +95,7 @@ in
 
                 identityFile = lib.mkOption {
                   type = lib.types.str;
-                  default = "${cfg.service.identityDir}/${name}.json";
+                  default = "${cfg.identityDir}/${name}.json";
                   description = "Absolute path of the enrolled identity JSON to create if missing.";
                 };
 
@@ -118,15 +118,15 @@ in
     environment.systemPackages = [ pkgs.ziti-edge-tunnel ];
 
     # Declare the user and group to ensure they exist
-    users.users.${cfg.service.user} = {
+    users.users.${cfg.user} = {
       isSystemUser = true;
-      group = cfg.service.group;
+      group = cfg.group;
     };
-    users.groups.${cfg.service.group} = { };
+    users.groups.${cfg.group} = { };
 
     # Ensure identity directory exists with secure defaults and proper group
     systemd.tmpfiles.rules = [
-      "d ${cfg.service.identityDir} 0770 ${cfg.service.user} ${cfg.service.group} -"
+      "d ${cfg.identityDir} 0770 ${cfg.user} ${cfg.group} -"
     ];
 
     systemd.services = {
@@ -139,8 +139,8 @@ in
         serviceConfig = {
           Type = "oneshot";
           ExecStart = [
-            "${pkgs.coreutils}/bin/chgrp -cR ${cfg.service.group} ${cfg.service.identityDir}"
-            "${pkgs.coreutils}/bin/chmod -cR ug=rwX,o-rwx ${cfg.service.identityDir}"
+            "${pkgs.coreutils}/bin/chgrp -cR ${cfg.group} ${cfg.identityDir}"
+            "${pkgs.coreutils}/bin/chmod -cR ug=rwX,o-rwx ${cfg.identityDir}"
           ];
         };
       };
@@ -160,15 +160,15 @@ in
 
         serviceConfig = {
           Type = "simple";
-          User = cfg.service.user;
+          User = cfg.user;
           UMask = "0007";
           AmbientCapabilities = [ "CAP_NET_ADMIN" ];
-          ExecStart = "${pkgs.ziti-edge-tunnel}/bin/ziti-edge-tunnel run --verbose=${cfg.service.verbose} --dns-ip-range=${cfg.service.dnsIpRange} --identity-dir=${cfg.service.identityDir}";
+          ExecStart = "${pkgs.ziti-edge-tunnel}/bin/ziti-edge-tunnel run --verbose=${cfg.verbose} --dns-ip-range=${cfg.dnsIpRange} --identity-dir=${cfg.identityDir}";
           Restart = "always";
           RestartSec = 3;
         }
-        // lib.optionalAttrs (cfg.service.environmentFile != null) {
-          EnvironmentFile = cfg.service.environmentFile;
+        // lib.optionalAttrs (cfg.environmentFile != null) {
+          EnvironmentFile = cfg.environmentFile;
         };
       };
     }
