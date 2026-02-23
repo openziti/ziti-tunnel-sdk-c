@@ -6,7 +6,7 @@ self:
   ...
 }:
 let
-  cfg = config.programs.ziti-edge-tunnel;
+  cfg = config.services.ziti-edge-tunnel;
 
   enrollmentServices = lib.mapAttrs' (
     name: icfg:
@@ -41,7 +41,7 @@ let
   ziti-edge-tunnel = self.packages.${pkgs.system}.ziti-edge-tunnel;
 in
 {
-  options.programs.ziti-edge-tunnel = {
+  options.services.ziti-edge-tunnel = {
     enable = lib.mkEnableOption "Ziti Edge Tunnel";
 
     identityDir = lib.mkOption {
@@ -92,8 +92,8 @@ in
                 identityFileName = lib.mkOption {
                   type = lib.types.str;
                   default = "${name}.json";
-                  defaultText = lib.literalExpression ''"$${config.program.ziti-edge-tunnel.enrollment.identities.*.name}.json"'';
-                  description = "Name of the identity file. File lives in `program.ziti-edge-tunnel.identityDir`";
+                  defaultText = lib.literalExpression ''"$${config.services.ziti-edge-tunnel.enrollment.identities.*.name}.json"'';
+                  description = "Name of the identity file. File lives in `services.ziti-edge-tunnel.identityDir`";
                 };
 
                 extraArgs = lib.mkOption {

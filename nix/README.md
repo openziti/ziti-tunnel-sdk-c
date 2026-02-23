@@ -38,7 +38,6 @@ systemd service, and enables it. Place `.jwt` files in
 
 #### Uninstall
 
-
 ```bash
 sudo ./result/bin/uninstall-ziti-edge-tunnel-service
 ```
@@ -60,7 +59,7 @@ Then enable the module:
 {
   imports = [ inputs.ziti-tunnel.nixosModules.default ];
 
-  programs.ziti-edge-tunnel = {
+  services.ziti-edge-tunnel = {
     enable = true;
 
     # Optional: enroll identities at boot
