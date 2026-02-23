@@ -49,7 +49,7 @@ Add the flake to your NixOS configuration inputs:
 
 ```nix
 {
-  inputs.ziti-tunnel.url = "github:openziti/ziti-tunnel-sdk-c";
+  inputs.ziti-edge-tunnel.url = "github:openziti/ziti-tunnel-sdk-c";
 }
 ```
 
