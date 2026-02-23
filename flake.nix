@@ -21,10 +21,11 @@
         in
         {
           default = pkgs.callPackage ./nix/packages/ziti-edge-tunnel.nix { };
+          ziti-edge-tunnel = self.packages.${system}.default;
         }
       );
 
-      nixosModules.default = import ./nix/modules/ziti-edge-tunnel.nix;
+      nixosModules.default = import ./nix/modules/ziti-edge-tunnel.nix self;
 
       devShells = forAllSystems (
         system:
