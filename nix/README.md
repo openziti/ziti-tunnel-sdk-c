@@ -25,24 +25,7 @@ nix run . -- version
 nix run . -- enroll --jwt /path/to/token.jwt --identity /path/to/identity.json
 ```
 
-### Linux (non-NixOS) systemd service
-
-```bash
-nix build
-sudo ./result/bin/install-ziti-edge-tunnel-service
-```
-
-This creates the `ziti` user, sets up the identity directory, installs the
-systemd service, and enables it. Place `.jwt` files in
-`/opt/openziti/etc/identities` and start with `sudo systemctl start ziti-edge-tunnel`.
-
-#### Uninstall
-
-```bash
-sudo ./result/bin/uninstall-ziti-edge-tunnel-service
-```
-
-### NixOS module
+## Installing
 
 Add the flake to your NixOS configuration inputs:
 
@@ -72,6 +55,8 @@ Then enable the module:
   };
 }
 ```
+
+Installing will set up a systemd service for you.
 
 ## Updating dependencies
 
