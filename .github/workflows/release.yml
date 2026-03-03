@@ -21,6 +21,7 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           path: ${{ runner.workspace }}/downloads
+          digest-mismatch: error
 
       - name: List Release Artifacts
         run: ls -horRAS ${{runner.workspace}}/downloads/

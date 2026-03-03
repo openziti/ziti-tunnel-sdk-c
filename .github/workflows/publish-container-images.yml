@@ -35,6 +35,7 @@ jobs:
         with:
           pattern: linux-*
           path: ./downloads
+          digest-mismatch: error
 
       - name: Unpack CMake Artifacts
         shell: bash
