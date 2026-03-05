@@ -26,3 +26,6 @@ compile_commands.json
 .run
 CMakeFiles/
 /vcpkg_cache/
+
+# Nix build output symlink
+/result
