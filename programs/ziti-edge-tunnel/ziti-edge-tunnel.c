@@ -2011,12 +2011,18 @@ static int send_message_to_tunnel(char* message, bool show_result) {
     return code;
 }
 
-// Connect to a single ziti-edge-tunnel IPC socket and retrieve its TunName, IP, and DNS
-// for display purposes. Fills output buffers with "?" on any failure.
-static void probe_instance(const char *socket_path, char *tun_name_out, size_t tun_name_sz, char *ip_out, size_t ip_sz, char *dns_out, size_t dns_sz) {
-    strncpy(tun_name_out, "?", tun_name_sz);
-    strncpy(ip_out, "?", ip_sz);
-    strncpy(dns_out, "?", dns_sz);
+typedef struct {
+    char tun_name[64];
+    char ip[32];
+    char dns[32];
+} probe_result;
+
+// Connect to a ziti-edge-tunnel and retrieve its TunName, IP, and DNS.
+// Fills result fields with "?" on any failure.
+static void probe_instance(const char *socket_path, probe_result *result) {
+    strncpy(result->tun_name, "?", sizeof(result->tun_name));
+    strncpy(result->ip, "?", sizeof(result->ip));
+    strncpy(result->dns, "?", sizeof(result->dns));
 
     const char *status_cmd = "{\"Command\":\"Status\"}";
 #if _WIN32
@@ -2059,20 +2065,20 @@ static void probe_instance(const char *socket_path, char *tun_name_out, size_t t
     struct json_object *data = json_object_object_get(resp, "Data");
     if (data) {
         struct json_object *tn = json_object_object_get(data, "TunName");
-        if (tn) strncpy(tun_name_out, json_object_get_string(tn), tun_name_sz - 1);
+        if (tn) strncpy(result->tun_name, json_object_get_string(tn), sizeof(result->tun_name) - 1);
         struct json_object *ip_info = json_object_object_get(data, "IpInfo");
         if (ip_info) {
             struct json_object *ip = json_object_object_get(ip_info, "Ip");
-            if (ip) strncpy(ip_out, json_object_get_string(ip), ip_sz - 1);
+            if (ip) strncpy(result->ip, json_object_get_string(ip), sizeof(result->ip) - 1);
             struct json_object *dns = json_object_object_get(ip_info, "DNS");
-            if (dns) strncpy(dns_out, json_object_get_string(dns), dns_sz - 1);
+            if (dns) strncpy(result->dns, json_object_get_string(dns), sizeof(result->dns) - 1);
         }
     }
     json_object_put(resp);
 }
 
 // If -P was not supplied, scan for running ziti-edge-tunnel IPC sockets.
-// With exactly one found, auto-select it. With multiple, probe each for its
+// If exactly one found, auto-select it. If multiple, probe each for its
 // tunnel info and prompt the user to choose before proceeding with the command.
 static void select_ipc_instance(void) {
     if (ipc_discriminator != NULL) {
@@ -2084,7 +2090,6 @@ static void select_ipc_instance(void) {
     size_t base_len = strlen(sockfilebase);
 
     if (count <= 1) {
-        // auto-select the single instance (or use default if none found)
         const char *name;
         MODEL_LIST_FOREACH(name, ipc_list) {
             if (strlen(name) > base_len && name[base_len] == '.') {
@@ -2095,7 +2100,7 @@ static void select_ipc_instance(void) {
         return;
     }
 
-    // Multiple instances: collect discriminators then prompt
+    // if multiple instances: collect discriminators then prompt
     char **discriminators = calloc(count, sizeof(char *));
     int idx = 0;
     const char *name;
@@ -2117,10 +2122,10 @@ static void select_ipc_instance(void) {
         } else {
             snprintf(probe_path, sizeof(probe_path), "%s%s", SOCKET_PATH, sockfilebase);
         }
-        char tun_name[64], ip[32], dns[32];
-        probe_instance(probe_path, tun_name, sizeof(tun_name), ip, sizeof(ip), dns, sizeof(dns));
+        probe_result r;
+        probe_instance(probe_path, &r);
         const char *label = discriminators[i] ? discriminators[i] : "default";
-        fprintf(stderr, "  [%d] %-10s  %-10s  IP: %-15s  DNS: %s\n", i, label, tun_name, ip, dns);
+        fprintf(stderr, "  [%d] %-10s  %-10s  IP: %-15s  DNS: %s\n", i, label, r.tun_name, r.ip, r.dns);
     }
 
     int choice = 0;
@@ -2138,7 +2143,7 @@ static void select_ipc_instance(void) {
         fprintf(stderr, "  Invalid input, please enter a number between 0 and %d\n", (int)count - 1);
     }
 
-    ipc_discriminator = discriminators[choice]; // transfer ownership
+    ipc_discriminator = discriminators[choice];
     for (int i = 0; i < (int)count; i++) {
         if (i != choice) free(discriminators[i]);
     }
