@@ -106,7 +106,7 @@ const char *normalize_hostname(char *hostname) {
     return hostname;
 }
 
-void chunked_add_nrpt_rules(uv_loop_t *ziti_loop, hostname_list_t *hostnames, const char* tun_ip) {
+void chunked_add_nrpt_rules(uv_loop_t *ziti_loop, hostname_list_t *hostnames, const char* tun_ip, const char* zet_instance) {
     char script[MAX_POWERSHELL_SCRIPT_LEN] = { 0 };
     size_t buf_len = snprintf(script, MAX_POWERSHELL_SCRIPT_LEN, "$Namespaces = @(");
     if (!is_buffer_available(buf_len, MAX_POWERSHELL_SCRIPT_LEN, script)) {
@@ -143,7 +143,7 @@ void chunked_add_nrpt_rules(uv_loop_t *ziti_loop, hostname_list_t *hostnames, co
         return;
     }
     copied += buf_len;
-    buf_len = snprintf(script + copied, (MAX_POWERSHELL_SCRIPT_LEN - copied), "$Rule = @{Namespace=${ns}; NameServers=@('%s'); Comment='Added by %s'; DisplayName='%s:'+${ns}; }\n", tun_ip, DEFAULT_EXECUTABLE_NAME, DEFAULT_EXECUTABLE_NAME);
+    buf_len = snprintf(script + copied, (MAX_POWERSHELL_SCRIPT_LEN - copied), "$Rule = @{Namespace=${ns}; NameServers=@('%s'); Comment='Added by %s'; DisplayName='%s:'+${ns}; }\n", tun_ip, zet_instance, zet_instance);
     if (!is_buffer_available(buf_len, (MAX_POWERSHELL_SCRIPT_LEN - copied), script)) {
         return;
     }
@@ -178,7 +178,7 @@ void chunked_add_nrpt_rules(uv_loop_t *ziti_loop, hostname_list_t *hostnames, co
     }
 }
 
-void add_nrpt_rules(uv_loop_t *nrpt_loop, model_map *hostnames, const char* dns_ip) {
+void add_nrpt_rules(uv_loop_t *nrpt_loop, model_map *hostnames, const char* dns_ip, const char* zet_id) {
     ZITI_LOG(VERBOSE, "Add nrpt rules");
 
     if (hostnames == NULL || model_map_size(hostnames) == 0) {
@@ -193,7 +193,7 @@ void add_nrpt_rules(uv_loop_t *nrpt_loop, model_map *hostnames, const char* dns_
     while(it != NULL) {
         const char* hostname = model_map_it_key(it);
         if (current_size > MAX_BUCKET_SIZE || rule_size > MAX_POWERSHELL_SCRIPT_LEN) {
-            chunked_add_nrpt_rules(nrpt_loop, &host_names_list, dns_ip);
+            chunked_add_nrpt_rules(nrpt_loop, &host_names_list, dns_ip, zet_id);
             rule_size = MIN_BUFFER_LEN;
             current_size = 0;
         }
@@ -206,11 +206,11 @@ void add_nrpt_rules(uv_loop_t *nrpt_loop, model_map *hostnames, const char* dns_
         it = model_map_it_remove(it);
     }
     if (current_size > 0) {
-        chunked_add_nrpt_rules(nrpt_loop, &host_names_list, dns_ip);
+        chunked_add_nrpt_rules(nrpt_loop, &host_names_list, dns_ip, zet_id);
     }
 }
 
-void chunked_remove_nrpt_rules(uv_loop_t *ziti_loop, hostname_list_t *hostnames) {
+void chunked_remove_nrpt_rules(uv_loop_t *ziti_loop, hostname_list_t *hostnames, const char* discriminator) {
     char script[MAX_POWERSHELL_SCRIPT_LEN] = { 0 };
     size_t buf_len = snprintf(script, MAX_POWERSHELL_SCRIPT_LEN, "$toRemove = @(\n");
     if (!is_buffer_available(buf_len, MAX_POWERSHELL_SCRIPT_LEN, script)) {
@@ -269,7 +269,7 @@ void chunked_remove_nrpt_rules(uv_loop_t *ziti_loop, hostname_list_t *hostnames)
     }
 }
 
-void remove_nrpt_rules(uv_loop_t *nrpt_loop, model_map *hostnames) {
+void remove_nrpt_rules(uv_loop_t *nrpt_loop, model_map *hostnames, const char* discriminator) {
     ZITI_LOG(VERBOSE, "Remove nrpt rules");
 
     if (hostnames == NULL || model_map_size(hostnames) == 0) {
@@ -284,7 +284,7 @@ void remove_nrpt_rules(uv_loop_t *nrpt_loop, model_map *hostnames) {
     while(it != NULL) {
         const char* hostname = model_map_it_key(it);
         if (current_size > MAX_BUCKET_SIZE || rule_size > MAX_POWERSHELL_SCRIPT_LEN) {
-            chunked_remove_nrpt_rules(nrpt_loop, &host_names_list);
+            chunked_remove_nrpt_rules(nrpt_loop, &host_names_list, discriminator);
             rule_size = MIN_BUFFER_LEN;
             current_size = 0;
         }
@@ -297,7 +297,7 @@ void remove_nrpt_rules(uv_loop_t *nrpt_loop, model_map *hostnames) {
         it = model_map_it_remove(it);
     }
     if (current_size > 0) {
-        chunked_remove_nrpt_rules(nrpt_loop, &host_names_list);
+        chunked_remove_nrpt_rules(nrpt_loop, &host_names_list, discriminator);
     }
 }
 
@@ -338,7 +338,7 @@ void remove_all_nrpt_rules(const char* zet_id, bool exact) {
     }
 }
 
-void chunked_remove_and_add_nrpt_rules(uv_loop_t *ziti_loop, hostname_list_t *hostnames, const char* dns_ip) {
+void chunked_remove_and_add_nrpt_rules(uv_loop_t *ziti_loop, hostname_list_t *hostnames, const char* dns_ip, const char* zet_id) {
     char script[MAX_POWERSHELL_SCRIPT_LEN] = { 0 };
     size_t buf_len = snprintf(script, MAX_POWERSHELL_SCRIPT_LEN, "$toRemoveAndAdd = @(\n");
     if (!is_buffer_available(buf_len, MAX_POWERSHELL_SCRIPT_LEN, script)) {
@@ -377,7 +377,7 @@ void chunked_remove_and_add_nrpt_rules(uv_loop_t *ziti_loop, hostname_list_t *ho
         return;
     }
     copied += buf_len;
-    buf_len = snprintf(script + copied, (MAX_POWERSHELL_SCRIPT_LEN - copied), "$Rule = @{Namespace=${nsToAdd}; NameServers=@('%s'); Comment='Added by %s'; DisplayName='%s:'+${ns}; }\n", dns_ip, DEFAULT_EXECUTABLE_NAME, DEFAULT_EXECUTABLE_NAME);
+    buf_len = snprintf(script + copied, (MAX_POWERSHELL_SCRIPT_LEN - copied), "$Rule = @{Namespace=${nsToAdd}; NameServers=@('%s'); Comment='Added by %s'; DisplayName='%s:'+${ns}; }\n", dns_ip, zet_id, zet_id);
     if (!is_buffer_available(buf_len, (MAX_POWERSHELL_SCRIPT_LEN - copied), script)) {
         return;
     }
@@ -412,7 +412,7 @@ void chunked_remove_and_add_nrpt_rules(uv_loop_t *ziti_loop, hostname_list_t *ho
     }
 }
 
-void remove_and_add_nrpt_rules(uv_loop_t *nrpt_loop, model_map *hostnames, const char* dns_ip) {
+void remove_and_add_nrpt_rules(uv_loop_t *nrpt_loop, model_map *hostnames, const char* dns_ip, const char* zet_id) {
     ZITI_LOG(VERBOSE, "Remove and add nrpt rules");
 
     if (hostnames == NULL || model_map_size(hostnames) == 0) {
@@ -427,7 +427,7 @@ void remove_and_add_nrpt_rules(uv_loop_t *nrpt_loop, model_map *hostnames, const
     while(it != NULL) {
         const char* hostname = model_map_it_key(it);
         if (current_size > MAX_BUCKET_SIZE || rule_size > MAX_POWERSHELL_SCRIPT_LEN) {
-            chunked_remove_and_add_nrpt_rules(nrpt_loop, &host_names_list, dns_ip);
+            chunked_remove_and_add_nrpt_rules(nrpt_loop, &host_names_list, dns_ip, zet_id);
             rule_size = MIN_BUFFER_LEN;
             current_size = 0;
         }
@@ -440,7 +440,7 @@ void remove_and_add_nrpt_rules(uv_loop_t *nrpt_loop, model_map *hostnames, const
         it = model_map_it_remove(it);
     }
     if (current_size > 0) {
-        chunked_remove_and_add_nrpt_rules(nrpt_loop, &host_names_list, dns_ip);
+        chunked_remove_and_add_nrpt_rules(nrpt_loop, &host_names_list, dns_ip, zet_id);
     }
 }
 

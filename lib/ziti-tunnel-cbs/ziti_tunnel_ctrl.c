@@ -903,6 +903,12 @@ static void get_transfer_rates(const char *identifier, command_cb cb, void *ctx)
 struct ziti_instance_s *new_ziti_instance(const char *identifier) {
     struct ziti_instance_s *inst = calloc(1, sizeof(struct ziti_instance_s));
     inst->identifier = strdup(identifier);
+#if _WIN32
+    // normalize: lowercase and convert forward slashes to backslashes
+    for (char *p = inst->identifier; *p; p++) {
+        *p = (*p == '/') ? '\\' : (char)tolower((unsigned char)*p);
+    }
+#endif
     return inst;
 }
 

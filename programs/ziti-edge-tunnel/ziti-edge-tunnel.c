@@ -128,7 +128,7 @@ static long metrics_latency = 5000;
 static char *configured_cidr = NULL;
 static char *configured_log_level = NULL;
 static char *configured_proxy = NULL;
-static char *ipc_discriminator = NULL;
+char *ipc_discriminator = NULL;
 
 //timer
 static uv_timer_t metrics_timer;
@@ -146,15 +146,16 @@ static uv_cond_t stop_cond;
 IMPL_ENUM(event, EVENT_ACTIONS)
 
 #if _WIN32
-static char sockfile[] = "\\\\.\\pipe\\ziti-edge-tunnel.sock";
-static char eventsockfile[] = "\\\\.\\pipe\\ziti-edge-tunnel-event.sock";
+#define SOCKET_PATH "\\\\.\\pipe\\"
 #elif __unix__ || unix || ( __APPLE__ && __MACH__ )
 #include <grp.h>
 #include <sys/un.h>
-#define SOCKET_PATH "/tmp/.ziti"
-static char sockfile[] = SOCKET_PATH "/ziti-edge-tunnel.sock";
-static char eventsockfile[] = SOCKET_PATH "/ziti-edge-tunnel-event.sock";
+#define SOCKET_PATH "/tmp/.ziti/"
 #endif
+static char sockfilebase[] = "ziti-edge-tunnel.sock";
+static char eventsockfilebase[] = "ziti-edge-tunnel-event.sock";
+static char *sockfile;
+static char *eventsockfile;
 
 extern int start_cmd_socket(uv_loop_t *l, const char *sockfile);
 extern int start_event_socket(uv_loop_t *l, const char *eventsockfile);
@@ -621,13 +622,15 @@ static void on_event(const base_event *ev) {
             }
 
             if (id->Active && model_map_size(&hostnamesToEdit) > 0 && !is_host_only()) {
-                remove_and_add_nrpt_rules(global_loop_ref, &hostnamesToEdit, get_dns_ip()/*, ipc_discriminator*/);
+                remove_and_add_nrpt_rules(global_loop_ref, &hostnamesToEdit, get_dns_ip(), ipc_discriminator);
             }
             if (id->Active && model_map_size(&hostnamesToAdd) > 0 && !is_host_only()) {
-                add_nrpt_rules(global_loop_ref, &hostnamesToAdd, get_dns_ip()/*, ipc_discriminator*/);
+                char* zet_id = get_zet_instance_id(ipc_discriminator);
+                add_nrpt_rules(global_loop_ref, &hostnamesToAdd, get_dns_ip(), zet_id);
+                free(zet_id);
             }
             if (model_map_size(&hostnamesToRemove) > 0 && !is_host_only()) {
-                remove_nrpt_rules(global_loop_ref, &hostnamesToRemove/*, ipc_discriminator*/);
+                remove_nrpt_rules(global_loop_ref, &hostnamesToRemove, ipc_discriminator);
             }
 
 #endif
@@ -666,6 +669,17 @@ static void on_event(const base_event *ev) {
                 break;
             }
             set_mfa_status(ev->identifier, true, true);
+            identity_event id_event = {
+                    .Op = strdup("identity"),
+                    .Action = strdup(event_name(event_updated)),
+                    .Id = create_or_get_tunnel_identity(ev->identifier, NULL),
+            };
+            if (id_event.Id->FingerPrint) {
+                id_event.Fingerprint = strdup(id_event.Id->FingerPrint);
+            }
+            send_events_message(&id_event, (to_json_fn) identity_event_to_json, true);
+            id_event.Id = NULL;
+            free_identity_event(&id_event);
             send_tunnel_status("status");
             mfa_status_event mfa_sts_event = {
                     .Op = "mfa",
@@ -919,7 +933,7 @@ static int run_tunnel_host_mode(uv_loop_t *ziti_loop) {
 
 static int make_socket_path(uv_loop_t *loop) {
 
-#if defined(SOCKET_PATH)
+#if defined(SOCKET_PATH) && !defined(_WIN32)
 #define ZITI_GRNAME "ziti"
     uv_fs_t req;
     int rc;
@@ -1377,6 +1391,55 @@ static void interrupt_handler(int sig) {
 }
 #endif
 
+size_t find_other_zets(model_list *ipcs, const char *ipc_base, const char *ipc_prefix) {
+    uv_fs_t fs;
+    int rc = uv_fs_scandir(uv_default_loop(), &fs, SOCKET_PATH, 0, NULL);
+    if (rc < 0) {
+        ZITI_LOG(DEBUG, "failed to scan for other ziti-edge-tunnels at [%s]: %d/%s", ipc_base, rc, uv_strerror(rc));
+        return 0;
+    }
+    uv_dirent_t file;
+    while (uv_fs_scandir_next(&fs, &file) == 0) {
+        size_t len = strlen(ipc_prefix);
+        if (strncmp(file.name, ipc_prefix, len) == 0) {
+            model_list_append(ipcs, strdup(file.name));
+        }
+    }
+    return model_list_size(ipcs);
+}
+
+static void configure_ipc(bool automatic_ipc_discriminator, bool use_discriminator) {
+    if (ipc_discriminator == NULL && automatic_ipc_discriminator) {
+        int pid = getpid();
+        ipc_discriminator = calloc(10, sizeof(char));
+        snprintf(ipc_discriminator, 10, "%d", pid);
+    }
+
+    size_t socket_path_len = strlen(SOCKET_PATH);
+    size_t ipc_discriminator_len = ipc_discriminator != NULL ? strlen(ipc_discriminator) : 0;
+    size_t sockfilebase_len = strlen(sockfilebase);
+    size_t eventsockfilebase_len = strlen(eventsockfilebase);
+
+    sockfile = calloc(socket_path_len + sockfilebase_len + ipc_discriminator_len + 2, sizeof(char));
+    eventsockfile = calloc(socket_path_len + eventsockfilebase_len + ipc_discriminator_len + 2, sizeof(char));
+
+    if (use_discriminator) {
+        sprintf(sockfile, "%s%s.%s", SOCKET_PATH, sockfilebase, ipc_discriminator);
+        sprintf(eventsockfile, "%s%s.%s", SOCKET_PATH, eventsockfilebase, ipc_discriminator);
+    } else {
+        ipc_discriminator = NULL;
+        sprintf(sockfile, "%s%s", SOCKET_PATH, sockfilebase);
+        sprintf(eventsockfile, "%s%s", SOCKET_PATH, eventsockfilebase);
+    }
+    if (automatic_ipc_discriminator) {
+        ZITI_LOG(INFO, use_discriminator ?
+            "multiple ziti-edge-tunnels are running. applying ipc discriminator" :
+            "using default paths for IPC");
+        ZITI_LOG(INFO, "ipc command path: %s", sockfile);
+        ZITI_LOG(INFO, "ipc events  path: %s", eventsockfile);
+    }
+}
+
 static void run(int argc, char *argv[]) {
     uv_cond_init(&stop_cond);
     uv_mutex_init(&stop_mutex);
@@ -1395,6 +1458,10 @@ static void run(int argc, char *argv[]) {
 #else
     ziti_log_init(global_loop_ref, log_level, log_fn);
 #endif
+
+    model_list ipc_list = {0};
+    size_t other_zets = find_other_zets(&ipc_list, SOCKET_PATH, sockfilebase);
+    configure_ipc(true, other_zets > 0);
 
     // generate tunnel status instance and save active state and start time
     if (config_dir != NULL) {
@@ -1507,6 +1574,7 @@ static void run(int argc, char *argv[]) {
     char *csdk_version = "" to_str(ZITI_VERSION) ":" to_str(ZITI_BRANCH) "@" to_str(ZITI_COMMIT);
     ZITI_LOG(INFO,"	- C SDK Version    : %s", csdk_version);
     ZITI_LOG(INFO,"	- Tunneler SDK     : %s", ziti_tunneler_version());
+    ZITI_LOG(INFO,"	- IPC socket       : %s", sockfile);
     if(openssl_conf_resolved != NULL) {
         ZITI_LOG(INFO, "	- openssl config   : configured using %s found by %s", openssl_conf_resolved, openssl_conf_found_by);
     }
@@ -1941,6 +2009,7 @@ static int send_message_to_tunnel(char* message, bool show_result) {
 }
 
 static void send_message_to_tunnel_fn(int argc, char *argv[]) {
+    configure_ipc(false, ipc_discriminator != NULL);
     char* json = tunnel_command_to_json(&cmd, MODEL_JSON_COMPACT, NULL);
     int result = send_message_to_tunnel(json, cmd.show_result);
     free_tunnel_command(&cmd);
@@ -1981,7 +2050,7 @@ static char* get_identity_opt(int argc, char *argv[]) {
 static int ext_auth_opts(int argc, char *argv[]) {
     static struct option opts[] = {
         {"identity", required_argument, NULL, 'i'},
-        {"provider", required_argument, NULL, 'p'}
+        {"provider", required_argument, NULL, 'p'},
     };
     tunnel_id_ext_auth auth = {};
 
@@ -2009,6 +2078,7 @@ static int ext_auth_opts(int argc, char *argv[]) {
     size_t json_len;
     cmd.command = TunnelCommands.ExternalAuth;
     cmd.data = tunnel_id_ext_auth_to_json(&auth, MODEL_JSON_COMPACT, &json_len);
+    cmd.show_result = true;
     return optind;
 }
 
@@ -2866,6 +2936,19 @@ int main(int argc, char *argv[]) {
         return 0;
     }
 #endif
+
+    // Pre-extract -P/--pipe before subcommand dispatch so all commands support it
+    // without each opts function needing to handle it individually.
+    for (int i = 1; i < argc - 1; i++) {
+        if (strcmp(argv[i], "-P") == 0 || strcmp(argv[i], "--pipe") == 0) {
+            ipc_discriminator = argv[i + 1];
+            for (int j = i; j < argc - 2; j++) {
+                argv[j] = argv[j + 2];
+            }
+            argc -= 2;
+            break;
+        }
+    }
 
     commandline_run(&main_cmd, argc, argv);
     return 0;
