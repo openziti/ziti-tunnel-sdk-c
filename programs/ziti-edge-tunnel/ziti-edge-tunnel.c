@@ -621,16 +621,18 @@ static void on_event(const base_event *ev) {
                 }
             }
 
-            if (id->Active && model_map_size(&hostnamesToEdit) > 0 && !is_host_only()) {
-                remove_and_add_nrpt_rules(global_loop_ref, &hostnamesToEdit, get_dns_ip(), ipc_discriminator);
-            }
-            if (id->Active && model_map_size(&hostnamesToAdd) > 0 && !is_host_only()) {
+            if ((model_map_size(&hostnamesToEdit) > 0 || model_map_size(&hostnamesToAdd) > 0 || model_map_size(&hostnamesToRemove) > 0) && !is_host_only()) {
                 char* zet_id = get_zet_instance_id(ipc_discriminator);
-                add_nrpt_rules(global_loop_ref, &hostnamesToAdd, get_dns_ip(), zet_id);
+                if (id->Active && model_map_size(&hostnamesToEdit) > 0) {
+                    remove_and_add_nrpt_rules(global_loop_ref, &hostnamesToEdit, get_dns_ip(), zet_id);
+                }
+                if (id->Active && model_map_size(&hostnamesToAdd) > 0) {
+                    add_nrpt_rules(global_loop_ref, &hostnamesToAdd, get_dns_ip(), zet_id);
+                }
+                if (model_map_size(&hostnamesToRemove) > 0) {
+                    remove_nrpt_rules(global_loop_ref, &hostnamesToRemove, zet_id);
+                }
                 free(zet_id);
-            }
-            if (model_map_size(&hostnamesToRemove) > 0 && !is_host_only()) {
-                remove_nrpt_rules(global_loop_ref, &hostnamesToRemove, ipc_discriminator);
             }
 
 #endif
@@ -1454,13 +1456,37 @@ static void run(int argc, char *argv[]) {
     signal(SIGINT, interrupt_handler);
     log_init(global_loop_ref, log_level, ziti_log_writer); // level from config file set below
     log_fn = ziti_log_writer;
-    remove_all_nrpt_rules(DEFAULT_EXECUTABLE_NAME, false); //remove all rules starting with ziti-edge-tunnel
 #else
     ziti_log_init(global_loop_ref, log_level, log_fn);
 #endif
 
     model_list ipc_list = {0};
     size_t other_zets = find_other_zets(&ipc_list, sockfilebase);
+
+#if _WIN32
+    {
+        // Remove NRPT rules from dead instances only; preserve rules owned by running instances.
+        size_t base_len = strlen(sockfilebase);
+        const char **running_ids = calloc(other_zets + 1, sizeof(char *));
+        size_t n = 0;
+        const char *sock_name;
+        MODEL_LIST_FOREACH(sock_name, ipc_list) {
+            char *disc = (strlen(sock_name) > base_len && sock_name[base_len] == '.')
+                         ? strdup(sock_name + base_len + 1) : NULL;
+            running_ids[n++] = get_zet_instance_id(disc);
+            free(disc);
+        }
+        if (n > 0) {
+            ZITI_LOG(INFO, "preserving NRPT rules for %zd running instance(s); removing orphaned rules", n);
+        } else {
+            ZITI_LOG(INFO, "no other instances running; removing all orphaned NRPT rules");
+        }
+        remove_orphaned_nrpt_rules(running_ids, n);
+        for (size_t i = 0; i < n; i++) free((char *)running_ids[i]);
+        free(running_ids);
+    }
+#endif
+
     configure_ipc(true, other_zets > 0);
     model_list_clear(&ipc_list, free);
 
@@ -2100,54 +2126,68 @@ static void select_ipc_instance(void) {
         return;
     }
 
-    // if multiple instances: collect discriminators then prompt
+    // probe all candidates and keep only the responsive ones
     char **discriminators = calloc(count, sizeof(char *));
-    int idx = 0;
+    probe_result *results = calloc(count, sizeof(probe_result));
+    int live = 0;
     const char *name;
     MODEL_LIST_FOREACH(name, ipc_list) {
-        if (strlen(name) > base_len && name[base_len] == '.') {
-            discriminators[idx] = strdup(name + base_len + 1);
-        } else {
-            discriminators[idx] = NULL; // default instance
-        }
-        idx++;
-    }
-    model_list_clear(&ipc_list, free);
-
-    fprintf(stderr, "Multiple ziti-edge-tunnel instances found. Select one:\n");
-    for (int i = 0; i < (int)count; i++) {
+        char *disc = (strlen(name) > base_len && name[base_len] == '.')
+                     ? strdup(name + base_len + 1) : NULL;
         char probe_path[256];
-        if (discriminators[i]) {
-            snprintf(probe_path, sizeof(probe_path), "%s%s.%s", SOCKET_PATH, sockfilebase, discriminators[i]);
+        if (disc) {
+            snprintf(probe_path, sizeof(probe_path), "%s%s.%s", SOCKET_PATH, sockfilebase, disc);
         } else {
             snprintf(probe_path, sizeof(probe_path), "%s%s", SOCKET_PATH, sockfilebase);
         }
-        probe_result r;
-        probe_instance(probe_path, &r);
+        probe_instance(probe_path, &results[live]);
+        if (strcmp(results[live].tun_name, "?") != 0) {
+            discriminators[live++] = disc;
+        } else {
+            ZITI_LOG(DEBUG, "skipping unresponsive socket: %s", probe_path);
+            free(disc);
+        }
+    }
+    model_list_clear(&ipc_list, free);
+
+    if (live <= 1) {
+        if (live == 1 && discriminators[0] != NULL) {
+            ipc_discriminator = discriminators[0];
+        } else {
+            free(discriminators[0]);
+        }
+        free(discriminators);
+        free(results);
+        return;
+    }
+
+    fprintf(stderr, "Multiple ziti-edge-tunnel instances found. Select one:\n");
+    for (int i = 0; i < live; i++) {
         const char *label = discriminators[i] ? discriminators[i] : "default";
-        fprintf(stderr, "  [%d] %-10s  %-10s  IP: %-15s  DNS: %s\n", i, label, r.tun_name, r.ip, r.dns);
+        fprintf(stderr, "  [%d] %-10s  %-10s  IP: %-15s  DNS: %s\n", i, label, results[i].tun_name, results[i].ip, results[i].dns);
     }
 
     int choice = 0;
     fprintf(stderr, "  (use -P <value> to skip this prompt)\n");
     char input[32];
     for (;;) {
-        fprintf(stderr, "Enter number [0-%d] (default 0): ", (int)count - 1);
+        fprintf(stderr, "Enter number [0-%d] (default 0): ", live - 1);
         if (fgets(input, sizeof(input), stdin) == NULL) break; // EOF -> default 0
         if (input[0] == '\n') break; // empty -> default 0
         int parsed = -1;
-        if (sscanf(input, "%d", &parsed) == 1 && parsed >= 0 && parsed < (int)count) {
+        if (sscanf(input, "%d", &parsed) == 1 && parsed >= 0 && parsed < live) {
             choice = parsed;
             break;
         }
-        fprintf(stderr, "  Invalid input, please enter a number between 0 and %d\n", (int)count - 1);
+        fprintf(stderr, "  Invalid input, please enter a number between 0 and %d\n", live - 1);
     }
 
     ipc_discriminator = discriminators[choice];
-    for (int i = 0; i < (int)count; i++) {
+    for (int i = 0; i < live; i++) {
         if (i != choice) free(discriminators[i]);
     }
     free(discriminators);
+    free(results);
 }
 
 static void send_message_to_tunnel_fn(int argc, char *argv[]) {
@@ -2956,7 +2996,9 @@ void stop_tunnel_and_cleanup() {
     send_tunnel_command_inline(tnl_cmd, NULL);
 
     ZITI_LOG(INFO,"removing nrpt rules");
-    remove_all_nrpt_rules(DEFAULT_EXECUTABLE_NAME, false); //remove all rules starting with ziti-edge-tunnel
+    char *zet_id = get_zet_instance_id(ipc_discriminator);
+    remove_all_nrpt_rules(zet_id, true);
+    free(zet_id);
 
     ZITI_LOG(INFO,"cleaning instance config ");
     cleanup_instance_config();

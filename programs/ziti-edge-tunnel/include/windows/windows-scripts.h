@@ -29,7 +29,8 @@
 #include "ziti/model_support.h"
 
 void add_nrpt_rules(uv_loop_t *nrpt_loop, model_map *hostnames, const char* dns_ip, const char* zet_id);
-void remove_nrpt_rules(uv_loop_t *nrpt_loop, model_map *hostnames, const char* discriminator);
+void remove_nrpt_rules(uv_loop_t *nrpt_loop, model_map *hostnames, const char* zet_id);
+void remove_orphaned_nrpt_rules(const char **running_ids, size_t count);
 void remove_all_nrpt_rules(const char* zet_id, bool exact);
 bool is_nrpt_policies_effective(const char* tns_ip, char* zet_id);
 void remove_and_add_nrpt_rules(uv_loop_t *nrpt_loop, model_map *hostnames, const char* dns_ip, const char* zet_id);
