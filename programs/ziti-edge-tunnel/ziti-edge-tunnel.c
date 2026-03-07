@@ -1506,6 +1506,39 @@ static void run(int argc, char *argv[]) {
     model_list ipc_list = {0};
     size_t other_zets = find_other_zets(&ipc_list, sockfilebase);
 
+#if !_WIN32
+    {
+        // On Linux/Mac socket files outlive their process; filter out stale ones.
+        size_t base_len = strlen(sockfilebase);
+        model_list live_list = {0};
+        const char *sock_name;
+        MODEL_LIST_FOREACH(sock_name, ipc_list) {
+            char probe_path[PATH_MAX];
+            char *disc = (strlen(sock_name) > base_len && sock_name[base_len] == '.')
+                         ? strdup(sock_name + base_len + 1) : NULL;
+            if (disc) {
+                snprintf(probe_path, sizeof(probe_path), "%s%s.%s", SOCKET_PATH, sockfilebase, disc);
+            } else {
+                snprintf(probe_path, sizeof(probe_path), "%s%s", SOCKET_PATH, sockfilebase);
+            }
+            free(disc);
+            struct sockaddr_un addr = { .sun_family = AF_UNIX };
+            strncpy(addr.sun_path, probe_path, sizeof(addr.sun_path) - 1);
+            int s = socket(AF_UNIX, SOCK_STREAM, 0);
+            bool live = connect(s, (const struct sockaddr *) &addr, sizeof(addr)) == 0;
+            close(s);
+            if (live) {
+                model_list_append(&live_list, strdup(sock_name));
+            } else {
+                ZITI_LOG(DEBUG, "ignoring stale socket: %s", probe_path);
+            }
+        }
+        model_list_clear(&ipc_list, free);
+        ipc_list = live_list;
+        other_zets = model_list_size(&ipc_list);
+    }
+#endif
+
 #if _WIN32
     {
         // Remove NRPT rules from dead instances only; preserve rules owned by running instances.
@@ -2389,7 +2422,7 @@ static void select_ipc_instance(void) {
     MODEL_LIST_FOREACH(name, ipc_list) {
         char *disc = (strlen(name) > base_len && name[base_len] == '.')
                      ? strdup(name + base_len + 1) : NULL;
-        char probe_path[256];
+        char probe_path[PATH_MAX];
         if (disc) {
             snprintf(probe_path, sizeof(probe_path), "%s%s.%s", SOCKET_PATH, sockfilebase, disc);
         } else {
