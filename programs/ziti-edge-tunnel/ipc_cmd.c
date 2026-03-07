@@ -170,7 +170,9 @@ static void on_command_resp(const tunnel_result* result, void *ctx) {
                                 }
 
                                 if (model_map_size(&hostnamesToRemove) > 0) {
-                                    remove_nrpt_rules(global_loop_ref, &hostnamesToRemove, ipc_discriminator);
+                                    char *zet_id = get_zet_instance_id(ipc_discriminator);
+                                    remove_nrpt_rules(global_loop_ref, &hostnamesToRemove, zet_id);
+                                    free(zet_id);
                                 }
                             }
                         } else {
