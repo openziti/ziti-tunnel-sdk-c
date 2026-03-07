@@ -2376,13 +2376,7 @@ static void select_ipc_instance(void) {
     size_t count = find_other_zets(&ipc_list, sockfilebase);
     size_t base_len = strlen(sockfilebase);
 
-    if (count <= 1) {
-        const char *name;
-        MODEL_LIST_FOREACH(name, ipc_list) {
-            if (strlen(name) > base_len && name[base_len] == '.') {
-                ipc_discriminator = strdup(name + base_len + 1);
-            }
-        }
+    if (count == 0) {
         model_list_clear(&ipc_list, free);
         return;
     }
