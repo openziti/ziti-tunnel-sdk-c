@@ -1462,6 +1462,7 @@ static void run(int argc, char *argv[]) {
     model_list ipc_list = {0};
     size_t other_zets = find_other_zets(&ipc_list, SOCKET_PATH, sockfilebase);
     configure_ipc(true, other_zets > 0);
+    model_list_clear(&ipc_list, free);
 
     // generate tunnel status instance and save active state and start time
     if (config_dir != NULL) {
