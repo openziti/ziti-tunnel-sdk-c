@@ -182,7 +182,8 @@ intercept_ctx_t * lookup_intercept_by_address(tunneler_context tnlr_ctx, const c
     ziti_address src_za;
     ziti_address_from_ip_addr(&src_za, src_addr);
     if (intercept != NULL) {
-        if (address_match(&src_za, &intercept->allowed_source_addresses) != NULL) {
+        bool has_src_restriction = STAILQ_FIRST(&intercept->allowed_source_addresses) != NULL;
+        if (!has_src_restriction || address_match(&src_za, &intercept->allowed_source_addresses) != NULL) {
             return intercept;
         }
     }
