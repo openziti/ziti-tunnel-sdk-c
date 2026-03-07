@@ -1407,6 +1407,7 @@ size_t find_other_zets(model_list *ipcs, const char *ipc_prefix) {
             model_list_append(ipcs, strdup(file.name));
         }
     }
+    uv_fs_req_cleanup(&fs);
     return model_list_size(ipcs);
 }
 
@@ -1487,7 +1488,7 @@ static void run(int argc, char *argv[]) {
     }
 #endif
 
-    configure_ipc(true, other_zets > 0);
+    configure_ipc(true, !started_by_scm && (other_zets > 0 || ipc_discriminator != NULL));
     model_list_clear(&ipc_list, free);
 
     // generate tunnel status instance and save active state and start time
