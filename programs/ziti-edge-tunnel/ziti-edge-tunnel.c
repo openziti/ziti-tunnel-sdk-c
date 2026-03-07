@@ -1574,7 +1574,9 @@ static void run(int argc, char *argv[]) {
     char *csdk_version = "" to_str(ZITI_VERSION) ":" to_str(ZITI_BRANCH) "@" to_str(ZITI_COMMIT);
     ZITI_LOG(INFO,"	- C SDK Version    : %s", csdk_version);
     ZITI_LOG(INFO,"	- Tunneler SDK     : %s", ziti_tunneler_version());
-    ZITI_LOG(INFO,"	- IPC socket       : %s", sockfile);
+    if(ipc_discriminator != NULL) {
+        ZITI_LOG(INFO,"	- IPC socket       : %s", sockfile);
+    }
     if(openssl_conf_resolved != NULL) {
         ZITI_LOG(INFO, "	- openssl config   : configured using %s found by %s", openssl_conf_resolved, openssl_conf_found_by);
     }
@@ -2008,7 +2010,138 @@ static int send_message_to_tunnel(char* message, bool show_result) {
     return code;
 }
 
+// Connect to a single ziti-edge-tunnel IPC socket and retrieve its TunName, IP, and DNS
+// for display purposes. Fills output buffers with "?" on any failure.
+static void probe_instance(const char *socket_path, char *tun_name_out, size_t tun_name_sz, char *ip_out, size_t ip_sz, char *dns_out, size_t dns_sz) {
+    strncpy(tun_name_out, "?", tun_name_sz);
+    strncpy(ip_out, "?", ip_sz);
+    strncpy(dns_out, "?", dns_sz);
+
+    const char *status_cmd = "{\"Command\":\"Status\"}";
+#if _WIN32
+    HANDLE h = CreateFileA(socket_path, GENERIC_READ | GENERIC_WRITE, 0, NULL,
+                           OPEN_EXISTING, FILE_FLAG_OVERLAPPED, NULL);
+    if (h == INVALID_HANDLE_VALUE) return;
+    DWORD written;
+    if (!WriteFile(h, status_cmd, (DWORD)strlen(status_cmd), &written, NULL)) {
+        CloseHandle(h);
+        return;
+    }
+    char buf[16*1024] = {0};
+    DWORD nr;
+    if (!ReadFile(h, buf, sizeof(buf) - 1, &nr, NULL)) {
+        CloseHandle(h);
+        return;
+    }
+    CloseHandle(h);
+#else
+    uv_os_sock_t s = socket(AF_UNIX, SOCK_STREAM, 0);
+    struct sockaddr_un addr = { .sun_family = AF_UNIX };
+    strncpy(addr.sun_path, socket_path, sizeof(addr.sun_path) - 1);
+    if (connect(s, (const struct sockaddr *) &addr, sizeof(addr))) return;
+    if (write(s, status_cmd, strlen(status_cmd)) < 0) { close(s); return; }
+    char buf[16*1024] = {0};
+    ssize_t nr = read(s, buf, sizeof(buf) - 1);
+    close(s);
+    if (nr <= 0) return;
+#endif
+
+    struct json_tokener *tok = json_tokener_new();
+    struct json_object *resp = json_tokener_parse_ex(tok, buf, (int)nr);
+    json_tokener_free(tok);
+    if (!resp) return;
+
+    struct json_object *data = json_object_object_get(resp, "Data");
+    if (data) {
+        struct json_object *tn = json_object_object_get(data, "TunName");
+        if (tn) strncpy(tun_name_out, json_object_get_string(tn), tun_name_sz - 1);
+        struct json_object *ip_info = json_object_object_get(data, "IpInfo");
+        if (ip_info) {
+            struct json_object *ip = json_object_object_get(ip_info, "Ip");
+            if (ip) strncpy(ip_out, json_object_get_string(ip), ip_sz - 1);
+            struct json_object *dns = json_object_object_get(ip_info, "DNS");
+            if (dns) strncpy(dns_out, json_object_get_string(dns), dns_sz - 1);
+        }
+    }
+    json_object_put(resp);
+}
+
+// If -P was not supplied, scan for running ziti-edge-tunnel IPC sockets.
+// With exactly one found, auto-select it. With multiple, probe each for its
+// tunnel info and prompt the user to choose before proceeding with the command.
+static void select_ipc_instance(void) {
+    if (ipc_discriminator != NULL) {
+        return; // user already specified -P
+    }
+
+    model_list ipc_list = {0};
+    size_t count = find_other_zets(&ipc_list, SOCKET_PATH, sockfilebase);
+    size_t base_len = strlen(sockfilebase);
+
+    if (count <= 1) {
+        // auto-select the single instance (or use default if none found)
+        const char *name;
+        MODEL_LIST_FOREACH(name, ipc_list) {
+            if (strlen(name) > base_len && name[base_len] == '.') {
+                ipc_discriminator = strdup(name + base_len + 1);
+            }
+        }
+        model_list_clear(&ipc_list, free);
+        return;
+    }
+
+    // Multiple instances: collect discriminators then prompt
+    char **discriminators = calloc(count, sizeof(char *));
+    int idx = 0;
+    const char *name;
+    MODEL_LIST_FOREACH(name, ipc_list) {
+        if (strlen(name) > base_len && name[base_len] == '.') {
+            discriminators[idx] = strdup(name + base_len + 1);
+        } else {
+            discriminators[idx] = NULL; // default instance
+        }
+        idx++;
+    }
+    model_list_clear(&ipc_list, free);
+
+    fprintf(stderr, "Multiple ziti-edge-tunnel instances found. Select one:\n");
+    for (int i = 0; i < (int)count; i++) {
+        char probe_path[256];
+        if (discriminators[i]) {
+            snprintf(probe_path, sizeof(probe_path), "%s%s.%s", SOCKET_PATH, sockfilebase, discriminators[i]);
+        } else {
+            snprintf(probe_path, sizeof(probe_path), "%s%s", SOCKET_PATH, sockfilebase);
+        }
+        char tun_name[64], ip[32], dns[32];
+        probe_instance(probe_path, tun_name, sizeof(tun_name), ip, sizeof(ip), dns, sizeof(dns));
+        const char *label = discriminators[i] ? discriminators[i] : "default";
+        fprintf(stderr, "  [%d] %-10s  %-10s  IP: %-15s  DNS: %s\n", i, label, tun_name, ip, dns);
+    }
+
+    int choice = 0;
+    fprintf(stderr, "  (use -P <value> to skip this prompt)\n");
+    char input[32];
+    for (;;) {
+        fprintf(stderr, "Enter number [0-%d] (default 0): ", (int)count - 1);
+        if (fgets(input, sizeof(input), stdin) == NULL) break; // EOF -> default 0
+        if (input[0] == '\n') break; // empty -> default 0
+        int parsed = -1;
+        if (sscanf(input, "%d", &parsed) == 1 && parsed >= 0 && parsed < (int)count) {
+            choice = parsed;
+            break;
+        }
+        fprintf(stderr, "  Invalid input, please enter a number between 0 and %d\n", (int)count - 1);
+    }
+
+    ipc_discriminator = discriminators[choice]; // transfer ownership
+    for (int i = 0; i < (int)count; i++) {
+        if (i != choice) free(discriminators[i]);
+    }
+    free(discriminators);
+}
+
 static void send_message_to_tunnel_fn(int argc, char *argv[]) {
+    select_ipc_instance();
     configure_ipc(false, ipc_discriminator != NULL);
     char* json = tunnel_command_to_json(&cmd, MODEL_JSON_COMPACT, NULL);
     int result = send_message_to_tunnel(json, cmd.show_result);
