@@ -2027,7 +2027,7 @@ static void probe_instance(const char *socket_path, char *tun_name_out, size_t t
         CloseHandle(h);
         return;
     }
-    char buf[16*1024] = {0};
+    char buf[32*1024] = {0};
     DWORD nr;
     if (!ReadFile(h, buf, sizeof(buf) - 1, &nr, NULL)) {
         CloseHandle(h);
@@ -2038,9 +2038,13 @@ static void probe_instance(const char *socket_path, char *tun_name_out, size_t t
     uv_os_sock_t s = socket(AF_UNIX, SOCK_STREAM, 0);
     struct sockaddr_un addr = { .sun_family = AF_UNIX };
     strncpy(addr.sun_path, socket_path, sizeof(addr.sun_path) - 1);
-    if (connect(s, (const struct sockaddr *) &addr, sizeof(addr))) return;
-    if (write(s, status_cmd, strlen(status_cmd)) < 0) { close(s); return; }
-    char buf[16*1024] = {0};
+    if (connect(s, (const struct sockaddr *) &addr, sizeof(addr))) {
+        close(s); return;
+    }
+    if (write(s, status_cmd, strlen(status_cmd)) < 0) {
+        close(s); return;
+    }
+    char buf[32*1024] = {0};
     ssize_t nr = read(s, buf, sizeof(buf) - 1);
     close(s);
     if (nr <= 0) return;
