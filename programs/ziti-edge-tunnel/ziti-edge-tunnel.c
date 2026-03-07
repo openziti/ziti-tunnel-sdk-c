@@ -1409,16 +1409,16 @@ size_t find_other_zets(model_list *ipcs, const char *ipc_base, const char *ipc_p
 }
 
 static void configure_ipc(bool automatic_ipc_discriminator, bool use_discriminator) {
-    if (ipc_discriminator == NULL && automatic_ipc_discriminator) {
-        int pid = getpid();
+    if (ipc_discriminator == NULL && automatic_ipc_discriminator && use_discriminator) {
+        const int pid = getpid();
         ipc_discriminator = calloc(10, sizeof(char));
         snprintf(ipc_discriminator, 10, "%d", pid);
     }
 
-    size_t socket_path_len = strlen(SOCKET_PATH);
-    size_t ipc_discriminator_len = ipc_discriminator != NULL ? strlen(ipc_discriminator) : 0;
-    size_t sockfilebase_len = strlen(sockfilebase);
-    size_t eventsockfilebase_len = strlen(eventsockfilebase);
+    const size_t socket_path_len = strlen(SOCKET_PATH);
+    const size_t ipc_discriminator_len = ipc_discriminator != NULL ? strlen(ipc_discriminator) : 0;
+    const size_t sockfilebase_len = strlen(sockfilebase);
+    const size_t eventsockfilebase_len = strlen(eventsockfilebase);
 
     sockfile = calloc(socket_path_len + sockfilebase_len + ipc_discriminator_len + 2, sizeof(char));
     eventsockfile = calloc(socket_path_len + eventsockfilebase_len + ipc_discriminator_len + 2, sizeof(char));
