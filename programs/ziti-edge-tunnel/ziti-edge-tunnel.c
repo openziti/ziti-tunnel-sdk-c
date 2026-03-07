@@ -1433,11 +1433,11 @@ static void interrupt_handler(int sig) {
 }
 #endif
 
-size_t find_other_zets(model_list *ipcs, const char *ipc_base, const char *ipc_prefix) {
+size_t find_other_zets(model_list *ipcs, const char *ipc_prefix) {
     uv_fs_t fs;
     int rc = uv_fs_scandir(uv_default_loop(), &fs, SOCKET_PATH, 0, NULL);
     if (rc < 0) {
-        ZITI_LOG(DEBUG, "failed to scan for other ziti-edge-tunnels at [%s]: %d/%s", ipc_base, rc, uv_strerror(rc));
+        ZITI_LOG(DEBUG, "failed to scan for other ziti-edge-tunnels at [%s]: %d/%s", SOCKET_PATH, rc, uv_strerror(rc));
         return 0;
     }
     uv_dirent_t file;
@@ -1502,7 +1502,7 @@ static void run(int argc, char *argv[]) {
 #endif
 
     model_list ipc_list = {0};
-    size_t other_zets = find_other_zets(&ipc_list, SOCKET_PATH, sockfilebase);
+    size_t other_zets = find_other_zets(&ipc_list, sockfilebase);
     configure_ipc(true, other_zets > 0);
     model_list_clear(&ipc_list, free);
 
@@ -2340,7 +2340,7 @@ static void select_ipc_instance(void) {
     }
 
     model_list ipc_list = {0};
-    size_t count = find_other_zets(&ipc_list, SOCKET_PATH, sockfilebase);
+    size_t count = find_other_zets(&ipc_list, sockfilebase);
     size_t base_len = strlen(sockfilebase);
 
     if (count <= 1) {
