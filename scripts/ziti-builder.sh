@@ -28,9 +28,26 @@ REPODIR="$(dirname "${BASEDIR}")"           # path to project root is parent of 
             "\ndefault target if no CMD is specified\n"\
             "\n    -c  [Release|Debug]  set CMAKE_BUILD_TYPE (default: Release)"\
             "\n    -p  CMAKE_PRESET     set CMAKE_TOOLCHAIN_FILE preset (default: ci-linux-x64)"\
-            "\n    -t  [bundle|package] set CMAKE_TARGET (default: ziti-edge-tunnel)"
+            "\n    -t  [bundle|package] set CMAKE_TARGET (default: ziti-edge-tunnel)"\
+            "\n\nEnvironment variables (dependency overrides):"\
+            "\n    TLSUV_DIR           path to a local tlsuv checkout (mounted into container,"\
+            "\n                        passed as -Dtlsuv_DIR to cmake, bypasses FetchContent)"\
+            "\n    TLSUV_TLSLIB        TLS backend: openssl or mbedtls (default: per preset)"\
+            "\n    ZITI_SDK_DIR        path to a local ziti-sdk-c checkout (mounted into container,"\
+            "\n                        passed as -DZITI_SDK_DIR to cmake, bypasses FetchContent)"\
+            "\n    ZITI_SDK_VERSION    ziti-sdk-c git tag/branch for FetchContent to fetch"\
+            "\n                        (mutually exclusive with ZITI_SDK_DIR)"\
+            "\n    ZITI_BUILDER_TAG    ziti-builder image tag (default: latest)"
     exit 0
 }
+
+# validate mutually exclusive environment variables
+if [[ -n "${ZITI_SDK_DIR:-}" && -n "${ZITI_SDK_VERSION:-}" ]]; then
+    echo "ERROR: ZITI_SDK_DIR and ZITI_SDK_VERSION are mutually exclusive." >&2
+    echo "  ZITI_SDK_DIR uses a local checkout; ZITI_SDK_VERSION fetches from git." >&2
+    echo "  Set one or the other, not both." >&2
+    exit 1
+fi
 
 function set_git_safe_dirs() {
     # workspace dir for each build env is added to "safe" dirs in global config
@@ -54,7 +71,7 @@ function set_workspace(){
         # container environment defines BUILD_ENVIRONMENT=ziti-builder-docker
         if [[ "${BUILD_ENVIRONMENT:-}" == "ziti-builder-docker" ]]; then
             echo "INFO: running in ziti-builder container"
-            set_git_safe_dirs "${WORKSPACE}"
+            set_git_safe_dirs "${WORKSPACE}" ${ZITI_SDK_DIR:+"${ZITI_SDK_DIR}"} ${TLSUV_DIR:+"${TLSUV_DIR}"}
         else
             echo "ERROR: not running in ziti-builder container" >&2
             exit 1
@@ -69,8 +86,10 @@ function set_workspace(){
             --user "${UID}:${GID}" \
             --volume "${REPODIR}:${WORKSPACE}" \
             "${ZITI_SDK_DIR:+--volume=${ZITI_SDK_DIR}:${ZITI_SDK_DIR}}" \
+            "${TLSUV_DIR:+--volume=${TLSUV_DIR}:${TLSUV_DIR}}" \
             --platform "linux/amd64" \
             --env "VCPKG_BINARY_SOURCES=clear\;files,${WORKSPACE}/vcpkg_cache,readwrite" \
+            --env "TLSUV_DIR" \
             --env "TLSUV_TLSLIB" \
             --env "ZITI_SDK_DIR" \
             --env "ZITI_SDK_VERSION" \
@@ -128,6 +147,7 @@ function main() {
             -DCMAKE_BUILD_TYPE="${CMAKE_CONFIG:-Release}" \
             -DBUILD_DIST_PACKAGES="${BUILD_DIST_PACKAGES:-OFF}" \
             "${TLSUV_TLSLIB:+-DTLSUV_TLSLIB=${TLSUV_TLSLIB}}" \
+            "${TLSUV_DIR:+-Dtlsuv_DIR=${TLSUV_DIR}}" \
             "${ZITI_SDK_DIR:+-DZITI_SDK_DIR=${ZITI_SDK_DIR}}" \
             "${ZITI_SDK_VERSION:+-DZITI_SDK_VERSION=${ZITI_SDK_VERSION}}" \
             -S . \
