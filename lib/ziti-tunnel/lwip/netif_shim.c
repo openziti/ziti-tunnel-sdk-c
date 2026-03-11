@@ -5,6 +5,8 @@
 #include "lwip/pbuf.h"
 #include "lwip/ip_addr.h"
 #include "lwip/netif.h"
+#include "lwip/etharp.h"
+#include "lwip/ethip6.h"
 #include "ziti/netif_driver.h"
 #include "netif_shim.h"
 #include "../ziti_tunnel_priv.h"
@@ -41,6 +43,10 @@ static err_t netif_shim_output_ip6(struct netif *netif, struct pbuf *p, const ip
     return netif_shim_output(netif, p, NULL);
 }
 
+static err_t netif_shim_output_link(struct netif *netif, struct pbuf *p) {
+    return netif_shim_output(netif, p, NULL);
+}
+
 /**
  * This function should be called when a packet is ready to be read
  * from the interface. It uses the function low_level_input() that
@@ -67,6 +73,7 @@ void netif_shim_input(struct netif *netif) {
     TNL_LOG(TRACE, "done after reading %d packets", count);
 }
 
+#include <netif/ethernet.h>
 void on_packet(const char *buf, ssize_t nr, void *ctx) {
     static bool log_pbuf_errors = true;
     struct netif *netif = ctx;
@@ -112,6 +119,26 @@ err_t netif_shim_init(struct netif *netif) {
     netif->name[1] = IFNAME1;
     netif->output = netif_shim_output;
     netif->output_ip6 = netif_shim_output_ip6;
+
+    /* todo this isn't working for ip packets. packets are received but we can't send because `etharp_output`
+     *  wants to see arp answers for IPs that we intercept. I'm guessuming something isn't quite right with
+     *  the addresses here but will get back to it after plain l2 service is working. for now the tunneler
+     *  will not handle l3 services when the l2 option is used.
+     */
+    netif_driver dev = netif->state;
+    netif->ip_addr.type = IPADDR_TYPE_V4;
+    netif->ip_addr.u_addr.ip4.addr = dev->ip4addr.s_addr;
+    netif->netmask.type = IPADDR_TYPE_V4;
+    netif->netmask.u_addr.ip4.addr = 4294967295; // todo set this (and gw?) for real
+    netif->mtu = dev->mtu;
+    if (dev->hwaddr_len != 0) {
+        netif->output = etharp_output;
+        netif->output_ip6 = ethip6_output;
+        memcpy(netif->hwaddr, dev->hwaddr, dev->hwaddr_len);
+        netif->hwaddr_len = dev->hwaddr_len;
+        // todo do we need to call netif_create_ip6_linklocal_address?
+        netif->linkoutput = netif_shim_output_link;
+    }
 
     return ERR_OK;
 }
