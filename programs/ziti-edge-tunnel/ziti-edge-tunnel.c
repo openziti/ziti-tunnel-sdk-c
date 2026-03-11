@@ -129,6 +129,7 @@ static char *configured_cidr = NULL;
 static char *configured_log_level = NULL;
 static char *configured_proxy = NULL;
 static char *ipc_discriminator = NULL;
+static bool l2_tunnel = false;
 
 //timer
 static uv_timer_t metrics_timer;
@@ -851,10 +852,19 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     uint32_t dns_subnet_u32 = ntohl(dns_subnet_in->s_addr) & (0xFFFFFFFFUL << (32 - dns_subnet_zaddr.addr.cidr.bits)) & 0xFFFFFFFFUL;
     ip_addr_t dns_ip4_addr = IPADDR4_INIT(htonl(dns_subnet_u32));
     snprintf(dns_subnet, sizeof(dns_subnet), "%s/%d", ipaddr_ntoa(&dns_ip4_addr), dns_subnet_zaddr.addr.cidr.bits);
+
+#ifndef __linux__
+    // todo remove this ifdef and pass `l2_tunnel` to the tun open functions, which can fail if l2 is not possible.
+    if (l2_tunnel) {
+        ZITI_LOG(ERROR, "l2 tunneling is not supported on this operating system");
+        return 1;
+    }
+#endif
+
 #if __APPLE__ && __MACH__
     tun = utun_open(tun_error, sizeof(tun_error), ip_range);
 #elif __linux__
-    tun = tun_open(ziti_loop, tun_ip, dns_ip, dns_subnet, tun_error, sizeof(tun_error));
+    tun = tun_open(ziti_loop, l2_tunnel, tun_ip, dns_ip, dns_subnet, tun_error, sizeof(tun_error));
 #elif _WIN32
     tun = tun_open(ziti_loop, tun_ip, dns_subnet, tun_error, sizeof(tun_error));
 #else
@@ -1159,6 +1169,7 @@ static struct option run_options[] = {
         { "dns-ip-range", required_argument, NULL, 'd'},
         { "dns-upstream", required_argument, NULL, 'u'},
         { "proxy", required_argument, NULL, 'x' },
+        { "l2", no_argument, NULL, '2' },
 #if __linux__
         { "diverter", required_argument, NULL, 'D' },
         { "diverter-fw", required_argument, NULL, 'f' },
@@ -1281,6 +1292,9 @@ static int run_opts(int argc, char *argv[]) {
                 break;
             case 'x':
                 configured_proxy = optarg;
+                break;
+            case '2':
+                l2_tunnel = true;
                 break;
             default: {
                 fprintf(stderr, "Unknown option '%c'\n", c);
@@ -2560,6 +2574,7 @@ static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required supe
                                           "\t-I|--identity-dir <dir>\tload identities from provided directory\n"
                                           "\t-x|--proxy type://[username[:password]@]hostname_or_ip:port\tproxy to use when"
                                           " connecting to OpenZiti controller and edge routers. 'http' is currently the only supported type.\n"
+                                          "\t-2|--l2\tenable layer 2 services\n"
                                           "\t-v|--verbose N\tset log level, higher level -- more verbose (default 3)\n"
                                           "\t-r|--refresh N\tset service polling interval in seconds (default 10)\n"
                                           "\t-d|--dns-ip-range <ip range>\tspecify CIDR block in which service DNS names"

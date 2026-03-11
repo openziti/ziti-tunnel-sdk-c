@@ -559,7 +559,7 @@ static void run_packet_loop(uv_loop_t *loop, tunneler_context tnlr_ctx) {
     lwip_init();
 
     netif_driver netif_driver = opts.netif_driver;
-    if (netif_add_noaddr(&tnlr_ctx->netif, netif_driver, netif_shim_init, ip_input) == NULL) {
+    if (netif_add_noaddr(&tnlr_ctx->netif, netif_driver, netif_shim_init, netif_input) == NULL) {
         TNL_LOG(ERR, "netif_add failed");
         exit(1);
     }
@@ -567,6 +567,9 @@ static void run_packet_loop(uv_loop_t *loop, tunneler_context tnlr_ctx) {
     netif_set_default(&tnlr_ctx->netif);
     netif_set_link_up(&tnlr_ctx->netif);
     netif_set_up(&tnlr_ctx->netif);
+    if (tnlr_ctx->netif.hwaddr_len > 0) {
+        netif_set_flags(&tnlr_ctx->netif, NETIF_FLAG_ETHARP);
+    }
 
     if (netif_driver->setup) {
         netif_driver->setup(netif_driver->handle, loop, on_packet, netif_default);
