@@ -407,7 +407,7 @@ static const char *get_tun_name(netif_handle tun) {
     return tun->name;
 }
 
-netif_driver tun_open(uv_loop_t *loop, uint32_t tun_ip, uint32_t dns_ip, const char *dns_block, char *error, size_t error_len) {
+netif_driver tun_open(uv_loop_t *loop, bool l2, uint32_t tun_ip, uint32_t dns_ip, const char *dns_block, char *error, size_t error_len) {
     if (error != NULL) {
         memset(error, 0, error_len * sizeof(char));
     }
@@ -428,8 +428,8 @@ netif_driver tun_open(uv_loop_t *loop, uint32_t tun_ip, uint32_t dns_ip, const c
         return NULL;
     }
 
-    struct ifreq ifr = { .ifr_name = "ziti%d",
-                         .ifr_flags = IFF_TUN | IFF_NO_PI };
+    int16_t if_type_flag = l2 ? IFF_TAP : IFF_TUN;
+    struct ifreq ifr = { .ifr_name = "ziti%d", .ifr_flags = (short)(if_type_flag | IFF_NO_PI) };
 
     if (ioctl(tun->fd, TUNSETIFF, &ifr) < 0) {
         if (error != NULL) {
@@ -474,13 +474,38 @@ netif_driver tun_open(uv_loop_t *loop, uint32_t tun_ip, uint32_t dns_ip, const c
     ifr_addrp->sin_addr.s_addr = tun_ip;
 
     if (ioctl(netdev, SIOCSIFADDR, &ifr) == -1) {
-        snprintf(error, error_len, "failed to set tun address: %s", strerror(errno));
+        snprintf(error, error_len, "failed to set interface address: %s", strerror(errno));
         tun_close(tun);
         return NULL;
     }
+    memcpy(&driver->ip4addr, &ifr_addrp->sin_addr, sizeof(ifr_addrp->sin_addr));
 
-    ifr.ifr_flags = IFF_UP | IFF_RUNNING | IFF_NOARP | IFF_MULTICAST;
+    if (ioctl(netdev,SIOCGIFMTU, &ifr) == -1) {
+        snprintf(error, error_len, "failed to get interface MTU: %s", strerror(errno));
+        return NULL;
+    }
+    driver->mtu = ifr.ifr_mtu;
 
+    int noarp_flag = IFF_NOARP; // arp is not needed when using a tun
+    if (l2) {
+        /* the kernel should have given our interface a link-local hardware address.
+         * configure the lwip netif with the actual interface address.
+         *
+         * wait for kernel to configure the interface. without this we get an uninitialized (an nonzero) value.
+         * todo tried checking ifr_hwaddr.sa_family == ARPHRD_ETHER, look for another way to validate hwaddr is ready.
+         */
+        uv_sleep(100);
+        if (ioctl(netdev, SIOCGIFHWADDR, &ifr) < 0) {
+            snprintf(error, error_len, "failed to set hardware address: %s", strerror(errno));
+            tun_close(tun);
+            return NULL;
+        }
+        memcpy(driver->hwaddr, ifr.ifr_hwaddr.sa_data, 6);
+        driver->hwaddr_len = 6;
+        noarp_flag = 0;
+    }
+
+    ifr.ifr_flags = IFF_UP | IFF_RUNNING | noarp_flag | IFF_MULTICAST;
     if (ioctl(netdev, SIOCSIFFLAGS, &ifr) == -1) {
         snprintf(error, error_len, "failed to set tun up/running: %s", strerror(errno));
         tun_close(tun);

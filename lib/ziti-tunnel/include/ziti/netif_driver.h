@@ -50,6 +50,10 @@ typedef struct netif_driver_s {
     exclude_route_fn exclude_rt;
     commit_routes_fn commit_routes;
     name_fn get_name;
+    struct in_addr ip4addr;
+    uint16_t mtu;
+    uint8_t hwaddr[6];
+    uint8_t hwaddr_len;
 } netif_driver_t;
 typedef netif_driver_t *netif_driver;
 
