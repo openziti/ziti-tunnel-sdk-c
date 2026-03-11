@@ -1,0 +1,53 @@
+{
+  "$id": "http://edge.openziti.org/schemas/l2.intercept.v1.config.json",
+  "additionalProperties": false,
+  "definitions": {
+    "inhabitedSet": {
+      "minItems": 1,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "ethType": {
+      "description": "list of EtherTypes to forward. frames with an EtherType that is not in this list will be dropped.",
+      "pattern": "^0[xX][0-9a-fA-F]{4}$",
+      "type": "string"
+    },
+    "timeoutSeconds": {
+      "maximum": 2147483647,
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "properties": {
+    "ethTypes": {
+      "allOf": [
+        {
+          "$ref": "#/definitions/inhabitedSet"
+        },
+        {
+          "items": {
+            "$ref": "#/definitions/ethType"
+          }
+        }
+      ]
+    },
+    "dialOptions": {
+      "additionalProperties": false,
+      "properties": {
+        "connectTimeoutSeconds": {
+          "$ref": "#/definitions/timeoutSeconds",
+          "description": "defaults to 5 seconds if no dialOptions are defined. defaults to 15 if dialOptions are defined but connectTimeoutSeconds is not specified."
+        },
+        "identity": {
+          "description": "Dial a terminator with the specified identity. '$dst_protocol', '$dst_ip', '$dst_port are resolved to the corresponding value of the destination address.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "required": [
+    "ethTypes"
+  ],
+  "type": "object"
+}
