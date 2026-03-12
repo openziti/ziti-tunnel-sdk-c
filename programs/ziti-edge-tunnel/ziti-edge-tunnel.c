@@ -854,7 +854,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     ip_addr_t dns_ip4_addr = IPADDR4_INIT(htonl(dns_subnet_u32));
     snprintf(dns_subnet, sizeof(dns_subnet), "%s/%d", ipaddr_ntoa(&dns_ip4_addr), dns_subnet_zaddr.addr.cidr.bits);
 
-#ifndef __linux__
+#if !defined(__linux__) && !defined(_WIN32)
     // todo remove this ifdef and pass `l2_tunnel` to the tun open functions, which can fail if l2 is not possible.
     if (l2_tunnel) {
         ZITI_LOG(ERROR, "l2 tunneling is not supported on this operating system");
@@ -867,7 +867,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
 #elif __linux__
     tun = tun_open(ziti_loop, l2_tunnel, tun_ip, dns_ip, dns_subnet, tun_error, sizeof(tun_error));
 #elif _WIN32
-    tun = tun_open(ziti_loop, tun_ip, dns_subnet, tun_error, sizeof(tun_error));
+    tun = tun_open(ziti_loop, l2_tunnel, tun_ip, dns_subnet, tun_error, sizeof(tun_error));
 #else
 #error "ziti-edge-tunnel is not supported on this system"
 #endif
@@ -1246,7 +1246,7 @@ static int run_opts(int argc, char *argv[]) {
 #else
 #define DIVERTER_SHORT_OPTS ""
 #endif
-    while ((c = getopt_long(argc, argv, "i:I:v:r:d:u:x:"DIVERTER_SHORT_OPTS,
+    while ((c = getopt_long(argc, argv, "i:I:v:r:d:u:x:2"DIVERTER_SHORT_OPTS,
                             run_options, &option_index)) != -1) {
         switch (c) {
 #if __linux__
