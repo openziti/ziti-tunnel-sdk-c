@@ -58,9 +58,37 @@ static void parse_response(const uint8_t *buf, int len)
     }
 }
 
+static int parse_mac(const char *s, uint8_t mac[6])
+{
+    unsigned v[6];
+    if (sscanf(s, "%x:%x:%x:%x:%x:%x", &v[0],&v[1],&v[2],&v[3],&v[4],&v[5]) != 6)
+        return -1;
+    for (int i = 0; i < 6; i++) mac[i] = (uint8_t)v[i];
+    return 0;
+}
+
 int main(int argc, char *argv[])
 {
-    const char *ifname = (argc >= 2) ? argv[1] : "";
+    /* Usage: dcp_identify [ifname] [-t target-mac] */
+    const char *ifname     = "";
+    const char *target_str = NULL;
+
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "-t") == 0 && i + 1 < argc)
+            target_str = argv[++i];
+        else
+            ifname = argv[i];
+    }
+
+    uint8_t target_mac[6];
+    if (target_str) {
+        if (parse_mac(target_str, target_mac) < 0) {
+            fprintf(stderr, "bad mac: %s\n", target_str);
+            return 1;
+        }
+    } else {
+        memcpy(target_mac, DCP_MCAST_MAC, 6);
+    }
 
     char error[256];
     rawsock_t *rs = rawsock_open(ifname, error, sizeof(error));
@@ -77,7 +105,7 @@ int main(int argc, char *argv[])
     dcp_hdr_t *dcp = (dcp_hdr_t *)(frame + sizeof(eth_hdr_t));
     dcp_blk_t *blk = (dcp_blk_t *)(frame + sizeof(eth_hdr_t) + sizeof(dcp_hdr_t));
 
-    memcpy(eth->dst, DCP_MCAST_MAC, 6);
+    memcpy(eth->dst, target_mac, 6);
     memcpy(eth->src, my_mac, 6);
     eth->ethertype = DCP_HTONS(ETH_P_PROFINET);
 
