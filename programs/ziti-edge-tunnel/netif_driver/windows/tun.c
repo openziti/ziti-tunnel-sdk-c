@@ -15,6 +15,7 @@
  */
 
 #include <stdint.h>
+#include <stdbool.h>
 #include <ziti/netif_driver.h>
 
 #ifndef _Out_cap_c_
@@ -37,6 +38,7 @@
 #include <ziti/model_support.h>
 
 #include "tun.h"
+#include "tap.h"
 
 #define ZITI_TUN_NAME_BASE "ziti-tun"
 
@@ -180,7 +182,10 @@ static const char *get_tun_name(netif_handle tun) {
     return tun->name;
 }
 
-netif_driver tun_open(struct uv_loop_s *loop, uint32_t tun_ip, const char *cidr, char *error, size_t error_len) {
+netif_driver tun_open(struct uv_loop_s *loop, bool l2, uint32_t tun_ip, const char *cidr, char *error, size_t error_len) {
+    if (l2) {
+        return tap_open(loop, tun_ip, cidr, error, error_len);
+    }
     if (error != NULL) {
         memset(error, 0, error_len * sizeof(char));
     }
