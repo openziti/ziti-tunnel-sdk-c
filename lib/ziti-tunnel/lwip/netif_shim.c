@@ -8,6 +8,7 @@
 #include "lwip/etharp.h"
 #include "lwip/ethip6.h"
 #include "ziti/netif_driver.h"
+#include "tunnel_l2.h"
 #include "netif_shim.h"
 #include "../ziti_tunnel_priv.h"
 
@@ -43,7 +44,7 @@ static err_t netif_shim_output_ip6(struct netif *netif, struct pbuf *p, const ip
     return netif_shim_output(netif, p, NULL);
 }
 
-static err_t netif_shim_output_link(struct netif *netif, struct pbuf *p) {
+err_t netif_shim_output_link(struct netif *netif, struct pbuf *p) {
     return netif_shim_output(netif, p, NULL);
 }
 
@@ -102,9 +103,15 @@ void on_packet(const char *buf, ssize_t nr, void *ctx) {
         return;
     }
 
+    /* this is a frame that arrived from our tap.
+     * lwip will only process ip4/ip6/arp ethtypes but currently we're using a tun for those, so don't send tap
+     * frames to the stack.
+     */
     if (netif->hwaddr_len > 0) {
         struct eth_hdr *ethhdr = p->payload;
         TNL_LOG(INFO, "read frame with ethtype %x", htons(ethhdr->type));
+        recv_l2(netif, p);
+        return;
     }
     err_t err = netif->input(p, netif);
     if (err != ERR_OK) {
@@ -123,17 +130,7 @@ err_t netif_shim_init(struct netif *netif) {
     netif->name[1] = IFNAME1;
     netif->output = netif_shim_output;
     netif->output_ip6 = netif_shim_output_ip6;
-
-    /* todo this isn't working for ip packets. packets are received but we can't send because `etharp_output`
-     *  wants to see arp answers for IPs that we intercept. I'm guessuming something isn't quite right with
-     *  the addresses here but will get back to it after plain l2 service is working. for now the tunneler
-     *  will not handle l3 services when the l2 option is used.
-     */
     netif_driver dev = netif->state;
-    netif->ip_addr.type = IPADDR_TYPE_V4;
-    netif->ip_addr.u_addr.ip4.addr = dev->ip4addr.s_addr;
-    netif->netmask.type = IPADDR_TYPE_V4;
-    netif->netmask.u_addr.ip4.addr = 4294967295; // todo set this (and gw?) for real
     netif->mtu = dev->mtu;
     if (dev->hwaddr_len != 0) {
         netif->output = etharp_output;

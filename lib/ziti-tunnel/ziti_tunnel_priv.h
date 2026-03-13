@@ -137,6 +137,9 @@ typedef struct tunneler_ctx_s {
     model_map intercepts_cache; // cached intercept_ctx lookup keyed by [proto]:[ip]:[port]
 } *tunneler_context;
 
+/** lookup intercept by ethtype. only intercepts with an osi_layer of "l2" are considered. */
+extern intercept_ctx_t *lookup_intercept_by_ethtype(tunneler_context tnlr_ctx, uint16_t ethtype);
+
 /** return the intercept context for a packet based on its destination ip:port */
 extern intercept_ctx_t *
 lookup_intercept_by_address(tunneler_context tnlr_ctx, const char *protocol, ip_addr_t *src_addr, ip_addr_t *dst_addr, uint16_t dst_port);
@@ -161,6 +164,10 @@ struct tunneler_io_ctx_s {
     uint32_t idle_timeout;
 };
 
+#define DATAGRAM_IO_TIMEOUT 30000
+
+extern void datagram_timeout_cb(uv_timer_t *t);
+extern void ziti_tunnel_pbuf_to_ziti(struct io_ctx_s *io, struct pbuf *p);
 extern void check_tnlr_timer(tunneler_context tnlr_ctx);
 extern void free_tunneler_io_context(tunneler_io_context *tnlr_io_ctx_p);
 
