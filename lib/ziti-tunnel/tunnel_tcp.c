@@ -222,10 +222,8 @@ ssize_t tunneler_tcp_write(struct tcp_pcb *pcb, const void *data, size_t len) {
     return sendlen;
 }
 
-void tunneler_tcp_ack(struct write_ctx_s *write_ctx) {
-    struct write_ctx_s *wr_ctx = write_ctx;
+void tunneler_tcp_ack(struct write_ctx_s *wr_ctx) {
     tcp_recved(wr_ctx->tcp, wr_ctx->pbuf->len);
-    pbuf_free(wr_ctx->pbuf);
 }
 
 int tunneler_tcp_close_write(struct tcp_pcb *pcb) {

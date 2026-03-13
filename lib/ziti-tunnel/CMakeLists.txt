@@ -1,6 +1,6 @@
 
 add_library(ziti-tunnel-sdk-c STATIC
-        ziti_tunnel.c tunnel_tcp.c tunnel_udp.c intercept.c route.c
+        ziti_tunnel.c tunnel_tcp.c tunnel_udp.c tunnel_l2.c intercept.c route.c
         lwip/netif_shim.c tunnel_log.c)
 
 set_property(TARGET ziti-tunnel-sdk-c PROPERTY C_STANDARD 11)
@@ -44,6 +44,7 @@ target_compile_definitions(lwipcore PUBLIC CMAKE_C_BYTE_ORDER=${CMAKE_C_BYTE_ORD
 target_include_directories(ziti-tunnel-sdk-c
         PUBLIC ${LWIP_INCLUDE_DIRS}
         PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
+        PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
         PRIVATE ${ziti-tunnel-sdk-c-deps_SOURCE_DIR}
         )
 

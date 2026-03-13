@@ -279,9 +279,8 @@ static ssize_t get_app_data(char *buf, size_t bufsz, tunneler_io_context io, zit
 }
 
 /** initialize dial options from a ziti_intercept_cfg_v1 */
-static void dial_opts_from_intercept_cfg_v1(ziti_dial_opts *opts, const ziti_intercept_cfg_v1 *config) {
-    //model_map dial_options_cfg = config->dial_options;
-    tag *t = (tag *) model_map_get(&(config->dial_options), "identity");
+static void dial_opts_from_model_map(ziti_dial_opts *opts, const model_map *dial_opts_map) {
+    tag *t = (tag *) model_map_get(dial_opts_map, "identity");
     if (t != NULL) {
         if (t->type == tag_string) {
             opts->identity = (char*)t->string_value;
@@ -290,7 +289,7 @@ static void dial_opts_from_intercept_cfg_v1(ziti_dial_opts *opts, const ziti_int
         }
     }
 
-    t = (tag *)model_map_get(&(config->dial_options), "connect_timeout_seconds");
+    t = (tag *)model_map_get(dial_opts_map, "connect_timeout_seconds");
     if (t != NULL) {
         if (t->type == tag_number) {
             opts->connect_timeout_seconds = (int)t->num_value;
@@ -335,9 +334,11 @@ void * ziti_sdk_c_dial(const void *intercept_ctx, struct io_ctx_s *io) {
             ZITI_LOG(VERBOSE, "not setting ziti dial options for '%s' config", zi_ctx->cfg_desc->name);
             break;
         case INTERCEPT_CFG_V1:
-            dial_opts_from_intercept_cfg_v1(&dial_opts, &zi_ctx->cfg.intercept_v1);
+            dial_opts_from_model_map(&dial_opts, &zi_ctx->cfg.intercept_v1.dial_options);
             source_ip = zi_ctx->cfg.intercept_v1.source_ip;
             break;
+        case L2_INTERCEPT_CFG_V1:
+            dial_opts_from_model_map(&dial_opts, &zi_ctx->cfg.l2_intercept_v1.dial_options);
         default:
             break;
     }
@@ -372,8 +373,10 @@ void * ziti_sdk_c_dial(const void *intercept_ctx, struct io_ctx_s *io) {
     }
 
     free_tunneler_app_data(&app_data);
-    dial_opts.app_data_sz = (size_t) json_len;
-    dial_opts.app_data = app_data_json;
+    if (zi_ctx->cfg_desc->cfgtype != L2_INTERCEPT_CFG_V1) {
+        dial_opts.app_data_sz = (size_t) json_len;
+        dial_opts.app_data = app_data_json;
+    }
 
     ZITI_LOG(DEBUG, "service[%s] app_data_json[%zd]='%.*s'", zi_ctx->service_name, dial_opts.app_data_sz, (int)dial_opts.app_data_sz, (char *) dial_opts.app_data);
     if (ziti_dial_with_options(ziti_io_ctx->ziti_conn, zi_ctx->service_name, &dial_opts, on_ziti_connect, on_ziti_data) != ZITI_OK) {
