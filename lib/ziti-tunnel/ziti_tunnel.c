@@ -16,6 +16,8 @@
 
 // something wrong with lwip_xxxx byteorder functions
 #include <netif/ethernet.h>
+
+#include "tunnel_l2.h"
 #ifdef _WIN32
 #define LWIP_DONT_PROVIDE_BYTEORDER_FUNCTIONS 1
 #endif
@@ -74,6 +76,11 @@ static tunneler_context create_tunneler_ctx(tunneler_sdk_options *opts, uv_loop_
     uv_sem_init(&ctx->sem, 1);
     uv_once(&default_loop_sem_init_once, default_loop_sem_init);
     memcpy(&ctx->opts, opts, sizeof(ctx->opts));
+
+    // make tunneler context available to netifs
+    if (opts->l2_netif_driver) opts->l2_netif_driver->tnlr = ctx;
+    if (opts->l3_netif_driver) opts->l3_netif_driver->tnlr = ctx;
+
     return ctx;
 }
 
@@ -172,8 +179,74 @@ void ziti_tunneler_shutdown(tunneler_context tnlr_ctx) {
 
 /** called by tunneler application when data has been successfully written to ziti */
 void ziti_tunneler_ack(struct write_ctx_s *write_ctx) {
-    write_ctx->ack(write_ctx);
+    if (write_ctx->ack) write_ctx->ack(write_ctx);
+    if (write_ctx->pbuf) pbuf_free(write_ctx->pbuf);
     free(write_ctx);
+}
+
+// initiate orderly shutdown
+void datagram_timeout_cb(uv_timer_t *t) {
+    struct io_ctx_s *io = t->data;
+    tunneler_io_context tnlr_io = io->tnlr_io;
+    if (tnlr_io) {
+        TNL_LOG(TRACE, "initiating close idle_timeout[%d] src[%s] dst[%s] service[%s]", tnlr_io->idle_timeout,
+                tnlr_io->client, tnlr_io->intercepted, tnlr_io->service_name);
+    }
+    io->close_fn(io->ziti_io);
+}
+
+void ziti_tunnel_pbuf_to_ziti(struct io_ctx_s *io, struct pbuf *p) {
+    static bool log_stalled_warns = true;
+    if (io == NULL) {
+        TNL_LOG(ERR, "null io");
+        if (p != NULL) {
+            pbuf_free(p);
+        }
+        return;
+    }
+
+    if (p == NULL) {
+        TNL_LOG(TRACE, "no data to write");
+        return;
+    }
+
+    ack_fn acker = NULL;
+    if (io->tnlr_io->proto == tun_udp) acker = tunneler_udp_ack;
+    else if (io->tnlr_io->proto == tun_l2) acker = tunneler_l2_ack;
+
+    struct pbuf *recv_data = p;
+    uv_timer_start(io->tnlr_io->conn_timer, datagram_timeout_cb, DATAGRAM_IO_TIMEOUT, 0);
+
+    do {
+        TNL_LOG(TRACE, "writing %d bytes to ziti src[%s] dst[%s] service[%s]", recv_data->len,
+                io->tnlr_io->client, io->tnlr_io->intercepted, io->tnlr_io->service_name);
+        struct write_ctx_s *wr_ctx = calloc(1, sizeof(struct write_ctx_s));
+        wr_ctx->pbuf = recv_data;
+        wr_ctx->udp = io->tnlr_io->udp; // will be null for l2
+        wr_ctx->ack = acker;
+        struct pbuf *next = recv_data->next;
+        // break the chain to prevent pbuf_free from iterating and freeing subsequent pbufs
+        recv_data->next = NULL;
+        recv_data = next;
+
+        ssize_t s = io->write_fn(io->ziti_io, wr_ctx, wr_ctx->pbuf->payload, wr_ctx->pbuf->len);
+        if (s == ERR_WOULDBLOCK) {
+            ziti_tunneler_ack(wr_ctx);
+            if (log_stalled_warns) {
+                TNL_LOG(WARN, "ziti_write stalled: dropping UDP packets until buffers are released service=%s, client=%s, ret=%ld",
+                        io->tnlr_io->service_name, io->tnlr_io->client, s);
+            }
+            break;
+        } else if (s < 0) {
+            ziti_tunneler_ack(wr_ctx);
+            TNL_LOG(ERR, "ziti_write failed: service=%s, client=%s, ret=%ld", io->tnlr_io->service_name, io->tnlr_io->client, s);
+            io->close_fn(io->ziti_io);
+            break;
+        } else if (s == 0 && !log_stalled_warns) {
+            TNL_LOG(INFO, "ziti_write un-stalled: service=%s client=%s", io->tnlr_io->service_name, io->tnlr_io->client);
+            log_stalled_warns = true;
+        }
+    } while (recv_data != NULL);
 }
 
 const char *get_intercepted_address(const struct tunneler_io_ctx_s * tnlr_io) {
@@ -228,6 +301,8 @@ void ziti_tunneler_dial_completed(struct io_ctx_s *io, bool ok) {
         case tun_udp:
             tunneler_udp_dial_completed(io, ok);
             break;
+        case tun_l2:
+            tunneler_l2_dial_completed(io, ok);
         default:
             TNL_LOG(ERR, "unknown proto %d", io->tnlr_io->proto);
             break;
@@ -449,6 +524,13 @@ ssize_t ziti_tunneler_write(tunneler_io_context tnlr_io_ctx, const void *data, s
         case tun_udp:
             r = tunneler_udp_write(tnlr_io_ctx->udp, data, len);
             break;
+        case tun_l2:
+            r = tunneler_l2_write(&tnlr_io_ctx->tnlr_ctx->l2_netif, data, len);
+            break;
+        default:
+            TNL_LOG(ERR, "unknown tunnel protocol %d", tnlr_io_ctx->proto);
+            r = -1;
+            break;
     }
 
     return r;
@@ -470,6 +552,9 @@ int ziti_tunneler_close(tunneler_io_context tnlr_io_ctx) {
         case tun_udp:
             tunneler_udp_close(tnlr_io_ctx->udp);
             tnlr_io_ctx->udp = NULL;
+            break;
+        case tun_l2:
+            tunneler_l2_close(tnlr_io_ctx->intercepted);
             break;
         default:
             TNL_LOG(ERR, "unknown proto %d", tnlr_io_ctx->proto);
@@ -745,7 +830,6 @@ void ziti_tunnel_get_ip_stats(tunnel_ip_stats *stats) {
         tunneler_udp_get_conn(stats->connections[i++], upcb);
     }
 }
-
 
 const char* ziti_tunneler_version() {
     return str(GIT_VERSION);

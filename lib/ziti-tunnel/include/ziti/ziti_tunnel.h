@@ -28,6 +28,7 @@
 #include "sys/queue.h"
 #include "ziti/netif_driver.h"
 #include "lwip/ip_addr.h"
+#include "lwip/udp.h"
 #include "ziti/ziti_model.h"
 
 #ifdef __cplusplus
