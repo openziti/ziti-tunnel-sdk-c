@@ -42,7 +42,7 @@
 #define LWIP_WND_SCALE        1           /* set to 1 to enable window scaling */
 #define TCP_RCV_SCALE         14          /* desired scaling factor - shift count in the range of [0..14] */
 
-#define LWIP_SINGLE_NETIF 1               /* avoid some lwip "routing" logic */
+//#define LWIP_SINGLE_NETIF 1               /* avoid some lwip "routing" logic */
 
 #define LWIP_TCP_KEEPALIVE 1
 #define TCP_KEEPIDLE_DEFAULT 30000       /* 30 seconds of idle before starting to send KEEPALIVE packets */

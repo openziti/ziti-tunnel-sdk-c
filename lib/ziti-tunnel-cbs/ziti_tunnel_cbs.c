@@ -57,6 +57,7 @@ struct ziti_intercept_s {
     struct cfgtype_desc_s *cfg_desc;
     union {
         ziti_intercept_cfg_v1 intercept_v1;
+        ziti_l2_intercept_cfg_v1 l2_intercept_v1;
         ziti_client_cfg_v1 client_v1;
     } cfg;
 };
@@ -69,6 +70,7 @@ struct ziti_host_s {
     struct cfgtype_desc_s *cfg_desc;
     union {
         ziti_host_cfg_v1 host_v1;
+        ziti_l2_host_cfg_v1 l2_host_v1;
         ziti_server_cfg_v1 server_v1;
     } cfg;
 };
@@ -82,12 +84,14 @@ struct ziti_host_s {
 
 static struct cfgtype_desc_s intercept_cfgtypes[] = {
         CFGTYPE_DESC("intercept.v1", INTERCEPT_CFG_V1, ziti_intercept_cfg_v1),
-        CFGTYPE_DESC("ziti-tunneler-client.v1", CLIENT_CFG_V1, ziti_client_cfg_v1)
+        CFGTYPE_DESC("ziti-tunneler-client.v1", CLIENT_CFG_V1, ziti_client_cfg_v1),
+        CFGTYPE_DESC("l2.intercept.v1", L2_INTERCEPT_CFG_V1, ziti_l2_intercept_cfg_v1),
 };
 
 static struct cfgtype_desc_s host_cfgtypes[] = {
         CFGTYPE_DESC("host.v1", HOST_CFG_V1, ziti_host_cfg_v1),
-        CFGTYPE_DESC("ziti-tunneler-server.v1", SERVER_CFG_V1, ziti_server_cfg_v1)
+        CFGTYPE_DESC("ziti-tunneler-server.v1", SERVER_CFG_V1, ziti_server_cfg_v1),
+        CFGTYPE_DESC("l2.host.v1", L2_HOST_CFG_V1, ziti_l2_host_cfg_v1)
 };
 
 static void free_ziti_intercept(ziti_intercept_t *zi) {
@@ -562,6 +566,14 @@ intercept_ctx_t *new_intercept_ctx(tunneler_context tnlr_ctx, ziti_intercept_t *
             }
         }
             break;
+        case L2_INTERCEPT_CFG_V1: {
+            const ziti_l2_intercept_cfg_v1 *config = &zi_ctx->cfg.l2_intercept_v1;
+            model_string ethtype;
+            MODEL_LIST_FOREACH(ethtype, config->ethtypes) {
+                intercept_ctx_add_ethtype(i_ctx, ethtype);
+            }
+        }
+            break;
         default:
             break;
     }
@@ -594,10 +606,6 @@ tunneled_service_t *ziti_sdk_c_on_service(ziti_context ziti_ctx, ziti_service *s
     struct ziti_instance_s *ziti_instance = ziti_app_ctx(ziti_ctx);
 
     if (status == ZITI_OK) {
-        int i, get_config_rc;
-        cfgtype_desc_t *cfgtype;
-        void *config;
-
         ziti_intercept_t *curr_i = model_map_get(&ziti_instance->intercepts, service->name);
         if ((service->perm_flags & ZITI_CAN_DIAL) == 0) {
             if (curr_i) {

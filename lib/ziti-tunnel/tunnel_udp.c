@@ -209,7 +209,7 @@ u8_t recv_udp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
         return 1;
     }
 
-    udp_bind_netif(npcb, &tnlr_ctx->netif);
+    udp_bind_netif(npcb, &tnlr_ctx->l3_netif);
 
     struct io_ctx_s *io = calloc(1, sizeof(struct io_ctx_s));
     if (io == NULL) {
@@ -255,17 +255,17 @@ u8_t recv_udp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
 }
 
 ssize_t tunneler_udp_write(struct udp_pcb *pcb, const void *data, size_t len) {
+    struct io_ctx_s *io = pcb->recv_arg;
     struct pbuf *p = pbuf_alloc(PBUF_TRANSPORT, len, PBUF_RAM);
     memcpy(p->payload, data, len);
     /* use udp_sendto_if_src even though local and remote addresses are in pcb, because
      * udp_send verifies that the dest IP matches the netif's IP, and fails with ERR_RTE.
      */
-    err_t err = udp_sendto_if_src(pcb, p, &pcb->remote_ip, pcb->remote_port, netif_default, &pcb->local_ip);
+    err_t err = udp_sendto_if_src(pcb, p, &pcb->remote_ip, pcb->remote_port, &io->tnlr_io->tnlr_ctx->l3_netif, &pcb->local_ip);
     pbuf_free(p);
     if (err != ERR_OK) {
         return -1;
     }
-    struct io_ctx_s *io = pcb->recv_arg;
     if (io->tnlr_io->idle_timeout > 0) {
         uv_timer_start(io->tnlr_io->conn_timer, udp_timeout_cb, io->tnlr_io->idle_timeout, 0);
     }
