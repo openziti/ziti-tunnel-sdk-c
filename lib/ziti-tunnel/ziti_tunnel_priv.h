@@ -100,6 +100,9 @@ struct intercept_ctx_s {
     char *service_name;
     void *app_intercept_ctx;
 
+    enum {l3 = 0, l2} osi_layer;
+    model_list ethtypes;
+
     protocol_list_t protocols;
     address_list_t addresses;
     port_range_list_t port_ranges;
@@ -121,12 +124,14 @@ struct excluded_route_s {
 
 typedef struct tunneler_ctx_s {
     tunneler_sdk_options opts; // this must be first - it is accessed opaquely through tunneler_context*
-    struct netif netif;
+    struct netif l3_netif;
+    struct netif l2_netif;
     struct raw_pcb *tcp;
     struct raw_pcb *udp;
     uv_loop_t *loop;
     uv_sem_t sem;
-    uv_poll_t netif_poll_req;
+    uv_poll_t l3_netif_poll_req;
+    uv_poll_t l2_netif_poll_req;
     uv_timer_t lwip_timer_req;
     LIST_HEAD(intercept_ctx_list_s, intercept_ctx_s) intercepts;
     model_map intercepts_cache; // cached intercept_ctx lookup keyed by [proto]:[ip]:[port]
@@ -138,7 +143,8 @@ lookup_intercept_by_address(tunneler_context tnlr_ctx, const char *protocol, ip_
 
 typedef enum {
     tun_tcp,
-    tun_udp
+    tun_udp,
+    tun_l2
 } tunneler_proto_type;
 
 struct tunneler_io_ctx_s {

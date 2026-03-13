@@ -256,6 +256,11 @@ void free_intercept(intercept_ctx_t *intercept) {
         free(a);
     }
 
+    model_string ethtype;
+    MODEL_LIST_FOREACH(ethtype, intercept->ethtypes) {
+        free((void *) ethtype);
+    }
+
     free(intercept->service_name);
     free(intercept);
 }
