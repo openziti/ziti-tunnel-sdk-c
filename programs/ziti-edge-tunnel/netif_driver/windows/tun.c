@@ -182,10 +182,7 @@ static const char *get_tun_name(netif_handle tun) {
     return tun->name;
 }
 
-netif_driver tun_open(struct uv_loop_s *loop, bool l2, uint32_t tun_ip, const char *cidr, char *error, size_t error_len) {
-    if (l2) {
-        return tap_open(loop, tun_ip, cidr, error, error_len);
-    }
+netif_driver tun_open(struct uv_loop_s *loop, uint32_t tun_ip, const char *cidr, char *error, size_t error_len) {
     if (error != NULL) {
         memset(error, 0, error_len * sizeof(char));
     }
