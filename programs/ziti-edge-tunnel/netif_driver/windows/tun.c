@@ -15,6 +15,7 @@
  */
 
 #include <stdint.h>
+#include <stdbool.h>
 #include <ziti/netif_driver.h>
 
 #ifndef _Out_cap_c_
@@ -37,6 +38,7 @@
 #include <ziti/model_support.h>
 
 #include "tun.h"
+#include "tap.h"
 
 #define ZITI_TUN_NAME_BASE "ziti-tun"
 

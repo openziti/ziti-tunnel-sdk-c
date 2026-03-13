@@ -19,71 +19,6 @@
 #include "tunnel_udp.h"
 #include "ziti_tunnel_priv.h"
 
-#define UDP_TIMEOUT 30000
-
-// initiate orderly shutdown
-static void udp_timeout_cb(uv_timer_t *t) {
-    struct io_ctx_s *io = t->data;
-    tunneler_io_context  tnlr_io = io->tnlr_io;
-    if (tnlr_io) {
-        TNL_LOG(TRACE, "initiating close idle_timeout[%d] src[%s] dst[%s] service[%s]", tnlr_io->idle_timeout,
-                tnlr_io->client, tnlr_io->intercepted, tnlr_io->service_name);
-    }
-    io->close_fn(io->ziti_io);
-}
-
-static void to_ziti(struct io_ctx_s *io, struct pbuf *p) {
-    static bool log_stalled_warns = true;
-    if (io == NULL) {
-        TNL_LOG(ERR, "null io");
-        if (p != NULL) {
-            pbuf_free(p);
-        }
-        return;
-    }
-
-    if (p == NULL) {
-        TNL_LOG(TRACE, "no data to write");
-        return;
-    }
-
-    struct pbuf *recv_data = p;
-    uv_timer_start(io->tnlr_io->conn_timer, udp_timeout_cb, UDP_TIMEOUT, 0);
-
-    do {
-        TNL_LOG(TRACE, "writing %d bytes to ziti src[%s] dst[%s] service[%s]", recv_data->len,
-                io->tnlr_io->client, io->tnlr_io->intercepted, io->tnlr_io->service_name);
-        struct write_ctx_s *wr_ctx = calloc(1, sizeof(struct write_ctx_s));
-        wr_ctx->pbuf = recv_data;
-        wr_ctx->udp = io->tnlr_io->udp;
-        wr_ctx->ack = tunneler_udp_ack;
-        struct pbuf *next = recv_data->next;
-        // break the chain to prevent pbuf_free from iterating and freeing subsequent pbufs
-        recv_data->next = NULL;
-        recv_data = next;
-
-        ssize_t s = io->write_fn(io->ziti_io, wr_ctx, wr_ctx->pbuf->payload, wr_ctx->pbuf->len);
-        if (s == ERR_WOULDBLOCK) {
-            tunneler_udp_ack(wr_ctx);
-            free(wr_ctx);
-            if (log_stalled_warns) {
-                TNL_LOG(WARN, "ziti_write stalled: dropping UDP packets until buffers are released service=%s, client=%s, ret=%ld",
-                        io->tnlr_io->service_name, io->tnlr_io->client, s);
-            }
-            break;
-        } else if (s < 0) {
-            tunneler_udp_ack(wr_ctx);
-            free(wr_ctx);
-            TNL_LOG(ERR, "ziti_write failed: service=%s, client=%s, ret=%ld", io->tnlr_io->service_name, io->tnlr_io->client, s);
-            io->close_fn(io->ziti_io);
-            break;
-        } else if (s == 0 && !log_stalled_warns) {
-            TNL_LOG(INFO, "ziti_write un-stalled: service=%s client=%s", io->tnlr_io->service_name, io->tnlr_io->client);
-            log_stalled_warns = true;
-        }
-    } while (recv_data != NULL);
-}
-
 /** called by lwip when a packet arrives from a connected client and the ziti service is connected */
 void on_udp_client_data(void *io_context, struct udp_pcb *pcb, struct pbuf *p, const ip_addr_t *addr, u16_t port) {
     if (io_context == NULL) {
@@ -99,11 +34,10 @@ void on_udp_client_data(void *io_context, struct udp_pcb *pcb, struct pbuf *p, c
         uv_timer_init(io->tnlr_io->tnlr_ctx->loop, io->tnlr_io->conn_timer);
     }
 
-    to_ziti(io_context, p);
+    ziti_tunnel_pbuf_to_ziti(io_context, p);
 }
 
 void tunneler_udp_ack(struct write_ctx_s *write_ctx) {
-    pbuf_free(write_ctx->pbuf);
 }
 
 int tunneler_udp_close(struct udp_pcb *pcb) {
@@ -209,7 +143,7 @@ u8_t recv_udp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
         return 1;
     }
 
-    udp_bind_netif(npcb, &tnlr_ctx->netif);
+    udp_bind_netif(npcb, &tnlr_ctx->l3_netif);
 
     struct io_ctx_s *io = calloc(1, sizeof(struct io_ctx_s));
     if (io == NULL) {
@@ -234,7 +168,7 @@ u8_t recv_udp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     io->ziti_ctx = intercept_ctx->app_intercept_ctx;
     io->write_fn = intercept_ctx->write_fn ? intercept_ctx->write_fn : tnlr_ctx->opts.ziti_write;
     io->close_fn = intercept_ctx->close_fn ? intercept_ctx->close_fn : tnlr_ctx->opts.ziti_close;
-    io->tnlr_io->idle_timeout = UDP_TIMEOUT;
+    io->tnlr_io->idle_timeout = DATAGRAM_IO_TIMEOUT;
 
     TNL_LOG(DEBUG, "intercepted address[%s] client[%s] service[%s]", io->tnlr_io->intercepted, io->tnlr_io->client,
             intercept_ctx->service_name);
@@ -251,23 +185,23 @@ u8_t recv_udp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
         return 1;
     }
 
-    return 0; /* lwip will call on_udp_client_data_enqueue for this packet */
+    return 0; /* lwip will call on_udp_client_data for this packet */
 }
 
 ssize_t tunneler_udp_write(struct udp_pcb *pcb, const void *data, size_t len) {
+    struct io_ctx_s *io = pcb->recv_arg;
     struct pbuf *p = pbuf_alloc(PBUF_TRANSPORT, len, PBUF_RAM);
     memcpy(p->payload, data, len);
     /* use udp_sendto_if_src even though local and remote addresses are in pcb, because
      * udp_send verifies that the dest IP matches the netif's IP, and fails with ERR_RTE.
      */
-    err_t err = udp_sendto_if_src(pcb, p, &pcb->remote_ip, pcb->remote_port, netif_default, &pcb->local_ip);
+    err_t err = udp_sendto_if_src(pcb, p, &pcb->remote_ip, pcb->remote_port, &io->tnlr_io->tnlr_ctx->l3_netif, &pcb->local_ip);
     pbuf_free(p);
     if (err != ERR_OK) {
         return -1;
     }
-    struct io_ctx_s *io = pcb->recv_arg;
     if (io->tnlr_io->idle_timeout > 0) {
-        uv_timer_start(io->tnlr_io->conn_timer, udp_timeout_cb, io->tnlr_io->idle_timeout, 0);
+        uv_timer_start(io->tnlr_io->conn_timer, datagram_timeout_cb, io->tnlr_io->idle_timeout, 0);
     }
     return len;
 }

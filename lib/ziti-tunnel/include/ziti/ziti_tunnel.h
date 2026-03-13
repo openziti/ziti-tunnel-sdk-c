@@ -28,6 +28,7 @@
 #include "sys/queue.h"
 #include "ziti/netif_driver.h"
 #include "lwip/ip_addr.h"
+#include "lwip/udp.h"
 #include "ziti/ziti_model.h"
 
 #ifdef __cplusplus
@@ -67,7 +68,9 @@ typedef enum {
     CLIENT_CFG_V1,    // ziti-tunnel-client.v1
     SERVER_CFG_V1,    // ziti-tunnel-server.v1
     INTERCEPT_CFG_V1, // intercept.v1
-    HOST_CFG_V1       // host.v1
+    HOST_CFG_V1,      // host.v1
+    L2_INTERCEPT_CFG_V1,
+    L2_HOST_CFG_V1
 } cfg_type_e;
 
 typedef struct protocol_s {
@@ -111,6 +114,7 @@ extern void intercept_ctx_add_protocol(intercept_ctx_t *ctx, const char *protoco
 extern void intercept_ctx_add_address(intercept_ctx_t *i_ctx, const ziti_address *address);
 extern void intercept_ctx_add_allowed_source_address(intercept_ctx_t *i_ctx, const ziti_address *address);
 extern port_range_t *intercept_ctx_add_port_range(intercept_ctx_t *i_ctx, uint16_t low, uint16_t high);
+extern model_string intercept_ctx_add_ethtype(intercept_ctx_t *i_ctx, model_string ethtype);
 extern void intercept_ctx_override_cbs(intercept_ctx_t *i_ctx, ziti_sdk_dial_cb dial, ziti_sdk_write_cb write, ziti_sdk_close_cb close_write, ziti_sdk_close_cb close);
 
 struct io_ctx_s {
@@ -132,7 +136,8 @@ SLIST_HEAD(io_ctx_list_s, io_ctx_list_entry_s);
 
 
 typedef struct tunneler_sdk_options_s {
-    netif_driver   netif_driver;
+    netif_driver        l3_netif_driver;
+    netif_driver        l2_netif_driver;
     ziti_sdk_dial_cb    ziti_dial;
     ziti_sdk_close_cb   ziti_close;
     ziti_sdk_close_cb   ziti_close_write;

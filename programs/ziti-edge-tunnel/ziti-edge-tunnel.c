@@ -81,7 +81,7 @@ void send_tunnel_command_inline(const tunnel_command *tnl_cmd, void *ctx);
 static void scm_service_stop_event(uv_loop_t *loop, void *arg);
 static bool is_host_only();
 static void run_tunneler_loop(uv_loop_t* ziti_loop);
-static tunneler_context initialize_tunneler(netif_driver tun, uv_loop_t* ziti_loop);
+static tunneler_context initialize_tunneler(netif_driver tun, netif_driver tap, uv_loop_t* ziti_loop);
 
 #if _WIN32
 static void move_config_from_previous_windows_backup(uv_loop_t *loop);
@@ -129,6 +129,7 @@ static char *configured_cidr = NULL;
 static char *configured_log_level = NULL;
 static char *configured_proxy = NULL;
 static char *ipc_discriminator = NULL;
+static bool l2_tunnel = false;
 
 //timer
 static uv_timer_t metrics_timer;
@@ -840,7 +841,7 @@ static char* normalize_host(char* hostname) {
 }
 
 static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, const char *ip_range, const char *dns_upstream) {
-    netif_driver tun;
+    netif_driver tun, tap = NULL;
     char tun_error[64];
 
     // remove the host bits from the dns cidr so added routes are valid
@@ -851,12 +852,27 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     uint32_t dns_subnet_u32 = ntohl(dns_subnet_in->s_addr) & (0xFFFFFFFFUL << (32 - dns_subnet_zaddr.addr.cidr.bits)) & 0xFFFFFFFFUL;
     ip_addr_t dns_ip4_addr = IPADDR4_INIT(htonl(dns_subnet_u32));
     snprintf(dns_subnet, sizeof(dns_subnet), "%s/%d", ipaddr_ntoa(&dns_ip4_addr), dns_subnet_zaddr.addr.cidr.bits);
+
+#if !defined(__linux__) && !defined(_WIN32)
+    // todo remove this ifdef and pass `l2_tunnel` to the tun open functions, which can fail if l2 is not possible.
+    if (l2_tunnel) {
+        ZITI_LOG(ERROR, "l2 tunneling is not supported on this operating system");
+        return 1;
+    }
+#endif
+
 #if __APPLE__ && __MACH__
     tun = utun_open(tun_error, sizeof(tun_error), ip_range);
 #elif __linux__
     tun = tun_open(ziti_loop, tun_ip, dns_ip, dns_subnet, tun_error, sizeof(tun_error));
+    if (tun != NULL && l2_tunnel) {
+        tap = tap_open(ziti_loop, tun_error, sizeof(tun_error));
+    }
 #elif _WIN32
     tun = tun_open(ziti_loop, tun_ip, dns_subnet, tun_error, sizeof(tun_error));
+    if (tun != NULL && l2_tunnel) {
+        tap = tap_open(loop, tun_ip, cidr, error, error_len);
+    }
 #else
 #error "ziti-edge-tunnel is not supported on this system"
 #endif
@@ -890,7 +906,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     set_tun_name(tun->get_name(tun->handle)); //sets the tunnel status's, tun name...
 #endif
 
-    tunneler = initialize_tunneler(tun, ziti_loop);
+    tunneler = initialize_tunneler(tun, tap, ziti_loop);
 
     ip_addr_t dns_ip4 = IPADDR4_INIT(dns_ip);
     ziti_dns_setup(tunneler, ipaddr_ntoa(&dns_ip4), ip_range);
@@ -912,7 +928,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
 }
 
 static int run_tunnel_host_mode(uv_loop_t *ziti_loop) {
-    tunneler = initialize_tunneler(NULL, ziti_loop);
+    tunneler = initialize_tunneler(NULL, NULL, ziti_loop);
     run_tunneler_loop(ziti_loop);
     return 0;
 }
@@ -1100,16 +1116,16 @@ static void run_tunneler_loop(uv_loop_t* ziti_loop) {
     free(tunneler);
 }
 
-static tunneler_context initialize_tunneler(netif_driver tun, uv_loop_t* ziti_loop) {
+static tunneler_context initialize_tunneler(netif_driver tun, netif_driver tap, uv_loop_t* ziti_loop) {
 
     tunneler_sdk_options tunneler_opts = {
-            .netif_driver = tun,
+            .l3_netif_driver = tun,
+            .l2_netif_driver = tap,
             .ziti_dial = ziti_sdk_c_dial,
             .ziti_close = ziti_sdk_c_close,
             .ziti_close_write = ziti_sdk_c_close_write,
             .ziti_write = ziti_sdk_c_write,
             .ziti_host = ziti_sdk_c_host
-
     };
 
     if (is_host_only()) {
@@ -1159,6 +1175,7 @@ static struct option run_options[] = {
         { "dns-ip-range", required_argument, NULL, 'd'},
         { "dns-upstream", required_argument, NULL, 'u'},
         { "proxy", required_argument, NULL, 'x' },
+        { "l2", no_argument, NULL, '2' },
 #if __linux__
         { "diverter", required_argument, NULL, 'D' },
         { "diverter-fw", required_argument, NULL, 'f' },
@@ -1234,7 +1251,7 @@ static int run_opts(int argc, char *argv[]) {
 #else
 #define DIVERTER_SHORT_OPTS ""
 #endif
-    while ((c = getopt_long(argc, argv, "i:I:v:r:d:u:x:"DIVERTER_SHORT_OPTS,
+    while ((c = getopt_long(argc, argv, "i:I:v:r:d:u:x:2"DIVERTER_SHORT_OPTS,
                             run_options, &option_index)) != -1) {
         switch (c) {
 #if __linux__
@@ -1281,6 +1298,9 @@ static int run_opts(int argc, char *argv[]) {
                 break;
             case 'x':
                 configured_proxy = optarg;
+                break;
+            case '2':
+                l2_tunnel = true;
                 break;
             default: {
                 fprintf(stderr, "Unknown option '%c'\n", c);
@@ -2560,6 +2580,7 @@ static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required supe
                                           "\t-I|--identity-dir <dir>\tload identities from provided directory\n"
                                           "\t-x|--proxy type://[username[:password]@]hostname_or_ip:port\tproxy to use when"
                                           " connecting to OpenZiti controller and edge routers. 'http' is currently the only supported type.\n"
+                                          "\t-2|--l2\tenable layer 2 services\n"
                                           "\t-v|--verbose N\tset log level, higher level -- more verbose (default 3)\n"
                                           "\t-r|--refresh N\tset service polling interval in seconds (default 10)\n"
                                           "\t-d|--dns-ip-range <ip range>\tspecify CIDR block in which service DNS names"
