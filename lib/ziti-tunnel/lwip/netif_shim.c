@@ -102,6 +102,10 @@ void on_packet(const char *buf, ssize_t nr, void *ctx) {
         return;
     }
 
+    if (netif->hwaddr_len > 0) {
+        struct eth_hdr *ethhdr = p->payload;
+        TNL_LOG(INFO, "read frame with ethtype %x", htons(ethhdr->type));
+    }
     err_t err = netif->input(p, netif);
     if (err != ERR_OK) {
         TNL_LOG(ERR, "============================> tunif_input: netif input error %s", lwip_strerr(err));

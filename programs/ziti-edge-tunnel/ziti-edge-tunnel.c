@@ -81,7 +81,7 @@ void send_tunnel_command_inline(const tunnel_command *tnl_cmd, void *ctx);
 static void scm_service_stop_event(uv_loop_t *loop, void *arg);
 static bool is_host_only();
 static void run_tunneler_loop(uv_loop_t* ziti_loop);
-static tunneler_context initialize_tunneler(netif_driver tun, uv_loop_t* ziti_loop);
+static tunneler_context initialize_tunneler(netif_driver tun, netif_driver tap, uv_loop_t* ziti_loop);
 
 #if _WIN32
 static void move_config_from_previous_windows_backup(uv_loop_t *loop);
@@ -842,7 +842,7 @@ static char* normalize_host(char* hostname) {
 }
 
 static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, const char *ip_range, const char *dns_upstream) {
-    netif_driver tun;
+    netif_driver tun, tap = NULL;
     char tun_error[64];
 
     // remove the host bits from the dns cidr so added routes are valid
@@ -865,7 +865,10 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
 #if __APPLE__ && __MACH__
     tun = utun_open(tun_error, sizeof(tun_error), ip_range);
 #elif __linux__
-    tun = tun_open(ziti_loop, l2_tunnel, tun_ip, dns_ip, dns_subnet, tun_error, sizeof(tun_error));
+    tun = tun_open(ziti_loop, tun_ip, dns_ip, dns_subnet, tun_error, sizeof(tun_error));
+    if (tun != NULL && l2_tunnel) {
+        tap = tap_open(ziti_loop, tun_error, sizeof(tun_error));
+    }
 #elif _WIN32
     tun = tun_open(ziti_loop, l2_tunnel, tun_ip, dns_subnet, tun_error, sizeof(tun_error));
 #else
@@ -901,7 +904,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     set_tun_name(tun->get_name(tun->handle)); //sets the tunnel status's, tun name...
 #endif
 
-    tunneler = initialize_tunneler(tun, ziti_loop);
+    tunneler = initialize_tunneler(tun, tap, ziti_loop);
 
     ip_addr_t dns_ip4 = IPADDR4_INIT(dns_ip);
     ziti_dns_setup(tunneler, ipaddr_ntoa(&dns_ip4), ip_range);
@@ -923,7 +926,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
 }
 
 static int run_tunnel_host_mode(uv_loop_t *ziti_loop) {
-    tunneler = initialize_tunneler(NULL, ziti_loop);
+    tunneler = initialize_tunneler(NULL, NULL, ziti_loop);
     run_tunneler_loop(ziti_loop);
     return 0;
 }
@@ -1111,10 +1114,11 @@ static void run_tunneler_loop(uv_loop_t* ziti_loop) {
     free(tunneler);
 }
 
-static tunneler_context initialize_tunneler(netif_driver tun, uv_loop_t* ziti_loop) {
+static tunneler_context initialize_tunneler(netif_driver tun, netif_driver tap, uv_loop_t* ziti_loop) {
 
     tunneler_sdk_options tunneler_opts = {
-            .netif_driver = tun,
+            .l3_netif_driver = tun,
+            .l2_netif_driver = tap,
             .ziti_dial = ziti_sdk_c_dial,
             .ziti_close = ziti_sdk_c_close,
             .ziti_close_write = ziti_sdk_c_close_write,
