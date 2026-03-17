@@ -43,6 +43,7 @@
 #include <time.h>
 #include <io.h>
 #include "netif_driver/windows/tun.h"
+#include "netif_driver/windows/tap.h"
 #include "windows/windows-service.h"
 #include "windows/windows-scripts.h"
 #include "windows/minidump.h"
@@ -872,7 +873,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
 #elif _WIN32
     tun = tun_open(ziti_loop, tun_ip, dns_subnet, tun_error, sizeof(tun_error));
     if (tun != NULL && l2_tunnel) {
-        tap = tap_open(loop, tun_ip, cidr, error, error_len);
+        tap = tap_open(ziti_loop, tun_ip, dns_subnet, tun_error, sizeof(tun_error));
     }
 #else
 #error "ziti-edge-tunnel is not supported on this system"
