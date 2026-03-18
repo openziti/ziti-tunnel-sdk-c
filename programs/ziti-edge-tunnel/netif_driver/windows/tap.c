@@ -209,7 +209,7 @@ static int parse_route(PIP_ADDRESS_PREFIX pfx, const char *route)
     return 0;
 }
 
-typedef NTSTATUS(__stdcall *route_f)(const MIB_IPFORWARD_ROW2 *);
+typedef DWORD(__stdcall *route_f)(const MIB_IPFORWARD_ROW2 *);
 
 static DWORD tap_do_route(netif_handle tun, const char *dest, route_f rt_f)
 {
