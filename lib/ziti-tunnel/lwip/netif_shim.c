@@ -33,8 +33,8 @@ static err_t netif_shim_output(struct netif *netif, struct pbuf *p, const ip4_ad
 
     if (ip_ver(shim_buffer) == 4)
         TNL_LOG(TRACE, "writing packet " PACKET_FMT " len=%d", PACKET_FMT_ARGS(shim_buffer), copied);
-    dev->write(dev->handle, shim_buffer, p->tot_len);
-    return ERR_OK;
+    ssize_t r = dev->write(dev->handle, shim_buffer, p->tot_len);
+    return r == p->tot_len ? ERR_OK : ERR_BUF;
 }
 
 /**
@@ -103,14 +103,17 @@ void on_packet(const char *buf, ssize_t nr, void *ctx) {
         return;
     }
 
-    /* this is a frame that arrived from our tap.
-     * lwip will only process ip4/ip6/arp ethtypes but currently we're using a tun for those, so don't send tap
-     * frames to the stack.
+    /* this is a frame that arrived from our tap. (the tun does not have a hardware addr)
+     * lwip will only process ip4/ip6/arp ethtypes but currently we're using a tun for those, so handle tap frames
+     * as a special case and don't send them to the stack.
      */
     if (netif->hwaddr_len > 0) {
         struct eth_hdr *ethhdr = p->payload;
         TNL_LOG(INFO, "read frame with ethtype %x", htons(ethhdr->type));
-        recv_l2(netif, p);
+        if (recv_l2(netif, p) == 0) {
+            // packet wasn't consumed
+            pbuf_free(p);
+        }
         return;
     }
     err_t err = netif->input(p, netif);

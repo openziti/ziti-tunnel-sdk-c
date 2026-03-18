@@ -27,13 +27,6 @@ void on_udp_client_data(void *io_context, struct udp_pcb *pcb, struct pbuf *p, c
     }
     TNL_LOG(VERBOSE, "%d bytes from %s:%d", p->len, ipaddr_ntoa(addr), port);
 
-    struct io_ctx_s *io = io_context;
-    if (!io->tnlr_io->conn_timer) {
-        io->tnlr_io->conn_timer = calloc(1, sizeof(uv_timer_t));
-        io->tnlr_io->conn_timer->data = io;
-        uv_timer_init(io->tnlr_io->tnlr_ctx->loop, io->tnlr_io->conn_timer);
-    }
-
     ziti_tunnel_pbuf_to_ziti(io_context, p);
 }
 

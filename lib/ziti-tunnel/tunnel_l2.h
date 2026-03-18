@@ -21,6 +21,9 @@ Copyright NetFoundry Inc.
 #include "lwip/pbuf.h"
 #include "lwip/netif.h"
 
+extern void tunneler_l2_add_conn(uint16_t ethtype, const io_ctx_t *io);
+extern void tunneler_l2_del_conn(uint16_t ethtype);
+extern io_ctx_t *tunneler_l2_get_conn(uint16_t ethtype);
 extern ssize_t tunneler_l2_write(struct netif *netif, const void *data, size_t len);
 extern void tunneler_l2_dial_completed(struct io_ctx_s *io, bool ok);
 
