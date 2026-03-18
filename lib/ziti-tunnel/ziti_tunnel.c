@@ -14,10 +14,10 @@
  limitations under the License.
  */
 
-// something wrong with lwip_xxxx byteorder functions
+#include "tunnel_l2.h"
 #include <netif/ethernet.h>
 
-#include "tunnel_l2.h"
+// something wrong with lwip_xxxx byteorder functions
 #ifdef _WIN32
 #define LWIP_DONT_PROVIDE_BYTEORDER_FUNCTIONS 1
 #endif
