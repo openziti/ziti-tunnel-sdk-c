@@ -14,6 +14,7 @@
  limitations under the License.
  */
 
+#include "../ziti-tunnel/tunnel_l2.h"
 #if _WIN32
 // _WIN32_WINNT needs to be declared and needs to be > 0x600 in order for
 // some constants used below to be declared
@@ -176,6 +177,22 @@ void *local_addr(uv_handle_t *h, struct sockaddr *name, int *len) {
     return name;
 }
 
+static void on_hosted_l2_client_connect_complete(ziti_connection clt, int err) {
+    io_ctx_t *io = ziti_conn_data(clt);
+    if (err != ZITI_OK) {
+        ZITI_LOG(ERROR, "connect failed: %s", ziti_errorstr(err));
+        if (io) {
+            free(io->tnlr_io->service_name);
+            free(io->tnlr_io);
+            free(io->ziti_io);
+            free(io);
+        }
+        return;
+    }
+
+    tunneler_l2_add_conn(0x8892, io); // todo get ethtype
+}
+
 /** called by ziti sdk when a client connection is established (or fails) */
 static void on_hosted_client_connect_complete(ziti_connection clt, int err) {
     struct hosted_io_ctx_s *io_ctx = ziti_conn_data(clt);
@@ -203,7 +220,7 @@ static void on_hosted_client_connect_complete(ziti_connection clt, int err) {
         int len = sizeof(name_storage);
         local_addr(server, name, &len);
         uv_getnameinfo_t req = {0};
-        uv_getnameinfo(io_ctx->service->loop, &req, NULL, name, NI_NUMERICHOST|NI_NUMERICSERV);
+        uv_getnameinfo(io_ctx->service->tnlr_ctx->loop, &req, NULL, name, NI_NUMERICHOST|NI_NUMERICSERV);
         ZITI_LOG(DEBUG, "hosted_service[%s] client[%s] local_addr[%s:%s] fd[%d] server[%s] connected %d", io_ctx->service->service_name,
                  io_ctx->client_identity, req.host, req.service, fd, io_ctx->resolved_dst, len);
         rc = ziti_conn_bridge(clt, server, on_bridge_close);
@@ -520,7 +537,7 @@ static int do_bind(hosted_io_context io, const char *addr, int socktype) {
     hints.ai_protocol = get_protocol_id(io->computed_dst_protocol);
     hints.ai_socktype = socktype;
 
-    int uv_err = uv_getaddrinfo(io->service->loop, &ai_req, NULL, src_ip, port, &hints);
+    int uv_err = uv_getaddrinfo(io->service->tnlr_ctx->loop, &ai_req, NULL, src_ip, port, &hints);
     free(src_ip);
 
     if (uv_err != 0) {
@@ -586,12 +603,12 @@ static hosted_io_context hosted_io_context_new(struct hosted_service_ctx_s *serv
     int protocol_number = get_protocol_id(dst_protocol);
     switch (protocol_number) {
         case IPPROTO_TCP:
-            uv_err = uv_tcp_init(service_ctx->loop, &io->server.tcp);
+            uv_err = uv_tcp_init(service_ctx->tnlr_ctx->loop, &io->server.tcp);
             socktype = SOCK_STREAM;
             io->server.tcp.data = io;
             break;
         case IPPROTO_UDP:
-            uv_err = uv_udp_init(service_ctx->loop, &io->server.udp);
+            uv_err = uv_udp_init(service_ctx->tnlr_ctx->loop, &io->server.udp);
             socktype = SOCK_DGRAM;
             io->server.udp.data = io;
             break;
@@ -662,6 +679,42 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
         }
     }
 
+    if (service_ctx->cfg_type == L2_HOST_CFG_V1) {
+        // this connection will be handled directly by the l2 netif instead of being handed
+        // to ziti_bridge. that's why we attach an io context instead of a hosted io
+        // context (yes, these contexts should be unified).
+        io_ctx_t *io = calloc(1, sizeof(io_ctx_t));
+        io->write_fn = service_ctx->tnlr_ctx->opts.ziti_write;
+        io->close_fn = service_ctx->tnlr_ctx->opts.ziti_close;
+        io->close_write_fn = service_ctx->tnlr_ctx->opts.ziti_close_write;
+
+        struct ziti_io_ctx_s *ziti_io = io->ziti_io = calloc(1, sizeof(ziti_io_context));
+        ziti_io->ziti_conn = clt;
+        io->ziti_ctx = service_ctx->ziti_ctx;
+
+        io->tnlr_io = calloc(1, sizeof(struct tunneler_io_ctx_s));
+        io->tnlr_io->tnlr_ctx = service_ctx->tnlr_ctx;
+        io->tnlr_io->proto = tun_l2;
+        io->tnlr_io->service_name = strdup(service_ctx->service_name);
+        snprintf(io->tnlr_io->client, sizeof(io->tnlr_io->client), "%s", clt_ctx->caller_id);
+        snprintf(io->tnlr_io->intercepted, sizeof(io->tnlr_io->intercepted), "l2:ethtype");
+
+        // there is no connection to set up on this side of the tunnel, so just accept now.
+        ziti_conn_set_data(clt, io);
+        int err = ziti_accept(clt, on_hosted_l2_client_connect_complete, on_ziti_data);
+        if (err != ZITI_OK) {
+            ZITI_LOG(ERROR, "ziti_accept failed: %s", ziti_errorstr(err));
+            ziti_close(clt, NULL);
+            free(io->ziti_io);
+            free(io->tnlr_io->service_name);
+            free(io->tnlr_io);
+            free(io);
+            return;
+        }
+
+        return;
+    }
+
     if (app_data != NULL && app_data->conn_type == TunnelConnectionTypes.resolver) {
         accept_resolver_conn(clt, &service_ctx->addr_u.allowed_hostnames);
         free_tunneler_app_data_ptr(app_data);
@@ -721,7 +774,7 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
         if (protocol_number == IPPROTO_TCP) {
             ZITI_LOG(DEBUG, "hosted_service[%s] client[%s] dst_addr[%s:%s:%s] connecting through proxy %s",
                      service_ctx->service_name, io->client_identity, protocol, ip_or_hn, port, service_ctx->proxy_addr);
-            service_ctx->proxy_connector->connect(service_ctx->loop, service_ctx->proxy_connector, ip_or_hn, port,
+            service_ctx->proxy_connector->connect(service_ctx->tnlr_ctx->loop, service_ctx->proxy_connector, ip_or_hn, port,
             on_proxy_connect, io);
         } else {
             ZITI_LOG(WARN, "hosted_service[%s] client[%s] cannot use proxy for udp. dropping connection",
@@ -733,7 +786,7 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
 
     uv_getaddrinfo_t *ai_req = calloc(1, sizeof(uv_getaddrinfo_t));
     ai_req->data = io;
-    int s = uv_getaddrinfo(service_ctx->loop, ai_req, on_hosted_client_connect_resolved, ip_or_hn, port, &hints);
+    int s = uv_getaddrinfo(service_ctx->tnlr_ctx->loop, ai_req, on_hosted_client_connect_resolved, ip_or_hn, port, &hints);
     if (s != 0) {
         ZITI_LOG(ERROR, "hosted_service[%s] client[%s]: getaddrinfo(%s:%s:%s) failed: %s",
                  service_ctx->service_name, io->client_identity, protocol, ip_or_hn, port, uv_strerror(s));
@@ -769,7 +822,7 @@ static void on_hosted_client_connect_resolved(uv_getaddrinfo_t* ai_req, int stat
     }
 
     uv_getnameinfo_t ni_req = {0};
-    int uv_err = uv_getnameinfo(io->service->loop, &ni_req, NULL, res->ai_addr, NI_NUMERICHOST | NI_NUMERICSERV);
+    int uv_err = uv_getnameinfo(io->service->tnlr_ctx->loop, &ni_req, NULL, res->ai_addr, NI_NUMERICHOST | NI_NUMERICSERV);
     if (uv_err == 0) {
         snprintf(io->resolved_dst, sizeof(io->resolved_dst), "%s:%s:%s",
                  get_protocol_str(res->ai_protocol), ni_req.host, ni_req.service);
@@ -838,19 +891,19 @@ static void hosted_listen_cb(ziti_connection serv, int status) {
 .terminator_precedence = PRECEDENCE.DEFAULT,    \
 .terminator_cost = 0, }
 
-static void listen_opts_from_host_cfg_v1(ziti_listen_opts *opts, const ziti_host_cfg_v1 *config) {
+static void listen_opts_from_host_cfg_v1(ziti_listen_opts *opts, const ziti_listen_options *config_listen_options) {
     *opts = DEFAULT_LISTEN_OPTS;
 
-    if (config && config->listen_options) {
-        opts->bind_using_edge_identity = config->listen_options->bind_with_identity;
-        opts->identity = (char*)config->listen_options->identity;
-        int cfg_max_conns = (int)config->listen_options->max_connections;
+    if (config_listen_options) {
+        opts->bind_using_edge_identity = config_listen_options->bind_with_identity;
+        opts->identity = (char*)config_listen_options->identity;
+        int cfg_max_conns = (int)config_listen_options->max_connections;
         opts->max_connections = cfg_max_conns > 0 ? cfg_max_conns : DEFAULT_LISTEN_OPTS.max_connections;
-        int cfg_to = (int)config->listen_options->connect_timeout_seconds;
+        int cfg_to = (int)config_listen_options->connect_timeout_seconds;
         opts->connect_timeout_seconds = cfg_to > 0 ? cfg_to : DEFAULT_LISTEN_OPTS.connect_timeout_seconds;
-        opts->terminator_cost = config->listen_options->cost;
+        opts->terminator_cost = config_listen_options->cost;
 
-        const char *prec = config->listen_options->precendence;
+        const char *prec = config_listen_options->precendence;
         if (prec) {
             if (strcmp(prec, "default") == 0) {
                 opts->terminator_precedence = PRECEDENCE.DEFAULT;
@@ -873,7 +926,7 @@ static int ziti_address_translation_cmp(const void *a, const void *b) {
 
 
 /** called by the tunneler sdk when a hosted service becomes available */
-host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, uv_loop_t *loop, const char *service_name, cfg_type_e cfg_type, const void *cfg) {
+host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, tunneler_context tnlr, const char *service_name, cfg_type_e cfg_type, const void *cfg) {
     if (service_name == NULL) {
         ZITI_LOG(ERROR, "null service_name");
         return NULL;
@@ -882,7 +935,7 @@ host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, uv_loop_t *loop, const char *service
     struct hosted_service_ctx_s *host_ctx = calloc(1, sizeof(struct hosted_service_ctx_s));
     host_ctx->service_name = strdup(service_name);
     host_ctx->ziti_ctx = ziti_ctx;
-    host_ctx->loop = loop;
+    host_ctx->tnlr_ctx = tnlr;
     host_ctx->cfg_type = cfg_type;
     host_ctx->cfg = cfg;
 
@@ -893,7 +946,7 @@ host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, uv_loop_t *loop, const char *service
     switch (cfg_type) {
         case HOST_CFG_V1: {
             const ziti_host_cfg_v1 *host_v1_cfg = cfg;
-            listen_opts_from_host_cfg_v1(&listen_opts, host_v1_cfg);
+            listen_opts_from_host_cfg_v1(&listen_opts, host_v1_cfg->listen_options);
             listen_opts_p = &listen_opts;
             int i;
 
@@ -1025,6 +1078,12 @@ host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, uv_loop_t *loop, const char *service
             }
         }
             break;
+        case L2_HOST_CFG_V1: {
+            const ziti_l2_host_cfg_v1 *l2_host_v1_cfg = cfg;
+            listen_opts_from_host_cfg_v1(&listen_opts, l2_host_v1_cfg->listen_options);
+            listen_opts_p = &listen_opts;
+            break;
+        }
         case SERVER_CFG_V1: {
             const ziti_server_cfg_v1 *server_v1_cfg = cfg;
             display_proto = server_v1_cfg->protocol;
@@ -1078,7 +1137,7 @@ static void on_bridge_close(uv_handle_t *handle) {
         struct sockaddr *name = (struct sockaddr *) &name_storage;
         int len = sizeof(name_storage);
         local_addr(handle, name, &len);
-        uv_getnameinfo(io_ctx->service->loop, &req, NULL, name, NI_NUMERICHOST | NI_NUMERICSERV);
+        uv_getnameinfo(io_ctx->service->tnlr_ctx->loop, &req, NULL, name, NI_NUMERICHOST | NI_NUMERICSERV);
     }
     uv_os_fd_t fd;
     uv_fileno(handle, &fd);

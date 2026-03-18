@@ -215,6 +215,11 @@ void ziti_tunnel_pbuf_to_ziti(struct io_ctx_s *io, struct pbuf *p) {
     else if (io->tnlr_io->proto == tun_l2) acker = tunneler_l2_ack;
 
     struct pbuf *recv_data = p;
+    if (!io->tnlr_io->conn_timer) {
+        io->tnlr_io->conn_timer = calloc(1, sizeof(uv_timer_t));
+        io->tnlr_io->conn_timer->data = io;
+        uv_timer_init(io->tnlr_io->tnlr_ctx->loop, io->tnlr_io->conn_timer);
+    }
     uv_timer_start(io->tnlr_io->conn_timer, datagram_timeout_cb, DATAGRAM_IO_TIMEOUT, 0);
 
     do {
@@ -303,6 +308,7 @@ void ziti_tunneler_dial_completed(struct io_ctx_s *io, bool ok) {
             break;
         case tun_l2:
             tunneler_l2_dial_completed(io, ok);
+            break;
         default:
             TNL_LOG(ERR, "unknown proto %d", io->tnlr_io->proto);
             break;
@@ -310,7 +316,7 @@ void ziti_tunneler_dial_completed(struct io_ctx_s *io, bool ok) {
 }
 
 host_ctx_t *ziti_tunneler_host(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_name, cfg_type_e cfg_type, void *config) {
-    return tnlr_ctx->opts.ziti_host((void *) ziti_ctx, tnlr_ctx->loop, service_name, cfg_type, config);
+    return tnlr_ctx->opts.ziti_host((void *) ziti_ctx, tnlr_ctx, service_name, cfg_type, config);
 }
 
 intercept_ctx_t* intercept_ctx_new(tunneler_context tnlr_ctx, const char *app_id, void *app_intercept_ctx) {
@@ -383,7 +389,7 @@ port_range_t *intercept_ctx_add_port_range(intercept_ctx_t *i_ctx, uint16_t low,
 }
 
 model_string intercept_ctx_add_ethtype(intercept_ctx_t *i_ctx, model_string ethtype) {
-    i_ctx->osi_layer = 2;
+    i_ctx->osi_layer = l2;
     model_string cp = strdup(ethtype);
     model_list_append(&i_ctx->ethtypes, cp);
     return cp;
@@ -402,10 +408,6 @@ int ziti_tunneler_intercept(tunneler_context tnlr_ctx, intercept_ctx_t *i_ctx) {
         TNL_LOG(ERR, "null tnlr_ctx");
         return -1;
     }
-
-
-    /* l2 service will be dialed here? lets see if we can do a data callback for l2 first.
-     */
 
     model_map_clear(&tnlr_ctx->intercepts_cache, NULL);
     address_t *address;
