@@ -14,7 +14,6 @@
  limitations under the License.
  */
 
-#include "../ziti-tunnel/tunnel_l2.h"
 #if _WIN32
 // _WIN32_WINNT needs to be declared and needs to be > 0x600 in order for
 // some constants used below to be declared
@@ -30,6 +29,7 @@
 #include <ziti/ziti_tunnel_cbs.h>
 #include "ziti_hosting.h"
 #include "tlsuv/tlsuv.h"
+#include "../ziti-tunnel/tunnel_l2.h"
 
 #if _WIN32
 #ifndef strcasecmp

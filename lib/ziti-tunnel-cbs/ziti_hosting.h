@@ -37,7 +37,7 @@ typedef LIST_HEAD(allowed_addr_list, allowed_hostname_s) allowed_hostnames_t;
 struct hosted_service_ctx_s {
     char *       service_name;
     const void * ziti_ctx;
-    tunneler_context tnlr_ctx;;
+    tunneler_context tnlr_ctx;
     cfg_type_e   cfg_type;
     const void * cfg;
     char display_address[64];
