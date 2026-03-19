@@ -15,6 +15,8 @@ err_t netif_shim_init(struct netif *netif);
 
 void netif_shim_input(struct netif *netif);
 
+err_t netif_shim_output_link(struct netif *netif, struct pbuf *p);
+
 void on_packet(const char *buf, ssize_t nr, void *netif);
 
 #ifdef __cplusplus

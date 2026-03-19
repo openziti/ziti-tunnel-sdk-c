@@ -17,9 +17,7 @@
 #ifndef ZITI_TUNNELER_SDK_TUN_H
 #define ZITI_TUNNELER_SDK_TUN_H
 
-//#include <linux/if.h>
 #include <net/if.h>
-#include "ziti/netif_driver.h"
 
 struct netif_handle_s {
     int  fd;
@@ -29,5 +27,6 @@ struct netif_handle_s {
 };
 
 extern netif_driver tun_open(struct uv_loop_s *loop, uint32_t tun_ip, uint32_t dns_ip, const char *cidr, char *error, size_t error_len);
+extern netif_driver tap_open(uv_loop_t *loop, char *error, size_t error_len);
 
 #endif //ZITI_TUNNELER_SDK_TUN_H
