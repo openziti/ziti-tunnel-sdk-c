@@ -109,7 +109,7 @@ void on_packet(const char *buf, ssize_t nr, void *ctx) {
      */
     if (netif->hwaddr_len > 0) {
         struct eth_hdr *ethhdr = p->payload;
-        TNL_LOG(INFO, "read frame with ethtype %x", htons(ethhdr->type));
+        TNL_LOG(VERBOSE, "read frame with ethtype %x", htons(ethhdr->type));
         if (recv_l2(netif, p) == 0) {
             // packet wasn't consumed
             pbuf_free(p);
