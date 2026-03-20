@@ -31,7 +31,7 @@ void tunneler_l2_del_conn(uint16_t ethtype) {
 
 io_ctx_t *tunneler_l2_get_conn(uint16_t ethtype) {
     io_ctx_t *io = model_map_getl(&l2_conns, ethtype);
-    TNL_LOG(INFO, "ethtype %04x --> %p", ethtype, io);
+    TNL_LOG(VERBOSE, "ethtype %04x --> %p", ethtype, io);
     return io;
 }
 

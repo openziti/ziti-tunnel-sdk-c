@@ -44,6 +44,7 @@
 #include <io.h>
 #include "netif_driver/windows/tun.h"
 #include "netif_driver/windows/tap.h"
+#include "netif_driver/windows/pcap.h"
 #include "windows/windows-service.h"
 #include "windows/windows-scripts.h"
 #include "windows/minidump.h"
@@ -132,6 +133,7 @@ static char *configured_log_level = NULL;
 static char *configured_proxy = NULL;
 static char *ipc_discriminator = NULL;
 static bool l2_tunnel = false;
+static char *pcap_iface = NULL;
 
 //timer
 static uv_timer_t metrics_timer;
@@ -868,12 +870,23 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
 #elif __linux__
     tun = tun_open(ziti_loop, tun_ip, dns_ip, dns_subnet, tun_error, sizeof(tun_error));
     if (tun != NULL && l2_tunnel) {
+        ZITI_LOG(INFO, "L2 mode enabled -- opening TAP interface");
         tap = tap_open(ziti_loop, tun_error, sizeof(tun_error));
     }
 #elif _WIN32
     tun = tun_open(ziti_loop, tun_ip, dns_subnet, tun_error, sizeof(tun_error));
     if (tun != NULL && l2_tunnel) {
-        tap = tap_open(ziti_loop, tun_ip, dns_subnet, tun_error, sizeof(tun_error));
+        if (pcap_iface) {
+            ZITI_LOG(INFO, "L2 mode enabled -- opening pcap interface '%s'", pcap_iface);
+            tap = ziti_pcap_open(ziti_loop, pcap_iface, tun_error, sizeof(tun_error));
+            if (tap == NULL) {
+                ZITI_LOG(ERROR, "failed to open pcap interface '%s': %s", pcap_iface, tun_error);
+                return 1;
+            }
+        } else {
+            ZITI_LOG(INFO, "L2 mode enabled -- opening TAP interface");
+            tap = tap_open(ziti_loop, tun_ip, dns_subnet, tun_error, sizeof(tun_error));
+        }
     }
 #else
 #error "ziti-edge-tunnel is not supported on this system"
@@ -1178,6 +1191,7 @@ static struct option run_options[] = {
         { "dns-upstream", required_argument, NULL, 'u'},
         { "proxy", required_argument, NULL, 'x' },
         { "l2", no_argument, NULL, '2' },
+        { "pcap-iface", required_argument, NULL, 'N' },
 #if __linux__
         { "diverter", required_argument, NULL, 'D' },
         { "diverter-fw", required_argument, NULL, 'f' },
@@ -1253,7 +1267,7 @@ static int run_opts(int argc, char *argv[]) {
 #else
 #define DIVERTER_SHORT_OPTS ""
 #endif
-    while ((c = getopt_long(argc, argv, "i:I:v:r:d:u:x:2"DIVERTER_SHORT_OPTS,
+    while ((c = getopt_long(argc, argv, "i:I:v:r:d:u:x:2N:"DIVERTER_SHORT_OPTS,
                             run_options, &option_index)) != -1) {
         switch (c) {
 #if __linux__
@@ -1302,6 +1316,10 @@ static int run_opts(int argc, char *argv[]) {
                 configured_proxy = optarg;
                 break;
             case '2':
+                l2_tunnel = true;
+                break;
+            case 'N':
+                pcap_iface = optarg;
                 l2_tunnel = true;
                 break;
             default: {

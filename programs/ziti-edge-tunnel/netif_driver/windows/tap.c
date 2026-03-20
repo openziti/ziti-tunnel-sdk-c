@@ -53,7 +53,9 @@
 #define TAP_WIN_CONTROL_CODE(req, method) \
     CTL_CODE(FILE_DEVICE_UNKNOWN, (req), (method), FILE_ANY_ACCESS)
 
+#define TAP_WIN_IOCTL_GET_MAC           TAP_WIN_CONTROL_CODE(1, METHOD_BUFFERED)
 #define TAP_WIN_IOCTL_GET_VERSION       TAP_WIN_CONTROL_CODE(2, METHOD_BUFFERED)
+#define TAP_WIN_IOCTL_GET_MTU           TAP_WIN_CONTROL_CODE(3, METHOD_BUFFERED)
 #define TAP_WIN_IOCTL_SET_MEDIA_STATUS  TAP_WIN_CONTROL_CODE(6, METHOD_BUFFERED)
 
 #define ADAPTER_REG_KEY \
@@ -736,46 +738,28 @@ netif_driver tap_open(uv_loop_t *loop, uint32_t tun_ip, const char *cidr,
         }
     }
 
-    /* ---- read hardware address and MTU via GetAdaptersAddresses ---- */
+    /* ---- read hardware address and MTU via TAP-Windows IOCTLs ---- */
     {
-        ULONG buflen = 16384;
-        IP_ADAPTER_ADDRESSES *addrs = malloc(buflen);
-        if (addrs) {
-            DWORD rc = GetAdaptersAddresses(AF_UNSPEC,
-                                            GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST |
-                                            GAA_FLAG_SKIP_DNS_SERVER | GAA_FLAG_SKIP_FRIENDLY_NAME,
-                                            NULL, addrs, &buflen);
-            if (rc == ERROR_BUFFER_OVERFLOW) {
-                free(addrs);
-                addrs = malloc(buflen);
-                if (addrs) {
-                    rc = GetAdaptersAddresses(AF_UNSPEC,
-                                              GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST |
-                                              GAA_FLAG_SKIP_DNS_SERVER | GAA_FLAG_SKIP_FRIENDLY_NAME,
-                                              NULL, addrs, &buflen);
-                }
-            }
-            if (addrs && rc == NO_ERROR) {
-                for (IP_ADAPTER_ADDRESSES *a = addrs; a; a = a->Next) {
-                    /* AdapterName is the GUID string with braces, e.g. {XXXX-...} */
-                    if (_stricmp(a->AdapterName, tun->guid) == 0) {
-                        if (a->PhysicalAddressLength == 6) {
-                            memcpy(driver->hwaddr, a->PhysicalAddress, 6);
-                            driver->hwaddr_len = 6;
-                            ZITI_LOG(INFO, "tap: hwaddr %02x:%02x:%02x:%02x:%02x:%02x",
-                                     driver->hwaddr[0], driver->hwaddr[1], driver->hwaddr[2],
-                                     driver->hwaddr[3], driver->hwaddr[4], driver->hwaddr[5]);
-                        }
-                        driver->mtu = (uint16_t)(a->Mtu < 65535u ? a->Mtu : 1500u);
-                        ZITI_LOG(INFO, "tap: mtu=%u", driver->mtu);
-                        break;
-                    }
-                }
-            }
-            free(addrs);
+        uint8_t mac[6] = {0};
+        ULONG mtu = 1500;
+        if (DeviceIoControl(tun->tap, TAP_WIN_IOCTL_GET_MAC,
+                            mac, sizeof(mac), mac, sizeof(mac), &rlen, NULL) && rlen == 6) {
+            memcpy(driver->hwaddr, mac, 6);
+            driver->hwaddr_len = 6;
+            ZITI_LOG(INFO, "tap: hwaddr %02x:%02x:%02x:%02x:%02x:%02x",
+                     mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+        } else {
+            ZITI_LOG(WARN, "tap: TAP_WIN_IOCTL_GET_MAC failed (%lu) — L2 mode may not work correctly",
+                     GetLastError());
         }
-        if (driver->hwaddr_len == 0) {
-            ZITI_LOG(WARN, "tap: could not read hardware address — L2 mode may not work correctly");
+        if (DeviceIoControl(tun->tap, TAP_WIN_IOCTL_GET_MTU,
+                            &mtu, sizeof(mtu), &mtu, sizeof(mtu), &rlen, NULL)) {
+            driver->mtu = (uint16_t)(mtu < 65535u ? mtu : 1500u);
+            ZITI_LOG(INFO, "tap: mtu=%u", driver->mtu);
+        } else {
+            driver->mtu = 1500;
+            ZITI_LOG(WARN, "tap: TAP_WIN_IOCTL_GET_MTU failed (%lu) — using default mtu=%u",
+                     GetLastError(), driver->mtu);
         }
         driver->ip4addr.s_addr = tun_ip;
     }
