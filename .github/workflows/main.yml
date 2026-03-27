@@ -31,10 +31,11 @@ jobs:
           fetch-depth: 0
 
       - name: Download CMake Artifacts
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           pattern: linux-x64
           path: ./downloads
+          digest-mismatch: error
 
       - name: Unpack CMake Artifacts
         shell: bash
