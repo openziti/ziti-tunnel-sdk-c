@@ -1,17 +1,16 @@
 {
-  lib,
-  stdenv,
-  fetchFromGitHub,
   callPackage,
-  writeShellScript,
   cmake,
+  fetchFromGitHub,
   json_c,
+  lib,
   libsodium,
   libuv,
   llhttp,
   openssl,
   pkg-config,
   protobufc,
+  stdenv,
   systemd,
   versionCheckHook,
   zlib,
@@ -21,12 +20,6 @@ let
 
   stc = callPackage ./stc.nix { };
 
-  ziti_sdk_src = fetchFromGitHub {
-    owner = "openziti";
-    repo = "ziti-sdk-c";
-    tag = "1.10.10";
-    hash = "sha256-DtciHFGSiRnUCvVnKOE/5vRo8h/EA5CoRw0G37QUL6c=";
-  };
   lwip_src = fetchFromGitHub {
     owner = "lwip-tcpip";
     repo = "lwip";
@@ -48,19 +41,25 @@ let
   tlsuv_src = fetchFromGitHub {
     owner = "openziti";
     repo = "tlsuv";
-    tag = "v0.40.10";
-    hash = "sha256-GvApttUIjsrumI5ZKXmrV+YIpZnLTJYRRC8mEiOvq88=";
+    tag = "v0.41.1";
+    hash = "sha256-00w9xLts0lD8lZl5lc5k/9za0zhXfGesdeisbldNhZs=";
+  };
+  ziti_sdk_src = fetchFromGitHub {
+    owner = "openziti";
+    repo = "ziti-sdk-c";
+    tag = "1.11.7";
+    hash = "sha256-y8OZEn25OUA3TPU48c1fKr3fc/PaG5a1bZ8RUeNOjWg=";
   };
 in
 stdenv.mkDerivation (finalAttrs: {
   pname = "ziti-edge-tunnel";
-  version = "1.10.10";
+  version = "1.11.2";
 
   src = fetchFromGitHub {
     owner = "openziti";
     repo = "ziti-tunnel-sdk-c";
     tag = "v${finalAttrs.version}";
-    hash = "sha256-MWeWSzjLYVLSbEygWRRx8KI3zTZcB4boo7jy9tjqv7I=";
+    hash = "sha256-PlXpBQUs7Em7U5AIZSuKsrwNcAnS5hYBh/0CgCV0/1Y=";
   };
 
   postPatch = ''
@@ -89,19 +88,19 @@ stdenv.mkDerivation (finalAttrs: {
   '';
 
   cmakeFlags = [
+    (cmakeFeature "CMAKE_BUILD_TYPE" "release")
     (cmakeBool "DISABLE_SEMVER_VERIFICATION" true)
     (cmakeBool "DISABLE_LIBSYSTEMD_FEATURE" true) # Disable direct integration to use resolvectl fallback
-    (cmakeFeature "ZITI_SDK_DIR" "${ziti_sdk_src}")
-    # Feed the CMake version parser (tag-tweak-slug format) so it derives
-    # PROJECT_VERSION correctly instead of falling through to v0.0.0-unknown.
-    (cmakeFeature "GIT_VERSION" "v${finalAttrs.version}-0-nixbld")
+    (cmakeFeature "DOXYGEN_OUTPUT_DIR" "/tmp/doxygen")
     (cmakeBool "FETCHCONTENT_FULLY_DISCONNECTED" true)
     # lwip path is set in preConfigure via cmakeFlagsArray (needs writable copy + absolute path)
     (cmakeFeature "FETCHCONTENT_SOURCE_DIR_LWIP-CONTRIB" "${lwip_contrib_src}")
     (cmakeFeature "FETCHCONTENT_SOURCE_DIR_SUBCOMMAND" "${subcommand_c_src}")
     (cmakeFeature "FETCHCONTENT_SOURCE_DIR_TLSUV" "${tlsuv_src}")
-    (cmakeFeature "DOXYGEN_OUTPUT_DIR" "/tmp/doxygen")
-    (cmakeFeature "CMAKE_BUILD_TYPE" "release")
+    # Feed the CMake version parser (tag-tweak-slug format) so it derives
+    # PROJECT_VERSION correctly instead of falling through to v0.0.0-unknown.
+    (cmakeFeature "GIT_VERSION" "v${finalAttrs.version}-0-nixbld")
+    (cmakeFeature "ZITI_SDK_DIR" "${ziti_sdk_src}")
   ];
 
   nativeBuildInputs = [
@@ -155,7 +154,7 @@ stdenv.mkDerivation (finalAttrs: {
   versionCheckProgramArg = "version";
 
   meta = {
-    description = "provides protocol translation and other common functions that are useful to Ziti Tunnelers";
+    description = "The Ziti Tunneler SDK provides protocol translation and other common functions that are useful to Ziti Tunnelers";
     changelog = "https://github.com/openziti/ziti-tunnel-sdk-c/releases/tag/v${finalAttrs.version}";
     homepage = "https://openziti.io/";
     maintainers = with lib.maintainers; [ kiriwalawren ];
