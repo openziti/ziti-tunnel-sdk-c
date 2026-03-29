@@ -734,24 +734,28 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
                 result.success = false;
                 free_tunnel_enroll(&enroll);
             } else {
-                ziti_enroll_opts opts = {
-                        .name = enroll.name,
-                        .token = enroll.jwt,
-                        .key = enroll.key,
-                        .cert = enroll.cert,
-                        .use_keychain = enroll.use_keychain,
-                        .url = enroll.url,
-                };
-
                 struct tunnel_cb_s *req = malloc(sizeof(struct tunnel_cb_s));
                 req->cmd_cb = cb;
                 req->cmd_ctx = ctx;
 
-                rc = ziti_enroll(&opts, CMD_CTX.loop, on_cmd_enroll, req);
+                if (enroll.url != NULL && enroll.jwt == NULL) {
+                    rc = ziti_enroll_url(enroll.url, CMD_CTX.loop, on_cmd_enroll, req);
+                } else {
+                    ziti_enroll_opts opts = {
+                            .name = enroll.name,
+                            .token = enroll.jwt,
+                            .key = enroll.key,
+                            .cert = enroll.cert,
+                            .use_keychain = enroll.use_keychain,
+                            .url = enroll.url,
+                    };
+                    rc = ziti_enroll(&opts, CMD_CTX.loop, on_cmd_enroll, req);
+                }
                 free_tunnel_enroll(&enroll);
                 if (rc == 0) {
                     return 0;
                 } else {
+                    free(req);
                     result.success = false;
                     result.error = ziti_errorstr(rc);
                 }
