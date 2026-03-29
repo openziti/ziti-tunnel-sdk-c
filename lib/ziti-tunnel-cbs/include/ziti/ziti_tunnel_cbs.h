@@ -367,6 +367,11 @@ void remove_intercepts(ziti_context ziti_ctx, void *tnlr_ctx);
 
 const ziti_tunnel_ctrl* ziti_tunnel_init_cmd(uv_loop_t *loop, tunneler_context, event_cb);
 
+/** Set a callback to provide a private key during enrollToCert enrollment.
+ *  Applied to every ziti_context created by the command processor.
+ *  Pass NULL to use the SDK's default software key generation. */
+void ziti_tunnel_set_enroll_key_cb(ziti_enroll_key_cb cb, void *ctx);
+
 struct add_identity_request_s {
     char* identifier;
     char* identifier_file_name;

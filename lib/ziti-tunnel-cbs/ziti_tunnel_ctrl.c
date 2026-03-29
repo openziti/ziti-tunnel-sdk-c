@@ -110,6 +110,11 @@ const ziti_tunnel_ctrl* ziti_tunnel_init_cmd(uv_loop_t *loop, tunneler_context t
     return &CMD_CTX.ctrl;
 }
 
+void ziti_tunnel_set_enroll_key_cb(ziti_enroll_key_cb cb, void *ctx) {
+    CMD_CTX.enroll_key_cb = cb;
+    CMD_CTX.enroll_key_ctx = ctx;
+}
+
 #if _WIN32
 #define realpath(rel, abs) _fullpath(abs, rel, MAX_PATH)
 #endif
@@ -912,6 +917,10 @@ int init_ziti_instance(struct ziti_instance_s *inst, const ziti_config *cfg, con
     if (rc != ZITI_OK) {
         ZITI_LOG(ERROR, "ziti_context_init failed: %s", ziti_errorstr(rc));
         return rc;
+    }
+
+    if (CMD_CTX.enroll_key_cb) {
+        ziti_set_enroll_key_cb(inst->ztx, CMD_CTX.enroll_key_cb, CMD_CTX.enroll_key_ctx);
     }
 
     rc = ziti_context_set_options(inst->ztx, opts);

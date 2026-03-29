@@ -24,6 +24,8 @@ static struct cmd_ctx_s {
     tunneler_context tunnel_ctx;
     event_cb on_event;
     uv_loop_t *loop;
+    ziti_enroll_key_cb enroll_key_cb;
+    void *enroll_key_ctx;
 } CMD_CTX;
 
 struct mfa_request_s {
