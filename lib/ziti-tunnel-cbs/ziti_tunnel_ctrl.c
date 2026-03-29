@@ -1147,6 +1147,7 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
                         jwt_provider *provider = calloc(1, sizeof(*provider));
                         provider->name = signer->name;
                         provider->issuer = signer->provider_url;
+                        provider->can_cert_enroll = signer->can_cert_enroll;
                         model_list_append(&ev.providers, provider);
                     }
                     CMD_CTX.on_event((const base_event *) &ev);
