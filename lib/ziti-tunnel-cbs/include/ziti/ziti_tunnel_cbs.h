@@ -287,7 +287,8 @@ XX(identity_name, model_string, none, identity_name, __VA_ARGS__)
 
 #define EXT_JWT_PROVIDER(XX, ...) \
 XX(name, model_string, none, name, __VA_ARGS__) \
-XX(issuer, model_string, none, issuer, __VA_ARGS__)
+XX(issuer, model_string, none, issuer, __VA_ARGS__) \
+XX(can_cert_enroll, model_bool, none, enrollToCertEnabled, __VA_ARGS__)
 
 #define EXT_SIGNER_EVENT_MODEL(XX, ...)  \
 BASE_EVENT_MODEL(XX, __VA_ARGS__)               \
@@ -365,6 +366,11 @@ tunneled_service_t *ziti_sdk_c_on_service(ziti_context ziti_ctx, ziti_service *s
 void remove_intercepts(ziti_context ziti_ctx, void *tnlr_ctx);
 
 const ziti_tunnel_ctrl* ziti_tunnel_init_cmd(uv_loop_t *loop, tunneler_context, event_cb);
+
+/** Set a callback to provide a private key during enrollToCert enrollment.
+ *  Applied to every ziti_context created by the command processor.
+ *  Pass NULL to use the SDK's default software key generation. */
+void ziti_tunnel_set_enroll_key_cb(ziti_enroll_key_cb cb, void *ctx);
 
 struct add_identity_request_s {
     char* identifier;

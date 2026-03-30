@@ -110,6 +110,11 @@ const ziti_tunnel_ctrl* ziti_tunnel_init_cmd(uv_loop_t *loop, tunneler_context t
     return &CMD_CTX.ctrl;
 }
 
+void ziti_tunnel_set_enroll_key_cb(ziti_enroll_key_cb cb, void *ctx) {
+    CMD_CTX.enroll_key_cb = cb;
+    CMD_CTX.enroll_key_ctx = ctx;
+}
+
 #if _WIN32
 #define realpath(rel, abs) _fullpath(abs, rel, MAX_PATH)
 #endif
@@ -729,24 +734,28 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
                 result.success = false;
                 free_tunnel_enroll(&enroll);
             } else {
-                ziti_enroll_opts opts = {
-                        .name = enroll.name,
-                        .token = enroll.jwt,
-                        .key = enroll.key,
-                        .cert = enroll.cert,
-                        .use_keychain = enroll.use_keychain,
-                        .url = enroll.url,
-                };
-
                 struct tunnel_cb_s *req = malloc(sizeof(struct tunnel_cb_s));
                 req->cmd_cb = cb;
                 req->cmd_ctx = ctx;
 
-                rc = ziti_enroll(&opts, CMD_CTX.loop, on_cmd_enroll, req);
+                if (enroll.url != NULL && enroll.jwt == NULL) {
+                    rc = ziti_enroll_url(enroll.url, CMD_CTX.loop, on_cmd_enroll, req);
+                } else {
+                    ziti_enroll_opts opts = {
+                            .name = enroll.name,
+                            .token = enroll.jwt,
+                            .key = enroll.key,
+                            .cert = enroll.cert,
+                            .use_keychain = enroll.use_keychain,
+                            .url = enroll.url,
+                    };
+                    rc = ziti_enroll(&opts, CMD_CTX.loop, on_cmd_enroll, req);
+                }
                 free_tunnel_enroll(&enroll);
                 if (rc == 0) {
                     return 0;
                 } else {
+                    free(req);
                     result.success = false;
                     result.error = ziti_errorstr(rc);
                 }
@@ -912,6 +921,10 @@ int init_ziti_instance(struct ziti_instance_s *inst, const ziti_config *cfg, con
     if (rc != ZITI_OK) {
         ZITI_LOG(ERROR, "ziti_context_init failed: %s", ziti_errorstr(rc));
         return rc;
+    }
+
+    if (CMD_CTX.enroll_key_cb) {
+        ziti_set_enroll_key_cb(inst->ztx, CMD_CTX.enroll_key_cb, CMD_CTX.enroll_key_ctx);
     }
 
     rc = ziti_context_set_options(inst->ztx, opts);
@@ -1147,6 +1160,7 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
                         jwt_provider *provider = calloc(1, sizeof(*provider));
                         provider->name = signer->name;
                         provider->issuer = signer->provider_url;
+                        provider->can_cert_enroll = signer->can_cert_enroll;
                         model_list_append(&ev.providers, provider);
                     }
                     CMD_CTX.on_event((const base_event *) &ev);

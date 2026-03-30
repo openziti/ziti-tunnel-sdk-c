@@ -119,6 +119,7 @@ struct cfg_instance_s {
 static LIST_HEAD(instance_list, cfg_instance_s) load_list;
 
 static ziti_enroll_opts enroll_opts;
+static const char *enroll_provider;
 char* config_dir;
 char* config_file;
 bool uses_config_dir = false;
@@ -771,7 +772,7 @@ static void on_event(const base_event *ev) {
             }
 
             free((char *) id->Config->ZtAPI);
-            id->Config->ZtAPI = strdup(zc.controller_url);
+            id->Config->ZtAPI = zc.controller_url ? strdup(zc.controller_url) : NULL;
 
             // free previous controllers
             int i;
@@ -1594,13 +1595,15 @@ static int parse_enroll_opts(int argc, char *argv[]) {
         { "key", required_argument, NULL, 'k'},
         { "cert", required_argument, NULL, 'c'},
         { "name", required_argument, NULL, 'n'},
+        { "provider", required_argument, NULL, 'p'},
         { "proxy", required_argument, NULL, 'x' },
     };
     int c, option_index, errors = 0;
     const char *proxy_arg = NULL;
+    enroll_provider = NULL;
     optind = 0;
 
-    while ((c = getopt_long(argc, argv, "j:i:Kk:c:n:x:u:",
+    while ((c = getopt_long(argc, argv, "j:i:Kk:c:n:p:x:u:",
                             opts, &option_index)) != -1) {
         switch (c) {
             case 'u':
@@ -1636,6 +1639,9 @@ static int parse_enroll_opts(int argc, char *argv[]) {
                 break;
             case 'n':
                 enroll_opts.name = optarg;
+                break;
+            case 'p':
+                enroll_provider = optarg;
                 break;
             case 'i':
                 config_file = optarg;
@@ -1688,6 +1694,119 @@ static void enroll_cb(const ziti_config *cfg, int status, const char *err, void 
 
     params->config.base = cfg_json;
     params->config.len = len;
+}
+
+// -- URL-based enrollToCert (full OIDC flow) --
+
+struct enroll_url_state {
+    struct enroll_cb_params *params;
+    ziti_context ztx;
+    uv_loop_t *loop;
+    const char *provider;
+};
+
+static void enroll_url_ext_auth_cb(ziti_context ztx, const char *url, void *ctx) {
+    fprintf(stderr, "\nOpen the following URL in a browser to authenticate:\n\n"
+                    "    %s\n\n", url);
+}
+
+static void enroll_url_event_cb(ziti_context ztx, const ziti_event_t *event) {
+    struct enroll_url_state *state = ziti_app_ctx(ztx);
+
+    switch (event->type) {
+        case ZitiAuthEvent:
+            switch (event->auth.action) {
+                case ziti_auth_select_external: {
+                    const char *selected = NULL;
+                    int cert_enroll_count = 0;
+
+                    for (int i = 0; event->auth.providers && event->auth.providers[i]; i++) {
+                        if (!event->auth.providers[i]->can_cert_enroll) continue;
+                        cert_enroll_count++;
+
+                        if (state->provider != NULL) {
+                            if (strcmp(event->auth.providers[i]->name, state->provider) == 0) {
+                                selected = event->auth.providers[i]->name;
+                            }
+                        } else if (selected == NULL) {
+                            selected = event->auth.providers[i]->name;
+                        }
+                    }
+
+                    if (selected == NULL) {
+                        if (state->provider != NULL) {
+                            ZITI_LOG(ERROR, "provider '%s' not found or does not support enrollToCert",
+                                     state->provider);
+                        } else {
+                            ZITI_LOG(ERROR, "no signer with enrollToCertEnabled found");
+                        }
+                        ziti_shutdown(ztx);
+                        break;
+                    }
+
+                    if (cert_enroll_count > 1 && state->provider == NULL) {
+                        ZITI_LOG(WARN, "multiple enrollToCert providers available, using '%s'", selected);
+                        ZITI_LOG(WARN, "use -p|--provider to select a specific provider:");
+                        for (int i = 0; event->auth.providers && event->auth.providers[i]; i++) {
+                            if (event->auth.providers[i]->can_cert_enroll) {
+                                ZITI_LOG(WARN, "  %s", event->auth.providers[i]->name);
+                            }
+                        }
+                    }
+
+                    ZITI_LOG(INFO, "selecting enrollToCert signer: %s", selected);
+                    ziti_use_ext_jwt_signer(ztx, selected);
+                    ziti_ext_auth(ztx, enroll_url_ext_auth_cb, NULL);
+                    return;
+                }
+                case ziti_auth_cannot_continue:
+                    ZITI_LOG(ERROR, "authentication failed: %s", event->auth.detail);
+                    ziti_shutdown(ztx);
+                    break;
+                default:
+                    break;
+            }
+            break;
+
+        case ZitiConfigEvent:
+            if (event->cfg.config && event->cfg.config->id.cert != NULL) {
+                ZITI_LOG(INFO, "enrollment complete");
+                size_t len;
+                char *cfg_json = ziti_config_to_json(event->cfg.config, 0, &len);
+                state->params->config.base = cfg_json;
+                state->params->config.len = len;
+                ziti_shutdown(ztx);
+            }
+            break;
+
+        default:
+            break;
+    }
+}
+
+static void enroll_url_bootstrap_cb(const ziti_config *cfg, int status, const char *err, void *ctx) {
+    struct enroll_url_state *state = ctx;
+
+    if (status != ZITI_OK || cfg == NULL) {
+        ZITI_LOG(ERROR, "failed to fetch controller config: %s(%d)", err ? err : "unknown", status);
+        return;
+    }
+
+    ZITI_LOG(INFO, "controller config fetched, starting enrollToCert authentication");
+
+    int rc = ziti_context_init(&state->ztx, cfg);
+    if (rc != ZITI_OK) {
+        ZITI_LOG(ERROR, "failed to create identity context: %s", ziti_errorstr(rc));
+        return;
+    }
+
+    ziti_context_set_options(state->ztx, &(ziti_options){
+        .app_ctx = state,
+        .event_cb = enroll_url_event_cb,
+        .events = ZitiContextEvent | ZitiAuthEvent | ZitiConfigEvent,
+    });
+
+    ziti_context_run(state->ztx, state->loop);
 }
 
 static int write_close(FILE *fp, const uv_buf_t *data)
@@ -1749,7 +1868,16 @@ static void enroll(int argc, char *argv[]) {
 
     struct enroll_cb_params params = { 0 };
 
-    ziti_enroll(&enroll_opts, l, enroll_cb, &params);
+    if (enroll_opts.url != NULL && enroll_opts.token == NULL) {
+        struct enroll_url_state url_state = {
+            .params = &params,
+            .loop = l,
+            .provider = enroll_provider,
+        };
+        ziti_enroll_url(enroll_opts.url, l, enroll_url_bootstrap_cb, &url_state);
+    } else {
+        ziti_enroll(&enroll_opts, l, enroll_cb, &params);
+    }
 
     uv_run(l, UV_RUN_DEFAULT);
 
@@ -2534,9 +2662,10 @@ static int add_identity_opts(int argc, char *argv[]) {
 
 static CommandLine enroll_cmd = make_command(
     "enroll", "enroll Ziti identity",
-    "( -u|--url <controller URL> | -j|--jwt <enrollment token> ) -i|--identity <identity> [-k|--key <private_key> [-c|--cert <certificate>]] [-n|--name <name>]",
+    "( -u|--url <controller URL> | -j|--jwt <enrollment token> ) -i|--identity <identity> [-p|--provider <name>] [-k|--key <private_key> [-c|--cert <certificate>]] [-n|--name <name>]",
     "\t-u|--url\tenroll with controller (3rd party IDP required for auth). Ignored if --jwt is provided\n"
     "\t-j|--jwt\tenrollment token file\n"
+    "\t-p|--provider\tenrollToCert provider name (auto-selected if only one)\n"
     "\t-x|--proxy type://[username[:password]@]hostname_or_ip:port\tproxy to use when connecting to OpenZiti controller. 'http' is currently the only supported type.\n"
     "\t-i|--identity\toutput identity file\n"
     "\t-K|--use-keychain\tuse keychain to generate/store private key\n"

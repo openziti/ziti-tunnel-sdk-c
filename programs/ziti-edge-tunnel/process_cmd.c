@@ -112,20 +112,28 @@ static void tunnel_enroll_cb(const ziti_config *cfg, int status, const char *err
 static void enroll_ziti_async(uv_loop_t *loop, void *arg) {
     struct add_identity_request_s *add_id_req = arg;
 
-    ziti_enroll_opts enroll_opts = {0};
-    enroll_opts.name = add_id_req->identifier;
-    enroll_opts.token = add_id_req->jwt_content;
-    enroll_opts.use_keychain = add_id_req->use_keychain;
-    enroll_opts.key = add_id_req->key;
-    enroll_opts.cert = add_id_req->certificate;
-    enroll_opts.url = add_id_req->url;
+    int enroll_result;
+    if (add_id_req->url != NULL && add_id_req->jwt_content == NULL) {
+        // URL-only: fetches CA bundle and returns base config (no cert/key).
+        // The identity is auto-loaded after save; ext auth events then drive
+        // the OIDC + enrollToCert flow via IPC.
+        enroll_result = ziti_enroll_url(add_id_req->url, loop, tunnel_enroll_cb, add_id_req);
+    } else {
+        ziti_enroll_opts enroll_opts = {0};
+        enroll_opts.name = add_id_req->identifier;
+        enroll_opts.token = add_id_req->jwt_content;
+        enroll_opts.use_keychain = add_id_req->use_keychain;
+        enroll_opts.key = add_id_req->key;
+        enroll_opts.cert = add_id_req->certificate;
+        enroll_opts.url = add_id_req->url;
+        enroll_result = ziti_enroll(&enroll_opts, loop, tunnel_enroll_cb, add_id_req);
+    }
 
-    int enroll_result = ziti_enroll(&enroll_opts, loop, tunnel_enroll_cb, add_id_req);
     if (enroll_result == ZITI_OK) {
         ZITI_LOG(INFO, "enrollment started. identity file will be written to: %s", add_id_req->identifier);
     } else {
         ZITI_LOG(ERROR, "cannot enroll: %d", enroll_result);
-        tunnel_enroll_cb(NULL, ZITI_INVALID_STATE, "enrollment JWT or verifiable controller URL is required", add_id_req);
+        tunnel_enroll_cb(NULL, ZITI_INVALID_STATE, "enrollment failed", add_id_req);
     }
 }
 
@@ -328,7 +336,18 @@ bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void 
                     break;
                 }
             } else if (is_url) {
-                // empty on purpose for now
+                if (tunnel_add_identity_cmd.identityFilename == NULL) {
+                    result.error = "identity filename is required for URL enrollment";
+                    result.success = false;
+                    free_tunnel_add_identity(&tunnel_add_identity_cmd);
+                    break;
+                }
+                if ((strlen(config_dir) + strlen(tunnel_add_identity_cmd.identityFilename) + 6) >= FILENAME_MAX) {
+                    result.error = "invalid file name";
+                    result.success = false;
+                    free_tunnel_add_identity(&tunnel_add_identity_cmd);
+                    break;
+                }
             } else {
                 result.error = "programming error. this case should not be hit. please file an issue";
                 result.success = false;
