@@ -87,6 +87,11 @@ void normalize_identifier(char *str);
 void set_tun_name(const char *name);
 char* get_zet_instance_id(const char* discriminator);
 
+void set_l2_enabled(bool enabled);
+bool get_l2_enabled();
+void set_pcap_ifname(const char* pcap_ifname);
+const char *get_pcap_ifname();
+
 #ifdef __cplusplus
 }
 #endif

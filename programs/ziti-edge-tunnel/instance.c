@@ -712,6 +712,8 @@ char *get_tunnel_config(size_t *json_len) {
     tnl_config.LogLevel = strdup(tnl_sts->LogLevel);
     tnl_config.AddDns = tnl_sts->AddDns;
     tnl_config.ApiPageSize = tnl_sts->ApiPageSize;
+    tnl_config.L2Enabled = tnl_sts->L2Enabled;
+    tnl_config.PcapInterface = tnl_sts->PcapInterface;
 
     char* tunnel_config_json = tunnel_status_to_json(&tnl_config, 0, json_len);
 
@@ -910,6 +912,24 @@ void set_tun_name(const char *name) {
     tnl_status.TunName = strdup(name);
 }
 
+void set_l2_enabled(bool enabled) {
+    tnl_status.L2Enabled = enabled;
+}
+
+bool get_l2_enabled() {
+    return tnl_status.L2Enabled;
+}
+
+void set_pcap_ifname(const char* pcap_ifname) {
+    if (pcap_ifname) {
+        tnl_status.PcapInterface = strdup(pcap_ifname);
+    }
+}
+
+const char *get_pcap_ifname() {
+    return tnl_status.PcapInterface;
+}
+
 char* get_zet_instance_id(const char* discriminator) {
     char *zet_instance_id = NULL;
     if (discriminator) {
@@ -924,6 +944,7 @@ char* get_zet_instance_id(const char* discriminator) {
 
 // ************** TUNNEL BROADCAST MESSAGES
 IMPL_MODEL(tunnel_identity, TUNNEL_IDENTITY)
+IMPL_MODEL(tunnel_tap_info, TUNNEL_TAP_INFO)
 IMPL_MODEL(tunnel_config, TUNNEL_CONFIG)
 IMPL_MODEL(tunnel_metrics, TUNNEL_METRICS)
 IMPL_MODEL(tunnel_address, TUNNEL_ADDRESS)
