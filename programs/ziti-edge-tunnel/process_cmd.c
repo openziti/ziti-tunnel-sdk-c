@@ -114,6 +114,9 @@ static void enroll_ziti_async(uv_loop_t *loop, void *arg) {
 
     int enroll_result;
     if (add_id_req->url != NULL && add_id_req->jwt_content == NULL) {
+        // URL-only: fetches CA bundle and returns base config (no cert/key).
+        // The identity is auto-loaded after save; ext auth events then drive
+        // the OIDC + enrollToCert flow via IPC.
         enroll_result = ziti_enroll_url(add_id_req->url, loop, tunnel_enroll_cb, add_id_req);
     } else {
         ziti_enroll_opts enroll_opts = {0};
