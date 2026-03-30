@@ -66,6 +66,7 @@ XX(GetMetrics, __VA_ARGS__) \
 XX(SetLogLevel, __VA_ARGS__) \
 XX(UpdateTunIpv4, __VA_ARGS__) \
 XX(UpdateL2Options, __VA_ARGS__) \
+XX(UpdateInterfaceConfig, __VA_ARGS__) \
 XX(ServiceControl, __VA_ARGS__) \
 XX(Status, __VA_ARGS__) \
 XX(RefreshIdentity, __VA_ARGS__) \
@@ -176,6 +177,10 @@ XX(addDns, model_bool, none, AddDns, __VA_ARGS__)
 XX(enabled, model_bool, none, Enabled, __VA_ARGS__) \
 XX(pcap_ifname, model_string, none, PcapInterface, __VA_ARGS__) \
 
+#define TUNNEL_INTERFACE_CONFIG(XX, ...) \
+XX(l3, tunnel_tun_ip_v4, none, L3, __VA_ARGS__) \
+XX(l2, tunnel_l2_options, none, L2, __VA_ARGS__)
+
 #define TUNNEL_SERVICE_CONTROL(XX, ...) \
 XX(operation, model_string, none, Operation, __VA_ARGS__)
 
@@ -229,6 +234,7 @@ DECLARE_MODEL(tunnel_command_inline, TUNNEL_CMD_INLINE)
 DECLARE_MODEL(tunnel_set_log_level, TUNNEL_SET_LOG_LEVEL)
 DECLARE_MODEL(tunnel_tun_ip_v4, TUNNEL_TUN_IP_V4)
 DECLARE_MODEL(tunnel_l2_options, TUNNEL_L2_OPTIONS)
+DECLARE_MODEL(tunnel_interface_config, TUNNEL_INTERFACE_CONFIG)
 DECLARE_MODEL(tunnel_service_control, TUNNEL_SERVICE_CONTROL)
 DECLARE_MODEL(tunnel_status_change, TUNNEL_STATUS_CHANGE)
 DECLARE_MODEL(tunnel_add_identity, TUNNEL_ADD_IDENTITY)
