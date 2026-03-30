@@ -2550,6 +2550,7 @@ static int update_l2_opts(int argc, char *argv[]) {
     size_t json_len;
     cmd.data = tunnel_l2_options_to_json(l2_opts, MODEL_JSON_COMPACT, &json_len);
     free_tunnel_l2_options_ptr(l2_opts);
+    return optind;
 }
 
 static int endpoint_status_change_opts(int argc, char *argv[]) {

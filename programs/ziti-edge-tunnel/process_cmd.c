@@ -233,6 +233,7 @@ static void process_update_l2_options_cmd(const char *cmd_json, tunnel_result *r
     set_pcap_ifname(l2_opts.pcap_ifname);
     result->success = true;
     result->code = IPC_SUCCESS;
+    free_tunnel_l2_options(&l2_opts);
 }
 
 bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void *ctx) {
@@ -299,21 +300,25 @@ bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void 
             if (tunnel_tun_ip_v4_to_json_r(&tunnel_interface_config.l3, MODEL_JSON_COMPACT, json, sizeof(json)) < 0) {
                 result.error = "invalid command";
                 result.success = false;
+                free_tunnel_interface_config(&tunnel_interface_config);
                 break;
             }
 
             process_update_tun_ipv4_cmd(json, &result);
             if (result.success == false) {
+                free_tunnel_interface_config(&tunnel_interface_config);
                 break;
             }
 
             if (tunnel_l2_options_to_json_r(&tunnel_interface_config.l2, MODEL_JSON_COMPACT, json, sizeof(json)) < 0) {
                 result.error = "invalid command";
                 result.success = false;
+                free_tunnel_interface_config(&tunnel_interface_config);
                 break;
             }
 
             process_update_l2_options_cmd(json, &result);
+            free_tunnel_interface_config(&tunnel_interface_config);
             break;
         }
 

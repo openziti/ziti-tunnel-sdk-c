@@ -921,6 +921,10 @@ bool get_l2_enabled() {
 }
 
 void set_pcap_ifname(const char* pcap_ifname) {
+    if (tnl_status.PcapInterface != NULL) {
+        free((char*)tnl_status.PcapInterface);
+        tnl_status.PcapInterface = NULL;
+    }
     if (pcap_ifname) {
         tnl_status.PcapInterface = strdup(pcap_ifname);
         set_l2_enabled(true);

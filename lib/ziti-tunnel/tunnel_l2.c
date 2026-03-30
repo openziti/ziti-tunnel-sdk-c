@@ -46,8 +46,29 @@ void tunneler_l2_ack(struct write_ctx_s *write_ctx) {
 }
 
 ssize_t tunneler_l2_write(struct netif *netif, const void *data, size_t len) {
+    static bool log_pbuf_errors = true;
     struct pbuf *p = pbuf_alloc(PBUF_RAW, len, PBUF_POOL);
-    pbuf_take(p, data, len);
+    if (p != NULL) {
+        if (!log_pbuf_errors) {
+            TNL_LOG(INFO, "pbufs are now available. packets will no longer be dropped");
+            log_pbuf_errors = true;
+        }
+        err_t e = pbuf_take(p, data, len);
+        if (e != ERR_OK) {
+            TNL_LOG(ERR, "pbuf_take failed: %d", e);
+            pbuf_free(p);
+            return -1;
+        }
+        /* acknowledge that packet has been read(); */
+    } else {
+        /* drop packet(); */
+        if (log_pbuf_errors) {
+            TNL_LOG(ERR, "pbuf_alloc failed. dropping packets until pbufs become available");
+            log_pbuf_errors = false;
+        }
+        return -1;
+    }
+
     err_t e = netif->linkoutput(netif, p);
     pbuf_free(p);
     return (ssize_t) (e == ERR_OK ? len : -1);
