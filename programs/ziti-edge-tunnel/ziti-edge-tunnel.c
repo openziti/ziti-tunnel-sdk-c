@@ -2517,6 +2517,41 @@ static int update_tun_ip_opts(int argc, char *argv[]) {
     return optind;
 }
 
+static int update_l2_opts(int argc, char *argv[]) {
+    static struct option opts[] = {
+        {"pcap_ifname", required_argument, NULL, 'N'},
+    };
+    int c, option_index, errors = 0;
+    optind = 0;
+    tunnel_l2_options *l2_opts = calloc(1, sizeof(tunnel_l2_options));
+    cmd.command = TunnelCommand_UpdateL2Options;
+    while ((c = getopt_long(argc, argv, "N:", opts, &option_index)) != -1) {
+        switch (c) {
+            case 'N':
+                l2_opts->pcap_ifname = strdup(optarg);
+                l2_opts->enabled = true;
+                break;
+            default: {
+                fprintf(stderr, "Unknown option '%c'\n", c);
+                errors++;
+                break;
+            }
+        }
+    }
+
+    // look for positional param if not using pcap
+    if (!l2_opts->enabled) {
+        if (argv[optind] && strcasecmp(argv[optind], "on") == 0) {
+            l2_opts->enabled = true;
+        }
+    }
+
+    CHECK_COMMAND_ERRORS(errors);
+    size_t json_len;
+    cmd.data = tunnel_l2_options_to_json(l2_opts, MODEL_JSON_COMPACT, &json_len);
+    free_tunnel_l2_options_ptr(l2_opts);
+}
+
 static int endpoint_status_change_opts(int argc, char *argv[]) {
     static struct option opts[] = {
             {"wake", optional_argument, NULL, 'w'},
@@ -2732,6 +2767,7 @@ static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required supe
                                           "\t-x|--proxy type://[username[:password]@]hostname_or_ip:port\tproxy to use when"
                                           " connecting to OpenZiti controller and edge routers. 'http' is currently the only supported type.\n"
                                           "\t-2|--l2\tenable layer 2 services\n"
+                                          "\t-N|--pcap-iface\tnetwork interface to read/write with pcap\n"
                                           "\t-v|--verbose N\tset log level, higher level -- more verbose (default 3)\n"
                                           "\t-r|--refresh N\tset service polling interval in seconds (default 10)\n"
                                           "\t-d|--dns-ip-range <ip range>\tspecify CIDR block in which service DNS names"
@@ -2793,6 +2829,9 @@ static CommandLine update_tun_ip_cmd = make_command("update_tun_ip", "Update tun
                                                     "\t-t|--tunip\ttun ipv4 of the tunneler\n"
                                                     "\t-p|--prefixlength\ttun ipv4 prefix length of the tunneler\n"
                                                     "\t-d|--addDNS\tAdd Dns to the tunneler\n", update_tun_ip_opts, send_message_to_tunnel_fn);
+static CommandLine update_l2_opts_cmd = make_command("update_l2_opts", "Enable/disable L2 capability", "[ on | off ] [-N <pcap_ifname>]",
+                                                    "\t-N|--pcap-iface\tnetwork interface to read/write with pcap\n",
+                                                    update_l2_opts, send_message_to_tunnel_fn);
 static CommandLine ep_status_change_cmd = make_command("endpoint_sts_change", "send endpoint status change message to the tunneler", "[-w <wake>] [-u <unlock>]",
                                                     "\t-w|--wake\twake the tunneler\n"
                                                     "\t-u|--unlock\tunlock the tunneler\n", endpoint_status_change_opts, send_message_to_tunnel_fn);
@@ -2837,6 +2876,7 @@ static CommandLine *main_cmds[] = {
         &add_id_cmd,
         &set_log_level_cmd,
         &update_tun_ip_cmd,
+        &update_l2_opts_cmd,
 #if _WIN32
         &service_control_cmd,
         &ep_status_change_cmd,

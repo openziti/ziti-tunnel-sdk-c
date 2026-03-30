@@ -260,6 +260,24 @@ bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void 
             result.code = IPC_SUCCESS;
             break;
         }
+
+        case TunnelCommand_UpdateL2Options: {
+            cmd_accepted = true;
+            cmd_forces_save_file = true;
+            tunnel_l2_options l2_opts = {0};
+            if (tnl_cmd->data == NULL || parse_tunnel_l2_options(&l2_opts, tnl_cmd->data, strlen(tnl_cmd->data)) < 0) {
+                result.error = "invalid command";
+                result.success = false;
+                free_tunnel_l2_options(&l2_opts);
+                break;
+            }
+            set_l2_enabled(l2_opts.enabled);
+            set_pcap_ifname(l2_opts.pcap_ifname);
+            result.success = true;
+            result.code = IPC_SUCCESS;
+            break;
+        }
+
         case TunnelCommand_Status: {
             cmd_accepted = true;
             cmd_forces_save_file = false;
