@@ -1572,8 +1572,13 @@ static void run(int argc, char *argv[]) {
     set_log_level(ziti_log_level_label());
     ziti_tunnel_set_logger(ziti_logger);
 
-    set_l2_enabled(l2_tunnel);
-    set_pcap_ifname(pcap_iface);
+    // prioritize command line flags, but respect config file values.
+    if (l2_tunnel) {
+        set_l2_enabled(l2_tunnel);
+    }
+    if (pcap_iface) {
+        set_pcap_ifname(pcap_iface);
+    }
 
     if (init_proxy_connector(configured_proxy) != 0) {
         exit(1);
