@@ -5,7 +5,10 @@
 #include "lwip/pbuf.h"
 #include "lwip/ip_addr.h"
 #include "lwip/netif.h"
+#include "lwip/etharp.h"
+#include "lwip/ethip6.h"
 #include "ziti/netif_driver.h"
+#include "tunnel_l2.h"
 #include "netif_shim.h"
 #include "../ziti_tunnel_priv.h"
 
@@ -30,14 +33,18 @@ static err_t netif_shim_output(struct netif *netif, struct pbuf *p, const ip4_ad
 
     if (ip_ver(shim_buffer) == 4)
         TNL_LOG(TRACE, "writing packet " PACKET_FMT " len=%d", PACKET_FMT_ARGS(shim_buffer), copied);
-    dev->write(dev->handle, shim_buffer, p->tot_len);
-    return ERR_OK;
+    ssize_t r = dev->write(dev->handle, shim_buffer, p->tot_len);
+    return r == p->tot_len ? ERR_OK : ERR_BUF;
 }
 
 /**
  * This function is called by the TCP/IP stack when an IP6 packet should be sent.
  */
 static err_t netif_shim_output_ip6(struct netif *netif, struct pbuf *p, const ip6_addr_t *ipaddr) {
+    return netif_shim_output(netif, p, NULL);
+}
+
+err_t netif_shim_output_link(struct netif *netif, struct pbuf *p) {
     return netif_shim_output(netif, p, NULL);
 }
 
@@ -67,6 +74,7 @@ void netif_shim_input(struct netif *netif) {
     TNL_LOG(TRACE, "done after reading %d packets", count);
 }
 
+#include <netif/ethernet.h>
 void on_packet(const char *buf, ssize_t nr, void *ctx) {
     static bool log_pbuf_errors = true;
     struct netif *netif = ctx;
@@ -95,6 +103,19 @@ void on_packet(const char *buf, ssize_t nr, void *ctx) {
         return;
     }
 
+    /* this is a frame that arrived from our tap. (the tun does not have a hardware addr)
+     * lwip will only process ip4/ip6/arp ethtypes but currently we're using a tun for those, so handle tap frames
+     * as a special case and don't send them to the stack.
+     */
+    if (netif->hwaddr_len > 0) {
+        struct eth_hdr *ethhdr = p->payload;
+        TNL_LOG(VERBOSE, "read frame with ethtype %x", htons(ethhdr->type));
+        if (recv_l2(netif, p) == 0) {
+            // packet wasn't consumed
+            pbuf_free(p);
+        }
+        return;
+    }
     err_t err = netif->input(p, netif);
     if (err != ERR_OK) {
         TNL_LOG(ERR, "============================> tunif_input: netif input error %s", lwip_strerr(err));
@@ -112,6 +133,16 @@ err_t netif_shim_init(struct netif *netif) {
     netif->name[1] = IFNAME1;
     netif->output = netif_shim_output;
     netif->output_ip6 = netif_shim_output_ip6;
+    netif_driver dev = netif->state;
+    netif->mtu = dev->mtu;
+    if (dev->hwaddr_len != 0) {
+        netif->output = etharp_output;
+        netif->output_ip6 = ethip6_output;
+        memcpy(netif->hwaddr, dev->hwaddr, dev->hwaddr_len);
+        netif->hwaddr_len = dev->hwaddr_len;
+        // todo do we need to call netif_create_ip6_linklocal_address?
+        netif->linkoutput = netif_shim_output_link;
+    }
 
     return ERR_OK;
 }

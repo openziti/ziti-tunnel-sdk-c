@@ -68,7 +68,7 @@ static err_t on_accept(void *arg, struct tcp_pcb *pcb, err_t err) {
 }
 
 /** create a tcp connection to be managed by lwip */
-static struct tcp_pcb *new_tcp_pcb(ip_addr_t src, ip_addr_t dest, struct tcp_hdr *tcphdr, struct pbuf *p) {
+static struct tcp_pcb *new_tcp_pcb(ip_addr_t src, ip_addr_t dest, struct tcp_hdr *tcphdr, struct pbuf *p, struct netif *netif) {
     /** associate all injected PCBs with the same phony listener to appease some LWIP checks */
     static struct tcp_pcb_listen * phony_listener = NULL;
     if (phony_listener == NULL) {
@@ -99,7 +99,7 @@ static struct tcp_pcb *new_tcp_pcb(ip_addr_t src, ip_addr_t dest, struct tcp_hdr
     npcb->snd_wl1 = lwip_ntohl(tcphdr->seqno) - 1;/* initialise to seqno-1 to force window update */
     /* allocate a listener and set accept fn to appease lwip */
     npcb->listener = phony_listener;
-    npcb->netif_idx = netif_get_index(netif_default);
+    npcb->netif_idx = netif_get_index(netif);
 
     /* Register the new PCB so that we can begin receiving segments for it. */
     TCP_REG_ACTIVE(npcb);
@@ -222,10 +222,8 @@ ssize_t tunneler_tcp_write(struct tcp_pcb *pcb, const void *data, size_t len) {
     return sendlen;
 }
 
-void tunneler_tcp_ack(struct write_ctx_s *write_ctx) {
-    struct write_ctx_s *wr_ctx = write_ctx;
+void tunneler_tcp_ack(struct write_ctx_s *wr_ctx) {
     tcp_recved(wr_ctx->tcp, wr_ctx->pbuf->len);
-    pbuf_free(wr_ctx->pbuf);
 }
 
 int tunneler_tcp_close_write(struct tcp_pcb *pcb) {
@@ -411,7 +409,7 @@ u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     /* we know this is a SYN segment for an intercepted address, and we will process it */
     ziti_sdk_dial_cb zdial = intercept_ctx->dial_fn ? intercept_ctx->dial_fn : tnlr_ctx->opts.ziti_dial;
     pbuf_remove_header(p, iphdr_hlen);
-    struct tcp_pcb *npcb = new_tcp_pcb(src, dst, tcphdr, p);
+    struct tcp_pcb *npcb = new_tcp_pcb(src, dst, tcphdr, p, &tnlr_ctx->l3_netif);
     if (npcb == NULL) {
         TNL_LOG(ERR, "failed to allocate tcp pcb - TCP connection limit is %d", MEMP_NUM_TCP_PCB);
         goto done;

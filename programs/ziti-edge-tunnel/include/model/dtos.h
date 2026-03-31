@@ -94,6 +94,10 @@ XX(Timeout, model_number, none, Timeout, __VA_ARGS__)         \
 XX(TimeoutRemaining, model_number, none, TimeoutRemaining, __VA_ARGS__) \
 XX(Permissions, tunnel_service_permissions , none, Permissions, __VA_ARGS__)
 
+#define TUNNEL_TAP_INFO(XX, ...) \
+XX(Name, model_string, none, Name, __VA_ARGS__) \
+XX(Address, model_string, none, Address, __VA_ARGS__)
+
 #define TUNNEL_STATUS(XX, ...) \
 XX(Active, model_bool, none, Active, __VA_ARGS__) \
 XX(Duration, model_number, none, Duration, __VA_ARGS__) \
@@ -106,7 +110,10 @@ XX(TunIpv4, model_string, none, TunIpv4, __VA_ARGS__) \
 XX(TunPrefixLength, model_number, none, TunIpv4Mask, __VA_ARGS__) \
 XX(AddDns, model_bool, none, AddDns, __VA_ARGS__) \
 XX(ApiPageSize, model_number, none, ApiPageSize, __VA_ARGS__) \
-XX(TunName, model_string, none, TunName, __VA_ARGS__)\
+XX(TunName, model_string, none, TunName, __VA_ARGS__) \
+XX(L2Enabled, model_bool, none, L2Enabled, __VA_ARGS__) \
+XX(PcapInterface, model_string, none, PcapInterface, __VA_ARGS__) \
+XX(TapInfo, tunnel_tap_info, none, TapInfo, __VA_ARGS__) \
 XX(ConfigDir, model_string, none, ConfigDir, __VA_ARGS__)
 
 #define IP_INFO(XX, ...) \
@@ -130,6 +137,7 @@ DECLARE_MODEL(tunnel_service, TUNNEL_SERVICE)
 DECLARE_MODEL(tunnel_identity, TUNNEL_IDENTITY)
 DECLARE_MODEL(ip_info, IP_INFO)
 DECLARE_MODEL(service_version, SERVICE_VERSION)
+DECLARE_MODEL(tunnel_tap_info, TUNNEL_TAP_INFO)
 DECLARE_MODEL(tunnel_status, TUNNEL_STATUS)
 
 #ifdef __cplusplus

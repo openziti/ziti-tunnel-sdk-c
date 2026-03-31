@@ -26,3 +26,5 @@ compile_commands.json
 .run
 CMakeFiles/
 /vcpkg_cache/
+
+tools/dcp/build/

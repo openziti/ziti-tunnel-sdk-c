@@ -28,6 +28,7 @@
 #include "sys/queue.h"
 #include "ziti/netif_driver.h"
 #include "lwip/ip_addr.h"
+#include "lwip/udp.h"
 #include "ziti/ziti_model.h"
 
 #ifdef __cplusplus
@@ -67,7 +68,9 @@ typedef enum {
     CLIENT_CFG_V1,    // ziti-tunnel-client.v1
     SERVER_CFG_V1,    // ziti-tunnel-server.v1
     INTERCEPT_CFG_V1, // intercept.v1
-    HOST_CFG_V1       // host.v1
+    HOST_CFG_V1,      // host.v1
+    L2_INTERCEPT_CFG_V1,
+    L2_HOST_CFG_V1
 } cfg_type_e;
 
 typedef struct protocol_s {
@@ -98,7 +101,7 @@ typedef STAILQ_HEAD(port_range_list_s, port_range_s) port_range_list_t;
 typedef void * (*ziti_sdk_dial_cb)(const void *app_intercept_ctx, io_ctx_t *io);
 typedef int (*ziti_sdk_close_cb)(void *ziti_io_ctx);
 typedef ssize_t (*ziti_sdk_write_cb)(const void *ziti_io_ctx, void *write_ctx, const void *data, size_t len);
-typedef host_ctx_t * (*ziti_sdk_host_cb)(void *ziti_ctx, uv_loop_t *loop, const char *service_name, cfg_type_e cfg_type, const void *cfg);
+typedef host_ctx_t * (*ziti_sdk_host_cb)(void *ziti_ctx, tunneler_context tnlr_ctx, const char *service_name, cfg_type_e cfg_type, const void *cfg);
 
 /** data needed to intercept packets and dial the associated ziti service */
 typedef struct intercept_ctx_s  intercept_ctx_t;
@@ -111,6 +114,7 @@ extern void intercept_ctx_add_protocol(intercept_ctx_t *ctx, const char *protoco
 extern void intercept_ctx_add_address(intercept_ctx_t *i_ctx, const ziti_address *address);
 extern void intercept_ctx_add_allowed_source_address(intercept_ctx_t *i_ctx, const ziti_address *address);
 extern port_range_t *intercept_ctx_add_port_range(intercept_ctx_t *i_ctx, uint16_t low, uint16_t high);
+extern model_string intercept_ctx_add_ethtype(intercept_ctx_t *i_ctx, model_string ethtype);
 extern void intercept_ctx_override_cbs(intercept_ctx_t *i_ctx, ziti_sdk_dial_cb dial, ziti_sdk_write_cb write, ziti_sdk_close_cb close_write, ziti_sdk_close_cb close);
 
 struct io_ctx_s {
@@ -132,13 +136,49 @@ SLIST_HEAD(io_ctx_list_s, io_ctx_list_entry_s);
 
 
 typedef struct tunneler_sdk_options_s {
-    netif_driver   netif_driver;
+    netif_driver        l3_netif_driver;
+    netif_driver        l2_netif_driver;
     ziti_sdk_dial_cb    ziti_dial;
     ziti_sdk_close_cb   ziti_close;
     ziti_sdk_close_cb   ziti_close_write;
     ziti_sdk_write_cb   ziti_write;
     ziti_sdk_host_cb    ziti_host;
 } tunneler_sdk_options;
+
+typedef struct tunneler_ctx_s {
+    tunneler_sdk_options opts; // this must be first - it is accessed opaquely through tunneler_context*
+    struct netif l3_netif;
+    struct netif l2_netif;
+    struct raw_pcb *tcp;
+    struct raw_pcb *udp;
+    uv_loop_t *loop;
+    uv_sem_t sem;
+    uv_poll_t l3_netif_poll_req;
+    uv_poll_t l2_netif_poll_req;
+    uv_timer_t lwip_timer_req;
+    LIST_HEAD(intercept_ctx_list_s, intercept_ctx_s) intercepts;
+    model_map intercepts_cache; // cached intercept_ctx lookup keyed by [proto]:[ip]:[port]
+} *tunneler_context;
+
+typedef enum {
+    tun_tcp,
+    tun_udp,
+    tun_l2
+} tunneler_proto_type;
+
+struct tunneler_io_ctx_s {
+    tunneler_context tnlr_ctx;
+    char *service_name;
+    char client[64];
+    char intercepted[64];
+    tunneler_proto_type proto;
+    union {
+        struct tcp_pcb *tcp;
+        struct udp_pcb *udp;
+    };
+    uv_timer_t *conn_timer;
+    uint32_t idle_timeout;
+};
 
 extern port_range_t *parse_port_range(uint16_t low, uint16_t high);
 

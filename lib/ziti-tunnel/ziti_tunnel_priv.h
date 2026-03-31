@@ -18,8 +18,6 @@
 #define ZITI_TUNNELER_SDK_ZITI_TUNNELER_PRIV_H
 
 #include "ziti/ziti_tunnel.h"
-#include "lwip/netif.h"
-
 #include "ziti/ziti_model.h"
 
 #ifdef __cplusplus
@@ -100,6 +98,9 @@ struct intercept_ctx_s {
     char *service_name;
     void *app_intercept_ctx;
 
+    enum {l3 = 0, l2} osi_layer;
+    model_list ethtypes;
+
     protocol_list_t protocols;
     address_list_t addresses;
     port_range_list_t port_ranges;
@@ -119,42 +120,17 @@ struct excluded_route_s {
     char route[MAX_ROUTE_LEN];
 };
 
-typedef struct tunneler_ctx_s {
-    tunneler_sdk_options opts; // this must be first - it is accessed opaquely through tunneler_context*
-    struct netif netif;
-    struct raw_pcb *tcp;
-    struct raw_pcb *udp;
-    uv_loop_t *loop;
-    uv_sem_t sem;
-    uv_poll_t netif_poll_req;
-    uv_timer_t lwip_timer_req;
-    LIST_HEAD(intercept_ctx_list_s, intercept_ctx_s) intercepts;
-    model_map intercepts_cache; // cached intercept_ctx lookup keyed by [proto]:[ip]:[port]
-} *tunneler_context;
+/** lookup intercept by ethtype. only intercepts with an osi_layer of "l2" are considered. */
+extern intercept_ctx_t *lookup_intercept_by_ethtype(tunneler_context tnlr_ctx, uint16_t ethtype);
 
 /** return the intercept context for a packet based on its destination ip:port */
 extern intercept_ctx_t *
 lookup_intercept_by_address(tunneler_context tnlr_ctx, const char *protocol, ip_addr_t *src_addr, ip_addr_t *dst_addr, uint16_t dst_port);
 
-typedef enum {
-    tun_tcp,
-    tun_udp
-} tunneler_proto_type;
+#define DATAGRAM_IO_TIMEOUT 30000
 
-struct tunneler_io_ctx_s {
-    tunneler_context tnlr_ctx;
-    char *service_name;
-    char client[64];
-    char intercepted[64];
-    tunneler_proto_type proto;
-    union {
-        struct tcp_pcb *tcp;
-        struct udp_pcb *udp;
-    };
-    uv_timer_t *conn_timer;
-    uint32_t idle_timeout;
-};
-
+extern void datagram_timeout_cb(uv_timer_t *t);
+extern void ziti_tunnel_pbuf_to_ziti(struct io_ctx_s *io, struct pbuf *p);
 extern void check_tnlr_timer(tunneler_context tnlr_ctx);
 extern void free_tunneler_io_context(tunneler_io_context *tnlr_io_ctx_p);
 

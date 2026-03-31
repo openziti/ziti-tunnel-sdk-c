@@ -153,6 +153,90 @@ bool is_within_config_dir(const char *file_path) {
     return false;  // File is not within the config_dir
 }
 
+static void process_update_tun_ipv4_cmd(const char *cmd_json, tunnel_result *result) {
+    tunnel_tun_ip_v4 tunnel_tun_ip_v4_cmd = {0};
+    if (cmd_json == NULL || parse_tunnel_tun_ip_v4(&tunnel_tun_ip_v4_cmd, cmd_json, strlen(cmd_json)) < 0) {
+        result->error = "invalid command";
+        result->success = false;
+        free_tunnel_tun_ip_v4(&tunnel_tun_ip_v4_cmd);
+        return;
+    }
+    if (tunnel_tun_ip_v4_cmd.prefixLength < MINTUNPREFIXLENGTH || tunnel_tun_ip_v4_cmd.prefixLength > MAXTUNPREFIXLENGTH) {
+        result->error = "prefix length should be between 10 and 18";
+        result->success = false;
+        return;
+    }
+    char* tun_ip_str = strdup(tunnel_tun_ip_v4_cmd.tunIP);
+    // make a copy, so we can free it later - validating ip address input
+    char* tun_ip_cpy = tun_ip_str;
+    char* ip_ptr = strtok(tun_ip_str, "."); //cut the string using dot delimiter
+    if (ip_ptr == NULL) {
+        result->error = "Invalid IP address";
+        result->success = false;
+        return;
+    }
+    int dots = 0;
+    bool validationStatus = true;
+    while (ip_ptr) {
+        bool isInt = true;
+        char* ip_str = ip_ptr;
+        while (*ip_str) {
+            if(!isdigit(*ip_str)){ //if the character is not a number, break
+                isInt = false;
+                validationStatus = false;
+                break;
+            }
+            ip_str++; //point to next character
+        }
+        if (!isInt) {
+            break;
+        }
+        int num = atoi(ip_ptr); //convert substring to number
+        if (num >= 0 && num <= 255) {
+            ip_ptr = strtok(NULL, "."); //cut the next part of the string
+            if (ip_ptr != NULL)
+                dots++; //increase the dot count
+        } else {
+            validationStatus = false;
+            break;
+        }
+    }
+    free(tun_ip_cpy);
+    if (dots != 3 || !validationStatus) {
+        result->error = "Invalid IP address";
+        result->success = false;
+        free_tunnel_tun_ip_v4(&tunnel_tun_ip_v4_cmd);
+        return;
+    }
+    if (tunnel_tun_ip_v4_cmd.tunIP == NULL) {
+        result->error = "Tun IP is null";
+        result->success = false;
+        free_tunnel_tun_ip_v4(&tunnel_tun_ip_v4_cmd);
+        return;
+    }
+    set_tun_ipv4_into_instance(tunnel_tun_ip_v4_cmd.tunIP,
+                               (int)tunnel_tun_ip_v4_cmd.prefixLength,
+                               tunnel_tun_ip_v4_cmd.addDns);
+    free_tunnel_tun_ip_v4(&tunnel_tun_ip_v4_cmd);
+    result->success = true;
+    result->code = IPC_SUCCESS;
+}
+
+static void process_update_l2_options_cmd(const char *cmd_json, tunnel_result *result) {
+    tunnel_l2_options l2_opts = {0};
+    if (cmd_json == NULL || parse_tunnel_l2_options(&l2_opts, cmd_json, strlen(cmd_json)) < 0) {
+        result->error = "invalid command";
+        result->success = false;
+        free_tunnel_l2_options(&l2_opts);
+        return;
+    }
+    set_l2_enabled(l2_opts.enabled);
+    set_pcap_ifname(l2_opts.pcap_ifname);
+    result->success = true;
+    result->code = IPC_SUCCESS;
+    free_tunnel_l2_options(&l2_opts);
+}
+
 bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void *ctx) {
     char dynamic_err[1024];
     tunnel_result result = {
@@ -192,74 +276,55 @@ bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void 
         }
         case TunnelCommand_UpdateTunIpv4: {
             cmd_accepted = true;
-
-            tunnel_tun_ip_v4 tunnel_tun_ip_v4_cmd = {0};
-            if (tnl_cmd->data == NULL || parse_tunnel_tun_ip_v4(&tunnel_tun_ip_v4_cmd, tnl_cmd->data, strlen(tnl_cmd->data)) < 0) {
-                result.error = "invalid command";
-                result.success = false;
-                free_tunnel_tun_ip_v4(&tunnel_tun_ip_v4_cmd);
-                break;
-            }
-            if (tunnel_tun_ip_v4_cmd.prefixLength < MINTUNPREFIXLENGTH || tunnel_tun_ip_v4_cmd.prefixLength > MAXTUNPREFIXLENGTH) {
-                result.error = "prefix length should be between 10 and 18";
-                result.success = false;
-                break;
-            }
-            char* tun_ip_str = strdup(tunnel_tun_ip_v4_cmd.tunIP);
-            // make a copy, so we can free it later - validating ip address input
-            char* tun_ip_cpy = tun_ip_str;
-            char* ip_ptr = strtok(tun_ip_str, "."); //cut the string using dot delimiter
-            if (ip_ptr == NULL) {
-                result.error = "Invalid IP address";
-                result.success = false;
-                break;
-            }
-            int dots = 0;
-            bool validationStatus = true;
-            while (ip_ptr) {
-                bool isInt = true;
-                char* ip_str = ip_ptr;
-                while (*ip_str) {
-                    if(!isdigit(*ip_str)){ //if the character is not a number, break
-                        isInt = false;
-                        validationStatus = false;
-                        break;
-                    }
-                    ip_str++; //point to next character
-                }
-                if (!isInt) {
-                    break;
-                }
-                int num = atoi(ip_ptr); //convert substring to number
-                if (num >= 0 && num <= 255) {
-                    ip_ptr = strtok(NULL, "."); //cut the next part of the string
-                    if (ip_ptr != NULL)
-                        dots++; //increase the dot count
-                } else {
-                    validationStatus = false;
-                    break;
-                }
-            }
-            free(tun_ip_cpy);
-            if (dots != 3 || !validationStatus) {
-                result.error = "Invalid IP address";
-                result.success = false;
-                free_tunnel_tun_ip_v4(&tunnel_tun_ip_v4_cmd);
-                break;
-            }
-            if (tunnel_tun_ip_v4_cmd.tunIP == NULL) {
-                result.error = "Tun IP is null";
-                result.success = false;
-                free_tunnel_tun_ip_v4(&tunnel_tun_ip_v4_cmd);
-                break;
-            }
-            set_tun_ipv4_into_instance(tunnel_tun_ip_v4_cmd.tunIP,
-                                       (int)tunnel_tun_ip_v4_cmd.prefixLength,
-                                       tunnel_tun_ip_v4_cmd.addDns);
-            result.success = true;
-            result.code = IPC_SUCCESS;
+            process_update_tun_ipv4_cmd(tnl_cmd->data, &result);
             break;
         }
+
+        case TunnelCommand_UpdateL2Options: {
+            cmd_accepted = true;
+            process_update_l2_options_cmd(tnl_cmd->data, &result);
+            break;
+        }
+
+        case TunnelCommand_UpdateInterfaceConfig: {
+            // for now this combines UpdateTunIpv4 and UpdateL2Options commands.
+            cmd_accepted = true;
+            tunnel_interface_config tunnel_interface_config = {0};
+            if (tnl_cmd->data == NULL || parse_tunnel_interface_config(&tunnel_interface_config, tnl_cmd->data, strlen(tnl_cmd->data)) < 0) {
+                result.error = "invalid command";
+                result.success = false;
+                free_tunnel_interface_config(&tunnel_interface_config);
+                break;
+            }
+
+            char json[1024];
+            memset(json, 0, sizeof(json));
+            if (tunnel_tun_ip_v4_to_json_r(&tunnel_interface_config.l3, MODEL_JSON_COMPACT, json, sizeof(json)) < 0) {
+                result.error = "invalid command";
+                result.success = false;
+                free_tunnel_interface_config(&tunnel_interface_config);
+                break;
+            }
+
+            process_update_tun_ipv4_cmd(json, &result);
+            if (result.success == false) {
+                free_tunnel_interface_config(&tunnel_interface_config);
+                break;
+            }
+
+            memset(json, 0, sizeof(json));
+            if (tunnel_l2_options_to_json_r(&tunnel_interface_config.l2, MODEL_JSON_COMPACT, json, sizeof(json)) < 0) {
+                result.error = "invalid command";
+                result.success = false;
+                free_tunnel_interface_config(&tunnel_interface_config);
+                break;
+            }
+
+            process_update_l2_options_cmd(json, &result);
+            free_tunnel_interface_config(&tunnel_interface_config);
+            break;
+        }
+
         case TunnelCommand_Status: {
             cmd_accepted = true;
             cmd_forces_save_file = false;

@@ -428,8 +428,7 @@ netif_driver tun_open(uv_loop_t *loop, uint32_t tun_ip, uint32_t dns_ip, const c
         return NULL;
     }
 
-    struct ifreq ifr = { .ifr_name = "ziti%d",
-                         .ifr_flags = IFF_TUN | IFF_NO_PI };
+    struct ifreq ifr = { .ifr_name = "ziti%d", .ifr_flags = IFF_TUN | IFF_NO_PI };
 
     if (ioctl(tun->fd, TUNSETIFF, &ifr) < 0) {
         if (error != NULL) {
@@ -474,13 +473,19 @@ netif_driver tun_open(uv_loop_t *loop, uint32_t tun_ip, uint32_t dns_ip, const c
     ifr_addrp->sin_addr.s_addr = tun_ip;
 
     if (ioctl(netdev, SIOCSIFADDR, &ifr) == -1) {
-        snprintf(error, error_len, "failed to set tun address: %s", strerror(errno));
+        snprintf(error, error_len, "failed to set interface address: %s", strerror(errno));
         tun_close(tun);
         return NULL;
     }
+    memcpy(&driver->ip4addr, &ifr_addrp->sin_addr, sizeof(ifr_addrp->sin_addr));
+
+    if (ioctl(netdev,SIOCGIFMTU, &ifr) == -1) {
+        snprintf(error, error_len, "failed to get interface MTU: %s", strerror(errno));
+        return NULL;
+    }
+    driver->mtu = ifr.ifr_mtu;
 
     ifr.ifr_flags = IFF_UP | IFF_RUNNING | IFF_NOARP | IFF_MULTICAST;
-
     if (ioctl(netdev, SIOCSIFFLAGS, &ifr) == -1) {
         snprintf(error, error_len, "failed to set tun up/running: %s", strerror(errno));
         tun_close(tun);
@@ -493,6 +498,97 @@ netif_driver tun_open(uv_loop_t *loop, uint32_t tun_ip, uint32_t dns_ip, const c
 
     if (dns_block) {
         run_command("ip route add %s dev %s", dns_block, tun->name);
+    }
+
+    return driver;
+}
+
+netif_driver tap_open(uv_loop_t *loop, char *error, size_t error_len) {
+    if (error != NULL) {
+        memset(error, 0, error_len * sizeof(char));
+    }
+
+    struct netif_handle_s *tap = calloc(1, sizeof(struct netif_handle_s));
+    if (tap == NULL) {
+        if (error != NULL) {
+            snprintf(error, error_len, "failed to allocate tap");
+        }
+        return NULL;
+    }
+
+    if ((tap->fd = open(DEVTUN, O_RDWR|O_CLOEXEC)) < 0) {
+        if (error != NULL) {
+            snprintf(error, error_len,"open %s failed", DEVTUN);
+        }
+        free(tap);
+        return NULL;
+    }
+
+    struct ifreq ifr = { .ifr_name = "ziti-tap%d", .ifr_flags = IFF_TAP | IFF_NO_PI };
+
+    if (ioctl(tap->fd, TUNSETIFF, &ifr) < 0) {
+        if (error != NULL) {
+            snprintf(error, error_len, "failed to open tap device:%s", strerror(errno));
+        }
+        tun_close(tap);
+        return NULL;
+    }
+
+    strncpy(tap->name, ifr.ifr_name, sizeof(tap->name));
+
+    struct netif_driver_s *driver = calloc(1, sizeof(struct netif_driver_s));
+    if (driver == NULL) {
+        if (error != NULL) {
+            snprintf(error, error_len, "failed to allocate netif_device_s");
+        }
+        tun_close(tap);
+        return NULL;
+    }
+
+    driver->handle       = tap;
+    driver->read         = tun_read;
+    driver->write        = tun_write;
+    driver->uv_poll_init = tun_uv_poll_init;
+    driver->add_route    = tun_add_route;
+    driver->delete_route = tun_delete_route;
+    driver->close        = tun_close;
+    driver->exclude_rt   = tun_exclude_rt;
+    driver->commit_routes = tun_commit_routes;
+    driver->get_name = get_tun_name;
+
+    __attribute__((cleanup(cleanup_sock))) int netdev = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
+    if (netdev == -1) {
+        snprintf(error, error_len, "failed to create netdevice socket: %s", strerror(errno));
+        tun_close(tap);
+        return NULL;
+    }
+
+    if (ioctl(netdev,SIOCGIFMTU, &ifr) == -1) {
+        snprintf(error, error_len, "failed to get interface MTU: %s", strerror(errno));
+        return NULL;
+    }
+    driver->mtu = ifr.ifr_mtu;
+
+    /* the kernel should have given our interface a link-local hardware address.
+     * configure the lwip netif with the actual interface address.
+     *
+     * wait for kernel to configure the interface. without this we get an uninitialized (an nonzero) value.
+     * todo tried checking ifr_hwaddr.sa_family == ARPHRD_ETHER, maybe look for another way to validate hwaddr is ready.
+     */
+    uv_sleep(100);
+    if (ioctl(netdev, SIOCGIFHWADDR, &ifr) < 0) {
+        snprintf(error, error_len, "failed to set hardware address: %s", strerror(errno));
+        tun_close(tap);
+        return NULL;
+    }
+    memcpy(driver->hwaddr, ifr.ifr_hwaddr.sa_data, 6);
+    driver->hwaddr_len = 6;
+    ifr.ifr_flags = IFF_UP | IFF_RUNNING | IFF_NOARP | IFF_MULTICAST;
+
+    if (ioctl(netdev, SIOCSIFFLAGS, &ifr) == -1) {
+        snprintf(error, error_len, "failed to set tap up/running: %s", strerror(errno));
+        tun_close(tap);
+        return NULL;
     }
 
     return driver;
