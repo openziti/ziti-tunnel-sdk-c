@@ -35,6 +35,8 @@ extern "C" {
 
 int ziti_dns_setup(tunneler_context tnlr, const char *dns_addr, const char *dns_cidr);
 
+ #define MAX_UPSTREAMS 5 // upstream server limit
+
 int ziti_dns_set_upstream(uv_loop_t *l, tunnel_upstream_dns_array upstreams);
 
 const ip_addr_t *ziti_dns_register_hostname(const ziti_address *addr, void *intercept);

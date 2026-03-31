@@ -20,7 +20,6 @@
 #include "ziti_instance.h"
 #include "dns_host.h"
 
-#define MAX_UPSTREAMS 5
 #define MAX_DNS_NAME 256
 #define MAX_IP_LENGTH 16
 
