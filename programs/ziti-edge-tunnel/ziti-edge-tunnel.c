@@ -1751,6 +1751,7 @@ struct enroll_url_state {
     ziti_context ztx;
     uv_loop_t *loop;
     const char *provider;
+    uv_buf_t bootstrap_config; // saved in case enrollToCert is unavailable
 };
 
 static void enroll_url_ext_auth_cb(ziti_context ztx, const char *url, void *ctx) {
@@ -1782,11 +1783,15 @@ static void enroll_url_event_cb(ziti_context ztx, const ziti_event_t *event) {
                     }
 
                     if (selected == NULL) {
+                        // no enrollToCert provider available, save bootstrap config
+                        // so the identity can be loaded by the tunnel for OIDC auth
+                        state->params->config = state->bootstrap_config;
+                        state->bootstrap_config = (uv_buf_t){0};
                         if (state->provider != NULL) {
-                            ZITI_LOG(ERROR, "provider '%s' not found or does not support enrollToCert",
+                            ZITI_LOG(WARN, "provider '%s' not found or does not support enrollToCert",
                                      state->provider);
                         } else {
-                            ZITI_LOG(ERROR, "no signer with enrollToCertEnabled found");
+                            ZITI_LOG(WARN, "no enrollToCert signer found, saving bootstrap config");
                         }
                         ziti_shutdown(ztx);
                         break;
@@ -1809,6 +1814,8 @@ static void enroll_url_event_cb(ziti_context ztx, const ziti_event_t *event) {
                 }
                 case ziti_auth_cannot_continue:
                     ZITI_LOG(ERROR, "authentication failed: %s", event->auth.detail);
+                    free(state->bootstrap_config.base);
+                    state->bootstrap_config = (uv_buf_t){0};
                     ziti_shutdown(ztx);
                     break;
                 default:
@@ -1819,6 +1826,8 @@ static void enroll_url_event_cb(ziti_context ztx, const ziti_event_t *event) {
         case ZitiConfigEvent:
             if (event->cfg.config && event->cfg.config->id.cert != NULL) {
                 ZITI_LOG(INFO, "enrollment complete");
+                free(state->bootstrap_config.base);
+                state->bootstrap_config = (uv_buf_t){0};
                 size_t len;
                 char *cfg_json = ziti_config_to_json(event->cfg.config, 0, &len);
                 state->params->config.base = cfg_json;
@@ -1840,11 +1849,18 @@ static void enroll_url_bootstrap_cb(const ziti_config *cfg, int status, const ch
         return;
     }
 
-    ZITI_LOG(INFO, "controller config fetched, starting enrollToCert authentication");
+    ZITI_LOG(INFO, "controller config fetched, starting authentication");
+
+    size_t bootstrap_len;
+    char *bootstrap_json = ziti_config_to_json(cfg, 0, &bootstrap_len);
+    state->bootstrap_config.base = bootstrap_json;
+    state->bootstrap_config.len = bootstrap_len;
 
     int rc = ziti_context_init(&state->ztx, cfg);
     if (rc != ZITI_OK) {
         ZITI_LOG(ERROR, "failed to create identity context: %s", ziti_errorstr(rc));
+        free(state->bootstrap_config.base);
+        state->bootstrap_config = (uv_buf_t){0};
         return;
     }
 
@@ -1916,14 +1932,22 @@ static void enroll(int argc, char *argv[]) {
 
     struct enroll_cb_params params = { 0 };
 
-    if (enroll_opts.url != NULL && enroll_opts.token == NULL) {
+    if (enroll_opts.url != NULL) {
+        // URL enrollment: bootstrap config, then OIDC auth (+ cert enrollment if available)
         struct enroll_url_state url_state = {
             .params = &params,
             .loop = l,
             .provider = enroll_provider,
         };
-        ziti_enroll_url(enroll_opts.url, l, enroll_url_bootstrap_cb, &url_state);
+        if (enroll_opts.token != NULL) {
+            // network JWT provided: use it to verify private CA controller
+            ziti_enroll(&enroll_opts, l, enroll_url_bootstrap_cb, &url_state);
+        } else {
+            // no JWT: controller must be OS-trusted
+            ziti_enroll_url(enroll_opts.url, l, enroll_url_bootstrap_cb, &url_state);
+        }
     } else {
+        // standard enrollment (OTT/OTTCA/CA)
         ziti_enroll(&enroll_opts, l, enroll_cb, &params);
     }
 

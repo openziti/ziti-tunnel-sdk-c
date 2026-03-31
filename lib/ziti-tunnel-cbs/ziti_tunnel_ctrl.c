@@ -739,6 +739,7 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
                 req->cmd_ctx = ctx;
 
                 if (enroll.url != NULL && enroll.jwt == NULL) {
+                    // URL-only: controller must be OS-trusted
                     rc = ziti_enroll_url(enroll.url, CMD_CTX.loop, on_cmd_enroll, req);
                 } else {
                     ziti_enroll_opts opts = {
@@ -749,6 +750,8 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
                             .use_keychain = enroll.use_keychain,
                             .url = enroll.url,
                     };
+                    // SDK routes by JWT method: network JWT -> bootstrap,
+                    // standard JWT -> OTT/OTTCA/CA enrollment
                     rc = ziti_enroll(&opts, CMD_CTX.loop, on_cmd_enroll, req);
                 }
                 free_tunnel_enroll(&enroll);
