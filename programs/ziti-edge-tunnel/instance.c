@@ -728,6 +728,7 @@ char *get_tunnel_config(size_t *json_len) {
     tnl_config.IpInfo = NULL;
     tnl_config.ServiceVersion = NULL;
     tnl_config.TunIpv4 = NULL;
+    tnl_config.PcapInterface = NULL;
     free_tunnel_status(&tnl_config);
 
     return tunnel_config_json;

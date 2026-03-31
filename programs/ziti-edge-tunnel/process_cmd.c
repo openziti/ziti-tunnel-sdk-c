@@ -297,6 +297,7 @@ bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void 
             }
 
             char json[1024];
+            memset(json, 0, sizeof(json));
             if (tunnel_tun_ip_v4_to_json_r(&tunnel_interface_config.l3, MODEL_JSON_COMPACT, json, sizeof(json)) < 0) {
                 result.error = "invalid command";
                 result.success = false;
@@ -310,6 +311,7 @@ bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void 
                 break;
             }
 
+            memset(json, 0, sizeof(json));
             if (tunnel_l2_options_to_json_r(&tunnel_interface_config.l2, MODEL_JSON_COMPACT, json, sizeof(json)) < 0) {
                 result.error = "invalid command";
                 result.success = false;
