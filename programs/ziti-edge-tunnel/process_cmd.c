@@ -217,6 +217,7 @@ static void process_update_tun_ipv4_cmd(const char *cmd_json, tunnel_result *res
     set_tun_ipv4_into_instance(tunnel_tun_ip_v4_cmd.tunIP,
                                (int)tunnel_tun_ip_v4_cmd.prefixLength,
                                tunnel_tun_ip_v4_cmd.addDns);
+    free_tunnel_tun_ip_v4(&tunnel_tun_ip_v4_cmd);
     result->success = true;
     result->code = IPC_SUCCESS;
 }

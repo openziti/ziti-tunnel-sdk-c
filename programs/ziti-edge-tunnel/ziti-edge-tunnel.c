@@ -869,13 +869,14 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     tun = utun_open(tun_error, sizeof(tun_error), ip_range);
 #elif __linux__
     tun = tun_open(ziti_loop, tun_ip, dns_ip, dns_subnet, tun_error, sizeof(tun_error));
-    if (tun != NULL && l2_tunnel) {
+    if (tun != NULL && get_l2_enabled()) {
         ZITI_LOG(INFO, "L2 mode enabled -- opening TAP interface");
         tap = tap_open(ziti_loop, tun_error, sizeof(tun_error));
     }
 #elif _WIN32
     tun = tun_open(ziti_loop, tun_ip, dns_subnet, tun_error, sizeof(tun_error));
-    if (tun != NULL && l2_tunnel) {
+    if (tun != NULL && get_l2_enabled()) {
+        const char *pcap_iface = get_pcap_ifname();
         if (pcap_iface) {
             ZITI_LOG(INFO, "L2 mode enabled -- opening pcap interface '%s'", pcap_iface);
             tap = ziti_pcap_open(ziti_loop, pcap_iface, tun_error, sizeof(tun_error));
@@ -2528,6 +2529,7 @@ static int update_l2_opts(int argc, char *argv[]) {
     };
     int c, option_index, errors = 0;
     optind = 0;
+#if 0
     tunnel_l2_options *l2_opts = calloc(1, sizeof(tunnel_l2_options));
     cmd.command = TunnelCommand_UpdateL2Options;
     while ((c = getopt_long(argc, argv, "N:", opts, &option_index)) != -1) {
@@ -2555,6 +2557,16 @@ static int update_l2_opts(int argc, char *argv[]) {
     size_t json_len;
     cmd.data = tunnel_l2_options_to_json(l2_opts, MODEL_JSON_COMPACT, &json_len);
     free_tunnel_l2_options_ptr(l2_opts);
+#else
+    cmd.command = TunnelCommand_UpdateInterfaceConfig;
+    tunnel_interface_config *tic = calloc(1, sizeof(tunnel_interface_config));
+    tic->l3.addDns = false;
+    tic->l3.tunIP = "100.64.1.1";
+    tic->l3.prefixLength = 24;
+    tic->l2.pcap_ifname = "pcapif6";
+    size_t json_len;
+    cmd.data = tunnel_interface_config_to_json(tic, MODEL_JSON_COMPACT, &json_len);
+#endif
     return optind;
 }
 
