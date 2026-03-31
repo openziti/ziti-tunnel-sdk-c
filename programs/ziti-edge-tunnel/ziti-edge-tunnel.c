@@ -877,7 +877,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     tun = tun_open(ziti_loop, tun_ip, dns_subnet, tun_error, sizeof(tun_error));
     if (tun != NULL && get_l2_enabled()) {
         const char *pcap_iface = get_pcap_ifname();
-        if (pcap_iface && pcap_iface[0] != '\0 ') {
+        if (pcap_iface && pcap_iface[0] != '\0') {
             ZITI_LOG(INFO, "L2 mode enabled -- opening pcap interface '%s'", pcap_iface);
             tap = ziti_pcap_open(ziti_loop, pcap_iface, tun_error, sizeof(tun_error));
             if (tap == NULL) {
