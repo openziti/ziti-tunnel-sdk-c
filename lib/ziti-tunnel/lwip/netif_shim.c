@@ -34,7 +34,11 @@ static err_t netif_shim_output(struct netif *netif, struct pbuf *p, const ip4_ad
     if (ip_ver(shim_buffer) == 4)
         TNL_LOG(TRACE, "writing packet " PACKET_FMT " len=%d", PACKET_FMT_ARGS(shim_buffer), copied);
     ssize_t r = dev->write(dev->handle, shim_buffer, p->tot_len);
-    return r == p->tot_len ? ERR_OK : ERR_BUF;
+    if (r != p->tot_len) {
+        TNL_LOG(ERR, "failed or incomplete write (%d/%d)", r, p->tot_len);
+        return ERR_BUF;
+    }
+    return ERR_OK;
 }
 
 /**

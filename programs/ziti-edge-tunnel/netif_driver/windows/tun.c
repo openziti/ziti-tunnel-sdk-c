@@ -387,7 +387,7 @@ ssize_t tun_write(netif_handle tun, const void *buf, size_t len) {
     BYTE* packet = WintunAllocateSendPacket(tun->session, len);
     memcpy(packet, buf, len);
     WintunSendPacket(tun->session, packet);
-    return 0;
+    return (ssize_t) len;
 }
 
 static int parse_route(PIP_ADDRESS_PREFIX pfx, const char *route) {
