@@ -39,6 +39,7 @@ typedef int (*cfg_cmp_fn)(const void *, const void*);
 
 IMPL_ENUM(TunnelConnectionType, TUNNELER_CONN_TYPE_ENUM)
 IMPL_MODEL(tunneler_app_data, TUNNELER_APP_DATA_MODEL)
+IMPL_MODEL(tunneler_l2_app_data, TUNNELER_L2_APP_DATA_MODEL)
 
 static void ziti_conn_close_cb(ziti_connection zc);
 
@@ -278,6 +279,13 @@ static ssize_t get_app_data(char *buf, size_t bufsz, tunneler_io_context io, zit
     return json_len;
 }
 
+static ssize_t l2_get_app_data(char *buf, size_t bufsz, tunneler_io_context io, ziti_context ziti_ctx, const char *ethtype, tunneler_l2_app_data *app_data) {
+    app_data->conn_type = TunnelConnectionType_l2;
+    if (ethtype != NULL) { app_data->l2_ethtype = strdup(ethtype); }
+    ssize_t json_len = tunneler_l2_app_data_to_json_r(app_data, MODEL_JSON_COMPACT, buf, bufsz);
+    return json_len;
+}
+
 /** initialize dial options from a ziti_intercept_cfg_v1 */
 static void dial_opts_from_model_map(ziti_dial_opts *opts, const model_map *dial_opts_map) {
     tag *t = (tag *) model_map_get(dial_opts_map, "identity");
@@ -327,56 +335,57 @@ void * ziti_sdk_c_dial(const void *intercept_ctx, struct io_ctx_s *io) {
 
     ziti_dial_opts dial_opts = {0};
     char app_data_json[256];
-    const char *source_ip = NULL;
+    ssize_t json_len = 0;
 
     switch (zi_ctx->cfg_desc->cfgtype) {
         case CLIENT_CFG_V1:
             ZITI_LOG(VERBOSE, "not setting ziti dial options for '%s' config", zi_ctx->cfg_desc->name);
             break;
-        case INTERCEPT_CFG_V1:
+        case INTERCEPT_CFG_V1: {
+            tunneler_app_data app_data = {0};
             dial_opts_from_model_map(&dial_opts, &zi_ctx->cfg.intercept_v1.dial_options);
-            source_ip = zi_ctx->cfg.intercept_v1.source_ip;
+            dial_opts.group = zi_ctx->cfg.intercept_v1.source_ip;
+            json_len = get_app_data(app_data_json, sizeof(app_data_json), io->tnlr_io, ziti_ctx, dial_opts.group, &app_data);
+            if (json_len < 0) break;
+            dial_opts.stream = app_data.dst_protocol && strcmp(app_data.dst_protocol, "tcp") == 0;
+            char resolved_dial_identity[128];
+            if (dial_opts.identity != NULL && dial_opts.identity[0] != '\0') {
+                strncpy(resolved_dial_identity, dial_opts.identity, sizeof(resolved_dial_identity));
+                if (app_data.dst_protocol != NULL) {
+                    string_replace(resolved_dial_identity, sizeof(resolved_dial_identity), "$dst_protocol", app_data.dst_protocol);
+                }
+                if (app_data.dst_ip != NULL) {
+                    string_replace(resolved_dial_identity, sizeof(resolved_dial_identity), "$dst_ip", app_data.dst_ip);
+                }
+                if (app_data.dst_port != NULL) {
+                    string_replace(resolved_dial_identity, sizeof(resolved_dial_identity), "$dst_port", app_data.dst_port);
+                }
+                if (app_data.dst_hostname != NULL) {
+                    string_replace(resolved_dial_identity, sizeof(resolved_dial_identity), "$dst_hostname", app_data.dst_hostname);
+                }
+                dial_opts.identity = resolved_dial_identity;
+            }
+            free_tunneler_app_data(&app_data);
             break;
-        case L2_INTERCEPT_CFG_V1:
+        }
+        case L2_INTERCEPT_CFG_V1: {
+            tunneler_l2_app_data app_data = {0};
             dial_opts_from_model_map(&dial_opts, &zi_ctx->cfg.l2_intercept_v1.dial_options);
+            json_len = l2_get_app_data(app_data_json, sizeof(app_data_json), io->tnlr_io, ziti_ctx, io->tnlr_io->intercepted, &app_data);
+            break;
+        }
         default:
             break;
     }
     
-    tunneler_app_data app_data = {0};
-    ssize_t json_len = get_app_data(app_data_json, sizeof(app_data_json), io->tnlr_io, ziti_ctx, source_ip, &app_data);
     if (json_len < 0) {
         ZITI_LOG(ERROR, "service[%s] failed to encode app_data", zi_ctx->service_name);
         free(ziti_io_ctx);
         return NULL;
     }
 
-    dial_opts.stream = app_data.dst_protocol && strcmp(app_data.dst_protocol, "tcp") == 0;
-    dial_opts.group = source_ip;
-
-    char resolved_dial_identity[128];
-    if (dial_opts.identity != NULL && dial_opts.identity[0] != '\0') {
-        strncpy(resolved_dial_identity, dial_opts.identity, sizeof(resolved_dial_identity));
-        if (app_data.dst_protocol != NULL) {
-            string_replace(resolved_dial_identity, sizeof(resolved_dial_identity), "$dst_protocol", app_data.dst_protocol);
-        }
-        if (app_data.dst_ip != NULL) {
-            string_replace(resolved_dial_identity, sizeof(resolved_dial_identity), "$dst_ip", app_data.dst_ip);
-        }
-        if (app_data.dst_port != NULL) {
-            string_replace(resolved_dial_identity, sizeof(resolved_dial_identity), "$dst_port", app_data.dst_port);
-        }
-        if (app_data.dst_hostname != NULL) {
-            string_replace(resolved_dial_identity, sizeof(resolved_dial_identity), "$dst_hostname", app_data.dst_hostname);
-        }
-        dial_opts.identity = resolved_dial_identity;
-    }
-
-    free_tunneler_app_data(&app_data);
-    if (zi_ctx->cfg_desc->cfgtype != L2_INTERCEPT_CFG_V1) {
-        dial_opts.app_data_sz = (size_t) json_len;
-        dial_opts.app_data = app_data_json;
-    }
+    dial_opts.app_data_sz = (size_t) json_len;
+    dial_opts.app_data = app_data_json;
 
     ZITI_LOG(DEBUG, "service[%s] app_data_json[%zd]='%.*s'", zi_ctx->service_name, dial_opts.app_data_sz, (int)dial_opts.app_data_sz, (char *) dial_opts.app_data);
     if (ziti_dial_with_options(ziti_io_ctx->ziti_conn, zi_ctx->service_name, &dial_opts, on_ziti_connect, on_ziti_data) != ZITI_OK) {
