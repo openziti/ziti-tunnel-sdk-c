@@ -372,6 +372,7 @@ void * ziti_sdk_c_dial(const void *intercept_ctx, struct io_ctx_s *io) {
             tunneler_l2_app_data app_data = {0};
             dial_opts_from_model_map(&dial_opts, &zi_ctx->cfg.l2_intercept_v1.dial_options);
             json_len = l2_get_app_data(app_data_json, sizeof(app_data_json), io->tnlr_io, ziti_ctx, io->tnlr_io->intercepted, &app_data);
+            free_tunneler_l2_app_data(&app_data);
             break;
         }
         default:

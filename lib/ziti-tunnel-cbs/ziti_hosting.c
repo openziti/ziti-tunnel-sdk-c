@@ -678,6 +678,7 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
             return;
         }
         snprintf(io->tnlr_io->intercepted, sizeof(io->tnlr_io->intercepted), "%s", app_data->l2_ethtype);
+        free_tunneler_l2_app_data_ptr(app_data);
 
         // there is no connection to set up on this side of the tunnel, so just accept now.
         ziti_conn_set_data(clt, io);
