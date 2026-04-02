@@ -114,6 +114,7 @@ static ziti_enroll_mode parse_enroll_mode(const char *s) {
     if (s == NULL) return ziti_enroll_none;
     if (strcmp(s, "cert") == 0) return ziti_enroll_cert;
     if (strcmp(s, "token") == 0) return ziti_enroll_token;
+    ZITI_LOG(WARN, "unrecognized enroll_mode '%s', defaulting to none", s);
     return ziti_enroll_none;
 }
 

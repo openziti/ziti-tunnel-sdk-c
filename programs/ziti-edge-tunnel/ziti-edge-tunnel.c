@@ -1780,6 +1780,14 @@ static void enroll_url_ext_auth_cb(ziti_context ztx, const char *url, void *ctx)
                     "    %s\n\n", url);
 }
 
+static bool provider_supports_mode(const ziti_jwt_signer *provider, ziti_enroll_mode mode) {
+    switch (mode) {
+        case ziti_enroll_cert:  return provider->can_cert_enroll;
+        case ziti_enroll_token: return provider->can_token_enroll;
+        default: return false;
+    }
+}
+
 static void enroll_url_event_cb(ziti_context ztx, const ziti_event_t *event) {
     struct enroll_url_state *state = ziti_app_ctx(ztx);
 
@@ -1791,13 +1799,7 @@ static void enroll_url_event_cb(ziti_context ztx, const ziti_event_t *event) {
                     int match_count = 0;
 
                     for (int i = 0; event->auth.providers && event->auth.providers[i]; i++) {
-                        bool compatible = false;
-                        switch (state->mode) {
-                            case ziti_enroll_cert:  compatible = event->auth.providers[i]->can_cert_enroll; break;
-                            case ziti_enroll_token: compatible = event->auth.providers[i]->can_token_enroll; break;
-                            default: break;
-                        }
-                        if (!compatible) continue;
+                        if (!provider_supports_mode(event->auth.providers[i], state->mode)) continue;
                         match_count++;
 
                         if (state->provider != NULL) {
@@ -1827,13 +1829,7 @@ static void enroll_url_event_cb(ziti_context ztx, const ziti_event_t *event) {
                         ZITI_LOG(WARN, "multiple compatible providers available, using '%s'", selected);
                         ZITI_LOG(WARN, "use -p|--provider to select a specific provider:");
                         for (int i = 0; event->auth.providers && event->auth.providers[i]; i++) {
-                            bool compat = false;
-                            switch (state->mode) {
-                                case ziti_enroll_cert:  compat = event->auth.providers[i]->can_cert_enroll; break;
-                                case ziti_enroll_token: compat = event->auth.providers[i]->can_token_enroll; break;
-                                default: break;
-                            }
-                            if (compat) {
+                            if (provider_supports_mode(event->auth.providers[i], state->mode)) {
                                 ZITI_LOG(WARN, "  %s", event->auth.providers[i]->name);
                             }
                         }
@@ -1907,14 +1903,25 @@ static void enroll_url_bootstrap_cb(const ziti_config *cfg, int status, const ch
         return;
     }
 
-    ziti_context_set_options(state->ztx, &(ziti_options){
+    rc = ziti_context_set_options(state->ztx, &(ziti_options){
         .app_ctx = state,
         .event_cb = enroll_url_event_cb,
         .events = ZitiContextEvent | ZitiAuthEvent | ZitiConfigEvent,
         .enroll_mode = state->mode,
     });
+    if (rc != ZITI_OK) {
+        ZITI_LOG(ERROR, "failed to set context options: %s", ziti_errorstr(rc));
+        free(state->bootstrap_config.base);
+        state->bootstrap_config = (uv_buf_t){0};
+        return;
+    }
 
-    ziti_context_run(state->ztx, state->loop);
+    rc = ziti_context_run(state->ztx, state->loop);
+    if (rc != ZITI_OK) {
+        ZITI_LOG(ERROR, "failed to run context: %s", ziti_errorstr(rc));
+        free(state->bootstrap_config.base);
+        state->bootstrap_config = (uv_buf_t){0};
+    }
 }
 
 static int write_close(FILE *fp, const uv_buf_t *data)
