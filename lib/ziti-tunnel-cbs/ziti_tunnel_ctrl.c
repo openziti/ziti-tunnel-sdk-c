@@ -110,6 +110,13 @@ const ziti_tunnel_ctrl* ziti_tunnel_init_cmd(uv_loop_t *loop, tunneler_context t
     return &CMD_CTX.ctrl;
 }
 
+static ziti_enroll_mode parse_enroll_mode(const char *s) {
+    if (s == NULL) return ziti_enroll_none;
+    if (strcmp(s, "cert") == 0) return ziti_enroll_cert;
+    if (strcmp(s, "token") == 0) return ziti_enroll_token;
+    return ziti_enroll_none;
+}
+
 void ziti_tunnel_set_enroll_key_cb(ziti_enroll_key_cb cb, void *ctx) {
     CMD_CTX.enroll_key_cb = cb;
     CMD_CTX.enroll_key_ctx = ctx;
@@ -815,6 +822,12 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
                 break;
             }
 
+            ziti_enroll_mode mode = parse_enroll_mode(auth.enroll_mode);
+            if (mode != ziti_enroll_none) {
+                ziti_options opts = { .enroll_mode = mode };
+                ziti_context_set_options(inst->ztx, &opts);
+            }
+
             struct tunnel_cb_s *req = calloc(1, sizeof(*req));
             req->ctx = (void*)auth.identifier;
             auth.identifier = NULL;
@@ -1128,6 +1141,7 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
                             .identifier = instance->identifier,
                             .status = event->auth.detail,
                             .code = ZITI_AUTHENTICATION_FAILED,
+                            .error_code = event->auth.error_code,
                     };
                     CMD_CTX.on_event((const base_event *) &ev);
                     break;
@@ -1164,6 +1178,7 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
                         provider->name = signer->name;
                         provider->issuer = signer->provider_url;
                         provider->can_cert_enroll = signer->can_cert_enroll;
+                        provider->can_token_enroll = signer->can_token_enroll;
                         model_list_append(&ev.providers, provider);
                     }
                     CMD_CTX.on_event((const base_event *) &ev);

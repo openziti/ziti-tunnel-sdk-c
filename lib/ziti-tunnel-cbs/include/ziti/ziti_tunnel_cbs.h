@@ -131,7 +131,8 @@ XX(identifier, model_string, none, Identifier, __VA_ARGS__)
 
 #define TNL_ID_EXT_AUTH(XX, ...) \
 TNL_IDENTITY_ID(XX, __VA_ARGS__) \
-XX(provider, model_string, none, Provider, __VA_ARGS__)
+XX(provider, model_string, none, Provider, __VA_ARGS__) \
+XX(enroll_mode, model_string, none, EnrollMode, __VA_ARGS__)
 
 #define TNL_MFA_ENROL_RES(XX,...) \
 XX(identifier, model_string, none, Identifier, __VA_ARGS__) \
@@ -283,7 +284,8 @@ XX(status, model_string, none, status, __VA_ARGS__) \
 XX(name, model_string, none, name, __VA_ARGS__) \
 XX(version, model_string, none, version, __VA_ARGS__) \
 XX(controller, model_string, none, controller, __VA_ARGS__) \
-XX(code, model_number, none, code, __VA_ARGS__)
+XX(code, model_number, none, code, __VA_ARGS__) \
+XX(error_code, model_string, none, errorCode, __VA_ARGS__)
 
 #define ZTX_SVC_EVENT_MODEL(XX, ...)  \
 BASE_EVENT_MODEL(XX, __VA_ARGS__)            \
@@ -309,7 +311,8 @@ XX(identity_name, model_string, none, identity_name, __VA_ARGS__)
 #define EXT_JWT_PROVIDER(XX, ...) \
 XX(name, model_string, none, name, __VA_ARGS__) \
 XX(issuer, model_string, none, issuer, __VA_ARGS__) \
-XX(can_cert_enroll, model_bool, none, enrollToCertEnabled, __VA_ARGS__)
+XX(can_cert_enroll, model_bool, none, enrollToCertEnabled, __VA_ARGS__) \
+XX(can_token_enroll, model_bool, none, enrollToTokenEnabled, __VA_ARGS__)
 
 #define EXT_SIGNER_EVENT_MODEL(XX, ...)  \
 BASE_EVENT_MODEL(XX, __VA_ARGS__)               \
