@@ -22,7 +22,7 @@ static model_map l2_conns = {};
 
 void tunneler_l2_add_conn(uint16_t ethtype, const io_ctx_t *io) {
     model_map_setl(&l2_conns, ethtype, io);
-    TNL_LOG(INFO, "ethtype %04x --> %p, s=%s", ethtype, io, io->tnlr_io->service_name);
+    TNL_LOG(INFO, "ethtype 0x%04x --> %p, s=%s", ethtype, io, io->tnlr_io->service_name);
 }
 
 void tunneler_l2_del_conn(uint16_t ethtype) {

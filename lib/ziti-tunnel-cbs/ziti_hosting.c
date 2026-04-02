@@ -190,7 +190,8 @@ static void on_hosted_l2_client_connect_complete(ziti_connection clt, int err) {
         return;
     }
 
-    tunneler_l2_add_conn(0x8892, io); // todo get ethtype
+    uint16_t ethtype = strtol(io->tnlr_io->intercepted, NULL, 16);
+    tunneler_l2_add_conn(ethtype, io);
 }
 
 /** called by ziti sdk when a client connection is established (or fails) */
@@ -369,26 +370,6 @@ static const char *compute_dst_protocol(const host_ctx_t *service, const tunnele
     }
 
     return dst_proto;
-}
-
-// Copies prefix_len bits from src1 ("to"), rest from src2 ("dst") into dest
-static void combine_prefix(const uint8_t *src1, const uint8_t *src2, uint8_t *dest, int prefix_len, int max_len_bits) {
-    int full_bytes = prefix_len / 8;
-    int remaining_bits = prefix_len % 8;
-
-    for (int i = 0; i < full_bytes; i++) {
-        dest[i] = src1[i];
-    }
-
-    if (remaining_bits > 0 && full_bytes < max_len_bits / 8) {
-        uint8_t mask = 0xFF << (8 - remaining_bits);
-        dest[full_bytes] = (src1[full_bytes] & mask) | (src2[full_bytes] & ~mask);
-        full_bytes++;
-    }
-
-    for (int i = full_bytes; i < max_len_bits / 8; i++) {
-        dest[i] = src2[i];
-    }
 }
 
 /** replace prefix bits in `dst_inout` with those from `to_prefix` */
@@ -667,17 +648,9 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
         return;
     }
 
-    tunneler_app_data *app_data = NULL;
-    if (clt_ctx->app_data != NULL) {
-        ZITI_LOG(DEBUG, "hosted_service[%s] client[%s]: received app_data_json='%.*s'", service_ctx->service_name,
-                 clt_ctx->caller_id, (int) clt_ctx->app_data_sz, clt_ctx->app_data);
-        if (parse_tunneler_app_data_ptr(&app_data, (char *) clt_ctx->app_data, clt_ctx->app_data_sz) < 0) {
-            ZITI_LOG(ERROR, "hosted_service[%s] client[%s]: failed to parse app_data_json '%.*s'",
-                     service_ctx->service_name, clt_ctx->caller_id, (int) clt_ctx->app_data_sz, clt_ctx->app_data);
-            ziti_close(clt, NULL);
-            return;
-        }
-    }
+    const char *app_data_json = (const char *) clt_ctx->app_data;
+    ZITI_LOG(DEBUG, "hosted_service[%s] client[%s]: received app_data_json='%.*s'", service_ctx->service_name,
+             clt_ctx->caller_id, (int) clt_ctx->app_data_sz, app_data_json);
 
     if (service_ctx->cfg_type == L2_HOST_CFG_V1) {
         // this connection will be handled directly by the l2 netif instead of being handed
@@ -697,7 +670,15 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
         io->tnlr_io->proto = tun_l2;
         io->tnlr_io->service_name = strdup(service_ctx->service_name);
         snprintf(io->tnlr_io->client, sizeof(io->tnlr_io->client), "%s", clt_ctx->caller_id);
-        snprintf(io->tnlr_io->intercepted, sizeof(io->tnlr_io->intercepted), "l2:ethtype");
+        tunneler_l2_app_data *app_data = NULL;
+        if (app_data_json != NULL && parse_tunneler_l2_app_data_ptr(&app_data, app_data_json, clt_ctx->app_data_sz) < 0) {
+            ZITI_LOG(ERROR, "hosted_service[%s] client[%s]: failed to parse app_data_json '%.*s'",
+                     service_ctx->service_name, clt_ctx->caller_id, (int) clt_ctx->app_data_sz, app_data_json);
+            ziti_close(clt, NULL);
+            return;
+        }
+        snprintf(io->tnlr_io->intercepted, sizeof(io->tnlr_io->intercepted), "%s", app_data->l2_ethtype);
+        free_tunneler_l2_app_data_ptr(app_data);
 
         // there is no connection to set up on this side of the tunnel, so just accept now.
         ziti_conn_set_data(clt, io);
@@ -712,6 +693,14 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
             return;
         }
 
+        return;
+    }
+
+    tunneler_app_data *app_data = NULL;
+    if (app_data_json != NULL && parse_tunneler_app_data_ptr(&app_data, app_data_json, clt_ctx->app_data_sz) < 0) {
+        ZITI_LOG(ERROR, "hosted_service[%s] client[%s]: failed to parse app_data_json '%.*s'",
+                 service_ctx->service_name, clt_ctx->caller_id, (int) clt_ctx->app_data_sz, app_data_json);
+        ziti_close(clt, NULL);
         return;
     }
 
