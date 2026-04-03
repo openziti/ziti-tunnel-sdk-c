@@ -1737,8 +1737,8 @@ static int parse_enroll_opts(int argc, char *argv[]) {
         errors++;
     }
 
-    if (enroll_mode != ziti_enroll_none && enroll_opts.url == NULL) {
-        fprintf(stderr, "--enroll-to requires -u|--url\n");
+    if (enroll_mode != ziti_enroll_none && enroll_opts.url == NULL && enroll_opts.token == NULL) {
+        fprintf(stderr, "--enroll-to requires -u|--url or -j|--jwt\n");
         errors++;
     }
 
@@ -1991,8 +1991,8 @@ static void enroll(int argc, char *argv[]) {
 
     struct enroll_cb_params params = { 0 };
 
-    if (enroll_opts.url != NULL) {
-        // URL enrollment: bootstrap config, then OIDC auth if enrollTo mode requires it
+    if (enroll_opts.url != NULL || enroll_mode != ziti_enroll_none) {
+        // URL/enrollTo enrollment: bootstrap config, then OIDC auth if enrollTo mode requires it
         struct enroll_url_state url_state = {
             .params = &params,
             .loop = l,
@@ -2000,7 +2000,7 @@ static void enroll(int argc, char *argv[]) {
             .mode = enroll_mode,
         };
         if (enroll_opts.token != NULL) {
-            // network JWT provided: use it to verify private CA controller
+            // JWT provided: SDK extracts controller URL from claims
             ziti_enroll(&enroll_opts, l, enroll_url_bootstrap_cb, &url_state);
         } else {
             // no JWT: controller must be OS-trusted
