@@ -129,10 +129,17 @@ XX(dump_path, model_string, none, DumpPath, __VA_ARGS__)
 #define TNL_IDENTITY_ID(XX, ...) \
 XX(identifier, model_string, none, Identifier, __VA_ARGS__)
 
+#define TNL_ENROLL_MODE(XX, ...) \
+XX(enroll_none, "none", __VA_ARGS__) \
+XX(enroll_cert, "cert", __VA_ARGS__) \
+XX(enroll_token, "token", __VA_ARGS__)
+
+DECLARE_ENUM(tnl_enroll_mode, TNL_ENROLL_MODE)
+
 #define TNL_ID_EXT_AUTH(XX, ...) \
 TNL_IDENTITY_ID(XX, __VA_ARGS__) \
 XX(provider, model_string, none, Provider, __VA_ARGS__) \
-XX(enroll_mode, model_string, none, EnrollMode, __VA_ARGS__)
+XX(enroll_mode, tnl_enroll_mode, none, EnrollMode, __VA_ARGS__)
 
 #define TNL_MFA_ENROL_RES(XX,...) \
 XX(identifier, model_string, none, Identifier, __VA_ARGS__) \

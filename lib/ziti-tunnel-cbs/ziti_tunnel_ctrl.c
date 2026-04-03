@@ -110,12 +110,14 @@ const ziti_tunnel_ctrl* ziti_tunnel_init_cmd(uv_loop_t *loop, tunneler_context t
     return &CMD_CTX.ctrl;
 }
 
-static ziti_enroll_mode parse_enroll_mode(const char *s) {
-    if (s == NULL) return ziti_enroll_none;
-    if (strcmp(s, "cert") == 0) return ziti_enroll_cert;
-    if (strcmp(s, "token") == 0) return ziti_enroll_token;
-    ZITI_LOG(WARN, "unrecognized enroll_mode '%s', defaulting to none", s);
-    return ziti_enroll_none;
+IMPL_ENUM(tnl_enroll_mode, TNL_ENROLL_MODE)
+
+static ziti_enroll_mode to_sdk_enroll_mode(tnl_enroll_mode m) {
+    switch (m) {
+        case tnl_enroll_mode_enroll_cert:  return ziti_enroll_cert;
+        case tnl_enroll_mode_enroll_token: return ziti_enroll_token;
+        default: return ziti_enroll_none;
+    }
 }
 
 void ziti_tunnel_set_enroll_key_cb(ziti_enroll_key_cb cb, void *ctx) {
@@ -823,7 +825,7 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
                 break;
             }
 
-            ziti_enroll_mode mode = parse_enroll_mode(auth.enroll_mode);
+            ziti_enroll_mode mode = to_sdk_enroll_mode(auth.enroll_mode);
             if (mode != ziti_enroll_none) {
                 ziti_options opts = { .enroll_mode = mode };
                 ziti_context_set_options(inst->ztx, &opts);
