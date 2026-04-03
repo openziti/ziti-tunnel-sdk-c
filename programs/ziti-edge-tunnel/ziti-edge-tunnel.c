@@ -2835,7 +2835,7 @@ static CommandLine enroll_cmd = make_command(
     "\t-u|--url\tcontroller URL for enrollment (requires 3rd party IDP for auth)\n"
     "\t-j|--jwt\tenrollment token file, or network JWT when used with -u\n"
     "\t--enroll-to\tenrollment mode for -u: none (bootstrap only), cert (OIDC + certificate), token (OIDC + token)\n"
-    "\t-p|--provider\text JWT signer name (auto-selected if only one matches)\n"
+    "\t-p|--provider\text JWT signer name (auto-selected if only one is configured)\n"
     "\t-x|--proxy type://[username[:password]@]hostname_or_ip:port\tproxy to use when connecting to OpenZiti controller. 'http' is currently the only supported type.\n"
     "\t-i|--identity\toutput identity file\n"
     "\t-K|--use-keychain\tuse keychain to generate/store private key\n"
