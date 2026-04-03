@@ -114,9 +114,10 @@ static void enroll_ziti_async(uv_loop_t *loop, void *arg) {
 
     int enroll_result;
     if (add_id_req->url != NULL && add_id_req->jwt_content == NULL) {
-        // URL-only: fetches CA bundle and returns base config (no cert/key).
-        // The identity is auto-loaded after save; ext auth events then drive
-        // the OIDC + enrollToCert flow via IPC.
+        // URL-only: controller must be OS-trusted. Fetches CA bundle and
+        // returns base config (no cert/key). The identity is auto-loaded
+        // after save; ext auth events then drive the OIDC + enrollToCert
+        // flow via IPC.
         enroll_result = ziti_enroll_url(add_id_req->url, loop, tunnel_enroll_cb, add_id_req);
     } else {
         ziti_enroll_opts enroll_opts = {0};
@@ -126,6 +127,8 @@ static void enroll_ziti_async(uv_loop_t *loop, void *arg) {
         enroll_opts.key = add_id_req->key;
         enroll_opts.cert = add_id_req->certificate;
         enroll_opts.url = add_id_req->url;
+        // SDK routes by JWT method: network JWT + URL -> bootstrap for
+        // private CA controllers, standard JWT -> OTT/OTTCA/CA enrollment
         enroll_result = ziti_enroll(&enroll_opts, loop, tunnel_enroll_cb, add_id_req);
     }
 

@@ -110,6 +110,16 @@ const ziti_tunnel_ctrl* ziti_tunnel_init_cmd(uv_loop_t *loop, tunneler_context t
     return &CMD_CTX.ctrl;
 }
 
+IMPL_ENUM(tnl_enroll_mode, TNL_ENROLL_MODE)
+
+static ziti_enroll_mode to_sdk_enroll_mode(tnl_enroll_mode m) {
+    switch (m) {
+        case tnl_enroll_mode_enroll_cert:  return ziti_enroll_cert;
+        case tnl_enroll_mode_enroll_token: return ziti_enroll_token;
+        default: return ziti_enroll_none;
+    }
+}
+
 void ziti_tunnel_set_enroll_key_cb(ziti_enroll_key_cb cb, void *ctx) {
     CMD_CTX.enroll_key_cb = cb;
     CMD_CTX.enroll_key_ctx = ctx;
@@ -739,6 +749,7 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
                 req->cmd_ctx = ctx;
 
                 if (enroll.url != NULL && enroll.jwt == NULL) {
+                    // URL-only: controller must be OS-trusted
                     rc = ziti_enroll_url(enroll.url, CMD_CTX.loop, on_cmd_enroll, req);
                 } else {
                     ziti_enroll_opts opts = {
@@ -749,6 +760,8 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
                             .use_keychain = enroll.use_keychain,
                             .url = enroll.url,
                     };
+                    // SDK routes by JWT method: network JWT -> bootstrap,
+                    // standard JWT -> OTT/OTTCA/CA enrollment
                     rc = ziti_enroll(&opts, CMD_CTX.loop, on_cmd_enroll, req);
                 }
                 free_tunnel_enroll(&enroll);
@@ -810,6 +823,12 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
                 result.error = "invalid provider";
                 free_tunnel_id_ext_auth(&auth);
                 break;
+            }
+
+            ziti_enroll_mode mode = to_sdk_enroll_mode(auth.enroll_mode);
+            if (mode != ziti_enroll_none) {
+                ziti_options opts = { .enroll_mode = mode };
+                ziti_context_set_options(inst->ztx, &opts);
             }
 
             struct tunnel_cb_s *req = calloc(1, sizeof(*req));
@@ -1125,6 +1144,7 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
                             .identifier = instance->identifier,
                             .status = event->auth.detail,
                             .code = ZITI_AUTHENTICATION_FAILED,
+                            .error_code = event->auth.error_code,
                     };
                     CMD_CTX.on_event((const base_event *) &ev);
                     break;
@@ -1161,6 +1181,7 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
                         provider->name = signer->name;
                         provider->issuer = signer->provider_url;
                         provider->can_cert_enroll = signer->can_cert_enroll;
+                        provider->can_token_enroll = signer->can_token_enroll;
                         model_list_append(&ev.providers, provider);
                     }
                     CMD_CTX.on_event((const base_event *) &ev);
