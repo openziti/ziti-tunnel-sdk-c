@@ -1778,6 +1778,14 @@ struct enroll_url_state {
 static void enroll_url_ext_auth_cb(ziti_context ztx, const char *url, void *ctx) {
     fprintf(stderr, "\nOpen the following URL in a browser to authenticate:\n\n"
                     "    %s\n\n", url);
+
+#if defined(_WIN32)
+    ShellExecuteA(NULL, "open", url, NULL, NULL, SW_SHOWNORMAL);
+#elif defined(__APPLE__)
+    { char _cmd[4096]; snprintf(_cmd, sizeof(_cmd), "open \"%s\"", url); system(_cmd); }
+#else
+    { char _cmd[4096]; snprintf(_cmd, sizeof(_cmd), "xdg-open \"%s\" &", url); system(_cmd); }
+#endif
 }
 
 static bool provider_supports_mode(const ziti_jwt_signer *provider, ziti_enroll_mode mode) {
