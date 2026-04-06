@@ -4,7 +4,9 @@ if(CMAKE_SYSTEM_NAME STREQUAL Darwin)
     set(NETIF_DRIVER_SOURCE netif_driver/darwin/utun.c)
 endif()
 if(CMAKE_SYSTEM_NAME STREQUAL Linux)
-    set(NETIF_DRIVER_SOURCE netif_driver/linux/tun.c netif_driver/linux/resolvers.c netif_driver/linux/utils.c)
+    set(NETIF_DRIVER_SOURCE netif_driver/linux/tun.c   netif_driver/linux/resolvers.c netif_driver/linux/utils.c
+                            netif_driver/pcap_common.c netif_driver/pcap_common.h
+                            netif_driver/linux/pcap.c  netif_driver/linux/pcap.h)
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL Windows)
@@ -85,26 +87,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         endif()
     endif()
 
-    option(DISABLE_LIBPCAP_FEATURE "libpcap library integration toggle" OFF)
-    message("DISABLE_LIBPCAP_FEATURE: ${DISABLE_LIBPCAP_FEATURE}")
-
-    if(NOT DISABLE_LIBPCAP_FEATURE)
-        find_package(PkgConfig REQUIRED)
-        pkg_check_modules(LIBPCAP IMPORTED_TARGET "libpcap")
-
-        if(LIBPCAP_FOUND)
-            target_sources(ziti-edge-tunnel PRIVATE
-                netif_driver/pcap_common.c  netif_driver/pcap_common.h
-                netif_driver/linux/pcap.c   netif_driver/linux/pcap.h)
-            target_compile_definitions(ziti-edge-tunnel PRIVATE HAVE_LIBPCAP)
-            target_link_libraries(ziti-edge-tunnel PRIVATE PkgConfig::LIBPCAP)
-            message(STATUS "libpcap found -- Linux pcap L2 support enabled")
-        else()
-            message(STATUS "libpcap not found -- install libpcap-dev to enable Linux pcap L2 support")
-        endif()
-    else()
-        message(STATUS "DISABLE_LIBPCAP_FEATURE=ON -- Linux pcap L2 support disabled")
-    endif()
+    # libpcap is loaded dynamically at runtime via dlopen; link dl for dlopen/dlsym.
+    target_link_libraries(ziti-edge-tunnel PRIVATE dl)
 endif()
 
 target_include_directories(ziti-edge-tunnel

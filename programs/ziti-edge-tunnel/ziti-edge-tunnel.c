@@ -39,9 +39,7 @@
 #elif __linux__
 #include "netif_driver/linux/tun.h"
 #include "linux/diverter.h"
-#ifdef HAVE_LIBPCAP
 #include "netif_driver/linux/pcap.h"
-#endif
 #elif _WIN32
 #include <time.h>
 #include <io.h>
@@ -874,7 +872,6 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
 #elif __linux__
     tun = tun_open(ziti_loop, tun_ip, dns_ip, dns_subnet, tun_error, sizeof(tun_error));
     if (tun != NULL && get_l2_enabled()) {
-#ifdef HAVE_LIBPCAP
         const char *pcap_iface = get_pcap_ifname();
         if (pcap_iface && pcap_iface[0] != '\0') {
             ZITI_LOG(INFO, "L2 mode enabled -- opening pcap interface '%s'", pcap_iface);
@@ -884,12 +881,9 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
                 return 1;
             }
         } else {
-#endif
             ZITI_LOG(INFO, "L2 mode enabled -- opening TAP interface");
             tap = tap_open(ziti_loop, tun_error, sizeof(tun_error));
-#ifdef HAVE_LIBPCAP
         }
-#endif
     }
 #elif _WIN32
     tun = tun_open(ziti_loop, tun_ip, dns_subnet, tun_error, sizeof(tun_error));
