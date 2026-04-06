@@ -12,15 +12,19 @@
  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  See the License for the specific language governing permissions and
  limitations under the License.
- */
+*/
 
 /*
- * pcap.c - Npcap L2 netif driver for ziti-edge-tunnel (Windows)
+ * pcap.c - Npcap L2 netif driver for ziti-edge-tunnel (Windows).
  *
  * Opens a physical network adapter by friendly name using Npcap.  All pcap
  * functions are resolved at runtime via GetProcAddress from the installed
  * wpcap.dll (C:\Windows\System32\Npcap\wpcap.dll) so no import library or
  * SDK is required -- only a standard Npcap runtime installation.
+ *
+ * Generic pcap logic (reader thread, frame queue, async delivery) lives in
+ * netif_driver/pcap_common.c.  This file contains only Windows-specific
+ * code: DLL loading, friendly-name-to-GUID resolution, and MAC discovery.
  *
  * Requires: Npcap installed, Administrator privileges.
  */
@@ -39,11 +43,12 @@
 #include <ziti/netif_driver.h>
 #include <ziti/ziti_log.h>
 
+#include "../pcap_common.h"
 #include "pcap.h"
 
-#define MAX_FRAME_LEN    65536u
+#define MAX_FRAME_LEN       65536u
 #define PCAP_READ_TIMEOUT_MS 500
-#define PCAP_ERRBUF_SIZE 256
+#define PCAP_ERRBUF_SIZE    256
 
 /* -------------------------------------------------------------------------
  * Minimal pcap types (avoids dependency on pcap.h / Npcap SDK)
@@ -74,35 +79,6 @@ static fn_pcap_sendpacket_t  dyn_pcap_sendpacket;
 static fn_pcap_geterr_t      dyn_pcap_geterr;
 static fn_pcap_close_t       dyn_pcap_close;
 static fn_pcap_breakloop_t   dyn_pcap_breakloop;
-
-/* -------------------------------------------------------------------------
- * Internal frame queue (reader thread -> libuv async)
- * ---------------------------------------------------------------------- */
-typedef struct frame_node {
-    size_t len;
-    struct frame_node *next;
-    uint8_t data[1];
-} frame_node_t;
-
-/* -------------------------------------------------------------------------
- * netif_handle
- * ---------------------------------------------------------------------- */
-struct netif_handle_s {
-    char     name[256];
-    pcap_t  *pcap;
-
-    volatile LONG stopping;
-
-    uv_thread_t  reader;
-    uv_async_t  *read_available;
-
-    uv_mutex_t   frame_lock;
-    frame_node_t *frame_head;
-    frame_node_t *frame_tail;
-
-    packet_cb on_packet;
-    void     *netif;
-};
 
 /* -------------------------------------------------------------------------
  * Load wpcap.dll from the Npcap installation directory and resolve all
@@ -236,140 +212,27 @@ static void read_hwaddr(const char *ifname, uint8_t hwaddr[6], uint8_t *hwaddr_l
 }
 
 /* -------------------------------------------------------------------------
- * Frame delivery: called on the libuv event loop thread via uv_async_t
+ * pcap_ops_t wrapper functions
+ *
+ * Thin wrappers that adapt the dynamically-loaded Npcap function pointers
+ * to the platform-neutral pcap_ops_t interface expected by pcap_common.c.
  * ---------------------------------------------------------------------- */
-static void pcap_deliver_frames(uv_async_t *ar)
+static int win_next_packet(void *p, uint32_t *caplen, const unsigned char **data)
 {
-    netif_handle h = ar->data;
-
-    for (;;) {
-        uv_mutex_lock(&h->frame_lock);
-        frame_node_t *node = h->frame_head;
-        if (node) {
-            h->frame_head = node->next;
-            if (!h->frame_head) h->frame_tail = NULL;
-        }
-        uv_mutex_unlock(&h->frame_lock);
-
-        if (!node) break;
-
-        h->on_packet((const char *)node->data, (ssize_t)node->len, h->netif);
-        free(node);
-    }
+    struct pcap_pkthdr *hdr = NULL;
+    int rc = dyn_pcap_next_ex((pcap_t *)p, &hdr, data);
+    if (rc == 1 && hdr) *caplen = hdr->caplen;
+    return rc;
 }
 
-/* -------------------------------------------------------------------------
- * Reader thread: pcap_next_ex loop, queues frames for libuv delivery
- * ---------------------------------------------------------------------- */
-static void pcap_reader_thread(void *arg)
+static int win_send_packet(void *p, const unsigned char *buf, int size)
 {
-    netif_handle h = arg;
-    struct pcap_pkthdr *hdr;
-    const unsigned char *data;
-
-    ZITI_LOG(DEBUG, "pcap: reader thread started");
-
-    while (!InterlockedCompareExchange(&h->stopping, 0, 0)) {
-        int rc = dyn_pcap_next_ex(h->pcap, &hdr, &data);
-        if (rc == 0) continue;   /* read timeout -- check stopping flag */
-        if (rc < 0) {
-            if (!InterlockedCompareExchange(&h->stopping, 0, 0)) {
-                ZITI_LOG(ERROR, "pcap: pcap_next_ex error: %s", dyn_pcap_geterr(h->pcap));
-            }
-            break;
-        }
-
-        if (hdr->caplen == 0) continue;
-
-        frame_node_t *node = malloc(offsetof(frame_node_t, data) + hdr->caplen);
-        if (!node) {
-            ZITI_LOG(ERROR, "pcap: OOM dropping frame of %u bytes", hdr->caplen);
-            continue;
-        }
-        node->len  = hdr->caplen;
-        node->next = NULL;
-        memcpy(node->data, data, hdr->caplen);
-
-        uv_mutex_lock(&h->frame_lock);
-        if (h->frame_tail) {
-            h->frame_tail->next = node;
-        } else {
-            h->frame_head = node;
-        }
-        h->frame_tail = node;
-        uv_mutex_unlock(&h->frame_lock);
-
-        uv_async_send(h->read_available);
-    }
-
-    ZITI_LOG(DEBUG, "pcap: reader thread exiting");
+    return dyn_pcap_sendpacket((pcap_t *)p, buf, size);
 }
 
-/* -------------------------------------------------------------------------
- * setup_read: spawn reader thread and wire up async handle
- * ---------------------------------------------------------------------- */
-static int pcap_setup_read(netif_handle h, uv_loop_t *loop,
-                            packet_cb on_packet, void *netif)
-{
-    h->on_packet = on_packet;
-    h->netif     = netif;
-
-    h->read_available = calloc(1, sizeof(uv_async_t));
-    if (!h->read_available) return -1;
-
-    uv_async_init(loop, h->read_available, pcap_deliver_frames);
-    h->read_available->data = h;
-
-    uv_thread_create(&h->reader, pcap_reader_thread, h);
-    return 0;
-}
-
-/* -------------------------------------------------------------------------
- * Write: inject frame onto the wire via pcap_sendpacket
- * ---------------------------------------------------------------------- */
-static ssize_t pcap_write(netif_handle h, const void *buf, size_t len)
-{
-    if (dyn_pcap_sendpacket(h->pcap, (const unsigned char *)buf, (int)len) != 0) {
-        ZITI_LOG(ERROR, "pcap: pcap_sendpacket failed: %s", dyn_pcap_geterr(h->pcap));
-        return -1;
-    }
-    return (ssize_t)len;
-}
-
-/* -------------------------------------------------------------------------
- * Close
- * ---------------------------------------------------------------------- */
-static int ziti_pcap_close(netif_handle h)
-{
-    if (!h) return 0;
-
-    InterlockedExchange(&h->stopping, 1);
-
-    if (h->pcap) {
-        dyn_pcap_breakloop(h->pcap);
-        dyn_pcap_close(h->pcap);
-        h->pcap = NULL;
-    }
-
-    uv_mutex_lock(&h->frame_lock);
-    frame_node_t *n = h->frame_head;
-    h->frame_head = h->frame_tail = NULL;
-    uv_mutex_unlock(&h->frame_lock);
-    while (n) { frame_node_t *next = n->next; free(n); n = next; }
-
-    uv_mutex_destroy(&h->frame_lock);
-    free(h);
-    return 0;
-}
-
-static const char *pcap_get_name(netif_handle h) { return h->name; }
-
-/* no-op stubs -- pcap driver does not manage IP routes */
-static int pcap_add_route(netif_handle h, const char *dest)    { (void)h; (void)dest; return 0; }
-static int pcap_del_route(netif_handle h, const char *dest)    { (void)h; (void)dest; return 0; }
-static int pcap_exclude_rt(netif_handle h, uv_loop_t *l, const char *d) {
-    (void)h; (void)l; (void)d; return 0;
-}
+static char *win_get_error(void *p)   { return dyn_pcap_geterr((pcap_t *)p); }
+static void  win_do_breakloop(void *p){ dyn_pcap_breakloop((pcap_t *)p); }
+static void  win_do_close(void *p)    { dyn_pcap_close((pcap_t *)p); }
 
 /* -------------------------------------------------------------------------
  * ziti_pcap_open
@@ -377,6 +240,8 @@ static int pcap_exclude_rt(netif_handle h, uv_loop_t *l, const char *d) {
 netif_driver ziti_pcap_open(uv_loop_t *loop, const char *ifname,
                              char *error, size_t error_len)
 {
+    (void)loop; /* loop is not needed during open; used later by setup callback */
+
     if (error) memset(error, 0, error_len);
 
     if (load_npcap(error, error_len) != 0) {
@@ -405,40 +270,21 @@ netif_driver ziti_pcap_open(uv_loop_t *loop, const char *ifname,
     }
     ZITI_LOG(INFO, "pcap: opened adapter '%s'", ifname);
 
-    struct netif_handle_s *h = calloc(1, sizeof(*h));
-    if (!h) {
-        snprintf(error, error_len, "OOM");
-        dyn_pcap_close(pcap);
-        return NULL;
-    }
-    strncpy_s(h->name, sizeof(h->name), ifname, _TRUNCATE);
-    h->pcap = pcap;
-
-    struct netif_driver_s *driver = calloc(1, sizeof(*driver));
-    if (!driver) {
-        snprintf(error, error_len, "OOM");
-        dyn_pcap_close(pcap);
-        free(h);
-        return NULL;
-    }
-
-    read_hwaddr(ifname, driver->hwaddr, &driver->hwaddr_len);
-    if (driver->hwaddr_len == 0) {
+    uint8_t hwaddr[6] = {0};
+    uint8_t hwaddr_len = 0;
+    read_hwaddr(ifname, hwaddr, &hwaddr_len);
+    if (hwaddr_len == 0) {
         ZITI_LOG(WARN, "pcap: could not read hwaddr for '%s' -- L2 may not work", ifname);
     }
 
-    driver->mtu = 1500;
+    pcap_ops_t ops = {
+        .pcap         = pcap,
+        .next_packet  = win_next_packet,
+        .send_packet  = win_send_packet,
+        .get_error    = win_get_error,
+        .do_breakloop = win_do_breakloop,
+        .do_close     = win_do_close,
+    };
 
-    uv_mutex_init(&h->frame_lock);
-
-    driver->handle       = h;
-    driver->setup        = pcap_setup_read;
-    driver->write        = pcap_write;
-    driver->add_route    = pcap_add_route;
-    driver->delete_route = pcap_del_route;
-    driver->exclude_rt   = pcap_exclude_rt;
-    driver->close        = (netif_close_cb)ziti_pcap_close;
-    driver->get_name     = pcap_get_name;
-
-    return driver;
+    return ziti_pcap_build_driver(ifname, &ops, hwaddr, hwaddr_len, error, error_len);
 }

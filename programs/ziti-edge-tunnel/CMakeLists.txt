@@ -11,8 +11,9 @@ if(CMAKE_SYSTEM_NAME STREQUAL Windows)
     include(wintun.cmake)
     set(tun_lib wintun)
     set(wintun_dll "${wintun_SOURCE_DIR}/bin/${CMAKE_SYSTEM_PROCESSOR}/wintun.dll")
-    set(NETIF_DRIVER_SOURCE netif_driver/windows/tun.c netif_driver/windows/tun.h
-                            netif_driver/windows/tap.c netif_driver/windows/tap.h
+    set(NETIF_DRIVER_SOURCE netif_driver/pcap_common.c  netif_driver/pcap_common.h
+                            netif_driver/windows/tun.c  netif_driver/windows/tun.h
+                            netif_driver/windows/tap.c  netif_driver/windows/tap.h
                             netif_driver/windows/pcap.c netif_driver/windows/pcap.h)
 endif()
 
@@ -82,6 +83,27 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         else()
             message(FATAL_ERROR "libsystemd not found. To disable libsytemd feature, set DISABLE_LIBSYSTEMD_FEATURE=ON")
         endif()
+    endif()
+
+    option(DISABLE_LIBPCAP_FEATURE "libpcap library integration toggle" OFF)
+    message("DISABLE_LIBPCAP_FEATURE: ${DISABLE_LIBPCAP_FEATURE}")
+
+    if(NOT DISABLE_LIBPCAP_FEATURE)
+        find_package(PkgConfig REQUIRED)
+        pkg_check_modules(LIBPCAP IMPORTED_TARGET "libpcap")
+
+        if(LIBPCAP_FOUND)
+            target_sources(ziti-edge-tunnel PRIVATE
+                netif_driver/pcap_common.c  netif_driver/pcap_common.h
+                netif_driver/linux/pcap.c   netif_driver/linux/pcap.h)
+            target_compile_definitions(ziti-edge-tunnel PRIVATE HAVE_LIBPCAP)
+            target_link_libraries(ziti-edge-tunnel PRIVATE PkgConfig::LIBPCAP)
+            message(STATUS "libpcap found -- Linux pcap L2 support enabled")
+        else()
+            message(STATUS "libpcap not found -- install libpcap-dev to enable Linux pcap L2 support")
+        endif()
+    else()
+        message(STATUS "DISABLE_LIBPCAP_FEATURE=ON -- Linux pcap L2 support disabled")
     endif()
 endif()
 
