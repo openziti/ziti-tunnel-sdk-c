@@ -20,7 +20,6 @@ RUN dnf install -y \
         gcc-toolset-10-libatomic-devel \
         iproute \
         python38 \
-        libpcap-devel \
         systemd-devel \
         zlib-devel \
         systemd-rpm-macros \
@@ -33,7 +32,8 @@ RUN dnf install -y \
         graphviz \
         git \
         ninja-build \
-    && dnf clean all 
+        libpcap-devel \
+    && dnf clean all
 
 RUN curl -sSfL https://cmake.org/files/v${CMAKE_VERSION%.*}/cmake-${CMAKE_VERSION}-linux-$(uname -m).sh -o cmake.sh \
     && (bash cmake.sh --skip-license --prefix=/usr/local) \
