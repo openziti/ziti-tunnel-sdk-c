@@ -19,7 +19,6 @@ RUN dnf update --assumeyes --nobest \
         dnf-plugins-core \
         iproute \
         python3 \
-        libpcap-devel \
         systemd-devel \
         zlib-devel \
         systemd-rpm-macros \
@@ -35,6 +34,7 @@ RUN dnf update --assumeyes --nobest \
         protobuf-c-devel \
         openssl-devel \
         ninja-build \
+        libpcap-devel \
     && dnf clean all
 
 RUN curl -sSfL https://cmake.org/files/v${CMAKE_VERSION%.*}/cmake-${CMAKE_VERSION}-linux-$(uname -m).sh -o cmake.sh \
