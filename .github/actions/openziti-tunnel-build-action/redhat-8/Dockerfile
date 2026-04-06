@@ -20,6 +20,7 @@ RUN dnf install -y \
         gcc-toolset-10-libatomic-devel \
         iproute \
         python38 \
+        libpcap-devel \
         systemd-devel \
         zlib-devel \
         systemd-rpm-macros \
