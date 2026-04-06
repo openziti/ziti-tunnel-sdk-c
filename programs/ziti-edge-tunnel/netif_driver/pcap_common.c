@@ -206,6 +206,7 @@ netif_driver ziti_pcap_build_driver(const char     *ifname,
     struct netif_handle_s *h = calloc(1, sizeof(*h));
     if (!h) {
         snprintf(error, errlen, "OOM allocating pcap handle");
+        ops->do_close(ops->pcap);
         return NULL;
     }
     strncpy(h->name, ifname, sizeof(h->name) - 1);
@@ -217,6 +218,7 @@ netif_driver ziti_pcap_build_driver(const char     *ifname,
     if (!driver) {
         snprintf(error, errlen, "OOM allocating netif_driver");
         uv_mutex_destroy(&h->frame_lock);
+        h->ops.do_close(h->ops.pcap);
         free(h);
         return NULL;
     }
