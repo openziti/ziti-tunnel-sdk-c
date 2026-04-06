@@ -18,9 +18,9 @@
  * pcap.c - libpcap L2 netif driver for ziti-edge-tunnel (Linux).
  *
  * Opens a physical network adapter by interface name using libpcap.  All
- * pcap functions are resolved at runtime via dlopen/dlsym so no import
- * library or development headers are required at build time -- only a
- * standard libpcap runtime installation.
+ * pcap functions are resolved at runtime via dlopen/dlsym so no link-time
+ * dependency on libpcap is required -- only a standard libpcap runtime
+ * installation.
  *
  * Generic pcap logic (reader thread, frame queue, async delivery) lives in
  * netif_driver/pcap_common.c.  This file contains only Linux-specific
@@ -30,12 +30,11 @@
  * Requires: libpcap installed at runtime, CAP_NET_RAW capability (or root).
  */
 
+#include <pcap/pcap.h>
+
 #include <dlfcn.h>
 #include <errno.h>
 #include <net/if.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
@@ -49,27 +48,15 @@
 
 #define MAX_FRAME_LEN        65536
 #define PCAP_READ_TIMEOUT_MS 500
-#define PCAP_ERRBUF_SIZE     256
 
 /* -------------------------------------------------------------------------
- * Minimal pcap types (avoids dependency on pcap.h / libpcap headers)
- * ---------------------------------------------------------------------- */
-typedef struct pcap pcap_t;
-
-struct pcap_pkthdr {
-    struct { long tv_sec; long tv_usec; } ts;
-    uint32_t caplen;
-    uint32_t len;
-};
-
-/* -------------------------------------------------------------------------
- * Function pointers resolved from libpcap.so
+ * Function pointers resolved from libpcap.so at runtime
  * ---------------------------------------------------------------------- */
 typedef pcap_t *(*fn_pcap_open_live_t)(const char *dev, int snaplen, int promisc,
                                         int to_ms, char *errbuf);
 typedef int     (*fn_pcap_next_ex_t)(pcap_t *p, struct pcap_pkthdr **hdr,
-                                      const unsigned char **data);
-typedef int     (*fn_pcap_sendpacket_t)(pcap_t *p, const unsigned char *buf, int size);
+                                      const u_char **data);
+typedef int     (*fn_pcap_sendpacket_t)(pcap_t *p, const u_char *buf, int size);
 typedef char   *(*fn_pcap_geterr_t)(pcap_t *p);
 typedef void    (*fn_pcap_close_t)(pcap_t *p);
 typedef void    (*fn_pcap_breakloop_t)(pcap_t *p);
@@ -164,14 +151,14 @@ static void read_hwaddr_linux(const char *ifname, uint8_t hwaddr[6], uint8_t *hw
 static int lnx_next_packet(void *p, uint32_t *caplen, const unsigned char **data)
 {
     struct pcap_pkthdr *hdr = NULL;
-    int rc = dyn_pcap_next_ex((pcap_t *)p, &hdr, data);
+    int rc = dyn_pcap_next_ex((pcap_t *)p, &hdr, (const u_char **)data);
     if (rc == 1 && hdr) *caplen = hdr->caplen;
     return rc;
 }
 
 static int lnx_send_packet(void *p, const unsigned char *buf, int size)
 {
-    return dyn_pcap_sendpacket((pcap_t *)p, buf, size);
+    return dyn_pcap_sendpacket((pcap_t *)p, (const u_char *)buf, size);
 }
 
 static char *lnx_get_error(void *p)   { return dyn_pcap_geterr((pcap_t *)p); }
