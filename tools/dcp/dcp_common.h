@@ -13,9 +13,11 @@
 #define ETH_P_PROFINET         0x8892u
 #define DCP_FRAME_ID_IDENT_REQ 0xFEFEu
 #define DCP_FRAME_ID_IDENT_RSP 0xFEFFu
+#define DCP_FRAME_ID_GET_SET   0xFEFDu
 
 /* DCP service IDs */
 #define DCP_SVC_IDENTIFY       0x05
+#define DCP_SVC_SET            0x04
 /* DCP service types */
 #define DCP_SVCTYPE_REQUEST    0x00
 #define DCP_SVCTYPE_RESPONSE   0x01
@@ -26,6 +28,8 @@
 #define DCP_OPT_DEVICE         0x02
 #define DCP_SUB_DEVICE_NAME    0x01
 #define DCP_SUB_DEVICE_VENDOR  0x02
+#define DCP_OPT_CONTROL        0x05
+#define DCP_SUB_RESPONSE       0x04
 #define DCP_OPT_ALL            0xFF
 #define DCP_SUB_ALL            0xFF
 

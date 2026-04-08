@@ -18,6 +18,8 @@
 #include "ziti_tunnel_priv.h"
 #include "lwip/prot/ethernet.h"
 
+#include <string.h>
+
 static model_map l2_conns = {};
 
 void tunneler_l2_add_conn(uint16_t ethtype, const io_ctx_t *io) {
@@ -59,7 +61,19 @@ ssize_t tunneler_l2_write(struct netif *netif, const void *data, size_t len) {
             pbuf_free(p);
             return -1;
         }
-        /* acknowledge that packet has been read(); */
+        /* Rewrite the Ethernet source MAC to this interface's own hardware
+         * address.  Hypervisor virtual switches (e.g. Parallels, VMware) may
+         * enforce that the source MAC of every transmitted frame matches the
+         * MAC registered for the sending VM's NIC and silently drop frames
+         * with a foreign source MAC.  The original source MAC in the frame
+         * belongs to the intercepting client, which is unknown to the hosting
+         * VM's virtual switch, so those frames are dropped after
+         * pcap_sendpacket (visible in tcpdump but never transmitted).
+         * Rewriting to the hosting interface's own MAC satisfies the filter. */
+        if (netif->hwaddr_len >= 6 && len >= 14 && p->len >= 12) {
+            struct eth_hdr *eth = (struct eth_hdr *)p->payload;
+            memcpy(eth->src.addr, netif->hwaddr, 6);
+        }
     } else {
         /* drop packet(); */
         if (log_pbuf_errors) {
