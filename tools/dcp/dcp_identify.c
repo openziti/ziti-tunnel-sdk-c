@@ -71,17 +71,17 @@ static int parse_ip_arg(const char *s, uint8_t ip[4], uint8_t mask[4], uint8_t g
 
 /* ---------- identify response ---------- */
 
-static void parse_ident_response(const uint8_t *buf, int len)
+static int parse_ident_response(const uint8_t *buf, int len)
 {
-    if (len < (int)(sizeof(eth_hdr_t) + sizeof(dcp_hdr_t))) return;
+    if (len < (int)(sizeof(eth_hdr_t) + sizeof(dcp_hdr_t))) return 0;
 
     const eth_hdr_t *eth = (const eth_hdr_t *)buf;
     const dcp_hdr_t *dcp = (const dcp_hdr_t *)(buf + sizeof(eth_hdr_t));
 
-    if (DCP_NTOHS(eth->ethertype) != ETH_P_PROFINET)         return;
-    if (DCP_NTOHS(dcp->frame_id)  != DCP_FRAME_ID_IDENT_RSP) return;
-    if (dcp->service_id   != DCP_SVC_IDENTIFY)                return;
-    if (dcp->service_type != DCP_SVCTYPE_RESPONSE)            return;
+    if (DCP_NTOHS(eth->ethertype) != ETH_P_PROFINET)         return 0;
+    if (DCP_NTOHS(dcp->frame_id)  != DCP_FRAME_ID_IDENT_RSP) return 0;
+    if (dcp->service_id   != DCP_SVC_IDENTIFY)                return 0;
+    if (dcp->service_type != DCP_SVCTYPE_RESPONSE)            return 0;
 
     printf("  device ");
     print_mac(eth->src);
@@ -115,6 +115,8 @@ static void parse_ident_response(const uint8_t *buf, int len)
     /* record this device for the SET phase */
     if (g_found_count < MAX_DEVICES)
         memcpy(g_found_macs[g_found_count++], eth->src, 6);
+
+    return 1;
 }
 
 /* ---------- set phase ---------- */
@@ -318,7 +320,7 @@ int main(int argc, char *argv[])
         int n = rawsock_recv(rs, buf, sizeof(buf), timeout_remaining);
         if (n == 0) break;
         if (n < 0)  break;
-        parse_ident_response(buf, n);
+        if (parse_ident_response(buf, n) > 0) break;
         timeout_remaining -= 10;
         if (timeout_remaining <= 0) break;
     }
