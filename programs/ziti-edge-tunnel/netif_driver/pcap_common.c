@@ -212,6 +212,12 @@ netif_driver ziti_pcap_build_driver(const char     *ifname,
     strncpy(h->name, ifname, sizeof(h->name) - 1);
     h->ops = *ops;
 
+    if (h->ops.set_filter) {
+        if (h->ops.set_filter(h->ops.pcap, "inbound") != 0) {
+            ZITI_LOG(WARN, "pcap: could not apply 'inbound' capture filter on '%s'", ifname);
+        }
+    }
+
     uv_mutex_init(&h->frame_lock);
 
     struct netif_driver_s *driver = calloc(1, sizeof(*driver));

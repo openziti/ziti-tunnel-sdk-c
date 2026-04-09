@@ -60,6 +60,10 @@ typedef int     (*fn_pcap_sendpacket_t)(pcap_t *p, const u_char *buf, int size);
 typedef char   *(*fn_pcap_geterr_t)(pcap_t *p);
 typedef void    (*fn_pcap_close_t)(pcap_t *p);
 typedef void    (*fn_pcap_breakloop_t)(pcap_t *p);
+typedef int     (*fn_pcap_compile_t)(pcap_t *p, struct bpf_program *fp,
+                                      const char *str, int optimize, bpf_u_int32 netmask);
+typedef int     (*fn_pcap_setfilter_t)(pcap_t *p, struct bpf_program *fp);
+typedef void    (*fn_pcap_freecode_t)(struct bpf_program *fp);
 
 static fn_pcap_open_live_t   dyn_pcap_open_live;
 static fn_pcap_next_ex_t     dyn_pcap_next_ex;
@@ -67,6 +71,9 @@ static fn_pcap_sendpacket_t  dyn_pcap_sendpacket;
 static fn_pcap_geterr_t      dyn_pcap_geterr;
 static fn_pcap_close_t       dyn_pcap_close;
 static fn_pcap_breakloop_t   dyn_pcap_breakloop;
+static fn_pcap_compile_t     dyn_pcap_compile;
+static fn_pcap_setfilter_t   dyn_pcap_setfilter;
+static fn_pcap_freecode_t    dyn_pcap_freecode;
 
 /* -------------------------------------------------------------------------
  * Load libpcap.so at runtime and resolve all function pointers.
@@ -106,6 +113,9 @@ static int load_libpcap(char *error, size_t errlen)
     RESOLVE(pcap_geterr);
     RESOLVE(pcap_close);
     RESOLVE(pcap_breakloop);
+    RESOLVE(pcap_compile);
+    RESOLVE(pcap_setfilter);
+    RESOLVE(pcap_freecode);
 #undef RESOLVE
 
     return 0;
@@ -148,6 +158,22 @@ static void read_hwaddr_linux(const char *ifname, uint8_t hwaddr[6], uint8_t *hw
  * Thin wrappers that adapt the dynamically-loaded libpcap function pointers
  * to the platform-neutral pcap_ops_t interface expected by pcap_common.c.
  * ---------------------------------------------------------------------- */
+static int lnx_set_filter(void *p, const char *expr)
+{
+    struct bpf_program bpf;
+    if (dyn_pcap_compile((pcap_t *)p, &bpf, expr, 1, PCAP_NETMASK_UNKNOWN) != 0) {
+        ZITI_LOG(WARN, "pcap: pcap_compile(\"%s\") failed: %s",
+                 expr, dyn_pcap_geterr((pcap_t *)p));
+        return -1;
+    }
+    int rc = dyn_pcap_setfilter((pcap_t *)p, &bpf);
+    if (rc != 0) {
+        ZITI_LOG(WARN, "pcap: pcap_setfilter failed: %s", dyn_pcap_geterr((pcap_t *)p));
+    }
+    dyn_pcap_freecode(&bpf);
+    return rc;
+}
+
 static int lnx_next_packet(void *p, uint32_t *caplen, const unsigned char **data)
 {
     struct pcap_pkthdr *hdr = NULL;
@@ -204,6 +230,7 @@ netif_driver ziti_pcap_open(uv_loop_t *loop, const char *ifname,
         .get_error    = lnx_get_error,
         .do_breakloop = lnx_do_breakloop,
         .do_close     = lnx_do_close,
+        .set_filter   = lnx_set_filter,
     };
 
     return ziti_pcap_build_driver(ifname, &ops, hwaddr, hwaddr_len, error, error_len);
