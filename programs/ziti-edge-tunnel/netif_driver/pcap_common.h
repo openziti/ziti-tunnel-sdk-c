@@ -72,6 +72,12 @@ typedef struct pcap_ops_s {
 
     /* Release the pcap handle.  Called after do_breakloop + thread join. */
     void  (*do_close)   (void *pcap);
+
+    /* Optional: install a BPF capture filter expression on the pcap handle.
+     * Called once by ziti_pcap_build_driver before the reader thread starts.
+     * NULL means the platform does not support BPF filter installation.
+     * Returns 0 on success, -1 on failure (non-fatal; capture continues). */
+    int   (*set_filter) (void *pcap, const char *expr);
 } pcap_ops_t;
 
 /* -------------------------------------------------------------------------

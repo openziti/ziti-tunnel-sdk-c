@@ -49,6 +49,8 @@
 #define MAX_FRAME_LEN       65536u
 #define PCAP_READ_TIMEOUT_MS 500
 #define PCAP_ERRBUF_SIZE    256
+#define ETH_ALEN            6
+#define MAX_LOCAL_MACS      64
 
 /* -------------------------------------------------------------------------
  * Minimal pcap types (avoids dependency on pcap.h / Npcap SDK)
@@ -212,27 +214,81 @@ static void read_hwaddr(const char *ifname, uint8_t hwaddr[6], uint8_t *hwaddr_l
 }
 
 /* -------------------------------------------------------------------------
+ * win_pcap_ctx_t: Windows-specific context stored in ops.pcap.
+ *
+ * Tracks the source MACs of received frames so that win_next_packet can
+ * drop inbound frames whose destination MAC matches one of those entries.
+ * This discards frames addressed to virtual MACs the tunnel stack owns
+ * (i.e. frames that would loop back through the tunneler).
+ *
+ * local_macs is written and read only from the reader thread, so no locking
+ * is required.
+ * ---------------------------------------------------------------------- */
+typedef struct {
+    pcap_t  *pcap;
+    uint8_t  local_macs[MAX_LOCAL_MACS][ETH_ALEN];
+    int      n_local_macs;
+} win_pcap_ctx_t;
+
+static void win_track_local_mac(win_pcap_ctx_t *ctx, const uint8_t *mac)
+{
+    for (int i = 0; i < ctx->n_local_macs; i++) {
+        if (memcmp(ctx->local_macs[i], mac, ETH_ALEN) == 0) return;
+    }
+    if (ctx->n_local_macs >= MAX_LOCAL_MACS) {
+        ZITI_LOG(WARN, "pcap: local MAC table full, not tracking "
+                 "%02x:%02x:%02x:%02x:%02x:%02x",
+                 mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+        return;
+    }
+    memcpy(ctx->local_macs[ctx->n_local_macs++], mac, ETH_ALEN);
+    ZITI_LOG(DEBUG, "pcap: tracking local src mac %02x:%02x:%02x:%02x:%02x:%02x",
+             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+}
+
+/* -------------------------------------------------------------------------
  * pcap_ops_t wrapper functions
  *
  * Thin wrappers that adapt the dynamically-loaded Npcap function pointers
  * to the platform-neutral pcap_ops_t interface expected by pcap_common.c.
+ * The ops.pcap field carries a win_pcap_ctx_t * (not a raw pcap_t *).
  * ---------------------------------------------------------------------- */
 static int win_next_packet(void *p, uint32_t *caplen, const unsigned char **data)
 {
+    win_pcap_ctx_t *ctx = (win_pcap_ctx_t *)p;
     struct pcap_pkthdr *hdr = NULL;
-    int rc = dyn_pcap_next_ex((pcap_t *)p, &hdr, data);
-    if (rc == 1 && hdr) *caplen = hdr->caplen;
+    int rc = dyn_pcap_next_ex(ctx->pcap, &hdr, data);
+    if (rc == 1 && hdr) {
+        *caplen = hdr->caplen;
+        if (*caplen >= 12) {
+            const uint8_t *dst = *data;
+            const uint8_t *src = dst + ETH_ALEN;
+            for (int i = 0; i < ctx->n_local_macs; i++) {
+                if (memcmp(ctx->local_macs[i], dst, ETH_ALEN) == 0) {
+                    return 0; /* discard; caller treats 0 as timeout and retries */
+                }
+            }
+            // contingency for "inbound" filter not working: track src address of inbound frames.
+            // any frames that we see going to one of these addresses is not for us
+            win_track_local_mac(ctx, src);
+        }
+    }
     return rc;
 }
 
 static int win_send_packet(void *p, const unsigned char *buf, int size)
 {
-    return dyn_pcap_sendpacket((pcap_t *)p, buf, size);
+    return dyn_pcap_sendpacket(((win_pcap_ctx_t *)p)->pcap, buf, size);
 }
 
-static char *win_get_error(void *p)   { return dyn_pcap_geterr((pcap_t *)p); }
-static void  win_do_breakloop(void *p){ dyn_pcap_breakloop((pcap_t *)p); }
-static void  win_do_close(void *p)    { dyn_pcap_close((pcap_t *)p); }
+static char *win_get_error(void *p)    { return dyn_pcap_geterr(((win_pcap_ctx_t *)p)->pcap); }
+static void  win_do_breakloop(void *p) { dyn_pcap_breakloop(((win_pcap_ctx_t *)p)->pcap); }
+static void  win_do_close(void *p)
+{
+    win_pcap_ctx_t *ctx = (win_pcap_ctx_t *)p;
+    dyn_pcap_close(ctx->pcap);
+    free(ctx);
+}
 
 /* -------------------------------------------------------------------------
  * ziti_pcap_open
@@ -277,8 +333,16 @@ netif_driver ziti_pcap_open(uv_loop_t *loop, const char *ifname,
         ZITI_LOG(WARN, "pcap: could not read hwaddr for '%s' -- L2 may not work", ifname);
     }
 
+    win_pcap_ctx_t *ctx = calloc(1, sizeof(*ctx));
+    if (!ctx) {
+        snprintf(error, error_len, "pcap: out of memory allocating context");
+        dyn_pcap_close(pcap);
+        return NULL;
+    }
+    ctx->pcap = pcap;
+
     pcap_ops_t ops = {
-        .pcap         = pcap,
+        .pcap         = ctx,
         .next_packet  = win_next_packet,
         .send_packet  = win_send_packet,
         .get_error    = win_get_error,
