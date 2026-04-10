@@ -286,6 +286,19 @@ static void on_hosted_tcp_connector_connect(uv_os_sock_t sock, int status, void 
         return;
     }
 
+    struct sockaddr_storage peer_storage;
+    struct sockaddr *peer = (struct sockaddr *)&peer_storage;
+    int peer_len = sizeof(peer_storage);
+    uv_tcp_getpeername(&io->server.tcp, peer, &peer_len);
+    uv_getnameinfo_t ni_req = {0};
+    int ni_err = uv_getnameinfo(io->service->tnlr_ctx->loop, &ni_req, NULL, peer, NI_NUMERICHOST | NI_NUMERICSERV);
+    if (ni_err == 0) {
+        snprintf(io->resolved_dst, sizeof(io->resolved_dst), "tcp:%s:%s", ni_req.host, ni_req.service);
+    } else {
+        snprintf(io->resolved_dst, sizeof(io->resolved_dst), "tcp:%s:%s",
+                 io->computed_dst_ip_or_hn, io->computed_dst_port);
+    }
+
     if (io->client == NULL) {
         ZITI_LOG(WARN, "hosted_service[%s] client[%s]: client closed before server connection was established",
                  io->service->service_name, io->client_identity);
