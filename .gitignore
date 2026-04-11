@@ -28,3 +28,6 @@ CMakeFiles/
 /vcpkg_cache/
 
 tools/dcp/build/
+
+# Nix build output symlink
+/result
