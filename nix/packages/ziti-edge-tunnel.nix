@@ -47,19 +47,19 @@ let
   ziti_sdk_src = fetchFromGitHub {
     owner = "openziti";
     repo = "ziti-sdk-c";
-    tag = "1.11.7";
-    hash = "sha256-y8OZEn25OUA3TPU48c1fKr3fc/PaG5a1bZ8RUeNOjWg=";
+    tag = "1.11.8";
+    hash = "sha256-5RqCvOPnpTnOiyFpAoA4PWdp0DU+TeVTBH6eCgFe+ws=";
   };
 in
 stdenv.mkDerivation (finalAttrs: {
   pname = "ziti-edge-tunnel";
-  version = "1.11.2";
+  version = "1.11.4";
 
   src = fetchFromGitHub {
     owner = "openziti";
     repo = "ziti-tunnel-sdk-c";
     tag = "v${finalAttrs.version}";
-    hash = "sha256-PlXpBQUs7Em7U5AIZSuKsrwNcAnS5hYBh/0CgCV0/1Y=";
+    hash = "sha256-CGj8ysxycMnuc0VW2cPfGgBKH2g97XS0GyvrPlAcVf0=";
   };
 
   postPatch = ''
