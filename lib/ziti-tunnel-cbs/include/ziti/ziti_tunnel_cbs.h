@@ -33,10 +33,14 @@ extern "C" {
 
 #define TUNNELER_CONN_TYPE_ENUM(XX,...) \
 XX(data, __VA_ARGS__)                    \
-XX(resolver, __VA_ARGS__)
+XX(resolver, __VA_ARGS__) \
+XX(l2, __VA_ARGS__)
+
+#define TUNNELER_COMMON_APP_DATA_MODEL(XX, ...) \
+XX(conn_type, TunnelConnectionType, none, connType, __VA_ARGS__)
 
 #define TUNNELER_APP_DATA_MODEL(XX, ...) \
-XX(conn_type, TunnelConnectionType, none, connType, __VA_ARGS__) \
+TUNNELER_COMMON_APP_DATA_MODEL(XX, __VA_ARGS__) \
 XX(dst_protocol, model_string, none, dst_protocol, __VA_ARGS__)\
 XX(dst_hostname, model_string, none, dst_hostname, __VA_ARGS__)\
 XX(dst_ip, model_string, none, dst_ip, __VA_ARGS__)\
@@ -46,9 +50,14 @@ XX(src_ip, model_string, none, src_ip, __VA_ARGS__)\
 XX(src_port, model_string, none, src_port, __VA_ARGS__)\
 XX(source_addr, model_string, none, source_addr, __VA_ARGS__)
 
+#define TUNNELER_L2_APP_DATA_MODEL(XX, ...) \
+TUNNELER_COMMON_APP_DATA_MODEL(XX, __VA_ARGS__) \
+XX(l2_ethtype, model_string, none, l2_ethtype, __VA_ARGS__)
+
 DECLARE_ENUM(TunnelConnectionType, TUNNELER_CONN_TYPE_ENUM)
 
 DECLARE_MODEL(tunneler_app_data, TUNNELER_APP_DATA_MODEL)
+DECLARE_MODEL(tunneler_l2_app_data, TUNNELER_L2_APP_DATA_MODEL)
 
 #define TUNNEL_COMMANDS(XX, ...) \
 XX(ZitiDump, __VA_ARGS__)    \
@@ -65,6 +74,8 @@ XX(GetMFACodes, __VA_ARGS__) \
 XX(GetMetrics, __VA_ARGS__) \
 XX(SetLogLevel, __VA_ARGS__) \
 XX(UpdateTunIpv4, __VA_ARGS__) \
+XX(UpdateL2Options, __VA_ARGS__) \
+XX(UpdateInterfaceConfig, __VA_ARGS__) \
 XX(ServiceControl, __VA_ARGS__) \
 XX(Status, __VA_ARGS__) \
 XX(RefreshIdentity, __VA_ARGS__) \
@@ -118,9 +129,17 @@ XX(dump_path, model_string, none, DumpPath, __VA_ARGS__)
 #define TNL_IDENTITY_ID(XX, ...) \
 XX(identifier, model_string, none, Identifier, __VA_ARGS__)
 
+#define TNL_ENROLL_MODE(XX, ...) \
+XX(enroll_none, "none", __VA_ARGS__) \
+XX(enroll_cert, "cert", __VA_ARGS__) \
+XX(enroll_token, "token", __VA_ARGS__)
+
+DECLARE_ENUM(tnl_enroll_mode, TNL_ENROLL_MODE)
+
 #define TNL_ID_EXT_AUTH(XX, ...) \
 TNL_IDENTITY_ID(XX, __VA_ARGS__) \
-XX(provider, model_string, none, Provider, __VA_ARGS__)
+XX(provider, model_string, none, Provider, __VA_ARGS__) \
+XX(enroll_mode, tnl_enroll_mode, none, EnrollMode, __VA_ARGS__)
 
 #define TNL_MFA_ENROL_RES(XX,...) \
 XX(identifier, model_string, none, Identifier, __VA_ARGS__) \
@@ -170,6 +189,14 @@ XX(loglevel, model_string, none, Level, __VA_ARGS__)
 XX(tunIP, model_string, none, TunIPv4, __VA_ARGS__) \
 XX(prefixLength, model_number, none, TunPrefixLength, __VA_ARGS__) \
 XX(addDns, model_bool, none, AddDns, __VA_ARGS__)
+
+#define TUNNEL_L2_OPTIONS(XX, ...) \
+XX(enabled, model_bool, none, Enabled, __VA_ARGS__) \
+XX(pcap_ifname, model_string, none, PcapInterface, __VA_ARGS__) \
+
+#define TUNNEL_INTERFACE_CONFIG(XX, ...) \
+XX(l3, tunnel_tun_ip_v4, none, L3, __VA_ARGS__) \
+XX(l2, tunnel_l2_options, none, L2, __VA_ARGS__)
 
 #define TUNNEL_SERVICE_CONTROL(XX, ...) \
 XX(operation, model_string, none, Operation, __VA_ARGS__)
@@ -223,6 +250,8 @@ DECLARE_MODEL(tunnel_identity_metrics, TNL_IDENTITY_METRICS)
 DECLARE_MODEL(tunnel_command_inline, TUNNEL_CMD_INLINE)
 DECLARE_MODEL(tunnel_set_log_level, TUNNEL_SET_LOG_LEVEL)
 DECLARE_MODEL(tunnel_tun_ip_v4, TUNNEL_TUN_IP_V4)
+DECLARE_MODEL(tunnel_l2_options, TUNNEL_L2_OPTIONS)
+DECLARE_MODEL(tunnel_interface_config, TUNNEL_INTERFACE_CONFIG)
 DECLARE_MODEL(tunnel_service_control, TUNNEL_SERVICE_CONTROL)
 DECLARE_MODEL(tunnel_status_change, TUNNEL_STATUS_CHANGE)
 DECLARE_MODEL(tunnel_add_identity, TUNNEL_ADD_IDENTITY)
@@ -262,7 +291,8 @@ XX(status, model_string, none, status, __VA_ARGS__) \
 XX(name, model_string, none, name, __VA_ARGS__) \
 XX(version, model_string, none, version, __VA_ARGS__) \
 XX(controller, model_string, none, controller, __VA_ARGS__) \
-XX(code, model_number, none, code, __VA_ARGS__)
+XX(code, model_number, none, code, __VA_ARGS__) \
+XX(error_code, model_string, none, errorCode, __VA_ARGS__)
 
 #define ZTX_SVC_EVENT_MODEL(XX, ...)  \
 BASE_EVENT_MODEL(XX, __VA_ARGS__)            \
@@ -287,7 +317,9 @@ XX(identity_name, model_string, none, identity_name, __VA_ARGS__)
 
 #define EXT_JWT_PROVIDER(XX, ...) \
 XX(name, model_string, none, name, __VA_ARGS__) \
-XX(issuer, model_string, none, issuer, __VA_ARGS__)
+XX(issuer, model_string, none, issuer, __VA_ARGS__) \
+XX(can_cert_enroll, model_bool, none, enrollToCertEnabled, __VA_ARGS__) \
+XX(can_token_enroll, model_bool, none, enrollToTokenEnabled, __VA_ARGS__)
 
 #define EXT_SIGNER_EVENT_MODEL(XX, ...)  \
 BASE_EVENT_MODEL(XX, __VA_ARGS__)               \
@@ -348,6 +380,9 @@ char *string_replace(char *source, size_t sourceSize, const char *substring, con
 /** called by tunneler SDK after a client connection is intercepted */
 void *ziti_sdk_c_dial(const void *app_intercept_ctx, struct io_ctx_s *io);
 
+/** called by ziti SDK when ziti service has data for the client */
+ssize_t on_ziti_data(ziti_connection conn, const uint8_t *data, ssize_t len);
+
 /** called from tunneler SDK when intercepted client sends data */
 ssize_t ziti_sdk_c_write(const void *ziti_io_ctx, void *write_ctx, const void *data, size_t len);
 
@@ -356,7 +391,7 @@ ssize_t ziti_sdk_c_write(const void *ziti_io_ctx, void *write_ctx, const void *d
 int ziti_sdk_c_close(void *io_ctx);
 int ziti_sdk_c_close_write(void *io_ctx);
 
-host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, uv_loop_t *loop, const char *service_name, cfg_type_e cfgtype, const void *cfg);
+host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, tunneler_context tnlr_ctx, const char *service_name, cfg_type_e cfgtype, const void *cfg);
 void ziti_hosted_serv_conn_close_cb(ziti_connection serv);
 
 /** passed to ziti-sdk via ziti_options.service_cb */
@@ -365,6 +400,11 @@ tunneled_service_t *ziti_sdk_c_on_service(ziti_context ziti_ctx, ziti_service *s
 void remove_intercepts(ziti_context ziti_ctx, void *tnlr_ctx);
 
 const ziti_tunnel_ctrl* ziti_tunnel_init_cmd(uv_loop_t *loop, tunneler_context, event_cb);
+
+/** Set a callback to provide a private key during enrollToCert enrollment.
+ *  Applied to every ziti_context created by the command processor.
+ *  Pass NULL to use the SDK's default software key generation. */
+void ziti_tunnel_set_enroll_key_cb(ziti_enroll_key_cb cb, void *ctx);
 
 struct add_identity_request_s {
     char* identifier;

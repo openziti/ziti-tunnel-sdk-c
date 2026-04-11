@@ -42,7 +42,7 @@
 #define LWIP_WND_SCALE        1           /* set to 1 to enable window scaling */
 #define TCP_RCV_SCALE         14          /* desired scaling factor - shift count in the range of [0..14] */
 
-#define LWIP_SINGLE_NETIF 1               /* avoid some lwip "routing" logic */
+//#define LWIP_SINGLE_NETIF 1               /* avoid some lwip "routing" logic */
 
 #define LWIP_TCP_KEEPALIVE 1
 #define TCP_KEEPIDLE_DEFAULT 30000       /* 30 seconds of idle before starting to send KEEPALIVE packets */
@@ -51,7 +51,6 @@
 
 // APIs
 #define LWIP_RAW 1
-#define LWIP_ARP 0
 #define LWIP_NETCONN 0
 #define LWIP_SOCKET 0
 
@@ -65,6 +64,7 @@
 #define LWIP_IPV6_MLD 0
 #define LWIP_IPV6 1                       /* enable ipv6 */
 #define IPV6_FRAG_COPYHEADER 1            /* avoid assert in lwip code when ipv6 is enabled */
+#define LWIP_ARP 1
 
 #ifdef _WIN32
 #define LWIP_NORAND 1

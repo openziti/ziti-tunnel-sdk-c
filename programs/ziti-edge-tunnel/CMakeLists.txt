@@ -4,14 +4,19 @@ if(CMAKE_SYSTEM_NAME STREQUAL Darwin)
     set(NETIF_DRIVER_SOURCE netif_driver/darwin/utun.c)
 endif()
 if(CMAKE_SYSTEM_NAME STREQUAL Linux)
-    set(NETIF_DRIVER_SOURCE netif_driver/linux/tun.c netif_driver/linux/resolvers.c netif_driver/linux/utils.c)
+    set(NETIF_DRIVER_SOURCE netif_driver/linux/tun.c   netif_driver/linux/resolvers.c netif_driver/linux/utils.c
+                            netif_driver/pcap_common.c netif_driver/pcap_common.h
+                            netif_driver/linux/pcap.c  netif_driver/linux/pcap.h)
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL Windows)
     include(wintun.cmake)
     set(tun_lib wintun)
     set(wintun_dll "${wintun_SOURCE_DIR}/bin/${CMAKE_SYSTEM_PROCESSOR}/wintun.dll")
-    set(NETIF_DRIVER_SOURCE netif_driver/windows/tun.c netif_driver/windows/tun.h)
+    set(NETIF_DRIVER_SOURCE netif_driver/pcap_common.c  netif_driver/pcap_common.h
+                            netif_driver/windows/tun.c  netif_driver/windows/tun.h
+                            netif_driver/windows/tap.c  netif_driver/windows/tap.h
+                            netif_driver/windows/pcap.c netif_driver/windows/pcap.h)
 endif()
 
 if (MSVC)
@@ -81,6 +86,9 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
             message(FATAL_ERROR "libsystemd not found. To disable libsytemd feature, set DISABLE_LIBSYSTEMD_FEATURE=ON")
         endif()
     endif()
+
+    # libpcap is loaded dynamically at runtime via dlopen; link dl for dlopen/dlsym.
+    target_link_libraries(ziti-edge-tunnel PRIVATE dl)
 endif()
 
 target_include_directories(ziti-edge-tunnel
@@ -105,6 +113,7 @@ target_link_libraries(ziti-edge-tunnel
         PUBLIC ${tun_lib}
         PUBLIC subcommand ${getopt}
         )
+
 
 BUNDLE_COMP(ziti-edge-tunnel)
 

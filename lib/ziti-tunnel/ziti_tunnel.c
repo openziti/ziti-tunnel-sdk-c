@@ -14,6 +14,9 @@
  limitations under the License.
  */
 
+#include "tunnel_l2.h"
+#include <netif/ethernet.h>
+
 // something wrong with lwip_xxxx byteorder functions
 #ifdef _WIN32
 #define LWIP_DONT_PROVIDE_BYTEORDER_FUNCTIONS 1
@@ -73,6 +76,11 @@ static tunneler_context create_tunneler_ctx(tunneler_sdk_options *opts, uv_loop_
     uv_sem_init(&ctx->sem, 1);
     uv_once(&default_loop_sem_init_once, default_loop_sem_init);
     memcpy(&ctx->opts, opts, sizeof(ctx->opts));
+
+    // make tunneler context available to netifs
+    if (opts->l2_netif_driver) opts->l2_netif_driver->tnlr = ctx;
+    if (opts->l3_netif_driver) opts->l3_netif_driver->tnlr = ctx;
+
     return ctx;
 }
 
@@ -95,23 +103,23 @@ tunneler_context ziti_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop)
 }
 
 void ziti_tunnel_commit_routes(tunneler_context tnlr_ctx) {
-    if (tnlr_ctx->opts.netif_driver == NULL) {
+    if (tnlr_ctx->opts.l3_netif_driver == NULL) {
         TNL_LOG(DEBUG, "No netif_driver found tun is running in host only mode and intercepts are disabled");
         return;
     }
 
-    if (tnlr_ctx->opts.netif_driver->commit_routes != NULL) {
-        tnlr_ctx->opts.netif_driver->commit_routes(tnlr_ctx->opts.netif_driver->handle, tnlr_ctx->loop);
+    if (tnlr_ctx->opts.l3_netif_driver->commit_routes != NULL) {
+        tnlr_ctx->opts.l3_netif_driver->commit_routes(tnlr_ctx->opts.l3_netif_driver->handle, tnlr_ctx->loop);
     }
 }
 
 void ziti_tunneler_exclude_route(tunneler_context tnlr_ctx, const char *dst) {
-    if (tnlr_ctx->opts.netif_driver == NULL) {
+    if (tnlr_ctx->opts.l3_netif_driver == NULL) {
         TNL_LOG(DEBUG, "No netif_driver found tun is running in host only mode and intercepts are disabled");
         return;
     }
 
-    if (tnlr_ctx->opts.netif_driver->exclude_rt == NULL) {
+    if (tnlr_ctx->opts.l3_netif_driver->exclude_rt == NULL) {
         TNL_LOG(WARN, "netif_driver->exclude_rt function is not implemented");
         return;
     }
@@ -147,7 +155,7 @@ void ziti_tunneler_exclude_route(tunneler_context tnlr_ctx, const char *dst) {
                 TNL_LOG(TRACE, "ipv6 address compare not implemented");
             }
         }
-        tnlr_ctx->opts.netif_driver->exclude_rt(tnlr_ctx->opts.netif_driver->handle, tnlr_ctx->loop, exrt.route);
+        tnlr_ctx->opts.l3_netif_driver->exclude_rt(tnlr_ctx->opts.l3_netif_driver->handle, tnlr_ctx->loop, exrt.route);
         addrinfo = addrinfo->ai_next;
     }
 
@@ -171,8 +179,79 @@ void ziti_tunneler_shutdown(tunneler_context tnlr_ctx) {
 
 /** called by tunneler application when data has been successfully written to ziti */
 void ziti_tunneler_ack(struct write_ctx_s *write_ctx) {
-    write_ctx->ack(write_ctx);
+    if (write_ctx->ack) write_ctx->ack(write_ctx);
+    if (write_ctx->pbuf) pbuf_free(write_ctx->pbuf);
     free(write_ctx);
+}
+
+// initiate orderly shutdown
+void datagram_timeout_cb(uv_timer_t *t) {
+    struct io_ctx_s *io = t->data;
+    tunneler_io_context tnlr_io = io->tnlr_io;
+    if (tnlr_io) {
+        TNL_LOG(TRACE, "initiating close idle_timeout[%d] src[%s] dst[%s] service[%s]", tnlr_io->idle_timeout,
+                tnlr_io->client, tnlr_io->intercepted, tnlr_io->service_name);
+    }
+    io->close_fn(io->ziti_io);
+}
+
+void ziti_tunnel_pbuf_to_ziti(struct io_ctx_s *io, struct pbuf *p) {
+    static bool log_stalled_warns = true;
+    if (io == NULL) {
+        TNL_LOG(ERR, "null io");
+        if (p != NULL) {
+            pbuf_free(p);
+        }
+        return;
+    }
+
+    if (p == NULL) {
+        TNL_LOG(TRACE, "no data to write");
+        return;
+    }
+
+    ack_fn acker = NULL;
+    if (io->tnlr_io->proto == tun_udp) acker = tunneler_udp_ack;
+    else if (io->tnlr_io->proto == tun_l2) acker = tunneler_l2_ack;
+
+    struct pbuf *recv_data = p;
+    if (!io->tnlr_io->conn_timer) {
+        io->tnlr_io->conn_timer = calloc(1, sizeof(uv_timer_t));
+        io->tnlr_io->conn_timer->data = io;
+        uv_timer_init(io->tnlr_io->tnlr_ctx->loop, io->tnlr_io->conn_timer);
+    }
+    uv_timer_start(io->tnlr_io->conn_timer, datagram_timeout_cb, DATAGRAM_IO_TIMEOUT, 0);
+
+    do {
+        TNL_LOG(TRACE, "writing %d bytes to ziti src[%s] dst[%s] service[%s]", recv_data->len,
+                io->tnlr_io->client, io->tnlr_io->intercepted, io->tnlr_io->service_name);
+        struct write_ctx_s *wr_ctx = calloc(1, sizeof(struct write_ctx_s));
+        wr_ctx->pbuf = recv_data;
+        wr_ctx->udp = io->tnlr_io->udp; // will be null for l2
+        wr_ctx->ack = acker;
+        struct pbuf *next = recv_data->next;
+        // break the chain to prevent pbuf_free from iterating and freeing subsequent pbufs
+        recv_data->next = NULL;
+        recv_data = next;
+
+        ssize_t s = io->write_fn(io->ziti_io, wr_ctx, wr_ctx->pbuf->payload, wr_ctx->pbuf->len);
+        if (s == ERR_WOULDBLOCK) {
+            ziti_tunneler_ack(wr_ctx);
+            if (log_stalled_warns) {
+                TNL_LOG(WARN, "ziti_write stalled: dropping UDP packets until buffers are released service=%s, client=%s, ret=%ld",
+                        io->tnlr_io->service_name, io->tnlr_io->client, s);
+            }
+            break;
+        } else if (s < 0) {
+            ziti_tunneler_ack(wr_ctx);
+            TNL_LOG(ERR, "ziti_write failed: service=%s, client=%s, ret=%ld", io->tnlr_io->service_name, io->tnlr_io->client, s);
+            io->close_fn(io->ziti_io);
+            break;
+        } else if (s == 0 && !log_stalled_warns) {
+            TNL_LOG(INFO, "ziti_write un-stalled: service=%s client=%s", io->tnlr_io->service_name, io->tnlr_io->client);
+            log_stalled_warns = true;
+        }
+    } while (recv_data != NULL);
 }
 
 const char *get_intercepted_address(const struct tunneler_io_ctx_s * tnlr_io) {
@@ -227,6 +306,9 @@ void ziti_tunneler_dial_completed(struct io_ctx_s *io, bool ok) {
         case tun_udp:
             tunneler_udp_dial_completed(io, ok);
             break;
+        case tun_l2:
+            tunneler_l2_dial_completed(io, ok);
+            break;
         default:
             TNL_LOG(ERR, "unknown proto %d", io->tnlr_io->proto);
             break;
@@ -234,7 +316,7 @@ void ziti_tunneler_dial_completed(struct io_ctx_s *io, bool ok) {
 }
 
 host_ctx_t *ziti_tunneler_host(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_name, cfg_type_e cfg_type, void *config) {
-    return tnlr_ctx->opts.ziti_host((void *) ziti_ctx, tnlr_ctx->loop, service_name, cfg_type, config);
+    return tnlr_ctx->opts.ziti_host((void *) ziti_ctx, tnlr_ctx, service_name, cfg_type, config);
 }
 
 intercept_ctx_t* intercept_ctx_new(tunneler_context tnlr_ctx, const char *app_id, void *app_intercept_ctx) {
@@ -246,6 +328,8 @@ intercept_ctx_t* intercept_ctx_new(tunneler_context tnlr_ctx, const char *app_id
     STAILQ_INIT(&ictx->addresses);
     STAILQ_INIT(&ictx->port_ranges);
     STAILQ_INIT(&ictx->allowed_source_addresses);
+    ictx->osi_layer = l3; // assume l3
+    memset(&ictx->ethtypes, 0, sizeof(model_list));
 
     return ictx;
 }
@@ -304,6 +388,13 @@ port_range_t *intercept_ctx_add_port_range(intercept_ctx_t *i_ctx, uint16_t low,
     return pr;
 }
 
+model_string intercept_ctx_add_ethtype(intercept_ctx_t *i_ctx, model_string ethtype) {
+    i_ctx->osi_layer = l2;
+    model_string cp = strdup(ethtype);
+    model_list_append(&i_ctx->ethtypes, cp);
+    return cp;
+}
+
 void intercept_ctx_override_cbs(intercept_ctx_t *i_ctx, ziti_sdk_dial_cb dial, ziti_sdk_write_cb write, ziti_sdk_close_cb close_write, ziti_sdk_close_cb close) {
     i_ctx->dial_fn = dial;
     i_ctx->write_fn = write;
@@ -335,7 +426,7 @@ int ziti_tunneler_intercept(tunneler_context tnlr_ctx, intercept_ctx_t *i_ctx) {
     }
 
     STAILQ_FOREACH(address, &i_ctx->addresses, entries) {
-         add_route(tnlr_ctx->opts.netif_driver, address);
+         add_route(tnlr_ctx->opts.l3_netif_driver, address);
     }
 
     LIST_INSERT_HEAD(&tnlr_ctx->intercepts, (struct intercept_ctx_s *)i_ctx, entries);
@@ -403,9 +494,13 @@ void ziti_tunneler_stop_intercepting(tunneler_context tnlr_ctx, void *zi_ctx) {
 
         LIST_REMOVE(intercept, entries);
 
-        struct address_s *address;
-        STAILQ_FOREACH(address, &intercept->addresses, entries) {
-            delete_route(tnlr_ctx->opts.netif_driver, address);
+        if (intercept->osi_layer == l2) {
+            // todo close ziti connection here
+        } else if (intercept->osi_layer == l3) {
+            struct address_s *address;
+            STAILQ_FOREACH(address, &intercept->addresses, entries) {
+                delete_route(tnlr_ctx->opts.l3_netif_driver, address);
+            }
         }
 
         free_intercept(intercept);
@@ -431,6 +526,13 @@ ssize_t ziti_tunneler_write(tunneler_io_context tnlr_io_ctx, const void *data, s
         case tun_udp:
             r = tunneler_udp_write(tnlr_io_ctx->udp, data, len);
             break;
+        case tun_l2:
+            r = tunneler_l2_write(&tnlr_io_ctx->tnlr_ctx->l2_netif, data, len);
+            break;
+        default:
+            TNL_LOG(ERR, "unknown tunnel protocol %d", tnlr_io_ctx->proto);
+            r = -1;
+            break;
     }
 
     return r;
@@ -452,6 +554,9 @@ int ziti_tunneler_close(tunneler_io_context tnlr_io_ctx) {
         case tun_udp:
             tunneler_udp_close(tnlr_io_ctx->udp);
             tnlr_io_ctx->udp = NULL;
+            break;
+        case tun_l2:
+            tunneler_l2_close(tnlr_io_ctx->intercepted);
             break;
         default:
             TNL_LOG(ERR, "unknown proto %d", tnlr_io_ctx->proto);
@@ -492,8 +597,9 @@ static void on_tun_data(uv_poll_t * req, int status, int events) {
         return;
     }
 
+    struct netif *netif = req->data;
     if (events & UV_READABLE) {
-        netif_shim_input(netif_default);
+        netif_shim_input(netif);
     }
 }
 
@@ -542,7 +648,8 @@ static struct raw_pcb * init_protocol_handler(u8_t proto, raw_recv_fn recv_fn, v
         return NULL;
     }
 
-    raw_bind_netif(pcb, netif_default);
+    tunneler_context tnlr_ctx = arg;
+    raw_bind_netif(pcb, &tnlr_ctx->l3_netif);
     raw_recv(pcb, recv_fn, arg);
 
     return pcb;
@@ -558,21 +665,22 @@ static void run_packet_loop(uv_loop_t *loop, tunneler_context tnlr_ctx) {
 
     lwip_init();
 
-    netif_driver netif_driver = opts.netif_driver;
-    if (netif_add_noaddr(&tnlr_ctx->netif, netif_driver, netif_shim_init, ip_input) == NULL) {
+    netif_driver l3_netif_driver = opts.l3_netif_driver;
+    if (netif_add_noaddr(&tnlr_ctx->l3_netif, l3_netif_driver, netif_shim_init, ip_input) == NULL) {
         TNL_LOG(ERR, "netif_add failed");
         exit(1);
     }
 
-    netif_set_default(&tnlr_ctx->netif);
-    netif_set_link_up(&tnlr_ctx->netif);
-    netif_set_up(&tnlr_ctx->netif);
+    netif_set_default(&tnlr_ctx->l3_netif);
+    netif_set_link_up(&tnlr_ctx->l3_netif);
+    netif_set_up(&tnlr_ctx->l3_netif);
 
-    if (netif_driver->setup) {
-        netif_driver->setup(netif_driver->handle, loop, on_packet, netif_default);
-    } else if (netif_driver->uv_poll_init) {
-        netif_driver->uv_poll_init(netif_driver->handle, loop, &tnlr_ctx->netif_poll_req);
-        if (uv_poll_start(&tnlr_ctx->netif_poll_req, UV_READABLE, on_tun_data) != 0) {
+    if (l3_netif_driver->setup) {
+        l3_netif_driver->setup(l3_netif_driver->handle, loop, on_packet, &tnlr_ctx->l3_netif);
+    } else if (l3_netif_driver->uv_poll_init) {
+        l3_netif_driver->uv_poll_init(l3_netif_driver->handle, loop, &tnlr_ctx->l3_netif_poll_req);
+        tnlr_ctx->l3_netif_poll_req.data = &tnlr_ctx->l3_netif;
+        if (uv_poll_start(&tnlr_ctx->l3_netif_poll_req, UV_READABLE, on_tun_data) != 0) {
             TNL_LOG(ERR, "failed to start tun poll handle");
             exit(1);
         }
@@ -592,6 +700,34 @@ static void run_packet_loop(uv_loop_t *loop, tunneler_context tnlr_ctx) {
     // don't run LWIP timers until we have active TCP connections
     uv_timer_init(loop, &tnlr_ctx->lwip_timer_req);
     uv_unref((uv_handle_t *) &tnlr_ctx->lwip_timer_req);
+
+    netif_driver l2_netif_driver = opts.l2_netif_driver;
+    if (l2_netif_driver) {
+        if (netif_add_noaddr(&tnlr_ctx->l2_netif, l2_netif_driver, netif_shim_init, ethernet_input) == NULL) {
+            TNL_LOG(ERR, "netif_add failed");
+            exit(1);
+        }
+
+        netif_set_link_up(&tnlr_ctx->l2_netif);
+        netif_set_up(&tnlr_ctx->l2_netif);
+        if (tnlr_ctx->l2_netif.hwaddr_len > 0) {
+            netif_set_flags(&tnlr_ctx->l2_netif, NETIF_FLAG_ETHERNET);
+        }
+
+        if (l2_netif_driver->setup) {
+            l2_netif_driver->setup(l2_netif_driver->handle, loop, on_packet, &tnlr_ctx->l2_netif);
+        } else if (l2_netif_driver->uv_poll_init) {
+            l2_netif_driver->uv_poll_init(l2_netif_driver->handle, loop, &tnlr_ctx->l2_netif_poll_req);
+            tnlr_ctx->l2_netif_poll_req.data = &tnlr_ctx->l2_netif;
+            if (uv_poll_start(&tnlr_ctx->l2_netif_poll_req, UV_READABLE, on_tun_data) != 0) {
+                TNL_LOG(ERR, "failed to start tun poll handle");
+                exit(1);
+            }
+        } else {
+            TNL_LOG(WARN, "no method to initiate tunnel reader, maybe it's ok");
+        }
+
+    }
 }
 
 typedef struct ziti_tunnel_async_call_s {
@@ -696,7 +832,6 @@ void ziti_tunnel_get_ip_stats(tunnel_ip_stats *stats) {
         tunneler_udp_get_conn(stats->connections[i++], upcb);
     }
 }
-
 
 const char* ziti_tunneler_version() {
     return str(GIT_VERSION);

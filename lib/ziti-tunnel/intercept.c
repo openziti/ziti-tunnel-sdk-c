@@ -153,6 +153,21 @@ struct addr_match {
     intercept_ctx_t *intercept;
 };
 
+intercept_ctx_t *lookup_intercept_by_ethtype(tunneler_context tnlr_ctx, uint16_t ethtype) {
+    intercept_ctx_t *intercept; // todo consider caching these
+
+    LIST_FOREACH(intercept, &tnlr_ctx->intercepts, entries) {
+        if (intercept->osi_layer != l2) continue;
+        model_string e_str;
+        MODEL_LIST_FOREACH(e_str, intercept->ethtypes) {
+            const uint16_t e = strtol(e_str, NULL, 16);
+            if (e == ethtype) return intercept;
+        }
+    }
+
+    return NULL;
+}
+
 /** return the intercept context with the smallest address range for a packet based on its destination ip:port */
 intercept_ctx_t * lookup_intercept_by_address(tunneler_context tnlr_ctx, const char *protocol,
                                               ip_addr_t *src_addr, ip_addr_t *dst_addr, uint16_t dst_port) {
@@ -254,6 +269,11 @@ void free_intercept(intercept_ctx_t *intercept) {
         STAILQ_REMOVE_HEAD(&intercept->allowed_source_addresses, entries);
         free_ziti_address(&a->za);
         free(a);
+    }
+
+    model_string ethtype;
+    MODEL_LIST_FOREACH(ethtype, intercept->ethtypes) {
+        free((void *) ethtype);
     }
 
     free(intercept->service_name);

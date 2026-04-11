@@ -112,20 +112,31 @@ static void tunnel_enroll_cb(const ziti_config *cfg, int status, const char *err
 static void enroll_ziti_async(uv_loop_t *loop, void *arg) {
     struct add_identity_request_s *add_id_req = arg;
 
-    ziti_enroll_opts enroll_opts = {0};
-    enroll_opts.name = add_id_req->identifier;
-    enroll_opts.token = add_id_req->jwt_content;
-    enroll_opts.use_keychain = add_id_req->use_keychain;
-    enroll_opts.key = add_id_req->key;
-    enroll_opts.cert = add_id_req->certificate;
-    enroll_opts.url = add_id_req->url;
+    int enroll_result;
+    if (add_id_req->url != NULL && add_id_req->jwt_content == NULL) {
+        // URL-only: controller must be OS-trusted. Fetches CA bundle and
+        // returns base config (no cert/key). The identity is auto-loaded
+        // after save; ext auth events then drive the OIDC + enrollToCert
+        // flow via IPC.
+        enroll_result = ziti_enroll_url(add_id_req->url, loop, tunnel_enroll_cb, add_id_req);
+    } else {
+        ziti_enroll_opts enroll_opts = {0};
+        enroll_opts.name = add_id_req->identifier;
+        enroll_opts.token = add_id_req->jwt_content;
+        enroll_opts.use_keychain = add_id_req->use_keychain;
+        enroll_opts.key = add_id_req->key;
+        enroll_opts.cert = add_id_req->certificate;
+        enroll_opts.url = add_id_req->url;
+        // SDK routes by JWT method: network JWT + URL -> bootstrap for
+        // private CA controllers, standard JWT -> OTT/OTTCA/CA enrollment
+        enroll_result = ziti_enroll(&enroll_opts, loop, tunnel_enroll_cb, add_id_req);
+    }
 
-    int enroll_result = ziti_enroll(&enroll_opts, loop, tunnel_enroll_cb, add_id_req);
     if (enroll_result == ZITI_OK) {
         ZITI_LOG(INFO, "enrollment started. identity file will be written to: %s", add_id_req->identifier);
     } else {
         ZITI_LOG(ERROR, "cannot enroll: %d", enroll_result);
-        tunnel_enroll_cb(NULL, ZITI_INVALID_STATE, "enrollment JWT or verifiable controller URL is required", add_id_req);
+        tunnel_enroll_cb(NULL, ZITI_INVALID_STATE, "enrollment failed", add_id_req);
     }
 }
 
@@ -143,6 +154,90 @@ bool is_within_config_dir(const char *file_path) {
     }
 
     return false;  // File is not within the config_dir
+}
+
+static void process_update_tun_ipv4_cmd(const char *cmd_json, tunnel_result *result) {
+    tunnel_tun_ip_v4 tunnel_tun_ip_v4_cmd = {0};
+    if (cmd_json == NULL || parse_tunnel_tun_ip_v4(&tunnel_tun_ip_v4_cmd, cmd_json, strlen(cmd_json)) < 0) {
+        result->error = "invalid command";
+        result->success = false;
+        free_tunnel_tun_ip_v4(&tunnel_tun_ip_v4_cmd);
+        return;
+    }
+    if (tunnel_tun_ip_v4_cmd.prefixLength < MINTUNPREFIXLENGTH || tunnel_tun_ip_v4_cmd.prefixLength > MAXTUNPREFIXLENGTH) {
+        result->error = "prefix length should be between 10 and 18";
+        result->success = false;
+        return;
+    }
+    char* tun_ip_str = strdup(tunnel_tun_ip_v4_cmd.tunIP);
+    // make a copy, so we can free it later - validating ip address input
+    char* tun_ip_cpy = tun_ip_str;
+    char* ip_ptr = strtok(tun_ip_str, "."); //cut the string using dot delimiter
+    if (ip_ptr == NULL) {
+        result->error = "Invalid IP address";
+        result->success = false;
+        return;
+    }
+    int dots = 0;
+    bool validationStatus = true;
+    while (ip_ptr) {
+        bool isInt = true;
+        char* ip_str = ip_ptr;
+        while (*ip_str) {
+            if(!isdigit(*ip_str)){ //if the character is not a number, break
+                isInt = false;
+                validationStatus = false;
+                break;
+            }
+            ip_str++; //point to next character
+        }
+        if (!isInt) {
+            break;
+        }
+        int num = atoi(ip_ptr); //convert substring to number
+        if (num >= 0 && num <= 255) {
+            ip_ptr = strtok(NULL, "."); //cut the next part of the string
+            if (ip_ptr != NULL)
+                dots++; //increase the dot count
+        } else {
+            validationStatus = false;
+            break;
+        }
+    }
+    free(tun_ip_cpy);
+    if (dots != 3 || !validationStatus) {
+        result->error = "Invalid IP address";
+        result->success = false;
+        free_tunnel_tun_ip_v4(&tunnel_tun_ip_v4_cmd);
+        return;
+    }
+    if (tunnel_tun_ip_v4_cmd.tunIP == NULL) {
+        result->error = "Tun IP is null";
+        result->success = false;
+        free_tunnel_tun_ip_v4(&tunnel_tun_ip_v4_cmd);
+        return;
+    }
+    set_tun_ipv4_into_instance(tunnel_tun_ip_v4_cmd.tunIP,
+                               (int)tunnel_tun_ip_v4_cmd.prefixLength,
+                               tunnel_tun_ip_v4_cmd.addDns);
+    free_tunnel_tun_ip_v4(&tunnel_tun_ip_v4_cmd);
+    result->success = true;
+    result->code = IPC_SUCCESS;
+}
+
+static void process_update_l2_options_cmd(const char *cmd_json, tunnel_result *result) {
+    tunnel_l2_options l2_opts = {0};
+    if (cmd_json == NULL || parse_tunnel_l2_options(&l2_opts, cmd_json, strlen(cmd_json)) < 0) {
+        result->error = "invalid command";
+        result->success = false;
+        free_tunnel_l2_options(&l2_opts);
+        return;
+    }
+    set_l2_enabled(l2_opts.enabled);
+    set_pcap_ifname(l2_opts.pcap_ifname);
+    result->success = true;
+    result->code = IPC_SUCCESS;
+    free_tunnel_l2_options(&l2_opts);
 }
 
 bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void *ctx) {
@@ -184,74 +279,55 @@ bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void 
         }
         case TunnelCommand_UpdateTunIpv4: {
             cmd_accepted = true;
-
-            tunnel_tun_ip_v4 tunnel_tun_ip_v4_cmd = {0};
-            if (tnl_cmd->data == NULL || parse_tunnel_tun_ip_v4(&tunnel_tun_ip_v4_cmd, tnl_cmd->data, strlen(tnl_cmd->data)) < 0) {
-                result.error = "invalid command";
-                result.success = false;
-                free_tunnel_tun_ip_v4(&tunnel_tun_ip_v4_cmd);
-                break;
-            }
-            if (tunnel_tun_ip_v4_cmd.prefixLength < MINTUNPREFIXLENGTH || tunnel_tun_ip_v4_cmd.prefixLength > MAXTUNPREFIXLENGTH) {
-                result.error = "prefix length should be between 10 and 18";
-                result.success = false;
-                break;
-            }
-            char* tun_ip_str = strdup(tunnel_tun_ip_v4_cmd.tunIP);
-            // make a copy, so we can free it later - validating ip address input
-            char* tun_ip_cpy = tun_ip_str;
-            char* ip_ptr = strtok(tun_ip_str, "."); //cut the string using dot delimiter
-            if (ip_ptr == NULL) {
-                result.error = "Invalid IP address";
-                result.success = false;
-                break;
-            }
-            int dots = 0;
-            bool validationStatus = true;
-            while (ip_ptr) {
-                bool isInt = true;
-                char* ip_str = ip_ptr;
-                while (*ip_str) {
-                    if(!isdigit(*ip_str)){ //if the character is not a number, break
-                        isInt = false;
-                        validationStatus = false;
-                        break;
-                    }
-                    ip_str++; //point to next character
-                }
-                if (!isInt) {
-                    break;
-                }
-                int num = atoi(ip_ptr); //convert substring to number
-                if (num >= 0 && num <= 255) {
-                    ip_ptr = strtok(NULL, "."); //cut the next part of the string
-                    if (ip_ptr != NULL)
-                        dots++; //increase the dot count
-                } else {
-                    validationStatus = false;
-                    break;
-                }
-            }
-            free(tun_ip_cpy);
-            if (dots != 3 || !validationStatus) {
-                result.error = "Invalid IP address";
-                result.success = false;
-                free_tunnel_tun_ip_v4(&tunnel_tun_ip_v4_cmd);
-                break;
-            }
-            if (tunnel_tun_ip_v4_cmd.tunIP == NULL) {
-                result.error = "Tun IP is null";
-                result.success = false;
-                free_tunnel_tun_ip_v4(&tunnel_tun_ip_v4_cmd);
-                break;
-            }
-            set_tun_ipv4_into_instance(tunnel_tun_ip_v4_cmd.tunIP,
-                                       (int)tunnel_tun_ip_v4_cmd.prefixLength,
-                                       tunnel_tun_ip_v4_cmd.addDns);
-            result.success = true;
-            result.code = IPC_SUCCESS;
+            process_update_tun_ipv4_cmd(tnl_cmd->data, &result);
             break;
         }
+
+        case TunnelCommand_UpdateL2Options: {
+            cmd_accepted = true;
+            process_update_l2_options_cmd(tnl_cmd->data, &result);
+            break;
+        }
+
+        case TunnelCommand_UpdateInterfaceConfig: {
+            // for now this combines UpdateTunIpv4 and UpdateL2Options commands.
+            cmd_accepted = true;
+            tunnel_interface_config tunnel_interface_config = {0};
+            if (tnl_cmd->data == NULL || parse_tunnel_interface_config(&tunnel_interface_config, tnl_cmd->data, strlen(tnl_cmd->data)) < 0) {
+                result.error = "invalid command";
+                result.success = false;
+                free_tunnel_interface_config(&tunnel_interface_config);
+                break;
+            }
+
+            char json[1024];
+            memset(json, 0, sizeof(json));
+            if (tunnel_tun_ip_v4_to_json_r(&tunnel_interface_config.l3, MODEL_JSON_COMPACT, json, sizeof(json)) < 0) {
+                result.error = "invalid command";
+                result.success = false;
+                free_tunnel_interface_config(&tunnel_interface_config);
+                break;
+            }
+
+            process_update_tun_ipv4_cmd(json, &result);
+            if (result.success == false) {
+                free_tunnel_interface_config(&tunnel_interface_config);
+                break;
+            }
+
+            memset(json, 0, sizeof(json));
+            if (tunnel_l2_options_to_json_r(&tunnel_interface_config.l2, MODEL_JSON_COMPACT, json, sizeof(json)) < 0) {
+                result.error = "invalid command";
+                result.success = false;
+                free_tunnel_interface_config(&tunnel_interface_config);
+                break;
+            }
+
+            process_update_l2_options_cmd(json, &result);
+            free_tunnel_interface_config(&tunnel_interface_config);
+            break;
+        }
+
         case TunnelCommand_Status: {
             cmd_accepted = true;
             cmd_forces_save_file = false;
@@ -328,7 +404,18 @@ bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void 
                     break;
                 }
             } else if (is_url) {
-                // empty on purpose for now
+                if (tunnel_add_identity_cmd.identityFilename == NULL) {
+                    result.error = "identity filename is required for URL enrollment";
+                    result.success = false;
+                    free_tunnel_add_identity(&tunnel_add_identity_cmd);
+                    break;
+                }
+                if ((strlen(config_dir) + strlen(tunnel_add_identity_cmd.identityFilename) + 6) >= FILENAME_MAX) {
+                    result.error = "invalid file name";
+                    result.success = false;
+                    free_tunnel_add_identity(&tunnel_add_identity_cmd);
+                    break;
+                }
             } else {
                 result.error = "programming error. this case should not be hit. please file an issue";
                 result.success = false;

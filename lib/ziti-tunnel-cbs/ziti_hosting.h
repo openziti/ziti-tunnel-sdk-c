@@ -21,6 +21,7 @@
 #ifndef ZITI_TUNNEL_SDK_C_ZITI_HOSTING_H
 #define ZITI_TUNNEL_SDK_C_ZITI_HOSTING_H
 #include <ziti/ziti_tunnel.h>
+#include "ziti/ziti_tunnel_cbs.h"
 #include "tlsuv/http.h"
 // allowed address is one of:
 // - ip subnet address
@@ -36,7 +37,7 @@ typedef LIST_HEAD(allowed_addr_list, allowed_hostname_s) allowed_hostnames_t;
 struct hosted_service_ctx_s {
     char *       service_name;
     const void * ziti_ctx;
-    uv_loop_t *  loop;
+    tunneler_context tnlr_ctx;
     cfg_type_e   cfg_type;
     const void * cfg;
     char display_address[64];

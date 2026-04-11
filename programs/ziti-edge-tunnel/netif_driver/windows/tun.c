@@ -15,6 +15,7 @@
  */
 
 #include <stdint.h>
+#include <stdbool.h>
 #include <ziti/netif_driver.h>
 
 #ifndef _Out_cap_c_
@@ -37,6 +38,7 @@
 #include <ziti/model_support.h>
 
 #include "tun.h"
+#include "tap.h"
 
 #define ZITI_TUN_NAME_BASE "ziti-tun"
 
@@ -385,7 +387,7 @@ ssize_t tun_write(netif_handle tun, const void *buf, size_t len) {
     BYTE* packet = WintunAllocateSendPacket(tun->session, len);
     memcpy(packet, buf, len);
     WintunSendPacket(tun->session, packet);
-    return 0;
+    return (ssize_t) len;
 }
 
 static int parse_route(PIP_ADDRESS_PREFIX pfx, const char *route) {

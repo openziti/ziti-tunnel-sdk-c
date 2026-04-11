@@ -34,7 +34,7 @@ TEST_CASE("recycle ip", "[dns]") {
     netif_driver_t mock_netif = {};
     mock_netif.add_route = mock_add_route;
     tunneler_sdk_options tnlr_opts = {
-            .netif_driver = &mock_netif,
+            .l3_netif_driver = &mock_netif,
             .ziti_dial = ziti_sdk_c_dial,
             .ziti_close = ziti_sdk_c_close,
             .ziti_close_write = ziti_sdk_c_close_write,

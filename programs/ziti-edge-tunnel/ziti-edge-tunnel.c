@@ -39,10 +39,13 @@
 #elif __linux__
 #include "netif_driver/linux/tun.h"
 #include "linux/diverter.h"
+#include "netif_driver/linux/pcap.h"
 #elif _WIN32
 #include <time.h>
 #include <io.h>
 #include "netif_driver/windows/tun.h"
+#include "netif_driver/windows/tap.h"
+#include "netif_driver/windows/pcap.h"
 #include "windows/windows-service.h"
 #include "windows/windows-scripts.h"
 #include "windows/minidump.h"
@@ -81,7 +84,7 @@ void send_tunnel_command_inline(const tunnel_command *tnl_cmd, void *ctx);
 static void scm_service_stop_event(uv_loop_t *loop, void *arg);
 static bool is_host_only();
 static void run_tunneler_loop(uv_loop_t* ziti_loop);
-static tunneler_context initialize_tunneler(netif_driver tun, uv_loop_t* ziti_loop);
+static tunneler_context initialize_tunneler(netif_driver tun, netif_driver tap, uv_loop_t* ziti_loop);
 
 #if _WIN32
 static void move_config_from_previous_windows_backup(uv_loop_t *loop);
@@ -119,6 +122,8 @@ struct cfg_instance_s {
 static LIST_HEAD(instance_list, cfg_instance_s) load_list;
 
 static ziti_enroll_opts enroll_opts;
+static ziti_enroll_mode enroll_mode;
+static const char *enroll_provider;
 char* config_dir;
 char* config_file;
 bool uses_config_dir = false;
@@ -129,6 +134,8 @@ static char *configured_cidr = NULL;
 static char *configured_log_level = NULL;
 static char *configured_proxy = NULL;
 static char *ipc_discriminator = NULL;
+static bool l2_tunnel = false;
+static char *pcap_iface = NULL;
 
 //timer
 static uv_timer_t metrics_timer;
@@ -771,7 +778,7 @@ static void on_event(const base_event *ev) {
             }
 
             free((char *) id->Config->ZtAPI);
-            id->Config->ZtAPI = strdup(zc.controller_url);
+            id->Config->ZtAPI = zc.controller_url ? strdup(zc.controller_url) : NULL;
 
             // free previous controllers
             int i;
@@ -840,7 +847,7 @@ static char* normalize_host(char* hostname) {
 }
 
 static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, const char *ip_range, const char *dns_upstream) {
-    netif_driver tun;
+    netif_driver tun, tap = NULL;
     char tun_error[64];
 
     // remove the host bits from the dns cidr so added routes are valid
@@ -851,12 +858,49 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     uint32_t dns_subnet_u32 = ntohl(dns_subnet_in->s_addr) & (0xFFFFFFFFUL << (32 - dns_subnet_zaddr.addr.cidr.bits)) & 0xFFFFFFFFUL;
     ip_addr_t dns_ip4_addr = IPADDR4_INIT(htonl(dns_subnet_u32));
     snprintf(dns_subnet, sizeof(dns_subnet), "%s/%d", ipaddr_ntoa(&dns_ip4_addr), dns_subnet_zaddr.addr.cidr.bits);
+
+#if !defined(__linux__) && !defined(_WIN32)
+    // todo remove this ifdef and pass `l2_tunnel` to the tun open functions, which can fail if l2 is not possible.
+    if (l2_tunnel) {
+        ZITI_LOG(ERROR, "l2 tunneling is not supported on this operating system");
+        return 1;
+    }
+#endif
+
 #if __APPLE__ && __MACH__
     tun = utun_open(tun_error, sizeof(tun_error), ip_range);
 #elif __linux__
     tun = tun_open(ziti_loop, tun_ip, dns_ip, dns_subnet, tun_error, sizeof(tun_error));
+    if (tun != NULL && get_l2_enabled()) {
+        const char *pcap_iface = get_pcap_ifname();
+        if (pcap_iface && pcap_iface[0] != '\0') {
+            ZITI_LOG(INFO, "L2 mode enabled -- opening pcap interface '%s'", pcap_iface);
+            tap = ziti_pcap_open(ziti_loop, pcap_iface, tun_error, sizeof(tun_error));
+            if (tap == NULL) {
+                ZITI_LOG(ERROR, "failed to open pcap interface '%s': %s", pcap_iface, tun_error);
+                return 1;
+            }
+        } else {
+            ZITI_LOG(INFO, "L2 mode enabled -- opening TAP interface");
+            tap = tap_open(ziti_loop, tun_error, sizeof(tun_error));
+        }
+    }
 #elif _WIN32
     tun = tun_open(ziti_loop, tun_ip, dns_subnet, tun_error, sizeof(tun_error));
+    if (tun != NULL && get_l2_enabled()) {
+        const char *pcap_iface = get_pcap_ifname();
+        if (pcap_iface && pcap_iface[0] != '\0') {
+            ZITI_LOG(INFO, "L2 mode enabled -- opening pcap interface '%s'", pcap_iface);
+            tap = ziti_pcap_open(ziti_loop, pcap_iface, tun_error, sizeof(tun_error));
+            if (tap == NULL) {
+                ZITI_LOG(ERROR, "failed to open pcap interface '%s': %s", pcap_iface, tun_error);
+                return 1;
+            }
+        } else {
+            ZITI_LOG(INFO, "L2 mode enabled -- opening TAP interface");
+            tap = tap_open(ziti_loop, tun_ip, dns_subnet, tun_error, sizeof(tun_error));
+        }
+    }
 #else
 #error "ziti-edge-tunnel is not supported on this system"
 #endif
@@ -890,7 +934,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
     set_tun_name(tun->get_name(tun->handle)); //sets the tunnel status's, tun name...
 #endif
 
-    tunneler = initialize_tunneler(tun, ziti_loop);
+    tunneler = initialize_tunneler(tun, tap, ziti_loop);
 
     ip_addr_t dns_ip4 = IPADDR4_INIT(dns_ip);
     ziti_dns_setup(tunneler, ipaddr_ntoa(&dns_ip4), ip_range);
@@ -912,7 +956,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
 }
 
 static int run_tunnel_host_mode(uv_loop_t *ziti_loop) {
-    tunneler = initialize_tunneler(NULL, ziti_loop);
+    tunneler = initialize_tunneler(NULL, NULL, ziti_loop);
     run_tunneler_loop(ziti_loop);
     return 0;
 }
@@ -1100,16 +1144,16 @@ static void run_tunneler_loop(uv_loop_t* ziti_loop) {
     free(tunneler);
 }
 
-static tunneler_context initialize_tunneler(netif_driver tun, uv_loop_t* ziti_loop) {
+static tunneler_context initialize_tunneler(netif_driver tun, netif_driver tap, uv_loop_t* ziti_loop) {
 
     tunneler_sdk_options tunneler_opts = {
-            .netif_driver = tun,
+            .l3_netif_driver = tun,
+            .l2_netif_driver = tap,
             .ziti_dial = ziti_sdk_c_dial,
             .ziti_close = ziti_sdk_c_close,
             .ziti_close_write = ziti_sdk_c_close_write,
             .ziti_write = ziti_sdk_c_write,
             .ziti_host = ziti_sdk_c_host
-
     };
 
     if (is_host_only()) {
@@ -1159,6 +1203,8 @@ static struct option run_options[] = {
         { "dns-ip-range", required_argument, NULL, 'd'},
         { "dns-upstream", required_argument, NULL, 'u'},
         { "proxy", required_argument, NULL, 'x' },
+        { "l2", no_argument, NULL, '2' },
+        { "pcap-iface", required_argument, NULL, 'N' },
 #if __linux__
         { "diverter", required_argument, NULL, 'D' },
         { "diverter-fw", required_argument, NULL, 'f' },
@@ -1234,7 +1280,7 @@ static int run_opts(int argc, char *argv[]) {
 #else
 #define DIVERTER_SHORT_OPTS ""
 #endif
-    while ((c = getopt_long(argc, argv, "i:I:v:r:d:u:x:"DIVERTER_SHORT_OPTS,
+    while ((c = getopt_long(argc, argv, "i:I:v:r:d:u:x:2N:"DIVERTER_SHORT_OPTS,
                             run_options, &option_index)) != -1) {
         switch (c) {
 #if __linux__
@@ -1281,6 +1327,13 @@ static int run_opts(int argc, char *argv[]) {
                 break;
             case 'x':
                 configured_proxy = optarg;
+                break;
+            case '2':
+                l2_tunnel = true;
+                break;
+            case 'N':
+                pcap_iface = optarg;
+                l2_tunnel = true;
                 break;
             default: {
                 fprintf(stderr, "Unknown option '%c'\n", c);
@@ -1532,6 +1585,14 @@ static void run(int argc, char *argv[]) {
     set_log_level(ziti_log_level_label());
     ziti_tunnel_set_logger(ziti_logger);
 
+    // prioritize command line flags, but respect config file values.
+    if (l2_tunnel) {
+        set_l2_enabled(l2_tunnel);
+    }
+    if (pcap_iface) {
+        set_pcap_ifname(pcap_iface);
+    }
+
     if (init_proxy_connector(configured_proxy) != 0) {
         exit(1);
     }
@@ -1594,13 +1655,17 @@ static int parse_enroll_opts(int argc, char *argv[]) {
         { "key", required_argument, NULL, 'k'},
         { "cert", required_argument, NULL, 'c'},
         { "name", required_argument, NULL, 'n'},
+        { "enroll-to", required_argument, NULL, 'E'},
+        { "provider", required_argument, NULL, 'p'},
         { "proxy", required_argument, NULL, 'x' },
     };
     int c, option_index, errors = 0;
     const char *proxy_arg = NULL;
+    enroll_mode = ziti_enroll_none;
+    enroll_provider = NULL;
     optind = 0;
 
-    while ((c = getopt_long(argc, argv, "j:i:Kk:c:n:x:u:",
+    while ((c = getopt_long(argc, argv, "j:i:Kk:c:n:p:x:u:",
                             opts, &option_index)) != -1) {
         switch (c) {
             case 'u':
@@ -1637,6 +1702,21 @@ static int parse_enroll_opts(int argc, char *argv[]) {
             case 'n':
                 enroll_opts.name = optarg;
                 break;
+            case 'E':
+                if (strcmp(optarg, "none") == 0) {
+                    enroll_mode = ziti_enroll_none;
+                } else if (strcmp(optarg, "cert") == 0) {
+                    enroll_mode = ziti_enroll_cert;
+                } else if (strcmp(optarg, "token") == 0) {
+                    enroll_mode = ziti_enroll_token;
+                } else {
+                    fprintf(stderr, "unknown --enroll-to value: %s (expected none, cert, or token)\n", optarg);
+                    errors++;
+                }
+                break;
+            case 'p':
+                enroll_provider = optarg;
+                break;
             case 'i':
                 config_file = optarg;
                 break;
@@ -1668,6 +1748,11 @@ static int parse_enroll_opts(int argc, char *argv[]) {
         errors++;
     }
 
+    if (enroll_mode != ziti_enroll_none && enroll_opts.url == NULL && enroll_opts.token == NULL) {
+        fprintf(stderr, "--enroll-to requires -u|--url or -j|--jwt\n");
+        errors++;
+    }
+
     CHECK_COMMAND_ERRORS(errors);
 
     return optind;
@@ -1688,6 +1773,174 @@ static void enroll_cb(const ziti_config *cfg, int status, const char *err, void 
 
     params->config.base = cfg_json;
     params->config.len = len;
+}
+
+// -- URL-based enrollment (async with provider selection) --
+
+struct enroll_url_state {
+    struct enroll_cb_params *params;
+    ziti_context ztx;
+    uv_loop_t *loop;
+    const char *provider;
+    ziti_enroll_mode mode;
+    uv_buf_t bootstrap_config;
+};
+
+static void enroll_url_ext_auth_cb(ziti_context ztx, const char *url, void *ctx) {
+    fprintf(stderr, "\nOpen the following URL in a browser to authenticate:\n\n"
+                    "    %s\n\n", url);
+
+#if defined(_WIN32)
+    ShellExecuteA(NULL, "open", url, NULL, NULL, SW_SHOWNORMAL);
+#elif defined(__APPLE__)
+    { char _cmd[4096]; snprintf(_cmd, sizeof(_cmd), "open \"%s\"", url); system(_cmd); }
+#else
+    { char _cmd[4096]; snprintf(_cmd, sizeof(_cmd), "xdg-open \"%s\" &", url); system(_cmd); }
+#endif
+}
+
+static bool provider_supports_mode(const ziti_jwt_signer *provider, ziti_enroll_mode mode) {
+    switch (mode) {
+        case ziti_enroll_cert:  return provider->can_cert_enroll;
+        case ziti_enroll_token: return provider->can_token_enroll;
+        default: return false;
+    }
+}
+
+static void enroll_url_event_cb(ziti_context ztx, const ziti_event_t *event) {
+    struct enroll_url_state *state = ziti_app_ctx(ztx);
+
+    switch (event->type) {
+        case ZitiAuthEvent:
+            switch (event->auth.action) {
+                case ziti_auth_select_external: {
+                    const char *selected = NULL;
+                    int match_count = 0;
+
+                    for (int i = 0; event->auth.providers && event->auth.providers[i]; i++) {
+                        if (!provider_supports_mode(event->auth.providers[i], state->mode)) continue;
+                        match_count++;
+
+                        if (state->provider != NULL) {
+                            if (strcmp(event->auth.providers[i]->name, state->provider) == 0) {
+                                selected = event->auth.providers[i]->name;
+                            }
+                        } else if (selected == NULL) {
+                            selected = event->auth.providers[i]->name;
+                        }
+                    }
+
+                    if (selected == NULL) {
+                        if (state->provider != NULL) {
+                            ZITI_LOG(WARN, "provider '%s' not found or incompatible with --enroll-to mode",
+                                     state->provider);
+                        } else {
+                            ZITI_LOG(WARN, "no compatible provider found for --enroll-to mode");
+                        }
+                        // save bootstrap config so the identity can still be loaded
+                        state->params->config = state->bootstrap_config;
+                        state->bootstrap_config = (uv_buf_t){0};
+                        ziti_shutdown(ztx);
+                        break;
+                    }
+
+                    if (match_count > 1 && state->provider == NULL) {
+                        ZITI_LOG(WARN, "multiple compatible providers available, using '%s'", selected);
+                        ZITI_LOG(WARN, "use -p|--provider to select a specific provider:");
+                        for (int i = 0; event->auth.providers && event->auth.providers[i]; i++) {
+                            if (provider_supports_mode(event->auth.providers[i], state->mode)) {
+                                ZITI_LOG(WARN, "  %s", event->auth.providers[i]->name);
+                            }
+                        }
+                    }
+
+                    ZITI_LOG(INFO, "selecting provider: %s", selected);
+                    ziti_use_ext_jwt_signer(ztx, selected);
+                    ziti_ext_auth(ztx, enroll_url_ext_auth_cb, NULL);
+                    return;
+                }
+                case ziti_auth_cannot_continue:
+                    ZITI_LOG(ERROR, "authentication failed: %s", event->auth.detail);
+                    free(state->bootstrap_config.base);
+                    state->bootstrap_config = (uv_buf_t){0};
+                    ziti_shutdown(ztx);
+                    break;
+                default:
+                    break;
+            }
+            break;
+
+        case ZitiConfigEvent:
+            if (event->cfg.config) {
+                // cert mode: wait for cert; token mode: any config event
+                if (state->mode != ziti_enroll_cert || event->cfg.config->id.cert != NULL) {
+                    ZITI_LOG(INFO, "enrollment complete");
+                    free(state->bootstrap_config.base);
+                    state->bootstrap_config = (uv_buf_t){0};
+                    size_t len;
+                    char *cfg_json = ziti_config_to_json(event->cfg.config, 0, &len);
+                    state->params->config.base = cfg_json;
+                    state->params->config.len = len;
+                    ziti_shutdown(ztx);
+                }
+            }
+            break;
+
+        default:
+            break;
+    }
+}
+
+static void enroll_url_bootstrap_cb(const ziti_config *cfg, int status, const char *err, void *ctx) {
+    struct enroll_url_state *state = ctx;
+
+    if (status != ZITI_OK || cfg == NULL) {
+        ZITI_LOG(ERROR, "failed to fetch controller config: %s(%d)", err ? err : "unknown", status);
+        return;
+    }
+
+    size_t bootstrap_len;
+    char *bootstrap_json = ziti_config_to_json(cfg, 0, &bootstrap_len);
+    state->bootstrap_config.base = bootstrap_json;
+    state->bootstrap_config.len = bootstrap_len;
+
+    // enrollTo=none: just save bootstrap config, no OIDC auth needed
+    if (state->mode == ziti_enroll_none) {
+        ZITI_LOG(INFO, "bootstrap config saved (--enroll-to none)");
+        state->params->config = state->bootstrap_config;
+        state->bootstrap_config = (uv_buf_t){0};
+        return;
+    }
+
+    ZITI_LOG(INFO, "controller config fetched, starting authentication");
+
+    int rc = ziti_context_init(&state->ztx, cfg);
+    if (rc != ZITI_OK) {
+        ZITI_LOG(ERROR, "failed to create identity context: %s", ziti_errorstr(rc));
+        free(state->bootstrap_config.base);
+        state->bootstrap_config = (uv_buf_t){0};
+        return;
+    }
+
+    rc = ziti_context_set_options(state->ztx, &(ziti_options){
+        .app_ctx = state,
+        .event_cb = enroll_url_event_cb,
+        .events = ZitiContextEvent | ZitiAuthEvent | ZitiConfigEvent,
+        .enroll_mode = state->mode,
+    });
+    if (rc != ZITI_OK) {
+        ZITI_LOG(ERROR, "failed to set context options: %s", ziti_errorstr(rc));
+        free(state->bootstrap_config.base);
+        state->bootstrap_config = (uv_buf_t){0};
+        return;
+    }
+
+    rc = ziti_context_run(state->ztx, state->loop);
+    if (rc != ZITI_OK) {
+        ZITI_LOG(ERROR, "failed to run context: %s", ziti_errorstr(rc));
+        free(state->bootstrap_config.base);
+        state->bootstrap_config = (uv_buf_t){0};
+    }
 }
 
 static int write_close(FILE *fp, const uv_buf_t *data)
@@ -1749,7 +2002,25 @@ static void enroll(int argc, char *argv[]) {
 
     struct enroll_cb_params params = { 0 };
 
-    ziti_enroll(&enroll_opts, l, enroll_cb, &params);
+    if (enroll_opts.url != NULL || enroll_mode != ziti_enroll_none) {
+        // URL/enrollTo enrollment: bootstrap config, then OIDC auth if enrollTo mode requires it
+        struct enroll_url_state url_state = {
+            .params = &params,
+            .loop = l,
+            .provider = enroll_provider,
+            .mode = enroll_mode,
+        };
+        if (enroll_opts.token != NULL) {
+            // JWT provided: SDK extracts controller URL from claims
+            ziti_enroll(&enroll_opts, l, enroll_url_bootstrap_cb, &url_state);
+        } else {
+            // no JWT: controller must be OS-trusted
+            ziti_enroll_url(enroll_opts.url, l, enroll_url_bootstrap_cb, &url_state);
+        }
+    } else {
+        // standard enrollment (OTT/OTTCA/CA)
+        ziti_enroll(&enroll_opts, l, enroll_cb, &params);
+    }
 
     uv_run(l, UV_RUN_DEFAULT);
 
@@ -2347,6 +2618,43 @@ static int update_tun_ip_opts(int argc, char *argv[]) {
     return optind;
 }
 
+static int update_l2_opts(int argc, char *argv[]) {
+    static struct option opts[] = {
+        {"pcap_ifname", required_argument, NULL, 'N'},
+    };
+    int c, option_index, errors = 0;
+    optind = 0;
+
+    tunnel_l2_options *l2_opts = calloc(1, sizeof(tunnel_l2_options));
+    cmd.command = TunnelCommand_UpdateL2Options;
+    while ((c = getopt_long(argc, argv, "N:", opts, &option_index)) != -1) {
+        switch (c) {
+            case 'N':
+                l2_opts->pcap_ifname = strdup(optarg);
+                l2_opts->enabled = true;
+                break;
+            default: {
+                fprintf(stderr, "Unknown option '%c'\n", c);
+                errors++;
+                break;
+            }
+        }
+    }
+
+    // look for positional param if not using pcap
+    if (!l2_opts->enabled) {
+        if (argv[optind] && strcasecmp(argv[optind], "on") == 0) {
+            l2_opts->enabled = true;
+        }
+    }
+
+    CHECK_COMMAND_ERRORS(errors);
+    size_t json_len;
+    cmd.data = tunnel_l2_options_to_json(l2_opts, MODEL_JSON_COMPACT, &json_len);
+    free_tunnel_l2_options_ptr(l2_opts);
+    return optind;
+}
+
 static int endpoint_status_change_opts(int argc, char *argv[]) {
     static struct option opts[] = {
             {"wake", optional_argument, NULL, 'w'},
@@ -2534,9 +2842,11 @@ static int add_identity_opts(int argc, char *argv[]) {
 
 static CommandLine enroll_cmd = make_command(
     "enroll", "enroll Ziti identity",
-    "( -u|--url <controller URL> | -j|--jwt <enrollment token> ) -i|--identity <identity> [-k|--key <private_key> [-c|--cert <certificate>]] [-n|--name <name>]",
-    "\t-u|--url\tenroll with controller (3rd party IDP required for auth). Ignored if --jwt is provided\n"
-    "\t-j|--jwt\tenrollment token file\n"
+    "( -u|--url <controller URL> | -j|--jwt <enrollment token> ) -i|--identity <identity> [--enroll-to none|cert|token] [-p|--provider <name>] [-k|--key <private_key> [-c|--cert <certificate>]] [-n|--name <name>]",
+    "\t-u|--url\tcontroller URL for enrollment (requires 3rd party IDP for auth)\n"
+    "\t-j|--jwt\tenrollment token file, or network JWT when used with -u\n"
+    "\t--enroll-to\tenrollment mode for -u: none (bootstrap only), cert (OIDC + certificate), token (OIDC + token)\n"
+    "\t-p|--provider\text JWT signer name (auto-selected if only one is configured)\n"
     "\t-x|--proxy type://[username[:password]@]hostname_or_ip:port\tproxy to use when connecting to OpenZiti controller. 'http' is currently the only supported type.\n"
     "\t-i|--identity\toutput identity file\n"
     "\t-K|--use-keychain\tuse keychain to generate/store private key\n"
@@ -2560,6 +2870,8 @@ static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required supe
                                           "\t-I|--identity-dir <dir>\tload identities from provided directory\n"
                                           "\t-x|--proxy type://[username[:password]@]hostname_or_ip:port\tproxy to use when"
                                           " connecting to OpenZiti controller and edge routers. 'http' is currently the only supported type.\n"
+                                          "\t-2|--l2\tenable layer 2 services\n"
+                                          "\t-N|--pcap-iface\tnetwork interface to read/write with pcap\n"
                                           "\t-v|--verbose N\tset log level, higher level -- more verbose (default 3)\n"
                                           "\t-r|--refresh N\tset service polling interval in seconds (default 10)\n"
                                           "\t-d|--dns-ip-range <ip range>\tspecify CIDR block in which service DNS names"
@@ -2621,6 +2933,9 @@ static CommandLine update_tun_ip_cmd = make_command("update_tun_ip", "Update tun
                                                     "\t-t|--tunip\ttun ipv4 of the tunneler\n"
                                                     "\t-p|--prefixlength\ttun ipv4 prefix length of the tunneler\n"
                                                     "\t-d|--addDNS\tAdd Dns to the tunneler\n", update_tun_ip_opts, send_message_to_tunnel_fn);
+static CommandLine update_l2_opts_cmd = make_command("update_l2_opts", "Enable/disable L2 capability", "[ on | off ] [-N <pcap_ifname>]",
+                                                    "\t-N|--pcap-iface\tnetwork interface to read/write with pcap\n",
+                                                    update_l2_opts, send_message_to_tunnel_fn);
 static CommandLine ep_status_change_cmd = make_command("endpoint_sts_change", "send endpoint status change message to the tunneler", "[-w <wake>] [-u <unlock>]",
                                                     "\t-w|--wake\twake the tunneler\n"
                                                     "\t-u|--unlock\tunlock the tunneler\n", endpoint_status_change_opts, send_message_to_tunnel_fn);
@@ -2665,6 +2980,7 @@ static CommandLine *main_cmds[] = {
         &add_id_cmd,
         &set_log_level_cmd,
         &update_tun_ip_cmd,
+        &update_l2_opts_cmd,
 #if _WIN32
         &service_control_cmd,
         &ep_status_change_cmd,
