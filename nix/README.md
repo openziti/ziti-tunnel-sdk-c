@@ -60,9 +60,12 @@ Installing will set up a systemd service for you.
 
 ## Updating dependencies
 
-When a new version of ziti-edge-tunnel is released, run the update script:
+When a new version of ziti-edge-tunnel is released, update the dependencies:
 
 ```bash
+# Update the flake.lock file
+nix flake update
+
 # Update to the latest release
 ./nix/update.sh
 
