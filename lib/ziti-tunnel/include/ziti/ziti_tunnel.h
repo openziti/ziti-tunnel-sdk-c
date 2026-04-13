@@ -145,7 +145,7 @@ typedef struct tunneler_sdk_options_s {
     ziti_sdk_host_cb    ziti_host;
 } tunneler_sdk_options;
 
-typedef struct tunneler_ctx_s {
+struct tunneler_ctx_s {
     tunneler_sdk_options opts; // this must be first - it is accessed opaquely through tunneler_context*
     struct netif l3_netif;
     struct netif l2_netif;
@@ -158,7 +158,7 @@ typedef struct tunneler_ctx_s {
     uv_timer_t lwip_timer_req;
     LIST_HEAD(intercept_ctx_list_s, intercept_ctx_s) intercepts;
     model_map intercepts_cache; // cached intercept_ctx lookup keyed by [proto]:[ip]:[port]
-} *tunneler_context;
+};
 
 typedef enum {
     tun_tcp,

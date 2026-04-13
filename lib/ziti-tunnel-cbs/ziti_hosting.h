@@ -63,6 +63,7 @@ struct hosted_service_ctx_s {
     address_list_t    allowed_source_addresses;
     const char *proxy_addr;
     tlsuv_connector_t *proxy_connector;
+    tlsuv_connector_t *connector;
 };
 
 struct tunneled_service_s {
