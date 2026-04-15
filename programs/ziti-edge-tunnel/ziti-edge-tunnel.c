@@ -2795,6 +2795,8 @@ static int add_identity_opts(int argc, char *argv[]) {
         {"key", required_argument, NULL, 'k'},
         {"cert", required_argument, NULL, 'c'},
         {"url", required_argument, NULL, 'u'},
+        {"enroll-to-mode", required_argument, NULL, 'm'},
+        {"provider", required_argument, NULL, 'p'},
     };
     int c, option_index, errors = 0;
     optind = 0;
@@ -2802,7 +2804,7 @@ static int add_identity_opts(int argc, char *argv[]) {
     tunnel_add_identity *tunnel_add_identity_opt = calloc(1, sizeof(tunnel_add_identity));
     cmd.command = TunnelCommand_AddIdentity;
 
-    while ((c = getopt_long(argc, argv, "Ki:j:k:c:u:",
+    while ((c = getopt_long(argc, argv, "Ki:j:k:c:u:m:p:",
                             opts, &option_index)) != -1) {
         switch (c) {
             case 'K':
@@ -2823,12 +2825,39 @@ static int add_identity_opts(int argc, char *argv[]) {
             case 'u':
                 tunnel_add_identity_opt->controllerURL = optarg;
                 break;
+            case 'm':
+                if (strcmp(optarg, "none") == 0) {
+                    tunnel_add_identity_opt->enrollMode = tnl_enroll_mode_enroll_none;
+                } else if (strcmp(optarg, "cert") == 0) {
+                    tunnel_add_identity_opt->enrollMode = tnl_enroll_mode_enroll_cert;
+                } else if (strcmp(optarg, "token") == 0) {
+                    tunnel_add_identity_opt->enrollMode = tnl_enroll_mode_enroll_token;
+                } else {
+                    fprintf(stderr, "unknown --enroll-to-mode value: %s (expected none, cert, or token)\n", optarg);
+                    errors++;
+                }
+                break;
+            case 'p':
+                tunnel_add_identity_opt->provider = optarg;
+                break;
             default: {
                 fprintf(stderr, "Unknown option '%c'\n", c);
                 errors++;
                 break;
             }
         }
+    }
+
+    bool oidc_mode = (tunnel_add_identity_opt->enrollMode == tnl_enroll_mode_enroll_cert
+                      || tunnel_add_identity_opt->enrollMode == tnl_enroll_mode_enroll_token);
+    if (oidc_mode && tunnel_add_identity_opt->controllerURL == NULL) {
+        fprintf(stderr, "warning: -m|--enroll-to-mode requires -u|--url; ignoring\n");
+        tunnel_add_identity_opt->enrollMode = tnl_enroll_mode_enroll_none;
+        oidc_mode = false;
+    }
+    if (tunnel_add_identity_opt->provider != NULL && !oidc_mode) {
+        fprintf(stderr, "warning: -p|--provider has no effect without -m|--enroll-to-mode cert|token; ignoring\n");
+        tunnel_add_identity_opt->provider = NULL;
     }
 
     CHECK_COMMAND_ERRORS(errors);
@@ -2919,9 +2948,11 @@ static CommandLine get_status_cmd = make_command("tunnel_status", "Get Tunnel St
 static CommandLine delete_id_cmd = make_command("delete", "delete the identities information", "[-i <identity>]",
                                                  "\t-i|--identity\tidentity info that needs to be deleted\n", delete_identity_opts, send_message_to_tunnel_fn);
 static CommandLine add_id_cmd = make_command(
-        "add", "enroll and load the identity", "-i <identity_name> ( -j <jwt> | -u <URL> ) [-K] [-k <key> [-c cert] ] ",
+        "add", "enroll and load the identity", "-i <identity_name> ( -j <jwt> | -u <URL> [-m|--enroll-to-mode none|cert|token] [-p|--provider <name>] ) [-K] [-k <key> [-c cert] ]",
         "\t-K|--use-keychain\tuse keychain to generate/store private key\n"
         "\t-u|--url\tenroll with controller (3rd party IDP required for auth). Ignored if --jwt is provided\n"
+        "\t-m|--enroll-to-mode\t(requires -u|--url) enrollment mode: none (bootstrap only), cert (OIDC + certificate), token (OIDC + token)\n"
+        "\t-p|--provider\t(requires -u|--url) ext JWT signer name (auto-selected if only one is configured)\n"
         "\t-j|--jwt\tenrollment token content\n"
         "\t-k|--key\tprivate key to use (required if --cert option is used)\n"
         "\t-c|--cert\tcertificate to use (required for ca and caott enrollments, otherwise ignored)\n"

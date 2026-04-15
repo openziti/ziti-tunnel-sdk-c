@@ -38,6 +38,7 @@ void free_add_id_req(struct add_identity_request_s * req) {
         free(req->url);
         free(req->key);
         free(req->certificate);
+        free(req->provider);
         free(req);
     }
 }
@@ -109,15 +110,290 @@ static void tunnel_enroll_cb(const ziti_config *cfg, int status, const char *err
     save_tunnel_status_to_file();
 }
 
+// -- URL + OIDC (enroll-to cert|token) driven from IPC `add` --
+//
+// Mirrors the CLI's enroll_url_* flow in ziti-edge-tunnel.c, but runs
+// inside the daemon so a UI can drive enrollment with a single `add` IPC
+// call. The OIDC URL is pushed back to the UI via cmd_cb using the same
+// tunnel_ext_auth payload shape that TunnelCommand_ExternalAuth uses; once
+// enrollment completes, the final (cert-bearing) config is written to the
+// identity dir and LoadIdentity is dispatched over the same IPC pipe.
+
+struct enroll_oidc_state {
+    struct add_identity_request_s *add_id_req;
+    ziti_context ztx;
+    uv_loop_t *loop;
+    uv_timer_t cleanup_timer;
+};
+
+static ziti_enroll_mode tnl_to_sdk_enroll_mode_local(tnl_enroll_mode m) {
+    switch (m) {
+        case tnl_enroll_mode_enroll_cert:  return ziti_enroll_cert;
+        case tnl_enroll_mode_enroll_token: return ziti_enroll_token;
+        default: return ziti_enroll_none;
+    }
+}
+
+static bool oidc_provider_supports_mode(const ziti_jwt_signer *p, tnl_enroll_mode mode) {
+    switch (mode) {
+        case tnl_enroll_mode_enroll_cert:  return p->can_cert_enroll;
+        case tnl_enroll_mode_enroll_token: return p->can_token_enroll;
+        default: return false;
+    }
+}
+
+static void on_oidc_cleanup_close(uv_handle_t *h) {
+    struct enroll_oidc_state *state = h->data;
+    free(state);
+}
+
+static void on_oidc_cleanup_timer(uv_timer_t *t) {
+    uv_timer_stop(t);
+    uv_close((uv_handle_t *) t, on_oidc_cleanup_close);
+}
+
+static void schedule_oidc_cleanup(struct enroll_oidc_state *state) {
+    state->cleanup_timer.data = state;
+    uv_timer_init(state->loop, &state->cleanup_timer);
+    uv_timer_start(&state->cleanup_timer, on_oidc_cleanup_timer, 100, 0);
+}
+
+static void oidc_fail(struct enroll_oidc_state *state, int status, const char *err) {
+    if (state->add_id_req != NULL) {
+        // tunnel_enroll_cb reports the error via cmd_cb, fcloses add_id_ctx,
+        // removes the partial identity file, and frees add_id_req.
+        tunnel_enroll_cb(NULL, status, err, state->add_id_req);
+        state->add_id_req = NULL;
+    }
+    if (state->ztx != NULL) {
+        ziti_shutdown(state->ztx);
+    }
+    schedule_oidc_cleanup(state);
+}
+
+static void enroll_oidc_ext_auth_cb(ziti_context ztx, const char *url, void *ctx) {
+    struct enroll_oidc_state *state = ziti_app_ctx(ztx);
+    if (state == NULL || state->add_id_req == NULL || state->add_id_req->cmd_cb == NULL) {
+        return;
+    }
+    ZITI_LOG(INFO, "OIDC authentication URL for %s: %s", state->add_id_req->identifier, url);
+    tunnel_result result = {
+        .success = true,
+        .code = IPC_SUCCESS,
+    };
+    tunnel_ext_auth ev = {
+        .identifier = state->add_id_req->identifier,
+        .ext_auth_url = (char *) url,
+    };
+    result.data = tunnel_ext_auth_to_json(&ev, MODEL_JSON_COMPACT, NULL);
+    state->add_id_req->cmd_cb(&result, state->add_id_req->cmd_ctx);
+    free(result.data);
+}
+
+static void enroll_oidc_event_cb(ziti_context ztx, const ziti_event_t *event) {
+    struct enroll_oidc_state *state = ziti_app_ctx(ztx);
+    if (state == NULL || state->add_id_req == NULL) return;
+
+    switch (event->type) {
+        case ZitiAuthEvent:
+            switch (event->auth.action) {
+                case ziti_auth_select_external: {
+                    const char *selected = NULL;
+                    int match_count = 0;
+                    tnl_enroll_mode mode = state->add_id_req->enroll_mode;
+                    const char *want_provider = state->add_id_req->provider;
+
+                    for (int i = 0; event->auth.providers && event->auth.providers[i]; i++) {
+                        if (!oidc_provider_supports_mode(event->auth.providers[i], mode)) continue;
+                        match_count++;
+                        if (want_provider != NULL) {
+                            if (strcmp(event->auth.providers[i]->name, want_provider) == 0) {
+                                selected = event->auth.providers[i]->name;
+                            }
+                        } else if (selected == NULL) {
+                            selected = event->auth.providers[i]->name;
+                        }
+                    }
+
+                    if (selected == NULL) {
+                        if (want_provider != NULL) {
+                            ZITI_LOG(ERROR, "provider '%s' not found or incompatible with enrollMode",
+                                     want_provider);
+                        } else {
+                            ZITI_LOG(ERROR, "no compatible ext JWT signer available for enrollMode");
+                        }
+                        oidc_fail(state, ZITI_INVALID_CONFIG, "no compatible ext JWT signer");
+                        return;
+                    }
+
+                    if (match_count > 1 && want_provider == NULL) {
+                        ZITI_LOG(WARN, "multiple compatible providers available, using '%s'", selected);
+                    }
+                    ZITI_LOG(INFO, "selecting ext JWT signer: %s", selected);
+                    ziti_use_ext_jwt_signer(ztx, selected);
+                    ziti_ext_auth(ztx, enroll_oidc_ext_auth_cb, NULL);
+                    return;
+                }
+                case ziti_auth_cannot_continue:
+                    ZITI_LOG(ERROR, "authentication failed: %s", event->auth.detail);
+                    oidc_fail(state, ZITI_AUTHENTICATION_FAILED,
+                              event->auth.detail ? event->auth.detail : "authentication failed");
+                    return;
+                default:
+                    break;
+            }
+            break;
+
+        case ZitiConfigEvent: {
+            if (event->cfg.config == NULL) break;
+            tnl_enroll_mode mode = state->add_id_req->enroll_mode;
+            // cert mode: wait for a config event that carries the cert.
+            // token mode: any config event indicates enrollment completed.
+            if (mode == tnl_enroll_mode_enroll_cert && event->cfg.config->id.cert == NULL) {
+                break;
+            }
+
+            ZITI_LOG(INFO, "enrollment complete for %s, writing identity config",
+                     state->add_id_req->identifier);
+
+            FILE *f = state->add_id_req->add_id_ctx;
+            if (f == NULL) {
+                // should not happen: handler opened the file before enroll_ziti_async.
+                ZITI_LOG(ERROR, "identity file handle missing for %s", state->add_id_req->identifier);
+                tunnel_result bad = {
+                    .success = false,
+                    .code = IPC_ERROR,
+                    .error = "identity file handle missing",
+                };
+                state->add_id_req->cmd_cb(&bad, state->add_id_req->cmd_ctx);
+                remove(state->add_id_req->identifier);
+                free_add_id_req(state->add_id_req);
+                state->add_id_req = NULL;
+                ziti_shutdown(ztx);
+                schedule_oidc_cleanup(state);
+                return;
+            }
+
+            size_t len;
+            char *cfg_json = ziti_config_to_json(event->cfg.config, 0, &len);
+            if (fwrite(cfg_json, 1, len, f) != len) {
+                ZITI_LOG(ERROR, "failed to write identity config file");
+                free(cfg_json);
+                // leave the FILE* on add_id_req so tunnel_enroll_cb can fclose/remove it.
+                oidc_fail(state, ZITI_INVALID_STATE, "failed to write config file");
+                return;
+            }
+            fflush(f);
+            fclose(f);
+            state->add_id_req->add_id_ctx = NULL;
+            free(cfg_json);
+
+            create_or_get_tunnel_identity(state->add_id_req->identifier,
+                                          state->add_id_req->identifier_file_name);
+
+            tunnel_load_identity load_identity_options = {
+                .identifier = state->add_id_req->identifier,
+                .path = state->add_id_req->identifier,
+                .apiPageSize = get_api_page_size(),
+            };
+            size_t json_len;
+            tunnel_command tnl_cmd = {
+                .command = TunnelCommand_LoadIdentity,
+                .data = tunnel_load_identity_to_json(&load_identity_options,
+                                                     MODEL_JSON_COMPACT, &json_len),
+            };
+            send_tunnel_command(&tnl_cmd, state->add_id_req->cmd_ctx);
+            free_tunnel_command(&tnl_cmd);
+            save_tunnel_status_to_file();
+
+            free_add_id_req(state->add_id_req);
+            state->add_id_req = NULL;
+
+            ziti_shutdown(ztx);
+            schedule_oidc_cleanup(state);
+            return;
+        }
+
+        default:
+            break;
+    }
+}
+
+static void enroll_oidc_bootstrap_cb(const ziti_config *cfg, int status, const char *err, void *ctx) {
+    struct enroll_oidc_state *state = ctx;
+    if (status != ZITI_OK || cfg == NULL) {
+        ZITI_LOG(ERROR, "failed to fetch controller config: %s(%d)", err ? err : "unknown", status);
+        if (state->add_id_req != NULL) {
+            tunnel_enroll_cb(NULL, status, err, state->add_id_req);
+            state->add_id_req = NULL;
+        }
+        free(state);
+        return;
+    }
+
+    int rc = ziti_context_init(&state->ztx, cfg);
+    if (rc != ZITI_OK) {
+        ZITI_LOG(ERROR, "failed to init identity context: %s", ziti_errorstr(rc));
+        tunnel_enroll_cb(NULL, rc, ziti_errorstr(rc), state->add_id_req);
+        state->add_id_req = NULL;
+        free(state);
+        return;
+    }
+
+    ziti_options opts = {
+        .app_ctx = state,
+        .event_cb = enroll_oidc_event_cb,
+        .events = ZitiContextEvent | ZitiAuthEvent | ZitiConfigEvent,
+        .enroll_mode = tnl_to_sdk_enroll_mode_local(state->add_id_req->enroll_mode),
+    };
+    rc = ziti_context_set_options(state->ztx, &opts);
+    if (rc != ZITI_OK) {
+        ZITI_LOG(ERROR, "failed to set context options: %s", ziti_errorstr(rc));
+        oidc_fail(state, rc, ziti_errorstr(rc));
+        return;
+    }
+    rc = ziti_context_run(state->ztx, state->loop);
+    if (rc != ZITI_OK) {
+        ZITI_LOG(ERROR, "failed to run context: %s", ziti_errorstr(rc));
+        oidc_fail(state, rc, ziti_errorstr(rc));
+        return;
+    }
+}
+
 static void enroll_ziti_async(uv_loop_t *loop, void *arg) {
     struct add_identity_request_s *add_id_req = arg;
 
+    // URL + enroll-to cert|token: run the full OIDC flow inside the daemon.
+    // The resulting (enrolled) config is what gets written to the identity dir,
+    // so a UI can drive the whole add-and-enroll cycle with one IPC call.
+    // NB: tnl_enroll_mode is a DECLARE_ENUM whose first value is _Unknown = 0,
+    // so an unset enrollMode arrives as Unknown (not enroll_none). Test the two
+    // modes that actually drive OIDC explicitly — Unknown and enroll_none both
+    // fall through to the non-OIDC paths below.
+    if (add_id_req->url != NULL
+        && (add_id_req->enroll_mode == tnl_enroll_mode_enroll_cert
+            || add_id_req->enroll_mode == tnl_enroll_mode_enroll_token)) {
+        struct enroll_oidc_state *state = calloc(1, sizeof(*state));
+        state->add_id_req = add_id_req;
+        state->loop = loop;
+        int rc = ziti_enroll_url(add_id_req->url, loop, enroll_oidc_bootstrap_cb, state);
+        if (rc == ZITI_OK) {
+            ZITI_LOG(INFO, "enrollment started (enroll-to). identity file will be written to: %s",
+                     add_id_req->identifier);
+            return;
+        }
+        ZITI_LOG(ERROR, "cannot start enrollment: %d", rc);
+        free(state);
+        tunnel_enroll_cb(NULL, ZITI_INVALID_STATE, "enrollment failed", add_id_req);
+        return;
+    }
+
     int enroll_result;
     if (add_id_req->url != NULL && add_id_req->jwt_content == NULL) {
-        // URL-only: controller must be OS-trusted. Fetches CA bundle and
-        // returns base config (no cert/key). The identity is auto-loaded
-        // after save; ext auth events then drive the OIDC + enrollToCert
-        // flow via IPC.
+        // URL-only (enroll-to none): controller must be OS-trusted. Fetches CA
+        // bundle and returns base config (no cert/key). The identity is
+        // auto-loaded after save; ext auth events then drive the OIDC flow via
+        // a subsequent ExternalAuth IPC call.
         enroll_result = ziti_enroll_url(add_id_req->url, loop, tunnel_enroll_cb, add_id_req);
     } else {
         ziti_enroll_opts enroll_opts = {0};
@@ -374,6 +650,15 @@ bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void 
                 break;
             }
 
+            if ((tunnel_add_identity_cmd.enrollMode == tnl_enroll_mode_enroll_cert
+                 || tunnel_add_identity_cmd.enrollMode == tnl_enroll_mode_enroll_token)
+                && !is_url) {
+                result.error = "enrollMode requires controllerURL";
+                result.success = false;
+                free_tunnel_add_identity(&tunnel_add_identity_cmd);
+                break;
+            }
+
             char new_identifier_with_ext[FILENAME_MAX] = {0};
             char new_identifier_path[FILENAME_MAX] = {0};
             if(is_jwt) {
@@ -466,6 +751,8 @@ bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void 
             add_id_req->key = s_dup(tunnel_add_identity_cmd.key);
             add_id_req->certificate = s_dup(tunnel_add_identity_cmd.cert);
             add_id_req->url = s_dup(tunnel_add_identity_cmd.controllerURL);
+            add_id_req->provider = s_dup(tunnel_add_identity_cmd.provider);
+            add_id_req->enroll_mode = tunnel_add_identity_cmd.enrollMode;
 
             enroll_ziti_async(global_loop_ref, add_id_req);
             free_tunnel_add_identity(&tunnel_add_identity_cmd);
