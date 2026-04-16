@@ -51,3 +51,18 @@ jobs:
         env:
           I_AM_ROBOT: 1
           ZITI_EDGE_TUNNEL_BIN: ./build/amd64/linux/ziti-edge-tunnel
+
+  nix-build:
+    name: Build Nix Binary
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Build Ziti Edge Tunnel
+        run: |
+          nix build
+          ./result/bin/ziti-edge-tunnel version
