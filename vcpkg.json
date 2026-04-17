@@ -36,6 +36,11 @@
       "version": "1.0.20",
       "port-version": 3,
       "$comment": "1.0.21 breaks on linux-arm64 so we're sticking with 1.0.20 until the fix is released and available in vcpkg"
+    },
+    {
+      "name": "abseil",
+      "version": "20250814.1",
+      "$comment": "20260107.1 breaks on several compilers so we're sticking with 20250814.1 until a buildable version is available in vcpkg"
     }
   ]
 }
