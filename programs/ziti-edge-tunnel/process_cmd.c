@@ -56,8 +56,13 @@ static void tunnel_enroll_cb(const ziti_config *cfg, int status, const char *err
     FILE *f = add_id_req->add_id_ctx;
 
     if (status != ZITI_OK) {
-        fflush(f);
-        fclose(f);
+        // f may be NULL for cert/token OIDC failures (handler deferred the fopen);
+        // non-NULL for the mode=none path and for cert/token fwrite failures that
+        // reach oidc_fail with the file already open.
+        if (f != NULL) {
+            fflush(f);
+            fclose(f);
+        }
         ZITI_LOG(ERROR, "enrollment failed: %s(%d)", err, status);
 
         if (status == ZITI_KEY_GENERATION_FAILED) {
@@ -66,7 +71,9 @@ static void tunnel_enroll_cb(const ziti_config *cfg, int status, const char *err
 
         if(add_id_req != NULL) {
             add_id_req->cmd_cb(&result, add_id_req->cmd_ctx);
-            if(add_id_req->identifier != NULL) {
+            // Only attempt removal if we actually opened the file; otherwise
+            // remove() would return ENOENT for a file that never existed.
+            if (f != NULL && add_id_req->identifier != NULL) {
                 ZITI_LOG(ERROR, "removing failed identity file: %s", add_id_req->identifier);
                 remove(add_id_req->identifier);
             }
@@ -256,22 +263,18 @@ static void enroll_oidc_event_cb(ziti_context ztx, const ziti_event_t *event) {
             ZITI_LOG(INFO, "enrollment complete for %s, writing identity config",
                      state->add_id_req->identifier);
 
+            // Cert/token handler paths defer fopen to here so no 0-byte identity
+            // file appears on disk before OIDC succeeds. Open now.
             FILE *f = state->add_id_req->add_id_ctx;
             if (f == NULL) {
-                // should not happen: handler opened the file before enroll_ziti_async.
-                ZITI_LOG(ERROR, "identity file handle missing for %s", state->add_id_req->identifier);
-                tunnel_result bad = {
-                    .success = false,
-                    .code = IPC_ERROR,
-                    .error = "identity file handle missing",
-                };
-                state->add_id_req->cmd_cb(&bad, state->add_id_req->cmd_ctx);
-                remove(state->add_id_req->identifier);
-                free_add_id_req(state->add_id_req);
-                state->add_id_req = NULL;
-                ziti_shutdown(ztx);
-                schedule_oidc_cleanup(state);
-                return;
+                f = fopen(state->add_id_req->identifier, "wb");
+                if (f == NULL) {
+                    ZITI_LOG(ERROR, "failed to open identity file %s: %s(%d)",
+                             state->add_id_req->identifier, strerror(errno), errno);
+                    oidc_fail(state, ZITI_INVALID_STATE, "failed to open identity file");
+                    return;
+                }
+                state->add_id_req->add_id_ctx = f;
             }
 
             size_t len;
@@ -730,13 +733,22 @@ bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void 
                 break;
             }
 
-            FILE *outfile;
-            if ((outfile = fopen(new_identifier_path, "wb")) == NULL) {
-                ZITI_LOG(ERROR, "failed to open file %s: %s(%d)", new_identifier_path, strerror(errno), errno);
-                result.error = "invalid file name";
-                result.success = false;
-                free_tunnel_add_identity(&tunnel_add_identity_cmd);
-                break;
+            // For cert/token modes the file must NOT be created on disk until OIDC
+            // succeeds — a 0-byte file at handler time would make the identity
+            // briefly visible to UIs before it's actually enrolled. Defer the fopen
+            // to enroll_oidc_event_cb's success branch. For mode=none (and JWT
+            // paths) keep the eager open: tunnel_enroll_cb writes straight into it.
+            FILE *outfile = NULL;
+            bool defer_open = (tunnel_add_identity_cmd.enrollMode == tnl_enroll_mode_enroll_cert
+                               || tunnel_add_identity_cmd.enrollMode == tnl_enroll_mode_enroll_token);
+            if (!defer_open) {
+                if ((outfile = fopen(new_identifier_path, "wb")) == NULL) {
+                    ZITI_LOG(ERROR, "failed to open file %s: %s(%d)", new_identifier_path, strerror(errno), errno);
+                    result.error = "invalid file name";
+                    result.success = false;
+                    free_tunnel_add_identity(&tunnel_add_identity_cmd);
+                    break;
+                }
             }
 
 #define s_dup(s) ((s) ? strdup(s) : NULL)
