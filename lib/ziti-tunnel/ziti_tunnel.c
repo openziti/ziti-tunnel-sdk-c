@@ -462,6 +462,18 @@ static void tunneler_kill_active(const void *zi_ctx) {
         free(n);
     }
     free(l);
+
+    l = tunneler_l2_active(zi_ctx);
+    while (!SLIST_EMPTY(l)) {
+        struct io_ctx_list_entry_s *n = SLIST_FIRST(l);
+        TNL_LOG(DEBUG, "service_ctx[%p] client[%s] killing active l2 connection", zi_ctx, n->io->tnlr_io->client);
+        tunneler_l2_close(n->io->tnlr_io->intercepted);
+        zclose = n->io->close_fn;
+        if (zclose) zclose(n->io->ziti_io);
+        SLIST_REMOVE_HEAD(l, entries);
+        free(n);
+    }
+    free(l);
 }
 
 intercept_ctx_t * ziti_tunnel_find_intercept(tunneler_context tnlr_ctx, void *zi_ctx) {
@@ -495,7 +507,7 @@ void ziti_tunneler_stop_intercepting(tunneler_context tnlr_ctx, void *zi_ctx) {
         LIST_REMOVE(intercept, entries);
 
         if (intercept->osi_layer == l2) {
-            // todo close ziti connection here
+            // active L2 connections are closed in tunneler_kill_active above
         } else if (intercept->osi_layer == l3) {
             struct address_s *address;
             STAILQ_FOREACH(address, &intercept->addresses, entries) {

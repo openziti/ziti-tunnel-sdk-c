@@ -30,7 +30,9 @@ void tunneler_l2_del_conn(uint16_t ethtype) {
 
 io_ctx_t *tunneler_l2_get_conn(uint16_t ethtype) {
     io_ctx_t *io = model_map_getl(&l2_conns, ethtype);
-    TNL_LOG(VERBOSE, "ethtype %04x --> %p", ethtype, io);
+    if (io) {
+        TNL_LOG(VERBOSE, "ethtype %04x --> %p", ethtype, io);
+    }
     return io;
 }
 
@@ -71,6 +73,23 @@ ssize_t tunneler_l2_write(struct netif *netif, const void *data, size_t len) {
     err_t e = netif->linkoutput(netif, p);
     pbuf_free(p);
     return (ssize_t) (e == ERR_OK ? len : -1);
+}
+
+struct io_ctx_list_s *tunneler_l2_active(const void *zi_ctx) {
+    struct io_ctx_list_s *l = calloc(1, sizeof(struct io_ctx_list_s));
+    SLIST_INIT(l);
+
+    model_map_iter it = model_map_iterator(&l2_conns);
+    while (it != NULL) {
+        io_ctx_t *io = model_map_it_value(it);
+        it = model_map_it_next(it);
+        if (io != NULL && io->ziti_ctx == zi_ctx) {
+            struct io_ctx_list_entry_s *n = calloc(1, sizeof(struct io_ctx_list_entry_s));
+            n->io = io;
+            SLIST_INSERT_HEAD(l, n, entries);
+        }
+    }
+    return l;
 }
 
 int tunneler_l2_close(const char *ethtype) {
@@ -121,7 +140,7 @@ u8_t recv_l2(struct netif *netif, struct pbuf *p) {
                 i->service_name);
 
         ziti_sdk_dial_cb zdial = i->dial_fn ? i->dial_fn : tnlr->opts.ziti_dial;
-        const void *ziti_io_ctx = zdial(i->app_intercept_ctx, io); // todo should have one ziti conn per dial identity
+        const void *ziti_io_ctx = zdial(i->app_intercept_ctx, io);
         if (ziti_io_ctx == NULL) {
             TNL_LOG(ERR, "ziti_dial(%s) failed", i->service_name);
             ziti_tunneler_close(io->tnlr_io);
@@ -133,6 +152,7 @@ u8_t recv_l2(struct netif *netif, struct pbuf *p) {
         tunneler_l2_add_conn(ethtype, io);
     }
     // send (queue) the frame
+    TNL_LOG(TRACE, "sending frame to ziti ethtype[0x%04x] src[%s] service[%s]", ethtype, io->tnlr_io->intercepted, io->tnlr_io->service_name);
     ziti_tunnel_pbuf_to_ziti(io, p);
     return 1;
 }

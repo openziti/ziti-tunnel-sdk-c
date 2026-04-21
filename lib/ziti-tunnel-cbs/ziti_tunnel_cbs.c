@@ -30,6 +30,7 @@
 #include "ziti/ziti_tunnel_cbs.h"
 #include "ziti_hosting.h"
 #include "ziti_instance.h"
+#include "../ziti-tunnel/tunnel_l2.h"
 #include "lwip/err.h"
 
 typedef int (*cfg_parse_fn)(void *, const char *, size_t);
@@ -711,6 +712,9 @@ static void ziti_conn_close_cb(ziti_connection zc) {
     if (io == NULL) {
         ZITI_LOG(WARN, "null io. underlay connection possibly leaked. ziti_conn[%p]", zc);
         return;
+    }
+    if (io->tnlr_io->proto == tun_l2) {
+        tunneler_l2_close(io->tnlr_io->intercepted);
     }
     if (io->ziti_io) {
         free(io->ziti_io);
