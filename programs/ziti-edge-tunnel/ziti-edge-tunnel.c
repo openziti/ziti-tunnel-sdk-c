@@ -133,7 +133,7 @@ static long metrics_latency = 5000;
 static char *configured_cidr = NULL;
 static char *configured_log_level = NULL;
 static char *configured_proxy = NULL;
-static char *ipc_discriminator = NULL;
+char *ipc_discriminator = NULL;
 static bool l2_tunnel = false;
 static char *pcap_iface = NULL;
 
@@ -153,15 +153,16 @@ static uv_cond_t stop_cond;
 IMPL_ENUM(event, EVENT_ACTIONS)
 
 #if _WIN32
-static char sockfile[] = "\\\\.\\pipe\\ziti-edge-tunnel.sock";
-static char eventsockfile[] = "\\\\.\\pipe\\ziti-edge-tunnel-event.sock";
+#define SOCKET_PATH "\\\\.\\pipe\\"
 #elif __unix__ || unix || ( __APPLE__ && __MACH__ )
 #include <grp.h>
 #include <sys/un.h>
-#define SOCKET_PATH "/tmp/.ziti"
-static char sockfile[] = SOCKET_PATH "/ziti-edge-tunnel.sock";
-static char eventsockfile[] = SOCKET_PATH "/ziti-edge-tunnel-event.sock";
+#define SOCKET_PATH "/tmp/.ziti/"
 #endif
+static char sockfilebase[] = "ziti-edge-tunnel.sock";
+static char eventsockfilebase[] = "ziti-edge-tunnel-event.sock";
+static char *sockfile;
+static char *eventsockfile;
 
 extern int start_cmd_socket(uv_loop_t *l, const char *sockfile);
 extern int start_event_socket(uv_loop_t *l, const char *eventsockfile);
@@ -628,13 +629,15 @@ static void on_event(const base_event *ev) {
             }
 
             if (id->Active && model_map_size(&hostnamesToEdit) > 0 && !is_host_only()) {
-                remove_and_add_nrpt_rules(global_loop_ref, &hostnamesToEdit, get_dns_ip()/*, ipc_discriminator*/);
+                remove_and_add_nrpt_rules(global_loop_ref, &hostnamesToEdit, get_dns_ip(), ipc_discriminator);
             }
             if (id->Active && model_map_size(&hostnamesToAdd) > 0 && !is_host_only()) {
-                add_nrpt_rules(global_loop_ref, &hostnamesToAdd, get_dns_ip()/*, ipc_discriminator*/);
+                char* zet_id = get_zet_instance_id(ipc_discriminator);
+                add_nrpt_rules(global_loop_ref, &hostnamesToAdd, get_dns_ip(), zet_id);
+                free(zet_id);
             }
             if (model_map_size(&hostnamesToRemove) > 0 && !is_host_only()) {
-                remove_nrpt_rules(global_loop_ref, &hostnamesToRemove/*, ipc_discriminator*/);
+                remove_nrpt_rules(global_loop_ref, &hostnamesToRemove, ipc_discriminator);
             }
 
 #endif
@@ -963,7 +966,7 @@ static int run_tunnel_host_mode(uv_loop_t *ziti_loop) {
 
 static int make_socket_path(uv_loop_t *loop) {
 
-#if defined(SOCKET_PATH)
+#if defined(SOCKET_PATH) && !_WIN32
 #define ZITI_GRNAME "ziti"
     uv_fs_t req;
     int rc;
@@ -1046,7 +1049,7 @@ static int make_socket_path(uv_loop_t *loop) {
     uv_fs_req_cleanup(&req);
     return perms_ok ? 0 : -1;
 
-#endif /* defined(SOCKET_PATH) */
+#endif
 
     return 0;
 }
@@ -1430,6 +1433,55 @@ static void interrupt_handler(int sig) {
 }
 #endif
 
+size_t find_other_zets(model_list *ipcs, const char *ipc_base, const char *ipc_prefix) {
+    uv_fs_t fs;
+    int rc = uv_fs_scandir(uv_default_loop(), &fs, SOCKET_PATH, 0, NULL);
+    if (rc < 0) {
+        ZITI_LOG(DEBUG, "failed to scan for other ziti-edge-tunnels at [%s]: %d/%s", ipc_base, rc, uv_strerror(rc));
+        return 0;
+    }
+    uv_dirent_t file;
+    while (uv_fs_scandir_next(&fs, &file) == 0) {
+        size_t len = strlen(ipc_prefix);
+        if (strncmp(file.name, ipc_prefix, len) == 0) {
+            model_list_append(ipcs, strdup(file.name));
+        }
+    }
+    return model_list_size(ipcs);
+}
+
+static void configure_ipc(bool automatic_ipc_discriminator, bool use_discriminator) {
+    if (ipc_discriminator == NULL && automatic_ipc_discriminator) {
+        int pid = getpid();
+        ipc_discriminator = calloc(10, sizeof(char));
+        snprintf(ipc_discriminator, 10, "%d", pid);
+    }
+
+    size_t socket_path_len = strlen(SOCKET_PATH);
+    size_t ipc_discriminator_len = ipc_discriminator != NULL ? strlen(ipc_discriminator) : 0;
+    size_t sockfilebase_len = strlen(sockfilebase);
+    size_t eventsockfilebase_len = strlen(eventsockfilebase);
+
+    sockfile = calloc(socket_path_len + sockfilebase_len + ipc_discriminator_len + 2, sizeof(char));
+    eventsockfile = calloc(socket_path_len + eventsockfilebase_len + ipc_discriminator_len + 2, sizeof(char));
+
+    if (use_discriminator) {
+        sprintf(sockfile, "%s%s.%s", SOCKET_PATH, sockfilebase, ipc_discriminator);
+        sprintf(eventsockfile, "%s%s.%s", SOCKET_PATH, eventsockfilebase, ipc_discriminator);
+    } else {
+        ipc_discriminator = NULL;
+        sprintf(sockfile, "%s%s", SOCKET_PATH, sockfilebase);
+        sprintf(eventsockfile, "%s%s", SOCKET_PATH, eventsockfilebase);
+    }
+    if (automatic_ipc_discriminator) {
+        ZITI_LOG(INFO, use_discriminator ?
+            "multiple ziti-edge-tunnels are running. applying ipc discriminator" :
+            "using default paths for IPC");
+        ZITI_LOG(INFO, "ipc command path: %s", sockfile);
+        ZITI_LOG(INFO, "ipc events  path: %s", eventsockfile);
+    }
+}
+
 static void run(int argc, char *argv[]) {
     uv_cond_init(&stop_cond);
     uv_mutex_init(&stop_mutex);
@@ -1448,6 +1500,10 @@ static void run(int argc, char *argv[]) {
 #else
     ziti_log_init(global_loop_ref, log_level, log_fn);
 #endif
+
+    model_list ipc_list = {0};
+    size_t other_zets = find_other_zets(&ipc_list, SOCKET_PATH, sockfilebase);
+    configure_ipc(true, other_zets > 0 || ipc_discriminator != NULL);
 
     // generate tunnel status instance and save active state and start time
     if (config_dir != NULL) {
@@ -1560,6 +1616,7 @@ static void run(int argc, char *argv[]) {
     char *csdk_version = "" to_str(ZITI_VERSION) ":" to_str(ZITI_BRANCH) "@" to_str(ZITI_COMMIT);
     ZITI_LOG(INFO,"	- C SDK Version    : %s", csdk_version);
     ZITI_LOG(INFO,"	- Tunneler SDK     : %s", ziti_tunneler_version());
+    ZITI_LOG(INFO,"	- IPC socket       : %s", sockfile);
     if(openssl_conf_resolved != NULL) {
         ZITI_LOG(INFO, "	- openssl config   : configured using %s found by %s", openssl_conf_resolved, openssl_conf_found_by);
     }
@@ -2212,6 +2269,7 @@ static int send_message_to_tunnel(char* message, bool show_result) {
 }
 
 static void send_message_to_tunnel_fn(int argc, char *argv[]) {
+    configure_ipc(false, ipc_discriminator != NULL);
     char* json = tunnel_command_to_json(&cmd, MODEL_JSON_COMPACT, NULL);
     int result = send_message_to_tunnel(json, cmd.show_result);
     free_tunnel_command(&cmd);
@@ -2865,7 +2923,7 @@ static CommandLine enroll_cmd = make_command(
 #endif
 
 static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required superuser access)",
-                                          "-i <id.file> [-r N] [-v N] [-d|--dns-ip-range N.N.N.N/N] " DIVERTER_OPTS_SUMMARY "[-u|--dns-upstream N.N.N.N]\n",
+                                          "-i <id.file> [-r N] [-v N] [-d|--dns-ip-range N.N.N.N/N] " DIVERTER_OPTS_SUMMARY "[-u|--dns-upstream N.N.N.N] [-P|--pipe <name>]\n",
                                           "\t-i|--identity <identity>\trun with provided identity file (required)\n"
                                           "\t-I|--identity-dir <dir>\tload identities from provided directory\n"
                                           "\t-x|--proxy type://[username[:password]@]hostname_or_ip:port\tproxy to use when"
@@ -2877,16 +2935,20 @@ static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required supe
                                           "\t-d|--dns-ip-range <ip range>\tspecify CIDR block in which service DNS names"
                                           " are assigned in N.N.N.N/n format (default " DEFAULT_DNS_CIDR ")\n"
                                           DIVERTER_OPTS_DETAIL
-                                          "\t-u|--dns-upstream <ip addr>\tresolver listening on 53/udp for DNS queries that do not match a Ziti service\n",
+                                          "\t-u|--dns-upstream <ip addr>\tresolver listening on 53/udp for DNS queries that do not match a Ziti service\n"
+                                          "\t-P|--pipe <name>\tIPC socket discriminator suffix for running multiple ziti-edge-tunnel instances side-by-side. "
+                                          "When omitted, the PID is used automatically if other instances are detected; otherwise the default socket path is used.\n",
                                           run_opts, run);
 static CommandLine run_host_cmd = make_command("run-host", "run Ziti tunnel to host services",
-                                          "-i <id.file> [-r N] [-v N]",
+                                          "-i <id.file> [-r N] [-v N] [-P|--pipe <name>]",
                                           "\t-i|--identity <identity>\trun with provided identity file (required)\n"
                                           "\t-I|--identity-dir <dir>\tload identities from provided directory\n"
                                           "\t-x|--proxy type://[username[:password]@]hostname_or_ip:port\tproxy to use when"
                                           " connecting to OpenZiti controller and edge routers"
                                           "\t-v|--verbose N\tset log level, higher level -- more verbose (default 3)\n"
-                                          "\t-r|--refresh N\tset service polling interval in seconds (default 10)\n",
+                                          "\t-r|--refresh N\tset service polling interval in seconds (default 10)\n"
+                                          "\t-P|--pipe <name>\tIPC socket discriminator suffix for running multiple ziti-edge-tunnel instances side-by-side. "
+                                          "When omitted, the PID is used automatically if other instances are detected; otherwise the default socket path is used.\n",
                                           run_host_opts, run);
 static CommandLine dump_cmd = make_command("dump", "dump the identities information", "[-i <identity>] [-p <dir>]",
                                            "\t-i|--identity\tdump identity info\n"
@@ -2994,7 +3056,12 @@ static CommandLine main_cmd = make_command_set(
         NULL,
         "Ziti Tunnel App",
         "<command> [<args>]", "to get help for specific command run 'ziti-edge-tunnel help <command>' "
-                              "or 'ziti-edge-tunnel <command> -h'",
+                              "or 'ziti-edge-tunnel <command> -h'.\n"
+                              "\n"
+                              "Global flag (accepted by any command): -P|--pipe <name> overrides the IPC socket "
+                              "discriminator suffix. When running, this controls the socket this instance listens on; "
+                              "when invoking a client subcommand (add, on, off, dump, ...), this selects which "
+                              "running instance to talk to.\n",
         NULL, main_cmds);
 
 #if _WIN32
@@ -3182,6 +3249,19 @@ int main(int argc, char *argv[]) {
         return 0;
     }
 #endif
+
+    // Pre-extract -P/--pipe before subcommand dispatch so all commands support it
+    // without each opts function needing to handle it individually.
+    for (int i = 1; i < argc - 1; i++) {
+        if (strcmp(argv[i], "-P") == 0 || strcmp(argv[i], "--pipe") == 0) {
+            ipc_discriminator = argv[i + 1];
+            for (int j = i; j < argc - 2; j++) {
+                argv[j] = argv[j + 2];
+            }
+            argc -= 2;
+            break;
+        }
+    }
 
     commandline_run(&main_cmd, argc, argv);
     return 0;
