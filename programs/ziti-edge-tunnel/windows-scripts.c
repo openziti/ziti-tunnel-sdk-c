@@ -322,6 +322,13 @@ char* get_nrpt_comment(const char* zet_id, bool exact) {
 void remove_orphaned_nrpt_rules(const char **running_ids, size_t count) {
     // Build a PowerShell array of running instance IDs, then remove any ZET NRPT
     // rules whose owner (Comment) is not in that list (orphaned from a dead process).
+    //
+    // Instance IDs take two forms:
+    //   - default instance:        "ziti-edge-tunnel"
+    //   - discriminated (-P foo):  "foo.ziti-edge-tunnel"
+    // The regex below matches both: an optional "<disc>." followed by the executable name
+    // at end-of-string. This also ensures a pre-multi-tun build's "StartsWith('Added by
+    // ziti-edge-tunnel')" nuke won't catch discriminated rules.
     char cmd[MAX_POWERSHELL_COMMAND_LEN] = { 0 };
     size_t copied = snprintf(cmd, MAX_POWERSHELL_COMMAND_LEN,
                              "powershell -Command \"$r=@(");
@@ -330,7 +337,7 @@ void remove_orphaned_nrpt_rules(const char **running_ids, size_t count) {
                            "%s'%s'", i > 0 ? "," : "", running_ids[i]);
     }
     copied += snprintf(cmd + copied, MAX_POWERSHELL_COMMAND_LEN - copied,
-        "); Get-DnsClientNrptRule | where { $_.Comment.StartsWith('Added by %s')"
+        "); Get-DnsClientNrptRule | where { $_.Comment -match '^Added by ([^ ]+\\.)?%s$'"
         " -and ($r -notcontains ($_.Comment -replace '^Added by ','')) }"
         " | Remove-DnsClientNrptRule -Force -ErrorAction SilentlyContinue\"",
         DEFAULT_EXECUTABLE_NAME);
