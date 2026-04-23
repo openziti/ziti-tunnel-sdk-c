@@ -2824,18 +2824,16 @@ static int add_identity_opts(int argc, char *argv[]) {
             case 'u':
                 tunnel_add_identity_opt->controllerURL = optarg;
                 break;
-            case 'm':
-                if (strcmp(optarg, "none") == 0) {
-                    tunnel_add_identity_opt->enrollMode = tnl_enroll_mode_enroll_none;
-                } else if (strcmp(optarg, "cert") == 0) {
-                    tunnel_add_identity_opt->enrollMode = tnl_enroll_mode_enroll_cert;
-                } else if (strcmp(optarg, "token") == 0) {
-                    tunnel_add_identity_opt->enrollMode = tnl_enroll_mode_enroll_token;
-                } else {
+            case 'm': {
+                tnl_enroll_mode m = tnl_enroll_mode_value_of(optarg);
+                if (m == tnl_enroll_mode_Unknown) {
                     fprintf(stderr, "unknown --enroll-to-mode value: %s (expected none, cert, or token)\n", optarg);
                     errors++;
+                } else {
+                    tunnel_add_identity_opt->enrollMode = m;
                 }
                 break;
+            }
             case 'p':
                 tunnel_add_identity_opt->provider = optarg;
                 break;
