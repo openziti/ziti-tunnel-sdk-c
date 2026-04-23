@@ -33,6 +33,7 @@ var (
 	zitiBin       string
 	keepArtifacts bool
 	overlay       *testutil.Overlay
+	zet           *testutil.ZET
 	tempRoot      string
 )
 
@@ -80,6 +81,12 @@ func run(m *testing.M) (int, error) {
 		return 0, fmt.Errorf("start overlay: %w", err)
 	}
 	defer overlay.Stop()
+
+	zet, err = testutil.StartZET(ctx, zetBin, filepath.Join(tempRoot, "zet-identities"))
+	if err != nil {
+		return 0, fmt.Errorf("start ziti-edge-tunnel: %w", err)
+	}
+	defer zet.Stop()
 
 	return m.Run(), nil
 }

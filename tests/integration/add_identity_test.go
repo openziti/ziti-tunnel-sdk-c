@@ -19,7 +19,7 @@ package integration_test
 import (
 	"context"
 	"os"
-	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -27,31 +27,38 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestAddIdentity_JWT(t *testing.T) {
+func TestAddIdentity(t *testing.T) {
+	t.Run("withJwtSucceeds", testAddIdentityWithJwtSucceeds)
+	t.Run("sameJwtTwiceSecondFails", testAddIdentitySameJwtTwiceSecondFails)
+}
+
+// identityNameFor returns a unique-per-test identity filename so tests sharing
+// the package-level ZET instance don't collide on disk.
+func identityNameFor(t *testing.T) string {
+	// t.Name() is like "TestAddIdentity/withJwtSucceeds"; strip the slash for safety.
+	return strings.ReplaceAll(t.Name(), "/", "-")
+}
+
+func testAddIdentityWithJwtSucceeds(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 
-	identityName := "test-add-identity"
+	identityName := identityNameFor(t)
 	jwt, err := overlay.CreateIdentityJWT(ctx, identityName)
 	require.NoError(t, err, "mint JWT via overlay")
 	require.NotEmpty(t, jwt, "JWT content should not be empty")
 	t.Logf("JWT minted for identity %q (%d bytes)", identityName, len(jwt))
 
-	identityDir := filepath.Join(tempRoot, t.Name())
-	zet, err := testutil.StartZET(ctx, zetBin, identityDir)
-	require.NoError(t, err, "start ziti-edge-tunnel")
-	t.Cleanup(zet.Stop)
-	t.Logf("ziti-edge-tunnel started, identity dir: %s", identityDir)
-
 	client, err := testutil.DialIPC(ctx)
 	require.NoError(t, err, "dial ZET IPC pipe")
 	t.Cleanup(func() { _ = client.Close() })
-	t.Logf("IPC pipe dialed: %s", testutil.CommandPipePath)
 
-	resp, err := client.AddIdentity(ctx, testutil.AddIdentityData{
+	payload := testutil.AddIdentityData{
 		IdentityFilename: identityName,
 		JwtContent:       jwt,
-	})
+	}
+
+	resp, err := client.AddIdentity(ctx, payload)
 	require.NoError(t, err, "send AddIdentity command\n%s", zet.Logs())
 	require.True(t, resp.Success, "AddIdentity failed: error=%q code=%d\n%s",
 		resp.Error, resp.Code, zet.Logs())
@@ -61,4 +68,36 @@ func TestAddIdentity_JWT(t *testing.T) {
 	require.NoError(t, err, "identity file should be written to -I dir")
 	require.Greater(t, info.Size(), int64(0), "identity file should be non-empty")
 	t.Logf("identity file written: %s (%d bytes)", zet.IdentityFile(identityName), info.Size())
+}
+
+func testAddIdentitySameJwtTwiceSecondFails(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+
+	identityName := identityNameFor(t)
+	jwt, err := overlay.CreateIdentityJWT(ctx, identityName)
+	require.NoError(t, err, "mint JWT via overlay")
+	require.NotEmpty(t, jwt)
+	t.Logf("JWT minted for identity %q (%d bytes)", identityName, len(jwt))
+
+	client, err := testutil.DialIPC(ctx)
+	require.NoError(t, err, "dial ZET IPC pipe")
+	t.Cleanup(func() { _ = client.Close() })
+
+	payload := testutil.AddIdentityData{
+		IdentityFilename: identityName,
+		JwtContent:       jwt,
+	}
+
+	first, err := client.AddIdentity(ctx, payload)
+	require.NoError(t, err, "first AddIdentity send\n%s", zet.Logs())
+	require.True(t, first.Success, "first AddIdentity should succeed: error=%q\n%s", first.Error, zet.Logs())
+	t.Logf("first AddIdentity succeeded")
+
+	second, err := client.AddIdentity(ctx, payload)
+	require.NoError(t, err, "second AddIdentity send\n%s", zet.Logs())
+	require.False(t, second.Success, "second AddIdentity should fail, got Success=true")
+	require.Contains(t, second.Error, "identity exists",
+		"expected duplicate-name error, got %q", second.Error)
+	t.Logf("second AddIdentity correctly rejected: %s", second.Error)
 }
