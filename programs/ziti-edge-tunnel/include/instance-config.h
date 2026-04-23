@@ -28,6 +28,7 @@ void cleanup_instance_config();
 void stop_tunnel_and_cleanup();
 bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void *ctx);
 void send_tunnel_command(const tunnel_command *tnl_cmd, void *ctx);
+void send_tunnel_command_inline(const tunnel_command *tnl_cmd, void *ctx);
 void send_events_message(const void *message, to_json_fn to_json_f, bool displayEvent);
 
 extern uv_loop_t *global_loop_ref;
