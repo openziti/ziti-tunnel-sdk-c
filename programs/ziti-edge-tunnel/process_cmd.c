@@ -305,7 +305,7 @@ static void enroll_oidc_event_cb(ziti_context ztx, const ziti_event_t *event) {
                 .data = tunnel_load_identity_to_json(&load_identity_options,
                                                      MODEL_JSON_COMPACT, &json_len),
             };
-            send_tunnel_command(&tnl_cmd, state->add_id_req->cmd_ctx);
+            send_tunnel_command_inline(&tnl_cmd, NULL);
             free_tunnel_command(&tnl_cmd);
             save_tunnel_status_to_file();
 

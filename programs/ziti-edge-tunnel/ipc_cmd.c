@@ -324,10 +324,17 @@ int start_cmd_socket(uv_loop_t *l, const char *sockfile) {
     return -1;
 }
 
+// Dispatch a command and send the result back to an IPC client.
+// ctx is the ipc_conn_s* for the client pipe; the JSON result gets written
+// to that pipe for the client to read.
 void send_tunnel_command(const tunnel_command *tnl_cmd, void *ctx) {
     CMD_CTRL->process(tnl_cmd, on_command_resp, ctx);
 }
 
+// Dispatch a command and handle the result internally; nothing is written
+// back to an IPC client. Used for daemon-internal follow-ups (e.g. a
+// LoadIdentity triggered after enrollment completes, or metrics queries).
+// Pass ctx=NULL to discard the result entirely.
 void send_tunnel_command_inline(const tunnel_command *tnl_cmd, void *ctx) {
     CMD_CTRL->process(tnl_cmd, on_command_inline_resp, ctx);
 }
