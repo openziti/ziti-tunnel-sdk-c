@@ -1563,7 +1563,20 @@ static void run(int argc, char *argv[]) {
     }
 #endif
 
-    configure_ipc(true, !started_by_scm && (other_zets > 0 || ipc_discriminator != NULL));
+    // Only auto-apply a PID discriminator when the default pipe is actually taken.
+    // Another instance running with -P <name> does not collide with the default path,
+    // so a fresh default can still use the default pipe in that case.
+    bool default_pipe_taken = false;
+    {
+        const char *sn;
+        MODEL_LIST_FOREACH(sn, ipc_list) {
+            if (strcmp(sn, sockfilebase) == 0) {
+                default_pipe_taken = true;
+                break;
+            }
+        }
+    }
+    configure_ipc(true, !started_by_scm && (default_pipe_taken || ipc_discriminator != NULL));
     model_list_clear(&ipc_list, free);
 
     // generate tunnel status instance and save active state and start time
