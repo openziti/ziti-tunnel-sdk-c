@@ -2825,7 +2825,7 @@ static int add_identity_opts(int argc, char *argv[]) {
                 tunnel_add_identity_opt->controllerURL = optarg;
                 break;
             case 'm': {
-                tnl_enroll_mode m = tnl_enroll_mode_value_of(optarg);
+                tnl_enroll_mode m = tnl_enroll_modes.value_of(optarg);
                 if (m == tnl_enroll_mode_Unknown) {
                     fprintf(stderr, "unknown --enroll-to-mode value: %s (expected none, cert, or token)\n", optarg);
                     errors++;
