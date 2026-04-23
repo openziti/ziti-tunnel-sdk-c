@@ -37,17 +37,6 @@ type Response struct {
 	Data    json.RawMessage `json:"Data,omitempty"`
 }
 
-type AddIdentityData struct {
-	IdentityFilename string `json:"IdentityFilename"`
-	JwtContent       string `json:"JwtContent,omitempty"`
-	Certificate      string `json:"Certificate,omitempty"`
-	Key              string `json:"Key,omitempty"`
-	ControllerURL    string `json:"ControllerURL,omitempty"`
-	EnrollMode       string `json:"EnrollMode,omitempty"`
-	Provider         string `json:"Provider,omitempty"`
-	UseKeychain      bool   `json:"UseKeychain,omitempty"`
-}
-
 type IPCClient struct {
 	conn net.Conn
 	r    *bufio.Reader
@@ -97,10 +86,6 @@ func (c *IPCClient) SendCommand(ctx context.Context, cmd Command) (*Response, er
 		return nil, fmt.Errorf("unmarshal response %q: %w", string(line), err)
 	}
 	return &resp, nil
-}
-
-func (c *IPCClient) AddIdentity(ctx context.Context, data AddIdentityData) (*Response, error) {
-	return c.SendCommand(ctx, Command{Command: "AddIdentity", Data: data})
 }
 
 func (c *IPCClient) Close() error {
