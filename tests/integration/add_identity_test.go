@@ -30,17 +30,18 @@ import (
 func TestAddIdentity(t *testing.T) {
 	t.Run("withJwtSucceeds", testAddIdentityWithJwtSucceeds)
 	t.Run("sameJwtTwiceSecondFails", testAddIdentitySameJwtTwiceSecondFails)
+	t.Run("withInvalidJwtFails", testAddIdentityWithInvalidJwtFails)
 }
 
 // identityNameFor returns a unique-per-test identity filename so tests sharing
 // the package-level ZET instance don't collide on disk.
 func identityNameFor(t *testing.T) string {
-	// t.Name() is like "TestAddIdentity/withJwtSucceeds"; strip the slash for safety.
+	// t.Name() is like "TestAddIdentity/withJwtSucceeds"
 	return strings.ReplaceAll(t.Name(), "/", "-")
 }
 
 func testAddIdentityWithJwtSucceeds(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	identityName := identityNameFor(t)
@@ -60,8 +61,7 @@ func testAddIdentityWithJwtSucceeds(t *testing.T) {
 
 	resp, err := client.AddIdentity(ctx, payload)
 	require.NoError(t, err, "send AddIdentity command\n%s", zet.Logs())
-	require.True(t, resp.Success, "AddIdentity failed: error=%q code=%d\n%s",
-		resp.Error, resp.Code, zet.Logs())
+	require.True(t, resp.Success, "AddIdentity failed: error=%q code=%d\n%s", resp.Error, resp.Code, zet.Logs())
 	t.Logf("AddIdentity succeeded: filename=%q code=%d", identityName, resp.Code)
 
 	info, err := os.Stat(zet.IdentityFile(identityName))
@@ -71,7 +71,7 @@ func testAddIdentityWithJwtSucceeds(t *testing.T) {
 }
 
 func testAddIdentitySameJwtTwiceSecondFails(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	identityName := identityNameFor(t)
@@ -100,4 +100,27 @@ func testAddIdentitySameJwtTwiceSecondFails(t *testing.T) {
 	require.Contains(t, second.Error, "identity exists",
 		"expected duplicate-name error, got %q", second.Error)
 	t.Logf("second AddIdentity correctly rejected: %s", second.Error)
+}
+
+func testAddIdentityWithInvalidJwtFails(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	client, err := testutil.DialIPC(ctx)
+	require.NoError(t, err, "dial ZET IPC pipe")
+	t.Cleanup(func() { _ = client.Close() })
+
+	identityName := identityNameFor(t)
+	resp, err := client.AddIdentity(ctx, testutil.AddIdentityData{
+		IdentityFilename: identityName,
+		JwtContent:       "this.is.not-a-real-jwt",
+	})
+	require.NoError(t, err, "IPC send should succeed even when enrollment fails\n%s", zet.Logs())
+	require.False(t, resp.Success, "invalid JWT should be rejected, got Success=true")
+	require.NotEqual(t, 0, resp.Code, "expected non-zero error code for invalid JWT")
+	t.Logf("invalid JWT correctly rejected: code=%d error=%q", resp.Code, resp.Error)
+
+	idFile := zet.IdentityFile(identityName)
+	_, statErr := os.Stat(idFile)
+	require.True(t, os.IsNotExist(statErr), "identity file should not exist after failed enroll: %s\n%s", idFile, zet.Logs())
 }
