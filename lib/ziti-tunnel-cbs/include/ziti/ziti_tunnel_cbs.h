@@ -211,7 +211,9 @@ XX(identityFilename, model_string, none, IdentityFilename, __VA_ARGS__) \
 XX(jwtContent, model_string, none, JwtContent, __VA_ARGS__) \
 XX(key, model_string, none, Key, __VA_ARGS__) \
 XX(cert, model_string, none, Certificate, __VA_ARGS__) \
-XX(controllerURL, model_string, none, ControllerURL, __VA_ARGS__)
+XX(controllerURL, model_string, none, ControllerURL, __VA_ARGS__) \
+XX(enrollMode, tnl_enroll_mode, none, EnrollMode, __VA_ARGS__) \
+XX(provider, model_string, none, Provider, __VA_ARGS__)
 
 #define TUNNEL_EXT_AUTH(XX, ...) \
 XX(identifier, model_string, none, identifier, __VA_ARGS__) \
@@ -413,6 +415,8 @@ struct add_identity_request_s {
     char* key;
     char* certificate;
     char* url;
+    char* provider;
+    tnl_enroll_mode enroll_mode;
 
     bool use_keychain;
     void *add_id_ctx;
