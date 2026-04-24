@@ -69,14 +69,14 @@ static void tunnel_enroll_cb(const ziti_config *cfg, int status, const char *err
             result.error = "ZITI_KEY_GENERATION_FAILED";
         }
 
-        if(add_id_req != NULL) {
-            add_id_req->cmd_cb(&result, add_id_req->cmd_ctx);
+        if (add_id_req != NULL) {
             // Only attempt removal if we actually opened the file; otherwise
             // remove() would return ENOENT for a file that never existed.
             if (f != NULL && add_id_req->identifier != NULL) {
                 ZITI_LOG(ERROR, "removing failed identity file: %s", add_id_req->identifier);
                 remove(add_id_req->identifier);
             }
+            add_id_req->cmd_cb(&result, add_id_req->cmd_ctx);
         }
         free(add_id_req);
         return;
