@@ -24,6 +24,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 )
@@ -106,6 +107,14 @@ func (z *ZET) Logs() string {
 // IdentityFile returns the expected path of an enrolled identity by filename (no extension).
 func (z *ZET) IdentityFile(name string) string {
 	return filepath.Join(z.IdentityDir, name+".json")
+}
+
+func (z *ZET) IdentityIdentifier(name string) string {
+	path := z.IdentityFile(name)
+	if runtime.GOOS == "windows" {
+		return strings.ToLower(path)
+	}
+	return path
 }
 
 // EnsureNoExistingZET returns an error if something is already listening on the
