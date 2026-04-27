@@ -93,6 +93,17 @@ type AddIdentityData struct {
 	UseKeychain      bool   `json:"UseKeychain,omitempty"`
 }
 
+type IdentityInfo struct {
+	Name    string `json:"Name"`
+	Config  string `json:"Config"`
+	Network string `json:"Network"`
+	Id      string `json:"Id"`
+}
+
+type IdentityListData struct {
+	Identities []IdentityInfo `json:"Identities"`
+}
+
 // Helper methods send a named command with the appropriate payload and read
 // exactly one response. All inherit the context's deadline (used for async
 // handlers like AddIdentity that respond only after enrollment completes).
