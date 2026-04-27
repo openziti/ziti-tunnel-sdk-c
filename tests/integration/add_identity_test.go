@@ -54,12 +54,12 @@ func testAddIdentityWithJwtSucceeds(t *testing.T) {
 	require.NoError(t, err, "dial ZET IPC pipe")
 	t.Cleanup(func() { _ = client.Close() })
 
-	payload := testutil.AddIdentityData{
+	identityData := testutil.AddIdentityData{
 		IdentityFilename: identityName,
 		JwtContent:       jwt,
 	}
 
-	resp, err := client.AddIdentity(ctx, payload)
+	resp, err := client.AddIdentity(ctx, identityData)
 	require.NoError(t, err, "send AddIdentity command\n%s", zet.Logs())
 	require.True(t, resp.Success, "AddIdentity failed: error=%q code=%d\n%s", resp.Error, resp.Code, zet.Logs())
 	t.Logf("AddIdentity succeeded: filename=%q code=%d", identityName, resp.Code)
@@ -84,17 +84,17 @@ func testAddIdentitySameJwtTwiceSecondFails(t *testing.T) {
 	require.NoError(t, err, "dial ZET IPC pipe")
 	t.Cleanup(func() { _ = client.Close() })
 
-	payload := testutil.AddIdentityData{
+	identityData := testutil.AddIdentityData{
 		IdentityFilename: identityName,
 		JwtContent:       jwt,
 	}
 
-	first, err := client.AddIdentity(ctx, payload)
+	first, err := client.AddIdentity(ctx, identityData)
 	require.NoError(t, err, "first AddIdentity send\n%s", zet.Logs())
 	require.True(t, first.Success, "first AddIdentity should succeed: error=%q\n%s", first.Error, zet.Logs())
 	t.Logf("first AddIdentity succeeded")
 
-	second, err := client.AddIdentity(ctx, payload)
+	second, err := client.AddIdentity(ctx, identityData)
 	require.NoError(t, err, "second AddIdentity send\n%s", zet.Logs())
 	require.False(t, second.Success, "second AddIdentity should fail, got Success=true")
 	require.Contains(t, second.Error, "identity exists",
@@ -111,10 +111,11 @@ func testAddIdentityWithInvalidJwtFails(t *testing.T) {
 	t.Cleanup(func() { _ = client.Close() })
 
 	identityName := identityNameFor(t)
-	resp, err := client.AddIdentity(ctx, testutil.AddIdentityData{
+	identityData := testutil.AddIdentityData{
 		IdentityFilename: identityName,
 		JwtContent:       "this.is.not-a-real-jwt",
-	})
+	}
+	resp, err := client.AddIdentity(ctx, identityData)
 	require.NoError(t, err, "IPC send should succeed even when enrollment fails\n%s", zet.Logs())
 	require.False(t, resp.Success, "invalid JWT should be rejected, got Success=true")
 	require.NotEqual(t, 0, resp.Code, "expected non-zero error code for invalid JWT")

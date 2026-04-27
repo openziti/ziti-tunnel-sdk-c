@@ -43,10 +43,11 @@ func testListIdentitiesContainsAddedIdentity(t *testing.T) {
 	require.NoError(t, err, "dial ZET IPC pipe")
 	t.Cleanup(func() { _ = client.Close() })
 
-	addResp, err := client.AddIdentity(ctx, testutil.AddIdentityData{
+	identityData := testutil.AddIdentityData{
 		IdentityFilename: name,
 		JwtContent:       jwt,
-	})
+	}
+	addResp, err := client.AddIdentity(ctx, identityData)
 	require.NoError(t, err, "AddIdentity send\n%s", zet.Logs())
 	require.True(t, addResp.Success, "AddIdentity failed: error=%q code=%d", addResp.Error, addResp.Code)
 

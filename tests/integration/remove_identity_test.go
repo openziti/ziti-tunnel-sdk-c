@@ -41,10 +41,11 @@ func TestRemoveIdentity(t *testing.T) {
 	require.NotEmpty(t, jwt)
 	t.Logf("JWT minted for identity %q (%d bytes)", name, len(jwt))
 
-	addResp, err := client.AddIdentity(ctx, testutil.AddIdentityData{
+	identityData := testutil.AddIdentityData{
 		IdentityFilename: name,
 		JwtContent:       jwt,
-	})
+	}
+	addResp, err := client.AddIdentity(ctx, identityData)
 	require.NoError(t, err, "AddIdentity send\n%s", zet.Logs())
 	require.True(t, addResp.Success, "AddIdentity failed: error=%q code=%d", addResp.Error, addResp.Code)
 	t.Logf("AddIdentity succeeded: filename=%q code=%d", name, addResp.Code)
