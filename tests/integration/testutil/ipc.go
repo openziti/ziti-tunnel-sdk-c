@@ -39,7 +39,7 @@ type Response struct {
 
 type IPCClient struct {
 	conn net.Conn
-	r    *bufio.Reader
+	reader *bufio.Reader
 }
 
 // DialIPC connects to the ZET command pipe, retrying until ctx expires.
@@ -47,9 +47,9 @@ func DialIPC(ctx context.Context) (*IPCClient, error) {
 	const retryInterval = 100 * time.Millisecond
 	var lastErr error
 	for {
-		conn, err := dialPlatform(ctx)
+		conn, err := dialPlatform(ctx, CommandPipePath)
 		if err == nil {
-			return &IPCClient{conn: conn, r: bufio.NewReader(conn)}, nil
+			return &IPCClient{conn: conn, reader: bufio.NewReader(conn)}, nil
 		}
 		lastErr = err
 		select {
@@ -77,7 +77,7 @@ func (c *IPCClient) SendCommand(ctx context.Context, cmd Command) (*Response, er
 	if _, err := c.conn.Write(payload); err != nil {
 		return nil, fmt.Errorf("write command: %w", err)
 	}
-	line, err := c.r.ReadBytes('\n')
+	line, err := c.reader.ReadBytes('\n')
 	if err != nil {
 		return nil, fmt.Errorf("read response: %w", err)
 	}
@@ -89,5 +89,45 @@ func (c *IPCClient) SendCommand(ctx context.Context, cmd Command) (*Response, er
 }
 
 func (c *IPCClient) Close() error {
+	return c.conn.Close()
+}
+
+type EventClient struct {
+	conn net.Conn
+	reader *bufio.Reader
+}
+
+// DialEvents connects to the ZET event pipe, retrying until ctx expires.
+func DialEvents(ctx context.Context) (*EventClient, error) {
+	const retryInterval = 100 * time.Millisecond
+	var lastErr error
+	for {
+		conn, err := dialPlatform(ctx, EventPipePath)
+		if err == nil {
+			return &EventClient{conn: conn, reader: bufio.NewReader(conn)}, nil
+		}
+		lastErr = err
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("dial %s: %w (last: %v)", EventPipePath, ctx.Err(), lastErr)
+		case <-time.After(retryInterval):
+		}
+	}
+}
+
+// ReadEvent reads exactly one JSON-line event from the event pipe.
+func (c *EventClient) ReadEvent(ctx context.Context) (json.RawMessage, error) {
+	if dl, ok := ctx.Deadline(); ok {
+		_ = c.conn.SetDeadline(dl)
+		defer c.conn.SetDeadline(time.Time{})
+	}
+	line, err := c.reader.ReadBytes('\n')
+	if err != nil {
+		return nil, fmt.Errorf("read event: %w", err)
+	}
+	return json.RawMessage(line), nil
+}
+
+func (c *EventClient) Close() error {
 	return c.conn.Close()
 }

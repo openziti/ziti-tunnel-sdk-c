@@ -18,6 +18,7 @@ package integration_test
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"strings"
 	"testing"
@@ -31,6 +32,7 @@ func TestAddIdentity(t *testing.T) {
 	t.Run("withJwtSucceeds", testAddIdentityWithJwtSucceeds)
 	t.Run("sameJwtTwiceSecondFails", testAddIdentitySameJwtTwiceSecondFails)
 	t.Run("withInvalidJwtFails", testAddIdentityWithInvalidJwtFails)
+	t.Run("emitsIdentityAddedEvent", testAddIdentityEmitsIdentityAddedEvent)
 }
 
 // identityNameFor returns a unique-per-test identity filename so tests sharing
@@ -125,4 +127,55 @@ func testAddIdentityWithInvalidJwtFails(t *testing.T) {
 	idFile := zet.IdentityFile(identityName)
 	_, statErr := os.Stat(idFile)
 	require.True(t, os.IsNotExist(statErr), "identity file should not exist after failed enroll: %s\n%s", idFile, zet.Logs())
+}
+
+func testAddIdentityEmitsIdentityAddedEvent(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	identityName := identityNameFor(t)
+	jwt, err := overlay.CreateIdentityJWT(ctx, identityName)
+	require.NoError(t, err, "mint JWT via overlay")
+	require.NotEmpty(t, jwt)
+	t.Logf("JWT minted for identity %q (%d bytes)", identityName, len(jwt))
+
+	events, err := testutil.DialEvents(ctx)
+	require.NoError(t, err, "dial ZET event pipe")
+	t.Cleanup(func() { _ = events.Close() })
+
+	client, err := testutil.DialIPC(ctx)
+	require.NoError(t, err, "dial ZET command pipe")
+	t.Cleanup(func() { _ = client.Close() })
+
+	identityData := testutil.AddIdentityData{
+		IdentityFilename: identityName,
+		JwtContent:       &jwt,
+	}
+	resp, err := client.AddIdentity(ctx, identityData)
+	require.NoError(t, err, "AddIdentity send\n%s", zet.Logs())
+	require.True(t, resp.Success, "AddIdentity failed: error=%q code=%d", resp.Error, resp.Code)
+
+	for {
+		raw, err := events.ReadEvent(ctx)
+		require.NoError(t, err, "read event waiting for identity:added\n%s", zet.Logs())
+
+		var event struct {
+			Op, Action, Fingerprint string
+		}
+		require.NoError(t, json.Unmarshal(raw, &event), "parse event: %s", raw)
+		if event.Op != "identity" || event.Action != "added" || event.Fingerprint != identityName {
+			t.Logf("skipped event: Op=%s Action=%s Fingerprint=%s", event.Op, event.Action, event.Fingerprint)
+			continue
+		}
+
+		t.Logf("identity event received: %s", raw)
+		var keys map[string]json.RawMessage
+		require.NoError(t, json.Unmarshal(raw, &keys), "parse identity event: %s", raw)
+		require.Contains(t, keys, "Op", "identity event missing Op")
+		require.Contains(t, keys, "Action", "identity event missing Action")
+		require.Contains(t, keys, "Fingerprint", "identity event missing Fingerprint")
+		require.Contains(t, keys, "Id", "identity event missing Id")
+		require.Len(t, keys, 4, "identity event has unexpected key set: %v", keys)
+		return
+	}
 }

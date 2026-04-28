@@ -26,7 +26,7 @@ import (
 const CommandPipePath = "/tmp/.ziti/ziti-edge-tunnel.sock"
 const EventPipePath = "/tmp/.ziti/ziti-edge-tunnel-event.sock"
 
-func dialPlatform(ctx context.Context) (net.Conn, error) {
+func dialPlatform(ctx context.Context, path string) (net.Conn, error) {
 	var d net.Dialer
-	return d.DialContext(ctx, "unix", CommandPipePath)
+	return d.DialContext(ctx, "unix", path)
 }

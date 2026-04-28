@@ -120,7 +120,7 @@ func EnsureNoExistingZET() error { return ensureNoExistingZET() }
 func ensureNoExistingZET() error {
 	probeCtx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
-	conn, err := dialPlatform(probeCtx)
+	conn, err := dialPlatform(probeCtx, CommandPipePath)
 	if err != nil {
 		return nil
 	}
