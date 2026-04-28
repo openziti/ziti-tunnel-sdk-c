@@ -18,6 +18,7 @@ package integration_test
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"testing"
 	"time"
@@ -27,6 +28,11 @@ import (
 )
 
 func TestRemoveIdentity(t *testing.T) {
+	t.Run("withManualIdentifier", testRemoveIdentityWithManualIdentifier)
+	t.Run("withIdentifierFromStatus", testRemoveIdentityWithIdentifierFromStatus)
+}
+
+func testRemoveIdentityWithManualIdentifier(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -57,6 +63,66 @@ func TestRemoveIdentity(t *testing.T) {
 	t.Logf("identity file present before Remove: %s (%d bytes)", idFile, info.Size())
 
 	identifier := zet.IdentityIdentifier(name)
+	removeResp, err := client.RemoveIdentity(ctx, identifier)
+	require.NoError(t, err, "RemoveIdentity send\n%s", zet.Logs())
+	require.True(t, removeResp.Success, "RemoveIdentity failed: error=%q code=%d", removeResp.Error, removeResp.Code)
+	t.Logf("RemoveIdentity succeeded: identifier=%s code=%d", identifier, removeResp.Code)
+
+	_, statErr := os.Stat(idFile)
+	require.True(t, os.IsNotExist(statErr), "identity file should be removed after RemoveIdentity: %s\n%s", idFile, zet.Logs())
+}
+
+func testRemoveIdentityWithIdentifierFromStatus(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	client, err := testutil.DialIPC(ctx)
+	require.NoError(t, err, "dial ZET IPC pipe")
+	t.Cleanup(func() { _ = client.Close() })
+
+	name := identityNameFor(t)
+
+	jwt, err := overlay.CreateIdentityJWT(ctx, name)
+	require.NoError(t, err, "mint JWT")
+	require.NotEmpty(t, jwt)
+	t.Logf("JWT minted for identity %q (%d bytes)", name, len(jwt))
+
+	identityData := testutil.AddIdentityData{
+		IdentityFilename: name,
+		JwtContent:       jwt,
+	}
+	addResp, err := client.AddIdentity(ctx, identityData)
+	require.NoError(t, err, "AddIdentity send\n%s", zet.Logs())
+	require.True(t, addResp.Success, "AddIdentity failed: error=%q code=%d", addResp.Error, addResp.Code)
+	t.Logf("AddIdentity succeeded: filename=%q code=%d", name, addResp.Code)
+
+	idFile := zet.IdentityFile(name)
+	info, err := os.Stat(idFile)
+	require.NoError(t, err, "identity file should exist after AddIdentity")
+	require.Greater(t, info.Size(), int64(0))
+
+	statusResp, err := client.Status(ctx)
+	require.NoError(t, err, "Status send\n%s", zet.Logs())
+	require.True(t, statusResp.Success, "Status failed: error=%q code=%d", statusResp.Error, statusResp.Code)
+
+	var status struct {
+		Identities []struct {
+			Name       string `json:"Name"`
+			Identifier string `json:"Identifier"`
+		} `json:"Identities"`
+	}
+	require.NoError(t, json.Unmarshal(statusResp.Data, &status), "parse Status data: %s", statusResp.Data)
+
+	var identifier string
+	for _, id := range status.Identities {
+		if id.Name == name {
+			identifier = id.Identifier
+			break
+		}
+	}
+	require.NotEmpty(t, identifier, "identity %q not found in Status.Identities", name)
+	t.Logf("identifier from Status: %s", identifier)
+
 	removeResp, err := client.RemoveIdentity(ctx, identifier)
 	require.NoError(t, err, "RemoveIdentity send\n%s", zet.Logs())
 	require.True(t, removeResp.Success, "RemoveIdentity failed: error=%q code=%d", removeResp.Error, removeResp.Code)
