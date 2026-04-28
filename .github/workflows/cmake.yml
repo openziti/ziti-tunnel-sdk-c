@@ -79,11 +79,3 @@ jobs:
           name: ${{ matrix.preset }}
           path: ./build/bundle/ziti-edge-tunnel-*.zip
           if-no-files-found: error
-
-      - name: upload Windows PDB
-        if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v7
-        with:
-          name: ${{ matrix.preset }}-pdb
-          path: ./build/programs/ziti-edge-tunnel/RelWithDebInfo/ziti-edge-tunnel.pdb
-          if-no-files-found: error
