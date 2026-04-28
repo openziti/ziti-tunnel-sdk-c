@@ -16,7 +16,10 @@ limitations under the License.
 
 package testutil
 
-import "context"
+import (
+	"context"
+	"encoding/json"
+)
 
 // Payload structs below mirror the wire JSON emitted/accepted by ziti-edge-tunnel's
 // IPC handlers (defined in lib/ziti-tunnel-cbs/include/ziti/ziti_tunnel_cbs.h).
@@ -102,6 +105,37 @@ type IdentityInfo struct {
 
 type IdentityListData struct {
 	Identities []IdentityInfo `json:"Identities"`
+}
+
+type IpInfo struct {
+	Ip     string `json:"Ip"`
+	Subnet string `json:"Subnet"`
+	MTU    int    `json:"MTU"`
+	DNS    string `json:"DNS"`
+}
+
+type ServiceVersion struct {
+	Version   string `json:"Version"`
+	BuildDate string `json:"BuildDate"`
+}
+
+type TapInfo struct{}
+
+type TunnelStatus struct {
+	Active         bool            `json:"Active"`
+	Duration       int64           `json:"Duration"`
+	StartTime      string          `json:"StartTime"`
+	Identities     json.RawMessage `json:"Identities"`
+	IpInfo         IpInfo          `json:"IpInfo"`
+	LogLevel       string          `json:"LogLevel"`
+	ServiceVersion ServiceVersion  `json:"ServiceVersion"`
+	TunIpv4        string          `json:"TunIpv4"`
+	TunIpv4Mask    int             `json:"TunIpv4Mask"`
+	AddDns         bool            `json:"AddDns"`
+	ApiPageSize    int             `json:"ApiPageSize"`
+	TunName        string          `json:"TunName"`
+	L2Enabled      bool            `json:"L2Enabled"`
+	TapInfo        TapInfo         `json:"TapInfo"`
 }
 
 // Helper methods send a named command with the appropriate payload and read
