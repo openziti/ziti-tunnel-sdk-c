@@ -939,9 +939,12 @@ const char *get_pcap_ifname() {
 char* get_zet_instance_id(const char* discriminator) {
     char *zet_instance_id = NULL;
     if (discriminator) {
+        // Put discriminator FIRST so that older ziti-edge-tunnel builds (which nuke anything
+        // starting with "Added by ziti-edge-tunnel") won't wipe rules owned by discriminated
+        // instances. Result: "<disc>.ziti-edge-tunnel".
         size_t len = strlen(DEFAULT_EXECUTABLE_NAME) + strlen(discriminator) + 2; /* separator + nul */
         zet_instance_id = calloc(len, sizeof(char));
-        snprintf(zet_instance_id, len, "%s.%s", DEFAULT_EXECUTABLE_NAME, discriminator);
+        snprintf(zet_instance_id, len, "%s.%s", discriminator, DEFAULT_EXECUTABLE_NAME);
     } else {
         zet_instance_id = strdup(DEFAULT_EXECUTABLE_NAME);
     }

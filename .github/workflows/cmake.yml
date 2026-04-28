@@ -77,5 +77,5 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.preset }}
-          path: ./build/bundle/ziti-edge-tunnel-*.zip 
+          path: ./build/bundle/ziti-edge-tunnel-*.zip
           if-no-files-found: error
