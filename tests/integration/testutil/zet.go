@@ -24,7 +24,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"sync"
 	"time"
 )
@@ -111,9 +110,6 @@ func (z *ZET) IdentityFile(name string) string {
 
 func (z *ZET) IdentityIdentifier(name string) string {
 	path := z.IdentityFile(name)
-	if runtime.GOOS == "windows" {
-		return strings.ToLower(path)
-	}
 	return path
 }
 
