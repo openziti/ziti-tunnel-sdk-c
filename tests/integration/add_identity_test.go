@@ -56,7 +56,7 @@ func testAddIdentityWithJwtSucceeds(t *testing.T) {
 
 	identityData := testutil.AddIdentityData{
 		IdentityFilename: identityName,
-		JwtContent:       jwt,
+		JwtContent:       &jwt,
 	}
 
 	resp, err := client.AddIdentity(ctx, identityData)
@@ -86,7 +86,7 @@ func testAddIdentitySameJwtTwiceSecondFails(t *testing.T) {
 
 	identityData := testutil.AddIdentityData{
 		IdentityFilename: identityName,
-		JwtContent:       jwt,
+		JwtContent:       &jwt,
 	}
 
 	first, err := client.AddIdentity(ctx, identityData)
@@ -111,9 +111,10 @@ func testAddIdentityWithInvalidJwtFails(t *testing.T) {
 	t.Cleanup(func() { _ = client.Close() })
 
 	identityName := identityNameFor(t)
+	badJwt := "this.is.not-a-real-jwt"
 	identityData := testutil.AddIdentityData{
 		IdentityFilename: identityName,
-		JwtContent:       "this.is.not-a-real-jwt",
+		JwtContent:       &badJwt,
 	}
 	resp, err := client.AddIdentity(ctx, identityData)
 	require.NoError(t, err, "IPC send should succeed even when enrollment fails\n%s", zet.Logs())

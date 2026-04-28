@@ -86,14 +86,12 @@ type StatusChangeData struct {
 }
 
 type AddIdentityData struct {
-	IdentityFilename string `json:"IdentityFilename"`
-	JwtContent       string `json:"JwtContent,omitempty"`
-	Certificate      string `json:"Certificate,omitempty"`
-	Key              string `json:"Key,omitempty"`
-	ControllerURL    string `json:"ControllerURL,omitempty"`
-	EnrollMode       string `json:"EnrollMode,omitempty"`
-	Provider         string `json:"Provider,omitempty"`
-	UseKeychain      bool   `json:"UseKeychain,omitempty"`
+	UseKeychain      bool    `json:"UseKeychain"`
+	IdentityFilename string  `json:"IdentityFilename"`
+	JwtContent       *string `json:"JwtContent"`
+	Key              *string `json:"Key"`
+	Certificate      *string `json:"Certificate"`
+	ControllerURL    *string `json:"ControllerURL"`
 }
 
 type IdentityInfo struct {
