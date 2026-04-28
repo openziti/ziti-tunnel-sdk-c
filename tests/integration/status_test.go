@@ -27,6 +27,10 @@ import (
 )
 
 func TestStatus(t *testing.T) {
+	t.Run("hasExpectedTopLevelFields", testStatusHasExpectedTopLevelFields)
+}
+
+func testStatusHasExpectedTopLevelFields(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
