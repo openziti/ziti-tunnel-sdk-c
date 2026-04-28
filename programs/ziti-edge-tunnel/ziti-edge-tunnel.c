@@ -127,6 +127,9 @@ char* config_dir;
 char* config_file;
 bool uses_config_dir = false;
 
+static tunnel_upstream_dns dns_upstreams[MAX_UPSTREAMS];
+static int num_dns_upstreams = 0;
+
 static long refresh_metrics = 5000;
 static long metrics_latency = 5000;
 static char *configured_cidr = NULL;
@@ -845,7 +848,7 @@ static char* normalize_host(char* hostname) {
     return hostname_new;
 }
 
-static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, const char *ip_range, const char *dns_upstream) {
+static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, const char *ip_range) {
     netif_driver tun, tap = NULL;
     char tun_error[64];
 
@@ -937,12 +940,15 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
 
     ip_addr_t dns_ip4 = IPADDR4_INIT(dns_ip);
     ziti_dns_setup(tunneler, ipaddr_ntoa(&dns_ip4), ip_range);
-    if (dns_upstream) {
-        tunnel_upstream_dns upstream = {
-                .host = dns_upstream
-        };
-        tunnel_upstream_dns *a[] = { &upstream, NULL};
+    if (num_dns_upstreams > 0) {
+        tunnel_upstream_dns_array a = calloc(num_dns_upstreams+2, sizeof(tunnel_upstream_dns));
+        int i = 0;
+        for (; i < num_dns_upstreams; i++) {
+            a[i] = &dns_upstreams[i];
+        }
+        a[i] = NULL;
         ziti_dns_set_upstream(ziti_loop, a);
+        free(a);
     }
 #if __linux__
     diverter_init(dns_ip4_addr.u_addr.ip4.addr, dns_subnet_zaddr.addr.cidr.bits, tun->get_name(tun->handle));
@@ -1221,7 +1227,6 @@ static struct option run_host_options[] = {
 #ifndef DEFAULT_DNS_CIDR
 #define DEFAULT_DNS_CIDR "100.64.0.1/10"
 #endif
-static const char* dns_upstream = NULL;
 static bool host_only = false;
 
 #include "tlsuv/http.h"
@@ -1266,6 +1271,96 @@ static int init_proxy_connector(const char *url) {
     ZITI_LOG(INFO, "connecting to OpenZiti controller and edge routers through proxy '%s:%s'", host, port);
     tlsuv_set_global_connector(proxy);
 
+    return 0;
+}
+
+/* Parse a dns-upstream argument into a tunnel_upstream_dns struct.
+ *
+ * Accepted forms:
+ *   1.2.3.4              IPv4, no port  → port left 0 (library defaults to 53)
+ *   1.2.3.4:5353         IPv4 + port
+ *   2001:db8::1          bare IPv6, no port
+ *   [2001:db8::1]        bracketed IPv6, no port
+ *   [2001:db8::1]:5353   bracketed IPv6 + port
+ *   hostname             hostname, no port
+ *   hostname:5353        hostname + port
+ *
+ * Returns 0 on success, -1 on any parse error (message printed to stderr).
+ */
+static int parse_upstream_dns(const char *arg, tunnel_upstream_dns *out) {
+    static char buf[128]; //scratch storage for the host string when it needs to be trimmed (bracket removal or host:port split).
+    static size_t bufsz = sizeof(buf);
+
+    out->port = 0;
+
+    if (arg[0] == '[') {
+        /* bracketed IPv6: [addr] or [addr]:port */
+        const char *close = strchr(arg, ']');
+        if (close == NULL) {
+            fprintf(stderr, "dns-upstream: missing closing ']' in '%s'\n", arg);
+            return -1;
+        }
+        /* extract the address between the brackets */
+        size_t addr_len = (size_t)(close - arg - 1); /* exclude '[' and ']' */
+        if (addr_len == 0 || addr_len >= bufsz) {
+            fprintf(stderr, "dns-upstream: invalid bracketed address in '%s'\n", arg);
+            return -1;
+        }
+        memcpy(buf, arg + 1, addr_len);
+        buf[addr_len] = '\0';
+        out->host = buf;
+
+        /* optional :port after the closing bracket */
+        if (close[1] == ':') {
+            char *end = NULL;
+            long port = strtol(close + 2, &end, 10);
+            if (end == close + 2 || *end != '\0' || port < 1 || port > 65535) {
+                fprintf(stderr, "dns-upstream: invalid port in '%s'\n", arg);
+                return -1;
+            }
+            out->port = (int)port;
+        } else if (close[1] != '\0') {
+            fprintf(stderr, "dns-upstream: unexpected characters after ']' in '%s'\n", arg);
+            return -1;
+        }
+        return 0;
+    }
+
+    /* count colons to distinguish bare IPv6 from host:port */
+    int colon_count = 0;
+    for (const char *p = arg; *p; p++) {
+        if (*p == ':') colon_count++;
+    }
+
+    if (colon_count == 0) {
+        /* plain hostname or IPv4 with no port */
+        out->host = (char *)arg;
+        return 0;
+    }
+
+    if (colon_count > 1) {
+        /* bare IPv6 address (multiple colons, no brackets) — no port possible */
+        out->host = (char *)arg;
+        return 0;
+    }
+
+    /* exactly one colon: host:port or IPv4:port */
+    const char *colon = strchr(arg, ':');
+    char *end = NULL;
+    long port = strtol(colon + 1, &end, 10);
+    if (end == colon + 1 || *end != '\0' || port < 1 || port > 65535) {
+        fprintf(stderr, "dns-upstream: invalid port in '%s'\n", arg);
+        return -1;
+    }
+    size_t host_len = (size_t)(colon - arg);
+    if (host_len == 0 || host_len >= bufsz) {
+        fprintf(stderr, "dns-upstream: invalid host in '%s'\n", arg);
+        return -1;
+    }
+    memcpy(buf, arg, host_len);
+    buf[host_len] = '\0';
+    out->host = buf;
+    out->port = (int)port;
     return 0;
 }
 
@@ -1322,7 +1417,16 @@ static int run_opts(int argc, char *argv[]) {
                 configured_cidr = optarg;
                 break;
             case 'u':
-                dns_upstream = optarg;
+                if (num_dns_upstreams >= MAX_UPSTREAMS) {
+                    fprintf(stderr, "too many -u options (max %d)\n", MAX_UPSTREAMS);
+                    errors++;
+                } else {
+                    if (parse_upstream_dns(optarg, &dns_upstreams[num_dns_upstreams]) == 0) {
+                        num_dns_upstreams++;
+                    } else {
+                        fprintf(stderr, "failed to parse dns upstream argument '%s' as host[:port]\n", optarg);
+                    }
+                }
                 break;
             case 'x':
                 configured_proxy = optarg;
@@ -1600,7 +1704,7 @@ static void run(int argc, char *argv[]) {
     if (is_host_only()) {
         rc = run_tunnel_host_mode(global_loop_ref);
     } else {
-        rc = run_tunnel(global_loop_ref, tun_ip, dns_ip, configured_cidr, dns_upstream);
+        rc = run_tunnel(global_loop_ref, tun_ip, dns_ip, configured_cidr);
     }
     exit(rc);
 }
@@ -2903,7 +3007,7 @@ static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required supe
                                           "\t-d|--dns-ip-range <ip range>\tspecify CIDR block in which service DNS names"
                                           " are assigned in N.N.N.N/n format (default " DEFAULT_DNS_CIDR ")\n"
                                           DIVERTER_OPTS_DETAIL
-                                          "\t-u|--dns-upstream <ip addr>\tresolver listening on 53/udp for DNS queries that do not match a Ziti service\n",
+                                          "\t-u|--dns-upstream <ip addr>[:port]\tresolver for DNS queries that do not match a Ziti service. port 53 is used if unspecified.\n",
                                           run_opts, run);
 static CommandLine run_host_cmd = make_command("run-host", "run Ziti tunnel to host services",
                                           "-i <id.file> [-r N] [-v N]",
