@@ -31,8 +31,8 @@ type IdentifierData struct {
 }
 
 type IdentityOnOffData struct {
-	Identifier string `json:"Identifier"`
 	OnOff      bool   `json:"OnOff"`
+	Identifier string `json:"Identifier"`
 }
 
 type SetLogLevelData struct {
