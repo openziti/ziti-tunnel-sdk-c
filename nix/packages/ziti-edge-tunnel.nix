@@ -4,6 +4,7 @@
   fetchFromGitHub,
   json_c,
   lib,
+  libpcap,
   libsodium,
   libuv,
   llhttp,
@@ -47,19 +48,19 @@ let
   ziti_sdk_src = fetchFromGitHub {
     owner = "openziti";
     repo = "ziti-sdk-c";
-    tag = "1.11.8";
-    hash = "sha256-5RqCvOPnpTnOiyFpAoA4PWdp0DU+TeVTBH6eCgFe+ws=";
+    tag = "1.15.0";
+    hash = "sha256-o1Hcrqz+e2vJZjnPxIAgy5xKwu+M24o/Knh99dwTR3I=";
   };
 in
 stdenv.mkDerivation (finalAttrs: {
   pname = "ziti-edge-tunnel";
-  version = "1.11.4";
+  version = "1.15.1";
 
   src = fetchFromGitHub {
     owner = "openziti";
     repo = "ziti-tunnel-sdk-c";
     tag = "v${finalAttrs.version}";
-    hash = "sha256-CGj8ysxycMnuc0VW2cPfGgBKH2g97XS0GyvrPlAcVf0=";
+    hash = "sha256-ZSTurUxd5tsnK/cCEynKLjSoaJUCOJQNLZ9RE5Mf3oU=";
   };
 
   postPatch = ''
@@ -110,6 +111,7 @@ stdenv.mkDerivation (finalAttrs: {
 
   buildInputs = [
     json_c
+    libpcap
     libsodium
     libuv
     llhttp
