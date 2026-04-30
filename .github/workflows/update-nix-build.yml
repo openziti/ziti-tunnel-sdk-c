@@ -1,0 +1,46 @@
+name: Update Flake Lock and Build Version
+
+on:
+  release:
+    types: [released]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+
+      - uses: actions/checkout@v6
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Update flake.lock
+        run: nix flake update
+
+      - name: Update Nix Build
+        run: ./nix/update.sh
+
+      - name: Create Pull Request
+        run: |
+          BRANCH="update-nix-build"
+          gh auth status
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git checkout -b "$BRANCH"
+          git add --all
+          git commit -m "update nix build"
+          git push origin "$BRANCH"
+
+          gh pr create \
+            --title "chore: update flake and Nix build" \
+            --body "Automated flake.lock and Nix build update." \
+            --base main \
+            --head "$BRANCH"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
