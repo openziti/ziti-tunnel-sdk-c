@@ -125,6 +125,7 @@ type IdentityStatus struct {
 	Identifier  string `json:"Identifier"`
 	Active      bool   `json:"Active"`
 	FingerPrint string `json:"FingerPrint"`
+	MfaEnabled  bool   `json:"MfaEnabled"`
 }
 
 type TunnelStatus struct {
@@ -169,6 +170,29 @@ func (c *IPCClient) GetTunnelStatus(ctx context.Context) (*TunnelStatus, error) 
 		return nil, fmt.Errorf("parse status: %w", err)
 	}
 	return &status, nil
+}
+
+type MFAEnrollment struct {
+	Identifier      string   `json:"Identifier"`
+	IsVerified      bool     `json:"IsVerified"`
+	ProvisioningUrl string   `json:"ProvisioningUrl"`
+	RecoveryCodes   []string `json:"RecoveryCodes"`
+}
+
+// GetMFAEnrollment sends EnableMFA, asserts success, and unmarshals the enrollment response.
+func (c *IPCClient) GetMFAEnrollment(ctx context.Context, identifier string) (*MFAEnrollment, error) {
+	resp, err := c.EnableMFA(ctx, identifier)
+	if err != nil {
+		return nil, fmt.Errorf("enable mfa: %w", err)
+	}
+	if !resp.Success {
+		return nil, fmt.Errorf("enable mfa failed: %s (code %d)", resp.Error, resp.Code)
+	}
+	var enrollment MFAEnrollment
+	if err := json.Unmarshal(resp.Data, &enrollment); err != nil {
+		return nil, fmt.Errorf("parse enable mfa response: %w", err)
+	}
+	return &enrollment, nil
 }
 
 // Helper methods send a named command with the appropriate payload and read
