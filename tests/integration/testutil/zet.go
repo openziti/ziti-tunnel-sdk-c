@@ -22,15 +22,13 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"sync"
 	"time"
 )
 
 type ZET struct {
-	BinPath     string
-	IdentityDir string
+	BinPath string
 
 	extCmd  *exec.Cmd
 	stdout  *syncBuffer
@@ -66,12 +64,11 @@ func StartZET(ctx context.Context, binPath, identityDir string) (*ZET, error) {
 	}
 
 	z := &ZET{
-		BinPath:     binPath,
-		IdentityDir: identityDir,
-		extCmd:      cmd,
-		stdout:      stdout,
-		stderr:      stderr,
-		cmdDone:     make(chan error, 1),
+		BinPath: binPath,
+		extCmd:  cmd,
+		stdout:  stdout,
+		stderr:  stderr,
+		cmdDone: make(chan error, 1),
 	}
 	go func() { z.cmdDone <- cmd.Wait() }()
 
@@ -101,16 +98,6 @@ func (z *ZET) Stop() {
 
 func (z *ZET) Logs() string {
 	return fmt.Sprintf("--- stdout ---\n%s\n--- stderr ---\n%s", z.stdout.String(), z.stderr.String())
-}
-
-// IdentityFile returns the expected path of an enrolled identity by filename (no extension).
-func (z *ZET) IdentityFile(name string) string {
-	return filepath.Join(z.IdentityDir, name+".json")
-}
-
-func (z *ZET) IdentityIdentifier(name string) string {
-	path := z.IdentityFile(name)
-	return path
 }
 
 // EnsureNoExistingZET returns an error if something is already listening on the

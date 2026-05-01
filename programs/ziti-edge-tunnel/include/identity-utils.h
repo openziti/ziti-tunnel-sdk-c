@@ -80,6 +80,8 @@ char *get_tunnel_config(size_t *json_len);
 
 int get_api_page_size();
 
+void set_config_dir(const char *path);
+
 tunnel_identity_array get_tunnel_identities_for_metrics();
 
 void normalize_identifier(char *str);
@@ -91,6 +93,7 @@ void set_l2_enabled(bool enabled);
 bool get_l2_enabled();
 void set_pcap_ifname(const char* pcap_ifname);
 const char *get_pcap_ifname();
+//void set_identity_directory(const char *path);
 
 #ifdef __cplusplus
 }

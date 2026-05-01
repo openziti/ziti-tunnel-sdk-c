@@ -53,6 +53,11 @@ func testListIdentitiesContainsAddedIdentity(t *testing.T) {
 	require.NoError(t, err, "AddIdentity send\n%s", zet.Logs())
 	require.True(t, addResp.Success, "AddIdentity failed: error=%q code=%d", addResp.Error, addResp.Code)
 
+	status, err := client.GetTunnelStatus(ctx)
+	require.NoError(t, err, "Status after AddIdentity\n%s", zet.Logs())
+	entry := status.FindIdentity(name)
+	require.NotNil(t, entry, "identity %q not found in Status after AddIdentity", name)
+
 	listResp, err := client.ListIdentities(ctx)
 	require.NoError(t, err, "ListIdentities send\n%s", zet.Logs())
 	require.True(t, listResp.Success, "ListIdentities failed: error=%q code=%d", listResp.Error, listResp.Code)
@@ -60,15 +65,14 @@ func testListIdentitiesContainsAddedIdentity(t *testing.T) {
 	var data testutil.IdentityListData
 	require.NoError(t, json.Unmarshal(listResp.Data, &data), "unmarshal ListIdentities data: %s", listResp.Data)
 
-	identifier := zet.IdentityIdentifier(name)
 	var found *testutil.IdentityInfo
 	for i := range data.Identities {
-		if data.Identities[i].Config == identifier {
+		if data.Identities[i].Config == entry.Identifier {
 			found = &data.Identities[i]
 			break
 		}
 	}
-	require.NotNil(t, found, "ListIdentities did not contain %q in %d entries", identifier, len(data.Identities))
+	require.NotNil(t, found, "ListIdentities did not contain %q in %d entries", entry.Identifier, len(data.Identities))
 	require.Equal(t, name, found.Name, "identity Name should match the JWT subject name")
 	require.NotEmpty(t, found.Id, "identity Id should be set")
 	require.NotEmpty(t, found.Network, "identity Network should be set")

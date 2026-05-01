@@ -19,6 +19,7 @@ package testutil
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 )
 
 // Payload structs below mirror the wire JSON emitted/accepted by ziti-edge-tunnel's
@@ -119,21 +120,55 @@ type ServiceVersion struct {
 
 type TapInfo struct{}
 
+type IdentityStatus struct {
+	Name        string `json:"Name"`
+	Identifier  string `json:"Identifier"`
+	Active      bool   `json:"Active"`
+	FingerPrint string `json:"FingerPrint"`
+}
+
 type TunnelStatus struct {
-	Active         bool            `json:"Active"`
-	Duration       int64           `json:"Duration"`
-	StartTime      string          `json:"StartTime"`
-	Identities     json.RawMessage `json:"Identities"`
-	IpInfo         IpInfo          `json:"IpInfo"`
-	LogLevel       string          `json:"LogLevel"`
-	ServiceVersion ServiceVersion  `json:"ServiceVersion"`
-	TunIpv4        string          `json:"TunIpv4"`
-	TunIpv4Mask    int             `json:"TunIpv4Mask"`
-	AddDns         bool            `json:"AddDns"`
-	ApiPageSize    int             `json:"ApiPageSize"`
-	TunName        string          `json:"TunName"`
-	L2Enabled      bool            `json:"L2Enabled"`
-	TapInfo        TapInfo         `json:"TapInfo"`
+	Active            bool            `json:"Active"`
+	Duration          int64           `json:"Duration"`
+	StartTime         string          `json:"StartTime"`
+	Identities        []IdentityStatus `json:"Identities"`
+	IpInfo            IpInfo          `json:"IpInfo"`
+	LogLevel          string          `json:"LogLevel"`
+	ServiceVersion    ServiceVersion  `json:"ServiceVersion"`
+	TunIpv4           string          `json:"TunIpv4"`
+	TunIpv4Mask       int             `json:"TunIpv4Mask"`
+	AddDns            bool            `json:"AddDns"`
+	ApiPageSize       int             `json:"ApiPageSize"`
+	TunName           string          `json:"TunName"`
+	L2Enabled         bool            `json:"L2Enabled"`
+	TapInfo           TapInfo         `json:"TapInfo"`
+	ConfigDir         string          `json:"ConfigDir"`
+}
+
+// FindIdentity returns the identity entry whose Name matches, or nil.
+func (s *TunnelStatus) FindIdentity(name string) *IdentityStatus {
+	for i := range s.Identities {
+		if s.Identities[i].Name == name {
+			return &s.Identities[i]
+		}
+	}
+	return nil
+}
+
+// GetTunnelStatus sends the Status command, asserts success, and unmarshals the response.
+func (c *IPCClient) GetTunnelStatus(ctx context.Context) (*TunnelStatus, error) {
+	resp, err := c.Status(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("status: %w", err)
+	}
+	if !resp.Success {
+		return nil, fmt.Errorf("status failed: %s (code %d)", resp.Error, resp.Code)
+	}
+	var status TunnelStatus
+	if err := json.Unmarshal(resp.Data, &status); err != nil {
+		return nil, fmt.Errorf("parse status: %w", err)
+	}
+	return &status, nil
 }
 
 // Helper methods send a named command with the appropriate payload and read

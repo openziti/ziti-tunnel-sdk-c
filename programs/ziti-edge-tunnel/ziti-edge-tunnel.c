@@ -1587,6 +1587,9 @@ static void run(int argc, char *argv[]) {
         normalize_identifier(config_file);
 
         load_tunnel_status_from_file(config_file);
+        if (config_dir) {
+            set_config_dir(config_dir);
+        }
     }
 
     uint32_t tun_ip;

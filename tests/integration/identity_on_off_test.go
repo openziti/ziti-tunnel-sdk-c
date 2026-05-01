@@ -18,7 +18,6 @@ package integration_test
 
 import (
 	"context"
-	"encoding/json"
 	"testing"
 	"time"
 
@@ -53,45 +52,21 @@ func testIdentityOnOffTogglesActiveOff(t *testing.T) {
 	require.NoError(t, err, "AddIdentity send\n%s", zet.Logs())
 	require.True(t, addResp.Success, "AddIdentity failed: error=%q code=%d", addResp.Error, addResp.Code)
 
-	statusResp, err := client.Status(ctx)
+	status, err := client.GetTunnelStatus(ctx)
 	require.NoError(t, err, "Status send\n%s", zet.Logs())
-	require.True(t, statusResp.Success, "Status failed: error=%q code=%d", statusResp.Error, statusResp.Code)
+	entry := status.FindIdentity(name)
+	require.NotNil(t, entry, "identity %q not found in Status.Identities", name)
 
-	var status struct {
-		Identities []struct {
-			Name       string `json:"Name"`
-			Identifier string `json:"Identifier"`
-			Active     bool   `json:"Active"`
-		} `json:"Identities"`
-	}
-	require.NoError(t, json.Unmarshal(statusResp.Data, &status), "parse Status: %s", statusResp.Data)
-
-	var identifier string
-	for _, id := range status.Identities {
-		if id.Name == name {
-			identifier = id.Identifier
-			break
-		}
-	}
-	require.NotEmpty(t, identifier, "identity %q not found in Status.Identities", name)
-
-	offResp, err := client.IdentityOnOff(ctx, identifier, false)
+	offResp, err := client.IdentityOnOff(ctx, entry.Identifier, false)
 	require.NoError(t, err, "IdentityOnOff(false) send\n%s", zet.Logs())
 	require.True(t, offResp.Success, "IdentityOnOff(false) failed: error=%q code=%d", offResp.Error, offResp.Code)
 	t.Logf("IdentityOnOff(false) succeeded")
 
-	statusResp, err = client.Status(ctx)
+	status, err = client.GetTunnelStatus(ctx)
 	require.NoError(t, err, "Status send after off\n%s", zet.Logs())
-	require.NoError(t, json.Unmarshal(statusResp.Data, &status), "parse Status: %s", statusResp.Data)
-	found := false
-	for _, id := range status.Identities {
-		if id.Name == name {
-			require.False(t, id.Active, "Status.Identities[%q].Active should be false after IdentityOnOff(false)", name)
-			found = true
-			break
-		}
-	}
-	require.True(t, found, "identity %q not found in Status after off", name)
+	entry = status.FindIdentity(name)
+	require.NotNil(t, entry, "identity %q not found in Status after off", name)
+	require.False(t, entry.Active, "Status.Identities[%q].Active should be false after IdentityOnOff(false)", name)
 }
 
 func testIdentityOnOffTogglesActiveOn(t *testing.T) {
@@ -116,47 +91,23 @@ func testIdentityOnOffTogglesActiveOn(t *testing.T) {
 	require.NoError(t, err, "AddIdentity send\n%s", zet.Logs())
 	require.True(t, addResp.Success, "AddIdentity failed: error=%q code=%d", addResp.Error, addResp.Code)
 
-	statusResp, err := client.Status(ctx)
+	status, err := client.GetTunnelStatus(ctx)
 	require.NoError(t, err, "Status send\n%s", zet.Logs())
-	require.True(t, statusResp.Success, "Status failed: error=%q code=%d", statusResp.Error, statusResp.Code)
+	entry := status.FindIdentity(name)
+	require.NotNil(t, entry, "identity %q not found in Status.Identities", name)
 
-	var status struct {
-		Identities []struct {
-			Name       string `json:"Name"`
-			Identifier string `json:"Identifier"`
-			Active     bool   `json:"Active"`
-		} `json:"Identities"`
-	}
-	require.NoError(t, json.Unmarshal(statusResp.Data, &status), "parse Status: %s", statusResp.Data)
-
-	var identifier string
-	for _, id := range status.Identities {
-		if id.Name == name {
-			identifier = id.Identifier
-			break
-		}
-	}
-	require.NotEmpty(t, identifier, "identity %q not found in Status.Identities", name)
-
-	offResp, err := client.IdentityOnOff(ctx, identifier, false)
+	offResp, err := client.IdentityOnOff(ctx, entry.Identifier, false)
 	require.NoError(t, err, "IdentityOnOff(false) send\n%s", zet.Logs())
 	require.True(t, offResp.Success, "IdentityOnOff(false) failed: error=%q code=%d", offResp.Error, offResp.Code)
 
-	onResp, err := client.IdentityOnOff(ctx, identifier, true)
+	onResp, err := client.IdentityOnOff(ctx, entry.Identifier, true)
 	require.NoError(t, err, "IdentityOnOff(true) send\n%s", zet.Logs())
 	require.True(t, onResp.Success, "IdentityOnOff(true) failed: error=%q code=%d", onResp.Error, onResp.Code)
 	t.Logf("IdentityOnOff(true) succeeded")
 
-	statusResp, err = client.Status(ctx)
+	status, err = client.GetTunnelStatus(ctx)
 	require.NoError(t, err, "Status send after on\n%s", zet.Logs())
-	require.NoError(t, json.Unmarshal(statusResp.Data, &status), "parse Status: %s", statusResp.Data)
-	found := false
-	for _, id := range status.Identities {
-		if id.Name == name {
-			require.True(t, id.Active, "Status.Identities[%q].Active should be true after IdentityOnOff(true)", name)
-			found = true
-			break
-		}
-	}
-	require.True(t, found, "identity %q not found in Status after on", name)
+	entry = status.FindIdentity(name)
+	require.NotNil(t, entry, "identity %q not found in Status after on", name)
+	require.True(t, entry.Active, "Status.Identities[%q].Active should be true after IdentityOnOff(true)", name)
 }

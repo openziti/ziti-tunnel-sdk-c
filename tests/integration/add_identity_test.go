@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -66,10 +67,14 @@ func testAddIdentityWithJwtSucceeds(t *testing.T) {
 	require.True(t, resp.Success, "AddIdentity failed: error=%q code=%d\n%s", resp.Error, resp.Code, zet.Logs())
 	t.Logf("AddIdentity succeeded: filename=%q code=%d", identityName, resp.Code)
 
-	info, err := os.Stat(zet.IdentityFile(identityName))
+	status, err := client.GetTunnelStatus(ctx)
+	require.NoError(t, err, "Status after AddIdentity\n%s", zet.Logs())
+	entry := status.FindIdentity(identityName)
+	require.NotNil(t, entry, "identity %q not found in Status after AddIdentity", identityName)
+	info, err := os.Stat(entry.Identifier)
 	require.NoError(t, err, "identity file should be written to -I dir")
 	require.Greater(t, info.Size(), int64(0), "identity file should be non-empty")
-	t.Logf("identity file written: %s (%d bytes)", zet.IdentityFile(identityName), info.Size())
+	t.Logf("identity file written: %s (%d bytes)", entry.Identifier, info.Size())
 }
 
 func testAddIdentitySameJwtTwiceSecondFails(t *testing.T) {
@@ -124,7 +129,9 @@ func testAddIdentityWithInvalidJwtFails(t *testing.T) {
 	require.NotEqual(t, 0, resp.Code, "expected non-zero error code for invalid JWT")
 	t.Logf("invalid JWT correctly rejected: code=%d error=%q", resp.Code, resp.Error)
 
-	idFile := zet.IdentityFile(identityName)
+	status, err := client.GetTunnelStatus(ctx)
+	require.NoError(t, err, "Status after failed AddIdentity\n%s", zet.Logs())
+	idFile := filepath.Join(status.ConfigDir, identityName+".json")
 	_, statErr := os.Stat(idFile)
 	require.True(t, os.IsNotExist(statErr), "identity file should not exist after failed enroll: %s\n%s", idFile, zet.Logs())
 }
