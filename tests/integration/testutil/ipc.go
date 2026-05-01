@@ -22,7 +22,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 type Command struct {
@@ -126,6 +129,30 @@ func (c *EventClient) ReadEvent(ctx context.Context) (json.RawMessage, error) {
 		return nil, fmt.Errorf("read event: %w", err)
 	}
 	return json.RawMessage(line), nil
+}
+
+type Event struct {
+	Op          string `json:"Op"`
+	Action      string `json:"Action"`
+	Fingerprint string `json:"Fingerprint"`
+}
+
+// WaitFor drains events until one matches op/action/fingerprint, logging skipped events along the way.
+func (c *EventClient) WaitFor(t *testing.T, ctx context.Context, op, action, fingerprint string) {
+	t.Helper()
+	for {
+		raw, err := c.ReadEvent(ctx)
+		require.NoError(t, err, "read event waiting for %s:%s for %s", op, action, fingerprint)
+
+		var event Event
+		require.NoError(t, json.Unmarshal(raw, &event), "parse event: %s", raw)
+		if event.Op != op || event.Action != action || event.Fingerprint != fingerprint {
+			t.Logf("skipped event: Op=%s Action=%s Fingerprint=%s", event.Op, event.Action, event.Fingerprint)
+			continue
+		}
+		t.Logf("%s:%s received for %q", op, action, fingerprint)
+		return
+	}
 }
 
 func (c *EventClient) Close() error {

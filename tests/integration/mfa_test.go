@@ -22,7 +22,6 @@ import (
 	"crypto/sha1"
 	"encoding/base32"
 	"encoding/binary"
-	"encoding/json"
 	"fmt"
 	"net/url"
 	"strings"
@@ -73,21 +72,7 @@ func testEnableMFAWithJwtEnrolledIdentity(t *testing.T) {
 	require.NoError(t, err, "AddIdentity send\n%s", zet.Logs())
 	require.True(t, addResp.Success, "AddIdentity failed: error=%q code=%d", addResp.Error, addResp.Code)
 
-	for {
-		raw, err := events.ReadEvent(ctx)
-		require.NoError(t, err, "read event waiting for controller:connected\n%s", zet.Logs())
-
-		var event struct {
-			Op, Action, Fingerprint string
-		}
-		require.NoError(t, json.Unmarshal(raw, &event), "parse event: %s", raw)
-		if event.Op != "controller" || event.Action != "connected" || event.Fingerprint != name {
-			t.Logf("skipped event: Op=%s Action=%s Fingerprint=%s", event.Op, event.Action, event.Fingerprint)
-			continue
-		}
-		t.Logf("controller:connected received for %q", name)
-		break
-	}
+	events.WaitFor(t, ctx, "controller", "connected", name)
 
 	status, err := client.GetTunnelStatus(ctx)
 	require.NoError(t, err, "Status after AddIdentity\n%s", zet.Logs())
@@ -134,21 +119,7 @@ func testEnableMFAWithTotpRequiredAuthPolicy(t *testing.T) {
 	require.NoError(t, err, "AddIdentity send\n%s", zet.Logs())
 	require.True(t, addResp.Success, "AddIdentity failed: error=%q code=%d", addResp.Error, addResp.Code)
 
-	for {
-		raw, err := events.ReadEvent(ctx)
-		require.NoError(t, err, "read event waiting for identity:added\n%s", zet.Logs())
-
-		var event struct {
-			Op, Action, Fingerprint string
-		}
-		require.NoError(t, json.Unmarshal(raw, &event), "parse event: %s", raw)
-		if event.Op != "identity" || event.Action != "added" || event.Fingerprint != name {
-			t.Logf("skipped event: Op=%s Action=%s Fingerprint=%s", event.Op, event.Action, event.Fingerprint)
-			continue
-		}
-		t.Logf("identity:added received for %q", name)
-		break
-	}
+	events.WaitFor(t, ctx, "identity", "added", name)
 
 	status, err := client.GetTunnelStatus(ctx)
 	require.NoError(t, err, "Status after AddIdentity\n%s", zet.Logs())
@@ -188,21 +159,7 @@ func testVerifyMFAWithValidTotp(t *testing.T) {
 	require.NoError(t, err, "AddIdentity send\n%s", zet.Logs())
 	require.True(t, addResp.Success, "AddIdentity failed: error=%q code=%d", addResp.Error, addResp.Code)
 
-	for {
-		raw, err := events.ReadEvent(ctx)
-		require.NoError(t, err, "read event waiting for controller:connected\n%s", zet.Logs())
-
-		var event struct {
-			Op, Action, Fingerprint string
-		}
-		require.NoError(t, json.Unmarshal(raw, &event), "parse event: %s", raw)
-		if event.Op != "controller" || event.Action != "connected" || event.Fingerprint != name {
-			t.Logf("skipped event: Op=%s Action=%s Fingerprint=%s", event.Op, event.Action, event.Fingerprint)
-			continue
-		}
-		t.Logf("controller:connected received for %q", name)
-		break
-	}
+	events.WaitFor(t, ctx, "controller", "connected", name)
 
 	status, err := client.GetTunnelStatus(ctx)
 	require.NoError(t, err, "Status after AddIdentity\n%s", zet.Logs())
@@ -261,21 +218,7 @@ func testRemoveMFAWithValidTotp(t *testing.T) {
 	require.NoError(t, err, "AddIdentity send\n%s", zet.Logs())
 	require.True(t, addResp.Success, "AddIdentity failed: error=%q code=%d", addResp.Error, addResp.Code)
 
-	for {
-		raw, err := events.ReadEvent(ctx)
-		require.NoError(t, err, "read event waiting for controller:connected\n%s", zet.Logs())
-
-		var event struct {
-			Op, Action, Fingerprint string
-		}
-		require.NoError(t, json.Unmarshal(raw, &event), "parse event: %s", raw)
-		if event.Op != "controller" || event.Action != "connected" || event.Fingerprint != name {
-			t.Logf("skipped event: Op=%s Action=%s Fingerprint=%s", event.Op, event.Action, event.Fingerprint)
-			continue
-		}
-		t.Logf("controller:connected received for %q", name)
-		break
-	}
+	events.WaitFor(t, ctx, "controller", "connected", name)
 
 	status, err := client.GetTunnelStatus(ctx)
 	require.NoError(t, err, "Status send\n%s", zet.Logs())
@@ -348,21 +291,7 @@ func testRemoveMFAWithRecoveryCode(t *testing.T) {
 	require.NoError(t, err, "AddIdentity send\n%s", zet.Logs())
 	require.True(t, addResp.Success, "AddIdentity failed: error=%q code=%d", addResp.Error, addResp.Code)
 
-	for {
-		raw, err := events.ReadEvent(ctx)
-		require.NoError(t, err, "read event waiting for controller:connected\n%s", zet.Logs())
-
-		var event struct {
-			Op, Action, Fingerprint string
-		}
-		require.NoError(t, json.Unmarshal(raw, &event), "parse event: %s", raw)
-		if event.Op != "controller" || event.Action != "connected" || event.Fingerprint != name {
-			t.Logf("skipped event: Op=%s Action=%s Fingerprint=%s", event.Op, event.Action, event.Fingerprint)
-			continue
-		}
-		t.Logf("controller:connected received for %q", name)
-		break
-	}
+	events.WaitFor(t, ctx, "controller", "connected", name)
 
 	status, err := client.GetTunnelStatus(ctx)
 	require.NoError(t, err, "Status send\n%s", zet.Logs())
