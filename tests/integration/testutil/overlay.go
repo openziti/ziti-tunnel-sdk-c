@@ -135,6 +135,29 @@ func (o *Overlay) CreateIdentityJWT(ctx context.Context, name string) (string, e
 	return string(bytes.TrimSpace(content)), nil
 }
 
+func (o *Overlay) CreateAuthPolicyRequiringTOTP(ctx context.Context, name string) error {
+	if _, err := o.runZiti(ctx, "edge", "create", "auth-policy", name,
+		"--primary-cert-allowed",
+		"--secondary-req-totp"); err != nil {
+		return fmt.Errorf("create auth policy %s: %w", name, err)
+	}
+	return nil
+}
+
+func (o *Overlay) CreateIdentityJWTWithAuthPolicy(ctx context.Context, name, authPolicy string) (string, error) {
+	jwtPath := filepath.Join(o.Home, name+".jwt")
+	if _, err := o.runZiti(ctx, "edge", "create", "identity", name,
+		"-P", authPolicy,
+		"-o", jwtPath); err != nil {
+		return "", fmt.Errorf("create identity %s with policy %s: %w", name, authPolicy, err)
+	}
+	content, err := os.ReadFile(jwtPath)
+	if err != nil {
+		return "", fmt.Errorf("read jwt %s: %w", jwtPath, err)
+	}
+	return string(bytes.TrimSpace(content)), nil
+}
+
 func (o *Overlay) waitUntilReady(ctx context.Context) error {
 	var lastErr error
 	for {

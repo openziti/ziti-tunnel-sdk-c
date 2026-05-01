@@ -35,6 +35,7 @@ import (
 
 func TestEnableMFA(t *testing.T) {
 	t.Run("withJwtEnrolledIdentity", testEnableMFAWithJwtEnrolledIdentity)
+	t.Run("withTotpRequiredAuthPolicy", testEnableMFAWithTotpRequiredAuthPolicy)
 }
 
 func TestVerifyMFA(t *testing.T) {
@@ -94,6 +95,66 @@ func testEnableMFAWithJwtEnrolledIdentity(t *testing.T) {
 	require.NotEmpty(t, mfa.RecoveryCodes, "EnableMFA Data.RecoveryCodes should be non-empty")
 	require.False(t, mfa.IsVerified, "EnableMFA Data.IsVerified should be false before verify_mfa")
 	t.Logf("EnableMFA succeeded: provisioning_url=%q recovery_codes=%d", mfa.ProvisioningUrl, len(mfa.RecoveryCodes))
+}
+
+func testEnableMFAWithTotpRequiredAuthPolicy(t *testing.T) {
+	t.Skip("Tracking https://github.com/openziti/desktop-edge-win/issues/947 and https://openziti.discourse.group/t/enrolling-mfa-totp-from-zdew-fails/5482 - EnableMFA fails with 'failed to authenticate' for identities bound to TOTP-required auth policies")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	name := identityNameFor(t)
+	policy := name + "-policy"
+	require.NoError(t, overlay.CreateAuthPolicyRequiringTOTP(ctx, policy), "create auth policy")
+	t.Logf("auth policy %q created (--secondary-req-totp)", policy)
+
+	jwt, err := overlay.CreateIdentityJWTWithAuthPolicy(ctx, name, policy)
+	require.NoError(t, err, "mint JWT for identity bound to %q", policy)
+	require.NotEmpty(t, jwt)
+	t.Logf("JWT minted for identity %q bound to policy %q (%d bytes)", name, policy, len(jwt))
+
+	events, err := testutil.DialEvents(ctx)
+	require.NoError(t, err, "dial ZET event pipe")
+	t.Cleanup(func() { _ = events.Close() })
+
+	client, err := testutil.DialIPC(ctx)
+	require.NoError(t, err, "dial ZET IPC pipe")
+	t.Cleanup(func() { _ = client.Close() })
+
+	identityData := testutil.AddIdentityData{
+		IdentityFilename: name,
+		JwtContent:       &jwt,
+	}
+	addResp, err := client.AddIdentity(ctx, identityData)
+	require.NoError(t, err, "AddIdentity send\n%s", zet.Logs())
+	require.True(t, addResp.Success, "AddIdentity failed: error=%q code=%d", addResp.Error, addResp.Code)
+
+	for {
+		raw, err := events.ReadEvent(ctx)
+		require.NoError(t, err, "read event waiting for identity:added\n%s", zet.Logs())
+
+		var event struct {
+			Op, Action, Fingerprint string
+		}
+		require.NoError(t, json.Unmarshal(raw, &event), "parse event: %s", raw)
+		if event.Op != "identity" || event.Action != "added" || event.Fingerprint != name {
+			t.Logf("skipped event: Op=%s Action=%s Fingerprint=%s", event.Op, event.Action, event.Fingerprint)
+			continue
+		}
+		t.Logf("identity:added received for %q", name)
+		break
+	}
+
+	status, err := client.GetTunnelStatus(ctx)
+	require.NoError(t, err, "Status after AddIdentity\n%s", zet.Logs())
+	entry := status.FindIdentity(name)
+	require.NotNil(t, entry, "identity %q not found in Status.Identities", name)
+
+	mfa, err := client.GetMFAEnrollment(ctx, entry.Identifier)
+	require.NoError(t, err, "EnableMFA\n%s", zet.Logs())
+	require.NotEmpty(t, mfa.ProvisioningUrl, "EnableMFA Data.ProvisioningUrl should be non-empty")
+	require.NotEmpty(t, mfa.RecoveryCodes, "EnableMFA Data.RecoveryCodes should be non-empty")
+	t.Logf("EnableMFA succeeded for TOTP-required identity: provisioning_url=%q", mfa.ProvisioningUrl)
 }
 
 func testVerifyMFAWithValidTotp(t *testing.T) {
