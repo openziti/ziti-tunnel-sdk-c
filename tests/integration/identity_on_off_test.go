@@ -67,6 +67,7 @@ func testIdentityOnOffTogglesActiveOff(t *testing.T) {
 	entry = status.FindIdentity(name)
 	require.NotNil(t, entry, "identity %q not found in Status after off", name)
 	require.False(t, entry.Active, "Status.Identities[%q].Active should be false after IdentityOnOff(false)", name)
+	t.Logf("IdentityOnOff(false) ID Active=%t", entry.Active)
 }
 
 func testIdentityOnOffTogglesActiveOn(t *testing.T) {
@@ -110,4 +111,5 @@ func testIdentityOnOffTogglesActiveOn(t *testing.T) {
 	entry = status.FindIdentity(name)
 	require.NotNil(t, entry, "identity %q not found in Status after on", name)
 	require.True(t, entry.Active, "Status.Identities[%q].Active should be true after IdentityOnOff(true)", name)
+	t.Logf("IdentityOnOff(true) ID Active=%t", entry.Active)
 }
