@@ -82,7 +82,7 @@ static fn_pcap_freecode_t    dyn_pcap_freecode;
 static int load_libpcap(char *error, size_t errlen)
 {
     /* Try versioned name first, then unversioned fallback */
-    static const char *candidates[] = { "libpcap.so.1", "libpcap.so", NULL };
+    static const char *candidates[] = { "libpcap.so.1", "libpcap.so.0.8", "libpcap.so", NULL };
 
     void *lib = NULL;
     for (int i = 0; candidates[i] != NULL; i++) {

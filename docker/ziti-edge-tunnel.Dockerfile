@@ -26,14 +26,6 @@ RUN INSTALL_PKGS="iproute procps shadow-utils libpcap jq" \
     && microdnf -y update --setopt=install_weak_deps=0 --setopt=tsflags=nodocs \
     && microdnf -y install --setopt=install_weak_deps=0 --setopt=tsflags=nodocs ${INSTALL_PKGS}
 
-# create an unversioned "libpcap.so" symlink if it doesn't already exist
-RUN ldconfig \
-    && LIBPCAP=$(ldconfig -p | awk '/libpcap\.so\.[0-9]/{print $NF}' | sort -V | tail -1) \
-    && LIBDIR=$(dirname "$LIBPCAP") \
-    && SONAME=$(basename "$LIBPCAP" | grep -oE '^lib[^.]+\.so\.[0-9]+') \
-    && if [ -n "$SONAME" ] && [ ! -e "$LIBDIR/$SONAME" ]; then ln -s "$LIBPCAP" "$LIBDIR/$SONAME" fi \
-    && if [ ! -e "$LIBDIR/libpcap.so" ]; then ln -s "${SONAME:-$LIBPCAP}" "$LIBDIR/libpcap.so" fi
-
 COPY ${ARTIFACTS_DIR}/${TARGETARCH}/${TARGETOS}/ziti-edge-tunnel /usr/local/bin/
 COPY ${DOCKER_BUILD_DIR}/docker-entrypoint.sh /
 RUN chmod +x /docker-entrypoint.sh
