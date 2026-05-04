@@ -31,6 +31,7 @@ RUN dnf update --assumeyes --nobest \
         graphviz \
         git \
         json-c-devel \
+        libpcap-devel \
         protobuf-c-devel \
         openssl-devel \
         ninja-build \
