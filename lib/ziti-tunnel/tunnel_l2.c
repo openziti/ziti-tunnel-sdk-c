@@ -103,6 +103,16 @@ u8_t recv_l2(struct netif *netif, struct pbuf *p) {
     tunneler_context tnlr = dev->tnlr;
     struct eth_hdr *h = p->payload;
     uint16_t ethtype = htons(h->type);
+    uint16_t vid = 0;
+    if (ethtype == ETHTYPE_VLAN) {
+        if (p->len < SIZEOF_ETH_HDR + SIZEOF_VLAN_HDR) {
+            TNL_LOG(VERBOSE, "dropping short vlan frame len=%d", p->len);
+            return 0;
+        }
+        struct eth_vlan_hdr *v = (struct eth_vlan_hdr *)((u8_t *)p->payload + SIZEOF_ETH_HDR);
+        vid = VLAN_ID(v);
+        ethtype = htons(v->tpid);
+    }
     io_ctx_t *io = tunneler_l2_get_conn(ethtype);
 
     if (io == NULL) {
@@ -152,7 +162,7 @@ u8_t recv_l2(struct netif *netif, struct pbuf *p) {
         tunneler_l2_add_conn(ethtype, io);
     }
     // send (queue) the frame
-    TNL_LOG(TRACE, "sending frame to ziti ethtype[0x%04x] src[%s] service[%s]", ethtype, io->tnlr_io->intercepted, io->tnlr_io->service_name);
+    TNL_LOG(TRACE, "sending frame to ziti ethtype[0x%04x] vlan[%u] src[%s] service[%s]", ethtype, vid, io->tnlr_io->client, io->tnlr_io->service_name);
     ziti_tunnel_pbuf_to_ziti(io, p);
     return 1;
 }
