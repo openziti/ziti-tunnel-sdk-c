@@ -19,7 +19,6 @@ RUN dnf update --assumeyes --nobest \
         dnf-plugins-core \
         iproute \
         python3 \
-        libpcap-devel \
         systemd-devel \
         zlib-devel \
         systemd-rpm-macros \
@@ -32,6 +31,7 @@ RUN dnf update --assumeyes --nobest \
         graphviz \
         git \
         json-c-devel \
+        libpcap-devel \
         protobuf-c-devel \
         openssl-devel \
         ninja-build \
