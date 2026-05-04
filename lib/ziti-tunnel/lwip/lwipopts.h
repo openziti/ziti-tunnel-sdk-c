@@ -65,6 +65,7 @@
 #define LWIP_IPV6 1                       /* enable ipv6 */
 #define IPV6_FRAG_COPYHEADER 1            /* avoid assert in lwip code when ipv6 is enabled */
 #define LWIP_ARP 1
+#define ETHARP_SUPPORT_VLAN 1
 
 #ifdef _WIN32
 #define LWIP_NORAND 1
