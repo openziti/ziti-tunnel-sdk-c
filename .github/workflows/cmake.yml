@@ -34,7 +34,7 @@ jobs:
             name: Windows x86_64(win32crypto)
             preset: windows-x64-win32crypto
 
-          - os: windows-latest
+          - os: windows-2022
             name: Windows arm64
             preset: windows-arm64-vs2022
 

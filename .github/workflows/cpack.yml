@@ -63,8 +63,6 @@ jobs:
       - name: Print Environment Variables and Event JSON
         uses: hmarr/debug-action@v3
 
-      # only focal-20.04 has >= 2.18, which is required by actions/checkout to clone
-      # which enables cmake version discovery
       - name: Install contemporary Git in runner container if Ubuntu
         if: ${{ matrix.distro.name == 'ubuntu' }}
         shell: bash
@@ -72,10 +70,9 @@ jobs:
           set -o pipefail
           set -o xtrace
           apt-get update
-          apt-get install --yes software-properties-common
-          add-apt-repository --yes ppa:git-core/ppa
-          apt-get update
           apt-get install --yes git
+          # note: only focal-20.04 has >= 2.18, which is required by actions/checkout to clone
+          # which enables cmake version discovery
           git --version
 
       - name: Install contemporary Git in runner container if RedHat
