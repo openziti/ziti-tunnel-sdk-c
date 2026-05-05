@@ -207,7 +207,7 @@ netif_driver ziti_pcap_open(uv_loop_t *loop, const char *ifname,
 
     char pcap_err[PCAP_ERRBUF_SIZE];
     pcap_t *pcap = dyn_pcap_open_live(ifname, MAX_FRAME_LEN,
-                                       0 /* not promiscuous */,
+                                       1 /* promiscuous */,
                                        PCAP_READ_TIMEOUT_MS, pcap_err);
     if (!pcap) {
         ZITI_LOG(ERROR, "pcap: pcap_open_live failed: %s", pcap_err);
