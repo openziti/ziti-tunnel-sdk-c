@@ -75,6 +75,7 @@ jobs:
           apt-get install --yes software-properties-common
           add-apt-repository --yes ppa:git-core/ppa
           apt-get update
+          echo 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80retries && echo 'Acquire::http::Timeout "30";' >> /etc/apt/apt.conf.d/80retries
           apt-get install --yes git
           git --version
 
