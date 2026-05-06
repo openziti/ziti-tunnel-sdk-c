@@ -37,6 +37,7 @@ func TestAddIdentity(t *testing.T) {
 	t.Run("withDeletedIdentityFails", testAddIdentityWithDeletedIdentityFails)
 	t.Run("withSlashInFilenameFails", testAddIdentityWithSlashInFilenameFails)
 	t.Run("withDotDotInFilenameFails", testAddIdentityWithDotDotInFilenameFails)
+	t.Run("filenameExceedsCharLimitFails", testAddIdentityFilenameExceedsCharLimitFails)
 	t.Run("emitsIdentityAddedEvent", testAddIdentityEmitsIdentityAddedEvent)
 }
 
@@ -235,6 +236,29 @@ func testAddIdentityWithDotDotInFilenameFails(t *testing.T) {
 	require.NoError(t, err, "IPC send\n%s", zet.Logs())
 	require.False(t, resp.Success, "filename with .. should be rejected, got Success=true")
 	t.Logf("dot-dot filename correctly rejected: code=%d error=%q", resp.Code, resp.Error)
+}
+
+func testAddIdentityFilenameExceedsCharLimitFails(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	client, err := testutil.DialIPC(ctx)
+	require.NoError(t, err, "dial ZET IPC pipe")
+	t.Cleanup(func() { _ = client.Close() })
+
+	jwt, err := overlay.CreateIdentityJWT(ctx, identityNameFor(t))
+	require.NoError(t, err, "mint JWT via overlay")
+	require.NotEmpty(t, jwt)
+
+	longName := strings.Repeat("a", 300)
+	identityData := testutil.AddIdentityData{
+		IdentityFilename: longName,
+		JwtContent:       &jwt,
+	}
+	resp, err := client.AddIdentity(ctx, identityData)
+	require.NoError(t, err, "IPC send\n%s", zet.Logs())
+	require.False(t, resp.Success, "long filename should be rejected, got Success=true")
+	t.Logf("long filename correctly rejected: code=%d error=%q", resp.Code, resp.Error)
 }
 
 func testAddIdentityEmitsIdentityAddedEvent(t *testing.T) {
