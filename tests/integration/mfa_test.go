@@ -33,25 +33,26 @@ import (
 )
 
 func TestEnableMFA(t *testing.T) {
-	t.Run("withJwtEnrolledIdentity", testEnableMFAWithJwtEnrolledIdentity)
-	t.Run("withTotpRequiredAuthPolicy", testEnableMFAWithTotpRequiredAuthPolicy)
+	t.Run("acceptsJwtEnrolledIdentity", testEnableMFAAcceptsJwtEnrolledIdentity)
+	t.Run("acceptsTotpRequiredAuthPolicy", testEnableMFAAcceptsTotpRequiredAuthPolicy)
 }
 
 func TestVerifyMFA(t *testing.T) {
-	t.Run("withValidTotp", testVerifyMFAWithValidTotp)
+	t.Run("acceptsValidTotp", testVerifyMFAAcceptsValidTotp)
+	t.Run("rejectsInvalidTotp", testVerifyMFARejectsInvalidTotp)
 }
 
 func TestMFAReauthentication(t *testing.T) {
-	t.Run("withValidTotp", testMFAReauthenticationWithValidTotp)
-	t.Run("withRecoveryCode", testMFAReauthenticationWithRecoveryCode)
+	t.Run("acceptsValidTotp", testMFAReauthenticationAcceptsValidTotp)
+	t.Run("acceptsRecoveryCode", testMFAReauthenticationAcceptsRecoveryCode)
 }
 
 func TestRemoveMFA(t *testing.T) {
-	t.Run("withValidTotp", testRemoveMFAWithValidTotp)
-	t.Run("withRecoveryCode", testRemoveMFAWithRecoveryCode)
+	t.Run("acceptsValidTotp", testRemoveMFAAcceptsValidTotp)
+	t.Run("acceptsRecoveryCode", testRemoveMFAAcceptsRecoveryCode)
 }
 
-func testEnableMFAWithJwtEnrolledIdentity(t *testing.T) {
+func testEnableMFAAcceptsJwtEnrolledIdentity(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -92,7 +93,7 @@ func testEnableMFAWithJwtEnrolledIdentity(t *testing.T) {
 	t.Logf("EnableMFA succeeded: provisioning_url=%q recovery_codes=%d", mfa.ProvisioningUrl, len(mfa.RecoveryCodes))
 }
 
-func testEnableMFAWithTotpRequiredAuthPolicy(t *testing.T) {
+func testEnableMFAAcceptsTotpRequiredAuthPolicy(t *testing.T) {
 	t.Skip("Tracking https://github.com/openziti/desktop-edge-win/issues/947 and https://openziti.discourse.group/t/enrolling-mfa-totp-from-zdew-fails/5482 - EnableMFA fails with 'failed to authenticate' for identities bound to TOTP-required auth policies")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -138,7 +139,7 @@ func testEnableMFAWithTotpRequiredAuthPolicy(t *testing.T) {
 	t.Logf("EnableMFA succeeded for TOTP-required identity: provisioning_url=%q", mfa.ProvisioningUrl)
 }
 
-func testVerifyMFAWithValidTotp(t *testing.T) {
+func testVerifyMFAAcceptsValidTotp(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -197,7 +198,56 @@ func testVerifyMFAWithValidTotp(t *testing.T) {
 	t.Logf("VerifyMFA ID MfaEnabled=%t", entry.MfaEnabled)
 }
 
-func testMFAReauthenticationWithValidTotp(t *testing.T) {
+func testVerifyMFARejectsInvalidTotp(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	name := identityNameFor(t)
+	jwt, err := overlay.CreateIdentityJWT(ctx, name)
+	require.NoError(t, err, "mint JWT")
+	require.NotEmpty(t, jwt)
+	t.Logf("JWT minted for identity %q (%d bytes)", name, len(jwt))
+
+	events, err := testutil.DialEvents(ctx)
+	require.NoError(t, err, "dial ZET event pipe")
+	t.Cleanup(func() { _ = events.Close() })
+
+	client, err := testutil.DialIPC(ctx)
+	require.NoError(t, err, "dial ZET IPC pipe")
+	t.Cleanup(func() { _ = client.Close() })
+
+	identityData := testutil.AddIdentityData{
+		IdentityFilename: name,
+		JwtContent:       &jwt,
+	}
+	addResp, err := client.AddIdentity(ctx, identityData)
+	require.NoError(t, err, "AddIdentity send\n%s", zet.Logs())
+	require.True(t, addResp.Success, "AddIdentity failed: error=%q code=%d", addResp.Error, addResp.Code)
+
+	events.WaitFor(t, ctx, "controller", "connected", name)
+
+	status, err := client.GetTunnelStatus(ctx)
+	require.NoError(t, err, "Status after AddIdentity\n%s", zet.Logs())
+	entry := status.FindIdentity(name)
+	require.NotNil(t, entry, "identity %q not found in Status.Identities", name)
+
+	mfa, err := client.GetMFAEnrollment(ctx, entry.Identifier)
+	require.NoError(t, err, "EnableMFA\n%s", zet.Logs())
+	require.NotEmpty(t, mfa.ProvisioningUrl, "EnableMFA Data.ProvisioningUrl should be non-empty")
+
+	verifyResp, err := client.VerifyMFA(ctx, entry.Identifier, "000000")
+	require.NoError(t, err, "VerifyMFA send\n%s", zet.Logs())
+	require.False(t, verifyResp.Success, "VerifyMFA with invalid TOTP should fail but Success=true")
+	t.Logf("VerifyMFA correctly rejected invalid TOTP: error=%q code=%d", verifyResp.Error, verifyResp.Code)
+
+	status, err = client.GetTunnelStatus(ctx)
+	require.NoError(t, err, "Status after VerifyMFA\n%s", zet.Logs())
+	entry = status.FindIdentity(name)
+	require.NotNil(t, entry, "identity %q not found in Status after VerifyMFA", name)
+	require.False(t, entry.MfaEnabled, "Status.Identities[%q].MfaEnabled should remain false after rejected VerifyMFA", name)
+}
+
+func testMFAReauthenticationAcceptsValidTotp(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
@@ -280,7 +330,7 @@ func testMFAReauthenticationWithValidTotp(t *testing.T) {
 	t.Logf("SubmitMFA ID MfaEnabled=%t MfaNeeded=%t", entry.MfaEnabled, entry.MfaNeeded)
 }
 
-func testMFAReauthenticationWithRecoveryCode(t *testing.T) {
+func testMFAReauthenticationAcceptsRecoveryCode(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
@@ -361,7 +411,7 @@ func testMFAReauthenticationWithRecoveryCode(t *testing.T) {
 	t.Logf("SubmitMFA ID MfaEnabled=%t MfaNeeded=%t", entry.MfaEnabled, entry.MfaNeeded)
 }
 
-func testRemoveMFAWithValidTotp(t *testing.T) {
+func testRemoveMFAAcceptsValidTotp(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -427,7 +477,7 @@ func testRemoveMFAWithValidTotp(t *testing.T) {
 	t.Logf("RemoveMFA ID with TOTP MfaEnabled=%t", entry.MfaEnabled)
 }
 
-func testRemoveMFAWithRecoveryCode(t *testing.T) {
+func testRemoveMFAAcceptsRecoveryCode(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
