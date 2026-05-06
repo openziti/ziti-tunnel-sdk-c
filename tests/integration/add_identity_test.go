@@ -35,6 +35,7 @@ func TestAddIdentity(t *testing.T) {
 	t.Run("withInvalidJwtFails", testAddIdentityWithInvalidJwtFails)
 	t.Run("withEmptyJwtFails", testAddIdentityWithEmptyJwtFails)
 	t.Run("withDeletedIdentityFails", testAddIdentityWithDeletedIdentityFails)
+	t.Run("withInvalidFilenameFails", testAddIdentityWithInvalidFilenameFails)
 	t.Run("emitsIdentityAddedEvent", testAddIdentityEmitsIdentityAddedEvent)
 }
 
@@ -189,6 +190,28 @@ func testAddIdentityWithDeletedIdentityFails(t *testing.T) {
 	idFile := filepath.Join(status.ConfigDir, identityName+".json")
 	_, statErr := os.Stat(idFile)
 	require.True(t, os.IsNotExist(statErr), "identity file should not exist after failed enroll: %s\n%s", idFile, zet.Logs())
+}
+
+func testAddIdentityWithInvalidFilenameFails(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	client, err := testutil.DialIPC(ctx)
+	require.NoError(t, err, "dial ZET IPC pipe")
+	t.Cleanup(func() { _ = client.Close() })
+
+	jwt, err := overlay.CreateIdentityJWT(ctx, identityNameFor(t))
+	require.NoError(t, err, "mint JWT via overlay")
+	require.NotEmpty(t, jwt)
+
+	identityData := testutil.AddIdentityData{
+		IdentityFilename: "../escape",
+		JwtContent:       &jwt,
+	}
+	resp, err := client.AddIdentity(ctx, identityData)
+	require.NoError(t, err, "IPC send\n%s", zet.Logs())
+	require.False(t, resp.Success, "path-traversal filename should be rejected, got Success=true")
+	t.Logf("path-traversal filename correctly rejected: code=%d error=%q", resp.Code, resp.Error)
 }
 
 func testAddIdentityEmitsIdentityAddedEvent(t *testing.T) {
