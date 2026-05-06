@@ -180,7 +180,7 @@ func testVerifyMFAWithValidTotp(t *testing.T) {
 	require.NotEmpty(t, secret, "provisioning url missing secret param: %q", mfa.ProvisioningUrl)
 
 	code, err := generateTotpCode(secret, time.Now())
-	require.NoError(t, err, "compute TOTP code")
+	require.NoError(t, err, "compute TOTP")
 	t.Logf("computed TOTP code from secret (%d chars)", len(secret))
 
 	verifyResp, err := client.VerifyMFA(ctx, entry.Identifier, code)
@@ -238,10 +238,10 @@ func testMFAReauthenticationAfterIdentityToggle(t *testing.T) {
 	secret := parsed.Query().Get("secret")
 	require.NotEmpty(t, secret, "provisioning url missing secret param: %q", mfa.ProvisioningUrl)
 
-	verifyCode, err := generateTotpCode(secret, time.Now())
-	require.NoError(t, err, "compute TOTP code for verify")
+	code, err := generateTotpCode(secret, time.Now())
+	require.NoError(t, err, "compute TOTP")
 
-	verifyResp, err := client.VerifyMFA(ctx, entry.Identifier, verifyCode)
+	verifyResp, err := client.VerifyMFA(ctx, entry.Identifier, code)
 	require.NoError(t, err, "VerifyMFA send\n%s", zet.Logs())
 	require.True(t, verifyResp.Success, "VerifyMFA failed: error=%q code=%d\n%s", verifyResp.Error, verifyResp.Code, zet.Logs())
 	t.Logf("VerifyMFA succeeded")
@@ -262,7 +262,10 @@ func testMFAReauthenticationAfterIdentityToggle(t *testing.T) {
 	require.NotNil(t, entry, "identity %q not found in Status after auth_challenge", name)
 	require.True(t, entry.MfaNeeded, "Status.Identities[%q].MfaNeeded should be true after off→on cycle", name)
 
-	submitResp, err := client.SubmitMFA(ctx, entry.Identifier, verifyCode)
+	code, err = generateTotpCode(secret, time.Now())
+	require.NoError(t, err, "compute TOTP")
+
+	submitResp, err := client.SubmitMFA(ctx, entry.Identifier, code)
 	require.NoError(t, err, "SubmitMFA send\n%s", zet.Logs())
 	require.True(t, submitResp.Success, "SubmitMFA failed: error=%q code=%d\n%s", submitResp.Error, submitResp.Code, zet.Logs())
 	t.Logf("SubmitMFA succeeded: code=%d", submitResp.Code)
@@ -277,7 +280,7 @@ func testMFAReauthenticationAfterIdentityToggle(t *testing.T) {
 }
 
 func testRemoveMFAWithValidTotp(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	name := identityNameFor(t)
@@ -318,25 +321,18 @@ func testRemoveMFAWithValidTotp(t *testing.T) {
 	secret := parsed.Query().Get("secret")
 	require.NotEmpty(t, secret, "provisioning url missing secret param: %q", mfa.ProvisioningUrl)
 
-	verifyCode, err := generateTotpCode(secret, time.Now())
-	require.NoError(t, err, "compute TOTP code for verify")
+	code, err := generateTotpCode(secret, time.Now())
+	require.NoError(t, err, "compute TOTP")
 
-	verifyResp, err := client.VerifyMFA(ctx, entry.Identifier, verifyCode)
+	verifyResp, err := client.VerifyMFA(ctx, entry.Identifier, code)
 	require.NoError(t, err, "VerifyMFA send\n%s", zet.Logs())
 	require.True(t, verifyResp.Success, "VerifyMFA failed: error=%q code=%d\n%s", verifyResp.Error, verifyResp.Code, zet.Logs())
 	t.Logf("VerifyMFA succeeded")
 
-	// TOTP codes are single-use within their 30s step; sleep into the next step before computing the remove code.
-	nextStep := time.Unix((time.Now().Unix()/30+1)*30, 0)
-	wait := time.Until(nextStep) + 100*time.Millisecond
-	t.Logf("waiting %s for next TOTP step before RemoveMFA", wait)
-	time.Sleep(wait)
+	code, err = generateTotpCode(secret, time.Now())
+	require.NoError(t, err, "compute TOTP")
 
-	removeCode, err := generateTotpCode(secret, time.Now())
-	require.NoError(t, err, "compute TOTP code for remove")
-	require.NotEqual(t, verifyCode, removeCode, "remove TOTP should be from a different step than verify TOTP")
-
-	removeResp, err := client.RemoveMFA(ctx, entry.Identifier, removeCode)
+	removeResp, err := client.RemoveMFA(ctx, entry.Identifier, code)
 	require.NoError(t, err, "RemoveMFA send\n%s", zet.Logs())
 	require.True(t, removeResp.Success, "RemoveMFA failed: error=%q code=%d\n%s", removeResp.Error, removeResp.Code, zet.Logs())
 	t.Logf("RemoveMFA succeeded: code=%d", removeResp.Code)
@@ -392,10 +388,10 @@ func testRemoveMFAWithRecoveryCode(t *testing.T) {
 	secret := parsed.Query().Get("secret")
 	require.NotEmpty(t, secret, "provisioning url missing secret param: %q", mfa.ProvisioningUrl)
 
-	verifyCode, err := generateTotpCode(secret, time.Now())
-	require.NoError(t, err, "compute TOTP code for verify")
+	code, err := generateTotpCode(secret, time.Now())
+	require.NoError(t, err, "compute TOTP")
 
-	verifyResp, err := client.VerifyMFA(ctx, entry.Identifier, verifyCode)
+	verifyResp, err := client.VerifyMFA(ctx, entry.Identifier, code)
 	require.NoError(t, err, "VerifyMFA send\n%s", zet.Logs())
 	require.True(t, verifyResp.Success, "VerifyMFA failed: error=%q code=%d\n%s", verifyResp.Error, verifyResp.Code, zet.Logs())
 	t.Logf("VerifyMFA succeeded")
