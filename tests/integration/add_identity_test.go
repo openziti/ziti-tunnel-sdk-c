@@ -33,6 +33,7 @@ func TestAddIdentity(t *testing.T) {
 	t.Run("withJwtSucceeds", testAddIdentityWithJwtSucceeds)
 	t.Run("sameJwtTwiceSecondFails", testAddIdentitySameJwtTwiceSecondFails)
 	t.Run("withInvalidJwtFails", testAddIdentityWithInvalidJwtFails)
+	t.Run("withEmptyJwtFails", testAddIdentityWithEmptyJwtFails)
 	t.Run("emitsIdentityAddedEvent", testAddIdentityEmitsIdentityAddedEvent)
 }
 
@@ -124,6 +125,32 @@ func testAddIdentityWithInvalidJwtFails(t *testing.T) {
 	require.False(t, resp.Success, "invalid JWT should be rejected, got Success=true")
 	require.NotEqual(t, 0, resp.Code, "expected non-zero error code for invalid JWT")
 	t.Logf("invalid JWT correctly rejected: code=%d error=%q", resp.Code, resp.Error)
+
+	status, err := client.GetTunnelStatus(ctx)
+	require.NoError(t, err, "Status after failed AddIdentity\n%s", zet.Logs())
+	idFile := filepath.Join(status.ConfigDir, identityName+".json")
+	_, statErr := os.Stat(idFile)
+	require.True(t, os.IsNotExist(statErr), "identity file should not exist after failed enroll: %s\n%s", idFile, zet.Logs())
+}
+
+func testAddIdentityWithEmptyJwtFails(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	client, err := testutil.DialIPC(ctx)
+	require.NoError(t, err, "dial ZET IPC pipe")
+	t.Cleanup(func() { _ = client.Close() })
+
+	identityName := identityNameFor(t)
+	emptyJwt := ""
+	identityData := testutil.AddIdentityData{
+		IdentityFilename: identityName,
+		JwtContent:       &emptyJwt,
+	}
+	resp, err := client.AddIdentity(ctx, identityData)
+	require.NoError(t, err, "IPC send should succeed even when enrollment fails\n%s", zet.Logs())
+	require.False(t, resp.Success, "empty JWT should be rejected, got Success=true")
+	t.Logf("empty JWT correctly rejected: code=%d error=%q", resp.Code, resp.Error)
 
 	status, err := client.GetTunnelStatus(ctx)
 	require.NoError(t, err, "Status after failed AddIdentity\n%s", zet.Logs())
