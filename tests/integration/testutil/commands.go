@@ -126,6 +126,7 @@ type IdentityStatus struct {
 	Active      bool   `json:"Active"`
 	FingerPrint string `json:"FingerPrint"`
 	MfaEnabled  bool   `json:"MfaEnabled"`
+	MfaNeeded   bool   `json:"MfaNeeded"`
 }
 
 type TunnelStatus struct {
