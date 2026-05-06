@@ -51,6 +51,7 @@ func TestMFAReauthentication(t *testing.T) {
 func TestRemoveMFA(t *testing.T) {
 	t.Run("acceptsValidTotp", testRemoveMFAAcceptsValidTotp)
 	t.Run("acceptsRecoveryCode", testRemoveMFAAcceptsRecoveryCode)
+	t.Run("rejectsInvalidTotp", testRemoveMFARejectsInvalidTotp)
 }
 
 func testEnableMFAAcceptsJwtEnrolledIdentity(t *testing.T) {
@@ -590,6 +591,66 @@ func testRemoveMFAAcceptsRecoveryCode(t *testing.T) {
 	require.NotNil(t, entry, "identity %q not found in Status after RemoveMFA", name)
 	require.False(t, entry.MfaEnabled, "Status.Identities[%q].MfaEnabled should be false after RemoveMFA", name)
 	t.Logf("RemoveMFA ID with recovery code MfaEnabled=%t", entry.MfaEnabled)
+}
+
+func testRemoveMFARejectsInvalidTotp(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	name := identityNameFor(t)
+	jwt, err := overlay.CreateIdentityJWT(ctx, name)
+	require.NoError(t, err, "mint JWT")
+	require.NotEmpty(t, jwt)
+
+	events, err := testutil.DialEvents(ctx)
+	require.NoError(t, err, "dial ZET event pipe")
+	t.Cleanup(func() { _ = events.Close() })
+
+	client, err := testutil.DialIPC(ctx)
+	require.NoError(t, err, "dial ZET IPC pipe")
+	t.Cleanup(func() { _ = client.Close() })
+
+	identityData := testutil.AddIdentityData{
+		IdentityFilename: name,
+		JwtContent:       &jwt,
+	}
+	addResp, err := client.AddIdentity(ctx, identityData)
+	require.NoError(t, err, "AddIdentity send\n%s", zet.Logs())
+	require.True(t, addResp.Success, "AddIdentity failed: error=%q code=%d", addResp.Error, addResp.Code)
+
+	events.WaitFor(t, ctx, "controller", "connected", name)
+
+	status, err := client.GetTunnelStatus(ctx)
+	require.NoError(t, err, "Status send\n%s", zet.Logs())
+	entry := status.FindIdentity(name)
+	require.NotNil(t, entry, "identity %q not found in Status.Identities", name)
+
+	mfa, err := client.GetMFAEnrollment(ctx, entry.Identifier)
+	require.NoError(t, err, "EnableMFA\n%s", zet.Logs())
+	require.NotEmpty(t, mfa.ProvisioningUrl, "EnableMFA Data.ProvisioningUrl should be non-empty")
+
+	parsed, err := url.Parse(mfa.ProvisioningUrl)
+	require.NoError(t, err, "parse provisioning url %q", mfa.ProvisioningUrl)
+	secret := parsed.Query().Get("secret")
+	require.NotEmpty(t, secret, "provisioning url missing secret param: %q", mfa.ProvisioningUrl)
+
+	code, err := generateTotpCode(secret, time.Now())
+	require.NoError(t, err, "compute TOTP")
+
+	verifyResp, err := client.VerifyMFA(ctx, entry.Identifier, code)
+	require.NoError(t, err, "VerifyMFA send\n%s", zet.Logs())
+	require.True(t, verifyResp.Success, "VerifyMFA failed: error=%q code=%d\n%s", verifyResp.Error, verifyResp.Code, zet.Logs())
+
+	removeResp, err := client.RemoveMFA(ctx, entry.Identifier, "000000")
+	require.NoError(t, err, "RemoveMFA send\n%s", zet.Logs())
+	require.False(t, removeResp.Success, "RemoveMFA with invalid TOTP should fail but Success=true")
+	t.Logf("RemoveMFA correctly rejected invalid TOTP: error=%q code=%d", removeResp.Error, removeResp.Code)
+
+	status, err = client.GetTunnelStatus(ctx)
+	require.NoError(t, err, "Status after rejected RemoveMFA\n%s", zet.Logs())
+	entry = status.FindIdentity(name)
+	require.NotNil(t, entry, "identity %q not found in Status after rejected RemoveMFA", name)
+	require.True(t, entry.MfaEnabled, "Status.Identities[%q].MfaEnabled should remain true after rejected RemoveMFA", name)
 }
 
 func generateTotpCode(secret string, at time.Time) (string, error) {
