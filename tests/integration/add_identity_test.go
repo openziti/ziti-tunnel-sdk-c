@@ -35,7 +35,8 @@ func TestAddIdentity(t *testing.T) {
 	t.Run("withInvalidJwtFails", testAddIdentityWithInvalidJwtFails)
 	t.Run("withEmptyJwtFails", testAddIdentityWithEmptyJwtFails)
 	t.Run("withDeletedIdentityFails", testAddIdentityWithDeletedIdentityFails)
-	t.Run("withInvalidFilenameFails", testAddIdentityWithInvalidFilenameFails)
+	t.Run("withSlashInFilenameFails", testAddIdentityWithSlashInFilenameFails)
+	t.Run("withDotDotInFilenameFails", testAddIdentityWithDotDotInFilenameFails)
 	t.Run("emitsIdentityAddedEvent", testAddIdentityEmitsIdentityAddedEvent)
 }
 
@@ -192,7 +193,29 @@ func testAddIdentityWithDeletedIdentityFails(t *testing.T) {
 	require.True(t, os.IsNotExist(statErr), "identity file should not exist after failed enroll: %s\n%s", idFile, zet.Logs())
 }
 
-func testAddIdentityWithInvalidFilenameFails(t *testing.T) {
+func testAddIdentityWithSlashInFilenameFails(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	client, err := testutil.DialIPC(ctx)
+	require.NoError(t, err, "dial ZET IPC pipe")
+	t.Cleanup(func() { _ = client.Close() })
+
+	jwt, err := overlay.CreateIdentityJWT(ctx, identityNameFor(t))
+	require.NoError(t, err, "mint JWT via overlay")
+	require.NotEmpty(t, jwt)
+
+	identityData := testutil.AddIdentityData{
+		IdentityFilename: "foo/bar",
+		JwtContent:       &jwt,
+	}
+	resp, err := client.AddIdentity(ctx, identityData)
+	require.NoError(t, err, "IPC send\n%s", zet.Logs())
+	require.False(t, resp.Success, "filename with slash should be rejected, got Success=true")
+	t.Logf("slash filename correctly rejected: code=%d error=%q", resp.Code, resp.Error)
+}
+
+func testAddIdentityWithDotDotInFilenameFails(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -210,8 +233,8 @@ func testAddIdentityWithInvalidFilenameFails(t *testing.T) {
 	}
 	resp, err := client.AddIdentity(ctx, identityData)
 	require.NoError(t, err, "IPC send\n%s", zet.Logs())
-	require.False(t, resp.Success, "path-traversal filename should be rejected, got Success=true")
-	t.Logf("path-traversal filename correctly rejected: code=%d error=%q", resp.Code, resp.Error)
+	require.False(t, resp.Success, "filename with .. should be rejected, got Success=true")
+	t.Logf("dot-dot filename correctly rejected: code=%d error=%q", resp.Code, resp.Error)
 }
 
 func testAddIdentityEmitsIdentityAddedEvent(t *testing.T) {
