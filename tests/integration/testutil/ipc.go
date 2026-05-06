@@ -147,10 +147,8 @@ func (c *EventClient) WaitFor(t *testing.T, ctx context.Context, op, action, fin
 		var event Event
 		require.NoError(t, json.Unmarshal(raw, &event), "parse event: %s", raw)
 		if event.Op != op || event.Action != action || event.Fingerprint != fingerprint {
-			t.Logf("skipped event: Op=%s Action=%s Fingerprint=%s", event.Op, event.Action, event.Fingerprint)
 			continue
 		}
-		t.Logf("%s:%s received for %q", op, action, fingerprint)
 		return
 	}
 }

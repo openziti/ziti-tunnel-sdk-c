@@ -51,7 +51,6 @@ func testAddIdentityWithJwtSucceeds(t *testing.T) {
 	jwt, err := overlay.CreateIdentityJWT(ctx, identityName)
 	require.NoError(t, err, "mint JWT via overlay")
 	require.NotEmpty(t, jwt, "JWT content should not be empty")
-	t.Logf("JWT minted for identity %q (%d bytes)", identityName, len(jwt))
 
 	client, err := testutil.DialIPC(ctx)
 	require.NoError(t, err, "dial ZET IPC pipe")
@@ -65,7 +64,6 @@ func testAddIdentityWithJwtSucceeds(t *testing.T) {
 	resp, err := client.AddIdentity(ctx, identityData)
 	require.NoError(t, err, "send AddIdentity command\n%s", zet.Logs())
 	require.True(t, resp.Success, "AddIdentity failed: error=%q code=%d\n%s", resp.Error, resp.Code, zet.Logs())
-	t.Logf("AddIdentity succeeded: filename=%q code=%d", identityName, resp.Code)
 
 	status, err := client.GetTunnelStatus(ctx)
 	require.NoError(t, err, "Status after AddIdentity\n%s", zet.Logs())
@@ -85,7 +83,6 @@ func testAddIdentitySameJwtTwiceSecondFails(t *testing.T) {
 	jwt, err := overlay.CreateIdentityJWT(ctx, identityName)
 	require.NoError(t, err, "mint JWT via overlay")
 	require.NotEmpty(t, jwt)
-	t.Logf("JWT minted for identity %q (%d bytes)", identityName, len(jwt))
 
 	client, err := testutil.DialIPC(ctx)
 	require.NoError(t, err, "dial ZET IPC pipe")
@@ -99,7 +96,6 @@ func testAddIdentitySameJwtTwiceSecondFails(t *testing.T) {
 	first, err := client.AddIdentity(ctx, identityData)
 	require.NoError(t, err, "first AddIdentity send\n%s", zet.Logs())
 	require.True(t, first.Success, "first AddIdentity should succeed: error=%q\n%s", first.Error, zet.Logs())
-	t.Logf("first AddIdentity succeeded")
 
 	second, err := client.AddIdentity(ctx, identityData)
 	require.NoError(t, err, "second AddIdentity send\n%s", zet.Logs())
@@ -144,7 +140,6 @@ func testAddIdentityEmitsIdentityAddedEvent(t *testing.T) {
 	jwt, err := overlay.CreateIdentityJWT(ctx, identityName)
 	require.NoError(t, err, "mint JWT via overlay")
 	require.NotEmpty(t, jwt)
-	t.Logf("JWT minted for identity %q (%d bytes)", identityName, len(jwt))
 
 	events, err := testutil.DialEvents(ctx)
 	require.NoError(t, err, "dial ZET event pipe")
@@ -171,7 +166,6 @@ func testAddIdentityEmitsIdentityAddedEvent(t *testing.T) {
 		}
 		require.NoError(t, json.Unmarshal(raw, &event), "parse event: %s", raw)
 		if event.Op != "identity" || event.Action != "added" || event.Fingerprint != identityName {
-			t.Logf("skipped event: Op=%s Action=%s Fingerprint=%s", event.Op, event.Action, event.Fingerprint)
 			continue
 		}
 

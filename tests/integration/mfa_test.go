@@ -60,7 +60,6 @@ func testEnableMFAAcceptsJwtEnrolledIdentity(t *testing.T) {
 	jwt, err := overlay.CreateIdentityJWT(ctx, name)
 	require.NoError(t, err, "mint JWT")
 	require.NotEmpty(t, jwt)
-	t.Logf("JWT minted for identity %q (%d bytes)", name, len(jwt))
 
 	events, err := testutil.DialEvents(ctx)
 	require.NoError(t, err, "dial ZET event pipe")
@@ -90,7 +89,6 @@ func testEnableMFAAcceptsJwtEnrolledIdentity(t *testing.T) {
 	require.NotEmpty(t, mfa.ProvisioningUrl, "EnableMFA Data.ProvisioningUrl should be non-empty")
 	require.NotEmpty(t, mfa.RecoveryCodes, "EnableMFA Data.RecoveryCodes should be non-empty")
 	require.False(t, mfa.IsVerified, "EnableMFA Data.IsVerified should be false before verify_mfa")
-	t.Logf("EnableMFA succeeded: provisioning_url=%q recovery_codes=%d", mfa.ProvisioningUrl, len(mfa.RecoveryCodes))
 }
 
 func testEnableMFAAcceptsTotpRequiredAuthPolicy(t *testing.T) {
@@ -102,12 +100,10 @@ func testEnableMFAAcceptsTotpRequiredAuthPolicy(t *testing.T) {
 	name := identityNameFor(t)
 	policy := name + "-policy"
 	require.NoError(t, overlay.CreateAuthPolicyRequiringTOTP(ctx, policy), "create auth policy")
-	t.Logf("auth policy %q created (--secondary-req-totp)", policy)
 
 	jwt, err := overlay.CreateIdentityJWTWithAuthPolicy(ctx, name, policy)
 	require.NoError(t, err, "mint JWT for identity bound to %q", policy)
 	require.NotEmpty(t, jwt)
-	t.Logf("JWT minted for identity %q bound to policy %q (%d bytes)", name, policy, len(jwt))
 
 	events, err := testutil.DialEvents(ctx)
 	require.NoError(t, err, "dial ZET event pipe")
@@ -136,7 +132,6 @@ func testEnableMFAAcceptsTotpRequiredAuthPolicy(t *testing.T) {
 	require.NoError(t, err, "EnableMFA\n%s", zet.Logs())
 	require.NotEmpty(t, mfa.ProvisioningUrl, "EnableMFA Data.ProvisioningUrl should be non-empty")
 	require.NotEmpty(t, mfa.RecoveryCodes, "EnableMFA Data.RecoveryCodes should be non-empty")
-	t.Logf("EnableMFA succeeded for TOTP-required identity: provisioning_url=%q", mfa.ProvisioningUrl)
 }
 
 func testVerifyMFAAcceptsValidTotp(t *testing.T) {
@@ -147,7 +142,6 @@ func testVerifyMFAAcceptsValidTotp(t *testing.T) {
 	jwt, err := overlay.CreateIdentityJWT(ctx, name)
 	require.NoError(t, err, "mint JWT")
 	require.NotEmpty(t, jwt)
-	t.Logf("JWT minted for identity %q (%d bytes)", name, len(jwt))
 
 	events, err := testutil.DialEvents(ctx)
 	require.NoError(t, err, "dial ZET event pipe")
@@ -183,12 +177,10 @@ func testVerifyMFAAcceptsValidTotp(t *testing.T) {
 
 	code, err := generateTotpCode(secret, time.Now())
 	require.NoError(t, err, "compute TOTP")
-	t.Logf("computed TOTP code from secret (%d chars)", len(secret))
 
 	verifyResp, err := client.VerifyMFA(ctx, entry.Identifier, code)
 	require.NoError(t, err, "VerifyMFA send\n%s", zet.Logs())
 	require.True(t, verifyResp.Success, "VerifyMFA failed: error=%q code=%d\n%s", verifyResp.Error, verifyResp.Code, zet.Logs())
-	t.Logf("VerifyMFA succeeded: code=%d", verifyResp.Code)
 
 	status, err = client.GetTunnelStatus(ctx)
 	require.NoError(t, err, "Status after VerifyMFA\n%s", zet.Logs())
@@ -206,7 +198,6 @@ func testVerifyMFARejectsInvalidTotp(t *testing.T) {
 	jwt, err := overlay.CreateIdentityJWT(ctx, name)
 	require.NoError(t, err, "mint JWT")
 	require.NotEmpty(t, jwt)
-	t.Logf("JWT minted for identity %q (%d bytes)", name, len(jwt))
 
 	events, err := testutil.DialEvents(ctx)
 	require.NoError(t, err, "dial ZET event pipe")
@@ -255,7 +246,6 @@ func testMFAReauthenticationAcceptsValidTotp(t *testing.T) {
 	jwt, err := overlay.CreateIdentityJWT(ctx, name)
 	require.NoError(t, err, "mint JWT")
 	require.NotEmpty(t, jwt)
-	t.Logf("JWT minted for identity %q (%d bytes)", name, len(jwt))
 
 	events, err := testutil.DialEvents(ctx)
 	require.NoError(t, err, "dial ZET event pipe")
@@ -295,7 +285,6 @@ func testMFAReauthenticationAcceptsValidTotp(t *testing.T) {
 	verifyResp, err := client.VerifyMFA(ctx, entry.Identifier, code)
 	require.NoError(t, err, "VerifyMFA send\n%s", zet.Logs())
 	require.True(t, verifyResp.Success, "VerifyMFA failed: error=%q code=%d\n%s", verifyResp.Error, verifyResp.Code, zet.Logs())
-	t.Logf("VerifyMFA succeeded")
 
 	offResp, err := client.IdentityOnOff(ctx, entry.Identifier, false)
 	require.NoError(t, err, "IdentityOnOff(false) send\n%s", zet.Logs())
@@ -319,7 +308,6 @@ func testMFAReauthenticationAcceptsValidTotp(t *testing.T) {
 	submitResp, err := client.SubmitMFA(ctx, entry.Identifier, code)
 	require.NoError(t, err, "SubmitMFA send\n%s", zet.Logs())
 	require.True(t, submitResp.Success, "SubmitMFA failed: error=%q code=%d\n%s", submitResp.Error, submitResp.Code, zet.Logs())
-	t.Logf("SubmitMFA succeeded: code=%d", submitResp.Code)
 
 	status, err = client.GetTunnelStatus(ctx)
 	require.NoError(t, err, "Status after SubmitMFA\n%s", zet.Logs())
@@ -338,7 +326,6 @@ func testMFAReauthenticationAcceptsRecoveryCode(t *testing.T) {
 	jwt, err := overlay.CreateIdentityJWT(ctx, name)
 	require.NoError(t, err, "mint JWT")
 	require.NotEmpty(t, jwt)
-	t.Logf("JWT minted for identity %q (%d bytes)", name, len(jwt))
 
 	events, err := testutil.DialEvents(ctx)
 	require.NoError(t, err, "dial ZET event pipe")
@@ -379,7 +366,6 @@ func testMFAReauthenticationAcceptsRecoveryCode(t *testing.T) {
 	verifyResp, err := client.VerifyMFA(ctx, entry.Identifier, code)
 	require.NoError(t, err, "VerifyMFA send\n%s", zet.Logs())
 	require.True(t, verifyResp.Success, "VerifyMFA failed: error=%q code=%d\n%s", verifyResp.Error, verifyResp.Code, zet.Logs())
-	t.Logf("VerifyMFA succeeded")
 
 	offResp, err := client.IdentityOnOff(ctx, entry.Identifier, false)
 	require.NoError(t, err, "IdentityOnOff(false) send\n%s", zet.Logs())
@@ -400,7 +386,6 @@ func testMFAReauthenticationAcceptsRecoveryCode(t *testing.T) {
 	submitResp, err := client.SubmitMFA(ctx, entry.Identifier, mfa.RecoveryCodes[0])
 	require.NoError(t, err, "SubmitMFA send\n%s", zet.Logs())
 	require.True(t, submitResp.Success, "SubmitMFA failed: error=%q code=%d\n%s", submitResp.Error, submitResp.Code, zet.Logs())
-	t.Logf("SubmitMFA with recovery code succeeded: code=%d", submitResp.Code)
 
 	status, err = client.GetTunnelStatus(ctx)
 	require.NoError(t, err, "Status after SubmitMFA\n%s", zet.Logs())
@@ -419,7 +404,6 @@ func testRemoveMFAAcceptsValidTotp(t *testing.T) {
 	jwt, err := overlay.CreateIdentityJWT(ctx, name)
 	require.NoError(t, err, "mint JWT")
 	require.NotEmpty(t, jwt)
-	t.Logf("JWT minted for identity %q (%d bytes)", name, len(jwt))
 
 	events, err := testutil.DialEvents(ctx)
 	require.NoError(t, err, "dial ZET event pipe")
@@ -459,7 +443,6 @@ func testRemoveMFAAcceptsValidTotp(t *testing.T) {
 	verifyResp, err := client.VerifyMFA(ctx, entry.Identifier, code)
 	require.NoError(t, err, "VerifyMFA send\n%s", zet.Logs())
 	require.True(t, verifyResp.Success, "VerifyMFA failed: error=%q code=%d\n%s", verifyResp.Error, verifyResp.Code, zet.Logs())
-	t.Logf("VerifyMFA succeeded")
 
 	code, err = generateTotpCode(secret, time.Now())
 	require.NoError(t, err, "compute TOTP")
@@ -467,7 +450,6 @@ func testRemoveMFAAcceptsValidTotp(t *testing.T) {
 	removeResp, err := client.RemoveMFA(ctx, entry.Identifier, code)
 	require.NoError(t, err, "RemoveMFA send\n%s", zet.Logs())
 	require.True(t, removeResp.Success, "RemoveMFA failed: error=%q code=%d\n%s", removeResp.Error, removeResp.Code, zet.Logs())
-	t.Logf("RemoveMFA succeeded: code=%d", removeResp.Code)
 
 	status, err = client.GetTunnelStatus(ctx)
 	require.NoError(t, err, "Status after RemoveMFA\n%s", zet.Logs())
@@ -485,7 +467,6 @@ func testRemoveMFAAcceptsRecoveryCode(t *testing.T) {
 	jwt, err := overlay.CreateIdentityJWT(ctx, name)
 	require.NoError(t, err, "mint JWT")
 	require.NotEmpty(t, jwt)
-	t.Logf("JWT minted for identity %q (%d bytes)", name, len(jwt))
 
 	events, err := testutil.DialEvents(ctx)
 	require.NoError(t, err, "dial ZET event pipe")
@@ -526,12 +507,10 @@ func testRemoveMFAAcceptsRecoveryCode(t *testing.T) {
 	verifyResp, err := client.VerifyMFA(ctx, entry.Identifier, code)
 	require.NoError(t, err, "VerifyMFA send\n%s", zet.Logs())
 	require.True(t, verifyResp.Success, "VerifyMFA failed: error=%q code=%d\n%s", verifyResp.Error, verifyResp.Code, zet.Logs())
-	t.Logf("VerifyMFA succeeded")
 
 	removeResp, err := client.RemoveMFA(ctx, entry.Identifier, mfa.RecoveryCodes[0])
 	require.NoError(t, err, "RemoveMFA send\n%s", zet.Logs())
 	require.True(t, removeResp.Success, "RemoveMFA failed: error=%q code=%d\n%s", removeResp.Error, removeResp.Code, zet.Logs())
-	t.Logf("RemoveMFA succeeded with recovery code: code=%d", removeResp.Code)
 
 	status, err = client.GetTunnelStatus(ctx)
 	require.NoError(t, err, "Status after RemoveMFA\n%s", zet.Logs())
