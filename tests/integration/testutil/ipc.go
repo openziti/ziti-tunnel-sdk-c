@@ -41,7 +41,7 @@ type Response struct {
 }
 
 type IPCClient struct {
-	conn net.Conn
+	conn   net.Conn
 	reader *bufio.Reader
 }
 
@@ -96,7 +96,7 @@ func (c *IPCClient) Close() error {
 }
 
 type EventClient struct {
-	conn net.Conn
+	conn   net.Conn
 	reader *bufio.Reader
 }
 
@@ -137,7 +137,7 @@ type Event struct {
 	Fingerprint string `json:"Fingerprint"`
 }
 
-// WaitFor drains events until one matches op/action/fingerprint, logging skipped events along the way.
+// WaitFor drains events until one matches op/action/fingerprint
 func (c *EventClient) WaitFor(t *testing.T, ctx context.Context, op, action, fingerprint string) {
 	t.Helper()
 	for {
