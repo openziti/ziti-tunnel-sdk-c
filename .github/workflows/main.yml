@@ -68,6 +68,7 @@ jobs:
             ziti-pattern: ziti-linux-amd64-*.tar.gz
             sudo: sudo -E env "PATH=$PATH"
             create-group: sudo groupadd --system ziti
+            core-dir: /tmp/cores
           - name: macOS arm64
             runner: macos-15
             artifact: macOS-arm64
@@ -76,6 +77,7 @@ jobs:
             ziti-pattern: ziti-darwin-arm64-*.tar.gz
             sudo: sudo -E env "PATH=$PATH"
             create-group: sudo dseditgroup -o create ziti
+            core-dir: /cores
           - name: Windows x64
             runner: windows-2022
             artifact: windows-x64-mingw
@@ -84,6 +86,7 @@ jobs:
             ziti-pattern: ziti-windows-amd64-*.zip
             sudo: ""
             create-group: ""
+            core-dir: ""
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout
@@ -130,13 +133,62 @@ jobs:
         shell: bash
         run: ${{ matrix.create-group }}
 
+      - name: Configure core dumps
+        if: ${{ matrix.core-dir != '' }}
+        shell: bash
+        run: |
+          sudo mkdir -p "${{ matrix.core-dir }}"
+          sudo chmod 1777 "${{ matrix.core-dir }}"
+          if [ "$(uname -s)" = "Linux" ]; then
+            echo '${{ matrix.core-dir }}/core.%e.%p' | sudo tee /proc/sys/kernel/core_pattern
+          fi
+
       - name: Run integration tests
         shell: bash
         working-directory: tests/integration
         run: |
+          ulimit -c unlimited
           ${{ matrix.sudo }} go test ./... -v -timeout 20m \
             -zet-bin="$ZET_BIN" \
             -ziti-bin="$ZITI_BIN"
+
+      - name: Log core file backtraces
+        if: ${{ failure() && matrix.core-dir != '' }}
+        shell: bash
+        run: |
+          shopt -s nullglob
+          cores=("${{ matrix.core-dir }}"/core.*)
+          if [ ${#cores[@]} -eq 0 ]; then
+            echo "No core files found in ${{ matrix.core-dir }}"
+            exit 0
+          fi
+          if [ "$(uname -s)" = "Linux" ]; then
+            sudo apt-get install -y --no-install-recommends gdb >/dev/null
+            for core in "${cores[@]}"; do
+              echo "::group::Backtrace: $core"
+              gdb -batch \
+                -ex "set pagination off" \
+                -ex "thread apply all bt full" \
+                "$ZET_BIN" "$core" 2>&1 || true
+              echo "::endgroup::"
+            done
+          elif [ "$(uname -s)" = "Darwin" ]; then
+            for core in "${cores[@]}"; do
+              echo "::group::Backtrace: $core"
+              lldb -c "$core" "$ZET_BIN" -b \
+                -o "thread backtrace all" \
+                -o "quit" 2>&1 || true
+              echo "::endgroup::"
+            done
+          fi
+
+      - name: Upload core files
+        if: ${{ failure() && matrix.core-dir != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: cores-${{ matrix.name }}
+          path: ${{ matrix.core-dir }}/core.*
+          if-no-files-found: ignore
 
   nix-build:
     name: Build Nix Binary
