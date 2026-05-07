@@ -1,6 +1,6 @@
 .DS_Store
 
-/.idea/
+.idea/
 .vs
 gcc
 
@@ -31,3 +31,4 @@ tools/dcp/build/
 
 # Nix build output symlink
 /result
+/.gdbinit

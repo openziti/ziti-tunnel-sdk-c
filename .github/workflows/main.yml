@@ -52,6 +52,84 @@ jobs:
           I_AM_ROBOT: 1
           ZITI_EDGE_TUNNEL_BIN: ./build/amd64/linux/ziti-edge-tunnel
 
+  integration-tests:
+    name: Integration Tests (${{ matrix.name }})
+    needs: [ call-cmake-build ]
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x64
+            runner: ubuntu-latest
+            artifact: linux-x64
+            zet-zip: ziti-edge-tunnel-Linux_x86_64.zip
+            zet-bin: ziti-edge-tunnel
+            ziti-pattern: ziti-linux-amd64-*.tar.gz
+            sudo: sudo -E env "PATH=$PATH"
+          - name: macOS arm64
+            runner: macos-15
+            artifact: macOS-arm64
+            zet-zip: ziti-edge-tunnel-Darwin_arm64.zip
+            zet-bin: ziti-edge-tunnel
+            ziti-pattern: ziti-darwin-arm64-*.tar.gz
+            sudo: sudo -E env "PATH=$PATH"
+          - name: Windows x64
+            runner: windows-2022
+            artifact: windows-x64-mingw
+            zet-zip: ziti-edge-tunnel-Windows_x86_64.zip
+            zet-bin: ziti-edge-tunnel.exe
+            ziti-pattern: ziti-windows-amd64-*.zip
+            sudo: ""
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: tests/integration/go.mod
+          cache-dependency-path: tests/integration/go.sum
+
+      - name: Download CMake Artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ matrix.artifact }}
+          path: ./zet-artifact
+          digest-mismatch: error
+
+      - name: Extract ziti-edge-tunnel
+        shell: bash
+        run: |
+          cd zet-artifact && unzip -o "${{ matrix.zet-zip }}"
+          chmod +x "${{ matrix.zet-bin }}" || true
+          echo "ZET_BIN=$PWD/${{ matrix.zet-bin }}" >> "$GITHUB_ENV"
+
+      - name: Download latest ziti CLI
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p ziti-cli && cd ziti-cli
+          gh release download --repo openziti/ziti --pattern '${{ matrix.ziti-pattern }}'
+          if ls *.tar.gz >/dev/null 2>&1; then tar -xzf *.tar.gz; fi
+          if ls *.zip    >/dev/null 2>&1; then unzip -o *.zip; fi
+          ZITI=$(find . -type f \( -name ziti -o -name ziti.exe \) | head -n1)
+          chmod +x "$ZITI" || true
+          ZITI_ABS=$(cd "$(dirname "$ZITI")" && pwd)/$(basename "$ZITI")
+          echo "ZITI_BIN=$ZITI_ABS" >> "$GITHUB_ENV"
+
+      - name: Run integration tests
+        shell: bash
+        working-directory: tests/integration
+        run: |
+          ${{ matrix.sudo }} go test ./... -v -timeout 20m \
+            -zet-bin="$ZET_BIN" \
+            -ziti-bin="$ZITI_BIN"
+
   nix-build:
     name: Build Nix Binary
     runs-on: ubuntu-latest
