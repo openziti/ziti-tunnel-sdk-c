@@ -22,7 +22,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 type Command struct {
@@ -38,7 +41,7 @@ type Response struct {
 }
 
 type IPCClient struct {
-	conn net.Conn
+	conn   net.Conn
 	reader *bufio.Reader
 }
 
@@ -93,7 +96,7 @@ func (c *IPCClient) Close() error {
 }
 
 type EventClient struct {
-	conn net.Conn
+	conn   net.Conn
 	reader *bufio.Reader
 }
 
@@ -126,6 +129,28 @@ func (c *EventClient) ReadEvent(ctx context.Context) (json.RawMessage, error) {
 		return nil, fmt.Errorf("read event: %w", err)
 	}
 	return json.RawMessage(line), nil
+}
+
+type Event struct {
+	Op          string `json:"Op"`
+	Action      string `json:"Action"`
+	Fingerprint string `json:"Fingerprint"`
+}
+
+// WaitFor drains events until one matches op/action/fingerprint
+func (c *EventClient) WaitFor(t *testing.T, ctx context.Context, op, action, fingerprint string) {
+	t.Helper()
+	for {
+		raw, err := c.ReadEvent(ctx)
+		require.NoError(t, err, "read event waiting for %s:%s for %s", op, action, fingerprint)
+
+		var event Event
+		require.NoError(t, json.Unmarshal(raw, &event), "parse event: %s", raw)
+		if event.Op != op || event.Action != action || event.Fingerprint != fingerprint {
+			continue
+		}
+		return
+	}
 }
 
 func (c *EventClient) Close() error {

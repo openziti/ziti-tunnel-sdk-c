@@ -135,6 +135,13 @@ func (o *Overlay) CreateIdentityJWT(ctx context.Context, name string) (string, e
 	return string(bytes.TrimSpace(content)), nil
 }
 
+func (o *Overlay) DeleteIdentity(ctx context.Context, name string) error {
+	if _, err := o.runZiti(ctx, "edge", "delete", "identity", name); err != nil {
+		return fmt.Errorf("delete identity %s: %w", name, err)
+	}
+	return nil
+}
+
 func (o *Overlay) CreateAuthPolicyRequiringTOTP(ctx context.Context, name string) error {
 	if _, err := o.runZiti(ctx, "edge", "create", "auth-policy", name,
 		"--primary-cert-allowed",

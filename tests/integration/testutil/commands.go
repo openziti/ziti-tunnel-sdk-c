@@ -86,13 +86,23 @@ type StatusChangeData struct {
 	Unlocked bool `json:"Unlocked"`
 }
 
+type EnrollMode string
+
+const (
+	EnrollModeNone  EnrollMode = "none"
+	EnrollModeCert  EnrollMode = "cert"
+	EnrollModeToken EnrollMode = "token"
+)
+
 type AddIdentityData struct {
-	UseKeychain      bool    `json:"UseKeychain"`
-	IdentityFilename string  `json:"IdentityFilename"`
-	JwtContent       *string `json:"JwtContent"`
-	Key              *string `json:"Key"`
-	Certificate      *string `json:"Certificate"`
-	ControllerURL    *string `json:"ControllerURL"`
+	UseKeychain      bool        `json:"UseKeychain"`
+	IdentityFilename string      `json:"IdentityFilename"`
+	JwtContent       *string     `json:"JwtContent"`
+	Key              *string     `json:"Key"`
+	Certificate      *string     `json:"Certificate"`
+	ControllerURL    *string     `json:"ControllerURL"`
+	EnrollMode       *EnrollMode `json:"EnrollMode"`
+	Provider         *string     `json:"Provider"`
 }
 
 type IdentityInfo struct {
@@ -126,6 +136,7 @@ type IdentityStatus struct {
 	Active      bool   `json:"Active"`
 	FingerPrint string `json:"FingerPrint"`
 	MfaEnabled  bool   `json:"MfaEnabled"`
+	MfaNeeded   bool   `json:"MfaNeeded"`
 }
 
 type TunnelStatus struct {

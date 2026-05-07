@@ -33,6 +33,11 @@ func TestAddIdentity(t *testing.T) {
 	t.Run("withJwtSucceeds", testAddIdentityWithJwtSucceeds)
 	t.Run("sameJwtTwiceSecondFails", testAddIdentitySameJwtTwiceSecondFails)
 	t.Run("withInvalidJwtFails", testAddIdentityWithInvalidJwtFails)
+	t.Run("withEmptyJwtFails", testAddIdentityWithEmptyJwtFails)
+	t.Run("withDeletedIdentityFails", testAddIdentityWithDeletedIdentityFails)
+	t.Run("withSlashInFilenameFails", testAddIdentityWithSlashInFilenameFails)
+	t.Run("withDotDotInFilenameFails", testAddIdentityWithDotDotInFilenameFails)
+	t.Run("filenameExceedsCharLimitFails", testAddIdentityFilenameExceedsCharLimitFails)
 	t.Run("emitsIdentityAddedEvent", testAddIdentityEmitsIdentityAddedEvent)
 }
 
@@ -51,7 +56,6 @@ func testAddIdentityWithJwtSucceeds(t *testing.T) {
 	jwt, err := overlay.CreateIdentityJWT(ctx, identityName)
 	require.NoError(t, err, "mint JWT via overlay")
 	require.NotEmpty(t, jwt, "JWT content should not be empty")
-	t.Logf("JWT minted for identity %q (%d bytes)", identityName, len(jwt))
 
 	client, err := testutil.DialIPC(ctx)
 	require.NoError(t, err, "dial ZET IPC pipe")
@@ -65,7 +69,6 @@ func testAddIdentityWithJwtSucceeds(t *testing.T) {
 	resp, err := client.AddIdentity(ctx, identityData)
 	require.NoError(t, err, "send AddIdentity command\n%s", zet.Logs())
 	require.True(t, resp.Success, "AddIdentity failed: error=%q code=%d\n%s", resp.Error, resp.Code, zet.Logs())
-	t.Logf("AddIdentity succeeded: filename=%q code=%d", identityName, resp.Code)
 
 	status, err := client.GetTunnelStatus(ctx)
 	require.NoError(t, err, "Status after AddIdentity\n%s", zet.Logs())
@@ -85,7 +88,6 @@ func testAddIdentitySameJwtTwiceSecondFails(t *testing.T) {
 	jwt, err := overlay.CreateIdentityJWT(ctx, identityName)
 	require.NoError(t, err, "mint JWT via overlay")
 	require.NotEmpty(t, jwt)
-	t.Logf("JWT minted for identity %q (%d bytes)", identityName, len(jwt))
 
 	client, err := testutil.DialIPC(ctx)
 	require.NoError(t, err, "dial ZET IPC pipe")
@@ -99,7 +101,6 @@ func testAddIdentitySameJwtTwiceSecondFails(t *testing.T) {
 	first, err := client.AddIdentity(ctx, identityData)
 	require.NoError(t, err, "first AddIdentity send\n%s", zet.Logs())
 	require.True(t, first.Success, "first AddIdentity should succeed: error=%q\n%s", first.Error, zet.Logs())
-	t.Logf("first AddIdentity succeeded")
 
 	second, err := client.AddIdentity(ctx, identityData)
 	require.NoError(t, err, "second AddIdentity send\n%s", zet.Logs())
@@ -136,6 +137,130 @@ func testAddIdentityWithInvalidJwtFails(t *testing.T) {
 	require.True(t, os.IsNotExist(statErr), "identity file should not exist after failed enroll: %s\n%s", idFile, zet.Logs())
 }
 
+func testAddIdentityWithEmptyJwtFails(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	client, err := testutil.DialIPC(ctx)
+	require.NoError(t, err, "dial ZET IPC pipe")
+	t.Cleanup(func() { _ = client.Close() })
+
+	identityName := identityNameFor(t)
+	emptyJwt := ""
+	identityData := testutil.AddIdentityData{
+		IdentityFilename: identityName,
+		JwtContent:       &emptyJwt,
+	}
+	resp, err := client.AddIdentity(ctx, identityData)
+	require.NoError(t, err, "IPC send should succeed even when enrollment fails\n%s", zet.Logs())
+	require.False(t, resp.Success, "empty JWT should be rejected, got Success=true")
+	t.Logf("empty JWT correctly rejected: code=%d error=%q", resp.Code, resp.Error)
+
+	status, err := client.GetTunnelStatus(ctx)
+	require.NoError(t, err, "Status after failed AddIdentity\n%s", zet.Logs())
+	idFile := filepath.Join(status.ConfigDir, identityName+".json")
+	_, statErr := os.Stat(idFile)
+	require.True(t, os.IsNotExist(statErr), "identity file should not exist after failed enroll: %s\n%s", idFile, zet.Logs())
+}
+
+func testAddIdentityWithDeletedIdentityFails(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	identityName := identityNameFor(t)
+	jwt, err := overlay.CreateIdentityJWT(ctx, identityName)
+	require.NoError(t, err, "mint JWT via overlay")
+	require.NotEmpty(t, jwt)
+
+	require.NoError(t, overlay.DeleteIdentity(ctx, identityName), "delete identity via overlay")
+
+	client, err := testutil.DialIPC(ctx)
+	require.NoError(t, err, "dial ZET IPC pipe")
+	t.Cleanup(func() { _ = client.Close() })
+
+	identityData := testutil.AddIdentityData{
+		IdentityFilename: identityName,
+		JwtContent:       &jwt,
+	}
+	resp, err := client.AddIdentity(ctx, identityData)
+	require.NoError(t, err, "IPC send should succeed even when enrollment fails\n%s", zet.Logs())
+	require.False(t, resp.Success, "JWT for deleted identity should be rejected, got Success=true")
+	t.Logf("JWT identity deleted from controller correctly rejected: code=%d error=%q", resp.Code, resp.Error)
+
+	status, err := client.GetTunnelStatus(ctx)
+	require.NoError(t, err, "Status after failed AddIdentity\n%s", zet.Logs())
+	idFile := filepath.Join(status.ConfigDir, identityName+".json")
+	_, statErr := os.Stat(idFile)
+	require.True(t, os.IsNotExist(statErr), "identity file should not exist after failed enroll: %s\n%s", idFile, zet.Logs())
+}
+
+func testAddIdentityWithSlashInFilenameFails(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	client, err := testutil.DialIPC(ctx)
+	require.NoError(t, err, "dial ZET IPC pipe")
+	t.Cleanup(func() { _ = client.Close() })
+
+	jwt, err := overlay.CreateIdentityJWT(ctx, identityNameFor(t))
+	require.NoError(t, err, "mint JWT via overlay")
+	require.NotEmpty(t, jwt)
+
+	identityData := testutil.AddIdentityData{
+		IdentityFilename: "foo/bar",
+		JwtContent:       &jwt,
+	}
+	resp, err := client.AddIdentity(ctx, identityData)
+	require.NoError(t, err, "IPC send\n%s", zet.Logs())
+	require.False(t, resp.Success, "filename with slash should be rejected, got Success=true")
+	t.Logf("slash filename correctly rejected: code=%d error=%q", resp.Code, resp.Error)
+}
+
+func testAddIdentityWithDotDotInFilenameFails(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	client, err := testutil.DialIPC(ctx)
+	require.NoError(t, err, "dial ZET IPC pipe")
+	t.Cleanup(func() { _ = client.Close() })
+
+	jwt, err := overlay.CreateIdentityJWT(ctx, identityNameFor(t))
+	require.NoError(t, err, "mint JWT via overlay")
+	require.NotEmpty(t, jwt)
+
+	identityData := testutil.AddIdentityData{
+		IdentityFilename: "../escape",
+		JwtContent:       &jwt,
+	}
+	resp, err := client.AddIdentity(ctx, identityData)
+	require.NoError(t, err, "IPC send\n%s", zet.Logs())
+	require.False(t, resp.Success, "filename with .. should be rejected, got Success=true")
+	t.Logf("dot-dot filename correctly rejected: code=%d error=%q", resp.Code, resp.Error)
+}
+
+func testAddIdentityFilenameExceedsCharLimitFails(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	client, err := testutil.DialIPC(ctx)
+	require.NoError(t, err, "dial ZET IPC pipe")
+	t.Cleanup(func() { _ = client.Close() })
+
+	jwt, err := overlay.CreateIdentityJWT(ctx, identityNameFor(t))
+	require.NoError(t, err, "mint JWT via overlay")
+	require.NotEmpty(t, jwt)
+
+	longName := strings.Repeat("a", 300)
+	identityData := testutil.AddIdentityData{
+		IdentityFilename: longName,
+		JwtContent:       &jwt,
+	}
+	resp, err := client.AddIdentity(ctx, identityData)
+	require.NoError(t, err, "IPC send\n%s", zet.Logs())
+	require.False(t, resp.Success, "long filename should be rejected, got Success=true")
+	t.Logf("long filename correctly rejected: code=%d error=%q", resp.Code, resp.Error)
+}
+
 func testAddIdentityEmitsIdentityAddedEvent(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -144,7 +269,6 @@ func testAddIdentityEmitsIdentityAddedEvent(t *testing.T) {
 	jwt, err := overlay.CreateIdentityJWT(ctx, identityName)
 	require.NoError(t, err, "mint JWT via overlay")
 	require.NotEmpty(t, jwt)
-	t.Logf("JWT minted for identity %q (%d bytes)", identityName, len(jwt))
 
 	events, err := testutil.DialEvents(ctx)
 	require.NoError(t, err, "dial ZET event pipe")
@@ -171,7 +295,6 @@ func testAddIdentityEmitsIdentityAddedEvent(t *testing.T) {
 		}
 		require.NoError(t, json.Unmarshal(raw, &event), "parse event: %s", raw)
 		if event.Op != "identity" || event.Action != "added" || event.Fingerprint != identityName {
-			t.Logf("skipped event: Op=%s Action=%s Fingerprint=%s", event.Op, event.Action, event.Fingerprint)
 			continue
 		}
 

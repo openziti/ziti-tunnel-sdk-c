@@ -41,7 +41,6 @@ func testSetLogLevelChangesLogLevelInStatus(t *testing.T) {
 	setResp, err := client.SetLogLevel(ctx, "trace")
 	require.NoError(t, err, "SetLogLevel send\n%s", zet.Logs())
 	require.True(t, setResp.Success, "SetLogLevel failed: error=%q code=%d", setResp.Error, setResp.Code)
-	t.Logf("SetLogLevel(trace) succeeded: code=%d", setResp.Code)
 
 	statusResp, err := client.Status(ctx)
 	require.NoError(t, err, "Status send\n%s", zet.Logs())
