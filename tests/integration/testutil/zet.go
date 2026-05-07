@@ -73,7 +73,7 @@ func StartZET(ctx context.Context, binPath, identityDir string, opts ZETOptions)
 		_ = os.Remove(eventPipe)
 	}
 
-	args := []string{"run", "-I", identityDir}
+	args := []string{"run", "-I", identityDir, "-v", "6"}
 	if opts.Discriminator != "" {
 		args = append(args, "-P", opts.Discriminator)
 	}
@@ -82,6 +82,7 @@ func StartZET(ctx context.Context, binPath, identityDir string, opts ZETOptions)
 	}
 
 	cmd := exec.CommandContext(ctx, binPath, args...)
+	cmd.Env = append(os.Environ(), "TLSUV_DEBUG=6")
 	stdout := newSyncBuffer()
 	stderr := newSyncBuffer()
 	cmd.Stdout = stdout
@@ -102,10 +103,19 @@ func StartZET(ctx context.Context, binPath, identityDir string, opts ZETOptions)
 	}
 	go func() { z.cmdDone <- cmd.Wait() }()
 
-	dialCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	dialCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 	client, err := dialIPCAt(dialCtx, cmdPipe)
 	if err != nil {
+		// Check whether the process already exited before the timeout fired.
+		// A non-blocking read from cmdDone disambiguates "process crashed early"
+		// from "process is alive but slow to create the socket".
+		select {
+		case exitErr := <-z.cmdDone:
+			return nil, fmt.Errorf("ZET exited (status: %v) before IPC socket appeared\nstdout:\n%s\nstderr:\n%s",
+				exitErr, z.stdout.String(), z.stderr.String())
+		default:
+		}
 		z.Stop()
 		return nil, fmt.Errorf("waiting for ZET IPC pipe: %w\nstdout:\n%s\nstderr:\n%s",
 			err, z.stdout.String(), z.stderr.String())
