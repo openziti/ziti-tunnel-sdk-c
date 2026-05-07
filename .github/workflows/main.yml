@@ -147,10 +147,21 @@ jobs:
         shell: bash
         working-directory: tests/integration
         run: |
-          ulimit -c unlimited
-          ${{ matrix.sudo }} go test ./... -v -timeout 20m \
-            -zet-bin="$ZET_BIN" \
-            -ziti-bin="$ZITI_BIN"
+          case "$(uname -s)" in
+            Linux|Darwin)
+              # ulimit -c unlimited must be set inside the privileged shell: sudo
+              # resets resource limits via PAM, so setting it in the outer shell
+              # has no effect on ZET child processes.
+              sudo env "PATH=$PATH" "ZET_BIN=$ZET_BIN" "ZITI_BIN=$ZITI_BIN" \
+                sh -c 'ulimit -c unlimited && exec go test ./... -v -timeout 20m \
+                  -zet-bin="$ZET_BIN" -ziti-bin="$ZITI_BIN"'
+              ;;
+            *)
+              go test ./... -v -timeout 20m \
+                -zet-bin="$ZET_BIN" \
+                -ziti-bin="$ZITI_BIN"
+              ;;
+          esac
 
       - name: Log core file backtraces
         if: ${{ failure() && matrix.core-dir != '' }}
