@@ -67,6 +67,7 @@ jobs:
             zet-bin: ziti-edge-tunnel
             ziti-pattern: ziti-linux-amd64-*.tar.gz
             sudo: sudo -E env "PATH=$PATH"
+            create-group: sudo groupadd --system ziti
           - name: macOS arm64
             runner: macos-15
             artifact: macOS-arm64
@@ -74,6 +75,7 @@ jobs:
             zet-bin: ziti-edge-tunnel
             ziti-pattern: ziti-darwin-arm64-*.tar.gz
             sudo: sudo -E env "PATH=$PATH"
+            create-group: sudo dseditgroup -o create ziti
           - name: Windows x64
             runner: windows-2022
             artifact: windows-x64-mingw
@@ -81,6 +83,7 @@ jobs:
             zet-bin: ziti-edge-tunnel.exe
             ziti-pattern: ziti-windows-amd64-*.zip
             sudo: ""
+            create-group: ""
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout
@@ -121,6 +124,11 @@ jobs:
           chmod +x "$ZITI" || true
           ZITI_ABS=$(cd "$(dirname "$ZITI")" && pwd)/$(basename "$ZITI")
           echo "ZITI_BIN=$ZITI_ABS" >> "$GITHUB_ENV"
+
+      - name: Create ziti group
+        if: ${{ matrix.create-group != '' }}
+        shell: bash
+        run: ${{ matrix.create-group }}
 
       - name: Run integration tests
         shell: bash
