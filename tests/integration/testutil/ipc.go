@@ -45,19 +45,23 @@ type IPCClient struct {
 	reader *bufio.Reader
 }
 
-// DialIPC connects to the ZET command pipe, retrying until ctx expires.
+// DialIPC connects to the default ZET command pipe, retrying until ctx expires.
 func DialIPC(ctx context.Context) (*IPCClient, error) {
+	return dialIPCAt(ctx, CommandPipePath)
+}
+
+func dialIPCAt(ctx context.Context, path string) (*IPCClient, error) {
 	const retryInterval = 100 * time.Millisecond
 	var lastErr error
 	for {
-		conn, err := dialPlatform(ctx, CommandPipePath)
+		conn, err := dialPlatform(ctx, path)
 		if err == nil {
 			return &IPCClient{conn: conn, reader: bufio.NewReader(conn)}, nil
 		}
 		lastErr = err
 		select {
 		case <-ctx.Done():
-			return nil, fmt.Errorf("dial %s: %w (last: %v)", CommandPipePath, ctx.Err(), lastErr)
+			return nil, fmt.Errorf("dial %s: %w (last: %v)", path, ctx.Err(), lastErr)
 		case <-time.After(retryInterval):
 		}
 	}
@@ -100,19 +104,23 @@ type EventClient struct {
 	reader *bufio.Reader
 }
 
-// DialEvents connects to the ZET event pipe, retrying until ctx expires.
+// DialEvents connects to the default ZET event pipe, retrying until ctx expires.
 func DialEvents(ctx context.Context) (*EventClient, error) {
+	return dialEventsAt(ctx, EventPipePath)
+}
+
+func dialEventsAt(ctx context.Context, path string) (*EventClient, error) {
 	const retryInterval = 100 * time.Millisecond
 	var lastErr error
 	for {
-		conn, err := dialPlatform(ctx, EventPipePath)
+		conn, err := dialPlatform(ctx, path)
 		if err == nil {
 			return &EventClient{conn: conn, reader: bufio.NewReader(conn)}, nil
 		}
 		lastErr = err
 		select {
 		case <-ctx.Done():
-			return nil, fmt.Errorf("dial %s: %w (last: %v)", EventPipePath, ctx.Err(), lastErr)
+			return nil, fmt.Errorf("dial %s: %w (last: %v)", path, ctx.Err(), lastErr)
 		case <-time.After(retryInterval):
 		}
 	}

@@ -34,6 +34,7 @@ var (
 	keepArtifacts bool
 	overlay       *testutil.Overlay
 	zet           *testutil.ZET
+	zetB          *testutil.ZET
 	tempRoot      string
 )
 
@@ -82,11 +83,20 @@ func run(m *testing.M) (int, error) {
 	}
 	defer overlay.Stop()
 
-	zet, err = testutil.StartZET(ctx, zetBin, filepath.Join(tempRoot, "zet-identities"))
+	zet, err = testutil.StartZET(ctx, zetBin, filepath.Join(tempRoot, "zet-identities"), testutil.ZETOptions{})
 	if err != nil {
 		return 0, fmt.Errorf("start ziti-edge-tunnel: %w", err)
 	}
 	defer zet.Stop()
+
+	zetB, err = testutil.StartZET(ctx, zetBin, filepath.Join(tempRoot, "zetB-identities"), testutil.ZETOptions{
+		Discriminator: "zetB",
+		DNSRange:      "100.128.0.1/10",
+	})
+	if err != nil {
+		return 0, fmt.Errorf("start zetB: %w", err)
+	}
+	defer zetB.Stop()
 
 	return m.Run(), nil
 }

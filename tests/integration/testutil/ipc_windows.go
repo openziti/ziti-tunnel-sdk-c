@@ -29,6 +29,20 @@ import (
 const CommandPipePath = `\\.\pipe\ziti-edge-tunnel.sock`
 const EventPipePath = `\\.\pipe\ziti-edge-tunnel-event.sock`
 
+func CommandPipePathFor(disc string) string {
+	if disc == "" {
+		return CommandPipePath
+	}
+	return CommandPipePath + "." + disc
+}
+
+func EventPipePathFor(disc string) string {
+	if disc == "" {
+		return EventPipePath
+	}
+	return EventPipePath + "." + disc
+}
+
 func dialPlatform(ctx context.Context, path string) (net.Conn, error) {
 	// short per-attempt timeout so DialIPC's retry loop stays responsive to ctx
 	timeout := 500 * time.Millisecond
