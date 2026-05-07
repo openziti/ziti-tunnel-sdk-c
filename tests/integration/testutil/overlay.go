@@ -19,11 +19,13 @@ package testutil
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -163,6 +165,105 @@ func (o *Overlay) CreateIdentityJWTWithAuthPolicy(ctx context.Context, name, aut
 		return "", fmt.Errorf("read jwt %s: %w", jwtPath, err)
 	}
 	return string(bytes.TrimSpace(content)), nil
+}
+
+// CreateHostConfigV1 creates a host.v1 config that forwards to forwardAddr:forwardPort.
+func (o *Overlay) CreateHostConfigV1(ctx context.Context, name, protocol, forwardAddr string, forwardPort int) error {
+	body, err := json.Marshal(struct {
+		Protocol string `json:"protocol"`
+		Address  string `json:"address"`
+		Port     int    `json:"port"`
+	}{Protocol: protocol, Address: forwardAddr, Port: forwardPort})
+	if err != nil {
+		return err
+	}
+	if _, err := o.runZiti(ctx, "edge", "create", "config", name, "host.v1", string(body)); err != nil {
+		return fmt.Errorf("create host config %s: %w", name, err)
+	}
+	return nil
+}
+
+// CreateInterceptConfigV1 creates an intercept.v1 config matching the given protocols, addresses, and port range.
+func (o *Overlay) CreateInterceptConfigV1(ctx context.Context, name string, protocols, addresses []string, portLow, portHigh int) error {
+	body, err := json.Marshal(struct {
+		Protocols  []string `json:"protocols"`
+		Addresses  []string `json:"addresses"`
+		PortRanges []struct {
+			Low  int `json:"low"`
+			High int `json:"high"`
+		} `json:"portRanges"`
+	}{
+		Protocols: protocols,
+		Addresses: addresses,
+		PortRanges: []struct {
+			Low  int `json:"low"`
+			High int `json:"high"`
+		}{{Low: portLow, High: portHigh}},
+	})
+	if err != nil {
+		return err
+	}
+	if _, err := o.runZiti(ctx, "edge", "create", "config", name, "intercept.v1", string(body)); err != nil {
+		return fmt.Errorf("create intercept config %s: %w", name, err)
+	}
+	return nil
+}
+
+// CreateService creates a service that references the given configs.
+func (o *Overlay) CreateService(ctx context.Context, name string, configs []string) error {
+	args := []string{"edge", "create", "service", name, "--configs", strings.Join(configs, ",")}
+	if _, err := o.runZiti(ctx, args...); err != nil {
+		return fmt.Errorf("create service %s: %w", name, err)
+	}
+	return nil
+}
+
+// CreateBindServicePolicy creates a Bind service policy granting identityName access to serviceName.
+func (o *Overlay) CreateBindServicePolicy(ctx context.Context, name, identityName, serviceName string) error {
+	if _, err := o.runZiti(ctx, "edge", "create", "service-policy", name, "Bind",
+		"--identity-roles", "@"+identityName,
+		"--service-roles", "@"+serviceName,
+		"--semantic", "AnyOf",
+	); err != nil {
+		return fmt.Errorf("create bind policy %s: %w", name, err)
+	}
+	return nil
+}
+
+// CreateDialServicePolicy creates a Dial service policy granting identityName access to serviceName.
+func (o *Overlay) CreateDialServicePolicy(ctx context.Context, name, identityName, serviceName string) error {
+	if _, err := o.runZiti(ctx, "edge", "create", "service-policy", name, "Dial",
+		"--identity-roles", "@"+identityName,
+		"--service-roles", "@"+serviceName,
+		"--semantic", "AnyOf",
+	); err != nil {
+		return fmt.Errorf("create dial policy %s: %w", name, err)
+	}
+	return nil
+}
+
+// DeleteServicePolicy deletes a service policy by name.
+func (o *Overlay) DeleteServicePolicy(ctx context.Context, name string) error {
+	if _, err := o.runZiti(ctx, "edge", "delete", "service-policy", name); err != nil {
+		return fmt.Errorf("delete service policy %s: %w", name, err)
+	}
+	return nil
+}
+
+// DeleteService deletes a service by name.
+func (o *Overlay) DeleteService(ctx context.Context, name string) error {
+	if _, err := o.runZiti(ctx, "edge", "delete", "service", name); err != nil {
+		return fmt.Errorf("delete service %s: %w", name, err)
+	}
+	return nil
+}
+
+// DeleteConfig deletes a config by name.
+func (o *Overlay) DeleteConfig(ctx context.Context, name string) error {
+	if _, err := o.runZiti(ctx, "edge", "delete", "config", name); err != nil {
+		return fmt.Errorf("delete config %s: %w", name, err)
+	}
+	return nil
 }
 
 func (o *Overlay) waitUntilReady(ctx context.Context) error {

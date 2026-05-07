@@ -27,8 +27,23 @@ import (
 	"time"
 )
 
+// ZETOptions are optional parameters for StartZET.
+type ZETOptions struct {
+	// Discriminator, if non-empty, is passed as -P to ziti-edge-tunnel so this
+	// instance binds its own IPC pipe (…sock.<disc>) rather than the default.
+	// Required when running two ZETs side-by-side on one host.
+	Discriminator string
+	// DNSRange overrides the default 100.64.0.1/10 TUN/DNS CIDR (-d flag).
+	// Set this to a disjoint range (e.g. "100.128.0.1/10") for a second ZET so
+	// the two TUN devices intercept different address blocks.
+	DNSRange string
+}
+
 type ZET struct {
-	BinPath string
+	BinPath       string
+	CmdPipe       string
+	EventPipe     string
+	Discriminator string
 
 	extCmd  *exec.Cmd
 	stdout  *syncBuffer
@@ -38,23 +53,35 @@ type ZET struct {
 
 // StartZET spawns ziti-edge-tunnel in "run" mode with identityDir as its -I sandbox.
 // Returns once the IPC command pipe is dialable, or an error if ZET dies / the deadline expires.
-// Fails fast if another ziti-edge-tunnel is already bound to the IPC pipe — the
-// tests would otherwise either collide with another daemon or hang.
-func StartZET(ctx context.Context, binPath, identityDir string) (*ZET, error) {
-	if err := ensureNoExistingZET(); err != nil {
+// Fails fast if something is already bound to this instance's IPC pipe.
+func StartZET(ctx context.Context, binPath, identityDir string, opts ZETOptions) (*ZET, error) {
+	cmdPipe := CommandPipePathFor(opts.Discriminator)
+	eventPipe := EventPipePathFor(opts.Discriminator)
+
+	// Fail fast if something is already bound to this instance's pipe.
+	if err := ensureNothingOnPipe(cmdPipe); err != nil {
 		return nil, err
 	}
+
 	if err := os.MkdirAll(identityDir, 0o700); err != nil {
 		return nil, fmt.Errorf("mkdir identity dir: %w", err)
 	}
 	if runtime.GOOS != "windows" {
-		// stale unix socket from a previous crashed ZET prevents bind. Safe to
-		// remove now — ensureNoExistingZET already proved nothing is listening.
-		_ = os.Remove(CommandPipePath)
-		_ = os.Remove(EventPipePath)
+		// Remove stale unix sockets so ZET can bind. ensureNothingOnPipe above
+		// already confirmed nothing is listening, so these removes are safe.
+		_ = os.Remove(cmdPipe)
+		_ = os.Remove(eventPipe)
 	}
 
-	cmd := exec.CommandContext(ctx, binPath, "run", "-I", identityDir)
+	args := []string{"run", "-I", identityDir}
+	if opts.Discriminator != "" {
+		args = append(args, "-P", opts.Discriminator)
+	}
+	if opts.DNSRange != "" {
+		args = append(args, "-d", opts.DNSRange)
+	}
+
+	cmd := exec.CommandContext(ctx, binPath, args...)
 	stdout := newSyncBuffer()
 	stderr := newSyncBuffer()
 	cmd.Stdout = stdout
@@ -64,17 +91,20 @@ func StartZET(ctx context.Context, binPath, identityDir string) (*ZET, error) {
 	}
 
 	z := &ZET{
-		BinPath: binPath,
-		extCmd:  cmd,
-		stdout:  stdout,
-		stderr:  stderr,
-		cmdDone: make(chan error, 1),
+		BinPath:       binPath,
+		CmdPipe:       cmdPipe,
+		EventPipe:     eventPipe,
+		Discriminator: opts.Discriminator,
+		extCmd:        cmd,
+		stdout:        stdout,
+		stderr:        stderr,
+		cmdDone:       make(chan error, 1),
 	}
 	go func() { z.cmdDone <- cmd.Wait() }()
 
 	dialCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	client, err := DialIPC(dialCtx)
+	client, err := dialIPCAt(dialCtx, cmdPipe)
 	if err != nil {
 		z.Stop()
 		return nil, fmt.Errorf("waiting for ZET IPC pipe: %w\nstdout:\n%s\nstderr:\n%s",
@@ -82,6 +112,11 @@ func StartZET(ctx context.Context, binPath, identityDir string) (*ZET, error) {
 	}
 	client.Close()
 	return z, nil
+}
+
+// DialIPC connects to this ZET instance's IPC command pipe, retrying until ctx expires.
+func (z *ZET) DialIPC(ctx context.Context) (*IPCClient, error) {
+	return dialIPCAt(ctx, z.CmdPipe)
 }
 
 // Stop terminates ZET. Callers should defer this on every test.
@@ -101,19 +136,18 @@ func (z *ZET) Logs() string {
 }
 
 // EnsureNoExistingZET returns an error if something is already listening on the
-// ziti-edge-tunnel IPC pipe. A successful dial means another daemon owns the pipe.
-func EnsureNoExistingZET() error { return ensureNoExistingZET() }
+// default ziti-edge-tunnel IPC pipe. A successful dial means another daemon owns the pipe.
+func EnsureNoExistingZET() error { return ensureNothingOnPipe(CommandPipePath) }
 
-func ensureNoExistingZET() error {
+func ensureNothingOnPipe(path string) error {
 	probeCtx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
-	conn, err := dialPlatform(probeCtx, CommandPipePath)
+	conn, err := dialPlatform(probeCtx, path)
 	if err != nil {
 		return nil
 	}
 	_ = conn.Close()
-	return fmt.Errorf("another ziti-edge-tunnel is already running on %s; stop it before running tests",
-		CommandPipePath)
+	return fmt.Errorf("another ziti-edge-tunnel is already running on %s; stop it before running tests", path)
 }
 
 type syncBuffer struct {
