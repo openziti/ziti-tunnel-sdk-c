@@ -31,6 +31,7 @@ import (
 var (
 	zetBin        string
 	zitiBin       string
+	zetLogDir     string
 	keepArtifacts bool
 	overlay       *testutil.Overlay
 	zet           *testutil.ZET
@@ -41,6 +42,7 @@ var (
 func TestMain(m *testing.M) {
 	flag.StringVar(&zetBin, "zet-bin", "", "path to ziti-edge-tunnel binary (required)")
 	flag.StringVar(&zitiBin, "ziti-bin", "", "path to ziti binary for controller+router bring-up (required)")
+	flag.StringVar(&zetLogDir, "zet-log-dir", "", "if set, write each zet's combined stdout+stderr to <dir>/zet-<name>.log")
 	flag.BoolVar(&keepArtifacts, "keep-artifacts", false, "leave temp dirs on disk after tests finish")
 	flag.Parse()
 
@@ -83,7 +85,9 @@ func run(m *testing.M) (int, error) {
 	}
 	defer overlay.Stop()
 
-	zet, err = testutil.StartZET(ctx, zetBin, filepath.Join(tempRoot, "zet-identities"), testutil.ZETOptions{})
+	zet, err = testutil.StartZET(ctx, zetBin, filepath.Join(tempRoot, "zet-identities"), testutil.ZETOptions{
+		LogDir: zetLogDir,
+	})
 	if err != nil {
 		return 0, fmt.Errorf("start ziti-edge-tunnel: %w", err)
 	}
@@ -92,6 +96,7 @@ func run(m *testing.M) (int, error) {
 	zetB, err = testutil.StartZET(ctx, zetBin, filepath.Join(tempRoot, "zetB-identities"), testutil.ZETOptions{
 		Discriminator: "zetB",
 		DNSRange:      "100.128.0.1/10",
+		LogDir:        zetLogDir,
 	})
 	if err != nil {
 		return 0, fmt.Errorf("start zetB: %w", err)

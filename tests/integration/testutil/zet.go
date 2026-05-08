@@ -20,8 +20,10 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"sync"
 	"time"
@@ -37,6 +39,10 @@ type ZETOptions struct {
 	// Set this to a disjoint range (e.g. "100.128.0.1/10") for a second ZET so
 	// the two TUN devices intercept different address blocks.
 	DNSRange string
+	// LogDir, if set, causes combined stdout+stderr to be written to
+	// <LogDir>/ziti-edge-tunnel[.<discriminator>].log, mirroring the IPC socket
+	// naming convention, in addition to the in-memory buffer used by Logs().
+	LogDir string
 }
 
 type ZET struct {
@@ -49,6 +55,7 @@ type ZET struct {
 	stdout  *syncBuffer
 	stderr  *syncBuffer
 	cmdDone chan error
+	logFile *os.File
 }
 
 // StartZET spawns ziti-edge-tunnel in "run" mode with identityDir as its -I sandbox.
@@ -73,7 +80,7 @@ func StartZET(ctx context.Context, binPath, identityDir string, opts ZETOptions)
 		_ = os.Remove(eventPipe)
 	}
 
-	args := []string{"run", "-I", identityDir}
+	args := []string{"run", "-I", identityDir, "-v", "6"}
 	if opts.Discriminator != "" {
 		args = append(args, "-P", opts.Discriminator)
 	}
@@ -82,11 +89,35 @@ func StartZET(ctx context.Context, binPath, identityDir string, opts ZETOptions)
 	}
 
 	cmd := exec.CommandContext(ctx, binPath, args...)
+	cmd.Env = append(os.Environ(), "TLSUV_DEBUG=6")
 	stdout := newSyncBuffer()
 	stderr := newSyncBuffer()
-	cmd.Stdout = stdout
-	cmd.Stderr = stderr
+
+	var logFile *os.File
+	if opts.LogDir != "" {
+		if err := os.MkdirAll(opts.LogDir, 0o755); err != nil {
+			return nil, fmt.Errorf("create zet log dir: %w", err)
+		}
+		logName := "ziti-edge-tunnel"
+		if opts.Discriminator != "" {
+			logName += "." + opts.Discriminator
+		}
+		var ferr error
+		logFile, ferr = os.OpenFile(filepath.Join(opts.LogDir, logName+".log"), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
+		if ferr != nil {
+			return nil, fmt.Errorf("open zet log file: %w", ferr)
+		}
+		cmd.Stdout = io.MultiWriter(stdout, logFile)
+		cmd.Stderr = io.MultiWriter(stderr, logFile)
+	} else {
+		cmd.Stdout = stdout
+		cmd.Stderr = stderr
+	}
+
 	if err := cmd.Start(); err != nil {
+		if logFile != nil {
+			_ = logFile.Close()
+		}
 		return nil, fmt.Errorf("start %s: %w", binPath, err)
 	}
 
@@ -99,13 +130,23 @@ func StartZET(ctx context.Context, binPath, identityDir string, opts ZETOptions)
 		stdout:        stdout,
 		stderr:        stderr,
 		cmdDone:       make(chan error, 1),
+		logFile:       logFile,
 	}
 	go func() { z.cmdDone <- cmd.Wait() }()
 
-	dialCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	dialCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 	client, err := dialIPCAt(dialCtx, cmdPipe)
 	if err != nil {
+		// Check whether the process already exited before the timeout fired.
+		// A non-blocking read from cmdDone disambiguates "process crashed early"
+		// from "process is alive but slow to create the socket".
+		select {
+		case exitErr := <-z.cmdDone:
+			return nil, fmt.Errorf("ZET exited (status: %v) before IPC socket appeared\nstdout:\n%s\nstderr:\n%s",
+				exitErr, z.stdout.String(), z.stderr.String())
+		default:
+		}
 		z.Stop()
 		return nil, fmt.Errorf("waiting for ZET IPC pipe: %w\nstdout:\n%s\nstderr:\n%s",
 			err, z.stdout.String(), z.stderr.String())
@@ -128,6 +169,9 @@ func (z *ZET) Stop() {
 	select {
 	case <-z.cmdDone:
 	case <-time.After(5 * time.Second):
+	}
+	if z.logFile != nil {
+		_ = z.logFile.Close()
 	}
 }
 

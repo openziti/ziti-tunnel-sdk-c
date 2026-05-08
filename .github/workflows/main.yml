@@ -52,6 +52,178 @@ jobs:
           I_AM_ROBOT: 1
           ZITI_EDGE_TUNNEL_BIN: ./build/amd64/linux/ziti-edge-tunnel
 
+  integration-tests:
+    name: Integration Tests (${{ matrix.name }})
+    needs: [ call-cmake-build ]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x64
+            runner: ubuntu-latest
+            artifact: linux-x64
+            zet-zip: ziti-edge-tunnel-Linux_x86_64.zip
+            zet-bin: ziti-edge-tunnel
+            ziti-pattern: ziti-linux-amd64-*.tar.gz
+            sudo: sudo -E env "PATH=$PATH"
+            create-group: sudo groupadd --system ziti
+            core-dir: /tmp/cores
+          - name: macOS arm64
+            runner: macos-15
+            artifact: macOS-arm64
+            zet-zip: ziti-edge-tunnel-Darwin_arm64.zip
+            zet-bin: ziti-edge-tunnel
+            ziti-pattern: ziti-darwin-arm64-*.tar.gz
+            sudo: sudo -E env "PATH=$PATH"
+            create-group: sudo dseditgroup -o create ziti
+            core-dir: /cores
+          - name: Windows x64
+            runner: windows-2022
+            artifact: windows-x64-mingw
+            zet-zip: ziti-edge-tunnel-Windows_x86_64.zip
+            zet-bin: ziti-edge-tunnel.exe
+            ziti-pattern: ziti-windows-amd64-*.zip
+            sudo: ""
+            create-group: ""
+            core-dir: ""
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: tests/integration/go.mod
+          cache-dependency-path: tests/integration/go.sum
+
+      - name: Download CMake Artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ matrix.artifact }}
+          path: ./zet-artifact
+          digest-mismatch: error
+
+      - name: Extract ziti-edge-tunnel
+        shell: bash
+        run: |
+          cd zet-artifact && unzip -o "${{ matrix.zet-zip }}"
+          chmod +x "${{ matrix.zet-bin }}" || true
+          echo "ZET_BIN=$PWD/${{ matrix.zet-bin }}" >> "$GITHUB_ENV"
+
+      - name: Download latest ziti CLI
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p ziti-cli && cd ziti-cli
+          gh release download --repo openziti/ziti --pattern '${{ matrix.ziti-pattern }}'
+          if ls *.tar.gz >/dev/null 2>&1; then tar -xzf *.tar.gz; fi
+          if ls *.zip    >/dev/null 2>&1; then unzip -o *.zip; fi
+          ZITI=$(find . -type f \( -name ziti -o -name ziti.exe \) | head -n1)
+          chmod +x "$ZITI" || true
+          ZITI_ABS=$(cd "$(dirname "$ZITI")" && pwd)/$(basename "$ZITI")
+          echo "ZITI_BIN=$ZITI_ABS" >> "$GITHUB_ENV"
+
+      - name: Create ziti group
+        if: ${{ matrix.create-group != '' }}
+        shell: bash
+        run: ${{ matrix.create-group }}
+
+      - name: Configure core dumps
+        if: ${{ matrix.core-dir != '' }}
+        shell: bash
+        run: |
+          sudo mkdir -p "${{ matrix.core-dir }}"
+          sudo chmod 1777 "${{ matrix.core-dir }}"
+          if [ "$(uname -s)" = "Linux" ]; then
+            echo '${{ matrix.core-dir }}/core.%e.%p' | sudo tee /proc/sys/kernel/core_pattern
+            # Allow core dumps from processes that change credentials (capabilities).
+            # Default suid_dumpable=0 suppresses cores from such processes.
+            echo 1 | sudo tee /proc/sys/fs/suid_dumpable
+          elif [ "$(uname -s)" = "Darwin" ]; then
+            sudo sysctl -w kern.corefile="${{ matrix.core-dir }}/core.%N.%P"
+          fi
+
+      - name: Configure zet log dir
+        shell: bash
+        run: |
+          ZET_LOG_DIR="$RUNNER_TEMP/zet-logs"
+          echo "ZET_LOG_DIR=$ZET_LOG_DIR" >> "$GITHUB_ENV"
+          mkdir -p "$ZET_LOG_DIR"
+          chmod 1777 "$ZET_LOG_DIR"
+
+      - name: Run integration tests
+        shell: bash
+        working-directory: tests/integration
+        run: |
+          case "$(uname -s)" in
+            Linux|Darwin)
+              # ulimit -c unlimited must be set inside the privileged shell: sudo
+              # resets resource limits via PAM, so setting it in the outer shell
+              # has no effect on ZET child processes.
+              sudo env "PATH=$PATH" "ZET_BIN=$ZET_BIN" "ZITI_BIN=$ZITI_BIN" \
+                sh -c 'ulimit -c unlimited && exec go test ./... -v -timeout 20m \
+                  -zet-bin="$ZET_BIN" -ziti-bin="$ZITI_BIN" \
+                  -zet-log-dir="${{ env.ZET_LOG_DIR }}"'
+              ;;
+            *)
+              go test ./... -v -timeout 20m \
+                -zet-bin="$ZET_BIN" \
+                -ziti-bin="$ZITI_BIN" \
+                -zet-log-dir="${{ env.ZET_LOG_DIR }}"
+              ;;
+          esac
+
+      - name: Log core file backtraces
+        if: ${{ failure() && matrix.core-dir != '' }}
+        shell: bash
+        run: |
+          shopt -s nullglob
+          cores=("${{ matrix.core-dir }}"/core.*)
+          if [ ${#cores[@]} -eq 0 ]; then
+            echo "No core files found in ${{ matrix.core-dir }}"
+            exit 0
+          fi
+          # Core files are owned by root (ZET runs as root); use sudo to read them.
+          if [ "$(uname -s)" = "Linux" ]; then
+            sudo apt-get install -y --no-install-recommends gdb >/dev/null
+            for core in "${cores[@]}"; do
+              echo "::group::Backtrace: $core"
+              sudo gdb -batch \
+                -ex "set pagination off" \
+                -ex "thread apply all bt full" \
+                "$ZET_BIN" "$core" 2>&1 || true
+              echo "::endgroup::"
+            done
+          elif [ "$(uname -s)" = "Darwin" ]; then
+            for core in "${cores[@]}"; do
+              echo "::group::Backtrace: $core"
+              sudo lldb -c "$core" "$ZET_BIN" -b \
+                -o "thread backtrace all" \
+                -o "quit" 2>&1 || true
+              echo "::endgroup::"
+            done
+          fi
+
+      - name: Upload core files
+        if: ${{ failure() && matrix.core-dir != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: cores-${{ matrix.name }}
+          path: ${{ matrix.core-dir }}/core.*
+          if-no-files-found: ignore
+
+      - name: Upload zet logs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: zet-logs-${{ matrix.name }}
+          path: ${{ env.ZET_LOG_DIR }}/ziti-edge-tunnel*.log
+          if-no-files-found: ignore
+
   nix-build:
     name: Build Nix Binary
     runs-on: ubuntu-latest
