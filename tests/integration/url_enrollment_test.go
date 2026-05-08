@@ -35,6 +35,7 @@ func TestUrlEnrollment(t *testing.T) {
 	requireUrlEnrollmentPrecondition(t)
 	t.Run("withValidControllerUrlSucceeds", testUrlEnrollmentWithValidControllerUrlSucceeds)
 	t.Run("withMalformedUrlFails", testUrlEnrollmentWithMalformedUrlFails)
+	t.Run("withNonZitiEndpointFails", testUrlEnrollmentWithNonZitiEndpointFails)
 	t.Run("sameNameTwiceSecondFails", testUrlEnrollmentSameNameTwiceSecondFails)
 }
 
@@ -125,6 +126,27 @@ func testUrlEnrollmentSameNameTwiceSecondFails(t *testing.T) {
 	require.Contains(t, second.Error, "identity exists",
 		"expected duplicate-name error, got %q", second.Error)
 	t.Logf("second URL AddIdentity correctly rejected: %s", second.Error)
+}
+
+func testUrlEnrollmentWithNonZitiEndpointFails(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	client, err := testutil.DialIPC(ctx)
+	require.NoError(t, err, "dial ZET IPC pipe")
+	t.Cleanup(func() { _ = client.Close() })
+
+	identityName := identityNameFor(t)
+	nonZitiURL := "https://example.com"
+	identityData := testutil.AddIdentityData{
+		IdentityFilename: identityName,
+		ControllerURL:    &nonZitiURL,
+	}
+
+	resp, err := client.AddIdentity(ctx, identityData)
+	require.NoError(t, err, "URL AddIdentity send\n%s", zet.Logs())
+	require.False(t, resp.Success, "non-Ziti URL %q should be rejected, got Success=true\n%s", nonZitiURL, zet.Logs())
+	t.Logf("non-Ziti URL correctly rejected: code=%d error=%q", resp.Code, resp.Error)
 }
 
 func testUrlEnrollmentWithMalformedUrlFails(t *testing.T) {
