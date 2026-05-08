@@ -3,20 +3,29 @@ project(ziti-edge-tunnel)
 if(CMAKE_SYSTEM_NAME STREQUAL Darwin)
     set(NETIF_DRIVER_SOURCE netif_driver/darwin/utun.c)
 endif()
+option(DISABLE_LIBPCAP_FEATURE "libpcap integration toggle" OFF)
+message("DISABLE_LIBPCAP_FEATURE: ${DISABLE_LIBPCAP_FEATURE}")
+
 if(CMAKE_SYSTEM_NAME STREQUAL Linux)
-    set(NETIF_DRIVER_SOURCE netif_driver/linux/tun.c   netif_driver/linux/resolvers.c netif_driver/linux/utils.c
+    set(NETIF_DRIVER_SOURCE netif_driver/linux/tun.c   netif_driver/linux/resolvers.c netif_driver/linux/utils.c)
+    if(NOT DISABLE_LIBPCAP_FEATURE)
+        list(APPEND NETIF_DRIVER_SOURCE
                             netif_driver/pcap_common.c netif_driver/pcap_common.h
                             netif_driver/linux/pcap.c  netif_driver/linux/pcap.h)
+    endif()
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL Windows)
     include(wintun.cmake)
     set(tun_lib wintun)
     set(wintun_dll "${wintun_SOURCE_DIR}/bin/${CMAKE_SYSTEM_PROCESSOR}/wintun.dll")
-    set(NETIF_DRIVER_SOURCE netif_driver/pcap_common.c  netif_driver/pcap_common.h
-                            netif_driver/windows/tun.c  netif_driver/windows/tun.h
-                            netif_driver/windows/tap.c  netif_driver/windows/tap.h
+    set(NETIF_DRIVER_SOURCE netif_driver/windows/tun.c  netif_driver/windows/tun.h
+                            netif_driver/windows/tap.c  netif_driver/windows/tap.h)
+    if(NOT DISABLE_LIBPCAP_FEATURE)
+        list(APPEND NETIF_DRIVER_SOURCE
+                            netif_driver/pcap_common.c  netif_driver/pcap_common.h
                             netif_driver/windows/pcap.c netif_driver/windows/pcap.h)
+    endif()
 endif()
 
 if (MSVC)
@@ -66,6 +75,10 @@ if(CMAKE_SYSTEM_NAME STREQUAL Windows)
     )
     # bundle components are relative to the target's build directory. no directory is needed here since we copied the dll to the build directory.
     set(ziti-edge-tunnel_BUNDLE_COMPS wintun.dll)
+endif()
+
+if(DISABLE_LIBPCAP_FEATURE)
+    target_compile_definitions(ziti-edge-tunnel PRIVATE EXCLUDE_LIBPCAP)
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
