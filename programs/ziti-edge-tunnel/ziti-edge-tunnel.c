@@ -39,13 +39,17 @@
 #elif __linux__
 #include "netif_driver/linux/tun.h"
 #include "linux/diverter.h"
+#ifndef EXCLUDE_LIBPCAP
 #include "netif_driver/linux/pcap.h"
+#endif
 #elif _WIN32
 #include <time.h>
 #include <io.h>
 #include "netif_driver/windows/tun.h"
 #include "netif_driver/windows/tap.h"
+#ifndef EXCLUDE_LIBPCAP
 #include "netif_driver/windows/pcap.h"
+#endif
 #include "windows/windows-service.h"
 #include "windows/windows-scripts.h"
 #include "windows/minidump.h"
@@ -135,7 +139,9 @@ static char *configured_log_level = NULL;
 static char *configured_proxy = NULL;
 char *ipc_discriminator = NULL;
 static bool l2_tunnel = false;
+#ifndef EXCLUDE_LIBPCAP
 static char *pcap_iface = NULL;
+#endif
 
 //timer
 static uv_timer_t metrics_timer;
@@ -877,6 +883,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
 #elif __linux__
     tun = tun_open(ziti_loop, tun_ip, dns_ip, dns_subnet, tun_error, sizeof(tun_error));
     if (tun != NULL && get_l2_enabled()) {
+#ifndef EXCLUDE_LIBPCAP
         const char *pcap_iface = get_pcap_ifname();
         if (pcap_iface && pcap_iface[0] != '\0') {
             ZITI_LOG(INFO, "L2 mode enabled -- opening pcap interface '%s'", pcap_iface);
@@ -886,13 +893,17 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
                 return 1;
             }
         } else {
+#endif
             ZITI_LOG(INFO, "L2 mode enabled -- opening TAP interface");
             tap = tap_open(ziti_loop, tun_error, sizeof(tun_error));
+#ifndef EXCLUDE_LIBPCAP
         }
+#endif
     }
 #elif _WIN32
     tun = tun_open(ziti_loop, tun_ip, dns_subnet, tun_error, sizeof(tun_error));
     if (tun != NULL && get_l2_enabled()) {
+#ifndef EXCLUDE_LIBPCAP
         const char *pcap_iface = get_pcap_ifname();
         if (pcap_iface && pcap_iface[0] != '\0') {
             ZITI_LOG(INFO, "L2 mode enabled -- opening pcap interface '%s'", pcap_iface);
@@ -902,9 +913,12 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
                 return 1;
             }
         } else {
+#endif
             ZITI_LOG(INFO, "L2 mode enabled -- opening TAP interface");
             tap = tap_open(ziti_loop, tun_ip, dns_subnet, tun_error, sizeof(tun_error));
+#ifndef EXCLUDE_LIBPCAP
         }
+#endif
     }
 #else
 #error "ziti-edge-tunnel is not supported on this system"
@@ -1209,7 +1223,9 @@ static struct option run_options[] = {
         { "dns-upstream", required_argument, NULL, 'u'},
         { "proxy", required_argument, NULL, 'x' },
         { "l2", no_argument, NULL, '2' },
+#ifndef EXCLUDE_LIBPCAP
         { "pcap-iface", required_argument, NULL, 'N' },
+#endif
 #if __linux__
         { "diverter", required_argument, NULL, 'D' },
         { "diverter-fw", required_argument, NULL, 'f' },
@@ -1285,7 +1301,12 @@ static int run_opts(int argc, char *argv[]) {
 #else
 #define DIVERTER_SHORT_OPTS ""
 #endif
-    while ((c = getopt_long(argc, argv, "i:I:v:r:d:u:x:2N:"DIVERTER_SHORT_OPTS,
+#ifndef EXCLUDE_LIBPCAP
+#define PCAP_SHORT_OPTS "N:"
+#else
+#define PCAP_SHORT_OPTS ""
+#endif
+    while ((c = getopt_long(argc, argv, "i:I:v:r:d:u:x:2"PCAP_SHORT_OPTS""DIVERTER_SHORT_OPTS,
                             run_options, &option_index)) != -1) {
         switch (c) {
 #if __linux__
@@ -1336,10 +1357,12 @@ static int run_opts(int argc, char *argv[]) {
             case '2':
                 l2_tunnel = true;
                 break;
+#ifndef EXCLUDE_LIBPCAP
             case 'N':
                 pcap_iface = optarg;
                 l2_tunnel = true;
                 break;
+#endif
             default: {
                 fprintf(stderr, "Unknown option '%c'\n", c);
                 errors++;
@@ -1725,9 +1748,11 @@ static void run(int argc, char *argv[]) {
     if (l2_tunnel) {
         set_l2_enabled(l2_tunnel);
     }
+#ifndef EXCLUDE_LIBPCAP
     if (pcap_iface) {
         set_pcap_ifname(pcap_iface);
     }
+#endif
 
     if (init_proxy_connector(configured_proxy) != 0) {
         exit(1);
@@ -2904,14 +2929,21 @@ static int update_tun_ip_opts(int argc, char *argv[]) {
 }
 
 static int update_l2_opts(int argc, char *argv[]) {
+#ifndef EXCLUDE_LIBPCAP
     static struct option opts[] = {
         {"pcap_ifname", required_argument, NULL, 'N'},
     };
+#else
+    static struct option opts[] = {
+        {0, 0, 0, 0},
+    };
+#endif
     int c, option_index, errors = 0;
     optind = 0;
 
     tunnel_l2_options *l2_opts = calloc(1, sizeof(tunnel_l2_options));
     cmd.command = TunnelCommand_UpdateL2Options;
+#ifndef EXCLUDE_LIBPCAP
     while ((c = getopt_long(argc, argv, "N:", opts, &option_index)) != -1) {
         switch (c) {
             case 'N':
@@ -2925,6 +2957,12 @@ static int update_l2_opts(int argc, char *argv[]) {
             }
         }
     }
+#else
+    while ((c = getopt_long(argc, argv, "", opts, &option_index)) != -1) {
+        fprintf(stderr, "Unknown option '%c'\n", c);
+        errors++;
+    }
+#endif
 
     // look for positional param if not using pcap
     if (!l2_opts->enabled) {
@@ -3176,6 +3214,10 @@ static CommandLine enroll_cmd = make_command(
 #define DIVERTER_OPTS_DETAIL ""
 #endif
 
+#ifndef EXCLUDE_LIBPCAP
+#define LIBPCAP_OPTS_DETAIL "\t-N|--pcap-iface\tnetwork interface to read/write with pcap\n"
+#endif
+
 static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required superuser access)",
                                           "-i <id.file> [-r N] [-v N] [-d|--dns-ip-range N.N.N.N/N] " DIVERTER_OPTS_SUMMARY "[-u|--dns-upstream N.N.N.N] [-P|--pipe <name>]\n",
                                           "\t-i|--identity <identity>\trun with provided identity file (required)\n"
@@ -3183,7 +3225,7 @@ static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required supe
                                           "\t-x|--proxy type://[username[:password]@]hostname_or_ip:port\tproxy to use when"
                                           " connecting to OpenZiti controller and edge routers. 'http' is currently the only supported type.\n"
                                           "\t-2|--l2\tenable layer 2 services\n"
-                                          "\t-N|--pcap-iface\tnetwork interface to read/write with pcap\n"
+                                          LIBPCAP_OPTS_DETAIL
                                           "\t-v|--verbose N\tset log level, higher level -- more verbose (default 3)\n"
                                           "\t-r|--refresh N\tset service polling interval in seconds (default 10)\n"
                                           "\t-d|--dns-ip-range <ip range>\tspecify CIDR block in which service DNS names"

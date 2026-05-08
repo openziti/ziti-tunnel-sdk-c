@@ -921,6 +921,7 @@ bool get_l2_enabled() {
     return tnl_status.L2Enabled;
 }
 
+#ifndef EXCLUDE_LIBPCAP
 void set_pcap_ifname(const char* pcap_ifname) {
     if (tnl_status.PcapInterface != NULL) {
         free((char*)tnl_status.PcapInterface);
@@ -935,6 +936,7 @@ void set_pcap_ifname(const char* pcap_ifname) {
 const char *get_pcap_ifname() {
     return tnl_status.PcapInterface;
 }
+#endif
 
 char* get_zet_instance_id(const char* discriminator) {
     char *zet_instance_id = NULL;
