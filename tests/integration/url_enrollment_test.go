@@ -35,6 +35,7 @@ func TestUrlEnrollment(t *testing.T) {
 	requireUrlEnrollmentPrecondition(t)
 	t.Run("withValidControllerUrlSucceeds", testUrlEnrollmentWithValidControllerUrlSucceeds)
 	t.Run("withMalformedUrlFails", testUrlEnrollmentWithMalformedUrlFails)
+	t.Run("sameNameTwiceSecondFails", testUrlEnrollmentSameNameTwiceSecondFails)
 }
 
 func requireUrlEnrollmentPrecondition(t *testing.T) {
@@ -97,6 +98,33 @@ func testUrlEnrollmentWithValidControllerUrlSucceeds(t *testing.T) {
 	require.NoError(t, err, "identity file should be written to -I dir")
 	require.Greater(t, info.Size(), int64(0), "identity file should be non-empty")
 	t.Logf("URL-enrolled identity file written: %s (%d bytes)", entry.Identifier, info.Size())
+}
+
+func testUrlEnrollmentSameNameTwiceSecondFails(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	client, err := testutil.DialIPC(ctx)
+	require.NoError(t, err, "dial ZET IPC pipe")
+	t.Cleanup(func() { _ = client.Close() })
+
+	identityName := identityNameFor(t)
+	controllerURL := overlay.ControllerHostPort()
+	identityData := testutil.AddIdentityData{
+		IdentityFilename: identityName,
+		ControllerURL:    &controllerURL,
+	}
+
+	first, err := client.AddIdentity(ctx, identityData)
+	require.NoError(t, err, "first URL AddIdentity send\n%s", zet.Logs())
+	require.True(t, first.Success, "first URL AddIdentity should succeed: error=%q\n%s", first.Error, zet.Logs())
+
+	second, err := client.AddIdentity(ctx, identityData)
+	require.NoError(t, err, "second URL AddIdentity send\n%s", zet.Logs())
+	require.False(t, second.Success, "second URL AddIdentity should fail, got Success=true")
+	require.Contains(t, second.Error, "identity exists",
+		"expected duplicate-name error, got %q", second.Error)
+	t.Logf("second URL AddIdentity correctly rejected: %s", second.Error)
 }
 
 func testUrlEnrollmentWithMalformedUrlFails(t *testing.T) {
