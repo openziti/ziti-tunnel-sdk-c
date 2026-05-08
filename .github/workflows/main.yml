@@ -141,6 +141,11 @@ jobs:
           sudo chmod 1777 "${{ matrix.core-dir }}"
           if [ "$(uname -s)" = "Linux" ]; then
             echo '${{ matrix.core-dir }}/core.%e.%p' | sudo tee /proc/sys/kernel/core_pattern
+            # Allow core dumps from processes that change credentials (capabilities).
+            # Default suid_dumpable=0 suppresses cores from such processes.
+            echo 1 | sudo tee /proc/sys/fs/suid_dumpable
+          elif [ "$(uname -s)" = "Darwin" ]; then
+            sudo sysctl -w kern.corefile="${{ matrix.core-dir }}/core.%N.%P"
           fi
 
       - name: Run integration tests
@@ -173,11 +178,12 @@ jobs:
             echo "No core files found in ${{ matrix.core-dir }}"
             exit 0
           fi
+          # Core files are owned by root (ZET runs as root); use sudo to read them.
           if [ "$(uname -s)" = "Linux" ]; then
             sudo apt-get install -y --no-install-recommends gdb >/dev/null
             for core in "${cores[@]}"; do
               echo "::group::Backtrace: $core"
-              gdb -batch \
+              sudo gdb -batch \
                 -ex "set pagination off" \
                 -ex "thread apply all bt full" \
                 "$ZET_BIN" "$core" 2>&1 || true
@@ -186,7 +192,7 @@ jobs:
           elif [ "$(uname -s)" = "Darwin" ]; then
             for core in "${cores[@]}"; do
               echo "::group::Backtrace: $core"
-              lldb -c "$core" "$ZET_BIN" -b \
+              sudo lldb -c "$core" "$ZET_BIN" -b \
                 -o "thread backtrace all" \
                 -o "quit" 2>&1 || true
               echo "::endgroup::"
