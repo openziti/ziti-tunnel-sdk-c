@@ -1533,7 +1533,13 @@ static void run(int argc, char *argv[]) {
             }
         }
         model_list_clear(&ipc_list, free);
-        ipc_list = live_list;
+        // model_list is not trivially copyable: each entry stores entry->l as a
+        // back-pointer to its owning list. A struct copy would leave those pointers
+        // pointing at the now-out-of-scope live_list, corrupting later traversals.
+        MODEL_LIST_FOREACH(sock_name, live_list) {
+            model_list_append(&ipc_list, strdup(sock_name));
+        }
+        model_list_clear(&live_list, free);
         other_zets = model_list_size(&ipc_list);
     }
 #endif
