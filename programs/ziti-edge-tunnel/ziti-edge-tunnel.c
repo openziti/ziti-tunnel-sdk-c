@@ -1441,12 +1441,26 @@ size_t find_other_zets(model_list *ipcs, const char *ipc_prefix) {
         ZITI_LOG(DEBUG, "failed to scan for other ziti-edge-tunnels at [%s]: %d/%s", SOCKET_PATH, rc, uv_strerror(rc));
         return 0;
     }
+    size_t prefix_len = strlen(ipc_prefix);
     uv_dirent_t file;
     while (uv_fs_scandir_next(&fs, &file) == 0) {
-        size_t len = strlen(ipc_prefix);
-        if (strncmp(file.name, ipc_prefix, len) == 0) {
-            model_list_append(ipcs, strdup(file.name));
+        if (strncmp(file.name, ipc_prefix, prefix_len) != 0) continue;
+#if !_WIN32
+        // Unix socket files outlive their process; skip names whose socket is
+        // no longer accepting connections.
+        char probe_path[PATH_MAX];
+        snprintf(probe_path, sizeof(probe_path), "%s%s", SOCKET_PATH, file.name);
+        struct sockaddr_un addr = { .sun_family = AF_UNIX };
+        strncpy(addr.sun_path, probe_path, sizeof(addr.sun_path) - 1);
+        int s = socket(AF_UNIX, SOCK_STREAM, 0);
+        bool live = (s >= 0) && connect(s, (const struct sockaddr *) &addr, sizeof(addr)) == 0;
+        if (s >= 0) close(s);
+        if (!live) {
+            ZITI_LOG(DEBUG, "ignoring stale socket: %s", probe_path);
+            continue;
         }
+#endif
+        model_list_append(ipcs, strdup(file.name));
     }
     uv_fs_req_cleanup(&fs);
     return model_list_size(ipcs);
@@ -1504,45 +1518,6 @@ static void run(int argc, char *argv[]) {
 
     model_list ipc_list = {0};
     size_t other_zets = find_other_zets(&ipc_list, sockfilebase);
-
-#if !_WIN32
-    {
-        // On Linux/Mac socket files outlive their process; filter out stale ones.
-        size_t base_len = strlen(sockfilebase);
-        model_list live_list = {0};
-        const char *sock_name;
-        MODEL_LIST_FOREACH(sock_name, ipc_list) {
-            char probe_path[PATH_MAX];
-            char *disc = (strlen(sock_name) > base_len && sock_name[base_len] == '.')
-                         ? strdup(sock_name + base_len + 1) : NULL;
-            if (disc) {
-                snprintf(probe_path, sizeof(probe_path), "%s%s.%s", SOCKET_PATH, sockfilebase, disc);
-            } else {
-                snprintf(probe_path, sizeof(probe_path), "%s%s", SOCKET_PATH, sockfilebase);
-            }
-            free(disc);
-            struct sockaddr_un addr = { .sun_family = AF_UNIX };
-            strncpy(addr.sun_path, probe_path, sizeof(addr.sun_path) - 1);
-            int s = socket(AF_UNIX, SOCK_STREAM, 0);
-            bool live = connect(s, (const struct sockaddr *) &addr, sizeof(addr)) == 0;
-            close(s);
-            if (live) {
-                model_list_append(&live_list, strdup(sock_name));
-            } else {
-                ZITI_LOG(DEBUG, "ignoring stale socket: %s", probe_path);
-            }
-        }
-        model_list_clear(&ipc_list, free);
-        // model_list is not trivially copyable: each entry stores entry->l as a
-        // back-pointer to its owning list. A struct copy would leave those pointers
-        // pointing at the now-out-of-scope live_list, corrupting later traversals.
-        MODEL_LIST_FOREACH(sock_name, live_list) {
-            model_list_append(&ipc_list, strdup(sock_name));
-        }
-        model_list_clear(&live_list, free);
-        other_zets = model_list_size(&ipc_list);
-    }
-#endif
 
 #if _WIN32
     {
