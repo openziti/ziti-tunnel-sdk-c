@@ -55,7 +55,6 @@ jobs:
   integration-tests:
     name: Integration Tests (${{ matrix.name }})
     needs: [ call-cmake-build ]
-    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
