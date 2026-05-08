@@ -69,6 +69,7 @@ jobs:
             sudo: sudo -E env "PATH=$PATH"
             create-group: sudo groupadd --system ziti
             core-dir: /tmp/cores
+            zet-log-dir: ${{ runner.temp }}/zet-logs
           - name: macOS arm64
             runner: macos-15
             artifact: macOS-arm64
@@ -78,6 +79,7 @@ jobs:
             sudo: sudo -E env "PATH=$PATH"
             create-group: sudo dseditgroup -o create ziti
             core-dir: /cores
+            zet-log-dir: ${{ runner.temp }}/zet-logs
           - name: Windows x64
             runner: windows-2022
             artifact: windows-x64-mingw
@@ -87,6 +89,7 @@ jobs:
             sudo: ""
             create-group: ""
             core-dir: ""
+            zet-log-dir: ${{ runner.temp }}/zet-logs
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout
@@ -148,6 +151,12 @@ jobs:
             sudo sysctl -w kern.corefile="${{ matrix.core-dir }}/core.%N.%P"
           fi
 
+      - name: Configure zet log dir
+        shell: bash
+        run: |
+          mkdir -p "${{ matrix.zet-log-dir }}"
+          chmod 1777 "${{ matrix.zet-log-dir }}"
+
       - name: Run integration tests
         shell: bash
         working-directory: tests/integration
@@ -159,12 +168,14 @@ jobs:
               # has no effect on ZET child processes.
               sudo env "PATH=$PATH" "ZET_BIN=$ZET_BIN" "ZITI_BIN=$ZITI_BIN" \
                 sh -c 'ulimit -c unlimited && exec go test ./... -v -timeout 20m \
-                  -zet-bin="$ZET_BIN" -ziti-bin="$ZITI_BIN"'
+                  -zet-bin="$ZET_BIN" -ziti-bin="$ZITI_BIN" \
+                  -zet-log-dir="${{ matrix.zet-log-dir }}"'
               ;;
             *)
               go test ./... -v -timeout 20m \
                 -zet-bin="$ZET_BIN" \
-                -ziti-bin="$ZITI_BIN"
+                -ziti-bin="$ZITI_BIN" \
+                -zet-log-dir="${{ matrix.zet-log-dir }}"
               ;;
           esac
 
@@ -205,6 +216,14 @@ jobs:
         with:
           name: cores-${{ matrix.name }}
           path: ${{ matrix.core-dir }}/core.*
+          if-no-files-found: ignore
+
+      - name: Upload zet logs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: zet-logs-${{ matrix.name }}
+          path: ${{ matrix.zet-log-dir }}/ziti-edge-tunnel*.log
           if-no-files-found: ignore
 
   nix-build:
