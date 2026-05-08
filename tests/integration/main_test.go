@@ -29,21 +29,21 @@ import (
 )
 
 var (
-	zetBin        string
-	zitiBin       string
-	zetLogDir     string
-	keepArtifacts bool
-	overlay       *testutil.Overlay
-	zet           *testutil.ZET
-	zetB          *testutil.ZET
-	tempRoot      string
+	zetBin      string
+	zitiBin     string
+	zetLogDir   string
+	overlay     *testutil.Overlay
+	zet         *testutil.ZET
+	zetB        *testutil.ZET
+	overlayHome string
+	zetTempRoot string
 )
 
 func TestMain(m *testing.M) {
 	flag.StringVar(&zetBin, "zet-bin", "", "path to ziti-edge-tunnel binary (required)")
 	flag.StringVar(&zitiBin, "ziti-bin", "", "path to ziti binary for controller+router bring-up (required)")
 	flag.StringVar(&zetLogDir, "zet-log-dir", "", "if set, write each zet's combined stdout+stderr to <dir>/zet-<name>.log")
-	flag.BoolVar(&keepArtifacts, "keep-artifacts", false, "leave temp dirs on disk after tests finish")
+	flag.StringVar(&overlayHome, "overlay-home", filepath.Join(os.TempDir(), "ziti-tunnel-test-quickstart"), "directory for the test overlay's persistent quickstart state (PKI lives here across runs)")
 	flag.Parse()
 
 	if zetBin == "" || zitiBin == "" {
@@ -64,28 +64,26 @@ func run(m *testing.M) (int, error) {
 		return 0, err
 	}
 	var err error
-	tempRoot, err = os.MkdirTemp("", "ziti-tunnel-integ-*")
+	zetTempRoot, err = os.MkdirTemp("", "ziti-tunnel-zet-*")
 	if err != nil {
-		return 0, fmt.Errorf("create temp root: %w", err)
+		return 0, fmt.Errorf("create zet temp root: %w", err)
 	}
-	defer func() {
-		if !keepArtifacts {
-			_ = os.RemoveAll(tempRoot)
-		} else {
-			fmt.Fprintf(os.Stderr, "artifacts kept at %s\n", tempRoot)
-		}
-	}()
+	defer os.RemoveAll(zetTempRoot)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
-	overlay, err = testutil.StartOverlay(ctx, zitiBin, filepath.Join(tempRoot, "overlay"))
+	overlay, err = testutil.StartOverlay(ctx, zitiBin, overlayHome)
 	if err != nil {
 		return 0, fmt.Errorf("start overlay: %w", err)
 	}
 	defer overlay.Stop()
 
-	zet, err = testutil.StartZET(ctx, zetBin, filepath.Join(tempRoot, "zet-identities"), testutil.ZETOptions{
+	if err := overlay.PurgeIdentities(ctx, "Test"); err != nil {
+		return 0, fmt.Errorf("purge stale test identities: %w", err)
+	}
+
+	zet, err = testutil.StartZET(ctx, zetBin, filepath.Join(zetTempRoot, "zet-identities"), testutil.ZETOptions{
 		LogDir: zetLogDir,
 	})
 	if err != nil {
@@ -93,7 +91,7 @@ func run(m *testing.M) (int, error) {
 	}
 	defer zet.Stop()
 
-	zetB, err = testutil.StartZET(ctx, zetBin, filepath.Join(tempRoot, "zetB-identities"), testutil.ZETOptions{
+	zetB, err = testutil.StartZET(ctx, zetBin, filepath.Join(zetTempRoot, "zetB-identities"), testutil.ZETOptions{
 		Discriminator: "zetB",
 		DNSRange:      "100.128.0.1/10",
 		LogDir:        zetLogDir,

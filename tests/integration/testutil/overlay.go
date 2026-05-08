@@ -21,7 +21,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -30,8 +29,10 @@ import (
 )
 
 const (
-	adminUsername = "admin"
-	adminPassword = "admin"
+	adminUsername    = "admin"
+	adminPassword    = "admin"
+	overlayCtrlPort  = 1280
+	overlayRtrPort   = 3022
 )
 
 type Overlay struct {
@@ -50,14 +51,6 @@ type Overlay struct {
 // waits for the controller to accept an admin login, and returns a handle.
 // Callers must defer Stop().
 func StartOverlay(ctx context.Context, zitiBin, home string) (*Overlay, error) {
-	ctrlPort, err := findAvailablePort()
-	if err != nil {
-		return nil, fmt.Errorf("allocate controller port: %w", err)
-	}
-	rtrPort, err := findAvailablePort()
-	if err != nil {
-		return nil, fmt.Errorf("allocate router port: %w", err)
-	}
 	if err := os.MkdirAll(home, 0o700); err != nil {
 		return nil, fmt.Errorf("mkdir home: %w", err)
 	}
@@ -66,9 +59,9 @@ func StartOverlay(ctx context.Context, zitiBin, home string) (*Overlay, error) {
 		"edge", "quickstart",
 		"--home=" + home,
 		"--ctrl-address=localhost",
-		fmt.Sprintf("--ctrl-port=%d", ctrlPort),
+		fmt.Sprintf("--ctrl-port=%d", overlayCtrlPort),
 		"--router-address=localhost",
-		fmt.Sprintf("--router-port=%d", rtrPort),
+		fmt.Sprintf("--router-port=%d", overlayRtrPort),
 	}
 	cmd := exec.CommandContext(ctx, zitiBin, args...)
 	cmd.Env = append(os.Environ(),
@@ -86,8 +79,8 @@ func StartOverlay(ctx context.Context, zitiBin, home string) (*Overlay, error) {
 	o := &Overlay{
 		ZitiBin:        zitiBin,
 		Home:           home,
-		ControllerPort: ctrlPort,
-		RouterPort:     rtrPort,
+		ControllerPort: overlayCtrlPort,
+		RouterPort:     overlayRtrPort,
 		extCmd:         cmd,
 		stdout:         stdout,
 		stderr:         stderr,
@@ -303,11 +296,29 @@ func (o *Overlay) runZiti(ctx context.Context, args ...string) ([]byte, error) {
 	return []byte(stdout.String()), nil
 }
 
-func findAvailablePort() (uint16, error) {
-	l, err := net.Listen("tcp", "127.0.0.1:0")
+// PurgeIdentities deletes every identity on the controller whose name starts
+// with prefix. Reuses DeleteIdentity for the per-name delete.
+func (o *Overlay) PurgeIdentities(ctx context.Context, prefix string) error {
+	filter := fmt.Sprintf(`name contains "%s"`, prefix)
+	out, err := o.runZiti(ctx, "edge", "list", "identities", filter, "-j")
 	if err != nil {
-		return 0, err
+		return fmt.Errorf("list identities: %w", err)
 	}
-	defer l.Close()
-	return uint16(l.Addr().(*net.TCPAddr).Port), nil
+	var listResp struct {
+		Data []struct {
+			Name string `json:"name"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(out, &listResp); err != nil {
+		return fmt.Errorf("parse identities list: %w", err)
+	}
+	for _, id := range listResp.Data {
+		if !strings.HasPrefix(id.Name, prefix) {
+			continue
+		}
+		if err := o.DeleteIdentity(ctx, id.Name); err != nil {
+			return err
+		}
+	}
+	return nil
 }
