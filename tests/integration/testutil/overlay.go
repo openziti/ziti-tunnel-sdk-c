@@ -128,16 +128,22 @@ func (o *Overlay) RequireCATrusted(t *testing.T) {
 		install = fmt.Sprintf(`sudo cp %s /usr/local/share/ca-certificates/ziti-test.crt && sudo update-ca-certificates`, caPath)
 		cleanup = `sudo rm /usr/local/share/ca-certificates/ziti-test.crt && sudo update-ca-certificates --fresh`
 	default:
-		t.Skipf("tests need the CA at %s in OS trust (no install instructions for %s)", caPath, runtime.GOOS)
+		t.Skipf(`tests need the CA at %s in OS trust (no install instructions for %s).
+
+  Current -overlay-home: %s
+  Pass a durable path with -overlay-home so the PKI (and this trust install) persists across runs.`, caPath, runtime.GOOS, o.Home)
 		return
 	}
 	t.Skipf(`tests need the test overlay's CA in OS trust.
+
+  Current -overlay-home: %s
+  Pass a durable path with -overlay-home so the PKI (and this trust install) persists across runs.
 
   Install:
   %s
 
   Cleanup when done:
-  %s`, install, cleanup)
+  %s`, o.Home, install, cleanup)
 }
 
 func (o *Overlay) Stop() {
