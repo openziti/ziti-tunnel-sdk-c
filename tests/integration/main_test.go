@@ -82,6 +82,12 @@ func run(m *testing.M) (int, error) {
 	if err := overlay.PurgeIdentities(ctx, "Test"); err != nil {
 		return 0, fmt.Errorf("purge stale test identities: %w", err)
 	}
+	if err := overlay.PurgeAuthPolicies(ctx, "Test"); err != nil {
+		return 0, fmt.Errorf("purge stale test auth policies: %w", err)
+	}
+	if err := overlay.PurgeExtJwtSigners(ctx, "Test"); err != nil {
+		return 0, fmt.Errorf("purge stale test ext-jwt-signers: %w", err)
+	}
 
 	zet, err = testutil.StartZET(ctx, zetBin, filepath.Join(zetTempRoot, "zet-identities"), testutil.ZETOptions{
 		LogDir: zetLogDir,

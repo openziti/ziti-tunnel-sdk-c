@@ -199,6 +199,64 @@ func (o *Overlay) CreateIdentityJWTWithAuthPolicy(ctx context.Context, name, aut
 	return string(bytes.TrimSpace(content)), nil
 }
 
+// CreateExtJwtSigner registers an external JWT signer on the controller and
+// returns its assigned ID. jwksEndpoint is the URL the controller fetches
+// public keys from to verify incoming JWTs; externalAuthURL is what the SDK
+// directs users to so they can obtain a JWT (the IdP's /authorize equivalent).
+func (o *Overlay) CreateExtJwtSigner(ctx context.Context, name, issuer, jwksEndpoint, audience, clientID, externalAuthURL string) (string, error) {
+	out, err := o.runZiti(ctx, "edge", "create", "ext-jwt-signer", name, issuer,
+		"--jwks-endpoint", jwksEndpoint,
+		"--audience", audience,
+		"--client-id", clientID,
+		"--external-auth-url", externalAuthURL,
+	)
+	if err != nil {
+		return "", fmt.Errorf("create ext-jwt-signer %s: %w", name, err)
+	}
+	return string(bytes.TrimSpace(out)), nil
+}
+
+// CreateAuthPolicyForExtJwt creates an auth policy whose primary auth method
+// is the ext-jwt-signer with the given ID.
+func (o *Overlay) CreateAuthPolicyForExtJwt(ctx context.Context, name, signerID string) error {
+	if _, err := o.runZiti(ctx, "edge", "create", "auth-policy", name,
+		"--primary-ext-jwt-allowed",
+		"--primary-ext-jwt-allowed-signers", signerID,
+	); err != nil {
+		return fmt.Errorf("create auth policy %s: %w", name, err)
+	}
+	return nil
+}
+
+// CreateIdentityWithExternalId provisions a non-admin identity bound to the
+// named auth policy and stamped with externalId so the controller can match it
+// against the "sub" claim of an ext-jwt-signer-issued JWT.
+func (o *Overlay) CreateIdentityWithExternalId(ctx context.Context, name, externalID, authPolicy string) error {
+	if _, err := o.runZiti(ctx, "edge", "create", "identity", name,
+		"--external-id", externalID,
+		"-P", authPolicy,
+	); err != nil {
+		return fmt.Errorf("create identity %s with externalId %s: %w", name, externalID, err)
+	}
+	return nil
+}
+
+// DeleteExtJwtSigner removes an ext-jwt-signer by name.
+func (o *Overlay) DeleteExtJwtSigner(ctx context.Context, name string) error {
+	if _, err := o.runZiti(ctx, "edge", "delete", "ext-jwt-signer", name); err != nil {
+		return fmt.Errorf("delete ext-jwt-signer %s: %w", name, err)
+	}
+	return nil
+}
+
+// DeleteAuthPolicy removes an auth policy by name.
+func (o *Overlay) DeleteAuthPolicy(ctx context.Context, name string) error {
+	if _, err := o.runZiti(ctx, "edge", "delete", "auth-policy", name); err != nil {
+		return fmt.Errorf("delete auth policy %s: %w", name, err)
+	}
+	return nil
+}
+
 // CreateHostConfigV1 creates a host.v1 config that forwards to forwardAddr:forwardPort.
 func (o *Overlay) CreateHostConfigV1(ctx context.Context, name, protocol, forwardAddr string, forwardPort int) error {
 	body, err := json.Marshal(struct {
@@ -335,28 +393,73 @@ func (o *Overlay) runZiti(ctx context.Context, args ...string) ([]byte, error) {
 	return []byte(stdout.String()), nil
 }
 
-// PurgeIdentities deletes every identity on the controller whose name starts
-// with prefix. Reuses DeleteIdentity for the per-name delete.
-func (o *Overlay) PurgeIdentities(ctx context.Context, prefix string) error {
-	filter := fmt.Sprintf(`name contains "%s"`, prefix)
+// IdentityID looks up an identity by exact name and returns its controller ID.
+func (o *Overlay) IdentityID(ctx context.Context, name string) (string, error) {
+	filter := fmt.Sprintf(`name = "%s"`, name)
 	out, err := o.runZiti(ctx, "edge", "list", "identities", filter, "-j")
 	if err != nil {
-		return fmt.Errorf("list identities: %w", err)
+		return "", fmt.Errorf("list identity %q: %w", name, err)
 	}
 	var listResp struct {
 		Data []struct {
+			ID   string `json:"id"`
 			Name string `json:"name"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(out, &listResp); err != nil {
-		return fmt.Errorf("parse identities list: %w", err)
+		return "", fmt.Errorf("parse identity list: %w", err)
 	}
 	for _, id := range listResp.Data {
-		if !strings.HasPrefix(id.Name, prefix) {
-			continue
+		if id.Name == name {
+			return id.ID, nil
 		}
-		if err := o.DeleteIdentity(ctx, id.Name); err != nil {
-			return err
+	}
+	return "", fmt.Errorf("identity %q not found", name)
+}
+
+// PurgeIdentities deletes every identity on the controller whose name starts
+// with prefix. Reuses DeleteIdentity for the per-name delete.
+func (o *Overlay) PurgeIdentities(ctx context.Context, prefix string) error {
+	return o.purgeByPrefix(ctx, "identities", prefix, o.DeleteIdentity)
+}
+
+// PurgeAuthPolicies deletes every auth policy whose name starts with prefix.
+func (o *Overlay) PurgeAuthPolicies(ctx context.Context, prefix string) error {
+	return o.purgeByPrefix(ctx, "auth-policies", prefix, o.DeleteAuthPolicy)
+}
+
+// PurgeExtJwtSigners deletes every ext-jwt-signer whose name starts with prefix.
+func (o *Overlay) PurgeExtJwtSigners(ctx context.Context, prefix string) error {
+	return o.purgeByPrefix(ctx, "ext-jwt-signers", prefix, o.DeleteExtJwtSigner)
+}
+
+func (o *Overlay) purgeByPrefix(ctx context.Context, entity, prefix string, del func(context.Context, string) error) error {
+	filter := fmt.Sprintf(`name contains "%s"`, prefix)
+	for {
+		out, err := o.runZiti(ctx, "edge", "list", entity, filter, "-j")
+		if err != nil {
+			return fmt.Errorf("list %s: %w", entity, err)
+		}
+		var listResp struct {
+			Data []struct {
+				Name string `json:"name"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(out, &listResp); err != nil {
+			return fmt.Errorf("parse %s list: %w", entity, err)
+		}
+		deleted := 0
+		for _, item := range listResp.Data {
+			if !strings.HasPrefix(item.Name, prefix) {
+				continue
+			}
+			if err := del(ctx, item.Name); err != nil {
+				return err
+			}
+			deleted++
+		}
+		if deleted == 0 {
+			return nil
 		}
 	}
 }
