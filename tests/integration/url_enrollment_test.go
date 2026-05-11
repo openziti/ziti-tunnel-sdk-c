@@ -37,6 +37,7 @@ func TestUrlEnrollment(t *testing.T) {
 	t.Run("withMalformedUrlFails", testUrlEnrollmentWithMalformedUrlFails)
 	t.Run("withNonZitiEndpointFails", testUrlEnrollmentWithNonZitiEndpointFails)
 	t.Run("sameNameTwiceSecondFails", testUrlEnrollmentSameNameTwiceSecondFails)
+	t.Run("afterJwtSameNameFails", testUrlEnrollmentAfterJwtSameNameFails)
 }
 
 func requireUrlEnrollmentPrecondition(t *testing.T) {
@@ -126,6 +127,39 @@ func testUrlEnrollmentSameNameTwiceSecondFails(t *testing.T) {
 	require.Contains(t, second.Error, "identity exists",
 		"expected duplicate-name error, got %q", second.Error)
 	t.Logf("second URL AddIdentity correctly rejected: %s", second.Error)
+}
+
+func testUrlEnrollmentAfterJwtSameNameFails(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	identityName := identityNameFor(t)
+	jwt, err := overlay.CreateIdentityJWT(ctx, identityName)
+	require.NoError(t, err, "mint JWT via overlay")
+	require.NotEmpty(t, jwt)
+
+	client, err := testutil.DialIPC(ctx)
+	require.NoError(t, err, "dial ZET IPC pipe")
+	t.Cleanup(func() { _ = client.Close() })
+
+	jwtIdentityData := testutil.AddIdentityData{
+		IdentityFilename: identityName,
+		JwtContent:       &jwt,
+	}
+	first, err := client.AddIdentity(ctx, jwtIdentityData)
+	require.NoError(t, err, "first JWT AddIdentity send\n%s", zet.Logs())
+	require.True(t, first.Success, "first JWT AddIdentity should succeed: error=%q\n%s", first.Error, zet.Logs())
+
+	controllerURL := overlay.ControllerHostPort()
+	urlIdentityData := testutil.AddIdentityData{
+		IdentityFilename: identityName,
+		ControllerURL:    &controllerURL,
+	}
+	second, err := client.AddIdentity(ctx, urlIdentityData)
+	require.NoError(t, err, "second URL AddIdentity send\n%s", zet.Logs())
+	require.False(t, second.Success, "URL AddIdentity should fail when name already enrolled via JWT, got Success=true")
+	require.Contains(t, second.Error, "identity exists", "expected duplicate-name error, got %q", second.Error)
+	t.Logf("URL AddIdentity correctly rejected after JWT enroll: %s", second.Error)
 }
 
 func testUrlEnrollmentWithNonZitiEndpointFails(t *testing.T) {
