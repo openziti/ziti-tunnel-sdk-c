@@ -19,12 +19,16 @@ package testutil
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"testing"
 	"time"
 )
 
@@ -99,6 +103,41 @@ func StartOverlay(ctx context.Context, zitiBin, home string) (*Overlay, error) {
 
 func (o *Overlay) ControllerHostPort() string {
 	return fmt.Sprintf("https://localhost:%d", o.ControllerPort)
+}
+
+// RequireCATrusted skips the test (with OS-specific install/cleanup
+// instructions) if the overlay's CA isn't in the calling OS's trust store.
+func (o *Overlay) RequireCATrusted(t *testing.T) {
+	t.Helper()
+	hostport := fmt.Sprintf("localhost:%d", o.ControllerPort)
+	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: 2 * time.Second}, "tcp", hostport, nil)
+	if err == nil {
+		_ = conn.Close()
+		return
+	}
+	caPath := filepath.Join(o.Home, "pki", "root-ca", "certs", "root-ca.cert")
+	var install, cleanup string
+	switch runtime.GOOS {
+	case "windows":
+		install = fmt.Sprintf(`Import-Certificate -FilePath "%s" -CertStoreLocation Cert:\LocalMachine\Root`, caPath)
+		cleanup = fmt.Sprintf(`$c = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2 "%s"; Get-ChildItem Cert:\LocalMachine\Root | ? Thumbprint -eq $c.Thumbprint | Remove-Item`, caPath)
+	case "darwin":
+		install = fmt.Sprintf(`sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain %s`, caPath)
+		cleanup = fmt.Sprintf(`sudo security delete-certificate -Z $(openssl x509 -in %s -noout -fingerprint -sha1 | sed 's/.*=//' | tr -d ':') /Library/Keychains/System.keychain`, caPath)
+	case "linux":
+		install = fmt.Sprintf(`sudo cp %s /usr/local/share/ca-certificates/ziti-test.crt && sudo update-ca-certificates`, caPath)
+		cleanup = `sudo rm /usr/local/share/ca-certificates/ziti-test.crt && sudo update-ca-certificates --fresh`
+	default:
+		t.Skipf("tests need the CA at %s in OS trust (no install instructions for %s)", caPath, runtime.GOOS)
+		return
+	}
+	t.Skipf(`tests need the test overlay's CA in OS trust.
+
+  Install:
+  %s
+
+  Cleanup when done:
+  %s`, install, cleanup)
 }
 
 func (o *Overlay) Stop() {
@@ -320,5 +359,4 @@ func (o *Overlay) PurgeIdentities(ctx context.Context, prefix string) error {
 			return err
 		}
 	}
-	return nil
 }

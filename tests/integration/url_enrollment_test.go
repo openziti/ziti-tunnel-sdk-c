@@ -18,12 +18,7 @@ package integration_test
 
 import (
 	"context"
-	"crypto/tls"
-	"fmt"
-	"net"
 	"os"
-	"path/filepath"
-	"runtime"
 	"testing"
 	"time"
 
@@ -32,44 +27,12 @@ import (
 )
 
 func TestUrlEnrollment(t *testing.T) {
-	requireUrlEnrollmentPrecondition(t)
+	overlay.RequireCATrusted(t)
 	t.Run("withValidControllerUrlSucceeds", testUrlEnrollmentWithValidControllerUrlSucceeds)
 	t.Run("withMalformedUrlFails", testUrlEnrollmentWithMalformedUrlFails)
 	t.Run("withNonZitiEndpointFails", testUrlEnrollmentWithNonZitiEndpointFails)
 	t.Run("sameNameTwiceSecondFails", testUrlEnrollmentSameNameTwiceSecondFails)
 	t.Run("afterJwtSameNameFails", testUrlEnrollmentAfterJwtSameNameFails)
-}
-
-func requireUrlEnrollmentPrecondition(t *testing.T) {
-	t.Helper()
-	hostport := fmt.Sprintf("localhost:%d", overlay.ControllerPort)
-	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: 2 * time.Second}, "tcp", hostport, nil)
-	if err != nil {
-		caPath := filepath.Join(overlayHome, "pki", "root-ca", "certs", "root-ca.cert")
-		var install, cleanup string
-		switch runtime.GOOS {
-		case "windows":
-			install = fmt.Sprintf(`Import-Certificate -FilePath "%s" -CertStoreLocation Cert:\LocalMachine\Root`, caPath)
-			cleanup = fmt.Sprintf(`$c = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2 "%s"; Get-ChildItem Cert:\LocalMachine\Root | ? Thumbprint -eq $c.Thumbprint | Remove-Item`, caPath)
-		case "darwin":
-			install = fmt.Sprintf(`sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain %s`, caPath)
-			cleanup = fmt.Sprintf(`sudo security delete-certificate -Z $(openssl x509 -in %s -noout -fingerprint -sha1 | sed 's/.*=//' | tr -d ':') /Library/Keychains/System.keychain`, caPath)
-		case "linux":
-			install = fmt.Sprintf(`sudo cp %s /usr/local/share/ca-certificates/ziti-test.crt && sudo update-ca-certificates`, caPath)
-			cleanup = `sudo rm /usr/local/share/ca-certificates/ziti-test.crt && sudo update-ca-certificates --fresh`
-		default:
-			t.Skipf("URL tests need the CA at %s in OS trust (no install instructions for %s)", caPath, runtime.GOOS)
-			return
-		}
-		t.Skipf(`URL tests need the test overlay's CA in OS trust.
-
-  Install:
-  %s
-
-  Cleanup when done:
-  %s`, install, cleanup)
-	}
-	_ = conn.Close()
 }
 
 // testUrlEnrollmentWithValidControllerUrlSucceeds exercises the "URL + no enroll-to mode" path.
