@@ -29,6 +29,7 @@ func TestExternalAuth(t *testing.T) {
 	overlay.RequireCATrusted(t)
 	t.Run("onUrlEnrolledIdentityCompletes", testExternalAuthOnUrlEnrolledIdentityCompletes)
 	t.Run("withInvalidProviderFails", testExternalAuthWithInvalidProviderFails)
+	t.Run("withoutControllerIdentityFails", testExternalAuthWithoutControllerIdentityFails)
 }
 
 func testExternalAuthOnUrlEnrolledIdentityCompletes(t *testing.T) {
@@ -37,20 +38,29 @@ func testExternalAuthOnUrlEnrolledIdentityCompletes(t *testing.T) {
 
 	name := identityNameFor(t)
 	controllerBase := overlay.ControllerHostPort()
-	enrolled := newEnrolledExtAuth(t, ctx, name, controllerBase+"/oidc")
+	testUserName := name + "-user"
+	testUserPassword := "test-password"
 
-	authResp, err := enrolled.Client.GetExternalAuth(ctx, enrolled.Identifier, enrolled.SignerName)
+	testUserID, err := overlay.CreateUpdbUser(ctx, testUserName, testUserName, testUserPassword)
+	require.NoError(t, err, "create updb test user")
+
+	signerName, policyName := createExtAuthSignerAndPolicy(t, ctx, name, controllerBase+"/oidc", controllerBase+"/oidc")
+	require.NoError(t, overlay.CreateIdentityWithExternalId(ctx, name, testUserID, policyName), "create controller identity with externalId=testUserID")
+
+	client, identifier := urlEnrollForExtAuth(t, ctx, name)
+
+	authResp, err := client.GetExternalAuth(ctx, identifier, signerName)
 	require.NoError(t, err, "ExternalAuth\n%s", zet.Logs())
 	require.NotEmpty(t, authResp.URL, "ExternalAuth should return a non-empty auth URL")
 
-	require.NoError(t, testutil.DriveControllerOIDC(ctx, authResp.URL, controllerBase, enrolled.TestUserName, enrolled.TestUserPass), "drive controller OIDC flow")
+	require.NoError(t, testutil.DriveControllerOIDC(ctx, authResp.URL, controllerBase, testUserName, testUserPassword), "drive controller OIDC flow")
 
 	events, err := testutil.DialEvents(ctx)
 	require.NoError(t, err, "dial ZET event pipe")
 	t.Cleanup(func() { _ = events.Close() })
 	events.WaitFor(t, ctx, "identity", "added", name)
 
-	finalStatus, err := enrolled.Client.GetTunnelStatus(ctx)
+	finalStatus, err := client.GetTunnelStatus(ctx)
 	require.NoError(t, err, "Status after ExternalAuth\n%s", zet.Logs())
 	finalEntry := finalStatus.FindIdentity(name)
 	require.NotNil(t, finalEntry, "identity %q missing from Status after ExternalAuth", name)
@@ -62,44 +72,81 @@ func testExternalAuthWithInvalidProviderFails(t *testing.T) {
 	defer cancel()
 
 	name := identityNameFor(t)
-	issuer := overlay.ControllerHostPort() + "/oidc/" + name
-	enrolled := newEnrolledExtAuth(t, ctx, name, issuer)
+	controllerBase := overlay.ControllerHostPort()
+	testUserName := name + "-user"
+	testUserPassword := "test-password"
+	issuer := controllerBase + "/oidc/" + name
 
-	bogusProvider := enrolled.SignerName + "-bogus"
-	resp, err := enrolled.Client.ExternalAuth(ctx, enrolled.Identifier, bogusProvider)
+	testUserID, err := overlay.CreateUpdbUser(ctx, testUserName, testUserName, testUserPassword)
+	require.NoError(t, err, "create updb test user")
+
+	signerName, policyName := createExtAuthSignerAndPolicy(t, ctx, name, issuer, issuer)
+	require.NoError(t, overlay.CreateIdentityWithExternalId(ctx, name, testUserID, policyName), "create controller identity with externalId=testUserID")
+
+	client, identifier := urlEnrollForExtAuth(t, ctx, name)
+
+	bogusProvider := signerName + "-bogus"
+	resp, err := client.ExternalAuth(ctx, identifier, bogusProvider)
 	require.NoError(t, err, "ExternalAuth send\n%s", zet.Logs())
 	require.False(t, resp.Success, "ExternalAuth should fail for unknown provider %q\n%s", bogusProvider, zet.Logs())
 	require.NotEmpty(t, resp.Error, "expected non-empty error from ExternalAuth failure")
 	t.Logf("ExternalAuth correctly failed for invalid provider: code=%d error=%q", resp.Code, resp.Error)
 }
 
-type enrolledExtAuth struct {
-	Client       *testutil.IPCClient
-	Identifier   string
-	SignerName   string
-	TestUserName string
-	TestUserPass string
-}
+func testExternalAuthWithoutControllerIdentityFails(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
 
-func newEnrolledExtAuth(t *testing.T, ctx context.Context, name, issuer string) *enrolledExtAuth {
-	t.Helper()
-
+	name := identityNameFor(t)
 	controllerBase := overlay.ControllerHostPort()
-	signerName := name + "-signer"
-	policyName := name + "-policy"
 	testUserName := name + "-user"
 	testUserPassword := "test-password"
+	issuer := controllerBase + "/oidc/" + name
 
-	testUserID, err := overlay.CreateUpdbUser(ctx, testUserName, testUserName, testUserPassword)
+	_, err := overlay.CreateUpdbUser(ctx, testUserName, testUserName, testUserPassword)
 	require.NoError(t, err, "create updb test user")
 
-	jwksURI, err := testutil.DiscoverOIDCJWKS(ctx, controllerBase+"/oidc")
+	signerName, _ := createExtAuthSignerAndPolicy(t, ctx, name, issuer, controllerBase+"/oidc")
+
+	client, identifier := urlEnrollForExtAuth(t, ctx, name)
+
+	authResp, err := client.GetExternalAuth(ctx, identifier, signerName)
+	require.NoError(t, err, "ExternalAuth\n%s", zet.Logs())
+	require.NotEmpty(t, authResp.URL, "ExternalAuth should return a non-empty auth URL")
+
+	require.NoError(t, testutil.DriveControllerOIDC(ctx, authResp.URL, controllerBase, testUserName, testUserPassword), "drive controller OIDC flow")
+
+	events, err := testutil.DialEvents(ctx)
+	require.NoError(t, err, "dial ZET event pipe")
+	t.Cleanup(func() { _ = events.Close() })
+	events.WaitFor(t, ctx, "controller", "disconnected", name)
+
+	finalStatus, err := client.GetTunnelStatus(ctx)
+	require.NoError(t, err, "Status after failed external auth\n%s", zet.Logs())
+	finalEntry := finalStatus.FindIdentity(name)
+	require.NotNil(t, finalEntry, "identity %q should still exist in Status", name)
+	require.True(t, finalEntry.NeedsExtAuth, "NeedsExtAuth should remain true after controller rejection")
+	t.Logf("External auth correctly failed without controller identity; NeedsExtAuth=%t", finalEntry.NeedsExtAuth)
+}
+
+func createExtAuthSignerAndPolicy(t *testing.T, ctx context.Context, name, issuer, externalAuthURL string) (string, string) {
+	t.Helper()
+	signerName := name + "-signer"
+	policyName := name + "-policy"
+
+	jwksURI, err := testutil.DiscoverOIDCJWKS(ctx, overlay.ControllerHostPort()+"/oidc")
 	require.NoError(t, err, "discover controller OIDC jwks_uri")
 
-	signerID, err := overlay.CreateExtJwtSigner(ctx, signerName, issuer, jwksURI, "openziti", "openziti", issuer)
+	signerID, err := overlay.CreateExtJwtSigner(ctx, signerName, issuer, jwksURI, "openziti", "openziti", externalAuthURL)
 	require.NoError(t, err, "create ext-jwt-signer")
 	require.NoError(t, overlay.CreateAuthPolicyForExtJwt(ctx, policyName, signerID), "create auth policy with ext-jwt-signer")
-	require.NoError(t, overlay.CreateIdentityWithExternalId(ctx, name, testUserID, policyName), "create controller identity with externalId=testUserID")
+
+	return signerName, policyName
+}
+
+func urlEnrollForExtAuth(t *testing.T, ctx context.Context, name string) (*testutil.IPCClient, string) {
+	t.Helper()
+	controllerBase := overlay.ControllerHostPort()
 
 	events, err := testutil.DialEvents(ctx)
 	require.NoError(t, err, "dial ZET event pipe")
@@ -124,11 +171,5 @@ func newEnrolledExtAuth(t *testing.T, ctx context.Context, name, issuer string) 
 	entry := status.FindIdentity(name)
 	require.NotNil(t, entry, "identity %q not found in Status after URL AddIdentity", name)
 
-	return &enrolledExtAuth{
-		Client:       client,
-		Identifier:   entry.Identifier,
-		SignerName:   signerName,
-		TestUserName: testUserName,
-		TestUserPass: testUserPassword,
-	}
+	return client, entry.Identifier
 }
