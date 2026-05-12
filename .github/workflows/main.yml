@@ -162,7 +162,14 @@ jobs:
             --ctrl-address=localhost --ctrl-port=1280 \
             --router-address=localhost --router-port=3022 &
           until curl -sk --max-time 2 https://localhost:1280/ >/dev/null \
-             && (echo > /dev/tcp/localhost/3022) 2>/dev/null; do sleep 1; done
+             && (echo > /dev/tcp/localhost/3022) 2>/dev/null; do
+            if (( SECONDS > 120 )); then
+              echo "::error::overlay never came up within 120s" >&2
+              kill %1 2>/dev/null
+              exit 1
+            fi
+            sleep 1
+          done
           kill %1
           wait %1 2>/dev/null || true
 
