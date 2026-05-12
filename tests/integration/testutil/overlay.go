@@ -223,12 +223,13 @@ func (o *Overlay) CreateExtJwtSigner(ctx context.Context, name, issuer, jwksEndp
 }
 
 // CreateAuthPolicyForExtJwt creates an auth policy whose primary auth method
-// is the ext-jwt-signer with the given ID.
-func (o *Overlay) CreateAuthPolicyForExtJwt(ctx context.Context, name, signerID string) error {
-	if _, err := o.runZiti(ctx, "edge", "create", "auth-policy", name,
-		"--primary-ext-jwt-allowed",
-		"--primary-ext-jwt-allowed-signers", signerID,
-	); err != nil {
+// is the ext-jwt-signer set with the given IDs. Pass one or more signer IDs.
+func (o *Overlay) CreateAuthPolicyForExtJwt(ctx context.Context, name string, signerIDs ...string) error {
+	args := []string{"edge", "create", "auth-policy", name, "--primary-ext-jwt-allowed"}
+	for _, id := range signerIDs {
+		args = append(args, "--primary-ext-jwt-allowed-signers", id)
+	}
+	if _, err := o.runZiti(ctx, args...); err != nil {
 		return fmt.Errorf("create auth policy %s: %w", name, err)
 	}
 	return nil
