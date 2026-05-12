@@ -155,6 +155,48 @@ jobs:
           mkdir -p "$ZET_LOG_DIR"
           chmod 1777 "$ZET_LOG_DIR"
 
+      - name: Seed test overlay PKI
+        shell: bash
+        run: |
+          "$ZITI_BIN" edge quickstart --home="$RUNNER_TEMP" \
+            --ctrl-address=localhost --ctrl-port=1280 \
+            --router-address=localhost --router-port=3022 &
+          until curl -sk --max-time 2 https://localhost:1280/ >/dev/null \
+             && (echo > /dev/tcp/localhost/3022) 2>/dev/null; do
+            if (( SECONDS > 120 )); then
+              echo "::error::overlay never came up within 120s" >&2
+              kill %1 2>/dev/null
+              exit 1
+            fi
+            sleep 1
+          done
+          kill %1
+          wait %1 2>/dev/null || true
+
+      - name: Install test overlay CA into OS trust (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo cp "$RUNNER_TEMP/pki/root-ca/certs/root-ca.cert" \
+            /usr/local/share/ca-certificates/ziti-test.crt
+          sudo update-ca-certificates
+
+      - name: Install test overlay CA into OS trust (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          sudo security add-trusted-cert -d -r trustRoot \
+            -k /Library/Keychains/System.keychain \
+            "$RUNNER_TEMP/pki/root-ca/certs/root-ca.cert"
+
+      - name: Install test overlay CA into OS trust (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Import-Certificate `
+            -FilePath "$env:RUNNER_TEMP\pki\root-ca\certs\root-ca.cert" `
+            -CertStoreLocation Cert:\LocalMachine\Root | Out-Null
+
       - name: Run integration tests
         shell: bash
         working-directory: tests/integration
@@ -164,18 +206,44 @@ jobs:
               # ulimit -c unlimited must be set inside the privileged shell: sudo
               # resets resource limits via PAM, so setting it in the outer shell
               # has no effect on ZET child processes.
-              sudo env "PATH=$PATH" "ZET_BIN=$ZET_BIN" "ZITI_BIN=$ZITI_BIN" \
+              sudo env "PATH=$PATH" "ZET_BIN=$ZET_BIN" "ZITI_BIN=$ZITI_BIN" "RUNNER_TEMP=$RUNNER_TEMP" \
                 sh -c 'ulimit -c unlimited && exec go test ./... -v -timeout 20m \
                   -zet-bin="$ZET_BIN" -ziti-bin="$ZITI_BIN" \
-                  -zet-log-dir="${{ env.ZET_LOG_DIR }}"'
+                  -zet-log-dir="${{ env.ZET_LOG_DIR }}" \
+                  -overlay-home="$RUNNER_TEMP"'
               ;;
             *)
               go test ./... -v -timeout 20m \
                 -zet-bin="$ZET_BIN" \
                 -ziti-bin="$ZITI_BIN" \
-                -zet-log-dir="${{ env.ZET_LOG_DIR }}"
+                -zet-log-dir="${{ env.ZET_LOG_DIR }}" \
+                -overlay-home="$RUNNER_TEMP"
               ;;
           esac
+
+      - name: Uninstall test overlay CA (Linux)
+        if: always() && runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo rm -f /usr/local/share/ca-certificates/ziti-test.crt
+          sudo update-ca-certificates --fresh
+
+      - name: Uninstall test overlay CA (macOS)
+        if: always() && runner.os == 'macOS'
+        shell: bash
+        run: |
+          thumb=$(openssl x509 \
+            -in "$RUNNER_TEMP/pki/root-ca/certs/root-ca.cert" \
+            -noout -fingerprint -sha1 | sed 's/.*=//' | tr -d ':')
+          sudo security delete-certificate -Z "$thumb" /Library/Keychains/System.keychain || true
+
+      - name: Uninstall test overlay CA (Windows)
+        if: always() && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2 `
+            "$env:RUNNER_TEMP\pki\root-ca\certs\root-ca.cert"
+          Get-ChildItem Cert:\LocalMachine\Root | Where-Object Thumbprint -eq $cert.Thumbprint | Remove-Item
 
       - name: Log core file backtraces
         if: ${{ failure() && matrix.core-dir != '' }}

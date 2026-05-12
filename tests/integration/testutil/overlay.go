@@ -19,19 +19,24 @@ package testutil
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"testing"
 	"time"
 )
 
 const (
-	adminUsername = "admin"
-	adminPassword = "admin"
+	adminUsername    = "admin"
+	adminPassword    = "admin"
+	overlayCtrlPort  = 1280
+	overlayRtrPort   = 3022
 )
 
 type Overlay struct {
@@ -50,14 +55,6 @@ type Overlay struct {
 // waits for the controller to accept an admin login, and returns a handle.
 // Callers must defer Stop().
 func StartOverlay(ctx context.Context, zitiBin, home string) (*Overlay, error) {
-	ctrlPort, err := findAvailablePort()
-	if err != nil {
-		return nil, fmt.Errorf("allocate controller port: %w", err)
-	}
-	rtrPort, err := findAvailablePort()
-	if err != nil {
-		return nil, fmt.Errorf("allocate router port: %w", err)
-	}
 	if err := os.MkdirAll(home, 0o700); err != nil {
 		return nil, fmt.Errorf("mkdir home: %w", err)
 	}
@@ -66,9 +63,9 @@ func StartOverlay(ctx context.Context, zitiBin, home string) (*Overlay, error) {
 		"edge", "quickstart",
 		"--home=" + home,
 		"--ctrl-address=localhost",
-		fmt.Sprintf("--ctrl-port=%d", ctrlPort),
+		fmt.Sprintf("--ctrl-port=%d", overlayCtrlPort),
 		"--router-address=localhost",
-		fmt.Sprintf("--router-port=%d", rtrPort),
+		fmt.Sprintf("--router-port=%d", overlayRtrPort),
 	}
 	cmd := exec.CommandContext(ctx, zitiBin, args...)
 	cmd.Env = append(os.Environ(),
@@ -86,8 +83,8 @@ func StartOverlay(ctx context.Context, zitiBin, home string) (*Overlay, error) {
 	o := &Overlay{
 		ZitiBin:        zitiBin,
 		Home:           home,
-		ControllerPort: ctrlPort,
-		RouterPort:     rtrPort,
+		ControllerPort: overlayCtrlPort,
+		RouterPort:     overlayRtrPort,
 		extCmd:         cmd,
 		stdout:         stdout,
 		stderr:         stderr,
@@ -106,6 +103,47 @@ func StartOverlay(ctx context.Context, zitiBin, home string) (*Overlay, error) {
 
 func (o *Overlay) ControllerHostPort() string {
 	return fmt.Sprintf("https://localhost:%d", o.ControllerPort)
+}
+
+// RequireCATrusted skips the test (with OS-specific install/cleanup
+// instructions) if the overlay's CA isn't in the calling OS's trust store.
+func (o *Overlay) RequireCATrusted(t *testing.T) {
+	t.Helper()
+	hostport := fmt.Sprintf("localhost:%d", o.ControllerPort)
+	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: 2 * time.Second}, "tcp", hostport, nil)
+	if err == nil {
+		_ = conn.Close()
+		return
+	}
+	caPath := filepath.Join(o.Home, "pki", "root-ca", "certs", "root-ca.cert")
+	var install, cleanup string
+	switch runtime.GOOS {
+	case "windows":
+		install = fmt.Sprintf(`Import-Certificate -FilePath "%s" -CertStoreLocation Cert:\LocalMachine\Root`, caPath)
+		cleanup = fmt.Sprintf(`$c = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2 "%s"; Get-ChildItem Cert:\LocalMachine\Root | ? Thumbprint -eq $c.Thumbprint | Remove-Item`, caPath)
+	case "darwin":
+		install = fmt.Sprintf(`sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain %s`, caPath)
+		cleanup = fmt.Sprintf(`sudo security delete-certificate -Z $(openssl x509 -in %s -noout -fingerprint -sha1 | sed 's/.*=//' | tr -d ':') /Library/Keychains/System.keychain`, caPath)
+	case "linux":
+		install = fmt.Sprintf(`sudo cp %s /usr/local/share/ca-certificates/ziti-test.crt && sudo update-ca-certificates`, caPath)
+		cleanup = `sudo rm /usr/local/share/ca-certificates/ziti-test.crt && sudo update-ca-certificates --fresh`
+	default:
+		t.Skipf(`tests need the CA at %s in OS trust (no install instructions for %s).
+
+  Current -overlay-home: %s
+  Pass a durable path with -overlay-home so the PKI (and this trust install) persists across runs.`, caPath, runtime.GOOS, o.Home)
+		return
+	}
+	t.Skipf(`tests need the test overlay's CA in OS trust.
+
+  Current -overlay-home: %s
+  Pass a durable path with -overlay-home so the PKI (and this trust install) persists across runs.
+
+  Install:
+  %s
+
+  Cleanup when done:
+  %s`, o.Home, install, cleanup)
 }
 
 func (o *Overlay) Stop() {
@@ -165,6 +203,89 @@ func (o *Overlay) CreateIdentityJWTWithAuthPolicy(ctx context.Context, name, aut
 		return "", fmt.Errorf("read jwt %s: %w", jwtPath, err)
 	}
 	return string(bytes.TrimSpace(content)), nil
+}
+
+// CreateExtJwtSigner registers an external JWT signer on the controller and
+// returns its assigned ID. jwksEndpoint is the URL the controller fetches
+// public keys from to verify incoming JWTs; externalAuthURL is what the SDK
+// directs users to so they can obtain a JWT (the IdP's /authorize equivalent).
+func (o *Overlay) CreateExtJwtSigner(ctx context.Context, name, issuer, jwksEndpoint, audience, clientID, externalAuthURL string) (string, error) {
+	out, err := o.runZiti(ctx, "edge", "create", "ext-jwt-signer", name, issuer,
+		"--jwks-endpoint", jwksEndpoint,
+		"--audience", audience,
+		"--client-id", clientID,
+		"--external-auth-url", externalAuthURL,
+	)
+	if err != nil {
+		return "", fmt.Errorf("create ext-jwt-signer %s: %w", name, err)
+	}
+	return string(bytes.TrimSpace(out)), nil
+}
+
+// CreateAuthPolicyForExtJwt creates an auth policy whose primary auth method
+// is the ext-jwt-signer with the given ID.
+func (o *Overlay) CreateAuthPolicyForExtJwt(ctx context.Context, name, signerID string) error {
+	if _, err := o.runZiti(ctx, "edge", "create", "auth-policy", name,
+		"--primary-ext-jwt-allowed",
+		"--primary-ext-jwt-allowed-signers", signerID,
+	); err != nil {
+		return fmt.Errorf("create auth policy %s: %w", name, err)
+	}
+	return nil
+}
+
+// CreateIdentityWithExternalId provisions a non-admin identity bound to the
+// named auth policy and stamped with externalId so the controller can match it
+// against the "sub" claim of an ext-jwt-signer-issued JWT.
+func (o *Overlay) CreateIdentityWithExternalId(ctx context.Context, name, externalID, authPolicy string) error {
+	if _, err := o.runZiti(ctx, "edge", "create", "identity", name,
+		"--external-id", externalID,
+		"-P", authPolicy,
+	); err != nil {
+		return fmt.Errorf("create identity %s with externalId %s: %w", name, externalID, err)
+	}
+	return nil
+}
+
+// CreateUpdbUser creates a non-admin identity with a UPDB authenticator so the
+// identity can authenticate via the controller's built-in OIDC username/password
+// login. Returns the new identity's controller ID.
+func (o *Overlay) CreateUpdbUser(ctx context.Context, name, username, password string) (string, error) {
+	out, err := o.runZiti(ctx, "edge", "create", "identity", name, "-j")
+	if err != nil {
+		return "", fmt.Errorf("create identity %s: %w", name, err)
+	}
+	var resp struct {
+		Data struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(out, &resp); err != nil {
+		return "", fmt.Errorf("parse create identity %s response: %w", name, err)
+	}
+	if resp.Data.ID == "" {
+		return "", fmt.Errorf("create identity %s returned empty id", name)
+	}
+	if _, err := o.runZiti(ctx, "edge", "create", "authenticator", "updb", resp.Data.ID, username, password); err != nil {
+		return "", fmt.Errorf("create updb authenticator for %s: %w", name, err)
+	}
+	return resp.Data.ID, nil
+}
+
+// DeleteExtJwtSigner removes an ext-jwt-signer by name.
+func (o *Overlay) DeleteExtJwtSigner(ctx context.Context, name string) error {
+	if _, err := o.runZiti(ctx, "edge", "delete", "ext-jwt-signer", name); err != nil {
+		return fmt.Errorf("delete ext-jwt-signer %s: %w", name, err)
+	}
+	return nil
+}
+
+// DeleteAuthPolicy removes an auth policy by name.
+func (o *Overlay) DeleteAuthPolicy(ctx context.Context, name string) error {
+	if _, err := o.runZiti(ctx, "edge", "delete", "auth-policy", name); err != nil {
+		return fmt.Errorf("delete auth policy %s: %w", name, err)
+	}
+	return nil
 }
 
 // CreateHostConfigV1 creates a host.v1 config that forwards to forwardAddr:forwardPort.
@@ -303,11 +424,25 @@ func (o *Overlay) runZiti(ctx context.Context, args ...string) ([]byte, error) {
 	return []byte(stdout.String()), nil
 }
 
-func findAvailablePort() (uint16, error) {
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return 0, err
+// PurgeIdentities deletes every identity whose name contains prefix.
+func (o *Overlay) PurgeIdentities(ctx context.Context, prefix string) error {
+	return o.deleteWhere(ctx, "identities", prefix)
+}
+
+// PurgeAuthPolicies deletes every auth policy whose name contains prefix.
+func (o *Overlay) PurgeAuthPolicies(ctx context.Context, prefix string) error {
+	return o.deleteWhere(ctx, "auth-policies", prefix)
+}
+
+// PurgeExtJwtSigners deletes every ext-jwt-signer whose name contains prefix.
+func (o *Overlay) PurgeExtJwtSigners(ctx context.Context, prefix string) error {
+	return o.deleteWhere(ctx, "ext-jwt-signers", prefix)
+}
+
+func (o *Overlay) deleteWhere(ctx context.Context, entity, prefix string) error {
+	filter := fmt.Sprintf(`name contains "%s" limit none`, prefix)
+	if _, err := o.runZiti(ctx, "edge", "delete", entity, "where", filter); err != nil {
+		return fmt.Errorf("delete %s where %s: %w", entity, filter, err)
 	}
-	defer l.Close()
-	return uint16(l.Addr().(*net.TCPAddr).Port), nil
+	return nil
 }

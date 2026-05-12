@@ -131,12 +131,13 @@ type ServiceVersion struct {
 type TapInfo struct{}
 
 type IdentityStatus struct {
-	Name        string `json:"Name"`
-	Identifier  string `json:"Identifier"`
-	Active      bool   `json:"Active"`
-	FingerPrint string `json:"FingerPrint"`
-	MfaEnabled  bool   `json:"MfaEnabled"`
-	MfaNeeded   bool   `json:"MfaNeeded"`
+	Name         string `json:"Name"`
+	Identifier   string `json:"Identifier"`
+	Active       bool   `json:"Active"`
+	FingerPrint  string `json:"FingerPrint"`
+	MfaEnabled   bool   `json:"MfaEnabled"`
+	MfaNeeded    bool   `json:"MfaNeeded"`
+	NeedsExtAuth bool   `json:"NeedsExtAuth"`
 }
 
 type TunnelStatus struct {
@@ -264,6 +265,29 @@ func (c *IPCClient) UpdateInterfaceConfig(ctx context.Context, cfg InterfaceConf
 
 func (c *IPCClient) ExternalAuth(ctx context.Context, identifier, provider string) (*Response, error) {
 	return c.SendCommand(ctx, Command{Command: "ExternalAuth", Data: ExternalAuthData{Identifier: identifier, Provider: provider}})
+}
+
+// ExtAuth is the parsed payload of an ExternalAuth response: the URL the user
+// must open to begin the OIDC flow.
+type ExtAuth struct {
+	Identifier string `json:"identifier"`
+	URL        string `json:"url"`
+}
+
+// GetExternalAuth sends ExternalAuth, asserts success, and unmarshals the response.
+func (c *IPCClient) GetExternalAuth(ctx context.Context, identifier, provider string) (*ExtAuth, error) {
+	resp, err := c.ExternalAuth(ctx, identifier, provider)
+	if err != nil {
+		return nil, fmt.Errorf("external auth: %w", err)
+	}
+	if !resp.Success {
+		return nil, fmt.Errorf("external auth failed: %s (code %d)", resp.Error, resp.Code)
+	}
+	var out ExtAuth
+	if err := json.Unmarshal(resp.Data, &out); err != nil {
+		return nil, fmt.Errorf("parse external auth: %w", err)
+	}
+	return &out, nil
 }
 
 func (c *IPCClient) Status(ctx context.Context) (*Response, error) {
