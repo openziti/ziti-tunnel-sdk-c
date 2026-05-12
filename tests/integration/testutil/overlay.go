@@ -247,6 +247,31 @@ func (o *Overlay) CreateIdentityWithExternalId(ctx context.Context, name, extern
 	return nil
 }
 
+// CreateUpdbUser creates a non-admin identity with a UPDB authenticator so the
+// identity can authenticate via the controller's built-in OIDC username/password
+// login. Returns the new identity's controller ID.
+func (o *Overlay) CreateUpdbUser(ctx context.Context, name, username, password string) (string, error) {
+	out, err := o.runZiti(ctx, "edge", "create", "identity", name, "-j")
+	if err != nil {
+		return "", fmt.Errorf("create identity %s: %w", name, err)
+	}
+	var resp struct {
+		Data struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(out, &resp); err != nil {
+		return "", fmt.Errorf("parse create identity %s response: %w", name, err)
+	}
+	if resp.Data.ID == "" {
+		return "", fmt.Errorf("create identity %s returned empty id", name)
+	}
+	if _, err := o.runZiti(ctx, "edge", "create", "authenticator", "updb", resp.Data.ID, username, password); err != nil {
+		return "", fmt.Errorf("create updb authenticator for %s: %w", name, err)
+	}
+	return resp.Data.ID, nil
+}
+
 // DeleteExtJwtSigner removes an ext-jwt-signer by name.
 func (o *Overlay) DeleteExtJwtSigner(ctx context.Context, name string) error {
 	if _, err := o.runZiti(ctx, "edge", "delete", "ext-jwt-signer", name); err != nil {
@@ -397,30 +422,6 @@ func (o *Overlay) runZiti(ctx context.Context, args ...string) ([]byte, error) {
 			o.ZitiBin, args, err, stdout.String(), stderr.String())
 	}
 	return []byte(stdout.String()), nil
-}
-
-// IdentityID looks up an identity by exact name and returns its controller ID.
-func (o *Overlay) IdentityID(ctx context.Context, name string) (string, error) {
-	filter := fmt.Sprintf(`name = "%s"`, name)
-	out, err := o.runZiti(ctx, "edge", "list", "identities", filter, "-j")
-	if err != nil {
-		return "", fmt.Errorf("list identity %q: %w", name, err)
-	}
-	var listResp struct {
-		Data []struct {
-			ID   string `json:"id"`
-			Name string `json:"name"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(out, &listResp); err != nil {
-		return "", fmt.Errorf("parse identity list: %w", err)
-	}
-	for _, id := range listResp.Data {
-		if id.Name == name {
-			return id.ID, nil
-		}
-	}
-	return "", fmt.Errorf("identity %q not found", name)
 }
 
 // PurgeIdentities deletes every identity whose name contains prefix.

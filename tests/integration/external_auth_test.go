@@ -38,9 +38,11 @@ func testExternalAuthOnUrlEnrolledIdentityCompletes(t *testing.T) {
 	signerName := identityNameFor(t) + "-signer"
 	policyName := identityNameFor(t) + "-policy"
 	identityName := identityNameFor(t)
+	testUserName := identityNameFor(t) + "-user"
+	testUserPassword := "test-password"
 
-	adminID, err := overlay.IdentityID(ctx, "Default Admin")
-	require.NoError(t, err, "look up admin identity ID")
+	testUserID, err := overlay.CreateUpdbUser(ctx, testUserName, testUserName, testUserPassword)
+	require.NoError(t, err, "create updb test user")
 
 	jwksURI, err := testutil.DiscoverOIDCJWKS(ctx, controllerBase+"/oidc")
 	require.NoError(t, err, "discover controller OIDC jwks_uri")
@@ -55,7 +57,7 @@ func testExternalAuthOnUrlEnrolledIdentityCompletes(t *testing.T) {
 	)
 	require.NoError(t, err, "create ext-jwt-signer")
 	require.NoError(t, overlay.CreateAuthPolicyForExtJwt(ctx, policyName, signerID), "create auth policy with ext-jwt-signer")
-	require.NoError(t, overlay.CreateIdentityWithExternalId(ctx, identityName, adminID, policyName), "create controller identity with externalId=adminID")
+	require.NoError(t, overlay.CreateIdentityWithExternalId(ctx, identityName, testUserID, policyName), "create controller identity with externalId=testUserID")
 
 	events, err := testutil.DialEvents(ctx)
 	require.NoError(t, err, "dial ZET event pipe")
@@ -84,7 +86,7 @@ func testExternalAuthOnUrlEnrolledIdentityCompletes(t *testing.T) {
 	require.NoError(t, err, "ExternalAuth\n%s", zet.Logs())
 	require.NotEmpty(t, authResp.URL, "ExternalAuth should return a non-empty auth URL")
 
-	require.NoError(t, testutil.DriveControllerOIDC(ctx, authResp.URL, controllerBase, "admin", "admin"), "drive controller OIDC flow")
+	require.NoError(t, testutil.DriveControllerOIDC(ctx, authResp.URL, controllerBase, testUserName, testUserPassword), "drive controller OIDC flow")
 
 	events.WaitFor(t, ctx, "identity", "added", identityName)
 
