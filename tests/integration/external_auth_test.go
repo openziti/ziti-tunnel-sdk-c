@@ -35,66 +35,25 @@ func testExternalAuthOnUrlEnrolledIdentityCompletes(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 
+	name := identityNameFor(t)
 	controllerBase := overlay.ControllerHostPort()
-	signerName := identityNameFor(t) + "-signer"
-	policyName := identityNameFor(t) + "-policy"
-	identityName := identityNameFor(t)
-	testUserName := identityNameFor(t) + "-user"
-	testUserPassword := "test-password"
+	enrolled := newEnrolledExtAuth(t, ctx, name, controllerBase+"/oidc")
 
-	testUserID, err := overlay.CreateUpdbUser(ctx, testUserName, testUserName, testUserPassword)
-	require.NoError(t, err, "create updb test user")
+	authResp, err := enrolled.Client.GetExternalAuth(ctx, enrolled.Identifier, enrolled.SignerName)
+	require.NoError(t, err, "ExternalAuth\n%s", zet.Logs())
+	require.NotEmpty(t, authResp.URL, "ExternalAuth should return a non-empty auth URL")
 
-	jwksURI, err := testutil.DiscoverOIDCJWKS(ctx, controllerBase+"/oidc")
-	require.NoError(t, err, "discover controller OIDC jwks_uri")
-
-	signerID, err := overlay.CreateExtJwtSigner(ctx,
-		signerName,
-		controllerBase+"/oidc",
-		jwksURI,
-		"openziti",
-		"openziti",
-		controllerBase+"/oidc",
-	)
-	require.NoError(t, err, "create ext-jwt-signer")
-	require.NoError(t, overlay.CreateAuthPolicyForExtJwt(ctx, policyName, signerID), "create auth policy with ext-jwt-signer")
-	require.NoError(t, overlay.CreateIdentityWithExternalId(ctx, identityName, testUserID, policyName), "create controller identity with externalId=testUserID")
+	require.NoError(t, testutil.DriveControllerOIDC(ctx, authResp.URL, controllerBase, enrolled.TestUserName, enrolled.TestUserPass), "drive controller OIDC flow")
 
 	events, err := testutil.DialEvents(ctx)
 	require.NoError(t, err, "dial ZET event pipe")
 	t.Cleanup(func() { _ = events.Close() })
+	events.WaitFor(t, ctx, "identity", "added", name)
 
-	client, err := testutil.DialIPC(ctx)
-	require.NoError(t, err, "dial ZET IPC pipe")
-	t.Cleanup(func() { _ = client.Close() })
-
-	identityData := testutil.AddIdentityData{
-		IdentityFilename: identityName,
-		ControllerURL:    &controllerBase,
-	}
-	enrollResp, err := client.AddIdentity(ctx, identityData)
-	require.NoError(t, err, "URL AddIdentity send\n%s", zet.Logs())
-	require.True(t, enrollResp.Success, "URL AddIdentity should succeed: error=%q\n%s", enrollResp.Error, zet.Logs())
-
-	events.WaitFor(t, ctx, "identity", "needs_ext_login", identityName)
-
-	status, err := client.GetTunnelStatus(ctx)
-	require.NoError(t, err, "Status after URL AddIdentity\n%s", zet.Logs())
-	entry := status.FindIdentity(identityName)
-	require.NotNil(t, entry, "identity %q not found in Status after URL AddIdentity", identityName)
-
-	authResp, err := client.GetExternalAuth(ctx, entry.Identifier, signerName)
-	require.NoError(t, err, "ExternalAuth\n%s", zet.Logs())
-	require.NotEmpty(t, authResp.URL, "ExternalAuth should return a non-empty auth URL")
-
-	require.NoError(t, testutil.DriveControllerOIDC(ctx, authResp.URL, controllerBase, testUserName, testUserPassword), "drive controller OIDC flow")
-
-	events.WaitFor(t, ctx, "identity", "added", identityName)
-
-	finalStatus, err := client.GetTunnelStatus(ctx)
+	finalStatus, err := enrolled.Client.GetTunnelStatus(ctx)
 	require.NoError(t, err, "Status after ExternalAuth\n%s", zet.Logs())
-	finalEntry := finalStatus.FindIdentity(identityName)
-	require.NotNil(t, finalEntry, "identity %q missing from Status after ExternalAuth", identityName)
+	finalEntry := finalStatus.FindIdentity(name)
+	require.NotNil(t, finalEntry, "identity %q missing from Status after ExternalAuth", name)
 	require.False(t, finalEntry.NeedsExtAuth, "NeedsExtAuth should be false after successful ExternalAuth\n%s", zet.Logs())
 }
 
@@ -102,11 +61,33 @@ func testExternalAuthWithInvalidProviderFails(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
+	name := identityNameFor(t)
+	issuer := overlay.ControllerHostPort() + "/oidc/" + name
+	enrolled := newEnrolledExtAuth(t, ctx, name, issuer)
+
+	bogusProvider := enrolled.SignerName + "-bogus"
+	resp, err := enrolled.Client.ExternalAuth(ctx, enrolled.Identifier, bogusProvider)
+	require.NoError(t, err, "ExternalAuth send\n%s", zet.Logs())
+	require.False(t, resp.Success, "ExternalAuth should fail for unknown provider %q\n%s", bogusProvider, zet.Logs())
+	require.NotEmpty(t, resp.Error, "expected non-empty error from ExternalAuth failure")
+	t.Logf("ExternalAuth correctly failed for invalid provider: code=%d error=%q", resp.Code, resp.Error)
+}
+
+type enrolledExtAuth struct {
+	Client       *testutil.IPCClient
+	Identifier   string
+	SignerName   string
+	TestUserName string
+	TestUserPass string
+}
+
+func newEnrolledExtAuth(t *testing.T, ctx context.Context, name, issuer string) *enrolledExtAuth {
+	t.Helper()
+
 	controllerBase := overlay.ControllerHostPort()
-	signerName := identityNameFor(t) + "-signer"
-	policyName := identityNameFor(t) + "-policy"
-	identityName := identityNameFor(t)
-	testUserName := identityNameFor(t) + "-user"
+	signerName := name + "-signer"
+	policyName := name + "-policy"
+	testUserName := name + "-user"
 	testUserPassword := "test-password"
 
 	testUserID, err := overlay.CreateUpdbUser(ctx, testUserName, testUserName, testUserPassword)
@@ -115,46 +96,39 @@ func testExternalAuthWithInvalidProviderFails(t *testing.T) {
 	jwksURI, err := testutil.DiscoverOIDCJWKS(ctx, controllerBase+"/oidc")
 	require.NoError(t, err, "discover controller OIDC jwks_uri")
 
-	signerIssuer := controllerBase + "/oidc/" + identityName
-	signerID, err := overlay.CreateExtJwtSigner(ctx,
-		signerName,
-		signerIssuer,
-		jwksURI,
-		"openziti",
-		"openziti",
-		signerIssuer,
-	)
+	signerID, err := overlay.CreateExtJwtSigner(ctx, signerName, issuer, jwksURI, "openziti", "openziti", issuer)
 	require.NoError(t, err, "create ext-jwt-signer")
 	require.NoError(t, overlay.CreateAuthPolicyForExtJwt(ctx, policyName, signerID), "create auth policy with ext-jwt-signer")
-	require.NoError(t, overlay.CreateIdentityWithExternalId(ctx, identityName, testUserID, policyName), "create controller identity with externalId=testUserID")
+	require.NoError(t, overlay.CreateIdentityWithExternalId(ctx, name, testUserID, policyName), "create controller identity with externalId=testUserID")
 
 	events, err := testutil.DialEvents(ctx)
 	require.NoError(t, err, "dial ZET event pipe")
-	t.Cleanup(func() { _ = events.Close() })
+	defer func() { _ = events.Close() }()
 
 	client, err := testutil.DialIPC(ctx)
 	require.NoError(t, err, "dial ZET IPC pipe")
 	t.Cleanup(func() { _ = client.Close() })
 
 	identityData := testutil.AddIdentityData{
-		IdentityFilename: identityName,
+		IdentityFilename: name,
 		ControllerURL:    &controllerBase,
 	}
 	enrollResp, err := client.AddIdentity(ctx, identityData)
 	require.NoError(t, err, "URL AddIdentity send\n%s", zet.Logs())
 	require.True(t, enrollResp.Success, "URL AddIdentity should succeed: error=%q\n%s", enrollResp.Error, zet.Logs())
 
-	events.WaitFor(t, ctx, "identity", "needs_ext_login", identityName)
+	events.WaitFor(t, ctx, "identity", "needs_ext_login", name)
 
 	status, err := client.GetTunnelStatus(ctx)
 	require.NoError(t, err, "Status after URL AddIdentity\n%s", zet.Logs())
-	entry := status.FindIdentity(identityName)
-	require.NotNil(t, entry, "identity %q not found in Status after URL AddIdentity", identityName)
+	entry := status.FindIdentity(name)
+	require.NotNil(t, entry, "identity %q not found in Status after URL AddIdentity", name)
 
-	bogusProvider := signerName + "-bogus"
-	resp, err := client.ExternalAuth(ctx, entry.Identifier, bogusProvider)
-	require.NoError(t, err, "ExternalAuth send\n%s", zet.Logs())
-	require.False(t, resp.Success, "ExternalAuth should fail for unknown provider %q\n%s", bogusProvider, zet.Logs())
-	require.NotEmpty(t, resp.Error, "expected non-empty error from ExternalAuth failure")
-	t.Logf("ExternalAuth correctly failed for invalid provider: code=%d error=%q", resp.Code, resp.Error)
+	return &enrolledExtAuth{
+		Client:       client,
+		Identifier:   entry.Identifier,
+		SignerName:   signerName,
+		TestUserName: testUserName,
+		TestUserPass: testUserPassword,
+	}
 }
