@@ -131,13 +131,14 @@ type ServiceVersion struct {
 type TapInfo struct{}
 
 type IdentityStatus struct {
-	Name         string `json:"Name"`
-	Identifier   string `json:"Identifier"`
-	Active       bool   `json:"Active"`
-	FingerPrint  string `json:"FingerPrint"`
-	MfaEnabled   bool   `json:"MfaEnabled"`
-	MfaNeeded    bool   `json:"MfaNeeded"`
-	NeedsExtAuth bool   `json:"NeedsExtAuth"`
+	Name             string   `json:"Name"`
+	Identifier       string   `json:"Identifier"`
+	Active           bool     `json:"Active"`
+	FingerPrint      string   `json:"FingerPrint"`
+	MfaEnabled       bool     `json:"MfaEnabled"`
+	MfaNeeded        bool     `json:"MfaNeeded"`
+	NeedsExtAuth     bool     `json:"NeedsExtAuth"`
+	ExtAuthProviders []string `json:"ExtAuthProviders"`
 }
 
 type TunnelStatus struct {

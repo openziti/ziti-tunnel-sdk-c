@@ -30,6 +30,7 @@ func TestExternalAuth(t *testing.T) {
 	t.Run("onUrlEnrolledIdentityCompletes", testExternalAuthOnUrlEnrolledIdentityCompletes)
 	t.Run("withInvalidProviderFails", testExternalAuthWithInvalidProviderFails)
 	t.Run("withoutControllerIdentityFails", testExternalAuthWithoutControllerIdentityFails)
+	t.Run("withMultipleSignersCompletes", testExternalAuthWithMultipleSignersCompletes)
 }
 
 func testExternalAuthOnUrlEnrolledIdentityCompletes(t *testing.T) {
@@ -46,6 +47,14 @@ func testExternalAuthOnUrlEnrolledIdentityCompletes(t *testing.T) {
 
 	signerName, policyName := createExtAuthSignerAndPolicy(t, ctx, name, controllerBase+"/oidc", controllerBase+"/oidc")
 	require.NoError(t, overlay.CreateIdentityWithExternalId(ctx, name, testUserID, policyName), "create controller identity with externalId=testUserID")
+
+	// Free the controller's unique-indexed /oidc issuer for sibling subtests that also create a signer claiming it.
+	cleanupCtx := context.Background()
+	t.Cleanup(func() {
+		_ = overlay.DeleteIdentity(cleanupCtx, name)
+		_ = overlay.DeleteAuthPolicy(cleanupCtx, policyName)
+		_ = overlay.DeleteExtJwtSigner(cleanupCtx, signerName)
+	})
 
 	client, identifier := urlEnrollForExtAuth(t, ctx, name)
 
@@ -127,6 +136,72 @@ func testExternalAuthWithoutControllerIdentityFails(t *testing.T) {
 	require.NotNil(t, finalEntry, "identity %q should still exist in Status", name)
 	require.True(t, finalEntry.NeedsExtAuth, "NeedsExtAuth should remain true after controller rejection")
 	t.Logf("External auth correctly failed without controller identity; NeedsExtAuth=%t", finalEntry.NeedsExtAuth)
+}
+
+func testExternalAuthWithMultipleSignersCompletes(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+
+	name := identityNameFor(t)
+	controllerBase := overlay.ControllerHostPort()
+	testUserName := name + "-user"
+	testUserPassword := "test-password"
+
+	testUserID, err := overlay.CreateUpdbUser(ctx, testUserName, testUserName, testUserPassword)
+	require.NoError(t, err, "create updb test user")
+
+	jwksURI, err := testutil.DiscoverOIDCJWKS(ctx, controllerBase+"/oidc")
+	require.NoError(t, err, "discover controller OIDC jwks_uri")
+
+	realSignerName := name + "-signer-real"
+	signer2Name := name + "-signer-2"
+	signer3Name := name + "-signer-3"
+	realSignerID, err := overlay.CreateExtJwtSigner(ctx, realSignerName, controllerBase+"/oidc", jwksURI, "openziti", "openziti", controllerBase+"/oidc")
+	require.NoError(t, err, "create real-issuer ext-jwt-signer")
+	signer2ID, err := overlay.CreateExtJwtSigner(ctx, signer2Name, controllerBase+"/oidc/"+signer2Name, jwksURI, "openziti", "openziti", controllerBase+"/oidc/"+signer2Name)
+	require.NoError(t, err, "create ext-jwt-signer 2")
+	signer3ID, err := overlay.CreateExtJwtSigner(ctx, signer3Name, controllerBase+"/oidc/"+signer3Name, jwksURI, "openziti", "openziti", controllerBase+"/oidc/"+signer3Name)
+	require.NoError(t, err, "create ext-jwt-signer 3")
+
+	policyName := name + "-policy"
+	require.NoError(t, overlay.CreateAuthPolicyForExtJwt(ctx, policyName, realSignerID, signer2ID, signer3ID), "create multi-signer auth policy")
+	require.NoError(t, overlay.CreateIdentityWithExternalId(ctx, name, testUserID, policyName), "create controller identity with externalId=testUserID")
+
+	// Free the controller's unique-indexed /oidc issuer for sibling subtests that also create a signer claiming it.
+	cleanupCtx := context.Background()
+	t.Cleanup(func() {
+		_ = overlay.DeleteIdentity(cleanupCtx, name)
+		_ = overlay.DeleteAuthPolicy(cleanupCtx, policyName)
+		_ = overlay.DeleteExtJwtSigner(cleanupCtx, realSignerName)
+		_ = overlay.DeleteExtJwtSigner(cleanupCtx, signer2Name)
+		_ = overlay.DeleteExtJwtSigner(cleanupCtx, signer3Name)
+	})
+
+	client, identifier := urlEnrollForExtAuth(t, ctx, name)
+
+	status, err := client.GetTunnelStatus(ctx)
+	require.NoError(t, err, "Status after URL AddIdentity\n%s", zet.Logs())
+	entry := status.FindIdentity(name)
+	require.NotNil(t, entry, "identity %q not found in Status", name)
+	require.Subset(t, entry.ExtAuthProviders, []string{realSignerName, signer2Name, signer3Name}, "ExtAuthProviders should contain all three signers, got %v", entry.ExtAuthProviders)
+	t.Logf("ExtAuthProviders count=%d", len(entry.ExtAuthProviders))
+
+	authResp, err := client.GetExternalAuth(ctx, identifier, realSignerName)
+	require.NoError(t, err, "ExternalAuth\n%s", zet.Logs())
+	require.NotEmpty(t, authResp.URL, "ExternalAuth should return a non-empty auth URL")
+
+	require.NoError(t, testutil.DriveControllerOIDC(ctx, authResp.URL, controllerBase, testUserName, testUserPassword), "drive controller OIDC flow")
+
+	events, err := testutil.DialEvents(ctx)
+	require.NoError(t, err, "dial ZET event pipe")
+	t.Cleanup(func() { _ = events.Close() })
+	events.WaitFor(t, ctx, "identity", "added", name)
+
+	finalStatus, err := client.GetTunnelStatus(ctx)
+	require.NoError(t, err, "Status after ExternalAuth\n%s", zet.Logs())
+	finalEntry := finalStatus.FindIdentity(name)
+	require.NotNil(t, finalEntry, "identity %q missing from Status after ExternalAuth", name)
+	require.False(t, finalEntry.NeedsExtAuth, "NeedsExtAuth should be false after successful ExternalAuth\n%s", zet.Logs())
 }
 
 func createExtAuthSignerAndPolicy(t *testing.T, ctx context.Context, name, issuer, externalAuthURL string) (string, string) {
