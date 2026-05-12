@@ -423,49 +423,25 @@ func (o *Overlay) IdentityID(ctx context.Context, name string) (string, error) {
 	return "", fmt.Errorf("identity %q not found", name)
 }
 
-// PurgeIdentities deletes every identity on the controller whose name starts
-// with prefix. Reuses DeleteIdentity for the per-name delete.
+// PurgeIdentities deletes every identity whose name contains prefix.
 func (o *Overlay) PurgeIdentities(ctx context.Context, prefix string) error {
-	return o.purgeByPrefix(ctx, "identities", prefix, o.DeleteIdentity)
+	return o.deleteWhere(ctx, "identities", prefix)
 }
 
-// PurgeAuthPolicies deletes every auth policy whose name starts with prefix.
+// PurgeAuthPolicies deletes every auth policy whose name contains prefix.
 func (o *Overlay) PurgeAuthPolicies(ctx context.Context, prefix string) error {
-	return o.purgeByPrefix(ctx, "auth-policies", prefix, o.DeleteAuthPolicy)
+	return o.deleteWhere(ctx, "auth-policies", prefix)
 }
 
-// PurgeExtJwtSigners deletes every ext-jwt-signer whose name starts with prefix.
+// PurgeExtJwtSigners deletes every ext-jwt-signer whose name contains prefix.
 func (o *Overlay) PurgeExtJwtSigners(ctx context.Context, prefix string) error {
-	return o.purgeByPrefix(ctx, "ext-jwt-signers", prefix, o.DeleteExtJwtSigner)
+	return o.deleteWhere(ctx, "ext-jwt-signers", prefix)
 }
 
-func (o *Overlay) purgeByPrefix(ctx context.Context, entity, prefix string, del func(context.Context, string) error) error {
-	filter := fmt.Sprintf(`name contains "%s"`, prefix)
-	for {
-		out, err := o.runZiti(ctx, "edge", "list", entity, filter, "-j")
-		if err != nil {
-			return fmt.Errorf("list %s: %w", entity, err)
-		}
-		var listResp struct {
-			Data []struct {
-				Name string `json:"name"`
-			} `json:"data"`
-		}
-		if err := json.Unmarshal(out, &listResp); err != nil {
-			return fmt.Errorf("parse %s list: %w", entity, err)
-		}
-		deleted := 0
-		for _, item := range listResp.Data {
-			if !strings.HasPrefix(item.Name, prefix) {
-				continue
-			}
-			if err := del(ctx, item.Name); err != nil {
-				return err
-			}
-			deleted++
-		}
-		if deleted == 0 {
-			return nil
-		}
+func (o *Overlay) deleteWhere(ctx context.Context, entity, prefix string) error {
+	filter := fmt.Sprintf(`name contains "%s" limit none`, prefix)
+	if _, err := o.runZiti(ctx, "edge", "delete", entity, "where", filter); err != nil {
+		return fmt.Errorf("delete %s where %s: %w", entity, filter, err)
 	}
+	return nil
 }
