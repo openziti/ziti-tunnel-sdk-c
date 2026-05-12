@@ -210,7 +210,7 @@ jobs:
 
       - name: Upload core files
         if: ${{ failure() && matrix.core-dir != '' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: cores-${{ matrix.name }}
           path: ${{ matrix.core-dir }}/core.*
@@ -218,7 +218,7 @@ jobs:
 
       - name: Upload zet logs
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: zet-logs-${{ matrix.name }}
           path: ${{ env.ZET_LOG_DIR }}/ziti-edge-tunnel*.log
