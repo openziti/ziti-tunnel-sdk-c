@@ -107,6 +107,7 @@ static void handle_set(rawsock_t *rs,
 
         if (b->option == DCP_OPT_DEVICE && b->suboption == DCP_SUB_DEVICE_NAME && blen > 2) {
             int nlen = (int)blen - 2;
+            /* clamp nlen to prevent buffer overflow from attacker-controlled blen */
             if (nlen >= (int)sizeof(STATION_NAME))
                 nlen = (int)sizeof(STATION_NAME) - 1;
             memcpy(STATION_NAME, p + 2, (size_t)nlen);
