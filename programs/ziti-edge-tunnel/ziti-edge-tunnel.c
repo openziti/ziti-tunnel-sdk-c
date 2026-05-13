@@ -39,7 +39,7 @@
 #elif __linux__
 #include "netif_driver/linux/tun.h"
 #include "linux/diverter.h"
-#ifndef EXCLUDE_LIBPCAP
+#ifdef ENABLE_PCAP
 #include "netif_driver/linux/pcap.h"
 #endif
 #elif _WIN32
@@ -47,7 +47,7 @@
 #include <io.h>
 #include "netif_driver/windows/tun.h"
 #include "netif_driver/windows/tap.h"
-#ifndef EXCLUDE_LIBPCAP
+#ifdef ENABLE_PCAP
 #include "netif_driver/windows/pcap.h"
 #endif
 #include "windows/windows-service.h"
@@ -139,7 +139,7 @@ static char *configured_log_level = NULL;
 static char *configured_proxy = NULL;
 char *ipc_discriminator = NULL;
 static bool l2_tunnel = false;
-#ifndef EXCLUDE_LIBPCAP
+#ifdef ENABLE_PCAP
 static char *pcap_iface = NULL;
 #endif
 
@@ -883,7 +883,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
 #elif __linux__
     tun = tun_open(ziti_loop, tun_ip, dns_ip, dns_subnet, tun_error, sizeof(tun_error));
     if (tun != NULL && get_l2_enabled()) {
-#ifndef EXCLUDE_LIBPCAP
+#ifdef ENABLE_PCAP
         const char *pcap_iface = get_pcap_ifname();
         if (pcap_iface && pcap_iface[0] != '\0') {
             ZITI_LOG(INFO, "L2 mode enabled -- opening pcap interface '%s'", pcap_iface);
@@ -896,14 +896,14 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
 #endif
             ZITI_LOG(INFO, "L2 mode enabled -- opening TAP interface");
             tap = tap_open(ziti_loop, tun_error, sizeof(tun_error));
-#ifndef EXCLUDE_LIBPCAP
+#ifdef ENABLE_PCAP
         }
 #endif
     }
 #elif _WIN32
     tun = tun_open(ziti_loop, tun_ip, dns_subnet, tun_error, sizeof(tun_error));
     if (tun != NULL && get_l2_enabled()) {
-#ifndef EXCLUDE_LIBPCAP
+#ifdef ENABLE_PCAP
         const char *pcap_iface = get_pcap_ifname();
         if (pcap_iface && pcap_iface[0] != '\0') {
             ZITI_LOG(INFO, "L2 mode enabled -- opening pcap interface '%s'", pcap_iface);
@@ -916,7 +916,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
 #endif
             ZITI_LOG(INFO, "L2 mode enabled -- opening TAP interface");
             tap = tap_open(ziti_loop, tun_ip, dns_subnet, tun_error, sizeof(tun_error));
-#ifndef EXCLUDE_LIBPCAP
+#ifdef ENABLE_PCAP
         }
 #endif
     }
@@ -1223,7 +1223,7 @@ static struct option run_options[] = {
         { "dns-upstream", required_argument, NULL, 'u'},
         { "proxy", required_argument, NULL, 'x' },
         { "l2", no_argument, NULL, '2' },
-#ifndef EXCLUDE_LIBPCAP
+#ifdef ENABLE_PCAP
         { "pcap-iface", required_argument, NULL, 'N' },
 #endif
 #if __linux__
@@ -1301,7 +1301,7 @@ static int run_opts(int argc, char *argv[]) {
 #else
 #define DIVERTER_SHORT_OPTS ""
 #endif
-#ifndef EXCLUDE_LIBPCAP
+#ifdef ENABLE_PCAP
 #define PCAP_SHORT_OPTS "N:"
 #else
 #define PCAP_SHORT_OPTS ""
@@ -1357,7 +1357,7 @@ static int run_opts(int argc, char *argv[]) {
             case '2':
                 l2_tunnel = true;
                 break;
-#ifndef EXCLUDE_LIBPCAP
+#ifdef ENABLE_PCAP
             case 'N':
                 pcap_iface = optarg;
                 l2_tunnel = true;
@@ -1748,7 +1748,7 @@ static void run(int argc, char *argv[]) {
     if (l2_tunnel) {
         set_l2_enabled(l2_tunnel);
     }
-#ifndef EXCLUDE_LIBPCAP
+#ifdef ENABLE_PCAP
     if (pcap_iface) {
         set_pcap_ifname(pcap_iface);
     }
@@ -2929,7 +2929,7 @@ static int update_tun_ip_opts(int argc, char *argv[]) {
 }
 
 static int update_l2_opts(int argc, char *argv[]) {
-#ifndef EXCLUDE_LIBPCAP
+#ifdef ENABLE_PCAP
     static struct option opts[] = {
         {"pcap_ifname", required_argument, NULL, 'N'},
     };
@@ -2943,7 +2943,7 @@ static int update_l2_opts(int argc, char *argv[]) {
 
     tunnel_l2_options *l2_opts = calloc(1, sizeof(tunnel_l2_options));
     cmd.command = TunnelCommand_UpdateL2Options;
-#ifndef EXCLUDE_LIBPCAP
+#ifdef ENABLE_PCAP
     while ((c = getopt_long(argc, argv, "N:", opts, &option_index)) != -1) {
         switch (c) {
             case 'N':
@@ -3214,7 +3214,7 @@ static CommandLine enroll_cmd = make_command(
 #define DIVERTER_OPTS_DETAIL ""
 #endif
 
-#ifndef EXCLUDE_LIBPCAP
+#ifdef ENABLE_PCAP
 #define LIBPCAP_OPTS_DETAIL "\t-N|--pcap-iface\tnetwork interface to read/write with pcap\n"
 #endif
 

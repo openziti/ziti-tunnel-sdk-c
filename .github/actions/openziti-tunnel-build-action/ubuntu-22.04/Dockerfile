@@ -27,7 +27,6 @@ RUN apt-get -y install \
         doxygen \
         git \
         graphviz \
-        libpcap-dev \
         libssl-dev \
         libjson-c-dev \
         libprotobuf-c-dev \
@@ -44,8 +43,6 @@ RUN dpkg --add-architecture arm64 && dpkg --add-architecture armhf
 RUN apt-get update
 
 RUN apt-get -y install \
-        libpcap-dev:arm64 \
-        libpcap-dev:armhf \
         libjson-c-dev:arm64 \
         libjson-c-dev:armhf \
         libprotobuf-c-dev:arm64 \
