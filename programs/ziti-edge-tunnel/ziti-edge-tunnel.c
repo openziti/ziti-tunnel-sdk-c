@@ -72,6 +72,7 @@
 
 //functions for logging on windows
 bool log_init(uv_loop_t *, int, log_writer);
+void log_set_discriminator(const char *);
 void ziti_log_writer(int , const char *, const char *, size_t);
 char* get_log_file_name();
 #include <stdint.h>
@@ -1544,6 +1545,7 @@ static void run(int argc, char *argv[]) {
 
 #if _WIN32
     signal(SIGINT, interrupt_handler);
+    log_set_discriminator(ipc_discriminator);
     log_init(global_loop_ref, log_level, ziti_log_writer); // level from config file set below
     log_fn = ziti_log_writer;
 #else

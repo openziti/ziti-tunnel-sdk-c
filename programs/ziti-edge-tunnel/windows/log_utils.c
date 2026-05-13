@@ -30,16 +30,23 @@
 #define realpath(rel, abs) _fullpath(abs, rel, PATH_MAX)
 #endif
 
-extern char *ipc_discriminator;
-
 static bool open_log(char* log_filename);
 static bool rotate_log();
 static char* log_filename;
 static void set_is_interactive();
 static bool is_interactive = TRUE;
+static char* log_discriminator = NULL;
 
 char* get_log_file_name(){
     return log_filename;
+}
+
+// Set the discriminator embedded in the rotated log filename. Must be called
+// before log_init; ignored if the base filename has already been resolved.
+void log_set_discriminator(const char *discriminator) {
+    free(log_discriminator);
+    log_discriminator = (discriminator != NULL && *discriminator != '\0')
+                        ? strdup(discriminator) : NULL;
 }
 
 static void delete_older_logs(uv_async_t *ar);
@@ -55,10 +62,10 @@ static const char* get_log_filename_base() {
     if (log_filename_base != NULL) {
         return log_filename_base;
     }
-    if (ipc_discriminator != NULL && *ipc_discriminator != '\0') {
-        size_t n = strlen("ziti-tunneler.") + strlen(ipc_discriminator) + strlen(".log") + 1;
+    if (log_discriminator != NULL) {
+        size_t n = strlen("ziti-tunneler.") + strlen(log_discriminator) + strlen(".log") + 1;
         log_filename_base = calloc(n, sizeof(char));
-        snprintf(log_filename_base, n, "ziti-tunneler.%s.log", ipc_discriminator);
+        snprintf(log_filename_base, n, "ziti-tunneler.%s.log", log_discriminator);
     } else {
         log_filename_base = strdup(default_log_filename_base);
     }
