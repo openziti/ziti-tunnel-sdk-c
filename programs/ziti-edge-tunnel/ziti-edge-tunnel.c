@@ -3215,7 +3215,9 @@ static CommandLine enroll_cmd = make_command(
 #endif
 
 #ifdef ENABLE_PCAP
-#define LIBPCAP_OPTS_DETAIL "\t-N|--pcap-iface\tnetwork interface to read/write with pcap\n"
+#define PCAP_OPTS_DETAIL "\t-N|--pcap-iface\tnetwork interface to read/write with pcap\n"
+#else
+#define PCAP_OPTS_DETAIL ""
 #endif
 
 static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required superuser access)",
@@ -3225,7 +3227,7 @@ static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required supe
                                           "\t-x|--proxy type://[username[:password]@]hostname_or_ip:port\tproxy to use when"
                                           " connecting to OpenZiti controller and edge routers. 'http' is currently the only supported type.\n"
                                           "\t-2|--l2\tenable layer 2 services\n"
-                                          LIBPCAP_OPTS_DETAIL
+                                          PCAP_OPTS_DETAIL
                                           "\t-v|--verbose N\tset log level, higher level -- more verbose (default 3)\n"
                                           "\t-r|--refresh N\tset service polling interval in seconds (default 10)\n"
                                           "\t-d|--dns-ip-range <ip range>\tspecify CIDR block in which service DNS names"
