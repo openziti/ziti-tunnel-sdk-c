@@ -30,6 +30,8 @@
 #define realpath(rel, abs) _fullpath(abs, rel, PATH_MAX)
 #endif
 
+extern char *ipc_discriminator;
+
 static bool open_log(char* log_filename);
 static bool rotate_log();
 static char* log_filename;
@@ -45,8 +47,23 @@ static void delete_older_logs(uv_async_t *ar);
 static FILE *ziti_tunneler_log = NULL;
 static uv_check_t *log_flusher;
 static struct tm *start_time;
-static const char* log_filename_base = "ziti-tunneler.log";
+static char* log_filename_base = NULL;
+static const char* default_log_filename_base = "ziti-tunneler.log";
 static int rotation_count = 7;
+
+static const char* get_log_filename_base() {
+    if (log_filename_base != NULL) {
+        return log_filename_base;
+    }
+    if (ipc_discriminator != NULL && *ipc_discriminator != '\0') {
+        size_t n = strlen("ziti-tunneler.") + strlen(ipc_discriminator) + strlen(".log") + 1;
+        log_filename_base = calloc(n, sizeof(char));
+        snprintf(log_filename_base, n, "ziti-tunneler.%s.log", ipc_discriminator);
+    } else {
+        log_filename_base = strdup(default_log_filename_base);
+    }
+    return log_filename_base;
+}
 
 static uint8_t mkdir_p(const char *path) {
     char actual_path[PATH_MAX];
@@ -101,7 +118,7 @@ char* get_log_path() {
 char* get_base_filename() {
     char* log_path = get_log_path();
     char* temp_log_filename = calloc(PATH_MAX, sizeof(char));
-    snprintf(temp_log_filename, PATH_MAX, "%s%c%s", log_path, PATH_SEP, log_filename_base);
+    snprintf(temp_log_filename, PATH_MAX, "%s%c%s", log_path, PATH_SEP, get_log_filename_base());
     free(log_path);
     return temp_log_filename;
 }
@@ -304,7 +321,8 @@ static void delete_older_logs(uv_async_t *ar) {
         ZITI_LOG(TRACE, "file/folder in %s = %s %d", log_path, file.name, file.type);
 
         if (file.type == UV_DIRENT_FILE) {
-            if (strncmp(file.name, log_filename_base, strlen(log_filename_base)) == 0) {
+            const char *base = get_log_filename_base();
+            if (strncmp(file.name, base, strlen(base)) == 0) {
                 log_files[rotation_cnt] = strdup(file.name);
                 rotation_cnt++;
             }

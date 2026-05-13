@@ -1466,6 +1466,33 @@ size_t find_other_zets(model_list *ipcs, const char *ipc_prefix) {
     return model_list_size(ipcs);
 }
 
+// Decide whether and what IPC discriminator to apply, based on the set of
+// already-running ziti-edge-tunnel IPC sockets. Sets/clears the global
+// `ipc_discriminator`. Must run before log_init so the log filename can
+// embed the discriminator. Returns true when a discriminator is in effect.
+static bool apply_ipc_discriminator(model_list *existing_ipcs) {
+    bool default_pipe_taken = false;
+    const char *sn;
+    MODEL_LIST_FOREACH(sn, *existing_ipcs) {
+        if (strcmp(sn, sockfilebase) == 0) {
+            default_pipe_taken = true;
+            break;
+        }
+    }
+    // Auto-apply a PID discriminator only when the default pipe is taken.
+    // Another instance running with -P <name> does not collide with the
+    // default path, so a fresh default can still use the default pipe.
+    bool use_discriminator = !started_by_scm && (default_pipe_taken || ipc_discriminator != NULL);
+    if (use_discriminator && ipc_discriminator == NULL) {
+        const int pid = getpid();
+        ipc_discriminator = calloc(10, sizeof(char));
+        snprintf(ipc_discriminator, 10, "%d", pid);
+    } else if (!use_discriminator) {
+        ipc_discriminator = NULL;
+    }
+    return use_discriminator;
+}
+
 static void configure_ipc(bool automatic_ipc_discriminator, bool use_discriminator) {
     if (ipc_discriminator == NULL && automatic_ipc_discriminator && use_discriminator) {
         const int pid = getpid();
@@ -1508,6 +1535,13 @@ static void run(int argc, char *argv[]) {
     int log_level = get_log_level(configured_log_level);
     log_writer log_fn = NULL;
 
+    // Decide on the IPC discriminator BEFORE log_init so the log filename can
+    // include it. find_other_zets only logs at DEBUG on failure, so the pre-log
+    // scan is safe.
+    model_list ipc_list = {0};
+    size_t other_zets = find_other_zets(&ipc_list, sockfilebase);
+    bool use_discriminator = apply_ipc_discriminator(&ipc_list);
+
 #if _WIN32
     signal(SIGINT, interrupt_handler);
     log_init(global_loop_ref, log_level, ziti_log_writer); // level from config file set below
@@ -1515,9 +1549,6 @@ static void run(int argc, char *argv[]) {
 #else
     ziti_log_init(global_loop_ref, log_level, log_fn);
 #endif
-
-    model_list ipc_list = {0};
-    size_t other_zets = find_other_zets(&ipc_list, sockfilebase);
 
 #if _WIN32
     {
@@ -1543,20 +1574,7 @@ static void run(int argc, char *argv[]) {
     }
 #endif
 
-    // Only auto-apply a PID discriminator when the default pipe is actually taken.
-    // Another instance running with -P <name> does not collide with the default path,
-    // so a fresh default can still use the default pipe in that case.
-    bool default_pipe_taken = false;
-    {
-        const char *sn;
-        MODEL_LIST_FOREACH(sn, ipc_list) {
-            if (strcmp(sn, sockfilebase) == 0) {
-                default_pipe_taken = true;
-                break;
-            }
-        }
-    }
-    configure_ipc(true, !started_by_scm && (default_pipe_taken || ipc_discriminator != NULL));
+    configure_ipc(true, use_discriminator);
     model_list_clear(&ipc_list, free);
 
     // generate tunnel status instance and save active state and start time
