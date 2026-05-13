@@ -3,12 +3,15 @@ project(ziti-edge-tunnel)
 if(CMAKE_SYSTEM_NAME STREQUAL Darwin)
     set(NETIF_DRIVER_SOURCE netif_driver/darwin/utun.c)
 endif()
-option(DISABLE_LIBPCAP_FEATURE "libpcap integration toggle" OFF)
-message("DISABLE_LIBPCAP_FEATURE: ${DISABLE_LIBPCAP_FEATURE}")
+find_path(PCAP_INCLUDE_DIR pcap/pcap.h)
+if(PCAP_INCLUDE_DIR)
+    set(PCAP_FOUND TRUE)
+endif()
+message(STATUS "libpcap headers: ${PCAP_FOUND} (${PCAP_INCLUDE_DIR})")
 
 if(CMAKE_SYSTEM_NAME STREQUAL Linux)
     set(NETIF_DRIVER_SOURCE netif_driver/linux/tun.c   netif_driver/linux/resolvers.c netif_driver/linux/utils.c)
-    if(NOT DISABLE_LIBPCAP_FEATURE)
+    if(PCAP_FOUND)
         list(APPEND NETIF_DRIVER_SOURCE
                             netif_driver/pcap_common.c netif_driver/pcap_common.h
                             netif_driver/linux/pcap.c  netif_driver/linux/pcap.h)
@@ -21,7 +24,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL Windows)
     set(wintun_dll "${wintun_SOURCE_DIR}/bin/${CMAKE_SYSTEM_PROCESSOR}/wintun.dll")
     set(NETIF_DRIVER_SOURCE netif_driver/windows/tun.c  netif_driver/windows/tun.h
                             netif_driver/windows/tap.c  netif_driver/windows/tap.h)
-    if(NOT DISABLE_LIBPCAP_FEATURE)
+    if(PCAP_FOUND)
         list(APPEND NETIF_DRIVER_SOURCE
                             netif_driver/pcap_common.c  netif_driver/pcap_common.h
                             netif_driver/windows/pcap.c netif_driver/windows/pcap.h)
@@ -77,8 +80,9 @@ if(CMAKE_SYSTEM_NAME STREQUAL Windows)
     set(ziti-edge-tunnel_BUNDLE_COMPS wintun.dll)
 endif()
 
-if(DISABLE_LIBPCAP_FEATURE)
-    target_compile_definitions(ziti-edge-tunnel PRIVATE EXCLUDE_LIBPCAP)
+if(PCAP_FOUND)
+    target_include_directories(ziti-edge-tunnel PRIVATE ${PCAP_INCLUDE_DIR})
+    target_compile_definitions(ziti-edge-tunnel PRIVATE ENABLE_PCAP)
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")

@@ -32,7 +32,6 @@ RUN dnf install -y \
         graphviz \
         git \
         ninja-build \
-        libpcap-devel \
     && dnf clean all
 
 RUN curl -sSfL https://cmake.org/files/v${CMAKE_VERSION%.*}/cmake-${CMAKE_VERSION}-linux-$(uname -m).sh -o cmake.sh \

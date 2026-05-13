@@ -19,7 +19,6 @@ RUN dnf update --assumeyes \
         dnf-plugins-core \
         iproute \
         python3 \
-        libpcap-devel \
         systemd-devel \
         zlib-devel \
         systemd-rpm-macros \

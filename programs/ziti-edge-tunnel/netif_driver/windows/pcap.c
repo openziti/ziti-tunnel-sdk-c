@@ -19,8 +19,9 @@
  *
  * Opens a physical network adapter by friendly name using Npcap.  All pcap
  * functions are resolved at runtime via GetProcAddress from the installed
- * wpcap.dll (C:\Windows\System32\Npcap\wpcap.dll) so no import library or
- * SDK is required -- only a standard Npcap runtime installation.
+ * wpcap.dll (C:\Windows\System32\Npcap\wpcap.dll) so no import library is
+ * required -- only a standard Npcap runtime installation.  Headers come from
+ * libpcap (via vcpkg).
  *
  * Generic pcap logic (reader thread, frame queue, async delivery) lives in
  * netif_driver/pcap_common.c.  This file contains only Windows-specific
@@ -52,16 +53,7 @@
 #define ETH_ALEN            6
 #define MAX_LOCAL_MACS      64
 
-/* -------------------------------------------------------------------------
- * Minimal pcap types (avoids dependency on pcap.h / Npcap SDK)
- * ---------------------------------------------------------------------- */
-typedef struct pcap pcap_t;
-
-struct pcap_pkthdr {
-    struct { long tv_sec; long tv_usec; } ts;
-    uint32_t caplen;
-    uint32_t len;
-};
+#include <pcap/pcap.h>
 
 /* -------------------------------------------------------------------------
  * Function pointers resolved from wpcap.dll

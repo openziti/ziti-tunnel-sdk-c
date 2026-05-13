@@ -921,7 +921,7 @@ bool get_l2_enabled() {
     return tnl_status.L2Enabled;
 }
 
-#ifndef EXCLUDE_LIBPCAP
+#ifdef ENABLE_PCAP
 void set_pcap_ifname(const char* pcap_ifname) {
     if (tnl_status.PcapInterface != NULL) {
         free((char*)tnl_status.PcapInterface);
