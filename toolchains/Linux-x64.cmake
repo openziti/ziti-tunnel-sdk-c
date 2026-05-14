@@ -1,0 +1,12 @@
+set(CMAKE_SYSTEM_NAME Linux)
+set(CMAKE_SYSTEM_PROCESSOR x86_64)
+
+set(triple x86_64-linux-gnu)
+
+set(CMAKE_C_COMPILER clang-17)
+set(CMAKE_CXX_COMPILER clang++-17)
+
+set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE amd64)
+set(CPACK_RPM_PACKAGE_ARCHITECTURE x86_64)
+
+set(ENV{PKG_CONFIG_PATH} /usr/lib/${triple}/pkgconfig)
