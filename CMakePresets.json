@@ -22,6 +22,13 @@
       }
     },
     {
+      "name": "vcpkg-win-pkgconfig",
+      "hidden": true,
+      "cacheVariables": {
+        "PKG_CONFIG_EXECUTABLE": "${sourceDir}/build/vcpkg_installed/x64-windows/tools/pkgconf/pkgconf.exe"
+      }
+    },
+    {
       "name": "vcpkg-win64-static",
       "hidden": true,
       "cacheVariables": {
@@ -103,6 +110,7 @@
     {
       "name": "ci-win64-vs2022",
       "inherits": [
+        "vcpkg-win-pkgconfig",
         "flags-windows-vs2022",
         "ci-std",
         "vs-2022"
@@ -116,6 +124,7 @@
     {
       "name": "ci-win86-vs2022",
       "inherits": [
+        "vcpkg-win-pkgconfig",
         "flags-windows-vs2022",
         "ci-std",
         "vs-2022"
@@ -126,6 +135,7 @@
     {
       "name": "ci-win-arm64-vs2022",
       "inherits": [
+        "vcpkg-win-pkgconfig",
         "flags-windows-vs2022",
         "ci-std",
         "vs-2022"
@@ -136,6 +146,7 @@
     {
       "name": "ci-win64-mingw",
       "inherits": [
+        "vcpkg-win-pkgconfig",
         "flags-windows-mingw",
         "ci-std",
         "ninja"
