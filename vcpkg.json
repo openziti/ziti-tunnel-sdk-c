@@ -16,7 +16,12 @@
       "$comment": "on linux we use system installed OpenSSL, as determined by vcpkg-overlays/linux-syslibs)"
     },
     "json-c",
-    "protobuf-c"
+    "protobuf-c",
+    {
+      "name": "pkgconf",
+      "host": true,
+      "platform": "windows"
+    }
   ],
   "features": {
     "test": {
