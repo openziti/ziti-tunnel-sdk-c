@@ -205,6 +205,21 @@ func (o *Overlay) RequireCATrusted(t *testing.T) {
   %s`, o.Home, install, cleanup)
 }
 
+// CACleanupCommand returns the OS-specific shell command a developer can run
+// to remove this overlay's root CA from their OS trust store after testing.
+func (o *Overlay) CACleanupCommand() string {
+	caPath := filepath.Join(o.Home, "pki", "root-ca", "certs", "root-ca.cert")
+	switch runtime.GOOS {
+	case "windows":
+		return fmt.Sprintf(`$c = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2 "%s"; Get-ChildItem Cert:\LocalMachine\Root | ? Thumbprint -eq $c.Thumbprint | Remove-Item`, caPath)
+	case "darwin":
+		return fmt.Sprintf(`sudo security delete-certificate -Z $(openssl x509 -in %s -noout -fingerprint -sha1 | sed 's/.*=//' | tr -d ':') /Library/Keychains/System.keychain`, caPath)
+	case "linux":
+		return `sudo rm /usr/local/share/ca-certificates/ziti-test.crt && sudo update-ca-certificates --fresh`
+	}
+	return ""
+}
+
 func (o *Overlay) Stop() {
 	if o.extCmd.Process == nil {
 		return
@@ -448,10 +463,15 @@ func (o *Overlay) DeleteConfig(ctx context.Context, name string) error {
 }
 
 func (o *Overlay) waitUntilReady(ctx context.Context) error {
+	if err := o.waitForControllerPort(ctx); err != nil {
+		return err
+	}
+	log.Printf("overlay: attempting admin login at %s", o.ControllerHostPort())
 	var lastErr error
 	for {
 		if _, err := o.runZiti(ctx, "edge", "login", o.ControllerHostPort(),
 			"-u", adminUsername, "-p", adminPassword, "--yes"); err == nil {
+			log.Printf("overlay: admin login OK")
 			return nil
 		} else {
 			lastErr = err
@@ -462,6 +482,28 @@ func (o *Overlay) waitUntilReady(ctx context.Context) error {
 		case <-ctx.Done():
 			return fmt.Errorf("%w (last login error: %v)", ctx.Err(), lastErr)
 		case <-time.After(1 * time.Second):
+		}
+	}
+}
+
+func (o *Overlay) waitForControllerPort(ctx context.Context) error {
+	addr := fmt.Sprintf("localhost:%d", o.ControllerPort)
+	log.Printf("overlay: waiting for controller TCP port %s", addr)
+	var lastErr error
+	for {
+		conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
+		if err == nil {
+			_ = conn.Close()
+			log.Printf("overlay: controller port %s open", addr)
+			return nil
+		}
+		lastErr = err
+		select {
+		case exitErr := <-o.cmdDone:
+			return fmt.Errorf("quickstart exited before port %d opened: %v", o.ControllerPort, exitErr)
+		case <-ctx.Done():
+			return fmt.Errorf("%w (last dial error: %v)", ctx.Err(), lastErr)
+		case <-time.After(250 * time.Millisecond):
 		}
 	}
 }
