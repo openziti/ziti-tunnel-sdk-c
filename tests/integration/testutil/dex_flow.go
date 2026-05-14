@@ -29,12 +29,9 @@ import (
 	"time"
 )
 
-// DriveDexOIDC walks dex's OIDC password flow: the test driver acts as the
-// browser, following the redirect chain from the SDK's authorize URL through
-// dex's login form and back to ZET's loopback callback (http://localhost:20314/auth/callback).
-//
-// authURL is the URL the SDK returns from ExternalAuth -- it already includes
-// client_id, redirect_uri, scope, state, etc.
+// DriveDexOIDC acts as the browser in dex's OIDC password flow, following
+// redirects from authURL through the login form back to ZET's loopback
+// callback at localhost:20314.
 func DriveDexOIDC(ctx context.Context, authURL, issuer, username, password string) error {
 	jar, err := cookiejar.New(nil)
 	if err != nil {
@@ -48,15 +45,13 @@ func DriveDexOIDC(ctx context.Context, authURL, issuer, username, password strin
 		},
 	}
 
-	// Step 1: follow the authorize URL chain until we land on dex's login form.
-	// With a single connector configured, dex bounces /auth -> /auth/<connector>
-	// possibly through several 302s. Stop following when we see a 200.
+	// 1. follow authorize redirects to the login page
 	loginPageURL, err := followRedirectsTo200(ctx, client, authURL, 8)
 	if err != nil {
 		return fmt.Errorf("follow authorize redirects: %w", err)
 	}
 
-	// Step 2: GET the login page and extract the form action.
+	// 2. fetch login page, extract form action
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, loginPageURL, nil)
 	if err != nil {
 		return err
@@ -80,8 +75,7 @@ func DriveDexOIDC(ctx context.Context, authURL, issuer, username, password strin
 		return fmt.Errorf("resolve form action %q: %w", formAction, err)
 	}
 
-	// Step 3: POST credentials. Dex accepts either "login" or "username" for the
-	// identifier field depending on connector; password connector uses "login".
+	// 3. post credentials
 	form := url.Values{
 		"login":    {username},
 		"password": {password},
@@ -101,8 +95,7 @@ func DriveDexOIDC(ctx context.Context, authURL, issuer, username, password strin
 		return fmt.Errorf("login POST status=%d body=%s", resp.StatusCode, truncate(postBody, 200))
 	}
 
-	// Step 4+: follow approval/callback redirects until we hit the loopback URL
-	// on localhost:20314. Once we GET that URL successfully, ZET has its code.
+	// 4. follow the callback chain until we hit ZET's loopback
 	loc := resp.Header.Get("Location")
 	if loc == "" {
 		return fmt.Errorf("no Location after login POST")
@@ -112,9 +105,6 @@ func DriveDexOIDC(ctx context.Context, authURL, issuer, username, password strin
 		return fmt.Errorf("resolve post-login location: %w", err)
 	}
 
-	// Hop through dex's approval/callback chain until we reach the loopback
-	// callback (localhost:20314 / 127.0.0.1:20314). At that point we hand off
-	// to ZET to receive the code.
 	for i := 0; i < 8; i++ {
 		u, err := url.Parse(current)
 		if err != nil {
@@ -148,8 +138,6 @@ func DriveDexOIDC(ctx context.Context, authURL, issuer, username, password strin
 	return fmt.Errorf("did not reach loopback callback within hop limit (last=%s)", current)
 }
 
-// followRedirectsTo200 walks 3xx Location headers starting from start until
-// it gets a non-3xx response. Returns the URL that produced the non-3xx.
 func followRedirectsTo200(ctx context.Context, client *http.Client, start string, maxHops int) (string, error) {
 	current := start
 	for i := 0; i < maxHops; i++ {

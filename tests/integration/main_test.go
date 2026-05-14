@@ -64,6 +64,9 @@ func TestMain(m *testing.M) {
 }
 
 func run(m *testing.M) (int, error) {
+	if zetLogDir == "" {
+		zetLogDir = filepath.Join(overlayHome, "zet-logs")
+	}
 	var err error
 	zetTempRoot, err = os.MkdirTemp("", "ziti-tunnel-zet-*")
 	if err != nil {

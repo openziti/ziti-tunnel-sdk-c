@@ -28,25 +28,19 @@ import (
 	"time"
 )
 
-// Dex is a running instance of the Dex OIDC provider, used as a test IdP.
-// The static config below provisions one client ("ziti-test") and one user
-// (test@example.com / password), backed by in-memory storage.
+// Dex is a running test instance of the Dex OIDC provider.
 type Dex struct {
-	Bin       string
-	WorkDir   string
-	HTTPAddr  string // host:port (e.g. 127.0.0.1:5556)
-	IssuerURL string // <httpAddr>/dex
-	// ClientIDs registered as staticClients in dex. The primary client is the
-	// first entry; additional entries exist so the multi-signer test can pin
-	// each ext-jwt-signer to a distinct audience.
-	ClientIDs []string
-	Email     string // login identifier dex's password connector expects
-	Password  string
-	ExternalID string // value of the email claim that ext-jwt-signer will map to identity externalId
+	Bin        string
+	WorkDir    string
+	HTTPAddr   string
+	IssuerURL  string
+	ClientIDs  []string
+	Email      string
+	Password   string
+	ExternalID string
 	cmd        *exec.Cmd
 }
 
-// DexUser describes the single static user provisioned in the test IdP.
 type DexUser struct {
 	Email    string
 	Username string
@@ -54,10 +48,6 @@ type DexUser struct {
 	Password string
 }
 
-// DefaultDexUser is the canned account used by tests.
-//
-// hash is bcrypt(password) with cost 10. Pre-computed so tests don't pay
-// the bcrypt cost at startup. The plaintext is "password".
 var DefaultDexUser = DexUser{
 	Email:    "test@example.com",
 	Username: "test",
@@ -65,10 +55,10 @@ var DefaultDexUser = DexUser{
 	Password: "password",
 }
 
+// bcrypt of "password" at cost 10.
 const defaultDexBcryptHash = `$2a$10$2b2cU8CPhOTaGrs1HRQuAueS7JTT5ZHsHSzYiFPm1leZck7Mc8T4W`
 
-// StartDex writes a config file to workDir, picks a free port, launches the
-// dex binary against it, and waits for the discovery endpoint to respond.
+// StartDex launches dex against a generated config and waits for discovery.
 // Caller must defer Stop().
 func StartDex(ctx context.Context, dexBin, workDir string) (*Dex, error) {
 	if dexBin == "" {
@@ -154,7 +144,6 @@ staticPasswords:
 	return d, nil
 }
 
-// Stop kills the dex process. Safe to call multiple times.
 func (d *Dex) Stop() {
 	if d == nil || d.cmd == nil || d.cmd.Process == nil {
 		return
@@ -164,7 +153,6 @@ func (d *Dex) Stop() {
 	d.cmd = nil
 }
 
-// JWKSURI returns the JWKS endpoint that dex advertises.
 func (d *Dex) JWKSURI() string {
 	return d.IssuerURL + "/keys"
 }

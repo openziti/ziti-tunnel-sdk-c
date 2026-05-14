@@ -50,6 +50,7 @@ type ZET struct {
 	CmdPipe       string
 	EventPipe     string
 	Discriminator string
+	LogPath       string
 
 	extCmd  *exec.Cmd
 	stdout  *syncBuffer
@@ -94,6 +95,7 @@ func StartZET(ctx context.Context, binPath, identityDir string, opts ZETOptions)
 	stderr := newSyncBuffer()
 
 	var logFile *os.File
+	var logPath string
 	if opts.LogDir != "" {
 		if err := os.MkdirAll(opts.LogDir, 0o755); err != nil {
 			return nil, fmt.Errorf("create zet log dir: %w", err)
@@ -102,8 +104,9 @@ func StartZET(ctx context.Context, binPath, identityDir string, opts ZETOptions)
 		if opts.Discriminator != "" {
 			logName += "." + opts.Discriminator
 		}
+		logPath = filepath.Join(opts.LogDir, logName+".log")
 		var ferr error
-		logFile, ferr = os.OpenFile(filepath.Join(opts.LogDir, logName+".log"), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
+		logFile, ferr = os.OpenFile(logPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
 		if ferr != nil {
 			return nil, fmt.Errorf("open zet log file: %w", ferr)
 		}
@@ -126,6 +129,7 @@ func StartZET(ctx context.Context, binPath, identityDir string, opts ZETOptions)
 		CmdPipe:       cmdPipe,
 		EventPipe:     eventPipe,
 		Discriminator: opts.Discriminator,
+		LogPath:       logPath,
 		extCmd:        cmd,
 		stdout:        stdout,
 		stderr:        stderr,
@@ -181,7 +185,7 @@ func (z *ZET) Stop() {
 }
 
 func (z *ZET) Logs() string {
-	return fmt.Sprintf("--- stdout ---\n%s\n--- stderr ---\n%s", z.stdout.String(), z.stderr.String())
+	return "zet log: " + z.LogPath
 }
 
 func ensureNothingOnPipe(path string) error {
