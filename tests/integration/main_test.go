@@ -32,10 +32,12 @@ import (
 var (
 	zetBin      string
 	zitiBin     string
+	dexBin      string
 	zetLogDir   string
 	overlay     *testutil.Overlay
 	zet         *testutil.ZET
 	zetB        *testutil.ZET
+	dex         *testutil.Dex
 	overlayHome string
 	zetTempRoot string
 )
@@ -43,6 +45,7 @@ var (
 func TestMain(m *testing.M) {
 	flag.StringVar(&zetBin, "zet-bin", "", "path to ziti-edge-tunnel binary (required)")
 	flag.StringVar(&zitiBin, "ziti-bin", "", "path to ziti binary for controller+router bring-up (required)")
+	flag.StringVar(&dexBin, "dex-bin", "", "path to dex binary (optional; enables tests that need an external IdP)")
 	flag.StringVar(&zetLogDir, "zet-log-dir", "", "if set, write each zet's combined stdout+stderr to <dir>/zet-<name>.log")
 	flag.StringVar(&overlayHome, "overlay-home", filepath.Join(os.TempDir(), "ziti-tunnel-test-quickstart"), "directory for the test overlay's persistent quickstart state (PKI lives here across runs)")
 	flag.Parse()
@@ -118,6 +121,17 @@ func run(m *testing.M) (int, error) {
 		return 0, fmt.Errorf("start zetB: %w", err)
 	}
 	defer zetB.Stop()
+
+	if dexBin != "" {
+		log.Printf("setup: starting dex (dexBin=%s)", dexBin)
+		dex, err = testutil.StartDex(ctx, dexBin, filepath.Join(zetTempRoot, "dex"))
+		if err != nil {
+			return 0, fmt.Errorf("start dex: %w", err)
+		}
+		defer dex.Stop()
+	} else {
+		log.Printf("setup: -dex-bin not provided; tests that require an external IdP will be skipped")
+	}
 
 	log.Printf("setup: running tests")
 	return m.Run(), nil

@@ -284,12 +284,23 @@ func (o *Overlay) CreateIdentityJWTWithAuthPolicy(ctx context.Context, name, aut
 // public keys from to verify incoming JWTs; externalAuthURL is what the SDK
 // directs users to so they can obtain a JWT (the IdP's /authorize equivalent).
 func (o *Overlay) CreateExtJwtSigner(ctx context.Context, name, issuer, jwksEndpoint, audience, clientID, externalAuthURL string) (string, error) {
-	out, err := o.runZiti(ctx, "edge", "create", "ext-jwt-signer", name, issuer,
+	return o.CreateExtJwtSignerWithClaim(ctx, name, issuer, jwksEndpoint, audience, clientID, externalAuthURL, "")
+}
+
+// CreateExtJwtSignerWithClaim is CreateExtJwtSigner with control over which
+// JWT claim the controller maps to identity externalId. Empty claimsProperty
+// defers to the controller default ("sub").
+func (o *Overlay) CreateExtJwtSignerWithClaim(ctx context.Context, name, issuer, jwksEndpoint, audience, clientID, externalAuthURL, claimsProperty string) (string, error) {
+	args := []string{"edge", "create", "ext-jwt-signer", name, issuer,
 		"--jwks-endpoint", jwksEndpoint,
 		"--audience", audience,
 		"--client-id", clientID,
 		"--external-auth-url", externalAuthURL,
-	)
+	}
+	if claimsProperty != "" {
+		args = append(args, "--claims-property", claimsProperty)
+	}
+	out, err := o.runZiti(ctx, args...)
 	if err != nil {
 		return "", fmt.Errorf("create ext-jwt-signer %s: %w", name, err)
 	}
