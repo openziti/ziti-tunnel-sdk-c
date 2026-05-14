@@ -19,6 +19,7 @@ package testutil
 import (
 	"context"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -184,7 +185,10 @@ func extractFormAction(body string) (string, error) {
 	if len(m) < 2 {
 		return "", fmt.Errorf("no <form action=...> in body")
 	}
-	return m[1], nil
+	// dex HTML-escapes the action attribute, so `?back=&state=<id>` is rendered
+	// as `?back=&amp;state=<id>`. Without decoding, the POSTed query parses as
+	// keys `back` and `amp;state`, and dex returns 400 "User session error."
+	return html.UnescapeString(m[1]), nil
 }
 
 func absoluteURL(base, ref string) (string, error) {

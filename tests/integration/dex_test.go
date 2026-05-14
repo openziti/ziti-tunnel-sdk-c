@@ -25,10 +25,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestDexUp is a smoke test for the dex IdP wiring. It only verifies that the
-// process is up and that OIDC discovery returns the JWKS URI dex advertises.
-// Drives no auth flow yet -- once this passes, build on it to point an ext-jwt
-// signer at dex.IssuerURL.
 func TestDexUp(t *testing.T) {
 	if dex == nil {
 		t.Skip("dex is not configured (-dex-bin not provided)")

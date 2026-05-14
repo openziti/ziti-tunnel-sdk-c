@@ -40,7 +40,6 @@ type Dex struct {
 	// first entry; additional entries exist so the multi-signer test can pin
 	// each ext-jwt-signer to a distinct audience.
 	ClientIDs []string
-	Secret    string
 	Email     string // login identifier dex's password connector expects
 	Password  string
 	ExternalID string // value of the email claim that ext-jwt-signer will map to identity externalId
@@ -66,7 +65,7 @@ var DefaultDexUser = DexUser{
 	Password: "password",
 }
 
-const defaultDexBcryptHash = `$2a$10$33EMT0cVYVlPy6WAMCLsceLYjWhuHpbz5yuZxu97DqaFmZpGq8H.O`
+const defaultDexBcryptHash = `$2a$10$2b2cU8CPhOTaGrs1HRQuAueS7JTT5ZHsHSzYiFPm1leZck7Mc8T4W`
 
 // StartDex writes a config file to workDir, picks a free port, launches the
 // dex binary against it, and waits for the discovery endpoint to respond.
@@ -97,7 +96,7 @@ func StartDex(ctx context.Context, dexBin, workDir string) (*Dex, error) {
       - http://127.0.0.1:20314/auth/callback
       - http://localhost:20314/auth/callback
     name: 'Ziti Test (%s)'
-    secret: test-secret
+    public: true
 `, id, id)
 	}
 
@@ -142,7 +141,6 @@ staticPasswords:
 		HTTPAddr:  httpAddr,
 		IssuerURL: issuer,
 		ClientIDs:  clientIDs,
-		Secret:     "test-secret",
 		Email:      DefaultDexUser.Email,
 		Password:   DefaultDexUser.Password,
 		ExternalID: DefaultDexUser.Email,

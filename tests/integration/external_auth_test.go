@@ -141,18 +141,38 @@ func testExternalAuthWithMultipleSignersCompletes(t *testing.T) {
 
 	name := identityNameFor(t)
 	jwksURI := dex.JWKSURI()
-	authzURL := dex.IssuerURL + "/auth"
 
 	realSignerName := name + "-signer-real"
 	signer2Name := name + "-signer-2"
 	signer3Name := name + "-signer-3"
-	// All three signers point at the same dex issuer but pin to a distinct
-	// audience/client_id so the controller treats them as separate providers.
-	realSignerID, err := overlay.CreateExtJwtSignerWithClaim(ctx, realSignerName, dex.IssuerURL, jwksURI, dex.ClientIDs[0], dex.ClientIDs[0], authzURL, "email")
+	// Only the real signer is exercised by the auth flow. signer-2 and signer-3
+	// just need to exist as distinct providers in the policy; the controller
+	// rejects duplicate issuers via a unique index, so they each get a unique
+	// sub-path under dex (no traffic ever hits those endpoints).
+	realSignerID, err := overlay.CreateExtJwtSigner(ctx, testutil.ExtJwtSignerSpec{
+		Name:     realSignerName,
+		Issuer:   dex.IssuerURL,
+		JWKS:     jwksURI,
+		ClientID: dex.ClientIDs[0],
+		Claim:    "email",
+		Scopes:   []string{"email"},
+	})
 	require.NoError(t, err, "create real-issuer ext-jwt-signer")
-	signer2ID, err := overlay.CreateExtJwtSignerWithClaim(ctx, signer2Name, dex.IssuerURL, jwksURI, dex.ClientIDs[1], dex.ClientIDs[1], authzURL, "email")
+	signer2ID, err := overlay.CreateExtJwtSigner(ctx, testutil.ExtJwtSignerSpec{
+		Name:     signer2Name,
+		Issuer:   dex.IssuerURL + "/" + signer2Name,
+		JWKS:     jwksURI,
+		ClientID: dex.ClientIDs[1],
+		Claim:    "email",
+	})
 	require.NoError(t, err, "create ext-jwt-signer 2")
-	signer3ID, err := overlay.CreateExtJwtSignerWithClaim(ctx, signer3Name, dex.IssuerURL, jwksURI, dex.ClientIDs[2], dex.ClientIDs[2], authzURL, "email")
+	signer3ID, err := overlay.CreateExtJwtSigner(ctx, testutil.ExtJwtSignerSpec{
+		Name:     signer3Name,
+		Issuer:   dex.IssuerURL + "/" + signer3Name,
+		JWKS:     jwksURI,
+		ClientID: dex.ClientIDs[2],
+		Claim:    "email",
+	})
 	require.NoError(t, err, "create ext-jwt-signer 3")
 
 	policyName := name + "-policy"
@@ -204,9 +224,15 @@ func createDexSignerAndPolicy(t *testing.T, ctx context.Context, name, clientID 
 	policyName := name + "-policy"
 
 	jwksURI := dex.JWKSURI()
-	authzURL := dex.IssuerURL + "/auth"
 
-	signerID, err := overlay.CreateExtJwtSignerWithClaim(ctx, signerName, dex.IssuerURL, jwksURI, clientID, clientID, authzURL, "email")
+	signerID, err := overlay.CreateExtJwtSigner(ctx, testutil.ExtJwtSignerSpec{
+		Name:     signerName,
+		Issuer:   dex.IssuerURL,
+		JWKS:     jwksURI,
+		ClientID: clientID,
+		Claim:    "email",
+		Scopes:   []string{"email"},
+	})
 	require.NoError(t, err, "create ext-jwt-signer")
 	require.NoError(t, overlay.CreateAuthPolicyForExtJwt(ctx, policyName, signerID), "create auth policy with ext-jwt-signer")
 

@@ -159,10 +159,12 @@ type TunnelStatus struct {
 	ConfigDir         string          `json:"ConfigDir"`
 }
 
-// FindIdentity returns the identity entry whose Name matches, or nil.
-func (s *TunnelStatus) FindIdentity(name string) *IdentityStatus {
+// FindIdentity returns the identity entry whose FingerPrint matches, or nil.
+// FingerPrint carries the controller-side identity name; Name is mutable and
+// gets rewritten to the identity-file path after /current-identity is fetched.
+func (s *TunnelStatus) FindIdentity(fingerprint string) *IdentityStatus {
 	for i := range s.Identities {
-		if s.Identities[i].Name == name {
+		if s.Identities[i].FingerPrint == fingerprint {
 			return &s.Identities[i]
 		}
 	}

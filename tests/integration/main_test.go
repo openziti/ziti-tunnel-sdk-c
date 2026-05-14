@@ -83,7 +83,15 @@ func run(m *testing.M) (int, error) {
 	defer overlay.Stop()
 	defer func() {
 		if cmd := overlay.CACleanupCommand(); cmd != "" {
-			log.Printf("teardown: to remove test CA from OS trust when done:\n  %s", cmd)
+			log.Printf(`
+
+========================================
+teardown: to remove test CA from OS trust when done:
+
+  %s
+
+========================================
+`, cmd)
 		}
 	}()
 
