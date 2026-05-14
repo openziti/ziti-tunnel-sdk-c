@@ -20,6 +20,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"testing"
@@ -60,46 +61,57 @@ func TestMain(m *testing.M) {
 }
 
 func run(m *testing.M) (int, error) {
-	if err := testutil.EnsureNoExistingZET(); err != nil {
-		return 0, err
-	}
 	var err error
 	zetTempRoot, err = os.MkdirTemp("", "ziti-tunnel-zet-*")
 	if err != nil {
 		return 0, fmt.Errorf("create zet temp root: %w", err)
 	}
+	log.Printf("setup: zet temp root %s", zetTempRoot)
 	defer os.RemoveAll(zetTempRoot)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
+	log.Printf("setup: starting overlay (zitiBin=%s overlayHome=%s)", zitiBin, overlayHome)
 	overlay, err = testutil.StartOverlay(ctx, zitiBin, overlayHome)
 	if err != nil {
 		return 0, fmt.Errorf("start overlay: %w", err)
 	}
 	defer overlay.Stop()
+	defer func() {
+		if cmd := overlay.CACleanupCommand(); cmd != "" {
+			log.Printf("teardown: to remove test CA from OS trust when done:\n  %s", cmd)
+		}
+	}()
 
+	log.Printf("setup: purging stale Test* identities")
 	if err := overlay.PurgeIdentities(ctx, "Test"); err != nil {
 		return 0, fmt.Errorf("purge stale test identities: %w", err)
 	}
+	log.Printf("setup: purging stale Test* auth-policies")
 	if err := overlay.PurgeAuthPolicies(ctx, "Test"); err != nil {
 		return 0, fmt.Errorf("purge stale test auth policies: %w", err)
 	}
+	log.Printf("setup: purging stale Test* ext-jwt-signers")
 	if err := overlay.PurgeExtJwtSigners(ctx, "Test"); err != nil {
 		return 0, fmt.Errorf("purge stale test ext-jwt-signers: %w", err)
 	}
 
+	log.Printf("setup: starting ZET zetA")
 	zet, err = testutil.StartZET(ctx, zetBin, filepath.Join(zetTempRoot, "zet-identities"), testutil.ZETOptions{
-		LogDir: zetLogDir,
+		Discriminator: "zetA",
+		DNSRange:      "100.129.0.1/16",
+		LogDir:        zetLogDir,
 	})
 	if err != nil {
 		return 0, fmt.Errorf("start ziti-edge-tunnel: %w", err)
 	}
 	defer zet.Stop()
 
+	log.Printf("setup: starting ZET zetB")
 	zetB, err = testutil.StartZET(ctx, zetBin, filepath.Join(zetTempRoot, "zetB-identities"), testutil.ZETOptions{
 		Discriminator: "zetB",
-		DNSRange:      "100.128.0.1/10",
+		DNSRange:      "100.128.0.1/16",
 		LogDir:        zetLogDir,
 	})
 	if err != nil {
@@ -107,5 +119,6 @@ func run(m *testing.M) (int, error) {
 	}
 	defer zetB.Stop()
 
+	log.Printf("setup: running tests")
 	return m.Run(), nil
 }

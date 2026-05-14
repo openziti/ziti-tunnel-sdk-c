@@ -77,11 +77,11 @@ func testEnableMFAAcceptsTotpRequiredAuthPolicy(t *testing.T) {
 	require.NoError(t, err, "mint JWT for identity bound to %q", policy)
 	require.NotEmpty(t, jwt)
 
-	events, err := testutil.DialEvents(ctx)
+	events, err := zet.DialEvents(ctx)
 	require.NoError(t, err, "dial ZET event pipe")
 	t.Cleanup(func() { _ = events.Close() })
 
-	client, err := testutil.DialIPC(ctx)
+	client, err := zet.DialIPC(ctx)
 	require.NoError(t, err, "dial ZET IPC pipe")
 	t.Cleanup(func() { _ = client.Close() })
 
@@ -154,7 +154,7 @@ func testMFAReauthenticationAcceptsValidTotp(t *testing.T) {
 	name := identityNameFor(t)
 	enrolled := newEnrolledMFA(t, ctx, name)
 
-	events, err := testutil.DialEvents(ctx)
+	events, err := zet.DialEvents(ctx)
 	require.NoError(t, err, "dial ZET event pipe")
 	t.Cleanup(func() { _ = events.Close() })
 
@@ -204,7 +204,7 @@ func testMFAReauthenticationAcceptsRecoveryCode(t *testing.T) {
 	name := identityNameFor(t)
 	enrolled := newEnrolledMFA(t, ctx, name)
 
-	events, err := testutil.DialEvents(ctx)
+	events, err := zet.DialEvents(ctx)
 	require.NoError(t, err, "dial ZET event pipe")
 	t.Cleanup(func() { _ = events.Close() })
 
@@ -251,7 +251,7 @@ func testMFAReauthenticationRejectsInvalidTotp(t *testing.T) {
 	name := identityNameFor(t)
 	enrolled := newEnrolledMFA(t, ctx, name)
 
-	events, err := testutil.DialEvents(ctx)
+	events, err := zet.DialEvents(ctx)
 	require.NoError(t, err, "dial ZET event pipe")
 	t.Cleanup(func() { _ = events.Close() })
 
@@ -381,11 +381,11 @@ func newEnrolledMFA(t *testing.T, ctx context.Context, name string) *enrolledMFA
 	require.NoError(t, err, "mint JWT")
 	require.NotEmpty(t, jwt)
 
-	events, err := testutil.DialEvents(ctx)
+	events, err := zet.DialEvents(ctx)
 	require.NoError(t, err, "dial ZET event pipe")
 	defer func() { _ = events.Close() }()
 
-	client, err := testutil.DialIPC(ctx)
+	client, err := zet.DialIPC(ctx)
 	require.NoError(t, err, "dial ZET IPC pipe")
 	t.Cleanup(func() { _ = client.Close() })
 

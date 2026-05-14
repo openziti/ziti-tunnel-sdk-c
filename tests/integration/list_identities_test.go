@@ -41,7 +41,7 @@ func testListIdentitiesContainsAddedIdentity(t *testing.T) {
 	require.NoError(t, err, "mint JWT via overlay")
 	require.NotEmpty(t, jwt)
 
-	client, err := testutil.DialIPC(ctx)
+	client, err := zet.DialIPC(ctx)
 	require.NoError(t, err, "dial ZET IPC pipe")
 	t.Cleanup(func() { _ = client.Close() })
 

@@ -57,7 +57,7 @@ func testAddIdentityWithJwtSucceeds(t *testing.T) {
 	require.NoError(t, err, "mint JWT via overlay")
 	require.NotEmpty(t, jwt, "JWT content should not be empty")
 
-	client, err := testutil.DialIPC(ctx)
+	client, err := zet.DialIPC(ctx)
 	require.NoError(t, err, "dial ZET IPC pipe")
 	t.Cleanup(func() { _ = client.Close() })
 
@@ -89,7 +89,7 @@ func testAddIdentitySameJwtTwiceSecondFails(t *testing.T) {
 	require.NoError(t, err, "mint JWT via overlay")
 	require.NotEmpty(t, jwt)
 
-	client, err := testutil.DialIPC(ctx)
+	client, err := zet.DialIPC(ctx)
 	require.NoError(t, err, "dial ZET IPC pipe")
 	t.Cleanup(func() { _ = client.Close() })
 
@@ -114,7 +114,7 @@ func testAddIdentityWithInvalidJwtFails(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	client, err := testutil.DialIPC(ctx)
+	client, err := zet.DialIPC(ctx)
 	require.NoError(t, err, "dial ZET IPC pipe")
 	t.Cleanup(func() { _ = client.Close() })
 
@@ -141,7 +141,7 @@ func testAddIdentityWithEmptyJwtFails(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	client, err := testutil.DialIPC(ctx)
+	client, err := zet.DialIPC(ctx)
 	require.NoError(t, err, "dial ZET IPC pipe")
 	t.Cleanup(func() { _ = client.Close() })
 
@@ -174,7 +174,7 @@ func testAddIdentityWithDeletedIdentityFails(t *testing.T) {
 
 	require.NoError(t, overlay.DeleteIdentity(ctx, identityName), "delete identity via overlay")
 
-	client, err := testutil.DialIPC(ctx)
+	client, err := zet.DialIPC(ctx)
 	require.NoError(t, err, "dial ZET IPC pipe")
 	t.Cleanup(func() { _ = client.Close() })
 
@@ -198,7 +198,7 @@ func testAddIdentityWithSlashInFilenameFails(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	client, err := testutil.DialIPC(ctx)
+	client, err := zet.DialIPC(ctx)
 	require.NoError(t, err, "dial ZET IPC pipe")
 	t.Cleanup(func() { _ = client.Close() })
 
@@ -220,7 +220,7 @@ func testAddIdentityWithDotDotInFilenameFails(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	client, err := testutil.DialIPC(ctx)
+	client, err := zet.DialIPC(ctx)
 	require.NoError(t, err, "dial ZET IPC pipe")
 	t.Cleanup(func() { _ = client.Close() })
 
@@ -242,7 +242,7 @@ func testAddIdentityFilenameExceedsCharLimitFails(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	client, err := testutil.DialIPC(ctx)
+	client, err := zet.DialIPC(ctx)
 	require.NoError(t, err, "dial ZET IPC pipe")
 	t.Cleanup(func() { _ = client.Close() })
 
@@ -270,11 +270,11 @@ func testAddIdentityEmitsIdentityAddedEvent(t *testing.T) {
 	require.NoError(t, err, "mint JWT via overlay")
 	require.NotEmpty(t, jwt)
 
-	events, err := testutil.DialEvents(ctx)
+	events, err := zet.DialEvents(ctx)
 	require.NoError(t, err, "dial ZET event pipe")
 	t.Cleanup(func() { _ = events.Close() })
 
-	client, err := testutil.DialIPC(ctx)
+	client, err := zet.DialIPC(ctx)
 	require.NoError(t, err, "dial ZET command pipe")
 	t.Cleanup(func() { _ = client.Close() })
 

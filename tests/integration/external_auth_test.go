@@ -18,6 +18,7 @@ package integration_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -27,6 +28,7 @@ import (
 
 func TestExternalAuth(t *testing.T) {
 	overlay.RequireCATrusted(t)
+	testutil.Pause("press ENTER to continue: ")
 	t.Run("onUrlEnrolledIdentityCompletes", testExternalAuthOnUrlEnrolledIdentityCompletes)
 	t.Run("withInvalidProviderFails", testExternalAuthWithInvalidProviderFails)
 	t.Run("withoutControllerIdentityFails", testExternalAuthWithoutControllerIdentityFails)
@@ -64,7 +66,7 @@ func testExternalAuthOnUrlEnrolledIdentityCompletes(t *testing.T) {
 
 	require.NoError(t, testutil.DriveControllerOIDC(ctx, authResp.URL, controllerBase, testUserName, testUserPassword), "drive controller OIDC flow")
 
-	events, err := testutil.DialEvents(ctx)
+	events, err := zet.DialEvents(ctx)
 	require.NoError(t, err, "dial ZET event pipe")
 	t.Cleanup(func() { _ = events.Close() })
 	events.WaitFor(t, ctx, "identity", "added", name)
@@ -122,10 +124,9 @@ func testExternalAuthWithoutControllerIdentityFails(t *testing.T) {
 	authResp, err := client.GetExternalAuth(ctx, identifier, signerName)
 	require.NoError(t, err, "ExternalAuth\n%s", zet.Logs())
 	require.NotEmpty(t, authResp.URL, "ExternalAuth should return a non-empty auth URL")
-
 	require.NoError(t, testutil.DriveControllerOIDC(ctx, authResp.URL, controllerBase, testUserName, testUserPassword), "drive controller OIDC flow")
 
-	events, err := testutil.DialEvents(ctx)
+	events, err := zet.DialEvents(ctx)
 	require.NoError(t, err, "dial ZET event pipe")
 	t.Cleanup(func() { _ = events.Close() })
 	events.WaitFor(t, ctx, "controller", "disconnected", name)
@@ -192,7 +193,7 @@ func testExternalAuthWithMultipleSignersCompletes(t *testing.T) {
 
 	require.NoError(t, testutil.DriveControllerOIDC(ctx, authResp.URL, controllerBase, testUserName, testUserPassword), "drive controller OIDC flow")
 
-	events, err := testutil.DialEvents(ctx)
+	events, err := zet.DialEvents(ctx)
 	require.NoError(t, err, "dial ZET event pipe")
 	t.Cleanup(func() { _ = events.Close() })
 	events.WaitFor(t, ctx, "identity", "added", name)
@@ -212,8 +213,10 @@ func createExtAuthSignerAndPolicy(t *testing.T, ctx context.Context, name, issue
 	jwksURI, err := testutil.DiscoverOIDCJWKS(ctx, overlay.ControllerHostPort()+"/oidc")
 	require.NoError(t, err, "discover controller OIDC jwks_uri")
 
+	testutil.DoZiti(overlay, strings.Split("edge list ext-jwt-signers", " "))
 	signerID, err := overlay.CreateExtJwtSigner(ctx, signerName, issuer, jwksURI, "openziti", "openziti", externalAuthURL)
 	require.NoError(t, err, "create ext-jwt-signer")
+	testutil.Pause("press ENTER to continue: [" + signerID + "]")
 	require.NoError(t, overlay.CreateAuthPolicyForExtJwt(ctx, policyName, signerID), "create auth policy with ext-jwt-signer")
 
 	return signerName, policyName
@@ -223,11 +226,11 @@ func urlEnrollForExtAuth(t *testing.T, ctx context.Context, name string) (*testu
 	t.Helper()
 	controllerBase := overlay.ControllerHostPort()
 
-	events, err := testutil.DialEvents(ctx)
+	events, err := zet.DialEvents(ctx)
 	require.NoError(t, err, "dial ZET event pipe")
 	defer func() { _ = events.Close() }()
 
-	client, err := testutil.DialIPC(ctx)
+	client, err := zet.DialIPC(ctx)
 	require.NoError(t, err, "dial ZET IPC pipe")
 	t.Cleanup(func() { _ = client.Close() })
 

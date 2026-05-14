@@ -45,11 +45,6 @@ type IPCClient struct {
 	reader *bufio.Reader
 }
 
-// DialIPC connects to the default ZET command pipe, retrying until ctx expires.
-func DialIPC(ctx context.Context) (*IPCClient, error) {
-	return dialIPCAt(ctx, CommandPipePath)
-}
-
 func dialIPCAt(ctx context.Context, path string) (*IPCClient, error) {
 	const retryInterval = 100 * time.Millisecond
 	var lastErr error
@@ -102,11 +97,6 @@ func (c *IPCClient) Close() error {
 type EventClient struct {
 	conn   net.Conn
 	reader *bufio.Reader
-}
-
-// DialEvents connects to the default ZET event pipe, retrying until ctx expires.
-func DialEvents(ctx context.Context) (*EventClient, error) {
-	return dialEventsAt(ctx, EventPipePath)
 }
 
 func dialEventsAt(ctx context.Context, path string) (*EventClient, error) {

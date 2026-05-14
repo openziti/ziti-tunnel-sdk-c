@@ -22,11 +22,13 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -44,6 +46,8 @@ type Overlay struct {
 	Home           string
 	ControllerPort uint16
 	RouterPort     uint16
+	ZitiMajor      int
+	ZitiMinor      int
 
 	extCmd  *exec.Cmd
 	stdout  *syncBuffer
@@ -55,8 +59,13 @@ type Overlay struct {
 // waits for the controller to accept an admin login, and returns a handle.
 // Callers must defer Stop().
 func StartOverlay(ctx context.Context, zitiBin, home string) (*Overlay, error) {
+	log.Printf("overlay: mkdir home %s", home)
 	if err := os.MkdirAll(home, 0o700); err != nil {
 		return nil, fmt.Errorf("mkdir home: %w", err)
+	}
+	log.Printf("overlay: wiping previous DB state under %s", home)
+	if err := wipeOverlayDB(home); err != nil {
+		return nil, fmt.Errorf("wipe overlay db: %w", err)
 	}
 
 	args := []string{
@@ -67,10 +76,11 @@ func StartOverlay(ctx context.Context, zitiBin, home string) (*Overlay, error) {
 		"--router-address=localhost",
 		fmt.Sprintf("--router-port=%d", overlayRtrPort),
 	}
+	log.Printf("overlay: starting %s %s", zitiBin, strings.Join(args, " "))
 	cmd := exec.CommandContext(ctx, zitiBin, args...)
 	cmd.Env = append(os.Environ(),
-		"ZITI_HOME="+home,
 		"ZITI_CONFIG_DIR="+filepath.Join(home, "cli-config"),
+		"PFXLOG_NO_JSON=true",
 	)
 	stdout := newSyncBuffer()
 	stderr := newSyncBuffer()
@@ -98,7 +108,56 @@ func StartOverlay(ctx context.Context, zitiBin, home string) (*Overlay, error) {
 		o.Stop()
 		return nil, fmt.Errorf("overlay not ready: %w\n%s", err, o.Logs())
 	}
+
+	log.Printf("overlay: probing ziti version")
+	major, minor, err := probeZitiVersion(ctx, zitiBin)
+	if err != nil {
+		o.Stop()
+		return nil, fmt.Errorf("probe ziti version: %w", err)
+	}
+	o.ZitiMajor = major
+	o.ZitiMinor = minor
+	log.Printf("overlay: ready (ziti v%d.%d)", major, minor)
 	return o, nil
+}
+
+// wipeOverlayDB removes per-instance state so quickstart re-seeds a clean
+// controller DB, while keeping pki/root-ca intact so the OS trust install
+// from a prior run remains valid. The intermediate CA bundle is signed by
+// the same root and gets regenerated.
+func wipeOverlayDB(home string) error {
+	for _, p := range []string{
+		filepath.Join(home, "instance-1"),
+		filepath.Join(home, "pki", "intermediate-ca-instance-1"),
+		filepath.Join(home, "pki", "root-ca", "certs", "intermediate-ca-instance-1.cert"),
+		filepath.Join(home, "pki", "root-ca", "keys", "intermediate-ca-instance-1.key"),
+	} {
+		if err := os.RemoveAll(p); err != nil {
+			return fmt.Errorf("remove %s: %w", p, err)
+		}
+	}
+	return nil
+}
+
+func probeZitiVersion(ctx context.Context, zitiBin string) (int, int, error) {
+	out, err := exec.CommandContext(ctx, zitiBin, "--version").Output()
+	if err != nil {
+		return 0, 0, fmt.Errorf("run %s --version: %w", zitiBin, err)
+	}
+	version := strings.TrimPrefix(strings.TrimSpace(string(out)), "v")
+	parts := strings.Split(version, ".")
+	if len(parts) < 2 {
+		return 0, 0, fmt.Errorf("parse ziti version from %q", string(out))
+	}
+	major, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return 0, 0, fmt.Errorf("parse major from %q: %w", parts[0], err)
+	}
+	minor, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return 0, 0, fmt.Errorf("parse minor from %q: %w", parts[1], err)
+	}
+	return major, minor, nil
 }
 
 func (o *Overlay) ControllerHostPort() string {
@@ -144,6 +203,21 @@ func (o *Overlay) RequireCATrusted(t *testing.T) {
 
   Cleanup when done:
   %s`, o.Home, install, cleanup)
+}
+
+// CACleanupCommand returns the OS-specific shell command a developer can run
+// to remove this overlay's root CA from their OS trust store after testing.
+func (o *Overlay) CACleanupCommand() string {
+	caPath := filepath.Join(o.Home, "pki", "root-ca", "certs", "root-ca.cert")
+	switch runtime.GOOS {
+	case "windows":
+		return fmt.Sprintf(`$c = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2 "%s"; Get-ChildItem Cert:\LocalMachine\Root | ? Thumbprint -eq $c.Thumbprint | Remove-Item`, caPath)
+	case "darwin":
+		return fmt.Sprintf(`sudo security delete-certificate -Z $(openssl x509 -in %s -noout -fingerprint -sha1 | sed 's/.*=//' | tr -d ':') /Library/Keychains/System.keychain`, caPath)
+	case "linux":
+		return `sudo rm /usr/local/share/ca-certificates/ziti-test.crt && sudo update-ca-certificates --fresh`
+	}
+	return ""
 }
 
 func (o *Overlay) Stop() {
@@ -389,10 +463,15 @@ func (o *Overlay) DeleteConfig(ctx context.Context, name string) error {
 }
 
 func (o *Overlay) waitUntilReady(ctx context.Context) error {
+	if err := o.waitForControllerPort(ctx); err != nil {
+		return err
+	}
+	log.Printf("overlay: attempting admin login at %s", o.ControllerHostPort())
 	var lastErr error
 	for {
 		if _, err := o.runZiti(ctx, "edge", "login", o.ControllerHostPort(),
 			"-u", adminUsername, "-p", adminPassword, "--yes"); err == nil {
+			log.Printf("overlay: admin login OK")
 			return nil
 		} else {
 			lastErr = err
@@ -407,22 +486,70 @@ func (o *Overlay) waitUntilReady(ctx context.Context) error {
 	}
 }
 
+func (o *Overlay) waitForControllerPort(ctx context.Context) error {
+	addr := fmt.Sprintf("localhost:%d", o.ControllerPort)
+	log.Printf("overlay: waiting for controller TCP port %s", addr)
+	var lastErr error
+	for {
+		conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
+		if err == nil {
+			_ = conn.Close()
+			log.Printf("overlay: controller port %s open", addr)
+			return nil
+		}
+		lastErr = err
+		select {
+		case exitErr := <-o.cmdDone:
+			return fmt.Errorf("quickstart exited before port %d opened: %v", o.ControllerPort, exitErr)
+		case <-ctx.Done():
+			return fmt.Errorf("%w (last dial error: %v)", ctx.Err(), lastErr)
+		case <-time.After(250 * time.Millisecond):
+		}
+	}
+}
+
 // runZiti invokes the ziti CLI with ZITI_CONFIG_DIR pointed at the overlay's
 // session cache, so logins performed during readiness polling carry through.
 func (o *Overlay) runZiti(ctx context.Context, args ...string) ([]byte, error) {
+	return o.execZiti(ctx, args)
+}
+
+func DoZiti(o *Overlay, args []string) {
+	r, e := o.execZiti(context.Background(), args)
+	log.Printf("%v", string(r))
+	if e != nil {
+		log.Printf("%v", e)
+	}
+}
+
+func (o *Overlay) execZiti(ctx context.Context, args []string) ([]byte, error) {
+	log.Printf("runZiti cli command to run: bin: %v %v", o.ZitiBin, strings.Join(args, " "))
 	cmd := exec.CommandContext(ctx, o.ZitiBin, args...)
-	cmd.Env = append(os.Environ(),
-		"ZITI_HOME="+o.Home,
-		"ZITI_CONFIG_DIR="+filepath.Join(o.Home, "cli-config"),
-	)
 	var stdout, stderr syncBuffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("%s %v: %w\nstdout: %s\nstderr: %s",
-			o.ZitiBin, args, err, stdout.String(), stderr.String())
+		return nil, fmt.Errorf("%s %v: %w\nstdout: %s\nstderr: %s\n%s",
+			o.ZitiBin, args, err, stdout.String(), stderr.String(), o.Logs())
 	}
+	log.Printf("\n%v\n", stdout.String())
 	return []byte(stdout.String()), nil
+}
+
+func (o *Overlay) runZitiWithLeaderRetry(ctx context.Context, args []string) ([]byte, error) {
+	deadline := time.Now().Add(60 * time.Second)
+	for {
+		out, err := o.execZiti(ctx, args)
+		if err == nil {
+			return out, nil
+		}
+		msg := err.Error()
+		if (strings.Contains(msg, "CLUSTER_NO_LEADER") || strings.Contains(msg, "503 Service Unavailable")) && time.Now().Before(deadline) {
+			time.Sleep(1 * time.Second)
+			continue
+		}
+		return nil, err
+	}
 }
 
 // PurgeIdentities deletes every identity whose name contains prefix.
@@ -441,6 +568,7 @@ func (o *Overlay) PurgeExtJwtSigners(ctx context.Context, prefix string) error {
 }
 
 func (o *Overlay) deleteWhere(ctx context.Context, entity, prefix string) error {
+	o.runZiti(ctx, "edge", "login", "-u", "admin", "-p", "admin")
 	filter := fmt.Sprintf(`name contains "%s" limit none`, prefix)
 	if _, err := o.runZiti(ctx, "edge", "delete", entity, "where", filter); err != nil {
 		return fmt.Errorf("delete %s where %s: %w", entity, filter, err)

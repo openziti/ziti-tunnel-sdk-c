@@ -160,6 +160,11 @@ func (z *ZET) DialIPC(ctx context.Context) (*IPCClient, error) {
 	return dialIPCAt(ctx, z.CmdPipe)
 }
 
+// DialEvents connects to this ZET instance's event pipe, retrying until ctx expires.
+func (z *ZET) DialEvents(ctx context.Context) (*EventClient, error) {
+	return dialEventsAt(ctx, z.EventPipe)
+}
+
 // Stop terminates ZET. Callers should defer this on every test.
 func (z *ZET) Stop() {
 	if z.extCmd.Process == nil {
@@ -178,10 +183,6 @@ func (z *ZET) Stop() {
 func (z *ZET) Logs() string {
 	return fmt.Sprintf("--- stdout ---\n%s\n--- stderr ---\n%s", z.stdout.String(), z.stderr.String())
 }
-
-// EnsureNoExistingZET returns an error if something is already listening on the
-// default ziti-edge-tunnel IPC pipe. A successful dial means another daemon owns the pipe.
-func EnsureNoExistingZET() error { return ensureNothingOnPipe(CommandPipePath) }
 
 func ensureNothingOnPipe(path string) error {
 	probeCtx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
