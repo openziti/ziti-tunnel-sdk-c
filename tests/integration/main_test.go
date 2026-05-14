@@ -99,7 +99,9 @@ func run(m *testing.M) (int, error) {
 
 	log.Printf("setup: starting ZET zetA")
 	zet, err = testutil.StartZET(ctx, zetBin, filepath.Join(zetTempRoot, "zet-identities"), testutil.ZETOptions{
-		LogDir: zetLogDir,
+		Discriminator: "zetA",
+		DNSRange:      "100.129.0.1/16",
+		LogDir:        zetLogDir,
 	})
 	if err != nil {
 		return 0, fmt.Errorf("start ziti-edge-tunnel: %w", err)
@@ -109,7 +111,7 @@ func run(m *testing.M) (int, error) {
 	log.Printf("setup: starting ZET zetB")
 	zetB, err = testutil.StartZET(ctx, zetBin, filepath.Join(zetTempRoot, "zetB-identities"), testutil.ZETOptions{
 		Discriminator: "zetB",
-		DNSRange:      "100.128.0.1/10",
+		DNSRange:      "100.128.0.1/16",
 		LogDir:        zetLogDir,
 	})
 	if err != nil {
