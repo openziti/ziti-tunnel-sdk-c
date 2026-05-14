@@ -22,11 +22,13 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -44,6 +46,8 @@ type Overlay struct {
 	Home           string
 	ControllerPort uint16
 	RouterPort     uint16
+	ZitiMajor      int
+	ZitiMinor      int
 
 	extCmd  *exec.Cmd
 	stdout  *syncBuffer
@@ -55,8 +59,13 @@ type Overlay struct {
 // waits for the controller to accept an admin login, and returns a handle.
 // Callers must defer Stop().
 func StartOverlay(ctx context.Context, zitiBin, home string) (*Overlay, error) {
+	log.Printf("overlay: mkdir home %s", home)
 	if err := os.MkdirAll(home, 0o700); err != nil {
 		return nil, fmt.Errorf("mkdir home: %w", err)
+	}
+	log.Printf("overlay: wiping previous DB state under %s", home)
+	if err := wipeOverlayDB(home); err != nil {
+		return nil, fmt.Errorf("wipe overlay db: %w", err)
 	}
 
 	args := []string{
@@ -67,10 +76,11 @@ func StartOverlay(ctx context.Context, zitiBin, home string) (*Overlay, error) {
 		"--router-address=localhost",
 		fmt.Sprintf("--router-port=%d", overlayRtrPort),
 	}
+	log.Printf("overlay: starting %s %s", zitiBin, strings.Join(args, " "))
 	cmd := exec.CommandContext(ctx, zitiBin, args...)
 	cmd.Env = append(os.Environ(),
-		"ZITI_HOME="+home,
 		"ZITI_CONFIG_DIR="+filepath.Join(home, "cli-config"),
+		"PFXLOG_NO_JSON=true",
 	)
 	stdout := newSyncBuffer()
 	stderr := newSyncBuffer()
@@ -98,7 +108,56 @@ func StartOverlay(ctx context.Context, zitiBin, home string) (*Overlay, error) {
 		o.Stop()
 		return nil, fmt.Errorf("overlay not ready: %w\n%s", err, o.Logs())
 	}
+
+	log.Printf("overlay: probing ziti version")
+	major, minor, err := probeZitiVersion(ctx, zitiBin)
+	if err != nil {
+		o.Stop()
+		return nil, fmt.Errorf("probe ziti version: %w", err)
+	}
+	o.ZitiMajor = major
+	o.ZitiMinor = minor
+	log.Printf("overlay: ready (ziti v%d.%d)", major, minor)
 	return o, nil
+}
+
+// wipeOverlayDB removes per-instance state so quickstart re-seeds a clean
+// controller DB, while keeping pki/root-ca intact so the OS trust install
+// from a prior run remains valid. The intermediate CA bundle is signed by
+// the same root and gets regenerated.
+func wipeOverlayDB(home string) error {
+	for _, p := range []string{
+		filepath.Join(home, "instance-1"),
+		filepath.Join(home, "pki", "intermediate-ca-instance-1"),
+		filepath.Join(home, "pki", "root-ca", "certs", "intermediate-ca-instance-1.cert"),
+		filepath.Join(home, "pki", "root-ca", "keys", "intermediate-ca-instance-1.key"),
+	} {
+		if err := os.RemoveAll(p); err != nil {
+			return fmt.Errorf("remove %s: %w", p, err)
+		}
+	}
+	return nil
+}
+
+func probeZitiVersion(ctx context.Context, zitiBin string) (int, int, error) {
+	out, err := exec.CommandContext(ctx, zitiBin, "--version").Output()
+	if err != nil {
+		return 0, 0, fmt.Errorf("run %s --version: %w", zitiBin, err)
+	}
+	version := strings.TrimPrefix(strings.TrimSpace(string(out)), "v")
+	parts := strings.Split(version, ".")
+	if len(parts) < 2 {
+		return 0, 0, fmt.Errorf("parse ziti version from %q", string(out))
+	}
+	major, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return 0, 0, fmt.Errorf("parse major from %q: %w", parts[0], err)
+	}
+	minor, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return 0, 0, fmt.Errorf("parse minor from %q: %w", parts[1], err)
+	}
+	return major, minor, nil
 }
 
 func (o *Overlay) ControllerHostPort() string {
