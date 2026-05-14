@@ -34,12 +34,5 @@
       ]
     }
   },
-  "overrides": [
-    {
-      "name": "abseil",
-      "version": "20250814.1",
-      "$comment": "20260107.1 breaks on several compilers so we're sticking with 20250814.1 until a buildable version is available in vcpkg"
-    }
-  ],
   "builtin-baseline": "56bb2411609227288b70117ead2c47585ba07713"
 }
