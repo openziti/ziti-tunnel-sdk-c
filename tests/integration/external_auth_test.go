@@ -18,7 +18,6 @@ package integration_test
 
 import (
 	"context"
-	"strings"
 	"testing"
 	"time"
 
@@ -28,7 +27,9 @@ import (
 
 func TestExternalAuth(t *testing.T) {
 	overlay.RequireCATrusted(t)
-	testutil.Pause("press ENTER to continue: ")
+	if dex == nil {
+		t.Skip("dex is not configured (-dex-bin not provided)")
+	}
 	t.Run("onUrlEnrolledIdentityCompletes", testExternalAuthOnUrlEnrolledIdentityCompletes)
 	t.Run("withInvalidProviderFails", testExternalAuthWithInvalidProviderFails)
 	t.Run("withoutControllerIdentityFails", testExternalAuthWithoutControllerIdentityFails)
@@ -40,17 +41,10 @@ func testExternalAuthOnUrlEnrolledIdentityCompletes(t *testing.T) {
 	defer cancel()
 
 	name := identityNameFor(t)
-	controllerBase := overlay.ControllerHostPort()
-	testUserName := name + "-user"
-	testUserPassword := "test-password"
 
-	testUserID, err := overlay.CreateUpdbUser(ctx, testUserName, testUserName, testUserPassword)
-	require.NoError(t, err, "create updb test user")
+	signerName, policyName := createDexSignerAndPolicy(t, ctx, name, dex.ClientIDs[0])
+	require.NoError(t, overlay.CreateIdentityWithExternalId(ctx, name, dex.ExternalID, policyName), "create controller identity with externalId=dex user email")
 
-	signerName, policyName := createExtAuthSignerAndPolicy(t, ctx, name, controllerBase+"/oidc", controllerBase+"/oidc")
-	require.NoError(t, overlay.CreateIdentityWithExternalId(ctx, name, testUserID, policyName), "create controller identity with externalId=testUserID")
-
-	// Free the controller's unique-indexed /oidc issuer for sibling subtests that also create a signer claiming it.
 	cleanupCtx := context.Background()
 	t.Cleanup(func() {
 		_ = overlay.DeleteIdentity(cleanupCtx, name)
@@ -64,7 +58,7 @@ func testExternalAuthOnUrlEnrolledIdentityCompletes(t *testing.T) {
 	require.NoError(t, err, "ExternalAuth\n%s", zet.Logs())
 	require.NotEmpty(t, authResp.URL, "ExternalAuth should return a non-empty auth URL")
 
-	require.NoError(t, testutil.DriveControllerOIDC(ctx, authResp.URL, controllerBase, testUserName, testUserPassword), "drive controller OIDC flow")
+	require.NoError(t, testutil.DriveDexOIDC(ctx, authResp.URL, dex.IssuerURL, dex.Email, dex.Password), "drive dex OIDC flow")
 
 	events, err := zet.DialEvents(ctx)
 	require.NoError(t, err, "dial ZET event pipe")
@@ -83,16 +77,16 @@ func testExternalAuthWithInvalidProviderFails(t *testing.T) {
 	defer cancel()
 
 	name := identityNameFor(t)
-	controllerBase := overlay.ControllerHostPort()
-	testUserName := name + "-user"
-	testUserPassword := "test-password"
-	issuer := controllerBase + "/oidc/" + name
 
-	testUserID, err := overlay.CreateUpdbUser(ctx, testUserName, testUserName, testUserPassword)
-	require.NoError(t, err, "create updb test user")
+	signerName, policyName := createDexSignerAndPolicy(t, ctx, name, dex.ClientIDs[0])
+	require.NoError(t, overlay.CreateIdentityWithExternalId(ctx, name, dex.ExternalID, policyName), "create controller identity with externalId=dex user email")
 
-	signerName, policyName := createExtAuthSignerAndPolicy(t, ctx, name, issuer, issuer)
-	require.NoError(t, overlay.CreateIdentityWithExternalId(ctx, name, testUserID, policyName), "create controller identity with externalId=testUserID")
+	cleanupCtx := context.Background()
+	t.Cleanup(func() {
+		_ = overlay.DeleteIdentity(cleanupCtx, name)
+		_ = overlay.DeleteAuthPolicy(cleanupCtx, policyName)
+		_ = overlay.DeleteExtJwtSigner(cleanupCtx, signerName)
+	})
 
 	client, identifier := urlEnrollForExtAuth(t, ctx, name)
 
@@ -109,22 +103,24 @@ func testExternalAuthWithoutControllerIdentityFails(t *testing.T) {
 	defer cancel()
 
 	name := identityNameFor(t)
-	controllerBase := overlay.ControllerHostPort()
-	testUserName := name + "-user"
-	testUserPassword := "test-password"
-	issuer := controllerBase + "/oidc/" + name
 
-	_, err := overlay.CreateUpdbUser(ctx, testUserName, testUserName, testUserPassword)
-	require.NoError(t, err, "create updb test user")
+	signerName, _ := createDexSignerAndPolicy(t, ctx, name, dex.ClientIDs[0])
+	// Deliberately DO NOT create a controller identity with externalId. The
+	// OIDC flow at dex still succeeds, but the controller rejects login since
+	// nothing maps test@example.com to a known identity.
 
-	signerName, _ := createExtAuthSignerAndPolicy(t, ctx, name, issuer, controllerBase+"/oidc")
+	cleanupCtx := context.Background()
+	t.Cleanup(func() {
+		_ = overlay.DeleteAuthPolicy(cleanupCtx, name+"-policy")
+		_ = overlay.DeleteExtJwtSigner(cleanupCtx, signerName)
+	})
 
 	client, identifier := urlEnrollForExtAuth(t, ctx, name)
 
 	authResp, err := client.GetExternalAuth(ctx, identifier, signerName)
 	require.NoError(t, err, "ExternalAuth\n%s", zet.Logs())
 	require.NotEmpty(t, authResp.URL, "ExternalAuth should return a non-empty auth URL")
-	require.NoError(t, testutil.DriveControllerOIDC(ctx, authResp.URL, controllerBase, testUserName, testUserPassword), "drive controller OIDC flow")
+	require.NoError(t, testutil.DriveDexOIDC(ctx, authResp.URL, dex.IssuerURL, dex.Email, dex.Password), "drive dex OIDC flow")
 
 	events, err := zet.DialEvents(ctx)
 	require.NoError(t, err, "dial ZET event pipe")
@@ -144,31 +140,25 @@ func testExternalAuthWithMultipleSignersCompletes(t *testing.T) {
 	defer cancel()
 
 	name := identityNameFor(t)
-	controllerBase := overlay.ControllerHostPort()
-	testUserName := name + "-user"
-	testUserPassword := "test-password"
-
-	testUserID, err := overlay.CreateUpdbUser(ctx, testUserName, testUserName, testUserPassword)
-	require.NoError(t, err, "create updb test user")
-
-	jwksURI, err := testutil.DiscoverOIDCJWKS(ctx, controllerBase+"/oidc")
-	require.NoError(t, err, "discover controller OIDC jwks_uri")
+	jwksURI := dex.JWKSURI()
+	authzURL := dex.IssuerURL + "/auth"
 
 	realSignerName := name + "-signer-real"
 	signer2Name := name + "-signer-2"
 	signer3Name := name + "-signer-3"
-	realSignerID, err := overlay.CreateExtJwtSigner(ctx, realSignerName, controllerBase+"/oidc", jwksURI, "openziti", "openziti", controllerBase+"/oidc")
+	// All three signers point at the same dex issuer but pin to a distinct
+	// audience/client_id so the controller treats them as separate providers.
+	realSignerID, err := overlay.CreateExtJwtSignerWithClaim(ctx, realSignerName, dex.IssuerURL, jwksURI, dex.ClientIDs[0], dex.ClientIDs[0], authzURL, "email")
 	require.NoError(t, err, "create real-issuer ext-jwt-signer")
-	signer2ID, err := overlay.CreateExtJwtSigner(ctx, signer2Name, controllerBase+"/oidc/"+signer2Name, jwksURI, "openziti", "openziti", controllerBase+"/oidc/"+signer2Name)
+	signer2ID, err := overlay.CreateExtJwtSignerWithClaim(ctx, signer2Name, dex.IssuerURL, jwksURI, dex.ClientIDs[1], dex.ClientIDs[1], authzURL, "email")
 	require.NoError(t, err, "create ext-jwt-signer 2")
-	signer3ID, err := overlay.CreateExtJwtSigner(ctx, signer3Name, controllerBase+"/oidc/"+signer3Name, jwksURI, "openziti", "openziti", controllerBase+"/oidc/"+signer3Name)
+	signer3ID, err := overlay.CreateExtJwtSignerWithClaim(ctx, signer3Name, dex.IssuerURL, jwksURI, dex.ClientIDs[2], dex.ClientIDs[2], authzURL, "email")
 	require.NoError(t, err, "create ext-jwt-signer 3")
 
 	policyName := name + "-policy"
 	require.NoError(t, overlay.CreateAuthPolicyForExtJwt(ctx, policyName, realSignerID, signer2ID, signer3ID), "create multi-signer auth policy")
-	require.NoError(t, overlay.CreateIdentityWithExternalId(ctx, name, testUserID, policyName), "create controller identity with externalId=testUserID")
+	require.NoError(t, overlay.CreateIdentityWithExternalId(ctx, name, dex.ExternalID, policyName), "create controller identity with externalId=dex user email")
 
-	// Free the controller's unique-indexed /oidc issuer for sibling subtests that also create a signer claiming it.
 	cleanupCtx := context.Background()
 	t.Cleanup(func() {
 		_ = overlay.DeleteIdentity(cleanupCtx, name)
@@ -191,7 +181,7 @@ func testExternalAuthWithMultipleSignersCompletes(t *testing.T) {
 	require.NoError(t, err, "ExternalAuth\n%s", zet.Logs())
 	require.NotEmpty(t, authResp.URL, "ExternalAuth should return a non-empty auth URL")
 
-	require.NoError(t, testutil.DriveControllerOIDC(ctx, authResp.URL, controllerBase, testUserName, testUserPassword), "drive controller OIDC flow")
+	require.NoError(t, testutil.DriveDexOIDC(ctx, authResp.URL, dex.IssuerURL, dex.Email, dex.Password), "drive dex OIDC flow")
 
 	events, err := zet.DialEvents(ctx)
 	require.NoError(t, err, "dial ZET event pipe")
@@ -205,18 +195,19 @@ func testExternalAuthWithMultipleSignersCompletes(t *testing.T) {
 	require.False(t, finalEntry.NeedsExtAuth, "NeedsExtAuth should be false after successful ExternalAuth\n%s", zet.Logs())
 }
 
-func createExtAuthSignerAndPolicy(t *testing.T, ctx context.Context, name, issuer, externalAuthURL string) (string, string) {
+// createDexSignerAndPolicy registers an ext-jwt-signer pointed at dex with the
+// given audience/client_id, plus a single-signer auth policy. Returns
+// (signerName, policyName). The signer maps dex's email claim to externalId.
+func createDexSignerAndPolicy(t *testing.T, ctx context.Context, name, clientID string) (string, string) {
 	t.Helper()
 	signerName := name + "-signer"
 	policyName := name + "-policy"
 
-	jwksURI, err := testutil.DiscoverOIDCJWKS(ctx, overlay.ControllerHostPort()+"/oidc")
-	require.NoError(t, err, "discover controller OIDC jwks_uri")
+	jwksURI := dex.JWKSURI()
+	authzURL := dex.IssuerURL + "/auth"
 
-	testutil.DoZiti(overlay, strings.Split("edge list ext-jwt-signers", " "))
-	signerID, err := overlay.CreateExtJwtSigner(ctx, signerName, issuer, jwksURI, "openziti", "openziti", externalAuthURL)
+	signerID, err := overlay.CreateExtJwtSignerWithClaim(ctx, signerName, dex.IssuerURL, jwksURI, clientID, clientID, authzURL, "email")
 	require.NoError(t, err, "create ext-jwt-signer")
-	testutil.Pause("press ENTER to continue: [" + signerID + "]")
 	require.NoError(t, overlay.CreateAuthPolicyForExtJwt(ctx, policyName, signerID), "create auth policy with ext-jwt-signer")
 
 	return signerName, policyName
