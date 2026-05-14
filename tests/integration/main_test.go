@@ -60,9 +60,6 @@ func TestMain(m *testing.M) {
 }
 
 func run(m *testing.M) (int, error) {
-	if err := testutil.EnsureNoExistingZET(); err != nil {
-		return 0, err
-	}
 	var err error
 	zetTempRoot, err = os.MkdirTemp("", "ziti-tunnel-zet-*")
 	if err != nil {

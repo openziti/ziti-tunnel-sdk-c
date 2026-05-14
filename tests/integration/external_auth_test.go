@@ -64,7 +64,7 @@ func testExternalAuthOnUrlEnrolledIdentityCompletes(t *testing.T) {
 
 	require.NoError(t, testutil.DriveControllerOIDC(ctx, authResp.URL, controllerBase, testUserName, testUserPassword), "drive controller OIDC flow")
 
-	events, err := testutil.DialEvents(ctx)
+	events, err := zet.DialEvents(ctx)
 	require.NoError(t, err, "dial ZET event pipe")
 	t.Cleanup(func() { _ = events.Close() })
 	events.WaitFor(t, ctx, "identity", "added", name)
@@ -125,7 +125,7 @@ func testExternalAuthWithoutControllerIdentityFails(t *testing.T) {
 
 	require.NoError(t, testutil.DriveControllerOIDC(ctx, authResp.URL, controllerBase, testUserName, testUserPassword), "drive controller OIDC flow")
 
-	events, err := testutil.DialEvents(ctx)
+	events, err := zet.DialEvents(ctx)
 	require.NoError(t, err, "dial ZET event pipe")
 	t.Cleanup(func() { _ = events.Close() })
 	events.WaitFor(t, ctx, "controller", "disconnected", name)
@@ -192,7 +192,7 @@ func testExternalAuthWithMultipleSignersCompletes(t *testing.T) {
 
 	require.NoError(t, testutil.DriveControllerOIDC(ctx, authResp.URL, controllerBase, testUserName, testUserPassword), "drive controller OIDC flow")
 
-	events, err := testutil.DialEvents(ctx)
+	events, err := zet.DialEvents(ctx)
 	require.NoError(t, err, "dial ZET event pipe")
 	t.Cleanup(func() { _ = events.Close() })
 	events.WaitFor(t, ctx, "identity", "added", name)
@@ -223,11 +223,11 @@ func urlEnrollForExtAuth(t *testing.T, ctx context.Context, name string) (*testu
 	t.Helper()
 	controllerBase := overlay.ControllerHostPort()
 
-	events, err := testutil.DialEvents(ctx)
+	events, err := zet.DialEvents(ctx)
 	require.NoError(t, err, "dial ZET event pipe")
 	defer func() { _ = events.Close() }()
 
-	client, err := testutil.DialIPC(ctx)
+	client, err := zet.DialIPC(ctx)
 	require.NoError(t, err, "dial ZET IPC pipe")
 	t.Cleanup(func() { _ = client.Close() })
 

@@ -34,7 +34,7 @@ func testIdentityOnOffTogglesActiveOff(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	client, err := testutil.DialIPC(ctx)
+	client, err := zet.DialIPC(ctx)
 	require.NoError(t, err, "dial ZET IPC pipe")
 	t.Cleanup(func() { _ = client.Close() })
 
@@ -72,7 +72,7 @@ func testIdentityOnOffTogglesActiveOn(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	client, err := testutil.DialIPC(ctx)
+	client, err := zet.DialIPC(ctx)
 	require.NoError(t, err, "dial ZET IPC pipe")
 	t.Cleanup(func() { _ = client.Close() })
 

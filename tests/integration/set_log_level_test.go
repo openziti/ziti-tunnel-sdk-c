@@ -22,7 +22,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openziti/ziti-tunnel-sdk-c/tests/integration/testutil"
 	"github.com/stretchr/testify/require"
 )
 
@@ -34,7 +33,7 @@ func testSetLogLevelChangesLogLevelInStatus(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	client, err := testutil.DialIPC(ctx)
+	client, err := zet.DialIPC(ctx)
 	require.NoError(t, err, "dial ZET IPC pipe")
 	t.Cleanup(func() { _ = client.Close() })
 

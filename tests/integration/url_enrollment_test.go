@@ -40,7 +40,7 @@ func testUrlEnrollmentWithValidControllerUrlSucceeds(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	client, err := testutil.DialIPC(ctx)
+	client, err := zet.DialIPC(ctx)
 	require.NoError(t, err, "dial ZET IPC pipe")
 	t.Cleanup(func() { _ = client.Close() })
 
@@ -69,7 +69,7 @@ func testUrlEnrollmentSameNameTwiceSecondFails(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	client, err := testutil.DialIPC(ctx)
+	client, err := zet.DialIPC(ctx)
 	require.NoError(t, err, "dial ZET IPC pipe")
 	t.Cleanup(func() { _ = client.Close() })
 
@@ -101,7 +101,7 @@ func testUrlEnrollmentAfterJwtSameNameFails(t *testing.T) {
 	require.NoError(t, err, "mint JWT via overlay")
 	require.NotEmpty(t, jwt)
 
-	client, err := testutil.DialIPC(ctx)
+	client, err := zet.DialIPC(ctx)
 	require.NoError(t, err, "dial ZET IPC pipe")
 	t.Cleanup(func() { _ = client.Close() })
 
@@ -129,7 +129,7 @@ func testUrlEnrollmentWithNonZitiEndpointFails(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	client, err := testutil.DialIPC(ctx)
+	client, err := zet.DialIPC(ctx)
 	require.NoError(t, err, "dial ZET IPC pipe")
 	t.Cleanup(func() { _ = client.Close() })
 
@@ -150,7 +150,7 @@ func testUrlEnrollmentWithMalformedUrlFails(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	client, err := testutil.DialIPC(ctx)
+	client, err := zet.DialIPC(ctx)
 	require.NoError(t, err, "dial ZET IPC pipe")
 	t.Cleanup(func() { _ = client.Close() })
 
