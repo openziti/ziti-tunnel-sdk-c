@@ -135,9 +135,13 @@ type Event struct {
 	Fingerprint string `json:"Fingerprint"`
 }
 
-// WaitFor drains events until one matches op/action/fingerprint
+// WaitFor drains events until one matches op/action/fingerprint.
+// Caps the wait at 20s regardless of the outer ctx so a missing event fails
+// fast instead of eating the test's full budget.
 func (c *EventClient) WaitFor(t *testing.T, ctx context.Context, op, action, fingerprint string) {
 	t.Helper()
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
 	for {
 		raw, err := c.ReadEvent(ctx)
 		require.NoError(t, err, "read event waiting for %s:%s for %s", op, action, fingerprint)

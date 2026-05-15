@@ -138,7 +138,7 @@ func StartZET(ctx context.Context, binPath, identityDir string, opts ZETOptions)
 	}
 	go func() { z.cmdDone <- cmd.Wait() }()
 
-	dialCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	dialCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	client, err := dialIPCAt(dialCtx, cmdPipe)
 	if err != nil {
