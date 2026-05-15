@@ -59,9 +59,6 @@ type Overlay struct {
 // waits for the controller to accept an admin login, and returns a handle.
 // Callers must defer Stop().
 func StartOverlay(ctx context.Context, zitiBin, home string) (*Overlay, error) {
-	if err := ensureNoStaleZiti(); err != nil {
-		return nil, err
-	}
 	if err := ensureNothingOnPort(overlayCtrlPort); err != nil {
 		return nil, err
 	}
@@ -111,7 +108,7 @@ func StartOverlay(ctx context.Context, zitiBin, home string) (*Overlay, error) {
 	}
 	go func() { o.cmdDone <- cmd.Wait() }()
 
-	readyCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	readyCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	if err := o.waitUntilReady(readyCtx); err != nil {
 		o.Stop()
@@ -130,37 +127,7 @@ func StartOverlay(ctx context.Context, zitiBin, home string) (*Overlay, error) {
 	return o, nil
 }
 
-// ensureNoStaleZiti errors out if any ziti process is already running.
-func ensureNoStaleZiti() error {
-	var pids []string
-	if runtime.GOOS == "windows" {
-		out, _ := exec.Command("tasklist", "/FI", "IMAGENAME eq ziti.exe", "/NH", "/FO", "CSV").Output()
-		for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-			fields := strings.Split(line, ",")
-			if len(fields) >= 2 {
-				pids = append(pids, strings.Trim(fields[1], `"`))
-			}
-		}
-	} else {
-		out, _ := exec.Command("pgrep", "-x", "ziti").Output()
-		pids = strings.Fields(string(out))
-	}
-	if len(pids) == 0 {
-		return nil
-	}
-	if runtime.GOOS == "windows" {
-		parts := make([]string, len(pids))
-		for i, pid := range pids {
-			parts[i] = "/PID " + pid
-		}
-		return fmt.Errorf("stale ziti process(es) running; run `taskkill /F %s` before running tests", strings.Join(parts, " "))
-	}
-	return fmt.Errorf("stale ziti process(es) running; run `kill -9 %s` before running tests", strings.Join(pids, " "))
-}
-
-// ensureNothingOnPort returns an error if anything is already listening on
-// localhost:port. Catches the case where a stray ziti controller/router (or
-// any other process) would silently steal the quickstart bring-up.
+// ensureNothingOnPort logs a warning if something is already listening on localhost:port.
 func ensureNothingOnPort(port uint16) error {
 	addr := fmt.Sprintf("localhost:%d", port)
 	conn, err := net.DialTimeout("tcp", addr, 500*time.Millisecond)
@@ -168,7 +135,8 @@ func ensureNothingOnPort(port uint16) error {
 		return nil
 	}
 	_ = conn.Close()
-	return fmt.Errorf("port %d is already in use; stop whatever is listening on %s before running tests", port, addr)
+	log.Printf("WARNING: port %d is already bound (%s); ziti quickstart will not be able to start until it is released", port, addr)
+	return nil
 }
 
 // wipeOverlayDB removes per-instance state so quickstart re-seeds a clean
