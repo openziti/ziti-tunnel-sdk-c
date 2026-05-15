@@ -18,7 +18,8 @@
       "hidden": true,
       "cacheVariables": {
         "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
-        "VCPKG_OVERLAY_PORTS": "${sourceDir}/vcpkg-overlays/json-c-disable-duplocale"
+        "VCPKG_OVERLAY_PORTS": "${sourceDir}/vcpkg-overlays/json-c-disable-duplocale",
+        "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/vcpkg-triplets"
       }
     },
     {
@@ -173,7 +174,10 @@
         "ci-unix",
         "dev-mode",
         "vcpkg"
-      ]
+      ],
+      "cacheVariables": {
+        "VCPKG_TARGET_TRIPLET": "x64-osx"
+      }
     },
     {
       "name": "ci-macOS-arm64",
@@ -198,6 +202,7 @@
         "dev-mode"
       ],
       "cacheVariables": {
+        "VCPKG_TARGET_TRIPLET": "x64-linux",
         "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/toolchains/Linux-x64.cmake"
       }
     },
