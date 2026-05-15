@@ -40,6 +40,7 @@ func testRemoveIdentityWithIdentifierFromStatus(t *testing.T) {
 
 	name := identityNameFor(t)
 
+	t.Logf("minting JWT for %q", name)
 	jwt, err := overlay.CreateIdentityJWT(ctx, name)
 	require.NoError(t, err, "mint JWT")
 	require.NotEmpty(t, jwt)
@@ -48,23 +49,28 @@ func testRemoveIdentityWithIdentifierFromStatus(t *testing.T) {
 		IdentityFilename: name,
 		JwtContent:       &jwt,
 	}
+	t.Logf("sending AddIdentity for %q", name)
 	addResp, err := client.AddIdentity(ctx, identityData)
 	require.NoError(t, err, "AddIdentity send\n%s", zet.Logs())
 	require.True(t, addResp.Success, "AddIdentity failed: error=%q code=%d", addResp.Error, addResp.Code)
 
+	t.Logf("fetching tunnel status")
 	status, err := client.GetTunnelStatus(ctx)
 	require.NoError(t, err, "Status after AddIdentity\n%s", zet.Logs())
 	entry := status.FindIdentity(name)
 	require.NotNil(t, entry, "identity %q not found in Status after AddIdentity", name)
-
 	info, err := os.Stat(entry.Identifier)
 	require.NoError(t, err, "identity file should exist after AddIdentity")
 	require.Greater(t, info.Size(), int64(0))
+	t.Logf("found %q in status; identity file at %s (%d bytes)", name, entry.Identifier, info.Size())
 
+	t.Logf("sending RemoveIdentity for Identifier=%s", entry.Identifier)
 	removeResp, err := client.RemoveIdentity(ctx, entry.Identifier)
 	require.NoError(t, err, "RemoveIdentity send\n%s", zet.Logs())
 	require.True(t, removeResp.Success, "RemoveIdentity failed: error=%q code=%d", removeResp.Error, removeResp.Code)
+	t.Logf("RemoveIdentity succeeded for %q", name)
 
 	_, statErr := os.Stat(entry.Identifier)
 	require.True(t, os.IsNotExist(statErr), "identity file should be removed after RemoveIdentity: %s\n%s", entry.Identifier, zet.Logs())
+	t.Logf("confirmed identity file removed from disk: %s", entry.Identifier)
 }

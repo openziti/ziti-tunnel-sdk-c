@@ -21,10 +21,12 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 )
@@ -117,12 +119,15 @@ func StartZET(ctx context.Context, binPath, identityDir string, opts ZETOptions)
 		cmd.Stderr = stderr
 	}
 
+	log.Printf("zet[%s]: exec %s %s (cmdPipe=%s eventPipe=%s logPath=%s)",
+		opts.Discriminator, binPath, strings.Join(args, " "), cmdPipe, eventPipe, logPath)
 	if err := cmd.Start(); err != nil {
 		if logFile != nil {
 			_ = logFile.Close()
 		}
 		return nil, fmt.Errorf("start %s: %w", binPath, err)
 	}
+	log.Printf("zet[%s]: process started pid=%d, waiting for IPC pipe", opts.Discriminator, cmd.Process.Pid)
 
 	z := &ZET{
 		BinPath:       binPath,

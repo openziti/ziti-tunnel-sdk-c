@@ -37,9 +37,11 @@ func testStatusHasExpectedTopLevelFields(t *testing.T) {
 	require.NoError(t, err, "dial ZET IPC pipe")
 	t.Cleanup(func() { _ = client.Close() })
 
+	t.Logf("sending Status command")
 	resp, err := client.Status(ctx)
 	require.NoError(t, err, "Status send\n%s", zet.Logs())
 	require.True(t, resp.Success, "Status failed: error=%q code=%d", resp.Error, resp.Code)
+	t.Logf("Status command succeeded; verifying top-level fields")
 
 	var keys map[string]json.RawMessage
 	require.NoError(t, json.Unmarshal(resp.Data, &keys), "parse Status data: %s", resp.Data)
@@ -60,4 +62,5 @@ func testStatusHasExpectedTopLevelFields(t *testing.T) {
 	require.Contains(t, keys, "TapInfo", "Status.TapInfo missing")
 	require.Contains(t, keys, "ConfigDir", "Status.ConfigDir missing")
 	require.Len(t, keys, 15, "Status has unexpected key set: %v", keys)
+	t.Logf("confirmed all 15 expected top-level fields present")
 }

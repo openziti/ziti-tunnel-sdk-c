@@ -32,8 +32,9 @@ func TestDexUp(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	t.Logf("running OIDC discovery against dex issuer=%s", dex.IssuerURL)
 	jwks, err := testutil.DiscoverOIDCJWKS(ctx, dex.IssuerURL)
 	require.NoError(t, err, "OIDC discovery against dex")
 	require.Equal(t, dex.JWKSURI(), jwks, "jwks_uri from discovery should match advertised issuer/keys")
-	t.Logf("dex issuer=%s jwks=%s", dex.IssuerURL, jwks)
+	t.Logf("OIDC discovery returned jwks_uri=%s (matches advertised %s)", jwks, dex.JWKSURI())
 }

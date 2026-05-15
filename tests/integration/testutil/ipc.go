@@ -21,6 +21,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net"
 	"testing"
 	"time"
@@ -47,15 +48,24 @@ type IPCClient struct {
 
 func dialIPCAt(ctx context.Context, path string) (*IPCClient, error) {
 	const retryInterval = 100 * time.Millisecond
+	log.Printf("ipc: dialing command pipe %s", path)
+	start := time.Now()
+	attempts := 0
 	var lastErr error
 	for {
+		attempts++
 		conn, err := dialPlatform(ctx, path)
 		if err == nil {
+			log.Printf("ipc: connected to %s after %d attempt(s) in %s", path, attempts, time.Since(start).Round(time.Millisecond))
 			return &IPCClient{conn: conn, reader: bufio.NewReader(conn)}, nil
 		}
 		lastErr = err
+		if attempts == 1 || attempts%20 == 0 {
+			log.Printf("ipc: dial %s still failing after %d attempt(s): %v", path, attempts, err)
+		}
 		select {
 		case <-ctx.Done():
+			log.Printf("ipc: giving up dial %s after %d attempt(s) in %s: %v (last: %v)", path, attempts, time.Since(start).Round(time.Millisecond), ctx.Err(), lastErr)
 			return nil, fmt.Errorf("dial %s: %w (last: %v)", path, ctx.Err(), lastErr)
 		case <-time.After(retryInterval):
 		}
@@ -101,15 +111,24 @@ type EventClient struct {
 
 func dialEventsAt(ctx context.Context, path string) (*EventClient, error) {
 	const retryInterval = 100 * time.Millisecond
+	log.Printf("ipc: dialing event pipe %s", path)
+	start := time.Now()
+	attempts := 0
 	var lastErr error
 	for {
+		attempts++
 		conn, err := dialPlatform(ctx, path)
 		if err == nil {
+			log.Printf("ipc: connected to event pipe %s after %d attempt(s) in %s", path, attempts, time.Since(start).Round(time.Millisecond))
 			return &EventClient{conn: conn, reader: bufio.NewReader(conn)}, nil
 		}
 		lastErr = err
+		if attempts == 1 || attempts%20 == 0 {
+			log.Printf("ipc: dial event pipe %s still failing after %d attempt(s): %v", path, attempts, err)
+		}
 		select {
 		case <-ctx.Done():
+			log.Printf("ipc: giving up event-pipe dial %s after %d attempt(s) in %s: %v (last: %v)", path, attempts, time.Since(start).Round(time.Millisecond), ctx.Err(), lastErr)
 			return nil, fmt.Errorf("dial %s: %w (last: %v)", path, ctx.Err(), lastErr)
 		case <-time.After(retryInterval):
 		}

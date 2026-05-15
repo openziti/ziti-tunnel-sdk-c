@@ -37,6 +37,7 @@ func testListIdentitiesContainsAddedIdentity(t *testing.T) {
 	defer cancel()
 
 	name := identityNameFor(t)
+	t.Logf("minting JWT for %q", name)
 	jwt, err := overlay.CreateIdentityJWT(ctx, name)
 	require.NoError(t, err, "mint JWT via overlay")
 	require.NotEmpty(t, jwt)
@@ -49,15 +50,19 @@ func testListIdentitiesContainsAddedIdentity(t *testing.T) {
 		IdentityFilename: name,
 		JwtContent:       &jwt,
 	}
+	t.Logf("sending AddIdentity for %q", name)
 	addResp, err := client.AddIdentity(ctx, identityData)
 	require.NoError(t, err, "AddIdentity send\n%s", zet.Logs())
 	require.True(t, addResp.Success, "AddIdentity failed: error=%q code=%d", addResp.Error, addResp.Code)
 
+	t.Logf("fetching tunnel status")
 	status, err := client.GetTunnelStatus(ctx)
 	require.NoError(t, err, "Status after AddIdentity\n%s", zet.Logs())
 	entry := status.FindIdentity(name)
 	require.NotNil(t, entry, "identity %q not found in Status after AddIdentity", name)
+	t.Logf("found %q in status with Identifier=%s", name, entry.Identifier)
 
+	t.Logf("sending ListIdentities")
 	listResp, err := client.ListIdentities(ctx)
 	require.NoError(t, err, "ListIdentities send\n%s", zet.Logs())
 	require.True(t, listResp.Success, "ListIdentities failed: error=%q code=%d", listResp.Error, listResp.Code)

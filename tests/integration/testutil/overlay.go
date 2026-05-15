@@ -497,14 +497,17 @@ func (o *Overlay) waitUntilReady(ctx context.Context) error {
 		return err
 	}
 	log.Printf("overlay: attempting admin login at %s", o.ControllerHostPort())
+	attempts := 0
 	var lastErr error
 	for {
+		attempts++
 		if _, err := o.execZiti(ctx, "edge", "login", o.ControllerHostPort(),
 			"-u", adminUsername, "-p", adminPassword, "--yes"); err == nil {
-			log.Printf("overlay: admin login OK")
+			log.Printf("overlay: admin login OK after %d attempt(s)", attempts)
 			return nil
 		} else {
 			lastErr = err
+			log.Printf("overlay: admin login attempt %d failed, retrying", attempts)
 		}
 		select {
 		case err := <-o.cmdDone:

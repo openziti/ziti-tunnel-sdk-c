@@ -39,6 +39,7 @@ func testIdentityOnOffTogglesActiveOff(t *testing.T) {
 	t.Cleanup(func() { _ = client.Close() })
 
 	name := identityNameFor(t)
+	t.Logf("minting JWT for %q", name)
 	jwt, err := overlay.CreateIdentityJWT(ctx, name)
 	require.NoError(t, err, "mint JWT")
 	require.NotEmpty(t, jwt)
@@ -47,25 +48,32 @@ func testIdentityOnOffTogglesActiveOff(t *testing.T) {
 		IdentityFilename: name,
 		JwtContent:       &jwt,
 	}
+	t.Logf("sending AddIdentity for %q", name)
 	addResp, err := client.AddIdentity(ctx, identityData)
 	require.NoError(t, err, "AddIdentity send\n%s", zet.Logs())
 	require.True(t, addResp.Success, "AddIdentity failed: error=%q code=%d", addResp.Error, addResp.Code)
+	t.Logf("AddIdentity succeeded for %q", name)
 
+	t.Logf("fetching tunnel status to get Identifier")
 	status, err := client.GetTunnelStatus(ctx)
 	require.NoError(t, err, "Status send\n%s", zet.Logs())
 	entry := status.FindIdentity(name)
 	require.NotNil(t, entry, "identity %q not found in Status.Identities", name)
+	t.Logf("found %q in status with Identifier=%s Active=%t", name, entry.Identifier, entry.Active)
 
+	t.Logf("sending IdentityOnOff(false) for %q", name)
 	offResp, err := client.IdentityOnOff(ctx, entry.Identifier, false)
 	require.NoError(t, err, "IdentityOnOff(false) send\n%s", zet.Logs())
 	require.True(t, offResp.Success, "IdentityOnOff(false) failed: error=%q code=%d", offResp.Error, offResp.Code)
+	t.Logf("IdentityOnOff(false) succeeded for %q", name)
 
+	t.Logf("fetching tunnel status to confirm Active=false")
 	status, err = client.GetTunnelStatus(ctx)
 	require.NoError(t, err, "Status send after off\n%s", zet.Logs())
 	entry = status.FindIdentity(name)
 	require.NotNil(t, entry, "identity %q not found in Status after off", name)
 	require.False(t, entry.Active, "Status.Identities[%q].Active should be false after IdentityOnOff(false)", name)
-	t.Logf("IdentityOnOff(false) ID Active=%t", entry.Active)
+	t.Logf("status reports Active=%t after IdentityOnOff(false)", entry.Active)
 }
 
 func testIdentityOnOffTogglesActiveOn(t *testing.T) {
@@ -77,6 +85,7 @@ func testIdentityOnOffTogglesActiveOn(t *testing.T) {
 	t.Cleanup(func() { _ = client.Close() })
 
 	name := identityNameFor(t)
+	t.Logf("minting JWT for %q", name)
 	jwt, err := overlay.CreateIdentityJWT(ctx, name)
 	require.NoError(t, err, "mint JWT")
 	require.NotEmpty(t, jwt)
@@ -85,27 +94,36 @@ func testIdentityOnOffTogglesActiveOn(t *testing.T) {
 		IdentityFilename: name,
 		JwtContent:       &jwt,
 	}
+	t.Logf("sending AddIdentity for %q", name)
 	addResp, err := client.AddIdentity(ctx, identityData)
 	require.NoError(t, err, "AddIdentity send\n%s", zet.Logs())
 	require.True(t, addResp.Success, "AddIdentity failed: error=%q code=%d", addResp.Error, addResp.Code)
+	t.Logf("AddIdentity succeeded for %q", name)
 
+	t.Logf("fetching tunnel status to get Identifier")
 	status, err := client.GetTunnelStatus(ctx)
 	require.NoError(t, err, "Status send\n%s", zet.Logs())
 	entry := status.FindIdentity(name)
 	require.NotNil(t, entry, "identity %q not found in Status.Identities", name)
+	t.Logf("found %q in status with Identifier=%s Active=%t", name, entry.Identifier, entry.Active)
 
+	t.Logf("sending IdentityOnOff(false) for %q", name)
 	offResp, err := client.IdentityOnOff(ctx, entry.Identifier, false)
 	require.NoError(t, err, "IdentityOnOff(false) send\n%s", zet.Logs())
 	require.True(t, offResp.Success, "IdentityOnOff(false) failed: error=%q code=%d", offResp.Error, offResp.Code)
+	t.Logf("IdentityOnOff(false) succeeded for %q", name)
 
+	t.Logf("sending IdentityOnOff(true) for %q", name)
 	onResp, err := client.IdentityOnOff(ctx, entry.Identifier, true)
 	require.NoError(t, err, "IdentityOnOff(true) send\n%s", zet.Logs())
 	require.True(t, onResp.Success, "IdentityOnOff(true) failed: error=%q code=%d", onResp.Error, onResp.Code)
+	t.Logf("IdentityOnOff(true) succeeded for %q", name)
 
+	t.Logf("fetching tunnel status to confirm Active=true")
 	status, err = client.GetTunnelStatus(ctx)
 	require.NoError(t, err, "Status send after on\n%s", zet.Logs())
 	entry = status.FindIdentity(name)
 	require.NotNil(t, entry, "identity %q not found in Status after on", name)
 	require.True(t, entry.Active, "Status.Identities[%q].Active should be true after IdentityOnOff(true)", name)
-	t.Logf("IdentityOnOff(true) ID Active=%t", entry.Active)
+	t.Logf("status reports Active=%t after IdentityOnOff(true)", entry.Active)
 }

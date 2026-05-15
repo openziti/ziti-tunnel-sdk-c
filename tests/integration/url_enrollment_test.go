@@ -51,10 +51,13 @@ func testUrlEnrollmentWithValidControllerUrlSucceeds(t *testing.T) {
 		ControllerURL:    &controllerURL,
 	}
 
+	t.Logf("sending URL AddIdentity for %q with ControllerURL=%s", identityName, controllerURL)
 	resp, err := client.AddIdentity(ctx, identityData)
 	require.NoError(t, err, "URL AddIdentity send\n%s", zet.Logs())
 	require.True(t, resp.Success, "URL AddIdentity failed: error=%q code=%d\n%s", resp.Error, resp.Code, zet.Logs())
+	t.Logf("URL AddIdentity succeeded for %q", identityName)
 
+	t.Logf("fetching tunnel status to verify identity file")
 	status, err := client.GetTunnelStatus(ctx)
 	require.NoError(t, err, "Status after URL AddIdentity\n%s", zet.Logs())
 	entry := status.FindIdentity(identityName)
@@ -62,7 +65,7 @@ func testUrlEnrollmentWithValidControllerUrlSucceeds(t *testing.T) {
 	info, err := os.Stat(entry.Identifier)
 	require.NoError(t, err, "identity file should be written to -I dir")
 	require.Greater(t, info.Size(), int64(0), "identity file should be non-empty")
-	t.Logf("URL-enrolled identity file written: %s (%d bytes)", entry.Identifier, info.Size())
+	t.Logf("found %q in status; URL-enrolled identity file written: %s (%d bytes)", identityName, entry.Identifier, info.Size())
 }
 
 func testUrlEnrollmentSameNameTwiceSecondFails(t *testing.T) {
@@ -80,10 +83,13 @@ func testUrlEnrollmentSameNameTwiceSecondFails(t *testing.T) {
 		ControllerURL:    &controllerURL,
 	}
 
+	t.Logf("sending first URL AddIdentity for %q", identityName)
 	first, err := client.AddIdentity(ctx, identityData)
 	require.NoError(t, err, "first URL AddIdentity send\n%s", zet.Logs())
 	require.True(t, first.Success, "first URL AddIdentity should succeed: error=%q\n%s", first.Error, zet.Logs())
+	t.Logf("first URL AddIdentity succeeded for %q", identityName)
 
+	t.Logf("sending duplicate URL AddIdentity for %q", identityName)
 	second, err := client.AddIdentity(ctx, identityData)
 	require.NoError(t, err, "second URL AddIdentity send\n%s", zet.Logs())
 	require.False(t, second.Success, "second URL AddIdentity should fail, got Success=true")
@@ -97,6 +103,7 @@ func testUrlEnrollmentAfterJwtSameNameFails(t *testing.T) {
 	defer cancel()
 
 	identityName := identityNameFor(t)
+	t.Logf("minting JWT for %q", identityName)
 	jwt, err := overlay.CreateIdentityJWT(ctx, identityName)
 	require.NoError(t, err, "mint JWT via overlay")
 	require.NotEmpty(t, jwt)
@@ -109,15 +116,18 @@ func testUrlEnrollmentAfterJwtSameNameFails(t *testing.T) {
 		IdentityFilename: identityName,
 		JwtContent:       &jwt,
 	}
+	t.Logf("sending JWT AddIdentity for %q", identityName)
 	first, err := client.AddIdentity(ctx, jwtIdentityData)
 	require.NoError(t, err, "first JWT AddIdentity send\n%s", zet.Logs())
 	require.True(t, first.Success, "first JWT AddIdentity should succeed: error=%q\n%s", first.Error, zet.Logs())
+	t.Logf("JWT AddIdentity succeeded for %q", identityName)
 
 	controllerURL := overlay.ControllerHostPort()
 	urlIdentityData := testutil.AddIdentityData{
 		IdentityFilename: identityName,
 		ControllerURL:    &controllerURL,
 	}
+	t.Logf("sending URL AddIdentity with same name %q (should be rejected as duplicate)", identityName)
 	second, err := client.AddIdentity(ctx, urlIdentityData)
 	require.NoError(t, err, "second URL AddIdentity send\n%s", zet.Logs())
 	require.False(t, second.Success, "URL AddIdentity should fail when name already enrolled via JWT, got Success=true")
@@ -140,6 +150,7 @@ func testUrlEnrollmentWithNonZitiEndpointFails(t *testing.T) {
 		ControllerURL:    &nonZitiURL,
 	}
 
+	t.Logf("sending URL AddIdentity for %q with non-Ziti URL=%s", identityName, nonZitiURL)
 	resp, err := client.AddIdentity(ctx, identityData)
 	require.NoError(t, err, "URL AddIdentity send\n%s", zet.Logs())
 	require.False(t, resp.Success, "non-Ziti URL %q should be rejected, got Success=true\n%s", nonZitiURL, zet.Logs())
@@ -161,6 +172,7 @@ func testUrlEnrollmentWithMalformedUrlFails(t *testing.T) {
 		ControllerURL:    &badURL,
 	}
 
+	t.Logf("sending URL AddIdentity for %q with malformed URL=%q", identityName, badURL)
 	resp, err := client.AddIdentity(ctx, identityData)
 	require.NoError(t, err, "URL AddIdentity send\n%s", zet.Logs())
 	require.False(t, resp.Success, "malformed URL %q should be rejected, got Success=true\n%s", badURL, zet.Logs())
