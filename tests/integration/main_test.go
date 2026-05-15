@@ -23,6 +23,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -114,27 +115,39 @@ teardown: to remove test CA from OS trust when done:
 		return 0, fmt.Errorf("purge stale test ext-jwt-signers: %w", err)
 	}
 
-	log.Printf("setup: starting ZET zetA")
-	zet, err = testutil.StartZET(ctx, zetBin, filepath.Join(zetTempRoot, "zet-identities"), testutil.ZETOptions{
-		Discriminator: "zetA",
-		DNSRange:      "100.129.0.1/16",
-		LogDir:        zetLogDir,
-	})
-	if err != nil {
-		return 0, fmt.Errorf("start ziti-edge-tunnel: %w", err)
+	log.Printf("setup: starting ZET zetA and zetB in parallel")
+	var zetAErr, zetBErr error
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		zet, zetAErr = testutil.StartZET(ctx, zetBin, filepath.Join(zetTempRoot, "zet-identities"), testutil.ZETOptions{
+			Discriminator: "zetA",
+			DNSRange:      "100.129.0.1/16",
+			LogDir:        zetLogDir,
+		})
+	}()
+	go func() {
+		defer wg.Done()
+		zetB, zetBErr = testutil.StartZET(ctx, zetBin, filepath.Join(zetTempRoot, "zetB-identities"), testutil.ZETOptions{
+			Discriminator: "zetB",
+			DNSRange:      "100.128.0.1/16",
+			LogDir:        zetLogDir,
+		})
+	}()
+	wg.Wait()
+	if zet != nil {
+		defer zet.Stop()
 	}
-	defer zet.Stop()
-
-	log.Printf("setup: starting ZET zetB")
-	zetB, err = testutil.StartZET(ctx, zetBin, filepath.Join(zetTempRoot, "zetB-identities"), testutil.ZETOptions{
-		Discriminator: "zetB",
-		DNSRange:      "100.128.0.1/16",
-		LogDir:        zetLogDir,
-	})
-	if err != nil {
-		return 0, fmt.Errorf("start zetB: %w", err)
+	if zetB != nil {
+		defer zetB.Stop()
 	}
-	defer zetB.Stop()
+	if zetAErr != nil {
+		return 0, fmt.Errorf("start ziti-edge-tunnel: %w", zetAErr)
+	}
+	if zetBErr != nil {
+		return 0, fmt.Errorf("start zetB: %w", zetBErr)
+	}
 
 	if dexBin != "" {
 		log.Printf("setup: starting dex (dexBin=%s)", dexBin)
