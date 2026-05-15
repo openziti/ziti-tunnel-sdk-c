@@ -174,10 +174,7 @@
         "ci-unix",
         "dev-mode",
         "vcpkg"
-      ],
-      "cacheVariables": {
-        "VCPKG_TARGET_TRIPLET": "x64-osx"
-      }
+      ]
     },
     {
       "name": "ci-macOS-arm64",
