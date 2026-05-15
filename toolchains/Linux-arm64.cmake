@@ -20,9 +20,6 @@ else()
     set(CMAKE_CXX_COMPILER "${triple}-g++")
 endif()
 
-if(EXISTS /usr/${triple})
-    set(CMAKE_SYSROOT /usr/${triple})
-endif()
 
 set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE arm64)
 set(CPACK_RPM_PACKAGE_ARCHITECTURE aarch64)
