@@ -18,7 +18,15 @@
       "hidden": true,
       "cacheVariables": {
         "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
-        "VCPKG_OVERLAY_PORTS": "${sourceDir}/vcpkg-overlays/json-c-disable-duplocale"
+        "VCPKG_OVERLAY_PORTS": "${sourceDir}/vcpkg-overlays/json-c-disable-duplocale",
+        "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/vcpkg-triplets"
+      }
+    },
+    {
+      "name": "vcpkg-win-pkgconfig",
+      "hidden": true,
+      "cacheVariables": {
+        "PKG_CONFIG_EXECUTABLE": "${sourceDir}/build/vcpkg_installed/x64-windows/tools/pkgconf/pkgconf.exe"
       }
     },
     {
@@ -103,6 +111,7 @@
     {
       "name": "ci-win64-vs2022",
       "inherits": [
+        "vcpkg-win-pkgconfig",
         "flags-windows-vs2022",
         "ci-std",
         "vs-2022"
@@ -116,6 +125,7 @@
     {
       "name": "ci-win86-vs2022",
       "inherits": [
+        "vcpkg-win-pkgconfig",
         "flags-windows-vs2022",
         "ci-std",
         "vs-2022"
@@ -126,6 +136,7 @@
     {
       "name": "ci-win-arm64-vs2022",
       "inherits": [
+        "vcpkg-win-pkgconfig",
         "flags-windows-vs2022",
         "ci-std",
         "vs-2022"
@@ -136,6 +147,7 @@
     {
       "name": "ci-win64-mingw",
       "inherits": [
+        "vcpkg-win-pkgconfig",
         "flags-windows-mingw",
         "ci-std",
         "ninja"
@@ -185,7 +197,12 @@
         "ci-unix",
         "vcpkg",
         "dev-mode"
-      ]
+      ],
+      "cacheVariables": {
+        "VCPKG_HOST_TRIPLET": "x64-linux",
+        "VCPKG_TARGET_TRIPLET": "x64-linux",
+        "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/toolchains/Linux-x64.cmake"
+      }
     },
     {
       "name": "ci-linux-arm64",

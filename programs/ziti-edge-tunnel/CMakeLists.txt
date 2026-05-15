@@ -99,6 +99,7 @@ target_compile_definitions(ziti-edge-tunnel
         PRIVATE GIT_VERSION=${GIT_VERSION}
         PRIVATE ZITI_LOG_PREFIX=${PROJECT_NAME}
         PRIVATE ZITI_LOG_MODULE="ziti-edge-tunnel"
+        PRIVATE _GNU_SOURCE
         )
 
 # if EXECINFO is present set a flag for later inclusion

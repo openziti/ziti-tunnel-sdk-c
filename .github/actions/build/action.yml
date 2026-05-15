@@ -32,7 +32,7 @@ runs:
 
     - name: install contemporary cmake
       if: runner.os != 'Linux'
-      uses: lukka/get-cmake@v3.27.7 # pin version to avoid failed glibc dependency on ubuntu 20 runners. go back to @latest when ubuntu 22+ is adopted for runner os.
+      uses: lukka/get-cmake@latest
 
     - uses: lukka/run-vcpkg@v11
       if: runner.os != 'Linux'
