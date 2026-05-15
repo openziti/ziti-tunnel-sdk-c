@@ -64,6 +64,9 @@ func TestMain(m *testing.M) {
 }
 
 func run(m *testing.M) (int, error) {
+	if err := testutil.RequireAdmin(); err != nil {
+		return 0, err
+	}
 	if zetLogDir == "" {
 		zetLogDir = filepath.Join(overlayHome, "zet-logs")
 	}

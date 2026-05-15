@@ -20,11 +20,20 @@ package testutil
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"time"
 
 	"github.com/Microsoft/go-winio"
+	"golang.org/x/sys/windows"
 )
+
+func RequireAdmin() error {
+	if windows.GetCurrentProcessToken().IsElevated() {
+		return nil
+	}
+	return fmt.Errorf("integration tests must run elevated on Windows; relaunch as Administrator")
+}
 
 const CommandPipePath = `\\.\pipe\ziti-edge-tunnel.sock`
 const EventPipePath = `\\.\pipe\ziti-edge-tunnel-event.sock`

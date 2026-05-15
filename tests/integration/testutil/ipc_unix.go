@@ -20,8 +20,17 @@ package testutil
 
 import (
 	"context"
+	"fmt"
 	"net"
+	"os"
 )
+
+func RequireAdmin() error {
+	if os.Geteuid() == 0 {
+		return nil
+	}
+	return fmt.Errorf("integration tests must run as root; rerun under sudo")
+}
 
 const CommandPipePath = "/tmp/.ziti/ziti-edge-tunnel.sock"
 const EventPipePath = "/tmp/.ziti/ziti-edge-tunnel-event.sock"
