@@ -312,26 +312,13 @@ func testAddIdentityEmitsIdentityAddedEvent(t *testing.T) {
 	require.True(t, resp.Success, "AddIdentity failed: error=%q code=%d", resp.Error, resp.Code)
 
 	t.Logf("waiting for identity:added event for %q", identityName)
-	for {
-		raw, err := events.ReadEvent(ctx)
-		require.NoError(t, err, "read event waiting for identity:added\n%s", zet.Logs())
-
-		var event struct {
-			Op, Action, Fingerprint string
-		}
-		require.NoError(t, json.Unmarshal(raw, &event), "parse event: %s", raw)
-		if event.Op != "identity" || event.Action != "added" || event.Fingerprint != identityName {
-			continue
-		}
-
-		t.Logf("identity event received: %s", raw)
-		var keys map[string]json.RawMessage
-		require.NoError(t, json.Unmarshal(raw, &keys), "parse identity event: %s", raw)
-		require.Contains(t, keys, "Op", "identity event missing Op")
-		require.Contains(t, keys, "Action", "identity event missing Action")
-		require.Contains(t, keys, "Fingerprint", "identity event missing Fingerprint")
-		require.Contains(t, keys, "Id", "identity event missing Id")
-		require.Len(t, keys, 4, "identity event has unexpected key set: %v", keys)
-		return
-	}
+	raw := events.WaitFor(t, ctx, "identity", "added", identityName)
+	t.Logf("identity event received: %s", raw)
+	var keys map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(raw, &keys), "parse identity event: %s", raw)
+	require.Contains(t, keys, "Op", "identity event missing Op")
+	require.Contains(t, keys, "Action", "identity event missing Action")
+	require.Contains(t, keys, "Fingerprint", "identity event missing Fingerprint")
+	require.Contains(t, keys, "Id", "identity event missing Id")
+	require.Len(t, keys, 4, "identity event has unexpected key set: %v", keys)
 }

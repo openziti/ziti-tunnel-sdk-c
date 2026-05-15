@@ -58,7 +58,7 @@ func testEnableMFAAcceptsJwtEnrolledIdentity(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	enrolled := newEnrolledMFA(t, ctx, identityNameFor(t))
+	enrolled, _ := newEnrolledMFA(t, ctx, identityNameFor(t))
 
 	require.False(t, enrolled.IsVerified, "EnableMFA Data.IsVerified should be false before verify_mfa")
 	t.Logf("EnableMFA returned IsVerified=%t (expected false before VerifyMFA)", enrolled.IsVerified)
@@ -122,7 +122,7 @@ func testVerifyMFAAcceptsValidTotp(t *testing.T) {
 	defer cancel()
 
 	name := identityNameFor(t)
-	enrolled := newEnrolledMFA(t, ctx, name)
+	enrolled, _ := newEnrolledMFA(t, ctx, name)
 
 	code, err := generateTotpCode(enrolled.Secret, time.Now())
 	require.NoError(t, err, "compute TOTP")
@@ -147,7 +147,7 @@ func testVerifyMFARejectsInvalidTotp(t *testing.T) {
 	defer cancel()
 
 	name := identityNameFor(t)
-	enrolled := newEnrolledMFA(t, ctx, name)
+	enrolled, _ := newEnrolledMFA(t, ctx, name)
 
 	t.Logf("sending VerifyMFA with invalid TOTP for %q", name)
 	verifyResp, err := enrolled.Client.VerifyMFA(ctx, enrolled.Identifier, "000000")
@@ -169,11 +169,7 @@ func testMFAReauthenticationAcceptsValidTotp(t *testing.T) {
 	defer cancel()
 
 	name := identityNameFor(t)
-	enrolled := newEnrolledMFA(t, ctx, name)
-
-	events, err := zet.DialEvents(ctx)
-	require.NoError(t, err, "dial ZET event pipe")
-	t.Cleanup(func() { _ = events.Close() })
+	enrolled, events := newEnrolledMFA(t, ctx, name)
 
 	code, err := generateTotpCode(enrolled.Secret, time.Now())
 	require.NoError(t, err, "compute TOTP")
@@ -232,11 +228,7 @@ func testMFAReauthenticationAcceptsRecoveryCode(t *testing.T) {
 	defer cancel()
 
 	name := identityNameFor(t)
-	enrolled := newEnrolledMFA(t, ctx, name)
-
-	events, err := zet.DialEvents(ctx)
-	require.NoError(t, err, "dial ZET event pipe")
-	t.Cleanup(func() { _ = events.Close() })
+	enrolled, events := newEnrolledMFA(t, ctx, name)
 
 	code, err := generateTotpCode(enrolled.Secret, time.Now())
 	require.NoError(t, err, "compute TOTP")
@@ -292,11 +284,7 @@ func testMFAReauthenticationRejectsInvalidTotp(t *testing.T) {
 	defer cancel()
 
 	name := identityNameFor(t)
-	enrolled := newEnrolledMFA(t, ctx, name)
-
-	events, err := zet.DialEvents(ctx)
-	require.NoError(t, err, "dial ZET event pipe")
-	t.Cleanup(func() { _ = events.Close() })
+	enrolled, events := newEnrolledMFA(t, ctx, name)
 
 	code, err := generateTotpCode(enrolled.Secret, time.Now())
 	require.NoError(t, err, "compute TOTP")
@@ -344,7 +332,7 @@ func testRemoveMFAAcceptsValidTotp(t *testing.T) {
 	defer cancel()
 
 	name := identityNameFor(t)
-	enrolled := newEnrolledMFA(t, ctx, name)
+	enrolled, _ := newEnrolledMFA(t, ctx, name)
 
 	code, err := generateTotpCode(enrolled.Secret, time.Now())
 	require.NoError(t, err, "compute TOTP")
@@ -378,7 +366,7 @@ func testRemoveMFAAcceptsRecoveryCode(t *testing.T) {
 	defer cancel()
 
 	name := identityNameFor(t)
-	enrolled := newEnrolledMFA(t, ctx, name)
+	enrolled, _ := newEnrolledMFA(t, ctx, name)
 
 	code, err := generateTotpCode(enrolled.Secret, time.Now())
 	require.NoError(t, err, "compute TOTP")
@@ -409,7 +397,7 @@ func testRemoveMFARejectsInvalidTotp(t *testing.T) {
 	defer cancel()
 
 	name := identityNameFor(t)
-	enrolled := newEnrolledMFA(t, ctx, name)
+	enrolled, _ := newEnrolledMFA(t, ctx, name)
 
 	code, err := generateTotpCode(enrolled.Secret, time.Now())
 	require.NoError(t, err, "compute TOTP")
@@ -443,7 +431,7 @@ type enrolledMFA struct {
 	Secret        string
 }
 
-func newEnrolledMFA(t *testing.T, ctx context.Context, name string) *enrolledMFA {
+func newEnrolledMFA(t *testing.T, ctx context.Context, name string) (*enrolledMFA, *testutil.EventClient) {
 	t.Helper()
 
 	t.Logf("minting JWT for %q", name)
@@ -453,7 +441,7 @@ func newEnrolledMFA(t *testing.T, ctx context.Context, name string) *enrolledMFA
 
 	events, err := zet.DialEvents(ctx)
 	require.NoError(t, err, "dial ZET event pipe")
-	defer func() { _ = events.Close() }()
+	t.Cleanup(func() { _ = events.Close() })
 
 	client, err := zet.DialIPC(ctx)
 	require.NoError(t, err, "dial ZET IPC pipe")
@@ -498,7 +486,7 @@ func newEnrolledMFA(t *testing.T, ctx context.Context, name string) *enrolledMFA
 		IsVerified:    enrollment.IsVerified,
 		RecoveryCodes: enrollment.RecoveryCodes,
 		Secret:        secret,
-	}
+	}, events
 }
 
 func generateTotpCode(secret string, at time.Time) (string, error) {

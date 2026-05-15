@@ -54,7 +54,7 @@ func testExternalAuthOnUrlEnrolledIdentityCompletes(t *testing.T) {
 		_ = overlay.DeleteExtJwtSigner(cleanupCtx, signerName)
 	})
 
-	client, identifier := urlEnrollForExtAuth(t, ctx, name)
+	client, events, identifier := urlEnrollForExtAuth(t, ctx, name)
 
 	t.Logf("requesting external auth URL from ZET for signer=%q", signerName)
 	authResp, err := client.GetExternalAuth(ctx, identifier, signerName)
@@ -66,9 +66,6 @@ func testExternalAuthOnUrlEnrolledIdentityCompletes(t *testing.T) {
 	require.NoError(t, testutil.DriveDexOIDC(ctx, authResp.URL, dex.IssuerURL, dex.Email, dex.Password), "drive dex OIDC flow")
 	t.Logf("dex OIDC flow completed")
 
-	events, err := zet.DialEvents(ctx)
-	require.NoError(t, err, "dial ZET event pipe")
-	t.Cleanup(func() { _ = events.Close() })
 	t.Logf("waiting for identity:added event for %q", name)
 	events.WaitFor(t, ctx, "identity", "added", name)
 	t.Logf("identity:added event received")
@@ -100,7 +97,7 @@ func testExternalAuthWithInvalidProviderFails(t *testing.T) {
 		_ = overlay.DeleteExtJwtSigner(cleanupCtx, signerName)
 	})
 
-	client, identifier := urlEnrollForExtAuth(t, ctx, name)
+	client, _, identifier := urlEnrollForExtAuth(t, ctx, name)
 
 	bogusProvider := signerName + "-bogus"
 	t.Logf("sending ExternalAuth with bogus provider %q (should be rejected)", bogusProvider)
@@ -129,7 +126,7 @@ func testExternalAuthWithoutControllerIdentityFails(t *testing.T) {
 		_ = overlay.DeleteExtJwtSigner(cleanupCtx, signerName)
 	})
 
-	client, identifier := urlEnrollForExtAuth(t, ctx, name)
+	client, events, identifier := urlEnrollForExtAuth(t, ctx, name)
 
 	t.Logf("requesting external auth URL from ZET for signer=%q", signerName)
 	authResp, err := client.GetExternalAuth(ctx, identifier, signerName)
@@ -141,9 +138,6 @@ func testExternalAuthWithoutControllerIdentityFails(t *testing.T) {
 	require.NoError(t, testutil.DriveDexOIDC(ctx, authResp.URL, dex.IssuerURL, dex.Email, dex.Password), "drive dex OIDC flow")
 	t.Logf("dex OIDC flow completed; controller should reject because no identity has externalId=%q", dex.ExternalID)
 
-	events, err := zet.DialEvents(ctx)
-	require.NoError(t, err, "dial ZET event pipe")
-	t.Cleanup(func() { _ = events.Close() })
 	t.Logf("waiting for controller:disconnected event for %q", name)
 	events.WaitFor(t, ctx, "controller", "disconnected", name)
 	t.Logf("controller:disconnected event received")
@@ -223,7 +217,7 @@ func testExternalAuthWithMultipleSignersCompletes(t *testing.T) {
 		_ = overlay.DeleteExtJwtSigner(cleanupCtx, signer3Name)
 	})
 
-	client, identifier := urlEnrollForExtAuth(t, ctx, name)
+	client, events, identifier := urlEnrollForExtAuth(t, ctx, name)
 
 	t.Logf("fetching tunnel status to confirm all three providers listed")
 	status, err := client.GetTunnelStatus(ctx)
@@ -243,9 +237,6 @@ func testExternalAuthWithMultipleSignersCompletes(t *testing.T) {
 	require.NoError(t, testutil.DriveDexOIDC(ctx, authResp.URL, dex.IssuerURL, dex.Email, dex.Password), "drive dex OIDC flow")
 	t.Logf("dex OIDC flow completed")
 
-	events, err := zet.DialEvents(ctx)
-	require.NoError(t, err, "dial ZET event pipe")
-	t.Cleanup(func() { _ = events.Close() })
 	t.Logf("waiting for identity:added event for %q", name)
 	events.WaitFor(t, ctx, "identity", "added", name)
 	t.Logf("identity:added event received")
@@ -288,13 +279,13 @@ func createDexSignerAndPolicy(t *testing.T, ctx context.Context, name, clientID 
 	return signerName, policyName
 }
 
-func urlEnrollForExtAuth(t *testing.T, ctx context.Context, name string) (*testutil.IPCClient, string) {
+func urlEnrollForExtAuth(t *testing.T, ctx context.Context, name string) (*testutil.IPCClient, *testutil.EventClient, string) {
 	t.Helper()
 	controllerBase := overlay.ControllerHostPort()
 
 	events, err := zet.DialEvents(ctx)
 	require.NoError(t, err, "dial ZET event pipe")
-	defer func() { _ = events.Close() }()
+	t.Cleanup(func() { _ = events.Close() })
 
 	client, err := zet.DialIPC(ctx)
 	require.NoError(t, err, "dial ZET IPC pipe")
@@ -321,5 +312,5 @@ func urlEnrollForExtAuth(t *testing.T, ctx context.Context, name string) (*testu
 	require.NotNil(t, entry, "identity %q not found in Status after URL AddIdentity", name)
 	t.Logf("found %q in status with Identifier=%s NeedsExtAuth=%t", name, entry.Identifier, entry.NeedsExtAuth)
 
-	return client, entry.Identifier
+	return client, events, entry.Identifier
 }
