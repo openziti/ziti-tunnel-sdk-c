@@ -29,6 +29,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -182,19 +183,32 @@ func (z *ZET) DialEvents(ctx context.Context) (*EventClient, error) {
 	return dialEventsAt(ctx, z.EventPipe)
 }
 
-// Stop terminates ZET. Callers should defer this on every test.
+// A surviving ZET orphans wintun state and breaks subsequent tests, so abort
+// hard rather than let an orphan hide.
 func (z *ZET) Stop() {
 	if z.extCmd.Process == nil {
 		return
 	}
-	_ = z.extCmd.Process.Kill()
-	select {
-	case <-z.cmdDone:
-	case <-time.After(5 * time.Second):
+	pid := z.extCmd.Process.Pid
+	if err := z.extCmd.Process.Kill(); err != nil {
+		log.Printf("ZET pid %d kill: %v", pid, err)
 	}
-	if z.logFile != nil {
-		_ = z.logFile.Close()
+	for i := 0; i < 120; i++ {
+		time.Sleep(500 * time.Millisecond)
+		if proc, err := os.FindProcess(pid); err != nil || proc == nil {
+			if z.logFile != nil {
+				_ = z.logFile.Close()
+			}
+			return
+		}
+		if err := z.extCmd.Process.Signal(syscall.Signal(0)); err != nil {
+			if z.logFile != nil {
+				_ = z.logFile.Close()
+			}
+			return
+		}
 	}
+	log.Fatalf("ZET pid %d did not exit within 60s of Kill; orphan likely, aborting test run", pid)
 }
 
 func (z *ZET) Logs() string {

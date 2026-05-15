@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -191,7 +190,8 @@ func (c *EventClient) readLoop() {
 // WaitFor blocks until an event matching op/action/fingerprint appears in
 // the buffer (or has already appeared since dial). Returns the matched
 // event's raw JSON so callers can inspect non-typed fields. Caps the wait
-// at 20s.
+// at 20s. Must be called from the test goroutine: a timeout calls
+// require.Failf, which is only safe on the goroutine running the test.
 func (c *EventClient) WaitFor(t *testing.T, ctx context.Context, op, action, fingerprint string) json.RawMessage {
 	t.Helper()
 	waitCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
@@ -242,14 +242,3 @@ func (c *EventClient) Close() error {
 	return c.conn.Close()
 }
 
-// Trace returns one line per event seen since dial. Intended for dumping on
-// test failure so the buffered events become visible without spamming on pass.
-func (c *EventClient) Trace() string {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	var b strings.Builder
-	for _, e := range c.events {
-		fmt.Fprintf(&b, "  op=%q action=%q fp=%q\n", e.Op, e.Action, e.Fingerprint)
-	}
-	return b.String()
-}

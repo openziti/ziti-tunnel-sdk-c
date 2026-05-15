@@ -30,6 +30,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -59,12 +60,8 @@ type Overlay struct {
 // waits for the controller to accept an admin login, and returns a handle.
 // Callers must defer Stop().
 func StartOverlay(ctx context.Context, zitiBin, home string) (*Overlay, error) {
-	if err := ensureNothingOnPort(overlayCtrlPort); err != nil {
-		return nil, err
-	}
-	if err := ensureNothingOnPort(overlayRtrPort); err != nil {
-		return nil, err
-	}
+	warnIfPortBound(overlayCtrlPort)
+	warnIfPortBound(overlayRtrPort)
 	log.Printf("overlay: mkdir home %s", home)
 	if err := os.MkdirAll(home, 0o700); err != nil {
 		return nil, fmt.Errorf("mkdir home: %w", err)
@@ -84,6 +81,7 @@ func StartOverlay(ctx context.Context, zitiBin, home string) (*Overlay, error) {
 	}
 	log.Printf("overlay: starting %s %s", zitiBin, strings.Join(args, " "))
 	cmd := exec.CommandContext(ctx, zitiBin, args...)
+	// PFXLOG_NO_JSON makes ziti's stderr human-readable for test log output.
 	cmd.Env = append(os.Environ(),
 		"ZITI_CONFIG_DIR="+filepath.Join(home, "cli-config"),
 		"PFXLOG_NO_JSON=true",
@@ -127,16 +125,16 @@ func StartOverlay(ctx context.Context, zitiBin, home string) (*Overlay, error) {
 	return o, nil
 }
 
-// ensureNothingOnPort logs a warning if something is already listening on localhost:port.
-func ensureNothingOnPort(port uint16) error {
+// warnIfPortBound logs a warning if something is already listening on localhost:port.
+// It does not fail; the subsequent ziti quickstart will surface the real bind error.
+func warnIfPortBound(port uint16) {
 	addr := fmt.Sprintf("localhost:%d", port)
 	conn, err := net.DialTimeout("tcp", addr, 500*time.Millisecond)
 	if err != nil {
-		return nil
+		return
 	}
 	_ = conn.Close()
 	log.Printf("WARNING: port %d is already bound (%s); ziti quickstart will not be able to start until it is released", port, addr)
-	return nil
 }
 
 // wipeOverlayDB removes per-instance state so quickstart re-seeds a clean
@@ -251,15 +249,26 @@ func (o *Overlay) CACleanupCommand() string {
 	return cleanup
 }
 
+// A surviving overlay holds the controller/router ports and breaks subsequent
+// runs, so abort hard rather than let an orphan hide.
 func (o *Overlay) Stop() {
 	if o.extCmd.Process == nil {
 		return
 	}
-	_ = o.extCmd.Process.Kill()
-	select {
-	case <-o.cmdDone:
-	case <-time.After(10 * time.Second):
+	pid := o.extCmd.Process.Pid
+	if err := o.extCmd.Process.Kill(); err != nil {
+		log.Printf("overlay pid %d kill: %v", pid, err)
 	}
+	for i := 0; i < 120; i++ {
+		time.Sleep(500 * time.Millisecond)
+		if proc, err := os.FindProcess(pid); err != nil || proc == nil {
+			return
+		}
+		if err := o.extCmd.Process.Signal(syscall.Signal(0)); err != nil {
+			return
+		}
+	}
+	log.Fatalf("overlay pid %d did not exit within 60s of Kill; orphan likely, aborting test run", pid)
 }
 
 func (o *Overlay) Logs() string {
