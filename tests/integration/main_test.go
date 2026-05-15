@@ -159,7 +159,7 @@ teardown: to remove test CA from OS trust when done:
 
 	if dexBin != "" {
 		log.Printf("setup: starting dex (dexBin=%s)", dexBin)
-		dex, err = testutil.StartDex(ctx, dexBin, filepath.Join(zetTempRoot, "dex"))
+		dex, err = testutil.StartDex(ctx, dexBin, filepath.Join(zetTempRoot, "dex"), zetLogDir)
 		if err != nil {
 			return 0, fmt.Errorf("start dex: %w", err)
 		}

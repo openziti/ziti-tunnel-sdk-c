@@ -59,8 +59,10 @@ var DefaultDexUser = DexUser{
 const defaultDexBcryptHash = `$2a$10$2b2cU8CPhOTaGrs1HRQuAueS7JTT5ZHsHSzYiFPm1leZck7Mc8T4W`
 
 // StartDex launches dex against a generated config and waits for discovery.
-// Caller must defer Stop().
-func StartDex(ctx context.Context, dexBin, workDir string) (*Dex, error) {
+// Caller must defer Stop(). If logDir is non-empty, dex's combined stdout+stderr
+// is written to <logDir>/dex.log so it sits alongside the zet logs and survives
+// the test temp dir being deleted.
+func StartDex(ctx context.Context, dexBin, workDir, logDir string) (*Dex, error) {
 	if dexBin == "" {
 		return nil, fmt.Errorf("dex binary path is empty")
 	}
@@ -110,7 +112,14 @@ staticPasswords:
 		return nil, fmt.Errorf("write dex config: %w", err)
 	}
 
-	logPath := filepath.Join(workDir, "dex.log")
+	logDest := workDir
+	if logDir != "" {
+		if err := os.MkdirAll(logDir, 0o755); err != nil {
+			return nil, fmt.Errorf("create dex log dir: %w", err)
+		}
+		logDest = logDir
+	}
+	logPath := filepath.Join(logDest, "dex.log")
 	logFile, err := os.Create(logPath)
 	if err != nil {
 		return nil, fmt.Errorf("create dex log: %w", err)
