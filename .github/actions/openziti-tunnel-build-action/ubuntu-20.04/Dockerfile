@@ -17,6 +17,7 @@ WORKDIR /root/
 RUN apt-get update
 RUN apt-get -y install \
         autoconf automake autopoint \
+        bison flex \
         gcc-arm-linux-gnueabihf \
         g++-arm-linux-gnueabihf \
         gcc-aarch64-linux-gnu \
@@ -26,7 +27,6 @@ RUN apt-get -y install \
         doxygen \
         git \
         graphviz \
-        libpcap-dev \
         libprotobuf-c-dev \
         libsystemd-dev \
         libtool \
@@ -40,8 +40,6 @@ RUN sed -Ei 's/^deb/deb [arch=amd64]/g' /etc/apt/sources.list
 RUN dpkg --add-architecture arm64 && dpkg --add-architecture armhf
 RUN apt-get update
 RUN apt-get -y install \
-        libpcap-dev:arm64 \
-        libpcap-dev:armhf \
         libprotobuf-c-dev:arm64 \
         libprotobuf-c-dev:armhf \
         zlib1g-dev:arm64 \
