@@ -59,6 +59,12 @@ type Overlay struct {
 // waits for the controller to accept an admin login, and returns a handle.
 // Callers must defer Stop().
 func StartOverlay(ctx context.Context, zitiBin, home string) (*Overlay, error) {
+	if err := ensureNothingOnPort(overlayCtrlPort); err != nil {
+		return nil, err
+	}
+	if err := ensureNothingOnPort(overlayRtrPort); err != nil {
+		return nil, err
+	}
 	log.Printf("overlay: mkdir home %s", home)
 	if err := os.MkdirAll(home, 0o700); err != nil {
 		return nil, fmt.Errorf("mkdir home: %w", err)
@@ -119,6 +125,19 @@ func StartOverlay(ctx context.Context, zitiBin, home string) (*Overlay, error) {
 	o.ZitiMinor = minor
 	log.Printf("overlay: ready (ziti v%d.%d)", major, minor)
 	return o, nil
+}
+
+// ensureNothingOnPort returns an error if anything is already listening on
+// localhost:port. Catches the case where a stray ziti controller/router (or
+// any other process) would silently steal the quickstart bring-up.
+func ensureNothingOnPort(port uint16) error {
+	addr := fmt.Sprintf("localhost:%d", port)
+	conn, err := net.DialTimeout("tcp", addr, 500*time.Millisecond)
+	if err != nil {
+		return nil
+	}
+	_ = conn.Close()
+	return fmt.Errorf("port %d is already in use; stop whatever is listening on %s before running tests", port, addr)
 }
 
 // wipeOverlayDB removes per-instance state so quickstart re-seeds a clean
