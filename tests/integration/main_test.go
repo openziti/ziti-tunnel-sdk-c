@@ -31,16 +31,18 @@ import (
 )
 
 var (
-	zetBin      string
-	zitiBin     string
-	dexBin      string
-	zetLogDir   string
-	overlay     *testutil.Overlay
-	zet         *testutil.ZET
-	zetB        *testutil.ZET
-	dex         *testutil.Dex
-	overlayHome string
-	zetTempRoot string
+	zetBin       string
+	zitiBin      string
+	dexBin       string
+	zetLogDir    string
+	zetVerbosity int
+	tlsuvDebug   int
+	overlay      *testutil.Overlay
+	zet          *testutil.ZET
+	zetB         *testutil.ZET
+	dex          *testutil.Dex
+	overlayHome  string
+	zetTempRoot  string
 )
 
 func TestMain(m *testing.M) {
@@ -48,6 +50,8 @@ func TestMain(m *testing.M) {
 	flag.StringVar(&zitiBin, "ziti-bin", "", "path to ziti binary for controller+router bring-up (required)")
 	flag.StringVar(&dexBin, "dex-bin", "", "path to dex binary (optional; enables tests that need an external IdP)")
 	flag.StringVar(&zetLogDir, "zet-log-dir", "", "if set, write each zet's combined stdout+stderr to <dir>/zet-<name>.log")
+	flag.IntVar(&zetVerbosity, "zet-verbosity", 4, "ziti-edge-tunnel -v level (0=silent..6=trace)")
+	flag.IntVar(&tlsuvDebug, "tlsuv-debug", 0, "TLSUV_DEBUG level (0=off..6=trace); off by default")
 	flag.StringVar(&overlayHome, "overlay-home", filepath.Join(os.TempDir(), "ziti-tunnel-test-quickstart"), "directory for the test overlay's persistent quickstart state (PKI lives here across runs)")
 	flag.Parse()
 
@@ -125,6 +129,8 @@ teardown: to remove test CA from OS trust when done:
 			Discriminator: "zetA",
 			DNSRange:      "100.129.0.1/16",
 			LogDir:        zetLogDir,
+			Verbosity:     zetVerbosity,
+			TlsuvDebug:    tlsuvDebug,
 		})
 	}()
 	go func() {
@@ -133,6 +139,8 @@ teardown: to remove test CA from OS trust when done:
 			Discriminator: "zetB",
 			DNSRange:      "100.128.0.1/16",
 			LogDir:        zetLogDir,
+			Verbosity:     zetVerbosity,
+			TlsuvDebug:    tlsuvDebug,
 		})
 	}()
 	wg.Wait()

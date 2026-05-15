@@ -26,6 +26,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -45,6 +46,11 @@ type ZETOptions struct {
 	// <LogDir>/ziti-edge-tunnel[.<discriminator>].log, mirroring the IPC socket
 	// naming convention, in addition to the in-memory buffer used by Logs().
 	LogDir string
+	// Verbosity is the -v level passed to ziti-edge-tunnel (0=silent..6=trace).
+	Verbosity int
+	// TlsuvDebug, if > 0, sets the TLSUV_DEBUG env var (0=off..6=trace) for
+	// debugging TLS handshake / cert chain issues.
+	TlsuvDebug int
 }
 
 type ZET struct {
@@ -83,7 +89,7 @@ func StartZET(ctx context.Context, binPath, identityDir string, opts ZETOptions)
 		_ = os.Remove(eventPipe)
 	}
 
-	args := []string{"run", "-I", identityDir, "-v", "6"}
+	args := []string{"run", "-I", identityDir, "-v", strconv.Itoa(opts.Verbosity)}
 	if opts.Discriminator != "" {
 		args = append(args, "-P", opts.Discriminator)
 	}
@@ -92,7 +98,9 @@ func StartZET(ctx context.Context, binPath, identityDir string, opts ZETOptions)
 	}
 
 	cmd := exec.CommandContext(ctx, binPath, args...)
-	cmd.Env = append(os.Environ(), "TLSUV_DEBUG=6")
+	if opts.TlsuvDebug > 0 {
+		cmd.Env = append(os.Environ(), "TLSUV_DEBUG="+strconv.Itoa(opts.TlsuvDebug))
+	}
 	stdout := newSyncBuffer()
 	stderr := newSyncBuffer()
 
