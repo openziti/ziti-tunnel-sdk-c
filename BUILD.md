@@ -204,5 +204,50 @@ Build the generic binary for arm64 with the `ci-linux-arm64` preset.
 ./scripts/ziti-builder.sh -p ci-linux-arm64
 ```
 
+#### Developer Dependency Overrides
+
+The `ziti-builder.sh` script supports environment variables to override the
+default dependency fetching behavior. These are useful when developing or
+testing local changes in upstream libraries.
+
+| Variable | Description |
+|---|---|
+| `TLSUV_DIR` | Path to a local tlsuv checkout. Mounted into the container and passed as `-Dtlsuv_DIR` to cmake, bypassing `FetchContent`. |
+| `TLSUV_TLSLIB` | TLS backend override: `openssl` or `mbedtls` (default is per cmake preset). |
+| `ZITI_SDK_DIR` | Path to a local ziti-sdk-c checkout. Mounted into the container and passed as `-DZITI_SDK_DIR` to cmake, bypassing `FetchContent`. |
+| `ZITI_SDK_VERSION` | Git tag or branch for ziti-sdk-c `FetchContent`. **Mutually exclusive with `ZITI_SDK_DIR`** — the script will exit with an error if both are set. |
+| `ZITI_BUILDER_TAG` | Builder image tag (default: `latest`). Each major version targets a different Ubuntu release and GLIBC version — see the [ziti-builder README][3] for the compatibility matrix. |
+
+The local checkout variables (`TLSUV_DIR`, `ZITI_SDK_DIR`) bind-mount the
+host directory into the container at the same absolute path so cmake can
+reference it directly. The mounted directories are also added to Git's
+`safe.directory` list inside the container.
+
+**Examples:**
+
+Build with a local tlsuv checkout (e.g. testing a bug fix in tlsuv):
+
+```bash
+TLSUV_DIR=~/src/tlsuv \
+ZITI_BUILDER_TAG=v3 \
+  ./scripts/ziti-builder.sh
+```
+
+Build with both a local ziti-sdk-c and tlsuv checkout:
+
+```bash
+TLSUV_DIR=~/src/tlsuv \
+ZITI_SDK_DIR=~/src/ziti-sdk-c \
+ZITI_BUILDER_TAG=v3 \
+  ./scripts/ziti-builder.sh
+```
+
+Build with a specific ziti-sdk-c version from git (without a local checkout):
+
+```bash
+ZITI_SDK_VERSION=1.2.3 ./scripts/ziti-builder.sh
+```
+
 [1]: https://cmake.org/cmake/help/latest/manual/cmake-presets.7.html
 [2]: https://cmake.org/download/
+[3]: https://github.com/openziti/ziti-builder#glibc-compatibility
