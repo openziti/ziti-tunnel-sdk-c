@@ -58,7 +58,7 @@ func testEnableMFAAcceptsJwtEnrolledIdentity(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	enrolled, _ := newEnrolledMFA(t, ctx, identityNameFor(t))
+	enrolled, _ := newEnrolledMFA(t, ctx, testutil.IdentityName(t))
 
 	require.False(t, enrolled.IsVerified, "EnableMFA Data.IsVerified should be false before verify_mfa")
 	t.Logf("EnableMFA returned IsVerified=%t (expected false before VerifyMFA)", enrolled.IsVerified)
@@ -70,7 +70,7 @@ func testEnableMFAAcceptsTotpRequiredAuthPolicy(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	name := identityNameFor(t)
+	name := testutil.IdentityName(t)
 	policy := name + "-policy"
 	t.Logf("creating TOTP-required auth policy %q", policy)
 	require.NoError(t, overlay.CreateAuthPolicyRequiringTOTP(ctx, policy), "create auth policy")
@@ -92,9 +92,7 @@ func testEnableMFAAcceptsTotpRequiredAuthPolicy(t *testing.T) {
 		IdentityFilename: name,
 		JwtContent:       &jwt,
 	}
-	t.Logf("sending AddIdentity for %q", name)
-	addResp, err := client.AddIdentity(ctx, identityData)
-	require.NoError(t, err, "AddIdentity send\n%s", zet.Logs())
+	addResp := testutil.Enroll(t, ctx, client, identityData)
 	require.True(t, addResp.Success, "AddIdentity failed: error=%q code=%d", addResp.Error, addResp.Code)
 	t.Logf("AddIdentity succeeded for %q", name)
 
@@ -121,7 +119,7 @@ func testVerifyMFAAcceptsValidTotp(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	name := identityNameFor(t)
+	name := testutil.IdentityName(t)
 	enrolled, _ := newEnrolledMFA(t, ctx, name)
 
 	code, err := generateTotpCode(enrolled.Secret, time.Now())
@@ -146,7 +144,7 @@ func testVerifyMFARejectsInvalidTotp(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	name := identityNameFor(t)
+	name := testutil.IdentityName(t)
 	enrolled, _ := newEnrolledMFA(t, ctx, name)
 
 	t.Logf("sending VerifyMFA with invalid TOTP for %q", name)
@@ -168,7 +166,7 @@ func testMFAReauthenticationAcceptsValidTotp(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	name := identityNameFor(t)
+	name := testutil.IdentityName(t)
 	enrolled, events := newEnrolledMFA(t, ctx, name)
 
 	code, err := generateTotpCode(enrolled.Secret, time.Now())
@@ -227,7 +225,7 @@ func testMFAReauthenticationAcceptsRecoveryCode(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	name := identityNameFor(t)
+	name := testutil.IdentityName(t)
 	enrolled, events := newEnrolledMFA(t, ctx, name)
 
 	code, err := generateTotpCode(enrolled.Secret, time.Now())
@@ -283,7 +281,7 @@ func testMFAReauthenticationRejectsInvalidTotp(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	name := identityNameFor(t)
+	name := testutil.IdentityName(t)
 	enrolled, events := newEnrolledMFA(t, ctx, name)
 
 	code, err := generateTotpCode(enrolled.Secret, time.Now())
@@ -331,7 +329,7 @@ func testRemoveMFAAcceptsValidTotp(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	name := identityNameFor(t)
+	name := testutil.IdentityName(t)
 	enrolled, _ := newEnrolledMFA(t, ctx, name)
 
 	code, err := generateTotpCode(enrolled.Secret, time.Now())
@@ -365,7 +363,7 @@ func testRemoveMFAAcceptsRecoveryCode(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	name := identityNameFor(t)
+	name := testutil.IdentityName(t)
 	enrolled, _ := newEnrolledMFA(t, ctx, name)
 
 	code, err := generateTotpCode(enrolled.Secret, time.Now())
@@ -396,7 +394,7 @@ func testRemoveMFARejectsInvalidTotp(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	name := identityNameFor(t)
+	name := testutil.IdentityName(t)
 	enrolled, _ := newEnrolledMFA(t, ctx, name)
 
 	code, err := generateTotpCode(enrolled.Secret, time.Now())
@@ -451,9 +449,7 @@ func newEnrolledMFA(t *testing.T, ctx context.Context, name string) (*enrolledMF
 		IdentityFilename: name,
 		JwtContent:       &jwt,
 	}
-	t.Logf("sending AddIdentity for %q", name)
-	addResp, err := client.AddIdentity(ctx, identityData)
-	require.NoError(t, err, "AddIdentity send\n%s", zet.Logs())
+	addResp := testutil.Enroll(t, ctx, client, identityData)
 	require.True(t, addResp.Success, "AddIdentity failed: error=%q code=%d", addResp.Error, addResp.Code)
 
 	t.Logf("waiting for controller:connected event for %q", name)

@@ -38,7 +38,7 @@ func testIdentityOnOffTogglesActiveOff(t *testing.T) {
 	require.NoError(t, err, "dial ZET IPC pipe")
 	t.Cleanup(func() { _ = client.Close() })
 
-	name := identityNameFor(t)
+	name := testutil.IdentityName(t)
 	t.Logf("minting JWT for %q", name)
 	jwt, err := overlay.CreateIdentityJWT(ctx, name)
 	require.NoError(t, err, "mint JWT")
@@ -48,9 +48,7 @@ func testIdentityOnOffTogglesActiveOff(t *testing.T) {
 		IdentityFilename: name,
 		JwtContent:       &jwt,
 	}
-	t.Logf("sending AddIdentity for %q", name)
-	addResp, err := client.AddIdentity(ctx, identityData)
-	require.NoError(t, err, "AddIdentity send\n%s", zet.Logs())
+	addResp := testutil.Enroll(t, ctx, client, identityData)
 	require.True(t, addResp.Success, "AddIdentity failed: error=%q code=%d", addResp.Error, addResp.Code)
 	t.Logf("AddIdentity succeeded for %q", name)
 
@@ -84,7 +82,7 @@ func testIdentityOnOffTogglesActiveOn(t *testing.T) {
 	require.NoError(t, err, "dial ZET IPC pipe")
 	t.Cleanup(func() { _ = client.Close() })
 
-	name := identityNameFor(t)
+	name := testutil.IdentityName(t)
 	t.Logf("minting JWT for %q", name)
 	jwt, err := overlay.CreateIdentityJWT(ctx, name)
 	require.NoError(t, err, "mint JWT")
@@ -94,9 +92,7 @@ func testIdentityOnOffTogglesActiveOn(t *testing.T) {
 		IdentityFilename: name,
 		JwtContent:       &jwt,
 	}
-	t.Logf("sending AddIdentity for %q", name)
-	addResp, err := client.AddIdentity(ctx, identityData)
-	require.NoError(t, err, "AddIdentity send\n%s", zet.Logs())
+	addResp := testutil.Enroll(t, ctx, client, identityData)
 	require.True(t, addResp.Success, "AddIdentity failed: error=%q code=%d", addResp.Error, addResp.Code)
 	t.Logf("AddIdentity succeeded for %q", name)
 

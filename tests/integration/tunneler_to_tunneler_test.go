@@ -201,23 +201,19 @@ func setupT2TService(
 	require.NoError(t, err, "dial host ZET IPC")
 	t.Cleanup(func() { _ = hostClient.Close() })
 
-	t.Logf("sending AddIdentity for intercept identity %q to intercept ZET", names.interceptIdentity)
-	resp, err := interceptClient.AddIdentity(ctx, testutil.AddIdentityData{
+	interceptIdentityData := testutil.AddIdentityData{
 		IdentityFilename: names.interceptIdentity,
 		JwtContent:       &interceptJWT,
-	})
-	require.NoError(t, err, "AddIdentity to intercept ZET\n%s", interceptZET.Logs())
+	}
+	resp := testutil.Enroll(t, ctx, interceptClient, interceptIdentityData)
 	require.True(t, resp.Success, "AddIdentity to intercept ZET failed: %s\n%s", resp.Error, interceptZET.Logs())
-	t.Logf("AddIdentity to intercept ZET succeeded")
 
-	t.Logf("sending AddIdentity for host identity %q to host ZET", names.hostIdentity)
-	resp, err = hostClient.AddIdentity(ctx, testutil.AddIdentityData{
+	hostIdentityData := testutil.AddIdentityData{
 		IdentityFilename: names.hostIdentity,
 		JwtContent:       &hostJWT,
-	})
-	require.NoError(t, err, "AddIdentity to host ZET\n%s", hostZET.Logs())
+	}
+	resp = testutil.Enroll(t, ctx, hostClient, hostIdentityData)
 	require.True(t, resp.Success, "AddIdentity to host ZET failed: %s\n%s", resp.Error, hostZET.Logs())
-	t.Logf("AddIdentity to host ZET succeeded")
 
 	// Create controller-side resources.
 	t.Logf("creating host config %q (forward to %s:%d via %s)", names.hostConfig, forwardAddr, forwardPort, protocol)

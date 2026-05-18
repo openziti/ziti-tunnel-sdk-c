@@ -20,6 +20,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 // Payload structs below mirror the wire JSON emitted/accepted by ziti-edge-tunnel's
@@ -307,4 +311,19 @@ func (c *IPCClient) GetMetrics(ctx context.Context) (*Response, error) {
 
 func (c *IPCClient) AddIdentity(ctx context.Context, data AddIdentityData) (*Response, error) {
 	return c.SendCommand(ctx, Command{Command: "AddIdentity", Data: data})
+}
+
+func Enroll(t *testing.T, ctx context.Context, client *IPCClient, data AddIdentityData) *Response {
+	t.Helper()
+	t.Logf("enrolling identity %q", data.IdentityFilename)
+	resp, err := client.AddIdentity(ctx, data)
+	require.NoError(t, err, "AddIdentity IPC send")
+	return resp
+}
+
+// IdentityName returns a filesystem-safe identity filename derived from
+// t.Name(). Subtests produce names like "TestX/sub"; ZET rejects the slash
+// in AddIdentity filenames, so it is replaced.
+func IdentityName(t *testing.T) string {
+	return strings.ReplaceAll(t.Name(), "/", "-")
 }

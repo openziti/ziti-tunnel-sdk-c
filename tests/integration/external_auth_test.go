@@ -40,7 +40,7 @@ func testExternalAuthOnUrlEnrolledIdentityCompletes(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 
-	name := identityNameFor(t)
+	name := testutil.IdentityName(t)
 
 	signerName, policyName := createPKCESignerAndPolicy(t, ctx, name, pkce.ClientIDs[0])
 	t.Logf("creating controller identity %q with externalId=%q bound to policy %q", name, pkce.ExternalID, policyName)
@@ -83,7 +83,7 @@ func testExternalAuthWithInvalidProviderFails(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	name := identityNameFor(t)
+	name := testutil.IdentityName(t)
 
 	signerName, policyName := createPKCESignerAndPolicy(t, ctx, name, pkce.ClientIDs[0])
 	t.Logf("creating controller identity %q with externalId=%q bound to policy %q", name, pkce.ExternalID, policyName)
@@ -112,7 +112,7 @@ func testExternalAuthWithoutControllerIdentityFails(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 
-	name := identityNameFor(t)
+	name := testutil.IdentityName(t)
 
 	signerName, _ := createPKCESignerAndPolicy(t, ctx, name, pkce.ClientIDs[0])
 	// Deliberately DO NOT create a controller identity with externalId. The
@@ -155,7 +155,7 @@ func testExternalAuthWithMultipleSignersCompletes(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 
-	name := identityNameFor(t)
+	name := testutil.IdentityName(t)
 	jwksURI := pkce.JWKSURI()
 
 	realSignerName := name + "-signer-real"
@@ -296,11 +296,8 @@ func urlEnrollForExtAuth(t *testing.T, ctx context.Context, name string) (*testu
 		IdentityFilename: name,
 		ControllerURL:    &controllerBase,
 	}
-	t.Logf("sending URL AddIdentity for %q with ControllerURL=%s", name, controllerBase)
-	enrollResp, err := client.AddIdentity(ctx, identityData)
-	require.NoError(t, err, "URL AddIdentity send\n%s", zet.Logs())
+	enrollResp := testutil.Enroll(t, ctx, client, identityData)
 	require.True(t, enrollResp.Success, "URL AddIdentity should succeed: error=%q\n%s", enrollResp.Error, zet.Logs())
-	t.Logf("URL AddIdentity succeeded for %q", name)
 
 	t.Logf("waiting for identity:needs_ext_login event for %q", name)
 	events.WaitFor(t, ctx, "identity", "needs_ext_login", name)

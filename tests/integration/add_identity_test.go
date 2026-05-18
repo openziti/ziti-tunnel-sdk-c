@@ -41,18 +41,11 @@ func TestAddIdentity(t *testing.T) {
 	t.Run("emitsIdentityAddedEvent", testAddIdentityEmitsIdentityAddedEvent)
 }
 
-// identityNameFor returns a unique-per-test identity filename so tests sharing
-// the package-level ZET instance don't collide on disk.
-func identityNameFor(t *testing.T) string {
-	// t.Name() is like "TestAddIdentity/withJwtSucceeds"
-	return strings.ReplaceAll(t.Name(), "/", "-")
-}
-
 func testAddIdentityWithJwtSucceeds(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	identityName := identityNameFor(t)
+	identityName := testutil.IdentityName(t)
 	t.Logf("minting JWT for %q", identityName)
 	jwt, err := overlay.CreateIdentityJWT(ctx, identityName)
 	require.NoError(t, err, "mint JWT via overlay")
@@ -67,9 +60,7 @@ func testAddIdentityWithJwtSucceeds(t *testing.T) {
 		JwtContent:       &jwt,
 	}
 
-	t.Logf("sending AddIdentity for %q", identityName)
-	resp, err := client.AddIdentity(ctx, identityData)
-	require.NoError(t, err, "send AddIdentity command\n%s", zet.Logs())
+	resp := testutil.Enroll(t, ctx, client, identityData)
 	require.True(t, resp.Success, "AddIdentity failed: error=%q code=%d\n%s", resp.Error, resp.Code, zet.Logs())
 
 	t.Logf("fetching tunnel status")
@@ -87,7 +78,7 @@ func testAddIdentitySameJwtTwiceSecondFails(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	identityName := identityNameFor(t)
+	identityName := testutil.IdentityName(t)
 	t.Logf("minting JWT for %q", identityName)
 	jwt, err := overlay.CreateIdentityJWT(ctx, identityName)
 	require.NoError(t, err, "mint JWT via overlay")
@@ -102,14 +93,10 @@ func testAddIdentitySameJwtTwiceSecondFails(t *testing.T) {
 		JwtContent:       &jwt,
 	}
 
-	t.Logf("sending first AddIdentity for %q", identityName)
-	first, err := client.AddIdentity(ctx, identityData)
-	require.NoError(t, err, "first AddIdentity send\n%s", zet.Logs())
+	first := testutil.Enroll(t, ctx, client, identityData)
 	require.True(t, first.Success, "first AddIdentity should succeed: error=%q\n%s", first.Error, zet.Logs())
 
-	t.Logf("sending duplicate AddIdentity for %q", identityName)
-	second, err := client.AddIdentity(ctx, identityData)
-	require.NoError(t, err, "second AddIdentity send\n%s", zet.Logs())
+	second := testutil.Enroll(t, ctx, client, identityData)
 	require.False(t, second.Success, "second AddIdentity should fail, got Success=true")
 	require.Contains(t, second.Error, "identity exists",
 		"expected duplicate-name error, got %q", second.Error)
@@ -124,15 +111,13 @@ func testAddIdentityWithInvalidJwtFails(t *testing.T) {
 	require.NoError(t, err, "dial ZET IPC pipe")
 	t.Cleanup(func() { _ = client.Close() })
 
-	identityName := identityNameFor(t)
+	identityName := testutil.IdentityName(t)
 	badJwt := "this.is.not-a-real-jwt"
 	identityData := testutil.AddIdentityData{
 		IdentityFilename: identityName,
 		JwtContent:       &badJwt,
 	}
-	t.Logf("sending AddIdentity with malformed JWT for %q", identityName)
-	resp, err := client.AddIdentity(ctx, identityData)
-	require.NoError(t, err, "IPC send should succeed even when enrollment fails\n%s", zet.Logs())
+	resp := testutil.Enroll(t, ctx, client, identityData)
 	require.False(t, resp.Success, "invalid JWT should be rejected, got Success=true")
 	require.NotEqual(t, 0, resp.Code, "expected non-zero error code for invalid JWT")
 	t.Logf("invalid JWT correctly rejected: code=%d error=%q", resp.Code, resp.Error)
@@ -154,15 +139,13 @@ func testAddIdentityWithEmptyJwtFails(t *testing.T) {
 	require.NoError(t, err, "dial ZET IPC pipe")
 	t.Cleanup(func() { _ = client.Close() })
 
-	identityName := identityNameFor(t)
+	identityName := testutil.IdentityName(t)
 	emptyJwt := ""
 	identityData := testutil.AddIdentityData{
 		IdentityFilename: identityName,
 		JwtContent:       &emptyJwt,
 	}
-	t.Logf("sending AddIdentity with empty JWT for %q", identityName)
-	resp, err := client.AddIdentity(ctx, identityData)
-	require.NoError(t, err, "IPC send should succeed even when enrollment fails\n%s", zet.Logs())
+	resp := testutil.Enroll(t, ctx, client, identityData)
 	require.False(t, resp.Success, "empty JWT should be rejected, got Success=true")
 	t.Logf("empty JWT correctly rejected: code=%d error=%q", resp.Code, resp.Error)
 
@@ -179,7 +162,7 @@ func testAddIdentityWithDeletedIdentityFails(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	identityName := identityNameFor(t)
+	identityName := testutil.IdentityName(t)
 	t.Logf("minting JWT for %q", identityName)
 	jwt, err := overlay.CreateIdentityJWT(ctx, identityName)
 	require.NoError(t, err, "mint JWT via overlay")
@@ -196,9 +179,7 @@ func testAddIdentityWithDeletedIdentityFails(t *testing.T) {
 		IdentityFilename: identityName,
 		JwtContent:       &jwt,
 	}
-	t.Logf("sending AddIdentity for deleted identity %q", identityName)
-	resp, err := client.AddIdentity(ctx, identityData)
-	require.NoError(t, err, "IPC send should succeed even when enrollment fails\n%s", zet.Logs())
+	resp := testutil.Enroll(t, ctx, client, identityData)
 	require.False(t, resp.Success, "JWT for deleted identity should be rejected, got Success=true")
 	t.Logf("JWT identity deleted from controller correctly rejected: code=%d error=%q", resp.Code, resp.Error)
 
@@ -219,8 +200,8 @@ func testAddIdentityWithSlashInFilenameFails(t *testing.T) {
 	require.NoError(t, err, "dial ZET IPC pipe")
 	t.Cleanup(func() { _ = client.Close() })
 
-	t.Logf("minting JWT for %q", identityNameFor(t))
-	jwt, err := overlay.CreateIdentityJWT(ctx, identityNameFor(t))
+	t.Logf("minting JWT for %q", testutil.IdentityName(t))
+	jwt, err := overlay.CreateIdentityJWT(ctx, testutil.IdentityName(t))
 	require.NoError(t, err, "mint JWT via overlay")
 	require.NotEmpty(t, jwt)
 
@@ -228,9 +209,7 @@ func testAddIdentityWithSlashInFilenameFails(t *testing.T) {
 		IdentityFilename: "foo/bar",
 		JwtContent:       &jwt,
 	}
-	t.Logf("sending AddIdentity with slash in filename %q", identityData.IdentityFilename)
-	resp, err := client.AddIdentity(ctx, identityData)
-	require.NoError(t, err, "IPC send\n%s", zet.Logs())
+	resp := testutil.Enroll(t, ctx, client, identityData)
 	require.False(t, resp.Success, "filename with slash should be rejected, got Success=true")
 	t.Logf("slash filename correctly rejected: code=%d error=%q", resp.Code, resp.Error)
 }
@@ -243,8 +222,8 @@ func testAddIdentityWithDotDotInFilenameFails(t *testing.T) {
 	require.NoError(t, err, "dial ZET IPC pipe")
 	t.Cleanup(func() { _ = client.Close() })
 
-	t.Logf("minting JWT for %q", identityNameFor(t))
-	jwt, err := overlay.CreateIdentityJWT(ctx, identityNameFor(t))
+	t.Logf("minting JWT for %q", testutil.IdentityName(t))
+	jwt, err := overlay.CreateIdentityJWT(ctx, testutil.IdentityName(t))
 	require.NoError(t, err, "mint JWT via overlay")
 	require.NotEmpty(t, jwt)
 
@@ -252,9 +231,7 @@ func testAddIdentityWithDotDotInFilenameFails(t *testing.T) {
 		IdentityFilename: "../escape",
 		JwtContent:       &jwt,
 	}
-	t.Logf("sending AddIdentity with dot-dot in filename %q", identityData.IdentityFilename)
-	resp, err := client.AddIdentity(ctx, identityData)
-	require.NoError(t, err, "IPC send\n%s", zet.Logs())
+	resp := testutil.Enroll(t, ctx, client, identityData)
 	require.False(t, resp.Success, "filename with .. should be rejected, got Success=true")
 	t.Logf("dot-dot filename correctly rejected: code=%d error=%q", resp.Code, resp.Error)
 }
@@ -267,8 +244,8 @@ func testAddIdentityFilenameExceedsCharLimitFails(t *testing.T) {
 	require.NoError(t, err, "dial ZET IPC pipe")
 	t.Cleanup(func() { _ = client.Close() })
 
-	t.Logf("minting JWT for %q", identityNameFor(t))
-	jwt, err := overlay.CreateIdentityJWT(ctx, identityNameFor(t))
+	t.Logf("minting JWT for %q", testutil.IdentityName(t))
+	jwt, err := overlay.CreateIdentityJWT(ctx, testutil.IdentityName(t))
 	require.NoError(t, err, "mint JWT via overlay")
 	require.NotEmpty(t, jwt)
 
@@ -277,9 +254,7 @@ func testAddIdentityFilenameExceedsCharLimitFails(t *testing.T) {
 		IdentityFilename: longName,
 		JwtContent:       &jwt,
 	}
-	t.Logf("sending AddIdentity with %d-char filename", len(longName))
-	resp, err := client.AddIdentity(ctx, identityData)
-	require.NoError(t, err, "IPC send\n%s", zet.Logs())
+	resp := testutil.Enroll(t, ctx, client, identityData)
 	require.False(t, resp.Success, "long filename should be rejected, got Success=true")
 	t.Logf("long filename correctly rejected: code=%d error=%q", resp.Code, resp.Error)
 }
@@ -288,7 +263,7 @@ func testAddIdentityEmitsIdentityAddedEvent(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	identityName := identityNameFor(t)
+	identityName := testutil.IdentityName(t)
 	t.Logf("minting JWT for %q", identityName)
 	jwt, err := overlay.CreateIdentityJWT(ctx, identityName)
 	require.NoError(t, err, "mint JWT via overlay")
@@ -306,9 +281,7 @@ func testAddIdentityEmitsIdentityAddedEvent(t *testing.T) {
 		IdentityFilename: identityName,
 		JwtContent:       &jwt,
 	}
-	t.Logf("sending AddIdentity for %q", identityName)
-	resp, err := client.AddIdentity(ctx, identityData)
-	require.NoError(t, err, "AddIdentity send\n%s", zet.Logs())
+	resp := testutil.Enroll(t, ctx, client, identityData)
 	require.True(t, resp.Success, "AddIdentity failed: error=%q code=%d", resp.Error, resp.Code)
 
 	t.Logf("waiting for identity:added event for %q", identityName)
