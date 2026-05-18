@@ -17,9 +17,15 @@ limitations under the License.
 package testutil
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 // Payload structs below mirror the wire JSON emitted/accepted by ziti-edge-tunnel's
@@ -131,13 +137,14 @@ type ServiceVersion struct {
 type TapInfo struct{}
 
 type IdentityStatus struct {
-	Name         string `json:"Name"`
-	Identifier   string `json:"Identifier"`
-	Active       bool   `json:"Active"`
-	FingerPrint  string `json:"FingerPrint"`
-	MfaEnabled   bool   `json:"MfaEnabled"`
-	MfaNeeded    bool   `json:"MfaNeeded"`
-	NeedsExtAuth bool   `json:"NeedsExtAuth"`
+	Name             string   `json:"Name"`
+	Identifier       string   `json:"Identifier"`
+	Active           bool     `json:"Active"`
+	FingerPrint      string   `json:"FingerPrint"`
+	MfaEnabled       bool     `json:"MfaEnabled"`
+	MfaNeeded        bool     `json:"MfaNeeded"`
+	NeedsExtAuth     bool     `json:"NeedsExtAuth"`
+	ExtAuthProviders []string `json:"ExtAuthProviders"`
 }
 
 type TunnelStatus struct {
@@ -158,10 +165,12 @@ type TunnelStatus struct {
 	ConfigDir         string          `json:"ConfigDir"`
 }
 
-// FindIdentity returns the identity entry whose Name matches, or nil.
-func (s *TunnelStatus) FindIdentity(name string) *IdentityStatus {
+// FindIdentity returns the identity entry whose FingerPrint matches, or nil.
+// FingerPrint carries the controller-side identity name; Name is mutable and
+// gets rewritten to the identity-file path after /current-identity is fetched.
+func (s *TunnelStatus) FindIdentity(fingerprint string) *IdentityStatus {
 	for i := range s.Identities {
-		if s.Identities[i].Name == name {
+		if s.Identities[i].FingerPrint == fingerprint {
 			return &s.Identities[i]
 		}
 	}
@@ -304,4 +313,41 @@ func (c *IPCClient) GetMetrics(ctx context.Context) (*Response, error) {
 
 func (c *IPCClient) AddIdentity(ctx context.Context, data AddIdentityData) (*Response, error) {
 	return c.SendCommand(ctx, Command{Command: "AddIdentity", Data: data})
+}
+
+func Enroll(t *testing.T, ctx context.Context, client *IPCClient, data AddIdentityData) *Response {
+	t.Helper()
+	t.Logf("enrolling identity %q", data.IdentityFilename)
+	resp, err := client.AddIdentity(ctx, data)
+	require.NoError(t, err, "AddIdentity IPC send")
+	return resp
+}
+
+// IdentityName returns a filesystem-safe identity filename derived from
+// t.Name(). Subtests produce names like "TestX/sub"; ZET rejects the slash
+// in AddIdentity filenames, so it is replaced.
+func IdentityName(t *testing.T) string {
+	return strings.ReplaceAll(t.Name(), "/", "-")
+}
+
+type IdentityFileContent struct {
+	ZtAPI  string   `json:"ztAPI"`
+	ZtAPIs []string `json:"ztAPIs"`
+	ID     struct {
+		Cert string `json:"cert"`
+		Key  string `json:"key"`
+		CA   string `json:"ca"`
+	} `json:"id"`
+}
+
+func ReadIdentityFile(t *testing.T, path string) IdentityFileContent {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err, "failed to read identity file at %s", path)
+
+	var content IdentityFileContent
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	require.NoError(t, dec.Decode(&content), "identity file at %s has unknown fields or invalid shape: %s", path, raw)
+	return content
 }

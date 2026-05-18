@@ -40,129 +40,128 @@ func testUrlEnrollmentWithValidControllerUrlSucceeds(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	client, err := testutil.DialIPC(ctx)
-	require.NoError(t, err, "dial ZET IPC pipe")
-	t.Cleanup(func() { _ = client.Close() })
+	events := testutil.SubscribeEvents(t, ctx, zet)
+	client := testutil.OpenCommandPipe(t, ctx, zet)
 
-	identityName := identityNameFor(t)
+	identityName := testutil.IdentityName(t)
 	controllerURL := overlay.ControllerHostPort()
 	identityData := testutil.AddIdentityData{
 		IdentityFilename: identityName,
 		ControllerURL:    &controllerURL,
 	}
 
-	resp, err := client.AddIdentity(ctx, identityData)
-	require.NoError(t, err, "URL AddIdentity send\n%s", zet.Logs())
+	resp := testutil.Enroll(t, ctx, client, identityData)
 	require.True(t, resp.Success, "URL AddIdentity failed: error=%q code=%d\n%s", resp.Error, resp.Code, zet.Logs())
 
-	status, err := client.GetTunnelStatus(ctx)
-	require.NoError(t, err, "Status after URL AddIdentity\n%s", zet.Logs())
-	entry := status.FindIdentity(identityName)
-	require.NotNil(t, entry, "identity %q not found in Status after URL AddIdentity", identityName)
-	info, err := os.Stat(entry.Identifier)
-	require.NoError(t, err, "identity file should be written to -I dir")
+	event := events.WaitFor(t, ctx, "identity", "needs_ext_login", identityName)
+	require.NotEmpty(t, event.Id.Identifier, "identity:needs_ext_login Identifier empty")
+	require.True(t, event.Id.NeedsExtAuth, "identity:needs_ext_login NeedsExtAuth=%t, want true", event.Id.NeedsExtAuth)
+
+	info, err := os.Stat(event.Id.Identifier)
+	require.NoError(t, err, "failed to stat identity file at %s", event.Id.Identifier)
 	require.Greater(t, info.Size(), int64(0), "identity file should be non-empty")
-	t.Logf("URL-enrolled identity file written: %s (%d bytes)", entry.Identifier, info.Size())
+
+	content := testutil.ReadIdentityFile(t, event.Id.Identifier)
+	require.NotEmpty(t, content.ZtAPI, "identity file ztAPI empty")
+	require.NotEmpty(t, content.ID.CA, "identity file id.ca empty")
+	require.Empty(t, content.ID.Cert, "identity file id.cert should be empty before ext-auth completes")
+	require.Empty(t, content.ID.Key, "identity file id.key should be empty before ext-auth completes")
+	t.Logf("URL-enrolled identity:needs_ext_login Identifier=%s NeedsExtAuth=%t; file size=%d", event.Id.Identifier, event.Id.NeedsExtAuth, info.Size())
 }
 
 func testUrlEnrollmentSameNameTwiceSecondFails(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	client, err := testutil.DialIPC(ctx)
-	require.NoError(t, err, "dial ZET IPC pipe")
-	t.Cleanup(func() { _ = client.Close() })
+	events := testutil.SubscribeEvents(t, ctx, zet)
+	client := testutil.OpenCommandPipe(t, ctx, zet)
 
-	identityName := identityNameFor(t)
+	identityName := testutil.IdentityName(t)
 	controllerURL := overlay.ControllerHostPort()
 	identityData := testutil.AddIdentityData{
 		IdentityFilename: identityName,
 		ControllerURL:    &controllerURL,
 	}
 
-	first, err := client.AddIdentity(ctx, identityData)
-	require.NoError(t, err, "first URL AddIdentity send\n%s", zet.Logs())
+	first := testutil.Enroll(t, ctx, client, identityData)
 	require.True(t, first.Success, "first URL AddIdentity should succeed: error=%q\n%s", first.Error, zet.Logs())
+	events.WaitFor(t, ctx, "identity", "needs_ext_login", identityName)
 
-	second, err := client.AddIdentity(ctx, identityData)
-	require.NoError(t, err, "second URL AddIdentity send\n%s", zet.Logs())
+	second := testutil.Enroll(t, ctx, client, identityData)
 	require.False(t, second.Success, "second URL AddIdentity should fail, got Success=true")
+	require.Equal(t, 500, second.Code, "expected Code=500, got %d", second.Code)
 	require.Contains(t, second.Error, "identity exists",
 		"expected duplicate-name error, got %q", second.Error)
-	t.Logf("second URL AddIdentity correctly rejected: %s", second.Error)
+	t.Logf("second URL AddIdentity rejected: code=%d error=%q", second.Code, second.Error)
 }
 
 func testUrlEnrollmentAfterJwtSameNameFails(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	identityName := identityNameFor(t)
+	identityName := testutil.IdentityName(t)
+	t.Logf("creating JWT for %q", identityName)
 	jwt, err := overlay.CreateIdentityJWT(ctx, identityName)
-	require.NoError(t, err, "mint JWT via overlay")
+	require.NoError(t, err, "failed to create JWT via overlay")
 	require.NotEmpty(t, jwt)
 
-	client, err := testutil.DialIPC(ctx)
-	require.NoError(t, err, "dial ZET IPC pipe")
-	t.Cleanup(func() { _ = client.Close() })
+	events := testutil.SubscribeEvents(t, ctx, zet)
+	client := testutil.OpenCommandPipe(t, ctx, zet)
 
 	jwtIdentityData := testutil.AddIdentityData{
 		IdentityFilename: identityName,
 		JwtContent:       &jwt,
 	}
-	first, err := client.AddIdentity(ctx, jwtIdentityData)
-	require.NoError(t, err, "first JWT AddIdentity send\n%s", zet.Logs())
+	first := testutil.Enroll(t, ctx, client, jwtIdentityData)
 	require.True(t, first.Success, "first JWT AddIdentity should succeed: error=%q\n%s", first.Error, zet.Logs())
+	events.WaitFor(t, ctx, "identity", "added", identityName)
 
 	controllerURL := overlay.ControllerHostPort()
 	urlIdentityData := testutil.AddIdentityData{
 		IdentityFilename: identityName,
 		ControllerURL:    &controllerURL,
 	}
-	second, err := client.AddIdentity(ctx, urlIdentityData)
-	require.NoError(t, err, "second URL AddIdentity send\n%s", zet.Logs())
+	second := testutil.Enroll(t, ctx, client, urlIdentityData)
 	require.False(t, second.Success, "URL AddIdentity should fail when name already enrolled via JWT, got Success=true")
+	require.Equal(t, 500, second.Code, "expected Code=500, got %d", second.Code)
 	require.Contains(t, second.Error, "identity exists", "expected duplicate-name error, got %q", second.Error)
-	t.Logf("URL AddIdentity correctly rejected after JWT enroll: %s", second.Error)
+	t.Logf("URL AddIdentity rejected after JWT enroll: code=%d error=%q", second.Code, second.Error)
 }
 
 func testUrlEnrollmentWithNonZitiEndpointFails(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	client, err := testutil.DialIPC(ctx)
-	require.NoError(t, err, "dial ZET IPC pipe")
-	t.Cleanup(func() { _ = client.Close() })
+	client := testutil.OpenCommandPipe(t, ctx, zet)
 
-	identityName := identityNameFor(t)
+	identityName := testutil.IdentityName(t)
 	nonZitiURL := "https://example.com"
 	identityData := testutil.AddIdentityData{
 		IdentityFilename: identityName,
 		ControllerURL:    &nonZitiURL,
 	}
 
-	resp, err := client.AddIdentity(ctx, identityData)
-	require.NoError(t, err, "URL AddIdentity send\n%s", zet.Logs())
+	resp := testutil.Enroll(t, ctx, client, identityData)
 	require.False(t, resp.Success, "non-Ziti URL %q should be rejected, got Success=true\n%s", nonZitiURL, zet.Logs())
-	t.Logf("non-Ziti URL correctly rejected: code=%d error=%q", resp.Code, resp.Error)
+	require.Equal(t, 500, resp.Code, "expected Code=500, got %d", resp.Code)
+	t.Logf("non-Ziti URL rejected: code=%d error=%q", resp.Code, resp.Error)
 }
 
 func testUrlEnrollmentWithMalformedUrlFails(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	client, err := testutil.DialIPC(ctx)
-	require.NoError(t, err, "dial ZET IPC pipe")
-	t.Cleanup(func() { _ = client.Close() })
+	client := testutil.OpenCommandPipe(t, ctx, zet)
 
-	identityName := identityNameFor(t)
+	identityName := testutil.IdentityName(t)
 	badURL := "not-a-url"
 	identityData := testutil.AddIdentityData{
 		IdentityFilename: identityName,
 		ControllerURL:    &badURL,
 	}
 
-	resp, err := client.AddIdentity(ctx, identityData)
-	require.NoError(t, err, "URL AddIdentity send\n%s", zet.Logs())
+	resp := testutil.Enroll(t, ctx, client, identityData)
 	require.False(t, resp.Success, "malformed URL %q should be rejected, got Success=true\n%s", badURL, zet.Logs())
-	t.Logf("malformed URL correctly rejected: code=%d error=%q", resp.Code, resp.Error)
+	require.Equal(t, 500, resp.Code, "expected Code=500, got %d", resp.Code)
+	t.Logf("malformed URL rejected: code=%d error=%q", resp.Code, resp.Error)
 }

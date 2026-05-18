@@ -21,7 +21,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -45,22 +48,26 @@ type IPCClient struct {
 	reader *bufio.Reader
 }
 
-// DialIPC connects to the default ZET command pipe, retrying until ctx expires.
-func DialIPC(ctx context.Context) (*IPCClient, error) {
-	return dialIPCAt(ctx, CommandPipePath)
-}
-
-func dialIPCAt(ctx context.Context, path string) (*IPCClient, error) {
+func openCommandPipe(ctx context.Context, path string) (*IPCClient, error) {
 	const retryInterval = 100 * time.Millisecond
+	log.Printf("ipc: dialing command pipe %s", path)
+	start := time.Now()
+	attempts := 0
 	var lastErr error
 	for {
+		attempts++
 		conn, err := dialPlatform(ctx, path)
 		if err == nil {
+			log.Printf("ipc: connected to %s after %d attempt(s) in %s", path, attempts, time.Since(start).Round(time.Millisecond))
 			return &IPCClient{conn: conn, reader: bufio.NewReader(conn)}, nil
 		}
 		lastErr = err
+		if attempts == 1 || attempts%20 == 0 {
+			log.Printf("ipc: dial %s still failing after %d attempt(s): %v", path, attempts, err)
+		}
 		select {
 		case <-ctx.Done():
+			log.Printf("ipc: giving up dial %s after %d attempt(s) in %s: %v (last: %v)", path, attempts, time.Since(start).Round(time.Millisecond), ctx.Err(), lastErr)
 			return nil, fmt.Errorf("dial %s: %w (last: %v)", path, ctx.Err(), lastErr)
 		case <-time.After(retryInterval):
 		}
@@ -99,68 +106,171 @@ func (c *IPCClient) Close() error {
 	return c.conn.Close()
 }
 
+// OpenCommandPipe opens z's command pipe and registers Close as a t.Cleanup.
+func OpenCommandPipe(t *testing.T, ctx context.Context, z *ZET) *IPCClient {
+	t.Helper()
+	c, err := openCommandPipe(ctx, z.CmdPipe)
+	require.NoError(t, err, "open command pipe")
+	t.Cleanup(func() { _ = c.Close() })
+	return c
+}
+
+// SubscribeEvents subscribes to z's event pipe and registers Close as a t.Cleanup.
+func SubscribeEvents(t *testing.T, ctx context.Context, z *ZET) *EventClient {
+	t.Helper()
+	c, err := subscribeToEventPipe(ctx, z.EventPipe)
+	require.NoError(t, err, "subscribe to event pipe")
+	t.Cleanup(func() { _ = c.Close() })
+	return c
+}
+
+type EventIdentity struct {
+	Identifier       string   `json:"Identifier"`
+	Active           bool     `json:"Active"`
+	MfaEnabled       bool     `json:"MfaEnabled"`
+	MfaNeeded        bool     `json:"MfaNeeded"`
+	NeedsExtAuth     bool     `json:"NeedsExtAuth"`
+	ExtAuthProviders []string `json:"ExtAuthProviders"`
+}
+
+type Event struct {
+	Op          string        `json:"Op"`
+	Action      string        `json:"Action"`
+	Fingerprint string        `json:"Fingerprint"`
+	Successful  bool          `json:"Successful"`
+	Id          EventIdentity `json:"Id"`
+}
+
+// EventClient buffers events read from the ZET event pipe by a background
+// goroutine started at dial time. WaitFor scans the buffer + waits for new
+// events with a 20s cap.
 type EventClient struct {
 	conn   net.Conn
 	reader *bufio.Reader
+
+	mu      sync.Mutex
+	events  []Event
+	cursor  int
+	notify  []chan struct{}
+	readErr error
 }
 
-// DialEvents connects to the default ZET event pipe, retrying until ctx expires.
-func DialEvents(ctx context.Context) (*EventClient, error) {
-	return dialEventsAt(ctx, EventPipePath)
-}
-
-func dialEventsAt(ctx context.Context, path string) (*EventClient, error) {
+func subscribeToEventPipe(ctx context.Context, path string) (*EventClient, error) {
 	const retryInterval = 100 * time.Millisecond
+	log.Printf("ipc: dialing event pipe %s", path)
+	start := time.Now()
+	attempts := 0
 	var lastErr error
 	for {
+		attempts++
 		conn, err := dialPlatform(ctx, path)
 		if err == nil {
-			return &EventClient{conn: conn, reader: bufio.NewReader(conn)}, nil
+			log.Printf("ipc: connected to event pipe %s after %d attempt(s) in %s", path, attempts, time.Since(start).Round(time.Millisecond))
+			ec := &EventClient{conn: conn, reader: bufio.NewReader(conn)}
+			go ec.readLoop()
+			return ec, nil
 		}
 		lastErr = err
+		if attempts == 1 || attempts%20 == 0 {
+			log.Printf("ipc: dial event pipe %s still failing after %d attempt(s): %v", path, attempts, err)
+		}
 		select {
 		case <-ctx.Done():
+			log.Printf("ipc: giving up event-pipe dial %s after %d attempt(s) in %s: %v (last: %v)", path, attempts, time.Since(start).Round(time.Millisecond), ctx.Err(), lastErr)
 			return nil, fmt.Errorf("dial %s: %w (last: %v)", path, ctx.Err(), lastErr)
 		case <-time.After(retryInterval):
 		}
 	}
 }
 
-// ReadEvent reads exactly one JSON-line event from the event pipe.
-func (c *EventClient) ReadEvent(ctx context.Context) (json.RawMessage, error) {
-	if dl, ok := ctx.Deadline(); ok {
-		_ = c.conn.SetDeadline(dl)
-		defer c.conn.SetDeadline(time.Time{})
-	}
-	line, err := c.reader.ReadBytes('\n')
-	if err != nil {
-		return nil, fmt.Errorf("read event: %w", err)
-	}
-	return json.RawMessage(line), nil
-}
-
-type Event struct {
-	Op          string `json:"Op"`
-	Action      string `json:"Action"`
-	Fingerprint string `json:"Fingerprint"`
-}
-
-// WaitFor drains events until one matches op/action/fingerprint
-func (c *EventClient) WaitFor(t *testing.T, ctx context.Context, op, action, fingerprint string) {
-	t.Helper()
+func (c *EventClient) readLoop() {
 	for {
-		raw, err := c.ReadEvent(ctx)
-		require.NoError(t, err, "read event waiting for %s:%s for %s", op, action, fingerprint)
-
-		var event Event
-		require.NoError(t, json.Unmarshal(raw, &event), "parse event: %s", raw)
-		if event.Op != op || event.Action != action || event.Fingerprint != fingerprint {
+		line, err := c.reader.ReadBytes('\n')
+		if err != nil {
+			c.mu.Lock()
+			c.readErr = err
+			for _, ch := range c.notify {
+				select {
+				case ch <- struct{}{}:
+				default:
+				}
+			}
+			c.mu.Unlock()
+			return
+		}
+		var parsed Event
+		if jerr := json.Unmarshal(line, &parsed); jerr != nil {
+			log.Printf("ipc: event parse failed: %v raw=%s", jerr, line)
 			continue
 		}
-		return
+		c.mu.Lock()
+		c.events = append(c.events, parsed)
+		for _, ch := range c.notify {
+			select {
+			case ch <- struct{}{}:
+			default:
+			}
+		}
+		c.mu.Unlock()
+	}
+}
+
+// WaitFor blocks until the next event matching op/action/fingerprint arrives
+// and advances past it. 20s cap.
+func (c *EventClient) WaitFor(t *testing.T, ctx context.Context, op, action, fingerprint string) Event {
+	t.Helper()
+	waitCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+
+	notify := make(chan struct{}, 1)
+	c.mu.Lock()
+	c.notify = append(c.notify, notify)
+	cursor := c.cursor
+	c.mu.Unlock()
+	defer func() {
+		c.mu.Lock()
+		for i, n := range c.notify {
+			if n == notify {
+				c.notify = append(c.notify[:i], c.notify[i+1:]...)
+				break
+			}
+		}
+		c.mu.Unlock()
+	}()
+
+	for {
+		c.mu.Lock()
+		events := c.events
+		readErr := c.readErr
+		c.mu.Unlock()
+		for ; cursor < len(events); cursor++ {
+			e := events[cursor]
+			if e.Op == op && e.Action == action && e.Fingerprint == fingerprint {
+				c.mu.Lock()
+				c.cursor = cursor + 1
+				c.mu.Unlock()
+				return e
+			}
+		}
+		if readErr != nil {
+			require.NoError(t, readErr, "event reader exited waiting for %s:%s/%s after %d events", op, action, fingerprint, cursor)
+			return Event{}
+		}
+		select {
+		case <-notify:
+		case <-waitCtx.Done():
+			var dump strings.Builder
+			for i, e := range events {
+				raw, _ := json.Marshal(e)
+				fmt.Fprintf(&dump, "\n  [%d] %s", i, raw)
+			}
+			require.Failf(t, "event wait timeout", "no %s:%s for %q within 20s; saw %d events:%s", op, action, fingerprint, cursor, dump.String())
+			return Event{}
+		}
 	}
 }
 
 func (c *EventClient) Close() error {
 	return c.conn.Close()
 }
+

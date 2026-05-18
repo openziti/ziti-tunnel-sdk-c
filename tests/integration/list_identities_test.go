@@ -36,30 +36,28 @@ func testListIdentitiesContainsAddedIdentity(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	name := identityNameFor(t)
+	name := testutil.IdentityName(t)
+	t.Logf("creating JWT for %q", name)
 	jwt, err := overlay.CreateIdentityJWT(ctx, name)
-	require.NoError(t, err, "mint JWT via overlay")
+	require.NoError(t, err, "failed to create JWT via overlay")
 	require.NotEmpty(t, jwt)
 
-	client, err := testutil.DialIPC(ctx)
-	require.NoError(t, err, "dial ZET IPC pipe")
-	t.Cleanup(func() { _ = client.Close() })
+	events := testutil.SubscribeEvents(t, ctx, zet)
+	client := testutil.OpenCommandPipe(t, ctx, zet)
 
 	identityData := testutil.AddIdentityData{
 		IdentityFilename: name,
 		JwtContent:       &jwt,
 	}
-	addResp, err := client.AddIdentity(ctx, identityData)
-	require.NoError(t, err, "AddIdentity send\n%s", zet.Logs())
+	addResp := testutil.Enroll(t, ctx, client, identityData)
 	require.True(t, addResp.Success, "AddIdentity failed: error=%q code=%d", addResp.Error, addResp.Code)
 
-	status, err := client.GetTunnelStatus(ctx)
-	require.NoError(t, err, "Status after AddIdentity\n%s", zet.Logs())
-	entry := status.FindIdentity(name)
-	require.NotNil(t, entry, "identity %q not found in Status after AddIdentity", name)
+	event := events.WaitFor(t, ctx, "identity", "added", name)
+	require.NotEmpty(t, event.Id.Identifier, "identity:added Identifier empty")
 
+	t.Logf("sending ListIdentities")
 	listResp, err := client.ListIdentities(ctx)
-	require.NoError(t, err, "ListIdentities send\n%s", zet.Logs())
+	require.NoError(t, err, "failed to send ListIdentities\n%s", zet.Logs())
 	require.True(t, listResp.Success, "ListIdentities failed: error=%q code=%d", listResp.Error, listResp.Code)
 
 	var data testutil.IdentityListData
@@ -67,12 +65,12 @@ func testListIdentitiesContainsAddedIdentity(t *testing.T) {
 
 	var found *testutil.IdentityInfo
 	for i := range data.Identities {
-		if data.Identities[i].Config == entry.Identifier {
+		if data.Identities[i].Config == event.Id.Identifier {
 			found = &data.Identities[i]
 			break
 		}
 	}
-	require.NotNil(t, found, "ListIdentities did not contain %q in %d entries", entry.Identifier, len(data.Identities))
+	require.NotNil(t, found, "ListIdentities did not contain %q in %d entries", event.Id.Identifier, len(data.Identities))
 	require.Equal(t, name, found.Name, "identity Name should match the JWT subject name")
 	require.NotEmpty(t, found.Id, "identity Id should be set")
 	require.NotEmpty(t, found.Network, "identity Network should be set")
