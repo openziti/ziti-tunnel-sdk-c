@@ -34,13 +34,13 @@ func testIdentityOnOffTogglesActiveOff(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	events := testutil.DialEvents(t, ctx, zet)
-	client := testutil.DialIPC(t, ctx, zet)
+	events := testutil.SubscribeEvents(t, ctx, zet)
+	client := testutil.OpenCommandPipe(t, ctx, zet)
 
 	name := testutil.IdentityName(t)
-	t.Logf("minting JWT for %q", name)
+	t.Logf("creating JWT for %q", name)
 	jwt, err := overlay.CreateIdentityJWT(ctx, name)
-	require.NoError(t, err, "mint JWT")
+	require.NoError(t, err, "failed to create JWT")
 	require.NotEmpty(t, jwt)
 
 	identityData := testutil.AddIdentityData{
@@ -55,25 +55,25 @@ func testIdentityOnOffTogglesActiveOff(t *testing.T) {
 
 	t.Logf("sending IdentityOnOff(false) for %q", name)
 	offResp, err := client.IdentityOnOff(ctx, added.Id.Identifier, false)
-	require.NoError(t, err, "IdentityOnOff(false) send\n%s", zet.Logs())
+	require.NoError(t, err, "failed to send IdentityOnOff(false)\n%s", zet.Logs())
 	require.True(t, offResp.Success, "IdentityOnOff(false) failed: error=%q code=%d", offResp.Error, offResp.Code)
 
-	updated := events.WaitFor(t, ctx, "identity", "updated", name)
-	require.False(t, updated.Id.Active, "identity:updated Active=%t after IdentityOnOff(false), want false", updated.Id.Active)
-	t.Logf("identity:updated reports Active=%t after IdentityOnOff(false)", updated.Id.Active)
+	off := events.WaitFor(t, ctx, "identity", "added", name)
+	require.False(t, off.Id.Active, "identity:added Active=%t after IdentityOnOff(false), want false", off.Id.Active)
+	t.Logf("identity:added reports Active=%t after IdentityOnOff(false)", off.Id.Active)
 }
 
 func testIdentityOnOffTogglesActiveOn(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	events := testutil.DialEvents(t, ctx, zet)
-	client := testutil.DialIPC(t, ctx, zet)
+	events := testutil.SubscribeEvents(t, ctx, zet)
+	client := testutil.OpenCommandPipe(t, ctx, zet)
 
 	name := testutil.IdentityName(t)
-	t.Logf("minting JWT for %q", name)
+	t.Logf("creating JWT for %q", name)
 	jwt, err := overlay.CreateIdentityJWT(ctx, name)
-	require.NoError(t, err, "mint JWT")
+	require.NoError(t, err, "failed to create JWT")
 	require.NotEmpty(t, jwt)
 
 	identityData := testutil.AddIdentityData{
@@ -88,18 +88,18 @@ func testIdentityOnOffTogglesActiveOn(t *testing.T) {
 
 	t.Logf("sending IdentityOnOff(false) for %q", name)
 	offResp, err := client.IdentityOnOff(ctx, added.Id.Identifier, false)
-	require.NoError(t, err, "IdentityOnOff(false) send\n%s", zet.Logs())
+	require.NoError(t, err, "failed to send IdentityOnOff(false)\n%s", zet.Logs())
 	require.True(t, offResp.Success, "IdentityOnOff(false) failed: error=%q code=%d", offResp.Error, offResp.Code)
 
-	offUpdated := events.WaitFor(t, ctx, "identity", "updated", name)
-	require.False(t, offUpdated.Id.Active, "identity:updated Active=%t after IdentityOnOff(false), want false", offUpdated.Id.Active)
+	off := events.WaitFor(t, ctx, "identity", "added", name)
+	require.False(t, off.Id.Active, "identity:added Active=%t after IdentityOnOff(false), want false", off.Id.Active)
 
 	t.Logf("sending IdentityOnOff(true) for %q", name)
 	onResp, err := client.IdentityOnOff(ctx, added.Id.Identifier, true)
-	require.NoError(t, err, "IdentityOnOff(true) send\n%s", zet.Logs())
+	require.NoError(t, err, "failed to send IdentityOnOff(true)\n%s", zet.Logs())
 	require.True(t, onResp.Success, "IdentityOnOff(true) failed: error=%q code=%d", onResp.Error, onResp.Code)
 
-	onUpdated := events.WaitFor(t, ctx, "identity", "updated", name)
-	require.True(t, onUpdated.Id.Active, "identity:updated Active=%t after IdentityOnOff(true), want true", onUpdated.Id.Active)
-	t.Logf("identity:updated reports Active=%t after IdentityOnOff(true)", onUpdated.Id.Active)
+	on := events.WaitFor(t, ctx, "identity", "added", name)
+	require.True(t, on.Id.Active, "identity:added Active=%t after IdentityOnOff(true), want true", on.Id.Active)
+	t.Logf("identity:added reports Active=%t after IdentityOnOff(true)", on.Id.Active)
 }

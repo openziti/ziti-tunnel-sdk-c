@@ -40,8 +40,8 @@ func testUrlEnrollmentWithValidControllerUrlSucceeds(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	events := testutil.DialEvents(t, ctx, zet)
-	client := testutil.DialIPC(t, ctx, zet)
+	events := testutil.SubscribeEvents(t, ctx, zet)
+	client := testutil.OpenCommandPipe(t, ctx, zet)
 
 	identityName := testutil.IdentityName(t)
 	controllerURL := overlay.ControllerHostPort()
@@ -57,7 +57,7 @@ func testUrlEnrollmentWithValidControllerUrlSucceeds(t *testing.T) {
 	require.NotEmpty(t, evt.Id.Identifier, "identity:added Identifier empty")
 
 	info, err := os.Stat(evt.Id.Identifier)
-	require.NoError(t, err, "identity file should exist at %s", evt.Id.Identifier)
+	require.NoError(t, err, "failed to stat identity file at %s", evt.Id.Identifier)
 	require.Greater(t, info.Size(), int64(0), "identity file should be non-empty")
 	t.Logf("URL-enrolled identity:added Identifier=%s; file size=%d", evt.Id.Identifier, info.Size())
 }
@@ -66,8 +66,8 @@ func testUrlEnrollmentSameNameTwiceSecondFails(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	events := testutil.DialEvents(t, ctx, zet)
-	client := testutil.DialIPC(t, ctx, zet)
+	events := testutil.SubscribeEvents(t, ctx, zet)
+	client := testutil.OpenCommandPipe(t, ctx, zet)
 
 	identityName := testutil.IdentityName(t)
 	controllerURL := overlay.ControllerHostPort()
@@ -82,9 +82,10 @@ func testUrlEnrollmentSameNameTwiceSecondFails(t *testing.T) {
 
 	second := testutil.Enroll(t, ctx, client, identityData)
 	require.False(t, second.Success, "second URL AddIdentity should fail, got Success=true")
+	require.Equal(t, 500, second.Code, "expected Code=500, got %d", second.Code)
 	require.Contains(t, second.Error, "identity exists",
 		"expected duplicate-name error, got %q", second.Error)
-	t.Logf("second URL AddIdentity correctly rejected: %s", second.Error)
+	t.Logf("second URL AddIdentity correctly rejected: code=%d error=%q", second.Code, second.Error)
 }
 
 func testUrlEnrollmentAfterJwtSameNameFails(t *testing.T) {
@@ -92,13 +93,13 @@ func testUrlEnrollmentAfterJwtSameNameFails(t *testing.T) {
 	defer cancel()
 
 	identityName := testutil.IdentityName(t)
-	t.Logf("minting JWT for %q", identityName)
+	t.Logf("creating JWT for %q", identityName)
 	jwt, err := overlay.CreateIdentityJWT(ctx, identityName)
-	require.NoError(t, err, "mint JWT via overlay")
+	require.NoError(t, err, "failed to create JWT via overlay")
 	require.NotEmpty(t, jwt)
 
-	events := testutil.DialEvents(t, ctx, zet)
-	client := testutil.DialIPC(t, ctx, zet)
+	events := testutil.SubscribeEvents(t, ctx, zet)
+	client := testutil.OpenCommandPipe(t, ctx, zet)
 
 	jwtIdentityData := testutil.AddIdentityData{
 		IdentityFilename: identityName,
@@ -115,15 +116,16 @@ func testUrlEnrollmentAfterJwtSameNameFails(t *testing.T) {
 	}
 	second := testutil.Enroll(t, ctx, client, urlIdentityData)
 	require.False(t, second.Success, "URL AddIdentity should fail when name already enrolled via JWT, got Success=true")
+	require.Equal(t, 500, second.Code, "expected Code=500, got %d", second.Code)
 	require.Contains(t, second.Error, "identity exists", "expected duplicate-name error, got %q", second.Error)
-	t.Logf("URL AddIdentity correctly rejected after JWT enroll: %s", second.Error)
+	t.Logf("URL AddIdentity correctly rejected after JWT enroll: code=%d error=%q", second.Code, second.Error)
 }
 
 func testUrlEnrollmentWithNonZitiEndpointFails(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	client := testutil.DialIPC(t, ctx, zet)
+	client := testutil.OpenCommandPipe(t, ctx, zet)
 
 	identityName := testutil.IdentityName(t)
 	nonZitiURL := "https://example.com"
@@ -134,6 +136,7 @@ func testUrlEnrollmentWithNonZitiEndpointFails(t *testing.T) {
 
 	resp := testutil.Enroll(t, ctx, client, identityData)
 	require.False(t, resp.Success, "non-Ziti URL %q should be rejected, got Success=true\n%s", nonZitiURL, zet.Logs())
+	require.Equal(t, 500, resp.Code, "expected Code=500, got %d", resp.Code)
 	t.Logf("non-Ziti URL correctly rejected: code=%d error=%q", resp.Code, resp.Error)
 }
 
@@ -141,7 +144,7 @@ func testUrlEnrollmentWithMalformedUrlFails(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	client := testutil.DialIPC(t, ctx, zet)
+	client := testutil.OpenCommandPipe(t, ctx, zet)
 
 	identityName := testutil.IdentityName(t)
 	badURL := "not-a-url"
@@ -152,5 +155,6 @@ func testUrlEnrollmentWithMalformedUrlFails(t *testing.T) {
 
 	resp := testutil.Enroll(t, ctx, client, identityData)
 	require.False(t, resp.Success, "malformed URL %q should be rejected, got Success=true\n%s", badURL, zet.Logs())
+	require.Equal(t, 500, resp.Code, "expected Code=500, got %d", resp.Code)
 	t.Logf("malformed URL correctly rejected: code=%d error=%q", resp.Code, resp.Error)
 }

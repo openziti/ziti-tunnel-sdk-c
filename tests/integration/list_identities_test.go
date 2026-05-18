@@ -37,13 +37,13 @@ func testListIdentitiesContainsAddedIdentity(t *testing.T) {
 	defer cancel()
 
 	name := testutil.IdentityName(t)
-	t.Logf("minting JWT for %q", name)
+	t.Logf("creating JWT for %q", name)
 	jwt, err := overlay.CreateIdentityJWT(ctx, name)
-	require.NoError(t, err, "mint JWT via overlay")
+	require.NoError(t, err, "failed to create JWT via overlay")
 	require.NotEmpty(t, jwt)
 
-	events := testutil.DialEvents(t, ctx, zet)
-	client := testutil.DialIPC(t, ctx, zet)
+	events := testutil.SubscribeEvents(t, ctx, zet)
+	client := testutil.OpenCommandPipe(t, ctx, zet)
 
 	identityData := testutil.AddIdentityData{
 		IdentityFilename: name,
@@ -57,7 +57,7 @@ func testListIdentitiesContainsAddedIdentity(t *testing.T) {
 
 	t.Logf("sending ListIdentities")
 	listResp, err := client.ListIdentities(ctx)
-	require.NoError(t, err, "ListIdentities send\n%s", zet.Logs())
+	require.NoError(t, err, "failed to send ListIdentities\n%s", zet.Logs())
 	require.True(t, listResp.Success, "ListIdentities failed: error=%q code=%d", listResp.Error, listResp.Code)
 
 	var data testutil.IdentityListData

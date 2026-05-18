@@ -47,7 +47,7 @@ type IPCClient struct {
 	reader *bufio.Reader
 }
 
-func dialIPCAt(ctx context.Context, path string) (*IPCClient, error) {
+func openCommandPipe(ctx context.Context, path string) (*IPCClient, error) {
 	const retryInterval = 100 * time.Millisecond
 	log.Printf("ipc: dialing command pipe %s", path)
 	start := time.Now()
@@ -105,22 +105,20 @@ func (c *IPCClient) Close() error {
 	return c.conn.Close()
 }
 
-// DialIPC opens the command pipe on z, asserts no error, and registers a
-// Close cleanup on t. Returns the client.
-func DialIPC(t *testing.T, ctx context.Context, z *ZET) *IPCClient {
+// OpenCommandPipe opens z's command pipe and registers Close as a t.Cleanup.
+func OpenCommandPipe(t *testing.T, ctx context.Context, z *ZET) *IPCClient {
 	t.Helper()
-	c, err := z.DialIPC(ctx)
-	require.NoError(t, err, "dial ZET IPC pipe")
+	c, err := openCommandPipe(ctx, z.CmdPipe)
+	require.NoError(t, err, "open command pipe")
 	t.Cleanup(func() { _ = c.Close() })
 	return c
 }
 
-// DialEvents opens the event pipe on z, asserts no error, and registers a
-// Close cleanup on t. Returns the client.
-func DialEvents(t *testing.T, ctx context.Context, z *ZET) *EventClient {
+// SubscribeEvents subscribes to z's event pipe and registers Close as a t.Cleanup.
+func SubscribeEvents(t *testing.T, ctx context.Context, z *ZET) *EventClient {
 	t.Helper()
-	c, err := z.DialEvents(ctx)
-	require.NoError(t, err, "dial ZET event pipe")
+	c, err := subscribeToEventPipe(ctx, z.EventPipe)
+	require.NoError(t, err, "subscribe to event pipe")
 	t.Cleanup(func() { _ = c.Close() })
 	return c
 }
@@ -156,7 +154,7 @@ type EventClient struct {
 	readErr error
 }
 
-func dialEventsAt(ctx context.Context, path string) (*EventClient, error) {
+func subscribeToEventPipe(ctx context.Context, path string) (*EventClient, error) {
 	const retryInterval = 100 * time.Millisecond
 	log.Printf("ipc: dialing event pipe %s", path)
 	start := time.Now()

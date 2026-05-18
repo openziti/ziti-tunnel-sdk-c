@@ -53,7 +53,7 @@ func EventPipePathFor(disc string) string {
 }
 
 func dialPlatform(ctx context.Context, path string) (net.Conn, error) {
-	// short per-attempt timeout so DialIPC's retry loop stays responsive to ctx
+	// short per-attempt timeout so openCommandPipe's retry loop stays responsive to ctx
 	timeout := 500 * time.Millisecond
 	return winio.DialPipe(path, &timeout)
 }

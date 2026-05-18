@@ -65,7 +65,7 @@ func testT2TTCP(t *testing.T, interceptZET, hostZET *testutil.ZET, interceptIP s
 
 	echo := testutil.StartTCPEcho(t)
 	_, echoPort, err := net.SplitHostPort(echo.Addr)
-	require.NoError(t, err, "parse echo addr")
+	require.NoError(t, err, "failed to parse echo address")
 	echoPortInt := 0
 	fmt.Sscanf(echoPort, "%d", &echoPortInt)
 	t.Logf("started local TCP echo backend at %s", echo.Addr)
@@ -84,7 +84,7 @@ func testT2TTCP(t *testing.T, interceptZET, hostZET *testutil.ZET, interceptIP s
 	// Dial and echo.
 	t.Logf("dialing intercepted TCP addr %s", interceptAddr)
 	conn, err := net.DialTimeout("tcp", interceptAddr, 10*time.Second)
-	require.NoError(t, err, "dial intercepted addr %s\ninterceptZET: %s\nhostZET: %s",
+	require.NoError(t, err, "failed to dial intercepted address %s\ninterceptZET: %s\nhostZET: %s",
 		interceptAddr, interceptZET.Logs(), hostZET.Logs())
 	defer conn.Close()
 	t.Logf("TCP connection established to %s", interceptAddr)
@@ -92,13 +92,13 @@ func testT2TTCP(t *testing.T, interceptZET, hostZET *testutil.ZET, interceptIP s
 	payload := []byte("hello-ziti-tcp")
 	t.Logf("writing TCP payload (%d bytes)", len(payload))
 	_, err = conn.Write(payload)
-	require.NoError(t, err, "write payload\ninterceptZET: %s\nhostZET: %s", interceptZET.Logs(), hostZET.Logs())
+	require.NoError(t, err, "failed to write payload\ninterceptZET: %s\nhostZET: %s", interceptZET.Logs(), hostZET.Logs())
 
 	t.Logf("reading TCP echo response")
 	got := make([]byte, len(payload))
 	_ = conn.SetReadDeadline(time.Now().Add(10 * time.Second))
 	_, err = readFull(conn, got)
-	require.NoError(t, err, "read echo\ninterceptZET: %s\nhostZET: %s", interceptZET.Logs(), hostZET.Logs())
+	require.NoError(t, err, "failed to read echo\ninterceptZET: %s\nhostZET: %s", interceptZET.Logs(), hostZET.Logs())
 	require.Equal(t, payload, got, "TCP echo mismatch\ninterceptZET: %s\nhostZET: %s", interceptZET.Logs(), hostZET.Logs())
 	t.Logf("TCP echo round-trip succeeded: payload=%q got=%q", payload, got)
 }
@@ -111,7 +111,7 @@ func testT2TUDP(t *testing.T, interceptZET, hostZET *testutil.ZET, interceptIP s
 
 	echo := testutil.StartUDPEcho(t)
 	_, echoPort, err := net.SplitHostPort(echo.Addr)
-	require.NoError(t, err, "parse echo addr")
+	require.NoError(t, err, "failed to parse echo address")
 	echoPortInt := 0
 	fmt.Sscanf(echoPort, "%d", &echoPortInt)
 	t.Logf("started local UDP echo backend at %s", echo.Addr)
@@ -129,19 +129,19 @@ func testT2TUDP(t *testing.T, interceptZET, hostZET *testutil.ZET, interceptIP s
 	// Dial and echo.
 	t.Logf("dialing intercepted UDP addr %s", interceptAddr)
 	conn, err := net.Dial("udp", interceptAddr)
-	require.NoError(t, err, "dial intercepted UDP addr %s", interceptAddr)
+	require.NoError(t, err, "failed to dial intercepted UDP address %s", interceptAddr)
 	defer conn.Close()
 
 	payload := []byte("hello-ziti-udp")
 	t.Logf("writing UDP payload (%d bytes)", len(payload))
 	_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
 	_, err = conn.Write(payload)
-	require.NoError(t, err, "write UDP payload\ninterceptZET: %s\nhostZET: %s", interceptZET.Logs(), hostZET.Logs())
+	require.NoError(t, err, "failed to write UDP payload\ninterceptZET: %s\nhostZET: %s", interceptZET.Logs(), hostZET.Logs())
 
 	t.Logf("reading UDP echo response")
 	got := make([]byte, len(payload))
 	_, err = conn.Read(got)
-	require.NoError(t, err, "read UDP echo\ninterceptZET: %s\nhostZET: %s", interceptZET.Logs(), hostZET.Logs())
+	require.NoError(t, err, "failed to read UDP echo\ninterceptZET: %s\nhostZET: %s", interceptZET.Logs(), hostZET.Logs())
 	require.Equal(t, payload, got, "UDP echo mismatch\ninterceptZET: %s\nhostZET: %s", interceptZET.Logs(), hostZET.Logs())
 	t.Logf("UDP echo round-trip succeeded: payload=%q got=%q", payload, got)
 }
@@ -185,16 +185,16 @@ func setupT2TService(
 	t.Helper()
 
 	// Mint identities.
-	t.Logf("minting JWT for intercept identity %q", names.interceptIdentity)
+	t.Logf("creating JWT for intercept identity %q", names.interceptIdentity)
 	interceptJWT, err := overlay.CreateIdentityJWT(ctx, names.interceptIdentity)
-	require.NoError(t, err, "create intercept identity JWT")
-	t.Logf("minting JWT for host identity %q", names.hostIdentity)
+	require.NoError(t, err, "failed to create intercept identity JWT")
+	t.Logf("creating JWT for host identity %q", names.hostIdentity)
 	hostJWT, err := overlay.CreateIdentityJWT(ctx, names.hostIdentity)
-	require.NoError(t, err, "create host identity JWT")
+	require.NoError(t, err, "failed to create host identity JWT")
 
 	// Enroll identities into their respective ZETs.
-	interceptClient := testutil.DialIPC(t, ctx, interceptZET)
-	hostClient := testutil.DialIPC(t, ctx, hostZET)
+	interceptClient := testutil.OpenCommandPipe(t, ctx, interceptZET)
+	hostClient := testutil.OpenCommandPipe(t, ctx, hostZET)
 
 	interceptIdentityData := testutil.AddIdentityData{
 		IdentityFilename: names.interceptIdentity,

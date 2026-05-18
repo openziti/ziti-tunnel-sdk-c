@@ -154,7 +154,7 @@ func StartZET(ctx context.Context, binPath, identityDir string, opts ZETOptions)
 
 	dialCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	client, err := dialIPCAt(dialCtx, cmdPipe)
+	client, err := openCommandPipe(dialCtx, cmdPipe)
 	if err != nil {
 		// Check whether the process already exited before the timeout fired.
 		// A non-blocking read from cmdDone disambiguates "process crashed early"
@@ -171,16 +171,6 @@ func StartZET(ctx context.Context, binPath, identityDir string, opts ZETOptions)
 	}
 	client.Close()
 	return z, nil
-}
-
-// DialIPC connects to this ZET instance's IPC command pipe, retrying until ctx expires.
-func (z *ZET) DialIPC(ctx context.Context) (*IPCClient, error) {
-	return dialIPCAt(ctx, z.CmdPipe)
-}
-
-// DialEvents connects to this ZET instance's event pipe, retrying until ctx expires.
-func (z *ZET) DialEvents(ctx context.Context) (*EventClient, error) {
-	return dialEventsAt(ctx, z.EventPipe)
 }
 
 // A surviving ZET orphans wintun state and breaks subsequent tests, so abort

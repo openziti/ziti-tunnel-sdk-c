@@ -58,7 +58,7 @@ func testExternalAuthOnUrlEnrolledIdentityCompletes(t *testing.T) {
 
 	t.Logf("requesting external auth URL from ZET for signer=%q", signerName)
 	authResp, err := client.GetExternalAuth(ctx, needsExt.Id.Identifier, signerName)
-	require.NoError(t, err, "ExternalAuth\n%s", zet.Logs())
+	require.NoError(t, err, "failed to send ExternalAuth\n%s", zet.Logs())
 	require.NotEmpty(t, authResp.URL, "ExternalAuth should return a non-empty auth URL")
 	t.Logf("ExternalAuth returned auth URL: %s", authResp.URL)
 
@@ -66,9 +66,8 @@ func testExternalAuthOnUrlEnrolledIdentityCompletes(t *testing.T) {
 	require.NoError(t, testutil.DrivePKCEFlow(ctx, authResp.URL, pkce.IssuerURL, pkce.Email, pkce.Password), "drive PKCE flow")
 	t.Logf("PKCE flow completed")
 
-	added := events.WaitFor(t, ctx, "identity", "added", name)
-	require.False(t, added.Id.NeedsExtAuth, "identity:added NeedsExtAuth=%t after PKCE flow, want false", added.Id.NeedsExtAuth)
-	t.Logf("identity:added reports NeedsExtAuth=%t after PKCE flow", added.Id.NeedsExtAuth)
+	events.WaitFor(t, ctx, "controller", "connected", name)
+	t.Logf("controller:connected received after PKCE flow")
 }
 
 func testExternalAuthWithInvalidProviderFails(t *testing.T) {
@@ -94,9 +93,10 @@ func testExternalAuthWithInvalidProviderFails(t *testing.T) {
 	bogusProvider := signerName + "-bogus"
 	t.Logf("sending ExternalAuth with bogus provider %q (should be rejected)", bogusProvider)
 	resp, err := client.ExternalAuth(ctx, needsExt.Id.Identifier, bogusProvider)
-	require.NoError(t, err, "ExternalAuth send\n%s", zet.Logs())
+	require.NoError(t, err, "failed to send ExternalAuth\n%s", zet.Logs())
 	require.False(t, resp.Success, "ExternalAuth should fail for unknown provider %q\n%s", bogusProvider, zet.Logs())
-	require.NotEmpty(t, resp.Error, "expected non-empty error from ExternalAuth failure")
+	require.Equal(t, 500, resp.Code, "expected Code=500, got %d", resp.Code)
+	require.Contains(t, resp.Error, "invalid provider", "expected invalid-provider error, got %q", resp.Error)
 	t.Logf("ExternalAuth correctly failed for invalid provider: code=%d error=%q", resp.Code, resp.Error)
 }
 
@@ -122,7 +122,7 @@ func testExternalAuthWithoutControllerIdentityFails(t *testing.T) {
 
 	t.Logf("requesting external auth URL from ZET for signer=%q", signerName)
 	authResp, err := client.GetExternalAuth(ctx, needsExt.Id.Identifier, signerName)
-	require.NoError(t, err, "ExternalAuth\n%s", zet.Logs())
+	require.NoError(t, err, "failed to send ExternalAuth\n%s", zet.Logs())
 	require.NotEmpty(t, authResp.URL, "ExternalAuth should return a non-empty auth URL")
 	t.Logf("ExternalAuth returned auth URL: %s", authResp.URL)
 
@@ -157,7 +157,7 @@ func testExternalAuthWithMultipleSignersCompletes(t *testing.T) {
 		Claim:    "email",
 		Scopes:   []string{"email"},
 	})
-	require.NoError(t, err, "create real-issuer ext-jwt-signer")
+	require.NoError(t, err, "failed to create real-issuer ext-jwt-signer")
 	t.Logf("real-issuer signer created with id=%s", realSignerID)
 
 	t.Logf("creating placeholder ext-jwt-signer %q (distinct sub-path under PKCE IdP)", signer2Name)
@@ -168,7 +168,7 @@ func testExternalAuthWithMultipleSignersCompletes(t *testing.T) {
 		ClientID: pkce.ClientIDs[1],
 		Claim:    "email",
 	})
-	require.NoError(t, err, "create ext-jwt-signer 2")
+	require.NoError(t, err, "failed to create ext-jwt-signer 2")
 	t.Logf("placeholder signer 2 created with id=%s", signer2ID)
 
 	t.Logf("creating placeholder ext-jwt-signer %q (distinct sub-path under PKCE IdP)", signer3Name)
@@ -179,7 +179,7 @@ func testExternalAuthWithMultipleSignersCompletes(t *testing.T) {
 		ClientID: pkce.ClientIDs[2],
 		Claim:    "email",
 	})
-	require.NoError(t, err, "create ext-jwt-signer 3")
+	require.NoError(t, err, "failed to create ext-jwt-signer 3")
 	t.Logf("placeholder signer 3 created with id=%s", signer3ID)
 
 	policyName := name + "-policy"
@@ -206,7 +206,7 @@ func testExternalAuthWithMultipleSignersCompletes(t *testing.T) {
 
 	t.Logf("requesting external auth URL from ZET for real signer=%q", realSignerName)
 	authResp, err := client.GetExternalAuth(ctx, needsExt.Id.Identifier, realSignerName)
-	require.NoError(t, err, "ExternalAuth\n%s", zet.Logs())
+	require.NoError(t, err, "failed to send ExternalAuth\n%s", zet.Logs())
 	require.NotEmpty(t, authResp.URL, "ExternalAuth should return a non-empty auth URL")
 	t.Logf("ExternalAuth returned auth URL: %s", authResp.URL)
 
@@ -214,9 +214,8 @@ func testExternalAuthWithMultipleSignersCompletes(t *testing.T) {
 	require.NoError(t, testutil.DrivePKCEFlow(ctx, authResp.URL, pkce.IssuerURL, pkce.Email, pkce.Password), "drive PKCE flow")
 	t.Logf("PKCE flow completed")
 
-	added := events.WaitFor(t, ctx, "identity", "added", name)
-	require.False(t, added.Id.NeedsExtAuth, "identity:added NeedsExtAuth=%t after multi-signer PKCE flow, want false", added.Id.NeedsExtAuth)
-	t.Logf("identity:added reports NeedsExtAuth=%t after multi-signer PKCE flow", added.Id.NeedsExtAuth)
+	events.WaitFor(t, ctx, "controller", "connected", name)
+	t.Logf("controller:connected received after multi-signer PKCE flow")
 }
 
 // createPKCESignerAndPolicy registers an ext-jwt-signer pointed at the PKCE
@@ -239,7 +238,7 @@ func createPKCESignerAndPolicy(t *testing.T, ctx context.Context, name, clientID
 		Claim:    "email",
 		Scopes:   []string{"email"},
 	})
-	require.NoError(t, err, "create ext-jwt-signer")
+	require.NoError(t, err, "failed to create ext-jwt-signer")
 	t.Logf("ext-jwt-signer %q created with id=%s", signerName, signerID)
 
 	t.Logf("creating auth policy %q with ext-jwt-signer %s", policyName, signerID)
@@ -253,8 +252,8 @@ func urlEnrollForExtAuth(t *testing.T, ctx context.Context, name string) (*testu
 	t.Helper()
 	controllerBase := overlay.ControllerHostPort()
 
-	events := testutil.DialEvents(t, ctx, zet)
-	client := testutil.DialIPC(t, ctx, zet)
+	events := testutil.SubscribeEvents(t, ctx, zet)
+	client := testutil.OpenCommandPipe(t, ctx, zet)
 
 	identityData := testutil.AddIdentityData{
 		IdentityFilename: name,

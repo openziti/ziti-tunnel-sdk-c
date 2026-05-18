@@ -34,14 +34,14 @@ func testRemoveIdentityWithIdentifierFromEvent(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	events := testutil.DialEvents(t, ctx, zet)
-	client := testutil.DialIPC(t, ctx, zet)
+	events := testutil.SubscribeEvents(t, ctx, zet)
+	client := testutil.OpenCommandPipe(t, ctx, zet)
 
 	name := testutil.IdentityName(t)
 
-	t.Logf("minting JWT for %q", name)
+	t.Logf("creating JWT for %q", name)
 	jwt, err := overlay.CreateIdentityJWT(ctx, name)
-	require.NoError(t, err, "mint JWT")
+	require.NoError(t, err, "failed to create JWT")
 	require.NotEmpty(t, jwt)
 
 	identityData := testutil.AddIdentityData{
@@ -56,7 +56,7 @@ func testRemoveIdentityWithIdentifierFromEvent(t *testing.T) {
 
 	t.Logf("sending RemoveIdentity for Identifier=%s", evt.Id.Identifier)
 	removeResp, err := client.RemoveIdentity(ctx, evt.Id.Identifier)
-	require.NoError(t, err, "RemoveIdentity send\n%s", zet.Logs())
+	require.NoError(t, err, "failed to send RemoveIdentity\n%s", zet.Logs())
 	require.True(t, removeResp.Success, "RemoveIdentity failed: error=%q code=%d", removeResp.Error, removeResp.Code)
 	t.Logf("RemoveIdentity succeeded for %q", name)
 

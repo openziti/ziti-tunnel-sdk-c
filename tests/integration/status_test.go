@@ -22,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openziti/ziti-tunnel-sdk-c/tests/integration/testutil"
 	"github.com/stretchr/testify/require"
 )
 
@@ -33,13 +34,11 @@ func testStatusHasExpectedTopLevelFields(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	client, err := zet.DialIPC(ctx)
-	require.NoError(t, err, "dial ZET IPC pipe")
-	t.Cleanup(func() { _ = client.Close() })
+	client := testutil.OpenCommandPipe(t, ctx, zet)
 
 	t.Logf("sending Status command")
 	resp, err := client.Status(ctx)
-	require.NoError(t, err, "Status send\n%s", zet.Logs())
+	require.NoError(t, err, "failed to send Status\n%s", zet.Logs())
 	require.True(t, resp.Success, "Status failed: error=%q code=%d", resp.Error, resp.Code)
 	t.Logf("Status command succeeded; verifying top-level fields")
 
