@@ -40,9 +40,8 @@ func testUrlEnrollmentWithValidControllerUrlSucceeds(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	client, err := zet.DialIPC(ctx)
-	require.NoError(t, err, "dial ZET IPC pipe")
-	t.Cleanup(func() { _ = client.Close() })
+	events := testutil.DialEvents(t, ctx, zet)
+	client := testutil.DialIPC(t, ctx, zet)
 
 	identityName := testutil.IdentityName(t)
 	controllerURL := overlay.ControllerHostPort()
@@ -53,26 +52,22 @@ func testUrlEnrollmentWithValidControllerUrlSucceeds(t *testing.T) {
 
 	resp := testutil.Enroll(t, ctx, client, identityData)
 	require.True(t, resp.Success, "URL AddIdentity failed: error=%q code=%d\n%s", resp.Error, resp.Code, zet.Logs())
-	t.Logf("URL AddIdentity succeeded for %q", identityName)
 
-	t.Logf("fetching tunnel status to verify identity file")
-	status, err := client.GetTunnelStatus(ctx)
-	require.NoError(t, err, "Status after URL AddIdentity\n%s", zet.Logs())
-	entry := status.FindIdentity(identityName)
-	require.NotNil(t, entry, "identity %q not found in Status after URL AddIdentity", identityName)
-	info, err := os.Stat(entry.Identifier)
-	require.NoError(t, err, "identity file should be written to -I dir")
+	evt := events.WaitFor(t, ctx, "identity", "added", identityName)
+	require.NotEmpty(t, evt.Id.Identifier, "identity:added Identifier empty")
+
+	info, err := os.Stat(evt.Id.Identifier)
+	require.NoError(t, err, "identity file should exist at %s", evt.Id.Identifier)
 	require.Greater(t, info.Size(), int64(0), "identity file should be non-empty")
-	t.Logf("found %q in status; URL-enrolled identity file written: %s (%d bytes)", identityName, entry.Identifier, info.Size())
+	t.Logf("URL-enrolled identity:added Identifier=%s; file size=%d", evt.Id.Identifier, info.Size())
 }
 
 func testUrlEnrollmentSameNameTwiceSecondFails(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	client, err := zet.DialIPC(ctx)
-	require.NoError(t, err, "dial ZET IPC pipe")
-	t.Cleanup(func() { _ = client.Close() })
+	events := testutil.DialEvents(t, ctx, zet)
+	client := testutil.DialIPC(t, ctx, zet)
 
 	identityName := testutil.IdentityName(t)
 	controllerURL := overlay.ControllerHostPort()
@@ -83,6 +78,7 @@ func testUrlEnrollmentSameNameTwiceSecondFails(t *testing.T) {
 
 	first := testutil.Enroll(t, ctx, client, identityData)
 	require.True(t, first.Success, "first URL AddIdentity should succeed: error=%q\n%s", first.Error, zet.Logs())
+	events.WaitFor(t, ctx, "identity", "added", identityName)
 
 	second := testutil.Enroll(t, ctx, client, identityData)
 	require.False(t, second.Success, "second URL AddIdentity should fail, got Success=true")
@@ -101,9 +97,8 @@ func testUrlEnrollmentAfterJwtSameNameFails(t *testing.T) {
 	require.NoError(t, err, "mint JWT via overlay")
 	require.NotEmpty(t, jwt)
 
-	client, err := zet.DialIPC(ctx)
-	require.NoError(t, err, "dial ZET IPC pipe")
-	t.Cleanup(func() { _ = client.Close() })
+	events := testutil.DialEvents(t, ctx, zet)
+	client := testutil.DialIPC(t, ctx, zet)
 
 	jwtIdentityData := testutil.AddIdentityData{
 		IdentityFilename: identityName,
@@ -111,6 +106,7 @@ func testUrlEnrollmentAfterJwtSameNameFails(t *testing.T) {
 	}
 	first := testutil.Enroll(t, ctx, client, jwtIdentityData)
 	require.True(t, first.Success, "first JWT AddIdentity should succeed: error=%q\n%s", first.Error, zet.Logs())
+	events.WaitFor(t, ctx, "identity", "added", identityName)
 
 	controllerURL := overlay.ControllerHostPort()
 	urlIdentityData := testutil.AddIdentityData{
@@ -127,9 +123,7 @@ func testUrlEnrollmentWithNonZitiEndpointFails(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	client, err := zet.DialIPC(ctx)
-	require.NoError(t, err, "dial ZET IPC pipe")
-	t.Cleanup(func() { _ = client.Close() })
+	client := testutil.DialIPC(t, ctx, zet)
 
 	identityName := testutil.IdentityName(t)
 	nonZitiURL := "https://example.com"
@@ -147,9 +141,7 @@ func testUrlEnrollmentWithMalformedUrlFails(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	client, err := zet.DialIPC(ctx)
-	require.NoError(t, err, "dial ZET IPC pipe")
-	t.Cleanup(func() { _ = client.Close() })
+	client := testutil.DialIPC(t, ctx, zet)
 
 	identityName := testutil.IdentityName(t)
 	badURL := "not-a-url"

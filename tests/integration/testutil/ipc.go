@@ -126,14 +126,19 @@ func DialEvents(t *testing.T, ctx context.Context, z *ZET) *EventClient {
 }
 
 type EventIdentity struct {
-	Identifier string `json:"Identifier"`
-	Active     bool   `json:"Active"`
+	Identifier       string   `json:"Identifier"`
+	Active           bool     `json:"Active"`
+	MfaEnabled       bool     `json:"MfaEnabled"`
+	MfaNeeded        bool     `json:"MfaNeeded"`
+	NeedsExtAuth     bool     `json:"NeedsExtAuth"`
+	ExtAuthProviders []string `json:"ExtAuthProviders"`
 }
 
 type Event struct {
 	Op          string        `json:"Op"`
 	Action      string        `json:"Action"`
 	Fingerprint string        `json:"Fingerprint"`
+	Successful  bool          `json:"Successful"`
 	Id          EventIdentity `json:"Id"`
 }
 
@@ -146,6 +151,7 @@ type EventClient struct {
 
 	mu      sync.Mutex
 	events  []Event
+	cursor  int
 	notify  []chan struct{}
 	readErr error
 }
@@ -210,11 +216,8 @@ func (c *EventClient) readLoop() {
 	}
 }
 
-// WaitFor blocks until an event matching op/action/fingerprint appears in
-// the buffer (or has already appeared since dial). Returns the matched
-// Event with its Id payload decoded. Caps the wait at 20s. Must be called
-// from the test goroutine: a timeout calls require.Failf, which is only
-// safe on the goroutine running the test.
+// WaitFor blocks until the next event matching op/action/fingerprint arrives
+// and advances past it. 20s cap.
 func (c *EventClient) WaitFor(t *testing.T, ctx context.Context, op, action, fingerprint string) Event {
 	t.Helper()
 	waitCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
@@ -223,6 +226,7 @@ func (c *EventClient) WaitFor(t *testing.T, ctx context.Context, op, action, fin
 	notify := make(chan struct{}, 1)
 	c.mu.Lock()
 	c.notify = append(c.notify, notify)
+	cursor := c.cursor
 	c.mu.Unlock()
 	defer func() {
 		c.mu.Lock()
@@ -235,7 +239,6 @@ func (c *EventClient) WaitFor(t *testing.T, ctx context.Context, op, action, fin
 		c.mu.Unlock()
 	}()
 
-	cursor := 0
 	for {
 		c.mu.Lock()
 		events := c.events
@@ -244,6 +247,9 @@ func (c *EventClient) WaitFor(t *testing.T, ctx context.Context, op, action, fin
 		for ; cursor < len(events); cursor++ {
 			e := events[cursor]
 			if e.Op == op && e.Action == action && e.Fingerprint == fingerprint {
+				c.mu.Lock()
+				c.cursor = cursor + 1
+				c.mu.Unlock()
 				return e
 			}
 		}

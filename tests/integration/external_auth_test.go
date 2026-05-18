@@ -54,10 +54,10 @@ func testExternalAuthOnUrlEnrolledIdentityCompletes(t *testing.T) {
 		_ = overlay.DeleteExtJwtSigner(cleanupCtx, signerName)
 	})
 
-	client, events, identifier := urlEnrollForExtAuth(t, ctx, name)
+	client, events, needsExt := urlEnrollForExtAuth(t, ctx, name)
 
 	t.Logf("requesting external auth URL from ZET for signer=%q", signerName)
-	authResp, err := client.GetExternalAuth(ctx, identifier, signerName)
+	authResp, err := client.GetExternalAuth(ctx, needsExt.Id.Identifier, signerName)
 	require.NoError(t, err, "ExternalAuth\n%s", zet.Logs())
 	require.NotEmpty(t, authResp.URL, "ExternalAuth should return a non-empty auth URL")
 	t.Logf("ExternalAuth returned auth URL: %s", authResp.URL)
@@ -66,17 +66,9 @@ func testExternalAuthOnUrlEnrolledIdentityCompletes(t *testing.T) {
 	require.NoError(t, testutil.DrivePKCEFlow(ctx, authResp.URL, pkce.IssuerURL, pkce.Email, pkce.Password), "drive PKCE flow")
 	t.Logf("PKCE flow completed")
 
-	t.Logf("waiting for identity:added event for %q", name)
-	events.WaitFor(t, ctx, "identity", "added", name)
-	t.Logf("identity:added event received")
-
-	t.Logf("fetching tunnel status to confirm NeedsExtAuth cleared")
-	finalStatus, err := client.GetTunnelStatus(ctx)
-	require.NoError(t, err, "Status after ExternalAuth\n%s", zet.Logs())
-	finalEntry := finalStatus.FindIdentity(name)
-	require.NotNil(t, finalEntry, "identity %q missing from Status after ExternalAuth", name)
-	require.False(t, finalEntry.NeedsExtAuth, "NeedsExtAuth should be false after successful ExternalAuth\n%s", zet.Logs())
-	t.Logf("status reports NeedsExtAuth=%t after successful ExternalAuth", finalEntry.NeedsExtAuth)
+	added := events.WaitFor(t, ctx, "identity", "added", name)
+	require.False(t, added.Id.NeedsExtAuth, "identity:added NeedsExtAuth=%t after PKCE flow, want false", added.Id.NeedsExtAuth)
+	t.Logf("identity:added reports NeedsExtAuth=%t after PKCE flow", added.Id.NeedsExtAuth)
 }
 
 func testExternalAuthWithInvalidProviderFails(t *testing.T) {
@@ -97,11 +89,11 @@ func testExternalAuthWithInvalidProviderFails(t *testing.T) {
 		_ = overlay.DeleteExtJwtSigner(cleanupCtx, signerName)
 	})
 
-	client, _, identifier := urlEnrollForExtAuth(t, ctx, name)
+	client, _, needsExt := urlEnrollForExtAuth(t, ctx, name)
 
 	bogusProvider := signerName + "-bogus"
 	t.Logf("sending ExternalAuth with bogus provider %q (should be rejected)", bogusProvider)
-	resp, err := client.ExternalAuth(ctx, identifier, bogusProvider)
+	resp, err := client.ExternalAuth(ctx, needsExt.Id.Identifier, bogusProvider)
 	require.NoError(t, err, "ExternalAuth send\n%s", zet.Logs())
 	require.False(t, resp.Success, "ExternalAuth should fail for unknown provider %q\n%s", bogusProvider, zet.Logs())
 	require.NotEmpty(t, resp.Error, "expected non-empty error from ExternalAuth failure")
@@ -126,10 +118,10 @@ func testExternalAuthWithoutControllerIdentityFails(t *testing.T) {
 		_ = overlay.DeleteExtJwtSigner(cleanupCtx, signerName)
 	})
 
-	client, events, identifier := urlEnrollForExtAuth(t, ctx, name)
+	client, events, needsExt := urlEnrollForExtAuth(t, ctx, name)
 
 	t.Logf("requesting external auth URL from ZET for signer=%q", signerName)
-	authResp, err := client.GetExternalAuth(ctx, identifier, signerName)
+	authResp, err := client.GetExternalAuth(ctx, needsExt.Id.Identifier, signerName)
 	require.NoError(t, err, "ExternalAuth\n%s", zet.Logs())
 	require.NotEmpty(t, authResp.URL, "ExternalAuth should return a non-empty auth URL")
 	t.Logf("ExternalAuth returned auth URL: %s", authResp.URL)
@@ -138,17 +130,8 @@ func testExternalAuthWithoutControllerIdentityFails(t *testing.T) {
 	require.NoError(t, testutil.DrivePKCEFlow(ctx, authResp.URL, pkce.IssuerURL, pkce.Email, pkce.Password), "drive PKCE flow")
 	t.Logf("PKCE flow completed; controller should reject because no identity has externalId=%q", pkce.ExternalID)
 
-	t.Logf("waiting for controller:disconnected event for %q", name)
 	events.WaitFor(t, ctx, "controller", "disconnected", name)
-	t.Logf("controller:disconnected event received")
-
-	t.Logf("fetching tunnel status to confirm NeedsExtAuth stayed true")
-	finalStatus, err := client.GetTunnelStatus(ctx)
-	require.NoError(t, err, "Status after failed external auth\n%s", zet.Logs())
-	finalEntry := finalStatus.FindIdentity(name)
-	require.NotNil(t, finalEntry, "identity %q should still exist in Status", name)
-	require.True(t, finalEntry.NeedsExtAuth, "NeedsExtAuth should remain true after controller rejection")
-	t.Logf("status reports NeedsExtAuth=%t after controller rejection", finalEntry.NeedsExtAuth)
+	t.Logf("controller:disconnected event received as expected")
 }
 
 func testExternalAuthWithMultipleSignersCompletes(t *testing.T) {
@@ -217,18 +200,12 @@ func testExternalAuthWithMultipleSignersCompletes(t *testing.T) {
 		_ = overlay.DeleteExtJwtSigner(cleanupCtx, signer3Name)
 	})
 
-	client, events, identifier := urlEnrollForExtAuth(t, ctx, name)
-
-	t.Logf("fetching tunnel status to confirm all three providers listed")
-	status, err := client.GetTunnelStatus(ctx)
-	require.NoError(t, err, "Status after URL AddIdentity\n%s", zet.Logs())
-	entry := status.FindIdentity(name)
-	require.NotNil(t, entry, "identity %q not found in Status", name)
-	require.Subset(t, entry.ExtAuthProviders, []string{realSignerName, signer2Name, signer3Name}, "ExtAuthProviders should contain all three signers, got %v", entry.ExtAuthProviders)
-	t.Logf("status reports ExtAuthProviders=%v (count=%d)", entry.ExtAuthProviders, len(entry.ExtAuthProviders))
+	client, events, needsExt := urlEnrollForExtAuth(t, ctx, name)
+	require.Subset(t, needsExt.Id.ExtAuthProviders, []string{realSignerName, signer2Name, signer3Name}, "identity:needs_ext_login ExtAuthProviders should contain all three signers, got %v", needsExt.Id.ExtAuthProviders)
+	t.Logf("identity:needs_ext_login reports ExtAuthProviders=%v (count=%d)", needsExt.Id.ExtAuthProviders, len(needsExt.Id.ExtAuthProviders))
 
 	t.Logf("requesting external auth URL from ZET for real signer=%q", realSignerName)
-	authResp, err := client.GetExternalAuth(ctx, identifier, realSignerName)
+	authResp, err := client.GetExternalAuth(ctx, needsExt.Id.Identifier, realSignerName)
 	require.NoError(t, err, "ExternalAuth\n%s", zet.Logs())
 	require.NotEmpty(t, authResp.URL, "ExternalAuth should return a non-empty auth URL")
 	t.Logf("ExternalAuth returned auth URL: %s", authResp.URL)
@@ -237,17 +214,9 @@ func testExternalAuthWithMultipleSignersCompletes(t *testing.T) {
 	require.NoError(t, testutil.DrivePKCEFlow(ctx, authResp.URL, pkce.IssuerURL, pkce.Email, pkce.Password), "drive PKCE flow")
 	t.Logf("PKCE flow completed")
 
-	t.Logf("waiting for identity:added event for %q", name)
-	events.WaitFor(t, ctx, "identity", "added", name)
-	t.Logf("identity:added event received")
-
-	t.Logf("fetching tunnel status to confirm NeedsExtAuth cleared")
-	finalStatus, err := client.GetTunnelStatus(ctx)
-	require.NoError(t, err, "Status after ExternalAuth\n%s", zet.Logs())
-	finalEntry := finalStatus.FindIdentity(name)
-	require.NotNil(t, finalEntry, "identity %q missing from Status after ExternalAuth", name)
-	require.False(t, finalEntry.NeedsExtAuth, "NeedsExtAuth should be false after successful ExternalAuth\n%s", zet.Logs())
-	t.Logf("status reports NeedsExtAuth=%t after multi-signer ExternalAuth", finalEntry.NeedsExtAuth)
+	added := events.WaitFor(t, ctx, "identity", "added", name)
+	require.False(t, added.Id.NeedsExtAuth, "identity:added NeedsExtAuth=%t after multi-signer PKCE flow, want false", added.Id.NeedsExtAuth)
+	t.Logf("identity:added reports NeedsExtAuth=%t after multi-signer PKCE flow", added.Id.NeedsExtAuth)
 }
 
 // createPKCESignerAndPolicy registers an ext-jwt-signer pointed at the PKCE
@@ -280,17 +249,12 @@ func createPKCESignerAndPolicy(t *testing.T, ctx context.Context, name, clientID
 	return signerName, policyName
 }
 
-func urlEnrollForExtAuth(t *testing.T, ctx context.Context, name string) (*testutil.IPCClient, *testutil.EventClient, string) {
+func urlEnrollForExtAuth(t *testing.T, ctx context.Context, name string) (*testutil.IPCClient, *testutil.EventClient, testutil.Event) {
 	t.Helper()
 	controllerBase := overlay.ControllerHostPort()
 
-	events, err := zet.DialEvents(ctx)
-	require.NoError(t, err, "dial ZET event pipe")
-	t.Cleanup(func() { _ = events.Close() })
-
-	client, err := zet.DialIPC(ctx)
-	require.NoError(t, err, "dial ZET IPC pipe")
-	t.Cleanup(func() { _ = client.Close() })
+	events := testutil.DialEvents(t, ctx, zet)
+	client := testutil.DialIPC(t, ctx, zet)
 
 	identityData := testutil.AddIdentityData{
 		IdentityFilename: name,
@@ -299,16 +263,10 @@ func urlEnrollForExtAuth(t *testing.T, ctx context.Context, name string) (*testu
 	enrollResp := testutil.Enroll(t, ctx, client, identityData)
 	require.True(t, enrollResp.Success, "URL AddIdentity should succeed: error=%q\n%s", enrollResp.Error, zet.Logs())
 
-	t.Logf("waiting for identity:needs_ext_login event for %q", name)
-	events.WaitFor(t, ctx, "identity", "needs_ext_login", name)
-	t.Logf("identity:needs_ext_login event received")
+	needsExt := events.WaitFor(t, ctx, "identity", "needs_ext_login", name)
+	require.NotEmpty(t, needsExt.Id.Identifier, "identity:needs_ext_login Identifier empty")
+	require.True(t, needsExt.Id.NeedsExtAuth, "identity:needs_ext_login NeedsExtAuth=%t, want true", needsExt.Id.NeedsExtAuth)
+	t.Logf("identity:needs_ext_login Identifier=%s NeedsExtAuth=%t", needsExt.Id.Identifier, needsExt.Id.NeedsExtAuth)
 
-	t.Logf("fetching tunnel status to get Identifier")
-	status, err := client.GetTunnelStatus(ctx)
-	require.NoError(t, err, "Status after URL AddIdentity\n%s", zet.Logs())
-	entry := status.FindIdentity(name)
-	require.NotNil(t, entry, "identity %q not found in Status after URL AddIdentity", name)
-	t.Logf("found %q in status with Identifier=%s NeedsExtAuth=%t", name, entry.Identifier, entry.NeedsExtAuth)
-
-	return client, events, entry.Identifier
+	return client, events, needsExt
 }

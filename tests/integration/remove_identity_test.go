@@ -27,16 +27,15 @@ import (
 )
 
 func TestRemoveIdentity(t *testing.T) {
-	t.Run("withIdentifierFromStatus", testRemoveIdentityWithIdentifierFromStatus)
+	t.Run("withIdentifierFromEvent", testRemoveIdentityWithIdentifierFromEvent)
 }
 
-func testRemoveIdentityWithIdentifierFromStatus(t *testing.T) {
+func testRemoveIdentityWithIdentifierFromEvent(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	client, err := zet.DialIPC(ctx)
-	require.NoError(t, err, "dial ZET IPC pipe")
-	t.Cleanup(func() { _ = client.Close() })
+	events := testutil.DialEvents(t, ctx, zet)
+	client := testutil.DialIPC(t, ctx, zet)
 
 	name := testutil.IdentityName(t)
 
@@ -52,23 +51,16 @@ func testRemoveIdentityWithIdentifierFromStatus(t *testing.T) {
 	addResp := testutil.Enroll(t, ctx, client, identityData)
 	require.True(t, addResp.Success, "AddIdentity failed: error=%q code=%d", addResp.Error, addResp.Code)
 
-	t.Logf("fetching tunnel status")
-	status, err := client.GetTunnelStatus(ctx)
-	require.NoError(t, err, "Status after AddIdentity\n%s", zet.Logs())
-	entry := status.FindIdentity(name)
-	require.NotNil(t, entry, "identity %q not found in Status after AddIdentity", name)
-	info, err := os.Stat(entry.Identifier)
-	require.NoError(t, err, "identity file should exist after AddIdentity")
-	require.Greater(t, info.Size(), int64(0))
-	t.Logf("found %q in status; identity file at %s (%d bytes)", name, entry.Identifier, info.Size())
+	evt := events.WaitFor(t, ctx, "identity", "added", name)
+	require.NotEmpty(t, evt.Id.Identifier, "identity:added Identifier empty")
 
-	t.Logf("sending RemoveIdentity for Identifier=%s", entry.Identifier)
-	removeResp, err := client.RemoveIdentity(ctx, entry.Identifier)
+	t.Logf("sending RemoveIdentity for Identifier=%s", evt.Id.Identifier)
+	removeResp, err := client.RemoveIdentity(ctx, evt.Id.Identifier)
 	require.NoError(t, err, "RemoveIdentity send\n%s", zet.Logs())
 	require.True(t, removeResp.Success, "RemoveIdentity failed: error=%q code=%d", removeResp.Error, removeResp.Code)
 	t.Logf("RemoveIdentity succeeded for %q", name)
 
-	_, statErr := os.Stat(entry.Identifier)
-	require.True(t, os.IsNotExist(statErr), "identity file should be removed after RemoveIdentity: %s\n%s", entry.Identifier, zet.Logs())
-	t.Logf("confirmed identity file removed from disk: %s", entry.Identifier)
+	_, statErr := os.Stat(evt.Id.Identifier)
+	require.True(t, os.IsNotExist(statErr), "identity file should be removed after RemoveIdentity: %s\n%s", evt.Id.Identifier, zet.Logs())
+	t.Logf("confirmed identity file removed from disk: %s", evt.Id.Identifier)
 }

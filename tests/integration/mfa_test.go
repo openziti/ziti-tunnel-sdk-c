@@ -80,13 +80,8 @@ func testEnableMFAAcceptsTotpRequiredAuthPolicy(t *testing.T) {
 	require.NoError(t, err, "mint JWT for identity bound to %q", policy)
 	require.NotEmpty(t, jwt)
 
-	events, err := zet.DialEvents(ctx)
-	require.NoError(t, err, "dial ZET event pipe")
-	t.Cleanup(func() { _ = events.Close() })
-
-	client, err := zet.DialIPC(ctx)
-	require.NoError(t, err, "dial ZET IPC pipe")
-	t.Cleanup(func() { _ = client.Close() })
+	events := testutil.DialEvents(t, ctx, zet)
+	client := testutil.DialIPC(t, ctx, zet)
 
 	identityData := testutil.AddIdentityData{
 		IdentityFilename: name,
@@ -94,21 +89,12 @@ func testEnableMFAAcceptsTotpRequiredAuthPolicy(t *testing.T) {
 	}
 	addResp := testutil.Enroll(t, ctx, client, identityData)
 	require.True(t, addResp.Success, "AddIdentity failed: error=%q code=%d", addResp.Error, addResp.Code)
-	t.Logf("AddIdentity succeeded for %q", name)
 
-	t.Logf("waiting for identity:added event for %q", name)
-	events.WaitFor(t, ctx, "identity", "added", name)
-	t.Logf("identity:added event received")
-
-	t.Logf("fetching tunnel status")
-	status, err := client.GetTunnelStatus(ctx)
-	require.NoError(t, err, "Status after AddIdentity\n%s", zet.Logs())
-	entry := status.FindIdentity(name)
-	require.NotNil(t, entry, "identity %q not found in Status.Identities", name)
-	t.Logf("found %q in status with Identifier=%s", name, entry.Identifier)
+	added := events.WaitFor(t, ctx, "identity", "added", name)
+	require.NotEmpty(t, added.Id.Identifier, "identity:added Identifier empty")
 
 	t.Logf("sending EnableMFA for %q", name)
-	enrollment, err := client.GetMFAEnrollment(ctx, entry.Identifier)
+	enrollment, err := client.GetMFAEnrollment(ctx, added.Id.Identifier)
 	require.NoError(t, err, "EnableMFA\n%s", zet.Logs())
 	require.NotEmpty(t, enrollment.ProvisioningUrl, "EnableMFA Data.ProvisioningUrl should be non-empty")
 	require.NotEmpty(t, enrollment.RecoveryCodes, "EnableMFA Data.RecoveryCodes should be non-empty")
@@ -120,7 +106,7 @@ func testVerifyMFAAcceptsValidTotp(t *testing.T) {
 	defer cancel()
 
 	name := testutil.IdentityName(t)
-	enrolled, _ := newEnrolledMFA(t, ctx, name)
+	enrolled, events := newEnrolledMFA(t, ctx, name)
 
 	code, err := generateTotpCode(enrolled.Secret, time.Now())
 	require.NoError(t, err, "compute TOTP")
@@ -129,15 +115,10 @@ func testVerifyMFAAcceptsValidTotp(t *testing.T) {
 	verifyResp, err := enrolled.Client.VerifyMFA(ctx, enrolled.Identifier, code)
 	require.NoError(t, err, "VerifyMFA send\n%s", zet.Logs())
 	require.True(t, verifyResp.Success, "VerifyMFA failed: error=%q code=%d\n%s", verifyResp.Error, verifyResp.Code, zet.Logs())
-	t.Logf("VerifyMFA succeeded for %q", name)
 
-	t.Logf("fetching tunnel status to confirm MfaEnabled")
-	status, err := enrolled.Client.GetTunnelStatus(ctx)
-	require.NoError(t, err, "Status after VerifyMFA\n%s", zet.Logs())
-	entry := status.FindIdentity(name)
-	require.NotNil(t, entry, "identity %q not found in Status after VerifyMFA", name)
-	require.True(t, entry.MfaEnabled, "Status.Identities[%q].MfaEnabled should be true after VerifyMFA", name)
-	t.Logf("VerifyMFA ID MfaEnabled=%t", entry.MfaEnabled)
+	updated := events.WaitFor(t, ctx, "identity", "updated", name)
+	require.True(t, updated.Id.MfaEnabled, "identity:updated MfaEnabled=%t after VerifyMFA, want true", updated.Id.MfaEnabled)
+	t.Logf("identity:updated reports MfaEnabled=%t after VerifyMFA", updated.Id.MfaEnabled)
 }
 
 func testVerifyMFARejectsInvalidTotp(t *testing.T) {
@@ -152,14 +133,6 @@ func testVerifyMFARejectsInvalidTotp(t *testing.T) {
 	require.NoError(t, err, "VerifyMFA send\n%s", zet.Logs())
 	require.False(t, verifyResp.Success, "VerifyMFA with invalid TOTP should fail but Success=true")
 	t.Logf("VerifyMFA correctly rejected invalid TOTP: error=%q code=%d", verifyResp.Error, verifyResp.Code)
-
-	t.Logf("fetching tunnel status to confirm MfaEnabled stayed false")
-	status, err := enrolled.Client.GetTunnelStatus(ctx)
-	require.NoError(t, err, "Status after VerifyMFA\n%s", zet.Logs())
-	entry := status.FindIdentity(name)
-	require.NotNil(t, entry, "identity %q not found in Status after VerifyMFA", name)
-	require.False(t, entry.MfaEnabled, "Status.Identities[%q].MfaEnabled should remain false after rejected VerifyMFA", name)
-	t.Logf("status reports MfaEnabled=%t after rejection", entry.MfaEnabled)
 }
 
 func testMFAReauthenticationAcceptsValidTotp(t *testing.T) {
@@ -176,31 +149,20 @@ func testMFAReauthenticationAcceptsValidTotp(t *testing.T) {
 	verifyResp, err := enrolled.Client.VerifyMFA(ctx, enrolled.Identifier, code)
 	require.NoError(t, err, "VerifyMFA send\n%s", zet.Logs())
 	require.True(t, verifyResp.Success, "VerifyMFA failed: error=%q code=%d\n%s", verifyResp.Error, verifyResp.Code, zet.Logs())
-	t.Logf("VerifyMFA succeeded for %q", name)
+	verifyUpdated := events.WaitFor(t, ctx, "identity", "updated", name)
+	require.True(t, verifyUpdated.Id.MfaEnabled, "identity:updated MfaEnabled=%t after VerifyMFA, want true", verifyUpdated.Id.MfaEnabled)
 
 	t.Logf("sending IdentityOnOff(false) for %q to drop the session", name)
 	offResp, err := enrolled.Client.IdentityOnOff(ctx, enrolled.Identifier, false)
 	require.NoError(t, err, "IdentityOnOff(false) send\n%s", zet.Logs())
 	require.True(t, offResp.Success, "IdentityOnOff(false) failed: error=%q code=%d", offResp.Error, offResp.Code)
-	t.Logf("IdentityOnOff(false) succeeded")
 
 	t.Logf("sending IdentityOnOff(true) for %q to force re-auth", name)
 	onResp, err := enrolled.Client.IdentityOnOff(ctx, enrolled.Identifier, true)
 	require.NoError(t, err, "IdentityOnOff(true) send\n%s", zet.Logs())
 	require.True(t, onResp.Success, "IdentityOnOff(true) failed: error=%q code=%d", onResp.Error, onResp.Code)
-	t.Logf("IdentityOnOff(true) succeeded")
 
-	t.Logf("waiting for mfa:auth_challenge event for %q", name)
 	events.WaitFor(t, ctx, "mfa", "auth_challenge", name)
-	t.Logf("mfa:auth_challenge event received")
-
-	t.Logf("fetching tunnel status to confirm MfaNeeded")
-	status, err := enrolled.Client.GetTunnelStatus(ctx)
-	require.NoError(t, err, "Status after auth_challenge\n%s", zet.Logs())
-	entry := status.FindIdentity(name)
-	require.NotNil(t, entry, "identity %q not found in Status after auth_challenge", name)
-	require.True(t, entry.MfaNeeded, "Status.Identities[%q].MfaNeeded should be true after off-then-on cycle", name)
-	t.Logf("status reports MfaNeeded=%t after off-then-on cycle", entry.MfaNeeded)
 
 	code, err = generateTotpCode(enrolled.Secret, time.Now())
 	require.NoError(t, err, "compute TOTP")
@@ -209,16 +171,11 @@ func testMFAReauthenticationAcceptsValidTotp(t *testing.T) {
 	submitResp, err := enrolled.Client.SubmitMFA(ctx, enrolled.Identifier, code)
 	require.NoError(t, err, "SubmitMFA send\n%s", zet.Logs())
 	require.True(t, submitResp.Success, "SubmitMFA failed: error=%q code=%d\n%s", submitResp.Error, submitResp.Code, zet.Logs())
-	t.Logf("SubmitMFA succeeded for %q", name)
 
-	t.Logf("fetching tunnel status to confirm re-auth cleared MfaNeeded")
-	status, err = enrolled.Client.GetTunnelStatus(ctx)
-	require.NoError(t, err, "Status after SubmitMFA\n%s", zet.Logs())
-	entry = status.FindIdentity(name)
-	require.NotNil(t, entry, "identity %q not found in Status after SubmitMFA", name)
-	require.False(t, entry.MfaNeeded, "Status.Identities[%q].MfaNeeded should be false after SubmitMFA", name)
-	require.True(t, entry.MfaEnabled, "Status.Identities[%q].MfaEnabled should remain true after SubmitMFA", name)
-	t.Logf("SubmitMFA ID MfaEnabled=%t MfaNeeded=%t", entry.MfaEnabled, entry.MfaNeeded)
+	submitUpdated := events.WaitFor(t, ctx, "identity", "updated", name)
+	require.False(t, submitUpdated.Id.MfaNeeded, "identity:updated MfaNeeded=%t after SubmitMFA, want false", submitUpdated.Id.MfaNeeded)
+	require.True(t, submitUpdated.Id.MfaEnabled, "identity:updated MfaEnabled=%t after SubmitMFA, want true", submitUpdated.Id.MfaEnabled)
+	t.Logf("identity:updated reports MfaEnabled=%t MfaNeeded=%t after SubmitMFA", submitUpdated.Id.MfaEnabled, submitUpdated.Id.MfaNeeded)
 }
 
 func testMFAReauthenticationAcceptsRecoveryCode(t *testing.T) {
@@ -235,46 +192,30 @@ func testMFAReauthenticationAcceptsRecoveryCode(t *testing.T) {
 	verifyResp, err := enrolled.Client.VerifyMFA(ctx, enrolled.Identifier, code)
 	require.NoError(t, err, "VerifyMFA send\n%s", zet.Logs())
 	require.True(t, verifyResp.Success, "VerifyMFA failed: error=%q code=%d\n%s", verifyResp.Error, verifyResp.Code, zet.Logs())
-	t.Logf("VerifyMFA succeeded for %q", name)
+	verifyUpdated := events.WaitFor(t, ctx, "identity", "updated", name)
+	require.True(t, verifyUpdated.Id.MfaEnabled, "identity:updated MfaEnabled=%t after VerifyMFA, want true", verifyUpdated.Id.MfaEnabled)
 
 	t.Logf("sending IdentityOnOff(false) for %q to drop the session", name)
 	offResp, err := enrolled.Client.IdentityOnOff(ctx, enrolled.Identifier, false)
 	require.NoError(t, err, "IdentityOnOff(false) send\n%s", zet.Logs())
 	require.True(t, offResp.Success, "IdentityOnOff(false) failed: error=%q code=%d", offResp.Error, offResp.Code)
-	t.Logf("IdentityOnOff(false) succeeded")
 
 	t.Logf("sending IdentityOnOff(true) for %q to force re-auth", name)
 	onResp, err := enrolled.Client.IdentityOnOff(ctx, enrolled.Identifier, true)
 	require.NoError(t, err, "IdentityOnOff(true) send\n%s", zet.Logs())
 	require.True(t, onResp.Success, "IdentityOnOff(true) failed: error=%q code=%d", onResp.Error, onResp.Code)
-	t.Logf("IdentityOnOff(true) succeeded")
 
-	t.Logf("waiting for mfa:auth_challenge event for %q", name)
 	events.WaitFor(t, ctx, "mfa", "auth_challenge", name)
-	t.Logf("mfa:auth_challenge event received")
-
-	t.Logf("fetching tunnel status to confirm MfaNeeded")
-	status, err := enrolled.Client.GetTunnelStatus(ctx)
-	require.NoError(t, err, "Status after auth_challenge\n%s", zet.Logs())
-	entry := status.FindIdentity(name)
-	require.NotNil(t, entry, "identity %q not found in Status after auth_challenge", name)
-	require.True(t, entry.MfaNeeded, "Status.Identities[%q].MfaNeeded should be true after off-then-on cycle", name)
-	t.Logf("status reports MfaNeeded=%t after off-then-on cycle", entry.MfaNeeded)
 
 	t.Logf("sending SubmitMFA with recovery code for %q", name)
 	submitResp, err := enrolled.Client.SubmitMFA(ctx, enrolled.Identifier, enrolled.RecoveryCodes[0])
 	require.NoError(t, err, "SubmitMFA send\n%s", zet.Logs())
 	require.True(t, submitResp.Success, "SubmitMFA failed: error=%q code=%d\n%s", submitResp.Error, submitResp.Code, zet.Logs())
-	t.Logf("SubmitMFA with recovery code succeeded for %q", name)
 
-	t.Logf("fetching tunnel status to confirm re-auth cleared MfaNeeded")
-	status, err = enrolled.Client.GetTunnelStatus(ctx)
-	require.NoError(t, err, "Status after SubmitMFA\n%s", zet.Logs())
-	entry = status.FindIdentity(name)
-	require.NotNil(t, entry, "identity %q not found in Status after SubmitMFA", name)
-	require.False(t, entry.MfaNeeded, "Status.Identities[%q].MfaNeeded should be false after SubmitMFA", name)
-	require.True(t, entry.MfaEnabled, "Status.Identities[%q].MfaEnabled should remain true after SubmitMFA", name)
-	t.Logf("SubmitMFA ID MfaEnabled=%t MfaNeeded=%t", entry.MfaEnabled, entry.MfaNeeded)
+	submitUpdated := events.WaitFor(t, ctx, "identity", "updated", name)
+	require.False(t, submitUpdated.Id.MfaNeeded, "identity:updated MfaNeeded=%t after SubmitMFA, want false", submitUpdated.Id.MfaNeeded)
+	require.True(t, submitUpdated.Id.MfaEnabled, "identity:updated MfaEnabled=%t after SubmitMFA, want true", submitUpdated.Id.MfaEnabled)
+	t.Logf("identity:updated reports MfaEnabled=%t MfaNeeded=%t after SubmitMFA with recovery code", submitUpdated.Id.MfaEnabled, submitUpdated.Id.MfaNeeded)
 }
 
 func testMFAReauthenticationRejectsInvalidTotp(t *testing.T) {
@@ -291,38 +232,26 @@ func testMFAReauthenticationRejectsInvalidTotp(t *testing.T) {
 	verifyResp, err := enrolled.Client.VerifyMFA(ctx, enrolled.Identifier, code)
 	require.NoError(t, err, "VerifyMFA send\n%s", zet.Logs())
 	require.True(t, verifyResp.Success, "VerifyMFA failed: error=%q code=%d\n%s", verifyResp.Error, verifyResp.Code, zet.Logs())
-	t.Logf("VerifyMFA succeeded for %q", name)
+	verifyUpdated := events.WaitFor(t, ctx, "identity", "updated", name)
+	require.True(t, verifyUpdated.Id.MfaEnabled, "identity:updated MfaEnabled=%t after VerifyMFA, want true", verifyUpdated.Id.MfaEnabled)
 
 	t.Logf("sending IdentityOnOff(false) for %q to drop the session", name)
 	offResp, err := enrolled.Client.IdentityOnOff(ctx, enrolled.Identifier, false)
 	require.NoError(t, err, "IdentityOnOff(false) send\n%s", zet.Logs())
 	require.True(t, offResp.Success, "IdentityOnOff(false) failed: error=%q code=%d", offResp.Error, offResp.Code)
-	t.Logf("IdentityOnOff(false) succeeded")
 
 	t.Logf("sending IdentityOnOff(true) for %q to force re-auth", name)
 	onResp, err := enrolled.Client.IdentityOnOff(ctx, enrolled.Identifier, true)
 	require.NoError(t, err, "IdentityOnOff(true) send\n%s", zet.Logs())
 	require.True(t, onResp.Success, "IdentityOnOff(true) failed: error=%q code=%d", onResp.Error, onResp.Code)
-	t.Logf("IdentityOnOff(true) succeeded")
 
-	t.Logf("waiting for mfa:auth_challenge event for %q", name)
 	events.WaitFor(t, ctx, "mfa", "auth_challenge", name)
-	t.Logf("mfa:auth_challenge event received")
 
 	t.Logf("sending SubmitMFA with invalid TOTP for %q", name)
 	submitResp, err := enrolled.Client.SubmitMFA(ctx, enrolled.Identifier, "000000")
 	require.NoError(t, err, "SubmitMFA send\n%s", zet.Logs())
 	require.False(t, submitResp.Success, "SubmitMFA with invalid TOTP should fail but Success=true")
 	t.Logf("SubmitMFA correctly rejected invalid TOTP: error=%q code=%d", submitResp.Error, submitResp.Code)
-
-	t.Logf("fetching tunnel status to confirm MFA state unchanged")
-	status, err := enrolled.Client.GetTunnelStatus(ctx)
-	require.NoError(t, err, "Status after rejected SubmitMFA\n%s", zet.Logs())
-	entry := status.FindIdentity(name)
-	require.NotNil(t, entry, "identity %q not found in Status after rejected SubmitMFA", name)
-	require.True(t, entry.MfaNeeded, "Status.Identities[%q].MfaNeeded should remain true after rejected SubmitMFA", name)
-	require.True(t, entry.MfaEnabled, "Status.Identities[%q].MfaEnabled should remain true after rejected SubmitMFA", name)
-	t.Logf("status reports MfaNeeded=%t MfaEnabled=%t after rejection", entry.MfaNeeded, entry.MfaEnabled)
 }
 
 func testRemoveMFAAcceptsValidTotp(t *testing.T) {
@@ -330,7 +259,7 @@ func testRemoveMFAAcceptsValidTotp(t *testing.T) {
 	defer cancel()
 
 	name := testutil.IdentityName(t)
-	enrolled, _ := newEnrolledMFA(t, ctx, name)
+	enrolled, events := newEnrolledMFA(t, ctx, name)
 
 	code, err := generateTotpCode(enrolled.Secret, time.Now())
 	require.NoError(t, err, "compute TOTP")
@@ -339,7 +268,8 @@ func testRemoveMFAAcceptsValidTotp(t *testing.T) {
 	verifyResp, err := enrolled.Client.VerifyMFA(ctx, enrolled.Identifier, code)
 	require.NoError(t, err, "VerifyMFA send\n%s", zet.Logs())
 	require.True(t, verifyResp.Success, "VerifyMFA failed: error=%q code=%d\n%s", verifyResp.Error, verifyResp.Code, zet.Logs())
-	t.Logf("VerifyMFA succeeded for %q", name)
+	verifyUpdated := events.WaitFor(t, ctx, "identity", "updated", name)
+	require.True(t, verifyUpdated.Id.MfaEnabled, "identity:updated MfaEnabled=%t after VerifyMFA, want true", verifyUpdated.Id.MfaEnabled)
 
 	code, err = generateTotpCode(enrolled.Secret, time.Now())
 	require.NoError(t, err, "compute TOTP")
@@ -348,15 +278,10 @@ func testRemoveMFAAcceptsValidTotp(t *testing.T) {
 	removeResp, err := enrolled.Client.RemoveMFA(ctx, enrolled.Identifier, code)
 	require.NoError(t, err, "RemoveMFA send\n%s", zet.Logs())
 	require.True(t, removeResp.Success, "RemoveMFA failed: error=%q code=%d\n%s", removeResp.Error, removeResp.Code, zet.Logs())
-	t.Logf("RemoveMFA succeeded for %q", name)
 
-	t.Logf("fetching tunnel status to confirm MfaEnabled cleared")
-	status, err := enrolled.Client.GetTunnelStatus(ctx)
-	require.NoError(t, err, "Status after RemoveMFA\n%s", zet.Logs())
-	entry := status.FindIdentity(name)
-	require.NotNil(t, entry, "identity %q not found in Status after RemoveMFA", name)
-	require.False(t, entry.MfaEnabled, "Status.Identities[%q].MfaEnabled should be false after RemoveMFA", name)
-	t.Logf("status reports MfaEnabled=%t after RemoveMFA with TOTP", entry.MfaEnabled)
+	removeEvt := events.WaitFor(t, ctx, "mfa", "enrollment_remove", name)
+	require.True(t, removeEvt.Successful, "mfa:enrollment_remove Successful=%t after RemoveMFA, want true", removeEvt.Successful)
+	t.Logf("mfa:enrollment_remove reports Successful=%t after RemoveMFA with TOTP", removeEvt.Successful)
 }
 
 func testRemoveMFAAcceptsRecoveryCode(t *testing.T) {
@@ -364,7 +289,7 @@ func testRemoveMFAAcceptsRecoveryCode(t *testing.T) {
 	defer cancel()
 
 	name := testutil.IdentityName(t)
-	enrolled, _ := newEnrolledMFA(t, ctx, name)
+	enrolled, events := newEnrolledMFA(t, ctx, name)
 
 	code, err := generateTotpCode(enrolled.Secret, time.Now())
 	require.NoError(t, err, "compute TOTP")
@@ -373,21 +298,17 @@ func testRemoveMFAAcceptsRecoveryCode(t *testing.T) {
 	verifyResp, err := enrolled.Client.VerifyMFA(ctx, enrolled.Identifier, code)
 	require.NoError(t, err, "VerifyMFA send\n%s", zet.Logs())
 	require.True(t, verifyResp.Success, "VerifyMFA failed: error=%q code=%d\n%s", verifyResp.Error, verifyResp.Code, zet.Logs())
-	t.Logf("VerifyMFA succeeded for %q", name)
+	verifyUpdated := events.WaitFor(t, ctx, "identity", "updated", name)
+	require.True(t, verifyUpdated.Id.MfaEnabled, "identity:updated MfaEnabled=%t after VerifyMFA, want true", verifyUpdated.Id.MfaEnabled)
 
 	t.Logf("sending RemoveMFA with recovery code for %q", name)
 	removeResp, err := enrolled.Client.RemoveMFA(ctx, enrolled.Identifier, enrolled.RecoveryCodes[0])
 	require.NoError(t, err, "RemoveMFA send\n%s", zet.Logs())
 	require.True(t, removeResp.Success, "RemoveMFA failed: error=%q code=%d\n%s", removeResp.Error, removeResp.Code, zet.Logs())
-	t.Logf("RemoveMFA with recovery code succeeded for %q", name)
 
-	t.Logf("fetching tunnel status to confirm MfaEnabled cleared")
-	status, err := enrolled.Client.GetTunnelStatus(ctx)
-	require.NoError(t, err, "Status after RemoveMFA\n%s", zet.Logs())
-	entry := status.FindIdentity(name)
-	require.NotNil(t, entry, "identity %q not found in Status after RemoveMFA", name)
-	require.False(t, entry.MfaEnabled, "Status.Identities[%q].MfaEnabled should be false after RemoveMFA", name)
-	t.Logf("status reports MfaEnabled=%t after RemoveMFA with recovery code", entry.MfaEnabled)
+	removeEvt := events.WaitFor(t, ctx, "mfa", "enrollment_remove", name)
+	require.True(t, removeEvt.Successful, "mfa:enrollment_remove Successful=%t after RemoveMFA, want true", removeEvt.Successful)
+	t.Logf("mfa:enrollment_remove reports Successful=%t after RemoveMFA with recovery code", removeEvt.Successful)
 }
 
 func testRemoveMFARejectsInvalidTotp(t *testing.T) {
@@ -395,7 +316,7 @@ func testRemoveMFARejectsInvalidTotp(t *testing.T) {
 	defer cancel()
 
 	name := testutil.IdentityName(t)
-	enrolled, _ := newEnrolledMFA(t, ctx, name)
+	enrolled, events := newEnrolledMFA(t, ctx, name)
 
 	code, err := generateTotpCode(enrolled.Secret, time.Now())
 	require.NoError(t, err, "compute TOTP")
@@ -404,21 +325,13 @@ func testRemoveMFARejectsInvalidTotp(t *testing.T) {
 	verifyResp, err := enrolled.Client.VerifyMFA(ctx, enrolled.Identifier, code)
 	require.NoError(t, err, "VerifyMFA send\n%s", zet.Logs())
 	require.True(t, verifyResp.Success, "VerifyMFA failed: error=%q code=%d\n%s", verifyResp.Error, verifyResp.Code, zet.Logs())
-	t.Logf("VerifyMFA succeeded for %q", name)
+	events.WaitFor(t, ctx, "identity", "updated", name)
 
 	t.Logf("sending RemoveMFA with invalid TOTP for %q", name)
 	removeResp, err := enrolled.Client.RemoveMFA(ctx, enrolled.Identifier, "000000")
 	require.NoError(t, err, "RemoveMFA send\n%s", zet.Logs())
 	require.False(t, removeResp.Success, "RemoveMFA with invalid TOTP should fail but Success=true")
 	t.Logf("RemoveMFA correctly rejected invalid TOTP: error=%q code=%d", removeResp.Error, removeResp.Code)
-
-	t.Logf("fetching tunnel status to confirm MfaEnabled unchanged")
-	status, err := enrolled.Client.GetTunnelStatus(ctx)
-	require.NoError(t, err, "Status after rejected RemoveMFA\n%s", zet.Logs())
-	entry := status.FindIdentity(name)
-	require.NotNil(t, entry, "identity %q not found in Status after rejected RemoveMFA", name)
-	require.True(t, entry.MfaEnabled, "Status.Identities[%q].MfaEnabled should remain true after rejected RemoveMFA", name)
-	t.Logf("status reports MfaEnabled=%t after rejected RemoveMFA", entry.MfaEnabled)
 }
 
 type enrolledMFA struct {
@@ -437,13 +350,8 @@ func newEnrolledMFA(t *testing.T, ctx context.Context, name string) (*enrolledMF
 	require.NoError(t, err, "mint JWT")
 	require.NotEmpty(t, jwt)
 
-	events, err := zet.DialEvents(ctx)
-	require.NoError(t, err, "dial ZET event pipe")
-	t.Cleanup(func() { _ = events.Close() })
-
-	client, err := zet.DialIPC(ctx)
-	require.NoError(t, err, "dial ZET IPC pipe")
-	t.Cleanup(func() { _ = client.Close() })
+	events := testutil.DialEvents(t, ctx, zet)
+	client := testutil.DialIPC(t, ctx, zet)
 
 	identityData := testutil.AddIdentityData{
 		IdentityFilename: name,
@@ -452,20 +360,12 @@ func newEnrolledMFA(t *testing.T, ctx context.Context, name string) (*enrolledMF
 	addResp := testutil.Enroll(t, ctx, client, identityData)
 	require.True(t, addResp.Success, "AddIdentity failed: error=%q code=%d", addResp.Error, addResp.Code)
 
-	t.Logf("waiting for controller:connected event for %q", name)
+	added := events.WaitFor(t, ctx, "identity", "added", name)
+	require.NotEmpty(t, added.Id.Identifier, "identity:added Identifier empty")
 	events.WaitFor(t, ctx, "controller", "connected", name)
-	t.Logf("controller:connected event received")
-
-	t.Logf("fetching tunnel status")
-	status, err := client.GetTunnelStatus(ctx)
-	require.NoError(t, err, "Status after AddIdentity\n%s", zet.Logs())
-	entry := status.FindIdentity(name)
-	require.NotNil(t, entry, "identity %q not found in Status.Identities", name)
-	identifier := entry.Identifier
-	t.Logf("found %q in status with Identifier=%s", name, identifier)
 
 	t.Logf("sending EnableMFA for %q", name)
-	enrollment, err := client.GetMFAEnrollment(ctx, identifier)
+	enrollment, err := client.GetMFAEnrollment(ctx, added.Id.Identifier)
 	require.NoError(t, err, "EnableMFA\n%s", zet.Logs())
 	require.NotEmpty(t, enrollment.ProvisioningUrl, "EnableMFA Data.ProvisioningUrl should be non-empty")
 	require.NotEmpty(t, enrollment.RecoveryCodes, "EnableMFA Data.RecoveryCodes should be non-empty")
@@ -478,7 +378,7 @@ func newEnrolledMFA(t *testing.T, ctx context.Context, name string) (*enrolledMF
 
 	return &enrolledMFA{
 		Client:        client,
-		Identifier:    identifier,
+		Identifier:    added.Id.Identifier,
 		IsVerified:    enrollment.IsVerified,
 		RecoveryCodes: enrollment.RecoveryCodes,
 		Secret:        secret,
