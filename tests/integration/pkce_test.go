@@ -25,16 +25,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestDexUp(t *testing.T) {
-	if dex == nil {
-		t.Skip("dex is not configured (-dex-bin not provided)")
+func TestPKCEUp(t *testing.T) {
+	if pkce == nil {
+		t.Skip("PKCE IdP is not configured (-pkce-bin not provided)")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	t.Logf("running OIDC discovery against dex issuer=%s", dex.IssuerURL)
-	jwks, err := testutil.DiscoverOIDCJWKS(ctx, dex.IssuerURL)
-	require.NoError(t, err, "OIDC discovery against dex")
-	require.Equal(t, dex.JWKSURI(), jwks, "jwks_uri from discovery should match advertised issuer/keys")
-	t.Logf("OIDC discovery returned jwks_uri=%s (matches advertised %s)", jwks, dex.JWKSURI())
+	t.Logf("running OIDC discovery against PKCE issuer=%s", pkce.IssuerURL)
+	jwks, err := testutil.DiscoverOIDCJWKS(ctx, pkce.IssuerURL)
+	require.NoError(t, err, "OIDC discovery against PKCE IdP")
+	require.Equal(t, pkce.JWKSURI(), jwks, "jwks_uri from discovery should match advertised issuer/keys")
+	t.Logf("OIDC discovery returned jwks_uri=%s (matches advertised %s)", jwks, pkce.JWKSURI())
 }

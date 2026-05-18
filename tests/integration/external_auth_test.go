@@ -27,8 +27,8 @@ import (
 
 func TestExternalAuth(t *testing.T) {
 	overlay.RequireCATrusted(t)
-	if dex == nil {
-		t.Skip("dex is not configured (-dex-bin not provided)")
+	if pkce == nil {
+		t.Skip("PKCE IdP is not configured (-pkce-bin not provided)")
 	}
 	t.Run("onUrlEnrolledIdentityCompletes", testExternalAuthOnUrlEnrolledIdentityCompletes)
 	t.Run("withInvalidProviderFails", testExternalAuthWithInvalidProviderFails)
@@ -42,9 +42,9 @@ func testExternalAuthOnUrlEnrolledIdentityCompletes(t *testing.T) {
 
 	name := identityNameFor(t)
 
-	signerName, policyName := createDexSignerAndPolicy(t, ctx, name, dex.ClientIDs[0])
-	t.Logf("creating controller identity %q with externalId=%q bound to policy %q", name, dex.ExternalID, policyName)
-	require.NoError(t, overlay.CreateIdentityWithExternalId(ctx, name, dex.ExternalID, policyName), "create controller identity with externalId=dex user email")
+	signerName, policyName := createPKCESignerAndPolicy(t, ctx, name, pkce.ClientIDs[0])
+	t.Logf("creating controller identity %q with externalId=%q bound to policy %q", name, pkce.ExternalID, policyName)
+	require.NoError(t, overlay.CreateIdentityWithExternalId(ctx, name, pkce.ExternalID, policyName), "create controller identity with externalId=PKCE user email")
 	t.Logf("controller identity %q created", name)
 
 	cleanupCtx := context.Background()
@@ -62,9 +62,9 @@ func testExternalAuthOnUrlEnrolledIdentityCompletes(t *testing.T) {
 	require.NotEmpty(t, authResp.URL, "ExternalAuth should return a non-empty auth URL")
 	t.Logf("ExternalAuth returned auth URL: %s", authResp.URL)
 
-	t.Logf("driving dex OIDC flow (issuer=%s email=%s)", dex.IssuerURL, dex.Email)
-	require.NoError(t, testutil.DriveDexOIDC(ctx, authResp.URL, dex.IssuerURL, dex.Email, dex.Password), "drive dex OIDC flow")
-	t.Logf("dex OIDC flow completed")
+	t.Logf("driving PKCE flow (issuer=%s email=%s)", pkce.IssuerURL, pkce.Email)
+	require.NoError(t, testutil.DrivePKCEFlow(ctx, authResp.URL, pkce.IssuerURL, pkce.Email, pkce.Password), "drive PKCE flow")
+	t.Logf("PKCE flow completed")
 
 	t.Logf("waiting for identity:added event for %q", name)
 	events.WaitFor(t, ctx, "identity", "added", name)
@@ -85,9 +85,9 @@ func testExternalAuthWithInvalidProviderFails(t *testing.T) {
 
 	name := identityNameFor(t)
 
-	signerName, policyName := createDexSignerAndPolicy(t, ctx, name, dex.ClientIDs[0])
-	t.Logf("creating controller identity %q with externalId=%q bound to policy %q", name, dex.ExternalID, policyName)
-	require.NoError(t, overlay.CreateIdentityWithExternalId(ctx, name, dex.ExternalID, policyName), "create controller identity with externalId=dex user email")
+	signerName, policyName := createPKCESignerAndPolicy(t, ctx, name, pkce.ClientIDs[0])
+	t.Logf("creating controller identity %q with externalId=%q bound to policy %q", name, pkce.ExternalID, policyName)
+	require.NoError(t, overlay.CreateIdentityWithExternalId(ctx, name, pkce.ExternalID, policyName), "create controller identity with externalId=PKCE user email")
 	t.Logf("controller identity %q created", name)
 
 	cleanupCtx := context.Background()
@@ -114,11 +114,11 @@ func testExternalAuthWithoutControllerIdentityFails(t *testing.T) {
 
 	name := identityNameFor(t)
 
-	signerName, _ := createDexSignerAndPolicy(t, ctx, name, dex.ClientIDs[0])
+	signerName, _ := createPKCESignerAndPolicy(t, ctx, name, pkce.ClientIDs[0])
 	// Deliberately DO NOT create a controller identity with externalId. The
-	// OIDC flow at dex still succeeds, but the controller rejects login since
-	// nothing maps test@example.com to a known identity.
-	t.Logf("skipping controller identity creation on purpose (controller should reject because externalId=%q is unmapped)", dex.ExternalID)
+	// OIDC flow at the IdP still succeeds, but the controller rejects login
+	// since nothing maps test@example.com to a known identity.
+	t.Logf("skipping controller identity creation on purpose (controller should reject because externalId=%q is unmapped)", pkce.ExternalID)
 
 	cleanupCtx := context.Background()
 	t.Cleanup(func() {
@@ -134,9 +134,9 @@ func testExternalAuthWithoutControllerIdentityFails(t *testing.T) {
 	require.NotEmpty(t, authResp.URL, "ExternalAuth should return a non-empty auth URL")
 	t.Logf("ExternalAuth returned auth URL: %s", authResp.URL)
 
-	t.Logf("driving dex OIDC flow (issuer=%s email=%s)", dex.IssuerURL, dex.Email)
-	require.NoError(t, testutil.DriveDexOIDC(ctx, authResp.URL, dex.IssuerURL, dex.Email, dex.Password), "drive dex OIDC flow")
-	t.Logf("dex OIDC flow completed; controller should reject because no identity has externalId=%q", dex.ExternalID)
+	t.Logf("driving PKCE flow (issuer=%s email=%s)", pkce.IssuerURL, pkce.Email)
+	require.NoError(t, testutil.DrivePKCEFlow(ctx, authResp.URL, pkce.IssuerURL, pkce.Email, pkce.Password), "drive PKCE flow")
+	t.Logf("PKCE flow completed; controller should reject because no identity has externalId=%q", pkce.ExternalID)
 
 	t.Logf("waiting for controller:disconnected event for %q", name)
 	events.WaitFor(t, ctx, "controller", "disconnected", name)
@@ -156,7 +156,7 @@ func testExternalAuthWithMultipleSignersCompletes(t *testing.T) {
 	defer cancel()
 
 	name := identityNameFor(t)
-	jwksURI := dex.JWKSURI()
+	jwksURI := pkce.JWKSURI()
 
 	realSignerName := name + "-signer-real"
 	signer2Name := name + "-signer-2"
@@ -164,36 +164,36 @@ func testExternalAuthWithMultipleSignersCompletes(t *testing.T) {
 	// Only the real signer is exercised by the auth flow. signer-2 and signer-3
 	// just need to exist as distinct providers in the policy; the controller
 	// rejects duplicate issuers via a unique index, so they each get a unique
-	// sub-path under dex (no traffic ever hits those endpoints).
+	// sub-path under the PKCE IdP (no traffic ever hits those endpoints).
 	t.Logf("creating real-issuer ext-jwt-signer %q", realSignerName)
 	realSignerID, err := overlay.CreateExtJwtSigner(ctx, testutil.ExtJwtSignerSpec{
 		Name:     realSignerName,
-		Issuer:   dex.IssuerURL,
+		Issuer:   pkce.IssuerURL,
 		JWKS:     jwksURI,
-		ClientID: dex.ClientIDs[0],
+		ClientID: pkce.ClientIDs[0],
 		Claim:    "email",
 		Scopes:   []string{"email"},
 	})
 	require.NoError(t, err, "create real-issuer ext-jwt-signer")
 	t.Logf("real-issuer signer created with id=%s", realSignerID)
 
-	t.Logf("creating placeholder ext-jwt-signer %q (distinct sub-path under dex)", signer2Name)
+	t.Logf("creating placeholder ext-jwt-signer %q (distinct sub-path under PKCE IdP)", signer2Name)
 	signer2ID, err := overlay.CreateExtJwtSigner(ctx, testutil.ExtJwtSignerSpec{
 		Name:     signer2Name,
-		Issuer:   dex.IssuerURL + "/" + signer2Name,
+		Issuer:   pkce.IssuerURL + "/" + signer2Name,
 		JWKS:     jwksURI,
-		ClientID: dex.ClientIDs[1],
+		ClientID: pkce.ClientIDs[1],
 		Claim:    "email",
 	})
 	require.NoError(t, err, "create ext-jwt-signer 2")
 	t.Logf("placeholder signer 2 created with id=%s", signer2ID)
 
-	t.Logf("creating placeholder ext-jwt-signer %q (distinct sub-path under dex)", signer3Name)
+	t.Logf("creating placeholder ext-jwt-signer %q (distinct sub-path under PKCE IdP)", signer3Name)
 	signer3ID, err := overlay.CreateExtJwtSigner(ctx, testutil.ExtJwtSignerSpec{
 		Name:     signer3Name,
-		Issuer:   dex.IssuerURL + "/" + signer3Name,
+		Issuer:   pkce.IssuerURL + "/" + signer3Name,
 		JWKS:     jwksURI,
-		ClientID: dex.ClientIDs[2],
+		ClientID: pkce.ClientIDs[2],
 		Claim:    "email",
 	})
 	require.NoError(t, err, "create ext-jwt-signer 3")
@@ -204,8 +204,8 @@ func testExternalAuthWithMultipleSignersCompletes(t *testing.T) {
 	require.NoError(t, overlay.CreateAuthPolicyForExtJwt(ctx, policyName, realSignerID, signer2ID, signer3ID), "create multi-signer auth policy")
 	t.Logf("auth policy %q created", policyName)
 
-	t.Logf("creating controller identity %q with externalId=%q bound to policy %q", name, dex.ExternalID, policyName)
-	require.NoError(t, overlay.CreateIdentityWithExternalId(ctx, name, dex.ExternalID, policyName), "create controller identity with externalId=dex user email")
+	t.Logf("creating controller identity %q with externalId=%q bound to policy %q", name, pkce.ExternalID, policyName)
+	require.NoError(t, overlay.CreateIdentityWithExternalId(ctx, name, pkce.ExternalID, policyName), "create controller identity with externalId=PKCE user email")
 	t.Logf("controller identity %q created", name)
 
 	cleanupCtx := context.Background()
@@ -233,9 +233,9 @@ func testExternalAuthWithMultipleSignersCompletes(t *testing.T) {
 	require.NotEmpty(t, authResp.URL, "ExternalAuth should return a non-empty auth URL")
 	t.Logf("ExternalAuth returned auth URL: %s", authResp.URL)
 
-	t.Logf("driving dex OIDC flow (issuer=%s email=%s)", dex.IssuerURL, dex.Email)
-	require.NoError(t, testutil.DriveDexOIDC(ctx, authResp.URL, dex.IssuerURL, dex.Email, dex.Password), "drive dex OIDC flow")
-	t.Logf("dex OIDC flow completed")
+	t.Logf("driving PKCE flow (issuer=%s email=%s)", pkce.IssuerURL, pkce.Email)
+	require.NoError(t, testutil.DrivePKCEFlow(ctx, authResp.URL, pkce.IssuerURL, pkce.Email, pkce.Password), "drive PKCE flow")
+	t.Logf("PKCE flow completed")
 
 	t.Logf("waiting for identity:added event for %q", name)
 	events.WaitFor(t, ctx, "identity", "added", name)
@@ -250,20 +250,21 @@ func testExternalAuthWithMultipleSignersCompletes(t *testing.T) {
 	t.Logf("status reports NeedsExtAuth=%t after multi-signer ExternalAuth", finalEntry.NeedsExtAuth)
 }
 
-// createDexSignerAndPolicy registers an ext-jwt-signer pointed at dex with the
-// given audience/client_id, plus a single-signer auth policy. Returns
-// (signerName, policyName). The signer maps dex's email claim to externalId.
-func createDexSignerAndPolicy(t *testing.T, ctx context.Context, name, clientID string) (string, string) {
+// createPKCESignerAndPolicy registers an ext-jwt-signer pointed at the PKCE
+// IdP with the given audience/client_id, plus a single-signer auth policy.
+// Returns (signerName, policyName). The signer maps the IdP's email claim to
+// externalId.
+func createPKCESignerAndPolicy(t *testing.T, ctx context.Context, name, clientID string) (string, string) {
 	t.Helper()
 	signerName := name + "-signer"
 	policyName := name + "-policy"
 
-	jwksURI := dex.JWKSURI()
+	jwksURI := pkce.JWKSURI()
 
-	t.Logf("creating ext-jwt-signer %q pointing at dex (issuer=%s clientID=%s)", signerName, dex.IssuerURL, clientID)
+	t.Logf("creating ext-jwt-signer %q pointing at PKCE IdP (issuer=%s clientID=%s)", signerName, pkce.IssuerURL, clientID)
 	signerID, err := overlay.CreateExtJwtSigner(ctx, testutil.ExtJwtSignerSpec{
 		Name:     signerName,
-		Issuer:   dex.IssuerURL,
+		Issuer:   pkce.IssuerURL,
 		JWKS:     jwksURI,
 		ClientID: clientID,
 		Claim:    "email",

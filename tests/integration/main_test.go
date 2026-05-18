@@ -33,14 +33,14 @@ import (
 var (
 	zetBin       string
 	zitiBin      string
-	dexBin       string
+	pkceBin      string
 	zetLogDir    string
 	zetVerbosity int
 	tlsuvDebug   int
 	overlay      *testutil.Overlay
 	zet          *testutil.ZET
 	zetB         *testutil.ZET
-	dex          *testutil.Dex
+	pkce         *testutil.PKCE
 	overlayHome  string
 	zetTempRoot  string
 )
@@ -48,7 +48,7 @@ var (
 func TestMain(m *testing.M) {
 	flag.StringVar(&zetBin, "zet-bin", "", "path to ziti-edge-tunnel binary (required)")
 	flag.StringVar(&zitiBin, "ziti-bin", "", "path to ziti binary for controller+router bring-up (required)")
-	flag.StringVar(&dexBin, "dex-bin", "", "path to dex binary (optional; enables tests that need an external IdP)")
+	flag.StringVar(&pkceBin, "pkce-bin", "", "path to PKCE IdP binary (optional; enables tests that need an external IdP)")
 	flag.StringVar(&zetLogDir, "zet-log-dir", "", "if set, write each zet's combined stdout+stderr to <dir>/zet-<name>.log")
 	flag.IntVar(&zetVerbosity, "zet-verbosity", 4, "ziti-edge-tunnel -v level (0=silent..6=trace)")
 	flag.IntVar(&tlsuvDebug, "tlsuv-debug", 0, "TLSUV_DEBUG level (0=off..6=trace); off by default")
@@ -157,15 +157,15 @@ teardown: to remove test CA from OS trust when done:
 		return 0, fmt.Errorf("start zetB: %w", zetBErr)
 	}
 
-	if dexBin != "" {
-		log.Printf("setup: starting dex (dexBin=%s)", dexBin)
-		dex, err = testutil.StartDex(ctx, dexBin, filepath.Join(zetTempRoot, "dex"), zetLogDir)
+	if pkceBin != "" {
+		log.Printf("setup: starting PKCE IdP (pkceBin=%s)", pkceBin)
+		pkce, err = testutil.StartPKCE(ctx, pkceBin, filepath.Join(zetTempRoot, "pkce"), zetLogDir)
 		if err != nil {
-			return 0, fmt.Errorf("start dex: %w", err)
+			return 0, fmt.Errorf("start PKCE IdP: %w", err)
 		}
-		defer dex.Stop()
+		defer pkce.Stop()
 	} else {
-		log.Printf("setup: -dex-bin not provided; tests that require an external IdP will be skipped")
+		log.Printf("setup: -pkce-bin not provided; tests that require an external IdP will be skipped")
 	}
 
 	log.Printf("setup: running tests")

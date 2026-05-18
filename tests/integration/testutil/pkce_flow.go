@@ -29,10 +29,10 @@ import (
 	"time"
 )
 
-// DriveDexOIDC acts as the browser in dex's OIDC password flow, following
+// DrivePKCEFlow acts as the browser in the IdP's OIDC password flow, following
 // redirects from authURL through the login form back to ZET's loopback
 // callback at localhost:20314.
-func DriveDexOIDC(ctx context.Context, authURL, issuer, username, password string) error {
+func DrivePKCEFlow(ctx context.Context, authURL, issuer, username, password string) error {
 	jar, err := cookiejar.New(nil)
 	if err != nil {
 		return fmt.Errorf("create cookie jar: %w", err)
@@ -68,7 +68,7 @@ func DriveDexOIDC(ctx context.Context, authURL, issuer, username, password strin
 
 	formAction, err := extractFormAction(string(body))
 	if err != nil {
-		return fmt.Errorf("parse dex login form: %w (body=%s)", err, truncate(body, 200))
+		return fmt.Errorf("parse PKCE login form: %w (body=%s)", err, truncate(body, 200))
 	}
 	postURL, err := absoluteURL(loginPageURL, formAction)
 	if err != nil {
@@ -173,9 +173,9 @@ func extractFormAction(body string) (string, error) {
 	if len(m) < 2 {
 		return "", fmt.Errorf("no <form action=...> in body")
 	}
-	// dex HTML-escapes the action attribute, so `?back=&state=<id>` is rendered
-	// as `?back=&amp;state=<id>`. Without decoding, the POSTed query parses as
-	// keys `back` and `amp;state`, and dex returns 400 "User session error."
+	// The IdP HTML-escapes the action attribute, so `?back=&state=<id>` is
+	// rendered as `?back=&amp;state=<id>`. Without decoding, the POSTed query
+	// parses as keys `back` and `amp;state`, and login returns 400.
 	return html.UnescapeString(m[1]), nil
 }
 

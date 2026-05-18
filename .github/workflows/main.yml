@@ -127,15 +127,15 @@ jobs:
           ZITI_ABS=$(cd "$(dirname "$ZITI")" && pwd)/$(basename "$ZITI")
           echo "ZITI_BIN=$ZITI_ABS" >> "$GITHUB_ENV"
 
-      - name: Build dex
+      - name: Build PKCE IdP
         shell: bash
         run: |
           DEST="$RUNNER_TEMP/dex-build" tests/integration/scripts/fetch-dex.sh
           case "$(uname -s)" in
-            MINGW*|MSYS*|CYGWIN*) DEX_BIN="$RUNNER_TEMP/dex-build/dex.exe" ;;
-            *) DEX_BIN="$RUNNER_TEMP/dex-build/dex" ;;
+            MINGW*|MSYS*|CYGWIN*) PKCE_BIN="$RUNNER_TEMP/dex-build/dex.exe" ;;
+            *) PKCE_BIN="$RUNNER_TEMP/dex-build/dex" ;;
           esac
-          echo "DEX_BIN=$DEX_BIN" >> "$GITHUB_ENV"
+          echo "PKCE_BIN=$PKCE_BIN" >> "$GITHUB_ENV"
 
       - name: Create ziti group
         if: ${{ matrix.create-group != '' }}
@@ -216,9 +216,9 @@ jobs:
               # ulimit -c unlimited must be set inside the privileged shell: sudo
               # resets resource limits via PAM, so setting it in the outer shell
               # has no effect on ZET child processes.
-              sudo env "PATH=$PATH" "ZET_BIN=$ZET_BIN" "ZITI_BIN=$ZITI_BIN" "DEX_BIN=$DEX_BIN" "RUNNER_TEMP=$RUNNER_TEMP" \
+              sudo env "PATH=$PATH" "ZET_BIN=$ZET_BIN" "ZITI_BIN=$ZITI_BIN" "PKCE_BIN=$PKCE_BIN" "RUNNER_TEMP=$RUNNER_TEMP" \
                 sh -c 'ulimit -c unlimited && exec go test ./... -v -timeout 20m \
-                  -zet-bin="$ZET_BIN" -ziti-bin="$ZITI_BIN" -dex-bin="$DEX_BIN" \
+                  -zet-bin="$ZET_BIN" -ziti-bin="$ZITI_BIN" -pkce-bin="$PKCE_BIN" \
                   -zet-log-dir="${{ env.ZET_LOG_DIR }}" \
                   -overlay-home="$RUNNER_TEMP"'
               ;;
@@ -226,7 +226,7 @@ jobs:
               go test ./... -v -timeout 20m \
                 -zet-bin="$ZET_BIN" \
                 -ziti-bin="$ZITI_BIN" \
-                -dex-bin="$DEX_BIN" \
+                -pkce-bin="$PKCE_BIN" \
                 -zet-log-dir="${{ env.ZET_LOG_DIR }}" \
                 -overlay-home="$RUNNER_TEMP"
               ;;

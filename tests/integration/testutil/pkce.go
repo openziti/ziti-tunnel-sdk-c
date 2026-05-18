@@ -28,8 +28,8 @@ import (
 	"time"
 )
 
-// Dex is a running test instance of the Dex OIDC provider.
-type Dex struct {
+// PKCE is a running test IdP used to exercise the OAuth2 PKCE flow.
+type PKCE struct {
 	Bin        string
 	WorkDir    string
 	HTTPAddr   string
@@ -41,14 +41,14 @@ type Dex struct {
 	cmd        *exec.Cmd
 }
 
-type DexUser struct {
+type PKCEUser struct {
 	Email    string
 	Username string
 	UserID   string
 	Password string
 }
 
-var DefaultDexUser = DexUser{
+var DefaultPKCEUser = PKCEUser{
 	Email:    "test@example.com",
 	Username: "test",
 	UserID:   "08a8684b-db88-4b73-90a9-3cd1661f5466",
@@ -56,26 +56,26 @@ var DefaultDexUser = DexUser{
 }
 
 // bcrypt of "password" at cost 10.
-const defaultDexBcryptHash = `$2a$10$2b2cU8CPhOTaGrs1HRQuAueS7JTT5ZHsHSzYiFPm1leZck7Mc8T4W`
+const defaultPKCEBcryptHash = `$2a$10$2b2cU8CPhOTaGrs1HRQuAueS7JTT5ZHsHSzYiFPm1leZck7Mc8T4W`
 
-// StartDex launches dex against a generated config and waits for discovery.
-// Caller must defer Stop(). If logDir is non-empty, dex's combined stdout+stderr
-// is written to <logDir>/dex.log so it sits alongside the zet logs and survives
-// the test temp dir being deleted.
-func StartDex(ctx context.Context, dexBin, workDir, logDir string) (*Dex, error) {
-	if dexBin == "" {
-		return nil, fmt.Errorf("dex binary path is empty")
+// StartPKCE launches the PKCE test IdP against a generated config and waits
+// for OIDC discovery. Caller must defer Stop(). If logDir is non-empty, the
+// IdP's combined stdout+stderr is written to <logDir>/pkce.log so it sits
+// alongside the zet logs and survives the test temp dir being deleted.
+func StartPKCE(ctx context.Context, pkceBin, workDir, logDir string) (*PKCE, error) {
+	if pkceBin == "" {
+		return nil, fmt.Errorf("PKCE binary path is empty")
 	}
-	if _, err := os.Stat(dexBin); err != nil {
-		return nil, fmt.Errorf("dex binary not found: %w", err)
+	if _, err := os.Stat(pkceBin); err != nil {
+		return nil, fmt.Errorf("PKCE binary not found: %w", err)
 	}
 	if err := os.MkdirAll(workDir, 0o755); err != nil {
-		return nil, fmt.Errorf("create dex work dir: %w", err)
+		return nil, fmt.Errorf("create PKCE work dir: %w", err)
 	}
 
 	port, err := pickFreePort()
 	if err != nil {
-		return nil, fmt.Errorf("pick dex port: %w", err)
+		return nil, fmt.Errorf("pick PKCE port: %w", err)
 	}
 	httpAddr := fmt.Sprintf("127.0.0.1:%d", port)
 	issuer := "http://" + httpAddr + "/dex"
@@ -92,7 +92,7 @@ func StartDex(ctx context.Context, dexBin, workDir, logDir string) (*Dex, error)
 `, id, id)
 	}
 
-	cfgPath := filepath.Join(workDir, "dex.yaml")
+	cfgPath := filepath.Join(workDir, "pkce.yaml")
 	cfg := fmt.Sprintf(`issuer: %s
 storage:
   type: memory
@@ -107,63 +107,63 @@ staticPasswords:
     hash: %q
     username: %q
     userID: %q
-`, issuer, httpAddr, clientsYAML, DefaultDexUser.Email, defaultDexBcryptHash, DefaultDexUser.Username, DefaultDexUser.UserID)
+`, issuer, httpAddr, clientsYAML, DefaultPKCEUser.Email, defaultPKCEBcryptHash, DefaultPKCEUser.Username, DefaultPKCEUser.UserID)
 	if err := os.WriteFile(cfgPath, []byte(cfg), 0o644); err != nil {
-		return nil, fmt.Errorf("write dex config: %w", err)
+		return nil, fmt.Errorf("write PKCE config: %w", err)
 	}
 
 	logDest := workDir
 	if logDir != "" {
 		if err := os.MkdirAll(logDir, 0o755); err != nil {
-			return nil, fmt.Errorf("create dex log dir: %w", err)
+			return nil, fmt.Errorf("create PKCE log dir: %w", err)
 		}
 		logDest = logDir
 	}
-	logPath := filepath.Join(logDest, "dex.log")
+	logPath := filepath.Join(logDest, "pkce.log")
 	logFile, err := os.Create(logPath)
 	if err != nil {
-		return nil, fmt.Errorf("create dex log: %w", err)
+		return nil, fmt.Errorf("create PKCE log: %w", err)
 	}
 
-	cmd := exec.CommandContext(ctx, dexBin, "serve", cfgPath)
+	cmd := exec.CommandContext(ctx, pkceBin, "serve", cfgPath)
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 	if err := cmd.Start(); err != nil {
 		logFile.Close()
-		return nil, fmt.Errorf("start dex: %w", err)
+		return nil, fmt.Errorf("start PKCE: %w", err)
 	}
-	log.Printf("setup: started dex pid=%d issuer=%s log=%s", cmd.Process.Pid, issuer, logPath)
+	log.Printf("setup: started PKCE pid=%d issuer=%s log=%s", cmd.Process.Pid, issuer, logPath)
 
-	d := &Dex{
-		Bin:       dexBin,
-		WorkDir:   workDir,
-		HTTPAddr:  httpAddr,
-		IssuerURL: issuer,
+	p := &PKCE{
+		Bin:        pkceBin,
+		WorkDir:    workDir,
+		HTTPAddr:   httpAddr,
+		IssuerURL:  issuer,
 		ClientIDs:  clientIDs,
-		Email:      DefaultDexUser.Email,
-		Password:   DefaultDexUser.Password,
-		ExternalID: DefaultDexUser.Email,
+		Email:      DefaultPKCEUser.Email,
+		Password:   DefaultPKCEUser.Password,
+		ExternalID: DefaultPKCEUser.Email,
 		cmd:        cmd,
 	}
 
-	if err := waitForDexDiscovery(ctx, issuer, 15*time.Second); err != nil {
-		d.Stop()
-		return nil, fmt.Errorf("dex discovery never came up (see %s): %w", logPath, err)
+	if err := waitForPKCEDiscovery(ctx, issuer, 15*time.Second); err != nil {
+		p.Stop()
+		return nil, fmt.Errorf("PKCE discovery never came up (see %s): %w", logPath, err)
 	}
-	return d, nil
+	return p, nil
 }
 
-func (d *Dex) Stop() {
-	if d == nil || d.cmd == nil || d.cmd.Process == nil {
+func (p *PKCE) Stop() {
+	if p == nil || p.cmd == nil || p.cmd.Process == nil {
 		return
 	}
-	_ = d.cmd.Process.Kill()
-	_, _ = d.cmd.Process.Wait()
-	d.cmd = nil
+	_ = p.cmd.Process.Kill()
+	_, _ = p.cmd.Process.Wait()
+	p.cmd = nil
 }
 
-func (d *Dex) JWKSURI() string {
-	return d.IssuerURL + "/keys"
+func (p *PKCE) JWKSURI() string {
+	return p.IssuerURL + "/keys"
 }
 
 func pickFreePort() (int, error) {
@@ -175,7 +175,7 @@ func pickFreePort() (int, error) {
 	return l.Addr().(*net.TCPAddr).Port, nil
 }
 
-func waitForDexDiscovery(ctx context.Context, issuer string, timeout time.Duration) error {
+func waitForPKCEDiscovery(ctx context.Context, issuer string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	client := &http.Client{Timeout: 2 * time.Second}
 	url := issuer + "/.well-known/openid-configuration"
