@@ -105,10 +105,36 @@ func (c *IPCClient) Close() error {
 	return c.conn.Close()
 }
 
+// DialIPC opens the command pipe on z, asserts no error, and registers a
+// Close cleanup on t. Returns the client.
+func DialIPC(t *testing.T, ctx context.Context, z *ZET) *IPCClient {
+	t.Helper()
+	c, err := z.DialIPC(ctx)
+	require.NoError(t, err, "dial ZET IPC pipe")
+	t.Cleanup(func() { _ = c.Close() })
+	return c
+}
+
+// DialEvents opens the event pipe on z, asserts no error, and registers a
+// Close cleanup on t. Returns the client.
+func DialEvents(t *testing.T, ctx context.Context, z *ZET) *EventClient {
+	t.Helper()
+	c, err := z.DialEvents(ctx)
+	require.NoError(t, err, "dial ZET event pipe")
+	t.Cleanup(func() { _ = c.Close() })
+	return c
+}
+
+type EventIdentity struct {
+	Identifier string `json:"Identifier"`
+	Active     bool   `json:"Active"`
+}
+
 type Event struct {
-	Op          string `json:"Op"`
-	Action      string `json:"Action"`
-	Fingerprint string `json:"Fingerprint"`
+	Op          string        `json:"Op"`
+	Action      string        `json:"Action"`
+	Fingerprint string        `json:"Fingerprint"`
+	Id          EventIdentity `json:"Id"`
 }
 
 // EventClient buffers events read from the ZET event pipe by a background
@@ -120,7 +146,6 @@ type EventClient struct {
 
 	mu      sync.Mutex
 	events  []Event
-	raws    []json.RawMessage
 	notify  []chan struct{}
 	readErr error
 }
@@ -168,15 +193,13 @@ func (c *EventClient) readLoop() {
 			c.mu.Unlock()
 			return
 		}
-		raw := append(json.RawMessage(nil), line...)
 		var parsed Event
-		if jerr := json.Unmarshal(raw, &parsed); jerr != nil {
-			log.Printf("ipc: event parse failed: %v raw=%s", jerr, raw)
+		if jerr := json.Unmarshal(line, &parsed); jerr != nil {
+			log.Printf("ipc: event parse failed: %v raw=%s", jerr, line)
 			continue
 		}
 		c.mu.Lock()
 		c.events = append(c.events, parsed)
-		c.raws = append(c.raws, raw)
 		for _, ch := range c.notify {
 			select {
 			case ch <- struct{}{}:
@@ -189,10 +212,10 @@ func (c *EventClient) readLoop() {
 
 // WaitFor blocks until an event matching op/action/fingerprint appears in
 // the buffer (or has already appeared since dial). Returns the matched
-// event's raw JSON so callers can inspect non-typed fields. Caps the wait
-// at 20s. Must be called from the test goroutine: a timeout calls
-// require.Failf, which is only safe on the goroutine running the test.
-func (c *EventClient) WaitFor(t *testing.T, ctx context.Context, op, action, fingerprint string) json.RawMessage {
+// Event with its Id payload decoded. Caps the wait at 20s. Must be called
+// from the test goroutine: a timeout calls require.Failf, which is only
+// safe on the goroutine running the test.
+func (c *EventClient) WaitFor(t *testing.T, ctx context.Context, op, action, fingerprint string) Event {
 	t.Helper()
 	waitCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
@@ -216,24 +239,23 @@ func (c *EventClient) WaitFor(t *testing.T, ctx context.Context, op, action, fin
 	for {
 		c.mu.Lock()
 		events := c.events
-		raws := c.raws
 		readErr := c.readErr
 		c.mu.Unlock()
 		for ; cursor < len(events); cursor++ {
 			e := events[cursor]
 			if e.Op == op && e.Action == action && e.Fingerprint == fingerprint {
-				return raws[cursor]
+				return e
 			}
 		}
 		if readErr != nil {
 			require.NoError(t, readErr, "event reader exited waiting for %s:%s/%s after %d events", op, action, fingerprint, cursor)
-			return nil
+			return Event{}
 		}
 		select {
 		case <-notify:
 		case <-waitCtx.Done():
 			require.Failf(t, "event wait timeout", "no %s:%s for %q within 20s; saw %d events: %v", op, action, fingerprint, cursor, events)
-			return nil
+			return Event{}
 		}
 	}
 }
