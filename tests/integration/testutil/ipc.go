@@ -31,9 +31,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type Command struct {
-	Command string `json:"Command"`
-	Data    any    `json:"Data,omitempty"`
+type IPCCommand struct {
+	Action  string `json:"Command"`
+	Payload any    `json:"Data,omitempty"`
 }
 
 type Response struct {
@@ -48,36 +48,9 @@ type IPCClient struct {
 	reader *bufio.Reader
 }
 
-func openCommandPipe(ctx context.Context, path string) (*IPCClient, error) {
-	const retryInterval = 100 * time.Millisecond
-	log.Printf("ipc: dialing command pipe %s", path)
-	start := time.Now()
-	attempts := 0
-	var lastErr error
-	for {
-		attempts++
-		conn, err := dialPlatform(ctx, path)
-		if err == nil {
-			log.Printf("ipc: connected to %s after %d attempt(s) in %s", path, attempts, time.Since(start).Round(time.Millisecond))
-			return &IPCClient{conn: conn, reader: bufio.NewReader(conn)}, nil
-		}
-		lastErr = err
-		if attempts == 1 || attempts%20 == 0 {
-			log.Printf("ipc: dial %s still failing after %d attempt(s): %v", path, attempts, err)
-		}
-		select {
-		case <-ctx.Done():
-			log.Printf("ipc: giving up dial %s after %d attempt(s) in %s: %v (last: %v)", path, attempts, time.Since(start).Round(time.Millisecond), ctx.Err(), lastErr)
-			return nil, fmt.Errorf("dial %s: %w (last: %v)", path, ctx.Err(), lastErr)
-		case <-time.After(retryInterval):
-		}
-	}
-}
-
 // SendCommand writes the command as one JSON line and reads exactly one JSON-line response.
-// The response may arrive only after an async handler completes (e.g. AddIdentity waits
-// for enrollment), so callers must supply a generous deadline.
-func (c *IPCClient) SendCommand(ctx context.Context, cmd Command) (*Response, error) {
+// The response may arrive only after an async handler completes, so callers must supply a generous deadline.
+func (c *IPCClient) SendCommand(ctx context.Context, cmd IPCCommand) (*Response, error) {
 	payload, err := json.Marshal(cmd)
 	if err != nil {
 		return nil, fmt.Errorf("marshal command: %w", err)
@@ -106,7 +79,7 @@ func (c *IPCClient) Close() error {
 	return c.conn.Close()
 }
 
-// OpenCommandPipe opens z's command pipe and registers Close as a t.Cleanup.
+// OpenCommandPipe opens ZET's command pipe and registers Close as a t.Cleanup.
 func OpenCommandPipe(t *testing.T, ctx context.Context, z *ZET) *IPCClient {
 	t.Helper()
 	c, err := openCommandPipe(ctx, z.CmdPipe)
@@ -115,13 +88,67 @@ func OpenCommandPipe(t *testing.T, ctx context.Context, z *ZET) *IPCClient {
 	return c
 }
 
-// SubscribeEvents subscribes to z's event pipe and registers Close as a t.Cleanup.
+func openCommandPipe(ctx context.Context, path string) (*IPCClient, error) {
+	const retryInterval = 100 * time.Millisecond
+	log.Printf("ipc: dialing command pipe %s", path)
+	start := time.Now()
+	attempts := 0
+	var lastErr error
+	for {
+		attempts++
+		conn, err := dialPlatform(ctx, path)
+		if err == nil {
+			log.Printf("ipc: connected to %s after %d attempt(s) in %s", path, attempts, time.Since(start).Round(time.Millisecond))
+			return &IPCClient{conn: conn, reader: bufio.NewReader(conn)}, nil
+		}
+		lastErr = err
+		if attempts == 1 || attempts%20 == 0 {
+			log.Printf("ipc: dial %s still failing after %d attempt(s): %v", path, attempts, err)
+		}
+		select {
+		case <-ctx.Done():
+			log.Printf("ipc: giving up dial %s after %d attempt(s) in %s: %v (last: %v)", path, attempts, time.Since(start).Round(time.Millisecond), ctx.Err(), lastErr)
+			return nil, fmt.Errorf("dial %s: %w (last: %v)", path, ctx.Err(), lastErr)
+		case <-time.After(retryInterval):
+		}
+	}
+}
+
+// SubscribeEvents subscribes to ZET's event pipe and registers Close as a t.Cleanup.
 func SubscribeEvents(t *testing.T, ctx context.Context, z *ZET) *EventClient {
 	t.Helper()
 	c, err := subscribeToEventPipe(ctx, z.EventPipe)
 	require.NoError(t, err, "subscribe to event pipe")
 	t.Cleanup(func() { _ = c.Close() })
 	return c
+}
+
+func subscribeToEventPipe(ctx context.Context, path string) (*EventClient, error) {
+	const retryInterval = 100 * time.Millisecond
+	log.Printf("ipc: dialing event pipe %s", path)
+	start := time.Now()
+	attempts := 0
+	var lastErr error
+	for {
+		attempts++
+		conn, err := dialPlatform(ctx, path)
+		if err == nil {
+			log.Printf("ipc: connected to event pipe %s after %d attempt(s) in %s", path, attempts, time.Since(start).Round(time.Millisecond))
+			ec := &EventClient{conn: conn, reader: bufio.NewReader(conn)}
+			go ec.readLoop()
+			return ec, nil
+		}
+		lastErr = err
+		if attempts == 1 || attempts%20 == 0 {
+			log.Printf("ipc: dial event pipe %s still failing after %d attempt(s): %v", path, attempts, err)
+		}
+		select {
+		case <-ctx.Done():
+			log.Printf("ipc: giving up event-pipe dial %s after %d attempt(s) in %s: %v (last: %v)", path, attempts, time.Since(start).Round(time.Millisecond), ctx.Err(), lastErr)
+			return nil, fmt.Errorf("dial %s: %w (last: %v)", path, ctx.Err(), lastErr)
+		case <-time.After(retryInterval):
+		}
+	}
 }
 
 type EventIdentity struct {
@@ -153,34 +180,6 @@ type EventClient struct {
 	cursor  int
 	notify  []chan struct{}
 	readErr error
-}
-
-func subscribeToEventPipe(ctx context.Context, path string) (*EventClient, error) {
-	const retryInterval = 100 * time.Millisecond
-	log.Printf("ipc: dialing event pipe %s", path)
-	start := time.Now()
-	attempts := 0
-	var lastErr error
-	for {
-		attempts++
-		conn, err := dialPlatform(ctx, path)
-		if err == nil {
-			log.Printf("ipc: connected to event pipe %s after %d attempt(s) in %s", path, attempts, time.Since(start).Round(time.Millisecond))
-			ec := &EventClient{conn: conn, reader: bufio.NewReader(conn)}
-			go ec.readLoop()
-			return ec, nil
-		}
-		lastErr = err
-		if attempts == 1 || attempts%20 == 0 {
-			log.Printf("ipc: dial event pipe %s still failing after %d attempt(s): %v", path, attempts, err)
-		}
-		select {
-		case <-ctx.Done():
-			log.Printf("ipc: giving up event-pipe dial %s after %d attempt(s) in %s: %v (last: %v)", path, attempts, time.Since(start).Round(time.Millisecond), ctx.Err(), lastErr)
-			return nil, fmt.Errorf("dial %s: %w (last: %v)", path, ctx.Err(), lastErr)
-		case <-time.After(retryInterval):
-		}
-	}
 }
 
 func (c *EventClient) readLoop() {
@@ -273,4 +272,3 @@ func (c *EventClient) WaitFor(t *testing.T, ctx context.Context, op, action, fin
 func (c *EventClient) Close() error {
 	return c.conn.Close()
 }
-

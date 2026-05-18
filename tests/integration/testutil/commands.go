@@ -221,59 +221,59 @@ func (c *IPCClient) GetMFAEnrollment(ctx context.Context, identifier string) (*M
 // handlers like AddIdentity that respond only after enrollment completes).
 
 func (c *IPCClient) RefreshIdentity(ctx context.Context, identifier string) (*Response, error) {
-	return c.SendCommand(ctx, Command{Command: "RefreshIdentity", Data: IdentifierData{Identifier: identifier}})
+	return c.SendCommand(ctx, IPCCommand{Action: "RefreshIdentity", Payload: IdentifierData{Identifier: identifier}})
 }
 
 func (c *IPCClient) RemoveIdentity(ctx context.Context, identifier string) (*Response, error) {
-	return c.SendCommand(ctx, Command{Command: "RemoveIdentity", Data: IdentifierData{Identifier: identifier}})
+	return c.SendCommand(ctx, IPCCommand{Action: "RemoveIdentity", Payload: IdentifierData{Identifier: identifier}})
 }
 
 func (c *IPCClient) IdentityOnOff(ctx context.Context, identifier string, onOff bool) (*Response, error) {
-	return c.SendCommand(ctx, Command{Command: "IdentityOnOff", Data: IdentityOnOffData{Identifier: identifier, OnOff: onOff}})
+	return c.SendCommand(ctx, IPCCommand{Action: "IdentityOnOff", Payload: IdentityOnOffData{Identifier: identifier, OnOff: onOff}})
 }
 
 func (c *IPCClient) SetLogLevel(ctx context.Context, level string) (*Response, error) {
-	return c.SendCommand(ctx, Command{Command: "SetLogLevel", Data: SetLogLevelData{Level: level}})
+	return c.SendCommand(ctx, IPCCommand{Action: "SetLogLevel", Payload: SetLogLevelData{Level: level}})
 }
 
 func (c *IPCClient) ZitiDump(ctx context.Context, identifier, dumpPath string) (*Response, error) {
-	return c.SendCommand(ctx, Command{Command: "ZitiDump", Data: ZitiDumpData{Identifier: identifier, DumpPath: dumpPath}})
+	return c.SendCommand(ctx, IPCCommand{Action: "ZitiDump", Payload: ZitiDumpData{Identifier: identifier, DumpPath: dumpPath}})
 }
 
 func (c *IPCClient) IpDump(ctx context.Context, dumpPath string) (*Response, error) {
-	return c.SendCommand(ctx, Command{Command: "IpDump", Data: IpDumpData{DumpPath: dumpPath}})
+	return c.SendCommand(ctx, IPCCommand{Action: "IpDump", Payload: IpDumpData{DumpPath: dumpPath}})
 }
 
 func (c *IPCClient) EnableMFA(ctx context.Context, identifier string) (*Response, error) {
-	return c.SendCommand(ctx, Command{Command: "EnableMFA", Data: EnableMFAData{Identifier: identifier}})
+	return c.SendCommand(ctx, IPCCommand{Action: "EnableMFA", Payload: EnableMFAData{Identifier: identifier}})
 }
 
 func (c *IPCClient) SubmitMFA(ctx context.Context, identifier, code string) (*Response, error) {
-	return c.SendCommand(ctx, Command{Command: "SubmitMFA", Data: MFAData{Identifier: identifier, Code: code}})
+	return c.SendCommand(ctx, IPCCommand{Action: "SubmitMFA", Payload: MFAData{Identifier: identifier, Code: code}})
 }
 
 func (c *IPCClient) VerifyMFA(ctx context.Context, identifier, code string) (*Response, error) {
-	return c.SendCommand(ctx, Command{Command: "VerifyMFA", Data: MFAData{Identifier: identifier, Code: code}})
+	return c.SendCommand(ctx, IPCCommand{Action: "VerifyMFA", Payload: MFAData{Identifier: identifier, Code: code}})
 }
 
 func (c *IPCClient) RemoveMFA(ctx context.Context, identifier, code string) (*Response, error) {
-	return c.SendCommand(ctx, Command{Command: "RemoveMFA", Data: MFAData{Identifier: identifier, Code: code}})
+	return c.SendCommand(ctx, IPCCommand{Action: "RemoveMFA", Payload: MFAData{Identifier: identifier, Code: code}})
 }
 
 func (c *IPCClient) GenerateMFACodes(ctx context.Context, identifier, code string) (*Response, error) {
-	return c.SendCommand(ctx, Command{Command: "GenerateMFACodes", Data: MFAData{Identifier: identifier, Code: code}})
+	return c.SendCommand(ctx, IPCCommand{Action: "GenerateMFACodes", Payload: MFAData{Identifier: identifier, Code: code}})
 }
 
 func (c *IPCClient) GetMFACodes(ctx context.Context, identifier, code string) (*Response, error) {
-	return c.SendCommand(ctx, Command{Command: "GetMFACodes", Data: MFAData{Identifier: identifier, Code: code}})
+	return c.SendCommand(ctx, IPCCommand{Action: "GetMFACodes", Payload: MFAData{Identifier: identifier, Code: code}})
 }
 
 func (c *IPCClient) UpdateInterfaceConfig(ctx context.Context, cfg InterfaceConfigData) (*Response, error) {
-	return c.SendCommand(ctx, Command{Command: "UpdateInterfaceConfig", Data: cfg})
+	return c.SendCommand(ctx, IPCCommand{Action: "UpdateInterfaceConfig", Payload: cfg})
 }
 
 func (c *IPCClient) ExternalAuth(ctx context.Context, identifier, provider string) (*Response, error) {
-	return c.SendCommand(ctx, Command{Command: "ExternalAuth", Data: ExternalAuthData{Identifier: identifier, Provider: provider}})
+	return c.SendCommand(ctx, IPCCommand{Action: "ExternalAuth", Payload: ExternalAuthData{Identifier: identifier, Provider: provider}})
 }
 
 // ExtAuth is the parsed payload of an ExternalAuth response: the URL the user
@@ -300,19 +300,19 @@ func (c *IPCClient) GetExternalAuth(ctx context.Context, identifier, provider st
 }
 
 func (c *IPCClient) Status(ctx context.Context) (*Response, error) {
-	return c.SendCommand(ctx, Command{Command: "Status"})
+	return c.SendCommand(ctx, IPCCommand{Action: "Status"})
 }
 
 func (c *IPCClient) ListIdentities(ctx context.Context) (*Response, error) {
-	return c.SendCommand(ctx, Command{Command: "ListIdentities"})
+	return c.SendCommand(ctx, IPCCommand{Action: "ListIdentities"})
 }
 
 func (c *IPCClient) GetMetrics(ctx context.Context) (*Response, error) {
-	return c.SendCommand(ctx, Command{Command: "GetMetrics"})
+	return c.SendCommand(ctx, IPCCommand{Action: "GetMetrics"})
 }
 
 func (c *IPCClient) AddIdentity(ctx context.Context, data AddIdentityData) (*Response, error) {
-	return c.SendCommand(ctx, Command{Command: "AddIdentity", Data: data})
+	return c.SendCommand(ctx, IPCCommand{Action: "AddIdentity", Payload: data})
 }
 
 func Enroll(t *testing.T, ctx context.Context, client *IPCClient, data AddIdentityData) *Response {

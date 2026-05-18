@@ -93,13 +93,13 @@ func testExternalAuthWithInvalidProviderFails(t *testing.T) {
 	client, _, needsExt := urlEnrollForExtAuth(t, ctx, name)
 
 	bogusProvider := signerName + "-bogus"
-	t.Logf("sending ExternalAuth with bogus provider %q (should be rejected)", bogusProvider)
+	t.Logf("sending ExternalAuth with bogus provider %q", bogusProvider)
 	resp, err := client.ExternalAuth(ctx, needsExt.Id.Identifier, bogusProvider)
 	require.NoError(t, err, "failed to send ExternalAuth\n%s", zet.Logs())
 	require.False(t, resp.Success, "ExternalAuth should fail for unknown provider %q\n%s", bogusProvider, zet.Logs())
 	require.Equal(t, 500, resp.Code, "expected Code=500, got %d", resp.Code)
 	require.Contains(t, resp.Error, "invalid provider", "expected invalid-provider error, got %q", resp.Error)
-	t.Logf("ExternalAuth correctly failed for invalid provider: code=%d error=%q", resp.Code, resp.Error)
+	t.Logf("ExternalAuth failed for invalid provider: code=%d error=%q", resp.Code, resp.Error)
 }
 
 func testExternalAuthWithoutControllerIdentityFails(t *testing.T) {
@@ -133,7 +133,7 @@ func testExternalAuthWithoutControllerIdentityFails(t *testing.T) {
 	t.Logf("PKCE flow completed; controller should reject because no identity has externalId=%q", pkce.ExternalID)
 
 	events.WaitFor(t, ctx, "controller", "disconnected", name)
-	t.Logf("controller:disconnected event received as expected")
+	t.Logf("controller:disconnected")
 }
 
 func testExternalAuthWithMultipleSignersCompletes(t *testing.T) {

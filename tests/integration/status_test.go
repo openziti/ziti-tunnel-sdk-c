@@ -61,5 +61,5 @@ func testStatusHasExpectedTopLevelFields(t *testing.T) {
 	require.Contains(t, keys, "TapInfo", "Status.TapInfo missing")
 	require.Contains(t, keys, "ConfigDir", "Status.ConfigDir missing")
 	require.Len(t, keys, 15, "Status has unexpected key set: %v", keys)
-	t.Logf("confirmed all 15 expected top-level fields present")
+	t.Logf("Status returned 15 top-level fields")
 }

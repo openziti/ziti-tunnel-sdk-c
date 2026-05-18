@@ -51,16 +51,16 @@ func testRemoveIdentityWithIdentifierFromEvent(t *testing.T) {
 	addResp := testutil.Enroll(t, ctx, client, identityData)
 	require.True(t, addResp.Success, "AddIdentity failed: error=%q code=%d", addResp.Error, addResp.Code)
 
-	evt := events.WaitFor(t, ctx, "identity", "added", name)
-	require.NotEmpty(t, evt.Id.Identifier, "identity:added Identifier empty")
+	event := events.WaitFor(t, ctx, "identity", "added", name)
+	require.NotEmpty(t, event.Id.Identifier, "identity:added Identifier empty")
 
-	t.Logf("sending RemoveIdentity for Identifier=%s", evt.Id.Identifier)
-	removeResp, err := client.RemoveIdentity(ctx, evt.Id.Identifier)
+	t.Logf("sending RemoveIdentity for Identifier=%s", event.Id.Identifier)
+	removeResp, err := client.RemoveIdentity(ctx, event.Id.Identifier)
 	require.NoError(t, err, "failed to send RemoveIdentity\n%s", zet.Logs())
 	require.True(t, removeResp.Success, "RemoveIdentity failed: error=%q code=%d", removeResp.Error, removeResp.Code)
 	t.Logf("RemoveIdentity succeeded for %q", name)
 
-	_, statErr := os.Stat(evt.Id.Identifier)
-	require.True(t, os.IsNotExist(statErr), "identity file should be removed after RemoveIdentity: %s\n%s", evt.Id.Identifier, zet.Logs())
-	t.Logf("confirmed identity file removed from disk: %s", evt.Id.Identifier)
+	_, statErr := os.Stat(event.Id.Identifier)
+	require.True(t, os.IsNotExist(statErr), "identity file should be removed after RemoveIdentity: %s\n%s", event.Id.Identifier, zet.Logs())
+	t.Logf("identity file removed from disk: %s", event.Id.Identifier)
 }

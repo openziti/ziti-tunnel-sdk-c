@@ -52,8 +52,8 @@ func testListIdentitiesContainsAddedIdentity(t *testing.T) {
 	addResp := testutil.Enroll(t, ctx, client, identityData)
 	require.True(t, addResp.Success, "AddIdentity failed: error=%q code=%d", addResp.Error, addResp.Code)
 
-	evt := events.WaitFor(t, ctx, "identity", "added", name)
-	require.NotEmpty(t, evt.Id.Identifier, "identity:added Identifier empty")
+	event := events.WaitFor(t, ctx, "identity", "added", name)
+	require.NotEmpty(t, event.Id.Identifier, "identity:added Identifier empty")
 
 	t.Logf("sending ListIdentities")
 	listResp, err := client.ListIdentities(ctx)
@@ -65,12 +65,12 @@ func testListIdentitiesContainsAddedIdentity(t *testing.T) {
 
 	var found *testutil.IdentityInfo
 	for i := range data.Identities {
-		if data.Identities[i].Config == evt.Id.Identifier {
+		if data.Identities[i].Config == event.Id.Identifier {
 			found = &data.Identities[i]
 			break
 		}
 	}
-	require.NotNil(t, found, "ListIdentities did not contain %q in %d entries", evt.Id.Identifier, len(data.Identities))
+	require.NotNil(t, found, "ListIdentities did not contain %q in %d entries", event.Id.Identifier, len(data.Identities))
 	require.Equal(t, name, found.Name, "identity Name should match the JWT subject name")
 	require.NotEmpty(t, found.Id, "identity Id should be set")
 	require.NotEmpty(t, found.Network, "identity Network should be set")

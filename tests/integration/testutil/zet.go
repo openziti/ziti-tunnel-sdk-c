@@ -173,8 +173,7 @@ func StartZET(ctx context.Context, binPath, identityDir string, opts ZETOptions)
 	return z, nil
 }
 
-// A surviving ZET orphans wintun state and breaks subsequent tests, so abort
-// hard rather than let an orphan hide.
+// A surviving ZET orphans wintun state and breaks subsequent tests, so abort rather than let an orphan hide.
 func (z *ZET) Stop() {
 	if z.extCmd.Process == nil {
 		return
@@ -183,7 +182,7 @@ func (z *ZET) Stop() {
 	if err := z.extCmd.Process.Kill(); err != nil {
 		log.Printf("ZET pid %d kill: %v", pid, err)
 	}
-	for i := 0; i < 120; i++ {
+	for range 120 {
 		time.Sleep(500 * time.Millisecond)
 		if proc, err := os.FindProcess(pid); err != nil || proc == nil {
 			if z.logFile != nil {
