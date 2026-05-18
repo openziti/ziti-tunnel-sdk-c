@@ -66,8 +66,10 @@ func testExternalAuthOnUrlEnrolledIdentityCompletes(t *testing.T) {
 	require.NoError(t, testutil.DrivePKCEFlow(ctx, authResp.URL, pkce.IssuerURL, pkce.Email, pkce.Password), "drive PKCE flow")
 	t.Logf("PKCE flow completed")
 
-	events.WaitFor(t, ctx, "controller", "connected", name)
-	t.Logf("controller:connected received after PKCE flow")
+	added := events.WaitFor(t, ctx, "identity", "added", name)
+	require.False(t, added.Id.NeedsExtAuth, "identity:added NeedsExtAuth=%t after PKCE flow, want false", added.Id.NeedsExtAuth)
+	require.True(t, added.Id.Active, "identity:added Active=%t after PKCE flow, want true", added.Id.Active)
+	t.Logf("identity:added reports NeedsExtAuth=%t Active=%t after PKCE flow", added.Id.NeedsExtAuth, added.Id.Active)
 }
 
 func testExternalAuthWithInvalidProviderFails(t *testing.T) {
@@ -214,8 +216,10 @@ func testExternalAuthWithMultipleSignersCompletes(t *testing.T) {
 	require.NoError(t, testutil.DrivePKCEFlow(ctx, authResp.URL, pkce.IssuerURL, pkce.Email, pkce.Password), "drive PKCE flow")
 	t.Logf("PKCE flow completed")
 
-	events.WaitFor(t, ctx, "controller", "connected", name)
-	t.Logf("controller:connected received after multi-signer PKCE flow")
+	added := events.WaitFor(t, ctx, "identity", "added", name)
+	require.False(t, added.Id.NeedsExtAuth, "identity:added NeedsExtAuth=%t after multi-signer PKCE flow, want false", added.Id.NeedsExtAuth)
+	require.True(t, added.Id.Active, "identity:added Active=%t after multi-signer PKCE flow, want true", added.Id.Active)
+	t.Logf("identity:added reports NeedsExtAuth=%t Active=%t after multi-signer PKCE flow", added.Id.NeedsExtAuth, added.Id.Active)
 }
 
 // createPKCESignerAndPolicy registers an ext-jwt-signer pointed at the PKCE
