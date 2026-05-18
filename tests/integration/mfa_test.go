@@ -61,7 +61,7 @@ func testEnableMFAAcceptsJwtEnrolledIdentity(t *testing.T) {
 	enrolled, _ := newEnrolledMFA(t, ctx, testutil.IdentityName(t))
 
 	require.False(t, enrolled.IsVerified, "EnableMFA Data.IsVerified should be false before verify_mfa")
-	t.Logf("EnableMFA returned IsVerified=%t (expected false before VerifyMFA)", enrolled.IsVerified)
+	t.Logf("EnableMFA returned IsVerified=%t", enrolled.IsVerified)
 }
 
 func testEnableMFAAcceptsTotpRequiredAuthPolicy(t *testing.T) {
@@ -134,7 +134,7 @@ func testVerifyMFARejectsInvalidTotp(t *testing.T) {
 	require.False(t, verifyResp.Success, "VerifyMFA with invalid TOTP should fail but Success=true")
 	require.Equal(t, 500, verifyResp.Code, "expected Code=500, got %d", verifyResp.Code)
 	require.Contains(t, verifyResp.Error, "the token provided was invalid", "expected invalid-token error, got %q", verifyResp.Error)
-	t.Logf("VerifyMFA correctly rejected invalid TOTP: code=%d error=%q", verifyResp.Code, verifyResp.Error)
+	t.Logf("VerifyMFA rejected invalid TOTP: code=%d error=%q", verifyResp.Code, verifyResp.Error)
 }
 
 func testMFAReauthenticationAcceptsValidTotp(t *testing.T) {
@@ -253,7 +253,7 @@ func testMFAReauthenticationRejectsInvalidTotp(t *testing.T) {
 	require.False(t, submitResp.Success, "SubmitMFA with invalid TOTP should fail but Success=true")
 	require.Equal(t, 500, submitResp.Code, "expected Code=500, got %d", submitResp.Code)
 	require.Contains(t, submitResp.Error, "the token provided was invalid", "expected invalid-token error, got %q", submitResp.Error)
-	t.Logf("SubmitMFA correctly rejected invalid TOTP: code=%d error=%q", submitResp.Code, submitResp.Error)
+	t.Logf("SubmitMFA rejected invalid TOTP: code=%d error=%q", submitResp.Code, submitResp.Error)
 }
 
 func testRemoveMFAAcceptsValidTotp(t *testing.T) {
@@ -335,7 +335,7 @@ func testRemoveMFARejectsInvalidTotp(t *testing.T) {
 	require.False(t, removeResp.Success, "RemoveMFA with invalid TOTP should fail but Success=true")
 	require.Equal(t, 500, removeResp.Code, "expected Code=500, got %d", removeResp.Code)
 	require.Contains(t, removeResp.Error, "the token provided was invalid", "expected invalid-token error, got %q", removeResp.Error)
-	t.Logf("RemoveMFA correctly rejected invalid TOTP: code=%d error=%q", removeResp.Code, removeResp.Error)
+	t.Logf("RemoveMFA rejected invalid TOTP: code=%d error=%q", removeResp.Code, removeResp.Error)
 }
 
 type enrolledMFA struct {

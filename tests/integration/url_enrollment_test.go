@@ -53,20 +53,20 @@ func testUrlEnrollmentWithValidControllerUrlSucceeds(t *testing.T) {
 	resp := testutil.Enroll(t, ctx, client, identityData)
 	require.True(t, resp.Success, "URL AddIdentity failed: error=%q code=%d\n%s", resp.Error, resp.Code, zet.Logs())
 
-	evt := events.WaitFor(t, ctx, "identity", "needs_ext_login", identityName)
-	require.NotEmpty(t, evt.Id.Identifier, "identity:needs_ext_login Identifier empty")
-	require.True(t, evt.Id.NeedsExtAuth, "identity:needs_ext_login NeedsExtAuth=%t, want true", evt.Id.NeedsExtAuth)
+	event := events.WaitFor(t, ctx, "identity", "needs_ext_login", identityName)
+	require.NotEmpty(t, event.Id.Identifier, "identity:needs_ext_login Identifier empty")
+	require.True(t, event.Id.NeedsExtAuth, "identity:needs_ext_login NeedsExtAuth=%t, want true", event.Id.NeedsExtAuth)
 
-	info, err := os.Stat(evt.Id.Identifier)
-	require.NoError(t, err, "failed to stat identity file at %s", evt.Id.Identifier)
+	info, err := os.Stat(event.Id.Identifier)
+	require.NoError(t, err, "failed to stat identity file at %s", event.Id.Identifier)
 	require.Greater(t, info.Size(), int64(0), "identity file should be non-empty")
 
-	content := testutil.ReadIdentityFile(t, evt.Id.Identifier)
+	content := testutil.ReadIdentityFile(t, event.Id.Identifier)
 	require.NotEmpty(t, content.ZtAPI, "identity file ztAPI empty")
 	require.NotEmpty(t, content.ID.CA, "identity file id.ca empty")
 	require.Empty(t, content.ID.Cert, "identity file id.cert should be empty before ext-auth completes")
 	require.Empty(t, content.ID.Key, "identity file id.key should be empty before ext-auth completes")
-	t.Logf("URL-enrolled identity:needs_ext_login Identifier=%s NeedsExtAuth=%t; file size=%d", evt.Id.Identifier, evt.Id.NeedsExtAuth, info.Size())
+	t.Logf("URL-enrolled identity:needs_ext_login Identifier=%s NeedsExtAuth=%t; file size=%d", event.Id.Identifier, event.Id.NeedsExtAuth, info.Size())
 }
 
 func testUrlEnrollmentSameNameTwiceSecondFails(t *testing.T) {
@@ -92,7 +92,7 @@ func testUrlEnrollmentSameNameTwiceSecondFails(t *testing.T) {
 	require.Equal(t, 500, second.Code, "expected Code=500, got %d", second.Code)
 	require.Contains(t, second.Error, "identity exists",
 		"expected duplicate-name error, got %q", second.Error)
-	t.Logf("second URL AddIdentity correctly rejected: code=%d error=%q", second.Code, second.Error)
+	t.Logf("second URL AddIdentity rejected: code=%d error=%q", second.Code, second.Error)
 }
 
 func testUrlEnrollmentAfterJwtSameNameFails(t *testing.T) {
@@ -125,7 +125,7 @@ func testUrlEnrollmentAfterJwtSameNameFails(t *testing.T) {
 	require.False(t, second.Success, "URL AddIdentity should fail when name already enrolled via JWT, got Success=true")
 	require.Equal(t, 500, second.Code, "expected Code=500, got %d", second.Code)
 	require.Contains(t, second.Error, "identity exists", "expected duplicate-name error, got %q", second.Error)
-	t.Logf("URL AddIdentity correctly rejected after JWT enroll: code=%d error=%q", second.Code, second.Error)
+	t.Logf("URL AddIdentity rejected after JWT enroll: code=%d error=%q", second.Code, second.Error)
 }
 
 func testUrlEnrollmentWithNonZitiEndpointFails(t *testing.T) {
@@ -144,7 +144,7 @@ func testUrlEnrollmentWithNonZitiEndpointFails(t *testing.T) {
 	resp := testutil.Enroll(t, ctx, client, identityData)
 	require.False(t, resp.Success, "non-Ziti URL %q should be rejected, got Success=true\n%s", nonZitiURL, zet.Logs())
 	require.Equal(t, 500, resp.Code, "expected Code=500, got %d", resp.Code)
-	t.Logf("non-Ziti URL correctly rejected: code=%d error=%q", resp.Code, resp.Error)
+	t.Logf("non-Ziti URL rejected: code=%d error=%q", resp.Code, resp.Error)
 }
 
 func testUrlEnrollmentWithMalformedUrlFails(t *testing.T) {
@@ -163,5 +163,5 @@ func testUrlEnrollmentWithMalformedUrlFails(t *testing.T) {
 	resp := testutil.Enroll(t, ctx, client, identityData)
 	require.False(t, resp.Success, "malformed URL %q should be rejected, got Success=true\n%s", badURL, zet.Logs())
 	require.Equal(t, 500, resp.Code, "expected Code=500, got %d", resp.Code)
-	t.Logf("malformed URL correctly rejected: code=%d error=%q", resp.Code, resp.Error)
+	t.Logf("malformed URL rejected: code=%d error=%q", resp.Code, resp.Error)
 }
