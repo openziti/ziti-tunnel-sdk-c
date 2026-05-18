@@ -17,9 +17,11 @@ limitations under the License.
 package testutil
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 
@@ -326,4 +328,26 @@ func Enroll(t *testing.T, ctx context.Context, client *IPCClient, data AddIdenti
 // in AddIdentity filenames, so it is replaced.
 func IdentityName(t *testing.T) string {
 	return strings.ReplaceAll(t.Name(), "/", "-")
+}
+
+type IdentityFileContent struct {
+	ZtAPI  string   `json:"ztAPI"`
+	ZtAPIs []string `json:"ztAPIs"`
+	ID     struct {
+		Cert string `json:"cert"`
+		Key  string `json:"key"`
+		CA   string `json:"ca"`
+	} `json:"id"`
+}
+
+func ReadIdentityFile(t *testing.T, path string) IdentityFileContent {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err, "failed to read identity file at %s", path)
+
+	var content IdentityFileContent
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	require.NoError(t, dec.Decode(&content), "identity file at %s has unknown fields or invalid shape: %s", path, raw)
+	return content
 }

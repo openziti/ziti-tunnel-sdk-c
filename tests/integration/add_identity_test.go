@@ -66,6 +66,12 @@ func testAddIdentityWithJwtSucceeds(t *testing.T) {
 	info, err := os.Stat(evt.Id.Identifier)
 	require.NoError(t, err, "failed to stat identity file at %s", evt.Id.Identifier)
 	require.Greater(t, info.Size(), int64(0), "identity file should be non-empty")
+
+	content := testutil.ReadIdentityFile(t, evt.Id.Identifier)
+	require.NotEmpty(t, content.ZtAPI, "identity file ztAPI empty")
+	require.NotEmpty(t, content.ID.Cert, "identity file id.cert empty")
+	require.NotEmpty(t, content.ID.Key, "identity file id.key empty")
+	require.NotEmpty(t, content.ID.CA, "identity file id.ca empty")
 	t.Logf("identity:added Identifier=%s Active=%t; file size=%d", evt.Id.Identifier, evt.Id.Active, info.Size())
 }
 

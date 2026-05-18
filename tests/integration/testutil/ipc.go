@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -258,7 +259,12 @@ func (c *EventClient) WaitFor(t *testing.T, ctx context.Context, op, action, fin
 		select {
 		case <-notify:
 		case <-waitCtx.Done():
-			require.Failf(t, "event wait timeout", "no %s:%s for %q within 20s; saw %d events: %v", op, action, fingerprint, cursor, events)
+			var dump strings.Builder
+			for i, e := range events {
+				raw, _ := json.Marshal(e)
+				fmt.Fprintf(&dump, "\n  [%d] %s", i, raw)
+			}
+			require.Failf(t, "event wait timeout", "no %s:%s for %q within 20s; saw %d events:%s", op, action, fingerprint, cursor, dump.String())
 			return Event{}
 		}
 	}

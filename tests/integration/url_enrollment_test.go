@@ -53,13 +53,20 @@ func testUrlEnrollmentWithValidControllerUrlSucceeds(t *testing.T) {
 	resp := testutil.Enroll(t, ctx, client, identityData)
 	require.True(t, resp.Success, "URL AddIdentity failed: error=%q code=%d\n%s", resp.Error, resp.Code, zet.Logs())
 
-	evt := events.WaitFor(t, ctx, "identity", "added", identityName)
-	require.NotEmpty(t, evt.Id.Identifier, "identity:added Identifier empty")
+	evt := events.WaitFor(t, ctx, "identity", "needs_ext_login", identityName)
+	require.NotEmpty(t, evt.Id.Identifier, "identity:needs_ext_login Identifier empty")
+	require.True(t, evt.Id.NeedsExtAuth, "identity:needs_ext_login NeedsExtAuth=%t, want true", evt.Id.NeedsExtAuth)
 
 	info, err := os.Stat(evt.Id.Identifier)
 	require.NoError(t, err, "failed to stat identity file at %s", evt.Id.Identifier)
 	require.Greater(t, info.Size(), int64(0), "identity file should be non-empty")
-	t.Logf("URL-enrolled identity:added Identifier=%s; file size=%d", evt.Id.Identifier, info.Size())
+
+	content := testutil.ReadIdentityFile(t, evt.Id.Identifier)
+	require.NotEmpty(t, content.ZtAPI, "identity file ztAPI empty")
+	require.NotEmpty(t, content.ID.CA, "identity file id.ca empty")
+	require.Empty(t, content.ID.Cert, "identity file id.cert should be empty before ext-auth completes")
+	require.Empty(t, content.ID.Key, "identity file id.key should be empty before ext-auth completes")
+	t.Logf("URL-enrolled identity:needs_ext_login Identifier=%s NeedsExtAuth=%t; file size=%d", evt.Id.Identifier, evt.Id.NeedsExtAuth, info.Size())
 }
 
 func testUrlEnrollmentSameNameTwiceSecondFails(t *testing.T) {
@@ -78,7 +85,7 @@ func testUrlEnrollmentSameNameTwiceSecondFails(t *testing.T) {
 
 	first := testutil.Enroll(t, ctx, client, identityData)
 	require.True(t, first.Success, "first URL AddIdentity should succeed: error=%q\n%s", first.Error, zet.Logs())
-	events.WaitFor(t, ctx, "identity", "added", identityName)
+	events.WaitFor(t, ctx, "identity", "needs_ext_login", identityName)
 
 	second := testutil.Enroll(t, ctx, client, identityData)
 	require.False(t, second.Success, "second URL AddIdentity should fail, got Success=true")
