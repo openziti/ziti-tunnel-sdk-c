@@ -173,6 +173,11 @@ func StartZET(ctx context.Context, binPath, identityDir string, opts ZETOptions)
 	return z, nil
 }
 
+// DialIPC connects to this ZET instance's IPC command pipe, retrying until ctx expires.
+func (z *ZET) DialIPC(ctx context.Context) (*IPCClient, error) {
+	return openCommandPipe(ctx, z.CmdPipe)
+}
+
 // A surviving ZET orphans wintun state and breaks subsequent tests, so abort rather than let an orphan hide.
 func (z *ZET) Stop() {
 	if z.extCmd.Process == nil {

@@ -66,10 +66,6 @@ func StartOverlay(ctx context.Context, zitiBin, home string) (*Overlay, error) {
 	if err := os.MkdirAll(home, 0o700); err != nil {
 		return nil, fmt.Errorf("mkdir home: %w", err)
 	}
-	log.Printf("overlay: wiping previous DB state under %s", home)
-	if err := wipeOverlayDB(home); err != nil {
-		return nil, fmt.Errorf("wipe overlay db: %w", err)
-	}
 
 	args := []string{
 		"edge", "quickstart",
@@ -135,24 +131,6 @@ func warnIfPortBound(port uint16) {
 	}
 	_ = conn.Close()
 	log.Printf("WARNING: port %d is already bound (%s); ziti quickstart will not be able to start until it is released", port, addr)
-}
-
-// wipeOverlayDB removes per-instance state so quickstart re-seeds a clean
-// controller DB, while keeping pki/root-ca intact so the OS trust install
-// from a prior run remains valid. The intermediate CA bundle is signed by
-// the same root and gets regenerated.
-func wipeOverlayDB(home string) error {
-	for _, p := range []string{
-		filepath.Join(home, "instance-1"),
-		filepath.Join(home, "pki", "intermediate-ca-instance-1"),
-		filepath.Join(home, "pki", "root-ca", "certs", "intermediate-ca-instance-1.cert"),
-		filepath.Join(home, "pki", "root-ca", "keys", "intermediate-ca-instance-1.key"),
-	} {
-		if err := os.RemoveAll(p); err != nil {
-			return fmt.Errorf("remove %s: %w", p, err)
-		}
-	}
-	return nil
 }
 
 func probeZitiVersion(ctx context.Context, zitiBin string) (int, int, error) {
