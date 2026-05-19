@@ -67,13 +67,10 @@ func (s *extAuthState) testEnrollByUrlCompletes(t *testing.T) {
 
 	needsExt := s.urlEnrollForExtAuth(t, ctx, name)
 
-	t.Logf("requesting external auth URL from ZET for signer=%q", signerName)
-	authResp, err := s.client.GetExternalAuth(ctx, needsExt.Id.Identifier, signerName)
-	require.NoError(t, err, "failed to send ExternalAuth\n%s", zet.Logs())
-	require.NotEmpty(t, authResp.URL, "ExternalAuth should return a non-empty auth URL")
+	authURL := s.client.GetExternalAuthURL(t, ctx, needsExt.Id.Identifier, signerName)
 
 	t.Logf("driving PKCE flow (issuer=%s email=%s)", pkce.IssuerURL, pkce.Email)
-	require.NoError(t, testutil.DrivePKCEFlow(ctx, authResp.URL, pkce.IssuerURL, pkce.Email, pkce.Password), "drive PKCE flow")
+	require.NoError(t, testutil.DrivePKCEFlow(ctx, authURL, pkce.IssuerURL, pkce.Email, pkce.Password), "drive PKCE flow")
 	t.Logf("PKCE flow completed")
 
 	added := s.events.WaitFor(t, ctx, "identity", "added", name)
@@ -132,13 +129,10 @@ func (s *extAuthState) testNoControllerIdentityFails(t *testing.T) {
 
 	needsExt := s.urlEnrollForExtAuth(t, ctx, name)
 
-	t.Logf("requesting external auth URL from ZET for signer=%q", signerName)
-	authResp, err := s.client.GetExternalAuth(ctx, needsExt.Id.Identifier, signerName)
-	require.NoError(t, err, "failed to send ExternalAuth\n%s", zet.Logs())
-	require.NotEmpty(t, authResp.URL, "ExternalAuth should return a non-empty auth URL")
+	authURL := s.client.GetExternalAuthURL(t, ctx, needsExt.Id.Identifier, signerName)
 
 	t.Logf("driving PKCE flow (issuer=%s email=%s)", pkce.IssuerURL, pkce.Email)
-	require.NoError(t, testutil.DrivePKCEFlow(ctx, authResp.URL, pkce.IssuerURL, pkce.Email, pkce.Password), "drive PKCE flow")
+	require.NoError(t, testutil.DrivePKCEFlow(ctx, authURL, pkce.IssuerURL, pkce.Email, pkce.Password), "drive PKCE flow")
 	t.Logf("PKCE flow completed; controller should reject because no identity has externalId=%q", pkce.ExternalID)
 
 	s.events.WaitFor(t, ctx, "controller", "disconnected", name)
@@ -205,13 +199,10 @@ func (s *extAuthState) testMultipleSignersWithDefaultPolicyCompletes(t *testing.
 	require.Subset(t, needsExt.Id.ExtAuthProviders, []string{realSignerName, signer2Name, signer3Name}, "identity:needs_ext_login ExtAuthProviders should contain all three signers, got %v", needsExt.Id.ExtAuthProviders)
 	t.Logf("identity:needs_ext_login reports ExtAuthProviders=%v (count=%d)", needsExt.Id.ExtAuthProviders, len(needsExt.Id.ExtAuthProviders))
 
-	t.Logf("requesting external auth URL from ZET for real signer=%q", realSignerName)
-	authResp, err := s.client.GetExternalAuth(ctx, needsExt.Id.Identifier, realSignerName)
-	require.NoError(t, err, "failed to send ExternalAuth\n%s", zet.Logs())
-	require.NotEmpty(t, authResp.URL, "ExternalAuth should return a non-empty auth URL")
+	authURL := s.client.GetExternalAuthURL(t, ctx, needsExt.Id.Identifier, realSignerName)
 
 	t.Logf("driving PKCE flow (issuer=%s email=%s)", pkce.IssuerURL, pkce.Email)
-	require.NoError(t, testutil.DrivePKCEFlow(ctx, authResp.URL, pkce.IssuerURL, pkce.Email, pkce.Password), "drive PKCE flow")
+	require.NoError(t, testutil.DrivePKCEFlow(ctx, authURL, pkce.IssuerURL, pkce.Email, pkce.Password), "drive PKCE flow")
 	t.Logf("PKCE flow completed")
 
 	added := s.events.WaitFor(t, ctx, "identity", "added", name)
@@ -288,13 +279,10 @@ func (s *extAuthState) testMultipleSignersWithNamedPolicyCompletes(t *testing.T)
 	require.Subset(t, needsExt.Id.ExtAuthProviders, []string{realSignerName, signer2Name, signer3Name}, "identity:needs_ext_login ExtAuthProviders should contain all three signers, got %v", needsExt.Id.ExtAuthProviders)
 	t.Logf("identity:needs_ext_login reports ExtAuthProviders=%v (count=%d)", needsExt.Id.ExtAuthProviders, len(needsExt.Id.ExtAuthProviders))
 
-	t.Logf("requesting external auth URL from ZET for real signer=%q", realSignerName)
-	authResp, err := s.client.GetExternalAuth(ctx, needsExt.Id.Identifier, realSignerName)
-	require.NoError(t, err, "failed to send ExternalAuth\n%s", zet.Logs())
-	require.NotEmpty(t, authResp.URL, "ExternalAuth should return a non-empty auth URL")
+	authURL := s.client.GetExternalAuthURL(t, ctx, needsExt.Id.Identifier, realSignerName)
 
 	t.Logf("driving PKCE flow (issuer=%s email=%s)", pkce.IssuerURL, pkce.Email)
-	require.NoError(t, testutil.DrivePKCEFlow(ctx, authResp.URL, pkce.IssuerURL, pkce.Email, pkce.Password), "drive PKCE flow")
+	require.NoError(t, testutil.DrivePKCEFlow(ctx, authURL, pkce.IssuerURL, pkce.Email, pkce.Password), "drive PKCE flow")
 	t.Logf("PKCE flow completed")
 
 	added := s.events.WaitFor(t, ctx, "identity", "added", name)

@@ -283,20 +283,19 @@ type ExtAuth struct {
 	URL        string `json:"url"`
 }
 
-// GetExternalAuth sends ExternalAuth, asserts success, and unmarshals the response.
-func (c *IPCClient) GetExternalAuth(ctx context.Context, identifier, provider string) (*ExtAuth, error) {
+// GetExternalAuthURL sends ExternalAuth, asserts success, parses the response,
+// and returns the auth URL. Fails the test on transport error, non-success
+// response, parse error, or empty URL.
+func (c *IPCClient) GetExternalAuthURL(t *testing.T, ctx context.Context, identifier, provider string) string {
+	t.Helper()
+	t.Logf("requesting external auth URL from ZET for provider=%q", provider)
 	resp, err := c.ExternalAuth(ctx, identifier, provider)
-	if err != nil {
-		return nil, fmt.Errorf("external auth: %w", err)
-	}
-	if !resp.Success {
-		return nil, fmt.Errorf("external auth failed: %s (code %d)", resp.Error, resp.Code)
-	}
+	require.NoError(t, err, "ExternalAuth IPC send")
+	require.True(t, resp.Success, "ExternalAuth failed: code=%d error=%q", resp.Code, resp.Error)
 	var out ExtAuth
-	if err := json.Unmarshal(resp.Data, &out); err != nil {
-		return nil, fmt.Errorf("parse external auth: %w", err)
-	}
-	return &out, nil
+	require.NoError(t, json.Unmarshal(resp.Data, &out), "parse ExternalAuth response")
+	require.NotEmpty(t, out.URL, "ExternalAuth returned an empty auth URL")
+	return out.URL
 }
 
 func (c *IPCClient) Status(ctx context.Context) (*Response, error) {
