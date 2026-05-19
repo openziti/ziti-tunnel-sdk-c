@@ -269,6 +269,7 @@ func urlEnrollForExtAuth(t *testing.T, ctx context.Context, name string) (*testu
 	needsExt := events.WaitFor(t, ctx, "identity", "needs_ext_login", name)
 	require.NotEmpty(t, needsExt.Id.Identifier, "identity:needs_ext_login Identifier empty")
 	require.True(t, needsExt.Id.NeedsExtAuth, "identity:needs_ext_login NeedsExtAuth=%t, want true", needsExt.Id.NeedsExtAuth)
+	testutil.AssertValidUrlEnrolledIdentityFile(t, needsExt.Id.Identifier, testutil.EnrollModeNone)
 	t.Logf("identity:needs_ext_login Identifier=%s NeedsExtAuth=%t", needsExt.Id.Identifier, needsExt.Id.NeedsExtAuth)
 
 	return client, events, needsExt

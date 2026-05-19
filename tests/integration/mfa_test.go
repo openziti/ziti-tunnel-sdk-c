@@ -92,6 +92,7 @@ func testEnableMFAAcceptsTotpRequiredAuthPolicy(t *testing.T) {
 
 	added := events.WaitFor(t, ctx, "identity", "added", name)
 	require.NotEmpty(t, added.Id.Identifier, "identity:added Identifier empty")
+	testutil.AssertValidJwtEnrolledIdentityFile(t, added.Id.Identifier)
 
 	t.Logf("sending EnableMFA for %q", name)
 	enrollment, err := client.GetMFAEnrollment(ctx, added.Id.Identifier)
@@ -366,6 +367,7 @@ func newEnrolledMFA(t *testing.T, ctx context.Context, name string) (*enrolledMF
 
 	added := events.WaitFor(t, ctx, "identity", "added", name)
 	require.NotEmpty(t, added.Id.Identifier, "identity:added Identifier empty")
+	testutil.AssertValidJwtEnrolledIdentityFile(t, added.Id.Identifier)
 	events.WaitFor(t, ctx, "controller", "connected", name)
 
 	t.Logf("sending EnableMFA for %q", name)

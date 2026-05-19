@@ -18,7 +18,6 @@ package integration_test
 
 import (
 	"context"
-	"os"
 	"testing"
 	"time"
 
@@ -57,16 +56,8 @@ func testUrlEnrollmentWithValidControllerUrlSucceeds(t *testing.T) {
 	require.NotEmpty(t, event.Id.Identifier, "identity:needs_ext_login Identifier empty")
 	require.True(t, event.Id.NeedsExtAuth, "identity:needs_ext_login NeedsExtAuth=%t, want true", event.Id.NeedsExtAuth)
 
-	info, err := os.Stat(event.Id.Identifier)
-	require.NoError(t, err, "failed to stat identity file at %s", event.Id.Identifier)
-	require.Greater(t, info.Size(), int64(0), "identity file should be non-empty")
-
-	content := testutil.ReadIdentityFile(t, event.Id.Identifier)
-	require.NotEmpty(t, content.ZtAPI, "identity file ztAPI empty")
-	require.NotEmpty(t, content.ID.CA, "identity file id.ca empty")
-	require.Empty(t, content.ID.Cert, "identity file id.cert should be empty before ext-auth completes")
-	require.Empty(t, content.ID.Key, "identity file id.key should be empty before ext-auth completes")
-	t.Logf("URL-enrolled identity:needs_ext_login Identifier=%s NeedsExtAuth=%t; file size=%d", event.Id.Identifier, event.Id.NeedsExtAuth, info.Size())
+	testutil.AssertValidUrlEnrolledIdentityFile(t, event.Id.Identifier, testutil.EnrollModeNone)
+	t.Logf("URL-enrolled identity:needs_ext_login Identifier=%s NeedsExtAuth=%t", event.Id.Identifier, event.Id.NeedsExtAuth)
 }
 
 func testUrlEnrollmentSameNameTwiceSecondFails(t *testing.T) {
@@ -114,7 +105,8 @@ func testUrlEnrollmentAfterJwtSameNameFails(t *testing.T) {
 	}
 	first := testutil.Enroll(t, ctx, client, jwtIdentityData)
 	require.True(t, first.Success, "first JWT AddIdentity should succeed: error=%q\n%s", first.Error, zet.Logs())
-	events.WaitFor(t, ctx, "identity", "added", identityName)
+	added := events.WaitFor(t, ctx, "identity", "added", identityName)
+	testutil.AssertValidJwtEnrolledIdentityFile(t, added.Id.Identifier)
 
 	controllerURL := overlay.ControllerHostPort()
 	urlIdentityData := testutil.AddIdentityData{

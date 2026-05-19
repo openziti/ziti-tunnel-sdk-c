@@ -194,7 +194,9 @@ func setupT2TService(
 
 	// Enroll identities into their respective ZETs.
 	interceptClient := testutil.OpenCommandPipe(t, ctx, interceptZET)
+	interceptEvents := testutil.SubscribeEvents(t, ctx, interceptZET)
 	hostClient := testutil.OpenCommandPipe(t, ctx, hostZET)
+	hostEvents := testutil.SubscribeEvents(t, ctx, hostZET)
 
 	interceptIdentityData := testutil.AddIdentityData{
 		IdentityFilename: names.interceptIdentity,
@@ -202,6 +204,8 @@ func setupT2TService(
 	}
 	resp := testutil.Enroll(t, ctx, interceptClient, interceptIdentityData)
 	require.True(t, resp.Success, "AddIdentity to intercept ZET failed: %s\n%s", resp.Error, interceptZET.Logs())
+	interceptAdded := interceptEvents.WaitFor(t, ctx, "identity", "added", names.interceptIdentity)
+	testutil.AssertValidJwtEnrolledIdentityFile(t, interceptAdded.Id.Identifier)
 
 	hostIdentityData := testutil.AddIdentityData{
 		IdentityFilename: names.hostIdentity,
@@ -209,6 +213,8 @@ func setupT2TService(
 	}
 	resp = testutil.Enroll(t, ctx, hostClient, hostIdentityData)
 	require.True(t, resp.Success, "AddIdentity to host ZET failed: %s\n%s", resp.Error, hostZET.Logs())
+	hostAdded := hostEvents.WaitFor(t, ctx, "identity", "added", names.hostIdentity)
+	testutil.AssertValidJwtEnrolledIdentityFile(t, hostAdded.Id.Identifier)
 
 	// Create controller-side resources.
 	t.Logf("creating host config %q (forward to %s:%d via %s)", names.hostConfig, forwardAddr, forwardPort, protocol)

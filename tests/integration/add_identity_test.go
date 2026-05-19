@@ -18,7 +18,6 @@ package integration_test
 
 import (
 	"context"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -63,16 +62,8 @@ func testAddIdentityWithJwtSucceeds(t *testing.T) {
 	require.True(t, event.Id.Active, "identity:added Active=%t, want true", event.Id.Active)
 	require.NotEmpty(t, event.Id.Identifier, "identity:added Identifier empty")
 
-	info, err := os.Stat(event.Id.Identifier)
-	require.NoError(t, err, "failed to stat identity file at %s", event.Id.Identifier)
-	require.Greater(t, info.Size(), int64(0), "identity file should be non-empty")
-
-	content := testutil.ReadIdentityFile(t, event.Id.Identifier)
-	require.NotEmpty(t, content.ZtAPI, "identity file ztAPI empty")
-	require.NotEmpty(t, content.ID.Cert, "identity file id.cert empty")
-	require.NotEmpty(t, content.ID.Key, "identity file id.key empty")
-	require.NotEmpty(t, content.ID.CA, "identity file id.ca empty")
-	t.Logf("identity:added Identifier=%s Active=%t; file size=%d", event.Id.Identifier, event.Id.Active, info.Size())
+	testutil.AssertValidJwtEnrolledIdentityFile(t, event.Id.Identifier)
+	t.Logf("identity:added Identifier=%s Active=%t", event.Id.Identifier, event.Id.Active)
 }
 
 func testAddIdentitySameJwtTwiceSecondFails(t *testing.T) {
@@ -95,7 +86,8 @@ func testAddIdentitySameJwtTwiceSecondFails(t *testing.T) {
 
 	first := testutil.Enroll(t, ctx, client, identityData)
 	require.True(t, first.Success, "first AddIdentity should succeed: error=%q\n%s", first.Error, zet.Logs())
-	events.WaitFor(t, ctx, "identity", "added", identityName)
+	added := events.WaitFor(t, ctx, "identity", "added", identityName)
+	testutil.AssertValidJwtEnrolledIdentityFile(t, added.Id.Identifier)
 
 	second := testutil.Enroll(t, ctx, client, identityData)
 	require.False(t, second.Success, "second AddIdentity should fail, got Success=true")

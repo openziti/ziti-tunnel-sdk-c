@@ -53,6 +53,7 @@ func testRemoveIdentityWithIdentifierFromEvent(t *testing.T) {
 
 	event := events.WaitFor(t, ctx, "identity", "added", name)
 	require.NotEmpty(t, event.Id.Identifier, "identity:added Identifier empty")
+	testutil.AssertValidJwtEnrolledIdentityFile(t, event.Id.Identifier)
 
 	t.Logf("sending RemoveIdentity for Identifier=%s", event.Id.Identifier)
 	removeResp, err := client.RemoveIdentity(ctx, event.Id.Identifier)

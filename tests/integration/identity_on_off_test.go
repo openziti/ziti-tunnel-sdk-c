@@ -52,6 +52,7 @@ func testIdentityOnOffTogglesActiveOff(t *testing.T) {
 
 	added := events.WaitFor(t, ctx, "identity", "added", name)
 	require.NotEmpty(t, added.Id.Identifier, "identity:added Identifier empty")
+	testutil.AssertValidJwtEnrolledIdentityFile(t, added.Id.Identifier)
 
 	t.Logf("sending IdentityOnOff(false) for %q", name)
 	offResp, err := client.IdentityOnOff(ctx, added.Id.Identifier, false)
@@ -85,6 +86,7 @@ func testIdentityOnOffTogglesActiveOn(t *testing.T) {
 
 	added := events.WaitFor(t, ctx, "identity", "added", name)
 	require.NotEmpty(t, added.Id.Identifier, "identity:added Identifier empty")
+	testutil.AssertValidJwtEnrolledIdentityFile(t, added.Id.Identifier)
 
 	t.Logf("sending IdentityOnOff(false) for %q", name)
 	offResp, err := client.IdentityOnOff(ctx, added.Id.Identifier, false)
