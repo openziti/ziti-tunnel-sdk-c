@@ -34,78 +34,74 @@ func testIdentityOnOffTogglesActiveOff(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	client, err := testutil.DialIPC(ctx)
-	require.NoError(t, err, "dial ZET IPC pipe")
-	t.Cleanup(func() { _ = client.Close() })
+	events := testutil.SubscribeEvents(t, ctx, zet)
+	client := testutil.OpenCommandPipe(t, ctx, zet)
 
-	name := identityNameFor(t)
+	name := testutil.IdentityName(t)
+	t.Logf("creating JWT for %q", name)
 	jwt, err := overlay.CreateIdentityJWT(ctx, name)
-	require.NoError(t, err, "mint JWT")
+	require.NoError(t, err, "failed to create JWT")
 	require.NotEmpty(t, jwt)
 
 	identityData := testutil.AddIdentityData{
 		IdentityFilename: name,
 		JwtContent:       &jwt,
 	}
-	addResp, err := client.AddIdentity(ctx, identityData)
-	require.NoError(t, err, "AddIdentity send\n%s", zet.Logs())
+	addResp := testutil.Enroll(t, ctx, client, identityData)
 	require.True(t, addResp.Success, "AddIdentity failed: error=%q code=%d", addResp.Error, addResp.Code)
 
-	status, err := client.GetTunnelStatus(ctx)
-	require.NoError(t, err, "Status send\n%s", zet.Logs())
-	entry := status.FindIdentity(name)
-	require.NotNil(t, entry, "identity %q not found in Status.Identities", name)
+	added := events.WaitFor(t, ctx, "identity", "added", name)
+	require.NotEmpty(t, added.Id.Identifier, "identity:added Identifier empty")
+	testutil.AssertValidJwtEnrolledIdentityFile(t, added.Id.Identifier)
 
-	offResp, err := client.IdentityOnOff(ctx, entry.Identifier, false)
-	require.NoError(t, err, "IdentityOnOff(false) send\n%s", zet.Logs())
+	t.Logf("sending IdentityOnOff(false) for %q", name)
+	offResp, err := client.IdentityOnOff(ctx, added.Id.Identifier, false)
+	require.NoError(t, err, "failed to send IdentityOnOff(false)\n%s", zet.Logs())
 	require.True(t, offResp.Success, "IdentityOnOff(false) failed: error=%q code=%d", offResp.Error, offResp.Code)
 
-	status, err = client.GetTunnelStatus(ctx)
-	require.NoError(t, err, "Status send after off\n%s", zet.Logs())
-	entry = status.FindIdentity(name)
-	require.NotNil(t, entry, "identity %q not found in Status after off", name)
-	require.False(t, entry.Active, "Status.Identities[%q].Active should be false after IdentityOnOff(false)", name)
-	t.Logf("IdentityOnOff(false) ID Active=%t", entry.Active)
+	off := events.WaitFor(t, ctx, "identity", "added", name)
+	require.False(t, off.Id.Active, "identity:added Active=%t after IdentityOnOff(false), want false", off.Id.Active)
+	t.Logf("identity:added reports Active=%t after IdentityOnOff(false)", off.Id.Active)
 }
 
 func testIdentityOnOffTogglesActiveOn(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	client, err := testutil.DialIPC(ctx)
-	require.NoError(t, err, "dial ZET IPC pipe")
-	t.Cleanup(func() { _ = client.Close() })
+	events := testutil.SubscribeEvents(t, ctx, zet)
+	client := testutil.OpenCommandPipe(t, ctx, zet)
 
-	name := identityNameFor(t)
+	name := testutil.IdentityName(t)
+	t.Logf("creating JWT for %q", name)
 	jwt, err := overlay.CreateIdentityJWT(ctx, name)
-	require.NoError(t, err, "mint JWT")
+	require.NoError(t, err, "failed to create JWT")
 	require.NotEmpty(t, jwt)
 
 	identityData := testutil.AddIdentityData{
 		IdentityFilename: name,
 		JwtContent:       &jwt,
 	}
-	addResp, err := client.AddIdentity(ctx, identityData)
-	require.NoError(t, err, "AddIdentity send\n%s", zet.Logs())
+	addResp := testutil.Enroll(t, ctx, client, identityData)
 	require.True(t, addResp.Success, "AddIdentity failed: error=%q code=%d", addResp.Error, addResp.Code)
 
-	status, err := client.GetTunnelStatus(ctx)
-	require.NoError(t, err, "Status send\n%s", zet.Logs())
-	entry := status.FindIdentity(name)
-	require.NotNil(t, entry, "identity %q not found in Status.Identities", name)
+	added := events.WaitFor(t, ctx, "identity", "added", name)
+	require.NotEmpty(t, added.Id.Identifier, "identity:added Identifier empty")
+	testutil.AssertValidJwtEnrolledIdentityFile(t, added.Id.Identifier)
 
-	offResp, err := client.IdentityOnOff(ctx, entry.Identifier, false)
-	require.NoError(t, err, "IdentityOnOff(false) send\n%s", zet.Logs())
+	t.Logf("sending IdentityOnOff(false) for %q", name)
+	offResp, err := client.IdentityOnOff(ctx, added.Id.Identifier, false)
+	require.NoError(t, err, "failed to send IdentityOnOff(false)\n%s", zet.Logs())
 	require.True(t, offResp.Success, "IdentityOnOff(false) failed: error=%q code=%d", offResp.Error, offResp.Code)
 
-	onResp, err := client.IdentityOnOff(ctx, entry.Identifier, true)
-	require.NoError(t, err, "IdentityOnOff(true) send\n%s", zet.Logs())
+	off := events.WaitFor(t, ctx, "identity", "added", name)
+	require.False(t, off.Id.Active, "identity:added Active=%t after IdentityOnOff(false), want false", off.Id.Active)
+
+	t.Logf("sending IdentityOnOff(true) for %q", name)
+	onResp, err := client.IdentityOnOff(ctx, added.Id.Identifier, true)
+	require.NoError(t, err, "failed to send IdentityOnOff(true)\n%s", zet.Logs())
 	require.True(t, onResp.Success, "IdentityOnOff(true) failed: error=%q code=%d", onResp.Error, onResp.Code)
 
-	status, err = client.GetTunnelStatus(ctx)
-	require.NoError(t, err, "Status send after on\n%s", zet.Logs())
-	entry = status.FindIdentity(name)
-	require.NotNil(t, entry, "identity %q not found in Status after on", name)
-	require.True(t, entry.Active, "Status.Identities[%q].Active should be true after IdentityOnOff(true)", name)
-	t.Logf("IdentityOnOff(true) ID Active=%t", entry.Active)
+	on := events.WaitFor(t, ctx, "identity", "added", name)
+	require.True(t, on.Id.Active, "identity:added Active=%t after IdentityOnOff(true), want true", on.Id.Active)
+	t.Logf("identity:added reports Active=%t after IdentityOnOff(true)", on.Id.Active)
 }

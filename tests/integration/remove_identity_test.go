@@ -27,44 +27,41 @@ import (
 )
 
 func TestRemoveIdentity(t *testing.T) {
-	t.Run("withIdentifierFromStatus", testRemoveIdentityWithIdentifierFromStatus)
+	t.Run("withIdentifierFromEvent", testRemoveIdentityWithIdentifierFromEvent)
 }
 
-func testRemoveIdentityWithIdentifierFromStatus(t *testing.T) {
+func testRemoveIdentityWithIdentifierFromEvent(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	client, err := testutil.DialIPC(ctx)
-	require.NoError(t, err, "dial ZET IPC pipe")
-	t.Cleanup(func() { _ = client.Close() })
+	events := testutil.SubscribeEvents(t, ctx, zet)
+	client := testutil.OpenCommandPipe(t, ctx, zet)
 
-	name := identityNameFor(t)
+	name := testutil.IdentityName(t)
 
+	t.Logf("creating JWT for %q", name)
 	jwt, err := overlay.CreateIdentityJWT(ctx, name)
-	require.NoError(t, err, "mint JWT")
+	require.NoError(t, err, "failed to create JWT")
 	require.NotEmpty(t, jwt)
 
 	identityData := testutil.AddIdentityData{
 		IdentityFilename: name,
 		JwtContent:       &jwt,
 	}
-	addResp, err := client.AddIdentity(ctx, identityData)
-	require.NoError(t, err, "AddIdentity send\n%s", zet.Logs())
+	addResp := testutil.Enroll(t, ctx, client, identityData)
 	require.True(t, addResp.Success, "AddIdentity failed: error=%q code=%d", addResp.Error, addResp.Code)
 
-	status, err := client.GetTunnelStatus(ctx)
-	require.NoError(t, err, "Status after AddIdentity\n%s", zet.Logs())
-	entry := status.FindIdentity(name)
-	require.NotNil(t, entry, "identity %q not found in Status after AddIdentity", name)
+	event := events.WaitFor(t, ctx, "identity", "added", name)
+	require.NotEmpty(t, event.Id.Identifier, "identity:added Identifier empty")
+	testutil.AssertValidJwtEnrolledIdentityFile(t, event.Id.Identifier)
 
-	info, err := os.Stat(entry.Identifier)
-	require.NoError(t, err, "identity file should exist after AddIdentity")
-	require.Greater(t, info.Size(), int64(0))
-
-	removeResp, err := client.RemoveIdentity(ctx, entry.Identifier)
-	require.NoError(t, err, "RemoveIdentity send\n%s", zet.Logs())
+	t.Logf("sending RemoveIdentity for Identifier=%s", event.Id.Identifier)
+	removeResp, err := client.RemoveIdentity(ctx, event.Id.Identifier)
+	require.NoError(t, err, "failed to send RemoveIdentity\n%s", zet.Logs())
 	require.True(t, removeResp.Success, "RemoveIdentity failed: error=%q code=%d", removeResp.Error, removeResp.Code)
+	t.Logf("RemoveIdentity succeeded for %q", name)
 
-	_, statErr := os.Stat(entry.Identifier)
-	require.True(t, os.IsNotExist(statErr), "identity file should be removed after RemoveIdentity: %s\n%s", entry.Identifier, zet.Logs())
+	_, statErr := os.Stat(event.Id.Identifier)
+	require.True(t, os.IsNotExist(statErr), "identity file should be removed after RemoveIdentity: %s\n%s", event.Id.Identifier, zet.Logs())
+	t.Logf("identity file removed from disk: %s", event.Id.Identifier)
 }

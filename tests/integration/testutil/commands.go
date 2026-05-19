@@ -17,9 +17,15 @@ limitations under the License.
 package testutil
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 // Payload structs below mirror the wire JSON emitted/accepted by ziti-edge-tunnel's
@@ -131,13 +137,14 @@ type ServiceVersion struct {
 type TapInfo struct{}
 
 type IdentityStatus struct {
-	Name         string `json:"Name"`
-	Identifier   string `json:"Identifier"`
-	Active       bool   `json:"Active"`
-	FingerPrint  string `json:"FingerPrint"`
-	MfaEnabled   bool   `json:"MfaEnabled"`
-	MfaNeeded    bool   `json:"MfaNeeded"`
-	NeedsExtAuth bool   `json:"NeedsExtAuth"`
+	Name             string   `json:"Name"`
+	Identifier       string   `json:"Identifier"`
+	Active           bool     `json:"Active"`
+	FingerPrint      string   `json:"FingerPrint"`
+	MfaEnabled       bool     `json:"MfaEnabled"`
+	MfaNeeded        bool     `json:"MfaNeeded"`
+	NeedsExtAuth     bool     `json:"NeedsExtAuth"`
+	ExtAuthProviders []string `json:"ExtAuthProviders"`
 }
 
 type TunnelStatus struct {
@@ -158,10 +165,12 @@ type TunnelStatus struct {
 	ConfigDir         string          `json:"ConfigDir"`
 }
 
-// FindIdentity returns the identity entry whose Name matches, or nil.
-func (s *TunnelStatus) FindIdentity(name string) *IdentityStatus {
+// FindIdentity returns the identity entry whose FingerPrint matches, or nil.
+// FingerPrint carries the controller-side identity name; Name is mutable and
+// gets rewritten to the identity-file path after /current-identity is fetched.
+func (s *TunnelStatus) FindIdentity(fingerprint string) *IdentityStatus {
 	for i := range s.Identities {
-		if s.Identities[i].Name == name {
+		if s.Identities[i].FingerPrint == fingerprint {
 			return &s.Identities[i]
 		}
 	}
@@ -212,59 +221,59 @@ func (c *IPCClient) GetMFAEnrollment(ctx context.Context, identifier string) (*M
 // handlers like AddIdentity that respond only after enrollment completes).
 
 func (c *IPCClient) RefreshIdentity(ctx context.Context, identifier string) (*Response, error) {
-	return c.SendCommand(ctx, Command{Command: "RefreshIdentity", Data: IdentifierData{Identifier: identifier}})
+	return c.SendCommand(ctx, IPCCommand{Action: "RefreshIdentity", Payload: IdentifierData{Identifier: identifier}})
 }
 
 func (c *IPCClient) RemoveIdentity(ctx context.Context, identifier string) (*Response, error) {
-	return c.SendCommand(ctx, Command{Command: "RemoveIdentity", Data: IdentifierData{Identifier: identifier}})
+	return c.SendCommand(ctx, IPCCommand{Action: "RemoveIdentity", Payload: IdentifierData{Identifier: identifier}})
 }
 
 func (c *IPCClient) IdentityOnOff(ctx context.Context, identifier string, onOff bool) (*Response, error) {
-	return c.SendCommand(ctx, Command{Command: "IdentityOnOff", Data: IdentityOnOffData{Identifier: identifier, OnOff: onOff}})
+	return c.SendCommand(ctx, IPCCommand{Action: "IdentityOnOff", Payload: IdentityOnOffData{Identifier: identifier, OnOff: onOff}})
 }
 
 func (c *IPCClient) SetLogLevel(ctx context.Context, level string) (*Response, error) {
-	return c.SendCommand(ctx, Command{Command: "SetLogLevel", Data: SetLogLevelData{Level: level}})
+	return c.SendCommand(ctx, IPCCommand{Action: "SetLogLevel", Payload: SetLogLevelData{Level: level}})
 }
 
 func (c *IPCClient) ZitiDump(ctx context.Context, identifier, dumpPath string) (*Response, error) {
-	return c.SendCommand(ctx, Command{Command: "ZitiDump", Data: ZitiDumpData{Identifier: identifier, DumpPath: dumpPath}})
+	return c.SendCommand(ctx, IPCCommand{Action: "ZitiDump", Payload: ZitiDumpData{Identifier: identifier, DumpPath: dumpPath}})
 }
 
 func (c *IPCClient) IpDump(ctx context.Context, dumpPath string) (*Response, error) {
-	return c.SendCommand(ctx, Command{Command: "IpDump", Data: IpDumpData{DumpPath: dumpPath}})
+	return c.SendCommand(ctx, IPCCommand{Action: "IpDump", Payload: IpDumpData{DumpPath: dumpPath}})
 }
 
 func (c *IPCClient) EnableMFA(ctx context.Context, identifier string) (*Response, error) {
-	return c.SendCommand(ctx, Command{Command: "EnableMFA", Data: EnableMFAData{Identifier: identifier}})
+	return c.SendCommand(ctx, IPCCommand{Action: "EnableMFA", Payload: EnableMFAData{Identifier: identifier}})
 }
 
 func (c *IPCClient) SubmitMFA(ctx context.Context, identifier, code string) (*Response, error) {
-	return c.SendCommand(ctx, Command{Command: "SubmitMFA", Data: MFAData{Identifier: identifier, Code: code}})
+	return c.SendCommand(ctx, IPCCommand{Action: "SubmitMFA", Payload: MFAData{Identifier: identifier, Code: code}})
 }
 
 func (c *IPCClient) VerifyMFA(ctx context.Context, identifier, code string) (*Response, error) {
-	return c.SendCommand(ctx, Command{Command: "VerifyMFA", Data: MFAData{Identifier: identifier, Code: code}})
+	return c.SendCommand(ctx, IPCCommand{Action: "VerifyMFA", Payload: MFAData{Identifier: identifier, Code: code}})
 }
 
 func (c *IPCClient) RemoveMFA(ctx context.Context, identifier, code string) (*Response, error) {
-	return c.SendCommand(ctx, Command{Command: "RemoveMFA", Data: MFAData{Identifier: identifier, Code: code}})
+	return c.SendCommand(ctx, IPCCommand{Action: "RemoveMFA", Payload: MFAData{Identifier: identifier, Code: code}})
 }
 
 func (c *IPCClient) GenerateMFACodes(ctx context.Context, identifier, code string) (*Response, error) {
-	return c.SendCommand(ctx, Command{Command: "GenerateMFACodes", Data: MFAData{Identifier: identifier, Code: code}})
+	return c.SendCommand(ctx, IPCCommand{Action: "GenerateMFACodes", Payload: MFAData{Identifier: identifier, Code: code}})
 }
 
 func (c *IPCClient) GetMFACodes(ctx context.Context, identifier, code string) (*Response, error) {
-	return c.SendCommand(ctx, Command{Command: "GetMFACodes", Data: MFAData{Identifier: identifier, Code: code}})
+	return c.SendCommand(ctx, IPCCommand{Action: "GetMFACodes", Payload: MFAData{Identifier: identifier, Code: code}})
 }
 
 func (c *IPCClient) UpdateInterfaceConfig(ctx context.Context, cfg InterfaceConfigData) (*Response, error) {
-	return c.SendCommand(ctx, Command{Command: "UpdateInterfaceConfig", Data: cfg})
+	return c.SendCommand(ctx, IPCCommand{Action: "UpdateInterfaceConfig", Payload: cfg})
 }
 
 func (c *IPCClient) ExternalAuth(ctx context.Context, identifier, provider string) (*Response, error) {
-	return c.SendCommand(ctx, Command{Command: "ExternalAuth", Data: ExternalAuthData{Identifier: identifier, Provider: provider}})
+	return c.SendCommand(ctx, IPCCommand{Action: "ExternalAuth", Payload: ExternalAuthData{Identifier: identifier, Provider: provider}})
 }
 
 // ExtAuth is the parsed payload of an ExternalAuth response: the URL the user
@@ -291,17 +300,78 @@ func (c *IPCClient) GetExternalAuth(ctx context.Context, identifier, provider st
 }
 
 func (c *IPCClient) Status(ctx context.Context) (*Response, error) {
-	return c.SendCommand(ctx, Command{Command: "Status"})
+	return c.SendCommand(ctx, IPCCommand{Action: "Status"})
 }
 
 func (c *IPCClient) ListIdentities(ctx context.Context) (*Response, error) {
-	return c.SendCommand(ctx, Command{Command: "ListIdentities"})
+	return c.SendCommand(ctx, IPCCommand{Action: "ListIdentities"})
 }
 
 func (c *IPCClient) GetMetrics(ctx context.Context) (*Response, error) {
-	return c.SendCommand(ctx, Command{Command: "GetMetrics"})
+	return c.SendCommand(ctx, IPCCommand{Action: "GetMetrics"})
 }
 
 func (c *IPCClient) AddIdentity(ctx context.Context, data AddIdentityData) (*Response, error) {
-	return c.SendCommand(ctx, Command{Command: "AddIdentity", Data: data})
+	return c.SendCommand(ctx, IPCCommand{Action: "AddIdentity", Payload: data})
+}
+
+func Enroll(t *testing.T, ctx context.Context, client *IPCClient, data AddIdentityData) *Response {
+	t.Helper()
+	t.Logf("enrolling identity %q", data.IdentityFilename)
+	resp, err := client.AddIdentity(ctx, data)
+	require.NoError(t, err, "AddIdentity IPC send")
+	return resp
+}
+
+// IdentityName returns a filesystem-safe identity filename derived from
+// t.Name(). Subtests produce names like "TestX/sub"; ZET rejects the slash
+// in AddIdentity filenames, so it is replaced.
+func IdentityName(t *testing.T) string {
+	return strings.ReplaceAll(t.Name(), "/", "-")
+}
+
+type IdentityFileContent struct {
+	ZtAPI  string   `json:"ztAPI"`
+	ZtAPIs []string `json:"ztAPIs"`
+	ID     struct {
+		Cert string `json:"cert"`
+		Key  string `json:"key"`
+		CA   string `json:"ca"`
+	} `json:"id"`
+}
+
+func ReadIdentityFile(t *testing.T, path string) IdentityFileContent {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err, "failed to read identity file at %s", path)
+
+	var content IdentityFileContent
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	require.NoError(t, dec.Decode(&content), "identity file at %s has unknown fields or invalid shape: %s", path, raw)
+	return content
+}
+
+func AssertValidJwtEnrolledIdentityFile(t *testing.T, path string) {
+	t.Helper()
+	content := ReadIdentityFile(t, path)
+	require.NotEmpty(t, content.ZtAPI, "identity file ztAPI empty")
+	require.NotEmpty(t, content.ID.Cert, "identity file id.cert empty")
+	require.NotEmpty(t, content.ID.Key, "identity file id.key empty")
+	require.NotEmpty(t, content.ID.CA, "identity file id.ca empty")
+}
+
+func AssertValidUrlEnrolledIdentityFile(t *testing.T, path string, mode EnrollMode) {
+	t.Helper()
+	content := ReadIdentityFile(t, path)
+	require.NotEmpty(t, content.ZtAPI, "identity file ztAPI empty")
+	require.NotEmpty(t, content.ID.CA, "identity file id.ca empty")
+	switch mode {
+	case EnrollModeNone:
+		require.Empty(t, content.ID.Cert, "identity file id.cert should be empty for URL enroll-to-none")
+		require.Empty(t, content.ID.Key, "identity file id.key should be empty for URL enroll-to-none")
+	case EnrollModeCert, EnrollModeToken:
+		require.NotEmpty(t, content.ID.Cert, "identity file id.cert empty")
+		require.NotEmpty(t, content.ID.Key, "identity file id.key empty")
+	}
 }

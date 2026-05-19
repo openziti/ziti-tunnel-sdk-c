@@ -21,11 +21,15 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
+	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -43,6 +47,11 @@ type ZETOptions struct {
 	// <LogDir>/ziti-edge-tunnel[.<discriminator>].log, mirroring the IPC socket
 	// naming convention, in addition to the in-memory buffer used by Logs().
 	LogDir string
+	// Verbosity is the -v level passed to ziti-edge-tunnel (0=silent..6=trace).
+	Verbosity int
+	// TlsuvDebug, if > 0, sets the TLSUV_DEBUG env var (0=off..6=trace) for
+	// debugging TLS handshake / cert chain issues.
+	TlsuvDebug int
 }
 
 type ZET struct {
@@ -50,6 +59,7 @@ type ZET struct {
 	CmdPipe       string
 	EventPipe     string
 	Discriminator string
+	LogPath       string
 
 	extCmd  *exec.Cmd
 	stdout  *syncBuffer
@@ -80,7 +90,7 @@ func StartZET(ctx context.Context, binPath, identityDir string, opts ZETOptions)
 		_ = os.Remove(eventPipe)
 	}
 
-	args := []string{"run", "-I", identityDir, "-v", "6"}
+	args := []string{"run", "-I", identityDir, "-v", strconv.Itoa(opts.Verbosity)}
 	if opts.Discriminator != "" {
 		args = append(args, "-P", opts.Discriminator)
 	}
@@ -89,11 +99,14 @@ func StartZET(ctx context.Context, binPath, identityDir string, opts ZETOptions)
 	}
 
 	cmd := exec.CommandContext(ctx, binPath, args...)
-	cmd.Env = append(os.Environ(), "TLSUV_DEBUG=6")
+	if opts.TlsuvDebug > 0 {
+		cmd.Env = append(os.Environ(), "TLSUV_DEBUG="+strconv.Itoa(opts.TlsuvDebug))
+	}
 	stdout := newSyncBuffer()
 	stderr := newSyncBuffer()
 
 	var logFile *os.File
+	var logPath string
 	if opts.LogDir != "" {
 		if err := os.MkdirAll(opts.LogDir, 0o755); err != nil {
 			return nil, fmt.Errorf("create zet log dir: %w", err)
@@ -102,8 +115,9 @@ func StartZET(ctx context.Context, binPath, identityDir string, opts ZETOptions)
 		if opts.Discriminator != "" {
 			logName += "." + opts.Discriminator
 		}
+		logPath = filepath.Join(opts.LogDir, logName+".log")
 		var ferr error
-		logFile, ferr = os.OpenFile(filepath.Join(opts.LogDir, logName+".log"), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
+		logFile, ferr = os.OpenFile(logPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
 		if ferr != nil {
 			return nil, fmt.Errorf("open zet log file: %w", ferr)
 		}
@@ -114,18 +128,22 @@ func StartZET(ctx context.Context, binPath, identityDir string, opts ZETOptions)
 		cmd.Stderr = stderr
 	}
 
+	log.Printf("zet[%s]: exec %s %s (cmdPipe=%s eventPipe=%s logPath=%s)",
+		opts.Discriminator, binPath, strings.Join(args, " "), cmdPipe, eventPipe, logPath)
 	if err := cmd.Start(); err != nil {
 		if logFile != nil {
 			_ = logFile.Close()
 		}
 		return nil, fmt.Errorf("start %s: %w", binPath, err)
 	}
+	log.Printf("zet[%s]: process started pid=%d, waiting for IPC pipe", opts.Discriminator, cmd.Process.Pid)
 
 	z := &ZET{
 		BinPath:       binPath,
 		CmdPipe:       cmdPipe,
 		EventPipe:     eventPipe,
 		Discriminator: opts.Discriminator,
+		LogPath:       logPath,
 		extCmd:        cmd,
 		stdout:        stdout,
 		stderr:        stderr,
@@ -134,9 +152,9 @@ func StartZET(ctx context.Context, binPath, identityDir string, opts ZETOptions)
 	}
 	go func() { z.cmdDone <- cmd.Wait() }()
 
-	dialCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	dialCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	client, err := dialIPCAt(dialCtx, cmdPipe)
+	client, err := openCommandPipe(dialCtx, cmdPipe)
 	if err != nil {
 		// Check whether the process already exited before the timeout fired.
 		// A non-blocking read from cmdDone disambiguates "process crashed early"
@@ -157,31 +175,39 @@ func StartZET(ctx context.Context, binPath, identityDir string, opts ZETOptions)
 
 // DialIPC connects to this ZET instance's IPC command pipe, retrying until ctx expires.
 func (z *ZET) DialIPC(ctx context.Context) (*IPCClient, error) {
-	return dialIPCAt(ctx, z.CmdPipe)
+	return openCommandPipe(ctx, z.CmdPipe)
 }
 
-// Stop terminates ZET. Callers should defer this on every test.
+// A surviving ZET orphans wintun state and breaks subsequent tests, so abort rather than let an orphan hide.
 func (z *ZET) Stop() {
 	if z.extCmd.Process == nil {
 		return
 	}
-	_ = z.extCmd.Process.Kill()
-	select {
-	case <-z.cmdDone:
-	case <-time.After(5 * time.Second):
+	pid := z.extCmd.Process.Pid
+	if err := z.extCmd.Process.Kill(); err != nil {
+		log.Printf("ZET pid %d kill: %v", pid, err)
 	}
-	if z.logFile != nil {
-		_ = z.logFile.Close()
+	for range 120 {
+		time.Sleep(500 * time.Millisecond)
+		if proc, err := os.FindProcess(pid); err != nil || proc == nil {
+			if z.logFile != nil {
+				_ = z.logFile.Close()
+			}
+			return
+		}
+		if err := z.extCmd.Process.Signal(syscall.Signal(0)); err != nil {
+			if z.logFile != nil {
+				_ = z.logFile.Close()
+			}
+			return
+		}
 	}
+	log.Fatalf("ZET pid %d did not exit within 60s of Kill; orphan likely, aborting test run", pid)
 }
 
 func (z *ZET) Logs() string {
-	return fmt.Sprintf("--- stdout ---\n%s\n--- stderr ---\n%s", z.stdout.String(), z.stderr.String())
+	return "zet log: " + z.LogPath
 }
-
-// EnsureNoExistingZET returns an error if something is already listening on the
-// default ziti-edge-tunnel IPC pipe. A successful dial means another daemon owns the pipe.
-func EnsureNoExistingZET() error { return ensureNothingOnPipe(CommandPipePath) }
 
 func ensureNothingOnPipe(path string) error {
 	probeCtx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
