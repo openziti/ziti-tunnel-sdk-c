@@ -355,30 +355,36 @@ func (o *Overlay) CreateExtJwtSigner(t *testing.T, ctx context.Context, spec Ext
 
 // CreateAuthPolicyForExtJwt creates an auth policy whose primary auth method
 // is the ext-jwt-signer set with the given IDs. Pass one or more signer IDs.
-func (o *Overlay) CreateAuthPolicyForExtJwt(ctx context.Context, name string, signerIDs ...string) error {
+func (o *Overlay) CreateAuthPolicyForExtJwt(t *testing.T, ctx context.Context, name string, signerIDs ...string) {
+	t.Helper()
+	t.Logf("creating auth policy %q with %d ext-jwt-signer(s)", name, len(signerIDs))
 	args := []string{"edge", "create", "auth-policy", name, "--primary-ext-jwt-allowed"}
 	for _, id := range signerIDs {
 		args = append(args, "--primary-ext-jwt-allowed-signers", id)
 	}
-	if _, err := o.execZiti(ctx, args...); err != nil {
-		return fmt.Errorf("create auth policy %s: %w", name, err)
-	}
-	return nil
+	_, err := o.execZiti(ctx, args...)
+	require.NoError(t, err, "create auth policy %s", name)
+	t.Logf("auth policy %q created", name)
 }
 
 // CreateIdentityWithExternalId provisions a non-admin identity stamped with
 // externalId so the controller can match it against the "sub" claim of an
 // ext-jwt-signer-issued JWT. If authPolicy is non-empty the identity is bound
 // to that policy; otherwise it falls into the controller's default policy.
-func (o *Overlay) CreateIdentityWithExternalId(ctx context.Context, name, externalID, authPolicy string) error {
+func (o *Overlay) CreateIdentityWithExternalId(t *testing.T, ctx context.Context, name, externalID, authPolicy string) {
+	t.Helper()
+	policyDesc := authPolicy
+	if policyDesc == "" {
+		policyDesc = "default"
+	}
+	t.Logf("creating controller identity %q with externalId=%q bound to auth policy %q", name, externalID, policyDesc)
 	args := []string{"edge", "create", "identity", name, "--external-id", externalID}
 	if authPolicy != "" {
 		args = append(args, "-P", authPolicy)
 	}
-	if _, err := o.execZiti(ctx, args...); err != nil {
-		return fmt.Errorf("create identity %s with externalId %s: %w", name, externalID, err)
-	}
-	return nil
+	_, err := o.execZiti(ctx, args...)
+	require.NoError(t, err, "create identity %s with externalId %s", name, externalID)
+	t.Logf("controller identity %q created", name)
 }
 
 // CreateUpdbUser creates a non-admin identity with a UPDB authenticator so the

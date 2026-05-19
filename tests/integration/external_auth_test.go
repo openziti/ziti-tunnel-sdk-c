@@ -62,9 +62,7 @@ func (s *extAuthState) testEnrollByUrlCompletes(t *testing.T) {
 		Claim:    "email",
 		Scopes:   []string{"email"},
 	})
-	t.Logf("creating controller identity %q with externalId=%q bound to default auth policy", name, pkce.ExternalID)
-	require.NoError(t, overlay.CreateIdentityWithExternalId(ctx, name, pkce.ExternalID, ""), "create controller identity with externalId=PKCE user email")
-	t.Logf("controller identity %q created", name)
+	overlay.CreateIdentityWithExternalId(t, ctx, name, pkce.ExternalID, "")
 
 	cleanupCtx := context.Background()
 	t.Cleanup(func() {
@@ -99,9 +97,7 @@ func (s *extAuthState) testInvalidProviderFails(t *testing.T) {
 		Claim:    "email",
 		Scopes:   []string{"email"},
 	})
-	t.Logf("creating controller identity %q with externalId=%q bound to default auth policy", name, pkce.ExternalID)
-	require.NoError(t, overlay.CreateIdentityWithExternalId(ctx, name, pkce.ExternalID, ""), "create controller identity with externalId=PKCE user email")
-	t.Logf("controller identity %q created", name)
+	overlay.CreateIdentityWithExternalId(t, ctx, name, pkce.ExternalID, "")
 
 	cleanupCtx := context.Background()
 	t.Cleanup(func() {
@@ -139,8 +135,6 @@ func (s *extAuthState) testNoControllerIdentityFails(t *testing.T) {
 	// Deliberately DO NOT create a controller identity with externalId. The
 	// OIDC flow at the IdP still succeeds, but the controller rejects login
 	// since nothing maps test@example.com to a known identity.
-	t.Logf("skipping controller identity creation on purpose (controller should reject because externalId=%q is unmapped)", pkce.ExternalID)
-
 	cleanupCtx := context.Background()
 	t.Cleanup(func() {
 		_ = overlay.DeleteExtJwtSigner(cleanupCtx, signerName)
@@ -189,9 +183,7 @@ func (s *extAuthState) testMultipleSignersWithDefaultPolicyCompletes(t *testing.
 		Claim:    "email",
 	})
 
-	t.Logf("creating controller identity %q with externalId=%q bound to default auth policy", name, pkce.ExternalID)
-	require.NoError(t, overlay.CreateIdentityWithExternalId(ctx, name, pkce.ExternalID, ""), "create controller identity with externalId=PKCE user email")
-	t.Logf("controller identity %q created", name)
+	overlay.CreateIdentityWithExternalId(t, ctx, name, pkce.ExternalID, "")
 
 	cleanupCtx := context.Background()
 	t.Cleanup(func() {
@@ -253,13 +245,9 @@ func (s *extAuthState) testMultipleSignersWithNamedPolicyCompletes(t *testing.T)
 	})
 
 	policyName := name + "-policy"
-	t.Logf("creating multi-signer auth policy %q binding all three signers", policyName)
-	require.NoError(t, overlay.CreateAuthPolicyForExtJwt(ctx, policyName, realSignerID, signer2ID, signer3ID), "create multi-signer auth policy")
-	t.Logf("auth policy %q created", policyName)
+	overlay.CreateAuthPolicyForExtJwt(t, ctx, policyName, realSignerID, signer2ID, signer3ID)
 
-	t.Logf("creating controller identity %q with externalId=%q bound to policy %q", name, pkce.ExternalID, policyName)
-	require.NoError(t, overlay.CreateIdentityWithExternalId(ctx, name, pkce.ExternalID, policyName), "create controller identity with externalId=PKCE user email")
-	t.Logf("controller identity %q created", name)
+	overlay.CreateIdentityWithExternalId(t, ctx, name, pkce.ExternalID, policyName)
 
 	cleanupCtx := context.Background()
 	t.Cleanup(func() {
