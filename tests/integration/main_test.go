@@ -106,6 +106,10 @@ teardown: to remove test CA from OS trust when done:
 		}
 	}()
 
+	if err := overlay.WaitForClusterLeader(ctx); err != nil {
+		return 0, fmt.Errorf("wait for cluster leader: %w", err)
+	}
+
 	log.Printf("setup: purging stale Test* identities")
 	if err := overlay.PurgeIdentities(ctx, "Test"); err != nil {
 		return 0, fmt.Errorf("purge stale test identities: %w", err)

@@ -22,6 +22,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -53,6 +54,8 @@ type Overlay struct {
 	extCmd  *exec.Cmd
 	stdout  *syncBuffer
 	stderr  *syncBuffer
+	logFile *os.File
+	LogPath string
 	cmdDone chan error
 }
 
@@ -84,9 +87,19 @@ func StartOverlay(ctx context.Context, zitiBin, home string) (*Overlay, error) {
 	)
 	stdout := newSyncBuffer()
 	stderr := newSyncBuffer()
-	cmd.Stdout = stdout
-	cmd.Stderr = stderr
+	logPath := filepath.Join(home, "zet-logs", "quickstart.log")
+	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
+		return nil, fmt.Errorf("mkdir quickstart log dir: %w", err)
+	}
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
+	if err != nil {
+		return nil, fmt.Errorf("open quickstart log file: %w", err)
+	}
+	cmd.Stdout = io.MultiWriter(stdout, logFile)
+	cmd.Stderr = io.MultiWriter(stderr, logFile)
+	log.Printf("overlay: quickstart log %s", logPath)
 	if err := cmd.Start(); err != nil {
+		_ = logFile.Close()
 		return nil, fmt.Errorf("start quickstart: %w", err)
 	}
 
@@ -98,6 +111,8 @@ func StartOverlay(ctx context.Context, zitiBin, home string) (*Overlay, error) {
 		extCmd:         cmd,
 		stdout:         stdout,
 		stderr:         stderr,
+		logFile:        logFile,
+		LogPath:        logPath,
 		cmdDone:        make(chan error, 1),
 	}
 	go func() { o.cmdDone <- cmd.Wait() }()
@@ -230,6 +245,9 @@ func (o *Overlay) CACleanupCommand() string {
 // A surviving overlay holds the controller/router ports and breaks subsequent
 // runs, so abort hard rather than let an orphan hide.
 func (o *Overlay) Stop() {
+	if o.logFile != nil {
+		defer func() { _ = o.logFile.Close() }()
+	}
 	if o.extCmd.Process == nil {
 		return
 	}
@@ -584,4 +602,40 @@ func (o *Overlay) deleteWhere(ctx context.Context, entity, prefix string) error 
 		return fmt.Errorf("delete %s where %s: %w", entity, filter, err)
 	}
 	return nil
+}
+
+// WaitForClusterLeader blocks until the controller's raft cluster has elected a
+// leader so subsequent writes do not fail with CLUSTER_NO_LEADER. No-op for ziti < 2.0
+func (o *Overlay) WaitForClusterLeader(ctx context.Context) error {
+	if o.ZitiMajor < 2 {
+		return nil
+	}
+	log.Printf("overlay: waiting for cluster leader (ziti v%d.%d)", o.ZitiMajor, o.ZitiMinor)
+	waitCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	attempts := 0
+	for {
+		attempts++
+		out, err := o.execZiti(waitCtx, "ops", "cluster", "list", "-j")
+		if err == nil {
+			var resp struct {
+				Data []struct {
+					Leader *bool `json:"leader"`
+				} `json:"data"`
+			}
+			if json.Unmarshal(out, &resp) == nil {
+				for _, m := range resp.Data {
+					if m.Leader != nil && *m.Leader {
+						log.Printf("overlay: cluster leader elected after %d attempt(s)", attempts)
+						return nil
+					}
+				}
+			}
+		}
+		select {
+		case <-waitCtx.Done():
+			return fmt.Errorf("cluster leader not elected within 30s (attempts=%d): %w", attempts, waitCtx.Err())
+		case <-time.After(1 * time.Second):
+		}
+	}
 }
