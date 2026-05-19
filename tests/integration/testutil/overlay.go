@@ -344,14 +344,16 @@ func (o *Overlay) CreateAuthPolicyForExtJwt(ctx context.Context, name string, si
 	return nil
 }
 
-// CreateIdentityWithExternalId provisions a non-admin identity bound to the
-// named auth policy and stamped with externalId so the controller can match it
-// against the "sub" claim of an ext-jwt-signer-issued JWT.
+// CreateIdentityWithExternalId provisions a non-admin identity stamped with
+// externalId so the controller can match it against the "sub" claim of an
+// ext-jwt-signer-issued JWT. If authPolicy is non-empty the identity is bound
+// to that policy; otherwise it falls into the controller's default policy.
 func (o *Overlay) CreateIdentityWithExternalId(ctx context.Context, name, externalID, authPolicy string) error {
-	if _, err := o.execZiti(ctx, "edge", "create", "identity", name,
-		"--external-id", externalID,
-		"-P", authPolicy,
-	); err != nil {
+	args := []string{"edge", "create", "identity", name, "--external-id", externalID}
+	if authPolicy != "" {
+		args = append(args, "-P", authPolicy)
+	}
+	if _, err := o.execZiti(ctx, args...); err != nil {
 		return fmt.Errorf("create identity %s with externalId %s: %w", name, externalID, err)
 	}
 	return nil
