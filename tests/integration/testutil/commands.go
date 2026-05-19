@@ -314,9 +314,9 @@ func (c *IPCClient) AddIdentity(ctx context.Context, data AddIdentityData) (*Res
 	return c.SendCommand(ctx, IPCCommand{Action: "AddIdentity", Payload: data})
 }
 
-func Enroll(t *testing.T, ctx context.Context, client *IPCClient, data AddIdentityData) *Response {
+func AddIdentity(t *testing.T, ctx context.Context, client *IPCClient, data AddIdentityData) *Response {
 	t.Helper()
-	t.Logf("enrolling identity %q", data.IdentityFilename)
+	t.Logf("calling AddIdentity for %q", data.IdentityFilename)
 	resp, err := client.AddIdentity(ctx, data)
 	require.NoError(t, err, "AddIdentity IPC send")
 	return resp

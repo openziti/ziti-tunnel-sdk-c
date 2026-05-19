@@ -87,7 +87,7 @@ func testEnableMFAAcceptsTotpRequiredAuthPolicy(t *testing.T) {
 		IdentityFilename: name,
 		JwtContent:       &jwt,
 	}
-	addResp := testutil.Enroll(t, ctx, client, identityData)
+	addResp := testutil.AddIdentity(t, ctx, client, identityData)
 	require.True(t, addResp.Success, "AddIdentity failed: error=%q code=%d", addResp.Error, addResp.Code)
 
 	added := events.WaitFor(t, ctx, "identity", "added", name)
@@ -362,7 +362,7 @@ func newEnrolledMFA(t *testing.T, ctx context.Context, name string) (*enrolledMF
 		IdentityFilename: name,
 		JwtContent:       &jwt,
 	}
-	addResp := testutil.Enroll(t, ctx, client, identityData)
+	addResp := testutil.AddIdentity(t, ctx, client, identityData)
 	require.True(t, addResp.Success, "AddIdentity failed: error=%q code=%d", addResp.Error, addResp.Code)
 
 	added := events.WaitFor(t, ctx, "identity", "added", name)

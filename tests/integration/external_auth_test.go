@@ -72,7 +72,7 @@ func (s *extAuthState) testEnrollByUrlCompletes(t *testing.T) {
 		_ = overlay.DeleteExtJwtSigner(cleanupCtx, signerName)
 	})
 
-	needsExt := s.urlEnrollForExtAuth(t, ctx, name)
+	needsExt := s.addUrlIdentity(t, ctx, name)
 
 	authURL := s.client.GetExternalAuthURL(t, ctx, needsExt.Id.Identifier, signerName)
 
@@ -109,7 +109,7 @@ func (s *extAuthState) testInvalidProviderFails(t *testing.T) {
 		_ = overlay.DeleteExtJwtSigner(cleanupCtx, signerName)
 	})
 
-	needsExt := s.urlEnrollForExtAuth(t, ctx, name)
+	needsExt := s.addUrlIdentity(t, ctx, name)
 
 	bogusProvider := signerName + "-bogus"
 	t.Logf("sending ExternalAuth with bogus provider %q", bogusProvider)
@@ -146,7 +146,7 @@ func (s *extAuthState) testNoControllerIdentityFails(t *testing.T) {
 		_ = overlay.DeleteExtJwtSigner(cleanupCtx, signerName)
 	})
 
-	needsExt := s.urlEnrollForExtAuth(t, ctx, name)
+	needsExt := s.addUrlIdentity(t, ctx, name)
 
 	authURL := s.client.GetExternalAuthURL(t, ctx, needsExt.Id.Identifier, signerName)
 
@@ -201,7 +201,7 @@ func (s *extAuthState) testMultipleSignersWithDefaultPolicyCompletes(t *testing.
 		_ = overlay.DeleteExtJwtSigner(cleanupCtx, signer3Name)
 	})
 
-	needsExt := s.urlEnrollForExtAuth(t, ctx, name)
+	needsExt := s.addUrlIdentity(t, ctx, name)
 	require.Subset(t, needsExt.Id.ExtAuthProviders, []string{realSignerName, signer2Name, signer3Name}, "identity:needs_ext_login ExtAuthProviders should contain all three signers, got %v", needsExt.Id.ExtAuthProviders)
 	t.Logf("identity:needs_ext_login reports ExtAuthProviders=%v (count=%d)", needsExt.Id.ExtAuthProviders, len(needsExt.Id.ExtAuthProviders))
 
@@ -270,7 +270,7 @@ func (s *extAuthState) testMultipleSignersWithNamedPolicyCompletes(t *testing.T)
 		_ = overlay.DeleteExtJwtSigner(cleanupCtx, signer3Name)
 	})
 
-	needsExt := s.urlEnrollForExtAuth(t, ctx, name)
+	needsExt := s.addUrlIdentity(t, ctx, name)
 	require.Subset(t, needsExt.Id.ExtAuthProviders, []string{realSignerName, signer2Name, signer3Name}, "identity:needs_ext_login ExtAuthProviders should contain all three signers, got %v", needsExt.Id.ExtAuthProviders)
 	t.Logf("identity:needs_ext_login reports ExtAuthProviders=%v (count=%d)", needsExt.Id.ExtAuthProviders, len(needsExt.Id.ExtAuthProviders))
 
@@ -284,7 +284,7 @@ func (s *extAuthState) testMultipleSignersWithNamedPolicyCompletes(t *testing.T)
 	t.Logf("identity:added reports NeedsExtAuth=%t Active=%t after multi-signer PKCE flow", added.Id.NeedsExtAuth, added.Id.Active)
 }
 
-func (s *extAuthState) urlEnrollForExtAuth(t *testing.T, ctx context.Context, name string) testutil.Event {
+func (s *extAuthState) addUrlIdentity(t *testing.T, ctx context.Context, name string) testutil.Event {
 	t.Helper()
 	controllerBase := overlay.ControllerHostPort()
 
@@ -292,8 +292,8 @@ func (s *extAuthState) urlEnrollForExtAuth(t *testing.T, ctx context.Context, na
 		IdentityFilename: name,
 		ControllerURL:    &controllerBase,
 	}
-	enrollResp := testutil.Enroll(t, ctx, s.client, identityData)
-	require.True(t, enrollResp.Success, "URL AddIdentity should succeed: error=%q\n%s", enrollResp.Error, zet.Logs())
+	addResp := testutil.AddIdentity(t, ctx, s.client, identityData)
+	require.True(t, addResp.Success, "URL AddIdentity should succeed: error=%q\n%s", addResp.Error, zet.Logs())
 
 	needsExt := s.events.WaitFor(t, ctx, "identity", "needs_ext_login", name)
 	require.NotEmpty(t, needsExt.Id.Identifier, "identity:needs_ext_login Identifier empty")

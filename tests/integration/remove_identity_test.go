@@ -48,7 +48,7 @@ func testRemoveIdentityWithIdentifierFromEvent(t *testing.T) {
 		IdentityFilename: name,
 		JwtContent:       &jwt,
 	}
-	addResp := testutil.Enroll(t, ctx, client, identityData)
+	addResp := testutil.AddIdentity(t, ctx, client, identityData)
 	require.True(t, addResp.Success, "AddIdentity failed: error=%q code=%d", addResp.Error, addResp.Code)
 
 	event := events.WaitFor(t, ctx, "identity", "added", name)

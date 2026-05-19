@@ -55,7 +55,7 @@ func testAddIdentityWithJwtSucceeds(t *testing.T) {
 		JwtContent:       &jwt,
 	}
 
-	resp := testutil.Enroll(t, ctx, client, identityData)
+	resp := testutil.AddIdentity(t, ctx, client, identityData)
 	require.True(t, resp.Success, "AddIdentity failed: error=%q code=%d\n%s", resp.Error, resp.Code, zet.Logs())
 
 	event := events.WaitFor(t, ctx, "identity", "added", identityName)
@@ -84,12 +84,12 @@ func testAddIdentitySameJwtTwiceSecondFails(t *testing.T) {
 		JwtContent:       &jwt,
 	}
 
-	first := testutil.Enroll(t, ctx, client, identityData)
+	first := testutil.AddIdentity(t, ctx, client, identityData)
 	require.True(t, first.Success, "first AddIdentity should succeed: error=%q\n%s", first.Error, zet.Logs())
 	added := events.WaitFor(t, ctx, "identity", "added", identityName)
 	testutil.AssertValidJwtEnrolledIdentityFile(t, added.Id.Identifier)
 
-	second := testutil.Enroll(t, ctx, client, identityData)
+	second := testutil.AddIdentity(t, ctx, client, identityData)
 	require.False(t, second.Success, "second AddIdentity should fail, got Success=true")
 	require.Equal(t, 500, second.Code, "expected Code=500, got %d", second.Code)
 	require.Contains(t, second.Error, "identity exists", "expected duplicate-name error, got %q", second.Error)
@@ -108,7 +108,7 @@ func testAddIdentityWithInvalidJwtFails(t *testing.T) {
 		IdentityFilename: identityName,
 		JwtContent:       &badJwt,
 	}
-	resp := testutil.Enroll(t, ctx, client, identityData)
+	resp := testutil.AddIdentity(t, ctx, client, identityData)
 	require.False(t, resp.Success, "invalid JWT should be rejected, got Success=true")
 	require.Equal(t, 500, resp.Code, "expected Code=500, got %d", resp.Code)
 	t.Logf("invalid JWT rejected: code=%d error=%q", resp.Code, resp.Error)
@@ -126,7 +126,7 @@ func testAddIdentityWithEmptyJwtFails(t *testing.T) {
 		IdentityFilename: identityName,
 		JwtContent:       &emptyJwt,
 	}
-	resp := testutil.Enroll(t, ctx, client, identityData)
+	resp := testutil.AddIdentity(t, ctx, client, identityData)
 	require.False(t, resp.Success, "empty JWT should be rejected, got Success=true")
 	require.Equal(t, 500, resp.Code, "expected Code=500, got %d", resp.Code)
 	t.Logf("empty JWT rejected: code=%d error=%q", resp.Code, resp.Error)
@@ -151,7 +151,7 @@ func testAddIdentityWithDeletedIdentityFails(t *testing.T) {
 		IdentityFilename: identityName,
 		JwtContent:       &jwt,
 	}
-	resp := testutil.Enroll(t, ctx, client, identityData)
+	resp := testutil.AddIdentity(t, ctx, client, identityData)
 	require.False(t, resp.Success, "JWT for deleted identity should be rejected, got Success=true")
 	require.Equal(t, 500, resp.Code, "expected Code=500, got %d", resp.Code)
 	t.Logf("JWT identity deleted from controller rejected: code=%d error=%q", resp.Code, resp.Error)
@@ -173,7 +173,7 @@ func testAddIdentityWithSlashInFilenameFails(t *testing.T) {
 		IdentityFilename: "foo/bar",
 		JwtContent:       &jwt,
 	}
-	resp := testutil.Enroll(t, ctx, client, identityData)
+	resp := testutil.AddIdentity(t, ctx, client, identityData)
 	require.False(t, resp.Success, "filename with slash should be rejected, got Success=true")
 	require.Equal(t, 500, resp.Code, "expected Code=500, got %d", resp.Code)
 	require.Contains(t, resp.Error, "invalid file name", "expected invalid-file-name error, got %q", resp.Error)
@@ -196,7 +196,7 @@ func testAddIdentityWithDotDotInFilenameFails(t *testing.T) {
 		IdentityFilename: "../escape",
 		JwtContent:       &jwt,
 	}
-	resp := testutil.Enroll(t, ctx, client, identityData)
+	resp := testutil.AddIdentity(t, ctx, client, identityData)
 	require.False(t, resp.Success, "filename with .. should be rejected, got Success=true")
 	require.Equal(t, 500, resp.Code, "expected Code=500, got %d", resp.Code)
 	require.Contains(t, resp.Error, "not within the configuration directory", "expected path-escape error, got %q", resp.Error)
@@ -220,7 +220,7 @@ func testAddIdentityFilenameExceedsCharLimitFails(t *testing.T) {
 		IdentityFilename: longName,
 		JwtContent:       &jwt,
 	}
-	resp := testutil.Enroll(t, ctx, client, identityData)
+	resp := testutil.AddIdentity(t, ctx, client, identityData)
 	require.False(t, resp.Success, "long filename should be rejected, got Success=true")
 	require.Equal(t, 500, resp.Code, "expected Code=500, got %d", resp.Code)
 	require.True(t, strings.Contains(resp.Error, "invalid file name") || strings.Contains(resp.Error, "not within the configuration directory"),

@@ -49,7 +49,7 @@ func testUrlEnrollmentWithValidControllerUrlSucceeds(t *testing.T) {
 		ControllerURL:    &controllerURL,
 	}
 
-	resp := testutil.Enroll(t, ctx, client, identityData)
+	resp := testutil.AddIdentity(t, ctx, client, identityData)
 	require.True(t, resp.Success, "URL AddIdentity failed: error=%q code=%d\n%s", resp.Error, resp.Code, zet.Logs())
 
 	event := events.WaitFor(t, ctx, "identity", "needs_ext_login", identityName)
@@ -74,11 +74,11 @@ func testUrlEnrollmentSameNameTwiceSecondFails(t *testing.T) {
 		ControllerURL:    &controllerURL,
 	}
 
-	first := testutil.Enroll(t, ctx, client, identityData)
+	first := testutil.AddIdentity(t, ctx, client, identityData)
 	require.True(t, first.Success, "first URL AddIdentity should succeed: error=%q\n%s", first.Error, zet.Logs())
 	events.WaitFor(t, ctx, "identity", "needs_ext_login", identityName)
 
-	second := testutil.Enroll(t, ctx, client, identityData)
+	second := testutil.AddIdentity(t, ctx, client, identityData)
 	require.False(t, second.Success, "second URL AddIdentity should fail, got Success=true")
 	require.Equal(t, 500, second.Code, "expected Code=500, got %d", second.Code)
 	require.Contains(t, second.Error, "identity exists",
@@ -103,7 +103,7 @@ func testUrlEnrollmentAfterJwtSameNameFails(t *testing.T) {
 		IdentityFilename: identityName,
 		JwtContent:       &jwt,
 	}
-	first := testutil.Enroll(t, ctx, client, jwtIdentityData)
+	first := testutil.AddIdentity(t, ctx, client, jwtIdentityData)
 	require.True(t, first.Success, "first JWT AddIdentity should succeed: error=%q\n%s", first.Error, zet.Logs())
 	added := events.WaitFor(t, ctx, "identity", "added", identityName)
 	testutil.AssertValidJwtEnrolledIdentityFile(t, added.Id.Identifier)
@@ -113,7 +113,7 @@ func testUrlEnrollmentAfterJwtSameNameFails(t *testing.T) {
 		IdentityFilename: identityName,
 		ControllerURL:    &controllerURL,
 	}
-	second := testutil.Enroll(t, ctx, client, urlIdentityData)
+	second := testutil.AddIdentity(t, ctx, client, urlIdentityData)
 	require.False(t, second.Success, "URL AddIdentity should fail when name already enrolled via JWT, got Success=true")
 	require.Equal(t, 500, second.Code, "expected Code=500, got %d", second.Code)
 	require.Contains(t, second.Error, "identity exists", "expected duplicate-name error, got %q", second.Error)
@@ -133,7 +133,7 @@ func testUrlEnrollmentWithNonZitiEndpointFails(t *testing.T) {
 		ControllerURL:    &nonZitiURL,
 	}
 
-	resp := testutil.Enroll(t, ctx, client, identityData)
+	resp := testutil.AddIdentity(t, ctx, client, identityData)
 	require.False(t, resp.Success, "non-Ziti URL %q should be rejected, got Success=true\n%s", nonZitiURL, zet.Logs())
 	require.Equal(t, 500, resp.Code, "expected Code=500, got %d", resp.Code)
 	t.Logf("non-Ziti URL rejected: code=%d error=%q", resp.Code, resp.Error)
@@ -152,7 +152,7 @@ func testUrlEnrollmentWithMalformedUrlFails(t *testing.T) {
 		ControllerURL:    &badURL,
 	}
 
-	resp := testutil.Enroll(t, ctx, client, identityData)
+	resp := testutil.AddIdentity(t, ctx, client, identityData)
 	require.False(t, resp.Success, "malformed URL %q should be rejected, got Success=true\n%s", badURL, zet.Logs())
 	require.Equal(t, 500, resp.Code, "expected Code=500, got %d", resp.Code)
 	t.Logf("malformed URL rejected: code=%d error=%q", resp.Code, resp.Error)
