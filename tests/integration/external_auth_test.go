@@ -53,15 +53,22 @@ func (s *extAuthState) testEnrollByUrlCompletes(t *testing.T) {
 
 	name := testutil.IdentityName(t)
 
-	signerName, policyName := createPKCESignerAndPolicy(t, ctx, name, pkce.ClientIDs[0])
-	t.Logf("creating controller identity %q with externalId=%q bound to policy %q", name, pkce.ExternalID, policyName)
-	require.NoError(t, overlay.CreateIdentityWithExternalId(ctx, name, pkce.ExternalID, policyName), "create controller identity with externalId=PKCE user email")
+	signerName := name + "-signer"
+	overlay.CreateExtJwtSigner(t, ctx, testutil.ExtJwtSignerSpec{
+		Name:     signerName,
+		Issuer:   pkce.IssuerURL,
+		JWKS:     pkce.JWKSURI(),
+		ClientID: pkce.ClientIDs[0],
+		Claim:    "email",
+		Scopes:   []string{"email"},
+	})
+	t.Logf("creating controller identity %q with externalId=%q bound to default auth policy", name, pkce.ExternalID)
+	require.NoError(t, overlay.CreateIdentityWithExternalId(ctx, name, pkce.ExternalID, ""), "create controller identity with externalId=PKCE user email")
 	t.Logf("controller identity %q created", name)
 
 	cleanupCtx := context.Background()
 	t.Cleanup(func() {
 		_ = overlay.DeleteIdentity(cleanupCtx, name)
-		_ = overlay.DeleteAuthPolicy(cleanupCtx, policyName)
 		_ = overlay.DeleteExtJwtSigner(cleanupCtx, signerName)
 	})
 
@@ -69,9 +76,7 @@ func (s *extAuthState) testEnrollByUrlCompletes(t *testing.T) {
 
 	authURL := s.client.GetExternalAuthURL(t, ctx, needsExt.Id.Identifier, signerName)
 
-	t.Logf("driving PKCE flow (issuer=%s email=%s)", pkce.IssuerURL, pkce.Email)
-	require.NoError(t, testutil.DrivePKCEFlow(ctx, authURL, pkce.IssuerURL, pkce.Email, pkce.Password), "drive PKCE flow")
-	t.Logf("PKCE flow completed")
+	testutil.DrivePKCEFlow(t, ctx, authURL, pkce.IssuerURL, pkce.Email, pkce.Password)
 
 	added := s.events.WaitFor(t, ctx, "identity", "added", name)
 	require.False(t, added.Id.NeedsExtAuth, "identity:added NeedsExtAuth=%t after PKCE flow, want false", added.Id.NeedsExtAuth)
@@ -85,15 +90,22 @@ func (s *extAuthState) testInvalidProviderFails(t *testing.T) {
 
 	name := testutil.IdentityName(t)
 
-	signerName, policyName := createPKCESignerAndPolicy(t, ctx, name, pkce.ClientIDs[0])
-	t.Logf("creating controller identity %q with externalId=%q bound to policy %q", name, pkce.ExternalID, policyName)
-	require.NoError(t, overlay.CreateIdentityWithExternalId(ctx, name, pkce.ExternalID, policyName), "create controller identity with externalId=PKCE user email")
+	signerName := name + "-signer"
+	overlay.CreateExtJwtSigner(t, ctx, testutil.ExtJwtSignerSpec{
+		Name:     signerName,
+		Issuer:   pkce.IssuerURL,
+		JWKS:     pkce.JWKSURI(),
+		ClientID: pkce.ClientIDs[0],
+		Claim:    "email",
+		Scopes:   []string{"email"},
+	})
+	t.Logf("creating controller identity %q with externalId=%q bound to default auth policy", name, pkce.ExternalID)
+	require.NoError(t, overlay.CreateIdentityWithExternalId(ctx, name, pkce.ExternalID, ""), "create controller identity with externalId=PKCE user email")
 	t.Logf("controller identity %q created", name)
 
 	cleanupCtx := context.Background()
 	t.Cleanup(func() {
 		_ = overlay.DeleteIdentity(cleanupCtx, name)
-		_ = overlay.DeleteAuthPolicy(cleanupCtx, policyName)
 		_ = overlay.DeleteExtJwtSigner(cleanupCtx, signerName)
 	})
 
@@ -115,7 +127,15 @@ func (s *extAuthState) testNoControllerIdentityFails(t *testing.T) {
 
 	name := testutil.IdentityName(t)
 
-	signerName, _ := createPKCESignerAndPolicy(t, ctx, name, pkce.ClientIDs[0])
+	signerName := name + "-signer"
+	overlay.CreateExtJwtSigner(t, ctx, testutil.ExtJwtSignerSpec{
+		Name:     signerName,
+		Issuer:   pkce.IssuerURL,
+		JWKS:     pkce.JWKSURI(),
+		ClientID: pkce.ClientIDs[0],
+		Claim:    "email",
+		Scopes:   []string{"email"},
+	})
 	// Deliberately DO NOT create a controller identity with externalId. The
 	// OIDC flow at the IdP still succeeds, but the controller rejects login
 	// since nothing maps test@example.com to a known identity.
@@ -123,7 +143,6 @@ func (s *extAuthState) testNoControllerIdentityFails(t *testing.T) {
 
 	cleanupCtx := context.Background()
 	t.Cleanup(func() {
-		_ = overlay.DeleteAuthPolicy(cleanupCtx, name+"-policy")
 		_ = overlay.DeleteExtJwtSigner(cleanupCtx, signerName)
 	})
 
@@ -131,9 +150,7 @@ func (s *extAuthState) testNoControllerIdentityFails(t *testing.T) {
 
 	authURL := s.client.GetExternalAuthURL(t, ctx, needsExt.Id.Identifier, signerName)
 
-	t.Logf("driving PKCE flow (issuer=%s email=%s)", pkce.IssuerURL, pkce.Email)
-	require.NoError(t, testutil.DrivePKCEFlow(ctx, authURL, pkce.IssuerURL, pkce.Email, pkce.Password), "drive PKCE flow")
-	t.Logf("PKCE flow completed; controller should reject because no identity has externalId=%q", pkce.ExternalID)
+	testutil.DrivePKCEFlow(t, ctx, authURL, pkce.IssuerURL, pkce.Email, pkce.Password)
 
 	s.events.WaitFor(t, ctx, "controller", "disconnected", name)
 	t.Logf("controller:disconnected")
@@ -149,8 +166,7 @@ func (s *extAuthState) testMultipleSignersWithDefaultPolicyCompletes(t *testing.
 	realSignerName := name + "-signer-real"
 	signer2Name := name + "-signer-2"
 	signer3Name := name + "-signer-3"
-	t.Logf("creating real-issuer ext-jwt-signer %q", realSignerName)
-	realSignerID, err := overlay.CreateExtJwtSigner(ctx, testutil.ExtJwtSignerSpec{
+	overlay.CreateExtJwtSigner(t, ctx, testutil.ExtJwtSignerSpec{
 		Name:     realSignerName,
 		Issuer:   pkce.IssuerURL,
 		JWKS:     jwksURI,
@@ -158,30 +174,20 @@ func (s *extAuthState) testMultipleSignersWithDefaultPolicyCompletes(t *testing.
 		Claim:    "email",
 		Scopes:   []string{"email"},
 	})
-	require.NoError(t, err, "failed to create real-issuer ext-jwt-signer")
-	t.Logf("real-issuer signer created with id=%s", realSignerID)
-
-	t.Logf("creating placeholder ext-jwt-signer %q", signer2Name)
-	signer2ID, err := overlay.CreateExtJwtSigner(ctx, testutil.ExtJwtSignerSpec{
+	overlay.CreateExtJwtSigner(t, ctx, testutil.ExtJwtSignerSpec{
 		Name:     signer2Name,
 		Issuer:   pkce.IssuerURL + "/" + signer2Name,
 		JWKS:     jwksURI,
 		ClientID: pkce.ClientIDs[1],
 		Claim:    "email",
 	})
-	require.NoError(t, err, "failed to create ext-jwt-signer 2")
-	t.Logf("placeholder signer 2 created with id=%s", signer2ID)
-
-	t.Logf("creating placeholder ext-jwt-signer %q", signer3Name)
-	signer3ID, err := overlay.CreateExtJwtSigner(ctx, testutil.ExtJwtSignerSpec{
+	overlay.CreateExtJwtSigner(t, ctx, testutil.ExtJwtSignerSpec{
 		Name:     signer3Name,
 		Issuer:   pkce.IssuerURL + "/" + signer3Name,
 		JWKS:     jwksURI,
 		ClientID: pkce.ClientIDs[2],
 		Claim:    "email",
 	})
-	require.NoError(t, err, "failed to create ext-jwt-signer 3")
-	t.Logf("placeholder signer 3 created with id=%s", signer3ID)
 
 	t.Logf("creating controller identity %q with externalId=%q bound to default auth policy", name, pkce.ExternalID)
 	require.NoError(t, overlay.CreateIdentityWithExternalId(ctx, name, pkce.ExternalID, ""), "create controller identity with externalId=PKCE user email")
@@ -201,9 +207,7 @@ func (s *extAuthState) testMultipleSignersWithDefaultPolicyCompletes(t *testing.
 
 	authURL := s.client.GetExternalAuthURL(t, ctx, needsExt.Id.Identifier, realSignerName)
 
-	t.Logf("driving PKCE flow (issuer=%s email=%s)", pkce.IssuerURL, pkce.Email)
-	require.NoError(t, testutil.DrivePKCEFlow(ctx, authURL, pkce.IssuerURL, pkce.Email, pkce.Password), "drive PKCE flow")
-	t.Logf("PKCE flow completed")
+	testutil.DrivePKCEFlow(t, ctx, authURL, pkce.IssuerURL, pkce.Email, pkce.Password)
 
 	added := s.events.WaitFor(t, ctx, "identity", "added", name)
 	require.False(t, added.Id.NeedsExtAuth, "identity:added NeedsExtAuth=%t after multi-signer PKCE flow, want false", added.Id.NeedsExtAuth)
@@ -225,8 +229,7 @@ func (s *extAuthState) testMultipleSignersWithNamedPolicyCompletes(t *testing.T)
 	// just need to exist as distinct providers in the policy; the controller
 	// rejects duplicate issuers via a unique index, so they each get a unique
 	// sub-path under the PKCE IdP (no traffic ever hits those endpoints).
-	t.Logf("creating real-issuer ext-jwt-signer %q", realSignerName)
-	realSignerID, err := overlay.CreateExtJwtSigner(ctx, testutil.ExtJwtSignerSpec{
+	realSignerID := overlay.CreateExtJwtSigner(t, ctx, testutil.ExtJwtSignerSpec{
 		Name:     realSignerName,
 		Issuer:   pkce.IssuerURL,
 		JWKS:     jwksURI,
@@ -234,28 +237,20 @@ func (s *extAuthState) testMultipleSignersWithNamedPolicyCompletes(t *testing.T)
 		Claim:    "email",
 		Scopes:   []string{"email"},
 	})
-	require.NoError(t, err, "failed to create real-issuer ext-jwt-signer")
-	t.Logf("real-issuer signer created with id=%s", realSignerID)
-
-	signer2ID, err := overlay.CreateExtJwtSigner(ctx, testutil.ExtJwtSignerSpec{
+	signer2ID := overlay.CreateExtJwtSigner(t, ctx, testutil.ExtJwtSignerSpec{
 		Name:     signer2Name,
 		Issuer:   pkce.IssuerURL + "/" + signer2Name,
 		JWKS:     jwksURI,
 		ClientID: pkce.ClientIDs[1],
 		Claim:    "email",
 	})
-	require.NoError(t, err, "failed to create ext-jwt-signer 2")
-	t.Logf("placeholder signer 2 created with id=%s", signer2ID)
-
-	signer3ID, err := overlay.CreateExtJwtSigner(ctx, testutil.ExtJwtSignerSpec{
+	signer3ID := overlay.CreateExtJwtSigner(t, ctx, testutil.ExtJwtSignerSpec{
 		Name:     signer3Name,
 		Issuer:   pkce.IssuerURL + "/" + signer3Name,
 		JWKS:     jwksURI,
 		ClientID: pkce.ClientIDs[2],
 		Claim:    "email",
 	})
-	require.NoError(t, err, "failed to create ext-jwt-signer 3")
-	t.Logf("placeholder signer 3 created with id=%s", signer3ID)
 
 	policyName := name + "-policy"
 	t.Logf("creating multi-signer auth policy %q binding all three signers", policyName)
@@ -281,44 +276,12 @@ func (s *extAuthState) testMultipleSignersWithNamedPolicyCompletes(t *testing.T)
 
 	authURL := s.client.GetExternalAuthURL(t, ctx, needsExt.Id.Identifier, realSignerName)
 
-	t.Logf("driving PKCE flow (issuer=%s email=%s)", pkce.IssuerURL, pkce.Email)
-	require.NoError(t, testutil.DrivePKCEFlow(ctx, authURL, pkce.IssuerURL, pkce.Email, pkce.Password), "drive PKCE flow")
-	t.Logf("PKCE flow completed")
+	testutil.DrivePKCEFlow(t, ctx, authURL, pkce.IssuerURL, pkce.Email, pkce.Password)
 
 	added := s.events.WaitFor(t, ctx, "identity", "added", name)
 	require.False(t, added.Id.NeedsExtAuth, "identity:added NeedsExtAuth=%t after multi-signer PKCE flow, want false", added.Id.NeedsExtAuth)
 	require.True(t, added.Id.Active, "identity:added Active=%t after multi-signer PKCE flow, want true", added.Id.Active)
 	t.Logf("identity:added reports NeedsExtAuth=%t Active=%t after multi-signer PKCE flow", added.Id.NeedsExtAuth, added.Id.Active)
-}
-
-// createPKCESignerAndPolicy registers an ext-jwt-signer pointed at the PKCE
-// IdP with the given audience/client_id, plus a single-signer auth policy.
-// Returns (signerName, policyName). The signer maps the IdP's email claim to
-// externalId.
-func createPKCESignerAndPolicy(t *testing.T, ctx context.Context, name, clientID string) (string, string) {
-	t.Helper()
-	signerName := name + "-signer"
-	policyName := name + "-policy"
-
-	jwksURI := pkce.JWKSURI()
-
-	t.Logf("creating ext-jwt-signer %q pointing at PKCE IdP (issuer=%s clientID=%s)", signerName, pkce.IssuerURL, clientID)
-	signerID, err := overlay.CreateExtJwtSigner(ctx, testutil.ExtJwtSignerSpec{
-		Name:     signerName,
-		Issuer:   pkce.IssuerURL,
-		JWKS:     jwksURI,
-		ClientID: clientID,
-		Claim:    "email",
-		Scopes:   []string{"email"},
-	})
-	require.NoError(t, err, "failed to create ext-jwt-signer")
-	t.Logf("ext-jwt-signer %q created with id=%s", signerName, signerID)
-
-	t.Logf("creating auth policy %q with ext-jwt-signer %s", policyName, signerID)
-	require.NoError(t, overlay.CreateAuthPolicyForExtJwt(ctx, policyName, signerID), "create auth policy with ext-jwt-signer")
-	t.Logf("auth policy %q created", policyName)
-
-	return signerName, policyName
 }
 
 func (s *extAuthState) urlEnrollForExtAuth(t *testing.T, ctx context.Context, name string) testutil.Event {

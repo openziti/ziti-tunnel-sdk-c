@@ -34,6 +34,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -326,9 +328,11 @@ type ExtJwtSignerSpec struct {
 	Scopes   []string
 }
 
-// CreateExtJwtSigner registers an ext-jwt-signer on the controller and
-// returns its assigned ID.
-func (o *Overlay) CreateExtJwtSigner(ctx context.Context, spec ExtJwtSignerSpec) (string, error) {
+// CreateExtJwtSigner registers an ext-jwt-signer on the controller and returns
+// its assigned ID.
+func (o *Overlay) CreateExtJwtSigner(t *testing.T, ctx context.Context, spec ExtJwtSignerSpec) string {
+	t.Helper()
+	t.Logf("creating ext-jwt-signer %q (issuer=%s clientID=%s)", spec.Name, spec.Issuer, spec.ClientID)
 	args := []string{
 		"edge", "create", "ext-jwt-signer", spec.Name, spec.Issuer,
 		"--jwks-endpoint", spec.JWKS,
@@ -343,10 +347,10 @@ func (o *Overlay) CreateExtJwtSigner(ctx context.Context, spec ExtJwtSignerSpec)
 		args = append(args, "--scopes", s)
 	}
 	out, err := o.execZiti(ctx, args...)
-	if err != nil {
-		return "", fmt.Errorf("create ext-jwt-signer %s: %w", spec.Name, err)
-	}
-	return string(bytes.TrimSpace(out)), nil
+	require.NoError(t, err, "create ext-jwt-signer %s", spec.Name)
+	id := string(bytes.TrimSpace(out))
+	t.Logf("ext-jwt-signer %q created with id=%s", spec.Name, id)
+	return id
 }
 
 // CreateAuthPolicyForExtJwt creates an auth policy whose primary auth method
