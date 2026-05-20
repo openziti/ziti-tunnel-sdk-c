@@ -17,7 +17,6 @@ limitations under the License.
 package integration_test
 
 import (
-	"context"
 	"crypto/hmac"
 	"crypto/sha1"
 	"encoding/base32"
@@ -33,32 +32,29 @@ import (
 )
 
 func TestEnableMFA(t *testing.T) {
-	t.Run("acceptsJwtEnrolledIdentity", testEnableMFAAcceptsJwtEnrolledIdentity)
-	t.Run("acceptsTotpRequiredAuthPolicy", testEnableMFAAcceptsTotpRequiredAuthPolicy)
+	testutil.RunTestWithTimeout(t, "acceptsJwtEnrolledIdentity", testEnableMFAAcceptsJwtEnrolledIdentity)
+	testutil.RunTestWithTimeout(t, "acceptsTotpRequiredAuthPolicy", testEnableMFAAcceptsTotpRequiredAuthPolicy)
 }
 
 func TestVerifyMFA(t *testing.T) {
-	t.Run("acceptsValidTotp", testVerifyMFAAcceptsValidTotp)
-	t.Run("rejectsInvalidTotp", testVerifyMFARejectsInvalidTotp)
+	testutil.RunTestWithTimeout(t, "acceptsValidTotp", testVerifyMFAAcceptsValidTotp)
+	testutil.RunTestWithTimeout(t, "rejectsInvalidTotp", testVerifyMFARejectsInvalidTotp)
 }
 
 func TestMFAReauthentication(t *testing.T) {
-	t.Run("acceptsValidTotp", testMFAReauthenticationAcceptsValidTotp)
-	t.Run("acceptsRecoveryCode", testMFAReauthenticationAcceptsRecoveryCode)
-	t.Run("rejectsInvalidTotp", testMFAReauthenticationRejectsInvalidTotp)
+	testutil.RunTestWithTimeout(t, "acceptsValidTotp", testMFAReauthenticationAcceptsValidTotp)
+	testutil.RunTestWithTimeout(t, "acceptsRecoveryCode", testMFAReauthenticationAcceptsRecoveryCode)
+	testutil.RunTestWithTimeout(t, "rejectsInvalidTotp", testMFAReauthenticationRejectsInvalidTotp)
 }
 
 func TestRemoveMFA(t *testing.T) {
-	t.Run("acceptsValidTotp", testRemoveMFAAcceptsValidTotp)
-	t.Run("acceptsRecoveryCode", testRemoveMFAAcceptsRecoveryCode)
-	t.Run("rejectsInvalidTotp", testRemoveMFARejectsInvalidTotp)
+	testutil.RunTestWithTimeout(t, "acceptsValidTotp", testRemoveMFAAcceptsValidTotp)
+	testutil.RunTestWithTimeout(t, "acceptsRecoveryCode", testRemoveMFAAcceptsRecoveryCode)
+	testutil.RunTestWithTimeout(t, "rejectsInvalidTotp", testRemoveMFARejectsInvalidTotp)
 }
 
 func testEnableMFAAcceptsJwtEnrolledIdentity(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	enrolled, _ := newEnrolledMFA(t, ctx, testutil.IdentityName(t))
+	enrolled, _ := newEnrolledMFA(t, testutil.IdentityName(t))
 
 	require.False(t, enrolled.IsVerified, "EnableMFA Data.IsVerified should be false before verify_mfa")
 	t.Logf("EnableMFA returned IsVerified=%t", enrolled.IsVerified)
@@ -67,16 +63,13 @@ func testEnableMFAAcceptsJwtEnrolledIdentity(t *testing.T) {
 func testEnableMFAAcceptsTotpRequiredAuthPolicy(t *testing.T) {
 	t.Skip("Tracking https://github.com/openziti/desktop-edge-win/issues/947 and https://openziti.discourse.group/t/enrolling-mfa-totp-from-zdew-fails/5482 - EnableMFA fails with 'failed to authenticate' for identities bound to TOTP-required auth policies")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
 	name := testutil.IdentityName(t)
 	policy := name + "-policy"
 	t.Logf("creating TOTP-required auth policy %q", policy)
-	require.NoError(t, state.overlay.CreateAuthPolicyRequiringTOTP(ctx, policy), "create auth policy")
+	require.NoError(t, state.overlay.CreateAuthPolicyRequiringTOTP(policy), "create auth policy")
 
 	t.Logf("creating JWT for %q bound to auth policy %q", name, policy)
-	jwt, err := state.overlay.CreateIdentityJWTWithAuthPolicy(ctx, name, policy)
+	jwt, err := state.overlay.CreateIdentityJWTWithAuthPolicy(name, policy)
 	require.NoError(t, err, "failed to create JWT for identity bound to %q", policy)
 	require.NotEmpty(t, jwt)
 
@@ -87,15 +80,15 @@ func testEnableMFAAcceptsTotpRequiredAuthPolicy(t *testing.T) {
 		IdentityFilename: name,
 		JwtContent:       &jwt,
 	}
-	addResp := testutil.AddIdentity(t, ctx, client, identityData)
+	addResp := testutil.AddIdentity(t, client, identityData)
 	require.True(t, addResp.Success, "AddIdentity failed: error=%q code=%d", addResp.Error, addResp.Code)
 
-	added := events.WaitFor(t, ctx, "identity", "added", name)
+	added := events.WaitFor(t, "identity", "added", name)
 	require.NotEmpty(t, added.Id.Identifier, "identity:added Identifier empty")
 	testutil.AssertValidJwtEnrolledIdentityFile(t, added.Id.Identifier)
 
 	t.Logf("sending EnableMFA for %q", name)
-	enrollment, err := client.GetMFAEnrollment(ctx, added.Id.Identifier)
+	enrollment, err := client.GetMFAEnrollment(added.Id.Identifier)
 	require.NoError(t, err, "failed to send EnableMFA\n%s", state.zetClient.LogPath())
 	require.NotEmpty(t, enrollment.ProvisioningUrl, "EnableMFA Data.ProvisioningUrl should be non-empty")
 	require.NotEmpty(t, enrollment.RecoveryCodes, "EnableMFA Data.RecoveryCodes should be non-empty")
@@ -103,34 +96,28 @@ func testEnableMFAAcceptsTotpRequiredAuthPolicy(t *testing.T) {
 }
 
 func testVerifyMFAAcceptsValidTotp(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
 	name := testutil.IdentityName(t)
-	enrolled, events := newEnrolledMFA(t, ctx, name)
+	enrolled, events := newEnrolledMFA(t, name)
 
 	code, err := generateTotpCode(enrolled.Secret, time.Now())
 	require.NoError(t, err, "failed to compute TOTP")
 
 	t.Logf("sending VerifyMFA with valid TOTP for %q", name)
-	verifyResp, err := enrolled.Client.VerifyMFA(ctx, enrolled.Identifier, code)
+	verifyResp, err := enrolled.Client.VerifyMFA(enrolled.Identifier, code)
 	require.NoError(t, err, "failed to send VerifyMFA\n%s", state.zetClient.LogPath())
 	require.True(t, verifyResp.Success, "VerifyMFA failed: error=%q code=%d\n%s", verifyResp.Error, verifyResp.Code, state.zetClient.LogPath())
 
-	verifyEvt := events.WaitFor(t, ctx, "mfa", "enrollment_verification", name)
+	verifyEvt := events.WaitFor(t, "mfa", "enrollment_verification", name)
 	require.True(t, verifyEvt.Successful, "mfa:enrollment_verification Successful=%t after VerifyMFA, want true", verifyEvt.Successful)
 	t.Logf("mfa:enrollment_verification reports Successful=%t after VerifyMFA", verifyEvt.Successful)
 }
 
 func testVerifyMFARejectsInvalidTotp(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
 	name := testutil.IdentityName(t)
-	enrolled, _ := newEnrolledMFA(t, ctx, name)
+	enrolled, _ := newEnrolledMFA(t, name)
 
 	t.Logf("sending VerifyMFA with invalid TOTP for %q", name)
-	verifyResp, err := enrolled.Client.VerifyMFA(ctx, enrolled.Identifier, "000000")
+	verifyResp, err := enrolled.Client.VerifyMFA(enrolled.Identifier, "000000")
 	require.NoError(t, err, "failed to send VerifyMFA\n%s", state.zetClient.LogPath())
 	require.False(t, verifyResp.Success, "VerifyMFA with invalid TOTP should fail but Success=true")
 	require.Equal(t, 500, verifyResp.Code, "expected Code=500, got %d", verifyResp.Code)
@@ -139,117 +126,108 @@ func testVerifyMFARejectsInvalidTotp(t *testing.T) {
 }
 
 func testMFAReauthenticationAcceptsValidTotp(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-
 	name := testutil.IdentityName(t)
-	enrolled, events := newEnrolledMFA(t, ctx, name)
+	enrolled, events := newEnrolledMFA(t, name)
 
 	code, err := generateTotpCode(enrolled.Secret, time.Now())
 	require.NoError(t, err, "failed to compute TOTP")
 
 	t.Logf("sending VerifyMFA with valid TOTP for %q", name)
-	verifyResp, err := enrolled.Client.VerifyMFA(ctx, enrolled.Identifier, code)
+	verifyResp, err := enrolled.Client.VerifyMFA(enrolled.Identifier, code)
 	require.NoError(t, err, "failed to send VerifyMFA\n%s", state.zetClient.LogPath())
 	require.True(t, verifyResp.Success, "VerifyMFA failed: error=%q code=%d\n%s", verifyResp.Error, verifyResp.Code, state.zetClient.LogPath())
-	verifyEvt := events.WaitFor(t, ctx, "mfa", "enrollment_verification", name)
+	verifyEvt := events.WaitFor(t, "mfa", "enrollment_verification", name)
 	require.True(t, verifyEvt.Successful, "mfa:enrollment_verification Successful=%t after VerifyMFA, want true", verifyEvt.Successful)
 
 	t.Logf("sending IdentityOnOff(false) for %q to drop the session", name)
-	offResp, err := enrolled.Client.IdentityOnOff(ctx, enrolled.Identifier, false)
+	offResp, err := enrolled.Client.IdentityOnOff(enrolled.Identifier, false)
 	require.NoError(t, err, "failed to send IdentityOnOff(false)\n%s", state.zetClient.LogPath())
 	require.True(t, offResp.Success, "IdentityOnOff(false) failed: error=%q code=%d", offResp.Error, offResp.Code)
 
 	t.Logf("sending IdentityOnOff(true) for %q to force re-auth", name)
-	onResp, err := enrolled.Client.IdentityOnOff(ctx, enrolled.Identifier, true)
+	onResp, err := enrolled.Client.IdentityOnOff(enrolled.Identifier, true)
 	require.NoError(t, err, "failed to send IdentityOnOff(true)\n%s", state.zetClient.LogPath())
 	require.True(t, onResp.Success, "IdentityOnOff(true) failed: error=%q code=%d", onResp.Error, onResp.Code)
 
-	events.WaitFor(t, ctx, "mfa", "auth_challenge", name)
+	events.WaitFor(t, "mfa", "auth_challenge", name)
 
 	code, err = generateTotpCode(enrolled.Secret, time.Now())
 	require.NoError(t, err, "failed to compute TOTP")
 
 	t.Logf("sending SubmitMFA with valid TOTP for %q", name)
-	submitResp, err := enrolled.Client.SubmitMFA(ctx, enrolled.Identifier, code)
+	submitResp, err := enrolled.Client.SubmitMFA(enrolled.Identifier, code)
 	require.NoError(t, err, "failed to send SubmitMFA\n%s", state.zetClient.LogPath())
 	require.True(t, submitResp.Success, "SubmitMFA failed: error=%q code=%d\n%s", submitResp.Error, submitResp.Code, state.zetClient.LogPath())
 
-	submitEvt := events.WaitFor(t, ctx, "mfa", "mfa_auth_status", name)
+	submitEvt := events.WaitFor(t, "mfa", "mfa_auth_status", name)
 	require.True(t, submitEvt.Successful, "mfa:mfa_auth_status Successful=%t after SubmitMFA, want true", submitEvt.Successful)
 	t.Logf("mfa:mfa_auth_status reports Successful=%t after SubmitMFA", submitEvt.Successful)
 }
 
 func testMFAReauthenticationAcceptsRecoveryCode(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-
 	name := testutil.IdentityName(t)
-	enrolled, events := newEnrolledMFA(t, ctx, name)
+	enrolled, events := newEnrolledMFA(t, name)
 
 	code, err := generateTotpCode(enrolled.Secret, time.Now())
 	require.NoError(t, err, "failed to compute TOTP")
 
 	t.Logf("sending VerifyMFA with valid TOTP for %q", name)
-	verifyResp, err := enrolled.Client.VerifyMFA(ctx, enrolled.Identifier, code)
+	verifyResp, err := enrolled.Client.VerifyMFA(enrolled.Identifier, code)
 	require.NoError(t, err, "failed to send VerifyMFA\n%s", state.zetClient.LogPath())
 	require.True(t, verifyResp.Success, "VerifyMFA failed: error=%q code=%d\n%s", verifyResp.Error, verifyResp.Code, state.zetClient.LogPath())
-	verifyEvt := events.WaitFor(t, ctx, "mfa", "enrollment_verification", name)
+	verifyEvt := events.WaitFor(t, "mfa", "enrollment_verification", name)
 	require.True(t, verifyEvt.Successful, "mfa:enrollment_verification Successful=%t after VerifyMFA, want true", verifyEvt.Successful)
 
 	t.Logf("sending IdentityOnOff(false) for %q to drop the session", name)
-	offResp, err := enrolled.Client.IdentityOnOff(ctx, enrolled.Identifier, false)
+	offResp, err := enrolled.Client.IdentityOnOff(enrolled.Identifier, false)
 	require.NoError(t, err, "failed to send IdentityOnOff(false)\n%s", state.zetClient.LogPath())
 	require.True(t, offResp.Success, "IdentityOnOff(false) failed: error=%q code=%d", offResp.Error, offResp.Code)
 
 	t.Logf("sending IdentityOnOff(true) for %q to force re-auth", name)
-	onResp, err := enrolled.Client.IdentityOnOff(ctx, enrolled.Identifier, true)
+	onResp, err := enrolled.Client.IdentityOnOff(enrolled.Identifier, true)
 	require.NoError(t, err, "failed to send IdentityOnOff(true)\n%s", state.zetClient.LogPath())
 	require.True(t, onResp.Success, "IdentityOnOff(true) failed: error=%q code=%d", onResp.Error, onResp.Code)
 
-	events.WaitFor(t, ctx, "mfa", "auth_challenge", name)
+	events.WaitFor(t, "mfa", "auth_challenge", name)
 
 	t.Logf("sending SubmitMFA with recovery code for %q", name)
-	submitResp, err := enrolled.Client.SubmitMFA(ctx, enrolled.Identifier, enrolled.RecoveryCodes[0])
+	submitResp, err := enrolled.Client.SubmitMFA(enrolled.Identifier, enrolled.RecoveryCodes[0])
 	require.NoError(t, err, "failed to send SubmitMFA\n%s", state.zetClient.LogPath())
 	require.True(t, submitResp.Success, "SubmitMFA failed: error=%q code=%d\n%s", submitResp.Error, submitResp.Code, state.zetClient.LogPath())
 
-	submitEvt := events.WaitFor(t, ctx, "mfa", "mfa_auth_status", name)
+	submitEvt := events.WaitFor(t, "mfa", "mfa_auth_status", name)
 	require.True(t, submitEvt.Successful, "mfa:mfa_auth_status Successful=%t after SubmitMFA, want true", submitEvt.Successful)
 	t.Logf("mfa:mfa_auth_status reports Successful=%t after SubmitMFA with recovery code", submitEvt.Successful)
 }
 
 func testMFAReauthenticationRejectsInvalidTotp(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-
 	name := testutil.IdentityName(t)
-	enrolled, events := newEnrolledMFA(t, ctx, name)
+	enrolled, events := newEnrolledMFA(t, name)
 
 	code, err := generateTotpCode(enrolled.Secret, time.Now())
 	require.NoError(t, err, "failed to compute TOTP")
 
 	t.Logf("sending VerifyMFA with valid TOTP for %q", name)
-	verifyResp, err := enrolled.Client.VerifyMFA(ctx, enrolled.Identifier, code)
+	verifyResp, err := enrolled.Client.VerifyMFA(enrolled.Identifier, code)
 	require.NoError(t, err, "failed to send VerifyMFA\n%s", state.zetClient.LogPath())
 	require.True(t, verifyResp.Success, "VerifyMFA failed: error=%q code=%d\n%s", verifyResp.Error, verifyResp.Code, state.zetClient.LogPath())
-	verifyEvt := events.WaitFor(t, ctx, "mfa", "enrollment_verification", name)
+	verifyEvt := events.WaitFor(t, "mfa", "enrollment_verification", name)
 	require.True(t, verifyEvt.Successful, "mfa:enrollment_verification Successful=%t after VerifyMFA, want true", verifyEvt.Successful)
 
 	t.Logf("sending IdentityOnOff(false) for %q to drop the session", name)
-	offResp, err := enrolled.Client.IdentityOnOff(ctx, enrolled.Identifier, false)
+	offResp, err := enrolled.Client.IdentityOnOff(enrolled.Identifier, false)
 	require.NoError(t, err, "failed to send IdentityOnOff(false)\n%s", state.zetClient.LogPath())
 	require.True(t, offResp.Success, "IdentityOnOff(false) failed: error=%q code=%d", offResp.Error, offResp.Code)
 
 	t.Logf("sending IdentityOnOff(true) for %q to force re-auth", name)
-	onResp, err := enrolled.Client.IdentityOnOff(ctx, enrolled.Identifier, true)
+	onResp, err := enrolled.Client.IdentityOnOff(enrolled.Identifier, true)
 	require.NoError(t, err, "failed to send IdentityOnOff(true)\n%s", state.zetClient.LogPath())
 	require.True(t, onResp.Success, "IdentityOnOff(true) failed: error=%q code=%d", onResp.Error, onResp.Code)
 
-	events.WaitFor(t, ctx, "mfa", "auth_challenge", name)
+	events.WaitFor(t, "mfa", "auth_challenge", name)
 
 	t.Logf("sending SubmitMFA with invalid TOTP for %q", name)
-	submitResp, err := enrolled.Client.SubmitMFA(ctx, enrolled.Identifier, "000000")
+	submitResp, err := enrolled.Client.SubmitMFA(enrolled.Identifier, "000000")
 	require.NoError(t, err, "failed to send SubmitMFA\n%s", state.zetClient.LogPath())
 	require.False(t, submitResp.Success, "SubmitMFA with invalid TOTP should fail but Success=true")
 	require.Equal(t, 500, submitResp.Code, "expected Code=500, got %d", submitResp.Code)
@@ -258,80 +236,71 @@ func testMFAReauthenticationRejectsInvalidTotp(t *testing.T) {
 }
 
 func testRemoveMFAAcceptsValidTotp(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
 	name := testutil.IdentityName(t)
-	enrolled, events := newEnrolledMFA(t, ctx, name)
+	enrolled, events := newEnrolledMFA(t, name)
 
 	code, err := generateTotpCode(enrolled.Secret, time.Now())
 	require.NoError(t, err, "failed to compute TOTP")
 
 	t.Logf("sending VerifyMFA with valid TOTP for %q", name)
-	verifyResp, err := enrolled.Client.VerifyMFA(ctx, enrolled.Identifier, code)
+	verifyResp, err := enrolled.Client.VerifyMFA(enrolled.Identifier, code)
 	require.NoError(t, err, "failed to send VerifyMFA\n%s", state.zetClient.LogPath())
 	require.True(t, verifyResp.Success, "VerifyMFA failed: error=%q code=%d\n%s", verifyResp.Error, verifyResp.Code, state.zetClient.LogPath())
-	verifyEvt := events.WaitFor(t, ctx, "mfa", "enrollment_verification", name)
+	verifyEvt := events.WaitFor(t, "mfa", "enrollment_verification", name)
 	require.True(t, verifyEvt.Successful, "mfa:enrollment_verification Successful=%t after VerifyMFA, want true", verifyEvt.Successful)
 
 	code, err = generateTotpCode(enrolled.Secret, time.Now())
 	require.NoError(t, err, "failed to compute TOTP")
 
 	t.Logf("sending RemoveMFA with valid TOTP for %q", name)
-	removeResp, err := enrolled.Client.RemoveMFA(ctx, enrolled.Identifier, code)
+	removeResp, err := enrolled.Client.RemoveMFA(enrolled.Identifier, code)
 	require.NoError(t, err, "failed to send RemoveMFA\n%s", state.zetClient.LogPath())
 	require.True(t, removeResp.Success, "RemoveMFA failed: error=%q code=%d\n%s", removeResp.Error, removeResp.Code, state.zetClient.LogPath())
 
-	removeEvt := events.WaitFor(t, ctx, "mfa", "enrollment_remove", name)
+	removeEvt := events.WaitFor(t, "mfa", "enrollment_remove", name)
 	require.True(t, removeEvt.Successful, "mfa:enrollment_remove Successful=%t after RemoveMFA, want true", removeEvt.Successful)
 	t.Logf("mfa:enrollment_remove reports Successful=%t after RemoveMFA with TOTP", removeEvt.Successful)
 }
 
 func testRemoveMFAAcceptsRecoveryCode(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
 	name := testutil.IdentityName(t)
-	enrolled, events := newEnrolledMFA(t, ctx, name)
+	enrolled, events := newEnrolledMFA(t, name)
 
 	code, err := generateTotpCode(enrolled.Secret, time.Now())
 	require.NoError(t, err, "failed to compute TOTP")
 
 	t.Logf("sending VerifyMFA with valid TOTP for %q", name)
-	verifyResp, err := enrolled.Client.VerifyMFA(ctx, enrolled.Identifier, code)
+	verifyResp, err := enrolled.Client.VerifyMFA(enrolled.Identifier, code)
 	require.NoError(t, err, "failed to send VerifyMFA\n%s", state.zetClient.LogPath())
 	require.True(t, verifyResp.Success, "VerifyMFA failed: error=%q code=%d\n%s", verifyResp.Error, verifyResp.Code, state.zetClient.LogPath())
-	verifyEvt := events.WaitFor(t, ctx, "mfa", "enrollment_verification", name)
+	verifyEvt := events.WaitFor(t, "mfa", "enrollment_verification", name)
 	require.True(t, verifyEvt.Successful, "mfa:enrollment_verification Successful=%t after VerifyMFA, want true", verifyEvt.Successful)
 
 	t.Logf("sending RemoveMFA with recovery code for %q", name)
-	removeResp, err := enrolled.Client.RemoveMFA(ctx, enrolled.Identifier, enrolled.RecoveryCodes[0])
+	removeResp, err := enrolled.Client.RemoveMFA(enrolled.Identifier, enrolled.RecoveryCodes[0])
 	require.NoError(t, err, "failed to send RemoveMFA\n%s", state.zetClient.LogPath())
 	require.True(t, removeResp.Success, "RemoveMFA failed: error=%q code=%d\n%s", removeResp.Error, removeResp.Code, state.zetClient.LogPath())
 
-	removeEvt := events.WaitFor(t, ctx, "mfa", "enrollment_remove", name)
+	removeEvt := events.WaitFor(t, "mfa", "enrollment_remove", name)
 	require.True(t, removeEvt.Successful, "mfa:enrollment_remove Successful=%t after RemoveMFA, want true", removeEvt.Successful)
 	t.Logf("mfa:enrollment_remove reports Successful=%t after RemoveMFA with recovery code", removeEvt.Successful)
 }
 
 func testRemoveMFARejectsInvalidTotp(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
 	name := testutil.IdentityName(t)
-	enrolled, events := newEnrolledMFA(t, ctx, name)
+	enrolled, events := newEnrolledMFA(t, name)
 
 	code, err := generateTotpCode(enrolled.Secret, time.Now())
 	require.NoError(t, err, "failed to compute TOTP")
 
 	t.Logf("sending VerifyMFA with valid TOTP for %q", name)
-	verifyResp, err := enrolled.Client.VerifyMFA(ctx, enrolled.Identifier, code)
+	verifyResp, err := enrolled.Client.VerifyMFA(enrolled.Identifier, code)
 	require.NoError(t, err, "failed to send VerifyMFA\n%s", state.zetClient.LogPath())
 	require.True(t, verifyResp.Success, "VerifyMFA failed: error=%q code=%d\n%s", verifyResp.Error, verifyResp.Code, state.zetClient.LogPath())
-	events.WaitFor(t, ctx, "mfa", "enrollment_verification", name)
+	events.WaitFor(t, "mfa", "enrollment_verification", name)
 
 	t.Logf("sending RemoveMFA with invalid TOTP for %q", name)
-	removeResp, err := enrolled.Client.RemoveMFA(ctx, enrolled.Identifier, "000000")
+	removeResp, err := enrolled.Client.RemoveMFA(enrolled.Identifier, "000000")
 	require.NoError(t, err, "failed to send RemoveMFA\n%s", state.zetClient.LogPath())
 	require.False(t, removeResp.Success, "RemoveMFA with invalid TOTP should fail but Success=true")
 	require.Equal(t, 500, removeResp.Code, "expected Code=500, got %d", removeResp.Code)
@@ -347,9 +316,9 @@ type enrolledMFA struct {
 	Secret        string
 }
 
-func newEnrolledMFA(t *testing.T, ctx context.Context, name string) (*enrolledMFA, *testutil.EventClient) {
+func newEnrolledMFA(t *testing.T, name string) (*enrolledMFA, *testutil.EventClient) {
 	t.Logf("creating JWT for %q", name)
-	jwt, err := state.overlay.CreateIdentityJWT(ctx, name)
+	jwt, err := state.overlay.CreateIdentityJWT(name)
 	require.NoError(t, err, "failed to create JWT")
 	require.NotEmpty(t, jwt)
 
@@ -360,16 +329,16 @@ func newEnrolledMFA(t *testing.T, ctx context.Context, name string) (*enrolledMF
 		IdentityFilename: name,
 		JwtContent:       &jwt,
 	}
-	addResp := testutil.AddIdentity(t, ctx, client, identityData)
+	addResp := testutil.AddIdentity(t, client, identityData)
 	require.True(t, addResp.Success, "AddIdentity failed: error=%q code=%d", addResp.Error, addResp.Code)
 
-	added := events.WaitFor(t, ctx, "identity", "added", name)
+	added := events.WaitFor(t, "identity", "added", name)
 	require.NotEmpty(t, added.Id.Identifier, "identity:added Identifier empty")
 	testutil.AssertValidJwtEnrolledIdentityFile(t, added.Id.Identifier)
-	events.WaitFor(t, ctx, "controller", "connected", name)
+	events.WaitFor(t, "controller", "connected", name)
 
 	t.Logf("sending EnableMFA for %q", name)
-	enrollment, err := client.GetMFAEnrollment(ctx, added.Id.Identifier)
+	enrollment, err := client.GetMFAEnrollment(added.Id.Identifier)
 	require.NoError(t, err, "failed to send EnableMFA\n%s", state.zetClient.LogPath())
 	require.NotEmpty(t, enrollment.ProvisioningUrl, "EnableMFA Data.ProvisioningUrl should be non-empty")
 	require.NotEmpty(t, enrollment.RecoveryCodes, "EnableMFA Data.RecoveryCodes should be non-empty")

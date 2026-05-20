@@ -18,15 +18,31 @@ package testutil
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
+
+const TestTimeout = 5 * time.Second
+
+// RunTestWithTimeout runs f as a t.Run subtest. If f does not return within
+// TestTimeout, the process panics — per the project convention, a per-test
+// timeout means "something horrible has happened" and the whole suite should
+// fail rather than continue.
+func RunTestWithTimeout(t *testing.T, name string, f func(*testing.T)) {
+	t.Run(name, func(t *testing.T) {
+		timer := time.AfterFunc(TestTimeout, func() {
+			panic(fmt.Sprintf("test %s timed out after %s", t.Name(), TestTimeout))
+		})
+		defer timer.Stop()
+		f(t)
+	})
+}
 
 // Payload structs below mirror the wire JSON emitted/accepted by ziti-edge-tunnel's
 // IPC handlers (defined in lib/ziti-tunnel-cbs/include/ziti/ziti_tunnel_cbs.h).
@@ -178,8 +194,8 @@ func (s *TunnelStatus) FindIdentity(fingerprint string) *IdentityStatus {
 }
 
 // GetTunnelStatus sends the Status command, asserts success, and unmarshals the response.
-func (c *CommandsClient) GetTunnelStatus(ctx context.Context) (*TunnelStatus, error) {
-	resp, err := c.Status(ctx)
+func (c *CommandsClient) GetTunnelStatus() (*TunnelStatus, error) {
+	resp, err := c.Status()
 	if err != nil {
 		return nil, fmt.Errorf("status: %w", err)
 	}
@@ -201,8 +217,8 @@ type MFAEnrollment struct {
 }
 
 // GetMFAEnrollment sends EnableMFA, asserts success, and unmarshals the enrollment response.
-func (c *CommandsClient) GetMFAEnrollment(ctx context.Context, identifier string) (*MFAEnrollment, error) {
-	resp, err := c.EnableMFA(ctx, identifier)
+func (c *CommandsClient) GetMFAEnrollment(identifier string) (*MFAEnrollment, error) {
+	resp, err := c.EnableMFA(identifier)
 	if err != nil {
 		return nil, fmt.Errorf("enable mfa: %w", err)
 	}
@@ -217,63 +233,63 @@ func (c *CommandsClient) GetMFAEnrollment(ctx context.Context, identifier string
 }
 
 // Helper methods send a named command with the appropriate payload and read
-// exactly one response. All inherit the context's deadline (used for async
-// handlers like AddIdentity that respond only after enrollment completes).
+// exactly one response. SendCommand blocks until the response arrives; rely on
+// `go test -timeout` to bound the suite if ZET wedges.
 
-func (c *CommandsClient) RefreshIdentity(ctx context.Context, identifier string) (*Response, error) {
-	return c.SendCommand(ctx, IPCCommand{Action: "RefreshIdentity", Payload: IdentifierData{Identifier: identifier}})
+func (c *CommandsClient) RefreshIdentity(identifier string) (*Response, error) {
+	return c.SendCommand(IPCCommand{Action: "RefreshIdentity", Payload: IdentifierData{Identifier: identifier}})
 }
 
-func (c *CommandsClient) RemoveIdentity(ctx context.Context, identifier string) (*Response, error) {
-	return c.SendCommand(ctx, IPCCommand{Action: "RemoveIdentity", Payload: IdentifierData{Identifier: identifier}})
+func (c *CommandsClient) RemoveIdentity(identifier string) (*Response, error) {
+	return c.SendCommand(IPCCommand{Action: "RemoveIdentity", Payload: IdentifierData{Identifier: identifier}})
 }
 
-func (c *CommandsClient) IdentityOnOff(ctx context.Context, identifier string, onOff bool) (*Response, error) {
-	return c.SendCommand(ctx, IPCCommand{Action: "IdentityOnOff", Payload: IdentityOnOffData{Identifier: identifier, OnOff: onOff}})
+func (c *CommandsClient) IdentityOnOff(identifier string, onOff bool) (*Response, error) {
+	return c.SendCommand(IPCCommand{Action: "IdentityOnOff", Payload: IdentityOnOffData{Identifier: identifier, OnOff: onOff}})
 }
 
-func (c *CommandsClient) SetLogLevel(ctx context.Context, level string) (*Response, error) {
-	return c.SendCommand(ctx, IPCCommand{Action: "SetLogLevel", Payload: SetLogLevelData{Level: level}})
+func (c *CommandsClient) SetLogLevel(level string) (*Response, error) {
+	return c.SendCommand(IPCCommand{Action: "SetLogLevel", Payload: SetLogLevelData{Level: level}})
 }
 
-func (c *CommandsClient) ZitiDump(ctx context.Context, identifier, dumpPath string) (*Response, error) {
-	return c.SendCommand(ctx, IPCCommand{Action: "ZitiDump", Payload: ZitiDumpData{Identifier: identifier, DumpPath: dumpPath}})
+func (c *CommandsClient) ZitiDump(identifier, dumpPath string) (*Response, error) {
+	return c.SendCommand(IPCCommand{Action: "ZitiDump", Payload: ZitiDumpData{Identifier: identifier, DumpPath: dumpPath}})
 }
 
-func (c *CommandsClient) IpDump(ctx context.Context, dumpPath string) (*Response, error) {
-	return c.SendCommand(ctx, IPCCommand{Action: "IpDump", Payload: IpDumpData{DumpPath: dumpPath}})
+func (c *CommandsClient) IpDump(dumpPath string) (*Response, error) {
+	return c.SendCommand(IPCCommand{Action: "IpDump", Payload: IpDumpData{DumpPath: dumpPath}})
 }
 
-func (c *CommandsClient) EnableMFA(ctx context.Context, identifier string) (*Response, error) {
-	return c.SendCommand(ctx, IPCCommand{Action: "EnableMFA", Payload: EnableMFAData{Identifier: identifier}})
+func (c *CommandsClient) EnableMFA(identifier string) (*Response, error) {
+	return c.SendCommand(IPCCommand{Action: "EnableMFA", Payload: EnableMFAData{Identifier: identifier}})
 }
 
-func (c *CommandsClient) SubmitMFA(ctx context.Context, identifier, code string) (*Response, error) {
-	return c.SendCommand(ctx, IPCCommand{Action: "SubmitMFA", Payload: MFAData{Identifier: identifier, Code: code}})
+func (c *CommandsClient) SubmitMFA(identifier, code string) (*Response, error) {
+	return c.SendCommand(IPCCommand{Action: "SubmitMFA", Payload: MFAData{Identifier: identifier, Code: code}})
 }
 
-func (c *CommandsClient) VerifyMFA(ctx context.Context, identifier, code string) (*Response, error) {
-	return c.SendCommand(ctx, IPCCommand{Action: "VerifyMFA", Payload: MFAData{Identifier: identifier, Code: code}})
+func (c *CommandsClient) VerifyMFA(identifier, code string) (*Response, error) {
+	return c.SendCommand(IPCCommand{Action: "VerifyMFA", Payload: MFAData{Identifier: identifier, Code: code}})
 }
 
-func (c *CommandsClient) RemoveMFA(ctx context.Context, identifier, code string) (*Response, error) {
-	return c.SendCommand(ctx, IPCCommand{Action: "RemoveMFA", Payload: MFAData{Identifier: identifier, Code: code}})
+func (c *CommandsClient) RemoveMFA(identifier, code string) (*Response, error) {
+	return c.SendCommand(IPCCommand{Action: "RemoveMFA", Payload: MFAData{Identifier: identifier, Code: code}})
 }
 
-func (c *CommandsClient) GenerateMFACodes(ctx context.Context, identifier, code string) (*Response, error) {
-	return c.SendCommand(ctx, IPCCommand{Action: "GenerateMFACodes", Payload: MFAData{Identifier: identifier, Code: code}})
+func (c *CommandsClient) GenerateMFACodes(identifier, code string) (*Response, error) {
+	return c.SendCommand(IPCCommand{Action: "GenerateMFACodes", Payload: MFAData{Identifier: identifier, Code: code}})
 }
 
-func (c *CommandsClient) GetMFACodes(ctx context.Context, identifier, code string) (*Response, error) {
-	return c.SendCommand(ctx, IPCCommand{Action: "GetMFACodes", Payload: MFAData{Identifier: identifier, Code: code}})
+func (c *CommandsClient) GetMFACodes(identifier, code string) (*Response, error) {
+	return c.SendCommand(IPCCommand{Action: "GetMFACodes", Payload: MFAData{Identifier: identifier, Code: code}})
 }
 
-func (c *CommandsClient) UpdateInterfaceConfig(ctx context.Context, cfg InterfaceConfigData) (*Response, error) {
-	return c.SendCommand(ctx, IPCCommand{Action: "UpdateInterfaceConfig", Payload: cfg})
+func (c *CommandsClient) UpdateInterfaceConfig(cfg InterfaceConfigData) (*Response, error) {
+	return c.SendCommand(IPCCommand{Action: "UpdateInterfaceConfig", Payload: cfg})
 }
 
-func (c *CommandsClient) ExternalAuth(ctx context.Context, identifier, provider string) (*Response, error) {
-	return c.SendCommand(ctx, IPCCommand{Action: "ExternalAuth", Payload: ExternalAuthData{Identifier: identifier, Provider: provider}})
+func (c *CommandsClient) ExternalAuth(identifier, provider string) (*Response, error) {
+	return c.SendCommand(IPCCommand{Action: "ExternalAuth", Payload: ExternalAuthData{Identifier: identifier, Provider: provider}})
 }
 
 // ExtAuth is the parsed payload of an ExternalAuth response: the URL the user
@@ -286,9 +302,9 @@ type ExtAuth struct {
 // GetExternalAuthURL sends ExternalAuth, asserts success, parses the response,
 // and returns the auth URL. Fails the test on transport error, non-success
 // response, parse error, or empty URL.
-func (c *CommandsClient) GetExternalAuthURL(t *testing.T, ctx context.Context, identifier, provider string) string {
+func (c *CommandsClient) GetExternalAuthURL(t *testing.T, identifier, provider string) string {
 	t.Logf("requesting external auth URL from ZET for provider=%q", provider)
-	resp, err := c.ExternalAuth(ctx, identifier, provider)
+	resp, err := c.ExternalAuth(identifier, provider)
 	require.NoError(t, err, "ExternalAuth IPC send")
 	require.True(t, resp.Success, "ExternalAuth failed: code=%d error=%q", resp.Code, resp.Error)
 	var out ExtAuth
@@ -297,25 +313,25 @@ func (c *CommandsClient) GetExternalAuthURL(t *testing.T, ctx context.Context, i
 	return out.URL
 }
 
-func (c *CommandsClient) Status(ctx context.Context) (*Response, error) {
-	return c.SendCommand(ctx, IPCCommand{Action: "Status"})
+func (c *CommandsClient) Status() (*Response, error) {
+	return c.SendCommand(IPCCommand{Action: "Status"})
 }
 
-func (c *CommandsClient) ListIdentities(ctx context.Context) (*Response, error) {
-	return c.SendCommand(ctx, IPCCommand{Action: "ListIdentities"})
+func (c *CommandsClient) ListIdentities() (*Response, error) {
+	return c.SendCommand(IPCCommand{Action: "ListIdentities"})
 }
 
-func (c *CommandsClient) GetMetrics(ctx context.Context) (*Response, error) {
-	return c.SendCommand(ctx, IPCCommand{Action: "GetMetrics"})
+func (c *CommandsClient) GetMetrics() (*Response, error) {
+	return c.SendCommand(IPCCommand{Action: "GetMetrics"})
 }
 
-func (c *CommandsClient) AddIdentity(ctx context.Context, data AddIdentityData) (*Response, error) {
-	return c.SendCommand(ctx, IPCCommand{Action: "AddIdentity", Payload: data})
+func (c *CommandsClient) AddIdentity(data AddIdentityData) (*Response, error) {
+	return c.SendCommand(IPCCommand{Action: "AddIdentity", Payload: data})
 }
 
-func AddIdentity(t *testing.T, ctx context.Context, client *CommandsClient, data AddIdentityData) *Response {
+func AddIdentity(t *testing.T, client *CommandsClient, data AddIdentityData) *Response {
 	t.Logf("calling AddIdentity for %q", data.IdentityFilename)
-	resp, err := client.AddIdentity(ctx, data)
+	resp, err := client.AddIdentity(data)
 	require.NoError(t, err, "AddIdentity IPC send")
 	return resp
 }

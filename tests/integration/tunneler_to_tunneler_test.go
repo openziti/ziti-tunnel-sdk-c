@@ -179,28 +179,26 @@ func setupT2TService(
 
 	overlay := state.overlay
 	// Mint identities.
-	interceptJWT, err := overlay.CreateIdentityJWT(ctx, names.interceptIdentity)
+	interceptJWT, err := overlay.CreateIdentityJWT(names.interceptIdentity)
 	require.NoError(t, err, "create intercept identity JWT")
-	hostJWT, err := overlay.CreateIdentityJWT(ctx, names.hostIdentity)
+	hostJWT, err := overlay.CreateIdentityJWT(names.hostIdentity)
 	require.NoError(t, err, "create host identity JWT")
 
 	// Enroll identities into their respective ZETs.
-	interceptClient, err := interceptZET.DialIPC(ctx)
-	require.NoError(t, err, "dial intercept ZET IPC")
+	interceptClient := interceptZET.DialIPC()
 	t.Cleanup(func() { _ = interceptClient.Close() })
 
-	hostClient, err := hostZET.DialIPC(ctx)
-	require.NoError(t, err, "dial host ZET IPC")
+	hostClient := hostZET.DialIPC()
 	t.Cleanup(func() { _ = hostClient.Close() })
 
-	resp, err := interceptClient.AddIdentity(ctx, testutil.AddIdentityData{
+	resp, err := interceptClient.AddIdentity(testutil.AddIdentityData{
 		IdentityFilename: names.interceptIdentity,
 		JwtContent:       &interceptJWT,
 	})
 	require.NoError(t, err, "AddIdentity to intercept ZET\n%s", interceptZET.LogFile())
 	require.True(t, resp.Success, "AddIdentity to intercept ZET failed: %s\n%s", resp.Error, interceptZET.LogFile())
 
-	resp, err = hostClient.AddIdentity(ctx, testutil.AddIdentityData{
+	resp, err = hostClient.AddIdentity(testutil.AddIdentityData{
 		IdentityFilename: names.hostIdentity,
 		JwtContent:       &hostJWT,
 	})
@@ -208,29 +206,28 @@ func setupT2TService(
 	require.True(t, resp.Success, "AddIdentity to host ZET failed: %s\n%s", resp.Error, hostZET.LogFile())
 
 	// Create controller-side resources.
-	require.NoError(t, overlay.CreateHostConfigV1(ctx, names.hostConfig, protocol, forwardAddr, forwardPort),
+	require.NoError(t, overlay.CreateHostConfigV1(names.hostConfig, protocol, forwardAddr, forwardPort),
 		"create host config")
-	require.NoError(t, overlay.CreateInterceptConfigV1(ctx, names.interceptConfig,
+	require.NoError(t, overlay.CreateInterceptConfigV1(names.interceptConfig,
 		[]string{protocol}, []string{interceptIP + "/32"}, interceptPort, interceptPort),
 		"create intercept config")
-	require.NoError(t, overlay.CreateService(ctx, names.service,
+	require.NoError(t, overlay.CreateService(names.service,
 		[]string{names.hostConfig, names.interceptConfig}),
 		"create service")
-	require.NoError(t, overlay.CreateBindServicePolicy(ctx, names.bindPolicy, names.hostIdentity, names.service),
+	require.NoError(t, overlay.CreateBindServicePolicy(names.bindPolicy, names.hostIdentity, names.service),
 		"create bind policy")
-	require.NoError(t, overlay.CreateDialServicePolicy(ctx, names.dialPolicy, names.interceptIdentity, names.service),
+	require.NoError(t, overlay.CreateDialServicePolicy(names.dialPolicy, names.interceptIdentity, names.service),
 		"create dial policy")
 
 	// Cleanup: remove identities and controller-side resources at test end.
-	cleanupCtx := context.Background()
 	t.Cleanup(func() {
-		_, _ = interceptClient.RemoveIdentity(cleanupCtx, names.interceptIdentity)
-		_, _ = hostClient.RemoveIdentity(cleanupCtx, names.hostIdentity)
-		_ = overlay.DeleteServicePolicy(cleanupCtx, names.dialPolicy)
-		_ = overlay.DeleteServicePolicy(cleanupCtx, names.bindPolicy)
-		_ = overlay.DeleteService(cleanupCtx, names.service)
-		_ = overlay.DeleteConfig(cleanupCtx, names.interceptConfig)
-		_ = overlay.DeleteConfig(cleanupCtx, names.hostConfig)
+		_, _ = interceptClient.RemoveIdentity(names.interceptIdentity)
+		_, _ = hostClient.RemoveIdentity(names.hostIdentity)
+		_ = overlay.DeleteServicePolicy(names.dialPolicy)
+		_ = overlay.DeleteServicePolicy(names.bindPolicy)
+		_ = overlay.DeleteService(names.service)
+		_ = overlay.DeleteConfig(names.interceptConfig)
+		_ = overlay.DeleteConfig(names.hostConfig)
 	})
 }
 

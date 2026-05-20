@@ -17,33 +17,28 @@ limitations under the License.
 package integration_test
 
 import (
-	"context"
 	"encoding/json"
 	"testing"
-	"time"
 
 	"github.com/openziti/ziti-tunnel-sdk-c/tests/integration/testutil"
 	"github.com/stretchr/testify/require"
 )
 
 func TestSetLogLevel(t *testing.T) {
-	t.Run("changesLogLevelInStatus", testSetLogLevelChangesLogLevelInStatus)
+	testutil.RunTestWithTimeout(t, "changesLogLevelInStatus", testSetLogLevelChangesLogLevelInStatus)
 }
 
 func testSetLogLevelChangesLogLevelInStatus(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	client := testutil.OpenCommandPipe(t, ctx, zet)
+	client := testutil.OpenCommandPipe(t, zet)
 
 	t.Logf("sending SetLogLevel %q", "trace")
-	setResp, err := client.SetLogLevel(ctx, "trace")
+	setResp, err := client.SetLogLevel("trace")
 	require.NoError(t, err, "failed to send SetLogLevel\n%s", zet.LogFile())
 	require.True(t, setResp.Success, "SetLogLevel failed: error=%q code=%d", setResp.Error, setResp.Code)
 	t.Logf("SetLogLevel succeeded")
 
 	t.Logf("fetching Status to verify LogLevel change took effect")
-	statusResp, err := client.Status(ctx)
+	statusResp, err := client.Status()
 	require.NoError(t, err, "failed to send Status\n%s", zet.LogFile())
 	require.True(t, statusResp.Success, "Status failed: error=%q code=%d", statusResp.Error, statusResp.Code)
 

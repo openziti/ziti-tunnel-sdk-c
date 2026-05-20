@@ -19,10 +19,10 @@ limitations under the License.
 package testutil
 
 import (
-	"context"
 	"fmt"
 	"net"
 	"os"
+	"time"
 )
 
 func RequireAdmin() error {
@@ -49,7 +49,7 @@ func EventPipePathFor(disc string) string {
 	return EventPipePath + "." + disc
 }
 
-func dialPlatform(ctx context.Context, path string) (net.Conn, error) {
-	var d net.Dialer
-	return d.DialContext(ctx, "unix", path)
+func dialPlatform(path string, timeout time.Duration) (net.Conn, error) {
+	d := net.Dialer{Timeout: timeout}
+	return d.Dial("unix", path)
 }

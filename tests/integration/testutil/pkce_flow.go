@@ -17,7 +17,6 @@ limitations under the License.
 package testutil
 
 import (
-	"context"
 	"fmt"
 	"html"
 	"io"
@@ -35,7 +34,7 @@ import (
 // DrivePKCEFlow acts as the browser in the IdP's OIDC password flow, following
 // redirects from authURL through the login form back to ZET's loopback
 // callback at localhost:20314.
-func (p *PKCE) DrivePKCEFlow(t *testing.T, ctx context.Context, authUrl string) {
+func (p *PKCE) DrivePKCEFlow(t *testing.T, authUrl string) {
 	t.Logf("driving PKCE flow (issuer=%s email=%s)", p.IssuerURL, p.Email)
 
 	jar, err := cookiejar.New(nil)
@@ -48,10 +47,10 @@ func (p *PKCE) DrivePKCEFlow(t *testing.T, ctx context.Context, authUrl string) 
 		},
 	}
 
-	loginPageURL, err := followRedirectsTo200(ctx, client, authUrl, 8)
+	loginPageURL, err := followRedirectsTo200(client, authUrl, 8)
 	require.NoError(t, err, "follow authorize redirects")
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, loginPageURL, nil)
+	req, err := http.NewRequest(http.MethodGet, loginPageURL, nil)
 	require.NoError(t, err, "build login page request")
 	resp, err := client.Do(req)
 	require.NoError(t, err, "get login page")
@@ -68,7 +67,7 @@ func (p *PKCE) DrivePKCEFlow(t *testing.T, ctx context.Context, authUrl string) 
 		"login":    {p.Email},
 		"password": {p.Password},
 	}
-	req, err = http.NewRequestWithContext(ctx, http.MethodPost, postURL, strings.NewReader(form.Encode()))
+	req, err = http.NewRequest(http.MethodPost, postURL, strings.NewReader(form.Encode()))
 	require.NoError(t, err, "build credentials POST")
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	resp, err = client.Do(req)
@@ -86,11 +85,11 @@ func (p *PKCE) DrivePKCEFlow(t *testing.T, ctx context.Context, authUrl string) 
 		u, err := url.Parse(current)
 		require.NoError(t, err, "parse next location %q", current)
 		if isLoopbackCallback(u) {
-			require.NoError(t, hitLoopback(ctx, client, current), "hit loopback callback")
+			require.NoError(t, hitLoopback(client, current), "hit loopback callback")
 			t.Logf("PKCE flow completed")
 			return
 		}
-		req, err = http.NewRequestWithContext(ctx, http.MethodGet, current, nil)
+		req, err = http.NewRequest(http.MethodGet, current, nil)
 		require.NoError(t, err, "build redirect-chain request")
 		resp, err = client.Do(req)
 		require.NoError(t, err, "GET %s", current)
@@ -105,10 +104,10 @@ func (p *PKCE) DrivePKCEFlow(t *testing.T, ctx context.Context, authUrl string) 
 	require.Failf(t, "PKCE redirect chain did not finish", "did not reach loopback callback within hop limit (last=%s)", current)
 }
 
-func followRedirectsTo200(ctx context.Context, client *http.Client, start string, maxHops int) (string, error) {
+func followRedirectsTo200(client *http.Client, start string, maxHops int) (string, error) {
 	current := start
 	for i := 0; i < maxHops; i++ {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, current, nil)
+		req, err := http.NewRequest(http.MethodGet, current, nil)
 		if err != nil {
 			return "", err
 		}
@@ -166,12 +165,11 @@ func isLoopbackCallback(u *url.URL) bool {
 	return host == "localhost" || host == "127.0.0.1" || host == "::1"
 }
 
-func hitLoopback(ctx context.Context, client *http.Client, loopback string) error {
+func hitLoopback(client *http.Client, loopback string) error {
 	// ZET's loopback can take a moment to bind after returning the auth URL.
-	loopCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
+	deadline := time.Now().Add(5 * time.Second)
 	for {
-		req, err := http.NewRequestWithContext(loopCtx, http.MethodGet, loopback, nil)
+		req, err := http.NewRequest(http.MethodGet, loopback, nil)
 		if err != nil {
 			return err
 		}
@@ -181,11 +179,10 @@ func hitLoopback(ctx context.Context, client *http.Client, loopback string) erro
 			resp.Body.Close()
 			return nil
 		}
-		select {
-		case <-loopCtx.Done():
-			return fmt.Errorf("hit loopback: %w (last: %v)", loopCtx.Err(), err)
-		case <-time.After(100 * time.Millisecond):
+		if time.Now().After(deadline) {
+			return fmt.Errorf("hit loopback: %w", err)
 		}
+		time.Sleep(100 * time.Millisecond)
 	}
 }
 

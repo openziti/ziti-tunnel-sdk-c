@@ -18,7 +18,6 @@ package testutil
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"io"
 	"log"
@@ -32,6 +31,7 @@ import (
 	"syscall"
 	"time"
 )
+
 
 type ZET struct {
 	BinPath string
@@ -64,7 +64,7 @@ type ZET struct {
 // StartZET spawns ziti-edge-tunnel in "run" mode with identityDir as its -I sandbox.
 // Returns once the IPC command pipe is dialable, or an error if ZET dies / the deadline expires.
 // Fails fast if something is already bound to this instance's IPC pipe.
-func (z *ZET) Start(ctx context.Context) error {
+func (z *ZET) Start() error {
 	cmdPipe := CommandPipePathFor(z.Discriminator)
 	eventPipe := EventPipePathFor(z.Discriminator)
 
@@ -93,7 +93,7 @@ func (z *ZET) Start(ctx context.Context) error {
 		args = append(args, "-d", z.DNSRange)
 	}
 
-	z.cmd = exec.CommandContext(ctx, z.BinPath, args...)
+	z.cmd = exec.Command(z.BinPath, args...)
 	if z.TlsuvDebug > 0 {
 		z.cmd.Env = append(os.Environ(), "TLSUV_DEBUG="+strconv.Itoa(z.TlsuvDebug))
 	}
@@ -124,29 +124,8 @@ func (z *ZET) Start(ctx context.Context) error {
 
 	go func() { z.cmdDone <- z.cmd.Wait() }()
 
-	dialCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
-	defer cancel()
-	var cmdPipeErr error
-	z.Commands, cmdPipeErr = openCommandPipe(dialCtx, cmdPipe)
-	if cmdPipeErr != nil {
-		// Check whether the process already exited before the timeout fired.
-		// A non-blocking read from cmdDone disambiguates "process crashed early"
-		// from "process is alive but slow to create the socket".
-		select {
-		case exitErr := <-z.cmdDone:
-			return fmt.Errorf("ZET exited (status: %v) before IPC socket appeared\nstdout:\n%s\nstderr:\n%s",
-				exitErr, z.stdout.String(), z.stderr.String())
-		default:
-		}
-		z.Stop()
-		return fmt.Errorf("waiting for ZET IPC pipe: %w\nstdout:\n%s\nstderr:\n%s",
-			cmdPipeErr, z.stdout.String(), z.stderr.String())
-	}
-	var err error
-	z.Events, err = subscribeToEventPipe(ctx, EventPipePathFor(z.Discriminator))
-	if err != nil {
-		return fmt.Errorf("zet[%s]: subscribe to event pipe failed: %w", z.Discriminator, err)
-	}
+	z.Commands = openCommandPipe(cmdPipe)
+	z.Events = subscribeToEventPipe(EventPipePathFor(z.Discriminator))
 	return nil
 }
 
@@ -210,9 +189,7 @@ func (z *ZET) LogFile() string {
 }
 
 func ensureNothingOnPipe(path string) error {
-	probeCtx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
-	defer cancel()
-	conn, err := dialPlatform(probeCtx, path)
+	conn, err := dialPlatform(path, 500*time.Millisecond)
 	if err != nil {
 		return nil
 	}

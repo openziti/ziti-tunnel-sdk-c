@@ -17,7 +17,6 @@ limitations under the License.
 package testutil
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"net"
@@ -62,7 +61,7 @@ const defaultPKCEBcryptHash = `$2a$10$2b2cU8CPhOTaGrs1HRQuAueS7JTT5ZHsHSzYiFPm1l
 // for OIDC discovery. Caller must defer Stop(). If logDir is non-empty, the
 // IdP's combined stdout+stderr is written to <logDir>/pkce.log so it sits
 // alongside the zet logs and survives the test temp dir being deleted.
-func (p *PKCE) Start(ctx context.Context) error {
+func (p *PKCE) Start() error {
 	if p.Bin == "" {
 		return fmt.Errorf("PKCE binary path is empty")
 	}
@@ -128,7 +127,7 @@ staticPasswords:
 		return fmt.Errorf("create PKCE log: %w", err)
 	}
 
-	p.cmd = exec.CommandContext(ctx, p.Bin, "serve", cfgPath)
+	p.cmd = exec.Command(p.Bin, "serve", cfgPath)
 	p.cmd.Stdout = logFile
 	p.cmd.Stderr = logFile
 	if err := p.cmd.Start(); err != nil {
@@ -137,7 +136,7 @@ staticPasswords:
 	}
 	log.Printf("setup: started PKCE pid=%d issuer=%s log=%s", p.cmd.Process.Pid, issuer, logPath)
 
-	if err := waitForPKCEDiscovery(ctx, issuer, 15*time.Second); err != nil {
+	if err := waitForPKCEDiscovery(issuer); err != nil {
 		p.Stop()
 		return fmt.Errorf("PKCE discovery never came up (see %s): %w", logPath, err)
 	}
@@ -166,34 +165,17 @@ func pickFreePort() (int, error) {
 	return l.Addr().(*net.TCPAddr).Port, nil
 }
 
-func waitForPKCEDiscovery(ctx context.Context, issuer string, timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
+func waitForPKCEDiscovery(issuer string) error {
 	client := &http.Client{Timeout: 2 * time.Second}
 	url := issuer + "/.well-known/openid-configuration"
-	var lastErr error
-	for time.Now().Before(deadline) {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-		if err != nil {
-			return err
-		}
-		resp, err := client.Do(req)
+	for {
+		resp, err := client.Get(url)
 		if err == nil {
 			resp.Body.Close()
 			if resp.StatusCode == http.StatusOK {
 				return nil
 			}
-			lastErr = fmt.Errorf("status %d", resp.StatusCode)
-		} else {
-			lastErr = err
 		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(150 * time.Millisecond):
-		}
+		time.Sleep(150 * time.Millisecond)
 	}
-	if lastErr == nil {
-		lastErr = fmt.Errorf("timeout")
-	}
-	return lastErr
 }

@@ -17,23 +17,18 @@ limitations under the License.
 package integration_test
 
 import (
-	"context"
 	"os"
 	"testing"
-	"time"
 
 	"github.com/openziti/ziti-tunnel-sdk-c/tests/integration/testutil"
 	"github.com/stretchr/testify/require"
 )
 
 func TestRemoveIdentity(t *testing.T) {
-	t.Run("withIdentifierFromEvent", testRemoveIdentityWithIdentifierFromEvent)
+	testutil.RunTestWithTimeout(t, "withIdentifierFromEvent", testRemoveIdentityWithIdentifierFromEvent)
 }
 
 func testRemoveIdentityWithIdentifierFromEvent(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	
 	overlay := state.overlay
 	client := state.zetClient.Commands
 	events := state.zetClient.Events
@@ -41,7 +36,7 @@ func testRemoveIdentityWithIdentifierFromEvent(t *testing.T) {
 	name := testutil.IdentityName(t)
 
 	t.Logf("creating JWT for %q", name)
-	jwt, err := overlay.CreateIdentityJWT(ctx, name)
+	jwt, err := overlay.CreateIdentityJWT(name)
 	require.NoError(t, err, "failed to create JWT")
 	require.NotEmpty(t, jwt)
 
@@ -49,15 +44,15 @@ func testRemoveIdentityWithIdentifierFromEvent(t *testing.T) {
 		IdentityFilename: name,
 		JwtContent:       &jwt,
 	}
-	addResp := testutil.AddIdentity(t, ctx, client, identityData)
+	addResp := testutil.AddIdentity(t, client, identityData)
 	require.True(t, addResp.Success, "AddIdentity failed: error=%q code=%d", addResp.Error, addResp.Code)
 
-	event := events.WaitFor(t, ctx, "identity", "added", name)
+	event := events.WaitFor(t, "identity", "added", name)
 	require.NotEmpty(t, event.Id.Identifier, "identity:added Identifier empty")
 	testutil.AssertValidJwtEnrolledIdentityFile(t, event.Id.Identifier)
 
 	t.Logf("sending RemoveIdentity for Identifier=%s", event.Id.Identifier)
-	removeResp, err := client.RemoveIdentity(ctx, event.Id.Identifier)
+	removeResp, err := client.RemoveIdentity(event.Id.Identifier)
 	require.NoError(t, err, "failed to send RemoveIdentity\n%s", state.zetClient.LogPath())
 	require.True(t, removeResp.Success, "RemoveIdentity failed: error=%q code=%d", removeResp.Error, removeResp.Code)
 	t.Logf("RemoveIdentity succeeded for %q", name)

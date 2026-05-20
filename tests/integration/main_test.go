@@ -17,7 +17,6 @@ limitations under the License.
 package integration_test
 
 import (
-	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -29,6 +28,8 @@ import (
 
 	"github.com/openziti/ziti-tunnel-sdk-c/tests/integration/testutil"
 )
+
+const setupTimeout = 25 * time.Second
 
 var state TestState
 
@@ -102,17 +103,11 @@ func run(m *testing.M, state TestState) (int, error) {
 	if err := testutil.RequireAdmin(); err != nil {
 		return 0, err
 	}
-	var err error
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	defer cancel()
-
-	log.Printf("setup: starting overlay (zitiBin=%s overlayHome=%s)", state.overlay.ZitiBin, state.overlay.Home)
-	err = state.overlay.Start(ctx)
-	if err != nil {
-		return 0, fmt.Errorf("start overlay: %w", err)
-	}
 	defer state.overlay.Stop()
+	defer state.zetClient.Stop()
+	defer state.zetHost.Stop()
+	defer state.pkce.Stop()
 	defer func() {
 		if cmd := state.overlay.CACleanupCommand(); cmd != "" {
 			log.Printf(`
@@ -127,21 +122,44 @@ teardown: to remove test CA from OS trust when done:
 		}
 	}()
 
-	if err := state.overlay.WaitForClusterLeader(ctx); err != nil {
-		return 0, fmt.Errorf("wait for cluster leader: %w", err)
+	setupDone := make(chan error, 1)
+	go func() {
+		setupDone <- doSetup(state)
+	}()
+	select {
+	case err := <-setupDone:
+		if err != nil {
+			return 0, err
+		}
+	case <-time.After(setupTimeout):
+		return 0, fmt.Errorf("setup did not complete within %s", setupTimeout)
+	}
+
+	log.Printf("setup: running tests")
+	return m.Run(), nil
+}
+
+func doSetup(state TestState) error {
+	log.Printf("setup: starting overlay (zitiBin=%s overlayHome=%s)", state.overlay.ZitiBin, state.overlay.Home)
+	if err := state.overlay.Start(); err != nil {
+		return fmt.Errorf("start overlay: %w", err)
+	}
+
+	if err := state.overlay.WaitForClusterLeader(); err != nil {
+		return fmt.Errorf("wait for cluster leader: %w", err)
 	}
 
 	log.Printf("setup: purging stale Test* identities")
-	if err := state.overlay.PurgeIdentities(ctx, "Test"); err != nil {
-		return 0, fmt.Errorf("purge stale test identities: %w", err)
+	if err := state.overlay.PurgeIdentities("Test"); err != nil {
+		return fmt.Errorf("purge stale test identities: %w", err)
 	}
 	log.Printf("setup: purging stale Test* auth-policies")
-	if err := state.overlay.PurgeAuthPolicies(ctx, "Test"); err != nil {
-		return 0, fmt.Errorf("purge stale test auth policies: %w", err)
+	if err := state.overlay.PurgeAuthPolicies("Test"); err != nil {
+		return fmt.Errorf("purge stale test auth policies: %w", err)
 	}
 	log.Printf("setup: purging stale Test* ext-jwt-signers")
-	if err := state.overlay.PurgeExtJwtSigners(ctx, "Test"); err != nil {
-		return 0, fmt.Errorf("purge stale test ext-jwt-signers: %w", err)
+	if err := state.overlay.PurgeExtJwtSigners("Test"); err != nil {
+		return fmt.Errorf("purge stale test ext-jwt-signers: %w", err)
 	}
 
 	log.Printf("setup: starting ZET zetA and zetB in parallel")
@@ -150,33 +168,28 @@ teardown: to remove test CA from OS trust when done:
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		zetClientErr = state.zetClient.Start(ctx)
+		zetClientErr = state.zetClient.Start()
 	}()
 	go func() {
 		defer wg.Done()
-		zetHostErr = state.zetHost.Start(ctx)
+		zetHostErr = state.zetHost.Start()
 	}()
 	wg.Wait()
 	if zetClientErr != nil {
-		return 0, fmt.Errorf("start ziti-edge-tunnel: %w", zetClientErr)
+		return fmt.Errorf("start ziti-edge-tunnel: %w", zetClientErr)
 	}
 	if zetHostErr != nil {
-		return 0, fmt.Errorf("start zetB: %w", zetHostErr)
+		return fmt.Errorf("start zetB: %w", zetHostErr)
 	}
-	defer state.zetClient.Stop()
-	defer state.zetHost.Stop()
 
 	if state.pkce.Bin != "" {
 		log.Printf("setup: starting PKCE IdP (pkceBin=%s)", state.pkce.Bin)
-		err = state.pkce.Start(ctx)
-		if err != nil {
-			return 0, fmt.Errorf("start PKCE IdP: %w", err)
+		if err := state.pkce.Start(); err != nil {
+			return fmt.Errorf("start PKCE IdP: %w", err)
 		}
-		defer state.pkce.Stop()
 	} else {
 		log.Printf("setup: -pkce-bin not provided; tests that require an external IdP will be skipped")
 	}
 
-	log.Printf("setup: running tests")
-	return m.Run(), nil
+	return nil
 }

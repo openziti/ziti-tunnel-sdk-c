@@ -19,7 +19,6 @@ limitations under the License.
 package testutil
 
 import (
-	"context"
 	"fmt"
 	"net"
 	"time"
@@ -52,8 +51,6 @@ func EventPipePathFor(disc string) string {
 	return EventPipePath + "." + disc
 }
 
-func dialPlatform(ctx context.Context, path string) (net.Conn, error) {
-	// short per-attempt timeout so openCommandPipe's retry loop stays responsive to ctx
-	timeout := 500 * time.Millisecond
+func dialPlatform(path string, timeout time.Duration) (net.Conn, error) {
 	return winio.DialPipe(path, &timeout)
 }

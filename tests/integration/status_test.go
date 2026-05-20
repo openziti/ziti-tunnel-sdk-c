@@ -17,27 +17,22 @@ limitations under the License.
 package integration_test
 
 import (
-	"context"
 	"encoding/json"
 	"testing"
-	"time"
 
 	"github.com/openziti/ziti-tunnel-sdk-c/tests/integration/testutil"
 	"github.com/stretchr/testify/require"
 )
 
 func TestStatus(t *testing.T) {
-	t.Run("hasExpectedTopLevelFields", testStatusHasExpectedTopLevelFields)
+	testutil.RunTestWithTimeout(t, "hasExpectedTopLevelFields", testStatusHasExpectedTopLevelFields)
 }
 
 func testStatusHasExpectedTopLevelFields(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	client := testutil.OpenCommandPipe(t, ctx, zet)
+	client := testutil.OpenCommandPipe(t, zet)
 
 	t.Logf("sending Status command")
-	resp, err := client.Status(ctx)
+	resp, err := client.Status()
 	require.NoError(t, err, "failed to send Status\n%s", zet.LogFile())
 	require.True(t, resp.Success, "Status failed: error=%q code=%d", resp.Error, resp.Code)
 	t.Logf("Status command succeeded; verifying top-level fields")
