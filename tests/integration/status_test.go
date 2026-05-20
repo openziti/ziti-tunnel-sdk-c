@@ -38,7 +38,7 @@ func testStatusHasExpectedTopLevelFields(t *testing.T) {
 
 	t.Logf("sending Status command")
 	resp, err := client.Status(ctx)
-	require.NoError(t, err, "failed to send Status\n%s", zet.Logs())
+	require.NoError(t, err, "failed to send Status\n%s", zet.LogFile())
 	require.True(t, resp.Success, "Status failed: error=%q code=%d", resp.Error, resp.Code)
 	t.Logf("Status command succeeded; verifying top-level fields")
 

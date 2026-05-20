@@ -34,8 +34,9 @@ func testIdentityOnOffTogglesActiveOff(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	events := testutil.SubscribeEvents(t, ctx, zet)
-	client := testutil.OpenCommandPipe(t, ctx, zet)
+	overlay := state.overlay
+	client := state.zetClient.Commands
+	events := state.zetClient.Events
 
 	name := testutil.IdentityName(t)
 	t.Logf("creating JWT for %q", name)
@@ -56,7 +57,7 @@ func testIdentityOnOffTogglesActiveOff(t *testing.T) {
 
 	t.Logf("sending IdentityOnOff(false) for %q", name)
 	offResp, err := client.IdentityOnOff(ctx, added.Id.Identifier, false)
-	require.NoError(t, err, "failed to send IdentityOnOff(false)\n%s", zet.Logs())
+	require.NoError(t, err, "failed to send IdentityOnOff(false)\n%s", state.zetClient.LogPath())
 	require.True(t, offResp.Success, "IdentityOnOff(false) failed: error=%q code=%d", offResp.Error, offResp.Code)
 
 	off := events.WaitFor(t, ctx, "identity", "added", name)
@@ -68,8 +69,9 @@ func testIdentityOnOffTogglesActiveOn(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	events := testutil.SubscribeEvents(t, ctx, zet)
-	client := testutil.OpenCommandPipe(t, ctx, zet)
+	overlay := state.overlay
+	client := state.zetClient.Commands
+	events := state.zetClient.Events
 
 	name := testutil.IdentityName(t)
 	t.Logf("creating JWT for %q", name)
@@ -90,7 +92,7 @@ func testIdentityOnOffTogglesActiveOn(t *testing.T) {
 
 	t.Logf("sending IdentityOnOff(false) for %q", name)
 	offResp, err := client.IdentityOnOff(ctx, added.Id.Identifier, false)
-	require.NoError(t, err, "failed to send IdentityOnOff(false)\n%s", zet.Logs())
+	require.NoError(t, err, "failed to send IdentityOnOff(false)\n%s", state.zetClient.LogPath())
 	require.True(t, offResp.Success, "IdentityOnOff(false) failed: error=%q code=%d", offResp.Error, offResp.Code)
 
 	off := events.WaitFor(t, ctx, "identity", "added", name)
@@ -98,7 +100,7 @@ func testIdentityOnOffTogglesActiveOn(t *testing.T) {
 
 	t.Logf("sending IdentityOnOff(true) for %q", name)
 	onResp, err := client.IdentityOnOff(ctx, added.Id.Identifier, true)
-	require.NoError(t, err, "failed to send IdentityOnOff(true)\n%s", zet.Logs())
+	require.NoError(t, err, "failed to send IdentityOnOff(true)\n%s", state.zetClient.LogPath())
 	require.True(t, onResp.Success, "IdentityOnOff(true) failed: error=%q code=%d", onResp.Error, onResp.Code)
 
 	on := events.WaitFor(t, ctx, "identity", "added", name)

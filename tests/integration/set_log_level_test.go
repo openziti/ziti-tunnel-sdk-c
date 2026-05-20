@@ -38,13 +38,13 @@ func testSetLogLevelChangesLogLevelInStatus(t *testing.T) {
 
 	t.Logf("sending SetLogLevel %q", "trace")
 	setResp, err := client.SetLogLevel(ctx, "trace")
-	require.NoError(t, err, "failed to send SetLogLevel\n%s", zet.Logs())
+	require.NoError(t, err, "failed to send SetLogLevel\n%s", zet.LogFile())
 	require.True(t, setResp.Success, "SetLogLevel failed: error=%q code=%d", setResp.Error, setResp.Code)
 	t.Logf("SetLogLevel succeeded")
 
 	t.Logf("fetching Status to verify LogLevel change took effect")
 	statusResp, err := client.Status(ctx)
-	require.NoError(t, err, "failed to send Status\n%s", zet.Logs())
+	require.NoError(t, err, "failed to send Status\n%s", zet.LogFile())
 	require.True(t, statusResp.Success, "Status failed: error=%q code=%d", statusResp.Error, statusResp.Code)
 
 	var status struct {

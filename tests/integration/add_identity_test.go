@@ -41,14 +41,15 @@ func testAddIdentityWithJwtSucceeds(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	overlay := state.overlay
+	events := state.zetClient.Events
+	client := state.zetClient.Commands
+	
 	identityName := testutil.IdentityName(t)
 	t.Logf("creating JWT for %q", identityName)
 	jwt, err := overlay.CreateIdentityJWT(ctx, identityName)
 	require.NoError(t, err, "failed to create JWT via overlay")
 	require.NotEmpty(t, jwt, "JWT content should not be empty")
-
-	events := testutil.SubscribeEvents(t, ctx, zet)
-	client := testutil.OpenCommandPipe(t, ctx, zet)
 
 	identityData := testutil.AddIdentityData{
 		IdentityFilename: identityName,
@@ -56,7 +57,7 @@ func testAddIdentityWithJwtSucceeds(t *testing.T) {
 	}
 
 	resp := testutil.AddIdentity(t, ctx, client, identityData)
-	require.True(t, resp.Success, "AddIdentity failed: error=%q code=%d\n%s", resp.Error, resp.Code, zet.Logs())
+	require.True(t, resp.Success, "AddIdentity failed: error=%q code=%d\n%s", resp.Error, resp.Code, state.zetClient.LogPath())
 
 	event := events.WaitFor(t, ctx, "identity", "added", identityName)
 	require.True(t, event.Id.Active, "identity:added Active=%t, want true", event.Id.Active)
@@ -70,14 +71,14 @@ func testAddIdentitySameJwtTwiceSecondFails(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	overlay := state.overlay
+	events := state.zetClient.Events
+	client := state.zetClient.Commands
 	identityName := testutil.IdentityName(t)
 	t.Logf("creating JWT for %q", identityName)
 	jwt, err := overlay.CreateIdentityJWT(ctx, identityName)
 	require.NoError(t, err, "failed to create JWT via overlay")
 	require.NotEmpty(t, jwt)
-
-	events := testutil.SubscribeEvents(t, ctx, zet)
-	client := testutil.OpenCommandPipe(t, ctx, zet)
 
 	identityData := testutil.AddIdentityData{
 		IdentityFilename: identityName,
@@ -85,7 +86,7 @@ func testAddIdentitySameJwtTwiceSecondFails(t *testing.T) {
 	}
 
 	first := testutil.AddIdentity(t, ctx, client, identityData)
-	require.True(t, first.Success, "first AddIdentity should succeed: error=%q\n%s", first.Error, zet.Logs())
+	require.True(t, first.Success, "first AddIdentity should succeed: error=%q\n%s", first.Error, state.zetClient.LogPath())
 	added := events.WaitFor(t, ctx, "identity", "added", identityName)
 	testutil.AssertValidJwtEnrolledIdentityFile(t, added.Id.Identifier)
 
@@ -100,7 +101,7 @@ func testAddIdentityWithInvalidJwtFails(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	client := testutil.OpenCommandPipe(t, ctx, zet)
+	client := state.zetClient.Commands
 
 	identityName := testutil.IdentityName(t)
 	badJwt := "this.is.not-a-real-jwt"
@@ -118,7 +119,7 @@ func testAddIdentityWithEmptyJwtFails(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	client := testutil.OpenCommandPipe(t, ctx, zet)
+	client := state.zetClient.Commands
 
 	identityName := testutil.IdentityName(t)
 	emptyJwt := ""
@@ -136,6 +137,9 @@ func testAddIdentityWithDeletedIdentityFails(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	overlay := state.overlay
+	client := state.zetClient.Commands
+
 	identityName := testutil.IdentityName(t)
 	t.Logf("creating JWT for %q", identityName)
 	jwt, err := overlay.CreateIdentityJWT(ctx, identityName)
@@ -144,8 +148,6 @@ func testAddIdentityWithDeletedIdentityFails(t *testing.T) {
 
 	t.Logf("deleting identity %q from overlay before ZET tries to enroll", identityName)
 	require.NoError(t, overlay.DeleteIdentity(ctx, identityName), "delete identity via overlay")
-
-	client := testutil.OpenCommandPipe(t, ctx, zet)
 
 	identityData := testutil.AddIdentityData{
 		IdentityFilename: identityName,
@@ -161,7 +163,8 @@ func testAddIdentityWithSlashInFilenameFails(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	client := testutil.OpenCommandPipe(t, ctx, zet)
+	overlay := state.overlay
+	client := state.zetClient.Commands
 
 	name := testutil.IdentityName(t)
 	t.Logf("creating JWT for %q", name)
@@ -184,7 +187,8 @@ func testAddIdentityWithDotDotInFilenameFails(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	client := testutil.OpenCommandPipe(t, ctx, zet)
+	overlay := state.overlay
+	client := state.zetClient.Commands
 
 	name := testutil.IdentityName(t)
 	t.Logf("creating JWT for %q", name)
@@ -207,7 +211,8 @@ func testAddIdentityFilenameExceedsCharLimitFails(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	client := testutil.OpenCommandPipe(t, ctx, zet)
+	overlay := state.overlay
+	client := state.zetClient.Commands
 
 	name := testutil.IdentityName(t)
 	t.Logf("creating JWT for %q", name)

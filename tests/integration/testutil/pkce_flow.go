@@ -35,9 +35,8 @@ import (
 // DrivePKCEFlow acts as the browser in the IdP's OIDC password flow, following
 // redirects from authURL through the login form back to ZET's loopback
 // callback at localhost:20314.
-func DrivePKCEFlow(t *testing.T, ctx context.Context, authURL, issuer, username, password string) {
-	t.Helper()
-	t.Logf("driving PKCE flow (issuer=%s email=%s)", issuer, username)
+func (p *PKCE) DrivePKCEFlow(t *testing.T, ctx context.Context, authUrl string) {
+	t.Logf("driving PKCE flow (issuer=%s email=%s)", p.IssuerURL, p.Email)
 
 	jar, err := cookiejar.New(nil)
 	require.NoError(t, err, "create cookie jar")
@@ -49,7 +48,7 @@ func DrivePKCEFlow(t *testing.T, ctx context.Context, authURL, issuer, username,
 		},
 	}
 
-	loginPageURL, err := followRedirectsTo200(ctx, client, authURL, 8)
+	loginPageURL, err := followRedirectsTo200(ctx, client, authUrl, 8)
 	require.NoError(t, err, "follow authorize redirects")
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, loginPageURL, nil)
@@ -66,8 +65,8 @@ func DrivePKCEFlow(t *testing.T, ctx context.Context, authURL, issuer, username,
 	require.NoError(t, err, "resolve form action %q", formAction)
 
 	form := url.Values{
-		"login":    {username},
-		"password": {password},
+		"login":    {p.Email},
+		"password": {p.Password},
 	}
 	req, err = http.NewRequestWithContext(ctx, http.MethodPost, postURL, strings.NewReader(form.Encode()))
 	require.NoError(t, err, "build credentials POST")

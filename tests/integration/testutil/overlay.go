@@ -46,96 +46,83 @@ const (
 )
 
 type Overlay struct {
-	ZitiBin        string
-	Home           string
-	ControllerPort uint16
-	RouterPort     uint16
-	ZitiMajor      int
-	ZitiMinor      int
+	ZitiBin             string
+	Home                string
+	ZitiMajor           int
+	ZitiMinor           int
+	ShowZitiCliCommands bool
 
-	extCmd  *exec.Cmd
+	cmd     *exec.Cmd
 	stdout  *syncBuffer
 	stderr  *syncBuffer
 	logFile *os.File
-	LogPath string
-	cmdDone chan error
+	Done    chan error
 }
 
 // StartOverlay runs `ziti edge quickstart` with ephemeral ports in a temp home,
 // waits for the controller to accept an admin login, and returns a handle.
 // Callers must defer Stop().
-func StartOverlay(ctx context.Context, zitiBin, home string) (*Overlay, error) {
+func (o *Overlay) Start(ctx context.Context) error {
 	warnIfPortBound(overlayCtrlPort)
 	warnIfPortBound(overlayRtrPort)
-	log.Printf("overlay: mkdir home %s", home)
-	if err := os.MkdirAll(home, 0o700); err != nil {
-		return nil, fmt.Errorf("mkdir home: %w", err)
+	log.Printf("overlay: mkdir home %s", o.Home)
+	if err := os.MkdirAll(o.Home, 0o700); err != nil {
+		return fmt.Errorf("mkdir home: %w", err)
 	}
 
 	args := []string{
 		"edge", "quickstart",
-		"--home=" + home,
+		"--home=" + o.Home,
 		"--ctrl-address=localhost",
 		fmt.Sprintf("--ctrl-port=%d", overlayCtrlPort),
 		"--router-address=localhost",
 		fmt.Sprintf("--router-port=%d", overlayRtrPort),
 	}
-	log.Printf("overlay: starting %s %s", zitiBin, strings.Join(args, " "))
-	cmd := exec.CommandContext(ctx, zitiBin, args...)
+	log.Printf("overlay: starting %s %s", o.ZitiBin, strings.Join(args, " "))
+	o.cmd = exec.CommandContext(ctx, o.ZitiBin, args...)
 	// PFXLOG_NO_JSON makes ziti's stderr human-readable for test log output.
-	cmd.Env = append(os.Environ(),
-		"ZITI_CONFIG_DIR="+filepath.Join(home, "cli-config"),
+	o.cmd.Env = append(os.Environ(),
+		"ZITI_CONFIG_DIR="+filepath.Join(o.Home, "cli-config"),
 		"PFXLOG_NO_JSON=true",
 	)
-	stdout := newSyncBuffer()
-	stderr := newSyncBuffer()
-	logPath := filepath.Join(home, "zet-logs", "quickstart.log")
+	logPath := filepath.Join(o.Home, "zet-logs", "quickstart.log")
 	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
-		return nil, fmt.Errorf("mkdir quickstart log dir: %w", err)
+		return fmt.Errorf("mkdir quickstart log dir: %w", err)
 	}
 	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
 	if err != nil {
-		return nil, fmt.Errorf("open quickstart log file: %w", err)
+		return fmt.Errorf("open quickstart log file: %w", err)
 	}
-	cmd.Stdout = io.MultiWriter(stdout, logFile)
-	cmd.Stderr = io.MultiWriter(stderr, logFile)
 	log.Printf("overlay: quickstart log %s", logPath)
-	if err := cmd.Start(); err != nil {
+	if err := o.cmd.Start(); err != nil {
 		_ = logFile.Close()
-		return nil, fmt.Errorf("start quickstart: %w", err)
+		return fmt.Errorf("start quickstart: %w", err)
 	}
 
-	o := &Overlay{
-		ZitiBin:        zitiBin,
-		Home:           home,
-		ControllerPort: overlayCtrlPort,
-		RouterPort:     overlayRtrPort,
-		extCmd:         cmd,
-		stdout:         stdout,
-		stderr:         stderr,
-		logFile:        logFile,
-		LogPath:        logPath,
-		cmdDone:        make(chan error, 1),
-	}
-	go func() { o.cmdDone <- cmd.Wait() }()
+	stdout := newSyncBuffer()
+	stderr := newSyncBuffer()
+	o.cmd.Stdout = io.MultiWriter(stdout, logFile)
+	o.cmd.Stderr = io.MultiWriter(stderr, logFile)
+
+	go func() { o.Done <- o.cmd.Wait() }()
 
 	readyCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	if err := o.waitUntilReady(readyCtx); err != nil {
 		o.Stop()
-		return nil, fmt.Errorf("overlay not ready: %w\n%s", err, o.Logs())
+		return fmt.Errorf("overlay not ready: %w\n%s", err, o.Logs())
 	}
 
 	log.Printf("overlay: probing ziti version")
-	major, minor, err := probeZitiVersion(ctx, zitiBin)
+	major, minor, err := probeZitiVersion(ctx, o.ZitiBin)
 	if err != nil {
 		o.Stop()
-		return nil, fmt.Errorf("probe ziti version: %w", err)
+		return fmt.Errorf("probe ziti version: %w", err)
 	}
 	o.ZitiMajor = major
 	o.ZitiMinor = minor
 	log.Printf("overlay: ready (ziti v%d.%d)", major, minor)
-	return o, nil
+	return nil
 }
 
 // warnIfPortBound logs a warning if something is already listening on localhost:port.
@@ -172,13 +159,13 @@ func probeZitiVersion(ctx context.Context, zitiBin string) (int, int, error) {
 }
 
 func (o *Overlay) ControllerHostPort() string {
-	return fmt.Sprintf("https://localhost:%d", o.ControllerPort)
+	return fmt.Sprintf("https://localhost:%d", overlayCtrlPort)
 }
 
 // caTrusted reports whether a TLS handshake to the controller succeeds with
 // the OS trust store — i.e., whether this overlay's CA is currently installed.
 func (o *Overlay) caTrusted() bool {
-	hostport := fmt.Sprintf("localhost:%d", o.ControllerPort)
+	hostport := fmt.Sprintf("localhost:%d", overlayCtrlPort)
 	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: 2 * time.Second}, "tcp", hostport, nil)
 	if err != nil {
 		return false
@@ -208,7 +195,6 @@ func (o *Overlay) osCAStrings() (install, cleanup string) {
 // RequireCATrusted skips the test (with OS-specific install/cleanup
 // instructions) if the overlay's CA isn't in the calling OS's trust store.
 func (o *Overlay) RequireCATrusted(t *testing.T) {
-	t.Helper()
 	if o.caTrusted() {
 		return
 	}
@@ -247,14 +233,17 @@ func (o *Overlay) CACleanupCommand() string {
 // A surviving overlay holds the controller/router ports and breaks subsequent
 // runs, so abort hard rather than let an orphan hide.
 func (o *Overlay) Stop() {
+	if o == nil || o.cmd == nil || o.cmd.Process == nil {
+		return
+	}
 	if o.logFile != nil {
 		defer func() { _ = o.logFile.Close() }()
 	}
-	if o.extCmd.Process == nil {
+	if o.cmd.Process == nil {
 		return
 	}
-	pid := o.extCmd.Process.Pid
-	if err := o.extCmd.Process.Kill(); err != nil {
+	pid := o.cmd.Process.Pid
+	if err := o.cmd.Process.Kill(); err != nil {
 		log.Printf("overlay pid %d kill: %v", pid, err)
 	}
 	for i := 0; i < 120; i++ {
@@ -262,7 +251,7 @@ func (o *Overlay) Stop() {
 		if proc, err := os.FindProcess(pid); err != nil || proc == nil {
 			return
 		}
-		if err := o.extCmd.Process.Signal(syscall.Signal(0)); err != nil {
+		if err := o.cmd.Process.Signal(syscall.Signal(0)); err != nil {
 			return
 		}
 	}
@@ -331,7 +320,6 @@ type ExtJwtSignerSpec struct {
 // CreateExtJwtSigner registers an ext-jwt-signer on the controller and returns
 // its assigned ID.
 func (o *Overlay) CreateExtJwtSigner(t *testing.T, ctx context.Context, spec ExtJwtSignerSpec) string {
-	t.Helper()
 	t.Logf("creating ext-jwt-signer %q (issuer=%s clientID=%s)", spec.Name, spec.Issuer, spec.ClientID)
 	args := []string{
 		"edge", "create", "ext-jwt-signer", spec.Name, spec.Issuer,
@@ -356,7 +344,6 @@ func (o *Overlay) CreateExtJwtSigner(t *testing.T, ctx context.Context, spec Ext
 // CreateAuthPolicyForExtJwt creates an auth policy whose primary auth method
 // is the ext-jwt-signer set with the given IDs. Pass one or more signer IDs.
 func (o *Overlay) CreateAuthPolicyForExtJwt(t *testing.T, ctx context.Context, name string, signerIDs ...string) {
-	t.Helper()
 	t.Logf("creating auth policy %q with %d ext-jwt-signer(s)", name, len(signerIDs))
 	args := []string{"edge", "create", "auth-policy", name, "--primary-ext-jwt-allowed"}
 	for _, id := range signerIDs {
@@ -372,7 +359,6 @@ func (o *Overlay) CreateAuthPolicyForExtJwt(t *testing.T, ctx context.Context, n
 // ext-jwt-signer-issued JWT. If authPolicy is non-empty the identity is bound
 // to that policy; otherwise it falls into the controller's default policy.
 func (o *Overlay) CreateIdentityWithExternalId(t *testing.T, ctx context.Context, name, externalID, authPolicy string) {
-	t.Helper()
 	policyDesc := authPolicy
 	if policyDesc == "" {
 		policyDesc = "default"
@@ -545,7 +531,7 @@ func (o *Overlay) waitUntilReady(ctx context.Context) error {
 			log.Printf("overlay: admin login attempt %d failed, retrying", attempts)
 		}
 		select {
-		case err := <-o.cmdDone:
+		case err := <-o.Done:
 			return fmt.Errorf("quickstart exited before becoming ready: %v", err)
 		case <-ctx.Done():
 			return fmt.Errorf("%w (last login error: %v)", ctx.Err(), lastErr)
@@ -555,7 +541,7 @@ func (o *Overlay) waitUntilReady(ctx context.Context) error {
 }
 
 func (o *Overlay) waitForControllerPort(ctx context.Context) error {
-	addr := fmt.Sprintf("localhost:%d", o.ControllerPort)
+	addr := fmt.Sprintf("localhost:%d", overlayCtrlPort)
 	log.Printf("overlay: waiting for controller TCP port %s", addr)
 	var lastErr error
 	for {
@@ -567,8 +553,8 @@ func (o *Overlay) waitForControllerPort(ctx context.Context) error {
 		}
 		lastErr = err
 		select {
-		case exitErr := <-o.cmdDone:
-			return fmt.Errorf("quickstart exited before port %d opened: %v", o.ControllerPort, exitErr)
+		case exitErr := <-o.Done:
+			return fmt.Errorf("quickstart exited before port %d opened: %v", overlayCtrlPort, exitErr)
 		case <-ctx.Done():
 			return fmt.Errorf("%w (last dial error: %v)", ctx.Err(), lastErr)
 		case <-time.After(250 * time.Millisecond):
@@ -584,9 +570,15 @@ func (o *Overlay) execZiti(ctx context.Context, args ...string) ([]byte, error) 
 	var stdout, stderr syncBuffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
+	if o.ShowZitiCliCommands {
+		fmt.Println("COMMAND: " + cmd.String())
+	}
 	if err := cmd.Run(); err != nil {
 		return nil, fmt.Errorf("%s %v: %w\nstdout: %s\nstderr: %s",
 			o.ZitiBin, args, err, stdout.String(), stderr.String())
+	}
+	if o.ShowZitiCliCommands {
+		fmt.Println("COMMAND RESULT: \n" + stdout.String())
 	}
 	return []byte(stdout.String()), nil
 }

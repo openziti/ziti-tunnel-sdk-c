@@ -33,9 +33,10 @@ func TestRemoveIdentity(t *testing.T) {
 func testRemoveIdentityWithIdentifierFromEvent(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-
-	events := testutil.SubscribeEvents(t, ctx, zet)
-	client := testutil.OpenCommandPipe(t, ctx, zet)
+	
+	overlay := state.overlay
+	client := state.zetClient.Commands
+	events := state.zetClient.Events
 
 	name := testutil.IdentityName(t)
 
@@ -57,11 +58,11 @@ func testRemoveIdentityWithIdentifierFromEvent(t *testing.T) {
 
 	t.Logf("sending RemoveIdentity for Identifier=%s", event.Id.Identifier)
 	removeResp, err := client.RemoveIdentity(ctx, event.Id.Identifier)
-	require.NoError(t, err, "failed to send RemoveIdentity\n%s", zet.Logs())
+	require.NoError(t, err, "failed to send RemoveIdentity\n%s", state.zetClient.LogPath())
 	require.True(t, removeResp.Success, "RemoveIdentity failed: error=%q code=%d", removeResp.Error, removeResp.Code)
 	t.Logf("RemoveIdentity succeeded for %q", name)
 
 	_, statErr := os.Stat(event.Id.Identifier)
-	require.True(t, os.IsNotExist(statErr), "identity file should be removed after RemoveIdentity: %s\n%s", event.Id.Identifier, zet.Logs())
+	require.True(t, os.IsNotExist(statErr), "identity file should be removed after RemoveIdentity: %s\n%s", event.Id.Identifier, state.zetClient.LogPath())
 	t.Logf("identity file removed from disk: %s", event.Id.Identifier)
 }

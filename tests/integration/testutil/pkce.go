@@ -62,20 +62,20 @@ const defaultPKCEBcryptHash = `$2a$10$2b2cU8CPhOTaGrs1HRQuAueS7JTT5ZHsHSzYiFPm1l
 // for OIDC discovery. Caller must defer Stop(). If logDir is non-empty, the
 // IdP's combined stdout+stderr is written to <logDir>/pkce.log so it sits
 // alongside the zet logs and survives the test temp dir being deleted.
-func StartPKCE(ctx context.Context, pkceBin, workDir, logDir string) (*PKCE, error) {
-	if pkceBin == "" {
-		return nil, fmt.Errorf("PKCE binary path is empty")
+func (p *PKCE) Start(ctx context.Context) error {
+	if p.Bin == "" {
+		return fmt.Errorf("PKCE binary path is empty")
 	}
-	if _, err := os.Stat(pkceBin); err != nil {
-		return nil, fmt.Errorf("PKCE binary not found: %w", err)
+	if _, err := os.Stat(p.Bin); err != nil {
+		return fmt.Errorf("PKCE binary not found: %w", err)
 	}
-	if err := os.MkdirAll(workDir, 0o755); err != nil {
-		return nil, fmt.Errorf("create PKCE work dir: %w", err)
+	if err := os.MkdirAll(p.WorkDir, 0o755); err != nil {
+		return fmt.Errorf("create PKCE work dir: %w", err)
 	}
 
 	port, err := pickFreePort()
 	if err != nil {
-		return nil, fmt.Errorf("pick PKCE port: %w", err)
+		return fmt.Errorf("pick PKCE port: %w", err)
 	}
 	httpAddr := fmt.Sprintf("127.0.0.1:%d", port)
 	issuer := "http://" + httpAddr + "/dex"
@@ -92,7 +92,13 @@ func StartPKCE(ctx context.Context, pkceBin, workDir, logDir string) (*PKCE, err
 `, id, id)
 	}
 
-	cfgPath := filepath.Join(workDir, "pkce.yaml")
+	p.IssuerURL = issuer
+	p.ClientIDs = clientIDs
+	p.Email = DefaultPKCEUser.Email
+	p.Password = DefaultPKCEUser.Password
+	p.ExternalID = DefaultPKCEUser.Email
+
+	cfgPath := filepath.Join(p.WorkDir, "pkce.yaml")
 	cfg := fmt.Sprintf(`issuer: %s
 storage:
   type: memory
@@ -109,48 +115,33 @@ staticPasswords:
     userID: %q
 `, issuer, httpAddr, clientsYAML, DefaultPKCEUser.Email, defaultPKCEBcryptHash, DefaultPKCEUser.Username, DefaultPKCEUser.UserID)
 	if err := os.WriteFile(cfgPath, []byte(cfg), 0o644); err != nil {
-		return nil, fmt.Errorf("write PKCE config: %w", err)
+		return fmt.Errorf("write PKCE config: %w", err)
 	}
 
-	logDest := workDir
-	if logDir != "" {
-		if err := os.MkdirAll(logDir, 0o755); err != nil {
-			return nil, fmt.Errorf("create PKCE log dir: %w", err)
-		}
-		logDest = logDir
+	logDir := filepath.Join(p.WorkDir, "logs")
+	if err := os.MkdirAll(logDir, 0o755); err != nil {
+		return fmt.Errorf("failed to create PKCE log dir: %w", err)
 	}
-	logPath := filepath.Join(logDest, "pkce.log")
+	logPath := filepath.Join(logDir, "pkce.log")
 	logFile, err := os.Create(logPath)
 	if err != nil {
-		return nil, fmt.Errorf("create PKCE log: %w", err)
+		return fmt.Errorf("create PKCE log: %w", err)
 	}
 
-	cmd := exec.CommandContext(ctx, pkceBin, "serve", cfgPath)
-	cmd.Stdout = logFile
-	cmd.Stderr = logFile
-	if err := cmd.Start(); err != nil {
+	p.cmd = exec.CommandContext(ctx, p.Bin, "serve", cfgPath)
+	p.cmd.Stdout = logFile
+	p.cmd.Stderr = logFile
+	if err := p.cmd.Start(); err != nil {
 		logFile.Close()
-		return nil, fmt.Errorf("start PKCE: %w", err)
+		return fmt.Errorf("start PKCE: %w", err)
 	}
-	log.Printf("setup: started PKCE pid=%d issuer=%s log=%s", cmd.Process.Pid, issuer, logPath)
-
-	p := &PKCE{
-		Bin:        pkceBin,
-		WorkDir:    workDir,
-		HTTPAddr:   httpAddr,
-		IssuerURL:  issuer,
-		ClientIDs:  clientIDs,
-		Email:      DefaultPKCEUser.Email,
-		Password:   DefaultPKCEUser.Password,
-		ExternalID: DefaultPKCEUser.Email,
-		cmd:        cmd,
-	}
+	log.Printf("setup: started PKCE pid=%d issuer=%s log=%s", p.cmd.Process.Pid, issuer, logPath)
 
 	if err := waitForPKCEDiscovery(ctx, issuer, 15*time.Second); err != nil {
 		p.Stop()
-		return nil, fmt.Errorf("PKCE discovery never came up (see %s): %w", logPath, err)
+		return fmt.Errorf("PKCE discovery never came up (see %s): %w", logPath, err)
 	}
-	return p, nil
+	return nil
 }
 
 func (p *PKCE) Stop() {

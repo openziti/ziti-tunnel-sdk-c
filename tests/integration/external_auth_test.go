@@ -25,70 +25,68 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type extAuthState struct {
-	events *testutil.EventClient
-	client *testutil.IPCClient
+func RunTestWithTimeout(t *testing.T, name string, f func(t *testing.T)) context.Context {
+	d := 30 * time.Second
+	ctx, cancel := context.WithTimeout(context.Background(), d)
+	t.Run(name, f)
+	t.Cleanup(cancel)
+	return ctx
 }
 
 func TestExternalAuthEnrolledToNone(t *testing.T) {
-	overlay.RequireCATrusted(t)
-	if pkce == nil {
+	state.overlay.RequireCATrusted(t)
+	if state.pkce == nil {
 		t.Skip("PKCE IdP is not configured (-pkce-bin not provided)")
 	}
-	ctx := context.Background()
-	state := &extAuthState{
-		events: testutil.SubscribeEvents(t, ctx, zet),
-		client: testutil.OpenCommandPipe(t, ctx, zet),
-	}
-	t.Run("enrollByUrlCompletes", state.testEnrollByUrlCompletes)
-	t.Run("invalidProviderFails", state.testInvalidProviderFails)
-	t.Run("noControllerIdentityFails", state.testNoControllerIdentityFails)
-	t.Run("multipleSignersWithDefaultPolicyCompletes", state.testMultipleSignersWithDefaultPolicyCompletes)
-	t.Run("multipleSignersWithNamedPolicyCompletes", state.testMultipleSignersWithNamedPolicyCompletes)
+	RunTestWithTimeout(t, "testEnrollByUrlCompletes", testEnrollByUrlCompletes)
+	RunTestWithTimeout(t, "testInvalidProviderFails", testInvalidProviderFails)
+	RunTestWithTimeout(t, "testNoControllerIdentityFails", testNoControllerIdentityFails)
+	RunTestWithTimeout(t, "testMultipleSignersWithDefaultPolicyCompletes", testMultipleSignersWithDefaultPolicyCompletes)
+	RunTestWithTimeout(t, "testMultipleSignersWithNamedPolicyCompletes", testMultipleSignersWithNamedPolicyCompletes)
 }
 
-func (s *extAuthState) testEnrollByUrlCompletes(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
-	defer cancel()
+var ctx = context.Background()
 
+func testEnrollByUrlCompletes(t *testing.T) {
 	name := testutil.IdentityName(t)
 
 	signerName := name + "-signer"
-	overlay.CreateExtJwtSigner(t, ctx, testutil.ExtJwtSignerSpec{
+	state.overlay.CreateExtJwtSigner(t, ctx, testutil.ExtJwtSignerSpec{
 		Name:     signerName,
-		Issuer:   pkce.IssuerURL,
-		JWKS:     pkce.JWKSURI(),
-		ClientID: pkce.ClientIDs[0],
+		Issuer:   state.pkce.IssuerURL,
+		JWKS:     state.pkce.JWKSURI(),
+		ClientID: state.pkce.ClientIDs[0],
 		Claim:    "email",
 		Scopes:   []string{"email"},
 	})
-	overlay.CreateIdentityWithExternalId(t, ctx, name, pkce.ExternalID, "")
+	state.overlay.CreateIdentityWithExternalId(t, ctx, name, state.pkce.ExternalID, "")
 
 	cleanupCtx := context.Background()
 	t.Cleanup(func() {
-		_ = overlay.DeleteIdentity(cleanupCtx, name)
-		_ = overlay.DeleteExtJwtSigner(cleanupCtx, signerName)
+		_ = state.overlay.DeleteIdentity(cleanupCtx, name)
+		_ = state.overlay.DeleteExtJwtSigner(cleanupCtx, signerName)
 	})
 
-	needsExt := s.addUrlIdentity(t, ctx, name)
+	needsExt := addIdentityByUrl(t, ctx, name)
+	pkce := state.pkce
+	s := state.zetClient.Events
+	authURL := state.zetClient.Commands.GetExternalAuthURL(t, ctx, needsExt.Id.Identifier, signerName)
 
-	authURL := s.client.GetExternalAuthURL(t, ctx, needsExt.Id.Identifier, signerName)
+	pkce.DrivePKCEFlow(t, ctx, authURL)
 
-	testutil.DrivePKCEFlow(t, ctx, authURL, pkce.IssuerURL, pkce.Email, pkce.Password)
-
-	added := s.events.WaitFor(t, ctx, "identity", "added", name)
+	added := s.WaitFor(t, ctx, "identity", "added", name)
 	require.False(t, added.Id.NeedsExtAuth, "identity:added NeedsExtAuth=%t after PKCE flow, want false", added.Id.NeedsExtAuth)
 	require.True(t, added.Id.Active, "identity:added Active=%t after PKCE flow, want true", added.Id.Active)
 	t.Logf("identity:added reports NeedsExtAuth=%t Active=%t after PKCE flow", added.Id.NeedsExtAuth, added.Id.Active)
 }
 
-func (s *extAuthState) testInvalidProviderFails(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-
+func testInvalidProviderFails(t *testing.T) {
 	name := testutil.IdentityName(t)
 
 	signerName := name + "-signer"
+	overlay := state.overlay
+	pkce := state.pkce
+	c := state.zetClient.Commands
 	overlay.CreateExtJwtSigner(t, ctx, testutil.ExtJwtSignerSpec{
 		Name:     signerName,
 		Issuer:   pkce.IssuerURL,
@@ -105,24 +103,25 @@ func (s *extAuthState) testInvalidProviderFails(t *testing.T) {
 		_ = overlay.DeleteExtJwtSigner(cleanupCtx, signerName)
 	})
 
-	needsExt := s.addUrlIdentity(t, ctx, name)
+	needsExt := addIdentityByUrl(t, ctx, name)
 
 	bogusProvider := signerName + "-bogus"
 	t.Logf("sending ExternalAuth with bogus provider %q", bogusProvider)
-	resp, err := s.client.ExternalAuth(ctx, needsExt.Id.Identifier, bogusProvider)
-	require.NoError(t, err, "failed to send ExternalAuth\n%s", zet.Logs())
-	require.False(t, resp.Success, "ExternalAuth should fail for unknown provider %q\n%s", bogusProvider, zet.Logs())
+	resp, err := c.ExternalAuth(ctx, needsExt.Id.Identifier, bogusProvider)
+	require.NoError(t, err, "failed to send ExternalAuth\n%s", state.zetClient.LogPath())
+	require.False(t, resp.Success, "ExternalAuth should fail for unknown provider %q\n%s", bogusProvider, state.zetClient.LogPath())
 	require.Equal(t, 500, resp.Code, "expected Code=500, got %d", resp.Code)
 	require.Contains(t, resp.Error, "invalid provider", "expected invalid-provider error, got %q", resp.Error)
 	t.Logf("ExternalAuth failed for invalid provider: code=%d error=%q", resp.Code, resp.Error)
 }
 
-func (s *extAuthState) testNoControllerIdentityFails(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
-	defer cancel()
-
+func testNoControllerIdentityFails(t *testing.T) {
 	name := testutil.IdentityName(t)
 
+	overlay := state.overlay
+	pkce := state.pkce
+	ev := state.zetClient.Events
+	c := state.zetClient.Commands
 	signerName := name + "-signer"
 	overlay.CreateExtJwtSigner(t, ctx, testutil.ExtJwtSignerSpec{
 		Name:     signerName,
@@ -140,20 +139,21 @@ func (s *extAuthState) testNoControllerIdentityFails(t *testing.T) {
 		_ = overlay.DeleteExtJwtSigner(cleanupCtx, signerName)
 	})
 
-	needsExt := s.addUrlIdentity(t, ctx, name)
+	identityEvent := addIdentityByUrl(t, ctx, name)
 
-	authURL := s.client.GetExternalAuthURL(t, ctx, needsExt.Id.Identifier, signerName)
+	authURL := c.GetExternalAuthURL(t, ctx, identityEvent.Id.Identifier, signerName)
 
-	testutil.DrivePKCEFlow(t, ctx, authURL, pkce.IssuerURL, pkce.Email, pkce.Password)
+	pkce.DrivePKCEFlow(t, ctx, authURL)
 
-	s.events.WaitFor(t, ctx, "controller", "disconnected", name)
+	ev.WaitFor(t, ctx, "controller", "disconnected", name)
 	t.Logf("controller:disconnected")
 }
 
-func (s *extAuthState) testMultipleSignersWithDefaultPolicyCompletes(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
-	defer cancel()
-
+func testMultipleSignersWithDefaultPolicyCompletes(t *testing.T) {
+	overlay := state.overlay
+	pkce := state.pkce
+	ev := state.zetClient.Events
+	c := state.zetClient.Commands
 	name := testutil.IdentityName(t)
 	jwksURI := pkce.JWKSURI()
 
@@ -193,24 +193,25 @@ func (s *extAuthState) testMultipleSignersWithDefaultPolicyCompletes(t *testing.
 		_ = overlay.DeleteExtJwtSigner(cleanupCtx, signer3Name)
 	})
 
-	needsExt := s.addUrlIdentity(t, ctx, name)
+	needsExt := addIdentityByUrl(t, ctx, name)
 	require.Subset(t, needsExt.Id.ExtAuthProviders, []string{realSignerName, signer2Name, signer3Name}, "identity:needs_ext_login ExtAuthProviders should contain all three signers, got %v", needsExt.Id.ExtAuthProviders)
 	t.Logf("identity:needs_ext_login reports ExtAuthProviders=%v (count=%d)", needsExt.Id.ExtAuthProviders, len(needsExt.Id.ExtAuthProviders))
 
-	authURL := s.client.GetExternalAuthURL(t, ctx, needsExt.Id.Identifier, realSignerName)
+	authURL := c.GetExternalAuthURL(t, ctx, needsExt.Id.Identifier, realSignerName)
 
-	testutil.DrivePKCEFlow(t, ctx, authURL, pkce.IssuerURL, pkce.Email, pkce.Password)
+	pkce.DrivePKCEFlow(t, ctx, authURL)
 
-	added := s.events.WaitFor(t, ctx, "identity", "added", name)
+	added := ev.WaitFor(t, ctx, "identity", "added", name)
 	require.False(t, added.Id.NeedsExtAuth, "identity:added NeedsExtAuth=%t after multi-signer PKCE flow, want false", added.Id.NeedsExtAuth)
 	require.True(t, added.Id.Active, "identity:added Active=%t after multi-signer PKCE flow, want true", added.Id.Active)
 	t.Logf("identity:added reports NeedsExtAuth=%t Active=%t after multi-signer PKCE flow", added.Id.NeedsExtAuth, added.Id.Active)
 }
 
-func (s *extAuthState) testMultipleSignersWithNamedPolicyCompletes(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
-	defer cancel()
-
+func testMultipleSignersWithNamedPolicyCompletes(t *testing.T) {
+	overlay := state.overlay
+	pkce := state.pkce
+	ev := state.zetClient.Events
+	c := state.zetClient.Commands
 	name := testutil.IdentityName(t)
 	jwksURI := pkce.JWKSURI()
 
@@ -258,32 +259,34 @@ func (s *extAuthState) testMultipleSignersWithNamedPolicyCompletes(t *testing.T)
 		_ = overlay.DeleteExtJwtSigner(cleanupCtx, signer3Name)
 	})
 
-	needsExt := s.addUrlIdentity(t, ctx, name)
+	needsExt := addIdentityByUrl(t, ctx, name)
 	require.Subset(t, needsExt.Id.ExtAuthProviders, []string{realSignerName, signer2Name, signer3Name}, "identity:needs_ext_login ExtAuthProviders should contain all three signers, got %v", needsExt.Id.ExtAuthProviders)
 	t.Logf("identity:needs_ext_login reports ExtAuthProviders=%v (count=%d)", needsExt.Id.ExtAuthProviders, len(needsExt.Id.ExtAuthProviders))
 
-	authURL := s.client.GetExternalAuthURL(t, ctx, needsExt.Id.Identifier, realSignerName)
+	authURL := c.GetExternalAuthURL(t, ctx, needsExt.Id.Identifier, realSignerName)
 
-	testutil.DrivePKCEFlow(t, ctx, authURL, pkce.IssuerURL, pkce.Email, pkce.Password)
+	pkce.DrivePKCEFlow(t, ctx, authURL)
 
-	added := s.events.WaitFor(t, ctx, "identity", "added", name)
+	added := ev.WaitFor(t, ctx, "identity", "added", name)
 	require.False(t, added.Id.NeedsExtAuth, "identity:added NeedsExtAuth=%t after multi-signer PKCE flow, want false", added.Id.NeedsExtAuth)
 	require.True(t, added.Id.Active, "identity:added Active=%t after multi-signer PKCE flow, want true", added.Id.Active)
 	t.Logf("identity:added reports NeedsExtAuth=%t Active=%t after multi-signer PKCE flow", added.Id.NeedsExtAuth, added.Id.Active)
 }
 
-func (s *extAuthState) addUrlIdentity(t *testing.T, ctx context.Context, name string) testutil.Event {
-	t.Helper()
+func addIdentityByUrl(t *testing.T, ctx context.Context, name string) testutil.Event {
+	overlay := state.overlay
+	ev := state.zetClient.Events
+	c := state.zetClient.Commands
 	controllerBase := overlay.ControllerHostPort()
 
 	identityData := testutil.AddIdentityData{
 		IdentityFilename: name,
 		ControllerURL:    &controllerBase,
 	}
-	addResp := testutil.AddIdentity(t, ctx, s.client, identityData)
-	require.True(t, addResp.Success, "URL AddIdentity should succeed: error=%q\n%s", addResp.Error, zet.Logs())
+	addResp := testutil.AddIdentity(t, ctx, c, identityData)
+	require.True(t, addResp.Success, "URL AddIdentity should succeed: error=%q\n%s", addResp.Error, state.zetClient.LogPath())
 
-	needsExt := s.events.WaitFor(t, ctx, "identity", "needs_ext_login", name)
+	needsExt := ev.WaitFor(t, ctx, "identity", "needs_ext_login", name)
 	require.NotEmpty(t, needsExt.Id.Identifier, "identity:needs_ext_login Identifier empty")
 	require.True(t, needsExt.Id.NeedsExtAuth, "identity:needs_ext_login NeedsExtAuth=%t, want true", needsExt.Id.NeedsExtAuth)
 	testutil.AssertValidUrlEnrolledIdentityFile(t, needsExt.Id.Identifier, testutil.EnrollModeNone)
