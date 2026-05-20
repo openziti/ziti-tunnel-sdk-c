@@ -46,7 +46,7 @@ func testUrlEnrollmentWithValidControllerUrlSucceeds(t *testing.T) {
 	}
 
 	resp := testutil.AddIdentity(t, client, identityData)
-	require.True(t, resp.Success, "URL AddIdentity failed: error=%q code=%d\n%s", resp.Error, resp.Code, zet.LogFile())
+	require.True(t, resp.Success, "URL AddIdentity failed: error=%q code=%d\n%s", resp.Error, resp.Code, state.zetClient.LogFile())
 
 	event := events.WaitFor(t, "identity", "needs_ext_login", identityName)
 	require.NotEmpty(t, event.Id.Identifier, "identity:needs_ext_login Identifier empty")
@@ -69,7 +69,7 @@ func testUrlEnrollmentSameNameTwiceSecondFails(t *testing.T) {
 	}
 
 	first := testutil.AddIdentity(t, client, identityData)
-	require.True(t, first.Success, "first URL AddIdentity should succeed: error=%q\n%s", first.Error, zet.LogFile())
+	require.True(t, first.Success, "first URL AddIdentity should succeed: error=%q\n%s", first.Error, state.zetClient.LogFile())
 	events.WaitFor(t, "identity", "needs_ext_login", identityName)
 
 	second := testutil.AddIdentity(t, client, identityData)
@@ -96,7 +96,7 @@ func testUrlEnrollmentAfterJwtSameNameFails(t *testing.T) {
 		JwtContent:       &jwt,
 	}
 	first := testutil.AddIdentity(t, client, jwtIdentityData)
-	require.True(t, first.Success, "first JWT AddIdentity should succeed: error=%q\n%s", first.Error, zet.LogFile())
+	require.True(t, first.Success, "first JWT AddIdentity should succeed: error=%q\n%s", first.Error, state.zetClient.LogFile())
 	added := events.WaitFor(t, "identity", "added", identityName)
 	testutil.AssertValidJwtEnrolledIdentityFile(t, added.Id.Identifier)
 
@@ -113,7 +113,7 @@ func testUrlEnrollmentAfterJwtSameNameFails(t *testing.T) {
 }
 
 func testUrlEnrollmentWithNonZitiEndpointFails(t *testing.T) {
-	client := testutil.OpenCommandPipe(t, zet)
+	client := testutil.OpenCommandPipe(t, state.zetClient)
 
 	identityName := testutil.IdentityName(t)
 	nonZitiURL := "https://example.com"
@@ -123,13 +123,13 @@ func testUrlEnrollmentWithNonZitiEndpointFails(t *testing.T) {
 	}
 
 	resp := testutil.AddIdentity(t, client, identityData)
-	require.False(t, resp.Success, "non-Ziti URL %q should be rejected, got Success=true\n%s", nonZitiURL, zet.LogFile())
+	require.False(t, resp.Success, "non-Ziti URL %q should be rejected, got Success=true\n%s", nonZitiURL, state.zetClient.LogFile())
 	require.Equal(t, 500, resp.Code, "expected Code=500, got %d", resp.Code)
 	t.Logf("non-Ziti URL rejected: code=%d error=%q", resp.Code, resp.Error)
 }
 
 func testUrlEnrollmentWithMalformedUrlFails(t *testing.T) {
-	client := testutil.OpenCommandPipe(t, zet)
+	client := testutil.OpenCommandPipe(t, state.zetClient)
 
 	identityName := testutil.IdentityName(t)
 	badURL := "not-a-url"
@@ -139,7 +139,7 @@ func testUrlEnrollmentWithMalformedUrlFails(t *testing.T) {
 	}
 
 	resp := testutil.AddIdentity(t, client, identityData)
-	require.False(t, resp.Success, "malformed URL %q should be rejected, got Success=true\n%s", badURL, zet.LogFile())
+	require.False(t, resp.Success, "malformed URL %q should be rejected, got Success=true\n%s", badURL, state.zetClient.LogFile())
 	require.Equal(t, 500, resp.Code, "expected Code=500, got %d", resp.Code)
 	t.Logf("malformed URL rejected: code=%d error=%q", resp.Code, resp.Error)
 }

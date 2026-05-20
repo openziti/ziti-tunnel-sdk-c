@@ -29,17 +29,17 @@ func TestSetLogLevel(t *testing.T) {
 }
 
 func testSetLogLevelChangesLogLevelInStatus(t *testing.T) {
-	client := testutil.OpenCommandPipe(t, zet)
+	client := testutil.OpenCommandPipe(t, state.zetClient)
 
 	t.Logf("sending SetLogLevel %q", "trace")
 	setResp, err := client.SetLogLevel("trace")
-	require.NoError(t, err, "failed to send SetLogLevel\n%s", zet.LogFile())
+	require.NoError(t, err, "failed to send SetLogLevel\n%s", state.zetClient.LogFile())
 	require.True(t, setResp.Success, "SetLogLevel failed: error=%q code=%d", setResp.Error, setResp.Code)
 	t.Logf("SetLogLevel succeeded")
 
 	t.Logf("fetching Status to verify LogLevel change took effect")
 	statusResp, err := client.Status()
-	require.NoError(t, err, "failed to send Status\n%s", zet.LogFile())
+	require.NoError(t, err, "failed to send Status\n%s", state.zetClient.LogFile())
 	require.True(t, statusResp.Success, "Status failed: error=%q code=%d", statusResp.Error, statusResp.Code)
 
 	var status struct {

@@ -23,26 +23,9 @@ import (
 	"os"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 )
-
-const TestTimeout = 5 * time.Second
-
-// RunTestWithTimeout runs f as a t.Run subtest. If f does not return within
-// TestTimeout, the process panics — per the project convention, a per-test
-// timeout means "something horrible has happened" and the whole suite should
-// fail rather than continue.
-func RunTestWithTimeout(t *testing.T, name string, f func(*testing.T)) {
-	t.Run(name, func(t *testing.T) {
-		timer := time.AfterFunc(TestTimeout, func() {
-			panic(fmt.Sprintf("test %s timed out after %s", t.Name(), TestTimeout))
-		})
-		defer timer.Stop()
-		f(t)
-	})
-}
 
 // Payload structs below mirror the wire JSON emitted/accepted by ziti-edge-tunnel's
 // IPC handlers (defined in lib/ziti-tunnel-cbs/include/ziti/ziti_tunnel_cbs.h).
@@ -315,14 +298,6 @@ func (c *CommandsClient) GetExternalAuthURL(t *testing.T, identifier, provider s
 
 func (c *CommandsClient) Status() (*Response, error) {
 	return c.SendCommand(IPCCommand{Action: "Status"})
-}
-
-func (c *CommandsClient) ListIdentities() (*Response, error) {
-	return c.SendCommand(IPCCommand{Action: "ListIdentities"})
-}
-
-func (c *CommandsClient) GetMetrics() (*Response, error) {
-	return c.SendCommand(IPCCommand{Action: "GetMetrics"})
 }
 
 func (c *CommandsClient) AddIdentity(data AddIdentityData) (*Response, error) {

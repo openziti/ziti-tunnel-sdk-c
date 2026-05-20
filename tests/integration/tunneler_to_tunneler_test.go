@@ -29,11 +29,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var (
-	zet  = state.zetClient
-	zetB = state.zetHost
-)
-
 // TestTunnelerToTunnelerTCP exercises the TCP data plane with two run-mode ZETs.
 // One ZET intercepts the client-side TCP connection; the other hosts the service
 // and forwards to a local echo backend.
@@ -41,10 +36,10 @@ var (
 // Requires root/CAP_NET_ADMIN — both ZETs open TUN devices.
 func TestTunnelerToTunnelerTCP(t *testing.T) {
 	t.Run("zetA_intercepts_zetB_hosts", func(t *testing.T) {
-		testT2TTCP(t, zet, zetB, "100.64.0.10", 21000)
+		testT2TTCP(t, state.zetClient, state.zetHost, "100.64.0.10", 21000)
 	})
 	t.Run("zetB_intercepts_zetA_hosts", func(t *testing.T) {
-		testT2TTCP(t, zetB, zet, "100.128.0.10", 21001)
+		testT2TTCP(t, state.zetHost, state.zetClient, "100.128.0.10", 21001)
 	})
 }
 
@@ -53,10 +48,10 @@ func TestTunnelerToTunnelerTCP(t *testing.T) {
 // Requires root/CAP_NET_ADMIN — both ZETs open TUN devices.
 func TestTunnelerToTunnelerUDP(t *testing.T) {
 	t.Run("zetA_intercepts_zetB_hosts", func(t *testing.T) {
-		testT2TUDP(t, zet, zetB, "100.64.0.11", 22000)
+		testT2TUDP(t, state.zetClient, state.zetHost, "100.64.0.11", 22000)
 	})
 	t.Run("zetB_intercepts_zetA_hosts", func(t *testing.T) {
-		testT2TUDP(t, zetB, zet, "100.128.0.11", 22001)
+		testT2TUDP(t, state.zetHost, state.zetClient, "100.128.0.11", 22001)
 	})
 }
 

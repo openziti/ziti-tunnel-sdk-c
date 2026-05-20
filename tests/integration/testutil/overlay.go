@@ -84,7 +84,7 @@ func (o *Overlay) Start() error {
 		"ZITI_CONFIG_DIR="+filepath.Join(o.Home, "cli-config"),
 		"PFXLOG_NO_JSON=true",
 	)
-	logPath := filepath.Join(o.Home, "zet-logs", "quickstart.log")
+	logPath := filepath.Join(o.Home, "quickstart-logs", "quickstart.log")
 	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
 		return fmt.Errorf("mkdir quickstart log dir: %w", err)
 	}
@@ -93,15 +93,15 @@ func (o *Overlay) Start() error {
 		return fmt.Errorf("open quickstart log file: %w", err)
 	}
 	log.Printf("overlay: quickstart log %s", logPath)
+	o.stdout = newSyncBuffer()
+	o.stderr = newSyncBuffer()
+	o.cmd.Stdout = io.MultiWriter(o.stdout, logFile)
+	o.cmd.Stderr = io.MultiWriter(o.stderr, logFile)
+
 	if err := o.cmd.Start(); err != nil {
 		_ = logFile.Close()
 		return fmt.Errorf("start quickstart: %w", err)
 	}
-
-	stdout := newSyncBuffer()
-	stderr := newSyncBuffer()
-	o.cmd.Stdout = io.MultiWriter(stdout, logFile)
-	o.cmd.Stderr = io.MultiWriter(stderr, logFile)
 
 	go func() { o.Done <- o.cmd.Wait() }()
 
