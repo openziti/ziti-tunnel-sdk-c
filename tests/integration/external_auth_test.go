@@ -17,7 +17,9 @@ limitations under the License.
 package integration_test
 
 import (
+	"fmt"
 	"testing"
+	"time"
 
 	"github.com/openziti/ziti-tunnel-sdk-c/tests/integration/testutil"
 	"github.com/stretchr/testify/require"
@@ -81,16 +83,55 @@ func TestExternalAuthEnrolledToNone(t *testing.T) {
 	}
 	c.setupExtJwtSigners(t)
 
-	testutil.RunTestWithTimeout(t, "testEnrollByUrlCompletes", c.testEnrollByUrlCompletes)
-	testutil.RunTestWithTimeout(t, "testInvalidProviderFails", c.testInvalidProviderFails)
-	testutil.RunTestWithTimeout(t, "testNoControllerIdentityFails", c.testNoControllerIdentityFails)
-	testutil.RunTestWithTimeout(t, "testMultipleSignersWithDefaultPolicyCompletes", c.testMultipleSignersWithDefaultPolicyCompletes)
-	testutil.RunTestWithTimeout(t, "testMultipleSignersWithNamedPolicyCompletes", c.testMultipleSignersWithNamedPolicyCompletes)
+	testutil.RunTestWithTimeout(t, "testEnrollByUrlCompletes", c.testEnrollByUrlCompletesLoop)
+	//	testutil.RunTestWithTimeout(t, "testEnrollByUrlCompletes", c.testEnrollByUrlCompletes)
+	//
+	// testutil.RunTestWithTimeout(t, "testInvalidProviderFails", c.testInvalidProviderFails)
+	// testutil.RunTestWithTimeout(t, "testNoControllerIdentityFails", c.testNoControllerIdentityFails)
+	// testutil.RunTestWithTimeout(t, "testMultipleSignersWithDefaultPolicyCompletes", c.testMultipleSignersWithDefaultPolicyCompletes)
+	//
+	//	testutil.RunTestWithTimeout(t, "testMultipleSignersWithNamedPolicyCompletes", c.testMultipleSignersWithNamedPolicyCompletes)
+}
+
+func (c *extAuthContext) testEnrollByUrlCompletesLoop(t *testing.T) {
+	noteNeeded := 0
+	needed := 0
+	c.overlay.ShowZitiCliCommands = true
+	for i := 0; i < 10; i++ {
+		fmt.Printf("Iteration: %v...", i)
+		name := testutil.IdentityName(t)
+		c.overlay.CreateIdentityWithExternalId(t, name, c.pkce.ExternalID, "")
+		time.Sleep(time.Millisecond * 500)
+
+		identityEvent := c.addIdentityByUrl(t, name)
+		authURL := c.zet.Commands.GetExternalAuthURL(t, identityEvent.Id.Identifier, c.pkceSigner.name)
+
+		c.pkce.DrivePKCEFlow(t, authURL)
+
+		added := c.zet.Events.WaitFor(t, "identity", "added", name)
+		//		require.False(t, added.Id.NeedsExtAuth, "identity:added NeedsExtAuth=%t after PKCE flow, want false", added.Id.NeedsExtAuth)
+		//		require.True(t, added.Id.Active, "identity:added Active=%t after PKCE flow, want true", added.Id.Active)
+		if added.Id.NeedsExtAuth {
+			needed++
+			fmt.Println("needed")
+		} else {
+			noteNeeded++
+			fmt.Println("not")
+		}
+		t.Logf("identity:added reports NeedsExtAuth=%t Active=%t after PKCE flow", added.Id.NeedsExtAuth, added.Id.Active)
+
+		_ = c.overlay.DeleteIdentity(name)
+		c.zet.Commands.RemoveIdentity(added.Id.Identifier)
+		//		time.Sleep(time.Second)
+		time.Sleep(time.Millisecond * 500)
+	}
+	require.EqualValues(t, 0, needed)
 }
 
 func (c *extAuthContext) testEnrollByUrlCompletes(t *testing.T) {
 	name := testutil.IdentityName(t)
 	c.overlay.CreateIdentityWithExternalId(t, name, c.pkce.ExternalID, "")
+	t.Cleanup(func() { _ = c.overlay.DeleteIdentity(name) })
 
 	identityEvent := c.addIdentityByUrl(t, name)
 	authURL := c.zet.Commands.GetExternalAuthURL(t, identityEvent.Id.Identifier, c.pkceSigner.name)
@@ -106,6 +147,7 @@ func (c *extAuthContext) testEnrollByUrlCompletes(t *testing.T) {
 func (c *extAuthContext) testInvalidProviderFails(t *testing.T) {
 	name := testutil.IdentityName(t)
 	c.overlay.CreateIdentityWithExternalId(t, name, c.pkce.ExternalID, "")
+	t.Cleanup(func() { _ = c.overlay.DeleteIdentity(name) })
 
 	identityEvent := c.addIdentityByUrl(t, name)
 
@@ -138,6 +180,7 @@ func (c *extAuthContext) testNoControllerIdentityFails(t *testing.T) {
 func (c *extAuthContext) testMultipleSignersWithDefaultPolicyCompletes(t *testing.T) {
 	name := testutil.IdentityName(t)
 	c.overlay.CreateIdentityWithExternalId(t, name, c.pkce.ExternalID, "")
+	t.Cleanup(func() { _ = c.overlay.DeleteIdentity(name) })
 
 	identityEvent := c.addIdentityByUrl(t, name)
 	require.Subset(t, identityEvent.Id.ExtAuthProviders, []string{c.pkceSigner.name, c.extraSignerA.name, c.extraSignerB.name}, "identity:needs_ext_login ExtAuthProviders should contain all three signers, got %v", identityEvent.Id.ExtAuthProviders)
@@ -162,6 +205,7 @@ func (c *extAuthContext) testMultipleSignersWithNamedPolicyCompletes(t *testing.
 	c.overlay.CreateIdentityWithExternalId(t, name, c.pkce.ExternalID, policyName)
 
 	t.Cleanup(func() {
+		_ = c.overlay.DeleteIdentity(name)
 		_ = c.overlay.DeleteAuthPolicy(policyName)
 	})
 
