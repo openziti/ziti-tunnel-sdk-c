@@ -109,7 +109,8 @@ func run(m *testing.M, state TestState) (int, error) {
 	defer state.zetHost.Stop()
 	defer state.pkce.Stop()
 	defer func() {
-		if cmd := state.overlay.CACleanupCommand(); cmd != "" {
+		if state.overlay.CATrusted() {
+			_, cleanup := state.overlay.OSCAStrings()
 			log.Printf(`
 
 ========================================
@@ -118,7 +119,7 @@ teardown: to remove test CA from OS trust when done:
   %s
 
 ========================================
-`, cmd)
+`, cleanup)
 		}
 	}()
 

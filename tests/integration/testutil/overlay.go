@@ -58,9 +58,8 @@ type Overlay struct {
 	Done    chan error
 }
 
-// StartOverlay runs `ziti edge quickstart` with ephemeral ports in a temp home,
-// waits for the controller to accept an admin login, and returns a handle.
-// Callers must defer Stop().
+// Start launches `ziti edge quickstart` against o.Home and waits until the
+// overlay is ready. Callers must defer Stop().
 func (o *Overlay) Start() error {
 	warnIfPortBound(overlayCtrlPort)
 	warnIfPortBound(overlayRtrPort)
@@ -79,9 +78,9 @@ func (o *Overlay) Start() error {
 	}
 	log.Printf("overlay: starting %s %s", o.ZitiBin, strings.Join(args, " "))
 	o.cmd = exec.Command(o.ZitiBin, args...)
-	// PFXLOG_NO_JSON makes ziti's stderr human-readable for test log output.
 	o.cmd.Env = append(os.Environ(),
 		"ZITI_CONFIG_DIR="+filepath.Join(o.Home, "cli-config"),
+		// PFXLOG_NO_JSON makes ziti's stderr human-readable for test log output.
 		"PFXLOG_NO_JSON=true",
 	)
 	logPath := filepath.Join(o.Home, "quickstart-logs", "quickstart.log")
@@ -159,9 +158,7 @@ func (o *Overlay) ControllerHostPort() string {
 	return fmt.Sprintf("https://localhost:%d", overlayCtrlPort)
 }
 
-// caTrusted reports whether a TLS handshake to the controller succeeds with
-// the OS trust store — i.e., whether this overlay's CA is currently installed.
-func (o *Overlay) caTrusted() bool {
+func (o *Overlay) CATrusted() bool {
 	hostport := fmt.Sprintf("localhost:%d", overlayCtrlPort)
 	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: 2 * time.Second}, "tcp", hostport, nil)
 	if err != nil {
@@ -171,9 +168,9 @@ func (o *Overlay) caTrusted() bool {
 	return true
 }
 
-// osCAStrings returns OS-specific install and cleanup shell commands for this
+// OSCAStrings returns OS-specific install and cleanup shell commands for this
 // overlay's CA. Both are "" when the OS has no recipe.
-func (o *Overlay) osCAStrings() (install, cleanup string) {
+func (o *Overlay) OSCAStrings() (install, cleanup string) {
 	caPath := filepath.Join(o.Home, "pki", "root-ca", "certs", "root-ca.cert")
 	switch runtime.GOOS {
 	case "windows":
@@ -192,39 +189,28 @@ func (o *Overlay) osCAStrings() (install, cleanup string) {
 // RequireCATrusted skips the test (with OS-specific install/cleanup
 // instructions) if the overlay's CA isn't in the calling OS's trust store.
 func (o *Overlay) RequireCATrusted(t *testing.T) {
-	if o.caTrusted() {
+	if o.CATrusted() {
 		return
 	}
 	caPath := filepath.Join(o.Home, "pki", "root-ca", "certs", "root-ca.cert")
-	install, cleanup := o.osCAStrings()
+	install, cleanup := o.OSCAStrings()
 	if install == "" {
 		t.Skipf(`tests need the CA at %s in OS trust (no install instructions for %s).
 
-  Current -overlay-home: %s
-  Pass a durable path with -overlay-home so the PKI (and this trust install) persists across runs.`, caPath, runtime.GOOS, o.Home)
+  Current overlay home: %s
+  Pass a durable path with -test-home so the PKI (and this trust install) persists across runs.`, caPath, runtime.GOOS, o.Home)
 		return
 	}
 	t.Skipf(`tests need the test overlay's CA in OS trust.
 
-  Current -overlay-home: %s
-  Pass a durable path with -overlay-home so the PKI (and this trust install) persists across runs.
+  Current overlay home: %s
+  Pass a durable path with -test-home so the PKI (and this trust install) persists across runs.
 
   Install:
   %s
 
   Cleanup when done:
   %s`, o.Home, install, cleanup)
-}
-
-// CACleanupCommand returns the OS-specific shell command a developer can run
-// to remove this overlay's root CA from their OS trust store after testing.
-// Returns "" if the CA isn't currently trusted (nothing to clean up).
-func (o *Overlay) CACleanupCommand() string {
-	if !o.caTrusted() {
-		return ""
-	}
-	_, cleanup := o.osCAStrings()
-	return cleanup
 }
 
 // A surviving overlay holds the controller/router ports and breaks subsequent

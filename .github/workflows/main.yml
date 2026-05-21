@@ -220,7 +220,7 @@ jobs:
                 sh -c 'ulimit -c unlimited && exec go test ./... -v -timeout 20m \
                   -zet-bin="$ZET_BIN" -ziti-bin="$ZITI_BIN" -pkce-bin="$PKCE_BIN" \
                   -zet-log-dir="${{ env.ZET_LOG_DIR }}" \
-                  -overlay-home="$RUNNER_TEMP"'
+                  -test-home="$RUNNER_TEMP"'
               ;;
             *)
               go test ./... -v -timeout 20m \
@@ -228,7 +228,7 @@ jobs:
                 -ziti-bin="$ZITI_BIN" \
                 -pkce-bin="$PKCE_BIN" \
                 -zet-log-dir="${{ env.ZET_LOG_DIR }}" \
-                -overlay-home="$RUNNER_TEMP"
+                -test-home="$RUNNER_TEMP"
               ;;
           esac
 

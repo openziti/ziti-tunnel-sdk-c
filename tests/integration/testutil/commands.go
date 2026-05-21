@@ -164,34 +164,6 @@ type TunnelStatus struct {
 	ConfigDir      string           `json:"ConfigDir"`
 }
 
-// FindIdentity returns the identity entry whose FingerPrint matches, or nil.
-// FingerPrint carries the controller-side identity name; Name is mutable and
-// gets rewritten to the identity-file path after /current-identity is fetched.
-func (s *TunnelStatus) FindIdentity(fingerprint string) *IdentityStatus {
-	for i := range s.Identities {
-		if s.Identities[i].FingerPrint == fingerprint {
-			return &s.Identities[i]
-		}
-	}
-	return nil
-}
-
-// GetTunnelStatus sends the Status command, asserts success, and unmarshals the response.
-func (c *CommandsClient) GetTunnelStatus() (*TunnelStatus, error) {
-	resp, err := c.Status()
-	if err != nil {
-		return nil, fmt.Errorf("status: %w", err)
-	}
-	if !resp.Success {
-		return nil, fmt.Errorf("status failed: %s (code %d)", resp.Error, resp.Code)
-	}
-	var status TunnelStatus
-	if err := json.Unmarshal(resp.Data, &status); err != nil {
-		return nil, fmt.Errorf("parse status: %w", err)
-	}
-	return &status, nil
-}
-
 type MFAEnrollment struct {
 	Identifier      string   `json:"Identifier"`
 	IsVerified      bool     `json:"IsVerified"`
