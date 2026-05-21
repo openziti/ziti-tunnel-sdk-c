@@ -29,15 +29,17 @@ import (
 
 // PKCE is a running test IdP used to exercise the OAuth2 PKCE flow.
 type PKCE struct {
-	Bin        string
-	WorkDir    string
-	HTTPAddr   string
-	IssuerURL  string
-	ClientIDs  []string
-	Email      string
-	Password   string
-	ExternalID string
-	cmd        *exec.Cmd
+	Bin            string
+	WorkDir        string
+	HTTPAddr       string
+	IssuerURL      string
+	ClientIDWorks  string
+	ClientIDExtraA string
+	ClientIDExtraB string
+	Email          string
+	Password       string
+	ExternalID     string
+	cmd            *exec.Cmd
 }
 
 type PKCEUser struct {
@@ -79,9 +81,12 @@ func (p *PKCE) Start() error {
 	httpAddr := fmt.Sprintf("127.0.0.1:%d", port)
 	issuer := "http://" + httpAddr + "/dex"
 
-	clientIDs := []string{"ziti-test", "ziti-test-2", "ziti-test-3"}
+	p.ClientIDWorks = "ziti-test"
+	p.ClientIDExtraA = "ziti-test-2"
+	p.ClientIDExtraB = "ziti-test-3"
+
 	clientsYAML := ""
-	for _, id := range clientIDs {
+	for _, id := range []string{p.ClientIDWorks, p.ClientIDExtraA, p.ClientIDExtraB} {
 		clientsYAML += fmt.Sprintf(`  - id: %s
     redirectURIs:
       - http://127.0.0.1:20314/auth/callback
@@ -92,7 +97,6 @@ func (p *PKCE) Start() error {
 	}
 
 	p.IssuerURL = issuer
-	p.ClientIDs = clientIDs
 	p.Email = DefaultPKCEUser.Email
 	p.Password = DefaultPKCEUser.Password
 	p.ExternalID = DefaultPKCEUser.Email

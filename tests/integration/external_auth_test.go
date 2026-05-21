@@ -37,40 +37,43 @@ type extAuthContext struct {
 	extraSignerB extJwtSigner
 }
 
-func (c *extAuthContext) setupExtJwtSigners(t *testing.T) {
-	jwksURI := c.pkce.JWKSURI()
-
+func (c *extAuthContext) setupWorkingExtJwtSigner(t *testing.T) {
 	c.pkceSigner.name = "TestExternalAuth-signer-pkce"
 	c.pkceSigner.id = c.overlay.CreateExtJwtSigner(t, testutil.ExtJwtSignerSpec{
 		Name:     c.pkceSigner.name,
 		Issuer:   c.pkce.IssuerURL,
-		JWKS:     jwksURI,
-		ClientID: c.pkce.ClientIDs[0],
+		JWKS:     c.pkce.JWKSURI(),
+		ClientID: c.pkce.ClientIDWorks,
 		Claim:    "email",
 		Scopes:   []string{"email"},
 	})
+}
+
+func (c *extAuthContext) setupExtraExtJwtSigners(t *testing.T) {
+	jwksURI := c.pkce.JWKSURI()
 
 	c.extraSignerA.name = "TestExternalAuth-signer-extra-a"
 	c.extraSignerA.id = c.overlay.CreateExtJwtSigner(t, testutil.ExtJwtSignerSpec{
 		Name:     c.extraSignerA.name,
-		Issuer:   c.pkce.IssuerURL + "/" + c.extraSignerA.name,
-		JWKS:     jwksURI,
-		ClientID: c.pkce.ClientIDs[1],
+		Issuer:   c.pkce.IssuerURL + "-" + c.extraSignerA.name,
+		JWKS:     jwksURI + "-" + c.extraSignerA.name,
+		ClientID: c.pkce.ClientIDExtraA,
 		Claim:    "email",
+		Scopes:   []string{"email"},
 	})
 
 	c.extraSignerB.name = "TestExternalAuth-signer-extra-b"
 	c.extraSignerB.id = c.overlay.CreateExtJwtSigner(t, testutil.ExtJwtSignerSpec{
 		Name:     c.extraSignerB.name,
-		Issuer:   c.pkce.IssuerURL + "/" + c.extraSignerB.name,
-		JWKS:     jwksURI,
-		ClientID: c.pkce.ClientIDs[2],
+		Issuer:   c.pkce.IssuerURL + "-" + c.extraSignerB.name,
+		JWKS:     jwksURI + "-" + c.extraSignerB.name,
+		ClientID: c.pkce.ClientIDExtraB,
 		Claim:    "email",
+		Scopes:   []string{"email"},
 	})
 }
 
 func TestExternalAuthEnrolledToNone(t *testing.T) {
-	t.Skip("External auth tests flaking with ziti 2.0")
 	state.overlay.RequireCATrusted(t)
 	if state.pkce == nil {
 		t.Skip("PKCE IdP is not configured (-pkce-bin not provided)")
@@ -80,8 +83,8 @@ func TestExternalAuthEnrolledToNone(t *testing.T) {
 		pkce:    state.pkce,
 		zet:     state.zetClient,
 	}
-	c.setupExtJwtSigners(t)
-
+	c.setupWorkingExtJwtSigner(t)
+	c.setupExtraExtJwtSigners(t)
 	t.Run("testEnrollByUrlCompletes", c.testEnrollByUrlCompletes)
 	t.Run("testInvalidProviderFails", c.testInvalidProviderFails)
 	t.Run("testNoControllerIdentityFails", c.testNoControllerIdentityFails)
