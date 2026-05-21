@@ -25,36 +25,38 @@ import (
 )
 
 func TestStatus(t *testing.T) {
-	testutil.RunTestWithTimeout(t, "hasExpectedTopLevelFields", testStatusHasExpectedTopLevelFields)
+	t.Run("hasExpectedTopLevelFields", testStatusHasExpectedTopLevelFields)
 }
 
 func testStatusHasExpectedTopLevelFields(t *testing.T) {
-	client := testutil.OpenCommandPipe(t, state.zetClient)
+	testutil.RunTestWithTimeout(t, func(t *testing.T) {
+		client := testutil.OpenCommandPipe(t, state.zetClient)
 
-	t.Logf("sending Status command")
-	resp, err := client.Status()
-	require.NoError(t, err, "failed to send Status\n%s", state.zetClient.LogFile())
-	require.True(t, resp.Success, "Status failed: error=%q code=%d", resp.Error, resp.Code)
-	t.Logf("Status command succeeded; verifying top-level fields")
+		t.Logf("sending Status command")
+		resp, err := client.Status()
+		require.NoError(t, err, "failed to send Status\n%s", state.zetClient.LogFile())
+		require.True(t, resp.Success, "Status failed: error=%q code=%d", resp.Error, resp.Code)
+		t.Logf("Status command succeeded; verifying top-level fields")
 
-	var keys map[string]json.RawMessage
-	require.NoError(t, json.Unmarshal(resp.Data, &keys), "parse Status data: %s", resp.Data)
+		var keys map[string]json.RawMessage
+		require.NoError(t, json.Unmarshal(resp.Data, &keys), "parse Status data: %s", resp.Data)
 
-	require.Contains(t, keys, "Active", "Status.Active missing")
-	require.Contains(t, keys, "Duration", "Status.Duration missing")
-	require.Contains(t, keys, "StartTime", "Status.StartTime missing")
-	require.Contains(t, keys, "Identities", "Status.Identities missing")
-	require.Contains(t, keys, "IpInfo", "Status.IpInfo missing")
-	require.Contains(t, keys, "LogLevel", "Status.LogLevel missing")
-	require.Contains(t, keys, "ServiceVersion", "Status.ServiceVersion missing")
-	require.Contains(t, keys, "TunIpv4", "Status.TunIpv4 missing")
-	require.Contains(t, keys, "TunIpv4Mask", "Status.TunIpv4Mask missing")
-	require.Contains(t, keys, "AddDns", "Status.AddDns missing")
-	require.Contains(t, keys, "ApiPageSize", "Status.ApiPageSize missing")
-	require.Contains(t, keys, "TunName", "Status.TunName missing")
-	require.Contains(t, keys, "L2Enabled", "Status.L2Enabled missing")
-	require.Contains(t, keys, "TapInfo", "Status.TapInfo missing")
-	require.Contains(t, keys, "ConfigDir", "Status.ConfigDir missing")
-	require.Len(t, keys, 15, "Status has unexpected key set: %v", keys)
-	t.Logf("Status returned 15 top-level fields")
+		require.Contains(t, keys, "Active", "Status.Active missing")
+		require.Contains(t, keys, "Duration", "Status.Duration missing")
+		require.Contains(t, keys, "StartTime", "Status.StartTime missing")
+		require.Contains(t, keys, "Identities", "Status.Identities missing")
+		require.Contains(t, keys, "IpInfo", "Status.IpInfo missing")
+		require.Contains(t, keys, "LogLevel", "Status.LogLevel missing")
+		require.Contains(t, keys, "ServiceVersion", "Status.ServiceVersion missing")
+		require.Contains(t, keys, "TunIpv4", "Status.TunIpv4 missing")
+		require.Contains(t, keys, "TunIpv4Mask", "Status.TunIpv4Mask missing")
+		require.Contains(t, keys, "AddDns", "Status.AddDns missing")
+		require.Contains(t, keys, "ApiPageSize", "Status.ApiPageSize missing")
+		require.Contains(t, keys, "TunName", "Status.TunName missing")
+		require.Contains(t, keys, "L2Enabled", "Status.L2Enabled missing")
+		require.Contains(t, keys, "TapInfo", "Status.TapInfo missing")
+		require.Contains(t, keys, "ConfigDir", "Status.ConfigDir missing")
+		require.Len(t, keys, 15, "Status has unexpected key set: %v", keys)
+		t.Logf("Status returned 15 top-level fields")
+	})
 }

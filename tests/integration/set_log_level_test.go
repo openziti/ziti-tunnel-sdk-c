@@ -25,27 +25,29 @@ import (
 )
 
 func TestSetLogLevel(t *testing.T) {
-	testutil.RunTestWithTimeout(t, "changesLogLevelInStatus", testSetLogLevelChangesLogLevelInStatus)
+	t.Run("changesLogLevelInStatus", testSetLogLevelChangesLogLevelInStatus)
 }
 
 func testSetLogLevelChangesLogLevelInStatus(t *testing.T) {
-	client := testutil.OpenCommandPipe(t, state.zetClient)
+	testutil.RunTestWithTimeout(t, func(t *testing.T) {
+		client := testutil.OpenCommandPipe(t, state.zetClient)
 
-	t.Logf("sending SetLogLevel %q", "trace")
-	setResp, err := client.SetLogLevel("trace")
-	require.NoError(t, err, "failed to send SetLogLevel\n%s", state.zetClient.LogFile())
-	require.True(t, setResp.Success, "SetLogLevel failed: error=%q code=%d", setResp.Error, setResp.Code)
-	t.Logf("SetLogLevel succeeded")
+		t.Logf("sending SetLogLevel %q", "trace")
+		setResp, err := client.SetLogLevel("trace")
+		require.NoError(t, err, "failed to send SetLogLevel\n%s", state.zetClient.LogFile())
+		require.True(t, setResp.Success, "SetLogLevel failed: error=%q code=%d", setResp.Error, setResp.Code)
+		t.Logf("SetLogLevel succeeded")
 
-	t.Logf("fetching Status to verify LogLevel change took effect")
-	statusResp, err := client.Status()
-	require.NoError(t, err, "failed to send Status\n%s", state.zetClient.LogFile())
-	require.True(t, statusResp.Success, "Status failed: error=%q code=%d", statusResp.Error, statusResp.Code)
+		t.Logf("fetching Status to verify LogLevel change took effect")
+		statusResp, err := client.Status()
+		require.NoError(t, err, "failed to send Status\n%s", state.zetClient.LogFile())
+		require.True(t, statusResp.Success, "Status failed: error=%q code=%d", statusResp.Error, statusResp.Code)
 
-	var status struct {
-		LogLevel string `json:"LogLevel"`
-	}
-	require.NoError(t, json.Unmarshal(statusResp.Data, &status), "parse Status: %s", statusResp.Data)
-	require.Equal(t, "trace", status.LogLevel, "Status.LogLevel should reflect SetLogLevel")
-	t.Logf("Status.LogLevel after SetLogLevel: %q", status.LogLevel)
+		var status struct {
+			LogLevel string `json:"LogLevel"`
+		}
+		require.NoError(t, json.Unmarshal(statusResp.Data, &status), "parse Status: %s", statusResp.Data)
+		require.Equal(t, "trace", status.LogLevel, "Status.LogLevel should reflect SetLogLevel")
+		t.Logf("Status.LogLevel after SetLogLevel: %q", status.LogLevel)
+	})
 }

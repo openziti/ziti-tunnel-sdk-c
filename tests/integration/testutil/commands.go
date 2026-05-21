@@ -188,8 +188,7 @@ func (c *CommandsClient) GetMFAEnrollment(identifier string) (*MFAEnrollment, er
 }
 
 // Helper methods send a named command with the appropriate payload and read
-// exactly one response. SendCommand blocks until the response arrives; rely on
-// `go test -timeout` to bound the suite if ZET wedges.
+// exactly one response. SendCommand blocks until the response arrives
 
 func (c *CommandsClient) RefreshIdentity(identifier string) (*Response, error) {
 	return c.SendCommand(IPCCommand{Action: "RefreshIdentity", Payload: IdentifierData{Identifier: identifier}})

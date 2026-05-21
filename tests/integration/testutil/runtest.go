@@ -17,16 +17,27 @@ limitations under the License.
 package testutil
 
 import (
-	"context"
 	"testing"
 	"time"
 )
 
 const TestTimeout = 5 * time.Second
 
-func RunTestWithTimeout(t *testing.T, name string, f func(t *testing.T)) context.Context {
-	ctx, cancel := context.WithTimeout(context.Background(), TestTimeout)
-	t.Run(name, f)
-	t.Cleanup(cancel)
-	return ctx
+func RunTestWithTimeout(t *testing.T, f func(t *testing.T)) {
+	t.Helper()
+	done := make(chan any, 1)
+
+	go func() {
+		defer func() { done <- recover() }()
+		f(t)
+	}()
+
+	select {
+	case p := <-done:
+		if p != nil {
+			panic(p)
+		}
+	case <-time.After(TestTimeout):
+		t.Fatalf("test %s timed out after %s", t.Name(), TestTimeout)
+	}
 }
