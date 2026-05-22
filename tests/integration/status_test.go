@@ -33,9 +33,9 @@ func testStatusHasExpectedTopLevelFields(t *testing.T) {
 		client := testutil.OpenCommandPipe(t, state.zetClient)
 
 		t.Logf("sending Status command")
-		resp, err := client.Status()
+		resp, err := client.StatusRaw()
 		require.NoError(t, err, "failed to send Status\n%s", state.zetClient.LogFile())
-		require.True(t, resp.Success, "Status failed: error=%q code=%d", resp.Error, resp.Code)
+		require.True(t, resp.Success(), "Status failed: error=%q code=%d", resp.Error, resp.Code)
 		t.Logf("Status command succeeded; verifying top-level fields")
 
 		var keys map[string]json.RawMessage

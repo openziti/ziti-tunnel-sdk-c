@@ -46,16 +46,16 @@ func testRemoveIdentityWithIdentifierFromEvent(t *testing.T) {
 			JwtContent:       &jwt,
 		}
 		addResp := testutil.AddIdentity(t, client, identityData)
-		require.True(t, addResp.Success, "AddIdentity failed: error=%q code=%d", addResp.Error, addResp.Code)
+		require.True(t, addResp.Success(), "AddIdentity failed: error=%q code=%d", addResp.Error, addResp.Code)
 
-		event := events.WaitFor(t, "identity", "added", name)
+		event := events.WaitForIdentityEvent(t, "added", name)
 		require.NotEmpty(t, event.Id.Identifier, "identity:added Identifier empty")
 		testutil.AssertValidJwtEnrolledIdentityFile(t, event.Id.Identifier)
 
 		t.Logf("sending RemoveIdentity for Identifier=%s", event.Id.Identifier)
 		removeResp, err := client.RemoveIdentity(event.Id.Identifier)
 		require.NoError(t, err, "failed to send RemoveIdentity\n%s", state.zetClient.LogPath())
-		require.True(t, removeResp.Success, "RemoveIdentity failed: error=%q code=%d", removeResp.Error, removeResp.Code)
+		require.True(t, removeResp.Success(), "RemoveIdentity failed: error=%q code=%d", removeResp.Error, removeResp.Code)
 		t.Logf("RemoveIdentity succeeded for %q", name)
 
 		_, statErr := os.Stat(event.Id.Identifier)
