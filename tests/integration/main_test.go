@@ -168,10 +168,18 @@ func doSetup(state TestState) error {
 	go func() {
 		defer wg.Done()
 		zetClientErr = state.zetClient.Start()
+		if zetClientErr != nil {
+			log.Printf("zet[%s]: start failed: %v; retrying once", state.zetClient.Discriminator, zetClientErr)
+			zetClientErr = state.zetClient.Start()
+		}
 	}()
 	go func() {
 		defer wg.Done()
 		zetHostErr = state.zetHost.Start()
+		if zetHostErr != nil {
+			log.Printf("zet[%s]: start failed: %v; retrying once", state.zetHost.Discriminator, zetHostErr)
+			zetHostErr = state.zetHost.Start()
+		}
 	}()
 	wg.Wait()
 	if zetClientErr != nil {

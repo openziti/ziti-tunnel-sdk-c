@@ -77,14 +77,15 @@ const dialAttemptTimeout = 500 * time.Millisecond
 const dialRetryInterval = 100 * time.Millisecond
 
 // OpenCommandPipe opens ZET's command pipe and registers Close as a t.Cleanup.
-// Retries forever; rely on the per-test timeout to bound the wait.
+// Retries until the pipe is dialable or the ZET process exits.
 func OpenCommandPipe(t *testing.T, z *ZET) *CommandsClient {
-	c := openCommandPipe(CommandPipePathFor(z.Discriminator))
+	c, err := openCommandPipe(CommandPipePathFor(z.Discriminator), z.cmdDone)
+	require.NoError(t, err, "open command pipe")
 	t.Cleanup(func() { _ = c.Close() })
 	return c
 }
 
-func openCommandPipe(path string) *CommandsClient {
+func openCommandPipe(path string, done <-chan struct{}) (*CommandsClient, error) {
 	log.Printf("ipc: dialing command pipe %s", path)
 	start := time.Now()
 	attempts := 0
@@ -95,16 +96,20 @@ func openCommandPipe(path string) *CommandsClient {
 			log.Printf("ipc: connected to %s after %d attempt(s) in %s", path, attempts, time.Since(start).Round(time.Millisecond))
 			return &CommandsClient{
 				IPCClient: IPCClient{conn: conn, reader: bufio.NewReader(conn)},
-			}
+			}, nil
 		}
 		if attempts == 1 || attempts%20 == 0 {
 			log.Printf("ipc: dial %s still failing after %d attempt(s): %v", path, attempts, err)
 		}
-		time.Sleep(dialRetryInterval)
+		select {
+		case <-done:
+			return nil, fmt.Errorf("process exited before %s became dialable: %v", path, err)
+		case <-time.After(dialRetryInterval):
+		}
 	}
 }
 
-func subscribeToEventPipe(path string) *EventClient {
+func subscribeToEventPipe(path string, done <-chan struct{}) (*EventClient, error) {
 	log.Printf("ipc: dialing event pipe %s", path)
 	start := time.Now()
 	attempts := 0
@@ -117,12 +122,16 @@ func subscribeToEventPipe(path string) *EventClient {
 				IPCClient: IPCClient{conn: conn, reader: bufio.NewReader(conn)},
 			}
 			go ec.readLoop()
-			return ec
+			return ec, nil
 		}
 		if attempts == 1 || attempts%20 == 0 {
 			log.Printf("ipc: dial event pipe %s still failing after %d attempt(s): %v", path, attempts, err)
 		}
-		time.Sleep(dialRetryInterval)
+		select {
+		case <-done:
+			return nil, fmt.Errorf("process exited before event pipe %s became dialable: %v", path, err)
+		case <-time.After(dialRetryInterval):
+		}
 	}
 }
 
@@ -243,7 +252,8 @@ func (c *EventClient) Close() error {
 	return c.conn.Close()
 }
 
-// DialIPC connects to this ZET instance's IPC command pipe, retrying forever.
-func (z *ZET) DialIPC() *CommandsClient {
-	return openCommandPipe(CommandPipePathFor(z.Discriminator))
+// DialIPC connects to this ZET instance's IPC command pipe.
+// Retries until the pipe is dialable or the ZET process exits.
+func (z *ZET) DialIPC() (*CommandsClient, error) {
+	return openCommandPipe(CommandPipePathFor(z.Discriminator), z.cmdDone)
 }

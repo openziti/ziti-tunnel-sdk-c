@@ -180,10 +180,12 @@ func setupT2TService(
 	require.NoError(t, err, "create host identity JWT")
 
 	// Enroll identities into their respective ZETs.
-	interceptClient := interceptZET.DialIPC()
+	interceptClient, err := interceptZET.DialIPC()
+	require.NoError(t, err, "dial intercept ZET IPC")
 	t.Cleanup(func() { _ = interceptClient.Close() })
 
-	hostClient := hostZET.DialIPC()
+	hostClient, err := hostZET.DialIPC()
+	require.NoError(t, err, "dial host ZET IPC")
 	t.Cleanup(func() { _ = hostClient.Close() })
 
 	resp, err := interceptClient.AddIdentity(testutil.AddIdentityData{

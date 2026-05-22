@@ -54,7 +54,7 @@ type ZET struct {
 	cmd     *exec.Cmd
 	stdout  *syncBuffer
 	stderr  *syncBuffer
-	cmdDone chan error
+	cmdDone chan struct{}
 	logFile *os.File
 
 	Commands *CommandsClient
@@ -117,6 +117,7 @@ func (z *ZET) Start() error {
 
 	log.Printf("zet[%s]: exec %s %s (cmdPipe=%s eventPipe=%s logPath=%s)",
 		z.Discriminator, z.BinPath, strings.Join(args, " "), cmdPipe, eventPipe, logPath)
+	z.cmdDone = make(chan struct{})
 	if err := z.cmd.Start(); err != nil {
 		if logFile != nil {
 			_ = logFile.Close()
@@ -125,10 +126,22 @@ func (z *ZET) Start() error {
 	}
 	log.Printf("zet[%s]: process started pid=%d, waiting for IPC pipe", z.Discriminator, z.cmd.Process.Pid)
 
-	go func() { z.cmdDone <- z.cmd.Wait() }()
+	go func() {
+		_ = z.cmd.Wait()
+		close(z.cmdDone)
+	}()
 
-	z.Commands = openCommandPipe(cmdPipe)
-	z.Events = subscribeToEventPipe(EventPipePathFor(z.Discriminator))
+	cmds, err := openCommandPipe(cmdPipe, z.cmdDone)
+	if err != nil {
+		return fmt.Errorf("zet[%s] command pipe: %w", z.Discriminator, err)
+	}
+	z.Commands = cmds
+
+	events, err := subscribeToEventPipe(EventPipePathFor(z.Discriminator), z.cmdDone)
+	if err != nil {
+		return fmt.Errorf("zet[%s] event pipe: %w", z.Discriminator, err)
+	}
+	z.Events = events
 	return nil
 }
 
