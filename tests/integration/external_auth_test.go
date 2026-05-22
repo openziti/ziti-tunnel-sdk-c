@@ -73,7 +73,7 @@ func (c *extAuthContext) setupExtraExtJwtSigners(t *testing.T) {
 	})
 }
 
-func TestExternalAuthEnrolledToNone(t *testing.T) {
+func TestExternalAuthEnrollToNone(t *testing.T) {
 	state.overlay.RequireCATrusted(t)
 	if state.pkce == nil {
 		t.Skip("PKCE IdP is not configured (-pkce-bin not provided)")
@@ -85,32 +85,85 @@ func TestExternalAuthEnrolledToNone(t *testing.T) {
 	}
 	c.setupWorkingExtJwtSigner(t)
 	c.setupExtraExtJwtSigners(t)
-	t.Run("testEnrollByUrlCompletes", c.testEnrollByUrlCompletes)
-	t.Run("testInvalidProviderFails", c.testInvalidProviderFails)
-	t.Run("testNoControllerIdentityFails", c.testNoControllerIdentityFails)
-	t.Run("testMultipleSignersWithDefaultPolicyCompletes", c.testMultipleSignersWithDefaultPolicyCompletes)
-	t.Run("testMultipleSignersWithNamedPolicyCompletes", c.testMultipleSignersWithNamedPolicyCompletes)
+	t.Run("testEnrollToNoneCompletes", c.testEnrollToNoneCompletes)
+	t.Run("testEnrollToNoneRejectsInvalidProvider", c.testEnrollToNoneRejectsInvalidProvider)
+	t.Run("testEnrollToNoneRejectsUnknownControllerIdentity", c.testEnrollToNoneRejectsUnknownControllerIdentity)
+	t.Run("testEnrollToNoneMultipleSignersDefaultPolicyCompletes", c.testEnrollToNoneMultipleSignersDefaultPolicyCompletes)
+	t.Run("testEnrollToNoneMultipleSignersNamedPolicyCompletes", c.testEnrollToNoneMultipleSignersNamedPolicyCompletes)
 }
 
-func (c *extAuthContext) testEnrollByUrlCompletes(t *testing.T) {
+func TestExternalAuthEnrollToCert(t *testing.T) {
+	state.overlay.RequireCATrusted(t)
+	if state.pkce == nil {
+		t.Skip("PKCE IdP is not configured (-pkce-bin not provided)")
+	}
+	if state.overlay.ZitiMajor < 2 {
+		t.Skipf("enroll-to-cert requires ziti 2.0+, controller is v%d.%d", state.overlay.ZitiMajor, state.overlay.ZitiMinor)
+	}
+	c := &extAuthContext{
+		overlay: state.overlay,
+		pkce:    state.pkce,
+		zet:     state.zetClient,
+	}
+	c.pkceSigner.name = "TestExternalAuth-signer-pkce-cert"
+	c.pkceSigner.id = c.overlay.CreateExtJwtSigner(t, testutil.ExtJwtSignerSpec{
+		Name:       c.pkceSigner.name,
+		Issuer:     c.pkce.IssuerURL,
+		JWKS:       c.pkce.JWKSURI(),
+		ClientID:   c.pkce.ClientIDWorks,
+		Claim:      "email",
+		Scopes:     []string{"email"},
+		EnrollMode: testutil.EnrollModeCert,
+	})
+	t.Run("testEnrollToCertCompletes", c.testEnrollToCertCompletes)
+}
+
+func (c *extAuthContext) testEnrollToCertCompletes(t *testing.T) {
+	testutil.RunTestWithTimeout(t, func(t *testing.T) {
+		name := testutil.IdentityName(t)
+
+		controllerBase := c.overlay.ControllerHostPort()
+		mode := testutil.EnrollModeCert
+		identityData := testutil.AddIdentityData{
+			IdentityFilename: name,
+			ControllerURL:    &controllerBase,
+			EnrollMode:       &mode,
+			Provider:         &c.pkceSigner.name,
+		}
+		addResp := testutil.AddIdentity(t, c.zet.Commands, identityData)
+		require.True(t, addResp.Success, "AddIdentity (enroll to cert) should succeed: error=%q\n%s", addResp.Error, c.zet.LogPath())
+		authURL := testutil.ParseExtAuthURL(t, addResp)
+
+		c.pkce.DrivePKCEFlow(t, authURL)
+
+		added := c.zet.Events.WaitFor(t, "identity", "added", name)
+		require.True(t, added.Id.Active, "identity:added Active=%t after enroll to cert PKCE flow, want true", added.Id.Active)
+		require.False(t, added.Id.NeedsExtAuth, "identity:added NeedsExtAuth=%t after enroll to cert PKCE flow, want false", added.Id.NeedsExtAuth)
+		testutil.AssertValidUrlEnrolledIdentityFile(t, added.Id.Identifier, testutil.EnrollModeCert)
+		t.Logf("identity:added Identifier=%s Active=%t NeedsExtAuth=%t after enroll to cert PKCE flow", added.Id.Identifier, added.Id.Active, added.Id.NeedsExtAuth)
+	})
+}
+
+func (c *extAuthContext) testEnrollToNoneCompletes(t *testing.T) {
 	testutil.RunTestWithTimeout(t, func(t *testing.T) {
 		name := testutil.IdentityName(t)
 		c.overlay.CreateIdentityWithExternalId(t, name, c.pkce.ExternalID, "")
 		t.Cleanup(func() { _ = c.overlay.DeleteIdentity(name) })
 
 		identityEvent := c.addIdentityByUrl(t, name)
-		authURL := c.zet.Commands.GetExternalAuthURL(t, identityEvent.Id.Identifier, c.pkceSigner.name)
+		authURL := c.zet.Commands.GetExternalAuthURL(t, identityEvent.Id.Identifier, c.pkceSigner.name, c.zet.LogPath())
 
 		c.pkce.DrivePKCEFlow(t, authURL)
 
 		added := c.zet.Events.WaitFor(t, "identity", "added", name)
 		require.False(t, added.Id.NeedsExtAuth, "identity:added NeedsExtAuth=%t after PKCE flow, want false", added.Id.NeedsExtAuth)
 		require.True(t, added.Id.Active, "identity:added Active=%t after PKCE flow, want true", added.Id.Active)
+		testutil.AssertValidUrlEnrolledIdentityFile(t, added.Id.Identifier, testutil.EnrollModeNone)
 		t.Logf("identity:added reports NeedsExtAuth=%t Active=%t after PKCE flow", added.Id.NeedsExtAuth, added.Id.Active)
 	})
 }
 
-func (c *extAuthContext) testInvalidProviderFails(t *testing.T) {
+func (c *extAuthContext) testEnrollToNoneRejectsInvalidProvider(t *testing.T) {
 	testutil.RunTestWithTimeout(t, func(t *testing.T) {
 		name := testutil.IdentityName(t)
 		c.overlay.CreateIdentityWithExternalId(t, name, c.pkce.ExternalID, "")
@@ -129,7 +182,7 @@ func (c *extAuthContext) testInvalidProviderFails(t *testing.T) {
 	})
 }
 
-func (c *extAuthContext) testNoControllerIdentityFails(t *testing.T) {
+func (c *extAuthContext) testEnrollToNoneRejectsUnknownControllerIdentity(t *testing.T) {
 	testutil.RunTestWithTimeout(t, func(t *testing.T) {
 		name := testutil.IdentityName(t)
 		// Deliberately DO NOT create a controller identity with externalId. The
@@ -138,7 +191,7 @@ func (c *extAuthContext) testNoControllerIdentityFails(t *testing.T) {
 
 		identityEvent := c.addIdentityByUrl(t, name)
 
-		authURL := c.zet.Commands.GetExternalAuthURL(t, identityEvent.Id.Identifier, c.pkceSigner.name)
+		authURL := c.zet.Commands.GetExternalAuthURL(t, identityEvent.Id.Identifier, c.pkceSigner.name, c.zet.LogPath())
 
 		c.pkce.DrivePKCEFlow(t, authURL)
 
@@ -147,7 +200,7 @@ func (c *extAuthContext) testNoControllerIdentityFails(t *testing.T) {
 	})
 }
 
-func (c *extAuthContext) testMultipleSignersWithDefaultPolicyCompletes(t *testing.T) {
+func (c *extAuthContext) testEnrollToNoneMultipleSignersDefaultPolicyCompletes(t *testing.T) {
 	testutil.RunTestWithTimeout(t, func(t *testing.T) {
 		name := testutil.IdentityName(t)
 		c.overlay.CreateIdentityWithExternalId(t, name, c.pkce.ExternalID, "")
@@ -157,18 +210,19 @@ func (c *extAuthContext) testMultipleSignersWithDefaultPolicyCompletes(t *testin
 		require.Subset(t, identityEvent.Id.ExtAuthProviders, []string{c.pkceSigner.name, c.extraSignerA.name, c.extraSignerB.name}, "identity:needs_ext_login ExtAuthProviders should contain all three signers, got %v", identityEvent.Id.ExtAuthProviders)
 		t.Logf("identity:needs_ext_login reports ExtAuthProviders=%v (count=%d)", identityEvent.Id.ExtAuthProviders, len(identityEvent.Id.ExtAuthProviders))
 
-		authURL := c.zet.Commands.GetExternalAuthURL(t, identityEvent.Id.Identifier, c.pkceSigner.name)
+		authURL := c.zet.Commands.GetExternalAuthURL(t, identityEvent.Id.Identifier, c.pkceSigner.name, c.zet.LogPath())
 
 		c.pkce.DrivePKCEFlow(t, authURL)
 
 		added := c.zet.Events.WaitFor(t, "identity", "added", name)
 		require.False(t, added.Id.NeedsExtAuth, "identity:added NeedsExtAuth=%t after multi-signer PKCE flow, want false", added.Id.NeedsExtAuth)
 		require.True(t, added.Id.Active, "identity:added Active=%t after multi-signer PKCE flow, want true", added.Id.Active)
+		testutil.AssertValidUrlEnrolledIdentityFile(t, added.Id.Identifier, testutil.EnrollModeNone)
 		t.Logf("identity:added reports NeedsExtAuth=%t Active=%t after multi-signer PKCE flow", added.Id.NeedsExtAuth, added.Id.Active)
 	})
 }
 
-func (c *extAuthContext) testMultipleSignersWithNamedPolicyCompletes(t *testing.T) {
+func (c *extAuthContext) testEnrollToNoneMultipleSignersNamedPolicyCompletes(t *testing.T) {
 	testutil.RunTestWithTimeout(t, func(t *testing.T) {
 		name := testutil.IdentityName(t)
 
@@ -186,13 +240,14 @@ func (c *extAuthContext) testMultipleSignersWithNamedPolicyCompletes(t *testing.
 		require.Subset(t, identityEvent.Id.ExtAuthProviders, []string{c.pkceSigner.name, c.extraSignerA.name, c.extraSignerB.name}, "identity:needs_ext_login ExtAuthProviders should contain all three signers, got %v", identityEvent.Id.ExtAuthProviders)
 		t.Logf("identity:needs_ext_login reports ExtAuthProviders=%v (count=%d)", identityEvent.Id.ExtAuthProviders, len(identityEvent.Id.ExtAuthProviders))
 
-		authURL := c.zet.Commands.GetExternalAuthURL(t, identityEvent.Id.Identifier, c.pkceSigner.name)
+		authURL := c.zet.Commands.GetExternalAuthURL(t, identityEvent.Id.Identifier, c.pkceSigner.name, c.zet.LogPath())
 
 		c.pkce.DrivePKCEFlow(t, authURL)
 
 		added := c.zet.Events.WaitFor(t, "identity", "added", name)
 		require.False(t, added.Id.NeedsExtAuth, "identity:added NeedsExtAuth=%t after multi-signer PKCE flow, want false", added.Id.NeedsExtAuth)
 		require.True(t, added.Id.Active, "identity:added Active=%t after multi-signer PKCE flow, want true", added.Id.Active)
+		testutil.AssertValidUrlEnrolledIdentityFile(t, added.Id.Identifier, testutil.EnrollModeNone)
 		t.Logf("identity:added reports NeedsExtAuth=%t Active=%t after multi-signer PKCE flow", added.Id.NeedsExtAuth, added.Id.Active)
 	})
 }

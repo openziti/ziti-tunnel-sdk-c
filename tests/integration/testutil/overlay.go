@@ -290,20 +290,21 @@ func (o *Overlay) CreateIdentityJWTWithAuthPolicy(name, authPolicy string) (stri
 }
 
 // ExtJwtSignerSpec describes an external JWT signer to register on the
-// controller.
+// controller. EnrollMode sets --enroll-to-cert or --enroll-to-token (ziti 2.0+ only).
 type ExtJwtSignerSpec struct {
-	Name     string
-	Issuer   string
-	JWKS     string
-	ClientID string
-	Claim    string
-	Scopes   []string
+	Name       string
+	Issuer     string
+	JWKS       string
+	ClientID   string
+	Claim      string
+	Scopes     []string
+	EnrollMode EnrollMode
 }
 
 // CreateExtJwtSigner registers an ext-jwt-signer on the controller and returns
 // its assigned ID.
 func (o *Overlay) CreateExtJwtSigner(t *testing.T, spec ExtJwtSignerSpec) string {
-	t.Logf("creating ext-jwt-signer %q (issuer=%s clientID=%s)", spec.Name, spec.Issuer, spec.ClientID)
+	t.Logf("creating ext-jwt-signer %q (issuer=%s clientID=%s enrollMode=%q)", spec.Name, spec.Issuer, spec.ClientID, spec.EnrollMode)
 	args := []string{
 		"edge", "create", "ext-jwt-signer", spec.Name, spec.Issuer,
 		"--jwks-endpoint", spec.JWKS,
@@ -316,6 +317,12 @@ func (o *Overlay) CreateExtJwtSigner(t *testing.T, spec ExtJwtSignerSpec) string
 	}
 	for _, s := range spec.Scopes {
 		args = append(args, "--scopes", s)
+	}
+	switch spec.EnrollMode {
+	case EnrollModeCert:
+		args = append(args, "--enroll-to-cert")
+	case EnrollModeToken:
+		args = append(args, "--enroll-to-token")
 	}
 	out, err := o.execZiti(args...)
 	require.NoError(t, err, "create ext-jwt-signer %s", spec.Name)
@@ -561,6 +568,17 @@ func (o *Overlay) execZiti(args ...string) ([]byte, error) {
 // PurgeIdentities deletes every identity whose name contains prefix.
 func (o *Overlay) PurgeIdentities(prefix string) error {
 	return o.deleteWhere("identities", prefix)
+}
+
+// PurgeIdentitiesByExternalId deletes every identity whose externalId equals the given value.
+// Needed for enroll-to-cert/token tests since the OIDC flow auto-provisions identities with
+// names derived from JWT claims (not Test*), so the prefix purge misses them.
+func (o *Overlay) PurgeIdentitiesByExternalId(externalId string) error {
+	filter := fmt.Sprintf(`externalId = "%s" limit none`, externalId)
+	if _, err := o.execZiti("edge", "delete", "identities", "where", filter); err != nil {
+		return fmt.Errorf("delete identities where %s: %w", filter, err)
+	}
+	return nil
 }
 
 // PurgeAuthPolicies deletes every auth policy whose name contains prefix.

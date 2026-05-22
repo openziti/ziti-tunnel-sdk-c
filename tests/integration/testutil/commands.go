@@ -253,18 +253,23 @@ type ExtAuth struct {
 	URL        string `json:"url"`
 }
 
-// GetExternalAuthURL sends ExternalAuth, asserts success, parses the response,
-// and returns the auth URL. Fails the test on transport error, non-success
-// response, parse error, or empty URL.
-func (c *CommandsClient) GetExternalAuthURL(t *testing.T, identifier, provider string) string {
+// ParseExtAuthURL parses the ext-auth URL from a Response carrying an ExtAuth
+// payload. Shared between the ExternalAuth IPC response and the AddIdentity-
+// with-EnrollMode response
+func ParseExtAuthURL(t *testing.T, resp *Response) string {
+	var out ExtAuth
+	require.NoError(t, json.Unmarshal(resp.Data, &out), "parse ExtAuth response")
+	require.NotEmpty(t, out.URL, "ExtAuth response has empty URL")
+	return out.URL
+}
+
+// GetExternalAuthURL sends ExternalAuth, asserts Success, and returns the ext-auth URL.
+func (c *CommandsClient) GetExternalAuthURL(t *testing.T, identifier, provider, logPath string) string {
 	t.Logf("requesting external auth URL from ZET for provider=%q", provider)
 	resp, err := c.ExternalAuth(identifier, provider)
 	require.NoError(t, err, "ExternalAuth IPC send")
-	require.True(t, resp.Success, "ExternalAuth failed: code=%d error=%q", resp.Code, resp.Error)
-	var out ExtAuth
-	require.NoError(t, json.Unmarshal(resp.Data, &out), "parse ExternalAuth response")
-	require.NotEmpty(t, out.URL, "ExternalAuth returned an empty auth URL")
-	return out.URL
+	require.True(t, resp.Success, "ExternalAuth should succeed: code=%d error=%q\n%s", resp.Code, resp.Error, logPath)
+	return ParseExtAuthURL(t, resp)
 }
 
 func (c *CommandsClient) Status() (*Response, error) {

@@ -160,6 +160,10 @@ func doSetup(state TestState) error {
 	if err := state.overlay.PurgeExtJwtSigners("Test"); err != nil {
 		return fmt.Errorf("purge stale test ext-jwt-signers: %w", err)
 	}
+	log.Printf("setup: purging stale identities for PKCE test user %q", testutil.DefaultPKCEUser.Email)
+	if err := state.overlay.PurgeIdentitiesByExternalId(testutil.DefaultPKCEUser.Email); err != nil {
+		return fmt.Errorf("purge stale PKCE test user identities: %w", err)
+	}
 
 	log.Printf("setup: starting ZET zetA and zetB in parallel")
 	var zetClientErr, zetHostErr error
