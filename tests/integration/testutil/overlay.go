@@ -64,7 +64,7 @@ func (o *Overlay) Start() error {
 	warnIfPortBound(overlayCtrlPort)
 	warnIfPortBound(overlayRtrPort)
 	log.Printf("overlay: mkdir home %s", o.Home)
-	if err := os.MkdirAll(o.Home, 0o700); err != nil {
+	if err := os.MkdirAll(o.Home, 0o755); err != nil {
 		return fmt.Errorf("mkdir home: %w", err)
 	}
 

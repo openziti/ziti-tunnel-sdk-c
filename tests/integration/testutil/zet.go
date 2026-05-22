@@ -73,6 +73,9 @@ func (z *ZET) Start() error {
 		return err
 	}
 
+	if err := os.MkdirAll(z.RootDir, 0o755); err != nil {
+		return fmt.Errorf("mkdir zet root dir: %w", err)
+	}
 	identityDir := filepath.Join(z.RootDir, "identities")
 	if err := os.MkdirAll(identityDir, 0o700); err != nil {
 		return fmt.Errorf("mkdir identity dir: %w", err)

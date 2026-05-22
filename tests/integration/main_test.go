@@ -29,7 +29,7 @@ import (
 	"github.com/openziti/ziti-tunnel-sdk-c/tests/integration/testutil"
 )
 
-const setupTimeout = 25 * time.Second
+const setupTimeout = 45 * time.Second
 
 var state TestState
 
@@ -42,7 +42,6 @@ type TestState struct {
 
 func TestMain(m *testing.M) {
 	var zetBin string
-	var zetLogDir string
 	var zetVerbosity int
 	var zitiBin string
 	var tlsuvDebug int
@@ -51,7 +50,6 @@ func TestMain(m *testing.M) {
 	flag.StringVar(&zetBin, "zet-bin", "", "path to ziti-edge-tunnel binary (required)")
 	flag.StringVar(&zitiBin, "ziti-bin", "", "path to ziti binary for controller+router bring-up (required)")
 	flag.StringVar(&pkceBin, "pkce-bin", "", "path to PKCE IdP binary (optional; enables tests that need an external IdP)")
-	flag.StringVar(&zetLogDir, "zet-log-dir", "", "if set, write each zet's combined stdout+stderr to <dir>/zet-<name>.log")
 	flag.IntVar(&zetVerbosity, "zet-verbosity", 4, "ziti-edge-tunnel -v level (0=silent..6=trace)")
 	flag.IntVar(&tlsuvDebug, "tlsuv-debug", 0, "TLSUV_DEBUG level (0=off..6=trace); off by default")
 	flag.StringVar(&testHome, "test-home", filepath.Join(os.TempDir(), "ziti-tunnel-test-quickstart"), "directory for the test files, overlay home, logs, etc")
@@ -62,7 +60,7 @@ func TestMain(m *testing.M) {
 		os.Exit(2)
 	}
 
-	zetLogDir = filepath.Join(testHome, "zets")
+	zetLogDir := filepath.Join(testHome, "zets")
 	state = TestState{
 		overlay: &testutil.Overlay{
 			ZitiBin: zitiBin,

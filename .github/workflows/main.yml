@@ -177,14 +177,6 @@ jobs:
             sudo sysctl -w kern.corefile="${{ matrix.os.core-dir }}/core.%N.%P"
           fi
 
-      - name: Configure zet log dir
-        shell: bash
-        run: |
-          ZET_LOG_DIR="$RUNNER_TEMP/zet-logs"
-          echo "ZET_LOG_DIR=$ZET_LOG_DIR" >> "$GITHUB_ENV"
-          mkdir -p "$ZET_LOG_DIR"
-          chmod 1777 "$ZET_LOG_DIR"
-
       - name: Seed test overlay PKI
         shell: bash
         run: |
@@ -239,7 +231,6 @@ jobs:
               sudo env "PATH=$PATH" "ZET_BIN=$ZET_BIN" "ZITI_BIN=$ZITI_BIN" "PKCE_BIN=$PKCE_BIN" "RUNNER_TEMP=$RUNNER_TEMP" \
                 sh -c 'ulimit -c unlimited && exec go test ./... -v -timeout 20m \
                   -zet-bin="$ZET_BIN" -ziti-bin="$ZITI_BIN" -pkce-bin="$PKCE_BIN" \
-                  -zet-log-dir="${{ env.ZET_LOG_DIR }}" \
                   -test-home="$RUNNER_TEMP"'
               ;;
             *)
@@ -247,7 +238,6 @@ jobs:
                 -zet-bin="$ZET_BIN" \
                 -ziti-bin="$ZITI_BIN" \
                 -pkce-bin="$PKCE_BIN" \
-                -zet-log-dir="${{ env.ZET_LOG_DIR }}" \
                 -test-home="$RUNNER_TEMP"
               ;;
           esac
@@ -315,12 +305,15 @@ jobs:
           path: ${{ matrix.os.core-dir }}/core.*
           if-no-files-found: ignore
 
-      - name: Upload zet logs
+      - name: Upload integration test logs
         if: ${{ always() }}
         uses: actions/upload-artifact@v7
         with:
-          name: zet-logs-${{ matrix.os.name }}-ziti-${{ matrix.ziti-channel.label }}
-          path: ${{ env.ZET_LOG_DIR }}/ziti-edge-tunnel*.log
+          name: integration-logs-${{ matrix.os.name }}-ziti-${{ matrix.ziti-channel.label }}
+          path: |
+            ${{ runner.temp }}/zets/logs/*.log
+            ${{ runner.temp }}/overlay/quickstart-logs/*.log
+            ${{ runner.temp }}/pkce/logs/*.log
           if-no-files-found: ignore
 
   nix-build:
