@@ -18,7 +18,6 @@ package testutil
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -148,49 +147,21 @@ type IdentityStatus struct {
 }
 
 type TunnelStatus struct {
-	Active            bool            `json:"Active"`
-	Duration          int64           `json:"Duration"`
-	StartTime         string          `json:"StartTime"`
-	Identities        []IdentityStatus `json:"Identities"`
-	IpInfo            IpInfo          `json:"IpInfo"`
-	LogLevel          string          `json:"LogLevel"`
-	ServiceVersion    ServiceVersion  `json:"ServiceVersion"`
-	TunIpv4           string          `json:"TunIpv4"`
-	TunIpv4Mask       int             `json:"TunIpv4Mask"`
-	AddDns            bool            `json:"AddDns"`
-	ApiPageSize       int             `json:"ApiPageSize"`
-	TunName           string          `json:"TunName"`
-	L2Enabled         bool            `json:"L2Enabled"`
-	TapInfo           TapInfo         `json:"TapInfo"`
-	ConfigDir         string          `json:"ConfigDir"`
-}
-
-// FindIdentity returns the identity entry whose FingerPrint matches, or nil.
-// FingerPrint carries the controller-side identity name; Name is mutable and
-// gets rewritten to the identity-file path after /current-identity is fetched.
-func (s *TunnelStatus) FindIdentity(fingerprint string) *IdentityStatus {
-	for i := range s.Identities {
-		if s.Identities[i].FingerPrint == fingerprint {
-			return &s.Identities[i]
-		}
-	}
-	return nil
-}
-
-// GetTunnelStatus sends the Status command, asserts success, and unmarshals the response.
-func (c *IPCClient) GetTunnelStatus(ctx context.Context) (*TunnelStatus, error) {
-	resp, err := c.Status(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("status: %w", err)
-	}
-	if !resp.Success {
-		return nil, fmt.Errorf("status failed: %s (code %d)", resp.Error, resp.Code)
-	}
-	var status TunnelStatus
-	if err := json.Unmarshal(resp.Data, &status); err != nil {
-		return nil, fmt.Errorf("parse status: %w", err)
-	}
-	return &status, nil
+	Active         bool             `json:"Active"`
+	Duration       int64            `json:"Duration"`
+	StartTime      string           `json:"StartTime"`
+	Identities     []IdentityStatus `json:"Identities"`
+	IpInfo         IpInfo           `json:"IpInfo"`
+	LogLevel       string           `json:"LogLevel"`
+	ServiceVersion ServiceVersion   `json:"ServiceVersion"`
+	TunIpv4        string           `json:"TunIpv4"`
+	TunIpv4Mask    int              `json:"TunIpv4Mask"`
+	AddDns         bool             `json:"AddDns"`
+	ApiPageSize    int              `json:"ApiPageSize"`
+	TunName        string           `json:"TunName"`
+	L2Enabled      bool             `json:"L2Enabled"`
+	TapInfo        TapInfo          `json:"TapInfo"`
+	ConfigDir      string           `json:"ConfigDir"`
 }
 
 type MFAEnrollment struct {
@@ -201,8 +172,8 @@ type MFAEnrollment struct {
 }
 
 // GetMFAEnrollment sends EnableMFA, asserts success, and unmarshals the enrollment response.
-func (c *IPCClient) GetMFAEnrollment(ctx context.Context, identifier string) (*MFAEnrollment, error) {
-	resp, err := c.EnableMFA(ctx, identifier)
+func (c *CommandsClient) GetMFAEnrollment(identifier string) (*MFAEnrollment, error) {
+	resp, err := c.EnableMFA(identifier)
 	if err != nil {
 		return nil, fmt.Errorf("enable mfa: %w", err)
 	}
@@ -217,63 +188,62 @@ func (c *IPCClient) GetMFAEnrollment(ctx context.Context, identifier string) (*M
 }
 
 // Helper methods send a named command with the appropriate payload and read
-// exactly one response. All inherit the context's deadline (used for async
-// handlers like AddIdentity that respond only after enrollment completes).
+// exactly one response. SendCommand blocks until the response arrives
 
-func (c *IPCClient) RefreshIdentity(ctx context.Context, identifier string) (*Response, error) {
-	return c.SendCommand(ctx, IPCCommand{Action: "RefreshIdentity", Payload: IdentifierData{Identifier: identifier}})
+func (c *CommandsClient) RefreshIdentity(identifier string) (*Response, error) {
+	return c.SendCommand(IPCCommand{Action: "RefreshIdentity", Payload: IdentifierData{Identifier: identifier}})
 }
 
-func (c *IPCClient) RemoveIdentity(ctx context.Context, identifier string) (*Response, error) {
-	return c.SendCommand(ctx, IPCCommand{Action: "RemoveIdentity", Payload: IdentifierData{Identifier: identifier}})
+func (c *CommandsClient) RemoveIdentity(identifier string) (*Response, error) {
+	return c.SendCommand(IPCCommand{Action: "RemoveIdentity", Payload: IdentifierData{Identifier: identifier}})
 }
 
-func (c *IPCClient) IdentityOnOff(ctx context.Context, identifier string, onOff bool) (*Response, error) {
-	return c.SendCommand(ctx, IPCCommand{Action: "IdentityOnOff", Payload: IdentityOnOffData{Identifier: identifier, OnOff: onOff}})
+func (c *CommandsClient) IdentityOnOff(identifier string, onOff bool) (*Response, error) {
+	return c.SendCommand(IPCCommand{Action: "IdentityOnOff", Payload: IdentityOnOffData{Identifier: identifier, OnOff: onOff}})
 }
 
-func (c *IPCClient) SetLogLevel(ctx context.Context, level string) (*Response, error) {
-	return c.SendCommand(ctx, IPCCommand{Action: "SetLogLevel", Payload: SetLogLevelData{Level: level}})
+func (c *CommandsClient) SetLogLevel(level string) (*Response, error) {
+	return c.SendCommand(IPCCommand{Action: "SetLogLevel", Payload: SetLogLevelData{Level: level}})
 }
 
-func (c *IPCClient) ZitiDump(ctx context.Context, identifier, dumpPath string) (*Response, error) {
-	return c.SendCommand(ctx, IPCCommand{Action: "ZitiDump", Payload: ZitiDumpData{Identifier: identifier, DumpPath: dumpPath}})
+func (c *CommandsClient) ZitiDump(identifier, dumpPath string) (*Response, error) {
+	return c.SendCommand(IPCCommand{Action: "ZitiDump", Payload: ZitiDumpData{Identifier: identifier, DumpPath: dumpPath}})
 }
 
-func (c *IPCClient) IpDump(ctx context.Context, dumpPath string) (*Response, error) {
-	return c.SendCommand(ctx, IPCCommand{Action: "IpDump", Payload: IpDumpData{DumpPath: dumpPath}})
+func (c *CommandsClient) IpDump(dumpPath string) (*Response, error) {
+	return c.SendCommand(IPCCommand{Action: "IpDump", Payload: IpDumpData{DumpPath: dumpPath}})
 }
 
-func (c *IPCClient) EnableMFA(ctx context.Context, identifier string) (*Response, error) {
-	return c.SendCommand(ctx, IPCCommand{Action: "EnableMFA", Payload: EnableMFAData{Identifier: identifier}})
+func (c *CommandsClient) EnableMFA(identifier string) (*Response, error) {
+	return c.SendCommand(IPCCommand{Action: "EnableMFA", Payload: EnableMFAData{Identifier: identifier}})
 }
 
-func (c *IPCClient) SubmitMFA(ctx context.Context, identifier, code string) (*Response, error) {
-	return c.SendCommand(ctx, IPCCommand{Action: "SubmitMFA", Payload: MFAData{Identifier: identifier, Code: code}})
+func (c *CommandsClient) SubmitMFA(identifier, code string) (*Response, error) {
+	return c.SendCommand(IPCCommand{Action: "SubmitMFA", Payload: MFAData{Identifier: identifier, Code: code}})
 }
 
-func (c *IPCClient) VerifyMFA(ctx context.Context, identifier, code string) (*Response, error) {
-	return c.SendCommand(ctx, IPCCommand{Action: "VerifyMFA", Payload: MFAData{Identifier: identifier, Code: code}})
+func (c *CommandsClient) VerifyMFA(identifier, code string) (*Response, error) {
+	return c.SendCommand(IPCCommand{Action: "VerifyMFA", Payload: MFAData{Identifier: identifier, Code: code}})
 }
 
-func (c *IPCClient) RemoveMFA(ctx context.Context, identifier, code string) (*Response, error) {
-	return c.SendCommand(ctx, IPCCommand{Action: "RemoveMFA", Payload: MFAData{Identifier: identifier, Code: code}})
+func (c *CommandsClient) RemoveMFA(identifier, code string) (*Response, error) {
+	return c.SendCommand(IPCCommand{Action: "RemoveMFA", Payload: MFAData{Identifier: identifier, Code: code}})
 }
 
-func (c *IPCClient) GenerateMFACodes(ctx context.Context, identifier, code string) (*Response, error) {
-	return c.SendCommand(ctx, IPCCommand{Action: "GenerateMFACodes", Payload: MFAData{Identifier: identifier, Code: code}})
+func (c *CommandsClient) GenerateMFACodes(identifier, code string) (*Response, error) {
+	return c.SendCommand(IPCCommand{Action: "GenerateMFACodes", Payload: MFAData{Identifier: identifier, Code: code}})
 }
 
-func (c *IPCClient) GetMFACodes(ctx context.Context, identifier, code string) (*Response, error) {
-	return c.SendCommand(ctx, IPCCommand{Action: "GetMFACodes", Payload: MFAData{Identifier: identifier, Code: code}})
+func (c *CommandsClient) GetMFACodes(identifier, code string) (*Response, error) {
+	return c.SendCommand(IPCCommand{Action: "GetMFACodes", Payload: MFAData{Identifier: identifier, Code: code}})
 }
 
-func (c *IPCClient) UpdateInterfaceConfig(ctx context.Context, cfg InterfaceConfigData) (*Response, error) {
-	return c.SendCommand(ctx, IPCCommand{Action: "UpdateInterfaceConfig", Payload: cfg})
+func (c *CommandsClient) UpdateInterfaceConfig(cfg InterfaceConfigData) (*Response, error) {
+	return c.SendCommand(IPCCommand{Action: "UpdateInterfaceConfig", Payload: cfg})
 }
 
-func (c *IPCClient) ExternalAuth(ctx context.Context, identifier, provider string) (*Response, error) {
-	return c.SendCommand(ctx, IPCCommand{Action: "ExternalAuth", Payload: ExternalAuthData{Identifier: identifier, Provider: provider}})
+func (c *CommandsClient) ExternalAuth(identifier, provider string) (*Response, error) {
+	return c.SendCommand(IPCCommand{Action: "ExternalAuth", Payload: ExternalAuthData{Identifier: identifier, Provider: provider}})
 }
 
 // ExtAuth is the parsed payload of an ExternalAuth response: the URL the user
@@ -283,42 +253,31 @@ type ExtAuth struct {
 	URL        string `json:"url"`
 }
 
-// GetExternalAuth sends ExternalAuth, asserts success, and unmarshals the response.
-func (c *IPCClient) GetExternalAuth(ctx context.Context, identifier, provider string) (*ExtAuth, error) {
-	resp, err := c.ExternalAuth(ctx, identifier, provider)
-	if err != nil {
-		return nil, fmt.Errorf("external auth: %w", err)
-	}
-	if !resp.Success {
-		return nil, fmt.Errorf("external auth failed: %s (code %d)", resp.Error, resp.Code)
-	}
+// GetExternalAuthURL sends ExternalAuth, asserts success, parses the response,
+// and returns the auth URL. Fails the test on transport error, non-success
+// response, parse error, or empty URL.
+func (c *CommandsClient) GetExternalAuthURL(t *testing.T, identifier, provider string) string {
+	t.Logf("requesting external auth URL from ZET for provider=%q", provider)
+	resp, err := c.ExternalAuth(identifier, provider)
+	require.NoError(t, err, "ExternalAuth IPC send")
+	require.True(t, resp.Success, "ExternalAuth failed: code=%d error=%q", resp.Code, resp.Error)
 	var out ExtAuth
-	if err := json.Unmarshal(resp.Data, &out); err != nil {
-		return nil, fmt.Errorf("parse external auth: %w", err)
-	}
-	return &out, nil
+	require.NoError(t, json.Unmarshal(resp.Data, &out), "parse ExternalAuth response")
+	require.NotEmpty(t, out.URL, "ExternalAuth returned an empty auth URL")
+	return out.URL
 }
 
-func (c *IPCClient) Status(ctx context.Context) (*Response, error) {
-	return c.SendCommand(ctx, IPCCommand{Action: "Status"})
+func (c *CommandsClient) Status() (*Response, error) {
+	return c.SendCommand(IPCCommand{Action: "Status"})
 }
 
-func (c *IPCClient) ListIdentities(ctx context.Context) (*Response, error) {
-	return c.SendCommand(ctx, IPCCommand{Action: "ListIdentities"})
+func (c *CommandsClient) AddIdentity(data AddIdentityData) (*Response, error) {
+	return c.SendCommand(IPCCommand{Action: "AddIdentity", Payload: data})
 }
 
-func (c *IPCClient) GetMetrics(ctx context.Context) (*Response, error) {
-	return c.SendCommand(ctx, IPCCommand{Action: "GetMetrics"})
-}
-
-func (c *IPCClient) AddIdentity(ctx context.Context, data AddIdentityData) (*Response, error) {
-	return c.SendCommand(ctx, IPCCommand{Action: "AddIdentity", Payload: data})
-}
-
-func Enroll(t *testing.T, ctx context.Context, client *IPCClient, data AddIdentityData) *Response {
-	t.Helper()
-	t.Logf("enrolling identity %q", data.IdentityFilename)
-	resp, err := client.AddIdentity(ctx, data)
+func AddIdentity(t *testing.T, client *CommandsClient, data AddIdentityData) *Response {
+	t.Logf("calling AddIdentity for %q", data.IdentityFilename)
+	resp, err := client.AddIdentity(data)
 	require.NoError(t, err, "AddIdentity IPC send")
 	return resp
 }
@@ -341,7 +300,6 @@ type IdentityFileContent struct {
 }
 
 func ReadIdentityFile(t *testing.T, path string) IdentityFileContent {
-	t.Helper()
 	raw, err := os.ReadFile(path)
 	require.NoError(t, err, "failed to read identity file at %s", path)
 
@@ -353,7 +311,6 @@ func ReadIdentityFile(t *testing.T, path string) IdentityFileContent {
 }
 
 func AssertValidJwtEnrolledIdentityFile(t *testing.T, path string) {
-	t.Helper()
 	content := ReadIdentityFile(t, path)
 	require.NotEmpty(t, content.ZtAPI, "identity file ztAPI empty")
 	require.NotEmpty(t, content.ID.Cert, "identity file id.cert empty")
@@ -362,7 +319,6 @@ func AssertValidJwtEnrolledIdentityFile(t *testing.T, path string) {
 }
 
 func AssertValidUrlEnrolledIdentityFile(t *testing.T, path string, mode EnrollMode) {
-	t.Helper()
 	content := ReadIdentityFile(t, path)
 	require.NotEmpty(t, content.ZtAPI, "identity file ztAPI empty")
 	require.NotEmpty(t, content.ID.CA, "identity file id.ca empty")

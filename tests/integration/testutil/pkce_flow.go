@@ -17,7 +17,6 @@ limitations under the License.
 package testutil
 
 import (
-	"context"
 	"fmt"
 	"html"
 	"io"
@@ -26,17 +25,20 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 // DrivePKCEFlow acts as the browser in the IdP's OIDC password flow, following
 // redirects from authURL through the login form back to ZET's loopback
 // callback at localhost:20314.
-func DrivePKCEFlow(ctx context.Context, authURL, issuer, username, password string) error {
+func (p *PKCE) DrivePKCEFlow(t *testing.T, authUrl string) {
+	t.Logf("driving PKCE flow (issuer=%s email=%s)", p.IssuerURL, p.Email)
+
 	jar, err := cookiejar.New(nil)
-	if err != nil {
-		return fmt.Errorf("create cookie jar: %w", err)
-	}
+	require.NoError(t, err, "create cookie jar")
 	client := &http.Client{
 		Timeout: 30 * time.Second,
 		Jar:     jar,
@@ -45,103 +47,67 @@ func DrivePKCEFlow(ctx context.Context, authURL, issuer, username, password stri
 		},
 	}
 
-	// 1. follow authorize redirects to the login page
-	loginPageURL, err := followRedirectsTo200(ctx, client, authURL, 8)
-	if err != nil {
-		return fmt.Errorf("follow authorize redirects: %w", err)
-	}
+	loginPageURL, err := followRedirectsTo200(client, authUrl, 8)
+	require.NoError(t, err, "follow authorize redirects")
 
-	// 2. fetch login page, extract form action
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, loginPageURL, nil)
-	if err != nil {
-		return err
-	}
+	req, err := http.NewRequest(http.MethodGet, loginPageURL, nil)
+	require.NoError(t, err, "build login page request")
 	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("get login page: %w", err)
-	}
+	require.NoError(t, err, "get login page")
 	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("login page status=%d body=%s", resp.StatusCode, truncate(body, 200))
-	}
+	require.Equal(t, http.StatusOK, resp.StatusCode, "login page status=%d body=%s", resp.StatusCode, truncate(body, 200))
 
 	formAction, err := extractFormAction(string(body))
-	if err != nil {
-		return fmt.Errorf("parse PKCE login form: %w (body=%s)", err, truncate(body, 200))
-	}
+	require.NoError(t, err, "parse PKCE login form (body=%s)", truncate(body, 200))
 	postURL, err := absoluteURL(loginPageURL, formAction)
-	if err != nil {
-		return fmt.Errorf("resolve form action %q: %w", formAction, err)
-	}
+	require.NoError(t, err, "resolve form action %q", formAction)
 
-	// 3. post credentials
 	form := url.Values{
-		"login":    {username},
-		"password": {password},
+		"login":    {p.Email},
+		"password": {p.Password},
 	}
-	req, err = http.NewRequestWithContext(ctx, http.MethodPost, postURL, strings.NewReader(form.Encode()))
-	if err != nil {
-		return err
-	}
+	req, err = http.NewRequest(http.MethodPost, postURL, strings.NewReader(form.Encode()))
+	require.NoError(t, err, "build credentials POST")
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	resp, err = client.Do(req)
-	if err != nil {
-		return fmt.Errorf("post credentials: %w", err)
-	}
+	require.NoError(t, err, "post credentials")
 	postBody, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
-	if resp.StatusCode != http.StatusSeeOther && resp.StatusCode != http.StatusFound {
-		return fmt.Errorf("login POST status=%d body=%s", resp.StatusCode, truncate(postBody, 200))
-	}
+	require.Contains(t, []int{http.StatusSeeOther, http.StatusFound}, resp.StatusCode, "login POST status=%d body=%s", resp.StatusCode, truncate(postBody, 200))
 
-	// 4. follow the callback chain until we hit ZET's loopback
 	loc := resp.Header.Get("Location")
-	if loc == "" {
-		return fmt.Errorf("no Location after login POST")
-	}
+	require.NotEmpty(t, loc, "no Location after login POST")
 	current, err := absoluteURL(postURL, loc)
-	if err != nil {
-		return fmt.Errorf("resolve post-login location: %w", err)
-	}
+	require.NoError(t, err, "resolve post-login location")
 
 	for i := 0; i < 8; i++ {
 		u, err := url.Parse(current)
-		if err != nil {
-			return fmt.Errorf("parse next location %q: %w", current, err)
-		}
+		require.NoError(t, err, "parse next location %q", current)
 		if isLoopbackCallback(u) {
-			return hitLoopback(ctx, client, current)
+			require.NoError(t, hitLoopback(client, current), "hit loopback callback")
+			t.Logf("PKCE flow completed")
+			return
 		}
-		req, err = http.NewRequestWithContext(ctx, http.MethodGet, current, nil)
-		if err != nil {
-			return err
-		}
+		req, err = http.NewRequest(http.MethodGet, current, nil)
+		require.NoError(t, err, "build redirect-chain request")
 		resp, err = client.Do(req)
-		if err != nil {
-			return fmt.Errorf("GET %s: %w", current, err)
-		}
+		require.NoError(t, err, "GET %s", current)
 		_, _ = io.Copy(io.Discard, resp.Body)
 		resp.Body.Close()
-		if resp.StatusCode != http.StatusSeeOther && resp.StatusCode != http.StatusFound {
-			return fmt.Errorf("expected redirect chain, got status=%d at %s", resp.StatusCode, current)
-		}
+		require.Contains(t, []int{http.StatusSeeOther, http.StatusFound}, resp.StatusCode, "expected redirect chain, got status=%d at %s", resp.StatusCode, current)
 		next := resp.Header.Get("Location")
-		if next == "" {
-			return fmt.Errorf("no Location at %s (status=%d)", current, resp.StatusCode)
-		}
+		require.NotEmpty(t, next, "no Location at %s (status=%d)", current, resp.StatusCode)
 		current, err = absoluteURL(current, next)
-		if err != nil {
-			return fmt.Errorf("resolve next location: %w", err)
-		}
+		require.NoError(t, err, "resolve next location")
 	}
-	return fmt.Errorf("did not reach loopback callback within hop limit (last=%s)", current)
+	require.Failf(t, "PKCE redirect chain did not finish", "did not reach loopback callback within hop limit (last=%s)", current)
 }
 
-func followRedirectsTo200(ctx context.Context, client *http.Client, start string, maxHops int) (string, error) {
+func followRedirectsTo200(client *http.Client, start string, maxHops int) (string, error) {
 	current := start
 	for i := 0; i < maxHops; i++ {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, current, nil)
+		req, err := http.NewRequest(http.MethodGet, current, nil)
 		if err != nil {
 			return "", err
 		}
@@ -199,12 +165,11 @@ func isLoopbackCallback(u *url.URL) bool {
 	return host == "localhost" || host == "127.0.0.1" || host == "::1"
 }
 
-func hitLoopback(ctx context.Context, client *http.Client, loopback string) error {
+func hitLoopback(client *http.Client, loopback string) error {
 	// ZET's loopback can take a moment to bind after returning the auth URL.
-	loopCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
+	deadline := time.Now().Add(5 * time.Second)
 	for {
-		req, err := http.NewRequestWithContext(loopCtx, http.MethodGet, loopback, nil)
+		req, err := http.NewRequest(http.MethodGet, loopback, nil)
 		if err != nil {
 			return err
 		}
@@ -214,11 +179,10 @@ func hitLoopback(ctx context.Context, client *http.Client, loopback string) erro
 			resp.Body.Close()
 			return nil
 		}
-		select {
-		case <-loopCtx.Done():
-			return fmt.Errorf("hit loopback: %w (last: %v)", loopCtx.Err(), err)
-		case <-time.After(100 * time.Millisecond):
+		if time.Now().After(deadline) {
+			return fmt.Errorf("hit loopback: %w", err)
 		}
+		time.Sleep(100 * time.Millisecond)
 	}
 }
 

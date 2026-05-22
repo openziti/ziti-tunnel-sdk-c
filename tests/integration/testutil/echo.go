@@ -31,7 +31,6 @@ type Echo struct {
 // StartTCPEcho starts a TCP echo server on 127.0.0.1:0 and registers cleanup with t.
 // Each connection is echoed in its own goroutine.
 func StartTCPEcho(t *testing.T) *Echo {
-	t.Helper()
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen tcp for echo: %v", err)
@@ -55,7 +54,6 @@ func StartTCPEcho(t *testing.T) *Echo {
 // StartUDPEcho starts a UDP echo server on 127.0.0.1:0 and registers cleanup with t.
 // Each received datagram is echoed back to the sender.
 func StartUDPEcho(t *testing.T) *Echo {
-	t.Helper()
 	conn, err := net.ListenPacket("udp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen udp for echo: %v", err)

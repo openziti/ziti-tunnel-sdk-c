@@ -17,10 +17,8 @@ limitations under the License.
 package integration_test
 
 import (
-	"context"
 	"os"
 	"testing"
-	"time"
 
 	"github.com/openziti/ziti-tunnel-sdk-c/tests/integration/testutil"
 	"github.com/stretchr/testify/require"
@@ -31,37 +29,37 @@ func TestRemoveIdentity(t *testing.T) {
 }
 
 func testRemoveIdentityWithIdentifierFromEvent(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	testutil.RunTestWithTimeout(t, func(t *testing.T) {
+		overlay := state.overlay
+		client := state.zetClient.Commands
+		events := state.zetClient.Events
 
-	events := testutil.SubscribeEvents(t, ctx, zet)
-	client := testutil.OpenCommandPipe(t, ctx, zet)
+		name := testutil.IdentityName(t)
 
-	name := testutil.IdentityName(t)
+		t.Logf("creating JWT for %q", name)
+		jwt, err := overlay.CreateIdentityJWT(name)
+		require.NoError(t, err, "failed to create JWT")
+		require.NotEmpty(t, jwt)
 
-	t.Logf("creating JWT for %q", name)
-	jwt, err := overlay.CreateIdentityJWT(ctx, name)
-	require.NoError(t, err, "failed to create JWT")
-	require.NotEmpty(t, jwt)
+		identityData := testutil.AddIdentityData{
+			IdentityFilename: name,
+			JwtContent:       &jwt,
+		}
+		addResp := testutil.AddIdentity(t, client, identityData)
+		require.True(t, addResp.Success, "AddIdentity failed: error=%q code=%d", addResp.Error, addResp.Code)
 
-	identityData := testutil.AddIdentityData{
-		IdentityFilename: name,
-		JwtContent:       &jwt,
-	}
-	addResp := testutil.Enroll(t, ctx, client, identityData)
-	require.True(t, addResp.Success, "AddIdentity failed: error=%q code=%d", addResp.Error, addResp.Code)
+		event := events.WaitFor(t, "identity", "added", name)
+		require.NotEmpty(t, event.Id.Identifier, "identity:added Identifier empty")
+		testutil.AssertValidJwtEnrolledIdentityFile(t, event.Id.Identifier)
 
-	event := events.WaitFor(t, ctx, "identity", "added", name)
-	require.NotEmpty(t, event.Id.Identifier, "identity:added Identifier empty")
-	testutil.AssertValidJwtEnrolledIdentityFile(t, event.Id.Identifier)
+		t.Logf("sending RemoveIdentity for Identifier=%s", event.Id.Identifier)
+		removeResp, err := client.RemoveIdentity(event.Id.Identifier)
+		require.NoError(t, err, "failed to send RemoveIdentity\n%s", state.zetClient.LogPath())
+		require.True(t, removeResp.Success, "RemoveIdentity failed: error=%q code=%d", removeResp.Error, removeResp.Code)
+		t.Logf("RemoveIdentity succeeded for %q", name)
 
-	t.Logf("sending RemoveIdentity for Identifier=%s", event.Id.Identifier)
-	removeResp, err := client.RemoveIdentity(ctx, event.Id.Identifier)
-	require.NoError(t, err, "failed to send RemoveIdentity\n%s", zet.Logs())
-	require.True(t, removeResp.Success, "RemoveIdentity failed: error=%q code=%d", removeResp.Error, removeResp.Code)
-	t.Logf("RemoveIdentity succeeded for %q", name)
-
-	_, statErr := os.Stat(event.Id.Identifier)
-	require.True(t, os.IsNotExist(statErr), "identity file should be removed after RemoveIdentity: %s\n%s", event.Id.Identifier, zet.Logs())
-	t.Logf("identity file removed from disk: %s", event.Id.Identifier)
+		_, statErr := os.Stat(event.Id.Identifier)
+		require.True(t, os.IsNotExist(statErr), "identity file should be removed after RemoveIdentity: %s\n%s", event.Id.Identifier, state.zetClient.LogPath())
+		t.Logf("identity file removed from disk: %s", event.Id.Identifier)
+	})
 }

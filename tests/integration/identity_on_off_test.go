@@ -17,9 +17,7 @@ limitations under the License.
 package integration_test
 
 import (
-	"context"
 	"testing"
-	"time"
 
 	"github.com/openziti/ziti-tunnel-sdk-c/tests/integration/testutil"
 	"github.com/stretchr/testify/require"
@@ -31,77 +29,77 @@ func TestIdentityOnOff(t *testing.T) {
 }
 
 func testIdentityOnOffTogglesActiveOff(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
+	testutil.RunTestWithTimeout(t, func(t *testing.T) {
+		overlay := state.overlay
+		client := state.zetClient.Commands
+		events := state.zetClient.Events
 
-	events := testutil.SubscribeEvents(t, ctx, zet)
-	client := testutil.OpenCommandPipe(t, ctx, zet)
+		name := testutil.IdentityName(t)
+		t.Logf("creating JWT for %q", name)
+		jwt, err := overlay.CreateIdentityJWT(name)
+		require.NoError(t, err, "failed to create JWT")
+		require.NotEmpty(t, jwt)
 
-	name := testutil.IdentityName(t)
-	t.Logf("creating JWT for %q", name)
-	jwt, err := overlay.CreateIdentityJWT(ctx, name)
-	require.NoError(t, err, "failed to create JWT")
-	require.NotEmpty(t, jwt)
+		identityData := testutil.AddIdentityData{
+			IdentityFilename: name,
+			JwtContent:       &jwt,
+		}
+		addResp := testutil.AddIdentity(t, client, identityData)
+		require.True(t, addResp.Success, "AddIdentity failed: error=%q code=%d", addResp.Error, addResp.Code)
 
-	identityData := testutil.AddIdentityData{
-		IdentityFilename: name,
-		JwtContent:       &jwt,
-	}
-	addResp := testutil.Enroll(t, ctx, client, identityData)
-	require.True(t, addResp.Success, "AddIdentity failed: error=%q code=%d", addResp.Error, addResp.Code)
+		added := events.WaitFor(t, "identity", "added", name)
+		require.NotEmpty(t, added.Id.Identifier, "identity:added Identifier empty")
+		testutil.AssertValidJwtEnrolledIdentityFile(t, added.Id.Identifier)
 
-	added := events.WaitFor(t, ctx, "identity", "added", name)
-	require.NotEmpty(t, added.Id.Identifier, "identity:added Identifier empty")
-	testutil.AssertValidJwtEnrolledIdentityFile(t, added.Id.Identifier)
+		t.Logf("sending IdentityOnOff(false) for %q", name)
+		offResp, err := client.IdentityOnOff(added.Id.Identifier, false)
+		require.NoError(t, err, "failed to send IdentityOnOff(false)\n%s", state.zetClient.LogPath())
+		require.True(t, offResp.Success, "IdentityOnOff(false) failed: error=%q code=%d", offResp.Error, offResp.Code)
 
-	t.Logf("sending IdentityOnOff(false) for %q", name)
-	offResp, err := client.IdentityOnOff(ctx, added.Id.Identifier, false)
-	require.NoError(t, err, "failed to send IdentityOnOff(false)\n%s", zet.Logs())
-	require.True(t, offResp.Success, "IdentityOnOff(false) failed: error=%q code=%d", offResp.Error, offResp.Code)
-
-	off := events.WaitFor(t, ctx, "identity", "added", name)
-	require.False(t, off.Id.Active, "identity:added Active=%t after IdentityOnOff(false), want false", off.Id.Active)
-	t.Logf("identity:added reports Active=%t after IdentityOnOff(false)", off.Id.Active)
+		off := events.WaitFor(t, "identity", "added", name)
+		require.False(t, off.Id.Active, "identity:added Active=%t after IdentityOnOff(false), want false", off.Id.Active)
+		t.Logf("identity:added reports Active=%t after IdentityOnOff(false)", off.Id.Active)
+	})
 }
 
 func testIdentityOnOffTogglesActiveOn(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
+	testutil.RunTestWithTimeout(t, func(t *testing.T) {
+		overlay := state.overlay
+		client := state.zetClient.Commands
+		events := state.zetClient.Events
 
-	events := testutil.SubscribeEvents(t, ctx, zet)
-	client := testutil.OpenCommandPipe(t, ctx, zet)
+		name := testutil.IdentityName(t)
+		t.Logf("creating JWT for %q", name)
+		jwt, err := overlay.CreateIdentityJWT(name)
+		require.NoError(t, err, "failed to create JWT")
+		require.NotEmpty(t, jwt)
 
-	name := testutil.IdentityName(t)
-	t.Logf("creating JWT for %q", name)
-	jwt, err := overlay.CreateIdentityJWT(ctx, name)
-	require.NoError(t, err, "failed to create JWT")
-	require.NotEmpty(t, jwt)
+		identityData := testutil.AddIdentityData{
+			IdentityFilename: name,
+			JwtContent:       &jwt,
+		}
+		addResp := testutil.AddIdentity(t, client, identityData)
+		require.True(t, addResp.Success, "AddIdentity failed: error=%q code=%d", addResp.Error, addResp.Code)
 
-	identityData := testutil.AddIdentityData{
-		IdentityFilename: name,
-		JwtContent:       &jwt,
-	}
-	addResp := testutil.Enroll(t, ctx, client, identityData)
-	require.True(t, addResp.Success, "AddIdentity failed: error=%q code=%d", addResp.Error, addResp.Code)
+		added := events.WaitFor(t, "identity", "added", name)
+		require.NotEmpty(t, added.Id.Identifier, "identity:added Identifier empty")
+		testutil.AssertValidJwtEnrolledIdentityFile(t, added.Id.Identifier)
 
-	added := events.WaitFor(t, ctx, "identity", "added", name)
-	require.NotEmpty(t, added.Id.Identifier, "identity:added Identifier empty")
-	testutil.AssertValidJwtEnrolledIdentityFile(t, added.Id.Identifier)
+		t.Logf("sending IdentityOnOff(false) for %q", name)
+		offResp, err := client.IdentityOnOff(added.Id.Identifier, false)
+		require.NoError(t, err, "failed to send IdentityOnOff(false)\n%s", state.zetClient.LogPath())
+		require.True(t, offResp.Success, "IdentityOnOff(false) failed: error=%q code=%d", offResp.Error, offResp.Code)
 
-	t.Logf("sending IdentityOnOff(false) for %q", name)
-	offResp, err := client.IdentityOnOff(ctx, added.Id.Identifier, false)
-	require.NoError(t, err, "failed to send IdentityOnOff(false)\n%s", zet.Logs())
-	require.True(t, offResp.Success, "IdentityOnOff(false) failed: error=%q code=%d", offResp.Error, offResp.Code)
+		off := events.WaitFor(t, "identity", "added", name)
+		require.False(t, off.Id.Active, "identity:added Active=%t after IdentityOnOff(false), want false", off.Id.Active)
 
-	off := events.WaitFor(t, ctx, "identity", "added", name)
-	require.False(t, off.Id.Active, "identity:added Active=%t after IdentityOnOff(false), want false", off.Id.Active)
+		t.Logf("sending IdentityOnOff(true) for %q", name)
+		onResp, err := client.IdentityOnOff(added.Id.Identifier, true)
+		require.NoError(t, err, "failed to send IdentityOnOff(true)\n%s", state.zetClient.LogPath())
+		require.True(t, onResp.Success, "IdentityOnOff(true) failed: error=%q code=%d", onResp.Error, onResp.Code)
 
-	t.Logf("sending IdentityOnOff(true) for %q", name)
-	onResp, err := client.IdentityOnOff(ctx, added.Id.Identifier, true)
-	require.NoError(t, err, "failed to send IdentityOnOff(true)\n%s", zet.Logs())
-	require.True(t, onResp.Success, "IdentityOnOff(true) failed: error=%q code=%d", onResp.Error, onResp.Code)
-
-	on := events.WaitFor(t, ctx, "identity", "added", name)
-	require.True(t, on.Id.Active, "identity:added Active=%t after IdentityOnOff(true), want true", on.Id.Active)
-	t.Logf("identity:added reports Active=%t after IdentityOnOff(true)", on.Id.Active)
+		on := events.WaitFor(t, "identity", "added", name)
+		require.True(t, on.Id.Active, "identity:added Active=%t after IdentityOnOff(true), want true", on.Id.Active)
+		t.Logf("identity:added reports Active=%t after IdentityOnOff(true)", on.Id.Active)
+	})
 }

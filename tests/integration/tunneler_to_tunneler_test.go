@@ -36,10 +36,10 @@ import (
 // Requires root/CAP_NET_ADMIN — both ZETs open TUN devices.
 func TestTunnelerToTunnelerTCP(t *testing.T) {
 	t.Run("zetA_intercepts_zetB_hosts", func(t *testing.T) {
-		testT2TTCP(t, zet, zetB, "100.64.0.10", 21000)
+		testT2TTCP(t, state.zetClient, state.zetHost, "100.64.0.10", 21000)
 	})
 	t.Run("zetB_intercepts_zetA_hosts", func(t *testing.T) {
-		testT2TTCP(t, zetB, zet, "100.128.0.10", 21001)
+		testT2TTCP(t, state.zetHost, state.zetClient, "100.128.0.10", 21001)
 	})
 }
 
@@ -48,10 +48,10 @@ func TestTunnelerToTunnelerTCP(t *testing.T) {
 // Requires root/CAP_NET_ADMIN — both ZETs open TUN devices.
 func TestTunnelerToTunnelerUDP(t *testing.T) {
 	t.Run("zetA_intercepts_zetB_hosts", func(t *testing.T) {
-		testT2TUDP(t, zet, zetB, "100.64.0.11", 22000)
+		testT2TUDP(t, state.zetClient, state.zetHost, "100.64.0.11", 22000)
 	})
 	t.Run("zetB_intercepts_zetA_hosts", func(t *testing.T) {
-		testT2TUDP(t, zetB, zet, "100.128.0.11", 22001)
+		testT2TUDP(t, state.zetHost, state.zetClient, "100.128.0.11", 22001)
 	})
 }
 
@@ -59,7 +59,6 @@ func TestTunnelerToTunnelerUDP(t *testing.T) {
 //   - interceptZET intercepts connections to interceptIP:interceptPort
 //   - hostZET hosts the service and forwards to a local TCP echo server
 func testT2TTCP(t *testing.T, interceptZET, hostZET *testutil.ZET, interceptIP string, interceptPort int) {
-	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
@@ -83,18 +82,18 @@ func testT2TTCP(t *testing.T, interceptZET, hostZET *testutil.ZET, interceptIP s
 	// Dial and echo.
 	conn, err := net.DialTimeout("tcp", interceptAddr, 10*time.Second)
 	require.NoError(t, err, "dial intercepted addr %s\ninterceptZET: %s\nhostZET: %s",
-		interceptAddr, interceptZET.Logs(), hostZET.Logs())
+		interceptAddr, interceptZET.LogFile(), hostZET.LogFile())
 	defer conn.Close()
 
 	payload := []byte("hello-ziti-tcp")
 	_, err = conn.Write(payload)
-	require.NoError(t, err, "write payload\ninterceptZET: %s\nhostZET: %s", interceptZET.Logs(), hostZET.Logs())
+	require.NoError(t, err, "write payload\ninterceptZET: %s\nhostZET: %s", interceptZET.LogFile(), hostZET.LogFile())
 
 	got := make([]byte, len(payload))
 	_ = conn.SetReadDeadline(time.Now().Add(10 * time.Second))
 	_, err = readFull(conn, got)
-	require.NoError(t, err, "read echo\ninterceptZET: %s\nhostZET: %s", interceptZET.Logs(), hostZET.Logs())
-	require.Equal(t, payload, got, "TCP echo mismatch\ninterceptZET: %s\nhostZET: %s", interceptZET.Logs(), hostZET.Logs())
+	require.NoError(t, err, "read echo\ninterceptZET: %s\nhostZET: %s", interceptZET.LogFile(), hostZET.LogFile())
+	require.Equal(t, payload, got, "TCP echo mismatch\ninterceptZET: %s\nhostZET: %s", interceptZET.LogFile(), hostZET.LogFile())
 }
 
 // testT2TUDP runs a UDP echo end-to-end test.
@@ -127,12 +126,12 @@ func testT2TUDP(t *testing.T, interceptZET, hostZET *testutil.ZET, interceptIP s
 	payload := []byte("hello-ziti-udp")
 	_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
 	_, err = conn.Write(payload)
-	require.NoError(t, err, "write UDP payload\ninterceptZET: %s\nhostZET: %s", interceptZET.Logs(), hostZET.Logs())
+	require.NoError(t, err, "write UDP payload\ninterceptZET: %s\nhostZET: %s", interceptZET.LogFile(), hostZET.LogFile())
 
 	got := make([]byte, len(payload))
 	_, err = conn.Read(got)
-	require.NoError(t, err, "read UDP echo\ninterceptZET: %s\nhostZET: %s", interceptZET.Logs(), hostZET.Logs())
-	require.Equal(t, payload, got, "UDP echo mismatch\ninterceptZET: %s\nhostZET: %s", interceptZET.Logs(), hostZET.Logs())
+	require.NoError(t, err, "read UDP echo\ninterceptZET: %s\nhostZET: %s", interceptZET.LogFile(), hostZET.LogFile())
+	require.Equal(t, payload, got, "UDP echo mismatch\ninterceptZET: %s\nhostZET: %s", interceptZET.LogFile(), hostZET.LogFile())
 }
 
 // t2tResourceNames holds all the controller-side resource names for a single t2t test scenario.
@@ -173,59 +172,59 @@ func setupT2TService(
 ) {
 	t.Helper()
 
+	overlay := state.overlay
 	// Mint identities.
-	interceptJWT, err := overlay.CreateIdentityJWT(ctx, names.interceptIdentity)
+	interceptJWT, err := overlay.CreateIdentityJWT(names.interceptIdentity)
 	require.NoError(t, err, "create intercept identity JWT")
-	hostJWT, err := overlay.CreateIdentityJWT(ctx, names.hostIdentity)
+	hostJWT, err := overlay.CreateIdentityJWT(names.hostIdentity)
 	require.NoError(t, err, "create host identity JWT")
 
 	// Enroll identities into their respective ZETs.
-	interceptClient, err := interceptZET.DialIPC(ctx)
+	interceptClient, err := interceptZET.DialIPC()
 	require.NoError(t, err, "dial intercept ZET IPC")
 	t.Cleanup(func() { _ = interceptClient.Close() })
 
-	hostClient, err := hostZET.DialIPC(ctx)
+	hostClient, err := hostZET.DialIPC()
 	require.NoError(t, err, "dial host ZET IPC")
 	t.Cleanup(func() { _ = hostClient.Close() })
 
-	resp, err := interceptClient.AddIdentity(ctx, testutil.AddIdentityData{
+	resp, err := interceptClient.AddIdentity(testutil.AddIdentityData{
 		IdentityFilename: names.interceptIdentity,
 		JwtContent:       &interceptJWT,
 	})
-	require.NoError(t, err, "AddIdentity to intercept ZET\n%s", interceptZET.Logs())
-	require.True(t, resp.Success, "AddIdentity to intercept ZET failed: %s\n%s", resp.Error, interceptZET.Logs())
+	require.NoError(t, err, "AddIdentity to intercept ZET\n%s", interceptZET.LogFile())
+	require.True(t, resp.Success, "AddIdentity to intercept ZET failed: %s\n%s", resp.Error, interceptZET.LogFile())
 
-	resp, err = hostClient.AddIdentity(ctx, testutil.AddIdentityData{
+	resp, err = hostClient.AddIdentity(testutil.AddIdentityData{
 		IdentityFilename: names.hostIdentity,
 		JwtContent:       &hostJWT,
 	})
-	require.NoError(t, err, "AddIdentity to host ZET\n%s", hostZET.Logs())
-	require.True(t, resp.Success, "AddIdentity to host ZET failed: %s\n%s", resp.Error, hostZET.Logs())
+	require.NoError(t, err, "AddIdentity to host ZET\n%s", hostZET.LogFile())
+	require.True(t, resp.Success, "AddIdentity to host ZET failed: %s\n%s", resp.Error, hostZET.LogFile())
 
 	// Create controller-side resources.
-	require.NoError(t, overlay.CreateHostConfigV1(ctx, names.hostConfig, protocol, forwardAddr, forwardPort),
+	require.NoError(t, overlay.CreateHostConfigV1(names.hostConfig, protocol, forwardAddr, forwardPort),
 		"create host config")
-	require.NoError(t, overlay.CreateInterceptConfigV1(ctx, names.interceptConfig,
+	require.NoError(t, overlay.CreateInterceptConfigV1(names.interceptConfig,
 		[]string{protocol}, []string{interceptIP + "/32"}, interceptPort, interceptPort),
 		"create intercept config")
-	require.NoError(t, overlay.CreateService(ctx, names.service,
+	require.NoError(t, overlay.CreateService(names.service,
 		[]string{names.hostConfig, names.interceptConfig}),
 		"create service")
-	require.NoError(t, overlay.CreateBindServicePolicy(ctx, names.bindPolicy, names.hostIdentity, names.service),
+	require.NoError(t, overlay.CreateBindServicePolicy(names.bindPolicy, names.hostIdentity, names.service),
 		"create bind policy")
-	require.NoError(t, overlay.CreateDialServicePolicy(ctx, names.dialPolicy, names.interceptIdentity, names.service),
+	require.NoError(t, overlay.CreateDialServicePolicy(names.dialPolicy, names.interceptIdentity, names.service),
 		"create dial policy")
 
 	// Cleanup: remove identities and controller-side resources at test end.
-	cleanupCtx := context.Background()
 	t.Cleanup(func() {
-		_, _ = interceptClient.RemoveIdentity(cleanupCtx, names.interceptIdentity)
-		_, _ = hostClient.RemoveIdentity(cleanupCtx, names.hostIdentity)
-		_ = overlay.DeleteServicePolicy(cleanupCtx, names.dialPolicy)
-		_ = overlay.DeleteServicePolicy(cleanupCtx, names.bindPolicy)
-		_ = overlay.DeleteService(cleanupCtx, names.service)
-		_ = overlay.DeleteConfig(cleanupCtx, names.interceptConfig)
-		_ = overlay.DeleteConfig(cleanupCtx, names.hostConfig)
+		_, _ = interceptClient.RemoveIdentity(names.interceptIdentity)
+		_, _ = hostClient.RemoveIdentity(names.hostIdentity)
+		_ = overlay.DeleteServicePolicy(names.dialPolicy)
+		_ = overlay.DeleteServicePolicy(names.bindPolicy)
+		_ = overlay.DeleteService(names.service)
+		_ = overlay.DeleteConfig(names.interceptConfig)
+		_ = overlay.DeleteConfig(names.hostConfig)
 	})
 }
 
@@ -242,7 +241,7 @@ func waitForTCPService(t *testing.T, ctx context.Context, addr string, intercept
 		select {
 		case <-ctx.Done():
 			t.Fatalf("service at %s never became ready: %v\ninterceptZET: %s\nhostZET: %s",
-				addr, ctx.Err(), interceptZET.Logs(), hostZET.Logs())
+				addr, ctx.Err(), interceptZET.LogFile(), hostZET.LogFile())
 		case <-time.After(500 * time.Millisecond):
 		}
 	}
@@ -258,7 +257,7 @@ func waitForUDPService(t *testing.T, ctx context.Context, addr string, intercept
 			select {
 			case <-ctx.Done():
 				t.Fatalf("UDP service at %s never became ready: %v\ninterceptZET: %s\nhostZET: %s",
-					addr, ctx.Err(), interceptZET.Logs(), hostZET.Logs())
+					addr, ctx.Err(), interceptZET.LogFile(), hostZET.LogFile())
 			case <-time.After(500 * time.Millisecond):
 			}
 			continue
@@ -274,7 +273,7 @@ func waitForUDPService(t *testing.T, ctx context.Context, addr string, intercept
 		select {
 		case <-ctx.Done():
 			t.Fatalf("UDP service at %s never became ready: %v\ninterceptZET: %s\nhostZET: %s",
-				addr, ctx.Err(), interceptZET.Logs(), hostZET.Logs())
+				addr, ctx.Err(), interceptZET.LogFile(), hostZET.LogFile())
 		case <-time.After(500 * time.Millisecond):
 		}
 	}

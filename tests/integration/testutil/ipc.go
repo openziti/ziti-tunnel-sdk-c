@@ -18,12 +18,10 @@ package testutil
 
 import (
 	"bufio"
-	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -49,18 +47,14 @@ type IPCClient struct {
 }
 
 // SendCommand writes the command as one JSON line and reads exactly one JSON-line response.
-// The response may arrive only after an async handler completes, so callers must supply a generous deadline.
-func (c *IPCClient) SendCommand(ctx context.Context, cmd IPCCommand) (*Response, error) {
+// Blocks indefinitely on a stuck peer; rely on `go test -timeout` to bound the suite.
+func (c *IPCClient) SendCommand(cmd IPCCommand) (*Response, error) {
 	payload, err := json.Marshal(cmd)
 	if err != nil {
 		return nil, fmt.Errorf("marshal command: %w", err)
 	}
 	payload = append(payload, '\n')
 
-	if dl, ok := ctx.Deadline(); ok {
-		_ = c.conn.SetDeadline(dl)
-		defer c.conn.SetDeadline(time.Time{})
-	}
 	if _, err := c.conn.Write(payload); err != nil {
 		return nil, fmt.Errorf("write command: %w", err)
 	}
@@ -79,74 +73,64 @@ func (c *IPCClient) Close() error {
 	return c.conn.Close()
 }
 
+const dialAttemptTimeout = 500 * time.Millisecond
+const dialRetryInterval = 100 * time.Millisecond
+
 // OpenCommandPipe opens ZET's command pipe and registers Close as a t.Cleanup.
-func OpenCommandPipe(t *testing.T, ctx context.Context, z *ZET) *IPCClient {
-	t.Helper()
-	c, err := openCommandPipe(ctx, z.CmdPipe)
+// Retries until the pipe is dialable or the ZET process exits.
+func OpenCommandPipe(t *testing.T, z *ZET) *CommandsClient {
+	c, err := openCommandPipe(CommandPipePathFor(z.Discriminator), z.cmdDone)
 	require.NoError(t, err, "open command pipe")
 	t.Cleanup(func() { _ = c.Close() })
 	return c
 }
 
-func openCommandPipe(ctx context.Context, path string) (*IPCClient, error) {
-	const retryInterval = 100 * time.Millisecond
+func openCommandPipe(path string, done <-chan struct{}) (*CommandsClient, error) {
 	log.Printf("ipc: dialing command pipe %s", path)
 	start := time.Now()
 	attempts := 0
-	var lastErr error
 	for {
 		attempts++
-		conn, err := dialPlatform(ctx, path)
+		conn, err := dialPlatform(path, dialAttemptTimeout)
 		if err == nil {
 			log.Printf("ipc: connected to %s after %d attempt(s) in %s", path, attempts, time.Since(start).Round(time.Millisecond))
-			return &IPCClient{conn: conn, reader: bufio.NewReader(conn)}, nil
+			return &CommandsClient{
+				IPCClient: IPCClient{conn: conn, reader: bufio.NewReader(conn)},
+			}, nil
 		}
-		lastErr = err
 		if attempts == 1 || attempts%20 == 0 {
 			log.Printf("ipc: dial %s still failing after %d attempt(s): %v", path, attempts, err)
 		}
 		select {
-		case <-ctx.Done():
-			log.Printf("ipc: giving up dial %s after %d attempt(s) in %s: %v (last: %v)", path, attempts, time.Since(start).Round(time.Millisecond), ctx.Err(), lastErr)
-			return nil, fmt.Errorf("dial %s: %w (last: %v)", path, ctx.Err(), lastErr)
-		case <-time.After(retryInterval):
+		case <-done:
+			return nil, fmt.Errorf("process exited before %s became dialable: %v", path, err)
+		case <-time.After(dialRetryInterval):
 		}
 	}
 }
 
-// SubscribeEvents subscribes to ZET's event pipe and registers Close as a t.Cleanup.
-func SubscribeEvents(t *testing.T, ctx context.Context, z *ZET) *EventClient {
-	t.Helper()
-	c, err := subscribeToEventPipe(ctx, z.EventPipe)
-	require.NoError(t, err, "subscribe to event pipe")
-	t.Cleanup(func() { _ = c.Close() })
-	return c
-}
-
-func subscribeToEventPipe(ctx context.Context, path string) (*EventClient, error) {
-	const retryInterval = 100 * time.Millisecond
+func subscribeToEventPipe(path string, done <-chan struct{}) (*EventClient, error) {
 	log.Printf("ipc: dialing event pipe %s", path)
 	start := time.Now()
 	attempts := 0
-	var lastErr error
 	for {
 		attempts++
-		conn, err := dialPlatform(ctx, path)
+		conn, err := dialPlatform(path, dialAttemptTimeout)
 		if err == nil {
 			log.Printf("ipc: connected to event pipe %s after %d attempt(s) in %s", path, attempts, time.Since(start).Round(time.Millisecond))
-			ec := &EventClient{conn: conn, reader: bufio.NewReader(conn)}
+			ec := &EventClient{
+				IPCClient: IPCClient{conn: conn, reader: bufio.NewReader(conn)},
+			}
 			go ec.readLoop()
 			return ec, nil
 		}
-		lastErr = err
 		if attempts == 1 || attempts%20 == 0 {
 			log.Printf("ipc: dial event pipe %s still failing after %d attempt(s): %v", path, attempts, err)
 		}
 		select {
-		case <-ctx.Done():
-			log.Printf("ipc: giving up event-pipe dial %s after %d attempt(s) in %s: %v (last: %v)", path, attempts, time.Since(start).Round(time.Millisecond), ctx.Err(), lastErr)
-			return nil, fmt.Errorf("dial %s: %w (last: %v)", path, ctx.Err(), lastErr)
-		case <-time.After(retryInterval):
+		case <-done:
+			return nil, fmt.Errorf("process exited before event pipe %s became dialable: %v", path, err)
+		case <-time.After(dialRetryInterval):
 		}
 	}
 }
@@ -172,8 +156,16 @@ type Event struct {
 // goroutine started at dial time. WaitFor scans the buffer + waits for new
 // events with a 20s cap.
 type EventClient struct {
-	conn   net.Conn
-	reader *bufio.Reader
+	IPCClient
+
+	mu      sync.Mutex
+	events  []Event
+	cursor  int
+	notify  []chan struct{}
+	readErr error
+}
+type CommandsClient struct {
+	IPCClient
 
 	mu      sync.Mutex
 	events  []Event
@@ -215,12 +207,9 @@ func (c *EventClient) readLoop() {
 }
 
 // WaitFor blocks until the next event matching op/action/fingerprint arrives
-// and advances past it. 20s cap.
-func (c *EventClient) WaitFor(t *testing.T, ctx context.Context, op, action, fingerprint string) Event {
-	t.Helper()
-	waitCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
-	defer cancel()
-
+// and advances past it. Blocks indefinitely; rely on the per-test timeout if
+// the event never comes.
+func (c *EventClient) WaitFor(t *testing.T, op, action, fingerprint string) Event {
 	notify := make(chan struct{}, 1)
 	c.mu.Lock()
 	c.notify = append(c.notify, notify)
@@ -255,20 +244,16 @@ func (c *EventClient) WaitFor(t *testing.T, ctx context.Context, op, action, fin
 			require.NoError(t, readErr, "event reader exited waiting for %s:%s/%s after %d events", op, action, fingerprint, cursor)
 			return Event{}
 		}
-		select {
-		case <-notify:
-		case <-waitCtx.Done():
-			var dump strings.Builder
-			for i, e := range events {
-				raw, _ := json.Marshal(e)
-				fmt.Fprintf(&dump, "\n  [%d] %s", i, raw)
-			}
-			require.Failf(t, "event wait timeout", "no %s:%s for %q within 20s; saw %d events:%s", op, action, fingerprint, cursor, dump.String())
-			return Event{}
-		}
+		<-notify
 	}
 }
 
 func (c *EventClient) Close() error {
 	return c.conn.Close()
+}
+
+// DialIPC connects to this ZET instance's IPC command pipe.
+// Retries until the pipe is dialable or the ZET process exits.
+func (z *ZET) DialIPC() (*CommandsClient, error) {
+	return openCommandPipe(CommandPipePathFor(z.Discriminator), z.cmdDone)
 }

@@ -18,10 +18,10 @@ package testutil
 
 import (
 	"bytes"
-	"context"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -33,6 +33,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -43,82 +45,80 @@ const (
 )
 
 type Overlay struct {
-	ZitiBin        string
-	Home           string
-	ControllerPort uint16
-	RouterPort     uint16
-	ZitiMajor      int
-	ZitiMinor      int
+	ZitiBin             string
+	Home                string
+	ZitiMajor           int
+	ZitiMinor           int
+	ShowZitiCliCommands bool
 
-	extCmd  *exec.Cmd
+	cmd     *exec.Cmd
 	stdout  *syncBuffer
 	stderr  *syncBuffer
-	cmdDone chan error
+	logFile *os.File
+	Done    chan error
 }
 
-// StartOverlay runs `ziti edge quickstart` with ephemeral ports in a temp home,
-// waits for the controller to accept an admin login, and returns a handle.
-// Callers must defer Stop().
-func StartOverlay(ctx context.Context, zitiBin, home string) (*Overlay, error) {
+// Start launches `ziti edge quickstart` against o.Home and waits until the
+// overlay is ready. Callers must defer Stop().
+func (o *Overlay) Start() error {
 	warnIfPortBound(overlayCtrlPort)
 	warnIfPortBound(overlayRtrPort)
-	log.Printf("overlay: mkdir home %s", home)
-	if err := os.MkdirAll(home, 0o700); err != nil {
-		return nil, fmt.Errorf("mkdir home: %w", err)
+	log.Printf("overlay: mkdir home %s", o.Home)
+	if err := os.MkdirAll(o.Home, 0o755); err != nil {
+		return fmt.Errorf("mkdir home: %w", err)
 	}
 
 	args := []string{
 		"edge", "quickstart",
-		"--home=" + home,
+		"--home=" + o.Home,
 		"--ctrl-address=localhost",
 		fmt.Sprintf("--ctrl-port=%d", overlayCtrlPort),
 		"--router-address=localhost",
 		fmt.Sprintf("--router-port=%d", overlayRtrPort),
 	}
-	log.Printf("overlay: starting %s %s", zitiBin, strings.Join(args, " "))
-	cmd := exec.CommandContext(ctx, zitiBin, args...)
-	// PFXLOG_NO_JSON makes ziti's stderr human-readable for test log output.
-	cmd.Env = append(os.Environ(),
-		"ZITI_CONFIG_DIR="+filepath.Join(home, "cli-config"),
+	log.Printf("overlay: starting %s %s", o.ZitiBin, strings.Join(args, " "))
+	o.cmd = exec.Command(o.ZitiBin, args...)
+	o.cmd.Env = append(os.Environ(),
+		"ZITI_CONFIG_DIR="+filepath.Join(o.Home, "cli-config"),
+		// PFXLOG_NO_JSON makes ziti's stderr human-readable for test log output.
 		"PFXLOG_NO_JSON=true",
 	)
-	stdout := newSyncBuffer()
-	stderr := newSyncBuffer()
-	cmd.Stdout = stdout
-	cmd.Stderr = stderr
-	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("start quickstart: %w", err)
+	logPath := filepath.Join(o.Home, "quickstart-logs", "quickstart.log")
+	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
+		return fmt.Errorf("mkdir quickstart log dir: %w", err)
+	}
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
+	if err != nil {
+		return fmt.Errorf("open quickstart log file: %w", err)
+	}
+	log.Printf("overlay: quickstart log %s", logPath)
+	o.stdout = newSyncBuffer()
+	o.stderr = newSyncBuffer()
+	o.cmd.Stdout = io.MultiWriter(o.stdout, logFile)
+	o.cmd.Stderr = io.MultiWriter(o.stderr, logFile)
+
+	if err := o.cmd.Start(); err != nil {
+		_ = logFile.Close()
+		return fmt.Errorf("start quickstart: %w", err)
 	}
 
-	o := &Overlay{
-		ZitiBin:        zitiBin,
-		Home:           home,
-		ControllerPort: overlayCtrlPort,
-		RouterPort:     overlayRtrPort,
-		extCmd:         cmd,
-		stdout:         stdout,
-		stderr:         stderr,
-		cmdDone:        make(chan error, 1),
-	}
-	go func() { o.cmdDone <- cmd.Wait() }()
+	go func() { o.Done <- o.cmd.Wait() }()
 
-	readyCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-	if err := o.waitUntilReady(readyCtx); err != nil {
+	if err := o.waitUntilReady(); err != nil {
 		o.Stop()
-		return nil, fmt.Errorf("overlay not ready: %w\n%s", err, o.Logs())
+		return fmt.Errorf("overlay not ready: %w\n%s", err, o.Logs())
 	}
 
 	log.Printf("overlay: probing ziti version")
-	major, minor, err := probeZitiVersion(ctx, zitiBin)
+	major, minor, err := probeZitiVersion(o.ZitiBin)
 	if err != nil {
 		o.Stop()
-		return nil, fmt.Errorf("probe ziti version: %w", err)
+		return fmt.Errorf("probe ziti version: %w", err)
 	}
 	o.ZitiMajor = major
 	o.ZitiMinor = minor
 	log.Printf("overlay: ready (ziti v%d.%d)", major, minor)
-	return o, nil
+	return nil
 }
 
 // warnIfPortBound logs a warning if something is already listening on localhost:port.
@@ -133,8 +133,8 @@ func warnIfPortBound(port uint16) {
 	log.Printf("WARNING: port %d is already bound (%s); ziti quickstart will not be able to start until it is released", port, addr)
 }
 
-func probeZitiVersion(ctx context.Context, zitiBin string) (int, int, error) {
-	out, err := exec.CommandContext(ctx, zitiBin, "--version").Output()
+func probeZitiVersion(zitiBin string) (int, int, error) {
+	out, err := exec.Command(zitiBin, "--version").Output()
 	if err != nil {
 		return 0, 0, fmt.Errorf("run %s --version: %w", zitiBin, err)
 	}
@@ -155,13 +155,11 @@ func probeZitiVersion(ctx context.Context, zitiBin string) (int, int, error) {
 }
 
 func (o *Overlay) ControllerHostPort() string {
-	return fmt.Sprintf("https://localhost:%d", o.ControllerPort)
+	return fmt.Sprintf("https://localhost:%d", overlayCtrlPort)
 }
 
-// caTrusted reports whether a TLS handshake to the controller succeeds with
-// the OS trust store — i.e., whether this overlay's CA is currently installed.
-func (o *Overlay) caTrusted() bool {
-	hostport := fmt.Sprintf("localhost:%d", o.ControllerPort)
+func (o *Overlay) CATrusted() bool {
+	hostport := fmt.Sprintf("localhost:%d", overlayCtrlPort)
 	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: 2 * time.Second}, "tcp", hostport, nil)
 	if err != nil {
 		return false
@@ -170,9 +168,9 @@ func (o *Overlay) caTrusted() bool {
 	return true
 }
 
-// osCAStrings returns OS-specific install and cleanup shell commands for this
+// OSCAStrings returns OS-specific install and cleanup shell commands for this
 // overlay's CA. Both are "" when the OS has no recipe.
-func (o *Overlay) osCAStrings() (install, cleanup string) {
+func (o *Overlay) OSCAStrings() (install, cleanup string) {
 	caPath := filepath.Join(o.Home, "pki", "root-ca", "certs", "root-ca.cert")
 	switch runtime.GOOS {
 	case "windows":
@@ -191,23 +189,22 @@ func (o *Overlay) osCAStrings() (install, cleanup string) {
 // RequireCATrusted skips the test (with OS-specific install/cleanup
 // instructions) if the overlay's CA isn't in the calling OS's trust store.
 func (o *Overlay) RequireCATrusted(t *testing.T) {
-	t.Helper()
-	if o.caTrusted() {
+	if o.CATrusted() {
 		return
 	}
 	caPath := filepath.Join(o.Home, "pki", "root-ca", "certs", "root-ca.cert")
-	install, cleanup := o.osCAStrings()
+	install, cleanup := o.OSCAStrings()
 	if install == "" {
 		t.Skipf(`tests need the CA at %s in OS trust (no install instructions for %s).
 
-  Current -overlay-home: %s
-  Pass a durable path with -overlay-home so the PKI (and this trust install) persists across runs.`, caPath, runtime.GOOS, o.Home)
+  Current overlay home: %s
+  Pass a durable path with -test-home so the PKI (and this trust install) persists across runs.`, caPath, runtime.GOOS, o.Home)
 		return
 	}
 	t.Skipf(`tests need the test overlay's CA in OS trust.
 
-  Current -overlay-home: %s
-  Pass a durable path with -overlay-home so the PKI (and this trust install) persists across runs.
+  Current overlay home: %s
+  Pass a durable path with -test-home so the PKI (and this trust install) persists across runs.
 
   Install:
   %s
@@ -216,25 +213,20 @@ func (o *Overlay) RequireCATrusted(t *testing.T) {
   %s`, o.Home, install, cleanup)
 }
 
-// CACleanupCommand returns the OS-specific shell command a developer can run
-// to remove this overlay's root CA from their OS trust store after testing.
-// Returns "" if the CA isn't currently trusted (nothing to clean up).
-func (o *Overlay) CACleanupCommand() string {
-	if !o.caTrusted() {
-		return ""
-	}
-	_, cleanup := o.osCAStrings()
-	return cleanup
-}
-
 // A surviving overlay holds the controller/router ports and breaks subsequent
 // runs, so abort hard rather than let an orphan hide.
 func (o *Overlay) Stop() {
-	if o.extCmd.Process == nil {
+	if o == nil || o.cmd == nil || o.cmd.Process == nil {
 		return
 	}
-	pid := o.extCmd.Process.Pid
-	if err := o.extCmd.Process.Kill(); err != nil {
+	if o.logFile != nil {
+		defer func() { _ = o.logFile.Close() }()
+	}
+	if o.cmd.Process == nil {
+		return
+	}
+	pid := o.cmd.Process.Pid
+	if err := o.cmd.Process.Kill(); err != nil {
 		log.Printf("overlay pid %d kill: %v", pid, err)
 	}
 	for i := 0; i < 120; i++ {
@@ -242,7 +234,7 @@ func (o *Overlay) Stop() {
 		if proc, err := os.FindProcess(pid); err != nil || proc == nil {
 			return
 		}
-		if err := o.extCmd.Process.Signal(syscall.Signal(0)); err != nil {
+		if err := o.cmd.Process.Signal(syscall.Signal(0)); err != nil {
 			return
 		}
 	}
@@ -255,9 +247,9 @@ func (o *Overlay) Logs() string {
 }
 
 // CreateIdentityJWT provisions a new (non-admin) identity and returns its enrollment JWT content.
-func (o *Overlay) CreateIdentityJWT(ctx context.Context, name string) (string, error) {
+func (o *Overlay) CreateIdentityJWT(name string) (string, error) {
 	jwtPath := filepath.Join(o.Home, name+".jwt")
-	if _, err := o.execZiti(ctx, "edge", "create", "identity", name, "-o", jwtPath); err != nil {
+	if _, err := o.execZiti("edge", "create", "identity", name, "-o", jwtPath); err != nil {
 		return "", fmt.Errorf("create identity %s: %w", name, err)
 	}
 	content, err := os.ReadFile(jwtPath)
@@ -267,15 +259,15 @@ func (o *Overlay) CreateIdentityJWT(ctx context.Context, name string) (string, e
 	return string(bytes.TrimSpace(content)), nil
 }
 
-func (o *Overlay) DeleteIdentity(ctx context.Context, name string) error {
-	if _, err := o.execZiti(ctx, "edge", "delete", "identity", name); err != nil {
+func (o *Overlay) DeleteIdentity(name string) error {
+	if _, err := o.execZiti("edge", "delete", "identity", name); err != nil {
 		return fmt.Errorf("delete identity %s: %w", name, err)
 	}
 	return nil
 }
 
-func (o *Overlay) CreateAuthPolicyRequiringTOTP(ctx context.Context, name string) error {
-	if _, err := o.execZiti(ctx, "edge", "create", "auth-policy", name,
+func (o *Overlay) CreateAuthPolicyRequiringTOTP(name string) error {
+	if _, err := o.execZiti("edge", "create", "auth-policy", name,
 		"--primary-cert-allowed",
 		"--secondary-req-totp"); err != nil {
 		return fmt.Errorf("create auth policy %s: %w", name, err)
@@ -283,9 +275,9 @@ func (o *Overlay) CreateAuthPolicyRequiringTOTP(ctx context.Context, name string
 	return nil
 }
 
-func (o *Overlay) CreateIdentityJWTWithAuthPolicy(ctx context.Context, name, authPolicy string) (string, error) {
+func (o *Overlay) CreateIdentityJWTWithAuthPolicy(name, authPolicy string) (string, error) {
 	jwtPath := filepath.Join(o.Home, name+".jwt")
-	if _, err := o.execZiti(ctx, "edge", "create", "identity", name,
+	if _, err := o.execZiti("edge", "create", "identity", name,
 		"-P", authPolicy,
 		"-o", jwtPath); err != nil {
 		return "", fmt.Errorf("create identity %s with policy %s: %w", name, authPolicy, err)
@@ -308,9 +300,10 @@ type ExtJwtSignerSpec struct {
 	Scopes   []string
 }
 
-// CreateExtJwtSigner registers an ext-jwt-signer on the controller and
-// returns its assigned ID.
-func (o *Overlay) CreateExtJwtSigner(ctx context.Context, spec ExtJwtSignerSpec) (string, error) {
+// CreateExtJwtSigner registers an ext-jwt-signer on the controller and returns
+// its assigned ID.
+func (o *Overlay) CreateExtJwtSigner(t *testing.T, spec ExtJwtSignerSpec) string {
+	t.Logf("creating ext-jwt-signer %q (issuer=%s clientID=%s)", spec.Name, spec.Issuer, spec.ClientID)
 	args := []string{
 		"edge", "create", "ext-jwt-signer", spec.Name, spec.Issuer,
 		"--jwks-endpoint", spec.JWKS,
@@ -324,44 +317,50 @@ func (o *Overlay) CreateExtJwtSigner(ctx context.Context, spec ExtJwtSignerSpec)
 	for _, s := range spec.Scopes {
 		args = append(args, "--scopes", s)
 	}
-	out, err := o.execZiti(ctx, args...)
-	if err != nil {
-		return "", fmt.Errorf("create ext-jwt-signer %s: %w", spec.Name, err)
-	}
-	return string(bytes.TrimSpace(out)), nil
+	out, err := o.execZiti(args...)
+	require.NoError(t, err, "create ext-jwt-signer %s", spec.Name)
+	id := string(bytes.TrimSpace(out))
+	t.Logf("ext-jwt-signer %q created with id=%s", spec.Name, id)
+	return id
 }
 
 // CreateAuthPolicyForExtJwt creates an auth policy whose primary auth method
 // is the ext-jwt-signer set with the given IDs. Pass one or more signer IDs.
-func (o *Overlay) CreateAuthPolicyForExtJwt(ctx context.Context, name string, signerIDs ...string) error {
+func (o *Overlay) CreateAuthPolicyForExtJwt(t *testing.T, name string, signerIDs ...string) {
+	t.Logf("creating auth policy %q with %d ext-jwt-signer(s)", name, len(signerIDs))
 	args := []string{"edge", "create", "auth-policy", name, "--primary-ext-jwt-allowed"}
 	for _, id := range signerIDs {
 		args = append(args, "--primary-ext-jwt-allowed-signers", id)
 	}
-	if _, err := o.execZiti(ctx, args...); err != nil {
-		return fmt.Errorf("create auth policy %s: %w", name, err)
-	}
-	return nil
+	_, err := o.execZiti(args...)
+	require.NoError(t, err, "create auth policy %s", name)
+	t.Logf("auth policy %q created", name)
 }
 
-// CreateIdentityWithExternalId provisions a non-admin identity bound to the
-// named auth policy and stamped with externalId so the controller can match it
-// against the "sub" claim of an ext-jwt-signer-issued JWT.
-func (o *Overlay) CreateIdentityWithExternalId(ctx context.Context, name, externalID, authPolicy string) error {
-	if _, err := o.execZiti(ctx, "edge", "create", "identity", name,
-		"--external-id", externalID,
-		"-P", authPolicy,
-	); err != nil {
-		return fmt.Errorf("create identity %s with externalId %s: %w", name, externalID, err)
+// CreateIdentityWithExternalId provisions a non-admin identity stamped with
+// externalId so the controller can match it against the "sub" claim of an
+// ext-jwt-signer-issued JWT. If authPolicy is non-empty the identity is bound
+// to that policy; otherwise it falls into the controller's default policy.
+func (o *Overlay) CreateIdentityWithExternalId(t *testing.T, name, externalID, authPolicy string) {
+	policyDesc := authPolicy
+	if policyDesc == "" {
+		policyDesc = "default"
 	}
-	return nil
+	t.Logf("creating controller identity %q with externalId=%q bound to auth policy %q", name, externalID, policyDesc)
+	args := []string{"edge", "create", "identity", name, "--external-id", externalID}
+	if authPolicy != "" {
+		args = append(args, "-P", authPolicy)
+	}
+	_, err := o.execZiti(args...)
+	require.NoError(t, err, "create identity %s with externalId %s", name, externalID)
+	t.Logf("controller identity %q created", name)
 }
 
 // CreateUpdbUser creates a non-admin identity with a UPDB authenticator so the
 // identity can authenticate via the controller's built-in OIDC username/password
 // login. Returns the new identity's controller ID.
-func (o *Overlay) CreateUpdbUser(ctx context.Context, name, username, password string) (string, error) {
-	out, err := o.execZiti(ctx, "edge", "create", "identity", name, "-j")
+func (o *Overlay) CreateUpdbUser(name, username, password string) (string, error) {
+	out, err := o.execZiti("edge", "create", "identity", name, "-j")
 	if err != nil {
 		return "", fmt.Errorf("create identity %s: %w", name, err)
 	}
@@ -376,30 +375,30 @@ func (o *Overlay) CreateUpdbUser(ctx context.Context, name, username, password s
 	if resp.Data.ID == "" {
 		return "", fmt.Errorf("create identity %s returned empty id", name)
 	}
-	if _, err := o.execZiti(ctx, "edge", "create", "authenticator", "updb", resp.Data.ID, username, password); err != nil {
+	if _, err := o.execZiti("edge", "create", "authenticator", "updb", resp.Data.ID, username, password); err != nil {
 		return "", fmt.Errorf("create updb authenticator for %s: %w", name, err)
 	}
 	return resp.Data.ID, nil
 }
 
 // DeleteExtJwtSigner removes an ext-jwt-signer by name.
-func (o *Overlay) DeleteExtJwtSigner(ctx context.Context, name string) error {
-	if _, err := o.execZiti(ctx, "edge", "delete", "ext-jwt-signer", name); err != nil {
+func (o *Overlay) DeleteExtJwtSigner(name string) error {
+	if _, err := o.execZiti("edge", "delete", "ext-jwt-signer", name); err != nil {
 		return fmt.Errorf("delete ext-jwt-signer %s: %w", name, err)
 	}
 	return nil
 }
 
 // DeleteAuthPolicy removes an auth policy by name.
-func (o *Overlay) DeleteAuthPolicy(ctx context.Context, name string) error {
-	if _, err := o.execZiti(ctx, "edge", "delete", "auth-policy", name); err != nil {
+func (o *Overlay) DeleteAuthPolicy(name string) error {
+	if _, err := o.execZiti("edge", "delete", "auth-policy", name); err != nil {
 		return fmt.Errorf("delete auth policy %s: %w", name, err)
 	}
 	return nil
 }
 
 // CreateHostConfigV1 creates a host.v1 config that forwards to forwardAddr:forwardPort.
-func (o *Overlay) CreateHostConfigV1(ctx context.Context, name, protocol, forwardAddr string, forwardPort int) error {
+func (o *Overlay) CreateHostConfigV1(name, protocol, forwardAddr string, forwardPort int) error {
 	body, err := json.Marshal(struct {
 		Protocol string `json:"protocol"`
 		Address  string `json:"address"`
@@ -408,14 +407,14 @@ func (o *Overlay) CreateHostConfigV1(ctx context.Context, name, protocol, forwar
 	if err != nil {
 		return err
 	}
-	if _, err := o.execZiti(ctx, "edge", "create", "config", name, "host.v1", string(body)); err != nil {
+	if _, err := o.execZiti("edge", "create", "config", name, "host.v1", string(body)); err != nil {
 		return fmt.Errorf("create host config %s: %w", name, err)
 	}
 	return nil
 }
 
 // CreateInterceptConfigV1 creates an intercept.v1 config matching the given protocols, addresses, and port range.
-func (o *Overlay) CreateInterceptConfigV1(ctx context.Context, name string, protocols, addresses []string, portLow, portHigh int) error {
+func (o *Overlay) CreateInterceptConfigV1(name string, protocols, addresses []string, portLow, portHigh int) error {
 	body, err := json.Marshal(struct {
 		Protocols  []string `json:"protocols"`
 		Addresses  []string `json:"addresses"`
@@ -434,24 +433,24 @@ func (o *Overlay) CreateInterceptConfigV1(ctx context.Context, name string, prot
 	if err != nil {
 		return err
 	}
-	if _, err := o.execZiti(ctx, "edge", "create", "config", name, "intercept.v1", string(body)); err != nil {
+	if _, err := o.execZiti("edge", "create", "config", name, "intercept.v1", string(body)); err != nil {
 		return fmt.Errorf("create intercept config %s: %w", name, err)
 	}
 	return nil
 }
 
 // CreateService creates a service that references the given configs.
-func (o *Overlay) CreateService(ctx context.Context, name string, configs []string) error {
+func (o *Overlay) CreateService(name string, configs []string) error {
 	args := []string{"edge", "create", "service", name, "--configs", strings.Join(configs, ",")}
-	if _, err := o.execZiti(ctx, args...); err != nil {
+	if _, err := o.execZiti(args...); err != nil {
 		return fmt.Errorf("create service %s: %w", name, err)
 	}
 	return nil
 }
 
 // CreateBindServicePolicy creates a Bind service policy granting identityName access to serviceName.
-func (o *Overlay) CreateBindServicePolicy(ctx context.Context, name, identityName, serviceName string) error {
-	if _, err := o.execZiti(ctx, "edge", "create", "service-policy", name, "Bind",
+func (o *Overlay) CreateBindServicePolicy(name, identityName, serviceName string) error {
+	if _, err := o.execZiti("edge", "create", "service-policy", name, "Bind",
 		"--identity-roles", "@"+identityName,
 		"--service-roles", "@"+serviceName,
 		"--semantic", "AnyOf",
@@ -462,8 +461,8 @@ func (o *Overlay) CreateBindServicePolicy(ctx context.Context, name, identityNam
 }
 
 // CreateDialServicePolicy creates a Dial service policy granting identityName access to serviceName.
-func (o *Overlay) CreateDialServicePolicy(ctx context.Context, name, identityName, serviceName string) error {
-	if _, err := o.execZiti(ctx, "edge", "create", "service-policy", name, "Dial",
+func (o *Overlay) CreateDialServicePolicy(name, identityName, serviceName string) error {
+	if _, err := o.execZiti("edge", "create", "service-policy", name, "Dial",
 		"--identity-roles", "@"+identityName,
 		"--service-roles", "@"+serviceName,
 		"--semantic", "AnyOf",
@@ -474,60 +473,55 @@ func (o *Overlay) CreateDialServicePolicy(ctx context.Context, name, identityNam
 }
 
 // DeleteServicePolicy deletes a service policy by name.
-func (o *Overlay) DeleteServicePolicy(ctx context.Context, name string) error {
-	if _, err := o.execZiti(ctx, "edge", "delete", "service-policy", name); err != nil {
+func (o *Overlay) DeleteServicePolicy(name string) error {
+	if _, err := o.execZiti("edge", "delete", "service-policy", name); err != nil {
 		return fmt.Errorf("delete service policy %s: %w", name, err)
 	}
 	return nil
 }
 
 // DeleteService deletes a service by name.
-func (o *Overlay) DeleteService(ctx context.Context, name string) error {
-	if _, err := o.execZiti(ctx, "edge", "delete", "service", name); err != nil {
+func (o *Overlay) DeleteService(name string) error {
+	if _, err := o.execZiti("edge", "delete", "service", name); err != nil {
 		return fmt.Errorf("delete service %s: %w", name, err)
 	}
 	return nil
 }
 
 // DeleteConfig deletes a config by name.
-func (o *Overlay) DeleteConfig(ctx context.Context, name string) error {
-	if _, err := o.execZiti(ctx, "edge", "delete", "config", name); err != nil {
+func (o *Overlay) DeleteConfig(name string) error {
+	if _, err := o.execZiti("edge", "delete", "config", name); err != nil {
 		return fmt.Errorf("delete config %s: %w", name, err)
 	}
 	return nil
 }
 
-func (o *Overlay) waitUntilReady(ctx context.Context) error {
-	if err := o.waitForControllerPort(ctx); err != nil {
+func (o *Overlay) waitUntilReady() error {
+	if err := o.waitForControllerPort(); err != nil {
 		return err
 	}
 	log.Printf("overlay: attempting admin login at %s", o.ControllerHostPort())
 	attempts := 0
-	var lastErr error
 	for {
 		attempts++
-		if _, err := o.execZiti(ctx, "edge", "login", o.ControllerHostPort(),
+		if _, err := o.execZiti("edge", "login", o.ControllerHostPort(),
 			"-u", adminUsername, "-p", adminPassword, "--yes"); err == nil {
 			log.Printf("overlay: admin login OK after %d attempt(s)", attempts)
 			return nil
 		} else {
-			lastErr = err
 			log.Printf("overlay: admin login attempt %d failed, retrying", attempts)
 		}
 		select {
-		case err := <-o.cmdDone:
+		case err := <-o.Done:
 			return fmt.Errorf("quickstart exited before becoming ready: %v", err)
-		case <-ctx.Done():
-			return fmt.Errorf("%w (last login error: %v)", ctx.Err(), lastErr)
 		case <-time.After(1 * time.Second):
 		}
 	}
 }
 
-func (o *Overlay) waitForControllerPort(ctx context.Context) error {
-	addr := fmt.Sprintf("localhost:%d", o.ControllerPort)
+func (o *Overlay) waitForControllerPort() error {
+	addr := fmt.Sprintf("localhost:%d", overlayCtrlPort)
 	log.Printf("overlay: waiting for controller TCP port %s", addr)
-	var lastErr error
 	for {
 		conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
 		if err == nil {
@@ -535,51 +529,85 @@ func (o *Overlay) waitForControllerPort(ctx context.Context) error {
 			log.Printf("overlay: controller port %s open", addr)
 			return nil
 		}
-		lastErr = err
 		select {
-		case exitErr := <-o.cmdDone:
-			return fmt.Errorf("quickstart exited before port %d opened: %v", o.ControllerPort, exitErr)
-		case <-ctx.Done():
-			return fmt.Errorf("%w (last dial error: %v)", ctx.Err(), lastErr)
+		case exitErr := <-o.Done:
+			return fmt.Errorf("quickstart exited before port %d opened: %v", overlayCtrlPort, exitErr)
 		case <-time.After(250 * time.Millisecond):
 		}
 	}
 }
 
-func (o *Overlay) execZiti(ctx context.Context, args ...string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, o.ZitiBin, args...)
+func (o *Overlay) execZiti(args ...string) ([]byte, error) {
+	cmd := exec.Command(o.ZitiBin, args...)
 	cmd.Env = append(os.Environ(),
 		"ZITI_CONFIG_DIR="+filepath.Join(o.Home, "cli-config"),
 	)
 	var stdout, stderr syncBuffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
+	if o.ShowZitiCliCommands {
+		fmt.Println("COMMAND: " + cmd.String())
+	}
 	if err := cmd.Run(); err != nil {
 		return nil, fmt.Errorf("%s %v: %w\nstdout: %s\nstderr: %s",
 			o.ZitiBin, args, err, stdout.String(), stderr.String())
+	}
+	if o.ShowZitiCliCommands {
+		fmt.Println("COMMAND RESULT: \n" + stdout.String())
 	}
 	return []byte(stdout.String()), nil
 }
 
 // PurgeIdentities deletes every identity whose name contains prefix.
-func (o *Overlay) PurgeIdentities(ctx context.Context, prefix string) error {
-	return o.deleteWhere(ctx, "identities", prefix)
+func (o *Overlay) PurgeIdentities(prefix string) error {
+	return o.deleteWhere("identities", prefix)
 }
 
 // PurgeAuthPolicies deletes every auth policy whose name contains prefix.
-func (o *Overlay) PurgeAuthPolicies(ctx context.Context, prefix string) error {
-	return o.deleteWhere(ctx, "auth-policies", prefix)
+func (o *Overlay) PurgeAuthPolicies(prefix string) error {
+	return o.deleteWhere("auth-policies", prefix)
 }
 
 // PurgeExtJwtSigners deletes every ext-jwt-signer whose name contains prefix.
-func (o *Overlay) PurgeExtJwtSigners(ctx context.Context, prefix string) error {
-	return o.deleteWhere(ctx, "ext-jwt-signers", prefix)
+func (o *Overlay) PurgeExtJwtSigners(prefix string) error {
+	return o.deleteWhere("ext-jwt-signers", prefix)
 }
 
-func (o *Overlay) deleteWhere(ctx context.Context, entity, prefix string) error {
+func (o *Overlay) deleteWhere(entity, prefix string) error {
 	filter := fmt.Sprintf(`name contains "%s" limit none`, prefix)
-	if _, err := o.execZiti(ctx, "edge", "delete", entity, "where", filter); err != nil {
+	if _, err := o.execZiti("edge", "delete", entity, "where", filter); err != nil {
 		return fmt.Errorf("delete %s where %s: %w", entity, filter, err)
 	}
 	return nil
+}
+
+// WaitForClusterLeader blocks until the controller's raft cluster has elected a
+// leader so subsequent writes do not fail with CLUSTER_NO_LEADER. No-op for ziti < 2.0.
+// Retries forever; rely on the overall test timeout if the cluster wedges.
+func (o *Overlay) WaitForClusterLeader() error {
+	if o.ZitiMajor < 2 {
+		return nil
+	}
+	log.Printf("overlay: waiting for cluster leader (ziti v%d.%d)", o.ZitiMajor, o.ZitiMinor)
+	attempts := 0
+	for {
+		attempts++
+		out, err := o.execZiti("ops", "cluster", "list", "-j")
+		if err == nil {
+			var resp struct {
+				Data []struct {
+					Leader *bool `json:"leader"`
+				} `json:"data"`
+			}
+			if json.Unmarshal(out, &resp) == nil {
+				for _, m := range resp.Data {
+					if m.Leader != nil && *m.Leader {
+						log.Printf("overlay: cluster leader elected after %d attempt(s)", attempts)
+						return nil
+					}
+				}
+			}
+		}
+		time.Sleep(1 * time.Second)
+	}
 }
