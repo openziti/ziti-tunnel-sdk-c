@@ -37,7 +37,7 @@ type TestState struct {
 	overlay   *testutil.Overlay
 	zetClient *testutil.ZET
 	zetHost   *testutil.ZET
-	pkce      *testutil.PKCE
+	idp       *testutil.IdP
 }
 
 func TestMain(m *testing.M) {
@@ -46,10 +46,10 @@ func TestMain(m *testing.M) {
 	var zitiBin string
 	var tlsuvDebug int
 	var testHome string
-	var pkceBin string
+	var idpBin string
 	flag.StringVar(&zetBin, "zet-bin", "", "path to ziti-edge-tunnel binary (required)")
 	flag.StringVar(&zitiBin, "ziti-bin", "", "path to ziti binary for controller+router bring-up (required)")
-	flag.StringVar(&pkceBin, "pkce-bin", "", "path to PKCE IdP binary (optional; enables tests that need an external IdP)")
+	flag.StringVar(&idpBin, "idp-bin", "", "path to IdP binary (optional; enables tests that need an external IdP)")
 	flag.IntVar(&zetVerbosity, "zet-verbosity", 4, "ziti-edge-tunnel -v level (0=silent..6=trace)")
 	flag.IntVar(&tlsuvDebug, "tlsuv-debug", 0, "TLSUV_DEBUG level (0=off..6=trace); off by default")
 	flag.StringVar(&testHome, "test-home", filepath.Join(os.TempDir(), "ziti-tunnel-test-quickstart"), "directory for the test files, overlay home, logs, etc")
@@ -83,9 +83,9 @@ func TestMain(m *testing.M) {
 			Verbosity:     zetVerbosity,
 			TlsuvDebug:    tlsuvDebug,
 		},
-		pkce: &testutil.PKCE{
-			Bin:     pkceBin,
-			WorkDir: filepath.Join(testHome, "pkce"),
+		idp: &testutil.IdP{
+			Bin:     idpBin,
+			WorkDir: filepath.Join(testHome, "idp"),
 		},
 	}
 
@@ -105,7 +105,7 @@ func run(m *testing.M, state TestState) (int, error) {
 	defer state.overlay.Stop()
 	defer state.zetClient.Stop()
 	defer state.zetHost.Stop()
-	defer state.pkce.Stop()
+	defer state.idp.Stop()
 	defer func() {
 		if state.overlay.CATrusted() {
 			_, cleanup := state.overlay.OSCAStrings()
@@ -160,9 +160,9 @@ func doSetup(state TestState) error {
 	if err := state.overlay.PurgeExtJwtSigners("Test"); err != nil {
 		return fmt.Errorf("purge stale test ext-jwt-signers: %w", err)
 	}
-	log.Printf("setup: purging stale identities for PKCE test user %q", testutil.DefaultPKCEUser.Email)
-	if err := state.overlay.PurgeIdentitiesByExternalId(testutil.DefaultPKCEUser.Email); err != nil {
-		return fmt.Errorf("purge stale PKCE test user identities: %w", err)
+	log.Printf("setup: purging stale identities for IdP test user %q", testutil.DefaultIdPUser.Email)
+	if err := state.overlay.PurgeIdentitiesByExternalId(testutil.DefaultIdPUser.Email); err != nil {
+		return fmt.Errorf("purge stale IdP test user identities: %w", err)
 	}
 
 	log.Printf("setup: starting ZET zetA and zetB in parallel")
@@ -193,13 +193,13 @@ func doSetup(state TestState) error {
 		return fmt.Errorf("start zetB: %w", zetHostErr)
 	}
 
-	if state.pkce.Bin != "" {
-		log.Printf("setup: starting PKCE IdP (pkceBin=%s)", state.pkce.Bin)
-		if err := state.pkce.Start(); err != nil {
-			return fmt.Errorf("start PKCE IdP: %w", err)
+	if state.idp.Bin != "" {
+		log.Printf("setup: starting IdP (idpBin=%s)", state.idp.Bin)
+		if err := state.idp.Start(); err != nil {
+			return fmt.Errorf("start IdP: %w", err)
 		}
 	} else {
-		log.Printf("setup: -pkce-bin not provided; tests that require an external IdP will be skipped")
+		log.Printf("setup: -idp-bin not provided; tests that require an external IdP will be skipped")
 	}
 
 	return nil

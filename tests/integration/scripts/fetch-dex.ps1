@@ -31,9 +31,6 @@ $dexExe = Join-Path $Dest "dex.exe"
 
 if ((Test-Path $dexExe) -and -not $Force) {
     Write-Host "dex already built at $dexExe (use -Force to rebuild)"
-    Write-Host ""
-    Write-Host "run tests with:"
-    Write-Host "  go -C tests/integration test -run TestPKCEUp -v -zet-bin <path> -ziti-bin <path> -pkce-bin `"$dexExe`""
     return
 }
 
@@ -59,6 +56,3 @@ try {
 
 Write-Host ""
 Write-Host "dex binary: $dexExe"
-Write-Host ""
-Write-Host "run tests with:"
-Write-Host "  go -C tests/integration test -run TestPKCEUp -v -zet-bin <path> -ziti-bin <path> -pkce-bin `"$dexExe`""

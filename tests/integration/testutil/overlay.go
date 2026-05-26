@@ -332,6 +332,23 @@ func (o *Overlay) CreateExtJwtSigner(t *testing.T, spec ExtJwtSignerSpec) string
 	return id
 }
 
+// FindExtJwtSignerId returns the id of the ext-jwt-signer with the given name
+// and whether it exists.
+func (o *Overlay) FindExtJwtSignerId(t *testing.T, name string) (string, bool) {
+	out, err := o.execZiti("edge", "list", "ext-jwt-signers", fmt.Sprintf("name=%q", name), "-j")
+	require.NoError(t, err, "list ext-jwt-signers name=%s", name)
+	var resp struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(out, &resp), "parse ext-jwt-signers list for %s", name)
+	if len(resp.Data) == 0 {
+		return "", false
+	}
+	return resp.Data[0].ID, true
+}
+
 // UpdateExtJwtSigner sends `ziti edge update ext-jwt-signer <name>` with the
 // fields supplied. Non-empty strings/slices are forwarded as their matching
 // flag; EnrollToCert and EnrollToToken are always sent because false is a

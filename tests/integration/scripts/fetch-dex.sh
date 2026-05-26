@@ -41,9 +41,6 @@ dex_bin="$DEST/$bin_name"
 
 if [[ -x "$dex_bin" && -z "$FORCE" ]]; then
     echo "dex already built at $dex_bin (set FORCE=1 to rebuild)"
-    echo
-    echo "run tests with:"
-    echo "  go -C tests/integration test -run TestPKCEUp -v -zet-bin <path> -ziti-bin <path> -pkce-bin \"$dex_bin\""
     exit 0
 fi
 
@@ -64,6 +61,3 @@ echo "building $bin_name -> $dex_bin"
 
 echo
 echo "dex binary: $dex_bin"
-echo
-echo "run tests with:"
-echo "  go -C tests/integration test -run TestPKCEUp -v -zet-bin <path> -ziti-bin <path> -pkce-bin \"$dex_bin\""

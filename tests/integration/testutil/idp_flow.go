@@ -31,11 +31,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// DrivePKCEFlow acts as the browser in the IdP's OIDC password flow, following
+// DriveIdPFlow acts as the browser in the IdP's OIDC password flow, following
 // redirects from authURL through the login form back to ZET's loopback
 // callback at localhost:20314.
-func (p *PKCE) DrivePKCEFlow(t *testing.T, authUrl string) {
-	t.Logf("driving PKCE flow (issuer=%s email=%s)", p.IssuerURL, p.Email)
+func (p *IdP) DriveIdPFlow(t *testing.T, authUrl string) {
+	t.Logf("driving IdP login flow (issuer=%s email=%s)", p.IssuerURL, p.Email)
 
 	jar, err := cookiejar.New(nil)
 	require.NoError(t, err, "create cookie jar")
@@ -59,7 +59,7 @@ func (p *PKCE) DrivePKCEFlow(t *testing.T, authUrl string) {
 	require.Equal(t, http.StatusOK, resp.StatusCode, "login page status=%d body=%s", resp.StatusCode, truncate(body, 200))
 
 	formAction, err := extractFormAction(string(body))
-	require.NoError(t, err, "parse PKCE login form (body=%s)", truncate(body, 200))
+	require.NoError(t, err, "parse IdP login form (body=%s)", truncate(body, 200))
 	postURL, err := absoluteURL(loginPageURL, formAction)
 	require.NoError(t, err, "resolve form action %q", formAction)
 
@@ -86,7 +86,7 @@ func (p *PKCE) DrivePKCEFlow(t *testing.T, authUrl string) {
 		require.NoError(t, err, "parse next location %q", current)
 		if isLoopbackCallback(u) {
 			require.NoError(t, hitLoopback(client, current), "hit loopback callback")
-			t.Logf("PKCE flow completed")
+			t.Logf("IdP login flow completed")
 			return
 		}
 		req, err = http.NewRequest(http.MethodGet, current, nil)
@@ -101,7 +101,7 @@ func (p *PKCE) DrivePKCEFlow(t *testing.T, authUrl string) {
 		current, err = absoluteURL(current, next)
 		require.NoError(t, err, "resolve next location")
 	}
-	require.Failf(t, "PKCE redirect chain did not finish", "did not reach loopback callback within hop limit (last=%s)", current)
+	require.Failf(t, "IdP login redirect chain did not finish", "did not reach loopback callback within hop limit (last=%s)", current)
 }
 
 func followRedirectsTo200(client *http.Client, start string, maxHops int) (string, error) {
