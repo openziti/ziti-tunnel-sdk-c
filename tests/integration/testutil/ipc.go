@@ -383,14 +383,6 @@ func (c *CommandsClient) Status() (*StatusUpdateResponse, error) {
 	return send[ServiceFunction, StatusUpdateResponse](&c.IPCClient, NewServiceFunction("Status"))
 }
 
-// StatusRaw is identical to Status but returns the daemon's Data field as raw
-// JSON instead of decoding into TunnelStatus. Used by the wire-contract test
-// in status_test.go to verify the daemon emits exactly the expected top-level
-// keys (typed unmarshal silently ignores extras and zero-fills missing fields).
-func (c *CommandsClient) StatusRaw() (*StatusRawResponse, error) {
-	return send[ServiceFunction, StatusRawResponse](&c.IPCClient, NewServiceFunction("Status"))
-}
-
 func (c *CommandsClient) AddIdentity(data AddIdentityData) (*AddIdentityResponse, error) {
 	f := AddIdentityFunction{
 		ServiceFunction: NewServiceFunction("AddIdentity"),

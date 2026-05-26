@@ -65,9 +65,6 @@ var DefaultIdPUser = IdPUser{
 	Password: "password",
 }
 
-// bcrypt of "password" at cost 10.
-const defaultIdPBcryptHash = `$2a$10$2b2cU8CPhOTaGrs1HRQuAueS7JTT5ZHsHSzYiFPm1leZck7Mc8T4W`
-
 // Start launches the IdP test binary against a generated config and waits
 // for OIDC discovery. Caller must defer Stop(). The IdP's combined
 // stdout+stderr is written to <WorkDir>/logs/idp.log so it sits alongside
@@ -111,6 +108,7 @@ func (p *IdP) Start() error {
 	p.ExternalID = DefaultIdPUser.Email
 
 	cfgPath := filepath.Join(p.WorkDir, "idp.yaml")
+	const defaultIdPBcryptHash = `$2a$10$2b2cU8CPhOTaGrs1HRQuAueS7JTT5ZHsHSzYiFPm1leZck7Mc8T4W`
 	cfg := fmt.Sprintf(`issuer: %s
 storage:
   type: memory

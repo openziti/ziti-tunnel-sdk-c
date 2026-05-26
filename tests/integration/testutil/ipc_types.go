@@ -16,8 +16,6 @@ limitations under the License.
 
 package testutil
 
-import "encoding/json"
-
 // All IPC wire types live here. Mirrors the wire JSON emitted/accepted by
 // ziti-edge-tunnel's IPC handlers (defined in lib/ziti-tunnel-cbs/include/ziti/ziti_tunnel_cbs.h).
 // JSON tags match the C TUNNEL_* macros exactly; do not rename them without
@@ -244,13 +242,6 @@ type ExternalAuthResponse struct {
 type StatusUpdateResponse struct {
 	ServiceResponse
 	Data TunnelStatus `json:"Data"`
-}
-
-// StatusRawResponse is the raw-bytes variant of StatusUpdateResponse for the
-// wire-contract test that needs to inspect the daemon's exact top-level keys.
-type StatusRawResponse struct {
-	ServiceResponse
-	Data json.RawMessage `json:"Data"`
 }
 
 // MFAEnrollmentResponse is returned by EnableMFA. Data carries the enrollment payload.

@@ -621,13 +621,13 @@ func (o *Overlay) PurgeIdentities(prefix string) error {
 	return o.deleteWhere("identities", prefix)
 }
 
-// PurgeIdentitiesByExternalId deletes every identity whose externalId equals the given value.
+// PurgeIdentityByExternalId deletes the identity whose externalId equals the given value.
 // Needed for enroll-to-cert/token tests since the OIDC flow auto-provisions identities with
 // names derived from JWT claims (not Test*), so the prefix purge misses them.
-func (o *Overlay) PurgeIdentitiesByExternalId(externalId string) error {
-	filter := fmt.Sprintf(`externalId = "%s" limit none`, externalId)
+func (o *Overlay) PurgeIdentityByExternalId(externalId string) error {
+	filter := fmt.Sprintf(`externalId = "%s"`, externalId)
 	if _, err := o.execZiti("edge", "delete", "identities", "where", filter); err != nil {
-		return fmt.Errorf("delete identities where %s: %w", filter, err)
+		return fmt.Errorf("delete identity where %s: %w", filter, err)
 	}
 	return nil
 }

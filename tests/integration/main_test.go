@@ -161,7 +161,7 @@ func doSetup(state TestState) error {
 		return fmt.Errorf("purge stale test ext-jwt-signers: %w", err)
 	}
 	log.Printf("setup: purging stale identities for IdP test user %q", testutil.DefaultIdPUser.Email)
-	if err := state.overlay.PurgeIdentitiesByExternalId(testutil.DefaultIdPUser.Email); err != nil {
+	if err := state.overlay.PurgeIdentityByExternalId(testutil.DefaultIdPUser.Email); err != nil {
 		return fmt.Errorf("purge stale IdP test user identities: %w", err)
 	}
 

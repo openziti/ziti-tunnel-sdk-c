@@ -127,7 +127,7 @@ func TestExternalAuthSingleSigner(t *testing.T) {
 func (c *extAuthContext) testEnrollToCertCompletes(t *testing.T) {
 	testutil.RunTestWithTimeout(t, func(t *testing.T) {
 		name := testutil.IdentityName(t)
-		t.Cleanup(func() { _ = c.overlay.PurgeIdentitiesByExternalId(c.idp.ExternalID) })
+		t.Cleanup(func() { _ = c.overlay.PurgeIdentityByExternalId(c.idp.ExternalID) })
 
 		controllerBase := c.overlay.ControllerHostPort()
 		mode := testutil.EnrollModeCert
@@ -154,7 +154,7 @@ func (c *extAuthContext) testEnrollToCertCompletes(t *testing.T) {
 func (c *extAuthContext) testEnrollToTokenCompletes(t *testing.T) {
 	testutil.RunTestWithTimeout(t, func(t *testing.T) {
 		name := testutil.IdentityName(t)
-		t.Cleanup(func() { _ = c.overlay.PurgeIdentitiesByExternalId(c.idp.ExternalID) })
+		t.Cleanup(func() { _ = c.overlay.PurgeIdentityByExternalId(c.idp.ExternalID) })
 
 		controllerBase := c.overlay.ControllerHostPort()
 		mode := testutil.EnrollModeToken
