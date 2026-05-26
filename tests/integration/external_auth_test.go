@@ -122,6 +122,8 @@ func TestExternalAuthSingleSigner(t *testing.T) {
 
 	c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToCert: true, EnrollToToken: true})
 	t.Run("testBothEnrollFlowsCompleteWhenBothEnabled", c.testBothEnrollFlowsCompleteWhenBothEnabled)
+
+	t.Run("testEnrollToNoneThenCertRejected", c.testEnrollToNoneThenCertRejected)
 }
 
 func (c *extAuthContext) testEnrollToCertCompletes(t *testing.T) {
@@ -314,4 +316,32 @@ func (c *extAuthContext) addEnrollToNoneIdentity(t *testing.T, name string) test
 	t.Logf("identity:needs_ext_login Identifier=%s NeedsExtAuth=%t", identityEvent.Id.Identifier, identityEvent.Id.NeedsExtAuth)
 
 	return identityEvent
+}
+
+func (c *extAuthContext) testEnrollToNoneThenCertRejected(t *testing.T) {
+	testutil.RunTestWithTimeout(t, func(t *testing.T) {
+		name := testutil.IdentityName(t)
+
+		enrollToNone := testutil.ExtJwtSignerSpec{}
+		c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, enrollToNone)
+		identityEvent := c.addEnrollToNoneIdentity(t, name)
+
+		c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToCert: true})
+
+		controllerBase := c.overlay.ControllerHostPort()
+		mode := testutil.EnrollModeCert
+		identityData := testutil.AddIdentityData{
+			IdentityFilename: name,
+			ControllerURL:    &controllerBase,
+			EnrollMode:       &mode,
+			Provider:         &c.workingSigner.name,
+		}
+		addResp := testutil.AddIdentity(t, c.zet.Commands, identityData)
+		require.False(t, addResp.Success(), "cert AddIdentity with same name should fail after a pending none enrollment\n%s", c.zet.LogPath())
+		require.Equal(t, 500, addResp.Code, "expected Code=500, got %d", addResp.Code)
+		require.Contains(t, addResp.Error, "identity exists with the same name", "expected name-collision error, got %q", addResp.Error)
+		// Ensure the identity file wasn't overwritten
+		testutil.AssertValidUrlEnrolledIdentityFile(t, identityEvent.Id.Identifier, testutil.EnrollModeNone)
+		t.Logf("cert AddIdentity rejected: code=%d error=%q", addResp.Code, addResp.Error)
+	})
 }
