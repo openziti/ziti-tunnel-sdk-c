@@ -67,10 +67,10 @@ func AssertValidUrlEnrolledIdentityFile(t *testing.T, path string, mode EnrollMo
 	require.NotEmpty(t, content.ZtAPI, "identity file ztAPI empty")
 	require.NotEmpty(t, content.ID.CA, "identity file id.ca empty")
 	switch mode {
-	case EnrollModeNone:
-		require.Empty(t, content.ID.Cert, "identity file id.cert should be empty for URL enroll-to-none")
-		require.Empty(t, content.ID.Key, "identity file id.key should be empty for URL enroll-to-none")
-	case EnrollModeCert, EnrollModeToken:
+	case EnrollModeNone, EnrollModeToken:
+		require.Empty(t, content.ID.Cert, "identity file id.cert should be empty for URL enroll-to-%s", mode)
+		require.Empty(t, content.ID.Key, "identity file id.key should be empty for URL enroll-to-%s", mode)
+	case EnrollModeCert:
 		require.NotEmpty(t, content.ID.Cert, "identity file id.cert empty")
 		require.NotEmpty(t, content.ID.Key, "identity file id.key empty")
 	}

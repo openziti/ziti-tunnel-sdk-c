@@ -24,8 +24,17 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"testing"
 	"time"
 )
+
+// RequireConfigured skips the test when no PKCE IdP was configured (the test
+// runner was invoked without -pkce-bin). Safe to call on a nil receiver.
+func (p *PKCE) RequireConfigured(t *testing.T) {
+	if p == nil {
+		t.Skip("PKCE IdP is not configured (-pkce-bin not provided)")
+	}
+}
 
 // PKCE is a running test IdP used to exercise the OAuth2 PKCE flow.
 type PKCE struct {

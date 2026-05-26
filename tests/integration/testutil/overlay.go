@@ -290,21 +290,22 @@ func (o *Overlay) CreateIdentityJWTWithAuthPolicy(name, authPolicy string) (stri
 }
 
 // ExtJwtSignerSpec describes an external JWT signer to register on the
-// controller. EnrollMode sets --enroll-to-cert or --enroll-to-token (ziti 2.0+ only).
+// controller. EnrollToCert / EnrollToToken set the matching ziti 2.0+ flags.
 type ExtJwtSignerSpec struct {
-	Name       string
-	Issuer     string
-	JWKS       string
-	ClientID   string
-	Claim      string
-	Scopes     []string
-	EnrollMode EnrollMode
+	Name          string
+	Issuer        string
+	JWKS          string
+	ClientID      string
+	Claim         string
+	Scopes        []string
+	EnrollToCert  bool
+	EnrollToToken bool
 }
 
 // CreateExtJwtSigner registers an ext-jwt-signer on the controller and returns
 // its assigned ID.
 func (o *Overlay) CreateExtJwtSigner(t *testing.T, spec ExtJwtSignerSpec) string {
-	t.Logf("creating ext-jwt-signer %q (issuer=%s clientID=%s enrollMode=%q)", spec.Name, spec.Issuer, spec.ClientID, spec.EnrollMode)
+	t.Logf("creating ext-jwt-signer %q (issuer=%s clientID=%s enrollToCert=%t enrollToToken=%t)", spec.Name, spec.Issuer, spec.ClientID, spec.EnrollToCert, spec.EnrollToToken)
 	args := []string{
 		"edge", "create", "ext-jwt-signer", spec.Name, spec.Issuer,
 		"--jwks-endpoint", spec.JWKS,
@@ -318,10 +319,10 @@ func (o *Overlay) CreateExtJwtSigner(t *testing.T, spec ExtJwtSignerSpec) string
 	for _, s := range spec.Scopes {
 		args = append(args, "--scopes", s)
 	}
-	switch spec.EnrollMode {
-	case EnrollModeCert:
+	if spec.EnrollToCert {
 		args = append(args, "--enroll-to-cert")
-	case EnrollModeToken:
+	}
+	if spec.EnrollToToken {
 		args = append(args, "--enroll-to-token")
 	}
 	out, err := o.execZiti(args...)
@@ -329,6 +330,39 @@ func (o *Overlay) CreateExtJwtSigner(t *testing.T, spec ExtJwtSignerSpec) string
 	id := string(bytes.TrimSpace(out))
 	t.Logf("ext-jwt-signer %q created with id=%s", spec.Name, id)
 	return id
+}
+
+// UpdateExtJwtSigner sends `ziti edge update ext-jwt-signer <name>` with the
+// fields supplied. Non-empty strings/slices are forwarded as their matching
+// flag; EnrollToCert and EnrollToToken are always sent because false is a
+// meaningful authoritative state and the only way to flip a previously-enabled
+// flag back off.
+func (o *Overlay) UpdateExtJwtSigner(t *testing.T, name string, spec ExtJwtSignerSpec) {
+	t.Logf("updating ext-jwt-signer %q (enrollToCert=%t enrollToToken=%t)", name, spec.EnrollToCert, spec.EnrollToToken)
+	args := []string{"edge", "update", "ext-jwt-signer", name}
+	if spec.Name != "" {
+		args = append(args, "--name", spec.Name)
+	}
+	if spec.Issuer != "" {
+		args = append(args, "--issuer", spec.Issuer, "--external-auth-url", spec.Issuer)
+	}
+	if spec.JWKS != "" {
+		args = append(args, "--jwks-endpoint", spec.JWKS)
+	}
+	if spec.ClientID != "" {
+		args = append(args, "--audience", spec.ClientID, "--client-id", spec.ClientID)
+	}
+	if spec.Claim != "" {
+		args = append(args, "--claims-property", spec.Claim)
+	}
+	for _, s := range spec.Scopes {
+		args = append(args, "--scopes", s)
+	}
+	args = append(args, fmt.Sprintf("--enroll-to-cert=%t", spec.EnrollToCert))
+	args = append(args, fmt.Sprintf("--enroll-to-token=%t", spec.EnrollToToken))
+	_, err := o.execZiti(args...)
+	require.NoError(t, err, "update ext-jwt-signer %s", name)
+	t.Logf("ext-jwt-signer %q updated", name)
 }
 
 // CreateAuthPolicyForExtJwt creates an auth policy whose primary auth method
