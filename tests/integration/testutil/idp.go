@@ -24,11 +24,20 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"testing"
 	"time"
 )
 
-// PKCE is a running test IdP used to exercise the OAuth2 PKCE flow.
-type PKCE struct {
+// RequireConfigured skips the test when no IdP was configured (the test
+// runner was invoked without -idp-bin). Safe to call on a nil receiver.
+func (p *IdP) RequireConfigured(t *testing.T) {
+	if p == nil {
+		t.Skip("IdP is not configured (-idp-bin not provided)")
+	}
+}
+
+// IdP is a running test identity provider used to exercise the OAuth2 PKCE flow.
+type IdP struct {
 	Bin            string
 	WorkDir        string
 	HTTPAddr       string
@@ -42,41 +51,38 @@ type PKCE struct {
 	cmd            *exec.Cmd
 }
 
-type PKCEUser struct {
+type IdPUser struct {
 	Email    string
 	Username string
 	UserID   string
 	Password string
 }
 
-var DefaultPKCEUser = PKCEUser{
+var DefaultIdPUser = IdPUser{
 	Email:    "test@example.com",
 	Username: "test",
 	UserID:   "08a8684b-db88-4b73-90a9-3cd1661f5466",
 	Password: "password",
 }
 
-// bcrypt of "password" at cost 10.
-const defaultPKCEBcryptHash = `$2a$10$2b2cU8CPhOTaGrs1HRQuAueS7JTT5ZHsHSzYiFPm1leZck7Mc8T4W`
-
-// StartPKCE launches the PKCE test IdP against a generated config and waits
-// for OIDC discovery. Caller must defer Stop(). If logDir is non-empty, the
-// IdP's combined stdout+stderr is written to <logDir>/pkce.log so it sits
-// alongside the zet logs and survives the test temp dir being deleted.
-func (p *PKCE) Start() error {
+// Start launches the IdP test binary against a generated config and waits
+// for OIDC discovery. Caller must defer Stop(). The IdP's combined
+// stdout+stderr is written to <WorkDir>/logs/idp.log so it sits alongside
+// the zet logs and survives the test temp dir being deleted.
+func (p *IdP) Start() error {
 	if p.Bin == "" {
-		return fmt.Errorf("PKCE binary path is empty")
+		return fmt.Errorf("IdP binary path is empty")
 	}
 	if _, err := os.Stat(p.Bin); err != nil {
-		return fmt.Errorf("PKCE binary not found: %w", err)
+		return fmt.Errorf("IdP binary not found: %w", err)
 	}
 	if err := os.MkdirAll(p.WorkDir, 0o755); err != nil {
-		return fmt.Errorf("create PKCE work dir: %w", err)
+		return fmt.Errorf("create IdP work dir: %w", err)
 	}
 
 	port, err := pickFreePort()
 	if err != nil {
-		return fmt.Errorf("pick PKCE port: %w", err)
+		return fmt.Errorf("pick IdP port: %w", err)
 	}
 	httpAddr := fmt.Sprintf("127.0.0.1:%d", port)
 	issuer := "http://" + httpAddr + "/dex"
@@ -97,11 +103,12 @@ func (p *PKCE) Start() error {
 	}
 
 	p.IssuerURL = issuer
-	p.Email = DefaultPKCEUser.Email
-	p.Password = DefaultPKCEUser.Password
-	p.ExternalID = DefaultPKCEUser.Email
+	p.Email = DefaultIdPUser.Email
+	p.Password = DefaultIdPUser.Password
+	p.ExternalID = DefaultIdPUser.Email
 
-	cfgPath := filepath.Join(p.WorkDir, "pkce.yaml")
+	cfgPath := filepath.Join(p.WorkDir, "idp.yaml")
+	const defaultIdPBcryptHash = `$2a$10$2b2cU8CPhOTaGrs1HRQuAueS7JTT5ZHsHSzYiFPm1leZck7Mc8T4W`
 	cfg := fmt.Sprintf(`issuer: %s
 storage:
   type: memory
@@ -116,19 +123,19 @@ staticPasswords:
     hash: %q
     username: %q
     userID: %q
-`, issuer, httpAddr, clientsYAML, DefaultPKCEUser.Email, defaultPKCEBcryptHash, DefaultPKCEUser.Username, DefaultPKCEUser.UserID)
+`, issuer, httpAddr, clientsYAML, DefaultIdPUser.Email, defaultIdPBcryptHash, DefaultIdPUser.Username, DefaultIdPUser.UserID)
 	if err := os.WriteFile(cfgPath, []byte(cfg), 0o644); err != nil {
-		return fmt.Errorf("write PKCE config: %w", err)
+		return fmt.Errorf("write IdP config: %w", err)
 	}
 
 	logDir := filepath.Join(p.WorkDir, "logs")
 	if err := os.MkdirAll(logDir, 0o755); err != nil {
-		return fmt.Errorf("failed to create PKCE log dir: %w", err)
+		return fmt.Errorf("failed to create IdP log dir: %w", err)
 	}
-	logPath := filepath.Join(logDir, "pkce.log")
+	logPath := filepath.Join(logDir, "idp.log")
 	logFile, err := os.Create(logPath)
 	if err != nil {
-		return fmt.Errorf("create PKCE log: %w", err)
+		return fmt.Errorf("create IdP log: %w", err)
 	}
 
 	p.cmd = exec.Command(p.Bin, "serve", cfgPath)
@@ -136,18 +143,18 @@ staticPasswords:
 	p.cmd.Stderr = logFile
 	if err := p.cmd.Start(); err != nil {
 		logFile.Close()
-		return fmt.Errorf("start PKCE: %w", err)
+		return fmt.Errorf("start IdP: %w", err)
 	}
-	log.Printf("setup: started PKCE pid=%d issuer=%s log=%s", p.cmd.Process.Pid, issuer, logPath)
+	log.Printf("setup: started IdP pid=%d issuer=%s log=%s", p.cmd.Process.Pid, issuer, logPath)
 
-	if err := waitForPKCEDiscovery(issuer); err != nil {
+	if err := waitForIdPDiscovery(issuer); err != nil {
 		p.Stop()
-		return fmt.Errorf("PKCE discovery never came up (see %s): %w", logPath, err)
+		return fmt.Errorf("IdP discovery never came up (see %s): %w", logPath, err)
 	}
 	return nil
 }
 
-func (p *PKCE) Stop() {
+func (p *IdP) Stop() {
 	if p == nil || p.cmd == nil || p.cmd.Process == nil {
 		return
 	}
@@ -156,7 +163,7 @@ func (p *PKCE) Stop() {
 	p.cmd = nil
 }
 
-func (p *PKCE) JWKSURI() string {
+func (p *IdP) JWKSURI() string {
 	return p.IssuerURL + "/keys"
 }
 
@@ -169,7 +176,7 @@ func pickFreePort() (int, error) {
 	return l.Addr().(*net.TCPAddr).Port, nil
 }
 
-func waitForPKCEDiscovery(issuer string) error {
+func waitForIdPDiscovery(issuer string) error {
 	client := &http.Client{Timeout: 2 * time.Second}
 	url := issuer + "/.well-known/openid-configuration"
 	for {

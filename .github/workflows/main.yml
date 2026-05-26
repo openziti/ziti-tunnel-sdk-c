@@ -147,15 +147,15 @@ jobs:
           echo "ZITI_BIN=$ZITI_ABS" >> "$GITHUB_ENV"
           "$ZITI_ABS" --version || true
 
-      - name: Build PKCE IdP
+      - name: Build IdP
         shell: bash
         run: |
           DEST="$RUNNER_TEMP/dex-build" tests/integration/scripts/fetch-dex.sh
           case "$(uname -s)" in
-            MINGW*|MSYS*|CYGWIN*) PKCE_BIN="$RUNNER_TEMP/dex-build/dex.exe" ;;
-            *) PKCE_BIN="$RUNNER_TEMP/dex-build/dex" ;;
+            MINGW*|MSYS*|CYGWIN*) IDP_BIN="$RUNNER_TEMP/dex-build/dex.exe" ;;
+            *) IDP_BIN="$RUNNER_TEMP/dex-build/dex" ;;
           esac
-          echo "PKCE_BIN=$PKCE_BIN" >> "$GITHUB_ENV"
+          echo "IDP_BIN=$IDP_BIN" >> "$GITHUB_ENV"
 
       - name: Create ziti group
         if: ${{ matrix.os.create-group != '' }}
@@ -228,16 +228,16 @@ jobs:
               # ulimit -c unlimited must be set inside the privileged shell: sudo
               # resets resource limits via PAM, so setting it in the outer shell
               # has no effect on ZET child processes.
-              sudo env "PATH=$PATH" "ZET_BIN=$ZET_BIN" "ZITI_BIN=$ZITI_BIN" "PKCE_BIN=$PKCE_BIN" "RUNNER_TEMP=$RUNNER_TEMP" \
+              sudo env "PATH=$PATH" "ZET_BIN=$ZET_BIN" "ZITI_BIN=$ZITI_BIN" "IDP_BIN=$IDP_BIN" "RUNNER_TEMP=$RUNNER_TEMP" \
                 sh -c 'ulimit -c unlimited && exec go test ./... -v -timeout 20m \
-                  -zet-bin="$ZET_BIN" -ziti-bin="$ZITI_BIN" -pkce-bin="$PKCE_BIN" \
+                  -zet-bin="$ZET_BIN" -ziti-bin="$ZITI_BIN" -idp-bin="$IDP_BIN" \
                   -test-home="$RUNNER_TEMP"'
               ;;
             *)
               go test ./... -v -timeout 20m \
                 -zet-bin="$ZET_BIN" \
                 -ziti-bin="$ZITI_BIN" \
-                -pkce-bin="$PKCE_BIN" \
+                -idp-bin="$IDP_BIN" \
                 -test-home="$RUNNER_TEMP"
               ;;
           esac
@@ -313,7 +313,7 @@ jobs:
           path: |
             ${{ runner.temp }}/zets/logs/*.log
             ${{ runner.temp }}/overlay/quickstart-logs/*.log
-            ${{ runner.temp }}/pkce/logs/*.log
+            ${{ runner.temp }}/idp/logs/*.log
           if-no-files-found: ignore
 
   nix-build:
