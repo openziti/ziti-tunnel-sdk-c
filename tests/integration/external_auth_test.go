@@ -126,6 +126,7 @@ func TestExternalAuthSingleSigner(t *testing.T) {
 	t.Run("testEnrollToNoneThenCertRejected", c.testEnrollToNoneThenCertRejected)
 	t.Run("testEnrollToCertThenNoneRejected", c.testEnrollToCertThenNoneRejected)
 	t.Run("testEnrollToCertThenTokenRejected", c.testEnrollToCertThenTokenRejected)
+	t.Run("testEnrollToTokenThenCertRejected", c.testEnrollToTokenThenCertRejected)
 }
 
 func (c *extAuthContext) testEnrollToNoneCompletes(t *testing.T) {
@@ -294,32 +295,39 @@ func (c *extAuthContext) testEnrollToTokenCompletes(t *testing.T) {
 		name := testutil.IdentityName(t)
 		t.Cleanup(func() { _ = c.overlay.PurgeIdentityByExternalId(c.idp.ExternalID) })
 
-		controllerBase := c.overlay.ControllerHostPort()
-		mode := testutil.EnrollModeToken
-		identityData := testutil.AddIdentityData{
-			IdentityFilename: name,
-			ControllerURL:    &controllerBase,
-			EnrollMode:       &mode,
-			Provider:         &c.workingSigner.name,
-		}
-		addResp := testutil.AddIdentity(t, c.zet.Commands, identityData)
-		require.True(t, addResp.Success(), "AddIdentity (enroll to token) should succeed: error=%q\n%s", addResp.Error, c.zet.LogPath())
-		require.NotEmpty(t, addResp.Data.URL, "AddIdentity (enroll to token) response has empty URL")
-
-		c.idp.DriveIdPFlow(t, addResp.Data.URL)
-
-		identityEvent := c.zet.Events.WaitForIdentityEvent(t, "needs_ext_login", name)
-		require.True(t, identityEvent.Id.NeedsExtAuth, "identity:needs_ext_login NeedsExtAuth=%t after enroll to token IdP login flow, want true", identityEvent.Id.NeedsExtAuth)
-		authURL := c.zet.Commands.GetExternalAuthURL(t, identityEvent.Id.Identifier, c.workingSigner.name, c.zet.LogPath())
-
-		c.idp.DriveIdPFlow(t, authURL)
-
-		added := c.zet.Events.WaitForIdentityEvent(t, "added", name)
-		require.True(t, added.Id.Active, "identity:added Active=%t after enroll to token IdP login flow, want true", added.Id.Active)
-		require.False(t, added.Id.NeedsExtAuth, "identity:added NeedsExtAuth=%t after enroll to token IdP login flow, want false", added.Id.NeedsExtAuth)
-		testutil.AssertValidUrlEnrolledIdentityFile(t, added.Id.Identifier, testutil.EnrollModeToken)
-		t.Logf("identity:added Identifier=%s Active=%t NeedsExtAuth=%t after enroll to token IdP login flow", added.Id.Identifier, added.Id.Active, added.Id.NeedsExtAuth)
+		c.completeEnrollToToken(t, name)
 	})
+}
+
+// completeEnrollToToken drives a full enroll-to-token flow for name and returns the
+// resulting identifier. The working signer must already have EnrollToToken enabled.
+func (c *extAuthContext) completeEnrollToToken(t *testing.T, name string) string {
+	controllerBase := c.overlay.ControllerHostPort()
+	mode := testutil.EnrollModeToken
+	identityData := testutil.AddIdentityData{
+		IdentityFilename: name,
+		ControllerURL:    &controllerBase,
+		EnrollMode:       &mode,
+		Provider:         &c.workingSigner.name,
+	}
+	addResp := testutil.AddIdentity(t, c.zet.Commands, identityData)
+	require.True(t, addResp.Success(), "AddIdentity (enroll to token) should succeed: error=%q\n%s", addResp.Error, c.zet.LogPath())
+	require.NotEmpty(t, addResp.Data.URL, "AddIdentity (enroll to token) response has empty URL")
+
+	c.idp.DriveIdPFlow(t, addResp.Data.URL)
+
+	identityEvent := c.zet.Events.WaitForIdentityEvent(t, "needs_ext_login", name)
+	require.True(t, identityEvent.Id.NeedsExtAuth, "identity:needs_ext_login NeedsExtAuth=%t after enroll to token IdP login flow, want true", identityEvent.Id.NeedsExtAuth)
+	authURL := c.zet.Commands.GetExternalAuthURL(t, identityEvent.Id.Identifier, c.workingSigner.name, c.zet.LogPath())
+
+	c.idp.DriveIdPFlow(t, authURL)
+
+	added := c.zet.Events.WaitForIdentityEvent(t, "added", name)
+	require.True(t, added.Id.Active, "identity:added Active=%t after enroll to token IdP login flow, want true", added.Id.Active)
+	require.False(t, added.Id.NeedsExtAuth, "identity:added NeedsExtAuth=%t after enroll to token IdP login flow, want false", added.Id.NeedsExtAuth)
+	testutil.AssertValidUrlEnrolledIdentityFile(t, added.Id.Identifier, testutil.EnrollModeToken)
+	t.Logf("identity:added Identifier=%s Active=%t NeedsExtAuth=%t after enroll to token IdP login flow", added.Id.Identifier, added.Id.Active, added.Id.NeedsExtAuth)
+	return added.Id.Identifier
 }
 
 func (c *extAuthContext) testBothEnrollFlowsCompleteWhenBothEnabled(t *testing.T) {
@@ -392,6 +400,30 @@ func (c *extAuthContext) testEnrollToCertThenTokenRejected(t *testing.T) {
 		addResp := testutil.AddIdentity(t, c.zet.Commands, enrollToTokenIdentity)
 		c.assertIdentityExistsSameName(t, addResp)
 		testutil.AssertValidUrlEnrolledIdentityFile(t, identifier, testutil.EnrollModeCert)
+	})
+}
+
+func (c *extAuthContext) testEnrollToTokenThenCertRejected(t *testing.T) {
+	testutil.RunTestWithTimeout(t, func(t *testing.T) {
+		name := testutil.IdentityName(t)
+		t.Cleanup(func() { _ = c.overlay.PurgeIdentityByExternalId(c.idp.ExternalID) })
+
+		c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToToken: true})
+		identifier := c.completeEnrollToToken(t, name)
+
+		c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToCert: true})
+
+		controllerBase := c.overlay.ControllerHostPort()
+		mode := testutil.EnrollModeCert
+		enrollToCertIdentity := testutil.AddIdentityData{
+			IdentityFilename: name,
+			ControllerURL:    &controllerBase,
+			EnrollMode:       &mode,
+			Provider:         &c.workingSigner.name,
+		}
+		addResp := testutil.AddIdentity(t, c.zet.Commands, enrollToCertIdentity)
+		c.assertIdentityExistsSameName(t, addResp)
+		testutil.AssertValidUrlEnrolledIdentityFile(t, identifier, testutil.EnrollModeToken)
 	})
 }
 
