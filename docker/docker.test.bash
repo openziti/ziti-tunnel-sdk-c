@@ -151,13 +151,18 @@ set -o nounset
 set -o pipefail
 set -o xtrace
 
-ziti edge login \
+# the controller may reject the admin login briefly after startup, so retry a few times
+ATTEMPTS=5
+until ziti edge login \
 ${ZITI_CTRL_ADVERTISED_ADDRESS}:${ZITI_CTRL_ADVERTISED_PORT} \
 --ca=/home/ziggy/quickstart/pki/root-ca/certs/root-ca.cert \
 --username=admin \
 --password=${ZITI_PWD} \
---timeout=1 \
---verbose
+--timeout=5
+do
+    (( --ATTEMPTS )) || { echo "ERROR: ziti edge login failed" >&2; exit 1; }
+    sleep 2
+done
 
 ziti edge create identity "httpbin-client" \
     --jwt-output-file /tmp/httpbin-client.ott.jwt \

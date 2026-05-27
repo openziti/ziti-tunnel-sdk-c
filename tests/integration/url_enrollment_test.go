@@ -51,7 +51,7 @@ func testUrlEnrollmentWithValidControllerUrlSucceeds(t *testing.T) {
 
 		event := events.WaitForIdentityEvent(t, "needs_ext_login", identityName)
 		require.NotEmpty(t, event.Id.Identifier, "identity:needs_ext_login Identifier empty")
-		require.True(t, event.Id.NeedsExtAuth, "identity:needs_ext_login NeedsExtAuth=%t, want true", event.Id.NeedsExtAuth)
+		require.True(t, event.Id.NeedsExtAuth, "identity:needs_ext_login NeedsExtAuth=%t", event.Id.NeedsExtAuth)
 
 		testutil.AssertValidUrlEnrolledIdentityFile(t, event.Id.Identifier, testutil.EnrollModeNone)
 		t.Logf("URL-enrolled identity:needs_ext_login Identifier=%s NeedsExtAuth=%t", event.Id.Identifier, event.Id.NeedsExtAuth)
