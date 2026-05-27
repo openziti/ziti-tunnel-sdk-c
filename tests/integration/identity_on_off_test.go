@@ -57,7 +57,7 @@ func testIdentityOnOffTogglesActiveOff(t *testing.T) {
 		require.True(t, offResp.Success(), "IdentityOnOff(false) failed: error=%q code=%d", offResp.Error, offResp.Code)
 
 		off := events.WaitForIdentityEvent(t, "added", name)
-		require.False(t, off.Id.Active, "identity:added Active=%t after IdentityOnOff(false), want false", off.Id.Active)
+		require.False(t, off.Id.Active, "identity:added Active=%t after IdentityOnOff(false)", off.Id.Active)
 		t.Logf("identity:added reports Active=%t after IdentityOnOff(false)", off.Id.Active)
 	})
 }
@@ -91,7 +91,7 @@ func testIdentityOnOffTogglesActiveOn(t *testing.T) {
 		require.True(t, offResp.Success(), "IdentityOnOff(false) failed: error=%q code=%d", offResp.Error, offResp.Code)
 
 		off := events.WaitForIdentityEvent(t, "added", name)
-		require.False(t, off.Id.Active, "identity:added Active=%t after IdentityOnOff(false), want false", off.Id.Active)
+		require.False(t, off.Id.Active, "identity:added Active=%t after IdentityOnOff(false)", off.Id.Active)
 
 		t.Logf("sending IdentityOnOff(true) for %q", name)
 		onResp, err := client.IdentityOnOff(added.Id.Identifier, true)
@@ -99,7 +99,7 @@ func testIdentityOnOffTogglesActiveOn(t *testing.T) {
 		require.True(t, onResp.Success(), "IdentityOnOff(true) failed: error=%q code=%d", onResp.Error, onResp.Code)
 
 		on := events.WaitForIdentityEvent(t, "added", name)
-		require.True(t, on.Id.Active, "identity:added Active=%t after IdentityOnOff(true), want true", on.Id.Active)
+		require.True(t, on.Id.Active, "identity:added Active=%t after IdentityOnOff(true)", on.Id.Active)
 		t.Logf("identity:added reports Active=%t after IdentityOnOff(true)", on.Id.Active)
 	})
 }

@@ -56,7 +56,7 @@ func testAddIdentityWithJwtSucceeds(t *testing.T) {
 		require.True(t, resp.Success(), "AddIdentity failed: error=%q code=%d\n%s", resp.Error, resp.Code, state.zetClient.LogPath())
 
 		event := events.WaitForIdentityEvent(t, "added", identityName)
-		require.True(t, event.Id.Active, "identity:added Active=%t, want true", event.Id.Active)
+		require.True(t, event.Id.Active, "identity:added Active=%t", event.Id.Active)
 		require.NotEmpty(t, event.Id.Identifier, "identity:added Identifier empty")
 
 		testutil.AssertValidJwtEnrolledIdentityFile(t, event.Id.Identifier)
