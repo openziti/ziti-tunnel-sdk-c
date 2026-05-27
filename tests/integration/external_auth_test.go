@@ -265,17 +265,20 @@ func (c *extAuthContext) testEnrollToCertCompletes(t *testing.T) {
 	})
 }
 
-// completeEnrollToCert drives a full enroll-to-cert flow for name and returns the
-// resulting identifier. The working signer must already have EnrollToCert enabled.
-func (c *extAuthContext) completeEnrollToCert(t *testing.T, name string) string {
+func (c *extAuthContext) createIdentityData(name string, mode testutil.EnrollMode) testutil.AddIdentityData {
 	controllerBase := c.overlay.ControllerHostPort()
-	mode := testutil.EnrollModeCert
-	identityData := testutil.AddIdentityData{
+	return testutil.AddIdentityData{
 		IdentityFilename: name,
 		ControllerURL:    &controllerBase,
 		EnrollMode:       &mode,
 		Provider:         &c.workingSigner.name,
 	}
+}
+
+// completeEnrollToCert drives a full enroll-to-cert flow for name and returns the
+// resulting identifier. The working signer must already have EnrollToCert enabled.
+func (c *extAuthContext) completeEnrollToCert(t *testing.T, name string) string {
+	identityData := c.createIdentityData(name, testutil.EnrollModeCert)
 	addResp := testutil.AddIdentity(t, c.zet.Commands, identityData)
 	require.True(t, addResp.Success(), "AddIdentity (enroll to cert) should succeed: error=%q\n%s", addResp.Error, c.zet.LogPath())
 	require.NotEmpty(t, addResp.Data.URL, "AddIdentity (enroll to cert) response has empty URL")
@@ -302,14 +305,7 @@ func (c *extAuthContext) testEnrollToTokenCompletes(t *testing.T) {
 // completeEnrollToToken drives a full enroll-to-token flow for name and returns the
 // resulting identifier. The working signer must already have EnrollToToken enabled.
 func (c *extAuthContext) completeEnrollToToken(t *testing.T, name string) string {
-	controllerBase := c.overlay.ControllerHostPort()
-	mode := testutil.EnrollModeToken
-	identityData := testutil.AddIdentityData{
-		IdentityFilename: name,
-		ControllerURL:    &controllerBase,
-		EnrollMode:       &mode,
-		Provider:         &c.workingSigner.name,
-	}
+	identityData := c.createIdentityData(name, testutil.EnrollModeToken)
 	addResp := testutil.AddIdentity(t, c.zet.Commands, identityData)
 	require.True(t, addResp.Success(), "AddIdentity (enroll to token) should succeed: error=%q\n%s", addResp.Error, c.zet.LogPath())
 	require.NotEmpty(t, addResp.Data.URL, "AddIdentity (enroll to token) response has empty URL")
@@ -344,14 +340,7 @@ func (c *extAuthContext) testEnrollToNoneThenCertRejected(t *testing.T) {
 		identityEvent := c.addEnrollToNoneIdentity(t, name)
 
 		c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToCert: true})
-		controllerBase := c.overlay.ControllerHostPort()
-		mode := testutil.EnrollModeCert
-		enrollToCertIdentity := testutil.AddIdentityData{
-			IdentityFilename: name,
-			ControllerURL:    &controllerBase,
-			EnrollMode:       &mode,
-			Provider:         &c.workingSigner.name,
-		}
+		enrollToCertIdentity := c.createIdentityData(name, testutil.EnrollModeCert)
 		addResp := testutil.AddIdentity(t, c.zet.Commands, enrollToCertIdentity)
 		c.assertIdentityExistsSameName(t, addResp)
 		testutil.AssertValidUrlEnrolledIdentityFile(t, identityEvent.Id.Identifier, testutil.EnrollModeNone)
@@ -389,14 +378,7 @@ func (c *extAuthContext) testEnrollToCertThenTokenRejected(t *testing.T) {
 		identifier := c.completeEnrollToCert(t, name)
 
 		c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToToken: true})
-		controllerBase := c.overlay.ControllerHostPort()
-		mode := testutil.EnrollModeToken
-		enrollToTokenIdentity := testutil.AddIdentityData{
-			IdentityFilename: name,
-			ControllerURL:    &controllerBase,
-			EnrollMode:       &mode,
-			Provider:         &c.workingSigner.name,
-		}
+		enrollToTokenIdentity := c.createIdentityData(name, testutil.EnrollModeToken)
 		addResp := testutil.AddIdentity(t, c.zet.Commands, enrollToTokenIdentity)
 		c.assertIdentityExistsSameName(t, addResp)
 		testutil.AssertValidUrlEnrolledIdentityFile(t, identifier, testutil.EnrollModeCert)
@@ -412,15 +394,7 @@ func (c *extAuthContext) testEnrollToTokenThenCertRejected(t *testing.T) {
 		identifier := c.completeEnrollToToken(t, name)
 
 		c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToCert: true})
-
-		controllerBase := c.overlay.ControllerHostPort()
-		mode := testutil.EnrollModeCert
-		enrollToCertIdentity := testutil.AddIdentityData{
-			IdentityFilename: name,
-			ControllerURL:    &controllerBase,
-			EnrollMode:       &mode,
-			Provider:         &c.workingSigner.name,
-		}
+		enrollToCertIdentity := c.createIdentityData(name, testutil.EnrollModeCert)
 		addResp := testutil.AddIdentity(t, c.zet.Commands, enrollToCertIdentity)
 		c.assertIdentityExistsSameName(t, addResp)
 		testutil.AssertValidUrlEnrolledIdentityFile(t, identifier, testutil.EnrollModeToken)
