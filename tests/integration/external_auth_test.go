@@ -124,6 +124,7 @@ func TestExternalAuthSingleSigner(t *testing.T) {
 	t.Run("testBothEnrollFlowsCompleteWhenBothEnabled", c.testBothEnrollFlowsCompleteWhenBothEnabled)
 
 	t.Run("testEnrollToNoneThenCertRejected", c.testEnrollToNoneThenCertRejected)
+	t.Run("testEnrollToCertThenNoneRejected", c.testEnrollToCertThenNoneRejected)
 }
 
 func (c *extAuthContext) testEnrollToCertCompletes(t *testing.T) {
@@ -131,26 +132,33 @@ func (c *extAuthContext) testEnrollToCertCompletes(t *testing.T) {
 		name := testutil.IdentityName(t)
 		t.Cleanup(func() { _ = c.overlay.PurgeIdentityByExternalId(c.idp.ExternalID) })
 
-		controllerBase := c.overlay.ControllerHostPort()
-		mode := testutil.EnrollModeCert
-		identityData := testutil.AddIdentityData{
-			IdentityFilename: name,
-			ControllerURL:    &controllerBase,
-			EnrollMode:       &mode,
-			Provider:         &c.workingSigner.name,
-		}
-		addResp := testutil.AddIdentity(t, c.zet.Commands, identityData)
-		require.True(t, addResp.Success(), "AddIdentity (enroll to cert) should succeed: error=%q\n%s", addResp.Error, c.zet.LogPath())
-		require.NotEmpty(t, addResp.Data.URL, "AddIdentity (enroll to cert) response has empty URL")
-
-		c.idp.DriveIdPFlow(t, addResp.Data.URL)
-
-		added := c.zet.Events.WaitForIdentityEvent(t, "added", name)
-		require.True(t, added.Id.Active, "identity:added Active=%t after enroll to cert IdP login flow, want true", added.Id.Active)
-		require.False(t, added.Id.NeedsExtAuth, "identity:added NeedsExtAuth=%t after enroll to cert IdP login flow, want false", added.Id.NeedsExtAuth)
-		testutil.AssertValidUrlEnrolledIdentityFile(t, added.Id.Identifier, testutil.EnrollModeCert)
-		t.Logf("identity:added Identifier=%s Active=%t NeedsExtAuth=%t after enroll to cert IdP login flow", added.Id.Identifier, added.Id.Active, added.Id.NeedsExtAuth)
+		c.completeEnrollToCert(t, name)
 	})
+}
+
+// completeEnrollToCert drives a full enroll-to-cert flow for name and returns the
+// resulting identifier. The working signer must already have EnrollToCert enabled.
+func (c *extAuthContext) completeEnrollToCert(t *testing.T, name string) string {
+	controllerBase := c.overlay.ControllerHostPort()
+	mode := testutil.EnrollModeCert
+	identityData := testutil.AddIdentityData{
+		IdentityFilename: name,
+		ControllerURL:    &controllerBase,
+		EnrollMode:       &mode,
+		Provider:         &c.workingSigner.name,
+	}
+	addResp := testutil.AddIdentity(t, c.zet.Commands, identityData)
+	require.True(t, addResp.Success(), "AddIdentity (enroll to cert) should succeed: error=%q\n%s", addResp.Error, c.zet.LogPath())
+	require.NotEmpty(t, addResp.Data.URL, "AddIdentity (enroll to cert) response has empty URL")
+
+	c.idp.DriveIdPFlow(t, addResp.Data.URL)
+
+	added := c.zet.Events.WaitForIdentityEvent(t, "added", name)
+	require.True(t, added.Id.Active, "identity:added Active=%t after enroll to cert IdP login flow, want true", added.Id.Active)
+	require.False(t, added.Id.NeedsExtAuth, "identity:added NeedsExtAuth=%t after enroll to cert IdP login flow, want false", added.Id.NeedsExtAuth)
+	testutil.AssertValidUrlEnrolledIdentityFile(t, added.Id.Identifier, testutil.EnrollModeCert)
+	t.Logf("identity:added Identifier=%s Active=%t NeedsExtAuth=%t after enroll to cert IdP login flow", added.Id.Identifier, added.Id.Active, added.Id.NeedsExtAuth)
+	return added.Id.Identifier
 }
 
 func (c *extAuthContext) testEnrollToTokenCompletes(t *testing.T) {
@@ -327,21 +335,47 @@ func (c *extAuthContext) testEnrollToNoneThenCertRejected(t *testing.T) {
 		identityEvent := c.addEnrollToNoneIdentity(t, name)
 
 		c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToCert: true})
-
 		controllerBase := c.overlay.ControllerHostPort()
 		mode := testutil.EnrollModeCert
-		identityData := testutil.AddIdentityData{
+		enrollToCertIdentity := testutil.AddIdentityData{
 			IdentityFilename: name,
 			ControllerURL:    &controllerBase,
 			EnrollMode:       &mode,
 			Provider:         &c.workingSigner.name,
 		}
-		addResp := testutil.AddIdentity(t, c.zet.Commands, identityData)
-		require.False(t, addResp.Success(), "cert AddIdentity with same name should fail after a pending none enrollment\n%s", c.zet.LogPath())
-		require.Equal(t, 500, addResp.Code, "expected Code=500, got %d", addResp.Code)
-		require.Contains(t, addResp.Error, "identity exists with the same name", "expected name-collision error, got %q", addResp.Error)
-		// Ensure the identity file wasn't overwritten
+		addResp := testutil.AddIdentity(t, c.zet.Commands, enrollToCertIdentity)
+		c.assertIdentityExistsSameName(t, addResp)
 		testutil.AssertValidUrlEnrolledIdentityFile(t, identityEvent.Id.Identifier, testutil.EnrollModeNone)
-		t.Logf("cert AddIdentity rejected: code=%d error=%q", addResp.Code, addResp.Error)
 	})
+}
+
+func (c *extAuthContext) testEnrollToCertThenNoneRejected(t *testing.T) {
+	testutil.RunTestWithTimeout(t, func(t *testing.T) {
+		name := testutil.IdentityName(t)
+		t.Cleanup(func() { _ = c.overlay.PurgeIdentityByExternalId(c.idp.ExternalID) })
+
+		c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToCert: true})
+		identifier := c.completeEnrollToCert(t, name)
+
+		enrollToNone := testutil.ExtJwtSignerSpec{}
+		c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, enrollToNone)
+
+		controllerBase := c.overlay.ControllerHostPort()
+		enrollToNoneIdentity := testutil.AddIdentityData{
+			IdentityFilename: name,
+			ControllerURL:    &controllerBase,
+		}
+		addResp := testutil.AddIdentity(t, c.zet.Commands, enrollToNoneIdentity)
+		c.assertIdentityExistsSameName(t, addResp)
+		testutil.AssertValidUrlEnrolledIdentityFile(t, identifier, testutil.EnrollModeCert)
+	})
+}
+
+// assertIdentityExistsSameName asserts an AddIdentity response was rejected
+// because an identity with the same name already exists.
+func (c *extAuthContext) assertIdentityExistsSameName(t *testing.T, addResp *testutil.AddIdentityResponse) {
+	require.False(t, addResp.Success(), "AddIdentity with an existing name should fail\n%s", c.zet.LogPath())
+	require.Equal(t, 500, addResp.Code, "expected Code=500, got %d", addResp.Code)
+	require.Contains(t, addResp.Error, "identity exists with the same name", "expected name-collision error, got %q", addResp.Error)
+	t.Logf("AddIdentity rejected: code=%d error=%q", addResp.Code, addResp.Error)
 }
