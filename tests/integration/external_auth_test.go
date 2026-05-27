@@ -125,6 +125,7 @@ func TestExternalAuthSingleSigner(t *testing.T) {
 
 	t.Run("testEnrollToNoneThenCertRejected", c.testEnrollToNoneThenCertRejected)
 	t.Run("testEnrollToCertThenNoneRejected", c.testEnrollToCertThenNoneRejected)
+	t.Run("testEnrollToCertThenTokenRejected", c.testEnrollToCertThenTokenRejected)
 }
 
 func (c *extAuthContext) testEnrollToNoneCompletes(t *testing.T) {
@@ -366,6 +367,29 @@ func (c *extAuthContext) testEnrollToCertThenNoneRejected(t *testing.T) {
 			ControllerURL:    &controllerBase,
 		}
 		addResp := testutil.AddIdentity(t, c.zet.Commands, enrollToNoneIdentity)
+		c.assertIdentityExistsSameName(t, addResp)
+		testutil.AssertValidUrlEnrolledIdentityFile(t, identifier, testutil.EnrollModeCert)
+	})
+}
+
+func (c *extAuthContext) testEnrollToCertThenTokenRejected(t *testing.T) {
+	testutil.RunTestWithTimeout(t, func(t *testing.T) {
+		name := testutil.IdentityName(t)
+		t.Cleanup(func() { _ = c.overlay.PurgeIdentityByExternalId(c.idp.ExternalID) })
+
+		c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToCert: true})
+		identifier := c.completeEnrollToCert(t, name)
+
+		c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToToken: true})
+		controllerBase := c.overlay.ControllerHostPort()
+		mode := testutil.EnrollModeToken
+		enrollToTokenIdentity := testutil.AddIdentityData{
+			IdentityFilename: name,
+			ControllerURL:    &controllerBase,
+			EnrollMode:       &mode,
+			Provider:         &c.workingSigner.name,
+		}
+		addResp := testutil.AddIdentity(t, c.zet.Commands, enrollToTokenIdentity)
 		c.assertIdentityExistsSameName(t, addResp)
 		testutil.AssertValidUrlEnrolledIdentityFile(t, identifier, testutil.EnrollModeCert)
 	})
