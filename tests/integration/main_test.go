@@ -42,12 +42,14 @@ type TestState struct {
 
 func TestMain(m *testing.M) {
 	var zetBin string
+	var zetBinB string
 	var zetVerbosity int
 	var zitiBin string
 	var tlsuvDebug int
 	var testHome string
 	var idpBin string
 	flag.StringVar(&zetBin, "zet-bin", "", "path to ziti-edge-tunnel binary (required)")
+	flag.StringVar(&zetBinB, "zet-bin-b", "", "path to a second ziti-edge-tunnel binary for zetB; defaults to -zet-bin")
 	flag.StringVar(&zitiBin, "ziti-bin", "", "path to ziti binary for controller+router bring-up (required)")
 	flag.StringVar(&idpBin, "idp-bin", "", "path to IdP binary (optional; enables tests that need an external IdP)")
 	flag.IntVar(&zetVerbosity, "zet-verbosity", 4, "ziti-edge-tunnel -v level (0=silent..6=trace)")
@@ -58,6 +60,9 @@ func TestMain(m *testing.M) {
 	if zetBin == "" || zitiBin == "" {
 		fmt.Fprintln(os.Stderr, "both -zet-bin and -ziti-bin are required")
 		os.Exit(2)
+	}
+	if zetBinB == "" {
+		zetBinB = zetBin
 	}
 
 	zetLogDir := filepath.Join(testHome, "zets")
@@ -76,7 +81,7 @@ func TestMain(m *testing.M) {
 			TlsuvDebug:    tlsuvDebug,
 		},
 		zetHost: &testutil.ZET{
-			BinPath:       zetBin,
+			BinPath:       zetBinB,
 			Discriminator: "zetB",
 			DNSRange:      "100.128.0.1/16",
 			RootDir:       zetLogDir,
