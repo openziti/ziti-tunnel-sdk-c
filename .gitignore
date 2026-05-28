@@ -32,3 +32,7 @@ tools/dcp/build/
 # Nix build output symlink
 /result
 /.gdbinit
+
+# Local integration-test config
+tests/integration/config.local.json
+tests/integration/config.json

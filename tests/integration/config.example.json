@@ -1,0 +1,35 @@
+{
+  "testHome": "",
+  "ziti": {
+    "binary": "",
+    "url": "",
+    "user": "admin",
+    "password": "admin"
+  },
+  "zetA": {
+    "binary": "",
+    "verbosity": 4,
+    "tlsuvDebug": 0
+  },
+  "zetB": {
+    "binary": "",
+    "verbosity": 4,
+    "tlsuvDebug": 0
+  },
+  "idp": {
+    "seedIdP": true,
+    "binary": "",
+    "issuer": "",
+    "clientId": "ziti-test",
+    "extraClientIds": ["ziti-test-2", "ziti-test-3"],
+    "audience": "ziti-test",
+    "sub": "",
+    "scopes": "openid profile email",
+    "user": {
+      "email": "test@example.com",
+      "username": "test",
+      "userID": "08a8684b-db88-4b73-90a9-3cd1661f5466",
+      "password": "password"
+    }
+  }
+}

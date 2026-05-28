@@ -285,6 +285,35 @@ jobs:
             -FilePath "$env:RUNNER_TEMP\pki\root-ca\certs\root-ca.cert" `
             -CertStoreLocation Cert:\LocalMachine\Root | Out-Null
 
+      - name: Write integration test config
+        shell: bash
+        working-directory: tests/integration
+        run: |
+          jq -n \
+            --arg testHome "$RUNNER_TEMP" \
+            --arg zitiBin  "$ZITI_BIN" \
+            --arg zetBin   "$ZET_BIN" \
+            --arg zetBinB  "$ZET_BIN_B" \
+            --arg idpBin   "$IDP_BIN" \
+            '{
+              testHome: $testHome,
+              ziti: { binary: $zitiBin, url: "", user: "admin", password: "admin" },
+              zetA: { binary: $zetBin,  verbosity: 4, tlsuvDebug: 0 },
+              zetB: { binary: $zetBinB, verbosity: 4, tlsuvDebug: 0 },
+              idp: {
+                seedIdP: true,
+                binary: $idpBin,
+                issuer: "",
+                clientId: "ziti-test",
+                extraClientIds: ["ziti-test-2", "ziti-test-3"],
+                audience: "ziti-test",
+                sub: "",
+                scopes: "openid profile email",
+                user: { email: "test@example.com", username: "test", userID: "08a8684b-db88-4b73-90a9-3cd1661f5466", password: "password" }
+              }
+            }' > config.json
+          cat config.json
+
       - name: Run integration tests
         shell: bash
         working-directory: tests/integration
@@ -294,18 +323,11 @@ jobs:
               # ulimit -c unlimited must be set inside the privileged shell: sudo
               # resets resource limits via PAM, so setting it in the outer shell
               # has no effect on ZET child processes.
-              sudo env "PATH=$PATH" "ZET_BIN=$ZET_BIN" "ZET_BIN_B=$ZET_BIN_B" "ZITI_BIN=$ZITI_BIN" "IDP_BIN=$IDP_BIN" "RUNNER_TEMP=$RUNNER_TEMP" \
-                sh -c 'ulimit -c unlimited && exec go test ./... -v -timeout 20m \
-                  -zet-bin="$ZET_BIN" -zet-bin-b="$ZET_BIN_B" -ziti-bin="$ZITI_BIN" -idp-bin="$IDP_BIN" \
-                  -test-home="$RUNNER_TEMP"'
+              sudo env "PATH=$PATH" \
+                sh -c 'ulimit -c unlimited && exec go test ./... -v -timeout 20m -config config.json'
               ;;
             *)
-              go test ./... -v -timeout 20m \
-                -zet-bin="$ZET_BIN" \
-                -zet-bin-b="$ZET_BIN_B" \
-                -ziti-bin="$ZITI_BIN" \
-                -idp-bin="$IDP_BIN" \
-                -test-home="$RUNNER_TEMP"
+              go test ./... -v -timeout 20m -config config.json
               ;;
           esac
 

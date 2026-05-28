@@ -18,12 +18,13 @@ package testutil
 
 import (
 	"bytes"
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net"
+	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -38,8 +39,6 @@ import (
 )
 
 const (
-	adminUsername   = "admin"
-	adminPassword   = "admin"
 	overlayCtrlPort = 1280
 	overlayRtrPort  = 3022
 )
@@ -47,6 +46,9 @@ const (
 type Overlay struct {
 	ZitiBin             string
 	Home                string
+	ControllerURL       string
+	ControllerUser      string
+	ControllerPassword  string
 	ZitiMajor           int
 	ZitiMinor           int
 	ShowZitiCliCommands bool
@@ -59,8 +61,28 @@ type Overlay struct {
 }
 
 // Start launches `ziti edge quickstart` against o.Home and waits until the
-// overlay is ready. Callers must defer Stop().
+// overlay is ready. Callers must defer Stop(). When ControllerURL is set, the
+// quickstart is skipped and the existing controller at that URL is used instead.
 func (o *Overlay) Start() error {
+	if o.ControllerURL != "" {
+		log.Printf("overlay: external controller %s; skipping quickstart", o.ControllerURL)
+		if err := os.MkdirAll(o.Home, 0o755); err != nil {
+			return fmt.Errorf("mkdir home: %w", err)
+		}
+		if err := o.waitUntilReady(); err != nil {
+			return fmt.Errorf("external controller not ready: %w", err)
+		}
+		log.Printf("overlay: probing ziti version")
+		major, minor, err := probeZitiVersion(o.ZitiBin)
+		if err != nil {
+			return fmt.Errorf("probe ziti version: %w", err)
+		}
+		o.ZitiMajor = major
+		o.ZitiMinor = minor
+		log.Printf("overlay: external controller ready (ziti v%d.%d)", major, minor)
+		return nil
+	}
+
 	warnIfPortBound(overlayCtrlPort)
 	warnIfPortBound(overlayRtrPort)
 	log.Printf("overlay: mkdir home %s", o.Home)
@@ -155,22 +177,48 @@ func probeZitiVersion(zitiBin string) (int, int, error) {
 }
 
 func (o *Overlay) ControllerHostPort() string {
+	if o.ControllerURL != "" {
+		return o.ControllerURL
+	}
 	return fmt.Sprintf("https://localhost:%d", overlayCtrlPort)
 }
 
+// controllerAddr returns the host:port string for TCP dials against the
+// controller. Defaults to localhost:1280 in quickstart mode; parses ControllerURL
+// in external mode.
+func (o *Overlay) controllerAddr() (string, error) {
+	if o.ControllerURL == "" {
+		return fmt.Sprintf("localhost:%d", overlayCtrlPort), nil
+	}
+	u, err := url.Parse(o.ControllerURL)
+	if err != nil || u.Host == "" {
+		return "", fmt.Errorf("malformed URL: %w", err)
+	}
+	if !strings.Contains(u.Host, ":") {
+		return "", fmt.Errorf("missing port (e.g. https://host:8441)")
+	}
+	return u.Host, nil
+}
+
+// CATrusted reports whether the controller's TLS chain verifies against the OS
+// trust store.
 func (o *Overlay) CATrusted() bool {
-	hostport := fmt.Sprintf("localhost:%d", overlayCtrlPort)
-	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: 2 * time.Second}, "tcp", hostport, nil)
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get(o.ControllerHostPort() + "/version")
 	if err != nil {
 		return false
 	}
-	_ = conn.Close()
-	return true
+	defer resp.Body.Close()
+	return resp.StatusCode == http.StatusOK
 }
 
 // OSCAStrings returns OS-specific install and cleanup shell commands for this
-// overlay's CA. Both are "" when the OS has no recipe.
+// overlay's CA. Both are "" when the OS has no recipe, or in external mode where
+// the CA path under o.Home does not exist.
 func (o *Overlay) OSCAStrings() (install, cleanup string) {
+	if o.ControllerURL != "" {
+		return "", ""
+	}
 	caPath := filepath.Join(o.Home, "pki", "root-ca", "certs", "root-ca.cert")
 	switch runtime.GOOS {
 	case "windows":
@@ -555,19 +603,31 @@ func (o *Overlay) DeleteConfig(name string) error {
 }
 
 func (o *Overlay) waitUntilReady() error {
-	if err := o.waitForControllerPort(); err != nil {
-		return err
+	if o.ControllerURL == "" {
+		if err := o.waitForControllerPort(); err != nil {
+			return err
+		}
+	} else {
+		addr, err := o.controllerAddr()
+		if err != nil {
+			return fmt.Errorf("external controller URL %q: %w", o.ControllerURL, err)
+		}
+		conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
+		if err != nil {
+			return fmt.Errorf("external controller %s unreachable: %w", o.ControllerURL, err)
+		}
+		_ = conn.Close()
 	}
 	log.Printf("overlay: attempting admin login at %s", o.ControllerHostPort())
 	attempts := 0
 	for {
 		attempts++
 		if _, err := o.execZiti("edge", "login", o.ControllerHostPort(),
-			"-u", adminUsername, "-p", adminPassword, "--yes"); err == nil {
+			"-u", o.ControllerUser, "-p", o.ControllerPassword, "--yes"); err == nil {
 			log.Printf("overlay: admin login OK after %d attempt(s)", attempts)
 			return nil
 		} else {
-			log.Printf("overlay: admin login attempt %d failed, retrying", attempts)
+			log.Printf("overlay: admin login attempt %d failed, retrying: %v", attempts, err)
 		}
 		select {
 		case err := <-o.Done:
@@ -651,10 +711,11 @@ func (o *Overlay) deleteWhere(entity, prefix string) error {
 }
 
 // WaitForClusterLeader blocks until the controller's raft cluster has elected a
-// leader so subsequent writes do not fail with CLUSTER_NO_LEADER. No-op for ziti < 2.0.
+// leader so subsequent writes do not fail with CLUSTER_NO_LEADER. No-op for ziti < 2.0
+// or external controllers
 // Retries forever; rely on the overall test timeout if the cluster wedges.
 func (o *Overlay) WaitForClusterLeader() error {
-	if o.ZitiMajor < 2 {
+	if o.ZitiMajor < 2 || o.ControllerURL != "" {
 		return nil
 	}
 	log.Printf("overlay: waiting for cluster leader (ziti v%d.%d)", o.ZitiMajor, o.ZitiMinor)

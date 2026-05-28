@@ -28,16 +28,21 @@ import (
 	"time"
 )
 
-// RequireConfigured skips the test when no IdP was configured (the test
-// runner was invoked without -idp-bin). Safe to call on a nil receiver.
+// RequireConfigured skips the test when no IdP was configured (the IdP block in
+// the JSON config is missing the binary in seed mode, or the issuer in
+// pre-existing-IdP mode). Safe to call on a nil receiver.
 func (p *IdP) RequireConfigured(t *testing.T) {
-	if p == nil {
-		t.Skip("IdP is not configured (-idp-bin not provided)")
+	if p == nil || p.IssuerURL == "" {
+		t.Skip("IdP is not configured (no issuer)")
 	}
 }
 
 // IdP is a running test identity provider used to exercise the OAuth2 PKCE flow.
+// When Seed is true, Start() spawns a local dex from Bin and seeds the User. When
+// Seed is false, Start() assumes IssuerURL points at a pre-existing IdP that
+// already has the User provisioned.
 type IdP struct {
+	Seed           bool
 	Bin            string
 	WorkDir        string
 	HTTPAddr       string
@@ -45,31 +50,39 @@ type IdP struct {
 	ClientIDWorks  string
 	ClientIDExtraA string
 	ClientIDExtraB string
+	Audience       string
+	Sub            string
+	Scopes         string
 	Email          string
 	Password       string
+	Username       string
+	UserID         string
 	ExternalID     string
 	cmd            *exec.Cmd
 }
 
 type IdPUser struct {
-	Email    string
-	Username string
-	UserID   string
-	Password string
-}
-
-var DefaultIdPUser = IdPUser{
-	Email:    "test@example.com",
-	Username: "test",
-	UserID:   "08a8684b-db88-4b73-90a9-3cd1661f5466",
-	Password: "password",
+	Email    string `json:"email"`
+	Username string `json:"username"`
+	UserID   string `json:"userID"`
+	Password string `json:"password"`
 }
 
 // Start launches the IdP test binary against a generated config and waits
-// for OIDC discovery. Caller must defer Stop(). The IdP's combined
-// stdout+stderr is written to <WorkDir>/logs/idp.log so it sits alongside
-// the zet logs and survives the test temp dir being deleted.
+// for OIDC discovery (seed mode), or validates the configured external issuer
+// (pre-existing-IdP mode). Caller must defer Stop(). In seed mode, the IdP's
+// combined stdout+stderr is written to <WorkDir>/logs/idp.log so it sits
+// alongside the zet logs and survives the test temp dir being deleted.
 func (p *IdP) Start() error {
+	if !p.Seed {
+		if p.IssuerURL == "" {
+			log.Printf("setup: IdP not configured (seedIdP=false, no issuer); IdP-dependent tests will skip")
+			return nil
+		}
+		log.Printf("setup: using pre-existing IdP issuer=%s", p.IssuerURL)
+		return nil
+	}
+
 	if p.Bin == "" {
 		return fmt.Errorf("IdP binary path is empty")
 	}
@@ -87,12 +100,11 @@ func (p *IdP) Start() error {
 	httpAddr := fmt.Sprintf("127.0.0.1:%d", port)
 	issuer := "http://" + httpAddr + "/dex"
 
-	p.ClientIDWorks = "ziti-test"
-	p.ClientIDExtraA = "ziti-test-2"
-	p.ClientIDExtraB = "ziti-test-3"
-
 	clientsYAML := ""
 	for _, id := range []string{p.ClientIDWorks, p.ClientIDExtraA, p.ClientIDExtraB} {
+		if id == "" {
+			continue
+		}
 		clientsYAML += fmt.Sprintf(`  - id: %s
     redirectURIs:
       - http://127.0.0.1:20314/auth/callback
@@ -103,9 +115,7 @@ func (p *IdP) Start() error {
 	}
 
 	p.IssuerURL = issuer
-	p.Email = DefaultIdPUser.Email
-	p.Password = DefaultIdPUser.Password
-	p.ExternalID = DefaultIdPUser.Email
+	p.HTTPAddr = httpAddr
 
 	cfgPath := filepath.Join(p.WorkDir, "idp.yaml")
 	const defaultIdPBcryptHash = `$2a$10$2b2cU8CPhOTaGrs1HRQuAueS7JTT5ZHsHSzYiFPm1leZck7Mc8T4W`
@@ -123,7 +133,7 @@ staticPasswords:
     hash: %q
     username: %q
     userID: %q
-`, issuer, httpAddr, clientsYAML, DefaultIdPUser.Email, defaultIdPBcryptHash, DefaultIdPUser.Username, DefaultIdPUser.UserID)
+`, issuer, httpAddr, clientsYAML, p.Email, defaultIdPBcryptHash, p.Username, p.UserID)
 	if err := os.WriteFile(cfgPath, []byte(cfg), 0o644); err != nil {
 		return fmt.Errorf("write IdP config: %w", err)
 	}

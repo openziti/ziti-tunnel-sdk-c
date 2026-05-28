@@ -41,56 +41,77 @@ type TestState struct {
 }
 
 func TestMain(m *testing.M) {
-	var zetBin string
-	var zetBinB string
-	var zetVerbosity int
-	var zitiBin string
-	var tlsuvDebug int
-	var testHome string
-	var idpBin string
-	flag.StringVar(&zetBin, "zet-bin", "", "path to ziti-edge-tunnel binary (required)")
-	flag.StringVar(&zetBinB, "zet-bin-b", "", "path to a second ziti-edge-tunnel binary for zetB; defaults to -zet-bin")
-	flag.StringVar(&zitiBin, "ziti-bin", "", "path to ziti binary for controller+router bring-up (required)")
-	flag.StringVar(&idpBin, "idp-bin", "", "path to IdP binary (optional; enables tests that need an external IdP)")
-	flag.IntVar(&zetVerbosity, "zet-verbosity", 4, "ziti-edge-tunnel -v level (0=silent..6=trace)")
-	flag.IntVar(&tlsuvDebug, "tlsuv-debug", 0, "TLSUV_DEBUG level (0=off..6=trace); off by default")
-	flag.StringVar(&testHome, "test-home", filepath.Join(os.TempDir(), "ziti-tunnel-test-quickstart"), "directory for the test files, overlay home, logs, etc")
+	var configPath string
+	flag.StringVar(&configPath, "config", "", "path to JSON test config (required)")
 	flag.Parse()
 
-	if zetBin == "" || zitiBin == "" {
-		fmt.Fprintln(os.Stderr, "both -zet-bin and -ziti-bin are required")
+	if configPath == "" {
+		fmt.Fprintln(os.Stderr, "-config is required")
 		os.Exit(2)
 	}
-	if zetBinB == "" {
-		zetBinB = zetBin
+	cfg, err := testutil.LoadConfig(configPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
+	if cfg.Ziti.Binary == "" || cfg.ZetA.Binary == "" {
+		fmt.Fprintln(os.Stderr, "config must set ziti.binary and zetA.binary")
+		os.Exit(2)
 	}
 
-	zetLogDir := filepath.Join(testHome, "zets")
+	zetLogDir := filepath.Join(cfg.TestHome, "zets")
+	externalID := cfg.IdP.Sub
+	if externalID == "" {
+		externalID = cfg.IdP.User.Email
+	}
+	var extraA, extraB string
+	if len(cfg.IdP.ExtraClientIDs) > 0 {
+		extraA = cfg.IdP.ExtraClientIDs[0]
+	}
+	if len(cfg.IdP.ExtraClientIDs) > 1 {
+		extraB = cfg.IdP.ExtraClientIDs[1]
+	}
 	state = TestState{
 		overlay: &testutil.Overlay{
-			ZitiBin: zitiBin,
-			Home:    filepath.Join(testHome, "overlay"),
-			Done:    make(chan error, 1),
+			ZitiBin:            cfg.Ziti.Binary,
+			Home:               filepath.Join(cfg.TestHome, "overlay"),
+			ControllerURL:      cfg.Ziti.URL,
+			ControllerUser:     cfg.Ziti.User,
+			ControllerPassword: cfg.Ziti.Password,
+			Done:               make(chan error, 1),
 		},
 		zetClient: &testutil.ZET{
-			BinPath:       zetBin,
+			BinPath:       cfg.ZetA.Binary,
 			Discriminator: "zetA",
 			DNSRange:      "100.129.0.1/16",
 			RootDir:       zetLogDir,
-			Verbosity:     zetVerbosity,
-			TlsuvDebug:    tlsuvDebug,
+			Verbosity:     cfg.ZetA.Verbosity,
+			TlsuvDebug:    cfg.ZetA.TlsuvDebug,
 		},
 		zetHost: &testutil.ZET{
-			BinPath:       zetBinB,
+			BinPath:       cfg.ZetB.Binary,
 			Discriminator: "zetB",
 			DNSRange:      "100.128.0.1/16",
 			RootDir:       zetLogDir,
-			Verbosity:     zetVerbosity,
-			TlsuvDebug:    tlsuvDebug,
+			Verbosity:     cfg.ZetB.Verbosity,
+			TlsuvDebug:    cfg.ZetB.TlsuvDebug,
 		},
 		idp: &testutil.IdP{
-			Bin:     idpBin,
-			WorkDir: filepath.Join(testHome, "idp"),
+			Seed:           cfg.IdP.SeedIdP,
+			Bin:            cfg.IdP.Binary,
+			WorkDir:        filepath.Join(cfg.TestHome, "idp"),
+			IssuerURL:      cfg.IdP.Issuer,
+			ClientIDWorks:  cfg.IdP.ClientID,
+			ClientIDExtraA: extraA,
+			ClientIDExtraB: extraB,
+			Audience:       cfg.IdP.Audience,
+			Sub:            cfg.IdP.Sub,
+			Scopes:         cfg.IdP.Scopes,
+			Email:          cfg.IdP.User.Email,
+			Password:       cfg.IdP.User.Password,
+			Username:       cfg.IdP.User.Username,
+			UserID:         cfg.IdP.User.UserID,
+			ExternalID:     externalID,
 		},
 	}
 
@@ -114,6 +135,9 @@ func run(m *testing.M, state TestState) (int, error) {
 	defer func() {
 		if state.overlay.CATrusted() {
 			_, cleanup := state.overlay.OSCAStrings()
+			if cleanup == "" {
+				return
+			}
 			log.Printf(`
 
 ========================================
@@ -165,9 +189,11 @@ func doSetup(state TestState) error {
 	if err := state.overlay.PurgeExtJwtSigners("Test"); err != nil {
 		return fmt.Errorf("purge stale test ext-jwt-signers: %w", err)
 	}
-	log.Printf("setup: purging stale identities for IdP test user %q", testutil.DefaultIdPUser.Email)
-	if err := state.overlay.PurgeIdentityByExternalId(testutil.DefaultIdPUser.Email); err != nil {
-		return fmt.Errorf("purge stale IdP test user identities: %w", err)
+	if state.idp.ExternalID != "" {
+		log.Printf("setup: purging stale identities for IdP test user externalId=%q", state.idp.ExternalID)
+		if err := state.overlay.PurgeIdentityByExternalId(state.idp.ExternalID); err != nil {
+			return fmt.Errorf("purge stale IdP test user identities: %w", err)
+		}
 	}
 
 	log.Printf("setup: starting ZET zetA and zetB in parallel")
@@ -198,14 +224,9 @@ func doSetup(state TestState) error {
 		return fmt.Errorf("start zetB: %w", zetHostErr)
 	}
 
-	if state.idp.Bin != "" {
-		log.Printf("setup: starting IdP (idpBin=%s)", state.idp.Bin)
-		if err := state.idp.Start(); err != nil {
-			return fmt.Errorf("start IdP: %w", err)
-		}
-	} else {
-		log.Printf("setup: -idp-bin not provided; tests that require an external IdP will be skipped")
+	log.Printf("setup: starting IdP (seed=%t bin=%s issuer=%s)", state.idp.Seed, state.idp.Bin, state.idp.IssuerURL)
+	if err := state.idp.Start(); err != nil {
+		return fmt.Errorf("start IdP: %w", err)
 	}
-
 	return nil
 }
