@@ -1,6 +1,23 @@
 name: Main Test Workflow
 on:
   workflow_dispatch:
+    inputs:
+      ziti_version:
+        description: "ziti release tag to test against (e.g. v2.0.0); blank = newest + LTS matrix"
+        required: false
+        default: ""
+      zet1_version:
+        description: "ziti-edge-tunnel release tag for zet1/zetA; blank = build from this branch"
+        required: false
+        default: ""
+      zet2_version:
+        description: "ziti-edge-tunnel release tag for zet2/zetB; blank = same binary as zet1"
+        required: false
+        default: ""
+      idp_version:
+        description: "dex IdP version tag (e.g. v2.45.1); blank = script default"
+        required: false
+        default: ""
   push:
     branches:
       - main
@@ -52,9 +69,45 @@ jobs:
           I_AM_ROBOT: 1
           ZITI_EDGE_TUNNEL_BIN: ./build/amd64/linux/ziti-edge-tunnel
 
+  # Resolve which ziti releases the matrix runs against. A manual run with
+  # ziti_version set tests that single tag; otherwise the newest release plus the
+  # newest patch of the LTS-current (v2.0) and LTS-maintenance (v1.6) lines.
+  resolve-ziti-versions:
+    name: Resolve ziti versions
+    runs-on: ubuntu-latest
+    outputs:
+      channels: ${{ steps.resolve.outputs.channels }}
+    steps:
+      - name: Resolve channels
+        id: resolve
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DISPATCH_ZITI: ${{ inputs.ziti_version }}
+        run: |
+          set -euo pipefail
+          if [ -n "${DISPATCH_ZITI:-}" ]; then
+            channels=$(jq -cn --arg t "$DISPATCH_ZITI" '[{label:$t, tag:$t}]')
+          else
+            tags=$(gh release list --repo openziti/ziti --limit 200 \
+                     --json tagName,isDraft,isPrerelease \
+                   | jq -r '.[] | select(.isDraft==false and .isPrerelease==false) | .tagName')
+            newest_matching() { printf '%s\n' "$tags" | grep -E "$1" | sort -V | tail -n1; }
+            latest=$(printf '%s\n' "$tags" | sort -V | tail -n1)
+            lts=$(newest_matching '^v2\.0\.')
+            maint=$(newest_matching '^v1\.6\.')
+            for v in "$latest" "$lts" "$maint"; do
+              [ -n "$v" ] || { echo "::error::failed to resolve a ziti version (latest=$latest lts=$lts maint=$maint)"; exit 1; }
+            done
+            channels=$(jq -cn --arg latest "$latest" --arg lts "$lts" --arg maint "$maint" \
+              '[{label:"latest",tag:$latest},{label:"lts",tag:$lts},{label:"lts-maintenance",tag:$maint}]')
+          fi
+          echo "resolved channels: $channels"
+          echo "channels=$channels" >> "$GITHUB_OUTPUT"
+
   integration-tests:
     name: Integration Tests (${{ matrix.os.name }} / ziti ${{ matrix.ziti-channel.label }})
-    needs: [ call-cmake-build ]
+    needs: [ call-cmake-build, resolve-ziti-versions ]
     strategy:
       fail-fast: false
       matrix:
@@ -86,9 +139,7 @@ jobs:
             sudo: ""
             create-group: ""
             core-dir: ""
-        ziti-channel:
-          - { label: latest, prefix: "" }
-          - { label: "1.6",  prefix: "v1.6." }
+        ziti-channel: ${{ fromJSON(needs.resolve-ziti-versions.outputs.channels) }}
     runs-on: ${{ matrix.os.runner }}
     steps:
       - name: Checkout
@@ -109,36 +160,48 @@ jobs:
           path: ./zet-artifact
           digest-mismatch: error
 
-      - name: Extract ziti-edge-tunnel
-        shell: bash
-        run: |
-          cd zet-artifact && unzip -o "${{ matrix.os.zet-zip }}"
-          chmod +x "${{ matrix.os.zet-bin }}" || true
-          echo "ZET_BIN=$PWD/${{ matrix.os.zet-bin }}" >> "$GITHUB_ENV"
-
-      - name: Download ziti CLI (${{ matrix.ziti-channel.label }})
+      - name: Resolve ziti-edge-tunnel binaries (zet1 / zet2)
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CHANNEL_PREFIX: ${{ matrix.ziti-channel.prefix }}
+          ZET1_VERSION: ${{ inputs.zet1_version }}
+          ZET2_VERSION: ${{ inputs.zet2_version }}
+          ZET_ZIP: ${{ matrix.os.zet-zip }}
+          ZET_BIN_NAME: ${{ matrix.os.zet-bin }}
+        run: |
+          set -euo pipefail
+          # the built artifact is the default binary for both instances
+          unzip -o "zet-artifact/$ZET_ZIP" -d zet-artifact
+          chmod +x "zet-artifact/$ZET_BIN_NAME" || true
+          ZET_BIN="$PWD/zet-artifact/$ZET_BIN_NAME"
+          ZET_BIN_B="$ZET_BIN"
+          # optional per-instance release overrides
+          if [ -n "${ZET1_VERSION:-}" ]; then
+            mkdir -p zet1
+            gh release download --repo openziti/ziti-tunnel-sdk-c "$ZET1_VERSION" --pattern "$ZET_ZIP" --dir zet1
+            unzip -o "zet1/$ZET_ZIP" -d zet1
+            chmod +x "zet1/$ZET_BIN_NAME" || true
+            ZET_BIN="$PWD/zet1/$ZET_BIN_NAME"
+          fi
+          if [ -n "${ZET2_VERSION:-}" ]; then
+            mkdir -p zet2
+            gh release download --repo openziti/ziti-tunnel-sdk-c "$ZET2_VERSION" --pattern "$ZET_ZIP" --dir zet2
+            unzip -o "zet2/$ZET_ZIP" -d zet2
+            chmod +x "zet2/$ZET_BIN_NAME" || true
+            ZET_BIN_B="$PWD/zet2/$ZET_BIN_NAME"
+          fi
+          echo "ZET_BIN=$ZET_BIN" >> "$GITHUB_ENV"
+          echo "ZET_BIN_B=$ZET_BIN_B" >> "$GITHUB_ENV"
+
+      - name: Download ziti CLI (${{ matrix.ziti-channel.label }} = ${{ matrix.ziti-channel.tag }})
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ZITI_TAG: ${{ matrix.ziti-channel.tag }}
           ZITI_PATTERN: ${{ matrix.os.ziti-pattern }}
         run: |
           mkdir -p ziti-cli && cd ziti-cli
-          if [ -z "$CHANNEL_PREFIX" ]; then
-            gh release download --repo openziti/ziti --pattern "$ZITI_PATTERN"
-          else
-            TAG=$(gh release list --repo openziti/ziti --limit 100 \
-                    --json tagName,isDraft,isPrerelease \
-                  | jq -r --arg pre "$CHANNEL_PREFIX" \
-                      '.[] | select(.isDraft==false and .isPrerelease==false and (.tagName | startswith($pre))) | .tagName' \
-                  | head -n1)
-            if [ -z "$TAG" ]; then
-              echo "::error::no ziti release found matching prefix $CHANNEL_PREFIX" >&2
-              exit 1
-            fi
-            echo "resolved ziti tag for channel '$CHANNEL_PREFIX': $TAG"
-            gh release download --repo openziti/ziti "$TAG" --pattern "$ZITI_PATTERN"
-          fi
+          gh release download --repo openziti/ziti "$ZITI_TAG" --pattern "$ZITI_PATTERN"
           if ls *.tar.gz >/dev/null 2>&1; then tar -xzf *.tar.gz; fi
           if ls *.zip    >/dev/null 2>&1; then unzip -o *.zip; fi
           ZITI=$(find . -type f \( -name ziti -o -name ziti.exe \) | head -n1)
@@ -149,7 +212,10 @@ jobs:
 
       - name: Build IdP
         shell: bash
+        env:
+          IDP_VERSION: ${{ inputs.idp_version }}
         run: |
+          if [ -n "${IDP_VERSION:-}" ]; then export VERSION="$IDP_VERSION"; fi
           DEST="$RUNNER_TEMP/dex-build" tests/integration/scripts/fetch-dex.sh
           case "$(uname -s)" in
             MINGW*|MSYS*|CYGWIN*) IDP_BIN="$RUNNER_TEMP/dex-build/dex.exe" ;;
@@ -228,14 +294,15 @@ jobs:
               # ulimit -c unlimited must be set inside the privileged shell: sudo
               # resets resource limits via PAM, so setting it in the outer shell
               # has no effect on ZET child processes.
-              sudo env "PATH=$PATH" "ZET_BIN=$ZET_BIN" "ZITI_BIN=$ZITI_BIN" "IDP_BIN=$IDP_BIN" "RUNNER_TEMP=$RUNNER_TEMP" \
+              sudo env "PATH=$PATH" "ZET_BIN=$ZET_BIN" "ZET_BIN_B=$ZET_BIN_B" "ZITI_BIN=$ZITI_BIN" "IDP_BIN=$IDP_BIN" "RUNNER_TEMP=$RUNNER_TEMP" \
                 sh -c 'ulimit -c unlimited && exec go test ./... -v -timeout 20m \
-                  -zet-bin="$ZET_BIN" -ziti-bin="$ZITI_BIN" -idp-bin="$IDP_BIN" \
+                  -zet-bin="$ZET_BIN" -zet-bin-b="$ZET_BIN_B" -ziti-bin="$ZITI_BIN" -idp-bin="$IDP_BIN" \
                   -test-home="$RUNNER_TEMP"'
               ;;
             *)
               go test ./... -v -timeout 20m \
                 -zet-bin="$ZET_BIN" \
+                -zet-bin-b="$ZET_BIN_B" \
                 -ziti-bin="$ZITI_BIN" \
                 -idp-bin="$IDP_BIN" \
                 -test-home="$RUNNER_TEMP"
