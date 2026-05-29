@@ -17,9 +17,10 @@
     "tlsuvDebug": 0
   },
   "idp": {
-    "seedIdP": true,
+    "useTestHarnessIdP": true,
     "binary": "",
     "issuer": "",
+    "signerName": "",
     "clientId": "ziti-test",
     "extraClientIds": ["ziti-test-2", "ziti-test-3"],
     "audience": "ziti-test",

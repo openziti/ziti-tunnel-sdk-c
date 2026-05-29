@@ -17,6 +17,7 @@ limitations under the License.
 package testutil
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net"
@@ -24,12 +25,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
 
 // RequireConfigured skips the test when no IdP was configured (the IdP block in
-// the JSON config is missing the binary in seed mode, or the issuer in
+// the JSON config is missing the binary in test-harness mode, or the issuer in
 // pre-existing-IdP mode). Safe to call on a nil receiver.
 func (p *IdP) RequireConfigured(t *testing.T) {
 	if p == nil || p.IssuerURL == "" {
@@ -38,27 +40,29 @@ func (p *IdP) RequireConfigured(t *testing.T) {
 }
 
 // IdP is a running test identity provider used to exercise the OAuth2 PKCE flow.
-// When Seed is true, Start() spawns a local dex from Bin and seeds the User. When
-// Seed is false, Start() assumes IssuerURL points at a pre-existing IdP that
-// already has the User provisioned.
+// When UseTestHarnessIdP is true, Start() spawns a local dex from Bin and seeds
+// the User. When false, Start() assumes IssuerURL points at a pre-existing IdP
+// that already has the User provisioned.
 type IdP struct {
-	Seed           bool
-	Bin            string
-	WorkDir        string
-	HTTPAddr       string
-	IssuerURL      string
-	ClientIDWorks  string
-	ClientIDExtraA string
-	ClientIDExtraB string
-	Audience       string
-	Sub            string
-	Scopes         string
-	Email          string
-	Password       string
-	Username       string
-	UserID         string
-	ExternalID     string
-	cmd            *exec.Cmd
+	UseTestHarnessIdP bool
+	Bin               string
+	WorkDir           string
+	HTTPAddr          string
+	IssuerURL         string
+	JwksURI           string
+	SignerName        string
+	ClientIDWorks     string
+	ClientIDExtraA    string
+	ClientIDExtraB    string
+	Audience          string
+	Sub               string
+	Scopes            string
+	Email             string
+	Password          string
+	Username          string
+	UserID            string
+	ExternalID        string
+	cmd               *exec.Cmd
 }
 
 type IdPUser struct {
@@ -69,17 +73,23 @@ type IdPUser struct {
 }
 
 // Start launches the IdP test binary against a generated config and waits
-// for OIDC discovery (seed mode), or validates the configured external issuer
-// (pre-existing-IdP mode). Caller must defer Stop(). In seed mode, the IdP's
+// for OIDC discovery (test-harness mode), or validates the configured external issuer
+// (pre-existing-IdP mode). Caller must defer Stop(). In test-harness mode, the IdP's
 // combined stdout+stderr is written to <WorkDir>/logs/idp.log so it sits
 // alongside the zet logs and survives the test temp dir being deleted.
 func (p *IdP) Start() error {
-	if !p.Seed {
+	if !p.UseTestHarnessIdP {
 		if p.IssuerURL == "" {
-			log.Printf("setup: IdP not configured (seedIdP=false, no issuer); IdP-dependent tests will skip")
+			log.Printf("setup: IdP not configured (useTestHarnessIdP=false, no issuer); IdP-dependent tests will skip")
 			return nil
 		}
 		log.Printf("setup: using pre-existing IdP issuer=%s", p.IssuerURL)
+		jwks, err := fetchJWKSURI(p.IssuerURL)
+		if err != nil {
+			return fmt.Errorf("OIDC discovery for %s: %w", p.IssuerURL, err)
+		}
+		p.JwksURI = jwks
+		log.Printf("setup: discovered jwks_uri=%s", jwks)
 		return nil
 	}
 
@@ -161,6 +171,12 @@ staticPasswords:
 		p.Stop()
 		return fmt.Errorf("IdP discovery never came up (see %s): %w", logPath, err)
 	}
+	jwks, err := fetchJWKSURI(issuer)
+	if err != nil {
+		p.Stop()
+		return fmt.Errorf("OIDC discovery for %s: %w", issuer, err)
+	}
+	p.JwksURI = jwks
 	return nil
 }
 
@@ -174,7 +190,33 @@ func (p *IdP) Stop() {
 }
 
 func (p *IdP) JWKSURI() string {
-	return p.IssuerURL + "/keys"
+	return p.JwksURI
+}
+
+// fetchJWKSURI reads the IdP's OIDC discovery document and returns its jwks_uri.
+// This is the standard endpoint across dex, keycloak, and auth0, so the signer
+// gets the right JWKS URL without per-IdP conventions.
+func fetchJWKSURI(issuer string) (string, error) {
+	endpoint := strings.TrimRight(issuer, "/") + "/.well-known/openid-configuration"
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Get(endpoint)
+	if err != nil {
+		return "", fmt.Errorf("get %s: %w", endpoint, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("get %s: status %d", endpoint, resp.StatusCode)
+	}
+	var doc struct {
+		JwksURI string `json:"jwks_uri"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&doc); err != nil {
+		return "", fmt.Errorf("decode discovery %s: %w", endpoint, err)
+	}
+	if doc.JwksURI == "" {
+		return "", fmt.Errorf("discovery %s has no jwks_uri", endpoint)
+	}
+	return doc.JwksURI, nil
 }
 
 func pickFreePort() (int, error) {

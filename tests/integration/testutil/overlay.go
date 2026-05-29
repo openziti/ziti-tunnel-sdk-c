@@ -344,6 +344,7 @@ type ExtJwtSignerSpec struct {
 	Issuer        string
 	JWKS          string
 	ClientID      string
+	Audience      string
 	Claim         string
 	Scopes        []string
 	EnrollToCert  bool
@@ -353,11 +354,11 @@ type ExtJwtSignerSpec struct {
 // CreateExtJwtSigner registers an ext-jwt-signer on the controller and returns
 // its assigned ID.
 func (o *Overlay) CreateExtJwtSigner(t *testing.T, spec ExtJwtSignerSpec) string {
-	t.Logf("creating ext-jwt-signer %q (issuer=%s clientID=%s enrollToCert=%t enrollToToken=%t)", spec.Name, spec.Issuer, spec.ClientID, spec.EnrollToCert, spec.EnrollToToken)
+	t.Logf("creating ext-jwt-signer %q (issuer=%s audience=%s clientID=%s enrollToCert=%t enrollToToken=%t)", spec.Name, spec.Issuer, spec.Audience, spec.ClientID, spec.EnrollToCert, spec.EnrollToToken)
 	args := []string{
 		"edge", "create", "ext-jwt-signer", spec.Name, spec.Issuer,
 		"--jwks-endpoint", spec.JWKS,
-		"--audience", spec.ClientID,
+		"--audience", spec.Audience,
 		"--client-id", spec.ClientID,
 		"--external-auth-url", spec.Issuer,
 	}
@@ -414,8 +415,11 @@ func (o *Overlay) UpdateExtJwtSigner(t *testing.T, name string, spec ExtJwtSigne
 	if spec.JWKS != "" {
 		args = append(args, "--jwks-endpoint", spec.JWKS)
 	}
+	if spec.Audience != "" {
+		args = append(args, "--audience", spec.Audience)
+	}
 	if spec.ClientID != "" {
-		args = append(args, "--audience", spec.ClientID, "--client-id", spec.ClientID)
+		args = append(args, "--client-id", spec.ClientID)
 	}
 	if spec.Claim != "" {
 		args = append(args, "--claims-property", spec.Claim)

@@ -58,6 +58,10 @@ func TestMain(m *testing.M) {
 		fmt.Fprintln(os.Stderr, "config must set ziti.binary and zetA.binary")
 		os.Exit(2)
 	}
+	if cfg.Ziti.URL != "" && cfg.IdP.UseTestHarnessIdP {
+		fmt.Fprintln(os.Stderr, "config sets ziti.url with useTestHarnessIdP=true, but the harness IdP binds to localhost and an external controller cannot reach it - add a signerName or remove ziti.url")
+		os.Exit(2)
+	}
 
 	zetLogDir := filepath.Join(cfg.TestHome, "zets")
 	externalID := cfg.IdP.Sub
@@ -97,21 +101,22 @@ func TestMain(m *testing.M) {
 			TlsuvDebug:    cfg.ZetB.TlsuvDebug,
 		},
 		idp: &testutil.IdP{
-			Seed:           cfg.IdP.SeedIdP,
-			Bin:            cfg.IdP.Binary,
-			WorkDir:        filepath.Join(cfg.TestHome, "idp"),
-			IssuerURL:      cfg.IdP.Issuer,
-			ClientIDWorks:  cfg.IdP.ClientID,
-			ClientIDExtraA: extraA,
-			ClientIDExtraB: extraB,
-			Audience:       cfg.IdP.Audience,
-			Sub:            cfg.IdP.Sub,
-			Scopes:         cfg.IdP.Scopes,
-			Email:          cfg.IdP.User.Email,
-			Password:       cfg.IdP.User.Password,
-			Username:       cfg.IdP.User.Username,
-			UserID:         cfg.IdP.User.UserID,
-			ExternalID:     externalID,
+			UseTestHarnessIdP: cfg.IdP.UseTestHarnessIdP,
+			Bin:               cfg.IdP.Binary,
+			WorkDir:           filepath.Join(cfg.TestHome, "idp"),
+			IssuerURL:         cfg.IdP.Issuer,
+			SignerName:        cfg.IdP.SignerName,
+			ClientIDWorks:     cfg.IdP.ClientID,
+			ClientIDExtraA:    extraA,
+			ClientIDExtraB:    extraB,
+			Audience:          cfg.IdP.Audience,
+			Sub:               cfg.IdP.Sub,
+			Scopes:            cfg.IdP.Scopes,
+			Email:             cfg.IdP.User.Email,
+			Password:          cfg.IdP.User.Password,
+			Username:          cfg.IdP.User.Username,
+			UserID:            cfg.IdP.User.UserID,
+			ExternalID:        externalID,
 		},
 	}
 
@@ -224,7 +229,7 @@ func doSetup(state TestState) error {
 		return fmt.Errorf("start zetB: %w", zetHostErr)
 	}
 
-	log.Printf("setup: starting IdP (seed=%t bin=%s issuer=%s)", state.idp.Seed, state.idp.Bin, state.idp.IssuerURL)
+	log.Printf("setup: starting IdP (useTestHarnessIdP=%t bin=%s issuer=%s)", state.idp.UseTestHarnessIdP, state.idp.Bin, state.idp.IssuerURL)
 	if err := state.idp.Start(); err != nil {
 		return fmt.Errorf("start IdP: %w", err)
 	}

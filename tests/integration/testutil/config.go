@@ -44,15 +44,16 @@ type ZetConfig struct {
 }
 
 type IdPConfig struct {
-	SeedIdP        bool     `json:"seedIdP"`
-	Binary         string   `json:"binary"`
-	Issuer         string   `json:"issuer"`
-	ClientID       string   `json:"clientId"`
-	ExtraClientIDs []string `json:"extraClientIds"`
-	Audience       string   `json:"audience"`
-	Sub            string   `json:"sub"`
-	Scopes         string   `json:"scopes"`
-	User           IdPUser  `json:"user"`
+	UseTestHarnessIdP bool     `json:"useTestHarnessIdP"`
+	Binary            string   `json:"binary"`
+	Issuer            string   `json:"issuer"`
+	SignerName        string   `json:"signerName"`
+	ClientID          string   `json:"clientId"`
+	ExtraClientIDs    []string `json:"extraClientIds"`
+	Audience          string   `json:"audience"`
+	Sub               string   `json:"sub"`
+	Scopes            string   `json:"scopes"`
+	User              IdPUser  `json:"user"`
 }
 
 func LoadConfig(path string) (*Config, error) {
