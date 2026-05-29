@@ -12,9 +12,23 @@
 #   ZET1_VERSION   If set, downloads this ZET release and uses it as ZET_BIN.
 #   ZET2_VERSION   If set, downloads this ZET release and uses it as ZET_BIN_B.
 #
+# Flags:
+#   --install-cert  Install the test overlay CA into OS trust for the run and
+#                   remove it on exit. Off by default so the script does not
+#                   mutate a normal user's trust store.
+#
 # Requires:  go, gh, jq, sudo (Linux/macOS).
 
 set -euo pipefail
+
+INSTALL_CERT=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --install-cert) INSTALL_CERT=1 ;;
+    *) echo "unknown argument: $1" >&2; exit 1 ;;
+  esac
+  shift
+done
 
 : "${ZET_BIN:?ZET_BIN must point to a ziti-edge-tunnel binary}"
 
@@ -128,18 +142,22 @@ wait "$QS_PID" 2>/dev/null || true
 # ---- Install CA into OS trust ------------------------------------------------
 CA_CERT="$OVERLAY_HOME/pki/root-ca/certs/root-ca.cert"
 INSTALLED_CA=""
-case "$(uname -s)" in
-  Linux)
-    sudo cp "$CA_CERT" /usr/local/share/ca-certificates/ziti-test.crt
-    sudo update-ca-certificates
-    INSTALLED_CA=linux
-    ;;
-  Darwin)
-    sudo security add-trusted-cert -d -r trustRoot \
-      -k /Library/Keychains/System.keychain "$CA_CERT"
-    INSTALLED_CA=darwin
-    ;;
-esac
+if [ -z "$INSTALL_CERT" ]; then
+  echo "WARNING: skipping test CA install into OS trust (pass --install-cert to enable); tests that require the controller cert to be trusted may fail" >&2
+else
+  case "$(uname -s)" in
+    Linux)
+      sudo cp "$CA_CERT" /usr/local/share/ca-certificates/ziti-test.crt
+      sudo update-ca-certificates
+      INSTALLED_CA=linux
+      ;;
+    Darwin)
+      sudo security add-trusted-cert -d -r trustRoot \
+        -k /Library/Keychains/System.keychain "$CA_CERT"
+      INSTALLED_CA=darwin
+      ;;
+  esac
+fi
 
 cleanup() {
   case "$INSTALLED_CA" in
@@ -169,7 +187,7 @@ jq -n \
     zetA: { binary: $zetBin,  verbosity: 4, tlsuvDebug: 0 },
     zetB: { binary: $zetBinB, verbosity: 4, tlsuvDebug: 0 },
     idp: {
-      seedIdP: true,
+      useTestHarnessIdP: true,
       binary: $idpBin,
       issuer: "",
       clientId: "ziti-test",

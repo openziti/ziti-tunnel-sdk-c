@@ -12,11 +12,18 @@ Optional input:
   $env:ZET1_VERSION   If set, downloads this ZET release and uses it as ZET_BIN.
   $env:ZET2_VERSION   If set, downloads this ZET release and uses it as ZET_BIN_B.
 
-Requires: go, gh, git. Run as Administrator because installing the test
-overlay CA into Cert:\LocalMachine\Root requires it.
+Flags:
+  -InstallCert  Install the test overlay CA into OS trust for the run and remove
+                it on exit. Off by default so the script does not mutate a normal
+                user's trust store.
+
+Requires: go, gh, git. Run as Administrator when using -InstallCert, because
+installing the test overlay CA into Cert:\LocalMachine\Root requires it.
 #>
 
 #Requires -Version 7.0
+
+param([switch]$InstallCert)
 
 $ErrorActionPreference = "Stop"
 
@@ -136,7 +143,12 @@ $qs.WaitForExit()
 
 # ---- Install CA into OS trust -----------------------------------------------
 $caCert = Join-Path $overlayHome "pki\root-ca\certs\root-ca.cert"
-$importedCert = Import-Certificate -FilePath $caCert -CertStoreLocation Cert:\LocalMachine\Root
+$importedCert = $null
+if ($InstallCert) {
+    $importedCert = Import-Certificate -FilePath $caCert -CertStoreLocation Cert:\LocalMachine\Root
+} else {
+    Write-Warning "skipping test CA install into OS trust (pass -InstallCert to enable); tests that require the controller cert to be trusted may fail"
+}
 
 try {
     # ---- Write config.json --------------------------------------------------
@@ -147,7 +159,7 @@ try {
         zetA = [ordered]@{ binary = $zetBin;  verbosity = 4; tlsuvDebug = 0 }
         zetB = [ordered]@{ binary = $zetBinB; verbosity = 4; tlsuvDebug = 0 }
         idp  = [ordered]@{
-            seedIdP        = $true
+            useTestHarnessIdP = $true
             binary         = $idpBin
             issuer         = ""
             clientId       = "ziti-test"
