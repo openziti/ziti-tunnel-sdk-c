@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       ziti_version:
-        description: "ziti release tag to test against (e.g. v2.0.0); blank = newest + LTS matrix"
+        description: "ziti release tag to test against (e.g. v2.0.0); blank = newest + v2.0/v1.6 matrix"
         required: false
         default: ""
       zet1_version:
@@ -71,7 +71,7 @@ jobs:
 
   # Resolve which ziti releases the matrix runs against. A manual run with
   # ziti_version set tests that single tag; otherwise the newest release plus the
-  # newest patch of the LTS-current (v2.0) and LTS-maintenance (v1.6) lines.
+  # newest patch of the v2.0 and v1.6 lines.
   resolve-ziti-versions:
     name: Resolve ziti versions
     runs-on: ubuntu-latest

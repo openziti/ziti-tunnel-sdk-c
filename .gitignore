@@ -33,6 +33,6 @@ tools/dcp/build/
 /result
 /.gdbinit
 
-# Local integration-test config
-tests/integration/config.local.json
-tests/integration/config.json
+# Local integration-test configs; the checked-in template is the exception
+tests/integration/config*.json
+!tests/integration/config.example.json
