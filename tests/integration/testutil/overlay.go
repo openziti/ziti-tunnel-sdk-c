@@ -178,7 +178,7 @@ func probeZitiVersion(zitiBin string) (int, int, error) {
 
 func (o *Overlay) ControllerHostPort() string {
 	if o.ControllerURL != "" {
-		return o.ControllerURL
+		return strings.TrimRight(o.ControllerURL, "/")
 	}
 	return fmt.Sprintf("https://localhost:%d", overlayCtrlPort)
 }
