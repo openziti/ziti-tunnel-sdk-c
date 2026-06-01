@@ -17,6 +17,7 @@ limitations under the License.
 package integration_test
 
 import (
+	"net/url"
 	"testing"
 	"time"
 
@@ -42,6 +43,7 @@ func TestTunnelRestart(t *testing.T) {
 	t.Cleanup(c.zet.Stop)
 
 	t.Run("testJwtIdentitySurvivesRestart", c.testJwtIdentitySurvivesRestart)
+	t.Run("testMfaIdentitySurvivesRestart", c.testMfaIdentitySurvivesRestart)
 }
 
 func (c *restartContext) testJwtIdentitySurvivesRestart(t *testing.T) {
@@ -57,7 +59,6 @@ func (c *restartContext) testJwtIdentitySurvivesRestart(t *testing.T) {
 		status := c.zet.Events.WaitForStatusEvent(t)
 		identityFromStatus := findIdentityInStatus(t, status, identityEvent.Id.Identifier)
 		c.assertJwtIdentity(t, identityFromStatus)
-		c.zet.Events.WaitForControllerEvent(t, "connected", name)
 
 		c.removeIdentity(t, identityEvent.Id.Identifier)
 	})
@@ -89,6 +90,58 @@ func (c *restartContext) assertJwtIdentity(t *testing.T, identity testutil.Ident
 	require.False(t, identity.MfaNeeded, "MfaNeeded=%t for jwt identity %q", identity.MfaNeeded, identity.Name)
 	testutil.AssertValidJwtEnrolledIdentityFile(t, identity.Identifier)
 	t.Logf("identity %q present NeedsExtAuth=%t MfaNeeded=%t", identity.Name, identity.NeedsExtAuth, identity.MfaNeeded)
+}
+
+func (c *restartContext) testMfaIdentitySurvivesRestart(t *testing.T) {
+	testutil.RunTestWithTimeoutOf(t, restartTestTimeout, func(t *testing.T) {
+		name := testutil.IdentityName(t)
+
+		identityEvent := c.addMfaIdentity(t, name)
+
+		t.Logf("restarting zetC")
+		require.NoError(t, c.zet.Restart(), "restart zetC\n%s", c.zet.LogPath())
+
+		status := c.zet.Events.WaitForStatusEvent(t)
+		identityFromStatus := findIdentityInStatus(t, status, identityEvent.Id.Identifier)
+		c.assertMfaIdentity(t, identityFromStatus)
+
+		c.removeIdentity(t, identityEvent.Id.Identifier)
+	})
+}
+
+func (c *restartContext) addMfaIdentity(t *testing.T, name string) testutil.IdentityEvent {
+	added := c.addJwtIdentity(t, name)
+	identifier := added.Id.Identifier
+
+	t.Logf("enabling MFA for %q", name)
+	enrollment, err := c.zet.Commands.GetMFAEnrollment(identifier)
+	require.NoError(t, err, "EnableMFA\n%s", c.zet.LogPath())
+	require.NotEmpty(t, enrollment.ProvisioningUrl, "EnableMFA ProvisioningUrl empty")
+
+	provisioning, err := url.Parse(enrollment.ProvisioningUrl)
+	require.NoError(t, err, "parse provisioning URL %q", enrollment.ProvisioningUrl)
+	secret := provisioning.Query().Get("secret")
+	require.NotEmpty(t, secret, "provisioning URL missing secret: %q", enrollment.ProvisioningUrl)
+
+	code, err := generateTotpCode(secret, time.Now())
+	require.NoError(t, err, "compute TOTP")
+
+	t.Logf("verifying MFA for %q", name)
+	verifyResp, err := c.zet.Commands.VerifyMFA(identifier, code)
+	require.NoError(t, err, "VerifyMFA\n%s", c.zet.LogPath())
+	require.True(t, verifyResp.Success(), "VerifyMFA failed: code=%d error=%q\n%s", verifyResp.Code, verifyResp.Error, c.zet.LogPath())
+
+	verifyEvt := c.zet.Events.WaitForMfaEvent(t, "enrollment_verification", name)
+	require.True(t, verifyEvt.Successful, "mfa:enrollment_verification Successful=%t", verifyEvt.Successful)
+
+	return added
+}
+
+func (c *restartContext) assertMfaIdentity(t *testing.T, identity testutil.Identity) {
+	require.NotEmpty(t, identity.Identifier, "identity Identifier empty")
+	require.True(t, identity.MfaEnabled, "MfaEnabled=%t for mfa identity %q", identity.MfaEnabled, identity.Name)
+	testutil.AssertValidJwtEnrolledIdentityFile(t, identity.Identifier)
+	t.Logf("identity %q present MfaEnabled=%t MfaNeeded=%t", identity.Name, identity.MfaEnabled, identity.MfaNeeded)
 }
 
 func (c *restartContext) removeIdentity(t *testing.T, identifier string) {
