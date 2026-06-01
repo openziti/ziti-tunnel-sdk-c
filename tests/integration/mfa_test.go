@@ -337,24 +337,10 @@ type enrolledMFA struct {
 }
 
 func newEnrolledMFA(t *testing.T, name string) (*enrolledMFA, *testutil.EventClient) {
-	t.Logf("creating JWT for %q", name)
-	jwt, err := state.overlay.CreateIdentityJWT(name)
-	require.NoError(t, err, "failed to create JWT")
-	require.NotEmpty(t, jwt)
-
 	client := state.zetClient.Commands
 	events := state.zetClient.Events
 
-	identityData := testutil.AddIdentityData{
-		IdentityFilename: name,
-		JwtContent:       &jwt,
-	}
-	addResp := testutil.AddIdentity(t, client, identityData)
-	require.True(t, addResp.Success(), "AddIdentity failed: error=%q code=%d", addResp.Error, addResp.Code)
-
-	added := events.WaitForIdentityEvent(t, "added", name)
-	require.NotEmpty(t, added.Id.Identifier, "identity:added Identifier empty")
-	testutil.AssertValidJwtEnrolledIdentityFile(t, added.Id.Identifier)
+	added := testutil.EnrollJwtIdentity(t, state.overlay, state.zetClient, name)
 	events.WaitForControllerEvent(t, "connected", name)
 
 	t.Logf("sending EnableMFA for %q", name)

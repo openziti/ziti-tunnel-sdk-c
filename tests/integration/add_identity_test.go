@@ -37,43 +37,19 @@ func TestAddIdentity(t *testing.T) {
 
 func testAddIdentityWithJwtSucceeds(t *testing.T) {
 	testutil.RunTestWithTimeout(t, func(t *testing.T) {
-		overlay := state.overlay
-		events := state.zetClient.Events
-		client := state.zetClient.Commands
-
 		identityName := testutil.IdentityName(t)
-		t.Logf("creating JWT for %q", identityName)
-		jwt, err := overlay.CreateIdentityJWT(identityName)
-		require.NoError(t, err, "failed to create JWT via overlay")
-		require.NotEmpty(t, jwt, "JWT content should not be empty")
-
-		identityData := testutil.AddIdentityData{
-			IdentityFilename: identityName,
-			JwtContent:       &jwt,
-		}
-
-		resp := testutil.AddIdentity(t, client, identityData)
-		require.True(t, resp.Success(), "AddIdentity failed: error=%q code=%d\n%s", resp.Error, resp.Code, state.zetClient.LogPath())
-
-		event := events.WaitForIdentityEvent(t, "added", identityName)
+		event := testutil.EnrollJwtIdentity(t, state.overlay, state.zetClient, identityName)
 		require.True(t, event.Id.Active, "identity:added Active=%t", event.Id.Active)
-		require.NotEmpty(t, event.Id.Identifier, "identity:added Identifier empty")
-
-		testutil.AssertValidJwtEnrolledIdentityFile(t, event.Id.Identifier)
 		t.Logf("identity:added Identifier=%s Active=%t", event.Id.Identifier, event.Id.Active)
 	})
 }
 
 func testAddIdentitySameJwtTwiceSecondFails(t *testing.T) {
 	testutil.RunTestWithTimeout(t, func(t *testing.T) {
-		overlay := state.overlay
 		events := state.zetClient.Events
 		client := state.zetClient.Commands
 		identityName := testutil.IdentityName(t)
-		t.Logf("creating JWT for %q", identityName)
-		jwt, err := overlay.CreateIdentityJWT(identityName)
-		require.NoError(t, err, "failed to create JWT via overlay")
-		require.NotEmpty(t, jwt)
+		jwt := testutil.CreateJwt(t, state.overlay, identityName)
 
 		identityData := testutil.AddIdentityData{
 			IdentityFilename: identityName,
@@ -133,10 +109,7 @@ func testAddIdentityWithDeletedIdentityFails(t *testing.T) {
 		client := state.zetClient.Commands
 
 		identityName := testutil.IdentityName(t)
-		t.Logf("creating JWT for %q", identityName)
-		jwt, err := overlay.CreateIdentityJWT(identityName)
-		require.NoError(t, err, "failed to create JWT via overlay")
-		require.NotEmpty(t, jwt)
+		jwt := testutil.CreateJwt(t, overlay, identityName)
 
 		t.Logf("deleting identity %q from overlay before ZET tries to enroll", identityName)
 		require.NoError(t, overlay.DeleteIdentity(identityName), "delete identity via overlay")
@@ -154,14 +127,10 @@ func testAddIdentityWithDeletedIdentityFails(t *testing.T) {
 
 func testAddIdentityWithSlashInFilenameFails(t *testing.T) {
 	testutil.RunTestWithTimeout(t, func(t *testing.T) {
-		overlay := state.overlay
 		client := state.zetClient.Commands
 
 		name := testutil.IdentityName(t)
-		t.Logf("creating JWT for %q", name)
-		jwt, err := overlay.CreateIdentityJWT(name)
-		require.NoError(t, err, "failed to create JWT via overlay")
-		require.NotEmpty(t, jwt)
+		jwt := testutil.CreateJwt(t, state.overlay, name)
 
 		identityData := testutil.AddIdentityData{
 			IdentityFilename: "foo/bar",
@@ -177,14 +146,10 @@ func testAddIdentityWithSlashInFilenameFails(t *testing.T) {
 
 func testAddIdentityWithDotDotInFilenameFails(t *testing.T) {
 	testutil.RunTestWithTimeout(t, func(t *testing.T) {
-		overlay := state.overlay
 		client := state.zetClient.Commands
 
 		name := testutil.IdentityName(t)
-		t.Logf("creating JWT for %q", name)
-		jwt, err := overlay.CreateIdentityJWT(name)
-		require.NoError(t, err, "failed to create JWT via overlay")
-		require.NotEmpty(t, jwt)
+		jwt := testutil.CreateJwt(t, state.overlay, name)
 
 		identityData := testutil.AddIdentityData{
 			IdentityFilename: "../escape",
@@ -200,14 +165,10 @@ func testAddIdentityWithDotDotInFilenameFails(t *testing.T) {
 
 func testAddIdentityFilenameExceedsCharLimitFails(t *testing.T) {
 	testutil.RunTestWithTimeout(t, func(t *testing.T) {
-		overlay := state.overlay
 		client := state.zetClient.Commands
 
 		name := testutil.IdentityName(t)
-		t.Logf("creating JWT for %q", name)
-		jwt, err := overlay.CreateIdentityJWT(name)
-		require.NoError(t, err, "failed to create JWT via overlay")
-		require.NotEmpty(t, jwt)
+		jwt := testutil.CreateJwt(t, state.overlay, name)
 
 		longName := strings.Repeat("a", 300)
 		identityData := testutil.AddIdentityData{

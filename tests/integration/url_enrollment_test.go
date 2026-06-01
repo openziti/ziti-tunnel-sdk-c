@@ -87,23 +87,10 @@ func testUrlEnrollmentSameNameTwiceSecondFails(t *testing.T) {
 func testUrlEnrollmentAfterJwtSameNameFails(t *testing.T) {
 	testutil.RunTestWithTimeout(t, func(t *testing.T) {
 		overlay := state.overlay
-		events := state.zetClient.Events
 		client := state.zetClient.Commands
 
 		identityName := testutil.IdentityName(t)
-		t.Logf("creating JWT for %q", identityName)
-		jwt, err := overlay.CreateIdentityJWT(identityName)
-		require.NoError(t, err, "failed to create JWT via overlay")
-		require.NotEmpty(t, jwt)
-
-		jwtIdentityData := testutil.AddIdentityData{
-			IdentityFilename: identityName,
-			JwtContent:       &jwt,
-		}
-		first := testutil.AddIdentity(t, client, jwtIdentityData)
-		require.True(t, first.Success(), "first JWT AddIdentity should succeed: error=%q\n%s", first.Error, state.zetClient.LogFile())
-		added := events.WaitForIdentityEvent(t, "added", identityName)
-		testutil.AssertValidJwtEnrolledIdentityFile(t, added.Id.Identifier)
+		testutil.EnrollJwtIdentity(t, overlay, state.zetClient, identityName)
 
 		controllerURL := overlay.ControllerHostPort()
 		urlIdentityData := testutil.AddIdentityData{

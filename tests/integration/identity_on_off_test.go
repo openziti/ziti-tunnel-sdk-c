@@ -30,26 +30,11 @@ func TestIdentityOnOff(t *testing.T) {
 
 func testIdentityOnOffTogglesActiveOff(t *testing.T) {
 	testutil.RunTestWithTimeout(t, func(t *testing.T) {
-		overlay := state.overlay
 		client := state.zetClient.Commands
 		events := state.zetClient.Events
 
 		name := testutil.IdentityName(t)
-		t.Logf("creating JWT for %q", name)
-		jwt, err := overlay.CreateIdentityJWT(name)
-		require.NoError(t, err, "failed to create JWT")
-		require.NotEmpty(t, jwt)
-
-		identityData := testutil.AddIdentityData{
-			IdentityFilename: name,
-			JwtContent:       &jwt,
-		}
-		addResp := testutil.AddIdentity(t, client, identityData)
-		require.True(t, addResp.Success(), "AddIdentity failed: error=%q code=%d", addResp.Error, addResp.Code)
-
-		added := events.WaitForIdentityEvent(t, "added", name)
-		require.NotEmpty(t, added.Id.Identifier, "identity:added Identifier empty")
-		testutil.AssertValidJwtEnrolledIdentityFile(t, added.Id.Identifier)
+		added := testutil.EnrollJwtIdentity(t, state.overlay, state.zetClient, name)
 
 		t.Logf("sending IdentityOnOff(false) for %q", name)
 		offResp, err := client.IdentityOnOff(added.Id.Identifier, false)
@@ -64,26 +49,11 @@ func testIdentityOnOffTogglesActiveOff(t *testing.T) {
 
 func testIdentityOnOffTogglesActiveOn(t *testing.T) {
 	testutil.RunTestWithTimeout(t, func(t *testing.T) {
-		overlay := state.overlay
 		client := state.zetClient.Commands
 		events := state.zetClient.Events
 
 		name := testutil.IdentityName(t)
-		t.Logf("creating JWT for %q", name)
-		jwt, err := overlay.CreateIdentityJWT(name)
-		require.NoError(t, err, "failed to create JWT")
-		require.NotEmpty(t, jwt)
-
-		identityData := testutil.AddIdentityData{
-			IdentityFilename: name,
-			JwtContent:       &jwt,
-		}
-		addResp := testutil.AddIdentity(t, client, identityData)
-		require.True(t, addResp.Success(), "AddIdentity failed: error=%q code=%d", addResp.Error, addResp.Code)
-
-		added := events.WaitForIdentityEvent(t, "added", name)
-		require.NotEmpty(t, added.Id.Identifier, "identity:added Identifier empty")
-		testutil.AssertValidJwtEnrolledIdentityFile(t, added.Id.Identifier)
+		added := testutil.EnrollJwtIdentity(t, state.overlay, state.zetClient, name)
 
 		t.Logf("sending IdentityOnOff(false) for %q", name)
 		offResp, err := client.IdentityOnOff(added.Id.Identifier, false)

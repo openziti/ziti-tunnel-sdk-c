@@ -50,8 +50,8 @@ func (c *restartContext) testJwtIdentitySurvivesRestart(t *testing.T) {
 	testutil.RunTestWithTimeoutOf(t, restartTestTimeout, func(t *testing.T) {
 		name := testutil.IdentityName(t)
 
-		identityEvent := c.addJwtIdentity(t, name)
-		c.assertJwtIdentity(t, identityEvent.Id)
+		identityEvent := testutil.EnrollJwtIdentity(t, c.overlay, c.zet, name)
+		c.zet.Events.WaitForControllerEvent(t, "connected", name)
 
 		t.Logf("restarting zetC")
 		require.NoError(t, c.zet.Restart(), "restart zetC\n%s", c.zet.LogPath())
@@ -62,26 +62,6 @@ func (c *restartContext) testJwtIdentitySurvivesRestart(t *testing.T) {
 
 		c.removeIdentity(t, identityEvent.Id.Identifier)
 	})
-}
-
-func (c *restartContext) addJwtIdentity(t *testing.T, name string) testutil.IdentityEvent {
-	t.Logf("creating JWT for %q", name)
-	jwt, err := c.overlay.CreateIdentityJWT(name)
-	require.NoError(t, err, "failed to create JWT")
-	require.NotEmpty(t, jwt)
-
-	identityData := testutil.AddIdentityData{
-		IdentityFilename: name,
-		JwtContent:       &jwt,
-	}
-	addResp := testutil.AddIdentity(t, c.zet.Commands, identityData)
-	require.True(t, addResp.Success(), "AddIdentity failed: error=%q code=%d\n%s", addResp.Error, addResp.Code, c.zet.LogPath())
-
-	identityEvent := c.zet.Events.WaitForIdentityEvent(t, "added", name)
-	require.NotEmpty(t, identityEvent.Id.Identifier, "identity:added Identifier empty")
-	c.zet.Events.WaitForControllerEvent(t, "connected", name)
-
-	return identityEvent
 }
 
 func (c *restartContext) assertJwtIdentity(t *testing.T, identity testutil.Identity) {
@@ -110,8 +90,9 @@ func (c *restartContext) testMfaIdentitySurvivesRestart(t *testing.T) {
 }
 
 func (c *restartContext) addMfaIdentity(t *testing.T, name string) testutil.IdentityEvent {
-	added := c.addJwtIdentity(t, name)
-	identifier := added.Id.Identifier
+	identityEvent := testutil.EnrollJwtIdentity(t, c.overlay, c.zet, name)
+	c.zet.Events.WaitForControllerEvent(t, "connected", name)
+	identifier := identityEvent.Id.Identifier
 
 	t.Logf("enabling MFA for %q", name)
 	enrollment, err := c.zet.Commands.GetMFAEnrollment(identifier)
@@ -134,7 +115,7 @@ func (c *restartContext) addMfaIdentity(t *testing.T, name string) testutil.Iden
 	verifyEvt := c.zet.Events.WaitForMfaEvent(t, "enrollment_verification", name)
 	require.True(t, verifyEvt.Successful, "mfa:enrollment_verification Successful=%t", verifyEvt.Successful)
 
-	return added
+	return identityEvent
 }
 
 func (c *restartContext) assertMfaIdentity(t *testing.T, identity testutil.Identity) {
