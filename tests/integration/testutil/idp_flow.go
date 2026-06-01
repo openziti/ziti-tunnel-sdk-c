@@ -58,15 +58,10 @@ func (p *IdP) DriveIdPFlow(t *testing.T, authUrl string) {
 	resp.Body.Close()
 	require.Equal(t, http.StatusOK, resp.StatusCode, "login page status=%d body=%s", resp.StatusCode, truncate(body, 200))
 
-	formAction, err := extractFormAction(string(body))
+	formAction, form, err := parseLoginForm(string(body), p.Email, p.Password)
 	require.NoError(t, err, "parse IdP login form (body=%s)", truncate(body, 200))
 	postURL, err := absoluteURL(loginPageURL, formAction)
 	require.NoError(t, err, "resolve form action %q", formAction)
-
-	form := url.Values{
-		"login":    {p.Email},
-		"password": {p.Password},
-	}
 	req, err = http.NewRequest(http.MethodPost, postURL, strings.NewReader(form.Encode()))
 	require.NoError(t, err, "build credentials POST")
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -132,17 +127,64 @@ func followRedirectsTo200(client *http.Client, start string, maxHops int) (strin
 	return "", fmt.Errorf("too many redirects starting at %s", start)
 }
 
-var formActionRe = regexp.MustCompile(`(?is)<form[^>]*\saction="([^"]+)"`)
+var (
+	formRe  = regexp.MustCompile(`(?is)<form([^>]*)>(.*?)</form>`)
+	inputRe = regexp.MustCompile(`(?is)<input\b([^>]*)>`)
+	attrRe  = regexp.MustCompile(`(?is)([a-zA-Z_:][-a-zA-Z0-9_:.]*)\s*=\s*(?:"([^"]*)"|'([^']*)')`)
+)
 
-func extractFormAction(body string) (string, error) {
-	m := formActionRe.FindStringSubmatch(body)
-	if len(m) < 2 {
-		return "", fmt.Errorf("no <form action=...> in body")
+// parseLoginForm finds the IdP login form (the <form> that holds a password
+// input), carries forward every input it declares, and fills the detected
+// username and password fields. Reading the form instead of hardcoding field
+// names keeps the flow IdP-agnostic: dex uses login/password, keycloak and
+// auth0 use username/password plus hidden state/CSRF fields, all handled here.
+func parseLoginForm(body, email, password string) (string, url.Values, error) {
+	for _, f := range formRe.FindAllStringSubmatch(body, -1) {
+		formAttrs, inner := parseTagAttributes(f[1]), f[2]
+		form := url.Values{}
+		var passField, userField string
+		for _, in := range inputRe.FindAllStringSubmatch(inner, -1) {
+			a := parseTagAttributes(in[1])
+			name := a["name"]
+			if name == "" {
+				continue
+			}
+			// Inputs are HTML-escaped, so hidden state like `?back=&state=x` is
+			// rendered `&amp;`. Without decoding, the POST parses keys wrong and
+			// the IdP returns 400.
+			form.Set(name, html.UnescapeString(a["value"]))
+			switch strings.ToLower(a["type"]) {
+			case "password":
+				passField = name
+			case "", "text", "email", "tel":
+				if userField == "" {
+					userField = name
+				}
+			}
+		}
+		if passField == "" {
+			continue
+		}
+		form.Set(passField, password)
+		if userField != "" {
+			form.Set(userField, email)
+		}
+		return html.UnescapeString(formAttrs["action"]), form, nil
 	}
-	// The IdP HTML-escapes the action attribute, so `?back=&state=<id>` is
-	// rendered as `?back=&amp;state=<id>`. Without decoding, the POSTed query
-	// parses as keys `back` and `amp;state`, and login returns 400.
-	return html.UnescapeString(m[1]), nil
+	return "", nil, fmt.Errorf("no login form with a password field found")
+}
+
+// parseTagAttributes parses an HTML tag's attributes into a lowercase-keyed map.
+func parseTagAttributes(tag string) map[string]string {
+	out := map[string]string{}
+	for _, m := range attrRe.FindAllStringSubmatch(tag, -1) {
+		value := m[2]
+		if value == "" {
+			value = m[3]
+		}
+		out[strings.ToLower(m[1])] = value
+	}
+	return out
 }
 
 func absoluteURL(base, ref string) (string, error) {

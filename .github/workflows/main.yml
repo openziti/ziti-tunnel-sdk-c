@@ -1,6 +1,23 @@
 name: Main Test Workflow
 on:
   workflow_dispatch:
+    inputs:
+      ziti_version:
+        description: "ziti release tag to test against (e.g. v2.0.0); blank = newest + v2.0/v1.6 matrix"
+        required: false
+        default: ""
+      zet1_version:
+        description: "ziti-edge-tunnel release tag for zet1/zetA; blank = build from this branch"
+        required: false
+        default: ""
+      zet2_version:
+        description: "ziti-edge-tunnel release tag for zet2/zetB; blank = same binary as zet1"
+        required: false
+        default: ""
+      idp_version:
+        description: "dex IdP version tag (e.g. v2.45.1); blank = script default"
+        required: false
+        default: ""
   push:
     branches:
       - main
@@ -52,9 +69,50 @@ jobs:
           I_AM_ROBOT: 1
           ZITI_EDGE_TUNNEL_BIN: ./build/amd64/linux/ziti-edge-tunnel
 
+  # Resolve which ziti releases the matrix runs against. A manual run with
+  # ziti_version set tests that single tag; otherwise the newest release plus the
+  # newest patch of the v2.0 and v1.6 lines.
+  resolve-ziti-versions:
+    name: Resolve ziti versions
+    runs-on: ubuntu-latest
+    outputs:
+      channels: ${{ steps.resolve.outputs.channels }}
+    steps:
+      - name: Resolve channels
+        id: resolve
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DISPATCH_ZITI: ${{ inputs.ziti_version }}
+        run: |
+          set -euo pipefail
+          if [ -n "${DISPATCH_ZITI:-}" ]; then
+            channels=$(jq -cn --arg t "$DISPATCH_ZITI" '[{label:$t, tag:$t}]')
+          else
+            tags=$(gh release list --repo openziti/ziti --limit 200 \
+                     --json tagName,isDraft,isPrerelease \
+                   | jq -r '.[] | select(.isDraft==false and .isPrerelease==false) | .tagName')
+            newest_matching() { printf '%s\n' "$tags" | grep -E "$1" | sort -V | tail -n1; }
+            latest=$(printf '%s\n' "$tags" | sort -V | tail -n1)
+            lts=$(newest_matching '^v2\.0\.')
+            maint=$(newest_matching '^v1\.6\.')
+            for v in "$latest" "$lts" "$maint"; do
+              [ -n "$v" ] || { echo "::error::failed to resolve a ziti version (latest=$latest lts=$lts maint=$maint)"; exit 1; }
+            done
+            if [ "$latest" = "$lts" ]; then
+              channels=$(jq -cn --arg lts "$lts" --arg maint "$maint" \
+                '[{label:"lts",tag:$lts},{label:"lts-maintenance",tag:$maint}]')
+            else
+              channels=$(jq -cn --arg latest "$latest" --arg lts "$lts" --arg maint "$maint" \
+                '[{label:"latest",tag:$latest},{label:"lts",tag:$lts},{label:"lts-maintenance",tag:$maint}]')
+            fi
+          fi
+          echo "resolved channels: $channels"
+          echo "channels=$channels" >> "$GITHUB_OUTPUT"
+
   integration-tests:
     name: Integration Tests (${{ matrix.os.name }} / ziti ${{ matrix.ziti-channel.label }})
-    needs: [ call-cmake-build ]
+    needs: [ call-cmake-build, resolve-ziti-versions ]
     strategy:
       fail-fast: false
       matrix:
@@ -64,31 +122,20 @@ jobs:
             artifact: linux-x64
             zet-zip: ziti-edge-tunnel-Linux_x86_64.zip
             zet-bin: ziti-edge-tunnel
-            ziti-pattern: ziti-linux-amd64-*.tar.gz
-            sudo: sudo -E env "PATH=$PATH"
-            create-group: sudo groupadd --system ziti
             core-dir: /tmp/cores
           - name: macOS arm64
             runner: macos-15
             artifact: macOS-arm64
             zet-zip: ziti-edge-tunnel-Darwin_arm64.zip
             zet-bin: ziti-edge-tunnel
-            ziti-pattern: ziti-darwin-arm64-*.tar.gz
-            sudo: sudo -E env "PATH=$PATH"
-            create-group: sudo dseditgroup -o create ziti
             core-dir: /cores
           - name: Windows x64
             runner: windows-2022
             artifact: windows-x64-mingw
             zet-zip: ziti-edge-tunnel-Windows_x86_64.zip
             zet-bin: ziti-edge-tunnel.exe
-            ziti-pattern: ziti-windows-amd64-*.zip
-            sudo: ""
-            create-group: ""
             core-dir: ""
-        ziti-channel:
-          - { label: latest, prefix: "" }
-          - { label: "1.6",  prefix: "v1.6." }
+        ziti-channel: ${{ fromJSON(needs.resolve-ziti-versions.outputs.channels) }}
     runs-on: ${{ matrix.os.runner }}
     steps:
       - name: Checkout
@@ -109,162 +156,43 @@ jobs:
           path: ./zet-artifact
           digest-mismatch: error
 
-      - name: Extract ziti-edge-tunnel
+      - name: Extract built ZET binary from artifact
         shell: bash
+        env:
+          ZET_ZIP: ${{ matrix.os.zet-zip }}
+          ZET_BIN_NAME: ${{ matrix.os.zet-bin }}
         run: |
-          cd zet-artifact && unzip -o "${{ matrix.os.zet-zip }}"
-          chmod +x "${{ matrix.os.zet-bin }}" || true
-          echo "ZET_BIN=$PWD/${{ matrix.os.zet-bin }}" >> "$GITHUB_ENV"
+          set -euo pipefail
+          unzip -o "zet-artifact/$ZET_ZIP" -d zet-artifact
+          chmod +x "zet-artifact/$ZET_BIN_NAME" || true
+          # On Windows the consumer is PowerShell, which can't resolve an MSYS
+          # /d/a/... path; pwd -W emits a Windows path it accepts.
+          if [ "$RUNNER_OS" = "Windows" ]; then base="$(pwd -W)"; else base="$PWD"; fi
+          echo "ZET_BIN=$base/zet-artifact/$ZET_BIN_NAME" >> "$GITHUB_ENV"
 
-      - name: Download ziti CLI (${{ matrix.ziti-channel.label }})
+      - name: Run integration tests (Linux/macOS)
+        if: runner.os != 'Windows'
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CHANNEL_PREFIX: ${{ matrix.ziti-channel.prefix }}
-          ZITI_PATTERN: ${{ matrix.os.ziti-pattern }}
-        run: |
-          mkdir -p ziti-cli && cd ziti-cli
-          if [ -z "$CHANNEL_PREFIX" ]; then
-            gh release download --repo openziti/ziti --pattern "$ZITI_PATTERN"
-          else
-            TAG=$(gh release list --repo openziti/ziti --limit 100 \
-                    --json tagName,isDraft,isPrerelease \
-                  | jq -r --arg pre "$CHANNEL_PREFIX" \
-                      '.[] | select(.isDraft==false and .isPrerelease==false and (.tagName | startswith($pre))) | .tagName' \
-                  | head -n1)
-            if [ -z "$TAG" ]; then
-              echo "::error::no ziti release found matching prefix $CHANNEL_PREFIX" >&2
-              exit 1
-            fi
-            echo "resolved ziti tag for channel '$CHANNEL_PREFIX': $TAG"
-            gh release download --repo openziti/ziti "$TAG" --pattern "$ZITI_PATTERN"
-          fi
-          if ls *.tar.gz >/dev/null 2>&1; then tar -xzf *.tar.gz; fi
-          if ls *.zip    >/dev/null 2>&1; then unzip -o *.zip; fi
-          ZITI=$(find . -type f \( -name ziti -o -name ziti.exe \) | head -n1)
-          chmod +x "$ZITI" || true
-          ZITI_ABS=$(cd "$(dirname "$ZITI")" && pwd)/$(basename "$ZITI")
-          echo "ZITI_BIN=$ZITI_ABS" >> "$GITHUB_ENV"
-          "$ZITI_ABS" --version || true
+          TEST_HOME: ${{ runner.temp }}
+          ZITI_VERSION: ${{ matrix.ziti-channel.tag }}
+          IDP_VERSION: ${{ inputs.idp_version }}
+          ZET1_VERSION: ${{ inputs.zet1_version }}
+          ZET2_VERSION: ${{ inputs.zet2_version }}
+        run: ./tests/integration/scripts/run-ci.sh --install-cert
 
-      - name: Build IdP
-        shell: bash
-        run: |
-          DEST="$RUNNER_TEMP/dex-build" tests/integration/scripts/fetch-dex.sh
-          case "$(uname -s)" in
-            MINGW*|MSYS*|CYGWIN*) IDP_BIN="$RUNNER_TEMP/dex-build/dex.exe" ;;
-            *) IDP_BIN="$RUNNER_TEMP/dex-build/dex" ;;
-          esac
-          echo "IDP_BIN=$IDP_BIN" >> "$GITHUB_ENV"
-
-      - name: Create ziti group
-        if: ${{ matrix.os.create-group != '' }}
-        shell: bash
-        run: ${{ matrix.os.create-group }}
-
-      - name: Configure core dumps
-        if: ${{ matrix.os.core-dir != '' }}
-        shell: bash
-        run: |
-          sudo mkdir -p "${{ matrix.os.core-dir }}"
-          sudo chmod 1777 "${{ matrix.os.core-dir }}"
-          if [ "$(uname -s)" = "Linux" ]; then
-            echo '${{ matrix.os.core-dir }}/core.%e.%p' | sudo tee /proc/sys/kernel/core_pattern
-            # Allow core dumps from processes that change credentials (capabilities).
-            # Default suid_dumpable=0 suppresses cores from such processes.
-            echo 1 | sudo tee /proc/sys/fs/suid_dumpable
-          elif [ "$(uname -s)" = "Darwin" ]; then
-            sudo sysctl -w kern.corefile="${{ matrix.os.core-dir }}/core.%N.%P"
-          fi
-
-      - name: Seed test overlay PKI
-        shell: bash
-        run: |
-          "$ZITI_BIN" edge quickstart --home="$RUNNER_TEMP" \
-            --ctrl-address=localhost --ctrl-port=1280 \
-            --router-address=localhost --router-port=3022 &
-          until curl -sk --max-time 2 https://localhost:1280/ >/dev/null \
-             && (echo > /dev/tcp/localhost/3022) 2>/dev/null; do
-            if (( SECONDS > 120 )); then
-              echo "::error::overlay never came up within 120s" >&2
-              kill %1 2>/dev/null
-              exit 1
-            fi
-            sleep 1
-          done
-          kill %1
-          wait %1 2>/dev/null || true
-
-      - name: Install test overlay CA into OS trust (Linux)
-        if: runner.os == 'Linux'
-        shell: bash
-        run: |
-          sudo cp "$RUNNER_TEMP/pki/root-ca/certs/root-ca.cert" \
-            /usr/local/share/ca-certificates/ziti-test.crt
-          sudo update-ca-certificates
-
-      - name: Install test overlay CA into OS trust (macOS)
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          sudo security add-trusted-cert -d -r trustRoot \
-            -k /Library/Keychains/System.keychain \
-            "$RUNNER_TEMP/pki/root-ca/certs/root-ca.cert"
-
-      - name: Install test overlay CA into OS trust (Windows)
+      - name: Run integration tests (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: |
-          Import-Certificate `
-            -FilePath "$env:RUNNER_TEMP\pki\root-ca\certs\root-ca.cert" `
-            -CertStoreLocation Cert:\LocalMachine\Root | Out-Null
-
-      - name: Run integration tests
-        shell: bash
-        working-directory: tests/integration
-        run: |
-          case "$(uname -s)" in
-            Linux|Darwin)
-              # ulimit -c unlimited must be set inside the privileged shell: sudo
-              # resets resource limits via PAM, so setting it in the outer shell
-              # has no effect on ZET child processes.
-              sudo env "PATH=$PATH" "ZET_BIN=$ZET_BIN" "ZITI_BIN=$ZITI_BIN" "IDP_BIN=$IDP_BIN" "RUNNER_TEMP=$RUNNER_TEMP" \
-                sh -c 'ulimit -c unlimited && exec go test ./... -v -timeout 20m \
-                  -zet-bin="$ZET_BIN" -ziti-bin="$ZITI_BIN" -idp-bin="$IDP_BIN" \
-                  -test-home="$RUNNER_TEMP"'
-              ;;
-            *)
-              go test ./... -v -timeout 20m \
-                -zet-bin="$ZET_BIN" \
-                -ziti-bin="$ZITI_BIN" \
-                -idp-bin="$IDP_BIN" \
-                -test-home="$RUNNER_TEMP"
-              ;;
-          esac
-
-      - name: Uninstall test overlay CA (Linux)
-        if: always() && runner.os == 'Linux'
-        shell: bash
-        run: |
-          sudo rm -f /usr/local/share/ca-certificates/ziti-test.crt
-          sudo update-ca-certificates --fresh
-
-      - name: Uninstall test overlay CA (macOS)
-        if: always() && runner.os == 'macOS'
-        shell: bash
-        run: |
-          thumb=$(openssl x509 \
-            -in "$RUNNER_TEMP/pki/root-ca/certs/root-ca.cert" \
-            -noout -fingerprint -sha1 | sed 's/.*=//' | tr -d ':')
-          sudo security delete-certificate -Z "$thumb" /Library/Keychains/System.keychain || true
-
-      - name: Uninstall test overlay CA (Windows)
-        if: always() && runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2 `
-            "$env:RUNNER_TEMP\pki\root-ca\certs\root-ca.cert"
-          Get-ChildItem Cert:\LocalMachine\Root | Where-Object Thumbprint -eq $cert.Thumbprint | Remove-Item
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TEST_HOME: ${{ runner.temp }}
+          ZITI_VERSION: ${{ matrix.ziti-channel.tag }}
+          IDP_VERSION: ${{ inputs.idp_version }}
+          ZET1_VERSION: ${{ inputs.zet1_version }}
+          ZET2_VERSION: ${{ inputs.zet2_version }}
+        run: .\tests\integration\scripts\run-ci.ps1 -InstallCert
 
       - name: Log core file backtraces
         if: ${{ failure() && matrix.os.core-dir != '' }}

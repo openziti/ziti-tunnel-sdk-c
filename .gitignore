@@ -32,3 +32,7 @@ tools/dcp/build/
 # Nix build output symlink
 /result
 /.gdbinit
+
+# Local integration-test configs; the checked-in template is the exception
+tests/integration/config*.json
+!tests/integration/config.example.json

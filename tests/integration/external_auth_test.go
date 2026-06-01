@@ -17,6 +17,7 @@ limitations under the License.
 package integration_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/openziti/ziti-tunnel-sdk-c/tests/integration/testutil"
@@ -49,9 +50,25 @@ func newExtAuthContext(t *testing.T) *extAuthContext {
 	return c
 }
 
-// setupWorkingExtJwtSigner ensures the working signer exists (find-or-create)
-// so either top-level test can run on its own.
+// setupWorkingExtJwtSigner adopts idp.signerName, failing if no signer with that
+// name exists on the controller. The working signer is auto-created only when the
+// harness runs its own IdP (useTestHarnessIdP); a caller bringing an external IdP
+// is expected to supply a signer.
 func (c *extAuthContext) setupWorkingExtJwtSigner(t *testing.T) {
+	if c.idp.SignerName != "" {
+		id, found := c.overlay.FindExtJwtSignerId(t, c.idp.SignerName)
+		if !found {
+			t.Fatalf("idp.signerName=%q is set but no ext-jwt-signer with that name exists on the controller; fix the name or create the signer", c.idp.SignerName)
+		}
+		c.workingSigner.name = c.idp.SignerName
+		c.workingSigner.id = id
+		return
+	}
+
+	if !c.idp.UseTestHarnessIdP {
+		t.Fatal("idp.signerName is empty: the working ext-jwt-signer is only auto-created when the harness runs its own IdP (useTestHarnessIdP=true); set idp.signerName to use your own")
+	}
+
 	c.workingSigner.name = "TestExternalAuth-signer-working"
 	if id, found := c.overlay.FindExtJwtSignerId(t, c.workingSigner.name); found {
 		c.workingSigner.id = id
@@ -62,8 +79,9 @@ func (c *extAuthContext) setupWorkingExtJwtSigner(t *testing.T) {
 		Issuer:   c.idp.IssuerURL,
 		JWKS:     c.idp.JWKSURI(),
 		ClientID: c.idp.ClientIDWorks,
+		Audience: c.idp.Audience,
 		Claim:    "email",
-		Scopes:   []string{"email"},
+		Scopes:   strings.Fields(c.idp.Scopes),
 	})
 }
 
@@ -74,8 +92,9 @@ func (c *extAuthContext) setupExtraExtJwtSigners(t *testing.T) {
 		Issuer:   c.idp.IssuerURL + "-" + c.extraSignerA.name,
 		JWKS:     c.idp.JWKSURI() + "-" + c.extraSignerA.name,
 		ClientID: c.idp.ClientIDExtraA,
+		Audience: c.idp.Audience,
 		Claim:    "email",
-		Scopes:   []string{"email"},
+		Scopes:   strings.Fields(c.idp.Scopes),
 	})
 
 	c.extraSignerB.name = "TestExternalAuth-signer-extra-b"
@@ -84,8 +103,9 @@ func (c *extAuthContext) setupExtraExtJwtSigners(t *testing.T) {
 		Issuer:   c.idp.IssuerURL + "-" + c.extraSignerB.name,
 		JWKS:     c.idp.JWKSURI() + "-" + c.extraSignerB.name,
 		ClientID: c.idp.ClientIDExtraB,
+		Audience: c.idp.Audience,
 		Claim:    "email",
-		Scopes:   []string{"email"},
+		Scopes:   strings.Fields(c.idp.Scopes),
 	})
 }
 
