@@ -41,3 +41,22 @@ func RunTestWithTimeout(t *testing.T, f func(t *testing.T)) {
 		t.Fatalf("test %s timed out after %s", t.Name(), TestTimeout)
 	}
 }
+
+func RunTestWithTimeoutOf(t *testing.T, timeout time.Duration, f func(t *testing.T)) {
+	t.Helper()
+	done := make(chan any, 1)
+
+	go func() {
+		defer func() { done <- recover() }()
+		f(t)
+	}()
+
+	select {
+	case p := <-done:
+		if p != nil {
+			panic(p)
+		}
+	case <-time.After(timeout):
+		t.Fatalf("test %s timed out after %s", t.Name(), timeout)
+	}
+}

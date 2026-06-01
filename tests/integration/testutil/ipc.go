@@ -252,6 +252,15 @@ func (c *EventClient) WaitForMfaEvent(t *testing.T, action, fingerprint string) 
 	return ev
 }
 
+// WaitForStatusEvent waits for the Op:"status" push the daemon sends to every
+// event-pipe client on connect.
+func (c *EventClient) WaitForStatusEvent(t *testing.T) TunnelStatusEvent {
+	raw := c.waitForEvent(t, "status", "", "")
+	var ev TunnelStatusEvent
+	require.NoError(t, json.Unmarshal(raw, &ev), "parse TunnelStatusEvent: %s", raw)
+	return ev
+}
+
 func (c *EventClient) Close() error {
 	return c.conn.Close()
 }

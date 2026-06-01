@@ -86,8 +86,6 @@ func (z *ZET) Start() error {
 		_ = os.Remove(cmdPipe)
 		_ = os.Remove(eventPipe)
 	}
-	_ = z.RemoveJSONIdentities()
-
 	args := []string{"run", "-I", identityDir, "-v", strconv.Itoa(z.Verbosity)}
 	if z.Discriminator != "" {
 		args = append(args, "-P", z.Discriminator)
@@ -170,6 +168,14 @@ func (z *ZET) Stop() {
 		}
 	}
 	log.Fatalf("ZET pid %d did not exit within 60s of Kill; orphan likely, aborting test run", pid)
+}
+
+// Restart stops the process and starts it again against the same identity dir.
+// Start no longer wipes identities, so enrolled identities persist across the
+// restart. Callers wanting a clean slate wipe before the first Start, not here.
+func (z *ZET) Restart() error {
+	z.Stop()
+	return z.Start()
 }
 
 // RemoveJSONIdentities deletes every *.json file in the identity dir.

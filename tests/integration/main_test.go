@@ -37,6 +37,7 @@ type TestState struct {
 	overlay   *testutil.Overlay
 	zetClient *testutil.ZET
 	zetHost   *testutil.ZET
+	zetC      *testutil.ZET
 	idp       *testutil.IdP
 }
 
@@ -100,6 +101,14 @@ func TestMain(m *testing.M) {
 			Verbosity:     cfg.ZetB.Verbosity,
 			TlsuvDebug:    cfg.ZetB.TlsuvDebug,
 		},
+		zetC: &testutil.ZET{
+			BinPath:       cfg.ZetC.Binary,
+			Discriminator: "zetC",
+			DNSRange:      "100.130.0.1/16",
+			RootDir:       filepath.Join(cfg.TestHome, "zetC"),
+			Verbosity:     cfg.ZetC.Verbosity,
+			TlsuvDebug:    cfg.ZetC.TlsuvDebug,
+		},
 		idp: &testutil.IdP{
 			UseTestHarnessIdP: cfg.IdP.UseTestHarnessIdP,
 			Bin:               cfg.IdP.Binary,
@@ -136,6 +145,7 @@ func run(m *testing.M, state TestState) (int, error) {
 	defer state.overlay.Stop()
 	defer state.zetClient.Stop()
 	defer state.zetHost.Stop()
+	defer state.zetC.Stop()
 	defer state.idp.Stop()
 	defer func() {
 		if state.overlay.CATrusted() {
@@ -199,6 +209,11 @@ func doSetup(state TestState) error {
 		if err := state.overlay.PurgeIdentityByExternalId(state.idp.ExternalID); err != nil {
 			return fmt.Errorf("purge stale IdP test user identities: %w", err)
 		}
+	}
+
+	log.Printf("setup: wiping shared identity dir before starting ZET(s)")
+	if err := state.zetClient.RemoveJSONIdentities(); err != nil {
+		return fmt.Errorf("wipe shared identity dir: %w", err)
 	}
 
 	log.Printf("setup: starting ZET zetA and zetB in parallel")
