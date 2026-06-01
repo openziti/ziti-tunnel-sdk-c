@@ -188,6 +188,13 @@
       ]
     },
     {
+      "name": "ci-linux-x64-lsan",
+      "inherits": "ci-linux-x64",
+      "cacheVariables": {
+        "ZITI_TUNNEL_LSAN": "ON"
+      }
+    },
+    {
       "name": "ci-linux-arm64",
       "inherits": "ci-linux-x64",
       "cacheVariables": {

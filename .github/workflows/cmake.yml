@@ -43,6 +43,10 @@ jobs:
             preset: linux-x64
 
           - os: ubuntu-22.04
+            name: Linux x86_64 LSan
+            preset: linux-x64-lsan
+
+          - os: ubuntu-22.04
             name: Linux arm
             preset: linux-arm
 
