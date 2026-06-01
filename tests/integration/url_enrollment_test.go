@@ -35,25 +35,8 @@ func TestUrlEnrollment(t *testing.T) {
 // testUrlEnrollmentWithValidControllerUrlSucceeds exercises the "URL + no enroll-to mode" path.
 func testUrlEnrollmentWithValidControllerUrlSucceeds(t *testing.T) {
 	testutil.RunTestWithTimeout(t, func(t *testing.T) {
-		overlay := state.overlay
-		events := state.zetClient.Events
-		client := state.zetClient.Commands
-
 		identityName := testutil.IdentityName(t)
-		controllerURL := overlay.ControllerHostPort()
-		identityData := testutil.AddIdentityData{
-			IdentityFilename: identityName,
-			ControllerURL:    &controllerURL,
-		}
-
-		resp := testutil.AddIdentity(t, client, identityData)
-		require.True(t, resp.Success(), "URL AddIdentity failed: error=%q code=%d\n%s", resp.Error, resp.Code, state.zetClient.LogFile())
-
-		event := events.WaitForIdentityEvent(t, "needs_ext_login", identityName)
-		require.NotEmpty(t, event.Id.Identifier, "identity:needs_ext_login Identifier empty")
-		require.True(t, event.Id.NeedsExtAuth, "identity:needs_ext_login NeedsExtAuth=%t", event.Id.NeedsExtAuth)
-
-		testutil.AssertValidUrlEnrolledIdentityFile(t, event.Id.Identifier, testutil.EnrollModeNone)
+		event := testutil.EnrollUrlIdentityToNone(t, state.overlay, state.zetClient, identityName)
 		t.Logf("URL-enrolled identity:needs_ext_login Identifier=%s NeedsExtAuth=%t", event.Id.Identifier, event.Id.NeedsExtAuth)
 	})
 }

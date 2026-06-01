@@ -30,20 +30,19 @@ const restartTestTimeout = 20 * time.Second
 type restartContext struct {
 	overlay *testutil.Overlay
 	zet     *testutil.ZET
+	idp     *testutil.IdP
 }
 
 func TestTunnelRestart(t *testing.T) {
 	c := &restartContext{
 		overlay: state.overlay,
 		zet:     state.zetC,
+		idp:     state.idp,
 	}
-
-	require.NoError(t, c.zet.RemoveJSONIdentities(), "wipe zetC identity dir before first start")
-	require.NoError(t, c.zet.Start(), "start zetC")
-	t.Cleanup(c.zet.Stop)
 
 	t.Run("testJwtIdentitySurvivesRestart", c.testJwtIdentitySurvivesRestart)
 	t.Run("testMfaIdentitySurvivesRestart", c.testMfaIdentitySurvivesRestart)
+	t.Run("testExtAuthIdentitySurvivesRestart", c.testExtAuthIdentitySurvivesRestart)
 }
 
 func (c *restartContext) testJwtIdentitySurvivesRestart(t *testing.T) {
@@ -123,6 +122,33 @@ func (c *restartContext) assertMfaIdentity(t *testing.T, identity testutil.Ident
 	require.True(t, identity.MfaEnabled, "MfaEnabled=%t for mfa identity %q", identity.MfaEnabled, identity.Name)
 	testutil.AssertValidJwtEnrolledIdentityFile(t, identity.Identifier)
 	t.Logf("identity %q present MfaEnabled=%t MfaNeeded=%t", identity.Name, identity.MfaEnabled, identity.MfaNeeded)
+}
+
+func (c *restartContext) testExtAuthIdentitySurvivesRestart(t *testing.T) {
+	c.overlay.RequireCATrusted(t)
+	c.idp.RequireConfigured(t)
+	testutil.SetupWorkingExtJwtSigner(t, c.overlay, c.idp)
+
+	testutil.RunTestWithTimeoutOf(t, restartTestTimeout, func(t *testing.T) {
+		name := testutil.IdentityName(t)
+		c.overlay.CreateIdentityWithExternalId(t, name, c.idp.ExternalID, "")
+		identityEvent := testutil.EnrollUrlIdentityToNone(t, c.overlay, c.zet, name)
+
+		t.Logf("restarting zetC")
+		require.NoError(t, c.zet.Restart(), "restart zetC\n%s", c.zet.LogPath())
+
+		reloaded := c.zet.Events.WaitForIdentityEvent(t, "needs_ext_login", name)
+		c.assertExtAuthIdentity(t, reloaded.Id)
+
+		c.removeIdentity(t, identityEvent.Id.Identifier)
+	})
+}
+
+func (c *restartContext) assertExtAuthIdentity(t *testing.T, identity testutil.Identity) {
+	require.NotEmpty(t, identity.Identifier, "identity Identifier empty")
+	require.True(t, identity.NeedsExtAuth, "NeedsExtAuth=%t for ext-auth identity %q", identity.NeedsExtAuth, identity.Name)
+	testutil.AssertValidUrlEnrolledIdentityFile(t, identity.Identifier, testutil.EnrollModeNone)
+	t.Logf("identity %q present NeedsExtAuth=%t", identity.Name, identity.NeedsExtAuth)
 }
 
 func (c *restartContext) removeIdentity(t *testing.T, identifier string) {

@@ -70,7 +70,7 @@ func LoadConfig(path string) (*Config, error) {
 		c.ZetB.Binary = c.ZetA.Binary
 	}
 	if c.ZetC.Binary == "" {
-		c.ZetC.Binary = c.ZetA.Binary
+		c.ZetC = c.ZetA
 	}
 	return &c, nil
 }

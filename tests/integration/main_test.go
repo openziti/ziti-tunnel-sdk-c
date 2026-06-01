@@ -211,15 +211,18 @@ func doSetup(state TestState) error {
 		}
 	}
 
-	log.Printf("setup: wiping shared identity dir before starting ZET(s)")
+	log.Printf("setup: wiping identity dirs before starting ZET(s)")
 	if err := state.zetClient.RemoveJSONIdentities(); err != nil {
 		return fmt.Errorf("wipe shared identity dir: %w", err)
 	}
+	if err := state.zetC.RemoveJSONIdentities(); err != nil {
+		return fmt.Errorf("wipe zetC identity dir: %w", err)
+	}
 
-	log.Printf("setup: starting ZET zetA and zetB in parallel")
-	var zetClientErr, zetHostErr error
+	log.Printf("setup: starting ZET zetA, zetB, and zetC in parallel")
+	var zetClientErr, zetHostErr, zetCErr error
 	var wg sync.WaitGroup
-	wg.Add(2)
+	wg.Add(3)
 	go func() {
 		defer wg.Done()
 		zetClientErr = state.zetClient.Start()
@@ -236,12 +239,23 @@ func doSetup(state TestState) error {
 			zetHostErr = state.zetHost.Start()
 		}
 	}()
+	go func() {
+		defer wg.Done()
+		zetCErr = state.zetC.Start()
+		if zetCErr != nil {
+			log.Printf("zet[%s]: start failed: %v; retrying once", state.zetC.Discriminator, zetCErr)
+			zetCErr = state.zetC.Start()
+		}
+	}()
 	wg.Wait()
 	if zetClientErr != nil {
 		return fmt.Errorf("start ziti-edge-tunnel: %w", zetClientErr)
 	}
 	if zetHostErr != nil {
 		return fmt.Errorf("start zetB: %w", zetHostErr)
+	}
+	if zetCErr != nil {
+		return fmt.Errorf("start zetC: %w", zetCErr)
 	}
 
 	log.Printf("setup: starting IdP (useTestHarnessIdP=%t bin=%s issuer=%s)", state.idp.UseTestHarnessIdP, state.idp.Bin, state.idp.IssuerURL)

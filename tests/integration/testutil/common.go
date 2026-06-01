@@ -20,10 +20,13 @@ limitations under the License.
 package testutil
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
+
+const workingExtJwtSignerName = "TestExternalAuth-signer-working"
 
 // CreateJwt creates an enrollment JWT for name on the overlay and asserts it is
 // non-empty.
@@ -51,4 +54,54 @@ func EnrollJwtIdentity(t *testing.T, overlay *Overlay, zet *ZET, name string) Id
 	require.NotEmpty(t, added.Id.Identifier, "identity:added Identifier empty")
 	AssertValidJwtEnrolledIdentityFile(t, added.Id.Identifier)
 	return added
+}
+
+// EnrollUrlIdentityToNone adds name to zet by controller URL (enroll-to-none),
+// waits for the needs_ext_login event, asserts NeedsExtAuth and the on-disk
+// file, and returns the event.
+func EnrollUrlIdentityToNone(t *testing.T, overlay *Overlay, zet *ZET, name string) IdentityEvent {
+	controllerURL := overlay.ControllerHostPort()
+	identityData := AddIdentityData{
+		IdentityFilename: name,
+		ControllerURL:    &controllerURL,
+	}
+	resp := AddIdentity(t, zet.Commands, identityData)
+	require.True(t, resp.Success(), "URL AddIdentity should succeed: error=%q code=%d\n%s", resp.Error, resp.Code, zet.LogPath())
+
+	event := zet.Events.WaitForIdentityEvent(t, "needs_ext_login", name)
+	require.NotEmpty(t, event.Id.Identifier, "identity:needs_ext_login Identifier empty")
+	require.True(t, event.Id.NeedsExtAuth, "identity:needs_ext_login NeedsExtAuth=%t", event.Id.NeedsExtAuth)
+	AssertValidUrlEnrolledIdentityFile(t, event.Id.Identifier, EnrollModeNone)
+	return event
+}
+
+// SetupWorkingExtJwtSigner adopts idp.SignerName when set (failing if it does
+// not exist on the controller), otherwise creates or reuses a harness signer.
+// Returns the signer name and id.
+func SetupWorkingExtJwtSigner(t *testing.T, overlay *Overlay, idp *IdP) (string, string) {
+	if idp.SignerName != "" {
+		id, found := overlay.FindExtJwtSignerId(t, idp.SignerName)
+		if !found {
+			t.Fatalf("idp.signerName=%q is set but no ext-jwt-signer with that name exists on the controller; fix the name or create the signer", idp.SignerName)
+		}
+		return idp.SignerName, id
+	}
+
+	if !idp.UseTestHarnessIdP {
+		t.Fatal("idp.signerName is empty: the working ext-jwt-signer is only auto-created when the harness runs its own IdP (useTestHarnessIdP=true); set idp.signerName to use your own")
+	}
+
+	if id, found := overlay.FindExtJwtSignerId(t, workingExtJwtSignerName); found {
+		return workingExtJwtSignerName, id
+	}
+	id := overlay.CreateExtJwtSigner(t, ExtJwtSignerSpec{
+		Name:     workingExtJwtSignerName,
+		Issuer:   idp.IssuerURL,
+		JWKS:     idp.JWKSURI(),
+		ClientID: idp.ClientIDWorks,
+		Audience: idp.Audience,
+		Claim:    "email",
+		Scopes:   strings.Fields(idp.Scopes),
+	})
+	return workingExtJwtSignerName, id
 }
