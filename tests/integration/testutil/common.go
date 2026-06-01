@@ -53,6 +53,7 @@ func EnrollJwtIdentity(t *testing.T, overlay *Overlay, zet *ZET, name string) Id
 	added := zet.Events.WaitForIdentityEvent(t, "added", name)
 	require.NotEmpty(t, added.Id.Identifier, "identity:added Identifier empty")
 	AssertValidJwtEnrolledIdentityFile(t, added.Id.Identifier)
+	t.Logf("identity:added Identifier=%s Active=%t", added.Id.Identifier, added.Id.Active)
 	return added
 }
 
@@ -72,6 +73,7 @@ func EnrollUrlIdentityToNone(t *testing.T, overlay *Overlay, zet *ZET, name stri
 	require.NotEmpty(t, event.Id.Identifier, "identity:needs_ext_login Identifier empty")
 	require.True(t, event.Id.NeedsExtAuth, "identity:needs_ext_login NeedsExtAuth=%t", event.Id.NeedsExtAuth)
 	AssertValidUrlEnrolledIdentityFile(t, event.Id.Identifier, EnrollModeNone)
+	t.Logf("identity:needs_ext_login Identifier=%s NeedsExtAuth=%t", event.Id.Identifier, event.Id.NeedsExtAuth)
 	return event
 }
 

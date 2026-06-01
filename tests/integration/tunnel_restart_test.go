@@ -25,7 +25,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const restartTestTimeout = 20 * time.Second
+const restartTestTimeout = 15 * time.Second
 
 type restartContext struct {
 	overlay *testutil.Overlay
@@ -55,6 +55,7 @@ func (c *restartContext) testJwtIdentitySurvivesRestart(t *testing.T) {
 		t.Logf("restarting zetC")
 		require.NoError(t, c.zet.Restart(), "restart zetC\n%s", c.zet.LogPath())
 
+		t.Logf("waiting for post-restart status push")
 		status := c.zet.Events.WaitForStatusEvent(t)
 		identityFromStatus := findIdentityInStatus(t, status, identityEvent.Id.Identifier)
 		c.assertJwtIdentity(t, identityFromStatus)
@@ -80,6 +81,7 @@ func (c *restartContext) testMfaIdentitySurvivesRestart(t *testing.T) {
 		t.Logf("restarting zetC")
 		require.NoError(t, c.zet.Restart(), "restart zetC\n%s", c.zet.LogPath())
 
+		t.Logf("waiting for post-restart status push")
 		status := c.zet.Events.WaitForStatusEvent(t)
 		identityFromStatus := findIdentityInStatus(t, status, identityEvent.Id.Identifier)
 		c.assertMfaIdentity(t, identityFromStatus)
@@ -137,8 +139,20 @@ func (c *restartContext) testExtAuthIdentitySurvivesRestart(t *testing.T) {
 		t.Logf("restarting zetC")
 		require.NoError(t, c.zet.Restart(), "restart zetC\n%s", c.zet.LogPath())
 
-		reloaded := c.zet.Events.WaitForIdentityEvent(t, "needs_ext_login", name)
-		c.assertExtAuthIdentity(t, reloaded.Id)
+		// restart reloads the identity unevaluated, so the first status reports
+		// NeedsExtAuth=false, then needs_ext_login fires
+		initialStatus := c.zet.Events.WaitForStatusEvent(t)
+		initial := findIdentityInStatus(t, initialStatus, identityEvent.Id.Identifier)
+		require.False(t, initial.NeedsExtAuth, "post-restart status NeedsExtAuth=%t for %q", initial.NeedsExtAuth, name)
+		t.Logf("post-restart status reports NeedsExtAuth=%t for %q", initial.NeedsExtAuth, name)
+		c.zet.Events.WaitForIdentityEvent(t, "needs_ext_login", name)
+		t.Logf("received needs_ext_login for %q", name)
+
+		// reconnecting the IPC pipe to the settled daemon reports NeedsExtAuth=true
+		c.zet.ReconnectEvents(t)
+		reconnectStatus := c.zet.Events.WaitForStatusEvent(t)
+		reloaded := findIdentityInStatus(t, reconnectStatus, identityEvent.Id.Identifier)
+		c.assertExtAuthIdentity(t, reloaded)
 
 		c.removeIdentity(t, identityEvent.Id.Identifier)
 	})
@@ -164,6 +178,6 @@ func findIdentityInStatus(t *testing.T, status testutil.TunnelStatusEvent, ident
 			return identity
 		}
 	}
-	require.FailNow(t, "identity missing from restart status", "identifier=%s", identifier)
+	require.FailNow(t, "identity missing from status", "identifier=%s", identifier)
 	return testutil.Identity{}
 }

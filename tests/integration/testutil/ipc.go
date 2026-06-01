@@ -31,7 +31,7 @@ import (
 
 const (
 	dialAttemptTimeout = 500 * time.Millisecond
-	dialRetryInterval  = 100 * time.Millisecond
+	dialRetryInterval  = 10 * time.Millisecond
 )
 
 // IPCClient is one end of a JSON-line IPC socket to the daemon.
@@ -96,21 +96,17 @@ func OpenCommandPipe(t *testing.T, z *ZET) *CommandsClient {
 func openCommandPipe(path string, done <-chan struct{}) (*CommandsClient, error) {
 	log.Printf("ipc: dialing command pipe %s", path)
 	start := time.Now()
-	attempts := 0
 	for {
-		attempts++
 		conn, err := dialPlatform(path, dialAttemptTimeout)
 		if err == nil {
-			log.Printf("ipc: connected to %s after %d attempt(s) in %s", path, attempts, time.Since(start).Round(time.Millisecond))
+			log.Printf("ipc: connected to %s in %s", path, time.Since(start).Round(time.Millisecond))
 			return &CommandsClient{
 				IPCClient: IPCClient{conn: conn, reader: bufio.NewReader(conn)},
 			}, nil
 		}
-		if attempts == 1 || attempts%20 == 0 {
-			log.Printf("ipc: dial %s still failing after %d attempt(s): %v", path, attempts, err)
-		}
 		select {
 		case <-done:
+			log.Printf("ipc: dial conncted %s", path)
 			return nil, fmt.Errorf("process exited before %s became dialable: %v", path, err)
 		case <-time.After(dialRetryInterval):
 		}
@@ -120,27 +116,34 @@ func openCommandPipe(path string, done <-chan struct{}) (*CommandsClient, error)
 func subscribeToEventPipe(path string, done <-chan struct{}) (*EventClient, error) {
 	log.Printf("ipc: dialing event pipe %s", path)
 	start := time.Now()
-	attempts := 0
 	for {
-		attempts++
 		conn, err := dialPlatform(path, dialAttemptTimeout)
 		if err == nil {
-			log.Printf("ipc: connected to event pipe %s after %d attempt(s) in %s", path, attempts, time.Since(start).Round(time.Millisecond))
+			log.Printf("ipc: connected to event pipe %s in %s", path, time.Since(start).Round(time.Millisecond))
 			ec := &EventClient{
 				IPCClient: IPCClient{conn: conn, reader: bufio.NewReader(conn)},
 			}
 			go ec.readLoop()
 			return ec, nil
 		}
-		if attempts == 1 || attempts%20 == 0 {
-			log.Printf("ipc: dial event pipe %s still failing after %d attempt(s): %v", path, attempts, err)
-		}
 		select {
 		case <-done:
+			log.Printf("ipc: dial event pipe connected %s", path)
 			return nil, fmt.Errorf("process exited before event pipe %s became dialable: %v", path, err)
 		case <-time.After(dialRetryInterval):
 		}
 	}
+}
+
+// ReconnectEvents closes the event pipe and re-subscribes to the same running
+// daemon, replacing z.Events. The daemon resends its status snapshot on connect.
+func (z *ZET) ReconnectEvents(t *testing.T) {
+	path := EventPipePathFor(z.Discriminator)
+	log.Printf("ipc: reconnecting event pipe %s", path)
+	require.NoError(t, z.Events.Close(), "close event pipe")
+	events, err := subscribeToEventPipe(path, z.cmdDone)
+	require.NoError(t, err, "reconnect event pipe")
+	z.Events = events
 }
 
 func (c *EventClient) readLoop() {
