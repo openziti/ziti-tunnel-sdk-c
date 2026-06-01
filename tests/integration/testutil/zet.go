@@ -52,6 +52,11 @@ type ZET struct {
 	// TlsuvDebug, if > 0, sets the TLSUV_DEBUG env var (0=off..6=trace) for
 	// debugging TLS handshake / cert chain issues.
 	TlsuvDebug int
+	// LsanEnabled, if true, sets LSAN_OPTIONS so the process writes an LSan
+	// leak report to RootDir/lsan.<pid> on exit. Requires a binary built with
+	// -fsanitize=leak (ZITI_TUNNEL_LSAN=ON). Stop() sends SIGTERM so the
+	// sanitizer can flush its report before the process exits.
+	LsanEnabled bool
 
 	cmd     *exec.Cmd
 	stdout  *syncBuffer
@@ -97,9 +102,15 @@ func (z *ZET) Start() error {
 	}
 
 	z.cmd = exec.Command(z.BinPath, args...)
+	env := os.Environ()
 	if z.TlsuvDebug > 0 {
-		z.cmd.Env = append(os.Environ(), "TLSUV_DEBUG="+strconv.Itoa(z.TlsuvDebug))
+		env = append(env, "TLSUV_DEBUG="+strconv.Itoa(z.TlsuvDebug))
 	}
+	if z.LsanEnabled {
+		lsanPrefix := filepath.Join(z.RootDir, "lsan")
+		env = append(env, "LSAN_OPTIONS=log_path="+lsanPrefix+":exitcode=0")
+	}
+	z.cmd.Env = env
 	stdout := newSyncBuffer()
 	stderr := newSyncBuffer()
 
@@ -112,6 +123,7 @@ func (z *ZET) Start() error {
 	if ferr != nil {
 		return fmt.Errorf("open zet log file: %w", ferr)
 	}
+	z.logFile = logFile
 	z.cmd.Stdout = io.MultiWriter(stdout, logFile)
 	z.cmd.Stderr = io.MultiWriter(stderr, logFile)
 
@@ -145,31 +157,33 @@ func (z *ZET) Start() error {
 	return nil
 }
 
-// A surviving ZET orphans wintun state and breaks subsequent tests, so abort rather than let an orphan hide.
+// Stop shuts down the ZET process. It sends SIGTERM first to allow sanitizers
+// (e.g. LSan) and the process itself to flush and exit cleanly, then falls back
+// to SIGKILL if the process does not exit within 30 s. A surviving ZET orphans
+// TUN/wintun state and breaks subsequent tests, so Stop calls log.Fatalf rather
+// than letting an orphan hide.
 func (z *ZET) Stop() {
 	if z == nil || z.cmd == nil || z.cmd.Process == nil {
 		return
 	}
 	pid := z.cmd.Process.Pid
-	if err := z.cmd.Process.Kill(); err != nil {
-		log.Printf("ZET pid %d kill: %v", pid, err)
-	}
-	for range 120 {
-		time.Sleep(500 * time.Millisecond)
-		if proc, err := os.FindProcess(pid); err != nil || proc == nil {
-			if z.logFile != nil {
-				_ = z.logFile.Close()
-			}
-			return
+	_ = z.cmd.Process.Signal(syscall.SIGTERM)
+	select {
+	case <-z.cmdDone:
+	case <-time.After(30 * time.Second):
+		log.Printf("ZET pid %d: did not exit within 30s of SIGTERM; sending SIGKILL", pid)
+		if err := z.cmd.Process.Kill(); err != nil {
+			log.Printf("ZET pid %d kill: %v", pid, err)
 		}
-		if err := z.cmd.Process.Signal(syscall.Signal(0)); err != nil {
-			if z.logFile != nil {
-				_ = z.logFile.Close()
-			}
-			return
+		select {
+		case <-z.cmdDone:
+		case <-time.After(30 * time.Second):
+			log.Fatalf("ZET pid %d did not exit within 30s of SIGKILL; orphan likely, aborting test run", pid)
 		}
 	}
-	log.Fatalf("ZET pid %d did not exit within 60s of Kill; orphan likely, aborting test run", pid)
+	if z.logFile != nil {
+		_ = z.logFile.Close()
+	}
 }
 
 // Restart stops the process and starts it again against the same identity dir.
@@ -223,6 +237,14 @@ func (z *ZET) RemoveJSONIdentities() error {
 	return nil
 }
 
+// Pid returns the OS PID of the ziti-edge-tunnel process, or 0 if not started.
+func (z *ZET) Pid() int {
+	if z.cmd == nil || z.cmd.Process == nil {
+		return 0
+	}
+	return z.cmd.Process.Pid
+}
+
 func (z *ZET) LogPath() string {
 	return filepath.Join(z.RootDir, "logs")
 }
@@ -261,4 +283,15 @@ func (s *syncBuffer) String() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.buf.String()
+}
+
+// CheckLsanLeaks parses LSan report files written to RootDir after Stop() and
+// fails t if any heap leaks are detected. No-op when LsanEnabled is false.
+// Must be called after Stop() so the process has exited and flushed its report.
+func (z *ZET) CheckLsanLeaks(t *testing.T) {
+	t.Helper()
+	if !z.LsanEnabled {
+		return
+	}
+	CheckLsanLogs(t, z.RootDir, z.Discriminator)
 }

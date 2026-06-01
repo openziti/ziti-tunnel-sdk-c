@@ -49,7 +49,7 @@ type ZitiDumpData struct {
 }
 
 type IpDumpData struct {
-	DumpPath string `json:"DumpPath"`
+	DumpPath string `json:"DumpPath,omitempty"`
 }
 
 // MFAData is used by SubmitMFA, VerifyMFA, RemoveMFA, GenerateMFACodes, GetMFACodes.
@@ -236,6 +236,20 @@ type AddIdentityResponse struct {
 	Data ExtAuth `json:"Data,omitempty"`
 }
 
+// IpDumpResponse is returned by IpDump. Data carries the lwIP pool/connection snapshot.
+type IpDumpResponse struct {
+	ServiceResponse
+	Data TunnelIpStats `json:"Data"`
+}
+
+// ZitiDumpResponse is returned by ZitiDump when DumpPath is empty.
+// Data maps identity identifier → free-form dump text (same shape as
+// `ziti-edge-tunnel dump | jq -r '.Data[]'`).
+type ZitiDumpResponse struct {
+	ServiceResponse
+	Data map[string]string `json:"Data"`
+}
+
 // ExternalAuthResponse is returned by ExternalAuth. Data carries the ext-auth URL.
 type ExternalAuthResponse struct {
 	ServiceResponse
@@ -257,6 +271,32 @@ type MFAEnrollmentResponse struct {
 // ---------------------------------------------------------------------------
 // Inner Data shapes referenced by typed responses.
 // ---------------------------------------------------------------------------
+
+// IpStatsPool mirrors TNL_IP_MEM_POOL from ziti_tunnel.h.
+type IpStatsPool struct {
+	Name  string `json:"Name"`
+	Max   int    `json:"Max"`
+	Used  int    `json:"Used"`
+	Avail int    `json:"Avail"`
+}
+
+// IpStatsConn mirrors TNL_IP_CONN from ziti_tunnel.h.
+type IpStatsConn struct {
+	Protocol   string `json:"Protocol"`
+	LocalIP    string `json:"LocalIP"`
+	LocalPort  int    `json:"LocalPort"`
+	RemoteIP   string `json:"RemoteIP"`
+	RemotePort int    `json:"RemotePort"`
+	State      string `json:"State"`
+	Service    string `json:"Service"`
+}
+
+// TunnelIpStats mirrors TNL_IP_STATS from ziti_tunnel.h. JSON field names must
+// match the C model-macro keys exactly.
+type TunnelIpStats struct {
+	Pools       []IpStatsPool `json:"Pools"`
+	Connections []IpStatsConn `json:"Connections"`
+}
 
 type IdentityInfo struct {
 	Name    string `json:"Name"`
