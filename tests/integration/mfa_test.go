@@ -131,15 +131,8 @@ func (c *mfaContext) testMFAReauthenticationAcceptsValidTotp(t *testing.T) {
 		name := testutil.IdentityName(t)
 		enrollment, secret := testutil.SetupVerifiedMFA(t, c.overlay, c.zet, name)
 
-		t.Logf("sending IdentityOnOff(false) for %q to drop the session", name)
-		offResp, err := c.zet.Commands.IdentityOnOff(enrollment.Identifier, false)
-		require.NoError(t, err, "failed to send IdentityOnOff(false)\n%s", c.zet.LogPath())
-		require.True(t, offResp.Success(), "IdentityOnOff(false) failed: error=%q code=%d", offResp.Error, offResp.Code)
-
-		t.Logf("sending IdentityOnOff(true) for %q to force re-auth", name)
-		onResp, err := c.zet.Commands.IdentityOnOff(enrollment.Identifier, true)
-		require.NoError(t, err, "failed to send IdentityOnOff(true)\n%s", c.zet.LogPath())
-		require.True(t, onResp.Success(), "IdentityOnOff(true) failed: error=%q code=%d", onResp.Error, onResp.Code)
+		testutil.SetIdentityActive(t, c.zet, enrollment.Identifier, false)
+		testutil.SetIdentityActive(t, c.zet, enrollment.Identifier, true)
 
 		c.zet.Events.WaitForMfaEvent(t, "auth_challenge", name)
 
@@ -162,15 +155,8 @@ func (c *mfaContext) testMFAReauthenticationAcceptsRecoveryCode(t *testing.T) {
 		name := testutil.IdentityName(t)
 		enrollment, _ := testutil.SetupVerifiedMFA(t, c.overlay, c.zet, name)
 
-		t.Logf("sending IdentityOnOff(false) for %q to drop the session", name)
-		offResp, err := c.zet.Commands.IdentityOnOff(enrollment.Identifier, false)
-		require.NoError(t, err, "failed to send IdentityOnOff(false)\n%s", c.zet.LogPath())
-		require.True(t, offResp.Success(), "IdentityOnOff(false) failed: error=%q code=%d", offResp.Error, offResp.Code)
-
-		t.Logf("sending IdentityOnOff(true) for %q to force re-auth", name)
-		onResp, err := c.zet.Commands.IdentityOnOff(enrollment.Identifier, true)
-		require.NoError(t, err, "failed to send IdentityOnOff(true)\n%s", c.zet.LogPath())
-		require.True(t, onResp.Success(), "IdentityOnOff(true) failed: error=%q code=%d", onResp.Error, onResp.Code)
+		testutil.SetIdentityActive(t, c.zet, enrollment.Identifier, false)
+		testutil.SetIdentityActive(t, c.zet, enrollment.Identifier, true)
 
 		c.zet.Events.WaitForMfaEvent(t, "auth_challenge", name)
 
@@ -190,15 +176,8 @@ func (c *mfaContext) testMFAReauthenticationRejectsInvalidTotp(t *testing.T) {
 		name := testutil.IdentityName(t)
 		enrollment, _ := testutil.SetupVerifiedMFA(t, c.overlay, c.zet, name)
 
-		t.Logf("sending IdentityOnOff(false) for %q to drop the session", name)
-		offResp, err := c.zet.Commands.IdentityOnOff(enrollment.Identifier, false)
-		require.NoError(t, err, "failed to send IdentityOnOff(false)\n%s", c.zet.LogPath())
-		require.True(t, offResp.Success(), "IdentityOnOff(false) failed: error=%q code=%d", offResp.Error, offResp.Code)
-
-		t.Logf("sending IdentityOnOff(true) for %q to force re-auth", name)
-		onResp, err := c.zet.Commands.IdentityOnOff(enrollment.Identifier, true)
-		require.NoError(t, err, "failed to send IdentityOnOff(true)\n%s", c.zet.LogPath())
-		require.True(t, onResp.Success(), "IdentityOnOff(true) failed: error=%q code=%d", onResp.Error, onResp.Code)
+		testutil.SetIdentityActive(t, c.zet, enrollment.Identifier, false)
+		testutil.SetIdentityActive(t, c.zet, enrollment.Identifier, true)
 
 		c.zet.Events.WaitForMfaEvent(t, "auth_challenge", name)
 

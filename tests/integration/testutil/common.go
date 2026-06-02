@@ -125,6 +125,14 @@ func GenerateTOTP(secret string, at time.Time) (string, error) {
 	return fmt.Sprintf("%06d", code%1_000_000), nil
 }
 
+// SetIdentityActive sends IdentityOnOff for identifier and asserts it succeeded.
+func SetIdentityActive(t *testing.T, zet *ZET, identifier string, active bool) {
+	t.Logf("setting identity %s active=%t", identifier, active)
+	resp, err := zet.Commands.IdentityOnOff(identifier, active)
+	require.NoError(t, err, "IdentityOnOff(%t)\n%s", active, zet.LogPath())
+	require.True(t, resp.Success(), "IdentityOnOff(%t) failed: code=%d error=%q", active, resp.Code, resp.Error)
+}
+
 // EnrollUrlIdentityToNone adds name to zet by controller URL (enroll-to-none),
 // waits for the needs_ext_login event, asserts NeedsExtAuth and the on-disk
 // file, and returns the event.
