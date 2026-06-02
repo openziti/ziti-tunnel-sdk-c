@@ -32,7 +32,6 @@ import (
 	"time"
 )
 
-
 type ZET struct {
 	BinPath string
 	// Discriminator, if non-empty, is passed as -P to ziti-edge-tunnel so this
@@ -202,6 +201,7 @@ func (z *ZET) RemoveJSONIdentities() error {
 func (z *ZET) LogPath() string {
 	return filepath.Join(z.RootDir, "logs")
 }
+
 func (z *ZET) LogFile() string {
 	logName := "ziti-edge-tunnel"
 	if z.Discriminator != "" {

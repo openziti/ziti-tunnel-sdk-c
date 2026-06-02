@@ -33,7 +33,7 @@ func testRemoveIdentityWithIdentifierFromEvent(t *testing.T) {
 		client := state.zetClient.Commands
 
 		name := testutil.IdentityName(t)
-		event := testutil.EnrollJwtIdentity(t, state.overlay, state.zetClient, name)
+		event := testutil.CreateAndEnrollJwt(t, state.overlay, state.zetClient, name)
 
 		t.Logf("sending RemoveIdentity for Identifier=%s", event.Id.Identifier)
 		removeResp, err := client.RemoveIdentity(event.Id.Identifier)

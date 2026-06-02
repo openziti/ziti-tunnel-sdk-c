@@ -35,7 +35,7 @@ type restartContext struct {
 func TestTunnelRestart(t *testing.T) {
 	c := &restartContext{
 		overlay: state.overlay,
-		zet:     state.zetC,
+		zet:     state.zetClient,
 		idp:     state.idp,
 	}
 
@@ -49,14 +49,14 @@ func TestTunnelRestart(t *testing.T) {
 		base := testutil.IdentityName(t)
 
 		jwtName := base + "-jwt"
-		jwtEvent := testutil.EnrollJwtIdentity(t, c.overlay, c.zet, jwtName)
+		jwtEvent := testutil.CreateAndEnrollJwt(t, c.overlay, c.zet, jwtName)
 		c.zet.Events.WaitForControllerEvent(t, "connected", jwtName)
 
 		mfaName := base + "-mfa"
 		mfaEnrollment, _ := testutil.SetupVerifiedMFA(t, c.overlay, c.zet, mfaName)
 
 		inactiveName := base + "-inactive"
-		inactiveEvent := testutil.EnrollJwtIdentity(t, c.overlay, c.zet, inactiveName)
+		inactiveEvent := testutil.CreateAndEnrollJwt(t, c.overlay, c.zet, inactiveName)
 		c.zet.Events.WaitForControllerEvent(t, "connected", inactiveName)
 		testutil.SetIdentityActive(t, c.zet, inactiveEvent.Id.Identifier, false)
 
@@ -64,14 +64,14 @@ func TestTunnelRestart(t *testing.T) {
 		c.overlay.CreateIdentityWithExternalId(t, extName, c.idp.ExternalID, "")
 		extEvent := testutil.EnrollUrlIdentityToNone(t, c.overlay, c.zet, extName)
 
-		t.Logf("restarting zetC")
-		require.NoError(t, c.zet.Restart(), "restart zetC\n%s", c.zet.LogPath())
+		t.Logf("restarting %s", c.zet.Discriminator)
+		require.NoError(t, c.zet.Restart(), "restart %s\n%s", c.zet.Discriminator, c.zet.LogPath())
 
 		// After restart every identity must still report its enrolled state.
 		after := c.zet.Events.WaitForStatusEvent(t)
 		c.assertValidJwtIdState(t, findIdentityInStatus(t, after, jwtEvent.Id.Identifier))
-		c.assertValidMfaIdState(t, findIdentityInStatus(t, after, mfaEnrollment.Identifier))
-		c.assertValidInactiveIdState(t, findIdentityInStatus(t, after, inactiveEvent.Id.Identifier))
+		c.assertMfaEnabled(t, findIdentityInStatus(t, after, mfaEnrollment.Identifier))
+		c.assertIdInactive(t, findIdentityInStatus(t, after, inactiveEvent.Id.Identifier))
 
 		// ext-auth reloads unevaluated: the first post-restart status reports
 		// NeedsExtAuth=false, then needs_ext_login fires; reconnecting observes the
@@ -82,7 +82,7 @@ func TestTunnelRestart(t *testing.T) {
 		c.zet.Events.WaitForIdentityEvent(t, "needs_ext_login", extName)
 		c.zet.ReconnectEvents(t)
 		reconnect := c.zet.Events.WaitForStatusEvent(t)
-		c.assertValidExtAuthIdState(t, findIdentityInStatus(t, reconnect, extEvent.Id.Identifier))
+		c.assertNeedsExtAuth(t, findIdentityInStatus(t, reconnect, extEvent.Id.Identifier))
 	})
 }
 
@@ -94,21 +94,21 @@ func (c *restartContext) assertValidJwtIdState(t *testing.T, identity testutil.I
 	t.Logf("identity %q present NeedsExtAuth=%t MfaNeeded=%t", identity.Name, identity.NeedsExtAuth, identity.MfaNeeded)
 }
 
-func (c *restartContext) assertValidMfaIdState(t *testing.T, identity testutil.Identity) {
+func (c *restartContext) assertMfaEnabled(t *testing.T, identity testutil.Identity) {
 	require.NotEmpty(t, identity.Identifier, "identity Identifier empty")
 	require.True(t, identity.MfaEnabled, "MfaEnabled=%t for mfa identity %q", identity.MfaEnabled, identity.Name)
 	testutil.AssertValidJwtEnrolledIdentityFile(t, identity.Identifier)
 	t.Logf("identity %q present MfaEnabled=%t MfaNeeded=%t", identity.Name, identity.MfaEnabled, identity.MfaNeeded)
 }
 
-func (c *restartContext) assertValidInactiveIdState(t *testing.T, identity testutil.Identity) {
+func (c *restartContext) assertIdInactive(t *testing.T, identity testutil.Identity) {
 	require.NotEmpty(t, identity.Identifier, "identity Identifier empty")
 	require.False(t, identity.Active, "Active=%t for inactive identity %q", identity.Active, identity.Name)
 	testutil.AssertValidJwtEnrolledIdentityFile(t, identity.Identifier)
 	t.Logf("identity %q present Active=%t", identity.Name, identity.Active)
 }
 
-func (c *restartContext) assertValidExtAuthIdState(t *testing.T, identity testutil.Identity) {
+func (c *restartContext) assertNeedsExtAuth(t *testing.T, identity testutil.Identity) {
 	require.NotEmpty(t, identity.Identifier, "identity Identifier empty")
 	require.True(t, identity.NeedsExtAuth, "NeedsExtAuth=%t for ext-auth identity %q", identity.NeedsExtAuth, identity.Name)
 	testutil.AssertValidUrlEnrolledIdentityFile(t, identity.Identifier, testutil.EnrollModeNone)

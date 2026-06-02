@@ -34,7 +34,7 @@ func testIdentityOnOffTogglesActiveOff(t *testing.T) {
 		events := state.zetClient.Events
 
 		name := testutil.IdentityName(t)
-		added := testutil.EnrollJwtIdentity(t, state.overlay, state.zetClient, name)
+		added := testutil.CreateAndEnrollJwt(t, state.overlay, state.zetClient, name)
 
 		t.Logf("sending IdentityOnOff(false) for %q", name)
 		offResp, err := client.IdentityOnOff(added.Id.Identifier, false)
@@ -53,7 +53,7 @@ func testIdentityOnOffTogglesActiveOn(t *testing.T) {
 		events := state.zetClient.Events
 
 		name := testutil.IdentityName(t)
-		added := testutil.EnrollJwtIdentity(t, state.overlay, state.zetClient, name)
+		added := testutil.CreateAndEnrollJwt(t, state.overlay, state.zetClient, name)
 
 		t.Logf("sending IdentityOnOff(false) for %q", name)
 		offResp, err := client.IdentityOnOff(added.Id.Identifier, false)

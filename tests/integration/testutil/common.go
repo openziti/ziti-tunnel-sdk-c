@@ -35,8 +35,8 @@ import (
 
 const workingExtJwtSignerName = "TestExternalAuth-signer-working"
 
-// CreateJwt creates an enrollment JWT for name on the overlay and asserts it is
-// non-empty.
+// CreateJwt creates an identity on the controller and returns its
+// enrollment JWT, asserting it is non-empty.
 func CreateJwt(t *testing.T, overlay *Overlay, name string) string {
 	t.Logf("creating JWT for %q", name)
 	jwt, err := overlay.CreateIdentityJWT(name)
@@ -45,10 +45,10 @@ func CreateJwt(t *testing.T, overlay *Overlay, name string) string {
 	return jwt
 }
 
-// EnrollJwtIdentity creates a JWT for name on the overlay, adds it to zet, waits
-// for the identity:added event, asserts the on-disk identity file, and returns
-// the added event.
-func EnrollJwtIdentity(t *testing.T, overlay *Overlay, zet *ZET, name string) IdentityEvent {
+// CreateAndEnrollJwt creates an identity on the controller, gets its
+// JWT, enrolls that JWT on zet, waits for the identity:added event, asserts the
+// on-disk identity file, and returns the added event.
+func CreateAndEnrollJwt(t *testing.T, overlay *Overlay, zet *ZET, name string) IdentityEvent {
 	jwt := CreateJwt(t, overlay, name)
 	identityData := AddIdentityData{
 		IdentityFilename: name,
@@ -68,7 +68,7 @@ func EnrollJwtIdentity(t *testing.T, overlay *Overlay, zet *ZET, name string) Id
 // sends EnableMFA, and returns the enrollment plus the TOTP secret parsed from
 // its provisioning URL. The enrollment is not yet verified.
 func SetupMFA(t *testing.T, overlay *Overlay, zet *ZET, name string) (MFAEnrollment, string) {
-	added := EnrollJwtIdentity(t, overlay, zet, name)
+	added := CreateAndEnrollJwt(t, overlay, zet, name)
 	zet.Events.WaitForControllerEvent(t, "connected", name)
 
 	t.Logf("sending EnableMFA for %q", name)

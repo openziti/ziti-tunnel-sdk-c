@@ -38,7 +38,7 @@ func TestAddIdentity(t *testing.T) {
 func testAddIdentityWithJwtSucceeds(t *testing.T) {
 	testutil.RunTestWithTimeout(t, func(t *testing.T) {
 		identityName := testutil.IdentityName(t)
-		event := testutil.EnrollJwtIdentity(t, state.overlay, state.zetClient, identityName)
+		event := testutil.CreateAndEnrollJwt(t, state.overlay, state.zetClient, identityName)
 		require.True(t, event.Id.Active, "identity:added Active=%t", event.Id.Active)
 		t.Logf("identity:added Identifier=%s Active=%t", event.Id.Identifier, event.Id.Active)
 	})

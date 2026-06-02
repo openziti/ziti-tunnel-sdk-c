@@ -37,7 +37,6 @@ type TestState struct {
 	overlay   *testutil.Overlay
 	zetClient *testutil.ZET
 	zetHost   *testutil.ZET
-	zetC      *testutil.ZET
 	idp       *testutil.IdP
 }
 
@@ -101,14 +100,6 @@ func TestMain(m *testing.M) {
 			Verbosity:     cfg.ZetB.Verbosity,
 			TlsuvDebug:    cfg.ZetB.TlsuvDebug,
 		},
-		zetC: &testutil.ZET{
-			BinPath:       cfg.ZetC.Binary,
-			Discriminator: "zetC",
-			DNSRange:      "100.130.0.1/16",
-			RootDir:       filepath.Join(cfg.TestHome, "zetC"),
-			Verbosity:     cfg.ZetC.Verbosity,
-			TlsuvDebug:    cfg.ZetC.TlsuvDebug,
-		},
 		idp: &testutil.IdP{
 			UseTestHarnessIdP: cfg.IdP.UseTestHarnessIdP,
 			Bin:               cfg.IdP.Binary,
@@ -145,7 +136,6 @@ func run(m *testing.M, state TestState) (int, error) {
 	defer state.overlay.Stop()
 	defer state.zetClient.Stop()
 	defer state.zetHost.Stop()
-	defer state.zetC.Stop()
 	defer state.idp.Stop()
 	defer func() {
 		if state.overlay.CATrusted() {
@@ -215,14 +205,11 @@ func doSetup(state TestState) error {
 	if err := state.zetClient.RemoveJSONIdentities(); err != nil {
 		return fmt.Errorf("wipe shared identity dir: %w", err)
 	}
-	if err := state.zetC.RemoveJSONIdentities(); err != nil {
-		return fmt.Errorf("wipe zetC identity dir: %w", err)
-	}
 
-	log.Printf("setup: starting ZET zetA, zetB, and zetC in parallel")
-	var zetClientErr, zetHostErr, zetCErr error
+	log.Printf("setup: starting ZET zetA and zetB in parallel")
+	var zetClientErr, zetHostErr error
 	var wg sync.WaitGroup
-	wg.Add(3)
+	wg.Add(2)
 	go func() {
 		defer wg.Done()
 		zetClientErr = state.zetClient.Start()
@@ -239,23 +226,12 @@ func doSetup(state TestState) error {
 			zetHostErr = state.zetHost.Start()
 		}
 	}()
-	go func() {
-		defer wg.Done()
-		zetCErr = state.zetC.Start()
-		if zetCErr != nil {
-			log.Printf("zet[%s]: start failed: %v; retrying once", state.zetC.Discriminator, zetCErr)
-			zetCErr = state.zetC.Start()
-		}
-	}()
 	wg.Wait()
 	if zetClientErr != nil {
 		return fmt.Errorf("start ziti-edge-tunnel: %w", zetClientErr)
 	}
 	if zetHostErr != nil {
 		return fmt.Errorf("start zetB: %w", zetHostErr)
-	}
-	if zetCErr != nil {
-		return fmt.Errorf("start zetC: %w", zetCErr)
 	}
 
 	log.Printf("setup: starting IdP (useTestHarnessIdP=%t bin=%s issuer=%s)", state.idp.UseTestHarnessIdP, state.idp.Bin, state.idp.IssuerURL)

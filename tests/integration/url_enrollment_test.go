@@ -73,7 +73,7 @@ func testUrlEnrollmentAfterJwtSameNameFails(t *testing.T) {
 		client := state.zetClient.Commands
 
 		identityName := testutil.IdentityName(t)
-		testutil.EnrollJwtIdentity(t, overlay, state.zetClient, identityName)
+		testutil.CreateAndEnrollJwt(t, overlay, state.zetClient, identityName)
 
 		controllerURL := overlay.ControllerHostPort()
 		urlIdentityData := testutil.AddIdentityData{

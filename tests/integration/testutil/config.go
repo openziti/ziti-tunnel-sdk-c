@@ -27,7 +27,6 @@ type Config struct {
 	Ziti     ZitiConfig `json:"ziti"`
 	ZetA     ZetConfig  `json:"zetA"`
 	ZetB     ZetConfig  `json:"zetB"`
-	ZetC     ZetConfig  `json:"zetC"`
 	IdP      IdPConfig  `json:"idp"`
 }
 
@@ -68,9 +67,6 @@ func LoadConfig(path string) (*Config, error) {
 	}
 	if c.ZetB.Binary == "" {
 		c.ZetB.Binary = c.ZetA.Binary
-	}
-	if c.ZetC.Binary == "" {
-		c.ZetC = c.ZetA
 	}
 	return &c, nil
 }
