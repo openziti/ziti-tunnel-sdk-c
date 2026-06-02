@@ -101,6 +101,7 @@ func (z *ZET) Start() error {
 		args = append(args, "-d", z.DNSRange)
 	}
 
+	z.LsanEnabled = IsLsanBinary(z.BinPath)
 	z.cmd = exec.Command(z.BinPath, args...)
 	env := os.Environ()
 	if z.TlsuvDebug > 0 {
@@ -283,6 +284,22 @@ func (s *syncBuffer) String() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.buf.String()
+}
+
+// IsLsanBinary reports whether the binary at binPath was compiled with
+// -fsanitize=leak. It detects this by scanning the binary for the
+// "__lsan_do_leak_check" symbol that compiler-rt always embeds.
+func IsLsanBinary(binPath string) bool {
+	f, err := os.Open(binPath)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	data, err := io.ReadAll(f)
+	if err != nil {
+		return false
+	}
+	return bytes.Contains(data, []byte("__lsan_do_leak_check"))
 }
 
 // CheckLsanLeaks parses LSan report files written to RootDir after Stop() and

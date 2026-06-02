@@ -139,7 +139,22 @@ jobs:
             zet-zip: ziti-edge-tunnel-Windows_x86_64.zip
             zet-bin: ziti-edge-tunnel.exe
             core-dir: ""
+          - name: Linux x64 LSan
+            runner: ubuntu-latest
+            artifact: linux-x64-lsan
+            zet-zip: ziti-edge-tunnel-Linux_x86_64.zip
+            zet-bin: ziti-edge-tunnel
+            core-dir: /tmp/cores
         ziti-channel: ${{ fromJSON(needs.resolve-ziti-versions.outputs.channels) }}
+        exclude:
+          - os:
+              name: Linux x64 LSan
+            ziti-channel:
+              label: lts
+          - os:
+              name: Linux x64 LSan
+            ziti-channel:
+              label: lts-maintenance
     runs-on: ${{ matrix.os.runner }}
     steps:
       - name: Checkout

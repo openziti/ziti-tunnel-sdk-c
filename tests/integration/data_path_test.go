@@ -70,6 +70,9 @@ var (
 // Stop() + CheckLsanLeaks() are registered as t.Cleanup, so they run after harness.Run().
 func startLeakZETs(t *testing.T) (interceptZET, hostZET *testutil.ZET) {
 	t.Helper()
+	if !testutil.IsLsanBinary(state.zetClient.BinPath) {
+		t.Skip("skipping: ziti-edge-tunnel not built with -fsanitize=leak (ZITI_TUNNEL_LSAN=ON)")
+	}
 	n := int(leakZETSeq.Add(1))
 	discA := fmt.Sprintf("lkA%d", n)
 	discB := fmt.Sprintf("lkB%d", n)
@@ -81,7 +84,6 @@ func startLeakZETs(t *testing.T) (interceptZET, hostZET *testutil.ZET) {
 		DNSRange:      "100.96.0.1/16",
 		RootDir:       filepath.Join(rootBase, discA),
 		Verbosity:     state.zetClient.Verbosity,
-		LsanEnabled:   lsanEnabled,
 	}
 	hostZET = &testutil.ZET{
 		BinPath:       state.zetHost.BinPath,
@@ -89,7 +91,6 @@ func startLeakZETs(t *testing.T) (interceptZET, hostZET *testutil.ZET) {
 		DNSRange:      "100.97.0.1/16",
 		RootDir:       filepath.Join(rootBase, discB),
 		Verbosity:     state.zetHost.Verbosity,
-		LsanEnabled:   lsanEnabled,
 	}
 
 	require.NoError(t, interceptZET.Start(), "start intercept leak ZET")
