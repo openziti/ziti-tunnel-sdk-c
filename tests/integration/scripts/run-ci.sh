@@ -184,7 +184,20 @@ cat config.json
 INTEGRATION_TEST="$TEST_HOME/integration.test"
 go test -c -o "$INTEGRATION_TEST" .
 
+# ---- Tail ZET logs to console ------------------------------------------------
+# ZET log files are created by the test binary (running as root). Tail them to
+# stdout so their content appears in the Actions console even if the upload step
+# never fires (e.g. the runner is killed before cleanup runs).
+(
+  until ls "$TEST_HOME/zets/logs/"*.log 2>/dev/null | grep -q .; do sleep 1; done
+  tail -f "$TEST_HOME/zets/logs/"*.log
+) &
+TAIL_PID=$!
+
 # ---- Run tests ---------------------------------------------------------------
 # sudo resets PAM resource limits, so ulimit must be set in the privileged shell.
 sudo env "PATH=$PATH" "INTEGRATION_TEST=$INTEGRATION_TEST" sh -c \
   'ulimit -c unlimited && exec "$INTEGRATION_TEST" -test.v -test.timeout 20m -config config.json'
+
+kill "$TAIL_PID" 2>/dev/null || true
+wait "$TAIL_PID" 2>/dev/null || true
