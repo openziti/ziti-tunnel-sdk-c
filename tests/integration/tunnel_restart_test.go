@@ -75,47 +75,18 @@ func (c *restartContext) testMfaIdentitySurvivesRestart(t *testing.T) {
 	testutil.RunTestWithTimeoutOf(t, restartTestTimeout, func(t *testing.T) {
 		name := testutil.IdentityName(t)
 
-		identityEvent := c.addMfaIdentity(t, name)
+		enrollment, _ := testutil.SetupVerifiedMFA(t, c.overlay, c.zet, name)
 
 		t.Logf("restarting zetC")
 		require.NoError(t, c.zet.Restart(), "restart zetC\n%s", c.zet.LogPath())
 
 		t.Logf("waiting for post-restart status push")
 		status := c.zet.Events.WaitForStatusEvent(t)
-		identityFromStatus := findIdentityInStatus(t, status, identityEvent.Id.Identifier)
+		identityFromStatus := findIdentityInStatus(t, status, enrollment.Identifier)
 		c.assertMfaIdentity(t, identityFromStatus)
 
-		c.removeIdentity(t, identityEvent.Id.Identifier)
+		c.removeIdentity(t, enrollment.Identifier)
 	})
-}
-
-func (c *restartContext) addMfaIdentity(t *testing.T, name string) testutil.IdentityEvent {
-	identityEvent := testutil.EnrollJwtIdentity(t, c.overlay, c.zet, name)
-	c.zet.Events.WaitForControllerEvent(t, "connected", name)
-	identifier := identityEvent.Id.Identifier
-
-	t.Logf("enabling MFA for %q", name)
-	enrollment, err := c.zet.Commands.GetMFAEnrollment(identifier)
-	require.NoError(t, err, "EnableMFA\n%s", c.zet.LogPath())
-	require.NotEmpty(t, enrollment.ProvisioningUrl, "EnableMFA ProvisioningUrl empty")
-
-	provisioning, err := url.Parse(enrollment.ProvisioningUrl)
-	require.NoError(t, err, "parse provisioning URL %q", enrollment.ProvisioningUrl)
-	secret := provisioning.Query().Get("secret")
-	require.NotEmpty(t, secret, "provisioning URL missing secret: %q", enrollment.ProvisioningUrl)
-
-	code, err := generateTotpCode(secret, time.Now())
-	require.NoError(t, err, "compute TOTP")
-
-	t.Logf("verifying MFA for %q", name)
-	verifyResp, err := c.zet.Commands.VerifyMFA(identifier, code)
-	require.NoError(t, err, "VerifyMFA\n%s", c.zet.LogPath())
-	require.True(t, verifyResp.Success(), "VerifyMFA failed: code=%d error=%q\n%s", verifyResp.Code, verifyResp.Error, c.zet.LogPath())
-
-	verifyEvt := c.zet.Events.WaitForMfaEvent(t, "enrollment_verification", name)
-	require.True(t, verifyEvt.Successful, "mfa:enrollment_verification Successful=%t", verifyEvt.Successful)
-
-	return identityEvent
 }
 
 func (c *restartContext) assertMfaIdentity(t *testing.T, identity testutil.Identity) {

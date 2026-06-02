@@ -20,9 +20,15 @@ limitations under the License.
 package testutil
 
 import (
+	"crypto/hmac"
+	"crypto/sha1"
+	"encoding/base32"
+	"encoding/binary"
+	"fmt"
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -79,6 +85,43 @@ func SetupMFA(t *testing.T, overlay *Overlay, zet *ZET, name string) (MFAEnrollm
 
 	enrollment.Identifier = added.Id.Identifier
 	return *enrollment, secret
+}
+
+// SetupVerifiedMFA sets up MFA via SetupMFA and completes enrollment with a
+// valid TOTP, asserting both the VerifyMFA response and the
+// mfa:enrollment_verification event report success.
+func SetupVerifiedMFA(t *testing.T, overlay *Overlay, zet *ZET, name string) (MFAEnrollment, string) {
+	enrollment, secret := SetupMFA(t, overlay, zet, name)
+
+	code, err := GenerateTOTP(secret, time.Now())
+	require.NoError(t, err, "failed to compute TOTP")
+
+	t.Logf("sending VerifyMFA with valid TOTP for %q", name)
+	verifyResp, err := zet.Commands.VerifyMFA(enrollment.Identifier, code)
+	require.NoError(t, err, "failed to send VerifyMFA\n%s", zet.LogPath())
+	require.True(t, verifyResp.Success(), "VerifyMFA failed: error=%q code=%d\n%s", verifyResp.Error, verifyResp.Code, zet.LogPath())
+
+	verifyEvt := zet.Events.WaitForMfaEvent(t, "enrollment_verification", name)
+	require.True(t, verifyEvt.Successful, "mfa:enrollment_verification Successful=%t after VerifyMFA", verifyEvt.Successful)
+
+	return enrollment, secret
+}
+
+// GenerateTOTP derives the current TOTP for the base32-encoded secret.
+func GenerateTOTP(secret string, at time.Time) (string, error) {
+	key, err := base32.StdEncoding.WithPadding(base32.NoPadding).DecodeString(strings.ToUpper(strings.TrimRight(secret, "=")))
+	if err != nil {
+		return "", fmt.Errorf("base32 decode secret: %w", err)
+	}
+	counter := uint64(at.Unix() / 30)
+	msg := make([]byte, 8)
+	binary.BigEndian.PutUint64(msg, counter)
+	mac := hmac.New(sha1.New, key)
+	mac.Write(msg)
+	sum := mac.Sum(nil)
+	offset := sum[len(sum)-1] & 0x0f
+	code := binary.BigEndian.Uint32(sum[offset:offset+4]) & 0x7fffffff
+	return fmt.Sprintf("%06d", code%1_000_000), nil
 }
 
 // EnrollUrlIdentityToNone adds name to zet by controller URL (enroll-to-none),
