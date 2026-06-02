@@ -191,6 +191,7 @@ jobs:
 
       - name: Run integration tests (Linux/macOS)
         if: runner.os != 'Windows'
+        timeout-minutes: 15
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
