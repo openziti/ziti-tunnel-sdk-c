@@ -44,19 +44,12 @@ func (c *IPCClient) Close() error {
 	return c.conn.Close()
 }
 
-// ipcResponseTimeout caps how long send() waits for a ZET response. A stuck
-// ZET IPC handler (e.g. blocked on a slow DNS lookup) would otherwise freeze
-// the goroutine and prevent t.Cleanup from ever closing the connection.
-const ipcResponseTimeout = 60 * time.Second
-
 // send encodes cmd (INPUT) to a JSON line on the wire and decodes one JSON-line
-// response into RESP. Returns an error if ZET does not respond within ipcResponseTimeout.
+// response into RESP. Blocks indefinitely on a stuck peer.
 func send[INPUT, RESP any](c *IPCClient, cmd INPUT) (*RESP, error) {
 	if err := json.NewEncoder(c.conn).Encode(cmd); err != nil {
 		return nil, fmt.Errorf("send: %w", err)
 	}
-	_ = c.conn.SetReadDeadline(time.Now().Add(ipcResponseTimeout))
-	defer c.conn.SetReadDeadline(time.Time{})
 	var resp RESP
 	if err := json.NewDecoder(c.reader).Decode(&resp); err != nil {
 		return nil, fmt.Errorf("recv: %w", err)
