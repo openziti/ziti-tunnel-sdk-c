@@ -176,7 +176,15 @@ jq -n \
   }' > config.json
 cat config.json
 
+# ---- Compile test binary -----------------------------------------------------
+# Compile as the current (non-root) user so the Go module and build cache are
+# accessible. sudo resets HOME/GOPATH/GOCACHE, so `go test` as root re-downloads
+# all modules and recompiles from scratch — exhausting memory on constrained CI
+# runners (observed as a 100% reproducible "runner lost communication" on macOS).
+INTEGRATION_TEST="$TEST_HOME/integration.test"
+go test -c -o "$INTEGRATION_TEST" .
+
 # ---- Run tests ---------------------------------------------------------------
 # sudo resets PAM resource limits, so ulimit must be set in the privileged shell.
-sudo env "PATH=$PATH" sh -c \
-  'ulimit -c unlimited && exec go test ./... -v -timeout 20m -config config.json'
+sudo env "PATH=$PATH" "INTEGRATION_TEST=$INTEGRATION_TEST" sh -c \
+  'ulimit -c unlimited && exec "$INTEGRATION_TEST" -test.v -test.timeout 20m -config config.json'
