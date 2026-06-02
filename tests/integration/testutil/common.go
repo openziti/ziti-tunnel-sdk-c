@@ -103,6 +103,7 @@ func SetupVerifiedMFA(t *testing.T, overlay *Overlay, zet *ZET, name string) (MF
 
 	verifyEvt := zet.Events.WaitForMfaEvent(t, "enrollment_verification", name)
 	require.True(t, verifyEvt.Successful, "mfa:enrollment_verification Successful=%t after VerifyMFA", verifyEvt.Successful)
+	t.Logf("mfa:enrollment_verification reports Successful=%t for %q", verifyEvt.Successful, name)
 
 	return enrollment, secret
 }

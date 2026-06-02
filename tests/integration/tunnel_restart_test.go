@@ -39,27 +39,44 @@ func TestTunnelRestart(t *testing.T) {
 		idp:     state.idp,
 	}
 
-	t.Run("testJwtIdentitySurvivesRestart", c.testJwtIdentitySurvivesRestart)
-	t.Run("testMfaIdentitySurvivesRestart", c.testMfaIdentitySurvivesRestart)
-	t.Run("testExtAuthIdentitySurvivesRestart", c.testExtAuthIdentitySurvivesRestart)
-}
+	c.overlay.RequireCATrusted(t)
+	c.idp.RequireConfigured(t)
+	testutil.SetupWorkingExtJwtSigner(t, c.overlay, c.idp)
 
-func (c *restartContext) testJwtIdentitySurvivesRestart(t *testing.T) {
 	testutil.RunTestWithTimeoutOf(t, restartTestTimeout, func(t *testing.T) {
-		name := testutil.IdentityName(t)
+		// One identity per state. To exercise a single case, comment out its
+		// enroll block here and its matching asserts below.
+		base := testutil.IdentityName(t)
 
-		identityEvent := testutil.EnrollJwtIdentity(t, c.overlay, c.zet, name)
-		c.zet.Events.WaitForControllerEvent(t, "connected", name)
+		jwtName := base + "-jwt"
+		jwtEvent := testutil.EnrollJwtIdentity(t, c.overlay, c.zet, jwtName)
+		c.zet.Events.WaitForControllerEvent(t, "connected", jwtName)
+
+		mfaName := base + "-mfa"
+		mfaEnrollment, _ := testutil.SetupVerifiedMFA(t, c.overlay, c.zet, mfaName)
+
+		extName := base + "-ext"
+		c.overlay.CreateIdentityWithExternalId(t, extName, c.idp.ExternalID, "")
+		extEvent := testutil.EnrollUrlIdentityToNone(t, c.overlay, c.zet, extName)
 
 		t.Logf("restarting zetC")
 		require.NoError(t, c.zet.Restart(), "restart zetC\n%s", c.zet.LogPath())
 
-		t.Logf("waiting for post-restart status push")
-		status := c.zet.Events.WaitForStatusEvent(t)
-		identityFromStatus := findIdentityInStatus(t, status, identityEvent.Id.Identifier)
-		c.assertJwtIdentity(t, identityFromStatus)
+		// After restart every identity must still report its enrolled state.
+		after := c.zet.Events.WaitForStatusEvent(t)
+		c.assertJwtIdentity(t, findIdentityInStatus(t, after, jwtEvent.Id.Identifier))
+		c.assertMfaIdentity(t, findIdentityInStatus(t, after, mfaEnrollment.Identifier))
 
-		c.removeIdentity(t, identityEvent.Id.Identifier)
+		// ext-auth reloads unevaluated: the first post-restart status reports
+		// NeedsExtAuth=false, then needs_ext_login fires; reconnecting observes the
+		// settled NeedsExtAuth=true.
+		reloaded := findIdentityInStatus(t, after, extEvent.Id.Identifier)
+		require.False(t, reloaded.NeedsExtAuth, "post-restart status NeedsExtAuth=true before needs_ext_login for %q", extName)
+		t.Logf("post-restart status reports NeedsExtAuth=%t for %q", reloaded.NeedsExtAuth, extName)
+		c.zet.Events.WaitForIdentityEvent(t, "needs_ext_login", extName)
+		c.zet.ReconnectEvents(t)
+		reconnect := c.zet.Events.WaitForStatusEvent(t)
+		c.assertExtAuthIdentity(t, findIdentityInStatus(t, reconnect, extEvent.Id.Identifier))
 	})
 }
 
@@ -71,24 +88,6 @@ func (c *restartContext) assertJwtIdentity(t *testing.T, identity testutil.Ident
 	t.Logf("identity %q present NeedsExtAuth=%t MfaNeeded=%t", identity.Name, identity.NeedsExtAuth, identity.MfaNeeded)
 }
 
-func (c *restartContext) testMfaIdentitySurvivesRestart(t *testing.T) {
-	testutil.RunTestWithTimeoutOf(t, restartTestTimeout, func(t *testing.T) {
-		name := testutil.IdentityName(t)
-
-		enrollment, _ := testutil.SetupVerifiedMFA(t, c.overlay, c.zet, name)
-
-		t.Logf("restarting zetC")
-		require.NoError(t, c.zet.Restart(), "restart zetC\n%s", c.zet.LogPath())
-
-		t.Logf("waiting for post-restart status push")
-		status := c.zet.Events.WaitForStatusEvent(t)
-		identityFromStatus := findIdentityInStatus(t, status, enrollment.Identifier)
-		c.assertMfaIdentity(t, identityFromStatus)
-
-		c.removeIdentity(t, enrollment.Identifier)
-	})
-}
-
 func (c *restartContext) assertMfaIdentity(t *testing.T, identity testutil.Identity) {
 	require.NotEmpty(t, identity.Identifier, "identity Identifier empty")
 	require.True(t, identity.MfaEnabled, "MfaEnabled=%t for mfa identity %q", identity.MfaEnabled, identity.Name)
@@ -96,50 +95,11 @@ func (c *restartContext) assertMfaIdentity(t *testing.T, identity testutil.Ident
 	t.Logf("identity %q present MfaEnabled=%t MfaNeeded=%t", identity.Name, identity.MfaEnabled, identity.MfaNeeded)
 }
 
-func (c *restartContext) testExtAuthIdentitySurvivesRestart(t *testing.T) {
-	c.overlay.RequireCATrusted(t)
-	c.idp.RequireConfigured(t)
-	testutil.SetupWorkingExtJwtSigner(t, c.overlay, c.idp)
-
-	testutil.RunTestWithTimeoutOf(t, restartTestTimeout, func(t *testing.T) {
-		name := testutil.IdentityName(t)
-		c.overlay.CreateIdentityWithExternalId(t, name, c.idp.ExternalID, "")
-		identityEvent := testutil.EnrollUrlIdentityToNone(t, c.overlay, c.zet, name)
-
-		t.Logf("restarting zetC")
-		require.NoError(t, c.zet.Restart(), "restart zetC\n%s", c.zet.LogPath())
-
-		// restart reloads the identity unevaluated, so the first status reports
-		// NeedsExtAuth=false, then needs_ext_login fires
-		initialStatus := c.zet.Events.WaitForStatusEvent(t)
-		initial := findIdentityInStatus(t, initialStatus, identityEvent.Id.Identifier)
-		require.False(t, initial.NeedsExtAuth, "post-restart status NeedsExtAuth=%t for %q", initial.NeedsExtAuth, name)
-		t.Logf("post-restart status reports NeedsExtAuth=%t for %q", initial.NeedsExtAuth, name)
-		c.zet.Events.WaitForIdentityEvent(t, "needs_ext_login", name)
-		t.Logf("received needs_ext_login for %q", name)
-
-		// reconnecting the IPC pipe to the settled daemon reports NeedsExtAuth=true
-		c.zet.ReconnectEvents(t)
-		reconnectStatus := c.zet.Events.WaitForStatusEvent(t)
-		reloaded := findIdentityInStatus(t, reconnectStatus, identityEvent.Id.Identifier)
-		c.assertExtAuthIdentity(t, reloaded)
-
-		c.removeIdentity(t, identityEvent.Id.Identifier)
-	})
-}
-
 func (c *restartContext) assertExtAuthIdentity(t *testing.T, identity testutil.Identity) {
 	require.NotEmpty(t, identity.Identifier, "identity Identifier empty")
 	require.True(t, identity.NeedsExtAuth, "NeedsExtAuth=%t for ext-auth identity %q", identity.NeedsExtAuth, identity.Name)
 	testutil.AssertValidUrlEnrolledIdentityFile(t, identity.Identifier, testutil.EnrollModeNone)
 	t.Logf("identity %q present NeedsExtAuth=%t", identity.Name, identity.NeedsExtAuth)
-}
-
-func (c *restartContext) removeIdentity(t *testing.T, identifier string) {
-	t.Logf("removing identity %s", identifier)
-	resp, err := c.zet.Commands.RemoveIdentity(identifier)
-	require.NoError(t, err, "RemoveIdentity\n%s", c.zet.LogPath())
-	require.True(t, resp.Success(), "RemoveIdentity failed: code=%d error=%q", resp.Code, resp.Error)
 }
 
 func findIdentityInStatus(t *testing.T, status testutil.TunnelStatusEvent, identifier string) testutil.Identity {
