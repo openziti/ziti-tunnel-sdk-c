@@ -52,12 +52,14 @@ func send[INPUT, RESP any](c *IPCClient, cmd INPUT) (*RESP, error) {
 	if err := json.NewEncoder(c.conn).Encode(cmd); err != nil {
 		return nil, fmt.Errorf("send: %w", err)
 	}
+	log.Printf("encoded %v", cmd)
 	_ = c.conn.SetReadDeadline(time.Now().Add(ipcResponseTimeout))
 	defer c.conn.SetReadDeadline(time.Time{})
 	var resp RESP
 	if err := json.NewDecoder(c.reader).Decode(&resp); err != nil {
 		return nil, fmt.Errorf("recv: %w", err)
 	}
+	log.Printf("decoded %v", resp)
 	return &resp, nil
 }
 
