@@ -17,7 +17,6 @@ limitations under the License.
 package integration_test
 
 import (
-	"net/url"
 	"testing"
 	"time"
 

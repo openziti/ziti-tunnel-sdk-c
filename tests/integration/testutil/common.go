@@ -20,6 +20,7 @@ limitations under the License.
 package testutil
 
 import (
+	"net/url"
 	"strings"
 	"testing"
 
@@ -55,6 +56,29 @@ func EnrollJwtIdentity(t *testing.T, overlay *Overlay, zet *ZET, name string) Id
 	AssertValidJwtEnrolledIdentityFile(t, added.Id.Identifier)
 	t.Logf("identity:added Identifier=%s Active=%t", added.Id.Identifier, added.Id.Active)
 	return added
+}
+
+// SetupMFA enrolls a JWT identity on zet, waits for the controller to connect,
+// sends EnableMFA, and returns the enrollment plus the TOTP secret parsed from
+// its provisioning URL. The enrollment is not yet verified.
+func SetupMFA(t *testing.T, overlay *Overlay, zet *ZET, name string) (MFAEnrollment, string) {
+	added := EnrollJwtIdentity(t, overlay, zet, name)
+	zet.Events.WaitForControllerEvent(t, "connected", name)
+
+	t.Logf("sending EnableMFA for %q", name)
+	enrollment, err := zet.Commands.GetMFAEnrollment(added.Id.Identifier)
+	require.NoError(t, err, "failed to send EnableMFA\n%s", zet.LogPath())
+	require.NotEmpty(t, enrollment.ProvisioningUrl, "EnableMFA Data.ProvisioningUrl should be non-empty")
+	require.NotEmpty(t, enrollment.RecoveryCodes, "EnableMFA Data.RecoveryCodes should be non-empty")
+	t.Logf("EnableMFA returned ProvisioningUrl and %d recovery codes", len(enrollment.RecoveryCodes))
+
+	parsed, err := url.Parse(enrollment.ProvisioningUrl)
+	require.NoError(t, err, "failed to parse provisioning URL %q", enrollment.ProvisioningUrl)
+	secret := parsed.Query().Get("secret")
+	require.NotEmpty(t, secret, "provisioning url missing secret param: %q", enrollment.ProvisioningUrl)
+
+	enrollment.Identifier = added.Id.Identifier
+	return *enrollment, secret
 }
 
 // EnrollUrlIdentityToNone adds name to zet by controller URL (enroll-to-none),
