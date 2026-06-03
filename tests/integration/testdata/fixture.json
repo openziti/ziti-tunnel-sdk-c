@@ -146,6 +146,60 @@
       "roleAttributes": [],
       "enrollment": { "ott": true },
       "tags": {}
+    },
+    {
+      "name": "TestAddIdentity-withJwtSucceeds",
+      "authPolicy": "@Default",
+      "isAdmin": false,
+      "typeId": "Default",
+      "roleAttributes": [],
+      "enrollment": { "ott": true },
+      "tags": {}
+    },
+    {
+      "name": "TestAddIdentity-sameJwtTwiceSecondFails",
+      "authPolicy": "@Default",
+      "isAdmin": false,
+      "typeId": "Default",
+      "roleAttributes": [],
+      "enrollment": { "ott": true },
+      "tags": {}
+    },
+    {
+      "name": "TestAddIdentity-withDeletedIdentityFails",
+      "authPolicy": "@Default",
+      "isAdmin": false,
+      "typeId": "Default",
+      "roleAttributes": [],
+      "enrollment": { "ott": true },
+      "tags": {}
+    },
+    {
+      "name": "TestAddIdentity-withSlashInFilenameFails",
+      "authPolicy": "@Default",
+      "isAdmin": false,
+      "typeId": "Default",
+      "roleAttributes": [],
+      "enrollment": { "ott": true },
+      "tags": {}
+    },
+    {
+      "name": "TestAddIdentity-withDotDotInFilenameFails",
+      "authPolicy": "@Default",
+      "isAdmin": false,
+      "typeId": "Default",
+      "roleAttributes": [],
+      "enrollment": { "ott": true },
+      "tags": {}
+    },
+    {
+      "name": "TestAddIdentity-filenameExceedsCharLimitFails",
+      "authPolicy": "@Default",
+      "isAdmin": false,
+      "typeId": "Default",
+      "roleAttributes": [],
+      "enrollment": { "ott": true },
+      "tags": {}
     }
   ]
 }
