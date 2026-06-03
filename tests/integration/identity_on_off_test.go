@@ -28,7 +28,7 @@ func TestIdentityOnOff(t *testing.T) {
 }
 
 func testIdentityOnOffTogglesActiveState(t *testing.T) {
-	testutil.RunTestWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
 		client := state.zetClient.Commands
 		events := state.zetClient.Events
 

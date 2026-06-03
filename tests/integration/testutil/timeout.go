@@ -23,7 +23,7 @@ import (
 
 const TestTimeout = 5 * time.Second
 
-func RunTestWithTimeout(t *testing.T, f func(t *testing.T)) {
+func RunWithTimeout(t *testing.T, f func(t *testing.T)) {
 	t.Helper()
 	done := make(chan any, 1)
 
@@ -42,7 +42,7 @@ func RunTestWithTimeout(t *testing.T, f func(t *testing.T)) {
 	}
 }
 
-func RunTestWithTimeoutOf(t *testing.T, timeout time.Duration, f func(t *testing.T)) {
+func RunWithTimeoutOf(t *testing.T, timeout time.Duration, f func(t *testing.T)) {
 	t.Helper()
 	done := make(chan any, 1)
 

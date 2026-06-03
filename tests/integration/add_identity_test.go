@@ -49,14 +49,14 @@ func TestAddIdentity(t *testing.T) {
 }
 
 func (c *addIdentityContext) testAddIdentityWithJwtSucceeds(t *testing.T) {
-	testutil.RunTestWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
 		event := testutil.EnrollImportedJwt(t, c.overlay, c.zet, testutil.IdentityName(t))
 		require.True(t, event.Id.Active, "identity:added Active=%t", event.Id.Active)
 	})
 }
 
 func (c *addIdentityContext) testAddIdentitySameJwtTwiceSecondFails(t *testing.T) {
-	testutil.RunTestWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
 		identityName := testutil.IdentityName(t)
 		jwt := c.overlay.GetJwtFromController(t, identityName)
 
@@ -78,7 +78,7 @@ func (c *addIdentityContext) testAddIdentitySameJwtTwiceSecondFails(t *testing.T
 }
 
 func (c *addIdentityContext) testAddIdentityWithInvalidJwtFails(t *testing.T) {
-	testutil.RunTestWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
 		identityName := testutil.IdentityName(t)
 		badJwt := "this.is.not-a-real-jwt"
 		identityData := testutil.AddIdentityData{
@@ -92,7 +92,7 @@ func (c *addIdentityContext) testAddIdentityWithInvalidJwtFails(t *testing.T) {
 }
 
 func (c *addIdentityContext) testAddIdentityWithEmptyJwtFails(t *testing.T) {
-	testutil.RunTestWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
 		identityName := testutil.IdentityName(t)
 		emptyJwt := ""
 		identityData := testutil.AddIdentityData{
@@ -106,7 +106,7 @@ func (c *addIdentityContext) testAddIdentityWithEmptyJwtFails(t *testing.T) {
 }
 
 func (c *addIdentityContext) testAddIdentityWithDeletedIdentityFails(t *testing.T) {
-	testutil.RunTestWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
 		identityName := testutil.IdentityName(t)
 		jwt := c.overlay.GetJwtFromController(t, identityName)
 
@@ -124,7 +124,7 @@ func (c *addIdentityContext) testAddIdentityWithDeletedIdentityFails(t *testing.
 }
 
 func (c *addIdentityContext) testAddIdentityWithSlashInFilenameFails(t *testing.T) {
-	testutil.RunTestWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
 		jwt := c.overlay.GetJwtFromController(t, testutil.IdentityName(t))
 
 		identityData := testutil.AddIdentityData{
@@ -139,7 +139,7 @@ func (c *addIdentityContext) testAddIdentityWithSlashInFilenameFails(t *testing.
 }
 
 func (c *addIdentityContext) testAddIdentityWithDotDotInFilenameFails(t *testing.T) {
-	testutil.RunTestWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
 		jwt := c.overlay.GetJwtFromController(t, testutil.IdentityName(t))
 
 		identityData := testutil.AddIdentityData{
@@ -154,7 +154,7 @@ func (c *addIdentityContext) testAddIdentityWithDotDotInFilenameFails(t *testing
 }
 
 func (c *addIdentityContext) testAddIdentityFilenameExceedsCharLimitFails(t *testing.T) {
-	testutil.RunTestWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
 		jwt := c.overlay.GetJwtFromController(t, testutil.IdentityName(t))
 
 		longName := strings.Repeat("a", 300)

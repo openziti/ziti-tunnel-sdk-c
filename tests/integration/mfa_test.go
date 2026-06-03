@@ -63,7 +63,7 @@ func TestRemoveMFA(t *testing.T) {
 }
 
 func (c *mfaContext) testEnableMFAAcceptsJwtEnrolledIdentity(t *testing.T) {
-	testutil.RunTestWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
 		enrollment, _ := testutil.SetupMFA(t, c.overlay, c.zet, testutil.IdentityName(t))
 
 		require.False(t, enrollment.IsVerified, "EnableMFA Data.IsVerified should be false before verify_mfa")
@@ -71,7 +71,7 @@ func (c *mfaContext) testEnableMFAAcceptsJwtEnrolledIdentity(t *testing.T) {
 }
 
 func (c *mfaContext) testEnableMFAAcceptsTotpRequiredAuthPolicy(t *testing.T) {
-	testutil.RunTestWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
 		t.Skip("Tracking https://github.com/openziti/desktop-edge-win/issues/947 and https://openziti.discourse.group/t/enrolling-mfa-totp-from-zdew-fails/5482 - EnableMFA fails with 'failed to authenticate' for identities bound to TOTP-required auth policies")
 
 		enrollment, _ := testutil.SetupMFA(t, c.overlay, c.zet, testutil.IdentityName(t))
@@ -81,13 +81,13 @@ func (c *mfaContext) testEnableMFAAcceptsTotpRequiredAuthPolicy(t *testing.T) {
 }
 
 func (c *mfaContext) testVerifyMFAAcceptsValidTotp(t *testing.T) {
-	testutil.RunTestWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
 		testutil.SetupVerifiedMFA(t, c.overlay, c.zet, testutil.IdentityName(t))
 	})
 }
 
 func (c *mfaContext) testVerifyMFARejectsInvalidTotp(t *testing.T) {
-	testutil.RunTestWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
 		name := testutil.IdentityName(t)
 		enrollment, _ := testutil.SetupMFA(t, c.overlay, c.zet, name)
 
@@ -101,7 +101,7 @@ func (c *mfaContext) testVerifyMFARejectsInvalidTotp(t *testing.T) {
 }
 
 func (c *mfaContext) testMFAReauthenticationAcceptsValidTotp(t *testing.T) {
-	testutil.RunTestWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
 		name := testutil.IdentityName(t)
 		enrollment, secret := testutil.SetupVerifiedMFA(t, c.overlay, c.zet, name)
 
@@ -124,7 +124,7 @@ func (c *mfaContext) testMFAReauthenticationAcceptsValidTotp(t *testing.T) {
 }
 
 func (c *mfaContext) testMFAReauthenticationAcceptsRecoveryCode(t *testing.T) {
-	testutil.RunTestWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
 		name := testutil.IdentityName(t)
 		enrollment, _ := testutil.SetupVerifiedMFA(t, c.overlay, c.zet, name)
 
@@ -144,7 +144,7 @@ func (c *mfaContext) testMFAReauthenticationAcceptsRecoveryCode(t *testing.T) {
 }
 
 func (c *mfaContext) testMFAReauthenticationRejectsInvalidTotp(t *testing.T) {
-	testutil.RunTestWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
 		name := testutil.IdentityName(t)
 		enrollment, _ := testutil.SetupVerifiedMFA(t, c.overlay, c.zet, name)
 
@@ -163,7 +163,7 @@ func (c *mfaContext) testMFAReauthenticationRejectsInvalidTotp(t *testing.T) {
 }
 
 func (c *mfaContext) testRemoveMFAAcceptsValidTotp(t *testing.T) {
-	testutil.RunTestWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
 		name := testutil.IdentityName(t)
 		enrollment, secret := testutil.SetupVerifiedMFA(t, c.overlay, c.zet, name)
 
@@ -181,7 +181,7 @@ func (c *mfaContext) testRemoveMFAAcceptsValidTotp(t *testing.T) {
 }
 
 func (c *mfaContext) testRemoveMFAAcceptsRecoveryCode(t *testing.T) {
-	testutil.RunTestWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
 		name := testutil.IdentityName(t)
 		enrollment, _ := testutil.SetupVerifiedMFA(t, c.overlay, c.zet, name)
 
@@ -196,7 +196,7 @@ func (c *mfaContext) testRemoveMFAAcceptsRecoveryCode(t *testing.T) {
 }
 
 func (c *mfaContext) testRemoveMFARejectsInvalidTotp(t *testing.T) {
-	testutil.RunTestWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
 		name := testutil.IdentityName(t)
 		enrollment, _ := testutil.SetupVerifiedMFA(t, c.overlay, c.zet, name)
 

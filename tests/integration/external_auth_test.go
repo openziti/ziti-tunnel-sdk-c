@@ -115,7 +115,7 @@ func TestExternalAuthSingleSigner(t *testing.T) {
 }
 
 func (c *extAuthContext) testEnrollToNoneCompletes(t *testing.T) {
-	testutil.RunTestWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
 		name := testutil.IdentityName(t)
 		c.overlay.CreateIdentityWithExternalId(t, name, c.idp.ExternalID, "")
 		t.Cleanup(func() { _ = c.overlay.DeleteIdentity(name) })
@@ -133,7 +133,7 @@ func (c *extAuthContext) testEnrollToNoneCompletes(t *testing.T) {
 }
 
 func (c *extAuthContext) testEnrollToNoneRejectsInvalidProvider(t *testing.T) {
-	testutil.RunTestWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
 		name := testutil.IdentityName(t)
 		c.overlay.CreateIdentityWithExternalId(t, name, c.idp.ExternalID, "")
 		t.Cleanup(func() { _ = c.overlay.DeleteIdentity(name) })
@@ -151,7 +151,7 @@ func (c *extAuthContext) testEnrollToNoneRejectsInvalidProvider(t *testing.T) {
 }
 
 func (c *extAuthContext) testEnrollToNoneRejectsUnknownControllerIdentity(t *testing.T) {
-	testutil.RunTestWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
 		name := testutil.IdentityName(t)
 		// Deliberately DO NOT create a controller identity with externalId. The
 		// OIDC flow at the IdP still succeeds, but the controller rejects login
@@ -168,7 +168,7 @@ func (c *extAuthContext) testEnrollToNoneRejectsUnknownControllerIdentity(t *tes
 }
 
 func (c *extAuthContext) testEnrollToNoneMultipleSignersDefaultPolicyCompletes(t *testing.T) {
-	testutil.RunTestWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
 		name := testutil.IdentityName(t)
 		c.overlay.CreateIdentityWithExternalId(t, name, c.idp.ExternalID, "")
 		t.Cleanup(func() { _ = c.overlay.DeleteIdentity(name) })
@@ -188,7 +188,7 @@ func (c *extAuthContext) testEnrollToNoneMultipleSignersDefaultPolicyCompletes(t
 }
 
 func (c *extAuthContext) testEnrollToNoneMultipleSignersNamedPolicyCompletes(t *testing.T) {
-	testutil.RunTestWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
 		name := testutil.IdentityName(t)
 
 		policyName := name + "-policy"
@@ -216,7 +216,7 @@ func (c *extAuthContext) testEnrollToNoneMultipleSignersNamedPolicyCompletes(t *
 }
 
 func (c *extAuthContext) testEnrollToCertCompletes(t *testing.T) {
-	testutil.RunTestWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
 		name := testutil.IdentityName(t)
 		t.Cleanup(c.deleteIdentityByExternalId)
 
@@ -263,7 +263,7 @@ func (c *extAuthContext) completeEnrollToCert(t *testing.T, name string) string 
 }
 
 func (c *extAuthContext) testEnrollToTokenCompletes(t *testing.T) {
-	testutil.RunTestWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
 		name := testutil.IdentityName(t)
 		t.Cleanup(c.deleteIdentityByExternalId)
 
@@ -298,7 +298,7 @@ func (c *extAuthContext) testBothEnrollFlowsCompleteWhenBothEnabled(t *testing.T
 }
 
 func (c *extAuthContext) testEnrollToNoneThenCertRejected(t *testing.T) {
-	testutil.RunTestWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
 		name := testutil.IdentityName(t)
 
 		enrollToNone := testutil.ExtJwtSignerSpec{}
@@ -314,7 +314,7 @@ func (c *extAuthContext) testEnrollToNoneThenCertRejected(t *testing.T) {
 }
 
 func (c *extAuthContext) testEnrollToCertThenNoneRejected(t *testing.T) {
-	testutil.RunTestWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
 		name := testutil.IdentityName(t)
 		t.Cleanup(c.deleteIdentityByExternalId)
 
@@ -336,7 +336,7 @@ func (c *extAuthContext) testEnrollToCertThenNoneRejected(t *testing.T) {
 }
 
 func (c *extAuthContext) testEnrollToCertThenTokenRejected(t *testing.T) {
-	testutil.RunTestWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
 		name := testutil.IdentityName(t)
 		t.Cleanup(c.deleteIdentityByExternalId)
 
@@ -352,7 +352,7 @@ func (c *extAuthContext) testEnrollToCertThenTokenRejected(t *testing.T) {
 }
 
 func (c *extAuthContext) testEnrollToTokenThenCertRejected(t *testing.T) {
-	testutil.RunTestWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
 		name := testutil.IdentityName(t)
 		t.Cleanup(c.deleteIdentityByExternalId)
 

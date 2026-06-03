@@ -47,13 +47,13 @@ func TestUrlEnrollment(t *testing.T) {
 
 // testUrlEnrollmentWithValidControllerUrlSucceeds exercises the "URL + no enroll-to mode" path.
 func (c *urlEnrollmentContext) testUrlEnrollmentWithValidControllerUrlSucceeds(t *testing.T) {
-	testutil.RunTestWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
 		testutil.EnrollUrlIdentityToNone(t, c.overlay, c.zet, testutil.IdentityName(t))
 	})
 }
 
 func (c *urlEnrollmentContext) testUrlEnrollmentSameNameTwiceSecondFails(t *testing.T) {
-	testutil.RunTestWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
 		identityName := testutil.IdentityName(t)
 		controllerURL := c.overlay.ControllerHostPort()
 		identityData := testutil.AddIdentityData{
@@ -73,7 +73,7 @@ func (c *urlEnrollmentContext) testUrlEnrollmentSameNameTwiceSecondFails(t *test
 }
 
 func (c *urlEnrollmentContext) testUrlEnrollmentAfterJwtSameNameFails(t *testing.T) {
-	testutil.RunTestWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
 		identityName := testutil.IdentityName(t)
 		testutil.EnrollImportedJwt(t, c.overlay, c.zet, identityName)
 
@@ -90,7 +90,7 @@ func (c *urlEnrollmentContext) testUrlEnrollmentAfterJwtSameNameFails(t *testing
 }
 
 func (c *urlEnrollmentContext) testUrlEnrollmentWithNonZitiEndpointFails(t *testing.T) {
-	testutil.RunTestWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
 		identityName := testutil.IdentityName(t)
 		nonZitiURL := "https://example.com"
 		identityData := testutil.AddIdentityData{
@@ -105,7 +105,7 @@ func (c *urlEnrollmentContext) testUrlEnrollmentWithNonZitiEndpointFails(t *test
 }
 
 func (c *urlEnrollmentContext) testUrlEnrollmentWithMalformedUrlFails(t *testing.T) {
-	testutil.RunTestWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
 		identityName := testutil.IdentityName(t)
 		badURL := "not-a-url"
 		identityData := testutil.AddIdentityData{

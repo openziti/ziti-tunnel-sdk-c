@@ -43,7 +43,7 @@ func TestTunnelRestart(t *testing.T) {
 	c.idp.RequireConfigured(t)
 	testutil.SetupWorkingExtJwtSigner(t, c.overlay, c.idp)
 
-	testutil.RunTestWithTimeoutOf(t, restartTestTimeout, func(t *testing.T) {
+	testutil.RunWithTimeoutOf(t, restartTestTimeout, func(t *testing.T) {
 		// One identity per state. To exercise a single case, comment out its
 		// enroll block here and its matching asserts below.
 		base := testutil.IdentityName(t)
