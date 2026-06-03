@@ -56,8 +56,8 @@ type ZET struct {
 	cmdDone chan struct{}
 	logFile *os.File
 
-	Commands *CommandsClient
-	Events   *EventClient
+	*CommandsClient
+	*EventClient
 }
 
 // StartZET spawns ziti-edge-tunnel in "run" mode with identityDir as its -I sandbox.
@@ -132,13 +132,13 @@ func (z *ZET) Start() error {
 	if err != nil {
 		return fmt.Errorf("zet[%s] command pipe: %w", z.Discriminator, err)
 	}
-	z.Commands = cmds
+	z.CommandsClient = cmds
 
 	events, err := subscribeToEventPipe(EventPipePathFor(z.Discriminator), z.cmdDone)
 	if err != nil {
 		return fmt.Errorf("zet[%s] event pipe: %w", z.Discriminator, err)
 	}
-	z.Events = events
+	z.EventClient = events
 	return nil
 }
 

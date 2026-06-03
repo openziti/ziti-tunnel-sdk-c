@@ -25,12 +25,12 @@ import (
 )
 
 func TestRemoveIdentity(t *testing.T) {
-	t.Run("withIdentifierFromEvent", testRemoveIdentityWithIdentifierFromEvent)
+	t.Run("withIdentifierFromEvent", withIdentifierFromEvent)
 }
 
-func testRemoveIdentityWithIdentifierFromEvent(t *testing.T) {
+func withIdentifierFromEvent(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
-		client := state.zetClient.Commands
+		client := state.zetClient.CommandsClient
 
 		event := testutil.EnrollImportedJwt(t, state.overlay, state.zetClient, testutil.IdentityName(t))
 

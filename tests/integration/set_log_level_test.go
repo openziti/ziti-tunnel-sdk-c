@@ -24,13 +24,13 @@ import (
 )
 
 func TestSetLogLevel(t *testing.T) {
-	t.Run("succeeds", testSetLogLevelSucceeds)
+	t.Run("succeeds", succeeds)
 }
 
-func testSetLogLevelSucceeds(t *testing.T) {
+func succeeds(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
 		t.Logf("sending SetLogLevel %q", "trace")
-		resp, err := state.zetClient.Commands.SetLogLevel("trace")
+		resp, err := state.zetClient.SetLogLevel("trace")
 		require.NoError(t, err, "failed to send SetLogLevel\n%s", state.zetClient.LogFile())
 		require.True(t, resp.Success(), "SetLogLevel failed: error=%q code=%d", resp.Error, resp.Code)
 	})

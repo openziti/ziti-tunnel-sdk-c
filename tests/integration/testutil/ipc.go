@@ -127,14 +127,14 @@ func subscribeToEventPipe(path string, done <-chan struct{}) (*EventClient, erro
 }
 
 // ReconnectEvents closes the event pipe and re-subscribes to the same running
-// daemon, replacing z.Events. The daemon resends its status snapshot on connect.
+// daemon, replacing z.EventClient. The daemon resends its status snapshot on connect.
 func (z *ZET) ReconnectEvents(t *testing.T) {
 	path := EventPipePathFor(z.Discriminator)
 	log.Printf("ipc: reconnecting event pipe %s", path)
-	require.NoError(t, z.Events.Close(), "close event pipe")
+	require.NoError(t, z.EventClient.Close(), "close event pipe")
 	events, err := subscribeToEventPipe(path, z.cmdDone)
 	require.NoError(t, err, "reconnect event pipe")
-	z.Events = events
+	z.EventClient = events
 }
 
 func (c *EventClient) readLoop() {

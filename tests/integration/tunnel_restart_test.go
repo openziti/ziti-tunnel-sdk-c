@@ -49,12 +49,12 @@ func TestTunnelRestart(t *testing.T) {
 		base := testutil.IdentityName(t)
 
 		jwtIdEvent := testutil.EnrollImportedJwt(t, c.overlay, c.zet, base+"-jwt")
-		c.zet.Events.WaitForControllerEvent(t, "connected", base+"-jwt")
+		c.zet.WaitForControllerEvent(t, "connected", base+"-jwt")
 
 		mfaEnrollment, _ := testutil.SetupVerifiedMFA(t, c.overlay, c.zet, base+"-mfa")
 
 		inactiveIdEvent := testutil.EnrollImportedJwt(t, c.overlay, c.zet, base+"-inactive")
-		c.zet.Events.WaitForControllerEvent(t, "connected", base+"-inactive")
+		c.zet.WaitForControllerEvent(t, "connected", base+"-inactive")
 		testutil.SetIdentityActive(t, c.zet, inactiveIdEvent.Id.Identifier, false)
 
 		extName := base + "-ext"
@@ -65,7 +65,7 @@ func TestTunnelRestart(t *testing.T) {
 		require.NoError(t, c.zet.Restart(), "restart %s\n%s", c.zet.Discriminator, c.zet.LogPath())
 
 		// After restart every identity must still report its enrolled state.
-		after := c.zet.Events.WaitForStatusEvent(t)
+		after := c.zet.WaitForStatusEvent(t)
 		c.assertValidJwtIdState(t, findIdentityInStatus(t, after, jwtIdEvent.Id.Identifier))
 		c.assertMfaEnabled(t, findIdentityInStatus(t, after, mfaEnrollment.Identifier))
 		c.assertIdInactive(t, findIdentityInStatus(t, after, inactiveIdEvent.Id.Identifier))
@@ -75,9 +75,9 @@ func TestTunnelRestart(t *testing.T) {
 		// settled NeedsExtAuth=true.
 		reloaded := findIdentityInStatus(t, after, extEvent.Id.Identifier)
 		require.False(t, reloaded.NeedsExtAuth, "post-restart status NeedsExtAuth=true before needs_ext_login for %q", extName)
-		c.zet.Events.WaitForIdentityEvent(t, "needs_ext_login", extName)
+		c.zet.WaitForIdentityEvent(t, "needs_ext_login", extName)
 		c.zet.ReconnectEvents(t)
-		reconnect := c.zet.Events.WaitForStatusEvent(t)
+		reconnect := c.zet.WaitForStatusEvent(t)
 		c.assertNeedsExtAuth(t, findIdentityInStatus(t, reconnect, extEvent.Id.Identifier))
 	})
 }

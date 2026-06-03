@@ -24,13 +24,13 @@ import (
 )
 
 func TestIdentityOnOff(t *testing.T) {
-	t.Run("togglesActiveState", testIdentityOnOffTogglesActiveState)
+	t.Run("togglesActiveState", togglesActiveState)
 }
 
-func testIdentityOnOffTogglesActiveState(t *testing.T) {
+func togglesActiveState(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
-		client := state.zetClient.Commands
-		events := state.zetClient.Events
+		client := state.zetClient.CommandsClient
+		events := state.zetClient.EventClient
 
 		name := testutil.IdentityName(t)
 		added := testutil.EnrollImportedJwt(t, state.overlay, state.zetClient, name)

@@ -43,10 +43,10 @@ func EnrollJwt(t *testing.T, zet *ZET, name, jwt string) IdentityEvent {
 		IdentityFilename: name,
 		JwtContent:       &jwt,
 	}
-	resp := AddIdentity(t, zet.Commands, identityData)
+	resp := AddIdentity(t, zet.CommandsClient, identityData)
 	require.True(t, resp.Success(), "AddIdentity failed: error=%q code=%d\n%s", resp.Error, resp.Code, zet.LogPath())
 
-	added := zet.Events.WaitForIdentityEvent(t, "added", name)
+	added := zet.WaitForIdentityEvent(t, "added", name)
 	require.NotEmpty(t, added.Id.Identifier, "identity:added Identifier empty")
 	AssertValidJwtEnrolledIdentityFile(t, added.Id.Identifier)
 	t.Logf("identity:added Identifier=%s Active=%t", added.Id.Identifier, added.Id.Active)
@@ -66,10 +66,10 @@ func EnrollImportedJwt(t *testing.T, overlay *Overlay, zet *ZET, name string) Id
 // from its provisioning URL. The enrollment is not yet verified.
 func SetupMFA(t *testing.T, overlay *Overlay, zet *ZET, name string) (MFAEnrollment, string) {
 	added := EnrollImportedJwt(t, overlay, zet, name)
-	zet.Events.WaitForControllerEvent(t, "connected", name)
+	zet.WaitForControllerEvent(t, "connected", name)
 
 	t.Logf("sending EnableMFA for %q", name)
-	enrollment, err := zet.Commands.GetMFAEnrollment(added.Id.Identifier)
+	enrollment, err := zet.GetMFAEnrollment(added.Id.Identifier)
 	require.NoError(t, err, "failed to send EnableMFA\n%s", zet.LogPath())
 	require.NotEmpty(t, enrollment.ProvisioningUrl, "EnableMFA Data.ProvisioningUrl should be non-empty")
 	require.NotEmpty(t, enrollment.RecoveryCodes, "EnableMFA Data.RecoveryCodes should be non-empty")
@@ -94,11 +94,11 @@ func SetupVerifiedMFA(t *testing.T, overlay *Overlay, zet *ZET, name string) (MF
 	require.NoError(t, err, "failed to compute TOTP")
 
 	t.Logf("sending VerifyMFA with valid TOTP for %q", name)
-	verifyResp, err := zet.Commands.VerifyMFA(enrollment.Identifier, code)
+	verifyResp, err := zet.VerifyMFA(enrollment.Identifier, code)
 	require.NoError(t, err, "failed to send VerifyMFA\n%s", zet.LogPath())
 	require.True(t, verifyResp.Success(), "VerifyMFA failed: error=%q code=%d\n%s", verifyResp.Error, verifyResp.Code, zet.LogPath())
 
-	verifyEvt := zet.Events.WaitForMfaEvent(t, "enrollment_verification", name)
+	verifyEvt := zet.WaitForMfaEvent(t, "enrollment_verification", name)
 	require.True(t, verifyEvt.Successful, "mfa:enrollment_verification Successful=%t after VerifyMFA", verifyEvt.Successful)
 	t.Logf("mfa:enrollment_verification reports Successful=%t for %q", verifyEvt.Successful, name)
 
@@ -125,7 +125,7 @@ func GenerateTOTP(secret string, at time.Time) (string, error) {
 // SetIdentityActive sends IdentityOnOff for identifier and asserts it succeeded.
 func SetIdentityActive(t *testing.T, zet *ZET, identifier string, active bool) {
 	t.Logf("setting identity %s active=%t", identifier, active)
-	resp, err := zet.Commands.IdentityOnOff(identifier, active)
+	resp, err := zet.IdentityOnOff(identifier, active)
 	require.NoError(t, err, "IdentityOnOff(%t)\n%s", active, zet.LogPath())
 	require.True(t, resp.Success(), "IdentityOnOff(%t) failed: code=%d error=%q", active, resp.Code, resp.Error)
 }
@@ -139,10 +139,10 @@ func EnrollUrlIdentityToNone(t *testing.T, overlay *Overlay, zet *ZET, name stri
 		IdentityFilename: name,
 		ControllerURL:    &controllerURL,
 	}
-	resp := AddIdentity(t, zet.Commands, identityData)
+	resp := AddIdentity(t, zet.CommandsClient, identityData)
 	require.True(t, resp.Success(), "URL AddIdentity should succeed: error=%q code=%d\n%s", resp.Error, resp.Code, zet.LogPath())
 
-	event := zet.Events.WaitForIdentityEvent(t, "needs_ext_login", name)
+	event := zet.WaitForIdentityEvent(t, "needs_ext_login", name)
 	require.NotEmpty(t, event.Id.Identifier, "identity:needs_ext_login Identifier empty")
 	require.True(t, event.Id.NeedsExtAuth, "identity:needs_ext_login NeedsExtAuth=%t", event.Id.NeedsExtAuth)
 	AssertValidUrlEnrolledIdentityFile(t, event.Id.Identifier, EnrollModeNone)
