@@ -31,6 +31,8 @@ import (
 
 const setupTimeout = 45 * time.Second
 
+const fixturePath = "testdata/fixture.json"
+
 var state TestState
 
 type TestState struct {
@@ -199,6 +201,11 @@ func doSetup(state TestState) error {
 		if err := state.overlay.PurgeIdentityByExternalId(state.idp.ExternalID); err != nil {
 			return fmt.Errorf("purge stale IdP test user identities: %w", err)
 		}
+	}
+
+	log.Printf("setup: importing fixture %s", fixturePath)
+	if err := state.overlay.ImportFixture(fixturePath); err != nil {
+		return fmt.Errorf("import fixture: %w", err)
 	}
 
 	log.Printf("setup: wiping identity dirs before starting ZET(s)")

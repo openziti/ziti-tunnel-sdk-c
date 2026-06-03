@@ -48,16 +48,16 @@ func TestTunnelRestart(t *testing.T) {
 		// enroll block here and its matching asserts below.
 		base := testutil.IdentityName(t)
 
-		jwtName := base + "-jwt"
-		jwtEvent := testutil.CreateAndEnrollJwt(t, c.overlay, c.zet, jwtName)
-		c.zet.Events.WaitForControllerEvent(t, "connected", jwtName)
+		jwtToken := c.overlay.GetJwtFromController(t, "RestartZetTest-Jwt")
+		jwtEvent := testutil.EnrollJwt(t, c.zet, "RestartZetTest-Jwt", jwtToken)
+		c.zet.Events.WaitForControllerEvent(t, "connected", "RestartZetTest-Jwt")
 
 		mfaName := base + "-mfa"
 		mfaEnrollment, _ := testutil.SetupVerifiedMFA(t, c.overlay, c.zet, mfaName)
 
-		inactiveName := base + "-inactive"
-		inactiveEvent := testutil.CreateAndEnrollJwt(t, c.overlay, c.zet, inactiveName)
-		c.zet.Events.WaitForControllerEvent(t, "connected", inactiveName)
+		inactiveToken := c.overlay.GetJwtFromController(t, "RestartZetTest-Inactive")
+		inactiveEvent := testutil.EnrollJwt(t, c.zet, "RestartZetTest-Inactive", inactiveToken)
+		c.zet.Events.WaitForControllerEvent(t, "connected", "RestartZetTest-Inactive")
 		testutil.SetIdentityActive(t, c.zet, inactiveEvent.Id.Identifier, false)
 
 		extName := base + "-ext"

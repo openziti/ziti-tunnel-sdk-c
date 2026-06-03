@@ -50,6 +50,13 @@ func CreateJwt(t *testing.T, overlay *Overlay, name string) string {
 // on-disk identity file, and returns the added event.
 func CreateAndEnrollJwt(t *testing.T, overlay *Overlay, zet *ZET, name string) IdentityEvent {
 	jwt := CreateJwt(t, overlay, name)
+	return EnrollJwt(t, zet, name, jwt)
+}
+
+// EnrollJwt enrolls jwt on zet under name, waits for the identity:added event,
+// asserts the on-disk identity file, and returns the added event. The JWT may
+// come from a freshly created identity or a pre-imported one.
+func EnrollJwt(t *testing.T, zet *ZET, name, jwt string) IdentityEvent {
 	identityData := AddIdentityData{
 		IdentityFilename: name,
 		JwtContent:       &jwt,

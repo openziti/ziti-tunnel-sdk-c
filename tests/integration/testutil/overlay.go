@@ -307,6 +307,38 @@ func (o *Overlay) CreateIdentityJWT(name string) (string, error) {
 	return string(bytes.TrimSpace(content)), nil
 }
 
+// ImportFixture creates the controller-side entities declared in the JSON fixture
+// at path via `ziti ops import`. The importer skips entities that already exist,
+// so callers should purge stale fixtures first.
+func (o *Overlay) ImportFixture(path string) error {
+	if _, err := o.execZiti("ops", "import", path); err != nil {
+		return fmt.Errorf("import fixture %s: %w", path, err)
+	}
+	return nil
+}
+
+// GetJwtFromController returns the pending OTT enrollment JWT for the identity
+// with the given name. The identity must have been created with an OTT enrollment
+// (e.g. via ImportFixture) and not yet enrolled.
+func (o *Overlay) GetJwtFromController(t *testing.T, name string) string {
+	out, err := o.execZiti("edge", "list", "identities", fmt.Sprintf("name=%q", name), "-j")
+	require.NoError(t, err, "list identities name=%s", name)
+	var resp struct {
+		Data []struct {
+			Enrollment struct {
+				Ott struct {
+					JWT string `json:"jwt"`
+				} `json:"ott"`
+			} `json:"enrollment"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(out, &resp), "parse identities list for %s", name)
+	require.Len(t, resp.Data, 1, "expected exactly one identity named %s", name)
+	jwt := resp.Data[0].Enrollment.Ott.JWT
+	require.NotEmpty(t, jwt, "identity %s has no pending OTT enrollment JWT", name)
+	return jwt
+}
+
 func (o *Overlay) DeleteIdentity(name string) error {
 	if _, err := o.execZiti("edge", "delete", "identity", name); err != nil {
 		return fmt.Errorf("delete identity %s: %w", name, err)

@@ -1,0 +1,22 @@
+{
+  "identities": [
+    {
+      "name": "RestartZetTest-Jwt",
+      "authPolicy": "@Default",
+      "isAdmin": false,
+      "typeId": "Default",
+      "roleAttributes": [],
+      "enrollment": { "ott": true },
+      "tags": {}
+    },
+    {
+      "name": "RestartZetTest-Inactive",
+      "authPolicy": "@Default",
+      "isAdmin": false,
+      "typeId": "Default",
+      "roleAttributes": [],
+      "enrollment": { "ott": true },
+      "tags": {}
+    }
+  ]
+}
