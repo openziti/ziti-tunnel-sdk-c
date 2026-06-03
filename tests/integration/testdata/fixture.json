@@ -14,201 +14,135 @@
   "identities": [
     {
       "name": "TestTunnelRestart-jwt",
-      "authPolicy": "@Default",
       "isAdmin": false,
-      "typeId": "Default",
-      "roleAttributes": [],
-      "enrollment": { "ott": true },
-      "tags": {}
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
     },
     {
       "name": "TestTunnelRestart-mfa",
-      "authPolicy": "@Default",
       "isAdmin": false,
-      "typeId": "Default",
-      "roleAttributes": [],
-      "enrollment": { "ott": true },
-      "tags": {}
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
     },
     {
       "name": "TestTunnelRestart-inactive",
-      "authPolicy": "@Default",
       "isAdmin": false,
-      "typeId": "Default",
-      "roleAttributes": [],
-      "enrollment": { "ott": true },
-      "tags": {}
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
     },
     {
       "name": "TestEnableMFA-acceptsJwtEnrolledIdentity",
-      "authPolicy": "@Default",
       "isAdmin": false,
-      "typeId": "Default",
-      "roleAttributes": [],
-      "enrollment": { "ott": true },
-      "tags": {}
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
     },
     {
       "name": "TestEnableMFA-acceptsTotpRequiredAuthPolicy",
-      "authPolicy": "@TestEnableMFA-acceptsTotpRequiredAuthPolicy-policy",
       "isAdmin": false,
-      "typeId": "Default",
-      "roleAttributes": [],
-      "enrollment": { "ott": true },
-      "tags": {}
+      "authPolicy": "@TestEnableMFA-acceptsTotpRequiredAuthPolicy-policy",
+      "enrollment": { "ott": true }
     },
     {
       "name": "TestVerifyMFA-acceptsValidTotp",
-      "authPolicy": "@Default",
       "isAdmin": false,
-      "typeId": "Default",
-      "roleAttributes": [],
-      "enrollment": { "ott": true },
-      "tags": {}
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
     },
     {
       "name": "TestVerifyMFA-rejectsInvalidTotp",
-      "authPolicy": "@Default",
       "isAdmin": false,
-      "typeId": "Default",
-      "roleAttributes": [],
-      "enrollment": { "ott": true },
-      "tags": {}
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
     },
     {
       "name": "TestMFAReauthentication-acceptsValidTotp",
-      "authPolicy": "@Default",
       "isAdmin": false,
-      "typeId": "Default",
-      "roleAttributes": [],
-      "enrollment": { "ott": true },
-      "tags": {}
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
     },
     {
       "name": "TestMFAReauthentication-acceptsRecoveryCode",
-      "authPolicy": "@Default",
       "isAdmin": false,
-      "typeId": "Default",
-      "roleAttributes": [],
-      "enrollment": { "ott": true },
-      "tags": {}
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
     },
     {
       "name": "TestMFAReauthentication-rejectsInvalidTotp",
-      "authPolicy": "@Default",
       "isAdmin": false,
-      "typeId": "Default",
-      "roleAttributes": [],
-      "enrollment": { "ott": true },
-      "tags": {}
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
     },
     {
       "name": "TestRemoveMFA-acceptsValidTotp",
-      "authPolicy": "@Default",
       "isAdmin": false,
-      "typeId": "Default",
-      "roleAttributes": [],
-      "enrollment": { "ott": true },
-      "tags": {}
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
     },
     {
       "name": "TestRemoveMFA-acceptsRecoveryCode",
-      "authPolicy": "@Default",
       "isAdmin": false,
-      "typeId": "Default",
-      "roleAttributes": [],
-      "enrollment": { "ott": true },
-      "tags": {}
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
     },
     {
       "name": "TestRemoveMFA-rejectsInvalidTotp",
-      "authPolicy": "@Default",
       "isAdmin": false,
-      "typeId": "Default",
-      "roleAttributes": [],
-      "enrollment": { "ott": true },
-      "tags": {}
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
     },
     {
       "name": "TestRemoveIdentity-withIdentifierFromEvent",
-      "authPolicy": "@Default",
       "isAdmin": false,
-      "typeId": "Default",
-      "roleAttributes": [],
-      "enrollment": { "ott": true },
-      "tags": {}
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
     },
     {
       "name": "TestIdentityOnOff-togglesActiveState",
-      "authPolicy": "@Default",
       "isAdmin": false,
-      "typeId": "Default",
-      "roleAttributes": [],
-      "enrollment": { "ott": true },
-      "tags": {}
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
     },
     {
       "name": "TestAddIdentity-withJwtSucceeds",
-      "authPolicy": "@Default",
       "isAdmin": false,
-      "typeId": "Default",
-      "roleAttributes": [],
-      "enrollment": { "ott": true },
-      "tags": {}
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
     },
     {
       "name": "TestAddIdentity-sameJwtTwiceSecondFails",
-      "authPolicy": "@Default",
       "isAdmin": false,
-      "typeId": "Default",
-      "roleAttributes": [],
-      "enrollment": { "ott": true },
-      "tags": {}
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
     },
     {
       "name": "TestAddIdentity-withDeletedIdentityFails",
-      "authPolicy": "@Default",
       "isAdmin": false,
-      "typeId": "Default",
-      "roleAttributes": [],
-      "enrollment": { "ott": true },
-      "tags": {}
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
     },
     {
       "name": "TestAddIdentity-withSlashInFilenameFails",
-      "authPolicy": "@Default",
       "isAdmin": false,
-      "typeId": "Default",
-      "roleAttributes": [],
-      "enrollment": { "ott": true },
-      "tags": {}
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
     },
     {
       "name": "TestAddIdentity-withDotDotInFilenameFails",
-      "authPolicy": "@Default",
       "isAdmin": false,
-      "typeId": "Default",
-      "roleAttributes": [],
-      "enrollment": { "ott": true },
-      "tags": {}
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
     },
     {
       "name": "TestAddIdentity-filenameExceedsCharLimitFails",
-      "authPolicy": "@Default",
       "isAdmin": false,
-      "typeId": "Default",
-      "roleAttributes": [],
-      "enrollment": { "ott": true },
-      "tags": {}
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
     },
     {
       "name": "TestUrlEnrollment-afterJwtSameNameFails",
-      "authPolicy": "@Default",
       "isAdmin": false,
-      "typeId": "Default",
-      "roleAttributes": [],
-      "enrollment": { "ott": true },
-      "tags": {}
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
     }
   ]
 }
