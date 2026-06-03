@@ -24,35 +24,16 @@ import (
 )
 
 func TestIdentityOnOff(t *testing.T) {
-	t.Run("togglesActiveOff", testIdentityOnOffTogglesActiveOff)
-	t.Run("togglesActiveOn", testIdentityOnOffTogglesActiveOn)
+	t.Run("togglesActiveState", testIdentityOnOffTogglesActiveState)
 }
 
-func testIdentityOnOffTogglesActiveOff(t *testing.T) {
+func testIdentityOnOffTogglesActiveState(t *testing.T) {
 	testutil.RunTestWithTimeout(t, func(t *testing.T) {
 		client := state.zetClient.Commands
 		events := state.zetClient.Events
 
 		name := testutil.IdentityName(t)
-		added := testutil.CreateAndEnrollJwt(t, state.overlay, state.zetClient, name)
-
-		t.Logf("sending IdentityOnOff(false) for %q", name)
-		offResp, err := client.IdentityOnOff(added.Id.Identifier, false)
-		require.NoError(t, err, "failed to send IdentityOnOff(false)\n%s", state.zetClient.LogPath())
-		require.True(t, offResp.Success(), "IdentityOnOff(false) failed: error=%q code=%d", offResp.Error, offResp.Code)
-
-		off := events.WaitForIdentityEvent(t, "added", name)
-		require.False(t, off.Id.Active, "identity:added Active=%t after IdentityOnOff(false)", off.Id.Active)
-	})
-}
-
-func testIdentityOnOffTogglesActiveOn(t *testing.T) {
-	testutil.RunTestWithTimeout(t, func(t *testing.T) {
-		client := state.zetClient.Commands
-		events := state.zetClient.Events
-
-		name := testutil.IdentityName(t)
-		added := testutil.CreateAndEnrollJwt(t, state.overlay, state.zetClient, name)
+		added := testutil.EnrollImportedJwt(t, state.overlay, state.zetClient, name)
 
 		t.Logf("sending IdentityOnOff(false) for %q", name)
 		offResp, err := client.IdentityOnOff(added.Id.Identifier, false)
