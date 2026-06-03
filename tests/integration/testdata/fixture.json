@@ -1,7 +1,19 @@
 {
+  "authPolicies": [
+    {
+      "name": "TestEnableMFA-acceptsTotpRequiredAuthPolicy-policy",
+      "primary": {
+        "cert": { "allowExpiredCerts": false, "allowed": true },
+        "extJwt": { "allowed": false, "allowedSigners": [] },
+        "updb": { "allowed": false, "lockoutDurationMinutes": 0, "maxAttempts": 5, "minPasswordLength": 5, "requireMixedCase": false, "requireNumberChar": false, "requireSpecialChar": false }
+      },
+      "secondary": { "requireTotp": true },
+      "tags": {}
+    }
+  ],
   "identities": [
     {
-      "name": "RestartZetTest-Jwt",
+      "name": "TestTunnelRestart-jwt",
       "authPolicy": "@Default",
       "isAdmin": false,
       "typeId": "Default",
@@ -10,7 +22,106 @@
       "tags": {}
     },
     {
-      "name": "RestartZetTest-Inactive",
+      "name": "TestTunnelRestart-mfa",
+      "authPolicy": "@Default",
+      "isAdmin": false,
+      "typeId": "Default",
+      "roleAttributes": [],
+      "enrollment": { "ott": true },
+      "tags": {}
+    },
+    {
+      "name": "TestTunnelRestart-inactive",
+      "authPolicy": "@Default",
+      "isAdmin": false,
+      "typeId": "Default",
+      "roleAttributes": [],
+      "enrollment": { "ott": true },
+      "tags": {}
+    },
+    {
+      "name": "TestEnableMFA-acceptsJwtEnrolledIdentity",
+      "authPolicy": "@Default",
+      "isAdmin": false,
+      "typeId": "Default",
+      "roleAttributes": [],
+      "enrollment": { "ott": true },
+      "tags": {}
+    },
+    {
+      "name": "TestEnableMFA-acceptsTotpRequiredAuthPolicy",
+      "authPolicy": "@TestEnableMFA-acceptsTotpRequiredAuthPolicy-policy",
+      "isAdmin": false,
+      "typeId": "Default",
+      "roleAttributes": [],
+      "enrollment": { "ott": true },
+      "tags": {}
+    },
+    {
+      "name": "TestVerifyMFA-acceptsValidTotp",
+      "authPolicy": "@Default",
+      "isAdmin": false,
+      "typeId": "Default",
+      "roleAttributes": [],
+      "enrollment": { "ott": true },
+      "tags": {}
+    },
+    {
+      "name": "TestVerifyMFA-rejectsInvalidTotp",
+      "authPolicy": "@Default",
+      "isAdmin": false,
+      "typeId": "Default",
+      "roleAttributes": [],
+      "enrollment": { "ott": true },
+      "tags": {}
+    },
+    {
+      "name": "TestMFAReauthentication-acceptsValidTotp",
+      "authPolicy": "@Default",
+      "isAdmin": false,
+      "typeId": "Default",
+      "roleAttributes": [],
+      "enrollment": { "ott": true },
+      "tags": {}
+    },
+    {
+      "name": "TestMFAReauthentication-acceptsRecoveryCode",
+      "authPolicy": "@Default",
+      "isAdmin": false,
+      "typeId": "Default",
+      "roleAttributes": [],
+      "enrollment": { "ott": true },
+      "tags": {}
+    },
+    {
+      "name": "TestMFAReauthentication-rejectsInvalidTotp",
+      "authPolicy": "@Default",
+      "isAdmin": false,
+      "typeId": "Default",
+      "roleAttributes": [],
+      "enrollment": { "ott": true },
+      "tags": {}
+    },
+    {
+      "name": "TestRemoveMFA-acceptsValidTotp",
+      "authPolicy": "@Default",
+      "isAdmin": false,
+      "typeId": "Default",
+      "roleAttributes": [],
+      "enrollment": { "ott": true },
+      "tags": {}
+    },
+    {
+      "name": "TestRemoveMFA-acceptsRecoveryCode",
+      "authPolicy": "@Default",
+      "isAdmin": false,
+      "typeId": "Default",
+      "roleAttributes": [],
+      "enrollment": { "ott": true },
+      "tags": {}
+    },
+    {
+      "name": "TestRemoveMFA-rejectsInvalidTotp",
       "authPolicy": "@Default",
       "isAdmin": false,
       "typeId": "Default",

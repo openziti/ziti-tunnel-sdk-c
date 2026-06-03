@@ -67,7 +67,6 @@ func (c *mfaContext) testEnableMFAAcceptsJwtEnrolledIdentity(t *testing.T) {
 		enrollment, _ := testutil.SetupMFA(t, c.overlay, c.zet, testutil.IdentityName(t))
 
 		require.False(t, enrollment.IsVerified, "EnableMFA Data.IsVerified should be false before verify_mfa")
-		t.Logf("EnableMFA returned IsVerified=%t", enrollment.IsVerified)
 	})
 }
 
@@ -75,33 +74,9 @@ func (c *mfaContext) testEnableMFAAcceptsTotpRequiredAuthPolicy(t *testing.T) {
 	testutil.RunTestWithTimeout(t, func(t *testing.T) {
 		t.Skip("Tracking https://github.com/openziti/desktop-edge-win/issues/947 and https://openziti.discourse.group/t/enrolling-mfa-totp-from-zdew-fails/5482 - EnableMFA fails with 'failed to authenticate' for identities bound to TOTP-required auth policies")
 
-		name := testutil.IdentityName(t)
-		policy := name + "-policy"
-		t.Logf("creating TOTP-required auth policy %q", policy)
-		require.NoError(t, c.overlay.CreateAuthPolicyRequiringTOTP(policy), "create auth policy")
+		enrollment, _ := testutil.SetupMFA(t, c.overlay, c.zet, testutil.IdentityName(t))
 
-		t.Logf("creating JWT for %q bound to auth policy %q", name, policy)
-		jwt, err := c.overlay.CreateIdentityJWTWithAuthPolicy(name, policy)
-		require.NoError(t, err, "failed to create JWT for identity bound to %q", policy)
-		require.NotEmpty(t, jwt)
-
-		identityData := testutil.AddIdentityData{
-			IdentityFilename: name,
-			JwtContent:       &jwt,
-		}
-		addResp := testutil.AddIdentity(t, c.zet.Commands, identityData)
-		require.True(t, addResp.Success(), "AddIdentity failed: error=%q code=%d", addResp.Error, addResp.Code)
-
-		added := c.zet.Events.WaitForIdentityEvent(t, "added", name)
-		require.NotEmpty(t, added.Id.Identifier, "identity:added Identifier empty")
-		testutil.AssertValidJwtEnrolledIdentityFile(t, added.Id.Identifier)
-
-		t.Logf("sending EnableMFA for %q", name)
-		enrollment, err := c.zet.Commands.GetMFAEnrollment(added.Id.Identifier)
-		require.NoError(t, err, "failed to send EnableMFA\n%s", c.zet.LogPath())
-		require.NotEmpty(t, enrollment.ProvisioningUrl, "EnableMFA Data.ProvisioningUrl should be non-empty")
-		require.NotEmpty(t, enrollment.RecoveryCodes, "EnableMFA Data.RecoveryCodes should be non-empty")
-		t.Logf("EnableMFA returned ProvisioningUrl and %d recovery codes", len(enrollment.RecoveryCodes))
+		require.False(t, enrollment.IsVerified, "EnableMFA Data.IsVerified should be false before verify_mfa")
 	})
 }
 
@@ -122,7 +97,6 @@ func (c *mfaContext) testVerifyMFARejectsInvalidTotp(t *testing.T) {
 		require.False(t, verifyResp.Success(), "VerifyMFA with invalid TOTP should fail but Success=true")
 		require.Equal(t, 500, verifyResp.Code, "expected Code=500, got %d", verifyResp.Code)
 		require.Contains(t, verifyResp.Error, "the token provided was invalid", "expected invalid-token error, got %q", verifyResp.Error)
-		t.Logf("VerifyMFA rejected invalid TOTP: code=%d error=%q", verifyResp.Code, verifyResp.Error)
 	})
 }
 
@@ -146,7 +120,6 @@ func (c *mfaContext) testMFAReauthenticationAcceptsValidTotp(t *testing.T) {
 
 		submitEvt := c.zet.Events.WaitForMfaEvent(t, "mfa_auth_status", name)
 		require.True(t, submitEvt.Successful, "mfa:mfa_auth_status Successful=%t after SubmitMFA", submitEvt.Successful)
-		t.Logf("mfa:mfa_auth_status reports Successful=%t after SubmitMFA", submitEvt.Successful)
 	})
 }
 
@@ -167,7 +140,6 @@ func (c *mfaContext) testMFAReauthenticationAcceptsRecoveryCode(t *testing.T) {
 
 		submitEvt := c.zet.Events.WaitForMfaEvent(t, "mfa_auth_status", name)
 		require.True(t, submitEvt.Successful, "mfa:mfa_auth_status Successful=%t after SubmitMFA", submitEvt.Successful)
-		t.Logf("mfa:mfa_auth_status reports Successful=%t after SubmitMFA with recovery code", submitEvt.Successful)
 	})
 }
 
@@ -187,7 +159,6 @@ func (c *mfaContext) testMFAReauthenticationRejectsInvalidTotp(t *testing.T) {
 		require.False(t, submitResp.Success(), "SubmitMFA with invalid TOTP should fail but Success=true")
 		require.Equal(t, 500, submitResp.Code, "expected Code=500, got %d", submitResp.Code)
 		require.Contains(t, submitResp.Error, "the token provided was invalid", "expected invalid-token error, got %q", submitResp.Error)
-		t.Logf("SubmitMFA rejected invalid TOTP: code=%d error=%q", submitResp.Code, submitResp.Error)
 	})
 }
 
@@ -206,7 +177,6 @@ func (c *mfaContext) testRemoveMFAAcceptsValidTotp(t *testing.T) {
 
 		removeEvt := c.zet.Events.WaitForMfaEvent(t, "enrollment_remove", name)
 		require.True(t, removeEvt.Successful, "mfa:enrollment_remove Successful=%t after RemoveMFA", removeEvt.Successful)
-		t.Logf("mfa:enrollment_remove reports Successful=%t after RemoveMFA with TOTP", removeEvt.Successful)
 	})
 }
 
@@ -222,7 +192,6 @@ func (c *mfaContext) testRemoveMFAAcceptsRecoveryCode(t *testing.T) {
 
 		removeEvt := c.zet.Events.WaitForMfaEvent(t, "enrollment_remove", name)
 		require.True(t, removeEvt.Successful, "mfa:enrollment_remove Successful=%t after RemoveMFA", removeEvt.Successful)
-		t.Logf("mfa:enrollment_remove reports Successful=%t after RemoveMFA with recovery code", removeEvt.Successful)
 	})
 }
 
@@ -237,6 +206,5 @@ func (c *mfaContext) testRemoveMFARejectsInvalidTotp(t *testing.T) {
 		require.False(t, removeResp.Success(), "RemoveMFA with invalid TOTP should fail but Success=true")
 		require.Equal(t, 500, removeResp.Code, "expected Code=500, got %d", removeResp.Code)
 		require.Contains(t, removeResp.Error, "the token provided was invalid", "expected invalid-token error, got %q", removeResp.Error)
-		t.Logf("RemoveMFA rejected invalid TOTP: code=%d error=%q", removeResp.Code, removeResp.Error)
 	})
 }

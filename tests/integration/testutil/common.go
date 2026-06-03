@@ -71,11 +71,19 @@ func EnrollJwt(t *testing.T, zet *ZET, name, jwt string) IdentityEvent {
 	return added
 }
 
-// SetupMFA enrolls a JWT identity on zet, waits for the controller to connect,
-// sends EnableMFA, and returns the enrollment plus the TOTP secret parsed from
-// its provisioning URL. The enrollment is not yet verified.
+// EnrollImportedJwt fetches the pending OTT enrollment JWT for a pre-imported
+// identity and enrolls it on zet, returning the added event.
+func EnrollImportedJwt(t *testing.T, overlay *Overlay, zet *ZET, name string) IdentityEvent {
+	jwt := overlay.GetJwtFromController(t, name)
+	identityEvent := EnrollJwt(t, zet, name, jwt)
+	return identityEvent
+}
+
+// SetupMFA enrolls the pre-imported identity on zet, waits for the controller to
+// connect, sends EnableMFA, and returns the enrollment plus the TOTP secret parsed
+// from its provisioning URL. The enrollment is not yet verified.
 func SetupMFA(t *testing.T, overlay *Overlay, zet *ZET, name string) (MFAEnrollment, string) {
-	added := CreateAndEnrollJwt(t, overlay, zet, name)
+	added := EnrollImportedJwt(t, overlay, zet, name)
 	zet.Events.WaitForControllerEvent(t, "connected", name)
 
 	t.Logf("sending EnableMFA for %q", name)

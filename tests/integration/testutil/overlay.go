@@ -346,29 +346,6 @@ func (o *Overlay) DeleteIdentity(name string) error {
 	return nil
 }
 
-func (o *Overlay) CreateAuthPolicyRequiringTOTP(name string) error {
-	if _, err := o.execZiti("edge", "create", "auth-policy", name,
-		"--primary-cert-allowed",
-		"--secondary-req-totp"); err != nil {
-		return fmt.Errorf("create auth policy %s: %w", name, err)
-	}
-	return nil
-}
-
-func (o *Overlay) CreateIdentityJWTWithAuthPolicy(name, authPolicy string) (string, error) {
-	jwtPath := filepath.Join(o.Home, name+".jwt")
-	if _, err := o.execZiti("edge", "create", "identity", name,
-		"-P", authPolicy,
-		"-o", jwtPath); err != nil {
-		return "", fmt.Errorf("create identity %s with policy %s: %w", name, authPolicy, err)
-	}
-	content, err := os.ReadFile(jwtPath)
-	if err != nil {
-		return "", fmt.Errorf("read jwt %s: %w", jwtPath, err)
-	}
-	return string(bytes.TrimSpace(content)), nil
-}
-
 // ExtJwtSignerSpec describes an external JWT signer to register on the
 // controller. EnrollToCert / EnrollToToken set the matching ziti 2.0+ flags.
 type ExtJwtSignerSpec struct {
