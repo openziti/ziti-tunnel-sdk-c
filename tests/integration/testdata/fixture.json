@@ -128,6 +128,15 @@
       "roleAttributes": [],
       "enrollment": { "ott": true },
       "tags": {}
+    },
+    {
+      "name": "TestRemoveIdentity-withIdentifierFromEvent",
+      "authPolicy": "@Default",
+      "isAdmin": false,
+      "typeId": "Default",
+      "roleAttributes": [],
+      "enrollment": { "ott": true },
+      "tags": {}
     }
   ]
 }
