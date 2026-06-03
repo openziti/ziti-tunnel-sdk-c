@@ -40,7 +40,6 @@ func testAddIdentityWithJwtSucceeds(t *testing.T) {
 		identityName := testutil.IdentityName(t)
 		event := testutil.CreateAndEnrollJwt(t, state.overlay, state.zetClient, identityName)
 		require.True(t, event.Id.Active, "identity:added Active=%t", event.Id.Active)
-		t.Logf("identity:added Identifier=%s Active=%t", event.Id.Identifier, event.Id.Active)
 	})
 }
 
@@ -65,7 +64,6 @@ func testAddIdentitySameJwtTwiceSecondFails(t *testing.T) {
 		require.False(t, second.Success(), "second AddIdentity should fail, got Success=true")
 		require.Equal(t, 500, second.Code, "expected Code=500, got %d", second.Code)
 		require.Contains(t, second.Error, "identity exists", "expected duplicate-name error, got %q", second.Error)
-		t.Logf("second AddIdentity rejected: code=%d error=%q", second.Code, second.Error)
 	})
 }
 
@@ -82,7 +80,6 @@ func testAddIdentityWithInvalidJwtFails(t *testing.T) {
 		resp := testutil.AddIdentity(t, client, identityData)
 		require.False(t, resp.Success(), "invalid JWT should be rejected, got Success=true")
 		require.Equal(t, 500, resp.Code, "expected Code=500, got %d", resp.Code)
-		t.Logf("invalid JWT rejected: code=%d error=%q", resp.Code, resp.Error)
 	})
 }
 
@@ -99,7 +96,6 @@ func testAddIdentityWithEmptyJwtFails(t *testing.T) {
 		resp := testutil.AddIdentity(t, client, identityData)
 		require.False(t, resp.Success(), "empty JWT should be rejected, got Success=true")
 		require.Equal(t, 500, resp.Code, "expected Code=500, got %d", resp.Code)
-		t.Logf("empty JWT rejected: code=%d error=%q", resp.Code, resp.Error)
 	})
 }
 
@@ -121,7 +117,6 @@ func testAddIdentityWithDeletedIdentityFails(t *testing.T) {
 		resp := testutil.AddIdentity(t, client, identityData)
 		require.False(t, resp.Success(), "JWT for deleted identity should be rejected, got Success=true")
 		require.Equal(t, 500, resp.Code, "expected Code=500, got %d", resp.Code)
-		t.Logf("JWT identity deleted from controller rejected: code=%d error=%q", resp.Code, resp.Error)
 	})
 }
 
@@ -140,7 +135,6 @@ func testAddIdentityWithSlashInFilenameFails(t *testing.T) {
 		require.False(t, resp.Success(), "filename with slash should be rejected, got Success=true")
 		require.Equal(t, 500, resp.Code, "expected Code=500, got %d", resp.Code)
 		require.Contains(t, resp.Error, "invalid file name", "expected invalid-file-name error, got %q", resp.Error)
-		t.Logf("slash filename rejected: code=%d error=%q", resp.Code, resp.Error)
 	})
 }
 
@@ -159,7 +153,6 @@ func testAddIdentityWithDotDotInFilenameFails(t *testing.T) {
 		require.False(t, resp.Success(), "filename with .. should be rejected, got Success=true")
 		require.Equal(t, 500, resp.Code, "expected Code=500, got %d", resp.Code)
 		require.Contains(t, resp.Error, "not within the configuration directory", "expected path-escape error, got %q", resp.Error)
-		t.Logf("dot-dot filename rejected: code=%d error=%q", resp.Code, resp.Error)
 	})
 }
 
@@ -178,8 +171,6 @@ func testAddIdentityFilenameExceedsCharLimitFails(t *testing.T) {
 		resp := testutil.AddIdentity(t, client, identityData)
 		require.False(t, resp.Success(), "long filename should be rejected, got Success=true")
 		require.Equal(t, 500, resp.Code, "expected Code=500, got %d", resp.Code)
-		require.True(t, strings.Contains(resp.Error, "invalid file name") || strings.Contains(resp.Error, "not within the configuration directory"),
-			"expected invalid-file-name or path-containment error, got %q", resp.Error)
-		t.Logf("long filename rejected: code=%d error=%q", resp.Code, resp.Error)
+		require.True(t, strings.Contains(resp.Error, "invalid file name") || strings.Contains(resp.Error, "not within the configuration directory"), "expected invalid-file-name or path-containment error, got %q", resp.Error)
 	})
 }

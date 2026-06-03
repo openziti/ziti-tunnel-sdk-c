@@ -36,8 +36,7 @@ func TestUrlEnrollment(t *testing.T) {
 func testUrlEnrollmentWithValidControllerUrlSucceeds(t *testing.T) {
 	testutil.RunTestWithTimeout(t, func(t *testing.T) {
 		identityName := testutil.IdentityName(t)
-		event := testutil.EnrollUrlIdentityToNone(t, state.overlay, state.zetClient, identityName)
-		t.Logf("URL-enrolled identity:needs_ext_login Identifier=%s NeedsExtAuth=%t", event.Id.Identifier, event.Id.NeedsExtAuth)
+		testutil.EnrollUrlIdentityToNone(t, state.overlay, state.zetClient, identityName)
 	})
 }
 
@@ -61,9 +60,7 @@ func testUrlEnrollmentSameNameTwiceSecondFails(t *testing.T) {
 		second := testutil.AddIdentity(t, client, identityData)
 		require.False(t, second.Success(), "second URL AddIdentity should fail, got Success=true")
 		require.Equal(t, 500, second.Code, "expected Code=500, got %d", second.Code)
-		require.Contains(t, second.Error, "identity exists",
-			"expected duplicate-name error, got %q", second.Error)
-		t.Logf("second URL AddIdentity rejected: code=%d error=%q", second.Code, second.Error)
+		require.Contains(t, second.Error, "identity exists", "expected duplicate-name error, got %q", second.Error)
 	})
 }
 
@@ -84,7 +81,6 @@ func testUrlEnrollmentAfterJwtSameNameFails(t *testing.T) {
 		require.False(t, second.Success(), "URL AddIdentity should fail when name already enrolled via JWT, got Success=true")
 		require.Equal(t, 500, second.Code, "expected Code=500, got %d", second.Code)
 		require.Contains(t, second.Error, "identity exists", "expected duplicate-name error, got %q", second.Error)
-		t.Logf("URL AddIdentity rejected after JWT enroll: code=%d error=%q", second.Code, second.Error)
 	})
 }
 
@@ -102,7 +98,6 @@ func testUrlEnrollmentWithNonZitiEndpointFails(t *testing.T) {
 		resp := testutil.AddIdentity(t, client, identityData)
 		require.False(t, resp.Success(), "non-Ziti URL %q should be rejected, got Success=true\n%s", nonZitiURL, state.zetClient.LogFile())
 		require.Equal(t, 500, resp.Code, "expected Code=500, got %d", resp.Code)
-		t.Logf("non-Ziti URL rejected: code=%d error=%q", resp.Code, resp.Error)
 	})
 }
 
@@ -120,6 +115,5 @@ func testUrlEnrollmentWithMalformedUrlFails(t *testing.T) {
 		resp := testutil.AddIdentity(t, client, identityData)
 		require.False(t, resp.Success(), "malformed URL %q should be rejected, got Success=true\n%s", badURL, state.zetClient.LogFile())
 		require.Equal(t, 500, resp.Code, "expected Code=500, got %d", resp.Code)
-		t.Logf("malformed URL rejected: code=%d error=%q", resp.Code, resp.Error)
 	})
 }

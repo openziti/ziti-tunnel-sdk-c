@@ -39,10 +39,8 @@ func testRemoveIdentityWithIdentifierFromEvent(t *testing.T) {
 		removeResp, err := client.RemoveIdentity(event.Id.Identifier)
 		require.NoError(t, err, "failed to send RemoveIdentity\n%s", state.zetClient.LogPath())
 		require.True(t, removeResp.Success(), "RemoveIdentity failed: error=%q code=%d", removeResp.Error, removeResp.Code)
-		t.Logf("RemoveIdentity succeeded for %q", name)
 
 		_, statErr := os.Stat(event.Id.Identifier)
 		require.True(t, os.IsNotExist(statErr), "identity file should be removed after RemoveIdentity: %s\n%s", event.Id.Identifier, state.zetClient.LogPath())
-		t.Logf("identity file removed from disk: %s", event.Id.Identifier)
 	})
 }

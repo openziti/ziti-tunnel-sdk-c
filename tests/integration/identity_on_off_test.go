@@ -43,7 +43,6 @@ func testIdentityOnOffTogglesActiveOff(t *testing.T) {
 
 		off := events.WaitForIdentityEvent(t, "added", name)
 		require.False(t, off.Id.Active, "identity:added Active=%t after IdentityOnOff(false)", off.Id.Active)
-		t.Logf("identity:added reports Active=%t after IdentityOnOff(false)", off.Id.Active)
 	})
 }
 
@@ -70,6 +69,5 @@ func testIdentityOnOffTogglesActiveOn(t *testing.T) {
 
 		on := events.WaitForIdentityEvent(t, "added", name)
 		require.True(t, on.Id.Active, "identity:added Active=%t after IdentityOnOff(true)", on.Id.Active)
-		t.Logf("identity:added reports Active=%t after IdentityOnOff(true)", on.Id.Active)
 	})
 }

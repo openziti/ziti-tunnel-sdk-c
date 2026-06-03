@@ -129,7 +129,6 @@ func (c *extAuthContext) testEnrollToNoneCompletes(t *testing.T) {
 		require.False(t, added.Id.NeedsExtAuth, "identity:added NeedsExtAuth=%t after IdP login flow", added.Id.NeedsExtAuth)
 		require.True(t, added.Id.Active, "identity:added Active=%t after IdP login flow", added.Id.Active)
 		testutil.AssertValidUrlEnrolledIdentityFile(t, added.Id.Identifier, testutil.EnrollModeNone)
-		t.Logf("identity:added reports NeedsExtAuth=%t Active=%t after IdP login flow", added.Id.NeedsExtAuth, added.Id.Active)
 	})
 }
 
@@ -148,7 +147,6 @@ func (c *extAuthContext) testEnrollToNoneRejectsInvalidProvider(t *testing.T) {
 		require.False(t, resp.Success(), "ExternalAuth should fail for unknown provider %q\n%s", bogusProvider, c.zet.LogPath())
 		require.Equal(t, 500, resp.Code, "expected Code=500, got %d", resp.Code)
 		require.Contains(t, resp.Error, "invalid provider", "expected invalid-provider error, got %q", resp.Error)
-		t.Logf("ExternalAuth failed for invalid provider: code=%d error=%q", resp.Code, resp.Error)
 	})
 }
 
@@ -166,7 +164,6 @@ func (c *extAuthContext) testEnrollToNoneRejectsUnknownControllerIdentity(t *tes
 		c.idp.DriveIdPFlow(t, authURL)
 
 		c.zet.Events.WaitForControllerEvent(t, "disconnected", name)
-		t.Logf("controller:disconnected")
 	})
 }
 
@@ -178,7 +175,6 @@ func (c *extAuthContext) testEnrollToNoneMultipleSignersDefaultPolicyCompletes(t
 
 		identityEvent := testutil.EnrollUrlIdentityToNone(t, c.overlay, c.zet, name)
 		require.Subset(t, identityEvent.Id.ExtAuthProviders, []string{c.workingSigner.name, c.extraSignerA.name, c.extraSignerB.name}, "identity:needs_ext_login ExtAuthProviders should contain all three signers, got %v", identityEvent.Id.ExtAuthProviders)
-		t.Logf("identity:needs_ext_login reports ExtAuthProviders=%v (count=%d)", identityEvent.Id.ExtAuthProviders, len(identityEvent.Id.ExtAuthProviders))
 
 		authURL := c.zet.Commands.GetExternalAuthURL(t, identityEvent.Id.Identifier, c.workingSigner.name, c.zet.LogPath())
 
@@ -188,7 +184,6 @@ func (c *extAuthContext) testEnrollToNoneMultipleSignersDefaultPolicyCompletes(t
 		require.False(t, added.Id.NeedsExtAuth, "identity:added NeedsExtAuth=%t after multi-signer IdP login flow", added.Id.NeedsExtAuth)
 		require.True(t, added.Id.Active, "identity:added Active=%t after multi-signer IdP login flow", added.Id.Active)
 		testutil.AssertValidUrlEnrolledIdentityFile(t, added.Id.Identifier, testutil.EnrollModeNone)
-		t.Logf("identity:added reports NeedsExtAuth=%t Active=%t after multi-signer IdP login flow", added.Id.NeedsExtAuth, added.Id.Active)
 	})
 }
 
@@ -208,7 +203,6 @@ func (c *extAuthContext) testEnrollToNoneMultipleSignersNamedPolicyCompletes(t *
 
 		identityEvent := testutil.EnrollUrlIdentityToNone(t, c.overlay, c.zet, name)
 		require.Subset(t, identityEvent.Id.ExtAuthProviders, []string{c.workingSigner.name, c.extraSignerA.name, c.extraSignerB.name}, "identity:needs_ext_login ExtAuthProviders should contain all three signers, got %v", identityEvent.Id.ExtAuthProviders)
-		t.Logf("identity:needs_ext_login reports ExtAuthProviders=%v (count=%d)", identityEvent.Id.ExtAuthProviders, len(identityEvent.Id.ExtAuthProviders))
 
 		authURL := c.zet.Commands.GetExternalAuthURL(t, identityEvent.Id.Identifier, c.workingSigner.name, c.zet.LogPath())
 
@@ -218,7 +212,6 @@ func (c *extAuthContext) testEnrollToNoneMultipleSignersNamedPolicyCompletes(t *
 		require.False(t, added.Id.NeedsExtAuth, "identity:added NeedsExtAuth=%t after multi-signer IdP login flow", added.Id.NeedsExtAuth)
 		require.True(t, added.Id.Active, "identity:added Active=%t after multi-signer IdP login flow", added.Id.Active)
 		testutil.AssertValidUrlEnrolledIdentityFile(t, added.Id.Identifier, testutil.EnrollModeNone)
-		t.Logf("identity:added reports NeedsExtAuth=%t Active=%t after multi-signer IdP login flow", added.Id.NeedsExtAuth, added.Id.Active)
 	})
 }
 
@@ -266,7 +259,6 @@ func (c *extAuthContext) completeEnrollToCert(t *testing.T, name string) string 
 	require.True(t, added.Id.Active, "identity:added Active=%t after enroll to cert IdP login flow", added.Id.Active)
 	require.False(t, added.Id.NeedsExtAuth, "identity:added NeedsExtAuth=%t after enroll to cert IdP login flow", added.Id.NeedsExtAuth)
 	testutil.AssertValidUrlEnrolledIdentityFile(t, added.Id.Identifier, testutil.EnrollModeCert)
-	t.Logf("identity:added Identifier=%s Active=%t NeedsExtAuth=%t after enroll to cert IdP login flow", added.Id.Identifier, added.Id.Active, added.Id.NeedsExtAuth)
 	return added.Id.Identifier
 }
 
@@ -297,7 +289,6 @@ func (c *extAuthContext) completeEnrollToToken(t *testing.T, name string) string
 	require.True(t, added.Id.Active, "identity:added Active=%t after enroll to token IdP login flow", added.Id.Active)
 	require.False(t, added.Id.NeedsExtAuth, "identity:added NeedsExtAuth=%t after enroll to token IdP login flow", added.Id.NeedsExtAuth)
 	testutil.AssertValidUrlEnrolledIdentityFile(t, added.Id.Identifier, testutil.EnrollModeToken)
-	t.Logf("identity:added Identifier=%s Active=%t NeedsExtAuth=%t after enroll to token IdP login flow", added.Id.Identifier, added.Id.Active, added.Id.NeedsExtAuth)
 	return added.Id.Identifier
 }
 
@@ -382,5 +373,4 @@ func (c *extAuthContext) assertIdentityExistsSameName(t *testing.T, addResp *tes
 	require.False(t, addResp.Success(), "AddIdentity with an existing name should fail\n%s", c.zet.LogPath())
 	require.Equal(t, 500, addResp.Code, "expected Code=500, got %d", addResp.Code)
 	require.Contains(t, addResp.Error, "identity exists with the same name", "expected name-collision error, got %q", addResp.Error)
-	t.Logf("AddIdentity rejected: code=%d error=%q", addResp.Code, addResp.Error)
 }

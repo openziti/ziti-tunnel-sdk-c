@@ -35,6 +35,5 @@ func testSetLogLevelSucceeds(t *testing.T) {
 		resp, err := client.SetLogLevel("trace")
 		require.NoError(t, err, "failed to send SetLogLevel\n%s", state.zetClient.LogFile())
 		require.True(t, resp.Success(), "SetLogLevel failed: error=%q code=%d", resp.Error, resp.Code)
-		t.Logf("SetLogLevel succeeded: code=%d", resp.Code)
 	})
 }
