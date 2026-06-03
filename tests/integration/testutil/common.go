@@ -35,24 +35,6 @@ import (
 
 const workingExtJwtSignerName = "TestExternalAuth-signer-working"
 
-// CreateJwt creates an identity on the controller and returns its
-// enrollment JWT, asserting it is non-empty.
-func CreateJwt(t *testing.T, overlay *Overlay, name string) string {
-	t.Logf("creating JWT for %q", name)
-	jwt, err := overlay.CreateIdentityJWT(name)
-	require.NoError(t, err, "failed to create JWT for %q", name)
-	require.NotEmpty(t, jwt, "JWT content should not be empty")
-	return jwt
-}
-
-// CreateAndEnrollJwt creates an identity on the controller, gets its
-// JWT, enrolls that JWT on zet, waits for the identity:added event, asserts the
-// on-disk identity file, and returns the added event.
-func CreateAndEnrollJwt(t *testing.T, overlay *Overlay, zet *ZET, name string) IdentityEvent {
-	jwt := CreateJwt(t, overlay, name)
-	return EnrollJwt(t, zet, name, jwt)
-}
-
 // EnrollJwt enrolls jwt on zet under name, waits for the identity:added event,
 // asserts the on-disk identity file, and returns the added event. The JWT may
 // come from a freshly created identity or a pre-imported one.

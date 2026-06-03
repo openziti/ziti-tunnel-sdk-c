@@ -84,15 +84,6 @@ type EventClient struct {
 	readErr error
 }
 
-// OpenCommandPipe opens ZET's command pipe and registers Close as a t.Cleanup.
-// Retries until the pipe is dialable or the ZET process exits.
-func OpenCommandPipe(t *testing.T, z *ZET) *CommandsClient {
-	c, err := openCommandPipe(CommandPipePathFor(z.Discriminator), z.cmdDone)
-	require.NoError(t, err, "open command pipe")
-	t.Cleanup(func() { _ = c.Close() })
-	return c
-}
-
 func openCommandPipe(path string, done <-chan struct{}) (*CommandsClient, error) {
 	log.Printf("ipc: dialing command pipe %s", path)
 	start := time.Now()
