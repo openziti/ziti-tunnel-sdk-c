@@ -200,6 +200,15 @@
       "roleAttributes": [],
       "enrollment": { "ott": true },
       "tags": {}
+    },
+    {
+      "name": "TestUrlEnrollment-afterJwtSameNameFails",
+      "authPolicy": "@Default",
+      "isAdmin": false,
+      "typeId": "Default",
+      "roleAttributes": [],
+      "enrollment": { "ott": true },
+      "tags": {}
     }
   ]
 }
