@@ -37,8 +37,7 @@ func TestAddIdentity(t *testing.T) {
 
 func withJwtSucceeds(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
-		event := testutil.EnrollImportedJwt(t, state.overlay, state.zetClient, testutil.IdentityName(t))
-		require.True(t, event.Id.Active, "identity:added Active=%t", event.Id.Active)
+		testutil.FetchAndEnrollJwt(t, state.overlay, state.zetClient, testutil.IdentityName(t))
 	})
 }
 
@@ -46,21 +45,13 @@ func sameJwtTwiceSecondFails(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
 		identityName := testutil.IdentityName(t)
 		jwt := state.overlay.GetJwtFromController(t, identityName)
+		testutil.EnrollJwt(t, state.zetClient, identityName, jwt)
 
 		identityData := testutil.AddIdentityData{
 			IdentityFilename: identityName,
 			JwtContent:       &jwt,
 		}
-
-		first := testutil.AddIdentity(t, state.zetClient.CommandsClient, identityData)
-		require.True(t, first.Success(), "first AddIdentity should succeed: error=%q\n%s", first.Error, state.zetClient.LogPath())
-		added := state.zetClient.WaitForIdentityEvent(t, "added", identityName)
-		testutil.AssertValidJwtEnrolledIdentityFile(t, added.Id.Identifier)
-
-		second := testutil.AddIdentity(t, state.zetClient.CommandsClient, identityData)
-		require.False(t, second.Success(), "second AddIdentity should fail, got Success=true")
-		require.Equal(t, 500, second.Code, "expected Code=500, got %d", second.Code)
-		require.Contains(t, second.Error, "identity exists", "expected duplicate-name error, got %q", second.Error)
+		state.zetClient.AddIdentity(t, identityData).AssertFail(t, 500, "identity exists with the same name")
 	})
 }
 
@@ -72,9 +63,7 @@ func withInvalidJwtFails(t *testing.T) {
 			IdentityFilename: identityName,
 			JwtContent:       &badJwt,
 		}
-		resp := testutil.AddIdentity(t, state.zetClient.CommandsClient, identityData)
-		require.False(t, resp.Success(), "invalid JWT should be rejected, got Success=true")
-		require.Equal(t, 500, resp.Code, "expected Code=500, got %d", resp.Code)
+		state.zetClient.AddIdentity(t, identityData).AssertFail(t, 500, "")
 	})
 }
 
@@ -86,9 +75,7 @@ func withEmptyJwtFails(t *testing.T) {
 			IdentityFilename: identityName,
 			JwtContent:       &emptyJwt,
 		}
-		resp := testutil.AddIdentity(t, state.zetClient.CommandsClient, identityData)
-		require.False(t, resp.Success(), "empty JWT should be rejected, got Success=true")
-		require.Equal(t, 500, resp.Code, "expected Code=500, got %d", resp.Code)
+		state.zetClient.AddIdentity(t, identityData).AssertFail(t, 500, "")
 	})
 }
 
@@ -104,9 +91,7 @@ func withDeletedIdentityFails(t *testing.T) {
 			IdentityFilename: identityName,
 			JwtContent:       &jwt,
 		}
-		resp := testutil.AddIdentity(t, state.zetClient.CommandsClient, identityData)
-		require.False(t, resp.Success(), "JWT for deleted identity should be rejected, got Success=true")
-		require.Equal(t, 500, resp.Code, "expected Code=500, got %d", resp.Code)
+		state.zetClient.AddIdentity(t, identityData).AssertFail(t, 500, "")
 	})
 }
 
@@ -118,10 +103,7 @@ func withSlashInFilenameFails(t *testing.T) {
 			IdentityFilename: "foo/bar",
 			JwtContent:       &jwt,
 		}
-		resp := testutil.AddIdentity(t, state.zetClient.CommandsClient, identityData)
-		require.False(t, resp.Success(), "filename with slash should be rejected, got Success=true")
-		require.Equal(t, 500, resp.Code, "expected Code=500, got %d", resp.Code)
-		require.Contains(t, resp.Error, "invalid file name", "expected invalid-file-name error, got %q", resp.Error)
+		state.zetClient.AddIdentity(t, identityData).AssertFail(t, 500, "invalid file name")
 	})
 }
 
@@ -133,10 +115,7 @@ func withDotDotInFilenameFails(t *testing.T) {
 			IdentityFilename: "../escape",
 			JwtContent:       &jwt,
 		}
-		resp := testutil.AddIdentity(t, state.zetClient.CommandsClient, identityData)
-		require.False(t, resp.Success(), "filename with .. should be rejected, got Success=true")
-		require.Equal(t, 500, resp.Code, "expected Code=500, got %d", resp.Code)
-		require.Contains(t, resp.Error, "not within the configuration directory", "expected path-escape error, got %q", resp.Error)
+		state.zetClient.AddIdentity(t, identityData).AssertFail(t, 500, "not within the configuration directory")
 	})
 }
 
@@ -144,14 +123,11 @@ func filenameExceedsCharLimitFails(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
 		jwt := state.overlay.GetJwtFromController(t, testutil.IdentityName(t))
 
-		longName := strings.Repeat("a", 300)
+		longName := strings.Repeat("a", 5000)
 		identityData := testutil.AddIdentityData{
 			IdentityFilename: longName,
 			JwtContent:       &jwt,
 		}
-		resp := testutil.AddIdentity(t, state.zetClient.CommandsClient, identityData)
-		require.False(t, resp.Success(), "long filename should be rejected, got Success=true")
-		require.Equal(t, 500, resp.Code, "expected Code=500, got %d", resp.Code)
-		require.True(t, strings.Contains(resp.Error, "invalid file name") || strings.Contains(resp.Error, "not within the configuration directory"), "expected invalid-file-name or path-containment error, got %q", resp.Error)
+		state.zetClient.AddIdentity(t, identityData).AssertFail(t, 500, "invalid file name")
 	})
 }

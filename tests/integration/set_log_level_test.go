@@ -20,7 +20,6 @@ import (
 	"testing"
 
 	"github.com/openziti/ziti-tunnel-sdk-c/tests/integration/testutil"
-	"github.com/stretchr/testify/require"
 )
 
 func TestSetLogLevel(t *testing.T) {
@@ -29,9 +28,6 @@ func TestSetLogLevel(t *testing.T) {
 
 func succeeds(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
-		t.Logf("sending SetLogLevel %q", "trace")
-		resp, err := state.zetClient.SetLogLevel("trace")
-		require.NoError(t, err, "failed to send SetLogLevel\n%s", state.zetClient.LogFile())
-		require.True(t, resp.Success(), "SetLogLevel failed: error=%q code=%d", resp.Error, resp.Code)
+		state.zetClient.SetLogLevel(t, "trace").AssertSuccess(t)
 	})
 }

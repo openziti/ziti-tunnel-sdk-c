@@ -20,7 +20,6 @@ import (
 	"testing"
 
 	"github.com/openziti/ziti-tunnel-sdk-c/tests/integration/testutil"
-	"github.com/stretchr/testify/require"
 )
 
 func TestUrlEnrollment(t *testing.T) {
@@ -42,37 +41,28 @@ func withValidControllerUrlSucceeds(t *testing.T) {
 func sameNameTwiceSecondFails(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
 		identityName := testutil.IdentityName(t)
+		testutil.EnrollUrlIdentityToNone(t, state.overlay, state.zetClient, identityName)
+
 		controllerURL := state.overlay.ControllerHostPort()
 		identityData := testutil.AddIdentityData{
 			IdentityFilename: identityName,
 			ControllerURL:    &controllerURL,
 		}
-
-		first := testutil.AddIdentity(t, state.zetClient.CommandsClient, identityData)
-		require.True(t, first.Success(), "first URL AddIdentity should succeed: error=%q\n%s", first.Error, state.zetClient.LogFile())
-		state.zetClient.WaitForIdentityEvent(t, "needs_ext_login", identityName)
-
-		second := testutil.AddIdentity(t, state.zetClient.CommandsClient, identityData)
-		require.False(t, second.Success(), "second URL AddIdentity should fail, got Success=true")
-		require.Equal(t, 500, second.Code, "expected Code=500, got %d", second.Code)
-		require.Contains(t, second.Error, "identity exists", "expected duplicate-name error, got %q", second.Error)
+		state.zetClient.AddIdentity(t, identityData).AssertFail(t, 500, "identity exists with the same name")
 	})
 }
 
 func afterJwtSameNameFails(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
 		identityName := testutil.IdentityName(t)
-		testutil.EnrollImportedJwt(t, state.overlay, state.zetClient, identityName)
+		testutil.FetchAndEnrollJwt(t, state.overlay, state.zetClient, identityName)
 
 		controllerURL := state.overlay.ControllerHostPort()
 		urlIdentityData := testutil.AddIdentityData{
 			IdentityFilename: identityName,
 			ControllerURL:    &controllerURL,
 		}
-		second := testutil.AddIdentity(t, state.zetClient.CommandsClient, urlIdentityData)
-		require.False(t, second.Success(), "URL AddIdentity should fail when name already enrolled via JWT, got Success=true")
-		require.Equal(t, 500, second.Code, "expected Code=500, got %d", second.Code)
-		require.Contains(t, second.Error, "identity exists", "expected duplicate-name error, got %q", second.Error)
+		state.zetClient.AddIdentity(t, urlIdentityData).AssertFail(t, 500, "identity exists with the same name")
 	})
 }
 
@@ -85,9 +75,7 @@ func withNonZitiEndpointFails(t *testing.T) {
 			ControllerURL:    &nonZitiURL,
 		}
 
-		resp := testutil.AddIdentity(t, state.zetClient.CommandsClient, identityData)
-		require.False(t, resp.Success(), "non-Ziti URL %q should be rejected, got Success=true\n%s", nonZitiURL, state.zetClient.LogFile())
-		require.Equal(t, 500, resp.Code, "expected Code=500, got %d", resp.Code)
+		state.zetClient.AddIdentity(t, identityData).AssertFail(t, 500, "")
 	})
 }
 
@@ -100,8 +88,6 @@ func withMalformedUrlFails(t *testing.T) {
 			ControllerURL:    &badURL,
 		}
 
-		resp := testutil.AddIdentity(t, state.zetClient.CommandsClient, identityData)
-		require.False(t, resp.Success(), "malformed URL %q should be rejected, got Success=true\n%s", badURL, state.zetClient.LogFile())
-		require.Equal(t, 500, resp.Code, "expected Code=500, got %d", resp.Code)
+		state.zetClient.AddIdentity(t, identityData).AssertFail(t, 500, "")
 	})
 }

@@ -128,7 +128,7 @@ func (z *ZET) Start() error {
 		close(z.cmdDone)
 	}()
 
-	cmds, err := openCommandPipe(cmdPipe, z.cmdDone)
+	cmds, err := z.DialIPC()
 	if err != nil {
 		return fmt.Errorf("zet[%s] command pipe: %w", z.Discriminator, err)
 	}

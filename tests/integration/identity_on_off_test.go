@@ -33,20 +33,14 @@ func togglesActiveState(t *testing.T) {
 		events := state.zetClient.EventClient
 
 		name := testutil.IdentityName(t)
-		added := testutil.EnrollImportedJwt(t, state.overlay, state.zetClient, name)
+		added := testutil.FetchAndEnrollJwt(t, state.overlay, state.zetClient, name)
 
-		t.Logf("sending IdentityOnOff(false) for %q", name)
-		offResp, err := client.IdentityOnOff(added.Id.Identifier, false)
-		require.NoError(t, err, "failed to send IdentityOnOff(false)\n%s", state.zetClient.LogPath())
-		require.True(t, offResp.Success(), "IdentityOnOff(false) failed: error=%q code=%d", offResp.Error, offResp.Code)
+		client.IdentityOnOff(t, added.Id.Identifier, false).AssertSuccess(t)
 
 		off := events.WaitForIdentityEvent(t, "added", name)
 		require.False(t, off.Id.Active, "identity:added Active=%t after IdentityOnOff(false)", off.Id.Active)
 
-		t.Logf("sending IdentityOnOff(true) for %q", name)
-		onResp, err := client.IdentityOnOff(added.Id.Identifier, true)
-		require.NoError(t, err, "failed to send IdentityOnOff(true)\n%s", state.zetClient.LogPath())
-		require.True(t, onResp.Success(), "IdentityOnOff(true) failed: error=%q code=%d", onResp.Error, onResp.Code)
+		client.IdentityOnOff(t, added.Id.Identifier, true).AssertSuccess(t)
 
 		on := events.WaitForIdentityEvent(t, "added", name)
 		require.True(t, on.Id.Active, "identity:added Active=%t after IdentityOnOff(true)", on.Id.Active)

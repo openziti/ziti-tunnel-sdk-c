@@ -36,12 +36,12 @@ func TestTunnelRestart(t *testing.T) {
 		// enroll block here and its matching asserts below.
 		base := testutil.IdentityName(t)
 
-		jwtIdEvent := testutil.EnrollImportedJwt(t, state.overlay, state.zetClient, base+"-jwt")
+		jwtIdEvent := testutil.FetchAndEnrollJwt(t, state.overlay, state.zetClient, base+"-jwt")
 		state.zetClient.WaitForControllerEvent(t, "connected", base+"-jwt")
 
 		mfaEnrollment, _ := testutil.SetupVerifiedMFA(t, state.overlay, state.zetClient, base+"-mfa")
 
-		inactiveIdEvent := testutil.EnrollImportedJwt(t, state.overlay, state.zetClient, base+"-inactive")
+		inactiveIdEvent := testutil.FetchAndEnrollJwt(t, state.overlay, state.zetClient, base+"-inactive")
 		state.zetClient.WaitForControllerEvent(t, "connected", base+"-inactive")
 		testutil.SetIdentityActive(t, state.zetClient, inactiveIdEvent.Id.Identifier, false)
 

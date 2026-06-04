@@ -32,12 +32,9 @@ func withIdentifierFromEvent(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
 		client := state.zetClient.CommandsClient
 
-		event := testutil.EnrollImportedJwt(t, state.overlay, state.zetClient, testutil.IdentityName(t))
+		event := testutil.FetchAndEnrollJwt(t, state.overlay, state.zetClient, testutil.IdentityName(t))
 
-		t.Logf("sending RemoveIdentity for Identifier=%s", event.Id.Identifier)
-		removeResp, err := client.RemoveIdentity(event.Id.Identifier)
-		require.NoError(t, err, "failed to send RemoveIdentity\n%s", state.zetClient.LogPath())
-		require.True(t, removeResp.Success(), "RemoveIdentity failed: error=%q code=%d", removeResp.Error, removeResp.Code)
+		client.RemoveIdentity(t, event.Id.Identifier).AssertSuccess(t)
 
 		_, statErr := os.Stat(event.Id.Identifier)
 		require.True(t, os.IsNotExist(statErr), "identity file should be removed after RemoveIdentity: %s\n%s", event.Id.Identifier, state.zetClient.LogPath())
