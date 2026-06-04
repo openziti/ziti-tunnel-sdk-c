@@ -31,10 +31,11 @@ type Config struct {
 }
 
 type ZitiConfig struct {
-	Binary   string `json:"binary"`
-	URL      string `json:"url"`
-	User     string `json:"user"`
-	Password string `json:"password"`
+	Binary      string `json:"binary"`
+	URL         string `json:"url"`
+	User        string `json:"user"`
+	Password    string `json:"password"`
+	AutoTrustCA bool   `json:"autoTrustCa"`
 }
 
 type ZetConfig struct {
@@ -51,9 +52,8 @@ type IdPConfig struct {
 	ClientID          string   `json:"clientId"`
 	ExtraClientIDs    []string `json:"extraClientIds"`
 	Audience          string   `json:"audience"`
-	Sub               string   `json:"sub"`
 	Scopes            string   `json:"scopes"`
-	User              IdPUser  `json:"user"`
+	Password          string   `json:"password"`
 }
 
 func LoadConfig(path string) (*Config, error) {

@@ -46,7 +46,6 @@ func TestTunnelRestart(t *testing.T) {
 		state.zetClient.IdentityOnOff(t, inactiveIdEvent.Id.Identifier, false).AssertSuccess(t)
 
 		extName := "test_restart_ext"
-		state.overlay.CreateIdentityWithExternalId(t, extName, state.idp.ExternalID, "")
 		extEvent := testutil.EnrollUrlIdentityToNone(t, state.overlay, state.zetClient, extName)
 
 		t.Logf("restarting %s", state.zetClient.Discriminator)

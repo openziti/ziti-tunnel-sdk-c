@@ -4,7 +4,8 @@
     "binary": "",
     "url": "",
     "user": "admin",
-    "password": "admin"
+    "password": "admin",
+    "autoTrustCa": false
   },
   "zetA": {
     "binary": "",
@@ -24,13 +25,7 @@
     "clientId": "ziti-test",
     "extraClientIds": ["ziti-test-2", "ziti-test-3"],
     "audience": "ziti-test",
-    "sub": "",
     "scopes": "openid profile email",
-    "user": {
-      "email": "test@example.com",
-      "username": "test",
-      "userID": "08a8684b-db88-4b73-90a9-3cd1661f5466",
-      "password": "password"
-    }
+    "password": "password"
   }
 }

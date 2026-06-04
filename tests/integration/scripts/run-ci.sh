@@ -139,39 +139,15 @@ done
 kill "$QS_PID"
 wait "$QS_PID" 2>/dev/null || true
 
-# ---- Install CA into OS trust ------------------------------------------------
-CA_CERT="$OVERLAY_HOME/pki/root-ca/certs/root-ca.cert"
-INSTALLED_CA=""
+# ---- CA trust ------------------------------------------------------------------
+# The harness installs the overlay CA into OS trust after the fixture import and
+# removes it at teardown when ziti.autoTrustCa is set.
 if [ -z "$INSTALL_CERT" ]; then
-  echo "WARNING: skipping test CA install into OS trust (pass --install-cert to enable); tests that require the controller cert to be trusted may fail" >&2
+  echo "WARNING: autoTrustCa disabled (pass --install-cert to enable); tests that require the controller cert to be trusted may fail" >&2
+  AUTO_TRUST_CA=false
 else
-  case "$(uname -s)" in
-    Linux)
-      sudo cp "$CA_CERT" /usr/local/share/ca-certificates/ziti-test.crt
-      sudo update-ca-certificates
-      INSTALLED_CA=linux
-      ;;
-    Darwin)
-      sudo security add-trusted-cert -d -r trustRoot \
-        -k /Library/Keychains/System.keychain "$CA_CERT"
-      INSTALLED_CA=darwin
-      ;;
-  esac
+  AUTO_TRUST_CA=true
 fi
-
-cleanup() {
-  case "$INSTALLED_CA" in
-    linux)
-      sudo rm -f /usr/local/share/ca-certificates/ziti-test.crt
-      sudo update-ca-certificates --fresh >/dev/null
-      ;;
-    darwin)
-      fp=$(openssl x509 -in "$CA_CERT" -noout -fingerprint -sha1 | sed 's/.*=//' | tr -d ':')
-      sudo security delete-certificate -Z "$fp" /Library/Keychains/System.keychain || true
-      ;;
-  esac
-}
-trap cleanup EXIT
 
 # ---- Write config.json -------------------------------------------------------
 cd "$REPO_ROOT/tests/integration"
@@ -181,9 +157,10 @@ jq -n \
   --arg zetBin   "$ZET_BIN" \
   --arg zetBinB  "$ZET_BIN_B" \
   --arg idpBin   "$IDP_BIN" \
+  --argjson autoTrustCa "$AUTO_TRUST_CA" \
   '{
     testHome: $testHome,
-    ziti: { binary: $zitiBin, url: "", user: "admin", password: "admin" },
+    ziti: { binary: $zitiBin, url: "", user: "admin", password: "admin", autoTrustCa: $autoTrustCa },
     zetA: { binary: $zetBin,  verbosity: 4, tlsuvDebug: 0 },
     zetB: { binary: $zetBinB, verbosity: 4, tlsuvDebug: 0 },
     idp: {
@@ -193,9 +170,8 @@ jq -n \
       clientId: "ziti-test",
       extraClientIds: ["ziti-test-2", "ziti-test-3"],
       audience: "ziti-test",
-      sub: "",
       scopes: "openid profile email",
-      user: { email: "test@example.com", username: "test", userID: "08a8684b-db88-4b73-90a9-3cd1661f5466", password: "password" }
+      password: "password"
     }
   }' > config.json
 cat config.json

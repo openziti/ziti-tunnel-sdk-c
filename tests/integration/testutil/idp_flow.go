@@ -31,11 +31,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// DriveIdPFlow acts as the browser in the IdP's OIDC password flow, following
-// redirects from authURL through the login form back to ZET's loopback
-// callback at localhost:20314.
-func (p *IdP) DriveIdPFlow(t *testing.T, authUrl string) {
-	t.Logf("driving IdP login flow (issuer=%s email=%s)", p.IssuerURL, p.Email)
+// DriveIdPFlow acts as the browser in the IdP's OIDC password flow, logging in
+// as email and following redirects from authURL through the login form back to
+// ZET's loopback callback at localhost:20314.
+func (p *IdP) DriveIdPFlow(t *testing.T, authUrl, email string) {
+	t.Logf("driving IdP login flow (issuer=%s email=%s)", p.IssuerURL, email)
 
 	jar, err := cookiejar.New(nil)
 	require.NoError(t, err, "create cookie jar")
@@ -58,7 +58,7 @@ func (p *IdP) DriveIdPFlow(t *testing.T, authUrl string) {
 	resp.Body.Close()
 	require.Equal(t, http.StatusOK, resp.StatusCode, "login page status=%d body=%s", resp.StatusCode, truncate(body, 200))
 
-	formAction, form, err := parseLoginForm(string(body), p.Email, p.Password)
+	formAction, form, err := parseLoginForm(string(body), email, p.Password)
 	require.NoError(t, err, "parse IdP login form (body=%s)", truncate(body, 200))
 	postURL, err := absoluteURL(loginPageURL, formAction)
 	require.NoError(t, err, "resolve form action %q", formAction)

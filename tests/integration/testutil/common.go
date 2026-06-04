@@ -33,7 +33,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const workingExtJwtSignerName = "TestExternalAuth-signer-working"
+const workingExtJwtSignerName = "test_ext_auth_signer_working"
 
 // EnrollJwt enrolls jwt on zet, waits for the identity:added event,
 // asserts the on-disk identity file, and returns the added event. The JWT may

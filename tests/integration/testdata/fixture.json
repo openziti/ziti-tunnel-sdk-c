@@ -31,6 +31,12 @@
       "enrollment": { "ott": true }
     },
     {
+      "name": "test_restart_ext",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "externalId": "test_restart_ext@test.com"
+    },
+    {
       "name": "test_mfa_enable_jwt",
       "isAdmin": false,
       "authPolicy": "@Default",
@@ -143,6 +149,24 @@
       "isAdmin": false,
       "authPolicy": "@Default",
       "enrollment": { "ott": true }
+    },
+    {
+      "name": "test_ext_auth_none_happy",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "externalId": "test_ext_auth_none_happy@test.com"
+    },
+    {
+      "name": "test_ext_auth_invalid_provider",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "externalId": "test_ext_auth_invalid_provider@test.com"
+    },
+    {
+      "name": "test_ext_auth_multi_default",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "externalId": "test_ext_auth_multi_default@test.com"
     }
   ]
 }

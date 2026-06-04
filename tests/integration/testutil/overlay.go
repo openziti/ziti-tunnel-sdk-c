@@ -49,6 +49,7 @@ type Overlay struct {
 	ControllerURL       string
 	ControllerUser      string
 	ControllerPassword  string
+	AutoTrustCA         bool
 	ZitiMajor           int
 	ZitiMinor           int
 	ShowZitiCliCommands bool
@@ -234,6 +235,39 @@ func (o *Overlay) OSCAStrings() (install, cleanup string) {
 	return
 }
 
+// InstallCATrust installs the quickstart CA into the OS trust store.
+func (o *Overlay) InstallCATrust() error {
+	if runtime.GOOS == "windows" {
+		return runCommand("certutil", "-addstore", "-f", "Root", filepath.Join(o.Home, "pki", "root-ca", "certs", "root-ca.cert"))
+	}
+	install, _ := o.OSCAStrings()
+	if install == "" {
+		return fmt.Errorf("no CA trust install recipe for %s", runtime.GOOS)
+	}
+	return runCommand("sh", "-c", install)
+}
+
+// RemoveCATrust removes the quickstart CA from the OS trust store.
+func (o *Overlay) RemoveCATrust() error {
+	if runtime.GOOS == "windows" {
+		// the quickstart root CA always has CN=root-ca
+		return runCommand("certutil", "-delstore", "Root", "root-ca")
+	}
+	_, cleanup := o.OSCAStrings()
+	if cleanup == "" {
+		return fmt.Errorf("no CA trust cleanup recipe for %s", runtime.GOOS)
+	}
+	return runCommand("sh", "-c", cleanup)
+}
+
+func runCommand(name string, args ...string) error {
+	out, err := exec.Command(name, args...).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("%s %v: %w\n%s", name, args, err, out)
+	}
+	return nil
+}
+
 // RequireCATrusted skips the test (with OS-specific install/cleanup
 // instructions) if the overlay's CA isn't in the calling OS's trust store.
 func (o *Overlay) RequireCATrusted(t *testing.T) {
@@ -311,7 +345,7 @@ func (o *Overlay) CreateIdentityJWT(name string) (string, error) {
 // at path via `ziti ops import`. The importer skips entities that already exist,
 // so callers should purge stale fixtures first.
 func (o *Overlay) ImportFixture(path string) error {
-	if _, err := o.execZiti("ops", "import", path); err != nil {
+	if _, err := o.execZiti("ops", "import", path, "-u", o.ControllerUser, "-p", o.ControllerPassword, "--yes"); err != nil {
 		return fmt.Errorf("import fixture %s: %w", path, err)
 	}
 	return nil
@@ -689,34 +723,52 @@ func (o *Overlay) execZiti(args ...string) ([]byte, error) {
 	return []byte(stdout.String()), nil
 }
 
-// PurgeIdentities deletes every identity whose name contains prefix.
-func (o *Overlay) PurgeIdentities(prefix string) error {
-	return o.deleteWhere("identities", prefix)
+// PurgeIdentities deletes every identity carrying a test name.
+func (o *Overlay) PurgeIdentities() error {
+	return o.deleteWhere("identities")
 }
 
-// PurgeIdentityByExternalId deletes the identity whose externalId equals the given value.
-// Needed for enroll-to-cert/token tests since the OIDC flow auto-provisions identities with
-// names derived from JWT claims (not Test*), so the prefix purge misses them.
-func (o *Overlay) PurgeIdentityByExternalId(externalId string) error {
-	filter := fmt.Sprintf(`externalId = "%s"`, externalId)
+// PurgeIdentitiesByExternalId deletes every identity whose externalId contains fragment.
+// Needed for enroll-to-cert/token tests since the OIDC flow auto-provisions identities
+// named from the token's sub claim (not test_*)
+func (o *Overlay) PurgeIdentitiesByExternalId(fragment string) error {
+	filter := fmt.Sprintf(`externalId contains "%s" limit none`, fragment)
 	if _, err := o.execZiti("edge", "delete", "identities", "where", filter); err != nil {
-		return fmt.Errorf("delete identity where %s: %w", filter, err)
+		return fmt.Errorf("delete identities where %s: %w", filter, err)
 	}
 	return nil
 }
 
-// PurgeAuthPolicies deletes every auth policy whose name contains prefix.
-func (o *Overlay) PurgeAuthPolicies(prefix string) error {
-	return o.deleteWhere("auth-policies", prefix)
+// PurgeAuthPolicies deletes every auth policy carrying a test name.
+func (o *Overlay) PurgeAuthPolicies() error {
+	return o.deleteWhere("auth-policies")
 }
 
-// PurgeExtJwtSigners deletes every ext-jwt-signer whose name contains prefix.
-func (o *Overlay) PurgeExtJwtSigners(prefix string) error {
-	return o.deleteWhere("ext-jwt-signers", prefix)
+// PurgeExtJwtSigners deletes every ext-jwt-signer carrying a test name.
+func (o *Overlay) PurgeExtJwtSigners() error {
+	return o.deleteWhere("ext-jwt-signers")
 }
 
-func (o *Overlay) deleteWhere(entity, prefix string) error {
-	filter := fmt.Sprintf(`name contains "%s" limit none`, prefix)
+// PurgeServicePolicies deletes every service policy carrying a test name.
+func (o *Overlay) PurgeServicePolicies() error {
+	return o.deleteWhere("service-policies")
+}
+
+// PurgeServices deletes every service carrying a test name.
+func (o *Overlay) PurgeServices() error {
+	return o.deleteWhere("services")
+}
+
+// PurgeConfigs deletes every config carrying a test name.
+func (o *Overlay) PurgeConfigs() error {
+	return o.deleteWhere("configs")
+}
+
+// deleteWhere deletes every entity matching the suite's name conventions:
+// test_* for everything except tunneler_to_tunneler identities, which derive
+// Test* names from t.Name().
+func (o *Overlay) deleteWhere(entity string) error {
+	filter := `name contains "test_" or name contains "Test" limit none`
 	if _, err := o.execZiti("edge", "delete", entity, "where", filter); err != nil {
 		return fmt.Errorf("delete %s where %s: %w", entity, filter, err)
 	}
