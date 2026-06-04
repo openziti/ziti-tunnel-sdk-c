@@ -30,7 +30,7 @@ func TestEnableMFA(t *testing.T) {
 }
 
 func TestVerifyMFA(t *testing.T) {
-	t.Run("acceptsValidTotp", verifyAcceptsValidTotp)
+	// Happy path is tested throughout this suite - that's why there's only a reject case
 	t.Run("rejectsInvalidTotp", verifyRejectsInvalidTotp)
 }
 
@@ -64,12 +64,6 @@ func acceptsTotpRequiredAuthPolicy(t *testing.T) {
 	})
 }
 
-func verifyAcceptsValidTotp(t *testing.T) {
-	testutil.RunWithTimeout(t, func(t *testing.T) {
-		testutil.SetupVerifiedMFA(t, state.overlay, state.zetClient, "test_mfa_verify_valid_totp")
-	})
-}
-
 func verifyRejectsInvalidTotp(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
 		enrollment, _ := testutil.SetupMFA(t, state.overlay, state.zetClient, "test_mfa_verify_invalid_totp")
@@ -83,18 +77,15 @@ func reauthAcceptsValidTotp(t *testing.T) {
 		idName := "test_mfa_reauth_valid_totp"
 		enrollment, secret := testutil.SetupVerifiedMFA(t, state.overlay, state.zetClient, idName)
 
-		testutil.SetIdentityActive(t, state.zetClient, enrollment.Identifier, false)
-		testutil.SetIdentityActive(t, state.zetClient, enrollment.Identifier, true)
+		state.zetClient.DisableEnableIdentity(t, enrollment.Identifier)
 
 		state.zetClient.WaitForMfaEvent(t, "auth_challenge", idName)
 
-		code, err := testutil.GenerateTOTP(secret, time.Now())
-		require.NoError(t, err, "failed to compute TOTP")
+		code := testutil.GenerateTOTP(t, secret, time.Now())
 
 		state.zetClient.SubmitMFA(t, enrollment.Identifier, code).AssertSuccess(t)
 
-		submitEvt := state.zetClient.WaitForMfaEvent(t, "mfa_auth_status", idName)
-		require.True(t, submitEvt.Successful, "mfa:mfa_auth_status Successful=%t after SubmitMFA", submitEvt.Successful)
+		state.zetClient.WaitForMfaEvent(t, "mfa_auth_status", idName).AssertSuccess(t)
 	})
 }
 
@@ -103,15 +94,13 @@ func reauthAcceptsRecoveryCode(t *testing.T) {
 		idName := "test_mfa_reauth_recovery_code"
 		enrollment, _ := testutil.SetupVerifiedMFA(t, state.overlay, state.zetClient, idName)
 
-		testutil.SetIdentityActive(t, state.zetClient, enrollment.Identifier, false)
-		testutil.SetIdentityActive(t, state.zetClient, enrollment.Identifier, true)
+		state.zetClient.DisableEnableIdentity(t, enrollment.Identifier)
 
 		state.zetClient.WaitForMfaEvent(t, "auth_challenge", idName)
 
 		state.zetClient.SubmitMFA(t, enrollment.Identifier, enrollment.RecoveryCodes[0]).AssertSuccess(t)
 
-		submitEvt := state.zetClient.WaitForMfaEvent(t, "mfa_auth_status", idName)
-		require.True(t, submitEvt.Successful, "mfa:mfa_auth_status Successful=%t after SubmitMFA", submitEvt.Successful)
+		state.zetClient.WaitForMfaEvent(t, "mfa_auth_status", idName).AssertSuccess(t)
 	})
 }
 
@@ -120,8 +109,7 @@ func reauthRejectsInvalidTotp(t *testing.T) {
 		idName := "test_mfa_reauth_invalid_totp"
 		enrollment, _ := testutil.SetupVerifiedMFA(t, state.overlay, state.zetClient, idName)
 
-		testutil.SetIdentityActive(t, state.zetClient, enrollment.Identifier, false)
-		testutil.SetIdentityActive(t, state.zetClient, enrollment.Identifier, true)
+		state.zetClient.DisableEnableIdentity(t, enrollment.Identifier)
 
 		state.zetClient.WaitForMfaEvent(t, "auth_challenge", idName)
 
@@ -134,13 +122,11 @@ func removeAcceptsValidTotp(t *testing.T) {
 		idName := "test_mfa_remove_valid_totp"
 		enrollment, secret := testutil.SetupVerifiedMFA(t, state.overlay, state.zetClient, idName)
 
-		code, err := testutil.GenerateTOTP(secret, time.Now())
-		require.NoError(t, err, "failed to compute TOTP")
+		code := testutil.GenerateTOTP(t, secret, time.Now())
 
 		state.zetClient.RemoveMFA(t, enrollment.Identifier, code).AssertSuccess(t)
 
-		removeEvt := state.zetClient.WaitForMfaEvent(t, "enrollment_remove", idName)
-		require.True(t, removeEvt.Successful, "mfa:enrollment_remove Successful=%t after RemoveMFA", removeEvt.Successful)
+		state.zetClient.WaitForMfaEvent(t, "enrollment_remove", idName).AssertSuccess(t)
 	})
 }
 
@@ -151,8 +137,7 @@ func removeAcceptsRecoveryCode(t *testing.T) {
 
 		state.zetClient.RemoveMFA(t, enrollment.Identifier, enrollment.RecoveryCodes[0]).AssertSuccess(t)
 
-		removeEvt := state.zetClient.WaitForMfaEvent(t, "enrollment_remove", idName)
-		require.True(t, removeEvt.Successful, "mfa:enrollment_remove Successful=%t after RemoveMFA", removeEvt.Successful)
+		state.zetClient.WaitForMfaEvent(t, "enrollment_remove", idName).AssertSuccess(t)
 	})
 }
 

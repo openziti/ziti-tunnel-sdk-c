@@ -49,7 +49,6 @@ func EnrollJwt(t *testing.T, zet *ZET, name, jwt string) IdentityEvent {
 	require.NotEmpty(t, added.Id.Identifier, "identity:added Identifier empty")
 	require.True(t, added.Id.Active, "identity:added Active=%t", added.Id.Active)
 	AssertValidJwtEnrolledIdentityFile(t, added.Id.Identifier)
-	t.Logf("identity:added Identifier=%s Active=%t", added.Id.Identifier, added.Id.Active)
 	return added
 }
 
@@ -69,14 +68,11 @@ func SetupMFA(t *testing.T, overlay *Overlay, zet *ZET, name string) (MFAEnrollm
 	zet.WaitForControllerEvent(t, "connected", name)
 
 	enrollment := zet.GetMFAEnrollment(t, added.Id.Identifier)
-	require.NotEmpty(t, enrollment.ProvisioningUrl, "EnableMFA Data.ProvisioningUrl should be non-empty")
-	require.NotEmpty(t, enrollment.RecoveryCodes, "EnableMFA Data.RecoveryCodes should be non-empty")
-	t.Logf("EnableMFA returned ProvisioningUrl and %d recovery codes", len(enrollment.RecoveryCodes))
 
 	parsed, err := url.Parse(enrollment.ProvisioningUrl)
-	require.NoError(t, err, "failed to parse provisioning URL %q", enrollment.ProvisioningUrl)
+	require.NoError(t, err, "parse provisioning URL")
 	secret := parsed.Query().Get("secret")
-	require.NotEmpty(t, secret, "provisioning url missing secret param: %q", enrollment.ProvisioningUrl)
+	require.NotEmpty(t, secret, "provisioning url missing secret param")
 
 	enrollment.Identifier = added.Id.Identifier
 	return *enrollment, secret
@@ -88,24 +84,19 @@ func SetupMFA(t *testing.T, overlay *Overlay, zet *ZET, name string) (MFAEnrollm
 func SetupVerifiedMFA(t *testing.T, overlay *Overlay, zet *ZET, name string) (MFAEnrollment, string) {
 	enrollment, secret := SetupMFA(t, overlay, zet, name)
 
-	code, err := GenerateTOTP(secret, time.Now())
-	require.NoError(t, err, "failed to compute TOTP")
+	code := GenerateTOTP(t, secret, time.Now())
 
 	zet.VerifyMFA(t, enrollment.Identifier, code).AssertSuccess(t)
 
-	verifyEvt := zet.WaitForMfaEvent(t, "enrollment_verification", name)
-	require.True(t, verifyEvt.Successful, "mfa:enrollment_verification Successful=%t after VerifyMFA", verifyEvt.Successful)
-	t.Logf("mfa:enrollment_verification reports Successful=%t for %q", verifyEvt.Successful, name)
+	zet.WaitForMfaEvent(t, "enrollment_verification", name).AssertSuccess(t)
 
 	return enrollment, secret
 }
 
 // GenerateTOTP derives the current TOTP for the base32-encoded secret.
-func GenerateTOTP(secret string, at time.Time) (string, error) {
+func GenerateTOTP(t *testing.T, secret string, at time.Time) string {
 	key, err := base32.StdEncoding.WithPadding(base32.NoPadding).DecodeString(strings.ToUpper(strings.TrimRight(secret, "=")))
-	if err != nil {
-		return "", fmt.Errorf("base32 decode secret: %w", err)
-	}
+	require.NoError(t, err, "base32 decode secret")
 	counter := uint64(at.Unix() / 30)
 	msg := make([]byte, 8)
 	binary.BigEndian.PutUint64(msg, counter)
@@ -114,12 +105,7 @@ func GenerateTOTP(secret string, at time.Time) (string, error) {
 	sum := mac.Sum(nil)
 	offset := sum[len(sum)-1] & 0x0f
 	code := binary.BigEndian.Uint32(sum[offset:offset+4]) & 0x7fffffff
-	return fmt.Sprintf("%06d", code%1_000_000), nil
-}
-
-// SetIdentityActive sends IdentityOnOff for identifier and asserts it succeeded.
-func SetIdentityActive(t *testing.T, zet *ZET, identifier string, active bool) {
-	zet.IdentityOnOff(t, identifier, active).AssertSuccess(t)
+	return fmt.Sprintf("%06d", code%1_000_000)
 }
 
 // EnrollUrlIdentityToNone adds name to zet by controller URL (enroll-to-none),
@@ -137,7 +123,6 @@ func EnrollUrlIdentityToNone(t *testing.T, overlay *Overlay, zet *ZET, name stri
 	require.NotEmpty(t, event.Id.Identifier, "identity:needs_ext_login Identifier empty")
 	require.True(t, event.Id.NeedsExtAuth, "identity:needs_ext_login NeedsExtAuth=%t", event.Id.NeedsExtAuth)
 	AssertValidUrlEnrolledIdentityFile(t, event.Id.Identifier, EnrollModeNone)
-	t.Logf("identity:needs_ext_login Identifier=%s NeedsExtAuth=%t", event.Id.Identifier, event.Id.NeedsExtAuth)
 	return event
 }
 

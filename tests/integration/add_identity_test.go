@@ -25,7 +25,7 @@ import (
 )
 
 func TestAddIdentity(t *testing.T) {
-	t.Run("withJwtSucceeds", withJwtSucceeds)
+	// Happy path is tested throughout this suite
 	t.Run("sameJwtTwiceSecondFails", sameJwtTwiceSecondFails)
 	t.Run("withInvalidJwtFails", withInvalidJwtFails)
 	t.Run("withEmptyJwtFails", withEmptyJwtFails)
@@ -33,12 +33,6 @@ func TestAddIdentity(t *testing.T) {
 	t.Run("withSlashInFilenameFails", withSlashInFilenameFails)
 	t.Run("withDotDotInFilenameFails", withDotDotInFilenameFails)
 	t.Run("filenameExceedsCharLimitFails", filenameExceedsCharLimitFails)
-}
-
-func withJwtSucceeds(t *testing.T) {
-	testutil.RunWithTimeout(t, func(t *testing.T) {
-		testutil.FetchAndEnrollJwt(t, state.overlay, state.zetClient, "test_add_id_happy")
-	})
 }
 
 func sameJwtTwiceSecondFails(t *testing.T) {
