@@ -64,12 +64,6 @@ stdenv.mkDerivation (finalAttrs: {
   };
 
   postPatch = ''
-    # Workaround for broken llhttp package
-    mkdir -p patched-cmake
-    cp -r ${lib.getDev llhttp}/lib/cmake/llhttp patched-cmake/
-    substituteInPlace patched-cmake/llhttp/llhttp-config.cmake \
-      --replace 'set(_IMPORT_PREFIX "${llhttp}")' 'set(_IMPORT_PREFIX "${lib.getDev llhttp}")'
-
     # Patch hardcoded paths to systemd tools
     substituteInPlace programs/ziti-edge-tunnel/netif_driver/linux/resolvers.h \
       --replace '"/usr/bin/busctl"' '"${systemd}/bin/busctl"' \
@@ -78,9 +72,6 @@ stdenv.mkDerivation (finalAttrs: {
   '';
 
   preConfigure = ''
-    # Prepend patched cmake to path
-    export CMAKE_PREFIX_PATH=$(pwd)/patched-cmake''${CMAKE_PREFIX_PATH:+:}$CMAKE_PREFIX_PATH
-
     # lwip's Filelists.cmake uses configure_file which writes into the source
     # tree, so we need a writable copy; use absolute path to avoid fragility
     cp -r ${lwip_src} ./deps/lwip
