@@ -188,11 +188,44 @@ go test -c -o "$INTEGRATION_TEST" .
 # ZET log files are created by the test binary (running as root). Tail them to
 # stdout so their content appears in the Actions console even if the upload step
 # never fires (e.g. the runner is killed before cleanup runs).
+#(
+#  until ls "$TEST_HOME/zets/logs/"*.log 2>/dev/null | grep -q .; do sleep 1; done
+#  tail -f "$TEST_HOME/zets/logs/"*.log
+#) &
+#TAIL_PID=$!
+
+# ---- Heartbeat monitor -------------------------------------------------------
+# Periodically logs memory pressure, top processes by RSS, and GitHub
+# reachability. This survives a runner-agent death so we can tell whether
+# the macOS "runner lost communication" failure is OOM or CPU starvation.
 (
-  until ls "$TEST_HOME/zets/logs/"*.log 2>/dev/null | grep -q .; do sleep 1; done
-  tail -f "$TEST_HOME/zets/logs/"*.log
+  while true; do
+    sleep 30
+    echo "=== heartbeat $(date) ==="
+    case "$(uname -s)" in
+      Darwin)
+        echo "vm_stat:"
+        vm_stat | awk '/Pages (free|active|wired down|occupied by compressor):/ {print}'
+        echo ""
+        echo "memory_pressure:"
+        memory_pressure 2>/dev/null | tail -1 || true
+        # top processes by RSS (memory)
+        echo ""
+        echo "ps axo:"
+        ps axo pid,rss,pcpu,comm | sort -k2 -rn | head -8 || true
+        echo ""
+        ;;
+      Linux)
+        free -m | grep -E '^(Mem|Swap):'
+        ps axo pid,rss,pcpu,comm --sort=-rss | head -8 || true
+        ;;
+    esac
+    curl -sf --max-time 5 https://api.github.com >/dev/null \
+      && echo "github reachable" \
+      || echo "GITHUB UNREACHABLE"
+  done
 ) &
-TAIL_PID=$!
+HEARTBEAT_PID=$!
 
 # ---- Run tests ---------------------------------------------------------------
 # sudo resets PAM resource limits, so ulimit must be set in the privileged shell.
@@ -200,4 +233,6 @@ sudo env "PATH=$PATH" "INTEGRATION_TEST=$INTEGRATION_TEST" sh -c \
   'ulimit -c unlimited && exec "$INTEGRATION_TEST" -test.v -test.timeout 20m -config config.json'
 
 kill "$TAIL_PID" 2>/dev/null || true
+kill "$HEARTBEAT_PID" 2>/dev/null || true
 wait "$TAIL_PID" 2>/dev/null || true
+wait "$HEARTBEAT_PID" 2>/dev/null || true

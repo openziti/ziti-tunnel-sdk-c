@@ -214,6 +214,19 @@ jobs:
           ZET2_VERSION: ${{ inputs.zet2_version }}
         run: .\tests\integration\scripts\run-ci.ps1 -InstallCert
 
+      - name: Collect macOS system logs on failure
+        if: ${{ failure() && runner.os == 'macOS' }}
+        shell: bash
+        run: |
+          echo "::group::macOS system log (last 20 min, OOM/kill events)"
+          sudo log show --last 20m \
+            --predicate 'subsystem == "com.apple.memorystatus" OR eventMessage CONTAINS "killed" OR eventMessage CONTAINS "low memory" OR eventMessage CONTAINS "jettisoned"' \
+            2>/dev/null || true
+          echo "::endgroup::"
+          echo "::group::Crash reports"
+          ls /Library/Logs/DiagnosticReports/ 2>/dev/null || true
+          echo "::endgroup::"
+
       - name: Log core file backtraces
         if: ${{ failure() && matrix.os.core-dir != '' }}
         shell: bash
