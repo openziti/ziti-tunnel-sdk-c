@@ -32,17 +32,17 @@ func togglesActiveState(t *testing.T) {
 		client := state.zetClient.CommandsClient
 		events := state.zetClient.EventClient
 
-		name := testutil.IdentityName(t)
-		added := testutil.FetchAndEnrollJwt(t, state.overlay, state.zetClient, name)
+		idName := "test_on_off"
+		added := testutil.FetchAndEnrollJwt(t, state.overlay, state.zetClient, idName)
 
 		client.IdentityOnOff(t, added.Id.Identifier, false).AssertSuccess(t)
 
-		off := events.WaitForIdentityEvent(t, "added", name)
+		off := events.WaitForIdentityEvent(t, "added", idName)
 		require.False(t, off.Id.Active, "identity:added Active=%t after IdentityOnOff(false)", off.Id.Active)
 
 		client.IdentityOnOff(t, added.Id.Identifier, true).AssertSuccess(t)
 
-		on := events.WaitForIdentityEvent(t, "added", name)
+		on := events.WaitForIdentityEvent(t, "added", idName)
 		require.True(t, on.Id.Active, "identity:added Active=%t after IdentityOnOff(true)", on.Id.Active)
 	})
 }

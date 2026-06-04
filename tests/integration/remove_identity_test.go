@@ -32,7 +32,7 @@ func withIdentifierFromEvent(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
 		client := state.zetClient.CommandsClient
 
-		event := testutil.FetchAndEnrollJwt(t, state.overlay, state.zetClient, testutil.IdentityName(t))
+		event := testutil.FetchAndEnrollJwt(t, state.overlay, state.zetClient, "test_remove_id")
 
 		client.RemoveIdentity(t, event.Id.Identifier).AssertSuccess(t)
 

@@ -34,18 +34,18 @@ func TestTunnelRestart(t *testing.T) {
 	testutil.RunWithTimeoutOf(t, restartTestTimeout, func(t *testing.T) {
 		// One identity per state. To exercise a single case, comment out its
 		// enroll block here and its matching asserts below.
-		base := testutil.IdentityName(t)
+		jwtIdName := "test_restart_jwt"
+		jwtIdEvent := testutil.FetchAndEnrollJwt(t, state.overlay, state.zetClient, jwtIdName)
+		state.zetClient.WaitForControllerEvent(t, "connected", jwtIdName)
 
-		jwtIdEvent := testutil.FetchAndEnrollJwt(t, state.overlay, state.zetClient, base+"-jwt")
-		state.zetClient.WaitForControllerEvent(t, "connected", base+"-jwt")
+		mfaEnrollment, _ := testutil.SetupVerifiedMFA(t, state.overlay, state.zetClient, "test_restart_mfa")
 
-		mfaEnrollment, _ := testutil.SetupVerifiedMFA(t, state.overlay, state.zetClient, base+"-mfa")
-
-		inactiveIdEvent := testutil.FetchAndEnrollJwt(t, state.overlay, state.zetClient, base+"-inactive")
-		state.zetClient.WaitForControllerEvent(t, "connected", base+"-inactive")
+		inactiveIdName := "test_restart_inactive"
+		inactiveIdEvent := testutil.FetchAndEnrollJwt(t, state.overlay, state.zetClient, inactiveIdName)
+		state.zetClient.WaitForControllerEvent(t, "connected", inactiveIdName)
 		testutil.SetIdentityActive(t, state.zetClient, inactiveIdEvent.Id.Identifier, false)
 
-		extName := base + "-ext"
+		extName := "test_restart_ext"
 		state.overlay.CreateIdentityWithExternalId(t, extName, state.idp.ExternalID, "")
 		extEvent := testutil.EnrollUrlIdentityToNone(t, state.overlay, state.zetClient, extName)
 

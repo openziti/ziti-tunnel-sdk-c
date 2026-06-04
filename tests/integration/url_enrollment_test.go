@@ -34,18 +34,18 @@ func TestUrlEnrollment(t *testing.T) {
 // withValidControllerUrlSucceeds exercises the "URL + no enroll-to mode" path.
 func withValidControllerUrlSucceeds(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
-		testutil.EnrollUrlIdentityToNone(t, state.overlay, state.zetClient, testutil.IdentityName(t))
+		testutil.EnrollUrlIdentityToNone(t, state.overlay, state.zetClient, "test_url_enroll_happy")
 	})
 }
 
 func sameNameTwiceSecondFails(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
-		identityName := testutil.IdentityName(t)
-		testutil.EnrollUrlIdentityToNone(t, state.overlay, state.zetClient, identityName)
+		idName := "test_url_enroll_dup_name"
+		testutil.EnrollUrlIdentityToNone(t, state.overlay, state.zetClient, idName)
 
 		controllerURL := state.overlay.ControllerHostPort()
 		identityData := testutil.AddIdentityData{
-			IdentityFilename: identityName,
+			IdentityFilename: idName,
 			ControllerURL:    &controllerURL,
 		}
 		state.zetClient.AddIdentity(t, identityData).AssertFail(t, 500, "identity exists with the same name")
@@ -54,12 +54,12 @@ func sameNameTwiceSecondFails(t *testing.T) {
 
 func afterJwtSameNameFails(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
-		identityName := testutil.IdentityName(t)
-		testutil.FetchAndEnrollJwt(t, state.overlay, state.zetClient, identityName)
+		idName := "test_url_enroll_after_jwt"
+		testutil.FetchAndEnrollJwt(t, state.overlay, state.zetClient, idName)
 
 		controllerURL := state.overlay.ControllerHostPort()
 		urlIdentityData := testutil.AddIdentityData{
-			IdentityFilename: identityName,
+			IdentityFilename: idName,
 			ControllerURL:    &controllerURL,
 		}
 		state.zetClient.AddIdentity(t, urlIdentityData).AssertFail(t, 500, "identity exists with the same name")
@@ -68,10 +68,9 @@ func afterJwtSameNameFails(t *testing.T) {
 
 func withNonZitiEndpointFails(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
-		identityName := testutil.IdentityName(t)
 		nonZitiURL := "https://example.com"
 		identityData := testutil.AddIdentityData{
-			IdentityFilename: identityName,
+			IdentityFilename: "test_url_enroll_non_ziti",
 			ControllerURL:    &nonZitiURL,
 		}
 
@@ -81,10 +80,9 @@ func withNonZitiEndpointFails(t *testing.T) {
 
 func withMalformedUrlFails(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
-		identityName := testutil.IdentityName(t)
 		badURL := "not-a-url"
 		identityData := testutil.AddIdentityData{
-			IdentityFilename: identityName,
+			IdentityFilename: "test_url_enroll_malformed_url",
 			ControllerURL:    &badURL,
 		}
 

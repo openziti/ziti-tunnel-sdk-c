@@ -37,18 +37,18 @@ func TestAddIdentity(t *testing.T) {
 
 func withJwtSucceeds(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
-		testutil.FetchAndEnrollJwt(t, state.overlay, state.zetClient, testutil.IdentityName(t))
+		testutil.FetchAndEnrollJwt(t, state.overlay, state.zetClient, "test_add_id_happy")
 	})
 }
 
 func sameJwtTwiceSecondFails(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
-		identityName := testutil.IdentityName(t)
-		jwt := state.overlay.GetJwtFromController(t, identityName)
-		testutil.EnrollJwt(t, state.zetClient, identityName, jwt)
+		idName := "test_add_id_dup_name"
+		jwt := state.overlay.GetJwtFromController(t, idName)
+		testutil.EnrollJwt(t, state.zetClient, idName, jwt)
 
 		identityData := testutil.AddIdentityData{
-			IdentityFilename: identityName,
+			IdentityFilename: idName,
 			JwtContent:       &jwt,
 		}
 		state.zetClient.AddIdentity(t, identityData).AssertFail(t, 500, "identity exists with the same name")
@@ -57,10 +57,9 @@ func sameJwtTwiceSecondFails(t *testing.T) {
 
 func withInvalidJwtFails(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
-		identityName := testutil.IdentityName(t)
 		badJwt := "this.is.not-a-real-jwt"
 		identityData := testutil.AddIdentityData{
-			IdentityFilename: identityName,
+			IdentityFilename: "test_add_id_invalid_jwt",
 			JwtContent:       &badJwt,
 		}
 		state.zetClient.AddIdentity(t, identityData).AssertFail(t, 500, "")
@@ -69,10 +68,9 @@ func withInvalidJwtFails(t *testing.T) {
 
 func withEmptyJwtFails(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
-		identityName := testutil.IdentityName(t)
 		emptyJwt := ""
 		identityData := testutil.AddIdentityData{
-			IdentityFilename: identityName,
+			IdentityFilename: "test_add_id_empty_jwt",
 			JwtContent:       &emptyJwt,
 		}
 		state.zetClient.AddIdentity(t, identityData).AssertFail(t, 500, "")
@@ -81,14 +79,14 @@ func withEmptyJwtFails(t *testing.T) {
 
 func withDeletedIdentityFails(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
-		identityName := testutil.IdentityName(t)
-		jwt := state.overlay.GetJwtFromController(t, identityName)
+		idName := "test_add_id_deleted"
+		jwt := state.overlay.GetJwtFromController(t, idName)
 
-		t.Logf("deleting identity %q from overlay before ZET tries to enroll", identityName)
-		require.NoError(t, state.overlay.DeleteIdentity(identityName), "delete identity via overlay")
+		t.Logf("deleting identity %q from overlay before ZET tries to enroll", idName)
+		require.NoError(t, state.overlay.DeleteIdentity(idName), "delete identity via overlay")
 
 		identityData := testutil.AddIdentityData{
-			IdentityFilename: identityName,
+			IdentityFilename: idName,
 			JwtContent:       &jwt,
 		}
 		state.zetClient.AddIdentity(t, identityData).AssertFail(t, 500, "")
@@ -97,7 +95,7 @@ func withDeletedIdentityFails(t *testing.T) {
 
 func withSlashInFilenameFails(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
-		jwt := state.overlay.GetJwtFromController(t, testutil.IdentityName(t))
+		jwt := state.overlay.GetJwtFromController(t, "test_add_id_slash")
 
 		identityData := testutil.AddIdentityData{
 			IdentityFilename: "foo/bar",
@@ -109,7 +107,7 @@ func withSlashInFilenameFails(t *testing.T) {
 
 func withDotDotInFilenameFails(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
-		jwt := state.overlay.GetJwtFromController(t, testutil.IdentityName(t))
+		jwt := state.overlay.GetJwtFromController(t, "test_add_id_dotdot")
 
 		identityData := testutil.AddIdentityData{
 			IdentityFilename: "../escape",
@@ -121,7 +119,7 @@ func withDotDotInFilenameFails(t *testing.T) {
 
 func filenameExceedsCharLimitFails(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
-		jwt := state.overlay.GetJwtFromController(t, testutil.IdentityName(t))
+		jwt := state.overlay.GetJwtFromController(t, "test_add_id_long_name")
 
 		longName := strings.Repeat("a", 5000)
 		identityData := testutil.AddIdentityData{

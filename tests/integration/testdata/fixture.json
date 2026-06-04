@@ -1,7 +1,7 @@
 {
   "authPolicies": [
     {
-      "name": "TestEnableMFA-acceptsTotpRequiredAuthPolicy-policy",
+      "name": "test_mfa_totp_policy",
       "primary": {
         "cert": { "allowExpiredCerts": false, "allowed": true },
         "extJwt": { "allowed": false, "allowedSigners": [] },
@@ -13,133 +13,133 @@
   ],
   "identities": [
     {
-      "name": "TestTunnelRestart-jwt",
+      "name": "test_restart_jwt",
       "isAdmin": false,
       "authPolicy": "@Default",
       "enrollment": { "ott": true }
     },
     {
-      "name": "TestTunnelRestart-mfa",
+      "name": "test_restart_mfa",
       "isAdmin": false,
       "authPolicy": "@Default",
       "enrollment": { "ott": true }
     },
     {
-      "name": "TestTunnelRestart-inactive",
+      "name": "test_restart_inactive",
       "isAdmin": false,
       "authPolicy": "@Default",
       "enrollment": { "ott": true }
     },
     {
-      "name": "TestEnableMFA-acceptsJwtEnrolledIdentity",
+      "name": "test_mfa_enable_jwt",
       "isAdmin": false,
       "authPolicy": "@Default",
       "enrollment": { "ott": true }
     },
     {
-      "name": "TestEnableMFA-acceptsTotpRequiredAuthPolicy",
+      "name": "test_mfa_enable_totp_policy",
       "isAdmin": false,
-      "authPolicy": "@TestEnableMFA-acceptsTotpRequiredAuthPolicy-policy",
+      "authPolicy": "@test_mfa_totp_policy",
       "enrollment": { "ott": true }
     },
     {
-      "name": "TestVerifyMFA-acceptsValidTotp",
-      "isAdmin": false,
-      "authPolicy": "@Default",
-      "enrollment": { "ott": true }
-    },
-    {
-      "name": "TestVerifyMFA-rejectsInvalidTotp",
+      "name": "test_mfa_verify_valid_totp",
       "isAdmin": false,
       "authPolicy": "@Default",
       "enrollment": { "ott": true }
     },
     {
-      "name": "TestMFAReauthentication-acceptsValidTotp",
+      "name": "test_mfa_verify_invalid_totp",
       "isAdmin": false,
       "authPolicy": "@Default",
       "enrollment": { "ott": true }
     },
     {
-      "name": "TestMFAReauthentication-acceptsRecoveryCode",
+      "name": "test_mfa_reauth_valid_totp",
       "isAdmin": false,
       "authPolicy": "@Default",
       "enrollment": { "ott": true }
     },
     {
-      "name": "TestMFAReauthentication-rejectsInvalidTotp",
+      "name": "test_mfa_reauth_recovery_code",
       "isAdmin": false,
       "authPolicy": "@Default",
       "enrollment": { "ott": true }
     },
     {
-      "name": "TestRemoveMFA-acceptsValidTotp",
+      "name": "test_mfa_reauth_invalid_totp",
       "isAdmin": false,
       "authPolicy": "@Default",
       "enrollment": { "ott": true }
     },
     {
-      "name": "TestRemoveMFA-acceptsRecoveryCode",
+      "name": "test_mfa_remove_valid_totp",
       "isAdmin": false,
       "authPolicy": "@Default",
       "enrollment": { "ott": true }
     },
     {
-      "name": "TestRemoveMFA-rejectsInvalidTotp",
+      "name": "test_mfa_remove_recovery_code",
       "isAdmin": false,
       "authPolicy": "@Default",
       "enrollment": { "ott": true }
     },
     {
-      "name": "TestRemoveIdentity-withIdentifierFromEvent",
+      "name": "test_mfa_remove_invalid_totp",
       "isAdmin": false,
       "authPolicy": "@Default",
       "enrollment": { "ott": true }
     },
     {
-      "name": "TestIdentityOnOff-togglesActiveState",
+      "name": "test_remove_id",
       "isAdmin": false,
       "authPolicy": "@Default",
       "enrollment": { "ott": true }
     },
     {
-      "name": "TestAddIdentity-withJwtSucceeds",
+      "name": "test_on_off",
       "isAdmin": false,
       "authPolicy": "@Default",
       "enrollment": { "ott": true }
     },
     {
-      "name": "TestAddIdentity-sameJwtTwiceSecondFails",
+      "name": "test_add_id_happy",
       "isAdmin": false,
       "authPolicy": "@Default",
       "enrollment": { "ott": true }
     },
     {
-      "name": "TestAddIdentity-withDeletedIdentityFails",
+      "name": "test_add_id_dup_name",
       "isAdmin": false,
       "authPolicy": "@Default",
       "enrollment": { "ott": true }
     },
     {
-      "name": "TestAddIdentity-withSlashInFilenameFails",
+      "name": "test_add_id_deleted",
       "isAdmin": false,
       "authPolicy": "@Default",
       "enrollment": { "ott": true }
     },
     {
-      "name": "TestAddIdentity-withDotDotInFilenameFails",
+      "name": "test_add_id_slash",
       "isAdmin": false,
       "authPolicy": "@Default",
       "enrollment": { "ott": true }
     },
     {
-      "name": "TestAddIdentity-filenameExceedsCharLimitFails",
+      "name": "test_add_id_dotdot",
       "isAdmin": false,
       "authPolicy": "@Default",
       "enrollment": { "ott": true }
     },
     {
-      "name": "TestUrlEnrollment-afterJwtSameNameFails",
+      "name": "test_add_id_long_name",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
+      "name": "test_url_enroll_after_jwt",
       "isAdmin": false,
       "authPolicy": "@Default",
       "enrollment": { "ott": true }
