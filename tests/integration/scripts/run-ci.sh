@@ -19,7 +19,7 @@
 #
 # Requires:  go, gh, jq, sudo (Linux/macOS).
 
-set -euo pipefail
+set -euxo pipefail
 
 INSTALL_CERT=""
 while [ $# -gt 0 ]; do
@@ -190,7 +190,7 @@ go test -c -o "$INTEGRATION_TEST" .
 # the macOS "runner lost communication" failure is OOM or CPU starvation.
 (
   while true; do
-    sleep 30
+    sleep 10
     echo "=== heartbeat $(date) ==="
     case "$(uname -s)" in
       Darwin)
@@ -213,6 +213,10 @@ go test -c -o "$INTEGRATION_TEST" .
     curl -sf --max-time 5 https://api.github.com >/dev/null \
       && echo "github reachable" \
       || echo "GITHUB UNREACHABLE"
+    echo "tunnel_status zetA:"
+    sudo "$ZET_BIN" tunnel_status -P zetA 2>&1 || true
+    echo "tunnel_status zetB:"
+    sudo "$ZET_BIN" tunnel_status -P zetB 2>&1 || true
   done
 ) &
 HEARTBEAT_PID=$!
