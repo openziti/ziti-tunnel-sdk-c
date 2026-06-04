@@ -194,6 +194,8 @@ go test -c -o "$INTEGRATION_TEST" .
     echo "=== heartbeat $(date) ==="
     case "$(uname -s)" in
       Darwin)
+        echo "routes:"
+        netstat -rn -finet
         echo "vm_stat:"
         vm_stat | awk '/Pages (free|active|wired down|occupied by compressor):/ {print}'
         echo ""
@@ -214,9 +216,9 @@ go test -c -o "$INTEGRATION_TEST" .
       && echo "github reachable" \
       || echo "GITHUB UNREACHABLE"
     echo "tunnel_status zetA:"
-    sudo "$ZET_BIN" tunnel_status -P zetA 2>&1 || true
+    timeout 8 sudo "$ZET_BIN" tunnel_status -P zetA 2>&1 || true
     echo "tunnel_status zetB:"
-    sudo "$ZET_BIN" tunnel_status -P zetB 2>&1 || true
+    timeout 8 sudo "$ZET_BIN" tunnel_status -P zetB 2>&1 || true
   done
 ) &
 HEARTBEAT_PID=$!
