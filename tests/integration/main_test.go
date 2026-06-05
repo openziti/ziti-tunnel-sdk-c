@@ -187,8 +187,6 @@ func doSetup(state TestState) error {
 	if err := state.overlay.PurgeIdentities(); err != nil {
 		return fmt.Errorf("purge stale test identities: %w", err)
 	}
-	// Auth policies reference ext-jwt-signers, so the policies must go first or
-	// the signer delete 409s on CAN_NOT_DELETE_REFERENCED_ENTITY.
 	log.Printf("setup: purging stale test auth-policies")
 	if err := state.overlay.PurgeAuthPolicies(); err != nil {
 		return fmt.Errorf("purge stale test auth policies: %w", err)
@@ -201,7 +199,6 @@ func doSetup(state TestState) error {
 	if err := state.overlay.PurgeIdentitiesByExternalId("@test.com"); err != nil {
 		return fmt.Errorf("purge stale IdP test user identities: %w", err)
 	}
-	// Service policies reference services, services reference configs.
 	log.Printf("setup: purging stale test service-policies")
 	if err := state.overlay.PurgeServicePolicies(); err != nil {
 		return fmt.Errorf("purge stale test service policies: %w", err)
@@ -223,6 +220,15 @@ func doSetup(state TestState) error {
 		if err := state.overlay.RemoveCATrust(); err != nil {
 			log.Printf("setup: WARNING: remove stale test CA from OS trust: %v", err)
 		}
+	}
+
+	// TODO: remove this check when ziti 1.6 is no longer part of LTS. The 1.6
+	// CLI's import login only populates its TLS RootCAs pool for untrusted
+	// servers and never falls back to OS roots, so against an OS-trusted
+	// controller every import API call fails with "certificate signed by
+	// unknown authority".
+	if state.overlay.ZitiMajor < 2 && state.overlay.CATrusted() {
+		return fmt.Errorf("ziti v%d.%d ops import fails against an OS-trusted controller; remove the CA from OS trust, or set autoTrustCa: true in your test config and rerun", state.overlay.ZitiMajor, state.overlay.ZitiMinor)
 	}
 
 	log.Printf("setup: importing fixture %s", fixturePath)

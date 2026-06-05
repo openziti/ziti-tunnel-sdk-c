@@ -274,6 +274,13 @@ func (o *Overlay) RequireCATrusted(t *testing.T) {
 	if o.CATrusted() {
 		return
 	}
+	// TODO: remove this branch when ziti 1.6 is no longer part of LTS; manual
+	// trust install breaks its ops import on the next run (see the setup check
+	// in main_test.go).
+	if o.ZitiMajor < 2 {
+		t.Skipf("if you want to run tests requiring OS trust with ziti v%d.%d, set autoTrustCa: true in your test config; installing the CA manually breaks ops import", o.ZitiMajor, o.ZitiMinor)
+		return
+	}
 	caPath := filepath.Join(o.Home, "pki", "root-ca", "certs", "root-ca.cert")
 	install, cleanup := o.OSCAStrings()
 	if install == "" {
