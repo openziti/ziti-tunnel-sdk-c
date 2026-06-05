@@ -41,6 +41,12 @@ for tool in go gh jq curl unzip; do
   command -v "$tool" >/dev/null || { echo "missing required tool: $tool" >&2; exit 1; }
 done
 
+# Disable Spotlight indexing system-wide so mds_stores doesn't consume CPU/RAM
+# during compilation and tests. On a CI runner we don't need it at all.
+if [[ "$(uname -s)" == Darwin ]]; then
+  sudo mdutil -a -i off 2>/dev/null || true
+fi
+
 # macOS does not ship timeout(1); define a minimal stand-in.
 if ! command -v timeout >/dev/null 2>&1; then
   timeout() {
@@ -66,8 +72,6 @@ esac
 
 TEST_HOME="${TEST_HOME:-$(mktemp -d -t ziti-tunnel-test.XXXXXX)}"
 mkdir -p "$TEST_HOME"
-# Prevent Spotlight from indexing test identity JSON files (mds_stores consumes ~240 MB otherwise).
-touch "$TEST_HOME/.metadata_never_index"
 echo "TEST_HOME=$TEST_HOME"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
@@ -142,7 +146,7 @@ echo "ZET_BIN_B=$ZET_BIN_B"
         echo ""
         echo "top memory consumers:"
         printf "%-8s %8s %6s  %s\n" "PID" "RSS(MB)" "%CPU" "COMMAND"
-        ps axo pid=,rss=,pcpu=,comm= | sort -k2 -rn | head -15 \
+        ps axo pid=,rss=,pcpu=,comm= | sort -k2 -rn 2>/dev/null | head -15 \
           | awk '{printf "%-8s %8.1f %6s  %s\n", $1, $2/1024, $3, $4}' || true
         echo ""
         ;;
