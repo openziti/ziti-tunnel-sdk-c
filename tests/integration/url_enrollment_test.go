@@ -48,7 +48,8 @@ func sameNameTwiceSecondFails(t *testing.T) {
 			IdentityFilename: idName,
 			ControllerURL:    &controllerURL,
 		}
-		state.zetClient.AddIdentity(t, identityData).AssertFail(t, 500, "identity exists with the same name")
+		addResp := state.zetClient.AddIdentity(t, identityData)
+		addResp.AssertFail(t, 500, "identity exists with the same name")
 	})
 }
 
@@ -62,7 +63,8 @@ func afterJwtSameNameFails(t *testing.T) {
 			IdentityFilename: idName,
 			ControllerURL:    &controllerURL,
 		}
-		state.zetClient.AddIdentity(t, urlIdentityData).AssertFail(t, 500, "identity exists with the same name")
+		addResp := state.zetClient.AddIdentity(t, urlIdentityData)
+		addResp.AssertFail(t, 500, "identity exists with the same name")
 	})
 }
 
@@ -74,7 +76,8 @@ func withNonZitiEndpointFails(t *testing.T) {
 			ControllerURL:    &nonZitiURL,
 		}
 
-		state.zetClient.AddIdentity(t, identityData).AssertFail(t, 500, "")
+		addResp := state.zetClient.AddIdentity(t, identityData)
+		addResp.AssertFail(t, 500, "")
 	})
 }
 
@@ -86,6 +89,7 @@ func withMalformedUrlFails(t *testing.T) {
 			ControllerURL:    &badURL,
 		}
 
-		state.zetClient.AddIdentity(t, identityData).AssertFail(t, 500, "")
+		addResp := state.zetClient.AddIdentity(t, identityData)
+		addResp.AssertFail(t, 500, "")
 	})
 }

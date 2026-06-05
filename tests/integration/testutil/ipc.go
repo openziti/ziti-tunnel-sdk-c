@@ -443,7 +443,7 @@ func (c *CommandsClient) AddIdentity(t *testing.T, data AddIdentityData) *AddIde
 		ServiceFunction: NewServiceFunction("AddIdentity"),
 		Data:            data,
 	}
-	t.Logf("calling AddIdentity for %q", data.IdentityFilename)
+	t.Logf("sending AddIdentity for %q", data.IdentityFilename)
 	resp, err := send[AddIdentityFunction, AddIdentityResponse](&c.IPCClient, f)
 	require.NoError(t, err, "failed to send AddIdentity\n%s", c.LogPath)
 	return resp

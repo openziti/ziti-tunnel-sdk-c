@@ -45,7 +45,8 @@ func sameJwtTwiceSecondFails(t *testing.T) {
 			IdentityFilename: idName,
 			JwtContent:       &jwt,
 		}
-		state.zetClient.AddIdentity(t, identityData).AssertFail(t, 500, "identity exists with the same name")
+		addResp := state.zetClient.AddIdentity(t, identityData)
+		addResp.AssertFail(t, 500, "identity exists with the same name")
 	})
 }
 
@@ -56,7 +57,8 @@ func withInvalidJwtFails(t *testing.T) {
 			IdentityFilename: "test_add_id_invalid_jwt",
 			JwtContent:       &badJwt,
 		}
-		state.zetClient.AddIdentity(t, identityData).AssertFail(t, 500, "")
+		addResp := state.zetClient.AddIdentity(t, identityData)
+		addResp.AssertFail(t, 500, "")
 	})
 }
 
@@ -67,7 +69,8 @@ func withEmptyJwtFails(t *testing.T) {
 			IdentityFilename: "test_add_id_empty_jwt",
 			JwtContent:       &emptyJwt,
 		}
-		state.zetClient.AddIdentity(t, identityData).AssertFail(t, 500, "")
+		addResp := state.zetClient.AddIdentity(t, identityData)
+		addResp.AssertFail(t, 500, "")
 	})
 }
 
@@ -83,7 +86,8 @@ func withDeletedIdentityFails(t *testing.T) {
 			IdentityFilename: idName,
 			JwtContent:       &jwt,
 		}
-		state.zetClient.AddIdentity(t, identityData).AssertFail(t, 500, "")
+		addResp := state.zetClient.AddIdentity(t, identityData)
+		addResp.AssertFail(t, 500, "")
 	})
 }
 
@@ -95,7 +99,8 @@ func withSlashInFilenameFails(t *testing.T) {
 			IdentityFilename: "foo/bar",
 			JwtContent:       &jwt,
 		}
-		state.zetClient.AddIdentity(t, identityData).AssertFail(t, 500, "invalid file name")
+		addResp := state.zetClient.AddIdentity(t, identityData)
+		addResp.AssertFail(t, 500, "invalid file name")
 	})
 }
 
@@ -107,7 +112,8 @@ func withDotDotInFilenameFails(t *testing.T) {
 			IdentityFilename: "../escape",
 			JwtContent:       &jwt,
 		}
-		state.zetClient.AddIdentity(t, identityData).AssertFail(t, 500, "not within the configuration directory")
+		addResp := state.zetClient.AddIdentity(t, identityData)
+		addResp.AssertFail(t, 500, "not within the configuration directory")
 	})
 }
 
@@ -120,6 +126,7 @@ func filenameExceedsCharLimitFails(t *testing.T) {
 			IdentityFilename: longName,
 			JwtContent:       &jwt,
 		}
-		state.zetClient.AddIdentity(t, identityData).AssertFail(t, 500, "invalid file name")
+		addResp := state.zetClient.AddIdentity(t, identityData)
+		addResp.AssertFail(t, 500, "invalid file name")
 	})
 }

@@ -212,9 +212,7 @@ func doSetup(state TestState) error {
 		return fmt.Errorf("purge stale test configs: %w", err)
 	}
 
-	// ziti 1.6's ops import fails when the controller CA is OS-trusted (its TLS
-	// pool is only populated for untrusted servers), so the import runs before
-	// the CA is installed; trust left over from a crashed run is removed first.
+	// Import runs before the CA is installed; trust left over from a crashed run is removed first.
 	if state.overlay.AutoTrustCA && state.overlay.CATrusted() {
 		log.Printf("setup: removing stale test CA from OS trust before fixture import")
 		if err := state.overlay.RemoveCATrust(); err != nil {

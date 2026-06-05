@@ -135,7 +135,8 @@ func (c *extAuthContext) enrollToNoneRejectsInvalidProvider(t *testing.T) {
 		identityEvent := testutil.EnrollUrlIdentityToNone(t, c.overlay, c.zet, idName)
 
 		bogusProvider := c.workingSigner.name + "-bogus"
-		c.zet.ExternalAuth(t, identityEvent.Id.Identifier, bogusProvider).AssertFail(t, 500, "invalid provider")
+		resp := c.zet.ExternalAuth(t, identityEvent.Id.Identifier, bogusProvider)
+		resp.AssertFail(t, 500, "invalid provider")
 	})
 }
 
@@ -290,7 +291,8 @@ func (c *extAuthContext) enrollToNoneThenCertRejected(t *testing.T) {
 
 		c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToCert: true})
 		enrollToCertIdentity := c.createIdentityData(idName, testutil.EnrollModeCert)
-		c.zet.AddIdentity(t, enrollToCertIdentity).AssertFail(t, 500, "identity exists with the same name")
+		addResp := c.zet.AddIdentity(t, enrollToCertIdentity)
+		addResp.AssertFail(t, 500, "identity exists with the same name")
 		testutil.AssertValidUrlEnrolledIdentityFile(t, identityEvent.Id.Identifier, testutil.EnrollModeNone)
 	})
 }
@@ -310,7 +312,8 @@ func (c *extAuthContext) enrollToCertThenNoneRejected(t *testing.T) {
 			IdentityFilename: idName,
 			ControllerURL:    &controllerBase,
 		}
-		c.zet.AddIdentity(t, enrollToNoneIdentity).AssertFail(t, 500, "identity exists with the same name")
+		addResp := c.zet.AddIdentity(t, enrollToNoneIdentity)
+		addResp.AssertFail(t, 500, "identity exists with the same name")
 		testutil.AssertValidUrlEnrolledIdentityFile(t, identifier, testutil.EnrollModeCert)
 	})
 }
@@ -324,7 +327,8 @@ func (c *extAuthContext) enrollToCertThenTokenRejected(t *testing.T) {
 
 		c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToToken: true})
 		enrollToTokenIdentity := c.createIdentityData(idName, testutil.EnrollModeToken)
-		c.zet.AddIdentity(t, enrollToTokenIdentity).AssertFail(t, 500, "identity exists with the same name")
+		addResp := c.zet.AddIdentity(t, enrollToTokenIdentity)
+		addResp.AssertFail(t, 500, "identity exists with the same name")
 		testutil.AssertValidUrlEnrolledIdentityFile(t, identifier, testutil.EnrollModeCert)
 	})
 }
@@ -338,7 +342,8 @@ func (c *extAuthContext) enrollToTokenThenCertRejected(t *testing.T) {
 
 		c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToCert: true})
 		enrollToCertIdentity := c.createIdentityData(idName, testutil.EnrollModeCert)
-		c.zet.AddIdentity(t, enrollToCertIdentity).AssertFail(t, 500, "identity exists with the same name")
+		addResp := c.zet.AddIdentity(t, enrollToCertIdentity)
+		addResp.AssertFail(t, 500, "identity exists with the same name")
 		testutil.AssertValidUrlEnrolledIdentityFile(t, identifier, testutil.EnrollModeToken)
 	})
 }

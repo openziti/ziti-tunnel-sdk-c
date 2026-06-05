@@ -68,7 +68,8 @@ func verifyRejectsInvalidTotp(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
 		enrollment, _ := testutil.SetupMFA(t, state.overlay, state.zetClient, "test_mfa_verify_invalid_totp")
 
-		state.zetClient.VerifyMFA(t, enrollment.Identifier, "000000").AssertFail(t, 500, "the token provided was invalid")
+		resp := state.zetClient.VerifyMFA(t, enrollment.Identifier, "000000")
+		resp.AssertFail(t, 500, "the token provided was invalid")
 	})
 }
 
@@ -113,7 +114,8 @@ func reauthRejectsInvalidTotp(t *testing.T) {
 
 		state.zetClient.WaitForMfaEvent(t, "auth_challenge", idName)
 
-		state.zetClient.SubmitMFA(t, enrollment.Identifier, "000000").AssertFail(t, 500, "the token provided was invalid")
+		resp := state.zetClient.SubmitMFA(t, enrollment.Identifier, "000000")
+		resp.AssertFail(t, 500, "the token provided was invalid")
 	})
 }
 
@@ -145,6 +147,7 @@ func removeRejectsInvalidTotp(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
 		enrollment, _ := testutil.SetupVerifiedMFA(t, state.overlay, state.zetClient, "test_mfa_remove_invalid_totp")
 
-		state.zetClient.RemoveMFA(t, enrollment.Identifier, "000000").AssertFail(t, 500, "the token provided was invalid")
+		resp := state.zetClient.RemoveMFA(t, enrollment.Identifier, "000000")
+		resp.AssertFail(t, 500, "the token provided was invalid")
 	})
 }
