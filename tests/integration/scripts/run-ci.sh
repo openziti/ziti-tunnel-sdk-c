@@ -47,10 +47,15 @@ done
 # launchd will not relaunch it (unlike `launchctl stop` which allows relaunch).
 if [[ "$(uname -s)" == Darwin ]]; then
   sudo mdutil -a -i off 2>/dev/null || true
+  # Stop softwareupdated (system daemon): during the test run it has been
+  # observed spawning nsattributedstringagent → WebKit content+networking
+  # processes that together consume ~220 MB of RAM in seconds, triggering
+  # jetsam kills. Boot it out so launchd does not relaunch it.
+  sudo launchctl bootout system/com.apple.softwareupdated 2>/dev/null || true
   _uid=$(id -u)
   launchctl list 2>/dev/null \
     | awk 'NR>1 && $3!="" {print $3}' \
-    | grep -iE '(weather|stocks|news|noticeboard|siriinfer|safari.*(bookmark|link|widget)|nsattributedstring|cachedelete)' \
+    | grep -iE '(weather|stocks|news|noticeboard|siriinfer|safari.*(bookmark|link|widget)|nsattributedstring|cachedelete|SoftwareUpdateNotification)' \
     | while IFS= read -r _label; do
         launchctl bootout "gui/$_uid/$_label" 2>/dev/null || true
       done
