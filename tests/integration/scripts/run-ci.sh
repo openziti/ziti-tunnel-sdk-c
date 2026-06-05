@@ -181,10 +181,12 @@ echo "ZET_BIN_B=$ZET_BIN_B"
     curl -sf --max-time 5 https://api.github.com >/dev/null \
       && echo "github reachable" \
       || echo "GITHUB UNREACHABLE"
+    echo "zet processes:"
+    pgrep -a -f "ziti-edge-tunnel" 2>/dev/null || echo "(no ziti-edge-tunnel processes running)"
     echo "tunnel_status zetA:"
-    timeout 8 sudo "$ZET_BIN" tunnel_status -P zetA 2>&1 || true
+    timeout 8 sudo "$ZET_BIN" tunnel_status -P zetA 2>&1 || echo "(tunnel_status zetA failed or timed out)"
     echo "tunnel_status zetB:"
-    timeout 8 sudo "$ZET_BIN" tunnel_status -P zetB 2>&1 || true
+    timeout 8 sudo "$ZET_BIN" tunnel_status -P zetB 2>&1 || echo "(tunnel_status zetB failed or timed out)"
   done
 ) &
 HEARTBEAT_PID=$!
