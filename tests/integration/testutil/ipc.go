@@ -127,17 +127,6 @@ func subscribeToEventPipe(path string, done <-chan struct{}) (*EventClient, erro
 	}
 }
 
-// ReconnectEvents closes the event pipe and re-subscribes to the same running
-// daemon, replacing z.EventClient. The daemon resends its status snapshot on connect.
-func (z *ZET) ReconnectEvents(t *testing.T) {
-	path := EventPipePathFor(z.Discriminator)
-	log.Printf("ipc: reconnecting event pipe %s", path)
-	require.NoError(t, z.EventClient.Close(), "close event pipe")
-	events, err := subscribeToEventPipe(path, z.cmdDone)
-	require.NoError(t, err, "reconnect event pipe")
-	z.EventClient = events
-}
-
 func (c *EventClient) readLoop() {
 	for {
 		line, err := c.reader.ReadBytes('\n')
@@ -258,17 +247,6 @@ func (c *EventClient) WaitForStatusEvent(t *testing.T) TunnelStatusEvent {
 
 func (c *EventClient) Close() error {
 	return c.conn.Close()
-}
-
-// DialIPC connects to this ZET instance's IPC command pipe.
-// Retries until the pipe is dialable or the ZET process exits.
-func (z *ZET) DialIPC() (*CommandsClient, error) {
-	cmds, err := openCommandPipe(CommandPipePathFor(z.Discriminator), z.cmdDone)
-	if err != nil {
-		return nil, err
-	}
-	cmds.LogPath = z.LogPath()
-	return cmds, nil
 }
 
 // ---------------------------------------------------------------------------

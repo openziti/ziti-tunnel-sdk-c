@@ -235,7 +235,9 @@ func (o *Overlay) OSCAStrings() (install, cleanup string) {
 	return
 }
 
-// InstallCATrust installs the quickstart CA into the OS trust store.
+// InstallCATrust installs the quickstart CA into the OS trust store. URL
+// enrollment has no JWT to vouch for the controller, so ZET falls back to OS
+// trust; those tests skip unless the CA is trusted.
 func (o *Overlay) InstallCATrust() error {
 	if runtime.GOOS == "windows" {
 		return runCommand("certutil", "-addstore", "-f", "Root", filepath.Join(o.Home, "pki", "root-ca", "certs", "root-ca.cert"))

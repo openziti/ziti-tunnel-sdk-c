@@ -99,6 +99,10 @@ jobs:
             for v in "$latest" "$lts" "$maint"; do
               [ -n "$v" ] || { echo "::error::failed to resolve a ziti version (latest=$latest lts=$lts maint=$maint)"; exit 1; }
             done
+            case "$maint" in
+              v1.*) ;;
+              *) echo "::error::maintenance channel resolved to $maint (not 1.x): remove the ziti 1.6 workarounds (main_test.go OS-trust fail-fast, Overlay.RequireCATrusted 1.6 skip) and this check"; exit 1 ;;
+            esac
             if [ "$latest" = "$lts" ]; then
               channels=$(jq -cn --arg lts "$lts" --arg maint "$maint" \
                 '[{label:"lts",tag:$lts},{label:"lts-maintenance",tag:$maint}]')

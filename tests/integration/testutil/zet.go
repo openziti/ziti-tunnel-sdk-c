@@ -29,7 +29,10 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 type ZET struct {
@@ -175,6 +178,28 @@ func (z *ZET) Stop() {
 func (z *ZET) Restart() error {
 	z.Stop()
 	return z.Start()
+}
+
+// DialIPC connects to this ZET instance's IPC command pipe.
+// Retries until the pipe is dialable or the ZET process exits.
+func (z *ZET) DialIPC() (*CommandsClient, error) {
+	cmds, err := openCommandPipe(CommandPipePathFor(z.Discriminator), z.cmdDone)
+	if err != nil {
+		return nil, err
+	}
+	cmds.LogPath = z.LogPath()
+	return cmds, nil
+}
+
+// ReconnectEvents closes the event pipe and re-subscribes to the same running
+// daemon, replacing z.EventClient. The daemon resends its status snapshot on connect.
+func (z *ZET) ReconnectEvents(t *testing.T) {
+	path := EventPipePathFor(z.Discriminator)
+	log.Printf("ipc: reconnecting event pipe %s", path)
+	require.NoError(t, z.EventClient.Close(), "close event pipe")
+	events, err := subscribeToEventPipe(path, z.cmdDone)
+	require.NoError(t, err, "reconnect event pipe")
+	z.EventClient = events
 }
 
 // RemoveJSONIdentities deletes every *.json file in the identity dir.
