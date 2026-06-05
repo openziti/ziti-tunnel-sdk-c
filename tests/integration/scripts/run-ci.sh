@@ -41,6 +41,22 @@ for tool in go gh jq curl unzip; do
   command -v "$tool" >/dev/null || { echo "missing required tool: $tool" >&2; exit 1; }
 done
 
+# macOS does not ship timeout(1); define a minimal stand-in.
+if ! command -v timeout >/dev/null 2>&1; then
+  timeout() {
+    local secs=$1; shift
+    "$@" &
+    local pid=$!
+    ( sleep "$secs" && kill "$pid" 2>/dev/null ) &
+    local wd=$!
+    wait "$pid" 2>/dev/null
+    local rc=$?
+    kill "$wd" 2>/dev/null
+    wait "$wd" 2>/dev/null
+    return $rc
+  }
+fi
+
 case "$(uname -s)-$(uname -m)" in
   Linux-x86_64)   ZITI_PATTERN="ziti-linux-amd64-*.tar.gz"; ZET_ZIP="ziti-edge-tunnel-Linux_x86_64.zip";  ZET_BIN_NAME="ziti-edge-tunnel" ;;
   Darwin-arm64)   ZITI_PATTERN="ziti-darwin-arm64-*.tar.gz"; ZET_ZIP="ziti-edge-tunnel-Darwin_arm64.zip"; ZET_BIN_NAME="ziti-edge-tunnel" ;;
