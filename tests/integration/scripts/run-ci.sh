@@ -66,6 +66,8 @@ esac
 
 TEST_HOME="${TEST_HOME:-$(mktemp -d -t ziti-tunnel-test.XXXXXX)}"
 mkdir -p "$TEST_HOME"
+# Prevent Spotlight from indexing test identity JSON files (mds_stores consumes ~240 MB otherwise).
+touch "$TEST_HOME/.metadata_never_index"
 echo "TEST_HOME=$TEST_HOME"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
@@ -137,15 +139,19 @@ echo "ZET_BIN_B=$ZET_BIN_B"
         echo ""
         echo "memory_pressure:"
         memory_pressure 2>/dev/null | tail -1 || true
-        # top processes by RSS (memory)
         echo ""
-        echo "ps axo:"
-        ps axo pid,rss,pcpu,comm | sort -k2 -rn | head -8 || true
+        echo "top memory consumers:"
+        printf "%-8s %8s %6s  %s\n" "PID" "RSS(MB)" "%CPU" "COMMAND"
+        ps axo pid=,rss=,pcpu=,comm= | sort -k2 -rn | head -15 \
+          | awk '{printf "%-8s %8.1f %6s  %s\n", $1, $2/1024, $3, $4}' || true
         echo ""
         ;;
       Linux)
         free -m | grep -E '^(Mem|Swap):'
-        ps axo pid,rss,pcpu,comm --sort=-rss | head -8 || true
+        echo "top memory consumers:"
+        printf "%-8s %8s %6s  %s\n" "PID" "RSS(MB)" "%CPU" "COMMAND"
+        ps axo pid=,rss=,pcpu=,comm= --sort=-rss | head -15 \
+          | awk '{printf "%-8s %8.1f %6s  %s\n", $1, $2/1024, $3, $4}' || true
         ;;
     esac
     curl -sf --max-time 5 https://api.github.com >/dev/null \
