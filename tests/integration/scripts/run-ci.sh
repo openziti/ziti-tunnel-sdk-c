@@ -141,6 +141,7 @@ echo "ZET_BIN_B=$ZET_BIN_B"
 # This survives a runner-agent death so we can tell whether the macOS
 # "runner lost communication" failure is OOM or CPU starvation.
 (
+  set +ex  # don't exit on failure; suppress xtrace noise in log
   while true; do
     sleep 10
     echo "=== heartbeat $(date) ==="
