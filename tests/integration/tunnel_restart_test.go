@@ -38,7 +38,7 @@ func TestTunnelRestart(t *testing.T) {
 		jwtIdEvent := testutil.FetchAndEnrollJwt(t, state.overlay, state.zetClient, jwtIdName)
 		state.zetClient.WaitForControllerEvent(t, "connected", jwtIdName)
 
-		mfaEnrollment, _ := testutil.SetupVerifiedMFA(t, state.overlay, state.zetClient, "test_restart_mfa")
+		mfaEnrollment, _ := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, "test_restart_mfa")
 
 		inactiveIdName := "test_restart_inactive"
 		inactiveIdEvent := testutil.FetchAndEnrollJwt(t, state.overlay, state.zetClient, inactiveIdName)

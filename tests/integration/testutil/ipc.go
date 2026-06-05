@@ -450,7 +450,7 @@ func (c *CommandsClient) AddIdentity(t *testing.T, data AddIdentityData) *AddIde
 }
 
 // ---------------------------------------------------------------------------
-// Test helpers built on top of CommandsClient.
+// Test helpers
 // ---------------------------------------------------------------------------
 
 // AssertSuccess asserts the daemon accepted the command.
@@ -482,13 +482,4 @@ func (c *CommandsClient) GetExternalAuthURL(t *testing.T, identifier, provider s
 func (c *CommandsClient) DisableEnableIdentity(t *testing.T, identifier string) {
 	c.IdentityOnOff(t, identifier, false).AssertSuccess(t)
 	c.IdentityOnOff(t, identifier, true).AssertSuccess(t)
-}
-
-// GetMFAEnrollment sends EnableMFA, asserts Code == 0, and returns the enrollment payload.
-func (c *CommandsClient) GetMFAEnrollment(t *testing.T, identifier string) *MFAEnrollment {
-	resp := c.EnableMFA(t, identifier)
-	resp.AssertSuccess(t)
-	require.NotEmpty(t, resp.Data.ProvisioningUrl, "EnableMFA Data.ProvisioningUrl should be non-empty")
-	require.NotEmpty(t, resp.Data.RecoveryCodes, "EnableMFA Data.RecoveryCodes should be non-empty")
-	return &resp.Data
 }

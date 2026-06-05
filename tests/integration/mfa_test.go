@@ -48,7 +48,7 @@ func TestRemoveMFA(t *testing.T) {
 
 func acceptsJwtEnrolledIdentity(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
-		enrollment, _ := testutil.SetupMFA(t, state.overlay, state.zetClient, "test_mfa_enable_jwt")
+		enrollment, _ := testutil.EnrollAndEnableMFA(t, state.overlay, state.zetClient, "test_mfa_enable_jwt")
 
 		require.False(t, enrollment.IsVerified, "EnableMFA Data.IsVerified should be false before verify_mfa")
 	})
@@ -58,7 +58,7 @@ func acceptsTotpRequiredAuthPolicy(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
 		t.Skip("Tracking https://github.com/openziti/desktop-edge-win/issues/947 and https://openziti.discourse.group/t/enrolling-mfa-totp-from-zdew-fails/5482 - EnableMFA fails with 'failed to authenticate' for identities bound to TOTP-required auth policies")
 
-		enrollment, _ := testutil.SetupMFA(t, state.overlay, state.zetClient, "test_mfa_enable_totp_policy")
+		enrollment, _ := testutil.EnrollAndEnableMFA(t, state.overlay, state.zetClient, "test_mfa_enable_totp_policy")
 
 		require.False(t, enrollment.IsVerified, "EnableMFA Data.IsVerified should be false before verify_mfa")
 	})
@@ -66,7 +66,7 @@ func acceptsTotpRequiredAuthPolicy(t *testing.T) {
 
 func verifyRejectsInvalidTotp(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
-		enrollment, _ := testutil.SetupMFA(t, state.overlay, state.zetClient, "test_mfa_verify_invalid_totp")
+		enrollment, _ := testutil.EnrollAndEnableMFA(t, state.overlay, state.zetClient, "test_mfa_verify_invalid_totp")
 
 		resp := state.zetClient.VerifyMFA(t, enrollment.Identifier, "000000")
 		resp.AssertFail(t, 500, "the token provided was invalid")
@@ -76,7 +76,7 @@ func verifyRejectsInvalidTotp(t *testing.T) {
 func reauthAcceptsValidTotp(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
 		idName := "test_mfa_reauth_valid_totp"
-		enrollment, secret := testutil.SetupVerifiedMFA(t, state.overlay, state.zetClient, idName)
+		enrollment, secret := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, idName)
 
 		state.zetClient.DisableEnableIdentity(t, enrollment.Identifier)
 
@@ -93,7 +93,7 @@ func reauthAcceptsValidTotp(t *testing.T) {
 func reauthAcceptsRecoveryCode(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
 		idName := "test_mfa_reauth_recovery_code"
-		enrollment, _ := testutil.SetupVerifiedMFA(t, state.overlay, state.zetClient, idName)
+		enrollment, _ := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, idName)
 
 		state.zetClient.DisableEnableIdentity(t, enrollment.Identifier)
 
@@ -108,7 +108,7 @@ func reauthAcceptsRecoveryCode(t *testing.T) {
 func reauthRejectsInvalidTotp(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
 		idName := "test_mfa_reauth_invalid_totp"
-		enrollment, _ := testutil.SetupVerifiedMFA(t, state.overlay, state.zetClient, idName)
+		enrollment, _ := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, idName)
 
 		state.zetClient.DisableEnableIdentity(t, enrollment.Identifier)
 
@@ -122,7 +122,7 @@ func reauthRejectsInvalidTotp(t *testing.T) {
 func removeAcceptsValidTotp(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
 		idName := "test_mfa_remove_valid_totp"
-		enrollment, secret := testutil.SetupVerifiedMFA(t, state.overlay, state.zetClient, idName)
+		enrollment, secret := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, idName)
 
 		code := testutil.GenerateTOTP(t, secret, time.Now())
 
@@ -135,7 +135,7 @@ func removeAcceptsValidTotp(t *testing.T) {
 func removeAcceptsRecoveryCode(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
 		idName := "test_mfa_remove_recovery_code"
-		enrollment, _ := testutil.SetupVerifiedMFA(t, state.overlay, state.zetClient, idName)
+		enrollment, _ := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, idName)
 
 		state.zetClient.RemoveMFA(t, enrollment.Identifier, enrollment.RecoveryCodes[0]).AssertSuccess(t)
 
@@ -145,7 +145,7 @@ func removeAcceptsRecoveryCode(t *testing.T) {
 
 func removeRejectsInvalidTotp(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
-		enrollment, _ := testutil.SetupVerifiedMFA(t, state.overlay, state.zetClient, "test_mfa_remove_invalid_totp")
+		enrollment, _ := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, "test_mfa_remove_invalid_totp")
 
 		resp := state.zetClient.RemoveMFA(t, enrollment.Identifier, "000000")
 		resp.AssertFail(t, 500, "the token provided was invalid")

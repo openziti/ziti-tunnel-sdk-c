@@ -60,14 +60,18 @@ func FetchAndEnrollJwt(t *testing.T, overlay *Overlay, zet *ZET, name string) Id
 	return identityEvent
 }
 
-// SetupMFA enrolls the pre-imported identity on zet, waits for the controller to
-// connect, sends EnableMFA, and returns the enrollment plus the TOTP secret parsed
-// from its provisioning URL. The enrollment is not yet verified.
-func SetupMFA(t *testing.T, overlay *Overlay, zet *ZET, name string) (MFAEnrollment, string) {
+// EnrollAndEnableMFA enrolls the pre-imported identity on zet, waits for the
+// controller to connect, sends EnableMFA, and returns the enrollment plus the
+// TOTP secret parsed from its provisioning URL. The enrollment is not yet verified.
+func EnrollAndEnableMFA(t *testing.T, overlay *Overlay, zet *ZET, name string) (MFAEnrollment, string) {
 	added := FetchAndEnrollJwt(t, overlay, zet, name)
 	zet.WaitForControllerEvent(t, "connected", name)
 
-	enrollment := zet.GetMFAEnrollment(t, added.Id.Identifier)
+	resp := zet.EnableMFA(t, added.Id.Identifier)
+	resp.AssertSuccess(t)
+	require.NotEmpty(t, resp.Data.ProvisioningUrl, "EnableMFA Data.ProvisioningUrl should be non-empty")
+	require.NotEmpty(t, resp.Data.RecoveryCodes, "EnableMFA Data.RecoveryCodes should be non-empty")
+	enrollment := resp.Data
 
 	parsed, err := url.Parse(enrollment.ProvisioningUrl)
 	require.NoError(t, err, "parse provisioning URL")
@@ -75,14 +79,14 @@ func SetupMFA(t *testing.T, overlay *Overlay, zet *ZET, name string) (MFAEnrollm
 	require.NotEmpty(t, secret, "provisioning url missing secret param")
 
 	enrollment.Identifier = added.Id.Identifier
-	return *enrollment, secret
+	return enrollment, secret
 }
 
-// SetupVerifiedMFA sets up MFA via SetupMFA and completes enrollment with a
-// valid TOTP, asserting both the VerifyMFA response and the
+// EnrollAndVerifyMFA enables MFA via EnrollAndEnableMFA and completes enrollment
+// with a valid TOTP, asserting both the VerifyMFA response and the
 // mfa:enrollment_verification event report success.
-func SetupVerifiedMFA(t *testing.T, overlay *Overlay, zet *ZET, name string) (MFAEnrollment, string) {
-	enrollment, secret := SetupMFA(t, overlay, zet, name)
+func EnrollAndVerifyMFA(t *testing.T, overlay *Overlay, zet *ZET, name string) (MFAEnrollment, string) {
+	enrollment, secret := EnrollAndEnableMFA(t, overlay, zet, name)
 
 	code := GenerateTOTP(t, secret, time.Now())
 
