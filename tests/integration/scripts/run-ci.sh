@@ -178,9 +178,20 @@ echo "ZET_BIN_B=$ZET_BIN_B"
           | awk '{printf "%-8s %8.1f %6s  %s\n", $1, $2/1024, $3, $4}' || true
         ;;
     esac
-    curl -sf --max-time 5 https://api.github.com >/dev/null \
-      && echo "github reachable" \
-      || echo "GITHUB UNREACHABLE"
+    # Use -w to capture resolved IP and HTTP code regardless of success/failure.
+    # remote_ip=0.0.0.0 means curl never connected (routing black hole or DNS).
+    _gh_out=$(curl -sw "exitCode=%{exitcode} httpCode=%{http_code} remoteIp=%{remote_ip}" \
+      --max-time 5 --connect-timeout 3 https://api.github.com 2>&1) || true
+    if echo "$_gh_out" | grep -q "exitCode=0"; then
+      echo "github reachable: $_gh_out"
+    else
+      echo "GITHUB UNREACHABLE: $_gh_out"
+      echo "traceroute to github (max 8 hops, 1s/hop timeout):"
+      traceroute -n -m 8 -w 1 api.github.com 2>/dev/null | head -10 || true
+      echo "pf rules:"
+      pfctl -sr 2>/dev/null || echo "(pfctl failed or no rules)"
+    fi
+    unset _gh_out
     echo "zet processes:"
     pgrep -a -f "ziti-edge-tunnel" 2>/dev/null || echo "(no ziti-edge-tunnel processes running)"
     echo "tunnel_status zetA:"
@@ -288,6 +299,16 @@ cat config.json
 # runners (observed as a 100% reproducible "runner lost communication" on macOS).
 INTEGRATION_TEST="$TEST_HOME/integration.test"
 go test -c -o "$INTEGRATION_TEST" .
+
+# ---- Baseline route snapshot (before ZET starts) ----------------------------
+# Compare with heartbeat route output to identify which routes ZET adds and
+# whether any overlap with the CI runner's own network infrastructure.
+echo "=== pre-test route table ==="
+case "$(uname -s)" in
+  Darwin) netstat -rn -finet ;;
+  Linux)  ip route show ;;
+esac
+echo "=== end pre-test route table ==="
 
 # ---- Run tests ---------------------------------------------------------------
 # sudo resets PAM resource limits, so ulimit must be set in the privileged shell.
