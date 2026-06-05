@@ -41,10 +41,20 @@ for tool in go gh jq curl unzip; do
   command -v "$tool" >/dev/null || { echo "missing required tool: $tool" >&2; exit 1; }
 done
 
-# Disable Spotlight indexing system-wide so mds_stores doesn't consume CPU/RAM
-# during compilation and tests. On a CI runner we don't need it at all.
+# On macOS CI: disable Spotlight and evict unnecessary GUI/widget daemons.
+# These collectively consume ~400 MB that we need for the test run.
+# launchctl bootout removes the service from the current login session so
+# launchd will not relaunch it (unlike `launchctl stop` which allows relaunch).
 if [[ "$(uname -s)" == Darwin ]]; then
   sudo mdutil -a -i off 2>/dev/null || true
+  _uid=$(id -u)
+  launchctl list 2>/dev/null \
+    | awk 'NR>1 && $3!="" {print $3}' \
+    | grep -iE '(weather|stocks|news|noticeboard|siriinfer|safari.*(bookmark|link|widget)|nsattributedstring|cachedelete)' \
+    | while IFS= read -r _label; do
+        launchctl bootout "gui/$_uid/$_label" 2>/dev/null || true
+      done
+  unset _uid
 fi
 
 # macOS does not ship timeout(1); define a minimal stand-in.
