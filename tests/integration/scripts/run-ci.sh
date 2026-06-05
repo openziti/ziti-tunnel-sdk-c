@@ -54,6 +54,10 @@ if [[ "$(uname -s)" == Darwin ]]; then
     | while IFS= read -r _label; do
         launchctl bootout "gui/$_uid/$_label" 2>/dev/null || true
       done
+  # Widget extensions (WeatherWidget, StocksWidget, NewsToday2, etc.) are app
+  # extensions hosted by the Dock, not individual launchd services. Restarting
+  # the Dock evicts them; it relaunches itself immediately but starts clean.
+  launchctl bootout "gui/$_uid/com.apple.Dock.agent" 2>/dev/null || true
   unset _uid
 fi
 
@@ -149,7 +153,7 @@ echo "ZET_BIN_B=$ZET_BIN_B"
         echo "dns resolution:"
         nslookup api.github.com 2>/dev/null || dig +short api.github.com 2>/dev/null || true
         echo "vm_stat:"
-        vm_stat | awk '/Pages (free|active|wired down|occupied by compressor):/ {print}'
+        vm_stat | awk 'NR==1 || /Pages (free|active|wired down|occupied by compressor):/ {print}'
         echo ""
         echo "memory_pressure:"
         memory_pressure 2>/dev/null | tail -1 || true
@@ -269,5 +273,3 @@ go test -c -o "$INTEGRATION_TEST" .
 sudo env "PATH=$PATH" "INTEGRATION_TEST=$INTEGRATION_TEST" sh -c \
   'ulimit -c unlimited && exec "$INTEGRATION_TEST" -test.v -test.timeout 20m -config config.json'
 
-kill "$HEARTBEAT_PID" 2>/dev/null || true
-wait "$HEARTBEAT_PID" 2>/dev/null || true
