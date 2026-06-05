@@ -99,6 +99,50 @@ fi
 echo "ZET_BIN=$ZET_BIN"
 echo "ZET_BIN_B=$ZET_BIN_B"
 
+# ---- Heartbeat monitor -------------------------------------------------------
+# Periodically logs memory pressure, top processes by RSS, DNS config, and
+# GitHub reachability. Started early so setup failures are also captured.
+# This survives a runner-agent death so we can tell whether the macOS
+# "runner lost communication" failure is OOM or CPU starvation.
+(
+  while true; do
+    sleep 10
+    echo "=== heartbeat $(date) ==="
+    case "$(uname -s)" in
+      Darwin)
+        echo "routes:"
+        netstat -rn -finet
+        echo "dns config:"
+        scutil --dns 2>/dev/null
+        echo "dns resolution:"
+        nslookup api.github.com 2>/dev/null || dig +short api.github.com 2>/dev/null || true
+        echo "vm_stat:"
+        vm_stat | awk '/Pages (free|active|wired down|occupied by compressor):/ {print}'
+        echo ""
+        echo "memory_pressure:"
+        memory_pressure 2>/dev/null | tail -1 || true
+        # top processes by RSS (memory)
+        echo ""
+        echo "ps axo:"
+        ps axo pid,rss,pcpu,comm | sort -k2 -rn | head -8 || true
+        echo ""
+        ;;
+      Linux)
+        free -m | grep -E '^(Mem|Swap):'
+        ps axo pid,rss,pcpu,comm --sort=-rss | head -8 || true
+        ;;
+    esac
+    curl -sf --max-time 5 https://api.github.com >/dev/null \
+      && echo "github reachable" \
+      || echo "GITHUB UNREACHABLE"
+    echo "tunnel_status zetA:"
+    timeout 8 sudo "$ZET_BIN" tunnel_status -P zetA 2>&1 || true
+    echo "tunnel_status zetB:"
+    timeout 8 sudo "$ZET_BIN" tunnel_status -P zetB 2>&1 || true
+  done
+) &
+HEARTBEAT_PID=$!
+
 # ---- Create ziti group + configure core dumps --------------------------------
 case "$(uname -s)" in
   Linux)
@@ -183,45 +227,6 @@ cat config.json
 # runners (observed as a 100% reproducible "runner lost communication" on macOS).
 INTEGRATION_TEST="$TEST_HOME/integration.test"
 go test -c -o "$INTEGRATION_TEST" .
-
-# ---- Heartbeat monitor -------------------------------------------------------
-# Periodically logs memory pressure, top processes by RSS, and GitHub
-# reachability. This survives a runner-agent death so we can tell whether
-# the macOS "runner lost communication" failure is OOM or CPU starvation.
-(
-  while true; do
-    sleep 10
-    echo "=== heartbeat $(date) ==="
-    case "$(uname -s)" in
-      Darwin)
-        echo "routes:"
-        netstat -rn -finet
-        echo "vm_stat:"
-        vm_stat | awk '/Pages (free|active|wired down|occupied by compressor):/ {print}'
-        echo ""
-        echo "memory_pressure:"
-        memory_pressure 2>/dev/null | tail -1 || true
-        # top processes by RSS (memory)
-        echo ""
-        echo "ps axo:"
-        ps axo pid,rss,pcpu,comm | sort -k2 -rn | head -8 || true
-        echo ""
-        ;;
-      Linux)
-        free -m | grep -E '^(Mem|Swap):'
-        ps axo pid,rss,pcpu,comm --sort=-rss | head -8 || true
-        ;;
-    esac
-    curl -sf --max-time 5 https://api.github.com >/dev/null \
-      && echo "github reachable" \
-      || echo "GITHUB UNREACHABLE"
-    echo "tunnel_status zetA:"
-    timeout 8 sudo "$ZET_BIN" tunnel_status -P zetA 2>&1 || true
-    echo "tunnel_status zetB:"
-    timeout 8 sudo "$ZET_BIN" tunnel_status -P zetB 2>&1 || true
-  done
-) &
-HEARTBEAT_PID=$!
 
 # ---- Run tests ---------------------------------------------------------------
 # sudo resets PAM resource limits, so ulimit must be set in the privileged shell.
