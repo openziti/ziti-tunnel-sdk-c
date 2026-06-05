@@ -208,7 +208,7 @@ Each external-auth test logs in as its own IdP user; the user's email is the con
 
 To test by-URL enrollment you must trust the controller's CA in the OS store; with no JWT to carry it, those tests fall back to OS trust and skip when it's missing.
 
-Set `ziti.autoTrustCa: true` (quickstart mode) and the harness handles it: install after the fixture import, removal at teardown. If you manage trust manually instead, do not install the CA before running the suite with a ziti 1.6 CLI - its `ops import` fails against an OS-trusted controller.
+Set `autoTrustCa: true` (quickstart mode) and the harness handles it: install after the fixture import, removal at teardown. If you manage trust manually instead, do not install the CA before running the suite with a ziti 1.6 CLI - its `ops import` fails against an OS-trusted controller.
 
 - A controller with a publicly trusted cert needs nothing.
 - For a **local quickstart** overlay, trust its generated CA at `<testHome>/overlay/pki/root-ca/certs/root-ca.cert`:
