@@ -113,6 +113,7 @@ func startLeakZETs(t *testing.T) (interceptZET, hostZET *testutil.ZET) {
 //
 // Requires root/CAP_NET_ADMIN.
 func TestLeak_TCPTinyEcho(t *testing.T) {
+	t.Skip("temporarily disabled: investigating CI network disruption")
 	const (
 		iterations    = 100
 		interceptIP   = "100.64.0.20"
@@ -159,6 +160,7 @@ func TestLeak_TCPTinyEcho(t *testing.T) {
 //
 // Requires root/CAP_NET_ADMIN.
 func TestLeak_TCPLargeTransfer(t *testing.T) {
+	t.Skip("temporarily disabled: investigating CI network disruption")
 	const (
 		iterations    = 20
 		payloadSize   = 1 << 20 // 1 MiB
@@ -210,6 +212,7 @@ func TestLeak_TCPLargeTransfer(t *testing.T) {
 //
 // Requires root/CAP_NET_ADMIN.
 func TestLeak_UDPDatagram(t *testing.T) {
+	t.Skip("temporarily disabled: investigating CI network disruption")
 	const (
 		iterations    = 100
 		interceptIP   = "100.64.0.22"
@@ -255,6 +258,7 @@ func TestLeak_UDPDatagram(t *testing.T) {
 //
 // Requires root/CAP_NET_ADMIN.
 func TestLeak_TCPConcurrentFanout(t *testing.T) {
+	t.Skip("temporarily disabled: investigating CI network disruption")
 	const (
 		concurrency   = 20
 		interceptIP   = "100.64.0.23"
