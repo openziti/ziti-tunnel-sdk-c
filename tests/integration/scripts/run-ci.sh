@@ -160,7 +160,7 @@ echo "ZET_BIN_B=$ZET_BIN_B"
         echo ""
         echo "top memory consumers:"
         printf "%-8s %8s %6s  %s\n" "PID" "RSS(MB)" "%CPU" "COMMAND"
-        ps axo pid=,rss=,pcpu=,comm= | sort -k2 -rn 2>/dev/null | head -15 \
+        ps axo pid=,rss=,pcpu=,comm= | sort -k2 -rn 2>/dev/null | head -20 \
           | awk '{printf "%-8s %8.1f %6s  %s\n", $1, $2/1024, $3, $4}' || true
         echo ""
         ;;
@@ -168,7 +168,7 @@ echo "ZET_BIN_B=$ZET_BIN_B"
         free -m | grep -E '^(Mem|Swap):'
         echo "top memory consumers:"
         printf "%-8s %8s %6s  %s\n" "PID" "RSS(MB)" "%CPU" "COMMAND"
-        ps axo pid=,rss=,pcpu=,comm= --sort=-rss | head -15 \
+        ps axo pid=,rss=,pcpu=,comm= --sort=-rss | head -20 \
           | awk '{printf "%-8s %8.1f %6s  %s\n", $1, $2/1024, $3, $4}' || true
         ;;
     esac
@@ -182,6 +182,19 @@ echo "ZET_BIN_B=$ZET_BIN_B"
   done
 ) &
 HEARTBEAT_PID=$!
+
+# ---- Jetsam / OOM watcher (macOS only) --------------------------------------
+# Streams system log entries about process kills and memory pressure events in
+# real time. If the runner agent or test binary is killed by jetsam these lines
+# will appear in the job log immediately before or after output goes dark.
+JETSAM_PID=""
+if [[ "$(uname -s)" == Darwin ]]; then
+  ( log stream \
+      --predicate 'eventMessage CONTAINS "jetsam" OR eventMessage CONTAINS "low memory" OR eventMessage CONTAINS "killed process" OR eventMessage CONTAINS "memorystatus"' \
+      --style compact 2>/dev/null \
+    | sed 's/^/[jetsam] /' ) &
+  JETSAM_PID=$!
+fi
 
 # ---- Create ziti group + configure core dumps --------------------------------
 case "$(uname -s)" in
