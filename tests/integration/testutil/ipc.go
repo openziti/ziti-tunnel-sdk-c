@@ -98,7 +98,7 @@ func openCommandPipe(path string, done <-chan struct{}) (*CommandsClient, error)
 		}
 		select {
 		case <-done:
-			log.Printf("ipc: dial conncted %s", path)
+			log.Printf("ipc: dial connected %s", path)
 			return nil, fmt.Errorf("process exited before %s became dialable: %v", path, err)
 		case <-time.After(dialRetryInterval):
 		}

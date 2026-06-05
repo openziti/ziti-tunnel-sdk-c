@@ -271,7 +271,8 @@ func runCommand(name string, args ...string) error {
 // RequireCATrusted skips the test (with OS-specific install/cleanup
 // instructions) if the overlay's CA isn't in the calling OS's trust store.
 func (o *Overlay) RequireCATrusted(t *testing.T) {
-	if o.CATrusted() {
+	// With AutoTrustCA the harness installed the CA during setup
+	if o.AutoTrustCA || o.CATrusted() {
 		return
 	}
 	// TODO: remove this branch when ziti 1.6 is no longer part of LTS; manual
