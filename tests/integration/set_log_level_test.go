@@ -28,6 +28,7 @@ func TestSetLogLevel(t *testing.T) {
 
 func succeeds(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
-		state.zetClient.SetLogLevel(t, "trace").AssertSuccess(t)
+		setLogLevelResp := state.zetClient.SetLogLevel(t, "trace")
+		setLogLevelResp.AssertSuccess()
 	})
 }

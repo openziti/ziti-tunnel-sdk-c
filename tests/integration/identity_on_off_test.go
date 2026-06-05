@@ -35,12 +35,14 @@ func togglesActiveState(t *testing.T) {
 		idName := "test_on_off"
 		added := testutil.FetchAndEnrollJwt(t, state.overlay, state.zetClient, idName)
 
-		client.IdentityOnOff(t, added.Id.Identifier, false).AssertSuccess(t)
+		offResp := client.IdentityOnOff(t, added.Id.Identifier, false)
+		offResp.AssertSuccess()
 
 		off := events.WaitForIdentityEvent(t, "added", idName)
 		require.False(t, off.Id.Active, "identity:added Active=%t after IdentityOnOff(false)", off.Id.Active)
 
-		client.IdentityOnOff(t, added.Id.Identifier, true).AssertSuccess(t)
+		onResp := client.IdentityOnOff(t, added.Id.Identifier, true)
+		onResp.AssertSuccess()
 
 		on := events.WaitForIdentityEvent(t, "added", idName)
 		require.True(t, on.Id.Active, "identity:added Active=%t after IdentityOnOff(true)", on.Id.Active)

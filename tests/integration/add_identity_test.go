@@ -46,7 +46,7 @@ func sameJwtTwiceSecondFails(t *testing.T) {
 			JwtContent:       &jwt,
 		}
 		addResp := state.zetClient.AddIdentity(t, identityData)
-		addResp.AssertFail(t, 500, "identity exists with the same name")
+		addResp.AssertFail(500, "identity exists with the same name")
 	})
 }
 
@@ -58,7 +58,7 @@ func withInvalidJwtFails(t *testing.T) {
 			JwtContent:       &badJwt,
 		}
 		addResp := state.zetClient.AddIdentity(t, identityData)
-		addResp.AssertFail(t, 500, "")
+		addResp.AssertFail(500, "")
 	})
 }
 
@@ -70,7 +70,7 @@ func withEmptyJwtFails(t *testing.T) {
 			JwtContent:       &emptyJwt,
 		}
 		addResp := state.zetClient.AddIdentity(t, identityData)
-		addResp.AssertFail(t, 500, "")
+		addResp.AssertFail(500, "")
 	})
 }
 
@@ -87,7 +87,7 @@ func withDeletedIdentityFails(t *testing.T) {
 			JwtContent:       &jwt,
 		}
 		addResp := state.zetClient.AddIdentity(t, identityData)
-		addResp.AssertFail(t, 500, "")
+		addResp.AssertFail(500, "")
 	})
 }
 
@@ -100,7 +100,7 @@ func withSlashInFilenameFails(t *testing.T) {
 			JwtContent:       &jwt,
 		}
 		addResp := state.zetClient.AddIdentity(t, identityData)
-		addResp.AssertFail(t, 500, "invalid file name")
+		addResp.AssertFail(500, "invalid file name")
 	})
 }
 
@@ -113,7 +113,7 @@ func withDotDotInFilenameFails(t *testing.T) {
 			JwtContent:       &jwt,
 		}
 		addResp := state.zetClient.AddIdentity(t, identityData)
-		addResp.AssertFail(t, 500, "not within the configuration directory")
+		addResp.AssertFail(500, "not within the configuration directory")
 	})
 }
 
@@ -127,6 +127,6 @@ func filenameExceedsCharLimitFails(t *testing.T) {
 			JwtContent:       &jwt,
 		}
 		addResp := state.zetClient.AddIdentity(t, identityData)
-		addResp.AssertFail(t, 500, "invalid file name")
+		addResp.AssertFail(500, "invalid file name")
 	})
 }

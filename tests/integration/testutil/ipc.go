@@ -233,6 +233,7 @@ func (c *EventClient) WaitForMfaEvent(t *testing.T, action, fingerprint string) 
 	raw := c.waitForEvent(t, "mfa", action, fingerprint)
 	var ev MfaEvent
 	require.NoError(t, json.Unmarshal(raw, &ev), "parse MfaEvent: %s", raw)
+	ev.t = t
 	return ev
 }
 
@@ -263,6 +264,7 @@ func (c *CommandsClient) RefreshIdentity(t *testing.T, identifier string) *Servi
 	t.Logf("sending RefreshIdentity for %q", identifier)
 	resp, err := send[IdentifierFunction, ServiceResponse](&c.IPCClient, f)
 	require.NoError(t, err, "failed to send RefreshIdentity\n%s", c.LogPath)
+	resp.t = t
 	return resp
 }
 
@@ -274,6 +276,7 @@ func (c *CommandsClient) RemoveIdentity(t *testing.T, identifier string) *Servic
 	t.Logf("sending RemoveIdentity for %q", identifier)
 	resp, err := send[IdentifierFunction, ServiceResponse](&c.IPCClient, f)
 	require.NoError(t, err, "failed to send RemoveIdentity\n%s", c.LogPath)
+	resp.t = t
 	return resp
 }
 
@@ -285,6 +288,7 @@ func (c *CommandsClient) IdentityOnOff(t *testing.T, identifier string, onOff bo
 	t.Logf("sending IdentityOnOff(%t) for %q", onOff, identifier)
 	resp, err := send[IdentityOnOffFunction, ServiceResponse](&c.IPCClient, f)
 	require.NoError(t, err, "failed to send IdentityOnOff(%t)\n%s", onOff, c.LogPath)
+	resp.t = t
 	return resp
 }
 
@@ -296,6 +300,7 @@ func (c *CommandsClient) SetLogLevel(t *testing.T, level string) *ServiceRespons
 	t.Logf("sending SetLogLevel(%q)", level)
 	resp, err := send[SetLogLevelFunction, ServiceResponse](&c.IPCClient, f)
 	require.NoError(t, err, "failed to send SetLogLevel\n%s", c.LogPath)
+	resp.t = t
 	return resp
 }
 
@@ -307,6 +312,7 @@ func (c *CommandsClient) ZitiDump(t *testing.T, identifier, dumpPath string) *Se
 	t.Logf("sending ZitiDump for %q", identifier)
 	resp, err := send[ZitiDumpFunction, ServiceResponse](&c.IPCClient, f)
 	require.NoError(t, err, "failed to send ZitiDump\n%s", c.LogPath)
+	resp.t = t
 	return resp
 }
 
@@ -318,6 +324,7 @@ func (c *CommandsClient) IpDump(t *testing.T, dumpPath string) *ServiceResponse 
 	t.Logf("sending IpDump to %q", dumpPath)
 	resp, err := send[IpDumpFunction, ServiceResponse](&c.IPCClient, f)
 	require.NoError(t, err, "failed to send IpDump\n%s", c.LogPath)
+	resp.t = t
 	return resp
 }
 
@@ -329,6 +336,7 @@ func (c *CommandsClient) EnableMFA(t *testing.T, identifier string) *MFAEnrollme
 	t.Logf("sending EnableMFA for %q", identifier)
 	resp, err := send[IdentifierFunction, MFAEnrollmentResponse](&c.IPCClient, f)
 	require.NoError(t, err, "failed to send EnableMFA\n%s", c.LogPath)
+	resp.t = t
 	return resp
 }
 
@@ -340,6 +348,7 @@ func (c *CommandsClient) SubmitMFA(t *testing.T, identifier, code string) *Servi
 	t.Logf("sending SubmitMFA code=%q for %q", code, identifier)
 	resp, err := send[MFAFunction, ServiceResponse](&c.IPCClient, f)
 	require.NoError(t, err, "failed to send SubmitMFA\n%s", c.LogPath)
+	resp.t = t
 	return resp
 }
 
@@ -351,6 +360,7 @@ func (c *CommandsClient) VerifyMFA(t *testing.T, identifier, code string) *Servi
 	t.Logf("sending VerifyMFA code=%q for %q", code, identifier)
 	resp, err := send[MFAFunction, ServiceResponse](&c.IPCClient, f)
 	require.NoError(t, err, "failed to send VerifyMFA\n%s", c.LogPath)
+	resp.t = t
 	return resp
 }
 
@@ -362,6 +372,7 @@ func (c *CommandsClient) RemoveMFA(t *testing.T, identifier, code string) *Servi
 	t.Logf("sending RemoveMFA code=%q for %q", code, identifier)
 	resp, err := send[MFAFunction, ServiceResponse](&c.IPCClient, f)
 	require.NoError(t, err, "failed to send RemoveMFA\n%s", c.LogPath)
+	resp.t = t
 	return resp
 }
 
@@ -373,6 +384,7 @@ func (c *CommandsClient) GenerateMFACodes(t *testing.T, identifier, code string)
 	t.Logf("sending GenerateMFACodes for %q", identifier)
 	resp, err := send[MFAFunction, ServiceResponse](&c.IPCClient, f)
 	require.NoError(t, err, "failed to send GenerateMFACodes\n%s", c.LogPath)
+	resp.t = t
 	return resp
 }
 
@@ -384,6 +396,7 @@ func (c *CommandsClient) GetMFACodes(t *testing.T, identifier, code string) *Ser
 	t.Logf("sending GetMFACodes for %q", identifier)
 	resp, err := send[MFAFunction, ServiceResponse](&c.IPCClient, f)
 	require.NoError(t, err, "failed to send GetMFACodes\n%s", c.LogPath)
+	resp.t = t
 	return resp
 }
 
@@ -395,6 +408,7 @@ func (c *CommandsClient) UpdateInterfaceConfig(t *testing.T, data InterfaceConfi
 	t.Logf("sending UpdateInterfaceConfig")
 	resp, err := send[InterfaceConfigFunction, ServiceResponse](&c.IPCClient, f)
 	require.NoError(t, err, "failed to send UpdateInterfaceConfig\n%s", c.LogPath)
+	resp.t = t
 	return resp
 }
 
@@ -406,6 +420,7 @@ func (c *CommandsClient) ExternalAuth(t *testing.T, identifier, provider string)
 	t.Logf("sending ExternalAuth provider=%q for %q", provider, identifier)
 	resp, err := send[ExternalAuthFunction, ExternalAuthResponse](&c.IPCClient, f)
 	require.NoError(t, err, "failed to send ExternalAuth\n%s", c.LogPath)
+	resp.t = t
 	return resp
 }
 
@@ -413,6 +428,7 @@ func (c *CommandsClient) Status(t *testing.T) *StatusUpdateResponse {
 	t.Logf("sending Status")
 	resp, err := send[ServiceFunction, StatusUpdateResponse](&c.IPCClient, NewServiceFunction("Status"))
 	require.NoError(t, err, "failed to send Status\n%s", c.LogPath)
+	resp.t = t
 	return resp
 }
 
@@ -424,6 +440,7 @@ func (c *CommandsClient) AddIdentity(t *testing.T, data AddIdentityData) *AddIde
 	t.Logf("sending AddIdentity for %q", data.IdentityFilename)
 	resp, err := send[AddIdentityFunction, AddIdentityResponse](&c.IPCClient, f)
 	require.NoError(t, err, "failed to send AddIdentity\n%s", c.LogPath)
+	resp.t = t
 	return resp
 }
 
@@ -432,32 +449,34 @@ func (c *CommandsClient) AddIdentity(t *testing.T, data AddIdentityData) *AddIde
 // ---------------------------------------------------------------------------
 
 // AssertSuccess asserts the daemon accepted the command.
-func (r *ServiceResponse) AssertSuccess(t *testing.T) {
-	require.True(t, r.Success(), "IPC command failed: error=%q code=%d", r.Error, r.Code)
+func (r *ServiceResponse) AssertSuccess() {
+	require.True(r.t, r.Success(), "IPC command failed: error=%q code=%d", r.Error, r.Code)
 }
 
 // AssertFail asserts the daemon rejected the command with code and an Error
 // containing message. Pass an empty message when the error text is not asserted.
-func (r *ServiceResponse) AssertFail(t *testing.T, code int, message string) {
-	require.Equal(t, code, r.Code)
-	require.Contains(t, r.Error, message)
+func (r *ServiceResponse) AssertFail(code int, message string) {
+	require.Equal(r.t, code, r.Code)
+	require.Contains(r.t, r.Error, message)
 }
 
 // AssertSuccess asserts the mfa event reports success.
-func (e MfaEvent) AssertSuccess(t *testing.T) {
-	require.True(t, e.Successful, "mfa:%s Successful=%t", e.Action, e.Successful)
+func (e MfaEvent) AssertSuccess() {
+	require.True(e.t, e.Successful, "mfa:%s Successful=%t", e.Action, e.Successful)
 }
 
 // GetExternalAuthURL sends ExternalAuth, asserts Code == 0, and returns the ext-auth URL.
 func (c *CommandsClient) GetExternalAuthURL(t *testing.T, identifier, provider string) string {
-	resp := c.ExternalAuth(t, identifier, provider)
-	resp.AssertSuccess(t)
-	require.NotEmpty(t, resp.Data.URL, "ExternalAuth response has empty URL")
-	return resp.Data.URL
+	extAuthResp := c.ExternalAuth(t, identifier, provider)
+	extAuthResp.AssertSuccess()
+	require.NotEmpty(t, extAuthResp.Data.URL, "ExternalAuth response has empty URL")
+	return extAuthResp.Data.URL
 }
 
 // DisableEnableIdentity turns the identity off then back on.
 func (c *CommandsClient) DisableEnableIdentity(t *testing.T, identifier string) {
-	c.IdentityOnOff(t, identifier, false).AssertSuccess(t)
-	c.IdentityOnOff(t, identifier, true).AssertSuccess(t)
+	offResp := c.IdentityOnOff(t, identifier, false)
+	offResp.AssertSuccess()
+	onResp := c.IdentityOnOff(t, identifier, true)
+	onResp.AssertSuccess()
 }

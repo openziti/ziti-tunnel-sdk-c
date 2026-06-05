@@ -43,7 +43,8 @@ func TestTunnelRestart(t *testing.T) {
 		inactiveIdName := "test_restart_inactive"
 		inactiveIdEvent := testutil.FetchAndEnrollJwt(t, state.overlay, state.zetClient, inactiveIdName)
 		state.zetClient.WaitForControllerEvent(t, "connected", inactiveIdName)
-		state.zetClient.IdentityOnOff(t, inactiveIdEvent.Id.Identifier, false).AssertSuccess(t)
+		offResp := state.zetClient.IdentityOnOff(t, inactiveIdEvent.Id.Identifier, false)
+		offResp.AssertSuccess()
 
 		extName := "test_restart_ext"
 		extEvent := testutil.EnrollUrlIdentityToNone(t, state.overlay, state.zetClient, extName)

@@ -49,7 +49,7 @@ func sameNameTwiceSecondFails(t *testing.T) {
 			ControllerURL:    &controllerURL,
 		}
 		addResp := state.zetClient.AddIdentity(t, identityData)
-		addResp.AssertFail(t, 500, "identity exists with the same name")
+		addResp.AssertFail(500, "identity exists with the same name")
 	})
 }
 
@@ -64,7 +64,7 @@ func afterJwtSameNameFails(t *testing.T) {
 			ControllerURL:    &controllerURL,
 		}
 		addResp := state.zetClient.AddIdentity(t, urlIdentityData)
-		addResp.AssertFail(t, 500, "identity exists with the same name")
+		addResp.AssertFail(500, "identity exists with the same name")
 	})
 }
 
@@ -77,7 +77,7 @@ func withNonZitiEndpointFails(t *testing.T) {
 		}
 
 		addResp := state.zetClient.AddIdentity(t, identityData)
-		addResp.AssertFail(t, 500, "")
+		addResp.AssertFail(500, "")
 	})
 }
 
@@ -90,6 +90,6 @@ func withMalformedUrlFails(t *testing.T) {
 		}
 
 		addResp := state.zetClient.AddIdentity(t, identityData)
-		addResp.AssertFail(t, 500, "")
+		addResp.AssertFail(500, "")
 	})
 }

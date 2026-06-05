@@ -43,7 +43,8 @@ func EnrollJwt(t *testing.T, zet *ZET, name, jwt string) IdentityEvent {
 		IdentityFilename: name,
 		JwtContent:       &jwt,
 	}
-	zet.AddIdentity(t, identityData).AssertSuccess(t)
+	addResp := zet.AddIdentity(t, identityData)
+	addResp.AssertSuccess()
 
 	added := zet.WaitForIdentityEvent(t, "added", name)
 	require.NotEmpty(t, added.Id.Identifier, "identity:added Identifier empty")
@@ -67,11 +68,11 @@ func EnrollAndEnableMFA(t *testing.T, overlay *Overlay, zet *ZET, name string) (
 	added := FetchAndEnrollJwt(t, overlay, zet, name)
 	zet.WaitForControllerEvent(t, "connected", name)
 
-	resp := zet.EnableMFA(t, added.Id.Identifier)
-	resp.AssertSuccess(t)
-	require.NotEmpty(t, resp.Data.ProvisioningUrl, "EnableMFA Data.ProvisioningUrl should be non-empty")
-	require.NotEmpty(t, resp.Data.RecoveryCodes, "EnableMFA Data.RecoveryCodes should be non-empty")
-	enrollment := resp.Data
+	enableResp := zet.EnableMFA(t, added.Id.Identifier)
+	enableResp.AssertSuccess()
+	require.NotEmpty(t, enableResp.Data.ProvisioningUrl, "EnableMFA Data.ProvisioningUrl should be non-empty")
+	require.NotEmpty(t, enableResp.Data.RecoveryCodes, "EnableMFA Data.RecoveryCodes should be non-empty")
+	enrollment := enableResp.Data
 
 	parsed, err := url.Parse(enrollment.ProvisioningUrl)
 	require.NoError(t, err, "parse provisioning URL")
@@ -90,9 +91,11 @@ func EnrollAndVerifyMFA(t *testing.T, overlay *Overlay, zet *ZET, name string) (
 
 	code := GenerateTOTP(t, secret, time.Now())
 
-	zet.VerifyMFA(t, enrollment.Identifier, code).AssertSuccess(t)
+	verifyResp := zet.VerifyMFA(t, enrollment.Identifier, code)
+	verifyResp.AssertSuccess()
 
-	zet.WaitForMfaEvent(t, "enrollment_verification", name).AssertSuccess(t)
+	verificationEvent := zet.WaitForMfaEvent(t, "enrollment_verification", name)
+	verificationEvent.AssertSuccess()
 
 	return enrollment, secret
 }
@@ -121,7 +124,8 @@ func EnrollUrlIdentityToNone(t *testing.T, overlay *Overlay, zet *ZET, name stri
 		IdentityFilename: name,
 		ControllerURL:    &controllerURL,
 	}
-	zet.AddIdentity(t, identityData).AssertSuccess(t)
+	addResp := zet.AddIdentity(t, identityData)
+	addResp.AssertSuccess()
 
 	event := zet.WaitForIdentityEvent(t, "needs_ext_login", name)
 	require.NotEmpty(t, event.Id.Identifier, "identity:needs_ext_login Identifier empty")

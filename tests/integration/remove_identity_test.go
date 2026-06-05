@@ -34,7 +34,8 @@ func withIdentifierFromEvent(t *testing.T) {
 
 		event := testutil.FetchAndEnrollJwt(t, state.overlay, state.zetClient, "test_remove_id")
 
-		client.RemoveIdentity(t, event.Id.Identifier).AssertSuccess(t)
+		removeResp := client.RemoveIdentity(t, event.Id.Identifier)
+		removeResp.AssertSuccess()
 
 		_, statErr := os.Stat(event.Id.Identifier)
 		require.True(t, os.IsNotExist(statErr), "identity file should be removed after RemoveIdentity: %s\n%s", event.Id.Identifier, state.zetClient.LogPath())

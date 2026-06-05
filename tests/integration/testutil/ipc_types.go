@@ -16,6 +16,8 @@ limitations under the License.
 
 package testutil
 
+import "testing"
+
 // All IPC wire types live here. Mirrors the wire JSON emitted/accepted by
 // ziti-edge-tunnel's IPC handlers (defined in lib/ziti-tunnel-cbs/include/ziti/ziti_tunnel_cbs.h).
 // JSON tags match the C TUNNEL_* macros exactly; do not rename them without
@@ -219,6 +221,8 @@ type ServiceResponse struct {
 	Code    int    `json:"Code,omitempty"`
 	Message string `json:"Message,omitempty"`
 	Error   string `json:"Error,omitempty"`
+
+	t *testing.T
 }
 
 // Success returns true when the daemon reports a non-error code.
@@ -370,6 +374,8 @@ type MfaEvent struct {
 	Successful      bool     `json:"Successful"`
 	ProvisioningUrl string   `json:"ProvisioningUrl,omitempty"`
 	RecoveryCodes   []string `json:"RecoveryCodes,omitempty"`
+
+	t *testing.T
 }
 
 // AuthenticationEvent fires on authentication transitions.
