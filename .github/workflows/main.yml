@@ -117,9 +117,6 @@ jobs:
   integration-tests:
     name: Integration Tests (${{ matrix.os.name }} / ziti ${{ matrix.ziti-channel.label }})
     needs: [ call-cmake-build, resolve-ziti-versions ]
-    permissions:
-      pull-requests: write  # post rolling log tail as PR comment
-      contents: write       # post commit comment on push builds
     strategy:
       fail-fast: false
       matrix:

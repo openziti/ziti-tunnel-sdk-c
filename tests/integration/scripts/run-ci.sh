@@ -95,75 +95,12 @@ echo "TEST_HOME=$TEST_HOME"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 
-# ---- Log capture + out-of-band GitHub comment --------------------------------
-# All stdout+stderr is tee'd to $CI_LOG_FILE (captured as an artifact when the
-# step ends). A background process also posts a rolling log tail as a PR or
-# commit comment via direct curl calls to api.github.com every 30 s. This is
-# the only mechanism that survives a hard runner-agent kill (jetsam OOM): the
-# curl call goes directly to GitHub without passing through the runner agent.
-# The comment is updated in-place on each tick so the PR/commit view always
-# shows the latest snapshot.
-#
-# Requires: GH_TOKEN, GITHUB_REPOSITORY, GITHUB_SHA (all set by the runner).
-# Requires pull-requests:write permission for PR builds, contents:write for push.
+# ---- Log capture -------------------------------------------------------------
+# All stdout+stderr is tee'd to $CI_LOG_FILE so it is available as a CI
+# artifact when the step ends (even on failure). This is the primary mechanism
+# for post-mortem log access; the artifact upload step in main.yml picks it up.
 CI_LOG_FILE="$TEST_HOME/ci-run.log"
 exec > >(tee "$CI_LOG_FILE") 2>&1
-
-if [ -n "${GH_TOKEN:-}" ] && [ -n "${GITHUB_REPOSITORY:-}" ] && [ -n "${GITHUB_SHA:-}" ]; then
-  (
-    set +ex
-    _api="https://api.github.com"
-    _comment_id=""
-    _patch_url=""
-
-    # Determine target: PR issue comment vs commit comment.
-    _pr_num=""
-    if printf '%s' "${GITHUB_REF:-}" | grep -q 'refs/pull/'; then
-      _pr_num=$(printf '%s' "${GITHUB_REF}" | grep -oE '[0-9]+' | head -1)
-    fi
-
-    _gh_post() {
-      local method="$1" url="$2" body="$3"
-      curl -sf -X "$method" \
-        -H "Authorization: token $GH_TOKEN" \
-        -H "Accept: application/vnd.github+json" \
-        -H "Content-Type: application/json" \
-        "$url" -d "$body" 2>/dev/null
-    }
-
-    _make_body() {
-      # jq handles escaping; head -c 48000 keeps us under GitHub's comment limit.
-      jq -n \
-        --arg hdr "**CI log** · $(uname -s)-$(uname -m) · [run ${GITHUB_RUN_ID:-?}](https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID:-0}) · $(date -u '+%H:%M UTC')" \
-        --arg log "$(tail -150 "$CI_LOG_FILE" 2>/dev/null | head -c 48000)" \
-        '{"body": ($hdr + "\n```\n" + $log + "\n```")}'
-    }
-
-    # First call: create the comment and capture its ID for subsequent updates.
-    _body=$(_make_body) || true
-    if [ -n "$_pr_num" ]; then
-      _comment_id=$(_gh_post POST \
-        "$_api/repos/$GITHUB_REPOSITORY/issues/$_pr_num/comments" \
-        "$_body" | jq -r '.id // empty')
-      [ -n "$_comment_id" ] && \
-        _patch_url="$_api/repos/$GITHUB_REPOSITORY/issues/comments/$_comment_id"
-    else
-      _comment_id=$(_gh_post POST \
-        "$_api/repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/comments" \
-        "$_body" | jq -r '.id // empty')
-      [ -n "$_comment_id" ] && \
-        _patch_url="$_api/repos/$GITHUB_REPOSITORY/comments/$_comment_id"
-    fi
-
-    while true; do
-      sleep 30
-      [ -z "$_patch_url" ] && continue
-      _body=$(_make_body) || continue
-      _gh_post PATCH "$_patch_url" "$_body" > /dev/null || true
-    done
-  ) &
-  disown $! 2>/dev/null || true
-fi
 
 # ---- Resolve ziti version ----------------------------------------------------
 if [ -z "${ZITI_VERSION:-}" ]; then
@@ -186,12 +123,20 @@ ZITI_BIN=$(find "$ZITI_DIR" -type f -name ziti | head -n1)
 chmod +x "$ZITI_BIN"
 echo "ZITI_BIN=$ZITI_BIN"
 
-# ---- Build/fetch dex ---------------------------------------------------------
-DEX_DIR="$TEST_HOME/dex"
-[ -n "${IDP_VERSION:-}" ] && export VERSION="$IDP_VERSION"
-DEST="$DEX_DIR" "$REPO_ROOT/tests/integration/scripts/fetch-dex.sh"
-IDP_BIN="$DEX_DIR/dex"
-echo "IDP_BIN=$IDP_BIN"
+# ---- Build/fetch dex (Linux only) -------------------------------------------
+# Dex requires downloading a new Go toolchain (go1.25.x) and compiling a large
+# project from source on every ephemeral runner. On macOS this consistently
+# exhausts available RAM and incapacitates the runner agent. External auth tests
+# are therefore skipped on macOS by leaving IDP_BIN empty, which causes
+# useTestHarnessIdP=false in config.json and RequireConfigured() to t.Skip().
+IDP_BIN=""
+if [[ "$(uname -s)" != Darwin ]]; then
+  DEX_DIR="$TEST_HOME/dex"
+  [ -n "${IDP_VERSION:-}" ] && export VERSION="$IDP_VERSION"
+  DEST="$DEX_DIR" "$REPO_ROOT/tests/integration/scripts/fetch-dex.sh"
+  IDP_BIN="$DEX_DIR/dex"
+fi
+echo "IDP_BIN=${IDP_BIN:-(none, external-auth tests will skip)}"
 
 # ---- Optional ZET release overrides ------------------------------------------
 ZET_BIN_B="${ZET_BIN_B:-$ZET_BIN}"
@@ -366,28 +311,6 @@ cleanup() {
       sudo security delete-certificate -Z "$fp" /Library/Keychains/System.keychain || true
       ;;
   esac
-  # Final comment update: post the last ~300 lines so the comment always ends
-  # with the state at exit (success, failure, or timeout) rather than the
-  # last 30-second snapshot. The background loop's _patch_url is not in scope
-  # here, so we re-derive the target URL from the same env vars.
-  if [ -n "${GH_TOKEN:-}" ] && [ -n "${GITHUB_REPOSITORY:-}" ] && [ -f "${CI_LOG_FILE:-}" ]; then
-    _final_body=$(jq -n \
-      --arg hdr "**CI log — final** · $(uname -s)-$(uname -m) · [run ${GITHUB_RUN_ID:-?}](https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID:-0}) · $(date -u '+%H:%M UTC')" \
-      --arg log "$(tail -300 "$CI_LOG_FILE" 2>/dev/null | head -c 48000)" \
-      '{"body": ($hdr + "\n```\n" + $log + "\n```")}' 2>/dev/null) || true
-    if [ -n "$_final_body" ]; then
-      if printf '%s' "${GITHUB_REF:-}" | grep -q 'refs/pull/'; then
-        _final_pr=$(printf '%s' "${GITHUB_REF}" | grep -oE '[0-9]+' | head -1)
-        curl -sf -X POST \
-          -H "Authorization: token $GH_TOKEN" \
-          -H "Accept: application/vnd.github+json" \
-          -H "Content-Type: application/json" \
-          "https://api.github.com/repos/$GITHUB_REPOSITORY/issues/$_final_pr/comments" \
-          -d "$_final_body" > /dev/null 2>&1 || true
-      fi
-    fi
-    unset _final_body _final_pr
-  fi
   # Don't kill the heartbeat or jetsam watcher here: let them run a few more
   # cycles to capture post-crash system state. The runner terminates all
   # remaining processes when the job ends.
@@ -411,7 +334,7 @@ jq -n \
     zetA: { binary: $zetBin,  verbosity: 4, tlsuvDebug: 0 },
     zetB: { binary: $zetBinB, verbosity: 4, tlsuvDebug: 0 },
     idp: {
-      useTestHarnessIdP: true,
+      useTestHarnessIdP: ($idpBin != ""),
       binary: $idpBin,
       issuer: "",
       clientId: "ziti-test",
