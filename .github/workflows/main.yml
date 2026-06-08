@@ -200,11 +200,6 @@ jobs:
           IDP_VERSION: ${{ inputs.idp_version }}
           ZET1_VERSION: ${{ inputs.zet1_version }}
           ZET2_VERSION: ${{ inputs.zet2_version }}
-          CI_LOG_S3_BUCKET: ziti-tunnel-sdk-c
-          CI_LOG_S3_PREFIX: integration-tests
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: ${{ secrets.AWS_DEFAULT_REGION || 'us-east-1' }}
         run: ./tests/integration/scripts/run-ci.sh --install-cert
 
       - name: Run integration tests (Windows)
@@ -280,6 +275,8 @@ jobs:
             ${{ runner.temp }}/zets/logs/*.log
             ${{ runner.temp }}/overlay/quickstart-logs/*.log
             ${{ runner.temp }}/idp/logs/*.log
+            ${{ runner.temp }}/ci-run.log
+            ${{ runner.temp }}/transfer-urls.txt
           if-no-files-found: ignore
 
   nix-build:

@@ -95,52 +95,43 @@ echo "TEST_HOME=$TEST_HOME"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 
-# ---- Stream logs to S3 (optional) -------------------------------------------
-# If CI_LOG_S3_BUCKET is set, all stdout+stderr is tee'd to a local file and a
-# background process pushes it to S3 every 30 s via the AWS CLI (pre-installed
-# on GitHub macOS runners). The push goes directly to the network — it does not
-# go through the runner agent — so the log survives a dead or unresponsive agent.
-# Required env: CI_LOG_S3_BUCKET, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY,
-# AWS_DEFAULT_REGION (must match the bucket's actual region).
+# ---- Stream logs to transfer.sh ----------------------------------------------
+# All stdout+stderr is tee'd to a local file. A background process uploads
+# periodic snapshots to transfer.sh (no credentials required) so the log
+# survives a dead runner agent. Each snapshot gets a unique URL which is:
+#   - printed to stdout (visible in the CI console while the runner lives)
+#   - appended to $TEST_HOME/transfer-urls.txt (captured by the artifact upload)
+#   - written to $GITHUB_STEP_SUMMARY when available (visible in job summary)
+# The last URL printed before a crash is the one to fetch.
 CI_LOG_FILE="$TEST_HOME/ci-run.log"
 exec > >(tee "$CI_LOG_FILE") 2>&1
-if [ -n "${CI_LOG_S3_BUCKET:-}" ] && command -v aws >/dev/null 2>&1; then
-  _run_id="${GITHUB_RUN_ID:-$(date +%s)}"
-  _attempt="${GITHUB_RUN_ATTEMPT:-1}"
-  _ziti="${ZITI_VERSION:-unknown}"
-  _s3_region="${AWS_DEFAULT_REGION:-us-east-1}"
-  _s3_key="${CI_LOG_S3_PREFIX:-ci-logs}/${_run_id}/${_attempt}/$(uname -s)-$(uname -m)-ziti${_ziti}.log"
-  _s3_err="$TEST_HOME/s3-upload-errors.log"
-  echo "log streaming to s3://${CI_LOG_S3_BUCKET}/${_s3_key} (region=${_s3_region})"
 
-  # Probe AWS auth and bucket access before entering the upload loop so any
-  # misconfiguration is visible immediately rather than silently failing for
-  # the entire run.
-  echo "=== S3 preflight ==="
-  aws sts get-caller-identity --region "$_s3_region" 2>&1 \
-    | head -5 || echo "WARNING: aws sts get-caller-identity failed (credentials may be wrong or absent)"
-  aws s3 ls "s3://${CI_LOG_S3_BUCKET}/" --region "$_s3_region" 2>&1 \
-    | head -3 || echo "WARNING: aws s3 ls failed (bucket may not exist or wrong region)"
-  echo "=== end S3 preflight ==="
-
-  (
-    set +ex
-    # First upload immediately so there is always at least one copy in S3 even
-    # if the runner agent dies shortly after. Errors go to a log file rather
-    # than /dev/null so they are visible in the uploaded artifact.
-    aws s3 cp "$CI_LOG_FILE" "s3://${CI_LOG_S3_BUCKET}/${_s3_key}" \
-      --region "$_s3_region" --quiet 2>>"$_s3_err" || \
-      echo "$(date): initial upload failed (see s3-upload-errors.log)" >>"$_s3_err"
-    while true; do
-      sleep 30
-      aws s3 cp "$CI_LOG_FILE" "s3://${CI_LOG_S3_BUCKET}/${_s3_key}" \
-        --region "$_s3_region" --quiet 2>>"$_s3_err" || true
-    done
-  ) &
-  _s3_uploader_pid=$!
-  disown $_s3_uploader_pid 2>/dev/null || true
-  unset _run_id _attempt _ziti _s3_region _s3_key
-fi
+_transfer_log_name="ci-$(uname -s)-$(uname -m)-${GITHUB_RUN_ID:-$(date +%s)}.log"
+(
+  set +ex
+  _urls_file="$TEST_HOME/transfer-urls.txt"
+  _do_upload() {
+    local label="$1"
+    local url
+    url=$(curl --silent --max-time 30 \
+      --upload-file "$CI_LOG_FILE" \
+      "https://transfer.sh/$_transfer_log_name" 2>/dev/null) || true
+    if [ -n "$url" ]; then
+      echo "log snapshot [$label]: $url" | tee -a "$_urls_file"
+      if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+        echo "- log snapshot [$label]: $url" >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+      fi
+    fi
+  }
+  # Upload immediately so there is always at least one URL in case the runner
+  # dies before the first 30-second interval elapses.
+  _do_upload "initial"
+  while true; do
+    sleep 30
+    _do_upload "$(date -u +%H:%M:%S)"
+  done
+) &
+disown $! 2>/dev/null || true
 
 # ---- Resolve ziti version ----------------------------------------------------
 if [ -z "${ZITI_VERSION:-}" ]; then
@@ -331,6 +322,39 @@ if [ -z "$INSTALL_CERT" ]; then
 else
   AUTO_TRUST_CA=true
 fi
+
+cleanup() {
+  case "$INSTALLED_CA" in
+    linux)
+      sudo rm -f /usr/local/share/ca-certificates/ziti-test.crt
+      sudo update-ca-certificates --fresh >/dev/null
+      ;;
+    darwin)
+      fp=$(openssl x509 -in "$CA_CERT" -noout -fingerprint -sha1 | sed 's/.*=//' | tr -d ':')
+      sudo security delete-certificate -Z "$fp" /Library/Keychains/System.keychain || true
+      ;;
+  esac
+  # Final transfer.sh upload so the complete log is always available regardless
+  # of how the script exits (timeout, test failure, signal, etc.).
+  if [ -n "${CI_LOG_FILE:-}" ] && [ -f "$CI_LOG_FILE" ]; then
+    _final_url=$(curl --silent --max-time 30 \
+      --upload-file "$CI_LOG_FILE" \
+      "https://transfer.sh/${_transfer_log_name:-ci-run.log}" 2>/dev/null) || true
+    if [ -n "$_final_url" ]; then
+      echo "final log upload: $_final_url" | tee -a "$TEST_HOME/transfer-urls.txt"
+      if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+        echo "- **final log**: $_final_url" >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+      fi
+    fi
+    unset _final_url
+  fi
+  # Don't kill the heartbeat or jetsam watcher here: let them run a few more
+  # cycles to capture post-crash system state. The runner terminates all
+  # remaining processes when the job ends.
+  disown "$HEARTBEAT_PID" 2>/dev/null || true
+  [ -n "$JETSAM_PID" ] && disown "$JETSAM_PID" 2>/dev/null || true
+}
+trap cleanup EXIT
 
 # ---- Write config.json -------------------------------------------------------
 cd "$REPO_ROOT/tests/integration"
