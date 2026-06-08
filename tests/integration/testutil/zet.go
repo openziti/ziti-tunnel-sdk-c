@@ -29,9 +29,11 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"testing"
 	"time"
-)
 
+	"github.com/stretchr/testify/require"
+)
 
 type ZET struct {
 	BinPath string
@@ -57,8 +59,8 @@ type ZET struct {
 	cmdDone chan struct{}
 	logFile *os.File
 
-	Commands *CommandsClient
-	Events   *EventClient
+	*CommandsClient
+	*EventClient
 }
 
 // StartZET spawns ziti-edge-tunnel in "run" mode with identityDir as its -I sandbox.
@@ -86,8 +88,6 @@ func (z *ZET) Start() error {
 		_ = os.Remove(cmdPipe)
 		_ = os.Remove(eventPipe)
 	}
-	_ = z.RemoveJSONIdentities()
-
 	args := []string{"run", "-I", identityDir, "-v", strconv.Itoa(z.Verbosity)}
 	if z.Discriminator != "" {
 		args = append(args, "-P", z.Discriminator)
@@ -131,17 +131,17 @@ func (z *ZET) Start() error {
 		close(z.cmdDone)
 	}()
 
-	cmds, err := openCommandPipe(cmdPipe, z.cmdDone)
+	cmds, err := z.DialIPC()
 	if err != nil {
 		return fmt.Errorf("zet[%s] command pipe: %w", z.Discriminator, err)
 	}
-	z.Commands = cmds
+	z.CommandsClient = cmds
 
 	events, err := subscribeToEventPipe(EventPipePathFor(z.Discriminator), z.cmdDone)
 	if err != nil {
 		return fmt.Errorf("zet[%s] event pipe: %w", z.Discriminator, err)
 	}
-	z.Events = events
+	z.EventClient = events
 	return nil
 }
 
@@ -172,6 +172,36 @@ func (z *ZET) Stop() {
 	log.Fatalf("ZET pid %d did not exit within 60s of Kill; orphan likely, aborting test run", pid)
 }
 
+// Restart stops the process and starts it again against the same identity dir.
+// Start no longer wipes identities, so enrolled identities persist across the
+// restart. Callers wanting a clean slate wipe before the first Start, not here.
+func (z *ZET) Restart() error {
+	z.Stop()
+	return z.Start()
+}
+
+// DialIPC connects to this ZET instance's IPC command pipe.
+// Retries until the pipe is dialable or the ZET process exits.
+func (z *ZET) DialIPC() (*CommandsClient, error) {
+	cmds, err := openCommandPipe(CommandPipePathFor(z.Discriminator), z.cmdDone)
+	if err != nil {
+		return nil, err
+	}
+	cmds.LogPath = z.LogPath()
+	return cmds, nil
+}
+
+// ReconnectEvents closes the event pipe and re-subscribes to the same running
+// daemon, replacing z.EventClient. The daemon resends its status snapshot on connect.
+func (z *ZET) ReconnectEvents(t *testing.T) {
+	path := EventPipePathFor(z.Discriminator)
+	log.Printf("ipc: reconnecting event pipe %s", path)
+	require.NoError(t, z.EventClient.Close(), "close event pipe")
+	events, err := subscribeToEventPipe(path, z.cmdDone)
+	require.NoError(t, err, "reconnect event pipe")
+	z.EventClient = events
+}
+
 // RemoveJSONIdentities deletes every *.json file in the identity dir.
 func (z *ZET) RemoveJSONIdentities() error {
 	identityDir := filepath.Join(z.RootDir, "identities")
@@ -196,6 +226,7 @@ func (z *ZET) RemoveJSONIdentities() error {
 func (z *ZET) LogPath() string {
 	return filepath.Join(z.RootDir, "logs")
 }
+
 func (z *ZET) LogFile() string {
 	logName := "ziti-edge-tunnel"
 	if z.Discriminator != "" {

@@ -83,19 +83,14 @@ Runs the external-auth tests too. Needs a `dex` binary and the overlay CA truste
     "extraClientIds": ["ziti-test-2", "ziti-test-3"],
     "audience": "ziti-test",
     "scopes": "openid profile email",
-    "user": {
-      "email": "test@example.com",
-      "username": "test",
-      "userID": "08a8684b-db88-4b73-90a9-3cd1661f5466",
-      "password": "password"
-    }
+    "password": "password"
   }
 }
 ```
 
 ### C. Your own controller + external IdP
 
-Targets a controller you already run and an IdP you already have. The harness does not create the signer here; it **adopts** the one named by `signerName`, which must already exist on the controller. Set `sub` to the value of whatever claim that signer matches on (its `claimsProperty`), and `issuer` to your IdP.
+Targets a controller you already run and an IdP you already have. The harness does not create the signer here; it **adopts** the one named by `signerName`, which must already exist on the controller and match the `email` claim. Your IdP must have the [test users](#idp-test-users) provisioned, all sharing `idp.password`.
 
 ```json
 {
@@ -120,11 +115,7 @@ Targets a controller you already run and an IdP you already have. The harness do
     "useTestHarnessIdP": false,
     "issuer": "https://your-tenant.example.com/",
     "signerName": "my-existing-signer",
-    "sub": "the-users-subject-claim",
-    "user": {
-      "email": "user@example.com",
-      "password": "REDACTED"
-    }
+    "password": "REDACTED"
   }
 }
 ```
@@ -161,6 +152,7 @@ The suite hard-requires only **`ziti.binary`** and **`zetA.binary`**; everything
 | `ziti.binary` | Path to the `ziti` CLI. **Required.** |
 | `ziti.url` | Controller URL. **Empty = stand up a local quickstart overlay.** Set = use that controller. |
 | `ziti.user` / `ziti.password` | Admin credentials (quickstart default is `admin` / `admin`). |
+| `ziti.autoTrustCa` | Quickstart mode only: the harness installs the overlay CA into OS trust during setup and removes it at teardown. The install deliberately happens **after** the fixture import - ziti 1.6's `ops import` fails when the controller CA is already OS-trusted. |
 | `zetA` / `zetB` | The two tunnelers (client and host). `zetA.binary` is **required**; `zetB.binary` empty reuses it. `verbosity` and `tlsuvDebug` raise log detail (higher is noisier; `4` / `0` are fine defaults). |
 | `idp.useTestHarnessIdP` | `true` = harness runs a local IdP from `idp.binary`. `false` = external IdP, or none. |
 | `idp.binary` | Path to the local IdP binary (dex). Required when `useTestHarnessIdP` is `true`. |
@@ -169,16 +161,15 @@ The suite hard-requires only **`ziti.binary`** and **`zetA.binary`**; everything
 | `idp.clientId` | OIDC client id (used by the harness IdP and by any signer the harness creates). |
 | `idp.audience` | Expected token audience for a signer the harness creates. External IdP: the token's `aud` (often the controller URL). Harness IdP: the client id. |
 | `idp.scopes` | Space-separated OIDC scopes requested by a created signer. |
-| `idp.sub` | The identity's `externalId`, which must match the signer's matched claim. Empty falls back to `idp.user.email`. |
 | `idp.extraClientIds` | Extra client ids; only the multi-signer test uses these. |
-| `idp.user` | The IdP login user. `email` / `password` drive the login; `username` / `userID` seed the harness IdP's user record. |
+| `idp.password` | The password shared by every [test user](#idp-test-users). Harness IdP: must match the bcrypt hash in `testdata/dex-config.yaml` (default `password`). |
 
 ## The IdP
 
 The external-auth tests run an OAuth2 PKCE login, so they need an IdP. Three states:
 
 - **None** - `useTestHarnessIdP: false` with an empty `issuer`. The tests skip.
-- **Harness IdP** - `useTestHarnessIdP: true`. The harness starts dex locally and seeds the user. Build dex first:
+- **Harness IdP** - `useTestHarnessIdP: true`. The harness starts dex locally against the checked-in `testdata/dex-config.yaml`, which carries the OIDC clients and all [test users](#idp-test-users). Build dex first:
 
   ```bash
   # Linux / macOS
@@ -193,11 +184,31 @@ The external-auth tests run an OAuth2 PKCE login, so they need an IdP. Three sta
   ```
 
   The script prints the built binary path; put it in `idp.binary`. (It needs Go and git on PATH.)
-- **External IdP** - `useTestHarnessIdP: false` with `issuer` + `signerName` (mode C). The login form is read generically, so dex, Keycloak, and Auth0 all work; the IdP user must be a username/password (database) user, not a social login. The signer matches one claim (its `claimsProperty`) against the identity's `externalId`, so `idp.sub` (or `idp.user.email` when `sub` is empty) must equal that claim's value in the token.
+- **External IdP** - `useTestHarnessIdP: false` with `issuer` + `signerName` (mode C). The login form is read generically, so dex, Keycloak, and Auth0 all work; the IdP users must be username/password (database) users, not social logins. The signer must match the `email` claim, since each identity's `externalId` is its test user's email.
+
+### IdP test users
+
+Each external-auth test logs in as its own IdP user; the user's email is the controller identity's `externalId`. The harness IdP gets these from `testdata/dex-config.yaml`. To use your own IdP, create all of them, every one with `idp.password` as the password:
+
+| Email | Used by |
+|-------|---------|
+| `test_ext_auth_none_happy@test.com` | enroll-to-none happy path |
+| `test_ext_auth_invalid_provider@test.com` | invalid-provider rejection (externalId only; never logs in) |
+| `test_ext_auth_unknown_identity@test.com` | login succeeds, controller deliberately has no matching identity |
+| `test_ext_auth_multi_default@test.com` | multi-signer, default auth policy |
+| `test_ext_auth_multi_named@test.com` | multi-signer, named auth policy |
+| `test_ext_auth_cert_happy@test.com` | enroll-to-cert (also the both-flows rerun) |
+| `test_ext_auth_token_happy@test.com` | enroll-to-token (also the both-flows rerun) |
+| `test_ext_auth_cert_then_none@test.com` | cross-mode rejection |
+| `test_ext_auth_cert_then_token@test.com` | cross-mode rejection |
+| `test_ext_auth_token_then_cert@test.com` | cross-mode rejection |
+| `test_restart_ext@test.com` | tunnel-restart ext-auth identity (externalId only; never logs in) |
 
 ## Trusting the test CA
 
 To test by-URL enrollment you must trust the controller's CA in the OS store; with no JWT to carry it, those tests fall back to OS trust and skip when it's missing.
+
+Set `autoTrustCa: true` (quickstart mode) and the harness handles it: install after the fixture import, removal at teardown. If you manage trust manually instead, do not install the CA before running the suite with a ziti 1.6 CLI - its `ops import` fails against an OS-trusted controller.
 
 - A controller with a publicly trusted cert needs nothing.
 - For a **local quickstart** overlay, trust its generated CA at `<testHome>/overlay/pki/root-ca/certs/root-ca.cert`:

@@ -20,7 +20,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -39,15 +38,21 @@ func (p *IdP) RequireConfigured(t *testing.T) {
 	}
 }
 
+// dexConfigPath is the checked-in dex config the test-harness IdP serves; its
+// issuer, clients, and per-test users live there, not in generated config.
+const dexConfigPath = "testdata/dex-config.yaml"
+
+// dexIssuer must match the issuer/web.http in dex-config.yaml.
+const dexIssuer = "http://127.0.0.1:5556/dex"
+
 // IdP is a running test identity provider used to exercise the OAuth2 PKCE flow.
-// When UseTestHarnessIdP is true, Start() spawns a local dex from Bin and seeds
-// the User. When false, Start() assumes IssuerURL points at a pre-existing IdP
-// that already has the User provisioned.
+// When UseTestHarnessIdP is true, Start() spawns a local dex from Bin against
+// dex-config.yaml. When false, Start() assumes IssuerURL points at a pre-existing
+// IdP that already has the test users provisioned.
 type IdP struct {
 	UseTestHarnessIdP bool
 	Bin               string
 	WorkDir           string
-	HTTPAddr          string
 	IssuerURL         string
 	JwksURI           string
 	SignerName        string
@@ -55,27 +60,15 @@ type IdP struct {
 	ClientIDExtraA    string
 	ClientIDExtraB    string
 	Audience          string
-	Sub               string
 	Scopes            string
-	Email             string
 	Password          string
-	Username          string
-	UserID            string
-	ExternalID        string
 	cmd               *exec.Cmd
 }
 
-type IdPUser struct {
-	Email    string `json:"email"`
-	Username string `json:"username"`
-	UserID   string `json:"userID"`
-	Password string `json:"password"`
-}
-
-// Start launches the IdP test binary against a generated config and waits
-// for OIDC discovery (test-harness mode), or validates the configured external issuer
-// (pre-existing-IdP mode). Caller must defer Stop(). In test-harness mode, the IdP's
-// combined stdout+stderr is written to <WorkDir>/logs/idp.log so it sits
+// Start launches dex against the checked-in config and waits for OIDC discovery
+// (test-harness mode), or validates the configured external issuer
+// (pre-existing-IdP mode). Caller must defer Stop(). In test-harness mode, dex's
+// combined stdout+stderr is written to <WorkDir>/logs/dex.log so it sits
 // alongside the zet logs and survives the test temp dir being deleted.
 func (p *IdP) Start() error {
 	if !p.UseTestHarnessIdP {
@@ -94,87 +87,44 @@ func (p *IdP) Start() error {
 	}
 
 	if p.Bin == "" {
-		return fmt.Errorf("IdP binary path is empty")
+		return fmt.Errorf("dex binary path is empty")
 	}
 	if _, err := os.Stat(p.Bin); err != nil {
-		return fmt.Errorf("IdP binary not found: %w", err)
+		return fmt.Errorf("dex binary not found: %w", err)
 	}
 	if err := os.MkdirAll(p.WorkDir, 0o755); err != nil {
 		return fmt.Errorf("create IdP work dir: %w", err)
 	}
 
-	port, err := pickFreePort()
-	if err != nil {
-		return fmt.Errorf("pick IdP port: %w", err)
-	}
-	httpAddr := fmt.Sprintf("127.0.0.1:%d", port)
-	issuer := "http://" + httpAddr + "/dex"
-
-	clientsYAML := ""
-	for _, id := range []string{p.ClientIDWorks, p.ClientIDExtraA, p.ClientIDExtraB} {
-		if id == "" {
-			continue
-		}
-		clientsYAML += fmt.Sprintf(`  - id: %s
-    redirectURIs:
-      - http://127.0.0.1:20314/auth/callback
-      - http://localhost:20314/auth/callback
-    name: 'Ziti Test (%s)'
-    public: true
-`, id, id)
-	}
-
-	p.IssuerURL = issuer
-	p.HTTPAddr = httpAddr
-
-	cfgPath := filepath.Join(p.WorkDir, "idp.yaml")
-	const defaultIdPBcryptHash = `$2a$10$2b2cU8CPhOTaGrs1HRQuAueS7JTT5ZHsHSzYiFPm1leZck7Mc8T4W`
-	cfg := fmt.Sprintf(`issuer: %s
-storage:
-  type: memory
-web:
-  http: %s
-oauth2:
-  skipApprovalScreen: true
-staticClients:
-%senablePasswordDB: true
-staticPasswords:
-  - email: %q
-    hash: %q
-    username: %q
-    userID: %q
-`, issuer, httpAddr, clientsYAML, p.Email, defaultIdPBcryptHash, p.Username, p.UserID)
-	if err := os.WriteFile(cfgPath, []byte(cfg), 0o644); err != nil {
-		return fmt.Errorf("write IdP config: %w", err)
-	}
+	p.IssuerURL = dexIssuer
 
 	logDir := filepath.Join(p.WorkDir, "logs")
 	if err := os.MkdirAll(logDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create IdP log dir: %w", err)
 	}
-	logPath := filepath.Join(logDir, "idp.log")
+	logPath := filepath.Join(logDir, "dex.log")
 	logFile, err := os.Create(logPath)
 	if err != nil {
-		return fmt.Errorf("create IdP log: %w", err)
+		return fmt.Errorf("create dex log: %w", err)
 	}
 
-	p.cmd = exec.Command(p.Bin, "serve", cfgPath)
+	p.cmd = exec.Command(p.Bin, "serve", dexConfigPath)
 	p.cmd.Stdout = logFile
 	p.cmd.Stderr = logFile
 	if err := p.cmd.Start(); err != nil {
 		logFile.Close()
-		return fmt.Errorf("start IdP: %w", err)
+		return fmt.Errorf("start dex: %w", err)
 	}
-	log.Printf("setup: started IdP pid=%d issuer=%s log=%s", p.cmd.Process.Pid, issuer, logPath)
+	log.Printf("setup: started dex pid=%d issuer=%s log=%s", p.cmd.Process.Pid, dexIssuer, logPath)
 
-	if err := waitForIdPDiscovery(issuer); err != nil {
+	if err := waitForIdPDiscovery(dexIssuer); err != nil {
 		p.Stop()
-		return fmt.Errorf("IdP discovery never came up (see %s): %w", logPath, err)
+		return fmt.Errorf("dex discovery never came up (see %s): %w", logPath, err)
 	}
-	jwks, err := fetchJWKSURI(issuer)
+	jwks, err := fetchJWKSURI(dexIssuer)
 	if err != nil {
 		p.Stop()
-		return fmt.Errorf("OIDC discovery for %s: %w", issuer, err)
+		return fmt.Errorf("OIDC discovery for %s: %w", dexIssuer, err)
 	}
 	p.JwksURI = jwks
 	return nil
@@ -217,15 +167,6 @@ func fetchJWKSURI(issuer string) (string, error) {
 		return "", fmt.Errorf("discovery %s has no jwks_uri", endpoint)
 	}
 	return doc.JwksURI, nil
-}
-
-func pickFreePort() (int, error) {
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return 0, err
-	}
-	defer l.Close()
-	return l.Addr().(*net.TCPAddr).Port, nil
 }
 
 func waitForIdPDiscovery(issuer string) error {

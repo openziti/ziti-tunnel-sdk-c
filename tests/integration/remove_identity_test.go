@@ -25,41 +25,17 @@ import (
 )
 
 func TestRemoveIdentity(t *testing.T) {
-	t.Run("withIdentifierFromEvent", testRemoveIdentityWithIdentifierFromEvent)
+	t.Run("withIdentifierFromEvent", withIdentifierFromEvent)
 }
 
-func testRemoveIdentityWithIdentifierFromEvent(t *testing.T) {
-	testutil.RunTestWithTimeout(t, func(t *testing.T) {
-		overlay := state.overlay
-		client := state.zetClient.Commands
-		events := state.zetClient.Events
+func withIdentifierFromEvent(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
+		event := testutil.FetchAndEnrollJwt(t, state.overlay, state.zetClient, "test_remove_id")
 
-		name := testutil.IdentityName(t)
-
-		t.Logf("creating JWT for %q", name)
-		jwt, err := overlay.CreateIdentityJWT(name)
-		require.NoError(t, err, "failed to create JWT")
-		require.NotEmpty(t, jwt)
-
-		identityData := testutil.AddIdentityData{
-			IdentityFilename: name,
-			JwtContent:       &jwt,
-		}
-		addResp := testutil.AddIdentity(t, client, identityData)
-		require.True(t, addResp.Success(), "AddIdentity failed: error=%q code=%d", addResp.Error, addResp.Code)
-
-		event := events.WaitForIdentityEvent(t, "added", name)
-		require.NotEmpty(t, event.Id.Identifier, "identity:added Identifier empty")
-		testutil.AssertValidJwtEnrolledIdentityFile(t, event.Id.Identifier)
-
-		t.Logf("sending RemoveIdentity for Identifier=%s", event.Id.Identifier)
-		removeResp, err := client.RemoveIdentity(event.Id.Identifier)
-		require.NoError(t, err, "failed to send RemoveIdentity\n%s", state.zetClient.LogPath())
-		require.True(t, removeResp.Success(), "RemoveIdentity failed: error=%q code=%d", removeResp.Error, removeResp.Code)
-		t.Logf("RemoveIdentity succeeded for %q", name)
+		removeResp := state.zetClient.RemoveIdentity(t, event.Id.Identifier)
+		removeResp.AssertSuccess()
 
 		_, statErr := os.Stat(event.Id.Identifier)
 		require.True(t, os.IsNotExist(statErr), "identity file should be removed after RemoveIdentity: %s\n%s", event.Id.Identifier, state.zetClient.LogPath())
-		t.Logf("identity file removed from disk: %s", event.Id.Identifier)
 	})
 }

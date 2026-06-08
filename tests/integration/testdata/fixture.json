@@ -1,0 +1,172 @@
+{
+  "authPolicies": [
+    {
+      "name": "test_mfa_totp_policy",
+      "primary": {
+        "cert": { "allowExpiredCerts": false, "allowed": true },
+        "extJwt": { "allowed": false, "allowedSigners": [] },
+        "updb": { "allowed": false, "lockoutDurationMinutes": 0, "maxAttempts": 5, "minPasswordLength": 5, "requireMixedCase": false, "requireNumberChar": false, "requireSpecialChar": false }
+      },
+      "secondary": { "requireTotp": true },
+      "tags": {}
+    }
+  ],
+  "identities": [
+    {
+      "name": "test_restart_jwt",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
+      "name": "test_restart_mfa",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
+      "name": "test_restart_inactive",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
+      "name": "test_restart_ext",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "externalId": "test_restart_ext@test.com"
+    },
+    {
+      "name": "test_mfa_enable_jwt",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
+      "name": "test_mfa_enable_totp_policy",
+      "isAdmin": false,
+      "authPolicy": "@test_mfa_totp_policy",
+      "enrollment": { "ott": true }
+    },
+    {
+      "name": "test_mfa_verify_valid_totp",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
+      "name": "test_mfa_verify_invalid_totp",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
+      "name": "test_mfa_reauth_valid_totp",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
+      "name": "test_mfa_reauth_recovery_code",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
+      "name": "test_mfa_reauth_invalid_totp",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
+      "name": "test_mfa_remove_valid_totp",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
+      "name": "test_mfa_remove_recovery_code",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
+      "name": "test_mfa_remove_invalid_totp",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
+      "name": "test_remove_id",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
+      "name": "test_on_off",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
+      "name": "test_add_id_happy",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
+      "name": "test_add_id_dup_name",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
+      "name": "test_add_id_deleted",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
+      "name": "test_add_id_slash",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
+      "name": "test_add_id_dotdot",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
+      "name": "test_add_id_long_name",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
+      "name": "test_url_enroll_after_jwt",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
+      "name": "test_ext_auth_none_happy",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "externalId": "test_ext_auth_none_happy@test.com"
+    },
+    {
+      "name": "test_ext_auth_invalid_provider",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "externalId": "test_ext_auth_invalid_provider@test.com"
+    },
+    {
+      "name": "test_ext_auth_multi_default",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "externalId": "test_ext_auth_multi_default@test.com"
+    }
+  ]
+}

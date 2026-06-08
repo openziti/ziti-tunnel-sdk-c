@@ -23,7 +23,12 @@ import (
 
 const TestTimeout = 5 * time.Second
 
-func RunTestWithTimeout(t *testing.T, f func(t *testing.T)) {
+func RunWithTimeout(t *testing.T, f func(t *testing.T)) {
+	t.Helper()
+	RunWithTimeoutOf(t, TestTimeout, f)
+}
+
+func RunWithTimeoutOf(t *testing.T, timeout time.Duration, f func(t *testing.T)) {
 	t.Helper()
 	done := make(chan any, 1)
 
@@ -37,7 +42,7 @@ func RunTestWithTimeout(t *testing.T, f func(t *testing.T)) {
 		if p != nil {
 			panic(p)
 		}
-	case <-time.After(TestTimeout):
-		t.Fatalf("test %s timed out after %s", t.Name(), TestTimeout)
+	case <-time.After(timeout):
+		t.Fatalf("test %s timed out after %s", t.Name(), timeout)
 	}
 }

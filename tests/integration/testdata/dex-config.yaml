@@ -1,0 +1,70 @@
+issuer: http://127.0.0.1:5556/dex
+storage:
+  type: memory
+web:
+  http: 127.0.0.1:5556
+oauth2:
+  skipApprovalScreen: true
+staticClients:
+  - id: ziti-test
+    redirectURIs: &redirects
+      - http://127.0.0.1:20314/auth/callback
+      - http://localhost:20314/auth/callback
+    name: 'Ziti Test (ziti-test)'
+    public: true
+  - id: ziti-test-2
+    redirectURIs: *redirects
+    name: 'Ziti Test (ziti-test-2)'
+    public: true
+  - id: ziti-test-3
+    redirectURIs: *redirects
+    name: 'Ziti Test (ziti-test-3)'
+    public: true
+enablePasswordDB: true
+# One user per ext-auth test so controller identities never share an externalId.
+# The anchored hash is bcrypt of "password"; idp.password in the test config must match.
+staticPasswords:
+  - email: test_ext_auth_none_happy@test.com
+    hash: &password $2a$10$2b2cU8CPhOTaGrs1HRQuAueS7JTT5ZHsHSzYiFPm1leZck7Mc8T4W
+    username: test_ext_auth_none_happy
+    userID: test_ext_auth_none_happy
+  - email: test_ext_auth_invalid_provider@test.com
+    hash: *password
+    username: test_ext_auth_invalid_provider
+    userID: test_ext_auth_invalid_provider
+  - email: test_ext_auth_unknown_identity@test.com
+    hash: *password
+    username: test_ext_auth_unknown_identity
+    userID: test_ext_auth_unknown_identity
+  - email: test_ext_auth_multi_default@test.com
+    hash: *password
+    username: test_ext_auth_multi_default
+    userID: test_ext_auth_multi_default
+  - email: test_ext_auth_multi_named@test.com
+    hash: *password
+    username: test_ext_auth_multi_named
+    userID: test_ext_auth_multi_named
+  - email: test_ext_auth_cert_happy@test.com
+    hash: *password
+    username: test_ext_auth_cert_happy
+    userID: test_ext_auth_cert_happy
+  - email: test_ext_auth_token_happy@test.com
+    hash: *password
+    username: test_ext_auth_token_happy
+    userID: test_ext_auth_token_happy
+  - email: test_ext_auth_cert_then_none@test.com
+    hash: *password
+    username: test_ext_auth_cert_then_none
+    userID: test_ext_auth_cert_then_none
+  - email: test_ext_auth_cert_then_token@test.com
+    hash: *password
+    username: test_ext_auth_cert_then_token
+    userID: test_ext_auth_cert_then_token
+  - email: test_ext_auth_token_then_cert@test.com
+    hash: *password
+    username: test_ext_auth_token_then_cert
+    userID: test_ext_auth_token_then_cert
+  - email: test_restart_ext@test.com
+    hash: *password
+    username: test_restart_ext
+    userID: test_restart_ext

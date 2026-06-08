@@ -31,6 +31,8 @@ import (
 
 const setupTimeout = 45 * time.Second
 
+const fixturePath = "testdata/fixture.json"
+
 var state TestState
 
 type TestState struct {
@@ -64,10 +66,6 @@ func TestMain(m *testing.M) {
 	}
 
 	zetLogDir := filepath.Join(cfg.TestHome, "zets")
-	externalID := cfg.IdP.Sub
-	if externalID == "" {
-		externalID = cfg.IdP.User.Email
-	}
 	var extraA, extraB string
 	if len(cfg.IdP.ExtraClientIDs) > 0 {
 		extraA = cfg.IdP.ExtraClientIDs[0]
@@ -82,6 +80,7 @@ func TestMain(m *testing.M) {
 			ControllerURL:      cfg.Ziti.URL,
 			ControllerUser:     cfg.Ziti.User,
 			ControllerPassword: cfg.Ziti.Password,
+			AutoTrustCA:        cfg.Ziti.AutoTrustCA,
 			Done:               make(chan error, 1),
 		},
 		zetClient: &testutil.ZET{
@@ -110,13 +109,8 @@ func TestMain(m *testing.M) {
 			ClientIDExtraA:    extraA,
 			ClientIDExtraB:    extraB,
 			Audience:          cfg.IdP.Audience,
-			Sub:               cfg.IdP.Sub,
 			Scopes:            cfg.IdP.Scopes,
-			Email:             cfg.IdP.User.Email,
-			Password:          cfg.IdP.User.Password,
-			Username:          cfg.IdP.User.Username,
-			UserID:            cfg.IdP.User.UserID,
-			ExternalID:        externalID,
+			Password:          cfg.IdP.Password,
 		},
 	}
 
@@ -138,6 +132,13 @@ func run(m *testing.M, state TestState) (int, error) {
 	defer state.zetHost.Stop()
 	defer state.idp.Stop()
 	defer func() {
+		if state.overlay.AutoTrustCA {
+			log.Printf("teardown: removing test CA from OS trust")
+			if err := state.overlay.RemoveCATrust(); err != nil {
+				log.Printf("teardown: WARNING: remove test CA from OS trust: %v", err)
+			}
+			return
+		}
 		if state.overlay.CATrusted() {
 			_, cleanup := state.overlay.OSCAStrings()
 			if cleanup == "" {
@@ -182,23 +183,67 @@ func doSetup(state TestState) error {
 		return fmt.Errorf("wait for cluster leader: %w", err)
 	}
 
-	log.Printf("setup: purging stale Test* identities")
-	if err := state.overlay.PurgeIdentities("Test"); err != nil {
+	log.Printf("setup: purging stale test identities")
+	if err := state.overlay.PurgeIdentities(); err != nil {
 		return fmt.Errorf("purge stale test identities: %w", err)
 	}
-	log.Printf("setup: purging stale Test* auth-policies")
-	if err := state.overlay.PurgeAuthPolicies("Test"); err != nil {
+	log.Printf("setup: purging stale test auth-policies")
+	if err := state.overlay.PurgeAuthPolicies(); err != nil {
 		return fmt.Errorf("purge stale test auth policies: %w", err)
 	}
-	log.Printf("setup: purging stale Test* ext-jwt-signers")
-	if err := state.overlay.PurgeExtJwtSigners("Test"); err != nil {
+	log.Printf("setup: purging stale test ext-jwt-signers")
+	if err := state.overlay.PurgeExtJwtSigners(); err != nil {
 		return fmt.Errorf("purge stale test ext-jwt-signers: %w", err)
 	}
-	if state.idp.ExternalID != "" {
-		log.Printf("setup: purging stale identities for IdP test user externalId=%q", state.idp.ExternalID)
-		if err := state.overlay.PurgeIdentityByExternalId(state.idp.ExternalID); err != nil {
-			return fmt.Errorf("purge stale IdP test user identities: %w", err)
+	log.Printf("setup: purging stale auto-provisioned IdP identities")
+	if err := state.overlay.PurgeIdentitiesByExternalId("@test.com"); err != nil {
+		return fmt.Errorf("purge stale IdP test user identities: %w", err)
+	}
+	log.Printf("setup: purging stale test service-policies")
+	if err := state.overlay.PurgeServicePolicies(); err != nil {
+		return fmt.Errorf("purge stale test service policies: %w", err)
+	}
+	log.Printf("setup: purging stale test services")
+	if err := state.overlay.PurgeServices(); err != nil {
+		return fmt.Errorf("purge stale test services: %w", err)
+	}
+	log.Printf("setup: purging stale test configs")
+	if err := state.overlay.PurgeConfigs(); err != nil {
+		return fmt.Errorf("purge stale test configs: %w", err)
+	}
+
+	// Import runs before the CA is installed; trust left over from a crashed run is removed first.
+	if state.overlay.AutoTrustCA && state.overlay.CATrusted() {
+		log.Printf("setup: removing stale test CA from OS trust before fixture import")
+		if err := state.overlay.RemoveCATrust(); err != nil {
+			log.Printf("setup: WARNING: remove stale test CA from OS trust: %v", err)
 		}
+	}
+
+	// TODO: remove this check when ziti 1.6 is no longer part of LTS. The 1.6
+	// CLI's import login only populates its TLS RootCAs pool for untrusted
+	// servers and never falls back to OS roots, so against an OS-trusted
+	// controller every import API call fails with "certificate signed by
+	// unknown authority".
+	if state.overlay.ZitiMajor < 2 && state.overlay.CATrusted() {
+		return fmt.Errorf("ziti v%d.%d ops import fails against an OS-trusted controller; remove the CA from OS trust, or set autoTrustCa: true in your test config and rerun", state.overlay.ZitiMajor, state.overlay.ZitiMinor)
+	}
+
+	log.Printf("setup: importing fixture %s", fixturePath)
+	if err := state.overlay.ImportFixture(fixturePath); err != nil {
+		return fmt.Errorf("import fixture: %w", err)
+	}
+
+	if state.overlay.AutoTrustCA {
+		log.Printf("setup: installing test CA into OS trust")
+		if err := state.overlay.InstallCATrust(); err != nil {
+			return fmt.Errorf("install test CA into OS trust: %w", err)
+		}
+	}
+
+	log.Printf("setup: wiping identity dirs before starting ZET(s)")
+	if err := state.zetClient.RemoveJSONIdentities(); err != nil {
+		return fmt.Errorf("wipe shared identity dir: %w", err)
 	}
 
 	log.Printf("setup: starting ZET zetA and zetB in parallel")

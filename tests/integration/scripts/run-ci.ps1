@@ -141,13 +141,11 @@ while ($true) {
 Stop-Process -Id $qs.Id -Force
 $qs.WaitForExit()
 
-# ---- Install CA into OS trust -----------------------------------------------
-$caCert = Join-Path $overlayHome "pki\root-ca\certs\root-ca.cert"
-$importedCert = $null
-if ($InstallCert) {
-    $importedCert = Import-Certificate -FilePath $caCert -CertStoreLocation Cert:\LocalMachine\Root
-} else {
-    Write-Warning "skipping test CA install into OS trust (pass -InstallCert to enable); tests that require the controller cert to be trusted may fail"
+# ---- CA trust -----------------------------------------------------------------
+# The harness installs the overlay CA into OS trust after the fixture import and
+# removes it at teardown when ziti.autoTrustCa is set.
+if (-not $InstallCert) {
+    Write-Warning "autoTrustCa disabled (pass -InstallCert to enable); tests that require the controller cert to be trusted may fail"
 }
 
 try {
@@ -155,7 +153,7 @@ try {
     Push-Location (Join-Path $repoRoot "tests\integration")
     $cfg = [ordered]@{
         testHome = $testHome
-        ziti = [ordered]@{ binary = $zitiBin; url = ""; user = "admin"; password = "admin" }
+        ziti = [ordered]@{ binary = $zitiBin; url = ""; user = "admin"; password = "admin"; autoTrustCa = [bool]$InstallCert }
         zetA = [ordered]@{ binary = $zetBin;  verbosity = 4; tlsuvDebug = 0 }
         zetB = [ordered]@{ binary = $zetBinB; verbosity = 4; tlsuvDebug = 0 }
         idp  = [ordered]@{
@@ -165,14 +163,8 @@ try {
             clientId       = "ziti-test"
             extraClientIds = @("ziti-test-2", "ziti-test-3")
             audience       = "ziti-test"
-            sub            = ""
             scopes         = "openid profile email"
-            user = [ordered]@{
-                email    = "test@example.com"
-                username = "test"
-                userID   = "08a8684b-db88-4b73-90a9-3cd1661f5466"
-                password = "password"
-            }
+            password       = "password"
         }
     }
     $cfg | ConvertTo-Json -Depth 10 | Set-Content -Path config.json -Encoding utf8
@@ -183,11 +175,6 @@ try {
     $exitCode = $LASTEXITCODE
 }
 finally {
-    if ($importedCert) {
-        Get-ChildItem Cert:\LocalMachine\Root |
-            Where-Object { $_.Thumbprint -eq $importedCert.Thumbprint } |
-            Remove-Item -ErrorAction SilentlyContinue
-    }
     Pop-Location -ErrorAction SilentlyContinue
 }
 

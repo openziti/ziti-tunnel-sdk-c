@@ -24,82 +24,24 @@ import (
 )
 
 func TestIdentityOnOff(t *testing.T) {
-	t.Run("togglesActiveOff", testIdentityOnOffTogglesActiveOff)
-	t.Run("togglesActiveOn", testIdentityOnOffTogglesActiveOn)
+	t.Run("togglesActiveState", togglesActiveState)
 }
 
-func testIdentityOnOffTogglesActiveOff(t *testing.T) {
-	testutil.RunTestWithTimeout(t, func(t *testing.T) {
-		overlay := state.overlay
-		client := state.zetClient.Commands
-		events := state.zetClient.Events
+func togglesActiveState(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
+		idName := "test_on_off"
+		added := testutil.FetchAndEnrollJwt(t, state.overlay, state.zetClient, idName)
 
-		name := testutil.IdentityName(t)
-		t.Logf("creating JWT for %q", name)
-		jwt, err := overlay.CreateIdentityJWT(name)
-		require.NoError(t, err, "failed to create JWT")
-		require.NotEmpty(t, jwt)
+		offResp := state.zetClient.IdentityOnOff(t, added.Id.Identifier, false)
+		offResp.AssertSuccess()
 
-		identityData := testutil.AddIdentityData{
-			IdentityFilename: name,
-			JwtContent:       &jwt,
-		}
-		addResp := testutil.AddIdentity(t, client, identityData)
-		require.True(t, addResp.Success(), "AddIdentity failed: error=%q code=%d", addResp.Error, addResp.Code)
-
-		added := events.WaitForIdentityEvent(t, "added", name)
-		require.NotEmpty(t, added.Id.Identifier, "identity:added Identifier empty")
-		testutil.AssertValidJwtEnrolledIdentityFile(t, added.Id.Identifier)
-
-		t.Logf("sending IdentityOnOff(false) for %q", name)
-		offResp, err := client.IdentityOnOff(added.Id.Identifier, false)
-		require.NoError(t, err, "failed to send IdentityOnOff(false)\n%s", state.zetClient.LogPath())
-		require.True(t, offResp.Success(), "IdentityOnOff(false) failed: error=%q code=%d", offResp.Error, offResp.Code)
-
-		off := events.WaitForIdentityEvent(t, "added", name)
-		require.False(t, off.Id.Active, "identity:added Active=%t after IdentityOnOff(false)", off.Id.Active)
-		t.Logf("identity:added reports Active=%t after IdentityOnOff(false)", off.Id.Active)
-	})
-}
-
-func testIdentityOnOffTogglesActiveOn(t *testing.T) {
-	testutil.RunTestWithTimeout(t, func(t *testing.T) {
-		overlay := state.overlay
-		client := state.zetClient.Commands
-		events := state.zetClient.Events
-
-		name := testutil.IdentityName(t)
-		t.Logf("creating JWT for %q", name)
-		jwt, err := overlay.CreateIdentityJWT(name)
-		require.NoError(t, err, "failed to create JWT")
-		require.NotEmpty(t, jwt)
-
-		identityData := testutil.AddIdentityData{
-			IdentityFilename: name,
-			JwtContent:       &jwt,
-		}
-		addResp := testutil.AddIdentity(t, client, identityData)
-		require.True(t, addResp.Success(), "AddIdentity failed: error=%q code=%d", addResp.Error, addResp.Code)
-
-		added := events.WaitForIdentityEvent(t, "added", name)
-		require.NotEmpty(t, added.Id.Identifier, "identity:added Identifier empty")
-		testutil.AssertValidJwtEnrolledIdentityFile(t, added.Id.Identifier)
-
-		t.Logf("sending IdentityOnOff(false) for %q", name)
-		offResp, err := client.IdentityOnOff(added.Id.Identifier, false)
-		require.NoError(t, err, "failed to send IdentityOnOff(false)\n%s", state.zetClient.LogPath())
-		require.True(t, offResp.Success(), "IdentityOnOff(false) failed: error=%q code=%d", offResp.Error, offResp.Code)
-
-		off := events.WaitForIdentityEvent(t, "added", name)
+		off := state.zetClient.WaitForIdentityEvent(t, "added", idName)
 		require.False(t, off.Id.Active, "identity:added Active=%t after IdentityOnOff(false)", off.Id.Active)
 
-		t.Logf("sending IdentityOnOff(true) for %q", name)
-		onResp, err := client.IdentityOnOff(added.Id.Identifier, true)
-		require.NoError(t, err, "failed to send IdentityOnOff(true)\n%s", state.zetClient.LogPath())
-		require.True(t, onResp.Success(), "IdentityOnOff(true) failed: error=%q code=%d", onResp.Error, onResp.Code)
+		onResp := state.zetClient.IdentityOnOff(t, added.Id.Identifier, true)
+		onResp.AssertSuccess()
 
-		on := events.WaitForIdentityEvent(t, "added", name)
+		on := state.zetClient.WaitForIdentityEvent(t, "added", idName)
 		require.True(t, on.Id.Active, "identity:added Active=%t after IdentityOnOff(true)", on.Id.Active)
-		t.Logf("identity:added reports Active=%t after IdentityOnOff(true)", on.Id.Active)
 	})
 }

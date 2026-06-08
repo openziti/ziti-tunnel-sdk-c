@@ -188,18 +188,16 @@ func setupT2TService(
 	require.NoError(t, err, "dial host ZET IPC")
 	t.Cleanup(func() { _ = hostClient.Close() })
 
-	resp, err := interceptClient.AddIdentity(testutil.AddIdentityData{
+	resp := interceptClient.AddIdentity(t, testutil.AddIdentityData{
 		IdentityFilename: names.interceptIdentity,
 		JwtContent:       &interceptJWT,
 	})
-	require.NoError(t, err, "AddIdentity to intercept ZET\n%s", interceptZET.LogFile())
 	require.True(t, resp.Success(), "AddIdentity to intercept ZET failed: %s\n%s", resp.Error, interceptZET.LogFile())
 
-	resp, err = hostClient.AddIdentity(testutil.AddIdentityData{
+	resp = hostClient.AddIdentity(t, testutil.AddIdentityData{
 		IdentityFilename: names.hostIdentity,
 		JwtContent:       &hostJWT,
 	})
-	require.NoError(t, err, "AddIdentity to host ZET\n%s", hostZET.LogFile())
 	require.True(t, resp.Success(), "AddIdentity to host ZET failed: %s\n%s", resp.Error, hostZET.LogFile())
 
 	// Create controller-side resources.
@@ -218,8 +216,8 @@ func setupT2TService(
 
 	// Cleanup: remove identities and controller-side resources at test end.
 	t.Cleanup(func() {
-		_, _ = interceptClient.RemoveIdentity(names.interceptIdentity)
-		_, _ = hostClient.RemoveIdentity(names.hostIdentity)
+		interceptClient.RemoveIdentity(t, names.interceptIdentity)
+		hostClient.RemoveIdentity(t, names.hostIdentity)
 		_ = overlay.DeleteServicePolicy(names.dialPolicy)
 		_ = overlay.DeleteServicePolicy(names.bindPolicy)
 		_ = overlay.DeleteService(names.service)
