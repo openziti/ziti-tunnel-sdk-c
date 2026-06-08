@@ -117,6 +117,9 @@ jobs:
   integration-tests:
     name: Integration Tests (${{ matrix.os.name }} / ziti ${{ matrix.ziti-channel.label }})
     needs: [ call-cmake-build, resolve-ziti-versions ]
+    permissions:
+      pull-requests: write  # post rolling log tail as PR comment
+      contents: write       # post commit comment on push builds
     strategy:
       fail-fast: false
       matrix:
@@ -276,7 +279,6 @@ jobs:
             ${{ runner.temp }}/overlay/quickstart-logs/*.log
             ${{ runner.temp }}/idp/logs/*.log
             ${{ runner.temp }}/ci-run.log
-            ${{ runner.temp }}/transfer-urls.txt
           if-no-files-found: ignore
 
   nix-build:

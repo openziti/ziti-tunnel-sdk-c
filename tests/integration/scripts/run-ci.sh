@@ -95,43 +95,75 @@ echo "TEST_HOME=$TEST_HOME"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 
-# ---- Stream logs to transfer.sh ----------------------------------------------
-# All stdout+stderr is tee'd to a local file. A background process uploads
-# periodic snapshots to transfer.sh (no credentials required) so the log
-# survives a dead runner agent. Each snapshot gets a unique URL which is:
-#   - printed to stdout (visible in the CI console while the runner lives)
-#   - appended to $TEST_HOME/transfer-urls.txt (captured by the artifact upload)
-#   - written to $GITHUB_STEP_SUMMARY when available (visible in job summary)
-# The last URL printed before a crash is the one to fetch.
+# ---- Log capture + out-of-band GitHub comment --------------------------------
+# All stdout+stderr is tee'd to $CI_LOG_FILE (captured as an artifact when the
+# step ends). A background process also posts a rolling log tail as a PR or
+# commit comment via direct curl calls to api.github.com every 30 s. This is
+# the only mechanism that survives a hard runner-agent kill (jetsam OOM): the
+# curl call goes directly to GitHub without passing through the runner agent.
+# The comment is updated in-place on each tick so the PR/commit view always
+# shows the latest snapshot.
+#
+# Requires: GH_TOKEN, GITHUB_REPOSITORY, GITHUB_SHA (all set by the runner).
+# Requires pull-requests:write permission for PR builds, contents:write for push.
 CI_LOG_FILE="$TEST_HOME/ci-run.log"
 exec > >(tee "$CI_LOG_FILE") 2>&1
 
-_transfer_log_name="ci-$(uname -s)-$(uname -m)-${GITHUB_RUN_ID:-$(date +%s)}.log"
-(
-  set +ex
-  _urls_file="$TEST_HOME/transfer-urls.txt"
-  _do_upload() {
-    local label="$1"
-    local url
-    url=$(curl --silent --max-time 30 \
-      --upload-file "$CI_LOG_FILE" \
-      "https://transfer.sh/$_transfer_log_name" 2>/dev/null) || true
-    if [ -n "$url" ]; then
-      echo "log snapshot [$label]: $url" | tee -a "$_urls_file"
-      if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
-        echo "- log snapshot [$label]: $url" >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
-      fi
+if [ -n "${GH_TOKEN:-}" ] && [ -n "${GITHUB_REPOSITORY:-}" ] && [ -n "${GITHUB_SHA:-}" ]; then
+  (
+    set +ex
+    _api="https://api.github.com"
+    _comment_id=""
+    _patch_url=""
+
+    # Determine target: PR issue comment vs commit comment.
+    _pr_num=""
+    if printf '%s' "${GITHUB_REF:-}" | grep -q 'refs/pull/'; then
+      _pr_num=$(printf '%s' "${GITHUB_REF}" | grep -oE '[0-9]+' | head -1)
     fi
-  }
-  # Upload immediately so there is always at least one URL in case the runner
-  # dies before the first 30-second interval elapses.
-  _do_upload "initial"
-  while true; do
-    sleep 30
-    _do_upload "$(date -u +%H:%M:%S)"
-  done
-) &
-disown $! 2>/dev/null || true
+
+    _gh_post() {
+      local method="$1" url="$2" body="$3"
+      curl -sf -X "$method" \
+        -H "Authorization: token $GH_TOKEN" \
+        -H "Accept: application/vnd.github+json" \
+        -H "Content-Type: application/json" \
+        "$url" -d "$body" 2>/dev/null
+    }
+
+    _make_body() {
+      # jq handles escaping; head -c 48000 keeps us under GitHub's comment limit.
+      jq -n \
+        --arg hdr "**CI log** · $(uname -s)-$(uname -m) · [run ${GITHUB_RUN_ID:-?}](https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID:-0}) · $(date -u '+%H:%M UTC')" \
+        --arg log "$(tail -150 "$CI_LOG_FILE" 2>/dev/null | head -c 48000)" \
+        '{"body": ($hdr + "\n```\n" + $log + "\n```")}'
+    }
+
+    # First call: create the comment and capture its ID for subsequent updates.
+    _body=$(_make_body) || true
+    if [ -n "$_pr_num" ]; then
+      _comment_id=$(_gh_post POST \
+        "$_api/repos/$GITHUB_REPOSITORY/issues/$_pr_num/comments" \
+        "$_body" | jq -r '.id // empty')
+      [ -n "$_comment_id" ] && \
+        _patch_url="$_api/repos/$GITHUB_REPOSITORY/issues/comments/$_comment_id"
+    else
+      _comment_id=$(_gh_post POST \
+        "$_api/repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/comments" \
+        "$_body" | jq -r '.id // empty')
+      [ -n "$_comment_id" ] && \
+        _patch_url="$_api/repos/$GITHUB_REPOSITORY/comments/$_comment_id"
+    fi
+
+    while true; do
+      sleep 30
+      [ -z "$_patch_url" ] && continue
+      _body=$(_make_body) || continue
+      _gh_post PATCH "$_patch_url" "$_body" > /dev/null || true
+    done
+  ) &
+  disown $! 2>/dev/null || true
+fi
 
 # ---- Resolve ziti version ----------------------------------------------------
 if [ -z "${ZITI_VERSION:-}" ]; then
@@ -334,19 +366,27 @@ cleanup() {
       sudo security delete-certificate -Z "$fp" /Library/Keychains/System.keychain || true
       ;;
   esac
-  # Final transfer.sh upload so the complete log is always available regardless
-  # of how the script exits (timeout, test failure, signal, etc.).
-  if [ -n "${CI_LOG_FILE:-}" ] && [ -f "$CI_LOG_FILE" ]; then
-    _final_url=$(curl --silent --max-time 30 \
-      --upload-file "$CI_LOG_FILE" \
-      "https://transfer.sh/${_transfer_log_name:-ci-run.log}" 2>/dev/null) || true
-    if [ -n "$_final_url" ]; then
-      echo "final log upload: $_final_url" | tee -a "$TEST_HOME/transfer-urls.txt"
-      if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
-        echo "- **final log**: $_final_url" >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+  # Final comment update: post the last ~300 lines so the comment always ends
+  # with the state at exit (success, failure, or timeout) rather than the
+  # last 30-second snapshot. The background loop's _patch_url is not in scope
+  # here, so we re-derive the target URL from the same env vars.
+  if [ -n "${GH_TOKEN:-}" ] && [ -n "${GITHUB_REPOSITORY:-}" ] && [ -f "${CI_LOG_FILE:-}" ]; then
+    _final_body=$(jq -n \
+      --arg hdr "**CI log — final** · $(uname -s)-$(uname -m) · [run ${GITHUB_RUN_ID:-?}](https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID:-0}) · $(date -u '+%H:%M UTC')" \
+      --arg log "$(tail -300 "$CI_LOG_FILE" 2>/dev/null | head -c 48000)" \
+      '{"body": ($hdr + "\n```\n" + $log + "\n```")}' 2>/dev/null) || true
+    if [ -n "$_final_body" ]; then
+      if printf '%s' "${GITHUB_REF:-}" | grep -q 'refs/pull/'; then
+        _final_pr=$(printf '%s' "${GITHUB_REF}" | grep -oE '[0-9]+' | head -1)
+        curl -sf -X POST \
+          -H "Authorization: token $GH_TOKEN" \
+          -H "Accept: application/vnd.github+json" \
+          -H "Content-Type: application/json" \
+          "https://api.github.com/repos/$GITHUB_REPOSITORY/issues/$_final_pr/comments" \
+          -d "$_final_body" > /dev/null 2>&1 || true
       fi
     fi
-    unset _final_url
+    unset _final_body _final_pr
   fi
   # Don't kill the heartbeat or jetsam watcher here: let them run a few more
   # cycles to capture post-crash system state. The runner terminates all
