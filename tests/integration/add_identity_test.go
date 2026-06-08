@@ -24,7 +24,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestAddIdentity(t *testing.T) {
+func TestAddIdentityByJwt(t *testing.T) {
 	// Happy path is tested throughout this suite
 	t.Run("sameJwtTwiceSecondFails", sameJwtTwiceSecondFails)
 	t.Run("withInvalidJwtFails", withInvalidJwtFails)
@@ -33,6 +33,15 @@ func TestAddIdentity(t *testing.T) {
 	t.Run("withSlashInFilenameFails", withSlashInFilenameFails)
 	t.Run("withDotDotInFilenameFails", withDotDotInFilenameFails)
 	t.Run("filenameExceedsCharLimitFails", filenameExceedsCharLimitFails)
+}
+
+func TestAddIdentityByUrl(t *testing.T) {
+	state.overlay.RequireCATrusted(t)
+	t.Run("withValidControllerUrlSucceeds", withValidControllerUrlSucceeds)
+	t.Run("withMalformedUrlFails", withMalformedUrlFails)
+	t.Run("withNonZitiEndpointFails", withNonZitiEndpointFails)
+	t.Run("sameNameTwiceSecondFails", sameNameTwiceSecondFails)
+	t.Run("afterJwtSameNameFails", afterJwtSameNameFails)
 }
 
 func sameJwtTwiceSecondFails(t *testing.T) {
@@ -128,5 +137,68 @@ func filenameExceedsCharLimitFails(t *testing.T) {
 		}
 		addResp := state.zetClient.AddIdentity(t, identityData)
 		addResp.AssertFail(500, "invalid file name")
+	})
+}
+
+// withValidControllerUrlSucceeds exercises the "URL + no enroll-to mode" path.
+func withValidControllerUrlSucceeds(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
+		testutil.EnrollUrlIdentityToNone(t, state.overlay, state.zetClient, "test_url_enroll_happy")
+	})
+}
+
+func sameNameTwiceSecondFails(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
+		idName := "test_url_enroll_dup_name"
+		testutil.EnrollUrlIdentityToNone(t, state.overlay, state.zetClient, idName)
+
+		controllerURL := state.overlay.ControllerHostPort()
+		identityData := testutil.AddIdentityData{
+			IdentityFilename: idName,
+			ControllerURL:    &controllerURL,
+		}
+		addResp := state.zetClient.AddIdentity(t, identityData)
+		addResp.AssertFail(500, "identity exists with the same name")
+	})
+}
+
+func afterJwtSameNameFails(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
+		idName := "test_url_enroll_after_jwt"
+		testutil.FetchAndEnrollJwt(t, state.overlay, state.zetClient, idName)
+
+		controllerURL := state.overlay.ControllerHostPort()
+		urlIdentityData := testutil.AddIdentityData{
+			IdentityFilename: idName,
+			ControllerURL:    &controllerURL,
+		}
+		addResp := state.zetClient.AddIdentity(t, urlIdentityData)
+		addResp.AssertFail(500, "identity exists with the same name")
+	})
+}
+
+func withNonZitiEndpointFails(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
+		nonZitiURL := "https://example.com"
+		identityData := testutil.AddIdentityData{
+			IdentityFilename: "test_url_enroll_non_ziti",
+			ControllerURL:    &nonZitiURL,
+		}
+
+		addResp := state.zetClient.AddIdentity(t, identityData)
+		addResp.AssertFail(500, "")
+	})
+}
+
+func withMalformedUrlFails(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
+		badURL := "not-a-url"
+		identityData := testutil.AddIdentityData{
+			IdentityFilename: "test_url_enroll_malformed_url",
+			ControllerURL:    &badURL,
+		}
+
+		addResp := state.zetClient.AddIdentity(t, identityData)
+		addResp.AssertFail(500, "")
 	})
 }
