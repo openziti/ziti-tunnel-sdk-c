@@ -100,26 +100,46 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 # background process pushes it to S3 every 30 s via the AWS CLI (pre-installed
 # on GitHub macOS runners). The push goes directly to the network — it does not
 # go through the runner agent — so the log survives a dead or unresponsive agent.
-# Set CI_LOG_S3_BUCKET, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, and
-# AWS_DEFAULT_REGION in the workflow environment or as repository secrets.
+# Required env: CI_LOG_S3_BUCKET, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY,
+# AWS_DEFAULT_REGION (must match the bucket's actual region).
 CI_LOG_FILE="$TEST_HOME/ci-run.log"
 exec > >(tee "$CI_LOG_FILE") 2>&1
 if [ -n "${CI_LOG_S3_BUCKET:-}" ] && command -v aws >/dev/null 2>&1; then
   _run_id="${GITHUB_RUN_ID:-$(date +%s)}"
   _attempt="${GITHUB_RUN_ATTEMPT:-1}"
   _ziti="${ZITI_VERSION:-unknown}"
+  _s3_region="${AWS_DEFAULT_REGION:-us-east-1}"
   _s3_key="${CI_LOG_S3_PREFIX:-ci-logs}/${_run_id}/${_attempt}/$(uname -s)-$(uname -m)-ziti${_ziti}.log"
-  echo "log streaming to s3://${CI_LOG_S3_BUCKET}/${_s3_key}"
+  _s3_err="$TEST_HOME/s3-upload-errors.log"
+  echo "log streaming to s3://${CI_LOG_S3_BUCKET}/${_s3_key} (region=${_s3_region})"
+
+  # Probe AWS auth and bucket access before entering the upload loop so any
+  # misconfiguration is visible immediately rather than silently failing for
+  # the entire run.
+  echo "=== S3 preflight ==="
+  aws sts get-caller-identity --region "$_s3_region" 2>&1 \
+    | head -5 || echo "WARNING: aws sts get-caller-identity failed (credentials may be wrong or absent)"
+  aws s3 ls "s3://${CI_LOG_S3_BUCKET}/" --region "$_s3_region" 2>&1 \
+    | head -3 || echo "WARNING: aws s3 ls failed (bucket may not exist or wrong region)"
+  echo "=== end S3 preflight ==="
+
   (
     set +ex
+    # First upload immediately so there is always at least one copy in S3 even
+    # if the runner agent dies shortly after. Errors go to a log file rather
+    # than /dev/null so they are visible in the uploaded artifact.
+    aws s3 cp "$CI_LOG_FILE" "s3://${CI_LOG_S3_BUCKET}/${_s3_key}" \
+      --region "$_s3_region" --quiet 2>>"$_s3_err" || \
+      echo "$(date): initial upload failed (see s3-upload-errors.log)" >>"$_s3_err"
     while true; do
       sleep 30
       aws s3 cp "$CI_LOG_FILE" "s3://${CI_LOG_S3_BUCKET}/${_s3_key}" \
-        --region "${AWS_DEFAULT_REGION:-us-east-1}" --quiet 2>/dev/null || true
+        --region "$_s3_region" --quiet 2>>"$_s3_err" || true
     done
   ) &
-  disown $! 2>/dev/null || true
-  unset _run_id _attempt _ziti _s3_key
+  _s3_uploader_pid=$!
+  disown $_s3_uploader_pid 2>/dev/null || true
+  unset _run_id _attempt _ziti _s3_region _s3_key
 fi
 
 # ---- Resolve ziti version ----------------------------------------------------
@@ -172,6 +192,18 @@ echo "ZET_BIN_B=$ZET_BIN_B"
 # GitHub reachability. Started early so setup failures are also captured.
 # This survives a runner-agent death so we can tell whether the macOS
 # "runner lost communication" failure is OOM or CPU starvation.
+
+# On macOS: emit recent historical jetsam/OOM events from BEFORE this script
+# started. These are what killed the agent in a prior run, so they appear in
+# /var/log/DiagnosticMessages or the unified log even after reboot.
+if [[ "$(uname -s)" == Darwin ]]; then
+  echo "=== historical jetsam/OOM events (last 10 min before script start) ==="
+  sudo log show --last 10m \
+    --predicate 'eventMessage CONTAINS "jetsam" OR eventMessage CONTAINS "low memory" OR eventMessage CONTAINS "killed process" OR eventMessage CONTAINS "memorystatus" OR eventMessage CONTAINS "jettisoned"' \
+    --style compact 2>/dev/null | tail -40 || echo "(log show failed)"
+  echo "=== end historical jetsam events ==="
+fi
+
 (
   set +ex  # don't exit on failure; suppress xtrace noise in log
   while true; do
@@ -190,6 +222,14 @@ echo "ZET_BIN_B=$ZET_BIN_B"
         echo ""
         echo "memory_pressure:"
         memory_pressure 2>/dev/null | tail -1 || true
+        # Warn loudly if free pages are critically low (< 8192 pages = 128 MB at
+        # 16 KB/page). This threshold is below typical jetsam kill points but
+        # gives us one last heartbeat before the agent is killed.
+        _free_pages=$(vm_stat 2>/dev/null | awk '/Pages free:/ {gsub(/\./,"",$3); print $3}')
+        if [ -n "$_free_pages" ] && [ "$_free_pages" -lt 8192 ] 2>/dev/null; then
+          echo "WARNING: free pages critically low: $_free_pages (< 8192; jetsam may kill processes)"
+        fi
+        unset _free_pages
         echo ""
         echo "top memory consumers:"
         printf "%-8s %8s %6s  %s\n" "PID" "RSS(MB)" "%CPU" "COMMAND"
