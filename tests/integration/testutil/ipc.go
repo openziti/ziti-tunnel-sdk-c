@@ -217,6 +217,7 @@ func (c *EventClient) WaitForIdentityEvent(t *testing.T, action, fingerprint str
 	raw := c.waitForEvent(t, "identity", action, fingerprint)
 	var ev IdentityEvent
 	require.NoError(t, json.Unmarshal(raw, &ev), "parse IdentityEvent: %s", raw)
+	ev.t = t
 	return ev
 }
 
@@ -463,6 +464,12 @@ func (r *ServiceResponse) AssertFail(code int, message string) {
 // AssertSuccess asserts the mfa event reports success.
 func (e MfaEvent) AssertSuccess() {
 	require.True(e.t, e.Successful, "mfa:%s Successful=%t", e.Action, e.Successful)
+}
+
+// AssertMfaAuthenticated asserts MFA enabled and MFA required is false.
+func (e IdentityEvent) AssertMfaAuthenticated() {
+	require.True(e.t, e.Id.MfaEnabled, "identity:%s MfaEnabled=%t", e.Action, e.Id.MfaEnabled)
+	require.False(e.t, e.Id.MfaNeeded, "identity:%s MfaNeeded=%t", e.Action, e.Id.MfaNeeded)
 }
 
 // GetExternalAuthURL sends ExternalAuth, asserts Code == 0, and returns the ext-auth URL.

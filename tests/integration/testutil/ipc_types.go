@@ -358,6 +358,8 @@ type ActionEvent struct {
 type IdentityEvent struct {
 	ActionEvent
 	Id Identity `json:"Id"`
+
+	t *testing.T
 }
 
 // ControllerEvent fires on Op:"controller" (connected, disconnected).
@@ -366,8 +368,8 @@ type ControllerEvent struct {
 	Identifier string `json:"Identifier"`
 }
 
-// MfaEvent fires on Op:"mfa" (enrollment_verification, mfa_auth_status,
-// auth_challenge, enrollment_remove).
+// MfaEvent fires on Op:"mfa" (enrollment_challenge, enrollment_verification,
+// mfa_auth_status, auth_challenge, enrollment_remove).
 type MfaEvent struct {
 	ActionEvent
 	Identifier      string   `json:"Identifier"`

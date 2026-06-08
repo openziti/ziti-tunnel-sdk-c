@@ -87,6 +87,9 @@ func reauthAcceptsValidTotp(t *testing.T) {
 		submitResp := state.zetClient.SubmitMFA(t, enrollment.Identifier, code)
 		submitResp.AssertSuccess()
 
+		updatedEvent := state.zetClient.WaitForIdentityEvent(t, "updated", idName)
+		updatedEvent.AssertMfaAuthenticated()
+
 		authStatusEvent := state.zetClient.WaitForMfaEvent(t, "mfa_auth_status", idName)
 		authStatusEvent.AssertSuccess()
 	})
@@ -103,6 +106,9 @@ func reauthAcceptsRecoveryCode(t *testing.T) {
 
 		submitResp := state.zetClient.SubmitMFA(t, enrollment.Identifier, enrollment.RecoveryCodes[0])
 		submitResp.AssertSuccess()
+
+		updatedEvent := state.zetClient.WaitForIdentityEvent(t, "updated", idName)
+		updatedEvent.AssertMfaAuthenticated()
 
 		authStatusEvent := state.zetClient.WaitForMfaEvent(t, "mfa_auth_status", idName)
 		authStatusEvent.AssertSuccess()

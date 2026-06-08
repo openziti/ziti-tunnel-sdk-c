@@ -66,6 +66,7 @@ func FetchAndEnrollJwt(t *testing.T, overlay *Overlay, zet *ZET, name string) Id
 // TOTP secret parsed from its provisioning URL. The enrollment is not yet verified.
 func EnrollAndEnableMFA(t *testing.T, overlay *Overlay, zet *ZET, name string) (MFAEnrollment, string) {
 	added := FetchAndEnrollJwt(t, overlay, zet, name)
+	require.False(t, added.Id.MfaEnabled, "identity:added MfaEnabled=%t before EnableMFA", added.Id.MfaEnabled)
 	zet.WaitForControllerEvent(t, "connected", name)
 
 	enableResp := zet.EnableMFA(t, added.Id.Identifier)
@@ -73,6 +74,9 @@ func EnrollAndEnableMFA(t *testing.T, overlay *Overlay, zet *ZET, name string) (
 	require.NotEmpty(t, enableResp.Data.ProvisioningUrl, "EnableMFA Data.ProvisioningUrl should be non-empty")
 	require.NotEmpty(t, enableResp.Data.RecoveryCodes, "EnableMFA Data.RecoveryCodes should be non-empty")
 	enrollment := enableResp.Data
+
+	challengeEvent := zet.WaitForMfaEvent(t, "enrollment_challenge", name)
+	challengeEvent.AssertSuccess()
 
 	parsed, err := url.Parse(enrollment.ProvisioningUrl)
 	require.NoError(t, err, "parse provisioning URL")
@@ -93,6 +97,9 @@ func EnrollAndVerifyMFA(t *testing.T, overlay *Overlay, zet *ZET, name string) (
 
 	verifyResp := zet.VerifyMFA(t, enrollment.Identifier, code)
 	verifyResp.AssertSuccess()
+
+	updatedEvent := zet.WaitForIdentityEvent(t, "updated", name)
+	updatedEvent.AssertMfaAuthenticated()
 
 	verificationEvent := zet.WaitForMfaEvent(t, "enrollment_verification", name)
 	verificationEvent.AssertSuccess()
