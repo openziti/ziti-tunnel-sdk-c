@@ -95,6 +95,33 @@ echo "TEST_HOME=$TEST_HOME"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 
+# ---- Stream logs to S3 (optional) -------------------------------------------
+# If CI_LOG_S3_BUCKET is set, all stdout+stderr is tee'd to a local file and a
+# background process pushes it to S3 every 30 s via the AWS CLI (pre-installed
+# on GitHub macOS runners). The push goes directly to the network — it does not
+# go through the runner agent — so the log survives a dead or unresponsive agent.
+# Set CI_LOG_S3_BUCKET, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, and
+# AWS_DEFAULT_REGION in the workflow environment or as repository secrets.
+CI_LOG_FILE="$TEST_HOME/ci-run.log"
+exec > >(tee "$CI_LOG_FILE") 2>&1
+if [ -n "${CI_LOG_S3_BUCKET:-}" ] && command -v aws >/dev/null 2>&1; then
+  _run_id="${GITHUB_RUN_ID:-$(date +%s)}"
+  _attempt="${GITHUB_RUN_ATTEMPT:-1}"
+  _ziti="${ZITI_VERSION:-unknown}"
+  _s3_key="${CI_LOG_S3_PREFIX:-ci-logs}/${_run_id}/${_attempt}/$(uname -s)-$(uname -m)-ziti${_ziti}.log"
+  echo "log streaming to s3://${CI_LOG_S3_BUCKET}/${_s3_key}"
+  (
+    set +ex
+    while true; do
+      sleep 30
+      aws s3 cp "$CI_LOG_FILE" "s3://${CI_LOG_S3_BUCKET}/${_s3_key}" \
+        --region "${AWS_DEFAULT_REGION:-us-east-1}" --quiet 2>/dev/null || true
+    done
+  ) &
+  disown $! 2>/dev/null || true
+  unset _run_id _attempt _ziti _s3_key
+fi
+
 # ---- Resolve ziti version ----------------------------------------------------
 if [ -z "${ZITI_VERSION:-}" ]; then
   ZITI_VERSION=$(gh release list --repo openziti/ziti --limit 50 \
@@ -153,11 +180,11 @@ echo "ZET_BIN_B=$ZET_BIN_B"
     case "$(uname -s)" in
       Darwin)
         echo "routes:"
-        netstat -rn -finet
+        timeout 5 netstat -rn -finet 2>/dev/null || echo "(netstat timed out or failed)"
         echo "dns config:"
-        scutil --dns 2>/dev/null
+        timeout 5 scutil --dns 2>/dev/null || echo "(scutil timed out or failed)"
         echo "dns resolution:"
-        nslookup api.github.com 2>/dev/null || dig +short api.github.com 2>/dev/null || true
+        timeout 5 nslookup api.github.com 2>/dev/null || timeout 5 dig +short api.github.com 2>/dev/null || true
         echo "vm_stat:"
         vm_stat | awk 'NR==1 || /Pages (free|active|wired down|occupied by compressor):/ {print}'
         echo ""
@@ -312,6 +339,12 @@ echo "=== end pre-test route table ==="
 
 # ---- Run tests ---------------------------------------------------------------
 # sudo resets PAM resource limits, so ulimit must be set in the privileged shell.
-sudo env "PATH=$PATH" "INTEGRATION_TEST=$INTEGRATION_TEST" sh -c \
-  'ulimit -c unlimited && exec "$INTEGRATION_TEST" -test.v -test.timeout 20m -config config.json'
+# Outer timeout (25m) exceeds the inner -test.timeout (20m) by 5m to allow the
+# Go runtime to print its goroutine dump before the process is force-killed.
+# Without this, a deadlocked test binary could hang the job indefinitely.
+echo "=== test binary starting at $(date) ==="
+timeout 25m \
+  sudo env "PATH=$PATH" "INTEGRATION_TEST=$INTEGRATION_TEST" sh -c \
+    'ulimit -c unlimited && exec "$INTEGRATION_TEST" -test.v -test.timeout 20m -config config.json'
+echo "=== test binary done at $(date) ==="
 

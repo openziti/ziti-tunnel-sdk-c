@@ -200,6 +200,10 @@ jobs:
           IDP_VERSION: ${{ inputs.idp_version }}
           ZET1_VERSION: ${{ inputs.zet1_version }}
           ZET2_VERSION: ${{ inputs.zet2_version }}
+          CI_LOG_S3_BUCKET: ziti-tunnel-sdk-c
+          CI_LOG_S3_PREFIX: integration-tests
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         run: ./tests/integration/scripts/run-ci.sh --install-cert
 
       - name: Run integration tests (Windows)
