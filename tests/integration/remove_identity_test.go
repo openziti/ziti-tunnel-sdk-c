@@ -30,11 +30,9 @@ func TestRemoveIdentity(t *testing.T) {
 
 func withIdentifierFromEvent(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
-		client := state.zetClient.CommandsClient
-
 		event := testutil.FetchAndEnrollJwt(t, state.overlay, state.zetClient, "test_remove_id")
 
-		removeResp := client.RemoveIdentity(t, event.Id.Identifier)
+		removeResp := state.zetClient.RemoveIdentity(t, event.Id.Identifier)
 		removeResp.AssertSuccess()
 
 		_, statErr := os.Stat(event.Id.Identifier)

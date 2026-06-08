@@ -29,22 +29,19 @@ func TestIdentityOnOff(t *testing.T) {
 
 func togglesActiveState(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
-		client := state.zetClient.CommandsClient
-		events := state.zetClient.EventClient
-
 		idName := "test_on_off"
 		added := testutil.FetchAndEnrollJwt(t, state.overlay, state.zetClient, idName)
 
-		offResp := client.IdentityOnOff(t, added.Id.Identifier, false)
+		offResp := state.zetClient.IdentityOnOff(t, added.Id.Identifier, false)
 		offResp.AssertSuccess()
 
-		off := events.WaitForIdentityEvent(t, "added", idName)
+		off := state.zetClient.WaitForIdentityEvent(t, "added", idName)
 		require.False(t, off.Id.Active, "identity:added Active=%t after IdentityOnOff(false)", off.Id.Active)
 
-		onResp := client.IdentityOnOff(t, added.Id.Identifier, true)
+		onResp := state.zetClient.IdentityOnOff(t, added.Id.Identifier, true)
 		onResp.AssertSuccess()
 
-		on := events.WaitForIdentityEvent(t, "added", idName)
+		on := state.zetClient.WaitForIdentityEvent(t, "added", idName)
 		require.True(t, on.Id.Active, "identity:added Active=%t after IdentityOnOff(true)", on.Id.Active)
 	})
 }
