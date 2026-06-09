@@ -229,14 +229,14 @@ Set `autoTrustCa: true` (quickstart mode) and the harness handles it: install af
 
 ## Reproducing CI
 
-`scripts/run-ci.sh` (and `run-ci.ps1` on Windows) do the whole thing end to end the way CI does: download `ziti`, build dex, seed PKI, write a config, and run the suite.
+`scripts/run-ci.sh` (and `run-ci.ps1` on Windows) do the whole thing end to end the way CI does: build dex, seed PKI, write a config, and run the suite against the ziti and ZET binaries you point them at.
 
 ```bash
-ZET_BIN=/path/to/ziti-edge-tunnel ./scripts/run-ci.sh
+ZET_BIN=/path/to/ziti-edge-tunnel ZITI_BIN=/path/to/ziti ./scripts/run-ci.sh
 ```
 
 ```powershell
-$env:ZET_BIN = "C:\path\to\ziti-edge-tunnel.exe"; .\scripts\run-ci.ps1
+$env:ZET_BIN = "C:\path\to\ziti-edge-tunnel.exe"; $env:ZITI_BIN = "C:\path\to\ziti.exe"; .\scripts\run-ci.ps1
 ```
 
-They honor `TEST_HOME`, `ZITI_BIN`, `ZITI_FROM_MAIN`, `ZITI_VERSION`, `IDP_VERSION`, `ZET1_VERSION`, `ZET2_VERSION`, and a `--install-cert` / `-InstallCert` flag that installs the overlay CA for the run and removes it afterward. Without that flag they leave your trust store untouched. Set `ZITI_FROM_MAIN=1` to build and test against `openziti/ziti` main instead of a release (what the nightly CI job does); a preset `ZITI_BIN` wins over both.
+They require `ZET_BIN` and `ZITI_BIN` and run against whatever those point at. Obtaining ziti is a CI concern: the workflow downloads a release (or builds `openziti/ziti` main for the nightly) and passes `ZITI_BIN` in. They also honor `TEST_HOME`, `IDP_VERSION`, `ZET1_VERSION`, `ZET2_VERSION`, and a `--install-cert` / `-InstallCert` flag that installs the overlay CA for the run and removes it afterward. Without that flag they leave your trust store untouched.

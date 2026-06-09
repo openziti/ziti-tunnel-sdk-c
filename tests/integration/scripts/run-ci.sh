@@ -3,15 +3,11 @@
 # local dev reproduce a CI failure with one command.
 #
 # Required input:
-#   ZET_BIN  Absolute path to a built ziti-edge-tunnel binary.
+#   ZET_BIN   Absolute path to a built ziti-edge-tunnel binary.
+#   ZITI_BIN  Absolute path to a ziti binary. CI obtains it (a release or a main build).
 #
 # Optional input:
 #   TEST_HOME      Working dir for overlay, logs, caches. Defaults to a temp dir.
-#   ZITI_BIN       Prebuilt ziti binary to use as-is, skipping the release
-#                  download. Wins over ZITI_FROM_MAIN and ZITI_VERSION.
-#   ZITI_FROM_MAIN Build openziti/ziti @ main from source (stamped 2.x) instead
-#                  of downloading a release. Wins over ZITI_VERSION.
-#   ZITI_VERSION   ziti release tag to download (default: newest non-prerelease).
 #   IDP_VERSION    dex version tag (default: fetch-dex.sh's pinned version).
 #   ZET1_VERSION   If set, downloads this ZET release and uses it as ZET_BIN.
 #   ZET2_VERSION   If set, downloads this ZET release and uses it as ZET_BIN_B.
@@ -21,7 +17,7 @@
 #                   remove it on exit. Off by default so the script does not
 #                   mutate a normal user's trust store.
 #
-# Requires:  go, gh, git, jq, curl, unzip, and sudo (Linux/macOS).
+# Requires:  go, gh, jq, curl, unzip, and sudo (Linux/macOS).
 
 set -euo pipefail
 
@@ -41,14 +37,14 @@ if [ ! -x "$ZET_BIN" ]; then
   exit 1
 fi
 
-for tool in go gh git jq curl unzip; do
+for tool in go gh jq curl unzip; do
   command -v "$tool" >/dev/null || { echo "missing required tool: $tool" >&2; exit 1; }
 done
 
 case "$(uname -s)-$(uname -m)" in
-  Linux-x86_64)   ZITI_PATTERN="ziti-linux-amd64-*.tar.gz"; ZET_ZIP="ziti-edge-tunnel-Linux_x86_64.zip";  ZET_BIN_NAME="ziti-edge-tunnel" ;;
-  Darwin-arm64)   ZITI_PATTERN="ziti-darwin-arm64-*.tar.gz"; ZET_ZIP="ziti-edge-tunnel-Darwin_arm64.zip"; ZET_BIN_NAME="ziti-edge-tunnel" ;;
-  Darwin-x86_64)  ZITI_PATTERN="ziti-darwin-amd64-*.tar.gz"; ZET_ZIP="ziti-edge-tunnel-Darwin_x86_64.zip"; ZET_BIN_NAME="ziti-edge-tunnel" ;;
+  Linux-x86_64)   ZET_ZIP="ziti-edge-tunnel-Linux_x86_64.zip";  ZET_BIN_NAME="ziti-edge-tunnel" ;;
+  Darwin-arm64)   ZET_ZIP="ziti-edge-tunnel-Darwin_arm64.zip"; ZET_BIN_NAME="ziti-edge-tunnel" ;;
+  Darwin-x86_64)  ZET_ZIP="ziti-edge-tunnel-Darwin_x86_64.zip"; ZET_BIN_NAME="ziti-edge-tunnel" ;;
   *) echo "unsupported os/arch: $(uname -s)-$(uname -m)" >&2; exit 1 ;;
 esac
 
@@ -58,39 +54,9 @@ echo "TEST_HOME=$TEST_HOME"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 
-# ---- Resolve ziti CLI --------------------------------------------------------
-# Three ways to get the ziti used as both controller and management CLI, in order
-# of precedence: a preset ZITI_BIN, a source build of main, or a release download.
-if [ -n "${ZITI_BIN:-}" ]; then
-  [ -x "$ZITI_BIN" ] || { echo "ZITI_BIN=$ZITI_BIN is not executable" >&2; exit 1; }
-elif [ -n "${ZITI_FROM_MAIN:-}" ]; then
-  # build from a checkout; `go install @main` rejects ziti's go.mod replace
-  # directives. Stamp the version line so probeZitiVersion sees 2.x, not v0.0.0.
-  ZITI_SRC="$TEST_HOME/ziti-src"
-  ZITI_BIN="$TEST_HOME/ziti-main"
-  rm -rf "$ZITI_SRC"
-  git clone --depth 1 https://github.com/openziti/ziti.git "$ZITI_SRC"
-  ( cd "$ZITI_SRC" && go build \
-    -ldflags "-X $(go list -m)/common/version.Version=v$(tr -d '[:space:]' < version).0-main" \
-    -o "$ZITI_BIN" ./ziti )
-else
-  if [ -z "${ZITI_VERSION:-}" ]; then
-    ZITI_VERSION=$(gh release list --repo openziti/ziti --limit 50 \
-      --json tagName,isDraft,isPrerelease \
-      | jq -r '.[] | select(.isDraft==false and .isPrerelease==false) | .tagName' \
-      | sort -V | tail -n1)
-  fi
-  echo "Using ziti $ZITI_VERSION"
-  ZITI_DIR="$TEST_HOME/ziti-cli"
-  mkdir -p "$ZITI_DIR"
-  (
-    cd "$ZITI_DIR"
-    gh release download --repo openziti/ziti "$ZITI_VERSION" --pattern "$ZITI_PATTERN" --clobber
-    for archive in *.tar.gz; do [ -e "$archive" ] && tar -xzf "$archive"; done
-  )
-  ZITI_BIN=$(find "$ZITI_DIR" -type f -name ziti | head -n1)
-  chmod +x "$ZITI_BIN"
-fi
+# ---- ziti CLI ----------------------------------------------------------------
+: "${ZITI_BIN:?ZITI_BIN must point to a ziti binary}"
+[ -x "$ZITI_BIN" ] || { echo "ZITI_BIN=$ZITI_BIN is not executable" >&2; exit 1; }
 echo "ZITI_BIN=$ZITI_BIN"
 
 # ---- Build/fetch dex ---------------------------------------------------------

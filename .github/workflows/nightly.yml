@@ -24,6 +24,6 @@ jobs:
     needs: [ call-cmake-build ]
     uses: ./.github/workflows/integration-tests.yml
     with:
-      build-ziti-from-main: true
+      ziti-version: main
       label: main
     secrets: inherit
