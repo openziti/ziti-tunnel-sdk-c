@@ -12,7 +12,7 @@
   pkg-config,
   protobufc,
   stdenv,
-  systemd,
+  systemd ? null,
   versionCheckHook,
   zlib,
 }:
@@ -63,8 +63,7 @@ stdenv.mkDerivation (finalAttrs: {
     hash = "sha256-ZSTurUxd5tsnK/cCEynKLjSoaJUCOJQNLZ9RE5Mf3oU=";
   };
 
-  postPatch = ''
-    # Patch hardcoded paths to systemd tools
+  postPatch = lib.optionalString stdenv.isLinux ''
     substituteInPlace programs/ziti-edge-tunnel/netif_driver/linux/resolvers.h \
       --replace '"/usr/bin/busctl"' '"${systemd}/bin/busctl"' \
       --replace '"/usr/bin/resolvectl"' '"${systemd}/bin/resolvectl"' \
@@ -116,7 +115,7 @@ stdenv.mkDerivation (finalAttrs: {
     let
       systemdDir = "../programs/ziti-edge-tunnel/package/systemd";
     in
-    ''
+    lib.optionalString stdenv.isLinux ''
       # Install templated systemd unit files for non-NixOS Linux distros
       install -Dm644 -t $out/lib/systemd/system \
         ${systemdDir}/ziti-edge-tunnel.service.in
@@ -140,6 +139,30 @@ stdenv.mkDerivation (finalAttrs: {
       substituteInPlace $out/share/ziti-edge-tunnel/ziti-edge-tunnel.sh \
         --replace-fail '@ZITI_IDENTITY_DIR@' '/opt/openziti/etc/identities' \
         --replace-fail '@CPACK_BIN_DIR@/@SYSTEMD_SERVICE_NAME@' "$out/bin/ziti-edge-tunnel"
+    ''
+    + lib.optionalString stdenv.isDarwin ''
+      mkdir -p $out/Library/LaunchDaemons
+      cat > $out/Library/LaunchDaemons/io.openziti.ziti-edge-tunnel.plist <<EOF
+      <?xml version="1.0" encoding="UTF-8"?>
+      <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+      <plist version="1.0">
+      <dict>
+        <key>Label</key>
+        <string>io.openziti.ziti-edge-tunnel</string>
+        <key>ProgramArguments</key>
+        <array>
+          <string>$out/bin/ziti-edge-tunnel</string>
+          <string>run</string>
+          <string>--identity-dir</string>
+          <string>/opt/openziti/etc/identities</string>
+        </array>
+        <key>RunAtLoad</key>
+        <true/>
+        <key>KeepAlive</key>
+        <true/>
+      </dict>
+      </plist>
+      EOF
     '';
 
   doInstallCheck = true;
