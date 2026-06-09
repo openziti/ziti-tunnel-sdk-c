@@ -64,6 +64,7 @@ stdenv.mkDerivation (finalAttrs: {
   };
 
   postPatch = lib.optionalString stdenv.isLinux ''
+    # Patch hardcoded paths to systemd tools
     substituteInPlace programs/ziti-edge-tunnel/netif_driver/linux/resolvers.h \
       --replace '"/usr/bin/busctl"' '"${systemd}/bin/busctl"' \
       --replace '"/usr/bin/resolvectl"' '"${systemd}/bin/resolvectl"' \

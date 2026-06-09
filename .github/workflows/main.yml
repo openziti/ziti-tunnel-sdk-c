@@ -38,7 +38,7 @@ jobs:
     uses: ./.github/workflows/cmake.yml
 
   docker-deployments:
-    needs: [call-cmake-build]
+    needs: [ call-cmake-build ]
     name: Exercise CMake Artifacts
     runs-on: ubuntu-latest
     steps:
@@ -116,7 +116,7 @@ jobs:
 
   integration-tests:
     name: Integration Tests (${{ matrix.os.name }} / ziti ${{ matrix.ziti-channel.label }})
-    needs: [call-cmake-build, resolve-ziti-versions]
+    needs: [ call-cmake-build, resolve-ziti-versions ]
     strategy:
       fail-fast: false
       matrix:
