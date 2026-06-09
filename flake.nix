@@ -20,9 +20,7 @@
           pkgs = nixpkgs.legacyPackages.${system};
         in
         {
-          default = pkgs.callPackage ./nix/packages/ziti-edge-tunnel.nix (
-            pkgs.lib.optionalAttrs pkgs.stdenv.isLinux { inherit (pkgs) systemd; }
-          );
+          default = pkgs.callPackage ./nix/packages/ziti-edge-tunnel.nix { };
           ziti-edge-tunnel = self.packages.${system}.default;
         }
       );

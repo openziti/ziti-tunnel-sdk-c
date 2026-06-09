@@ -12,7 +12,7 @@
   pkg-config,
   protobufc,
   stdenv,
-  systemd ? null,
+  systemd,
   versionCheckHook,
   zlib,
 }:
