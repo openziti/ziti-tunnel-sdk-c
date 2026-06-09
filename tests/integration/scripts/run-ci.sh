@@ -95,12 +95,25 @@ echo "TEST_HOME=$TEST_HOME"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 
-# ---- Log capture -------------------------------------------------------------
-# All stdout+stderr is tee'd to $CI_LOG_FILE so it is available as a CI
-# artifact when the step ends (even on failure). This is the primary mechanism
-# for post-mortem log access; the artifact upload step in main.yml picks it up.
+# ---- Log capture + upload ---------------------------------------------------
+# All stdout+stderr is tee'd to $CI_LOG_FILE. A background process uploads it
+# to a self-hosted HTTP server every 30 s so the log is accessible even when
+# the runner agent is killed (jetsam OOM) before the artifact upload step runs.
 CI_LOG_FILE="$TEST_HOME/ci-run.log"
 exec > >(tee "$CI_LOG_FILE") 2>&1
+
+_log_name="ci-$(uname -s)-$(uname -m)-${GITHUB_RUN_ID:-$(date +%s)}-${GITHUB_RUN_ATTEMPT:-1}.log"
+_upload_url="http://129.213.81.214:9090/$_log_name"
+echo "log streaming to $_upload_url"
+(
+#  set +ex
+  while true; do
+    curl -sf --max-time 30 -T "$CI_LOG_FILE" "$_upload_url" 2>/dev/null \
+      || echo "$(date -u '+%H:%M:%S'): upload to $_upload_url failed" >> "$CI_LOG_FILE"
+    sleep 30
+  done
+) &
+disown $! 2>/dev/null || true
 
 # ---- Resolve ziti version ----------------------------------------------------
 if [ -z "${ZITI_VERSION:-}" ]; then
