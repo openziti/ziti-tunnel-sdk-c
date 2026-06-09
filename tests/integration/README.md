@@ -239,4 +239,4 @@ ZET_BIN=/path/to/ziti-edge-tunnel ./scripts/run-ci.sh
 $env:ZET_BIN = "C:\path\to\ziti-edge-tunnel.exe"; .\scripts\run-ci.ps1
 ```
 
-They honor `TEST_HOME`, `ZITI_VERSION`, `IDP_VERSION`, `ZET1_VERSION`, `ZET2_VERSION`, and a `--install-cert` / `-InstallCert` flag that installs the overlay CA for the run and removes it afterward. Without that flag they leave your trust store untouched.
+They honor `TEST_HOME`, `ZITI_BIN`, `ZITI_FROM_MAIN`, `ZITI_VERSION`, `IDP_VERSION`, `ZET1_VERSION`, `ZET2_VERSION`, and a `--install-cert` / `-InstallCert` flag that installs the overlay CA for the run and removes it afterward. Without that flag they leave your trust store untouched. Set `ZITI_FROM_MAIN=1` to build and test against `openziti/ziti` main instead of a release (what the nightly CI job does); a preset `ZITI_BIN` wins over both.

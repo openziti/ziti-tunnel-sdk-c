@@ -7,6 +7,10 @@ Required input:
 
 Optional input:
   $env:TEST_HOME      Working dir for overlay, logs, caches. Defaults to a temp dir.
+  $env:ZITI_BIN       Prebuilt ziti binary to use as-is, skipping the release
+                      download. Wins over ZITI_FROM_MAIN and ZITI_VERSION.
+  $env:ZITI_FROM_MAIN Build openziti/ziti @ main from source (stamped 2.x) instead
+                      of downloading a release. Wins over ZITI_VERSION.
   $env:ZITI_VERSION   ziti release tag to download (default: newest non-prerelease).
   $env:IDP_VERSION    dex version tag (default: fetch-dex.sh's pinned version).
   $env:ZET1_VERSION   If set, downloads this ZET release and uses it as ZET_BIN.
@@ -49,23 +53,40 @@ Write-Host "TEST_HOME=$testHome"
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..\..")).Path
 
-# ---- Resolve ziti version ---------------------------------------------------
-$zitiVersion = $env:ZITI_VERSION
-if (-not $zitiVersion) {
-    $releases = gh release list --repo openziti/ziti --limit 50 --json tagName,isDraft,isPrerelease | ConvertFrom-Json
-    $zitiVersion = ($releases | Where-Object { -not $_.isDraft -and -not $_.isPrerelease } | ForEach-Object tagName | Sort-Object { [version]($_ -replace '^v','') } | Select-Object -Last 1)
+# ---- Resolve ziti CLI -------------------------------------------------------
+# Three ways to get the ziti used as both controller and management CLI, in order
+# of precedence: a preset ZITI_BIN, a source build of main, or a release download.
+if ($env:ZITI_BIN) {
+    if (-not (Test-Path $env:ZITI_BIN)) { Write-Error "ZITI_BIN=$($env:ZITI_BIN) does not exist" }
+    $zitiBin = $env:ZITI_BIN
+} elseif ($env:ZITI_FROM_MAIN) {
+    # build from a checkout; `go install @main` rejects ziti's go.mod replace
+    # directives. Stamp the version line so probeZitiVersion sees 2.x, not v0.0.0.
+    $zitiSrc = Join-Path $testHome "ziti-src"
+    $zitiBin = Join-Path $testHome "ziti-main.exe"
+    git clone --depth 1 https://github.com/openziti/ziti.git $zitiSrc
+    Push-Location $zitiSrc
+    $stamp = "v$((Get-Content version -Raw).Trim()).0-main"
+    $modPath = (go list -m).Trim()
+    go build -ldflags "-X $modPath/common/version.Version=$stamp" -o $zitiBin ./ziti
+    Pop-Location
+    if ($LASTEXITCODE -ne 0) { Write-Error "ziti build failed (exit $LASTEXITCODE)" }
+} else {
+    $zitiVersion = $env:ZITI_VERSION
+    if (-not $zitiVersion) {
+        $releases = gh release list --repo openziti/ziti --limit 50 --json tagName,isDraft,isPrerelease | ConvertFrom-Json
+        $zitiVersion = ($releases | Where-Object { -not $_.isDraft -and -not $_.isPrerelease } | ForEach-Object tagName | Sort-Object { [version]($_ -replace '^v','') } | Select-Object -Last 1)
+    }
+    Write-Host "Using ziti $zitiVersion"
+    $zitiDir = Join-Path $testHome "ziti-cli"
+    New-Item -ItemType Directory -Path $zitiDir -Force | Out-Null
+    Push-Location $zitiDir
+    gh release download --repo openziti/ziti $zitiVersion --pattern "ziti-windows-amd64-*.zip" --clobber
+    $zitiZip = (Get-ChildItem -Filter "*.zip" | Select-Object -First 1).FullName
+    Expand-Archive -Path $zitiZip -DestinationPath . -Force
+    $zitiBin = (Get-ChildItem -Recurse -Filter "ziti.exe" | Select-Object -First 1).FullName
+    Pop-Location
 }
-Write-Host "Using ziti $zitiVersion"
-
-# ---- Download ziti CLI ------------------------------------------------------
-$zitiDir = Join-Path $testHome "ziti-cli"
-New-Item -ItemType Directory -Path $zitiDir -Force | Out-Null
-Push-Location $zitiDir
-gh release download --repo openziti/ziti $zitiVersion --pattern "ziti-windows-amd64-*.zip" --clobber
-$zitiZip = (Get-ChildItem -Filter "*.zip" | Select-Object -First 1).FullName
-Expand-Archive -Path $zitiZip -DestinationPath . -Force
-$zitiBin = (Get-ChildItem -Recurse -Filter "ziti.exe" | Select-Object -First 1).FullName
-Pop-Location
 Write-Host "ZITI_BIN=$zitiBin"
 
 # ---- Build/fetch dex --------------------------------------------------------
