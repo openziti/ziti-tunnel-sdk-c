@@ -16,7 +16,12 @@
       "$comment": "on linux we use system installed OpenSSL, as determined by vcpkg-overlays/linux-syslibs)"
     },
     "json-c",
-    "protobuf-c"
+    "protobuf-c",
+    {
+      "name": "pkgconf",
+      "host": true,
+      "platform": "windows"
+    }
   ],
   "features": {
     "test": {
@@ -29,18 +34,12 @@
       ]
     }
   },
-  "builtin-baseline": "c3867e714dd3a51c272826eea77267876517ed99",
+  "builtin-baseline": "f3e10653cc27d62a37a3763cd84b38bca07c6075",
   "overrides": [
-    {
-      "name": "libsodium",
-      "version": "1.0.20",
-      "port-version": 3,
-      "$comment": "1.0.21 breaks on linux-arm64 so we're sticking with 1.0.20 until the fix is released and available in vcpkg"
-    },
     {
       "name": "abseil",
       "version": "20250814.1",
-      "$comment": "20260107.1 breaks on several compilers so we're sticking with 20250814.1 until a buildable version is available in vcpkg"
+      "$comment": "20260107.1 breaks on compilers that don't support c++-17 so we're sticking with 20250814.1 until a buildable version is available in vcpkg, or we can update compilers in older (ubuntu bionic) builder images"
     }
   ]
 }

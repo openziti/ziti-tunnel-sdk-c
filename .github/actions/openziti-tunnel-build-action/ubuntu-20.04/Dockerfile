@@ -16,7 +16,6 @@ WORKDIR /root/
 
 RUN apt-get update
 RUN apt-get -y install \
-        autoconf automake autopoint \
         gcc-arm-linux-gnueabihf \
         g++-arm-linux-gnueabihf \
         gcc-aarch64-linux-gnu \
