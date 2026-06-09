@@ -17,14 +17,6 @@
 
 set -euo pipefail
 
-# install newer cmake version
-set -x
-curl -LO https://github.com/Kitware/CMake/releases/download/v4.3.2/cmake-4.3.2-linux-x86_64.tar.gz
-tar -xzvf cmake-4.3.2-linux-x86_64.tar.gz
-PATH="$(pwd)/cmake-4.3.2-linux-x86_64/bin:${PATH}"
-echo "cmake version"
-cmake --version
-
 # these commands must be in the entrypoint so they are run after workspace is mounted on Docker workdir
 echo "INFO: GIT_DISCOVERY_ACROSS_FILESYSTEM=${GIT_DISCOVERY_ACROSS_FILESYSTEM}"
 echo "INFO: WORKDIR=${PWD}"
