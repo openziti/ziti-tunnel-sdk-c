@@ -64,7 +64,9 @@ if ($env:ZITI_BIN) {
     # directives. Stamp the version line so probeZitiVersion sees 2.x, not v0.0.0.
     $zitiSrc = Join-Path $testHome "ziti-src"
     $zitiBin = Join-Path $testHome "ziti-main.exe"
+    if (Test-Path $zitiSrc) { Remove-Item -Recurse -Force $zitiSrc }
     git clone --depth 1 https://github.com/openziti/ziti.git $zitiSrc
+    if ($LASTEXITCODE -ne 0) { Write-Error "git clone failed (exit $LASTEXITCODE)" }
     Push-Location $zitiSrc
     $stamp = "v$((Get-Content version -Raw).Trim()).0-main"
     $modPath = (go list -m).Trim()

@@ -115,7 +115,7 @@ jobs:
           echo "channels=$channels" >> "$GITHUB_OUTPUT"
 
   integration-tests:
-    name: Integration Tests
+    name: Integration Tests (${{ matrix.ziti-channel.label }} ${{ matrix.ziti-channel.tag }})
     needs: [ call-cmake-build, resolve-ziti-versions ]
     strategy:
       fail-fast: false

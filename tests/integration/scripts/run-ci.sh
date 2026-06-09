@@ -68,6 +68,7 @@ elif [ -n "${ZITI_FROM_MAIN:-}" ]; then
   # directives. Stamp the version line so probeZitiVersion sees 2.x, not v0.0.0.
   ZITI_SRC="$TEST_HOME/ziti-src"
   ZITI_BIN="$TEST_HOME/ziti-main"
+  rm -rf "$ZITI_SRC"
   git clone --depth 1 https://github.com/openziti/ziti.git "$ZITI_SRC"
   ( cd "$ZITI_SRC" && go build \
     -ldflags "-X $(go list -m)/common/version.Version=v$(tr -d '[:space:]' < version).0-main" \

@@ -31,7 +31,7 @@ on:
 
 jobs:
   integration-tests:
-    name: ziti ${{ inputs.label }} (${{ matrix.os.name }})
+    name: ${{ matrix.os.name }}
     strategy:
       fail-fast: false
       matrix:
