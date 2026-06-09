@@ -182,6 +182,16 @@ func setupT2TService(
 ) {
 	t.Helper()
 
+	// Capture pool baselines before any test traffic so the leak check can
+	// diff Used counts. Register this cleanup first — t.Cleanup runs LIFO, so
+	// AssertNoLeakedConnections will execute after all resource teardown below.
+	interceptBaseline := testutil.CaptureIpBaseline(t, interceptZET)
+	hostBaseline := testutil.CaptureIpBaseline(t, hostZET)
+	t.Cleanup(func() {
+		testutil.AssertNoLeakedConnections(t, interceptZET, names.service, interceptBaseline)
+		testutil.AssertNoLeakedConnections(t, hostZET, names.service, hostBaseline)
+	})
+
 	overlay := state.overlay
 	// Mint identities.
 	interceptJWT, err := overlay.CreateIdentityJWT(names.interceptIdentity)

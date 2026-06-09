@@ -305,25 +305,25 @@ func (c *CommandsClient) SetLogLevel(t *testing.T, level string) *ServiceRespons
 	return resp
 }
 
-func (c *CommandsClient) ZitiDump(t *testing.T, identifier, dumpPath string) *ServiceResponse {
+func (c *CommandsClient) ZitiDump(t *testing.T, identifier, dumpPath string) *ZitiDumpResponse {
 	f := ZitiDumpFunction{
 		ServiceFunction: NewServiceFunction("ZitiDump"),
 		Data:            NewZitiDumpData(identifier, dumpPath),
 	}
 	t.Logf("sending ZitiDump for %q", identifier)
-	resp, err := send[ZitiDumpFunction, ServiceResponse](&c.IPCClient, f)
+	resp, err := send[ZitiDumpFunction, ZitiDumpResponse](&c.IPCClient, f)
 	require.NoError(t, err, "failed to send ZitiDump\n%s", c.LogPath)
 	resp.t = t
 	return resp
 }
 
-func (c *CommandsClient) IpDump(t *testing.T, dumpPath string) *ServiceResponse {
+func (c *CommandsClient) IpDump(t *testing.T, dumpPath string) *IpDumpResponse {
 	f := IpDumpFunction{
 		ServiceFunction: NewServiceFunction("IpDump"),
 		Data:            NewIpDumpData(dumpPath),
 	}
 	t.Logf("sending IpDump to %q", dumpPath)
-	resp, err := send[IpDumpFunction, ServiceResponse](&c.IPCClient, f)
+	resp, err := send[IpDumpFunction, IpDumpResponse](&c.IPCClient, f)
 	require.NoError(t, err, "failed to send IpDump\n%s", c.LogPath)
 	resp.t = t
 	return resp
