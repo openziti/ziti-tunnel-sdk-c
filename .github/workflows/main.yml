@@ -38,7 +38,7 @@ jobs:
     uses: ./.github/workflows/cmake.yml
 
   docker-deployments:
-    needs: [ call-cmake-build ]
+    needs: [call-cmake-build]
     name: Exercise CMake Artifacts
     runs-on: ubuntu-latest
     steps:
@@ -116,7 +116,7 @@ jobs:
 
   integration-tests:
     name: Integration Tests (${{ matrix.os.name }} / ziti ${{ matrix.ziti-channel.label }})
-    needs: [ call-cmake-build, resolve-ziti-versions ]
+    needs: [call-cmake-build, resolve-ziti-versions]
     strategy:
       fail-fast: false
       matrix:
@@ -251,6 +251,21 @@ jobs:
   nix-build:
     name: Build Nix Binary
     runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Build Ziti Edge Tunnel
+        run: |
+          nix build
+          ./result/bin/ziti-edge-tunnel version
+
+  nix-build-darwin:
+    name: Build Darwin Nix Binary on MacOS arm64
+    runs-on: macos-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v6
