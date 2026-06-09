@@ -28,6 +28,7 @@ RUN dnf install -y \
         perl \
     && dnf config-manager --set-enabled powertools \
     && dnf install -y \
+        autoconf autoconf-archive automake libtool \
         doxygen \
         graphviz \
         git \

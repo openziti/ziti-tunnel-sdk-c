@@ -15,6 +15,7 @@ ENV TZ=UTC
 
 RUN dnf update --assumeyes --nobest \
     && dnf install --assumeyes --nobest \
+        autoconf autoconf-archive automake libtool \
         "@Development Tools" \
         dnf-plugins-core \
         iproute \
