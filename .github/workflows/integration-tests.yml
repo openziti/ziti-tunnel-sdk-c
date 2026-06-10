@@ -86,21 +86,13 @@ jobs:
           echo "ZET_BIN=$base/zet-artifact/$ZET_BIN_NAME" >> "$GITHUB_ENV"
 
       # CI resolves ziti via openziti's setup-cli action; downstream tests run against any ziti.
-      # TEMP: pinned to the CLBRITTON2 fork to validate the action pre-merge; point at openziti/ziti before merge.
       - name: Resolve ziti
-        uses: CLBRITTON2/ziti/setup-cli@main
+        uses: openziti/ziti/setup-cli@main
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           version: ${{ (inputs.ziti-version == '' || inputs.ziti-version == 'main') && 'stable' || inputs.ziti-version }}
           ref: ${{ inputs.ziti-version == 'main' && 'main' || '' }}
-
-      # setup-cli puts ziti on PATH; the test scripts consume ZITI_BIN.
-      - name: Export ZITI_BIN from setup-cli
-        shell: bash
-        run: |
-          ext=""; [ "$RUNNER_OS" = "Windows" ] && ext=".exe"
-          echo "ZITI_BIN=${{ runner.temp }}/ziti-cli/bin/ziti$ext" >> "$GITHUB_ENV"
 
       - name: Run integration tests (Linux/macOS)
         if: runner.os != 'Windows'
@@ -108,6 +100,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TEST_HOME: ${{ runner.temp }}
+          ZITI_BIN: ${{ runner.temp }}/ziti-cli/bin/ziti
           IDP_VERSION: ${{ inputs.idp-version }}
           ZET1_VERSION: ${{ inputs.zet1-version }}
           ZET2_VERSION: ${{ inputs.zet2-version }}
@@ -119,6 +112,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TEST_HOME: ${{ runner.temp }}
+          ZITI_BIN: ${{ runner.temp }}/ziti-cli/bin/ziti.exe
           IDP_VERSION: ${{ inputs.idp-version }}
           ZET1_VERSION: ${{ inputs.zet1-version }}
           ZET2_VERSION: ${{ inputs.zet2-version }}
