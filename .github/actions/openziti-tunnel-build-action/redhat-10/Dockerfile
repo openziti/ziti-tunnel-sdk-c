@@ -15,6 +15,7 @@ ENV TZ=UTC
 
 RUN dnf update --assumeyes \
     && dnf install --assumeyes \
+        autoconf autoconf-archive automake libtool \
         "@Development Tools" \
         dnf-plugins-core \
         iproute \
@@ -47,8 +48,6 @@ ENV VCPKG_ROOT=/usr/local/vcpkg
 ENV VCPKG_BINARY_SOURCES="clear;files,/github/workspace/vcpkg_cache/archives,readwrite"
 ENV VCPKG_DOWNLOADS=/github/workspace/vcpkg_cache/downloads
 ENV VCPKG_INSTALLED_DIR=/github/workspace/vcpkg_cache/installed
-
-ENV VCPKG_FORCE_SYSTEM_BINARIES=yes
 
 RUN cd /usr/local \
     && git clone https://github.com/microsoft/vcpkg \

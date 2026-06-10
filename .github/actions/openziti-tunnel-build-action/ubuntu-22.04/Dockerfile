@@ -16,6 +16,7 @@ WORKDIR /root/
 
 RUN apt-get update
 RUN apt-get -y install \
+        autoconf autoconf-archive automake \
         gcc-arm-linux-gnueabihf \
         g++-arm-linux-gnueabihf \
         gcc-aarch64-linux-gnu \
@@ -61,8 +62,6 @@ RUN curl -sSfL "https://cmake.org/files/v${CMAKE_VERSION%.*}/cmake-${CMAKE_VERSI
     && rm cmake.sh
 
 ENV VCPKG_ROOT=/usr/local/vcpkg
-# this must be set on arm. see https://learn.microsoft.com/en-us/vcpkg/users/config-environment#vcpkg_force_system_binaries
-ENV VCPKG_FORCE_SYSTEM_BINARIES=yes
 ARG VCPKG_BINARY_SOURCES="clear;files,/github/workspace/vcpkg_cache,readwrite"
 
 RUN cd /usr/local \
