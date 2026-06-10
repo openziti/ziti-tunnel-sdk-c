@@ -49,8 +49,6 @@ ENV VCPKG_BINARY_SOURCES="clear;files,/github/workspace/vcpkg_cache/archives,rea
 ENV VCPKG_DOWNLOADS=/github/workspace/vcpkg_cache/downloads
 ENV VCPKG_INSTALLED_DIR=/github/workspace/vcpkg_cache/installed
 
-ENV VCPKG_FORCE_SYSTEM_BINARIES=yes
-
 RUN cd /usr/local \
     && git clone https://github.com/microsoft/vcpkg \
     && chmod -R ugo+rwX /usr/local/vcpkg
