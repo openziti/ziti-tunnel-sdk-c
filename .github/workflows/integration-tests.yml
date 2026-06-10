@@ -85,45 +85,22 @@ jobs:
           if [ "$RUNNER_OS" = "Windows" ]; then base="$(pwd -W)"; else base="$PWD"; fi
           echo "ZET_BIN=$base/zet-artifact/$ZET_BIN_NAME" >> "$GITHUB_ENV"
 
-      # CI resolves ziti and passes ZITI_BIN; the test scripts run against any ziti.
+      # CI resolves ziti via openziti's setup-cli action; downstream tests run against any ziti.
+      # TEMP: pinned to the CLBRITTON2 fork to validate the action pre-merge; point at openziti/ziti before merge.
       - name: Resolve ziti
-        shell: bash
+        uses: CLBRITTON2/ziti/setup-cli@main
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ZITI_VERSION: ${{ inputs.ziti-version }}
+        with:
+          version: ${{ (inputs.ziti-version == '' || inputs.ziti-version == 'main') && 'stable' || inputs.ziti-version }}
+          ref: ${{ inputs.ziti-version == 'main' && 'main' || '' }}
+
+      # setup-cli puts ziti on PATH; the test scripts consume ZITI_BIN.
+      - name: Export ZITI_BIN from setup-cli
+        shell: bash
         run: |
-          set -euo pipefail
           ext=""; [ "$RUNNER_OS" = "Windows" ] && ext=".exe"
-          if [ "$RUNNER_OS" = "Windows" ]; then base="$(pwd -W)"; else base="$PWD"; fi
-          if [ "$ZITI_VERSION" = "main" ]; then
-            # nightly tests run against ziti main
-            out="$base/ziti-main$ext"
-            git clone --depth 1 https://github.com/openziti/ziti.git ziti-src
-            ( cd ziti-src
-              # ziti main needs a newer go than the test module; let go fetch its toolchain
-              export GOTOOLCHAIN=auto
-              stamp="v$(tr -d '[:space:]' < version).0-main"
-              go build -ldflags "-X $(go list -m)/common/version.Version=$stamp" -o "$out" ./ziti )
-          else
-            case "$RUNNER_OS" in
-              Linux)   pattern="ziti-linux-amd64-*.tar.gz" ;;
-              macOS)   pattern="ziti-darwin-arm64-*.tar.gz" ;;
-              Windows) pattern="ziti-windows-amd64-*.zip" ;;
-            esac
-            ver="$ZITI_VERSION"
-            if [ -z "$ver" ]; then
-              ver=$(gh release list --repo openziti/ziti --limit 50 --json tagName,isDraft,isPrerelease \
-                | jq -r '.[] | select(.isDraft==false and .isPrerelease==false) | .tagName' | sort -V | tail -n1)
-            fi
-            mkdir -p ziti-dl
-            ( cd ziti-dl
-              gh release download --repo openziti/ziti "$ver" --pattern "$pattern" --clobber
-              if [ "$RUNNER_OS" = "Windows" ]; then unzip -o ./*.zip; else tar -xzf ./*.tar.gz; fi )
-            rel=$(cd ziti-dl && find . -type f -name "ziti$ext" | head -n1)
-            out="$base/ziti-dl/${rel#./}"
-            chmod +x "$out" || true
-          fi
-          echo "ZITI_BIN=$out" >> "$GITHUB_ENV"
+          echo "ZITI_BIN=${{ runner.temp }}/ziti-cli/bin/ziti$ext" >> "$GITHUB_ENV"
 
       - name: Run integration tests (Linux/macOS)
         if: runner.os != 'Windows'
