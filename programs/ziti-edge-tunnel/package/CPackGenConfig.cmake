@@ -1,12 +1,17 @@
 cmake_policy(SET CMP0057 NEW)
 
+if(CPACK_ENABLE_PCAP)
+    set(pcap_rpm_dep ", libpcap")
+    set(pcap_deb_dep ", libpcap0.8 | libpcap0.8t64")
+endif()
+
 if(CPACK_GENERATOR MATCHES "RPM")
-    set(CPACK_RPM_BUILDREQUIRES "cmake >= ${CMAKE_MINIMUM_REQUIRED_VERSION}, systemd-devel, gawk, gcc-c++ >= 4.9, json-c-devel, libpcap-devel, protobuf-c-devel, python3, openssl-devel, zlib-devel")
+    set(CPACK_RPM_BUILD_REQUIRES "cmake >= ${CMAKE_MINIMUM_REQUIRED_VERSION}, systemd-devel, gawk, gcc-c++ >= 4.9, json-c-devel, protobuf-c-devel, python3, openssl-devel, zlib-devel")
     if(CPACK_OS_RELEASE_NAME IN_LIST CPACK_RPM_DISTRIBUTIONS AND CPACK_OS_RELEASE_VERSION VERSION_GREATER "7")
-        list(APPEND CPACK_RPM_BUILDREQUIRES "systemd-rpm-macros")
+        list(APPEND CPACK_RPM_BUILD_REQUIRES "systemd-rpm-macros")
     endif()
     set(CPACK_RPM_PACKAGE_SOURCES OFF)
-    set(CPACK_RPM_PACKAGE_REQUIRES "iproute, gawk, systemd, libatomic, libpcap, json-c, protobuf-c, openssl-libs, zlib, polkit")
+    set(CPACK_RPM_PACKAGE_REQUIRES "iproute, gawk, systemd, libatomic ${pcap_rpm_dep}, json-c, protobuf-c, openssl-libs, zlib, polkit")
     set(CPACK_RPM_CHANGELOG_FILE "${CMAKE_CURRENT_LIST_DIR}/RPM_CHANGELOG")
     set(CPACK_RPM_FILE_NAME "RPM-DEFAULT")
     set(CPACK_RPM_PACKAGE_DESCRIPTION "The OpenZiti Edge Tunnel is a zero-trust tunneling software client.")
@@ -39,6 +44,6 @@ if(CPACK_GENERATOR MATCHES "DEB")
     # specify "libssl3 if it exists in the repos, or nothing" as a dependency.
     # systemd package on older distros does not contain `systemd-sysusers`, so include passwd for `useradd`, `groupadd`.
     # login provides `/usr/sbin/nologin`.
-    set(CPACK_DEBIAN_PACKAGE_DEPENDS "debconf, iproute2, sed, systemd, libatomic1, libjson-c3 | libjson-c4 | libjson-c5, libpcap0.8 | libpcap0.8t64, libprotobuf-c1, libssl3 | libssl1.1 | libssl1.0.0, login, passwd, policykit-1 | polkitd, zlib1g")
+    set(CPACK_DEBIAN_PACKAGE_DEPENDS "debconf, iproute2, sed, systemd, libatomic1, libjson-c3 | libjson-c4 | libjson-c5 ${pcap_deb_dep}, libprotobuf-c1, libssl3 | libssl1.1 | libssl1.0.0, login, passwd, policykit-1 | polkitd, zlib1g")
     set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA "${CPACK_DEB_CONFFILES};${CPACK_DEB_PRE_INSTALL};${CPACK_DEB_POST_INSTALL};${CPACK_DEB_PRE_UNINSTALL};${CPACK_DEB_POST_UNINSTALL};${CPACK_DEB_TEMPLATES}")
 endif(CPACK_GENERATOR MATCHES "DEB")

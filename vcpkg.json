@@ -12,6 +12,10 @@
       "platform": "windows & !mingw"
     },
     {
+      "name": "libpcap",
+      "platform": "linux | windows"
+    },
+    {
       "name": "openssl",
       "$comment": "on linux we use system installed OpenSSL, as determined by vcpkg-overlays/linux-syslibs)"
     },

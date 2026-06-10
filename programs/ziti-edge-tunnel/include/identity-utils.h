@@ -91,8 +91,10 @@ char* get_zet_instance_id(const char* discriminator);
 
 void set_l2_enabled(bool enabled);
 bool get_l2_enabled();
+#ifdef ENABLE_PCAP
 void set_pcap_ifname(const char* pcap_ifname);
 const char *get_pcap_ifname();
+#endif
 //void set_identity_directory(const char *path);
 
 #ifdef __cplusplus

@@ -513,7 +513,9 @@ static void process_update_l2_options_cmd(const char *cmd_json, tunnel_result *r
         return;
     }
     set_l2_enabled(l2_opts.enabled);
+#ifdef ENABLE_PCAP
     set_pcap_ifname(l2_opts.pcap_ifname);
+#endif
     result->success = true;
     result->code = IPC_SUCCESS;
     free_tunnel_l2_options(&l2_opts);
