@@ -3,11 +3,11 @@
 # local dev reproduce a CI failure with one command.
 #
 # Required input:
-#   ZET_BIN  Absolute path to a built ziti-edge-tunnel binary.
+#   ZET_BIN   Absolute path to a built ziti-edge-tunnel binary.
+#   ZITI_BIN  Absolute path to a ziti binary. CI obtains it (a release or a main build).
 #
 # Optional input:
 #   TEST_HOME      Working dir for overlay, logs, caches. Defaults to a temp dir.
-#   ZITI_VERSION   ziti release tag to download (default: newest non-prerelease).
 #   IDP_VERSION    dex version tag (default: fetch-dex.sh's pinned version).
 #   ZET1_VERSION   If set, downloads this ZET release and uses it as ZET_BIN.
 #   ZET2_VERSION   If set, downloads this ZET release and uses it as ZET_BIN_B.
@@ -17,7 +17,7 @@
 #                   remove it on exit. Off by default so the script does not
 #                   mutate a normal user's trust store.
 #
-# Requires:  go, gh, jq, sudo (Linux/macOS).
+# Requires:  go, gh, jq, curl, unzip, and sudo (Linux/macOS).
 
 set -euo pipefail
 
@@ -42,9 +42,9 @@ for tool in go gh jq curl unzip; do
 done
 
 case "$(uname -s)-$(uname -m)" in
-  Linux-x86_64)   ZITI_PATTERN="ziti-linux-amd64-*.tar.gz"; ZET_ZIP="ziti-edge-tunnel-Linux_x86_64.zip";  ZET_BIN_NAME="ziti-edge-tunnel" ;;
-  Darwin-arm64)   ZITI_PATTERN="ziti-darwin-arm64-*.tar.gz"; ZET_ZIP="ziti-edge-tunnel-Darwin_arm64.zip"; ZET_BIN_NAME="ziti-edge-tunnel" ;;
-  Darwin-x86_64)  ZITI_PATTERN="ziti-darwin-amd64-*.tar.gz"; ZET_ZIP="ziti-edge-tunnel-Darwin_x86_64.zip"; ZET_BIN_NAME="ziti-edge-tunnel" ;;
+  Linux-x86_64)   ZET_ZIP="ziti-edge-tunnel-Linux_x86_64.zip";  ZET_BIN_NAME="ziti-edge-tunnel" ;;
+  Darwin-arm64)   ZET_ZIP="ziti-edge-tunnel-Darwin_arm64.zip"; ZET_BIN_NAME="ziti-edge-tunnel" ;;
+  Darwin-x86_64)  ZET_ZIP="ziti-edge-tunnel-Darwin_x86_64.zip"; ZET_BIN_NAME="ziti-edge-tunnel" ;;
   *) echo "unsupported os/arch: $(uname -s)-$(uname -m)" >&2; exit 1 ;;
 esac
 
@@ -54,25 +54,9 @@ echo "TEST_HOME=$TEST_HOME"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 
-# ---- Resolve ziti version ----------------------------------------------------
-if [ -z "${ZITI_VERSION:-}" ]; then
-  ZITI_VERSION=$(gh release list --repo openziti/ziti --limit 50 \
-    --json tagName,isDraft,isPrerelease \
-    | jq -r '.[] | select(.isDraft==false and .isPrerelease==false) | .tagName' \
-    | sort -V | tail -n1)
-fi
-echo "Using ziti $ZITI_VERSION"
-
-# ---- Download ziti CLI -------------------------------------------------------
-ZITI_DIR="$TEST_HOME/ziti-cli"
-mkdir -p "$ZITI_DIR"
-(
-  cd "$ZITI_DIR"
-  gh release download --repo openziti/ziti "$ZITI_VERSION" --pattern "$ZITI_PATTERN" --clobber
-  for archive in *.tar.gz; do [ -e "$archive" ] && tar -xzf "$archive"; done
-)
-ZITI_BIN=$(find "$ZITI_DIR" -type f -name ziti | head -n1)
-chmod +x "$ZITI_BIN"
+# ---- ziti CLI ----------------------------------------------------------------
+: "${ZITI_BIN:?ZITI_BIN must point to a ziti binary}"
+[ -x "$ZITI_BIN" ] || { echo "ZITI_BIN=$ZITI_BIN is not executable" >&2; exit 1; }
 echo "ZITI_BIN=$ZITI_BIN"
 
 # ---- Build/fetch dex ---------------------------------------------------------

@@ -3,11 +3,11 @@ Run the integration test suite end-to-end the same way CI does on Windows.
 Lets a local dev reproduce a CI failure with one command.
 
 Required input:
-  $env:ZET_BIN  Absolute path to a built ziti-edge-tunnel.exe.
+  $env:ZET_BIN   Absolute path to a built ziti-edge-tunnel.exe.
+  $env:ZITI_BIN  Absolute path to a ziti binary. CI obtains it (a release or a main build).
 
 Optional input:
   $env:TEST_HOME      Working dir for overlay, logs, caches. Defaults to a temp dir.
-  $env:ZITI_VERSION   ziti release tag to download (default: newest non-prerelease).
   $env:IDP_VERSION    dex version tag (default: fetch-dex.sh's pinned version).
   $env:ZET1_VERSION   If set, downloads this ZET release and uses it as ZET_BIN.
   $env:ZET2_VERSION   If set, downloads this ZET release and uses it as ZET_BIN_B.
@@ -17,7 +17,7 @@ Flags:
                 it on exit. Off by default so the script does not mutate a normal
                 user's trust store.
 
-Requires: go, gh, git. Run as Administrator when using -InstallCert, because
+Requires: go, gh. Run as Administrator when using -InstallCert, because
 installing the test overlay CA into Cert:\LocalMachine\Root requires it.
 #>
 
@@ -33,8 +33,14 @@ if (-not $env:ZET_BIN) {
 if (-not (Test-Path $env:ZET_BIN)) {
     Write-Error "ZET_BIN=$($env:ZET_BIN) does not exist"
 }
+if (-not $env:ZITI_BIN) {
+    Write-Error "ZITI_BIN must point to a ziti binary"
+}
+if (-not (Test-Path $env:ZITI_BIN)) {
+    Write-Error "ZITI_BIN=$($env:ZITI_BIN) does not exist"
+}
 
-foreach ($tool in @("go", "gh", "git")) {
+foreach ($tool in @("go", "gh")) {
     if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) {
         Write-Error "missing required tool: $tool"
     }
@@ -49,23 +55,8 @@ Write-Host "TEST_HOME=$testHome"
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..\..")).Path
 
-# ---- Resolve ziti version ---------------------------------------------------
-$zitiVersion = $env:ZITI_VERSION
-if (-not $zitiVersion) {
-    $releases = gh release list --repo openziti/ziti --limit 50 --json tagName,isDraft,isPrerelease | ConvertFrom-Json
-    $zitiVersion = ($releases | Where-Object { -not $_.isDraft -and -not $_.isPrerelease } | ForEach-Object tagName | Sort-Object { [version]($_ -replace '^v','') } | Select-Object -Last 1)
-}
-Write-Host "Using ziti $zitiVersion"
-
-# ---- Download ziti CLI ------------------------------------------------------
-$zitiDir = Join-Path $testHome "ziti-cli"
-New-Item -ItemType Directory -Path $zitiDir -Force | Out-Null
-Push-Location $zitiDir
-gh release download --repo openziti/ziti $zitiVersion --pattern "ziti-windows-amd64-*.zip" --clobber
-$zitiZip = (Get-ChildItem -Filter "*.zip" | Select-Object -First 1).FullName
-Expand-Archive -Path $zitiZip -DestinationPath . -Force
-$zitiBin = (Get-ChildItem -Recurse -Filter "ziti.exe" | Select-Object -First 1).FullName
-Pop-Location
+# ---- ziti CLI ---------------------------------------------------------------
+$zitiBin = $env:ZITI_BIN
 Write-Host "ZITI_BIN=$zitiBin"
 
 # ---- Build/fetch dex --------------------------------------------------------

@@ -199,11 +199,7 @@ func (c *extAuthContext) enrollToNoneMultipleSignersNamedPolicyCompletes(t *test
 
 func (c *extAuthContext) enrollToCertCompletes(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
-		idName := "test_ext_auth_cert_happy"
-		t.Cleanup(func() { c.deleteIdentityByExternalId(idName) })
-
-		identifier := c.completeEnrollToCert(t, idName)
-		t.Cleanup(func() { c.zet.RemoveIdentity(t, identifier) })
+		c.completeEnrollToCert(t, "test_ext_auth_cert_happy")
 	})
 }
 
@@ -215,10 +211,6 @@ func (c *extAuthContext) createIdentityData(name string, mode testutil.EnrollMod
 		EnrollMode:       &mode,
 		Provider:         &c.workingSigner.name,
 	}
-}
-
-func (c *extAuthContext) deleteIdentityByExternalId(idName string) {
-	_ = c.overlay.PurgeIdentitiesByExternalId(idName + "@test.com")
 }
 
 // beginEnrollment sends AddIdentity and returns the enrollment URL the IdP flow
@@ -247,11 +239,7 @@ func (c *extAuthContext) completeEnrollToCert(t *testing.T, name string) string 
 
 func (c *extAuthContext) enrollToTokenCompletes(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
-		idName := "test_ext_auth_token_happy"
-		t.Cleanup(func() { c.deleteIdentityByExternalId(idName) })
-
-		identifier := c.completeEnrollToToken(t, idName)
-		t.Cleanup(func() { c.zet.RemoveIdentity(t, identifier) })
+		c.completeEnrollToToken(t, "test_ext_auth_token_happy")
 	})
 }
 
@@ -277,8 +265,12 @@ func (c *extAuthContext) completeEnrollToToken(t *testing.T, name string) string
 }
 
 func (c *extAuthContext) bothEnrollFlowsCompleteWhenBothEnabled(t *testing.T) {
-	t.Run("enrollToCertCompletes", c.enrollToCertCompletes)
-	t.Run("enrollToTokenCompletes", c.enrollToTokenCompletes)
+	testutil.RunWithTimeout(t, func(t *testing.T) {
+		c.completeEnrollToCert(t, "test_ext_auth_cert_both")
+	})
+	testutil.RunWithTimeout(t, func(t *testing.T) {
+		c.completeEnrollToToken(t, "test_ext_auth_token_both")
+	})
 }
 
 func (c *extAuthContext) enrollToNoneThenCertRejected(t *testing.T) {

@@ -1,0 +1,25 @@
+name: Nightly Integration Tests (ziti main)
+
+# Runs ZET integration tests against ziti main
+on:
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  call-cmake-build:
+    name: Call CMake Build
+    uses: ./.github/workflows/cmake.yml
+
+  integration-tests:
+    name: Integration Tests
+    needs: [ call-cmake-build ]
+    uses: ./.github/workflows/integration-tests.yml
+    with:
+      ziti-version: main
+      label: main
+    secrets: inherit

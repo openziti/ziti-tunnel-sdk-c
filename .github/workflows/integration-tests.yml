@@ -1,0 +1,169 @@
+# callable workflow's jobs appear in the calling workflow's run, so clicking this workflow in GitHub shows no runs
+name: Callable Integration Tests
+
+on:
+  workflow_call:
+    inputs:
+      ziti-version:
+        description: "ziti release tag to download, or 'main' to build openziti/ziti @ main from source"
+        type: string
+        default: ""
+      label:
+        description: "label for the run name and artifact/log names (e.g. latest, lts, main)"
+        type: string
+        required: true
+      idp-version:
+        description: "dex IdP version tag; empty = script default"
+        type: string
+        default: ""
+      zet1-version:
+        description: "ziti-edge-tunnel release tag for zetA; empty = the binary built by cmake"
+        type: string
+        default: ""
+      zet2-version:
+        description: "ziti-edge-tunnel release tag for zetB; empty = same binary as zetA"
+        type: string
+        default: ""
+
+jobs:
+  integration-tests:
+    name: ${{ matrix.os.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - name: Linux x64
+            runner: ubuntu-latest
+            artifact: linux-x64
+            zet-zip: ziti-edge-tunnel-Linux_x86_64.zip
+            zet-bin: ziti-edge-tunnel
+            core-dir: /tmp/cores
+          - name: macOS arm64
+            runner: macos-15
+            artifact: macOS-arm64
+            zet-zip: ziti-edge-tunnel-Darwin_arm64.zip
+            zet-bin: ziti-edge-tunnel
+            core-dir: /cores
+          - name: Windows x64
+            runner: windows-2022
+            artifact: windows-x64-mingw
+            zet-zip: ziti-edge-tunnel-Windows_x86_64.zip
+            zet-bin: ziti-edge-tunnel.exe
+            core-dir: ""
+    runs-on: ${{ matrix.os.runner }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: tests/integration/go.mod
+          cache-dependency-path: tests/integration/go.sum
+
+      # Built by the caller's cmake job; artifacts are shared within the run.
+      - name: Download CMake Artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ matrix.os.artifact }}
+          path: ./zet-artifact
+          digest-mismatch: error
+
+      - name: Extract built ZET binary from artifact
+        shell: bash
+        env:
+          ZET_ZIP: ${{ matrix.os.zet-zip }}
+          ZET_BIN_NAME: ${{ matrix.os.zet-bin }}
+        run: |
+          set -euo pipefail
+          unzip -o "zet-artifact/$ZET_ZIP" -d zet-artifact
+          chmod +x "zet-artifact/$ZET_BIN_NAME" || true
+          # On Windows the consumer is PowerShell, which can't resolve an MSYS
+          # /d/a/... path; pwd -W emits a Windows path it accepts.
+          if [ "$RUNNER_OS" = "Windows" ]; then base="$(pwd -W)"; else base="$PWD"; fi
+          echo "ZET_BIN=$base/zet-artifact/$ZET_BIN_NAME" >> "$GITHUB_ENV"
+
+      # CI resolves ziti via openziti's setup-cli action; downstream tests run against any ziti.
+      - name: Resolve ziti
+        uses: openziti/ziti/setup-cli@main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          version: ${{ (inputs.ziti-version == '' || inputs.ziti-version == 'main') && 'stable' || inputs.ziti-version }}
+          ref: ${{ inputs.ziti-version == 'main' && 'main' || '' }}
+
+      - name: Run integration tests (Linux/macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TEST_HOME: ${{ runner.temp }}
+          ZITI_BIN: ${{ runner.temp }}/ziti-cli/bin/ziti
+          IDP_VERSION: ${{ inputs.idp-version }}
+          ZET1_VERSION: ${{ inputs.zet1-version }}
+          ZET2_VERSION: ${{ inputs.zet2-version }}
+        run: ./tests/integration/scripts/run-ci.sh --install-cert
+
+      - name: Run integration tests (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TEST_HOME: ${{ runner.temp }}
+          ZITI_BIN: ${{ runner.temp }}/ziti-cli/bin/ziti.exe
+          IDP_VERSION: ${{ inputs.idp-version }}
+          ZET1_VERSION: ${{ inputs.zet1-version }}
+          ZET2_VERSION: ${{ inputs.zet2-version }}
+        run: .\tests\integration\scripts\run-ci.ps1 -InstallCert
+
+      - name: Log core file backtraces
+        if: ${{ failure() && matrix.os.core-dir != '' }}
+        shell: bash
+        run: |
+          shopt -s nullglob
+          cores=("${{ matrix.os.core-dir }}"/core.*)
+          if [ ${#cores[@]} -eq 0 ]; then
+            echo "No core files found in ${{ matrix.os.core-dir }}"
+            exit 0
+          fi
+          # Core files are owned by root (ZET runs as root); use sudo to read them.
+          if [ "$(uname -s)" = "Linux" ]; then
+            sudo apt-get install -y --no-install-recommends gdb >/dev/null
+            for core in "${cores[@]}"; do
+              echo "::group::Backtrace: $core"
+              sudo gdb -batch \
+                -ex "set pagination off" \
+                -ex "thread apply all bt full" \
+                "$ZET_BIN" "$core" 2>&1 || true
+              echo "::endgroup::"
+            done
+          elif [ "$(uname -s)" = "Darwin" ]; then
+            for core in "${cores[@]}"; do
+              echo "::group::Backtrace: $core"
+              sudo lldb -c "$core" "$ZET_BIN" -b \
+                -o "thread backtrace all" \
+                -o "quit" 2>&1 || true
+              echo "::endgroup::"
+            done
+          fi
+
+      - name: Upload core files
+        if: ${{ failure() && matrix.os.core-dir != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: cores-${{ matrix.os.name }}-ziti-${{ inputs.label }}
+          path: ${{ matrix.os.core-dir }}/core.*
+          if-no-files-found: ignore
+
+      - name: Upload integration test logs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: integration-logs-${{ matrix.os.name }}-ziti-${{ inputs.label }}
+          path: |
+            ${{ runner.temp }}/zets/logs/*.log
+            ${{ runner.temp }}/overlay/quickstart-logs/*.log
+            ${{ runner.temp }}/idp/logs/*.log
+          if-no-files-found: ignore
