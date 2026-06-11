@@ -23,3 +23,31 @@ jobs:
       ziti-version: main
       label: main
     secrets: inherit
+
+  alert-mattermost:
+    name: Alert Mattermost on Failure
+    needs: [ call-cmake-build, integration-tests ]
+    if: failure()
+    runs-on: ubuntu-latest
+    env:
+      ZHOOK_URL: ${{ secrets.ZHOOK_URL_DEV_NOTIFICATIONS }}
+    steps:
+      - uses: openziti/ziti-mattermost-action-py@v1
+        if: env.ZHOOK_URL
+        with:
+          zitiId: ${{ secrets.ZITI_MATTERMOST_IDENTITY }}
+          webhookUrl: ${{ secrets.ZHOOK_URL_DEV_NOTIFICATIONS }}
+          eventJson: |
+            {
+              "action": "[ZET nightly integration tests against ziti main failed](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})",
+              "repository": {
+                "full_name": "${{ github.repository }}",
+                "html_url": "${{ github.server_url }}/${{ github.repository }}"
+              },
+              "sender": {
+                "login": "github-actions",
+                "html_url": "${{ github.server_url }}/${{ github.repository }}/actions",
+                "avatar_url": "https://github.com/github.png"
+              }
+            }
+          senderUsername: "GitHubZ"
