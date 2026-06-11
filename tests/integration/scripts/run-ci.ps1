@@ -3,21 +3,20 @@ Run the integration test suite end-to-end the same way CI does on Windows.
 Lets a local dev reproduce a CI failure with one command.
 
 Required input:
-  $env:ZET_BIN   Absolute path to a built ziti-edge-tunnel.exe.
+  $env:ZET_BIN   Absolute path to a ziti-edge-tunnel.exe.
   $env:ZITI_BIN  Absolute path to a ziti binary. CI obtains it (a release or a main build).
 
 Optional input:
   $env:TEST_HOME      Working dir for overlay, logs, caches. Defaults to a temp dir.
   $env:IDP_VERSION    dex version tag (default: fetch-dex.sh's pinned version).
-  $env:ZET1_VERSION   If set, downloads this ZET release and uses it as ZET_BIN.
-  $env:ZET2_VERSION   If set, downloads this ZET release and uses it as ZET_BIN_B.
+  $env:ZET_BIN_B      ziti-edge-tunnel.exe for zetB. Defaults to ZET_BIN.
 
 Flags:
   -InstallCert  Install the test overlay CA into OS trust for the run and remove
                 it on exit. Off by default so the script does not mutate a normal
                 user's trust store.
 
-Requires: go, gh. Run as Administrator when using -InstallCert, because
+Requires: go. Run as Administrator when using -InstallCert, because
 installing the test overlay CA into Cert:\LocalMachine\Root requires it.
 #>
 
@@ -40,7 +39,7 @@ if (-not (Test-Path $env:ZITI_BIN)) {
     Write-Error "ZITI_BIN=$($env:ZITI_BIN) does not exist"
 }
 
-foreach ($tool in @("go", "gh")) {
+foreach ($tool in @("go")) {
     if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) {
         Write-Error "missing required tool: $tool"
     }
@@ -71,29 +70,8 @@ if ($LASTEXITCODE -ne 0) { Write-Error "fetch-dex.ps1 failed (exit $LASTEXITCODE
 $idpBin = Join-Path $dexDir "dex.exe"
 Write-Host "IDP_BIN=$idpBin"
 
-# ---- Optional ZET release overrides -----------------------------------------
 $zetBin = $env:ZET_BIN
 $zetBinB = if ($env:ZET_BIN_B) { $env:ZET_BIN_B } else { $zetBin }
-$zetZip = "ziti-edge-tunnel-Windows_x86_64.zip"
-
-if ($env:ZET1_VERSION) {
-    $d = Join-Path $testHome "zet1"
-    New-Item -ItemType Directory -Path $d -Force | Out-Null
-    Push-Location $d
-    gh release download --repo openziti/ziti-tunnel-sdk-c $env:ZET1_VERSION --pattern $zetZip --clobber
-    Expand-Archive -Path (Join-Path $d $zetZip) -DestinationPath . -Force
-    $zetBin = (Get-ChildItem -Recurse -Filter "ziti-edge-tunnel.exe" | Select-Object -First 1).FullName
-    Pop-Location
-}
-if ($env:ZET2_VERSION) {
-    $d = Join-Path $testHome "zet2"
-    New-Item -ItemType Directory -Path $d -Force | Out-Null
-    Push-Location $d
-    gh release download --repo openziti/ziti-tunnel-sdk-c $env:ZET2_VERSION --pattern $zetZip --clobber
-    Expand-Archive -Path (Join-Path $d $zetZip) -DestinationPath . -Force
-    $zetBinB = (Get-ChildItem -Recurse -Filter "ziti-edge-tunnel.exe" | Select-Object -First 1).FullName
-    Pop-Location
-}
 Write-Host "ZET_BIN=$zetBin"
 Write-Host "ZET_BIN_B=$zetBinB"
 
