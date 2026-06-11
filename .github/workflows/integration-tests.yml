@@ -24,6 +24,10 @@ on:
         description: "ziti-edge-tunnel release tag for zetB; empty = same binary as zetA"
         type: string
         default: ""
+      tests-repo:
+        description: "repo to check the test suite out from, at the same commit as this workflow file; cross-repo callers set this (checkout defaults to the calling repo)"
+        type: string
+        default: ""
 
 jobs:
   integration-tests:
@@ -55,6 +59,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         with:
+          repository: ${{ inputs.tests-repo || github.repository }}
+          # job_workflow_sha = the commit this workflow file was loaded from, so a
+          # cross-repo caller's @ref selects the workflow and the test sources together.
+          ref: ${{ inputs.tests-repo != '' && github.job_workflow_sha || '' }}
           fetch-depth: 0
 
       - name: Set up Go
