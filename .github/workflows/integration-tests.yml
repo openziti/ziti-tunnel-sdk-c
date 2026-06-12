@@ -1,4 +1,8 @@
 # callable workflow's jobs appear in the calling workflow's run, so clicking this workflow in GitHub shows no runs
+#
+# The ZET/Ziti binaries under test come from exactly one source each:
+#   ziti: ziti-artifact > ziti-ref (build from source) > ziti-version (download a release; empty = stable)
+#   ZET:  zet1-version (download a release, 'latest' = the GitHub Latest release; empty = the cmake artifact built by the caller's run)
 name: Callable Integration Tests
 
 on:
@@ -29,11 +33,11 @@ on:
         type: string
         default: ""
       ziti-artifact:
-        description: "name prefix of per-OS artifacts (<prefix>-linux|darwin|windows) holding a ziti binary, uploaded earlier in the caller's run; overrides ziti-version"
+        description: "name suffix of per-OS artifacts ((linux|darwin|windows)-<suffix>) holding a ziti binary; overrides ziti-version"
         type: string
         default: ""
       tests-repo:
-        description: "repo to check the test suite out from, at the same commit as this workflow file; cross-repo callers set this (checkout defaults to the calling repo)"
+        description: "repo to check the test suite out from; cross-repo callers set this to the repo named in their 'uses:' line"
         type: string
         default: ""
 
@@ -50,6 +54,7 @@ jobs:
             zet-zip: ziti-edge-tunnel-Linux_x86_64.zip
             zet-bin: ziti-edge-tunnel
             ziti-os: linux
+            ziti-arch: amd64
             ziti-bin: ziti
             core-dir: /tmp/cores
           - name: macOS arm64
@@ -58,6 +63,7 @@ jobs:
             zet-zip: ziti-edge-tunnel-Darwin_arm64.zip
             zet-bin: ziti-edge-tunnel
             ziti-os: darwin
+            ziti-arch: arm64
             ziti-bin: ziti
             core-dir: /cores
           - name: Windows x64
@@ -66,6 +72,7 @@ jobs:
             zet-zip: ziti-edge-tunnel-Windows_x86_64.zip
             zet-bin: ziti-edge-tunnel.exe
             ziti-os: windows
+            ziti-arch: amd64
             ziti-bin: ziti.exe
             core-dir: ""
     runs-on: ${{ matrix.os.runner }}
@@ -143,7 +150,7 @@ jobs:
         if: inputs.ziti-artifact != ''
         uses: actions/download-artifact@v8
         with:
-          name: ${{ inputs.ziti-artifact }}-${{ matrix.os.ziti-os }}
+          name: ${{ matrix.os.ziti-os }}-${{ inputs.ziti-artifact }}
           path: ./ziti-artifact
           digest-mismatch: error
 
@@ -152,11 +159,15 @@ jobs:
         env:
           ZITI_ARTIFACT: ${{ inputs.ziti-artifact }}
           ZITI_BIN_NAME: ${{ matrix.os.ziti-bin }}
+          ZITI_ARCH: ${{ matrix.os.ziti-arch }}
         run: |
           set -euo pipefail
           if [ -n "$ZITI_ARTIFACT" ]; then
-            bin="$(find ziti-artifact -type f -name "$ZITI_BIN_NAME" | head -1)"
-            [ -n "$bin" ] || { echo "no $ZITI_BIN_NAME in artifact $ZITI_ARTIFACT-${{ matrix.os.ziti-os }}" >&2; exit 1; }
+            # multi-arch artifacts (gox layout <arch>/<os>/) need the runner's arch;
+            # fall back to any match for flat single-binary artifacts
+            bin="$(find ziti-artifact -type f -path "*${ZITI_ARCH}*" -name "$ZITI_BIN_NAME" | head -1)"
+            [ -n "$bin" ] || bin="$(find ziti-artifact -type f -name "$ZITI_BIN_NAME" | head -1)"
+            [ -n "$bin" ] || { echo "no $ZITI_BIN_NAME in artifact ${{ matrix.os.ziti-os }}-$ZITI_ARTIFACT" >&2; exit 1; }
             chmod +x "$bin" || true
             # On Windows the consumer is PowerShell, which can't resolve an MSYS
             # /d/a/... path; pwd -W emits a Windows path it accepts.
