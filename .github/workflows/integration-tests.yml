@@ -1,6 +1,6 @@
 # callable workflow's jobs appear in the calling workflow's run, so clicking this workflow in GitHub shows no runs
 #
-# The ZET/Ziti binaries under test come from exactly one source each:
+# The ZET/Ziti binaries under test come from:
 #   ziti: ziti-artifact > ziti-ref (build from source) > ziti-version (download a release; empty = stable)
 #   ZET:  zet1-version (download a release, 'latest' = the GitHub Latest release; empty = the cmake artifact built by the caller's run)
 name: Callable Integration Tests

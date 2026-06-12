@@ -75,10 +75,10 @@ $zetBinB = if ($env:ZET_BIN_B) { $env:ZET_BIN_B } else { $zetBin }
 Write-Host "ZET_BIN=$zetBin"
 Write-Host "ZET_BIN_B=$zetBinB"
 
-Write-Host "ziti version: $(& $zitiBin version)"
-Write-Host "zetA version: $(& $zetBin version)"
-Write-Host "zetB version: $(& $zetBinB version)"
-Write-Host "dex version:  $(& $idpBin version | Select-Object -First 1)"
+Write-Host "Ziti Version: $(& $zitiBin version)"
+Write-Host "ZetA Version: $(& $zetBin version)"
+Write-Host "ZetB Version: $(& $zetBinB version)"
+Write-Host "$(& $idpBin version | Select-Object -First 1)"
 
 # ---- Seed test overlay PKI --------------------------------------------------
 # Seed at $testHome\overlay (where the test framework's own quickstart runs)
