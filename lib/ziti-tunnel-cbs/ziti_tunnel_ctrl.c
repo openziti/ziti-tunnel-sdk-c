@@ -1155,8 +1155,9 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
                     CMD_CTX.on_event((const base_event *) &ev);
                     break;
                 }
+                case ziti_auth_enroll_totp:
                 case ziti_auth_prompt_totp: {
-                    ZITI_LOG(INFO, "ztx[%s/%s] Mfa event received", instance->identifier, ctx_name);
+                    ZITI_LOG(INFO, "ztx[%s/%s] Mfa auth event received (%d)", instance->identifier, ctx_name, event->auth.action);
                     mfa_event ev = {0};
                     ev.event_type = TunnelEvents.MFAEvent;
                     ev.identifier = instance->identifier;
@@ -1192,6 +1193,19 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
                     }
                     CMD_CTX.on_event((const base_event *) &ev);
                     model_list_clear(&ev.providers, free);
+                    break;
+                }
+                case ziti_auth_success: {
+                    ZITI_LOG(ERROR, "ztx[%s/%s] authorization successful: %s",
+                        instance->identifier, ctx_name, event->auth.detail);
+                    ziti_ctx_event ev = {
+                        .event_type = TunnelEvent_ContextEvent,
+                        .identifier = instance->identifier,
+                        .status = event->auth.detail,
+                        .code = ZITI_OK,
+                        .error_code = event->auth.error_code,
+                    };
+                    CMD_CTX.on_event((const base_event *) &ev);
                     break;
                 }
                 default:
