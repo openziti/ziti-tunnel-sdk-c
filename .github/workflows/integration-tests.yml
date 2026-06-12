@@ -5,7 +5,11 @@ on:
   workflow_call:
     inputs:
       ziti-version:
-        description: "ziti release tag to download, or 'main' to build openziti/ziti @ main from source"
+        description: "ziti release to download; anything setup-cli accepts: a tag, tag regex, 'stable', 'active-lts', 'maint-lts'; empty = stable. Ignored when ziti-ref or ziti-artifact is set"
+        type: string
+        default: ""
+      ziti-ref:
+        description: "branch, tag, or commit of openziti/ziti to build from source instead of downloading a release"
         type: string
         default: ""
       label:
@@ -73,7 +77,6 @@ jobs:
           # job_workflow_sha = the commit this workflow file was loaded from, so a
           # cross-repo caller's @ref selects the workflow and the test sources together.
           ref: ${{ inputs.tests-repo != '' && github.job_workflow_sha || '' }}
-          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v6
@@ -91,23 +94,7 @@ jobs:
           path: ./zet-artifact
           digest-mismatch: error
 
-      - name: Extract built ZET binary from artifact
-        if: inputs.zet1-version == ''
-        shell: bash
-        env:
-          ZET_ZIP: ${{ matrix.os.zet-zip }}
-          ZET_BIN_NAME: ${{ matrix.os.zet-bin }}
-        run: |
-          set -euo pipefail
-          unzip -o "zet-artifact/$ZET_ZIP" -d zet-artifact
-          chmod +x "zet-artifact/$ZET_BIN_NAME" || true
-          # On Windows the consumer is PowerShell, which can't resolve an MSYS
-          # /d/a/... path; pwd -W emits a Windows path it accepts.
-          if [ "$RUNNER_OS" = "Windows" ]; then base="$(pwd -W)"; else base="$PWD"; fi
-          echo "ZET_BIN=$base/zet-artifact/$ZET_BIN_NAME" >> "$GITHUB_ENV"
-
-      - name: Download ZET release
-        if: inputs.zet1-version != '' || inputs.zet2-version != ''
+      - name: Set ZET_BIN
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -118,14 +105,21 @@ jobs:
         run: |
           set -euo pipefail
           fetch() {
+            # 'latest' = the release GitHub marks Latest; gh downloads it when no tag is given
+            local tag=("$1")
+            if [ "$1" = "latest" ]; then tag=(); fi
             mkdir -p "$2"
-            (cd "$2" && gh release download --repo openziti/ziti-tunnel-sdk-c "$1" --pattern "$ZET_ZIP" --clobber && unzip -o "$ZET_ZIP")
+            (cd "$2" && gh release download --repo openziti/ziti-tunnel-sdk-c "${tag[@]}" --pattern "$ZET_ZIP" --clobber && unzip -o "$ZET_ZIP")
             chmod +x "$2/$ZET_BIN_NAME" || true
           }
           # On Windows the consumer is PowerShell, which can't resolve an MSYS
           # /d/a/... path; pwd -W emits a Windows path it accepts.
           if [ "$RUNNER_OS" = "Windows" ]; then base="$(pwd -W)"; else base="$PWD"; fi
-          if [ -n "$ZET1_VERSION" ]; then
+          if [ -z "$ZET1_VERSION" ]; then
+            unzip -o "zet-artifact/$ZET_ZIP" -d zet-artifact
+            chmod +x "zet-artifact/$ZET_BIN_NAME" || true
+            echo "ZET_BIN=$base/zet-artifact/$ZET_BIN_NAME" >> "$GITHUB_ENV"
+          else
             fetch "$ZET1_VERSION" zet-release-a
             echo "ZET_BIN=$base/zet-release-a/$ZET_BIN_NAME" >> "$GITHUB_ENV"
           fi
@@ -141,8 +135,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          version: ${{ (inputs.ziti-version == '' || inputs.ziti-version == 'main') && 'stable' || inputs.ziti-version }}
-          ref: ${{ inputs.ziti-version == 'main' && 'main' || '' }}
+          version: ${{ inputs.ziti-version == '' && 'stable' || inputs.ziti-version }}
+          ref: ${{ inputs.ziti-ref }}
 
       # Built by the caller's run; tests the exact ziti bits the caller produced.
       - name: Download ziti artifact
