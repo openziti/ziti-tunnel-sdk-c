@@ -62,6 +62,11 @@ ZET_BIN_B="${ZET_BIN_B:-$ZET_BIN}"
 echo "ZET_BIN=$ZET_BIN"
 echo "ZET_BIN_B=$ZET_BIN_B"
 
+echo "ziti version: $("$ZITI_BIN" version)"
+echo "zetA version: $("$ZET_BIN" version)"
+echo "zetB version: $("$ZET_BIN_B" version)"
+echo "dex version:  $("$IDP_BIN" version | head -1)"
+
 # ---- Create ziti group + configure core dumps --------------------------------
 case "$(uname -s)" in
   Linux)
