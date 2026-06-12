@@ -241,8 +241,6 @@ ZET_BIN=/path/to/ziti-edge-tunnel ZITI_BIN=/path/to/ziti ./scripts/run-ci.sh
 $env:ZET_BIN = "C:\path\to\ziti-edge-tunnel.exe"; $env:ZITI_BIN = "C:\path\to\ziti.exe"; .\scripts\run-ci.ps1
 ```
 
-They require `ZET_BIN` and `ZITI_BIN` and run against whatever those point at. Obtaining the binaries is a CI
-concern: the workflow resolves ziti (a release or a main build) and ZET (the cmake artifact or a release named by
-`zet1-version`/`zet2-version`) and passes `ZITI_BIN`, `ZET_BIN`, and optionally `ZET_BIN_B` in. They also honor
-`TEST_HOME`, `IDP_VERSION`, and a `--install-cert` / `-InstallCert` flag that installs the overlay CA for the run and
-removes it afterward. Without that flag they leave your trust store untouched.
+Point `ZET_BIN`, `ZITI_BIN`, and optionally `ZET_BIN_B` at the binaries you want to test. The scripts run against any ziti and any ZET v1.17.0 or newer.  
+In CI the workflow supplies these paths, downloading or building ziti and ZET according to its inputs (a release tag, a source ref, or a build artifact).   
+`TEST_HOME` and `IDP_VERSION` override the working directory and the dex version. `--install-cert` / `-InstallCert` installs the overlay CA into OS trust for the run and removes it on exit. Without it, tests requiring OS trust are skipped.
