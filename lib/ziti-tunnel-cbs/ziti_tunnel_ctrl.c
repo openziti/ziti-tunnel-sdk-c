@@ -1155,9 +1155,17 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
                     CMD_CTX.on_event((const base_event *) &ev);
                     break;
                 }
-                case ziti_auth_enroll_totp:
+                case ziti_auth_enroll_totp: {
+                    ZITI_LOG(INFO, "ztx[%s/%s] Mfa enroll event received", instance->identifier, ctx_name);
+                    mfa_event ev = {0};
+                    ev.event_type = TunnelEvents.MFAEvent;
+                    ev.identifier = instance->identifier;
+                    ev.operation = mfa_status_name(mfa_status_enrollment_required);
+                    CMD_CTX.on_event((const base_event *) &ev);
+                    break;
+                }
                 case ziti_auth_prompt_totp: {
-                    ZITI_LOG(INFO, "ztx[%s/%s] Mfa auth event received (%d)", instance->identifier, ctx_name, event->auth.action);
+                    ZITI_LOG(INFO, "ztx[%s/%s] Mfa auth event received", instance->identifier, ctx_name);
                     mfa_event ev = {0};
                     ev.event_type = TunnelEvents.MFAEvent;
                     ev.identifier = instance->identifier;
