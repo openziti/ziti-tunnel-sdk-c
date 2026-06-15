@@ -6,12 +6,12 @@ on:
         description: "ziti release tag to test against (e.g. v2.0.0); blank = newest + v2.0/v1.6 matrix"
         required: false
         default: ""
-      zet1_version:
-        description: "ziti-edge-tunnel release tag for zet1/zetA; blank = build from this branch"
+      zetA_version:
+        description: "ziti-edge-tunnel release tag for zetA; blank = build from this branch"
         required: false
         default: ""
-      zet2_version:
-        description: "ziti-edge-tunnel release tag for zet2/zetB; blank = same binary as zet1"
+      zetB_version:
+        description: "ziti-edge-tunnel release tag for zetB; blank = same binary as zetA"
         required: false
         default: ""
       idp_version:
@@ -126,8 +126,8 @@ jobs:
       ziti-version: ${{ matrix.ziti-channel.tag }}
       label: ${{ matrix.ziti-channel.label }}
       idp-version: ${{ inputs.idp_version }}
-      zet1-version: ${{ inputs.zet1_version }}
-      zet2-version: ${{ inputs.zet2_version }}
+      zetA-version: ${{ inputs.zetA_version }}
+      zetB-version: ${{ inputs.zetB_version }}
     secrets: inherit
 
   nix-build:

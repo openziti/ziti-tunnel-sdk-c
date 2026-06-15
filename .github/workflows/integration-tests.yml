@@ -1,15 +1,25 @@
-# callable workflow's jobs appear in the calling workflow's run, so clicking this workflow in GitHub shows no runs
+# Reusable workflow other repos can call to test their own ziti/ZET build with this suite.
 #
-# The ZET/Ziti binaries under test come from:
-#   ziti: ziti-artifact > ziti-ref (build from source) > ziti-version (download a release; empty = stable)
-#   ZET:  zet1-version (download a release, 'latest' = the GitHub Latest release; empty = the cmake artifact built by the caller's run)
+# Inputs that pick the binaries to test:
+#   - ziti-artifact: test a ziti binary built by another job in a calling run (e.g. in another repo)
+#   - ziti-version: a release to download, one of:
+#       - 'stable' (default): the latest stable release
+#       - 'active-lts' or 'maint-lts': the latest release on that LTS line
+#       - a tag or tag-regex (like 'v1.6'): the latest release matching it
+#   - ziti-ref: a branch, tag, or commit to build from source instead of downloading a release
+#   - zetA-version: which ZET to test, one of:
+#       - empty (default): the ziti-edge-tunnel built by a cmake job in the calling run.
+#         Cross-repo callers (tests-repo set) have no such job, so they must set this.
+#       - 'latest': the release GitHub marks Latest
+#       - a tag: a specified release
+#   - zetB-version: ZET for the host-side tunneler, same options (empty reuses zetA)
 name: Callable Integration Tests
 
 on:
   workflow_call:
     inputs:
       ziti-version:
-        description: "ziti release to download; anything setup-cli accepts: a tag, tag regex, 'stable', 'active-lts', 'maint-lts'; empty = stable. Ignored when ziti-ref or ziti-artifact is set"
+        description: "ziti release to download: a tag, tag-regex, 'stable', 'active-lts', or 'maint-lts'. Empty = stable. Ignored when ziti-ref or ziti-artifact is set"
         type: string
         default: ""
       ziti-ref:
@@ -17,23 +27,23 @@ on:
         type: string
         default: ""
       label:
-        description: "label for the run name and artifact/log names (e.g. latest, lts, main)"
+        description: "label appended to this run's uploaded core/log artifact names (e.g. latest, lts, main)"
         type: string
         required: true
       idp-version:
         description: "dex IdP version tag; empty = script default"
         type: string
         default: ""
-      zet1-version:
-        description: "ziti-edge-tunnel release tag for zetA, or 'latest' for the release GitHub marks Latest; empty = the binary built by cmake"
+      zetA-version:
+        description: "ziti-edge-tunnel release tag for zetA, or 'latest' for the release GitHub marks Latest; empty = the binary built by cmake. Required when tests-repo is set"
         type: string
         default: ""
-      zet2-version:
+      zetB-version:
         description: "ziti-edge-tunnel release tag for zetB, or 'latest'; empty = same binary as zetA"
         type: string
         default: ""
       ziti-artifact:
-        description: "name suffix of per-OS artifacts ((linux|darwin|windows)-<suffix>) holding a ziti binary; overrides ziti-version"
+        description: "run-id suffix of a per-OS ziti artifact the calling run uploaded, downloaded as <os>-<suffix> (e.g. release-<run_id>). Overrides ziti-version"
         type: string
         default: ""
       tests-repo:
@@ -50,30 +60,18 @@ jobs:
         os:
           - name: Linux x64
             runner: ubuntu-latest
-            artifact: linux-x64
-            zet-zip: ziti-edge-tunnel-Linux_x86_64.zip
-            zet-bin: ziti-edge-tunnel
+            zet-build: linux-x64
             ziti-os: linux
-            ziti-arch: amd64
-            ziti-bin: ziti
             core-dir: /tmp/cores
           - name: macOS arm64
             runner: macos-15
-            artifact: macOS-arm64
-            zet-zip: ziti-edge-tunnel-Darwin_arm64.zip
-            zet-bin: ziti-edge-tunnel
+            zet-build: macOS-arm64
             ziti-os: darwin
-            ziti-arch: arm64
-            ziti-bin: ziti
             core-dir: /cores
           - name: Windows x64
             runner: windows-2022
-            artifact: windows-x64-mingw
-            zet-zip: ziti-edge-tunnel-Windows_x86_64.zip
-            zet-bin: ziti-edge-tunnel.exe
+            zet-build: windows-x64-mingw
             ziti-os: windows
-            ziti-arch: amd64
-            ziti-bin: ziti.exe
             core-dir: ""
     runs-on: ${{ matrix.os.runner }}
     steps:
@@ -91,13 +89,12 @@ jobs:
           go-version-file: tests/integration/go.mod
           cache-dependency-path: tests/integration/go.sum
 
-      # Built by the caller's cmake job; artifacts are shared within the run.
-      # When zet1-version selects a released ZET, no build artifact is needed.
-      - name: Download CMake Artifact
-        if: inputs.zet1-version == ''
+      # Built by the calling run's cmake job. When zetA-version is a released ZET, no build artifact is needed.
+      - name: Download ZET build
+        if: inputs.zetA-version == ''
         uses: actions/download-artifact@v8
         with:
-          name: ${{ matrix.os.artifact }}
+          name: ${{ matrix.os.zet-build }}
           path: ./zet-artifact
           digest-mismatch: error
 
@@ -105,12 +102,16 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ZET_ZIP: ${{ matrix.os.zet-zip }}
-          ZET_BIN_NAME: ${{ matrix.os.zet-bin }}
-          ZET1_VERSION: ${{ inputs.zet1-version }}
-          ZET2_VERSION: ${{ inputs.zet2-version }}
+          ZETA_VERSION: ${{ inputs.zetA-version }}
+          ZETB_VERSION: ${{ inputs.zetB-version }}
         run: |
           set -euo pipefail
+          ZET_BIN_NAME=ziti-edge-tunnel; [ "$RUNNER_OS" = "Windows" ] && ZET_BIN_NAME=ziti-edge-tunnel.exe
+          case "$RUNNER_OS" in
+            Linux)   ZET_ZIP=ziti-edge-tunnel-Linux_x86_64.zip ;;
+            macOS)   ZET_ZIP=ziti-edge-tunnel-Darwin_arm64.zip ;;
+            Windows) ZET_ZIP=ziti-edge-tunnel-Windows_x86_64.zip ;;
+          esac
           fetch() {
             # 'latest' = the release GitHub marks Latest; gh downloads it when no tag is given
             local tag=("$1")
@@ -122,16 +123,16 @@ jobs:
           # On Windows the consumer is PowerShell, which can't resolve an MSYS
           # /d/a/... path; pwd -W emits a Windows path it accepts.
           if [ "$RUNNER_OS" = "Windows" ]; then base="$(pwd -W)"; else base="$PWD"; fi
-          if [ -z "$ZET1_VERSION" ]; then
+          if [ -z "$ZETA_VERSION" ]; then
             unzip -o "zet-artifact/$ZET_ZIP" -d zet-artifact
             chmod +x "zet-artifact/$ZET_BIN_NAME" || true
             echo "ZET_BIN=$base/zet-artifact/$ZET_BIN_NAME" >> "$GITHUB_ENV"
           else
-            fetch "$ZET1_VERSION" zet-release-a
+            fetch "$ZETA_VERSION" zet-release-a
             echo "ZET_BIN=$base/zet-release-a/$ZET_BIN_NAME" >> "$GITHUB_ENV"
           fi
-          if [ -n "$ZET2_VERSION" ]; then
-            fetch "$ZET2_VERSION" zet-release-b
+          if [ -n "$ZETB_VERSION" ]; then
+            fetch "$ZETB_VERSION" zet-release-b
             echo "ZET_BIN_B=$base/zet-release-b/$ZET_BIN_NAME" >> "$GITHUB_ENV"
           fi
 
@@ -145,7 +146,7 @@ jobs:
           version: ${{ inputs.ziti-version == '' && 'stable' || inputs.ziti-version }}
           ref: ${{ inputs.ziti-ref }}
 
-      # Built by the caller's run; tests the exact ziti bits the caller produced.
+      # When ziti-artifact is set, download that prebuilt ziti (named <os>-<suffix>) from the calling run.
       - name: Download ziti artifact
         if: inputs.ziti-artifact != ''
         uses: actions/download-artifact@v8
@@ -158,23 +159,23 @@ jobs:
         shell: bash
         env:
           ZITI_ARTIFACT: ${{ inputs.ziti-artifact }}
-          ZITI_BIN_NAME: ${{ matrix.os.ziti-bin }}
-          ZITI_ARCH: ${{ matrix.os.ziti-arch }}
         run: |
           set -euo pipefail
+          bin=ziti; [ "$RUNNER_OS" = "Windows" ] && bin=ziti.exe
           if [ -n "$ZITI_ARTIFACT" ]; then
-            # multi-arch artifacts (gox layout <arch>/<os>/) need the runner's arch;
-            # fall back to any match for flat single-binary artifacts
-            bin="$(find ziti-artifact -type f -path "*${ZITI_ARCH}*" -name "$ZITI_BIN_NAME" | head -1)"
-            [ -n "$bin" ] || bin="$(find ziti-artifact -type f -name "$ZITI_BIN_NAME" | head -1)"
-            [ -n "$bin" ] || { echo "no $ZITI_BIN_NAME in artifact ${{ matrix.os.ziti-os }}-$ZITI_ARTIFACT" >&2; exit 1; }
-            chmod +x "$bin" || true
+            # multi-arch artifacts (gox layout release/<arch>/<os>/) need the runner's arch;
+            # fall back to any match for a flat single-binary artifact from another caller
+            arch=$(uname -m); [ "$arch" = "x86_64" ] && arch=amd64
+            path="$(find ziti-artifact -type f -path "*/${arch}/*" -name "$bin" | head -1)"
+            [ -n "$path" ] || path="$(find ziti-artifact -type f -name "$bin" | head -1)"
+            [ -n "$path" ] || { echo "no $bin in artifact ${{ matrix.os.ziti-os }}-$ZITI_ARTIFACT" >&2; exit 1; }
+            chmod +x "$path" || true
             # On Windows the consumer is PowerShell, which can't resolve an MSYS
             # /d/a/... path; pwd -W emits a Windows path it accepts.
             if [ "$RUNNER_OS" = "Windows" ]; then base="$(pwd -W)"; else base="$PWD"; fi
-            echo "ZITI_BIN=$base/$bin" >> "$GITHUB_ENV"
+            echo "ZITI_BIN=$base/$path" >> "$GITHUB_ENV"
           else
-            echo "ZITI_BIN=$RUNNER_TEMP/ziti-cli/bin/$ZITI_BIN_NAME" >> "$GITHUB_ENV"
+            echo "ZITI_BIN=$RUNNER_TEMP/ziti-cli/bin/$bin" >> "$GITHUB_ENV"
           fi
 
       - name: Run integration tests (Linux/macOS)

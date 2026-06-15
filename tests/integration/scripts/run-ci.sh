@@ -36,7 +36,7 @@ if [ ! -x "$ZET_BIN" ]; then
   exit 1
 fi
 
-for tool in go jq curl; do
+for tool in go jq curl sudo; do
   command -v "$tool" >/dev/null || { echo "missing required tool: $tool" >&2; exit 1; }
 done
 
