@@ -246,32 +246,41 @@ func doSetup(state TestState) error {
 		return fmt.Errorf("wipe shared identity dir: %w", err)
 	}
 
-	log.Printf("setup: starting ZET zetA and zetB in parallel")
-	var zetClientErr, zetHostErr error
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		zetClientErr = state.zetClient.Start()
-		if zetClientErr != nil {
-			log.Printf("zet[%s]: start failed: %v; retrying once", state.zetClient.Discriminator, zetClientErr)
-			zetClientErr = state.zetClient.Start()
-		}
-	}()
-	go func() {
-		defer wg.Done()
-		zetHostErr = state.zetHost.Start()
-		if zetHostErr != nil {
-			log.Printf("zet[%s]: start failed: %v; retrying once", state.zetHost.Discriminator, zetHostErr)
-			zetHostErr = state.zetHost.Start()
-		}
-	}()
-	wg.Wait()
-	if zetClientErr != nil {
-		return fmt.Errorf("start ziti-edge-tunnel: %w", zetClientErr)
+	// Multi-tunnel works on every OS when ZET >= 1.17.0
+	// Tests against an older ZET start only zetA and skip t2t tests.
+	if err := state.zetClient.ProbeVersion(); err != nil {
+		return fmt.Errorf("probe zetA version: %w", err)
 	}
-	if zetHostErr != nil {
-		return fmt.Errorf("start zetB: %w", zetHostErr)
+	if err := state.zetHost.ProbeVersion(); err != nil {
+		return fmt.Errorf("probe zetB version: %w", err)
+	}
+	zets := []*testutil.ZET{state.zetClient}
+	if state.zetClient.SupportsMultiTunnel() && state.zetHost.SupportsMultiTunnel() {
+		zets = append(zets, state.zetHost)
+	} else {
+		log.Printf("setup: ZET predates multi-tunnel (zetA=%s zetB=%s, need >= 1.17.0) - starting zetA, t2t tests will skip",
+			state.zetClient.Version, state.zetHost.Version)
+	}
+
+	log.Printf("setup: starting %d ZET(s)", len(zets))
+	errs := make([]error, len(zets))
+	var wg sync.WaitGroup
+	for i := range zets {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			z := zets[i]
+			if err := z.Start(); err != nil {
+				log.Printf("zet[%s]: start failed: %v; retrying once", z.Discriminator, err)
+				errs[i] = z.Start()
+			}
+		}(i)
+	}
+	wg.Wait()
+	for i := range zets {
+		if errs[i] != nil {
+			return fmt.Errorf("start zet[%s]: %w", zets[i].Discriminator, errs[i])
+		}
 	}
 
 	log.Printf("setup: starting IdP (useTestHarnessIdP=%t bin=%s issuer=%s)", state.idp.UseTestHarnessIdP, state.idp.Bin, state.idp.IssuerURL)

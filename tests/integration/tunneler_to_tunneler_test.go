@@ -29,12 +29,21 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// requireMultiTunnel skips when either ZET predates multi-tunnel support
+func requireMultiTunnel(t *testing.T) {
+	if state.zetClient.SupportsMultiTunnel() && state.zetHost.SupportsMultiTunnel() {
+		return
+	}
+	t.Skipf("multi-tunnel requires ZET >= 1.17.0; zetA=%s zetB=%s", state.zetClient.Version, state.zetHost.Version)
+}
+
 // TestTunnelerToTunnelerTCP exercises the TCP data plane with two run-mode ZETs.
 // One ZET intercepts the client-side TCP connection; the other hosts the service
 // and forwards to a local echo backend.
 //
 // Requires root/CAP_NET_ADMIN — both ZETs open TUN devices.
 func TestTunnelerToTunnelerTCP(t *testing.T) {
+	requireMultiTunnel(t)
 	t.Run("zetA_intercepts_zetB_hosts", func(t *testing.T) {
 		testT2TTCP(t, state.zetClient, state.zetHost, "100.64.0.10", 21000)
 	})
@@ -47,6 +56,7 @@ func TestTunnelerToTunnelerTCP(t *testing.T) {
 //
 // Requires root/CAP_NET_ADMIN — both ZETs open TUN devices.
 func TestTunnelerToTunnelerUDP(t *testing.T) {
+	requireMultiTunnel(t)
 	t.Run("zetA_intercepts_zetB_hosts", func(t *testing.T) {
 		testT2TUDP(t, state.zetClient, state.zetHost, "100.64.0.11", 22000)
 	})
