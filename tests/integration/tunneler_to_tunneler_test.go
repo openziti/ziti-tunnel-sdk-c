@@ -34,7 +34,7 @@ func requireMultiTunnel(t *testing.T) {
 	if state.zetClient.SupportsMultiTunnel() && state.zetHost.SupportsMultiTunnel() {
 		return
 	}
-	t.Skipf("multi-tunnel requires ZET >= 1.17.0; zetA=%s zetB=%s", state.zetClient.Version, state.zetHost.Version)
+	t.Skipf("multi-tunnel requires ZET >= 1.17.0; zetA=%d.%d zetB=%d.%d", state.zetClient.Major, state.zetClient.Minor, state.zetHost.Major, state.zetHost.Minor)
 }
 
 // TestTunnelerToTunnelerTCP exercises the TCP data plane with two run-mode ZETs.

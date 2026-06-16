@@ -258,8 +258,7 @@ func doSetup(state TestState) error {
 	if state.zetClient.SupportsMultiTunnel() && state.zetHost.SupportsMultiTunnel() {
 		zets = append(zets, state.zetHost)
 	} else {
-		log.Printf("setup: ZET predates multi-tunnel (zetA=%s zetB=%s, need >= 1.17.0) - starting zetA, t2t tests will skip",
-			state.zetClient.Version, state.zetHost.Version)
+		log.Printf("setup: ZET predates multi-tunnel (zetA=%d.%d zetB=%d.%d, need >= 1.17.0) - starting zetA, t2t tests will skip", state.zetClient.Major, state.zetClient.Minor, state.zetHost.Major, state.zetHost.Minor)
 	}
 
 	log.Printf("setup: starting %d ZET(s)", len(zets))

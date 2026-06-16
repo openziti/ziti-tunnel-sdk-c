@@ -52,8 +52,9 @@ type ZET struct {
 	// TlsuvDebug, if > 0, sets the TLSUV_DEBUG env var (0=off..6=trace) for
 	// debugging TLS handshake / cert chain issues.
 	TlsuvDebug int
-	// Version is this binary's reported version set by ProbeVersion.
-	Version string
+	// Major and Minor are this binary's version, set by ProbeVersion.
+	Major int
+	Minor int
 
 	cmd     *exec.Cmd
 	stdout  *syncBuffer
@@ -182,7 +183,10 @@ func (z *ZET) ProbeVersion() error {
 	}
 	for _, line := range strings.Split(string(out), "\n") {
 		if v := strings.TrimSpace(line); strings.HasPrefix(v, "v") {
-			z.Version = v
+			z.Major, z.Minor, err = parseVersion(v)
+			if err != nil {
+				return fmt.Errorf("%s version: %w", z.BinPath, err)
+			}
 			return nil
 		}
 	}
@@ -190,22 +194,9 @@ func (z *ZET) ProbeVersion() error {
 }
 
 // SupportsMultiTunnel reports whether this ZET can run beside a second ZET on the same host.
-// Multi-tunnel works on every OS when ZET >= 1.17.0
-// An unparsable version is treated as unsupported. Requires version number set by ProbeVersion()
+// Multi-tunnel works on every OS when ZET >= 1.17.0. Requires version set by ProbeVersion.
 func (z *ZET) SupportsMultiTunnel() bool {
-	parts := strings.Split(strings.TrimPrefix(z.Version, "v"), ".")
-	if len(parts) < 2 {
-		return false
-	}
-	major, err := strconv.Atoi(parts[0])
-	if err != nil {
-		return false
-	}
-	minor, err := strconv.Atoi(parts[1])
-	if err != nil {
-		return false
-	}
-	return major > 1 || (major == 1 && minor >= 17)
+	return z.Major > 1 || (z.Major == 1 && z.Minor >= 17)
 }
 
 // Restart stops the process and starts it again against the same identity dir.
