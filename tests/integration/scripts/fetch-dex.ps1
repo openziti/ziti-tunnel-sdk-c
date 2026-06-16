@@ -48,7 +48,8 @@ Push-Location $srcDir
 try {
     # Force auto-toolchain so Go downloads whatever version dex's go.mod requires.
     $env:GOTOOLCHAIN = "auto"
-    & go build -o $dexExe ./cmd/dex
+    # dex stamps its version via ldflags (see its Makefile); plain go build reports DEV
+    & go build -ldflags "-X main.version=$Version" -o $dexExe ./cmd/dex
     if ($LASTEXITCODE -ne 0) { throw "go build failed (exit $LASTEXITCODE)" }
 } finally {
     Pop-Location

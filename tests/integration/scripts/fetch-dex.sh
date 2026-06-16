@@ -56,7 +56,8 @@ echo "building $bin_name -> $dex_bin"
 (
     cd "$src_dir"
     # Force auto-toolchain so Go downloads whatever version dex's go.mod requires.
-    GOTOOLCHAIN=auto go build -o "$dex_bin" ./cmd/dex
+    # dex stamps its version via ldflags (see its Makefile); plain go build reports DEV
+    GOTOOLCHAIN=auto go build -ldflags "-X main.version=$VERSION" -o "$dex_bin" ./cmd/dex
 )
 
 echo

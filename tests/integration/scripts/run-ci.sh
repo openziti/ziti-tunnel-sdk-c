@@ -3,21 +3,20 @@
 # local dev reproduce a CI failure with one command.
 #
 # Required input:
-#   ZET_BIN   Absolute path to a built ziti-edge-tunnel binary.
+#   ZET_BIN   Absolute path to a ziti-edge-tunnel binary.
 #   ZITI_BIN  Absolute path to a ziti binary. CI obtains it (a release or a main build).
 #
 # Optional input:
 #   TEST_HOME      Working dir for overlay, logs, caches. Defaults to a temp dir.
 #   IDP_VERSION    dex version tag (default: fetch-dex.sh's pinned version).
-#   ZET1_VERSION   If set, downloads this ZET release and uses it as ZET_BIN.
-#   ZET2_VERSION   If set, downloads this ZET release and uses it as ZET_BIN_B.
+#   ZET_BIN_B      ziti-edge-tunnel binary for zetB. Defaults to ZET_BIN.
 #
 # Flags:
 #   --install-cert  Install the test overlay CA into OS trust for the run and
 #                   remove it on exit. Off by default so the script does not
 #                   mutate a normal user's trust store.
 #
-# Requires:  go, gh, jq, curl, unzip, and sudo (Linux/macOS).
+# Requires:  go, jq, curl, and sudo (Linux/macOS).
 
 set -euo pipefail
 
@@ -37,16 +36,9 @@ if [ ! -x "$ZET_BIN" ]; then
   exit 1
 fi
 
-for tool in go gh jq curl unzip; do
+for tool in go jq curl sudo; do
   command -v "$tool" >/dev/null || { echo "missing required tool: $tool" >&2; exit 1; }
 done
-
-case "$(uname -s)-$(uname -m)" in
-  Linux-x86_64)   ZET_ZIP="ziti-edge-tunnel-Linux_x86_64.zip";  ZET_BIN_NAME="ziti-edge-tunnel" ;;
-  Darwin-arm64)   ZET_ZIP="ziti-edge-tunnel-Darwin_arm64.zip"; ZET_BIN_NAME="ziti-edge-tunnel" ;;
-  Darwin-x86_64)  ZET_ZIP="ziti-edge-tunnel-Darwin_x86_64.zip"; ZET_BIN_NAME="ziti-edge-tunnel" ;;
-  *) echo "unsupported os/arch: $(uname -s)-$(uname -m)" >&2; exit 1 ;;
-esac
 
 TEST_HOME="${TEST_HOME:-$(mktemp -d -t ziti-tunnel-test.XXXXXX)}"
 mkdir -p "$TEST_HOME"
@@ -66,22 +58,15 @@ DEST="$DEX_DIR" "$REPO_ROOT/tests/integration/scripts/fetch-dex.sh"
 IDP_BIN="$DEX_DIR/dex"
 echo "IDP_BIN=$IDP_BIN"
 
-# ---- Optional ZET release overrides ------------------------------------------
 ZET_BIN_B="${ZET_BIN_B:-$ZET_BIN}"
-if [ -n "${ZET1_VERSION:-}" ]; then
-  d="$TEST_HOME/zet1"; mkdir -p "$d"
-  (cd "$d" && gh release download --repo openziti/ziti-tunnel-sdk-c "$ZET1_VERSION" --pattern "$ZET_ZIP" --clobber && unzip -o "$ZET_ZIP")
-  ZET_BIN="$d/$ZET_BIN_NAME"
-  chmod +x "$ZET_BIN"
-fi
-if [ -n "${ZET2_VERSION:-}" ]; then
-  d="$TEST_HOME/zet2"; mkdir -p "$d"
-  (cd "$d" && gh release download --repo openziti/ziti-tunnel-sdk-c "$ZET2_VERSION" --pattern "$ZET_ZIP" --clobber && unzip -o "$ZET_ZIP")
-  ZET_BIN_B="$d/$ZET_BIN_NAME"
-  chmod +x "$ZET_BIN_B"
-fi
 echo "ZET_BIN=$ZET_BIN"
 echo "ZET_BIN_B=$ZET_BIN_B"
+
+# Logging only; never let a binary that mishandles `version` abort the suite.
+echo "Ziti Version: $("$ZITI_BIN" version || true)"
+echo "ZetA Version: $("$ZET_BIN" version || true)"
+echo "ZetB Version: $("$ZET_BIN_B" version || true)"
+echo "$("$IDP_BIN" version 2>/dev/null | head -1 || true)"
 
 # ---- Create ziti group + configure core dumps --------------------------------
 case "$(uname -s)" in
