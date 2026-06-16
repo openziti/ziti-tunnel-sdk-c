@@ -1204,16 +1204,12 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
                     break;
                 }
                 case ziti_auth_success: {
-                    ZITI_LOG(ERROR, "ztx[%s/%s] authorization successful: %s",
+                    ZITI_LOG(INFO, "ztx[%s/%s] authorization successful: %s",
                         instance->identifier, ctx_name, event->auth.detail);
-                    ziti_ctx_event ev = {
-                        .event_type = TunnelEvent_ContextEvent,
-                        .identifier = instance->identifier,
-                        .status = event->auth.detail,
-                        .code = ZITI_OK,
-                        .error_code = event->auth.error_code,
-                    };
-                    CMD_CTX.on_event((const base_event *) &ev);
+                    auth_event ev = {0};
+                    ev.event_type = TunnelEvents.AuthEvent;
+                    ev.identifier = instance->identifier;
+                    ev.action = auth_action_auth_success;
                     break;
                 }
                 default:

@@ -269,7 +269,8 @@ XX(MFAEvent, __VA_ARGS__)      \
 XX(MFAStatusEvent, __VA_ARGS__) \
 XX(ConfigEvent, __VA_ARGS__)      \
 XX(RouterEvent, __VA_ARGS__) \
-XX(ExtJWTEvent, __VA_ARGS__)
+XX(ExtJWTEvent, __VA_ARGS__) \
+XX(AuthEvent, __VA_ARGS__)
 
 DECLARE_ENUM(TunnelEvent, TUNNEL_EVENTS)
 
@@ -342,6 +343,25 @@ BASE_EVENT_MODEL(XX, __VA_ARGS__)               \
 XX(name, model_string, none, name, __VA_ARGS__) \
 XX(status, rt_status, none, status, __VA_ARGS__)
 
+#define AUTH_ACTION_ENUM(XX, ...) \
+XX(auth_cannot_continue, __VA_ARGS__) \
+XX(auth_enroll_totp, __VA_ARGS__) \
+XX(auth_prompt_totp, __VA_ARGS__) \
+XX(auth_prompt_pin, __VA_ARGS__) \
+XX(auth_select_external, __VA_ARGS__) \
+XX(auth_login_external, __VA_ARGS__) \
+XX(auth_success, __VA_ARGS__)
+
+DECLARE_ENUM(auth_action, AUTH_ACTION_ENUM)
+
+#define AUTH_EVENT_MODEL(XX, ...) \
+BASE_EVENT_MODEL(XX, __VA_ARGS__) \
+XX(action, auth_action, none, action, __VA_ARGS__) \
+XX(error, model_string, none, error, __VA_ARGS__) \
+XX(error_code, model_string, none, error_code, __VA_ARGS__) \
+XX(type, model_string, none, type, __VA_ARGS__) \
+XX(providers, jwt_provider, array, providers, __VA_ARGS__)
+
 DECLARE_MODEL(base_event, BASE_EVENT_MODEL)
 DECLARE_MODEL(ziti_ctx_event, ZTX_EVENT_MODEL)
 DECLARE_MODEL(mfa_event, MFA_EVENT_MODEL)
@@ -351,6 +371,7 @@ DECLARE_MODEL(router_event, ROUTER_EVENT_MODEL)
 
 DECLARE_MODEL(jwt_provider, EXT_JWT_PROVIDER)
 DECLARE_MODEL(ext_signer_event, EXT_SIGNER_EVENT_MODEL)
+DECLARE_MODEL(auth_event, AUTH_EVENT_MODEL)
 
 typedef struct tunneled_service_s tunneled_service_t;
 
