@@ -113,11 +113,10 @@ jobs:
             Windows) ZET_ZIP=ziti-edge-tunnel-Windows_x86_64.zip ;;
           esac
           fetch() {
-            # 'latest' = the release GitHub marks Latest; gh downloads it when no tag is given
-            local tag=("$1")
-            if [ "$1" = "latest" ]; then tag=(); fi
+            # 'latest' = the release GitHub marks Latest; gh downloads it when no tag is given.
+            local tag="$1"; [ "$1" = "latest" ] && tag=""
             mkdir -p "$2"
-            (cd "$2" && gh release download --repo openziti/ziti-tunnel-sdk-c "${tag[@]}" --pattern "$ZET_ZIP" --clobber && unzip -o "$ZET_ZIP")
+            (cd "$2" && gh release download --repo openziti/ziti-tunnel-sdk-c ${tag:+"$tag"} --pattern "$ZET_ZIP" --clobber && unzip -o "$ZET_ZIP")
             chmod +x "$2/$ZET_BIN_NAME" || true
           }
           # On Windows the consumer is PowerShell, which can't resolve an MSYS

@@ -29,7 +29,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -157,24 +156,11 @@ func warnIfPortBound(port uint16) {
 }
 
 func probeZitiVersion(zitiBin string) (int, int, error) {
-	out, err := exec.Command(zitiBin, "--version").Output()
+	version, err := exec.Command(zitiBin, "--version").Output()
 	if err != nil {
 		return 0, 0, fmt.Errorf("run %s --version: %w", zitiBin, err)
 	}
-	version := strings.TrimPrefix(strings.TrimSpace(string(out)), "v")
-	parts := strings.Split(version, ".")
-	if len(parts) < 2 {
-		return 0, 0, fmt.Errorf("parse ziti version from %q", string(out))
-	}
-	major, err := strconv.Atoi(parts[0])
-	if err != nil {
-		return 0, 0, fmt.Errorf("parse major from %q: %w", parts[0], err)
-	}
-	minor, err := strconv.Atoi(parts[1])
-	if err != nil {
-		return 0, 0, fmt.Errorf("parse minor from %q: %w", parts[1], err)
-	}
-	return major, minor, nil
+	return parseVersion(strings.TrimSpace(string(version)))
 }
 
 func (o *Overlay) ControllerHostPort() string {

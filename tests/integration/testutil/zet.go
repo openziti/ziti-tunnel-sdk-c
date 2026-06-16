@@ -52,6 +52,9 @@ type ZET struct {
 	// TlsuvDebug, if > 0, sets the TLSUV_DEBUG env var (0=off..6=trace) for
 	// debugging TLS handshake / cert chain issues.
 	TlsuvDebug int
+	// Major and Minor are this binary's version, set by ProbeVersion.
+	Major int
+	Minor int
 
 	cmd     *exec.Cmd
 	stdout  *syncBuffer
@@ -170,6 +173,30 @@ func (z *ZET) Stop() {
 		}
 	}
 	log.Fatalf("ZET pid %d did not exit within 60s of Kill; orphan likely, aborting test run", pid)
+}
+
+// ProbeVersion runs `ziti-edge-tunnel version` and records the reported version.
+func (z *ZET) ProbeVersion() error {
+	out, err := exec.Command(z.BinPath, "version").Output()
+	if err != nil {
+		return fmt.Errorf("run %s version: %w", z.BinPath, err)
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		if v := strings.TrimSpace(line); strings.HasPrefix(v, "v") {
+			z.Major, z.Minor, err = parseVersion(v)
+			if err != nil {
+				return fmt.Errorf("%s version: %w", z.BinPath, err)
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("no version line in %q from %s version", string(out), z.BinPath)
+}
+
+// SupportsMultiTunnel reports whether this ZET can run beside a second ZET on the same host.
+// Multi-tunnel works on every OS when ZET >= 1.17.0. Requires version set by ProbeVersion.
+func (z *ZET) SupportsMultiTunnel() bool {
+	return z.Major > 1 || (z.Major == 1 && z.Minor >= 17)
 }
 
 // Restart stops the process and starts it again against the same identity dir.

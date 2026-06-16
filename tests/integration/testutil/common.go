@@ -26,6 +26,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -170,4 +171,21 @@ func SetupWorkingExtJwtSigner(t *testing.T, overlay *Overlay, idp *IdP) (string,
 		Scopes:   strings.Fields(idp.Scopes),
 	})
 	return workingExtJwtSignerName, id
+}
+
+// parseVersion splits a "vX.XX.X" style version into its major and minor numbers.
+func parseVersion(version string) (int, int, error) {
+	parts := strings.Split(strings.TrimPrefix(version, "v"), ".")
+	if len(parts) < 2 {
+		return 0, 0, fmt.Errorf("unparsable version %q", version)
+	}
+	major, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return 0, 0, fmt.Errorf("unparsable version %q: %w", version, err)
+	}
+	minor, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return 0, 0, fmt.Errorf("unparsable version %q: %w", version, err)
+	}
+	return major, minor, nil
 }
