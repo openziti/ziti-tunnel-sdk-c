@@ -1112,6 +1112,8 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
                 .event_type = TunnelEvents.RouterEvent,
                 .identifier = instance->identifier,
                 .name = rt_event->name,
+                .address = rt_event->address,
+                .version = rt_event->version,
             };
             switch (rt_event->status) {
                 case EdgeRouterAdded:

@@ -341,7 +341,9 @@ DECLARE_ENUM(rt_status, ROUTER_STATUS_ENUM)
 #define ROUTER_EVENT_MODEL(XX, ...)             \
 BASE_EVENT_MODEL(XX, __VA_ARGS__)               \
 XX(name, model_string, none, name, __VA_ARGS__) \
-XX(status, rt_status, none, status, __VA_ARGS__)
+XX(status, rt_status, none, status, __VA_ARGS__) \
+XX(address, model_string, none, address, __VA_ARGS__) \
+XX(version, model_string, none, version, __VA_ARGS__)
 
 #define AUTH_ACTION_ENUM(XX, ...) \
 XX(auth_cannot_continue, __VA_ARGS__) \
