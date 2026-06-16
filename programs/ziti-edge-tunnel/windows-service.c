@@ -54,7 +54,14 @@ VOID SvcStart(VOID)
 
     if (!StartServiceCtrlDispatcher( DispatchTable ))
     {
-        printf("StartServiceCtrlDispatcher failed (%ld)\n", GetLastError());
+        DWORD err = GetLastError();
+        // ERROR_FAILED_SERVICE_CONTROLLER_CONNECT (1063) is expected when the
+        // process is launched from a console rather than by the SCM. In that
+        // case we fall through and run as a normal CLI, so don't print noise.
+        if (err != ERROR_FAILED_SERVICE_CONTROLLER_CONNECT)
+        {
+            printf("StartServiceCtrlDispatcher failed (%ld)\n", err);
+        }
     }
 }
 
