@@ -71,7 +71,7 @@ jobs:
 
   # Resolve which ziti releases the matrix runs against. A manual run with
   # ziti_version set tests that single tag; otherwise the newest release plus the
-  # newest patch of the v2.0 and v1.6 lines.
+  # newest patch of the LTS lines named in openziti/ziti's lts-versions.json.
   resolve-ziti-versions:
     name: Resolve ziti versions
     runs-on: ubuntu-latest
@@ -93,9 +93,13 @@ jobs:
                      --json tagName,isDraft,isPrerelease \
                    | jq -r '.[] | select(.isDraft==false and .isPrerelease==false) | .tagName')
             newest_matching() { printf '%s\n' "$tags" | grep -E "$1" | sort -V | tail -n1; }
+            lts_versions=$(gh api -X GET repos/openziti/ziti/contents/lts-versions.json -H "Accept: application/vnd.github.raw")
+            active_line=$(printf '%s' "$lts_versions" | jq -r '.active')
+            maint_line=$(printf '%s' "$lts_versions" | jq -r '.maintenance')
+            line_regex() { printf '^v%s\\.' "$(printf '%s' "$1" | sed 's/\./\\./g')"; }
             latest=$(printf '%s\n' "$tags" | sort -V | tail -n1)
-            lts=$(newest_matching '^v2\.0\.')
-            maint=$(newest_matching '^v1\.6\.')
+            lts=$(newest_matching "$(line_regex "$active_line")")
+            maint=$(newest_matching "$(line_regex "$maint_line")")
             for v in "$latest" "$lts" "$maint"; do
               [ -n "$v" ] || { echo "::error::failed to resolve a ziti version (latest=$latest lts=$lts maint=$maint)"; exit 1; }
             done
