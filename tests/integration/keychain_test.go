@@ -41,6 +41,7 @@ func enrollWithKeychain(t *testing.T, idName string) (testutil.IdentityEvent, st
 
 	identityEvent := state.zetClient.WaitForIdentityEvent(t, "added", idName)
 	require.True(t, identityEvent.Id.Active, "identity:added Active=%t", identityEvent.Id.Active)
+	state.zetClient.WaitForControllerEvent(t, "connected", idName)
 	keyRef := testutil.AssertKeychainKeyRef(t, identityEvent.Id.Identifier)
 	t.Cleanup(func() { testutil.RemoveKeychainKey(t, keyRef) })
 	return identityEvent, keyRef
@@ -48,10 +49,7 @@ func enrollWithKeychain(t *testing.T, idName string) (testutil.IdentityEvent, st
 
 func enrollmentSucceeds(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
-		idName := "test_keychain_enroll"
-		_, keyRef := enrollWithKeychain(t, idName)
-
-		state.zetClient.WaitForControllerEvent(t, "connected", idName)
+		_, keyRef := enrollWithKeychain(t, "test_keychain_enroll")
 
 		require.True(t, testutil.KeychainKeyExists(t, keyRef), "private key %q should be in the OS keychain after enroll", keyRef)
 	})
