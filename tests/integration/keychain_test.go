@@ -25,30 +25,46 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestKeychainEnroll(t *testing.T) {
-	t.Run("succeeds", keychainEnrollSucceeds)
+func TestKeychain(t *testing.T) {
+	t.Run("enrollmentSucceeds", enrollmentSucceeds)
+	t.Run("forgetIdentityRemovesKey", forgetIdentityRemovesKey)
 }
 
-func keychainEnrollSucceeds(t *testing.T) {
+// enrollWithKeychain enrolls idName with UseKeychain, asserts the key is a keychain
+// ref, registers cleanup of the OS keystore key, and returns the added event and ref.
+func enrollWithKeychain(t *testing.T, idName string) (testutil.IdentityEvent, string) {
+	jwt := state.overlay.GetJwtFromController(t, idName)
+	identityData := testutil.NewJwtIdentityData(idName, jwt)
+	identityData.UseKeychain = true
+	addResp := state.zetClient.AddIdentity(t, identityData)
+	addResp.AssertSuccess()
+
+	identityEvent := state.zetClient.WaitForIdentityEvent(t, "added", idName)
+	require.True(t, identityEvent.Id.Active, "identity:added Active=%t", identityEvent.Id.Active)
+	keyRef := testutil.AssertKeychainKeyRef(t, identityEvent.Id.Identifier)
+	t.Cleanup(func() { testutil.RemoveKeychainKey(t, keyRef) })
+	return identityEvent, keyRef
+}
+
+func enrollmentSucceeds(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
 		idName := "test_keychain_enroll"
-		jwt := state.overlay.GetJwtFromController(t, idName)
+		_, keyRef := enrollWithKeychain(t, idName)
 
-		identityData := testutil.AddIdentityData{
-			IdentityFilename: idName,
-			JwtContent:       &jwt,
-			UseKeychain:      true,
-		}
-		addResp := state.zetClient.AddIdentity(t, identityData)
-		addResp.AssertSuccess()
-
-		added := state.zetClient.WaitForIdentityEvent(t, "added", idName)
-		keyRef := testutil.AssertKeychainKeyRef(t, added.Id.Identifier)
-		t.Cleanup(func() { testutil.RemoveKeychainKey(t, keyRef) })
-
-		require.True(t, added.Id.Active, "identity:added Active=%t", added.Id.Active)
 		state.zetClient.WaitForControllerEvent(t, "connected", idName)
 
 		require.True(t, testutil.KeychainKeyExists(t, keyRef), "private key %q should be in the OS keychain after enroll", keyRef)
+	})
+}
+
+func forgetIdentityRemovesKey(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
+		identityEvent, keyRef := enrollWithKeychain(t, "test_keychain_forget")
+		require.True(t, testutil.KeychainKeyExists(t, keyRef), "private key %q should exist before forget", keyRef)
+
+		removeResp := state.zetClient.RemoveIdentity(t, identityEvent.Id.Identifier)
+		removeResp.AssertSuccess()
+
+		require.False(t, testutil.KeychainKeyExists(t, keyRef), "forget should remove key %q from the OS keychain", keyRef)
 	})
 }
