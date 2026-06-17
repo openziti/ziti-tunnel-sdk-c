@@ -299,11 +299,7 @@ func (c *extAuthContext) enrollToCertThenNoneRejected(t *testing.T) {
 		enrollToNone := testutil.ExtJwtSignerSpec{}
 		c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, enrollToNone)
 
-		controllerBase := c.overlay.ControllerHostPort()
-		enrollToNoneIdentity := testutil.AddIdentityData{
-			IdentityFilename: idName,
-			ControllerURL:    &controllerBase,
-		}
+		enrollToNoneIdentity := testutil.NewUrlIdentityData(idName, c.overlay.ControllerHostPort())
 		addResp := c.zet.AddIdentity(t, enrollToNoneIdentity)
 		addResp.AssertFail(500, "identity exists with the same name")
 		testutil.AssertValidUrlEnrolledIdentityFile(t, identifier, testutil.EnrollModeCert)

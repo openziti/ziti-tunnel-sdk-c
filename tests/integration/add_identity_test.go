@@ -50,10 +50,7 @@ func sameJwtTwiceSecondFails(t *testing.T) {
 		jwt := state.overlay.GetJwtFromController(t, idName)
 		testutil.EnrollJwt(t, state.zetClient, idName, jwt)
 
-		identityData := testutil.AddIdentityData{
-			IdentityFilename: idName,
-			JwtContent:       &jwt,
-		}
+		identityData := testutil.NewJwtIdentityData(idName, jwt)
 		addResp := state.zetClient.AddIdentity(t, identityData)
 		addResp.AssertFail(500, "identity exists with the same name")
 	})
@@ -62,10 +59,7 @@ func sameJwtTwiceSecondFails(t *testing.T) {
 func withInvalidJwtFails(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
 		badJwt := "this.is.not-a-real-jwt"
-		identityData := testutil.AddIdentityData{
-			IdentityFilename: "test_add_id_invalid_jwt",
-			JwtContent:       &badJwt,
-		}
+		identityData := testutil.NewJwtIdentityData("test_add_id_invalid_jwt", badJwt)
 		addResp := state.zetClient.AddIdentity(t, identityData)
 		addResp.AssertFail(500, "")
 	})
@@ -74,10 +68,7 @@ func withInvalidJwtFails(t *testing.T) {
 func withEmptyJwtFails(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
 		emptyJwt := ""
-		identityData := testutil.AddIdentityData{
-			IdentityFilename: "test_add_id_empty_jwt",
-			JwtContent:       &emptyJwt,
-		}
+		identityData := testutil.NewJwtIdentityData("test_add_id_empty_jwt", emptyJwt)
 		addResp := state.zetClient.AddIdentity(t, identityData)
 		addResp.AssertFail(500, "")
 	})
@@ -91,10 +82,7 @@ func withDeletedIdentityFails(t *testing.T) {
 		t.Logf("deleting identity %q from overlay before ZET tries to enroll", idName)
 		require.NoError(t, state.overlay.DeleteIdentity(idName), "delete identity via overlay")
 
-		identityData := testutil.AddIdentityData{
-			IdentityFilename: idName,
-			JwtContent:       &jwt,
-		}
+		identityData := testutil.NewJwtIdentityData(idName, jwt)
 		addResp := state.zetClient.AddIdentity(t, identityData)
 		addResp.AssertFail(500, "")
 	})
@@ -104,10 +92,7 @@ func withSlashInFilenameFails(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
 		jwt := state.overlay.GetJwtFromController(t, "test_add_id_slash")
 
-		identityData := testutil.AddIdentityData{
-			IdentityFilename: "foo/bar",
-			JwtContent:       &jwt,
-		}
+		identityData := testutil.NewJwtIdentityData("foo/bar", jwt)
 		addResp := state.zetClient.AddIdentity(t, identityData)
 		addResp.AssertFail(500, "invalid file name")
 	})
@@ -117,10 +102,7 @@ func withDotDotInFilenameFails(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
 		jwt := state.overlay.GetJwtFromController(t, "test_add_id_dotdot")
 
-		identityData := testutil.AddIdentityData{
-			IdentityFilename: "../escape",
-			JwtContent:       &jwt,
-		}
+		identityData := testutil.NewJwtIdentityData("../escape", jwt)
 		addResp := state.zetClient.AddIdentity(t, identityData)
 		addResp.AssertFail(500, "not within the configuration directory")
 	})
@@ -131,10 +113,7 @@ func filenameExceedsCharLimitFails(t *testing.T) {
 		jwt := state.overlay.GetJwtFromController(t, "test_add_id_long_name")
 
 		longName := strings.Repeat("a", 5000)
-		identityData := testutil.AddIdentityData{
-			IdentityFilename: longName,
-			JwtContent:       &jwt,
-		}
+		identityData := testutil.NewJwtIdentityData(longName, jwt)
 		addResp := state.zetClient.AddIdentity(t, identityData)
 		addResp.AssertFail(500, "invalid file name")
 	})
@@ -153,10 +132,7 @@ func sameNameTwiceSecondFails(t *testing.T) {
 		testutil.EnrollUrlIdentityToNone(t, state.overlay, state.zetClient, idName)
 
 		controllerURL := state.overlay.ControllerHostPort()
-		identityData := testutil.AddIdentityData{
-			IdentityFilename: idName,
-			ControllerURL:    &controllerURL,
-		}
+		identityData := testutil.NewUrlIdentityData(idName, controllerURL)
 		addResp := state.zetClient.AddIdentity(t, identityData)
 		addResp.AssertFail(500, "identity exists with the same name")
 	})
@@ -168,10 +144,7 @@ func afterJwtSameNameFails(t *testing.T) {
 		testutil.FetchAndEnrollJwt(t, state.overlay, state.zetClient, idName)
 
 		controllerURL := state.overlay.ControllerHostPort()
-		urlIdentityData := testutil.AddIdentityData{
-			IdentityFilename: idName,
-			ControllerURL:    &controllerURL,
-		}
+		urlIdentityData := testutil.NewUrlIdentityData(idName, controllerURL)
 		addResp := state.zetClient.AddIdentity(t, urlIdentityData)
 		addResp.AssertFail(500, "identity exists with the same name")
 	})
@@ -180,10 +153,7 @@ func afterJwtSameNameFails(t *testing.T) {
 func withNonZitiEndpointFails(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
 		nonZitiURL := "https://example.com"
-		identityData := testutil.AddIdentityData{
-			IdentityFilename: "test_url_enroll_non_ziti",
-			ControllerURL:    &nonZitiURL,
-		}
+		identityData := testutil.NewUrlIdentityData("test_url_enroll_non_ziti", nonZitiURL)
 
 		addResp := state.zetClient.AddIdentity(t, identityData)
 		addResp.AssertFail(500, "")
@@ -193,10 +163,7 @@ func withNonZitiEndpointFails(t *testing.T) {
 func withMalformedUrlFails(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
 		badURL := "not-a-url"
-		identityData := testutil.AddIdentityData{
-			IdentityFilename: "test_url_enroll_malformed_url",
-			ControllerURL:    &badURL,
-		}
+		identityData := testutil.NewUrlIdentityData("test_url_enroll_malformed_url", badURL)
 
 		addResp := state.zetClient.AddIdentity(t, identityData)
 		addResp.AssertFail(500, "")

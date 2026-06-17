@@ -119,6 +119,20 @@ func NewIdentifierData(identifier string) IdentifierData {
 	}
 }
 
+func NewJwtIdentityData(name, jwt string) AddIdentityData {
+	return AddIdentityData{
+		IdentityFilename: name,
+		JwtContent:       &jwt,
+	}
+}
+
+func NewUrlIdentityData(name, url string) AddIdentityData {
+	return AddIdentityData{
+		IdentityFilename: name,
+		ControllerURL:    &url,
+	}
+}
+
 func NewIdentityOnOffData(identifier string, onOff bool) IdentityOnOffData {
 	return IdentityOnOffData{
 		Identifier: identifier,
