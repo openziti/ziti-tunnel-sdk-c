@@ -27,33 +27,30 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var keychainProviders = []string{
-	"Microsoft Platform Crypto Provider",
-	"Microsoft Software Key Storage Provider",
-}
+// Providers tlsuv tries: TPM-backed first, software fallback for CI runners.
+const keychainProviders = `'Microsoft Platform Crypto Provider','Microsoft Software Key Storage Provider'`
 
 func KeychainKeyExists(t *testing.T, keyRef string) bool {
-	name := strings.TrimPrefix(keyRef, "keychain:")
-	for _, p := range keychainProviders {
-		out := runPowerShell(t, fmt.Sprintf(
-			`[System.Security.Cryptography.CngKey]::Exists(%s,[System.Security.Cryptography.CngProvider]::new(%s),[System.Security.Cryptography.CngKeyOpenOptions]::UserKey)`,
-			psQuote(name), psQuote(p)))
-		if strings.EqualFold(strings.TrimSpace(out), "True") {
-			return true
-		}
-	}
-	return false
+	out := runPowerShell(t, fmt.Sprintf(`$n=%s
+$found=$false
+foreach ($name in %s) {
+  try {
+    $p=[System.Security.Cryptography.CngProvider]::new($name)
+    if ([System.Security.Cryptography.CngKey]::Exists($n,$p,[System.Security.Cryptography.CngKeyOpenOptions]::UserKey)) { $found=$true; break }
+  } catch { }
+}
+$found`, psQuote(strings.TrimPrefix(keyRef, "keychain:")), keychainProviders))
+	return strings.EqualFold(strings.TrimSpace(out), "True")
 }
 
 func RemoveKeychainKey(t *testing.T, keyRef string) {
-	name := strings.TrimPrefix(keyRef, "keychain:")
-	for _, p := range keychainProviders {
-		runPowerShell(t, fmt.Sprintf(
-			`$n=%s
-$p=[System.Security.Cryptography.CngProvider]::new(%s)
-if ([System.Security.Cryptography.CngKey]::Exists($n,$p,[System.Security.Cryptography.CngKeyOpenOptions]::UserKey)) { [System.Security.Cryptography.CngKey]::Open($n,$p).Delete() }`,
-			psQuote(name), psQuote(p)))
-	}
+	runPowerShell(t, fmt.Sprintf(`$n=%s
+foreach ($name in %s) {
+  try {
+    $p=[System.Security.Cryptography.CngProvider]::new($name)
+    if ([System.Security.Cryptography.CngKey]::Exists($n,$p,[System.Security.Cryptography.CngKeyOpenOptions]::UserKey)) { [System.Security.Cryptography.CngKey]::Open($n,$p).Delete() }
+  } catch { }
+}`, psQuote(strings.TrimPrefix(keyRef, "keychain:")), keychainProviders))
 }
 
 func runPowerShell(t *testing.T, script string) string {
