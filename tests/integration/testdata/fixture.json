@@ -145,6 +145,12 @@
       "enrollment": { "ott": true }
     },
     {
+      "name": "test_keychain_enroll",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
       "name": "test_url_enroll_after_jwt",
       "isAdmin": false,
       "authPolicy": "@Default",
