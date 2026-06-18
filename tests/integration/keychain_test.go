@@ -64,5 +64,6 @@ func forgetIdentityRemovesKey(t *testing.T) {
 		removeResp.AssertSuccess()
 
 		require.False(t, testutil.KeychainKeyExists(t, keyRef), "forget should remove key %q from the OS keychain", keyRef)
+		require.NoFileExists(t, identityEvent.Id.Identifier, "forget should delete the identity file")
 	})
 }

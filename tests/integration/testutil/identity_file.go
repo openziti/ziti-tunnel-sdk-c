@@ -54,13 +54,6 @@ func ReadIdentityFile(t *testing.T, path string) IdentityFileContent {
 	return content
 }
 
-func AssertKeychainKeyRef(t *testing.T, path string) string {
-	content := ReadIdentityFile(t, path)
-	require.True(t, strings.HasPrefix(content.ID.Key, "keychain:"), "id.key should be a keychain ref, got %q", content.ID.Key)
-	require.NotContains(t, content.ID.Key, "PRIVATE KEY", "id.key should not embed key material: %q", content.ID.Key)
-	return content.ID.Key
-}
-
 func AssertValidJwtEnrolledIdentityFile(t *testing.T, path string) {
 	content := ReadIdentityFile(t, path)
 	require.NotEmpty(t, content.ZtAPI, "identity file ztAPI empty")
