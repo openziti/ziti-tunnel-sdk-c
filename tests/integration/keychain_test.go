@@ -31,8 +31,9 @@ func TestKeychain(t *testing.T) {
 	t.Run("reEnrollSucceedsAfterReset", reEnrollSucceedsAfterReset)
 }
 
-// enrollWithKeychain enrolls idName with UseKeychain, asserts the key is a keychain
-// ref, registers cleanup of the OS keystore key, and returns the added event and ref.
+// enrollWithKeychain enrolls idName with UseKeychain, asserts the key reference in the
+// identity file, asserts the key is in the OS keychain, registers its cleanup, and
+// returns the added event and ref.
 func enrollWithKeychain(t *testing.T, idName string) (testutil.IdentityEvent, string) {
 	jwt := state.overlay.GetJwtFromController(t, idName)
 	identityData := testutil.NewJwtIdentityData(idName, jwt)
@@ -45,13 +46,13 @@ func enrollWithKeychain(t *testing.T, idName string) (testutil.IdentityEvent, st
 	state.zetClient.WaitForControllerEvent(t, "connected", idName)
 	keyRef := testutil.AssertKeychainKeyRef(t, identityEvent.Id.Identifier)
 	t.Cleanup(func() { testutil.RemoveKeychainKey(t, keyRef) })
+	require.True(t, testutil.KeychainKeyExists(t, keyRef), "private key %q should be in the OS keychain after enroll", keyRef)
 	return identityEvent, keyRef
 }
 
 func forgetIdentityRemovesKey(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
 		identityEvent, keyRef := enrollWithKeychain(t, "test_keychain_forget")
-		require.True(t, testutil.KeychainKeyExists(t, keyRef), "private key %q should exist before forget", keyRef)
 
 		removeResp := state.zetClient.RemoveIdentity(t, identityEvent.Id.Identifier)
 		removeResp.AssertSuccess()
