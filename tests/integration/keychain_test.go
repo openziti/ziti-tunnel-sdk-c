@@ -26,8 +26,9 @@ import (
 )
 
 func TestKeychain(t *testing.T) {
-	t.Run("enrollmentSucceeds", enrollmentSucceeds)
+	// Happy path "enrollment succeeds" is covered as a pre-req in this suite
 	t.Run("forgetIdentityRemovesKey", forgetIdentityRemovesKey)
+	t.Run("reEnrollSucceedsAfterReset", reEnrollSucceedsAfterReset)
 }
 
 // enrollWithKeychain enrolls idName with UseKeychain, asserts the key is a keychain
@@ -47,14 +48,6 @@ func enrollWithKeychain(t *testing.T, idName string) (testutil.IdentityEvent, st
 	return identityEvent, keyRef
 }
 
-func enrollmentSucceeds(t *testing.T) {
-	testutil.RunWithTimeout(t, func(t *testing.T) {
-		_, keyRef := enrollWithKeychain(t, "test_keychain_enroll")
-
-		require.True(t, testutil.KeychainKeyExists(t, keyRef), "private key %q should be in the OS keychain after enroll", keyRef)
-	})
-}
-
 func forgetIdentityRemovesKey(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
 		identityEvent, keyRef := enrollWithKeychain(t, "test_keychain_forget")
@@ -65,5 +58,18 @@ func forgetIdentityRemovesKey(t *testing.T) {
 
 		require.False(t, testutil.KeychainKeyExists(t, keyRef), "forget should remove key %q from the OS keychain", keyRef)
 		require.NoFileExists(t, identityEvent.Id.Identifier, "forget should delete the identity file")
+	})
+}
+
+func reEnrollSucceedsAfterReset(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
+		idName := "test_keychain_reenroll"
+		identityEvent, _ := enrollWithKeychain(t, idName)
+
+		removeResp := state.zetClient.RemoveIdentity(t, identityEvent.Id.Identifier)
+		removeResp.AssertSuccess()
+
+		state.overlay.ResetEnrollment(t, idName)
+		enrollWithKeychain(t, idName)
 	})
 }

@@ -376,6 +376,26 @@ func (o *Overlay) DeleteIdentity(name string) error {
 	return nil
 }
 
+// Controller side "Reset Enrollment" - drops the cert authenticator and issues a OTT so the identity can enroll again
+func (o *Overlay) ResetEnrollment(t *testing.T, name string) {
+	out, err := o.execZiti("edge", "list", "identities", fmt.Sprintf("name=%q", name), "-j")
+	require.NoError(t, err, "list identity %s", name)
+	var resp struct {
+		Data []struct {
+			Authenticators struct {
+				Cert struct {
+					ID string `json:"id"`
+				} `json:"cert"`
+			} `json:"authenticators"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(out, &resp), "parse identity %s", name)
+	authID := resp.Data[0].Authenticators.Cert.ID
+
+	_, err = o.execZiti("edge", "update", "authenticator", "cert", authID, "--re-enroll")
+	require.NoError(t, err, "re-enroll cert authenticator for %s", name)
+}
+
 // ExtJwtSignerSpec describes an external JWT signer to register on the
 // controller. EnrollToCert / EnrollToToken set the matching ziti 2.0+ flags.
 type ExtJwtSignerSpec struct {
