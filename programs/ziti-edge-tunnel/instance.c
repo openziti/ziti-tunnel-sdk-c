@@ -16,6 +16,8 @@
 
 #include "model/dtos.h"
 #include <ziti/ziti_log.h>
+#include <ziti/ziti.h>
+#include <tlsuv/keychain.h>
 #include <time.h>
 #include "lwip/ip_addr.h"
 #include "ziti/ziti_tunnel.h"
@@ -859,6 +861,20 @@ void delete_identity_from_instance(const char* identifier) {
     }
     model_map_remove(&tnl_identity_map, identifier);
     ZITI_LOG(DEBUG, "ztx[%s] is removed from the tunnel identity list", identifier);
+
+    // remove the identity's keychain key before deleting the file or it is orphaned
+    ziti_config cfg = {0};
+    if (ziti_load_config(&cfg, identifier) == ZITI_OK && cfg.id.key != NULL &&
+        strncmp(cfg.id.key, "keychain:", strlen("keychain:")) == 0) {
+        const keychain_t *kc = tlsuv_keychain();
+        const char *keyname = cfg.id.key + strlen("keychain:");
+        if (kc != NULL && kc->rem_key(keyname) == 0) {
+            ZITI_LOG(DEBUG, "removed keychain key for identity %s", identifier);
+        } else {
+            ZITI_LOG(WARN, "failed to remove keychain key for identity %s", identifier);
+        }
+    }
+    free_ziti_config(&cfg);
 
     // delete identity file
     remove(identifier);

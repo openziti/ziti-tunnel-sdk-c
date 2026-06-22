@@ -376,6 +376,26 @@ func (o *Overlay) DeleteIdentity(name string) error {
 	return nil
 }
 
+// Mirrors the controller's "Reset Enrollment" action so the identity can enroll again.
+func (o *Overlay) ResetEnrollment(t *testing.T, name string) {
+	out, err := o.execZiti("edge", "list", "identities", fmt.Sprintf("name=%q", name), "-j")
+	require.NoError(t, err, "list identity %s", name)
+	var resp struct {
+		Data []struct {
+			Authenticators struct {
+				Cert struct {
+					ID string `json:"id"`
+				} `json:"cert"`
+			} `json:"authenticators"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(out, &resp), "parse identity %s", name)
+	authID := resp.Data[0].Authenticators.Cert.ID
+
+	_, err = o.execZiti("edge", "update", "authenticator", "cert", authID, "--re-enroll")
+	require.NoError(t, err, "re-enroll cert authenticator for %s", name)
+}
+
 // ExtJwtSignerSpec describes an external JWT signer to register on the
 // controller. EnrollToCert / EnrollToToken set the matching ziti 2.0+ flags.
 type ExtJwtSignerSpec struct {
@@ -503,31 +523,6 @@ func (o *Overlay) CreateIdentityWithExternalId(t *testing.T, name, externalID, a
 	_, err := o.execZiti(args...)
 	require.NoError(t, err, "create identity %s with externalId %s", name, externalID)
 	t.Logf("controller identity %q created", name)
-}
-
-// CreateUpdbUser creates a non-admin identity with a UPDB authenticator so the
-// identity can authenticate via the controller's built-in OIDC username/password
-// login. Returns the new identity's controller ID.
-func (o *Overlay) CreateUpdbUser(name, username, password string) (string, error) {
-	out, err := o.execZiti("edge", "create", "identity", name, "-j")
-	if err != nil {
-		return "", fmt.Errorf("create identity %s: %w", name, err)
-	}
-	var resp struct {
-		Data struct {
-			ID string `json:"id"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(out, &resp); err != nil {
-		return "", fmt.Errorf("parse create identity %s response: %w", name, err)
-	}
-	if resp.Data.ID == "" {
-		return "", fmt.Errorf("create identity %s returned empty id", name)
-	}
-	if _, err := o.execZiti("edge", "create", "authenticator", "updb", resp.Data.ID, username, password); err != nil {
-		return "", fmt.Errorf("create updb authenticator for %s: %w", name, err)
-	}
-	return resp.Data.ID, nil
 }
 
 // DeleteExtJwtSigner removes an ext-jwt-signer by name.

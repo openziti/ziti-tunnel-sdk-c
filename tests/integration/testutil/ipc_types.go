@@ -27,7 +27,7 @@ import "testing"
 //   ServiceResponse (base response) / AddIdentityResponse, ExternalAuthResponse, ... (typed responses)
 
 // ---------------------------------------------------------------------------
-// Payload structs — the Data field of each command.
+// Payload structs: the Data field of each command.
 // ---------------------------------------------------------------------------
 
 type IdentifierData struct {
@@ -117,6 +117,26 @@ func NewIdentifierData(identifier string) IdentifierData {
 	return IdentifierData{
 		Identifier: identifier,
 	}
+}
+
+func NewJwtIdentityData(name, jwt string) AddIdentityData {
+	return AddIdentityData{
+		IdentityFilename: name,
+		JwtContent:       &jwt,
+	}
+}
+
+func NewUrlIdentityData(name, url string, mode EnrollMode, provider ...string) AddIdentityData {
+	data := AddIdentityData{
+		IdentityFilename: name,
+		ControllerURL:    &url,
+		EnrollMode:       &mode,
+	}
+	// Provider applies only to cert/token enrollment, enroll-to-none omits it.
+	if len(provider) > 0 {
+		data.Provider = &provider[0]
+	}
+	return data
 }
 
 func NewIdentityOnOffData(identifier string, onOff bool) IdentityOnOffData {
@@ -283,7 +303,7 @@ type ServiceVersion struct {
 
 type TapInfo struct{}
 
-// Identity mirrors ZDEW's Identity class — used both inside Event payloads
+// Identity mirrors ZDEW's Identity class, used both inside Event payloads
 // and inside TunnelStatus.Identities.
 type Identity struct {
 	Name             string   `json:"Name"`

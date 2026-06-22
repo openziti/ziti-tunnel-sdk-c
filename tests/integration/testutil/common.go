@@ -40,10 +40,7 @@ const workingExtJwtSignerName = "test_ext_auth_signer_working"
 // asserts the on-disk identity file, and returns the added event. The JWT may
 // come from a freshly created identity or a pre-imported one.
 func EnrollJwt(t *testing.T, zet *ZET, name, jwt string) IdentityEvent {
-	identityData := AddIdentityData{
-		IdentityFilename: name,
-		JwtContent:       &jwt,
-	}
+	identityData := NewJwtIdentityData(name, jwt)
 	addResp := zet.AddIdentity(t, identityData)
 	addResp.AssertSuccess()
 
@@ -127,11 +124,7 @@ func GenerateTOTP(t *testing.T, secret string, at time.Time) string {
 // waits for the needs_ext_login event, asserts NeedsExtAuth and the on-disk
 // file, and returns the event.
 func EnrollUrlIdentityToNone(t *testing.T, overlay *Overlay, zet *ZET, name string) IdentityEvent {
-	controllerURL := overlay.ControllerHostPort()
-	identityData := AddIdentityData{
-		IdentityFilename: name,
-		ControllerURL:    &controllerURL,
-	}
+	identityData := NewUrlIdentityData(name, overlay.ControllerHostPort(), EnrollModeNone)
 	addResp := zet.AddIdentity(t, identityData)
 	addResp.AssertSuccess()
 

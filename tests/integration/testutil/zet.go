@@ -73,7 +73,6 @@ func (z *ZET) Start() error {
 	cmdPipe := CommandPipePathFor(z.Discriminator)
 	eventPipe := EventPipePathFor(z.Discriminator)
 
-	// Fail fast if something is already bound to this instance's pipe.
 	if err := ensureNothingOnPipe(cmdPipe); err != nil {
 		return err
 	}
