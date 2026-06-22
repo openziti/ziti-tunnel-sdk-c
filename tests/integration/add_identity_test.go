@@ -132,7 +132,7 @@ func sameNameTwiceSecondFails(t *testing.T) {
 		testutil.EnrollUrlIdentityToNone(t, state.overlay, state.zetClient, idName)
 
 		controllerURL := state.overlay.ControllerHostPort()
-		identityData := testutil.NewUrlIdentityData(idName, controllerURL)
+		identityData := testutil.NewUrlIdentityData(idName, controllerURL, testutil.EnrollModeNone)
 		addResp := state.zetClient.AddIdentity(t, identityData)
 		addResp.AssertFail(500, "identity exists with the same name")
 	})
@@ -144,7 +144,7 @@ func afterJwtSameNameFails(t *testing.T) {
 		testutil.FetchAndEnrollJwt(t, state.overlay, state.zetClient, idName)
 
 		controllerURL := state.overlay.ControllerHostPort()
-		urlIdentityData := testutil.NewUrlIdentityData(idName, controllerURL)
+		urlIdentityData := testutil.NewUrlIdentityData(idName, controllerURL, testutil.EnrollModeNone)
 		addResp := state.zetClient.AddIdentity(t, urlIdentityData)
 		addResp.AssertFail(500, "identity exists with the same name")
 	})
@@ -153,7 +153,7 @@ func afterJwtSameNameFails(t *testing.T) {
 func withNonZitiEndpointFails(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
 		nonZitiURL := "https://example.com"
-		identityData := testutil.NewUrlIdentityData("test_url_enroll_non_ziti", nonZitiURL)
+		identityData := testutil.NewUrlIdentityData("test_url_enroll_non_ziti", nonZitiURL, testutil.EnrollModeNone)
 
 		addResp := state.zetClient.AddIdentity(t, identityData)
 		addResp.AssertFail(500, "")
@@ -163,7 +163,7 @@ func withNonZitiEndpointFails(t *testing.T) {
 func withMalformedUrlFails(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
 		badURL := "not-a-url"
-		identityData := testutil.NewUrlIdentityData("test_url_enroll_malformed_url", badURL)
+		identityData := testutil.NewUrlIdentityData("test_url_enroll_malformed_url", badURL, testutil.EnrollModeNone)
 
 		addResp := state.zetClient.AddIdentity(t, identityData)
 		addResp.AssertFail(500, "")

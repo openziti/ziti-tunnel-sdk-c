@@ -124,7 +124,7 @@ func GenerateTOTP(t *testing.T, secret string, at time.Time) string {
 // waits for the needs_ext_login event, asserts NeedsExtAuth and the on-disk
 // file, and returns the event.
 func EnrollUrlIdentityToNone(t *testing.T, overlay *Overlay, zet *ZET, name string) IdentityEvent {
-	identityData := NewUrlIdentityData(name, overlay.ControllerHostPort())
+	identityData := NewUrlIdentityData(name, overlay.ControllerHostPort(), EnrollModeNone)
 	addResp := zet.AddIdentity(t, identityData)
 	addResp.AssertSuccess()
 

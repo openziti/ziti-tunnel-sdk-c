@@ -126,11 +126,17 @@ func NewJwtIdentityData(name, jwt string) AddIdentityData {
 	}
 }
 
-func NewUrlIdentityData(name, url string) AddIdentityData {
-	return AddIdentityData{
+func NewUrlIdentityData(name, url string, mode EnrollMode, provider ...string) AddIdentityData {
+	data := AddIdentityData{
 		IdentityFilename: name,
 		ControllerURL:    &url,
+		EnrollMode:       &mode,
 	}
+	// provider is optional and applies only to cert/token enrollment; enroll-to-none omits it.
+	if len(provider) > 0 {
+		data.Provider = &provider[0]
+	}
+	return data
 }
 
 func NewIdentityOnOffData(identifier string, onOff bool) IdentityOnOffData {
