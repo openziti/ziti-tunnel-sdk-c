@@ -705,7 +705,8 @@ static void on_event(const base_event *ev) {
             if (id == NULL) {
                 break;
             }
-            set_mfa_status(ev->identifier, true, true);
+            mfa_status s = mfa_statuss.value_of(mfa_ev->operation);
+            set_mfa_status(ev->identifier, (s != mfa_status_enrollment_required), true);
             send_tunnel_status("status");
             mfa_status_event mfa_sts_event = {
                     .Op = "mfa",
@@ -860,21 +861,23 @@ static void on_event(const base_event *ev) {
             }
             break;
         case TunnelEvent_RouterEvent: {
-            const router_event *rte = (const router_event *) ev;
-            ZITI_LOG(INFO, "ztx[%s] router: %s, status: %s, address: %s, version: %s, ", id->Identifier,
-                rte->name, rt_statuss.name(rte->status), rte->address, rte->version);
-            tunnel_router_event tre = {
-                .Op = "router",
-                .Action = event_name(rt_status_to_event(rte->status)),
-                .Identifier = ev->identifier,
-                .Name = rte->name,
-                .Address = rte->address,
-                .Version = rte->version,
-            };
-            if (id->FingerPrint) {
-                tre.Fingerprint = id->FingerPrint;
+            if (id != NULL) {
+                const router_event *rte = (const router_event *) ev;
+                ZITI_LOG(INFO, "ztx[%s] router: %s, status: %s, address: %s, version: %s, ", id->Identifier,
+                    rte->name, rt_statuss.name(rte->status), rte->address ? rte->address : "", rte->version ? rte->version : "");
+                tunnel_router_event tre = {
+                    .Op = "router",
+                    .Action = event_name(rt_status_to_event(rte->status)),
+                    .Identifier = ev->identifier,
+                    .Name = rte->name,
+                    .Address = rte->address,
+                    .Version = rte->version,
+                };
+                if (id->FingerPrint) {
+                    tre.Fingerprint = id->FingerPrint;
+                }
+                send_events_message(&tre, (to_json_fn) tunnel_router_event_to_json, true);
             }
-            send_events_message(&tre, (to_json_fn) tunnel_router_event_to_json, true);
             break;
         }
         case TunnelEvent_Unknown:
