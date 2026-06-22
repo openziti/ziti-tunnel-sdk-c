@@ -525,31 +525,6 @@ func (o *Overlay) CreateIdentityWithExternalId(t *testing.T, name, externalID, a
 	t.Logf("controller identity %q created", name)
 }
 
-// CreateUpdbUser creates a non-admin identity with a UPDB authenticator so the
-// identity can authenticate via the controller's built-in OIDC username/password
-// login. Returns the new identity's controller ID.
-func (o *Overlay) CreateUpdbUser(name, username, password string) (string, error) {
-	out, err := o.execZiti("edge", "create", "identity", name, "-j")
-	if err != nil {
-		return "", fmt.Errorf("create identity %s: %w", name, err)
-	}
-	var resp struct {
-		Data struct {
-			ID string `json:"id"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(out, &resp); err != nil {
-		return "", fmt.Errorf("parse create identity %s response: %w", name, err)
-	}
-	if resp.Data.ID == "" {
-		return "", fmt.Errorf("create identity %s returned empty id", name)
-	}
-	if _, err := o.execZiti("edge", "create", "authenticator", "updb", resp.Data.ID, username, password); err != nil {
-		return "", fmt.Errorf("create updb authenticator for %s: %w", name, err)
-	}
-	return resp.Data.ID, nil
-}
-
 // DeleteExtJwtSigner removes an ext-jwt-signer by name.
 func (o *Overlay) DeleteExtJwtSigner(name string) error {
 	if _, err := o.execZiti("edge", "delete", "ext-jwt-signer", name); err != nil {
