@@ -57,6 +57,12 @@ XX(RecoveryCodes, model_string, array, RecoveryCodes, __VA_ARGS__)
 STATUS_EVENT(XX, __VA_ARGS__) \
 XX(Identities, tunnel_identity, array, Identities, __VA_ARGS__)
 
+#define TUNNEL_ROUTER_EVENT(XX, ...) \
+ACTION_EVENT(XX, __VA_ARGS__) \
+XX(Name, model_string, none, Name, __VA_ARGS__) \
+XX(Address, model_string, none, Address, __VA_ARGS__) \
+XX(Version, model_string, none, Version, __VA_ARGS__)
+
 #define TUNNEL_NOTIFICATION_MESSAGE(XX, ...) \
 XX(IdentityName, model_string, none, IdentityName, __VA_ARGS__) \
 XX(Identifier, model_string, none, Identifier, __VA_ARGS__) \
@@ -97,6 +103,7 @@ DECLARE_MODEL(identity_event, IDENTITY_EVENT)
 DECLARE_MODEL(services_event, SERVICES_EVENT)
 DECLARE_MODEL(mfa_status_event, MFA_STATUS_EVENT)
 DECLARE_MODEL(tunnel_metrics_event, TUNNEL_METRICS_EVENT)
+DECLARE_MODEL(tunnel_router_event, TUNNEL_ROUTER_EVENT)
 DECLARE_MODEL(notification_message, TUNNEL_NOTIFICATION_MESSAGE)
 DECLARE_MODEL(notification_event, TUNNEL_NOTIFICATION_EVENT)
 
