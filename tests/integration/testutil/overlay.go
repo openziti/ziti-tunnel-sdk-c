@@ -376,7 +376,7 @@ func (o *Overlay) DeleteIdentity(name string) error {
 	return nil
 }
 
-// Controller side "Reset Enrollment" - drops the cert authenticator and issues a OTT so the identity can enroll again
+// Mirrors the controller's "Reset Enrollment" action so the identity can enroll again.
 func (o *Overlay) ResetEnrollment(t *testing.T, name string) {
 	out, err := o.execZiti("edge", "list", "identities", fmt.Sprintf("name=%q", name), "-j")
 	require.NoError(t, err, "list identity %s", name)

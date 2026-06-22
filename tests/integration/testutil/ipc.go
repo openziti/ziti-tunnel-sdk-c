@@ -252,7 +252,7 @@ func (c *EventClient) Close() error {
 }
 
 // ---------------------------------------------------------------------------
-// CommandsClient methods — each logs the command, sends a typed Function, and
+// CommandsClient methods: each logs the command, sends a typed Function, and
 // asserts the IPC send itself succeeded. Callers assert the response outcome
 // since some tests expect failures.
 // ---------------------------------------------------------------------------
