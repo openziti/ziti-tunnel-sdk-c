@@ -25,21 +25,25 @@ import (
 )
 
 func TestMFAEnrollment(t *testing.T) {
-	t.Run("completesWithTotpRequiredPolicy", enrollCompletesWithTotpRequiredPolicy)
-	t.Run("rejectsInvalidTotp", enrollRejectsInvalidTotp)
+	t.Run("enrollCompletesWithTotpRequiredPolicy", enrollCompletesWithTotpRequiredPolicy)
+	t.Run("enrollRejectsInvalidTotp", enrollRejectsInvalidTotp)
 }
 
 func TestMFAReauthentication(t *testing.T) {
-	t.Run("acceptsValidTotp", reauthAcceptsValidTotp)
-	t.Run("acceptsRecoveryCode", reauthAcceptsRecoveryCode)
-	t.Run("rejectsRecoveryCodeReuse", reauthRejectsRecoveryCodeReuse)
-	t.Run("rejectsInvalidTotp", reauthRejectsInvalidTotp)
+	t.Run("reauthAcceptsValidTotp", reauthAcceptsValidTotp)
+	t.Run("reauthAcceptsRecoveryCode", reauthAcceptsRecoveryCode)
+	t.Run("reauthRejectsRecoveryCodeReuse", reauthRejectsRecoveryCodeReuse)
+	t.Run("reauthRejectsInvalidTotp", reauthRejectsInvalidTotp)
 }
 
 func TestRemoveMFA(t *testing.T) {
-	t.Run("acceptsValidTotp", removeAcceptsValidTotp)
-	t.Run("acceptsRecoveryCode", removeAcceptsRecoveryCode)
-	t.Run("rejectsInvalidTotp", removeRejectsInvalidTotp)
+	t.Run("removeAcceptsValidTotp", removeAcceptsValidTotp)
+	t.Run("removeAcceptsRecoveryCode", removeAcceptsRecoveryCode)
+	t.Run("removeRejectsInvalidTotp", removeRejectsInvalidTotp)
+}
+
+func TestMFARecoveryCodes(t *testing.T) {
+	t.Run("recoveryRejectsOldCodeAfterRegeneration", recoveryRejectsOldCodeAfterRegeneration)
 }
 
 func enrollCompletesWithTotpRequiredPolicy(t *testing.T) {
@@ -200,5 +204,23 @@ func removeRejectsInvalidTotp(t *testing.T) {
 
 		removeResp := state.zetClient.RemoveMFA(t, enrollment.Identifier, "000000")
 		removeResp.AssertFail(500, "the token provided was invalid")
+	})
+}
+
+func recoveryRejectsOldCodeAfterRegeneration(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
+		idName := "test_mfa_regenerate_codes"
+		enrollment, secret := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, idName)
+		oldCode := enrollment.RecoveryCodes[0]
+
+		code := testutil.GenerateTOTP(t, secret, time.Now())
+		genResp := state.zetClient.GenerateMFACodes(t, enrollment.Identifier, code)
+		genResp.AssertSuccess()
+
+		state.zetClient.DisableEnableIdentity(t, enrollment.Identifier)
+		state.zetClient.WaitForMfaEvent(t, "auth_challenge", idName)
+
+		reuseResp := state.zetClient.SubmitMFA(t, enrollment.Identifier, oldCode)
+		reuseResp.AssertFail(500, "the token provided was invalid")
 	})
 }
