@@ -466,6 +466,28 @@ static void load_identities_complete(uv_work_t * wr, int status) {
     }
 }
 
+static event rt_status_to_event(rt_status rts) {
+    event e;
+    switch (rts) {
+        case rt_status_added:
+            e = event_added;
+            break;
+        case rt_status_connected:
+            e = event_connected;
+            break;
+        case rt_status_disconnected:
+            e = event_disconnected;
+            break;
+        case rt_status_removed:
+            e = event_removed;
+            break;
+        default:
+            e = event_Unknown;
+            break;
+    }
+    return e;
+}
+
 static void on_event(const base_event *ev) {
     tunnel_identity *id = find_tunnel_identity(ev->identifier);
     switch (ev->event_type) {
@@ -683,7 +705,8 @@ static void on_event(const base_event *ev) {
             if (id == NULL) {
                 break;
             }
-            set_mfa_status(ev->identifier, true, true);
+            mfa_status s = mfa_statuss.value_of(mfa_ev->operation);
+            set_mfa_status(ev->identifier, (s != mfa_status_enrollment_required), true);
             send_tunnel_status("status");
             mfa_status_event mfa_sts_event = {
                     .Op = "mfa",
@@ -837,6 +860,26 @@ static void on_event(const base_event *ev) {
                 send_events_message(&id_event, (to_json_fn) identity_event_to_json, true);
             }
             break;
+        case TunnelEvent_RouterEvent: {
+            if (id != NULL) {
+                const router_event *rte = (const router_event *) ev;
+                ZITI_LOG(INFO, "ztx[%s] router: %s, status: %s, address: %s, version: %s, ", id->Identifier,
+                    rte->name, rt_statuss.name(rte->status), rte->address ? rte->address : "", rte->version ? rte->version : "");
+                tunnel_router_event tre = {
+                    .Op = "router",
+                    .Action = event_name(rt_status_to_event(rte->status)),
+                    .Identifier = ev->identifier,
+                    .Name = rte->name,
+                    .Address = rte->address,
+                    .Version = rte->version,
+                };
+                if (id->FingerPrint) {
+                    tre.Fingerprint = id->FingerPrint;
+                }
+                send_events_message(&tre, (to_json_fn) tunnel_router_event_to_json, true);
+            }
+            break;
+        }
         case TunnelEvent_Unknown:
         default:
             ZITI_LOG(WARN, "unhandled event received: %d", ev->event_type);
