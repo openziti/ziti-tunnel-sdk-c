@@ -61,6 +61,12 @@
       "enrollment": { "ott": true }
     },
     {
+      "name": "test_mfa_reauth_reused_recovery_code",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
       "name": "test_mfa_reauth_invalid_totp",
       "isAdmin": false,
       "authPolicy": "@Default",
