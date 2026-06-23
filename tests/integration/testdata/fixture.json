@@ -37,21 +37,9 @@
       "externalId": "test_restart_ext@test.com"
     },
     {
-      "name": "test_mfa_enable_jwt",
-      "isAdmin": false,
-      "authPolicy": "@Default",
-      "enrollment": { "ott": true }
-    },
-    {
       "name": "test_mfa_enable_totp_policy",
       "isAdmin": false,
       "authPolicy": "@test_mfa_totp_policy",
-      "enrollment": { "ott": true }
-    },
-    {
-      "name": "test_mfa_verify_valid_totp",
-      "isAdmin": false,
-      "authPolicy": "@Default",
       "enrollment": { "ott": true }
     },
     {

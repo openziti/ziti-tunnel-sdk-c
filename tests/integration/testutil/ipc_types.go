@@ -388,8 +388,8 @@ type ControllerEvent struct {
 	Identifier string `json:"Identifier"`
 }
 
-// MfaEvent fires on Op:"mfa" (enrollment_challenge, enrollment_verification,
-// mfa_auth_status, auth_challenge, enrollment_remove).
+// MfaEvent fires on Op:"mfa" (enrollment_required, enrollment_challenge,
+// enrollment_verification, mfa_auth_status, auth_challenge, enrollment_remove).
 type MfaEvent struct {
 	ActionEvent
 	Identifier      string   `json:"Identifier"`

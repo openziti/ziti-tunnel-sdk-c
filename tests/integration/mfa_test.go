@@ -24,14 +24,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestEnableMFA(t *testing.T) {
-	t.Run("acceptsJwtEnrolledIdentity", acceptsJwtEnrolledIdentity)
-	t.Run("acceptsTotpRequiredAuthPolicy", acceptsTotpRequiredAuthPolicy)
-}
-
-func TestVerifyMFA(t *testing.T) {
-	// Happy path is tested throughout this suite - that's why there's only a reject case
-	t.Run("rejectsInvalidTotp", verifyRejectsInvalidTotp)
+func TestMFAEnrollment(t *testing.T) {
+	t.Run("completesWithTotpRequiredPolicy", enrollCompletesWithTotpRequiredPolicy)
+	t.Run("rejectsInvalidTotp", enrollRejectsInvalidTotp)
 }
 
 func TestMFAReauthentication(t *testing.T) {
@@ -46,29 +41,47 @@ func TestRemoveMFA(t *testing.T) {
 	t.Run("rejectsInvalidTotp", removeRejectsInvalidTotp)
 }
 
-func acceptsJwtEnrolledIdentity(t *testing.T) {
+func enrollCompletesWithTotpRequiredPolicy(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
-		enrollment, _ := testutil.EnrollAndEnableMFA(t, state.overlay, state.zetClient, "test_mfa_enable_jwt")
+		name := "test_mfa_enable_totp_policy"
+		added := testutil.FetchAndEnrollJwt(t, state.overlay, state.zetClient, name)
+		require.False(t, added.Id.MfaEnabled, "identity:added MfaEnabled=%t before EnableMFA", added.Id.MfaEnabled)
 
-		require.False(t, enrollment.IsVerified, "EnableMFA Data.IsVerified should be false before verify_mfa")
+		state.zetClient.WaitForMfaEvent(t, "enrollment_required", name)
+
+		enableResp := state.zetClient.EnableMFA(t, added.Id.Identifier)
+		enableResp.AssertSuccess()
+		require.NotEmpty(t, enableResp.Data.ProvisioningUrl, "EnableMFA Data.ProvisioningUrl should be non-empty")
+		require.NotEmpty(t, enableResp.Data.RecoveryCodes, "EnableMFA Data.RecoveryCodes should be non-empty")
+		require.False(t, enableResp.Data.IsVerified, "EnableMFA Data.IsVerified should be false before verify_mfa")
+
+		challengeEvent := state.zetClient.WaitForMfaEvent(t, "enrollment_challenge", name)
+		challengeEvent.AssertSuccess()
+
+		secret := testutil.ParseTOTPSecret(t, enableResp.Data.ProvisioningUrl)
+		code := testutil.GenerateTOTP(t, secret, time.Now())
+
+		verifyResp := state.zetClient.VerifyMFA(t, added.Id.Identifier, code)
+		verifyResp.AssertSuccess()
+
+		updatedEvent := state.zetClient.WaitForIdentityEvent(t, "updated", name)
+		updatedEvent.AssertMfaAuthenticated()
+
+		verificationEvent := state.zetClient.WaitForMfaEvent(t, "enrollment_verification", name)
+		verificationEvent.AssertSuccess()
 	})
 }
 
-func acceptsTotpRequiredAuthPolicy(t *testing.T) {
+func enrollRejectsInvalidTotp(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
-		t.Skip("Tracking https://github.com/openziti/desktop-edge-win/issues/947 and https://openziti.discourse.group/t/enrolling-mfa-totp-from-zdew-fails/5482 - EnableMFA fails with 'failed to authenticate' for identities bound to TOTP-required auth policies")
+		name := "test_mfa_verify_invalid_totp"
+		added := testutil.FetchAndEnrollJwt(t, state.overlay, state.zetClient, name)
+		state.zetClient.WaitForControllerEvent(t, "connected", name)
 
-		enrollment, _ := testutil.EnrollAndEnableMFA(t, state.overlay, state.zetClient, "test_mfa_enable_totp_policy")
+		enableResp := state.zetClient.EnableMFA(t, added.Id.Identifier)
+		enableResp.AssertSuccess()
 
-		require.False(t, enrollment.IsVerified, "EnableMFA Data.IsVerified should be false before verify_mfa")
-	})
-}
-
-func verifyRejectsInvalidTotp(t *testing.T) {
-	testutil.RunWithTimeout(t, func(t *testing.T) {
-		enrollment, _ := testutil.EnrollAndEnableMFA(t, state.overlay, state.zetClient, "test_mfa_verify_invalid_totp")
-
-		verifyResp := state.zetClient.VerifyMFA(t, enrollment.Identifier, "000000")
+		verifyResp := state.zetClient.VerifyMFA(t, added.Id.Identifier, "000000")
 		verifyResp.AssertFail(500, "the token provided was invalid")
 	})
 }
