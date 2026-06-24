@@ -57,7 +57,7 @@ runs:
           echo "key=${common_key}-build_action_md5=${build_action_hash}" | tee -a $GITHUB_OUTPUT
         fi
 
-    - uses: actions/cache@v4
+    - uses: actions/cache@v6
       with:
         key: ${{ steps.get_vcpkg_cache_key.outputs.key }}
         path: ./vcpkg_cache
