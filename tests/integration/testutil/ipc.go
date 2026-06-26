@@ -389,13 +389,13 @@ func (c *CommandsClient) GenerateMFACodes(t *testing.T, identifier, code string)
 	return resp
 }
 
-func (c *CommandsClient) GetMFACodes(t *testing.T, identifier, code string) *ServiceResponse {
+func (c *CommandsClient) GetMFACodes(t *testing.T, identifier, code string) *MFARecoveryCodesResponse {
 	f := MFAFunction{
 		ServiceFunction: NewServiceFunction("GetMFACodes"),
 		Data:            NewMFAData(identifier, code),
 	}
 	t.Logf("sending GetMFACodes for %q", identifier)
-	resp, err := send[MFAFunction, ServiceResponse](&c.IPCClient, f)
+	resp, err := send[MFAFunction, MFARecoveryCodesResponse](&c.IPCClient, f)
 	require.NoError(t, err, "failed to send GetMFACodes\n%s", c.LogPath)
 	resp.t = t
 	return resp

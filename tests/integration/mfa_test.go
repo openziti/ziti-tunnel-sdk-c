@@ -43,6 +43,7 @@ func TestRemoveMFA(t *testing.T) {
 }
 
 func TestMFARecoveryCodes(t *testing.T) {
+	t.Run("getMfaCodesReturnsValidCodes", getMfaCodesReturnsValidCodes)
 	t.Run("recoveryRejectsOldCodeAfterRegeneration", recoveryRejectsOldCodeAfterRegeneration)
 }
 
@@ -204,6 +205,19 @@ func removeRejectsInvalidTotp(t *testing.T) {
 
 		removeResp := state.zetClient.RemoveMFA(t, enrollment.Identifier, "000000")
 		removeResp.AssertFail(500, "the token provided was invalid")
+	})
+}
+
+func getMfaCodesReturnsValidCodes(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
+		idName := "test_mfa_get_codes"
+		enrollment, secret := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, idName)
+
+		code := testutil.GenerateTOTP(t, secret, time.Now())
+		getResp := state.zetClient.GetMFACodes(t, enrollment.Identifier, code)
+		getResp.AssertSuccess()
+
+		require.ElementsMatch(t, enrollment.RecoveryCodes, getResp.Data.RecoveryCodes)
 	})
 }
 

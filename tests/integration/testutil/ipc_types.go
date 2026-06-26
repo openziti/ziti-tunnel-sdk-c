@@ -274,6 +274,12 @@ type MFAEnrollmentResponse struct {
 	Data MFAEnrollment `json:"Data"`
 }
 
+// MFARecoveryCodesResponse is returned by GetMFACodes. Data carries the current recovery codes.
+type MFARecoveryCodesResponse struct {
+	ServiceResponse
+	Data MFARecoveryCodes `json:"Data"`
+}
+
 // ---------------------------------------------------------------------------
 // Inner Data shapes referenced by typed responses.
 // ---------------------------------------------------------------------------
@@ -339,6 +345,11 @@ type MFAEnrollment struct {
 	IsVerified      bool     `json:"IsVerified"`
 	ProvisioningUrl string   `json:"ProvisioningUrl"`
 	RecoveryCodes   []string `json:"RecoveryCodes"`
+}
+
+type MFARecoveryCodes struct {
+	Identifier    string   `json:"Identifier"`
+	RecoveryCodes []string `json:"RecoveryCodes"`
 }
 
 // ExtAuth is the parsed payload of an ExternalAuth response (and the
