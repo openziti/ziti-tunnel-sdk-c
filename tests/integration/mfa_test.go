@@ -45,7 +45,7 @@ func TestRemoveMFA(t *testing.T) {
 func TestMFARecoveryCodes(t *testing.T) {
 	t.Run("getMfaCodesReturnsValidCodes", getMfaCodesReturnsValidCodes)
 	t.Run("recoveryRejectsOldCodeAfterRegeneration", recoveryRejectsOldCodeAfterRegeneration)
-	t.Run("recoveryRejectsAfterAllCodesExhausted", recoveryRejectsAfterAllCodesExhausted)
+	t.Run("recoveryFailsAfterAllCodesExhausted", recoveryFailsAfterAllCodesExhausted)
 }
 
 func enrollCompletesWithTotpRequiredPolicy(t *testing.T) {
@@ -93,14 +93,17 @@ func enrollRejectsInvalidTotp(t *testing.T) {
 	})
 }
 
+func triggerReauthChallenge(t *testing.T, identifier, idName string) {
+	state.zetClient.DisableEnableIdentity(t, identifier)
+	state.zetClient.WaitForMfaEvent(t, "auth_challenge", idName)
+}
+
 func reauthAcceptsValidTotp(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
 		idName := "test_mfa_reauth_valid_totp"
 		enrollment, secret := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, idName)
 
-		state.zetClient.DisableEnableIdentity(t, enrollment.Identifier)
-
-		state.zetClient.WaitForMfaEvent(t, "auth_challenge", idName)
+		triggerReauthChallenge(t, enrollment.Identifier, idName)
 
 		code := testutil.GenerateTOTP(t, secret, time.Now())
 
@@ -120,9 +123,7 @@ func reauthAcceptsRecoveryCode(t *testing.T) {
 		idName := "test_mfa_reauth_recovery_code"
 		enrollment, _ := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, idName)
 
-		state.zetClient.DisableEnableIdentity(t, enrollment.Identifier)
-
-		state.zetClient.WaitForMfaEvent(t, "auth_challenge", idName)
+		triggerReauthChallenge(t, enrollment.Identifier, idName)
 
 		submitResp := state.zetClient.SubmitMFA(t, enrollment.Identifier, enrollment.RecoveryCodes[0])
 		submitResp.AssertSuccess()
@@ -141,8 +142,7 @@ func reauthRejectsRecoveryCodeReuse(t *testing.T) {
 		enrollment, _ := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, idName)
 		recoveryCode := enrollment.RecoveryCodes[0]
 
-		state.zetClient.DisableEnableIdentity(t, enrollment.Identifier)
-		state.zetClient.WaitForMfaEvent(t, "auth_challenge", idName)
+		triggerReauthChallenge(t, enrollment.Identifier, idName)
 
 		firstResp := state.zetClient.SubmitMFA(t, enrollment.Identifier, recoveryCode)
 		firstResp.AssertSuccess()
@@ -150,8 +150,7 @@ func reauthRejectsRecoveryCodeReuse(t *testing.T) {
 		updatedEvent := state.zetClient.WaitForIdentityEvent(t, "updated", idName)
 		updatedEvent.AssertMfaAuthenticated()
 
-		state.zetClient.DisableEnableIdentity(t, enrollment.Identifier)
-		state.zetClient.WaitForMfaEvent(t, "auth_challenge", idName)
+		triggerReauthChallenge(t, enrollment.Identifier, idName)
 
 		reuseResp := state.zetClient.SubmitMFA(t, enrollment.Identifier, recoveryCode)
 		reuseResp.AssertFail(500, "the token provided was invalid")
@@ -163,9 +162,7 @@ func reauthRejectsInvalidTotp(t *testing.T) {
 		idName := "test_mfa_reauth_invalid_totp"
 		enrollment, _ := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, idName)
 
-		state.zetClient.DisableEnableIdentity(t, enrollment.Identifier)
-
-		state.zetClient.WaitForMfaEvent(t, "auth_challenge", idName)
+		triggerReauthChallenge(t, enrollment.Identifier, idName)
 
 		submitResp := state.zetClient.SubmitMFA(t, enrollment.Identifier, "000000")
 		submitResp.AssertFail(500, "the token provided was invalid")
@@ -222,14 +219,13 @@ func getMfaCodesReturnsValidCodes(t *testing.T) {
 	})
 }
 
-func recoveryRejectsAfterAllCodesExhausted(t *testing.T) {
-	testutil.RunWithTimeoutOf(t, 2*time.Minute, func(t *testing.T) {
+func recoveryFailsAfterAllCodesExhausted(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
 		idName := "test_mfa_exhaust_recovery_codes"
 		enrollment, _ := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, idName)
 
 		for _, code := range enrollment.RecoveryCodes {
-			state.zetClient.DisableEnableIdentity(t, enrollment.Identifier)
-			state.zetClient.WaitForMfaEvent(t, "auth_challenge", idName)
+			triggerReauthChallenge(t, enrollment.Identifier, idName)
 
 			submitResp := state.zetClient.SubmitMFA(t, enrollment.Identifier, code)
 			submitResp.AssertSuccess()
@@ -238,8 +234,7 @@ func recoveryRejectsAfterAllCodesExhausted(t *testing.T) {
 			updatedEvent.AssertMfaAuthenticated()
 		}
 
-		state.zetClient.DisableEnableIdentity(t, enrollment.Identifier)
-		state.zetClient.WaitForMfaEvent(t, "auth_challenge", idName)
+		triggerReauthChallenge(t, enrollment.Identifier, idName)
 
 		exhaustedResp := state.zetClient.SubmitMFA(t, enrollment.Identifier, enrollment.RecoveryCodes[0])
 		exhaustedResp.AssertFail(500, "the token provided was invalid")
@@ -256,8 +251,7 @@ func recoveryRejectsOldCodeAfterRegeneration(t *testing.T) {
 		genResp := state.zetClient.GenerateMFACodes(t, enrollment.Identifier, code)
 		genResp.AssertSuccess()
 
-		state.zetClient.DisableEnableIdentity(t, enrollment.Identifier)
-		state.zetClient.WaitForMfaEvent(t, "auth_challenge", idName)
+		triggerReauthChallenge(t, enrollment.Identifier, idName)
 
 		reuseResp := state.zetClient.SubmitMFA(t, enrollment.Identifier, oldCode)
 		reuseResp.AssertFail(500, "the token provided was invalid")
