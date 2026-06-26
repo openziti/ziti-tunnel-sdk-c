@@ -45,6 +45,7 @@ func TestRemoveMFA(t *testing.T) {
 func TestMFARecoveryCodes(t *testing.T) {
 	t.Run("getMfaCodesReturnsValidCodes", getMfaCodesReturnsValidCodes)
 	t.Run("recoveryRejectsOldCodeAfterRegeneration", recoveryRejectsOldCodeAfterRegeneration)
+	t.Run("recoveryRejectsAfterAllCodesExhausted", recoveryRejectsAfterAllCodesExhausted)
 }
 
 func enrollCompletesWithTotpRequiredPolicy(t *testing.T) {
@@ -218,6 +219,30 @@ func getMfaCodesReturnsValidCodes(t *testing.T) {
 		getResp.AssertSuccess()
 
 		require.ElementsMatch(t, enrollment.RecoveryCodes, getResp.Data.RecoveryCodes)
+	})
+}
+
+func recoveryRejectsAfterAllCodesExhausted(t *testing.T) {
+	testutil.RunWithTimeoutOf(t, 2*time.Minute, func(t *testing.T) {
+		idName := "test_mfa_exhaust_recovery_codes"
+		enrollment, _ := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, idName)
+
+		for _, code := range enrollment.RecoveryCodes {
+			state.zetClient.DisableEnableIdentity(t, enrollment.Identifier)
+			state.zetClient.WaitForMfaEvent(t, "auth_challenge", idName)
+
+			submitResp := state.zetClient.SubmitMFA(t, enrollment.Identifier, code)
+			submitResp.AssertSuccess()
+
+			updatedEvent := state.zetClient.WaitForIdentityEvent(t, "updated", idName)
+			updatedEvent.AssertMfaAuthenticated()
+		}
+
+		state.zetClient.DisableEnableIdentity(t, enrollment.Identifier)
+		state.zetClient.WaitForMfaEvent(t, "auth_challenge", idName)
+
+		exhaustedResp := state.zetClient.SubmitMFA(t, enrollment.Identifier, enrollment.RecoveryCodes[0])
+		exhaustedResp.AssertFail(500, "the token provided was invalid")
 	})
 }
 

@@ -85,6 +85,12 @@
       "enrollment": { "ott": true }
     },
     {
+      "name": "test_mfa_exhaust_recovery_codes",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
       "name": "test_mfa_remove_valid_totp",
       "isAdmin": false,
       "authPolicy": "@Default",
