@@ -45,7 +45,7 @@ func TestRemoveMFA(t *testing.T) {
 func TestMFARecoveryCodes(t *testing.T) {
 	t.Run("getMfaCodesReturnsValidCodes", getMfaCodesReturnsValidCodes)
 	t.Run("getMfaCodesRejectsInvalidTotp", getMfaCodesRejectsInvalidTotp)
-	t.Run("recoveryRejectsOldCodeAfterRegeneration", recoveryRejectsOldCodeAfterRegeneration)
+	t.Run("generateMfaCodesReplacesOldSet", generateMfaCodesReplacesOldSet)
 	t.Run("recoveryFailsAfterAllCodesExhausted", recoveryFailsAfterAllCodesExhausted)
 }
 
@@ -216,6 +216,7 @@ func getMfaCodesReturnsValidCodes(t *testing.T) {
 		getResp := state.zetClient.GetMFACodes(t, enrollment.Identifier, code)
 		getResp.AssertSuccess()
 
+		require.Equal(t, enrollment.Identifier, getResp.Data.Identifier)
 		require.ElementsMatch(t, enrollment.RecoveryCodes, getResp.Data.RecoveryCodes)
 	})
 }
@@ -252,7 +253,7 @@ func recoveryFailsAfterAllCodesExhausted(t *testing.T) {
 	})
 }
 
-func recoveryRejectsOldCodeAfterRegeneration(t *testing.T) {
+func generateMfaCodesReplacesOldSet(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
 		idName := "test_mfa_regenerate_codes"
 		enrollment, secret := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, idName)
@@ -262,8 +263,17 @@ func recoveryRejectsOldCodeAfterRegeneration(t *testing.T) {
 		genResp := state.zetClient.GenerateMFACodes(t, enrollment.Identifier, code)
 		genResp.AssertSuccess()
 
-		triggerReauthChallenge(t, enrollment.Identifier, idName)
+		getResp := state.zetClient.GetMFACodes(t, enrollment.Identifier, code)
+		getResp.AssertSuccess()
+		newCode := getResp.Data.RecoveryCodes[0]
 
+		triggerReauthChallenge(t, enrollment.Identifier, idName)
+		newResp := state.zetClient.SubmitMFA(t, enrollment.Identifier, newCode)
+		newResp.AssertSuccess()
+		updatedEvent := state.zetClient.WaitForIdentityEvent(t, "updated", idName)
+		updatedEvent.AssertMfaAuthenticated()
+
+		triggerReauthChallenge(t, enrollment.Identifier, idName)
 		reuseResp := state.zetClient.SubmitMFA(t, enrollment.Identifier, oldCode)
 		reuseResp.AssertFail(500, "the token provided was invalid")
 	})
