@@ -59,10 +59,20 @@ func FetchAndEnrollJwt(t *testing.T, overlay *Overlay, zet *ZET, name string) Id
 	return identityEvent
 }
 
-// EnrollAndEnableMFA enrolls the pre-imported identity on zet, waits for the
-// controller to connect, sends EnableMFA, and returns the enrollment plus the
-// TOTP secret parsed from its provisioning URL. The enrollment is not yet verified.
-func EnrollAndEnableMFA(t *testing.T, overlay *Overlay, zet *ZET, name string) (MFAEnrollment, string) {
+// ParseTOTPSecret extracts the base32 TOTP secret from an otpauth provisioning URL.
+func ParseTOTPSecret(t *testing.T, provisioningURL string) string {
+	parsed, err := url.Parse(provisioningURL)
+	require.NoError(t, err, "parse provisioning URL")
+	secret := parsed.Query().Get("secret")
+	require.NotEmpty(t, secret, "provisioning url missing secret param")
+	return secret
+}
+
+// EnrollAndVerifyMFA enrolls the pre-imported identity on zet, enables MFA, and
+// completes enrollment with a valid TOTP, asserting the VerifyMFA response and
+// the mfa:enrollment_verification event report success. Returns the enrollment
+// and its TOTP secret.
+func EnrollAndVerifyMFA(t *testing.T, overlay *Overlay, zet *ZET, name string) (MFAEnrollment, string) {
 	added := FetchAndEnrollJwt(t, overlay, zet, name)
 	require.False(t, added.Id.MfaEnabled, "identity:added MfaEnabled=%t before EnableMFA", added.Id.MfaEnabled)
 	zet.WaitForControllerEvent(t, "connected", name)
@@ -71,26 +81,14 @@ func EnrollAndEnableMFA(t *testing.T, overlay *Overlay, zet *ZET, name string) (
 	enableResp.AssertSuccess()
 	require.NotEmpty(t, enableResp.Data.ProvisioningUrl, "EnableMFA Data.ProvisioningUrl should be non-empty")
 	require.NotEmpty(t, enableResp.Data.RecoveryCodes, "EnableMFA Data.RecoveryCodes should be non-empty")
+	require.False(t, enableResp.Data.IsVerified, "EnableMFA Data.IsVerified should be false before verify_mfa")
 	enrollment := enableResp.Data
+	enrollment.Identifier = added.Id.Identifier
 
 	challengeEvent := zet.WaitForMfaEvent(t, "enrollment_challenge", name)
 	challengeEvent.AssertSuccess()
 
-	parsed, err := url.Parse(enrollment.ProvisioningUrl)
-	require.NoError(t, err, "parse provisioning URL")
-	secret := parsed.Query().Get("secret")
-	require.NotEmpty(t, secret, "provisioning url missing secret param")
-
-	enrollment.Identifier = added.Id.Identifier
-	return enrollment, secret
-}
-
-// EnrollAndVerifyMFA enables MFA via EnrollAndEnableMFA and completes enrollment
-// with a valid TOTP, asserting both the VerifyMFA response and the
-// mfa:enrollment_verification event report success.
-func EnrollAndVerifyMFA(t *testing.T, overlay *Overlay, zet *ZET, name string) (MFAEnrollment, string) {
-	enrollment, secret := EnrollAndEnableMFA(t, overlay, zet, name)
-
+	secret := ParseTOTPSecret(t, enrollment.ProvisioningUrl)
 	code := GenerateTOTP(t, secret, time.Now())
 
 	verifyResp := zet.VerifyMFA(t, enrollment.Identifier, code)
