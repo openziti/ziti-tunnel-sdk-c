@@ -270,6 +270,10 @@ func generateMfaCodesReplacesOldSet(t *testing.T) {
 		getResp.AssertSuccess()
 		newCode := getResp.Data.RecoveryCodes[0]
 
+		for _, c := range getResp.Data.RecoveryCodes {
+			require.NotContains(t, enrollment.RecoveryCodes, c)
+		}
+
 		triggerReauthChallenge(t, enrollment.Identifier, idName)
 		newResp := state.zetClient.SubmitMFA(t, enrollment.Identifier, newCode)
 		newResp.AssertSuccess()
