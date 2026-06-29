@@ -396,18 +396,21 @@ func (o *Overlay) ResetEnrollment(t *testing.T, name string) {
 	require.NoError(t, err, "re-enroll cert authenticator for %s", name)
 }
 
-// ExtJwtSignerSpec describes an external JWT signer to register on the
-// controller. EnrollToCert / EnrollToToken set the matching ziti 2.0+ flags.
+// ExtJwtSignerSpec describes an external JWT signer to register on the controller.
+// EnrollToCert / EnrollToToken require ziti 2.0+. EnrollNameSelector sets
+// --enroll-name-claims-selector: the JWT claim used to name identities auto-
+// provisioned during enrollment (controller defaults to /sub).
 type ExtJwtSignerSpec struct {
-	Name          string
-	Issuer        string
-	JWKS          string
-	ClientID      string
-	Audience      string
-	Claim         string
-	Scopes        []string
-	EnrollToCert  bool
-	EnrollToToken bool
+	Name               string
+	Issuer             string
+	JWKS               string
+	ClientID           string
+	Audience           string
+	Claim              string
+	Scopes             []string
+	EnrollToCert       bool
+	EnrollToToken      bool
+	EnrollNameSelector string
 }
 
 // CreateExtJwtSigner registers an ext-jwt-signer on the controller and returns
@@ -432,6 +435,9 @@ func (o *Overlay) CreateExtJwtSigner(t *testing.T, spec ExtJwtSignerSpec) string
 	}
 	if spec.EnrollToToken {
 		args = append(args, "--enroll-to-token")
+	}
+	if spec.EnrollNameSelector != "" {
+		args = append(args, "--enroll-name-claims-selector", spec.EnrollNameSelector)
 	}
 	out, err := o.execZiti(args...)
 	require.NoError(t, err, "create ext-jwt-signer %s", spec.Name)
@@ -458,10 +464,8 @@ func (o *Overlay) FindExtJwtSignerId(t *testing.T, name string) (string, bool) {
 }
 
 // UpdateExtJwtSigner sends `ziti edge update ext-jwt-signer <name>` with the
-// fields supplied. Non-empty strings/slices are forwarded as their matching
-// flag; EnrollToCert and EnrollToToken are always sent because false is a
-// meaningful authoritative state and the only way to flip a previously-enabled
-// flag back off.
+// fields supplied. EnrollToCert, EnrollToToken, and EnrollNameSelector are always
+// sent so an empty value resets them on the shared signer.
 func (o *Overlay) UpdateExtJwtSigner(t *testing.T, name string, spec ExtJwtSignerSpec) {
 	t.Logf("updating ext-jwt-signer %q (enrollToCert=%t enrollToToken=%t)", name, spec.EnrollToCert, spec.EnrollToToken)
 	args := []string{"edge", "update", "ext-jwt-signer", name}
@@ -486,6 +490,11 @@ func (o *Overlay) UpdateExtJwtSigner(t *testing.T, name string, spec ExtJwtSigne
 	for _, s := range spec.Scopes {
 		args = append(args, "--scopes", s)
 	}
+	nameSelector := spec.EnrollNameSelector
+	if nameSelector == "" {
+		nameSelector = "/sub"
+	}
+	args = append(args, "--enroll-name-claims-selector", nameSelector)
 	args = append(args, fmt.Sprintf("--enroll-to-cert=%t", spec.EnrollToCert))
 	args = append(args, fmt.Sprintf("--enroll-to-token=%t", spec.EnrollToToken))
 	_, err := o.execZiti(args...)
