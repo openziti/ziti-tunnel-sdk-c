@@ -51,6 +51,9 @@ func TestMFARecoveryCodes(t *testing.T) {
 
 func enrollCompletesWithTotpRequiredPolicy(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
+		if state.overlay.ZitiMajor < 2 {
+			t.Skipf("MFA TOTP enrollment with TOTP-required auth policy requires ziti 2.0+; controller is v%d.%d (openziti/ziti#3496)", state.overlay.ZitiMajor, state.overlay.ZitiMinor)
+		}
 		name := "test_mfa_enable_totp_policy"
 		added := testutil.FetchAndEnrollJwt(t, state.overlay, state.zetClient, name)
 		require.False(t, added.Id.MfaEnabled, "identity:added MfaEnabled=%t before EnableMFA", added.Id.MfaEnabled)
