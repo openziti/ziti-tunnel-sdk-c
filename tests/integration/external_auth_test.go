@@ -101,9 +101,15 @@ func TestExternalAuthSingleSigner(t *testing.T) {
 	c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToCert: true})
 	t.Run("enrollToCertCompletes", c.enrollToCertCompletes)
 
+	c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToCert: true, EnrollNameSelector: "/email"})
+	t.Run("enrollToCertUsesNameClaimSelector", c.enrollToCertUsesNameClaimSelector)
+
 	// Enroll to cert false / enroll to token true
 	c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToToken: true})
 	t.Run("enrollToTokenCompletes", c.enrollToTokenCompletes)
+
+	c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToToken: true, EnrollNameSelector: "/email"})
+	t.Run("enrollToTokenUsesNameClaimSelector", c.enrollToTokenUsesNameClaimSelector)
 
 	c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToCert: true, EnrollToToken: true})
 	t.Run("bothEnrollFlowsCompleteWhenBothEnabled", c.bothEnrollFlowsCompleteWhenBothEnabled)
@@ -213,8 +219,8 @@ func (c *extAuthContext) beginEnrollment(t *testing.T, identityData testutil.Add
 }
 
 // completeEnrollToCert drives a full enroll-to-cert flow for name and returns the
-// resulting identifier. The working signer must already have EnrollToCert enabled.
-func (c *extAuthContext) completeEnrollToCert(t *testing.T, name string) string {
+// identity:added event. The working signer must already have EnrollToCert enabled.
+func (c *extAuthContext) completeEnrollToCert(t *testing.T, name string) testutil.IdentityEvent {
 	identityData := testutil.NewUrlIdentityData(name, c.overlay.ControllerHostPort(), testutil.EnrollModeCert, c.workingSigner.name)
 	authURL := c.beginEnrollment(t, identityData)
 
@@ -224,7 +230,23 @@ func (c *extAuthContext) completeEnrollToCert(t *testing.T, name string) string 
 	require.True(t, added.Id.Active, "identity:added Active=%t after enroll to cert IdP login flow", added.Id.Active)
 	require.False(t, added.Id.NeedsExtAuth, "identity:added NeedsExtAuth=%t after enroll to cert IdP login flow", added.Id.NeedsExtAuth)
 	testutil.AssertValidUrlEnrolledIdentityFile(t, added.Id.Identifier, testutil.EnrollModeCert)
-	return added.Id.Identifier
+	return added
+}
+
+// Asserts a URL-enrolled identity is provisioned with the name the ext-jwt-signer's
+// --enroll-name-claims-selector flag resolves to.
+func (c *extAuthContext) assertExpectedIdentityName(t *testing.T, enrolled testutil.IdentityEvent, idName string) {
+	require.Contains(t, enrolled.Id.Name, idName)
+	provisioned := c.zet.WaitForIdentityEvent(t, "added", idName)
+	require.Equal(t, idName+"@test.com", provisioned.Id.Name)
+}
+
+func (c *extAuthContext) enrollToCertUsesNameClaimSelector(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
+		idName := "test_ext_auth_name_selector"
+		enrolled := c.completeEnrollToCert(t, idName)
+		c.assertExpectedIdentityName(t, enrolled, idName)
+	})
 }
 
 func (c *extAuthContext) enrollToTokenCompletes(t *testing.T) {
@@ -234,8 +256,8 @@ func (c *extAuthContext) enrollToTokenCompletes(t *testing.T) {
 }
 
 // completeEnrollToToken drives a full enroll-to-token flow for name and returns the
-// resulting identifier. The working signer must already have EnrollToToken enabled.
-func (c *extAuthContext) completeEnrollToToken(t *testing.T, name string) string {
+// identity:added event. The working signer must already have EnrollToToken enabled.
+func (c *extAuthContext) completeEnrollToToken(t *testing.T, name string) testutil.IdentityEvent {
 	identityData := testutil.NewUrlIdentityData(name, c.overlay.ControllerHostPort(), testutil.EnrollModeToken, c.workingSigner.name)
 	authURL := c.beginEnrollment(t, identityData)
 
@@ -251,7 +273,15 @@ func (c *extAuthContext) completeEnrollToToken(t *testing.T, name string) string
 	require.True(t, added.Id.Active, "identity:added Active=%t after enroll to token IdP login flow", added.Id.Active)
 	require.False(t, added.Id.NeedsExtAuth, "identity:added NeedsExtAuth=%t after enroll to token IdP login flow", added.Id.NeedsExtAuth)
 	testutil.AssertValidUrlEnrolledIdentityFile(t, added.Id.Identifier, testutil.EnrollModeToken)
-	return added.Id.Identifier
+	return added
+}
+
+func (c *extAuthContext) enrollToTokenUsesNameClaimSelector(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
+		idName := "test_ext_auth_token_name_selector"
+		enrolled := c.completeEnrollToToken(t, idName)
+		c.assertExpectedIdentityName(t, enrolled, idName)
+	})
 }
 
 func (c *extAuthContext) bothEnrollFlowsCompleteWhenBothEnabled(t *testing.T) {
@@ -284,7 +314,7 @@ func (c *extAuthContext) enrollToCertThenNoneRejected(t *testing.T) {
 		idName := "test_ext_auth_cert_then_none"
 
 		c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToCert: true})
-		identifier := c.completeEnrollToCert(t, idName)
+		enrolled := c.completeEnrollToCert(t, idName)
 
 		enrollToNone := testutil.ExtJwtSignerSpec{}
 		c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, enrollToNone)
@@ -292,7 +322,7 @@ func (c *extAuthContext) enrollToCertThenNoneRejected(t *testing.T) {
 		enrollToNoneIdentity := testutil.NewUrlIdentityData(idName, c.overlay.ControllerHostPort(), testutil.EnrollModeNone)
 		addResp := c.zet.AddIdentity(t, enrollToNoneIdentity)
 		addResp.AssertFail(500, "identity exists with the same name")
-		testutil.AssertValidUrlEnrolledIdentityFile(t, identifier, testutil.EnrollModeCert)
+		testutil.AssertValidUrlEnrolledIdentityFile(t, enrolled.Id.Identifier, testutil.EnrollModeCert)
 	})
 }
 
@@ -301,13 +331,13 @@ func (c *extAuthContext) enrollToCertThenTokenRejected(t *testing.T) {
 		idName := "test_ext_auth_cert_then_token"
 
 		c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToCert: true})
-		identifier := c.completeEnrollToCert(t, idName)
+		enrolled := c.completeEnrollToCert(t, idName)
 
 		c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToToken: true})
 		enrollToTokenIdentity := testutil.NewUrlIdentityData(idName, c.overlay.ControllerHostPort(), testutil.EnrollModeToken, c.workingSigner.name)
 		addResp := c.zet.AddIdentity(t, enrollToTokenIdentity)
 		addResp.AssertFail(500, "identity exists with the same name")
-		testutil.AssertValidUrlEnrolledIdentityFile(t, identifier, testutil.EnrollModeCert)
+		testutil.AssertValidUrlEnrolledIdentityFile(t, enrolled.Id.Identifier, testutil.EnrollModeCert)
 	})
 }
 
@@ -316,12 +346,12 @@ func (c *extAuthContext) enrollToTokenThenCertRejected(t *testing.T) {
 		idName := "test_ext_auth_token_then_cert"
 
 		c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToToken: true})
-		identifier := c.completeEnrollToToken(t, idName)
+		enrolled := c.completeEnrollToToken(t, idName)
 
 		c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToCert: true})
 		enrollToCertIdentity := testutil.NewUrlIdentityData(idName, c.overlay.ControllerHostPort(), testutil.EnrollModeCert, c.workingSigner.name)
 		addResp := c.zet.AddIdentity(t, enrollToCertIdentity)
 		addResp.AssertFail(500, "identity exists with the same name")
-		testutil.AssertValidUrlEnrolledIdentityFile(t, identifier, testutil.EnrollModeToken)
+		testutil.AssertValidUrlEnrolledIdentityFile(t, enrolled.Id.Identifier, testutil.EnrollModeToken)
 	})
 }
