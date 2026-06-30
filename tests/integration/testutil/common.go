@@ -159,7 +159,7 @@ func SetupWorkingExtJwtSigner(t *testing.T, overlay *Overlay, idp *IdP) (string,
 		ClientID: idp.ClientIDWorks,
 		Audience: idp.Audience,
 		Claim:    "email",
-		Scopes:   strings.Fields(idp.Scopes),
+		Scopes:   idp.ScopeList(),
 	})
 	return workingExtJwtSignerName, id
 }

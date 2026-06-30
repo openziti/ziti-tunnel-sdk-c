@@ -17,7 +17,6 @@ limitations under the License.
 package integration_test
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/openziti/ziti-tunnel-sdk-c/tests/integration/testutil"
@@ -59,7 +58,7 @@ func (c *extAuthContext) setupExtraExtJwtSigners(t *testing.T) {
 		ClientID: c.idp.ClientIDExtraA,
 		Audience: c.idp.Audience,
 		Claim:    "email",
-		Scopes:   strings.Fields(c.idp.Scopes),
+		Scopes:   c.idp.ScopeList(),
 	})
 
 	c.extraSignerB.name = "test_ext_auth_signer_extra_b"
@@ -70,7 +69,7 @@ func (c *extAuthContext) setupExtraExtJwtSigners(t *testing.T) {
 		ClientID: c.idp.ClientIDExtraB,
 		Audience: c.idp.Audience,
 		Claim:    "email",
-		Scopes:   strings.Fields(c.idp.Scopes),
+		Scopes:   c.idp.ScopeList(),
 	})
 }
 
@@ -97,27 +96,12 @@ func TestExternalAuthSingleSigner(t *testing.T) {
 		return
 	}
 
-	// Enroll to cert true / enroll to token false
-	c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToCert: true})
 	t.Run("enrollToCertCompletes", c.enrollToCertCompletes)
-
-	c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToCert: true, EnrollNameSelector: "/email"})
 	t.Run("enrollToCertUsesNameClaimSelector", c.enrollToCertUsesNameClaimSelector)
-
-	// Enroll to cert false / enroll to token true
-	c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToToken: true})
 	t.Run("enrollToTokenCompletes", c.enrollToTokenCompletes)
-
-	c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToToken: true, EnrollNameSelector: "/email"})
 	t.Run("enrollToTokenUsesNameClaimSelector", c.enrollToTokenUsesNameClaimSelector)
-
-	attrScopes := append(strings.Fields(c.idp.Scopes), "groups")
-	c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToCert: true, EnrollAttrSelector: "/groups", Scopes: attrScopes})
 	t.Run("enrollToCertUsesAttrClaimSelector", c.enrollToCertUsesAttrClaimSelector)
-
-	c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToCert: true, EnrollToToken: true})
 	t.Run("bothEnrollFlowsCompleteWhenBothEnabled", c.bothEnrollFlowsCompleteWhenBothEnabled)
-
 	t.Run("enrollToNoneThenCertRejected", c.enrollToNoneThenCertRejected)
 	t.Run("enrollToCertThenNoneRejected", c.enrollToCertThenNoneRejected)
 	t.Run("enrollToCertThenTokenRejected", c.enrollToCertThenTokenRejected)
@@ -209,6 +193,7 @@ func (c *extAuthContext) enrollToNoneMultipleSignersNamedPolicyCompletes(t *test
 
 func (c *extAuthContext) enrollToCertCompletes(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
+		c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToCert: true})
 		c.completeEnrollToCert(t, "test_ext_auth_cert_happy")
 	})
 }
@@ -247,6 +232,7 @@ func (c *extAuthContext) assertExpectedIdentityName(t *testing.T, enrolled testu
 
 func (c *extAuthContext) enrollToCertUsesNameClaimSelector(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
+		c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToCert: true, EnrollNameSelector: "/email"})
 		idName := "test_ext_auth_name_selector"
 		enrolled := c.completeEnrollToCert(t, idName)
 		c.assertExpectedIdentityName(t, enrolled, idName)
@@ -255,6 +241,7 @@ func (c *extAuthContext) enrollToCertUsesNameClaimSelector(t *testing.T) {
 
 func (c *extAuthContext) enrollToTokenCompletes(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
+		c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToToken: true})
 		c.completeEnrollToToken(t, "test_ext_auth_token_happy")
 	})
 }
@@ -282,6 +269,7 @@ func (c *extAuthContext) completeEnrollToToken(t *testing.T, name string) testut
 
 func (c *extAuthContext) enrollToCertUsesAttrClaimSelector(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
+		c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToCert: true, EnrollAttrSelector: "/groups"})
 		idName := "test_ext_auth_attr_selector"
 		c.completeEnrollToCert(t, idName)
 
@@ -295,6 +283,7 @@ func (c *extAuthContext) enrollToCertUsesAttrClaimSelector(t *testing.T) {
 
 func (c *extAuthContext) enrollToTokenUsesNameClaimSelector(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
+		c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToToken: true, EnrollNameSelector: "/email"})
 		idName := "test_ext_auth_token_name_selector"
 		enrolled := c.completeEnrollToToken(t, idName)
 		c.assertExpectedIdentityName(t, enrolled, idName)
@@ -302,6 +291,7 @@ func (c *extAuthContext) enrollToTokenUsesNameClaimSelector(t *testing.T) {
 }
 
 func (c *extAuthContext) bothEnrollFlowsCompleteWhenBothEnabled(t *testing.T) {
+	c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToCert: true, EnrollToToken: true})
 	testutil.RunWithTimeout(t, func(t *testing.T) {
 		c.completeEnrollToCert(t, "test_ext_auth_cert_both")
 	})
