@@ -413,6 +413,7 @@ type ExtJwtSignerSpec struct {
 	EnrollToToken      bool
 	EnrollNameSelector string
 	EnrollAttrSelector string
+	EnrollAuthPolicy   string
 }
 
 // CreateExtJwtSigner registers an ext-jwt-signer on the controller and returns
@@ -444,6 +445,9 @@ func (o *Overlay) CreateExtJwtSigner(t *testing.T, spec ExtJwtSignerSpec) string
 	if spec.EnrollAttrSelector != "" {
 		args = append(args, "--enroll-attr-claims-selector", spec.EnrollAttrSelector)
 	}
+	if spec.EnrollAuthPolicy != "" {
+		args = append(args, "--enroll-auth-policy", spec.EnrollAuthPolicy)
+	}
 	out, err := o.execZiti(args...)
 	require.NoError(t, err, "create ext-jwt-signer %s", spec.Name)
 	id := string(bytes.TrimSpace(out))
@@ -469,8 +473,8 @@ func (o *Overlay) FindExtJwtSignerId(t *testing.T, name string) (string, bool) {
 }
 
 // UpdateExtJwtSigner sends `ziti edge update ext-jwt-signer <name>` with the
-// fields supplied. EnrollToCert, EnrollToToken, EnrollNameSelector, and
-// EnrollAttrSelector are always sent so an empty value resets them on the shared signer.
+// fields supplied. EnrollToCert, EnrollToToken, EnrollNameSelector, EnrollAttrSelector,
+// and EnrollAuthPolicy are always sent so an empty value resets them on the shared signer.
 func (o *Overlay) UpdateExtJwtSigner(t *testing.T, name string, spec ExtJwtSignerSpec) {
 	t.Logf("updating ext-jwt-signer %q (enrollToCert=%t enrollToToken=%t)", name, spec.EnrollToCert, spec.EnrollToToken)
 	args := []string{"edge", "update", "ext-jwt-signer", name}
@@ -501,6 +505,11 @@ func (o *Overlay) UpdateExtJwtSigner(t *testing.T, name string, spec ExtJwtSigne
 	}
 	args = append(args, "--enroll-name-claims-selector", nameSelector)
 	args = append(args, "--enroll-attr-claims-selector", spec.EnrollAttrSelector)
+	authPolicy := spec.EnrollAuthPolicy
+	if authPolicy == "" {
+		authPolicy = "default"
+	}
+	args = append(args, "--enroll-auth-policy", authPolicy)
 	args = append(args, fmt.Sprintf("--enroll-to-cert=%t", spec.EnrollToCert))
 	args = append(args, fmt.Sprintf("--enroll-to-token=%t", spec.EnrollToToken))
 	_, err := o.execZiti(args...)
