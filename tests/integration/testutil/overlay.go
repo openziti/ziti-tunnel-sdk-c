@@ -397,9 +397,10 @@ func (o *Overlay) ResetEnrollment(t *testing.T, name string) {
 }
 
 // ExtJwtSignerSpec describes an external JWT signer to register on the controller.
-// EnrollToCert / EnrollToToken require ziti 2.0+. EnrollNameSelector sets
-// --enroll-name-claims-selector: the JWT claim used to name identities auto-
-// provisioned during enrollment (controller defaults to /sub).
+// EnrollToCert / EnrollToToken require ziti 2.0+. EnrollNameSelector and
+// EnrollAttrSelector set --enroll-name-claims-selector and
+// --enroll-attr-claims-selector: the JWT claims used to name and to assign role
+// attributes to identities auto-provisioned during enrollment.
 type ExtJwtSignerSpec struct {
 	Name               string
 	Issuer             string
@@ -411,6 +412,7 @@ type ExtJwtSignerSpec struct {
 	EnrollToCert       bool
 	EnrollToToken      bool
 	EnrollNameSelector string
+	EnrollAttrSelector string
 }
 
 // CreateExtJwtSigner registers an ext-jwt-signer on the controller and returns
@@ -439,6 +441,9 @@ func (o *Overlay) CreateExtJwtSigner(t *testing.T, spec ExtJwtSignerSpec) string
 	if spec.EnrollNameSelector != "" {
 		args = append(args, "--enroll-name-claims-selector", spec.EnrollNameSelector)
 	}
+	if spec.EnrollAttrSelector != "" {
+		args = append(args, "--enroll-attr-claims-selector", spec.EnrollAttrSelector)
+	}
 	out, err := o.execZiti(args...)
 	require.NoError(t, err, "create ext-jwt-signer %s", spec.Name)
 	id := string(bytes.TrimSpace(out))
@@ -464,8 +469,8 @@ func (o *Overlay) FindExtJwtSignerId(t *testing.T, name string) (string, bool) {
 }
 
 // UpdateExtJwtSigner sends `ziti edge update ext-jwt-signer <name>` with the
-// fields supplied. EnrollToCert, EnrollToToken, and EnrollNameSelector are always
-// sent so an empty value resets them on the shared signer.
+// fields supplied. EnrollToCert, EnrollToToken, EnrollNameSelector, and
+// EnrollAttrSelector are always sent so an empty value resets them on the shared signer.
 func (o *Overlay) UpdateExtJwtSigner(t *testing.T, name string, spec ExtJwtSignerSpec) {
 	t.Logf("updating ext-jwt-signer %q (enrollToCert=%t enrollToToken=%t)", name, spec.EnrollToCert, spec.EnrollToToken)
 	args := []string{"edge", "update", "ext-jwt-signer", name}
@@ -495,6 +500,7 @@ func (o *Overlay) UpdateExtJwtSigner(t *testing.T, name string, spec ExtJwtSigne
 		nameSelector = "/sub"
 	}
 	args = append(args, "--enroll-name-claims-selector", nameSelector)
+	args = append(args, "--enroll-attr-claims-selector", spec.EnrollAttrSelector)
 	args = append(args, fmt.Sprintf("--enroll-to-cert=%t", spec.EnrollToCert))
 	args = append(args, fmt.Sprintf("--enroll-to-token=%t", spec.EnrollToToken))
 	_, err := o.execZiti(args...)

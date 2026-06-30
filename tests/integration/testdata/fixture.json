@@ -204,5 +204,53 @@
       "authPolicy": "@Default",
       "externalId": "test_ext_auth_multi_default@test.com"
     }
+  ],
+  "configs": [
+    {
+      "name": "test_ext_auth_attr_user_intercept",
+      "configType": "@intercept.v1",
+      "data": {
+        "protocols": ["tcp"],
+        "addresses": ["attr-user.ziti"],
+        "portRanges": [{ "low": 80, "high": 80 }]
+      }
+    },
+    {
+      "name": "test_ext_auth_attr_admin_intercept",
+      "configType": "@intercept.v1",
+      "data": {
+        "protocols": ["tcp"],
+        "addresses": ["attr-admin.ziti"],
+        "portRanges": [{ "low": 80, "high": 80 }]
+      }
+    }
+  ],
+  "services": [
+    {
+      "name": "test_ext_auth_attr_user_svc",
+      "encryptionRequired": true,
+      "configs": ["@test_ext_auth_attr_user_intercept"]
+    },
+    {
+      "name": "test_ext_auth_attr_admin_svc",
+      "encryptionRequired": true,
+      "configs": ["@test_ext_auth_attr_admin_intercept"]
+    }
+  ],
+  "servicePolicies": [
+    {
+      "name": "test_ext_auth_attr_user_dial",
+      "type": "Dial",
+      "semantic": "AnyOf",
+      "identityRoles": ["#ziti-user"],
+      "serviceRoles": ["@test_ext_auth_attr_user_svc"]
+    },
+    {
+      "name": "test_ext_auth_attr_admin_dial",
+      "type": "Dial",
+      "semantic": "AnyOf",
+      "identityRoles": ["#ziti-admin"],
+      "serviceRoles": ["@test_ext_auth_attr_admin_svc"]
+    }
   ]
 }

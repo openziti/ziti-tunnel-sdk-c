@@ -111,6 +111,10 @@ func TestExternalAuthSingleSigner(t *testing.T) {
 	c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToToken: true, EnrollNameSelector: "/email"})
 	t.Run("enrollToTokenUsesNameClaimSelector", c.enrollToTokenUsesNameClaimSelector)
 
+	attrScopes := append(strings.Fields(c.idp.Scopes), "groups")
+	c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToCert: true, EnrollAttrSelector: "/groups", Scopes: attrScopes})
+	t.Run("enrollToCertUsesAttrClaimSelector", c.enrollToCertUsesAttrClaimSelector)
+
 	c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToCert: true, EnrollToToken: true})
 	t.Run("bothEnrollFlowsCompleteWhenBothEnabled", c.bothEnrollFlowsCompleteWhenBothEnabled)
 
@@ -274,6 +278,19 @@ func (c *extAuthContext) completeEnrollToToken(t *testing.T, name string) testut
 	require.False(t, added.Id.NeedsExtAuth, "identity:added NeedsExtAuth=%t after enroll to token IdP login flow", added.Id.NeedsExtAuth)
 	testutil.AssertValidUrlEnrolledIdentityFile(t, added.Id.Identifier, testutil.EnrollModeToken)
 	return added
+}
+
+func (c *extAuthContext) enrollToCertUsesAttrClaimSelector(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
+		idName := "test_ext_auth_attr_selector"
+		c.completeEnrollToCert(t, idName)
+
+		// The fixture grants one service to #ziti-user and another to #ziti-admin.
+		// The groups claim carries only ziti-user, so we should only see the user svc in the bulk service event
+		bulkServiceEvent := c.zet.WaitForBulkServiceEvent(t, "updated", idName)
+		require.Len(t, bulkServiceEvent.AddedServices, 1, "expected only the ziti-user service to be granted")
+		require.Equal(t, "test_ext_auth_attr_user_svc", bulkServiceEvent.AddedServices[0].Name)
+	})
 }
 
 func (c *extAuthContext) enrollToTokenUsesNameClaimSelector(t *testing.T) {
