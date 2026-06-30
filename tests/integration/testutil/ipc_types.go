@@ -434,3 +434,49 @@ type MetricsEvent struct {
 	StatusEvent
 	Identities []Identity `json:"Identities"`
 }
+
+type Service struct {
+	Name             string         `json:"Name"`
+	Protocols        []string       `json:"Protocols"`
+	Addresses        []Address      `json:"Addresses"`
+	Ports            []PortRange    `json:"Ports"`
+	OwnsIntercept    bool           `json:"OwnsIntercept"`
+	AssignedIP       string         `json:"AssignedIP"`
+	PostureChecks    []PostureCheck `json:"PostureChecks"`
+	IsAccessible     bool           `json:"IsAccessible"`
+	Timeout          int            `json:"Timeout"`
+	TimeoutRemaining int            `json:"TimeoutRemaining"`
+	Permissions      Permissions    `json:"Permissions"`
+}
+
+type Permissions struct {
+	Bind bool `json:"Bind"`
+	Dial bool `json:"Dial"`
+}
+
+type Address struct {
+	IsHost   bool   `json:"IsHost"`
+	Hostname string `json:"Hostname"`
+	IP       string `json:"IP"`
+	Prefix   int    `json:"Prefix"`
+}
+
+type PortRange struct {
+	High int `json:"High"`
+	Low  int `json:"Low"`
+}
+
+type PostureCheck struct {
+	IsPassing bool   `json:"IsPassing"`
+	QueryType string `json:"QueryType"`
+	Id        string `json:"Id"`
+}
+
+// BulkServiceEvent fires on Op:"bulkservice" when an identity's authorized service
+// set changes; AddedServices/RemovedServices carry the delta.
+type BulkServiceEvent struct {
+	ActionEvent
+	Identifier      string    `json:"Identifier"`
+	AddedServices   []Service `json:"AddedServices"`
+	RemovedServices []Service `json:"RemovedServices"`
+}
