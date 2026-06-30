@@ -60,6 +60,12 @@ staticPasswords:
     hash: *password
     username: test_ext_auth_token_name_selector
     userID: test_ext_auth_token_name_selector
+  - email: test_ext_auth_attr_selector@test.com
+    hash: *password
+    username: test_ext_auth_attr_selector
+    userID: test_ext_auth_attr_selector
+    groups:
+      - ziti-user
   - email: test_ext_auth_cert_both@test.com
     hash: *password
     username: test_ext_auth_cert_both
