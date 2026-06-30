@@ -102,6 +102,8 @@ func TestExternalAuthSingleSigner(t *testing.T) {
 	t.Run("enrollToTokenUsesNameClaimSelector", c.enrollToTokenUsesNameClaimSelector)
 	t.Run("enrollToCertUsesAttrClaimSelector", c.enrollToCertUsesAttrClaimSelector)
 	t.Run("enrollToTokenUsesAttrClaimSelector", c.enrollToTokenUsesAttrClaimSelector)
+	t.Run("enrollToCertUsesMultipleAttrClaims", c.enrollToCertUsesMultipleAttrClaims)
+	t.Run("enrollToTokenUsesMultipleAttrClaims", c.enrollToTokenUsesMultipleAttrClaims)
 	t.Run("bothEnrollFlowsCompleteWhenBothEnabled", c.bothEnrollFlowsCompleteWhenBothEnabled)
 	t.Run("enrollToNoneThenCertRejected", c.enrollToNoneThenCertRejected)
 	t.Run("enrollToCertThenNoneRejected", c.enrollToCertThenNoneRejected)
@@ -268,22 +270,25 @@ func (c *extAuthContext) completeEnrollToToken(t *testing.T, name string) testut
 	return added
 }
 
+// assertGrantedServices waits for a bulk service event and asserts the identity was
+// granted the expected services. The fixture gates services on #ziti-user and
+// #ziti-admin, so the granted set reflects the attributes the selector applied.
+func (c *extAuthContext) assertGrantedServices(t *testing.T, idName string, expected ...string) {
+	bulkServiceEvent := c.zet.WaitForBulkServiceEvent(t, "updated", idName)
+	grantedServices := []string{}
+	for _, s := range bulkServiceEvent.AddedServices {
+		grantedServices = append(grantedServices, s.Name)
+	}
+	require.ElementsMatch(t, expected, grantedServices)
+}
+
 func (c *extAuthContext) enrollToCertUsesAttrClaimSelector(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
 		c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToCert: true, EnrollAttrSelector: "/groups"})
 		idName := "test_ext_auth_attr_selector"
 		c.completeEnrollToCert(t, idName)
-		c.assertOnlyUserServiceGranted(t, idName)
+		c.assertGrantedServices(t, idName, "test_ext_auth_attr_user_svc")
 	})
-}
-
-// assertOnlyUserServiceGranted checks the attribute selector put ziti-user and nothing
-// else on the identity. The fixture grants one service to #ziti-user and another to
-// #ziti-admin, so a ziti-user-only claim must yield exactly the user service.
-func (c *extAuthContext) assertOnlyUserServiceGranted(t *testing.T, idName string) {
-	bulkServiceEvent := c.zet.WaitForBulkServiceEvent(t, "updated", idName)
-	require.Len(t, bulkServiceEvent.AddedServices, 1, "expected only the ziti-user service to be granted")
-	require.Equal(t, "test_ext_auth_attr_user_svc", bulkServiceEvent.AddedServices[0].Name)
 }
 
 func (c *extAuthContext) enrollToTokenUsesAttrClaimSelector(t *testing.T) {
@@ -291,7 +296,25 @@ func (c *extAuthContext) enrollToTokenUsesAttrClaimSelector(t *testing.T) {
 		c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToToken: true, EnrollAttrSelector: "/groups"})
 		idName := "test_ext_auth_token_attr_selector"
 		c.completeEnrollToToken(t, idName)
-		c.assertOnlyUserServiceGranted(t, idName)
+		c.assertGrantedServices(t, idName, "test_ext_auth_attr_user_svc")
+	})
+}
+
+func (c *extAuthContext) enrollToCertUsesMultipleAttrClaims(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
+		c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToCert: true, EnrollAttrSelector: "/groups"})
+		idName := "test_ext_auth_multi_attr_selector"
+		c.completeEnrollToCert(t, idName)
+		c.assertGrantedServices(t, idName, "test_ext_auth_attr_user_svc", "test_ext_auth_attr_admin_svc")
+	})
+}
+
+func (c *extAuthContext) enrollToTokenUsesMultipleAttrClaims(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
+		c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToToken: true, EnrollAttrSelector: "/groups"})
+		idName := "test_ext_auth_token_multi_attr_selector"
+		c.completeEnrollToToken(t, idName)
+		c.assertGrantedServices(t, idName, "test_ext_auth_attr_user_svc", "test_ext_auth_attr_admin_svc")
 	})
 }
 
