@@ -104,6 +104,7 @@ func TestExternalAuthSingleSigner(t *testing.T) {
 	t.Run("enrollToTokenUsesAttrClaimSelector", c.enrollToTokenUsesAttrClaimSelector)
 	t.Run("enrollToCertUsesMultipleAttrClaims", c.enrollToCertUsesMultipleAttrClaims)
 	t.Run("enrollToTokenUsesMultipleAttrClaims", c.enrollToTokenUsesMultipleAttrClaims)
+	t.Run("enrollToCertUsesEnrollAuthPolicy", c.enrollToCertUsesEnrollAuthPolicy)
 	t.Run("bothEnrollFlowsCompleteWhenBothEnabled", c.bothEnrollFlowsCompleteWhenBothEnabled)
 	t.Run("enrollToNoneThenCertRejected", c.enrollToNoneThenCertRejected)
 	t.Run("enrollToCertThenNoneRejected", c.enrollToCertThenNoneRejected)
@@ -308,6 +309,19 @@ func (c *extAuthContext) enrollToTokenUsesMultipleAttrClaims(t *testing.T) {
 		idName := "test_ext_auth_token_multi_attr_selector"
 		c.completeEnrollToToken(t, idName)
 		c.assertGrantedServices(t, idName, "test_ext_auth_attr_user_svc", "test_ext_auth_attr_admin_svc")
+	})
+}
+
+func (c *extAuthContext) enrollToCertUsesEnrollAuthPolicy(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
+		c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToCert: true, EnrollAuthPolicy: "test_mfa_totp_policy"})
+		idName := "test_ext_auth_enroll_auth_policy"
+		identityData := testutil.NewUrlIdentityData(idName, c.overlay.ControllerHostPort(), testutil.EnrollModeCert, c.workingSigner.name)
+		authURL := c.beginEnrollment(t, identityData)
+		c.idp.DriveIdPFlow(t, authURL, idName+"@test.com")
+
+		// The enroll-auth-policy requires TOTP, so the provisioned identity needs MFA enrollment
+		c.zet.WaitForMfaEvent(t, "enrollment_required", idName)
 	})
 }
 
