@@ -101,6 +101,7 @@ func TestExternalAuthSingleSigner(t *testing.T) {
 	t.Run("enrollToTokenCompletes", c.enrollToTokenCompletes)
 	t.Run("enrollToTokenUsesNameClaimSelector", c.enrollToTokenUsesNameClaimSelector)
 	t.Run("enrollToCertUsesAttrClaimSelector", c.enrollToCertUsesAttrClaimSelector)
+	t.Run("enrollToTokenUsesAttrClaimSelector", c.enrollToTokenUsesAttrClaimSelector)
 	t.Run("bothEnrollFlowsCompleteWhenBothEnabled", c.bothEnrollFlowsCompleteWhenBothEnabled)
 	t.Run("enrollToNoneThenCertRejected", c.enrollToNoneThenCertRejected)
 	t.Run("enrollToCertThenNoneRejected", c.enrollToCertThenNoneRejected)
@@ -272,12 +273,25 @@ func (c *extAuthContext) enrollToCertUsesAttrClaimSelector(t *testing.T) {
 		c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToCert: true, EnrollAttrSelector: "/groups"})
 		idName := "test_ext_auth_attr_selector"
 		c.completeEnrollToCert(t, idName)
+		c.assertOnlyUserServiceGranted(t, idName)
+	})
+}
 
-		// The fixture grants one service to #ziti-user and another to #ziti-admin.
-		// The groups claim carries only ziti-user, so we should only see the user svc in the bulk service event
-		bulkServiceEvent := c.zet.WaitForBulkServiceEvent(t, "updated", idName)
-		require.Len(t, bulkServiceEvent.AddedServices, 1, "expected only the ziti-user service to be granted")
-		require.Equal(t, "test_ext_auth_attr_user_svc", bulkServiceEvent.AddedServices[0].Name)
+// assertOnlyUserServiceGranted checks the attribute selector put ziti-user and nothing
+// else on the identity. The fixture grants one service to #ziti-user and another to
+// #ziti-admin, so a ziti-user-only claim must yield exactly the user service.
+func (c *extAuthContext) assertOnlyUserServiceGranted(t *testing.T, idName string) {
+	bulkServiceEvent := c.zet.WaitForBulkServiceEvent(t, "updated", idName)
+	require.Len(t, bulkServiceEvent.AddedServices, 1, "expected only the ziti-user service to be granted")
+	require.Equal(t, "test_ext_auth_attr_user_svc", bulkServiceEvent.AddedServices[0].Name)
+}
+
+func (c *extAuthContext) enrollToTokenUsesAttrClaimSelector(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
+		c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToToken: true, EnrollAttrSelector: "/groups"})
+		idName := "test_ext_auth_token_attr_selector"
+		c.completeEnrollToToken(t, idName)
+		c.assertOnlyUserServiceGranted(t, idName)
 	})
 }
 
