@@ -90,6 +90,10 @@ staticPasswords:
     hash: *password
     username: test_ext_auth_enroll_auth_policy
     userID: test_ext_auth_enroll_auth_policy
+  - email: test_ext_auth_token_enroll_auth_policy@test.com
+    hash: *password
+    username: test_ext_auth_token_enroll_auth_policy
+    userID: test_ext_auth_token_enroll_auth_policy
   - email: test_ext_auth_cert_both@test.com
     hash: *password
     username: test_ext_auth_cert_both
