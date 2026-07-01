@@ -280,9 +280,46 @@ type MFARecoveryCodesResponse struct {
 	Data MFARecoveryCodes `json:"Data"`
 }
 
+// IpDumpResponse is returned by IpDump. Data carries the full ip stack stats.
+type IpDumpResponse struct {
+	ServiceResponse
+	Data IpStats `json:"Data"`
+}
+
+// ZitiDumpResponse is returned by ZitiDump. Data maps identity name to its text dump.
+type ZitiDumpResponse struct {
+	ServiceResponse
+	Data map[string]string `json:"Data"`
+}
+
 // ---------------------------------------------------------------------------
 // Inner Data shapes referenced by typed responses.
 // ---------------------------------------------------------------------------
+
+// IpMemPool mirrors tunnel_ip_mem_pool from ziti_tunnel.h.
+type IpMemPool struct {
+	Name  string `json:"Name"`
+	Max   int    `json:"Max"`
+	Used  int    `json:"Used"`
+	Avail int    `json:"Avail"`
+}
+
+// IpConn mirrors tunnel_ip_conn from ziti_tunnel.h.
+type IpConn struct {
+	Protocol   string `json:"Protocol"`
+	LocalIP    string `json:"LocalIP"`
+	LocalPort  int    `json:"LocalPort"`
+	RemoteIP   string `json:"RemoteIP"`
+	RemotePort int    `json:"RemotePort"`
+	State      string `json:"State"`
+	Service    string `json:"Service"`
+}
+
+// IpStats mirrors tunnel_ip_stats from ziti_tunnel.h.
+type IpStats struct {
+	Pools       []IpMemPool `json:"Pools"`
+	Connections []IpConn    `json:"Connections"`
+}
 
 type IdentityInfo struct {
 	Name    string `json:"Name"`
