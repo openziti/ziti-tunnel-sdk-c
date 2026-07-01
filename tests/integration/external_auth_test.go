@@ -105,6 +105,7 @@ func TestExternalAuthSingleSigner(t *testing.T) {
 	t.Run("enrollToCertUsesMultipleAttrClaims", c.enrollToCertUsesMultipleAttrClaims)
 	t.Run("enrollToTokenUsesMultipleAttrClaims", c.enrollToTokenUsesMultipleAttrClaims)
 	t.Run("enrollToCertUsesEnrollAuthPolicy", c.enrollToCertUsesEnrollAuthPolicy)
+	t.Run("enrollToTokenUsesEnrollAuthPolicy", c.enrollToTokenUsesEnrollAuthPolicy)
 	t.Run("bothEnrollFlowsCompleteWhenBothEnabled", c.bothEnrollFlowsCompleteWhenBothEnabled)
 	t.Run("enrollToNoneThenCertRejected", c.enrollToNoneThenCertRejected)
 	t.Run("enrollToCertThenNoneRejected", c.enrollToCertThenNoneRejected)
@@ -316,11 +317,31 @@ func (c *extAuthContext) enrollToCertUsesEnrollAuthPolicy(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
 		c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToCert: true, EnrollAuthPolicy: "test_mfa_totp_policy"})
 		idName := "test_ext_auth_enroll_auth_policy"
-		identityData := testutil.NewUrlIdentityData(idName, c.overlay.ControllerHostPort(), testutil.EnrollModeCert, c.workingSigner.name)
-		authURL := c.beginEnrollment(t, identityData)
-		c.idp.DriveIdPFlow(t, authURL, idName+"@test.com")
+		idEvent := c.completeEnrollToCert(t, idName)
 
-		// The enroll-auth-policy requires TOTP, so the provisioned identity needs MFA enrollment
+		// TOTP-required policy: the identity is partially-authed, needs MFA
+		c.zet.WaitForControllerEvent(t, "disconnected", idName)
+		statusEvent := c.zet.WaitForStatusEvent(t)
+		provisionedId := findIdentityInStatus(t, statusEvent, idEvent.Id.Identifier)
+		require.True(t, provisionedId.MfaNeeded)
+		require.False(t, provisionedId.MfaEnabled)
+		c.zet.WaitForMfaEvent(t, "enrollment_required", idName)
+	})
+}
+
+func (c *extAuthContext) enrollToTokenUsesEnrollAuthPolicy(t *testing.T) {
+	t.Skip("enroll to token with a TOTP required auth policy hangs on reauth: https://github.com/openziti/ziti-sdk-c/issues/1083")
+	testutil.RunWithTimeout(t, func(t *testing.T) {
+		c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToToken: true, EnrollAuthPolicy: "test_mfa_totp_policy"})
+		idName := "test_ext_auth_token_enroll_auth_policy"
+		idEvent := c.completeEnrollToToken(t, idName)
+
+		// TOTP-required policy: the identity partial-auths (disconnect), needs MFA, and is not yet enrolled
+		c.zet.WaitForControllerEvent(t, "disconnected", idName)
+		statusEvent := c.zet.WaitForStatusEvent(t)
+		provisionedId := findIdentityInStatus(t, statusEvent, idEvent.Id.Identifier)
+		require.True(t, provisionedId.MfaNeeded)
+		require.False(t, provisionedId.MfaEnabled)
 		c.zet.WaitForMfaEvent(t, "enrollment_required", idName)
 	})
 }

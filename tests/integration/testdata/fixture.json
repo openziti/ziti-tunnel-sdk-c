@@ -4,7 +4,7 @@
       "name": "test_mfa_totp_policy",
       "primary": {
         "cert": { "allowExpiredCerts": false, "allowed": true },
-        "extJwt": { "allowed": false, "allowedSigners": [] },
+        "extJwt": { "allowed": true, "allowedSigners": [] },
         "updb": { "allowed": false, "lockoutDurationMinutes": 0, "maxAttempts": 5, "minPasswordLength": 5, "requireMixedCase": false, "requireNumberChar": false, "requireSpecialChar": false }
       },
       "secondary": { "requireTotp": true },
