@@ -514,7 +514,7 @@ static void on_event(const base_event *ev) {
                 controller_event.Fingerprint = strdup(id_event.Id->FingerPrint);
             }
 
-            if (zev->code == ZITI_OK) {
+            if (zev->code == ZITI_OK || zev->code == ZITI_PARTIALLY_AUTHENTICATED) {
                 id_event.Id->NeedsExtAuth = false;
                 if (zev->name) {
                     if (id_event.Id->Name != NULL && strcmp(id_event.Id->Name, zev->name) != 0) {
