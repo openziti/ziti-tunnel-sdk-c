@@ -3235,7 +3235,7 @@ static int add_identity_opts(int argc, char *argv[]) {
 
 static CommandLine enroll_cmd = make_command(
     "enroll", "enroll Ziti identity",
-    "( -u|--url <controller URL> | -j|--jwt <enrollment token> ) -i|--identity <identity> [--enroll-to none|cert|token] [-p|--provider <name>] [-k|--key <private_key> [-c|--cert <certificate>]] [-n|--name <name>]",
+    "( -u|--url <controller URL> | -j|--jwt <enrollment token> ) -i|--identity <identity> [-E|--enroll-to none|cert|token] [-p|--provider <name>] [-k|--key <private_key> [-c|--cert <certificate>]] [-n|--name <name>]",
     "\t-u|--url\tcontroller URL for enrollment (requires 3rd party IDP for auth)\n"
     "\t-j|--jwt\tenrollment token file, or network JWT when used with -u\n"
     "\t-E|--enroll-to\tenrollment mode for -u: none (bootstrap only), cert (OIDC + certificate), token (OIDC + token)\n"
