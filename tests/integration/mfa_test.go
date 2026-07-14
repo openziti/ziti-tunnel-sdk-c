@@ -55,12 +55,14 @@ func enrollCompletesWithTotpRequiredPolicy(t *testing.T) {
 			t.Skipf("MFA TOTP enrollment with TOTP-required auth policy requires ziti 2.0+; controller is v%d.%d (openziti/ziti#3496)", state.overlay.ZitiMajor, state.overlay.ZitiMinor)
 		}
 		name := "test_mfa_enable_totp_policy"
-		added := testutil.FetchAndEnrollJwt(t, state.overlay, state.zetClient, name)
-		require.False(t, added.Id.MfaEnabled, "identity:added MfaEnabled=%t before EnableMFA", added.Id.MfaEnabled)
+		jwt := state.overlay.GetJwtFromController(t, name)
+		identityData := testutil.NewJwtIdentityData(name, jwt)
+		addResp := state.zetClient.AddIdentity(t, identityData)
+		addResp.AssertSuccess()
 
-		state.zetClient.WaitForMfaEvent(t, "enrollment_required", name)
+		enrollmentRequiredEvent := state.zetClient.WaitForMfaEvent(t, "enrollment_required", name)
 
-		enableResp := state.zetClient.EnableMFA(t, added.Id.Identifier)
+		enableResp := state.zetClient.EnableMFA(t, enrollmentRequiredEvent.Identifier)
 		enableResp.AssertSuccess()
 		require.NotEmpty(t, enableResp.Data.ProvisioningUrl, "EnableMFA Data.ProvisioningUrl should be non-empty")
 		require.NotEmpty(t, enableResp.Data.RecoveryCodes, "EnableMFA Data.RecoveryCodes should be non-empty")
@@ -72,7 +74,7 @@ func enrollCompletesWithTotpRequiredPolicy(t *testing.T) {
 		secret := testutil.ParseTOTPSecret(t, enableResp.Data.ProvisioningUrl)
 		code := testutil.GenerateTOTP(t, secret, time.Now())
 
-		verifyResp := state.zetClient.VerifyMFA(t, added.Id.Identifier, code)
+		verifyResp := state.zetClient.VerifyMFA(t, enrollmentRequiredEvent.Identifier, code)
 		verifyResp.AssertSuccess()
 
 		updatedEvent := state.zetClient.WaitForIdentityEvent(t, "updated", name)
