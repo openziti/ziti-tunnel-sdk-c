@@ -497,6 +497,11 @@ static void on_event(const base_event *ev) {
             if (id == NULL) {
                 break;
             }
+            if (zev->code == ZITI_PARTIALLY_AUTHENTICATED) {
+                // don't emit status events for this, because we can't correctly set NeedsExtAuth or MfaNeeded.
+                ZITI_LOG(INFO, "ztx[%s] partially authenticated", ev->identifier);
+                break;
+            }
 
             identity_event id_event = {0};
             id_event.Op = strdup("identity");
@@ -514,11 +519,8 @@ static void on_event(const base_event *ev) {
                 controller_event.Fingerprint = strdup(id_event.Id->FingerPrint);
             }
 
-            if (zev->code == ZITI_OK || zev->code == ZITI_PARTIALLY_AUTHENTICATED) {
-                if (zev->code == ZITI_OK) {
-                    // setting this here because we don't yet handle auth events
-                    id_event.Id->NeedsExtAuth = false;
-                }
+            if (zev->code == ZITI_OK) {
+                id_event.Id->NeedsExtAuth = false;
                 if (zev->name) {
                     if (id_event.Id->Name != NULL && strcmp(id_event.Id->Name, zev->name) != 0) {
                         free((char*)id_event.Id->Name);
@@ -710,6 +712,8 @@ static void on_event(const base_event *ev) {
             }
             mfa_status s = mfa_statuss.value_of(mfa_ev->operation);
             set_mfa_status(ev->identifier, (s != mfa_status_enrollment_required), true);
+            // reaching an MFA prompt/enrollment request means any previously-required external auth has already succeeded
+            id->NeedsExtAuth = false;
             send_tunnel_status("status");
             mfa_status_event mfa_sts_event = {
                     .Op = "mfa",
