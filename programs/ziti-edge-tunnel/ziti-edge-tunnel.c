@@ -515,7 +515,10 @@ static void on_event(const base_event *ev) {
             }
 
             if (zev->code == ZITI_OK || zev->code == ZITI_PARTIALLY_AUTHENTICATED) {
-                id_event.Id->NeedsExtAuth = false;
+                if (zev->code == ZITI_OK) {
+                    // setting this here because we don't yet handle auth events
+                    id_event.Id->NeedsExtAuth = false;
+                }
                 if (zev->name) {
                     if (id_event.Id->Name != NULL && strcmp(id_event.Id->Name, zev->name) != 0) {
                         free((char*)id_event.Id->Name);
