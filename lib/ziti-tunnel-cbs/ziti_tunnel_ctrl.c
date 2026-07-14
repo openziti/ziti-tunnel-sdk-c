@@ -1035,7 +1035,7 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
             ev.event_type = TunnelEvents.ContextEvent;
             ev.identifier = instance->identifier;
             ev.code = event->ctx.ctrl_status;
-            if (event->ctx.ctrl_status == ZITI_OK) {
+            if (event->ctx.ctrl_status == ZITI_OK || event->ctx.ctrl_status == ZITI_PARTIALLY_AUTHENTICATED) {
                 ev.name = (char*)ctx_name;
                 ev.version = ziti_get_controller_version(ztx)->version;
                 ev.controller = (char *) ziti_get_controller(ztx);

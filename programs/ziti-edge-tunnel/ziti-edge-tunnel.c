@@ -514,8 +514,11 @@ static void on_event(const base_event *ev) {
                 controller_event.Fingerprint = strdup(id_event.Id->FingerPrint);
             }
 
-            if (zev->code == ZITI_OK) {
-                id_event.Id->NeedsExtAuth = false;
+            if (zev->code == ZITI_OK || zev->code == ZITI_PARTIALLY_AUTHENTICATED) {
+                if (zev->code == ZITI_OK) {
+                    // setting this here because we don't yet handle auth events
+                    id_event.Id->NeedsExtAuth = false;
+                }
                 if (zev->name) {
                     if (id_event.Id->Name != NULL && strcmp(id_event.Id->Name, zev->name) != 0) {
                         free((char*)id_event.Id->Name);
@@ -1869,7 +1872,7 @@ static int parse_enroll_opts(int argc, char *argv[]) {
     enroll_provider = NULL;
     optind = 0;
 
-    while ((c = getopt_long(argc, argv, "j:i:Kk:c:n:p:x:u:",
+    while ((c = getopt_long(argc, argv, "j:i:Kk:c:n:p:x:u:E:",
                             opts, &option_index)) != -1) {
         switch (c) {
             case 'u':
@@ -3235,10 +3238,10 @@ static int add_identity_opts(int argc, char *argv[]) {
 
 static CommandLine enroll_cmd = make_command(
     "enroll", "enroll Ziti identity",
-    "( -u|--url <controller URL> | -j|--jwt <enrollment token> ) -i|--identity <identity> [--enroll-to none|cert|token] [-p|--provider <name>] [-k|--key <private_key> [-c|--cert <certificate>]] [-n|--name <name>]",
+    "( -u|--url <controller URL> | -j|--jwt <enrollment token> ) -i|--identity <identity> [-E|--enroll-to none|cert|token] [-p|--provider <name>] [-k|--key <private_key> [-c|--cert <certificate>]] [-n|--name <name>]",
     "\t-u|--url\tcontroller URL for enrollment (requires 3rd party IDP for auth)\n"
     "\t-j|--jwt\tenrollment token file, or network JWT when used with -u\n"
-    "\t--enroll-to\tenrollment mode for -u: none (bootstrap only), cert (OIDC + certificate), token (OIDC + token)\n"
+    "\t-E|--enroll-to\tenrollment mode for -u: none (bootstrap only), cert (OIDC + certificate), token (OIDC + token)\n"
     "\t-p|--provider\text JWT signer name (auto-selected if only one is configured)\n"
     "\t-x|--proxy type://[username[:password]@]hostname_or_ip:port\tproxy to use when connecting to OpenZiti controller. 'http' is currently the only supported type.\n"
     "\t-i|--identity\toutput identity file\n"
