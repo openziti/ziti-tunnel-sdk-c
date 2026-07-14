@@ -514,11 +514,8 @@ static void on_event(const base_event *ev) {
                 controller_event.Fingerprint = strdup(id_event.Id->FingerPrint);
             }
 
-            if (zev->code == ZITI_OK || zev->code == ZITI_PARTIALLY_AUTHENTICATED) {
-                if (zev->code == ZITI_OK) {
-                    // setting this here because we don't yet handle auth events
-                    id_event.Id->NeedsExtAuth = false;
-                }
+            if (zev->code == ZITI_OK) {
+                id_event.Id->NeedsExtAuth = false;
                 if (zev->name) {
                     if (id_event.Id->Name != NULL && strcmp(id_event.Id->Name, zev->name) != 0) {
                         free((char*)id_event.Id->Name);
@@ -548,6 +545,10 @@ static void on_event(const base_event *ev) {
                 }
                 controller_event.Action = strdup(event_name(event_connected));
                 ZITI_LOG(DEBUG, "ztx[%s] controller connected", ev->identifier);
+            } else if (zev->code == ZITI_PARTIALLY_AUTHENTICATED) {
+                // ignore this (and don't make assumptions about NeedsExtAuth).
+                // we'll receive another context event when the identity fully authenticates.
+                ZITI_LOG(INFO, "ztx[%s] partially authenticated", ev->identifier);
             } else {
                 controller_event.Action = strdup(event_name(event_disconnected));
                 ZITI_LOG(ERROR, "ztx[%s] failed to connect to controller due to %s", ev->identifier, zev->status);
