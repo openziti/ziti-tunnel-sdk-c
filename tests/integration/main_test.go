@@ -191,13 +191,13 @@ func doSetup(state TestState) error {
 	if err := state.overlay.PurgeIdentitiesByExternalId("@test.com"); err != nil {
 		return fmt.Errorf("purge stale IdP test user identities: %w", err)
 	}
-	log.Printf("setup: purging stale test auth-policies")
-	if err := state.overlay.PurgeAuthPolicies(); err != nil {
-		return fmt.Errorf("purge stale test auth policies: %w", err)
-	}
 	log.Printf("setup: purging stale test ext-jwt-signers")
 	if err := state.overlay.PurgeExtJwtSigners(); err != nil {
 		return fmt.Errorf("purge stale test ext-jwt-signers: %w", err)
+	}
+	log.Printf("setup: purging stale test auth-policies")
+	if err := state.overlay.PurgeAuthPolicies(); err != nil {
+		return fmt.Errorf("purge stale test auth policies: %w", err)
 	}
 	log.Printf("setup: purging stale test service-policies")
 	if err := state.overlay.PurgeServicePolicies(); err != nil {

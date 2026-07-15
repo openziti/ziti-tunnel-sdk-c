@@ -213,14 +213,18 @@ func (c *extAuthContext) assertEnrollmentSucceeded(t *testing.T, idName string, 
 	return idAddedEvent
 }
 
-// completeEnrollToCert drives a full enroll-to-cert flow for name and returns the
-// identity:added event. The working signer must already have EnrollToCert enabled.
-func (c *extAuthContext) completeEnrollToCert(t *testing.T, name string) testutil.IdentityEvent {
+// driveEnrollToCert runs the enroll-to-cert IdP flow for an identity. The working signer
+// must already have EnrollToCert enabled.
+func (c *extAuthContext) driveEnrollToCert(t *testing.T, name string) {
 	identityData := testutil.NewUrlIdentityData(name, c.overlay.ControllerHostPort(), testutil.EnrollModeCert, c.workingSigner.name)
 	authURL := c.beginEnrollment(t, identityData)
-
 	c.idp.DriveIdPFlow(t, authURL, name+"@test.com")
+}
 
+// completeEnrollToCert drives a full enroll-to-cert flow for an identity and returns the
+// identity:added event. The working signer must already have EnrollToCert enabled.
+func (c *extAuthContext) completeEnrollToCert(t *testing.T, name string) testutil.IdentityEvent {
+	c.driveEnrollToCert(t, name)
 	return c.assertEnrollmentSucceeded(t, name, testutil.EnrollModeCert)
 }
 
@@ -248,9 +252,10 @@ func (c *extAuthContext) enrollToTokenCompletes(t *testing.T) {
 	})
 }
 
-// completeEnrollToToken drives a full enroll-to-token flow for name and returns the
-// identity:added event. The working signer must already have EnrollToToken enabled.
-func (c *extAuthContext) completeEnrollToToken(t *testing.T, name string) testutil.IdentityEvent {
+// driveEnrollToToken runs both IdP flows of an enroll-to-token for an identity (the enrollment,
+// then the loaded identity's login) and returns the needs_ext_login event. The working signer
+// must already have EnrollToToken enabled.
+func (c *extAuthContext) driveEnrollToToken(t *testing.T, name string) testutil.IdentityEvent {
 	identityData := testutil.NewUrlIdentityData(name, c.overlay.ControllerHostPort(), testutil.EnrollModeToken, c.workingSigner.name)
 	authURL := c.beginEnrollment(t, identityData)
 
@@ -261,7 +266,13 @@ func (c *extAuthContext) completeEnrollToToken(t *testing.T, name string) testut
 	authURL = c.zet.GetExternalAuthURL(t, idEvent.Id.Identifier, c.workingSigner.name)
 
 	c.idp.DriveIdPFlow(t, authURL, name+"@test.com")
+	return idEvent
+}
 
+// completeEnrollToToken drives a full enroll-to-token flow for an identity and returns the
+// identity:added event. The working signer must already have EnrollToToken enabled.
+func (c *extAuthContext) completeEnrollToToken(t *testing.T, name string) testutil.IdentityEvent {
+	c.driveEnrollToToken(t, name)
 	return c.assertEnrollmentSucceeded(t, name, testutil.EnrollModeToken)
 }
 
@@ -313,36 +324,40 @@ func (c *extAuthContext) enrollToTokenUsesMultipleAttrClaims(t *testing.T) {
 	})
 }
 
+// Enrolls to cert under a TOTP-required auth policy.
 func (c *extAuthContext) enrollToCertUsesEnrollAuthPolicy(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
 		c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToCert: true, EnrollAuthPolicy: "test_mfa_totp_policy"})
 		idName := "test_ext_auth_enroll_auth_policy"
-		idEvent := c.completeEnrollToCert(t, idName)
+		// A partial auth emits no identity:added, so drive browser flow without waiting for one.
+		c.driveEnrollToCert(t, idName)
 
-		// TOTP-required policy: the identity is partially-authed, needs MFA
-		c.zet.WaitForControllerEvent(t, "disconnected", idName)
+		// No needs_ext_login event to carry the identifier for cert, so take it from the mfa event.
 		statusEvent := c.zet.WaitForStatusEvent(t)
-		provisionedId := findIdentityInStatus(t, statusEvent, idEvent.Id.Identifier)
+		mfaEvent := c.zet.WaitForMfaEvent(t, "enrollment_required", idName)
+		provisionedId := findIdentityInStatus(t, statusEvent, mfaEvent.Identifier)
+		require.False(t, provisionedId.NeedsExtAuth)
 		require.True(t, provisionedId.MfaNeeded)
 		require.False(t, provisionedId.MfaEnabled)
-		c.zet.WaitForMfaEvent(t, "enrollment_required", idName)
+		testutil.AssertValidUrlEnrolledIdentityFile(t, mfaEvent.Identifier, testutil.EnrollModeCert)
 	})
 }
 
+// Enrolls to token under a TOTP-required auth policy.
 func (c *extAuthContext) enrollToTokenUsesEnrollAuthPolicy(t *testing.T) {
-	t.Skip("enroll to token with a TOTP required auth policy hangs on reauth: https://github.com/openziti/ziti-sdk-c/issues/1083")
 	testutil.RunWithTimeout(t, func(t *testing.T) {
 		c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToToken: true, EnrollAuthPolicy: "test_mfa_totp_policy"})
 		idName := "test_ext_auth_token_enroll_auth_policy"
-		idEvent := c.completeEnrollToToken(t, idName)
+		// A partial auth emits no identity:added, so drive browser flow without waiting for one.
+		idEvent := c.driveEnrollToToken(t, idName)
 
-		// TOTP-required policy: the identity partial-auths (disconnect), needs MFA, and is not yet enrolled
-		c.zet.WaitForControllerEvent(t, "disconnected", idName)
 		statusEvent := c.zet.WaitForStatusEvent(t)
 		provisionedId := findIdentityInStatus(t, statusEvent, idEvent.Id.Identifier)
+		require.False(t, provisionedId.NeedsExtAuth)
 		require.True(t, provisionedId.MfaNeeded)
 		require.False(t, provisionedId.MfaEnabled)
 		c.zet.WaitForMfaEvent(t, "enrollment_required", idName)
+		testutil.AssertValidUrlEnrolledIdentityFile(t, idEvent.Id.Identifier, testutil.EnrollModeToken)
 	})
 }
 
