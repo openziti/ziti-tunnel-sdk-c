@@ -35,8 +35,17 @@
 #undef TCP_MSS  /* cleanup warnings */
 #endif
 #define TCP_MSS               16382       /* TCP Maximum segment size (536). 16382 avoids u16_t underflow in TCP_SNDLOWAT calculation */
-#define TCP_SND_BUF           (2*TCP_MSS) /* TCP sender buffer space in bytes (2 * TCP_MSS) */
-#define TCP_SND_QUEUELEN      64          /* TCP sender buffer space in pbufs ((4 * (TCP_SND_BUF) + (TCP_MSS - 1))/(TCP_MSS)) */
+/* TCP sender buffer space in bytes (lwip default: 2 * TCP_MSS, its documented bare minimum for "good
+ * performance"). tcp_sndbuf(pcb) truncates its return value to a u16_t (TCPWND16()) regardless of
+ * LWIP_WND_SCALE, so no single tunneler_tcp_write() call can ever see more than 0xffff bytes of
+ * headroom -- 4*TCP_MSS sits right at that ceiling, doubling the previous 2*TCP_MSS setting without
+ * leaving any of it inaccessible to a single write. This was accidentally halved (65536 -> 32764) as
+ * a side effect of TCP_MSS being forced down from 32768 to 16382 for lwip 2.2.0's underflow assertion;
+ * that halving was never intentional and left the effective per-connection send window far below what
+ * a kernel-based (e.g. Linux TPROXY) TCP stack offers, which reproduces as unbounded upstream buffering
+ * (see ziti-tunnel-sdk-c#1378) once a locally intercepted connection can't drain as fast as data arrives. */
+#define TCP_SND_BUF           (4*TCP_MSS)
+#define TCP_SND_QUEUELEN      64          /* TCP sender buffer space in pbufs ((4 * (TCP_SND_BUF) + (TCP_MSS - 1))/(TCP_MSS) = ~16 minimum; 64 leaves headroom) */
 // TCP_SNDQUEUELEN_OVERFLOW = 0xffffu - 3
 #define TCP_SNDLOWAT          (0xffff-(4*TCP_MSS)-1) /* TCP writable space (bytes). must be less than TCP_SND_BUF. the amount of space which must be available in the TCP snd_buf for select to return writable (combined with TCP_SNDQUEUELOWAT) LWIP_MIN(LWIP_MAX(((TCP_SND_BUF)/2), (2 * TCP_MSS) + 1), (TCP_SND_BUF) - 1) */
 #define LWIP_WND_SCALE        1           /* set to 1 to enable window scaling */
