@@ -473,8 +473,9 @@ func (o *Overlay) FindExtJwtSignerId(t *testing.T, name string) (string, bool) {
 }
 
 // UpdateExtJwtSigner sends `ziti edge update ext-jwt-signer <name>` with the
-// fields supplied. EnrollToCert, EnrollToToken, EnrollNameSelector, EnrollAttrSelector,
-// and EnrollAuthPolicy are always sent so an empty value resets them on the shared signer.
+// fields supplied. The enroll fields are always sent so the shared signer resets
+// between tests: an empty EnrollAttrSelector clears the selector, while an empty
+// EnrollNameSelector or EnrollAuthPolicy falls back to /sub and default.
 func (o *Overlay) UpdateExtJwtSigner(t *testing.T, name string, spec ExtJwtSignerSpec) {
 	t.Logf("updating ext-jwt-signer %q (enrollToCert=%t enrollToToken=%t)", name, spec.EnrollToCert, spec.EnrollToToken)
 	args := []string{"edge", "update", "ext-jwt-signer", name}

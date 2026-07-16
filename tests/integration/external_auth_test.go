@@ -371,8 +371,8 @@ func (c *extAuthContext) enrollToTokenUsesNameClaimSelector(t *testing.T) {
 }
 
 func (c *extAuthContext) bothEnrollFlowsCompleteWhenBothEnabled(t *testing.T) {
-	c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToCert: true, EnrollToToken: true})
 	testutil.RunWithTimeout(t, func(t *testing.T) {
+		c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToCert: true, EnrollToToken: true})
 		c.completeEnrollToCert(t, "test_ext_auth_cert_both")
 	})
 	testutil.RunWithTimeout(t, func(t *testing.T) {
