@@ -139,7 +139,7 @@ jq -n \
       clientId: "ziti-test",
       extraClientIds: ["ziti-test-2", "ziti-test-3"],
       audience: "ziti-test",
-      scopes: "openid profile email",
+      scopes: "openid profile email groups",
       password: "password"
     }
   }' > config.json
