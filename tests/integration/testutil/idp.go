@@ -143,6 +143,10 @@ func (p *IdP) JWKSURI() string {
 	return p.JwksURI
 }
 
+func (p *IdP) ScopeList() []string {
+	return strings.Fields(p.Scopes)
+}
+
 // fetchJWKSURI reads the IdP's OIDC discovery document and returns its jwks_uri.
 // This is the standard endpoint across dex, keycloak, and auth0, so the signer
 // gets the right JWKS URL without per-IdP conventions.

@@ -238,6 +238,14 @@ func (c *EventClient) WaitForMfaEvent(t *testing.T, action, fingerprint string) 
 	return ev
 }
 
+// WaitForBulkServiceEvent waits for an Op:"bulkservice" event matching action/fingerprint.
+func (c *EventClient) WaitForBulkServiceEvent(t *testing.T, action, fingerprint string) BulkServiceEvent {
+	raw := c.waitForEvent(t, "bulkservice", action, fingerprint)
+	var ev BulkServiceEvent
+	require.NoError(t, json.Unmarshal(raw, &ev), "parse BulkServiceEvent: %s", raw)
+	return ev
+}
+
 // WaitForStatusEvent waits for the Op:"status" push the daemon sends to every
 // event-pipe client on connect.
 func (c *EventClient) WaitForStatusEvent(t *testing.T) TunnelStatusEvent {
