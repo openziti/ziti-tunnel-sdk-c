@@ -84,7 +84,7 @@ jobs:
           ref: ${{ inputs.tests-repo != '' && github.job_workflow_sha || '' }}
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version-file: tests/integration/go.mod
           cache-dependency-path: tests/integration/go.sum
