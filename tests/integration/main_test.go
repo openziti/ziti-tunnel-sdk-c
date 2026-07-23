@@ -81,6 +81,7 @@ func TestMain(m *testing.M) {
 			ControllerUser:     cfg.Ziti.User,
 			ControllerPassword: cfg.Ziti.Password,
 			AutoTrustCA:        cfg.Ziti.AutoTrustCA,
+			ZitiClusterSize:    cfg.Ziti.ClusterSize,
 			Done:               make(chan error, 1),
 		},
 		zetClient: &testutil.ZET{

@@ -49,6 +49,7 @@ type Overlay struct {
 	ControllerUser      string
 	ControllerPassword  string
 	AutoTrustCA         bool
+	ZitiClusterSize     int
 	ZitiMajor           int
 	ZitiMinor           int
 	ShowZitiCliCommands bool
@@ -90,16 +91,24 @@ func (o *Overlay) Start() error {
 		return fmt.Errorf("mkdir home: %w", err)
 	}
 
-	args := []string{
-		"edge", "quickstart",
-		"--home=" + o.Home,
+	quickstart := []string{"edge", "quickstart"}
+	if o.ZitiClusterSize > 1 {
+		// `quickstart cluster` spawns o.ZitiClusterSize raft nodes; node 0 keeps the base ctrl/router ports.
+		quickstart = append(quickstart, "cluster", fmt.Sprintf("--size=%d", o.ZitiClusterSize))
+	}
+	args := append(quickstart,
+		"--home="+o.Home,
 		"--ctrl-address=localhost",
 		fmt.Sprintf("--ctrl-port=%d", overlayCtrlPort),
 		"--router-address=localhost",
 		fmt.Sprintf("--router-port=%d", overlayRtrPort),
-	}
+	)
 	log.Printf("overlay: starting %s %s", o.ZitiBin, strings.Join(args, " "))
 	o.cmd = exec.Command(o.ZitiBin, args...)
+	if o.ZitiClusterSize > 1 {
+		// So Stop() can relay a graceful shutdown to the cluster's child nodes.
+		configureChildProcAttr(o.cmd)
+	}
 	o.cmd.Env = append(os.Environ(),
 		"ZITI_CONFIG_DIR="+filepath.Join(o.Home, "cli-config"),
 		// PFXLOG_NO_JSON makes ziti's stderr human-readable for test log output.
@@ -304,7 +313,9 @@ func (o *Overlay) Stop() {
 		return
 	}
 	pid := o.cmd.Process.Pid
-	if err := o.cmd.Process.Kill(); err != nil {
+	if o.ZitiClusterSize > 1 {
+		relayStop(o.cmd)
+	} else if err := o.cmd.Process.Kill(); err != nil {
 		log.Printf("overlay pid %d kill: %v", pid, err)
 	}
 	for i := 0; i < 120; i++ {
