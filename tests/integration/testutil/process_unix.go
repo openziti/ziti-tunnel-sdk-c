@@ -23,14 +23,8 @@ import (
 	"syscall"
 )
 
-func configureChildProcAttr(cmd *exec.Cmd) {
-	if cmd.SysProcAttr == nil {
-		cmd.SysProcAttr = &syscall.SysProcAttr{}
-	}
-	cmd.SysProcAttr.Setpgid = true
-}
-
-// relayStop sends the signal `quickstart cluster` handles to shut its nodes down cleanly.
+// relayStop sends SIGINT, which `quickstart cluster` handles by shutting its node
+// children down cleanly.
 func relayStop(cmd *exec.Cmd) {
 	if cmd.Process != nil {
 		_ = cmd.Process.Signal(syscall.SIGINT)

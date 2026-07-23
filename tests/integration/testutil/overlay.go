@@ -84,8 +84,20 @@ func (o *Overlay) Start() error {
 		return nil
 	}
 
+	if o.ZitiClusterSize > 1 && (o.ZitiClusterSize < 3 || o.ZitiClusterSize > 9) {
+		return fmt.Errorf("clusterSize must be 1 (single node) or 3-9 (cluster), got %d", o.ZitiClusterSize)
+	}
+
 	warnIfPortBound(overlayCtrlPort)
 	warnIfPortBound(overlayRtrPort)
+
+	if o.ZitiClusterSize > 1 {
+		// `quickstart cluster` resumes an existing home to re-form quorum, which breaks on
+		// stale or partial state; always start the cluster from a clean home.
+		if err := os.RemoveAll(o.Home); err != nil {
+			return fmt.Errorf("wipe cluster home: %w", err)
+		}
+	}
 	log.Printf("overlay: mkdir home %s", o.Home)
 	if err := os.MkdirAll(o.Home, 0o755); err != nil {
 		return fmt.Errorf("mkdir home: %w", err)
@@ -105,10 +117,6 @@ func (o *Overlay) Start() error {
 	)
 	log.Printf("overlay: starting %s %s", o.ZitiBin, strings.Join(args, " "))
 	o.cmd = exec.Command(o.ZitiBin, args...)
-	if o.ZitiClusterSize > 1 {
-		// So Stop() can relay a graceful shutdown to the cluster's child nodes.
-		configureChildProcAttr(o.cmd)
-	}
 	o.cmd.Env = append(os.Environ(),
 		"ZITI_CONFIG_DIR="+filepath.Join(o.Home, "cli-config"),
 		// PFXLOG_NO_JSON makes ziti's stderr human-readable for test log output.

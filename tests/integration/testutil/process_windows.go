@@ -20,21 +20,14 @@ package testutil
 
 import (
 	"os/exec"
-	"syscall"
-
-	"golang.org/x/sys/windows"
+	"strconv"
 )
 
-func configureChildProcAttr(cmd *exec.Cmd) {
-	if cmd.SysProcAttr == nil {
-		cmd.SysProcAttr = &syscall.SysProcAttr{}
-	}
-	cmd.SysProcAttr.CreationFlags |= windows.CREATE_NEW_PROCESS_GROUP
-}
-
-// relayStop sends the signal `quickstart cluster` handles to shut its nodes down cleanly.
+// relayStop kills the cluster process tree. taskkill /T walks parent+children;
+// CTRL_BREAK relaying is unreliable on Windows and randomly orphans nodes. Works
+// because the test process runs elevated.
 func relayStop(cmd *exec.Cmd) {
 	if cmd.Process != nil {
-		_ = windows.GenerateConsoleCtrlEvent(windows.CTRL_BREAK_EVENT, uint32(cmd.Process.Pid))
+		_ = exec.Command("taskkill", "/T", "/F", "/PID", strconv.Itoa(cmd.Process.Pid)).Run()
 	}
 }
