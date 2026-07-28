@@ -239,7 +239,7 @@ func getMfaCodesRejectsInvalidTotp(t *testing.T) {
 }
 
 func recoveryFailsAfterAllCodesExhausted(t *testing.T) {
-	testutil.RunWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeoutOf(t, 10*time.Second, func(t *testing.T) {
 		idName := "test_mfa_exhaust_recovery_codes"
 		enrollment, _ := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, idName)
 

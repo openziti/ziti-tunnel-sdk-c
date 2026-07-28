@@ -837,13 +837,14 @@ func (o *Overlay) WaitForClusterLeader() error {
 	}
 }
 
-// WaitForDataModelConsensus blocks until every controller reports the same data-model
-// index, so a write acked by one node is visible on all of them. No-op for single-node
-// or external controllers. Retries forever; rely on the enclosing test timeout.
+// WaitForDataModelConsensus blocks until every controller has applied the raft log up
+// to the max index of the first inspect, a fixed target: a busy cluster keeps writing,
+// so live min == max never settles. No-op for single-node or external controllers.
 func (o *Overlay) WaitForDataModelConsensus() {
 	if o.ZitiClusterSize <= 1 || o.ControllerURL != "" {
 		return
 	}
+	target := -1
 	for attempts := 1; ; attempts++ {
 		if attempts > 1 {
 			time.Sleep(100 * time.Millisecond)
@@ -866,12 +867,18 @@ func (o *Overlay) WaitForDataModelConsensus() {
 		}
 
 		// a partial response (node not answering) must not pass as consensus
-		if len(indexes) != o.ZitiClusterSize || slices.Min(indexes) != slices.Max(indexes) {
+		if len(indexes) != o.ZitiClusterSize {
+			continue
+		}
+		if target < 0 {
+			target = slices.Max(indexes)
+		}
+		if slices.Min(indexes) < target {
 			continue
 		}
 
 		if attempts > 1 {
-			log.Printf("overlay: data-model consensus at index %d after %d attempt(s)", indexes[0], attempts)
+			log.Printf("overlay: data-model index target %d reached after %d attempt(s)", target, attempts)
 		}
 		return
 	}
