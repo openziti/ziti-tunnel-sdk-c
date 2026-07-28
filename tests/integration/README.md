@@ -153,6 +153,7 @@ The suite hard-requires only **`ziti.binary`** and **`zetA.binary`**; everything
 | `ziti.url` | Controller URL. **Empty = stand up a local quickstart overlay.** Set = use that controller. |
 | `ziti.user` / `ziti.password` | Admin credentials (quickstart default is `admin` / `admin`). |
 | `ziti.autoTrustCa` | Quickstart mode only: the harness installs the overlay CA into OS trust during setup and removes it at teardown. The install deliberately happens **after** the fixture import - ziti 1.6's `ops import` fails when the controller CA is already OS-trusted. |
+| `ziti.clusterSize` | Quickstart mode only: controller count. Empty or `1` = single node; `3`-`9` = `ziti edge quickstart cluster --size=N`. |
 | `zetA` / `zetB` | The two tunnelers (client and host). `zetA.binary` is **required**; `zetB.binary` empty reuses it. `verbosity` and `tlsuvDebug` raise log detail (higher is noisier; `4` / `0` are fine defaults). |
 | `idp.useTestHarnessIdP` | `true` = harness runs a local IdP from `idp.binary`. `false` = external IdP, or none. |
 | `idp.binary` | Path to the local IdP binary (dex). Required when `useTestHarnessIdP` is `true`. |
