@@ -19,9 +19,43 @@ limitations under the License.
 package testutil
 
 import (
+	"fmt"
+	"net"
 	"os/exec"
 	"strconv"
+	"time"
+
+	"github.com/Microsoft/go-winio"
+	"golang.org/x/sys/windows"
 )
+
+func RequireAdmin() error {
+	if windows.GetCurrentProcessToken().IsElevated() {
+		return nil
+	}
+	return fmt.Errorf("integration tests must run elevated on Windows; relaunch as Administrator")
+}
+
+const CommandPipePath = `\\.\pipe\ziti-edge-tunnel.sock`
+const EventPipePath = `\\.\pipe\ziti-edge-tunnel-event.sock`
+
+func CommandPipePathFor(disc string) string {
+	if disc == "" {
+		return CommandPipePath
+	}
+	return CommandPipePath + "." + disc
+}
+
+func EventPipePathFor(disc string) string {
+	if disc == "" {
+		return EventPipePath
+	}
+	return EventPipePath + "." + disc
+}
+
+func dialPlatform(path string, timeout time.Duration) (net.Conn, error) {
+	return winio.DialPipe(path, &timeout)
+}
 
 // relayStop kills the cluster process tree. taskkill /T walks parent+children;
 // CTRL_BREAK relaying is unreliable on Windows and randomly orphans nodes. Works
