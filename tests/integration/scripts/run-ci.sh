@@ -10,6 +10,8 @@
 #   TEST_HOME      Working dir for overlay, logs, caches. Defaults to a temp dir.
 #   IDP_VERSION    dex version tag (default: fetch-dex.sh's pinned version).
 #   ZET_BIN_B      ziti-edge-tunnel binary for zetB. Defaults to ZET_BIN.
+#   CLUSTER_SIZE   controller count: 1 = single node (default), 3-9 = 'ziti edge
+#                  quickstart cluster'. Needs a ziti with that subcommand.
 #
 # Flags:
 #   --install-cert  Install the test overlay CA into OS trust for the run and
@@ -43,6 +45,9 @@ done
 TEST_HOME="${TEST_HOME:-$(mktemp -d -t ziti-tunnel-test.XXXXXX)}"
 mkdir -p "$TEST_HOME"
 echo "TEST_HOME=$TEST_HOME"
+
+CLUSTER_SIZE="${CLUSTER_SIZE:-1}"
+echo "CLUSTER_SIZE=$CLUSTER_SIZE"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 
@@ -90,23 +95,27 @@ esac
 # so its second quickstart reuses this PKI, ensuring the cert we install into
 # OS trust matches the cert the test's controller serves.
 OVERLAY_HOME="$TEST_HOME/overlay"
-echo "Seeding test overlay PKI at $OVERLAY_HOME"
-"$ZITI_BIN" edge quickstart --home="$OVERLAY_HOME" \
-  --ctrl-address=localhost --ctrl-port=1280 \
-  --router-address=localhost --router-port=3022 &
-QS_PID=$!
-SECONDS=0
-until curl -sk --max-time 2 https://localhost:1280/ >/dev/null \
-   && (echo > /dev/tcp/localhost/3022) 2>/dev/null; do
-  if (( SECONDS > 120 )); then
-    kill "$QS_PID" 2>/dev/null || true
-    echo "overlay never came up within 120s" >&2
-    exit 1
-  fi
-  sleep 1
-done
-kill "$QS_PID"
-wait "$QS_PID" 2>/dev/null || true
+# Cluster runs skip the seed: the harness's own quickstart creates the PKI and
+# installs the CA from it after it is up.
+if [ "$CLUSTER_SIZE" -le 1 ]; then
+  echo "Seeding test overlay PKI at $OVERLAY_HOME"
+  "$ZITI_BIN" edge quickstart --home="$OVERLAY_HOME" \
+    --ctrl-address=localhost --ctrl-port=1280 \
+    --router-address=localhost --router-port=3022 &
+  QS_PID=$!
+  SECONDS=0
+  until curl -sk --max-time 2 https://localhost:1280/ >/dev/null \
+     && (echo > /dev/tcp/localhost/3022) 2>/dev/null; do
+    if (( SECONDS > 120 )); then
+      kill "$QS_PID" 2>/dev/null || true
+      echo "overlay never came up within 120s" >&2
+      exit 1
+    fi
+    sleep 1
+  done
+  kill "$QS_PID"
+  wait "$QS_PID" 2>/dev/null || true
+fi
 
 # ---- CA trust ------------------------------------------------------------------
 # The harness installs the overlay CA into OS trust after the fixture import and
@@ -127,9 +136,10 @@ jq -n \
   --arg zetBinB  "$ZET_BIN_B" \
   --arg idpBin   "$IDP_BIN" \
   --argjson autoTrustCa "$AUTO_TRUST_CA" \
+  --argjson clusterSize "$CLUSTER_SIZE" \
   '{
     testHome: $testHome,
-    ziti: { binary: $zitiBin, url: "", user: "admin", password: "admin", autoTrustCa: $autoTrustCa },
+    ziti: { binary: $zitiBin, url: "", user: "admin", password: "admin", autoTrustCa: $autoTrustCa, clusterSize: $clusterSize },
     zetA: { binary: $zetBin,  verbosity: 4, tlsuvDebug: 0 },
     zetB: { binary: $zetBinB, verbosity: 4, tlsuvDebug: 0 },
     idp: {

@@ -1,4 +1,4 @@
-//go:build windows
+//go:build !windows
 
 /*
 Copyright NetFoundry Inc.
@@ -21,21 +21,21 @@ package testutil
 import (
 	"fmt"
 	"net"
+	"os"
+	"os/exec"
+	"syscall"
 	"time"
-
-	"github.com/Microsoft/go-winio"
-	"golang.org/x/sys/windows"
 )
 
 func RequireAdmin() error {
-	if windows.GetCurrentProcessToken().IsElevated() {
+	if os.Geteuid() == 0 {
 		return nil
 	}
-	return fmt.Errorf("integration tests must run elevated on Windows; relaunch as Administrator")
+	return fmt.Errorf("integration tests must run as root; rerun under sudo")
 }
 
-const CommandPipePath = `\\.\pipe\ziti-edge-tunnel.sock`
-const EventPipePath = `\\.\pipe\ziti-edge-tunnel-event.sock`
+const CommandPipePath = "/tmp/.ziti/ziti-edge-tunnel.sock"
+const EventPipePath = "/tmp/.ziti/ziti-edge-tunnel-event.sock"
 
 func CommandPipePathFor(disc string) string {
 	if disc == "" {
@@ -52,5 +52,14 @@ func EventPipePathFor(disc string) string {
 }
 
 func dialPlatform(path string, timeout time.Duration) (net.Conn, error) {
-	return winio.DialPipe(path, &timeout)
+	d := net.Dialer{Timeout: timeout}
+	return d.Dial("unix", path)
+}
+
+// relayStop sends SIGINT, which `quickstart cluster` handles by shutting its node
+// children down cleanly.
+func relayStop(cmd *exec.Cmd) {
+	if cmd.Process != nil {
+		_ = cmd.Process.Signal(syscall.SIGINT)
+	}
 }

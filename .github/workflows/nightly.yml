@@ -16,12 +16,19 @@ jobs:
     uses: ./.github/workflows/cmake.yml
 
   integration-tests:
-    name: Integration Tests
+    name: Integration Tests (${{ matrix.topology.label }})
     needs: [ call-cmake-build ]
+    strategy:
+      fail-fast: false
+      matrix:
+        topology:
+          - { label: main, cluster-size: "" }
+          - { label: main-ha, cluster-size: "3" }
     uses: ./.github/workflows/integration-tests.yml
     with:
       ziti-ref: main
-      label: main
+      label: ${{ matrix.topology.label }}
+      cluster-size: ${{ matrix.topology.cluster-size }}
     secrets: inherit
 
   alert-mattermost:

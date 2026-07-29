@@ -29,6 +29,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -49,6 +51,7 @@ type Overlay struct {
 	ControllerUser      string
 	ControllerPassword  string
 	AutoTrustCA         bool
+	ZitiClusterSize     int
 	ZitiMajor           int
 	ZitiMinor           int
 	ShowZitiCliCommands bool
@@ -83,21 +86,30 @@ func (o *Overlay) Start() error {
 		return nil
 	}
 
+	if o.ZitiClusterSize > 1 && (o.ZitiClusterSize < 3 || o.ZitiClusterSize > 9) {
+		return fmt.Errorf("clusterSize must be 1 (single node) or 3-9 (cluster), got %d", o.ZitiClusterSize)
+	}
+
 	warnIfPortBound(overlayCtrlPort)
 	warnIfPortBound(overlayRtrPort)
+
 	log.Printf("overlay: mkdir home %s", o.Home)
 	if err := os.MkdirAll(o.Home, 0o755); err != nil {
 		return fmt.Errorf("mkdir home: %w", err)
 	}
 
-	args := []string{
-		"edge", "quickstart",
-		"--home=" + o.Home,
+	quickstart := []string{"edge", "quickstart"}
+	if o.ZitiClusterSize > 1 {
+		// `quickstart cluster` spawns o.ZitiClusterSize raft nodes; node 0 keeps the base ctrl/router ports.
+		quickstart = append(quickstart, "cluster", fmt.Sprintf("--size=%d", o.ZitiClusterSize))
+	}
+	args := append(quickstart,
+		"--home="+o.Home,
 		"--ctrl-address=localhost",
 		fmt.Sprintf("--ctrl-port=%d", overlayCtrlPort),
 		"--router-address=localhost",
 		fmt.Sprintf("--router-port=%d", overlayRtrPort),
-	}
+	)
 	log.Printf("overlay: starting %s %s", o.ZitiBin, strings.Join(args, " "))
 	o.cmd = exec.Command(o.ZitiBin, args...)
 	o.cmd.Env = append(os.Environ(),
@@ -304,7 +316,9 @@ func (o *Overlay) Stop() {
 		return
 	}
 	pid := o.cmd.Process.Pid
-	if err := o.cmd.Process.Kill(); err != nil {
+	if o.ZitiClusterSize > 1 {
+		relayStop(o.cmd)
+	} else if err := o.cmd.Process.Kill(); err != nil {
 		log.Printf("overlay pid %d kill: %v", pid, err)
 	}
 	for i := 0; i < 120; i++ {
@@ -820,5 +834,44 @@ func (o *Overlay) WaitForClusterLeader() error {
 			}
 		}
 		time.Sleep(1 * time.Second)
+	}
+}
+
+// WaitForDataModelConsensus blocks until every controller reports the same data-model
+// index. No-op for single-node or external controllers.
+func (o *Overlay) WaitForDataModelConsensus() {
+	if o.ZitiClusterSize <= 1 || o.ControllerURL != "" {
+		return
+	}
+	for attempts := 1; ; attempts++ {
+		if attempts > 1 {
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		out, err := o.execZiti("fabric", "inspect", "data-model-index")
+		if err != nil {
+			log.Printf("overlay: inspect data-model-index failed, retrying: %v", err)
+			continue
+		}
+
+		var indexes []int
+		for _, line := range strings.Split(string(out), "\n") {
+			fields := strings.Fields(line)
+			if len(fields) == 2 && fields[0] == "index:" {
+				if idx, err := strconv.Atoi(fields[1]); err == nil {
+					indexes = append(indexes, idx)
+				}
+			}
+		}
+
+		// a partial response (node not answering) must not pass as consensus
+		if len(indexes) != o.ZitiClusterSize || slices.Min(indexes) != slices.Max(indexes) {
+			continue
+		}
+
+		if attempts > 1 {
+			log.Printf("overlay: data-model consensus at index %d after %d attempt(s)", indexes[0], attempts)
+		}
+		return
 	}
 }

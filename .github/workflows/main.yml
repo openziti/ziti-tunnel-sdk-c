@@ -134,6 +134,19 @@ jobs:
       zetB-version: ${{ inputs.zetB_version }}
     secrets: inherit
 
+  integration-tests-ha:
+    name: Integration Tests (main-ha cluster)
+    needs: [ call-cmake-build ]
+    uses: ./.github/workflows/integration-tests.yml
+    with:
+      ziti-ref: main
+      label: main-ha
+      cluster-size: "3"
+      idp-version: ${{ inputs.idp_version }}
+      zetA-version: ${{ inputs.zetA_version }}
+      zetB-version: ${{ inputs.zetB_version }}
+    secrets: inherit
+
   nix-build:
     name: Build Nix Binary
     strategy:

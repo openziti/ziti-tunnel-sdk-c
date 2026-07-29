@@ -100,6 +100,12 @@ func enrollRejectsInvalidTotp(t *testing.T) {
 }
 
 func triggerReauthChallenge(t *testing.T, identifier, idName string) {
+	// reauth can land on any controller; the preceding MFA write must be applied everywhere first
+	// TODO: restore once Ziti data-model-index reflects MFA writes
+	// state.overlay.WaitForDataModelConsensus()
+	if state.overlay.ZitiClusterSize > 1 {
+		time.Sleep(500 * time.Millisecond)
+	}
 	state.zetClient.DisableEnableIdentity(t, identifier)
 	state.zetClient.WaitForMfaEvent(t, "auth_challenge", idName)
 }
@@ -237,7 +243,7 @@ func getMfaCodesRejectsInvalidTotp(t *testing.T) {
 }
 
 func recoveryFailsAfterAllCodesExhausted(t *testing.T) {
-	testutil.RunWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeoutOf(t, 30*time.Second, func(t *testing.T) {
 		idName := "test_mfa_exhaust_recovery_codes"
 		enrollment, _ := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, idName)
 

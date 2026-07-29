@@ -10,6 +10,8 @@ Optional input:
   $env:TEST_HOME      Working dir for overlay, logs, caches. Defaults to a temp dir.
   $env:IDP_VERSION    dex version tag (default: fetch-dex.sh's pinned version).
   $env:ZET_BIN_B      ziti-edge-tunnel.exe for zetB. Defaults to ZET_BIN.
+  $env:CLUSTER_SIZE   controller count: 1 = single node (default), 3-9 = 'ziti edge
+                      quickstart cluster'. Needs a ziti with that subcommand.
 
 Flags:
   -InstallCert  Install the test overlay CA into OS trust for the run and remove
@@ -52,6 +54,9 @@ $testHome = if ($env:TEST_HOME) { $env:TEST_HOME } else {
 }
 Write-Host "TEST_HOME=$testHome"
 
+$clusterSize = if ($env:CLUSTER_SIZE) { [int]$env:CLUSTER_SIZE } else { 1 }
+Write-Host "CLUSTER_SIZE=$clusterSize"
+
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..\..")).Path
 
 # ---- ziti CLI ---------------------------------------------------------------
@@ -85,35 +90,39 @@ Write-Host "$(& $idpBin version | Select-Object -First 1)"
 # so its second quickstart reuses this PKI, ensuring the cert we install into
 # OS trust matches the cert the test's controller serves.
 $overlayHome = Join-Path $testHome "overlay"
-Write-Host "Seeding test overlay PKI at $overlayHome"
-$qs = Start-Process $zitiBin -ArgumentList @(
-    "edge", "quickstart",
-    "--home=$overlayHome",
-    "--ctrl-address=localhost", "--ctrl-port=1280",
-    "--router-address=localhost", "--router-port=3022"
-) -PassThru -NoNewWindow
-$sw = [Diagnostics.Stopwatch]::StartNew()
-while ($true) {
-    $ctrlOk = $false; $rtrOk = $false
-    try {
-        $r = Invoke-WebRequest -Uri "https://localhost:1280/" -SkipCertificateCheck -TimeoutSec 2 -ErrorAction Stop
-        if ($r.StatusCode -lt 500) { $ctrlOk = $true }
-    } catch { }
-    try {
-        $c = New-Object System.Net.Sockets.TcpClient
-        $c.Connect("localhost", 3022)
-        $c.Close()
-        $rtrOk = $true
-    } catch { }
-    if ($ctrlOk -and $rtrOk) { break }
-    if ($sw.Elapsed.TotalSeconds -gt 120) {
-        Stop-Process -Id $qs.Id -Force -ErrorAction SilentlyContinue
-        Write-Error "overlay never came up within 120s"
+# Cluster runs skip the seed: the harness's own quickstart creates the PKI and
+# installs the CA from it after it is up.
+if ($clusterSize -le 1) {
+    Write-Host "Seeding test overlay PKI at $overlayHome"
+    $qs = Start-Process $zitiBin -ArgumentList @(
+        "edge", "quickstart",
+        "--home=$overlayHome",
+        "--ctrl-address=localhost", "--ctrl-port=1280",
+        "--router-address=localhost", "--router-port=3022"
+    ) -PassThru -NoNewWindow
+    $sw = [Diagnostics.Stopwatch]::StartNew()
+    while ($true) {
+        $ctrlOk = $false; $rtrOk = $false
+        try {
+            $r = Invoke-WebRequest -Uri "https://localhost:1280/" -SkipCertificateCheck -TimeoutSec 2 -ErrorAction Stop
+            if ($r.StatusCode -lt 500) { $ctrlOk = $true }
+        } catch { }
+        try {
+            $c = New-Object System.Net.Sockets.TcpClient
+            $c.Connect("localhost", 3022)
+            $c.Close()
+            $rtrOk = $true
+        } catch { }
+        if ($ctrlOk -and $rtrOk) { break }
+        if ($sw.Elapsed.TotalSeconds -gt 120) {
+            Stop-Process -Id $qs.Id -Force -ErrorAction SilentlyContinue
+            Write-Error "overlay never came up within 120s"
+        }
+        Start-Sleep -Seconds 1
     }
-    Start-Sleep -Seconds 1
+    Stop-Process -Id $qs.Id -Force
+    $qs.WaitForExit()
 }
-Stop-Process -Id $qs.Id -Force
-$qs.WaitForExit()
 
 # ---- CA trust -----------------------------------------------------------------
 # The harness installs the overlay CA into OS trust after the fixture import and
@@ -127,7 +136,7 @@ try {
     Push-Location (Join-Path $repoRoot "tests\integration")
     $cfg = [ordered]@{
         testHome = $testHome
-        ziti = [ordered]@{ binary = $zitiBin; url = ""; user = "admin"; password = "admin"; autoTrustCa = [bool]$InstallCert }
+        ziti = [ordered]@{ binary = $zitiBin; url = ""; user = "admin"; password = "admin"; autoTrustCa = [bool]$InstallCert; clusterSize = $clusterSize }
         zetA = [ordered]@{ binary = $zetBin;  verbosity = 4; tlsuvDebug = 0 }
         zetB = [ordered]@{ binary = $zetBinB; verbosity = 4; tlsuvDebug = 0 }
         idp  = [ordered]@{

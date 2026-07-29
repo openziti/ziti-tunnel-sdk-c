@@ -50,6 +50,10 @@ on:
         description: "repo to check the test suite out from; cross-repo callers set this to the repo named in their 'uses:' line"
         type: string
         default: ""
+      cluster-size:
+        description: "controller count: empty or 1 = single node, 3-9 = 'ziti edge quickstart cluster'"
+        type: string
+        default: ""
 
 jobs:
   integration-tests:
@@ -183,6 +187,7 @@ jobs:
         env:
           TEST_HOME: ${{ runner.temp }}
           IDP_VERSION: ${{ inputs.idp-version }}
+          CLUSTER_SIZE: ${{ inputs.cluster-size }}
         run: ./tests/integration/scripts/run-ci.sh --install-cert
 
       - name: Run integration tests (Windows)
@@ -191,6 +196,7 @@ jobs:
         env:
           TEST_HOME: ${{ runner.temp }}
           IDP_VERSION: ${{ inputs.idp-version }}
+          CLUSTER_SIZE: ${{ inputs.cluster-size }}
         run: .\tests\integration\scripts\run-ci.ps1 -InstallCert
 
       - name: Log core file backtraces

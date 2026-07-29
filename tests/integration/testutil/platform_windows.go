@@ -1,3 +1,5 @@
+//go:build windows
+
 /*
 Copyright NetFoundry Inc.
 
@@ -14,26 +16,28 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-//go:build !windows
-
 package testutil
 
 import (
 	"fmt"
 	"net"
-	"os"
+	"os/exec"
+	"strconv"
 	"time"
+
+	"github.com/Microsoft/go-winio"
+	"golang.org/x/sys/windows"
 )
 
 func RequireAdmin() error {
-	if os.Geteuid() == 0 {
+	if windows.GetCurrentProcessToken().IsElevated() {
 		return nil
 	}
-	return fmt.Errorf("integration tests must run as root; rerun under sudo")
+	return fmt.Errorf("integration tests must run elevated on Windows; relaunch as Administrator")
 }
 
-const CommandPipePath = "/tmp/.ziti/ziti-edge-tunnel.sock"
-const EventPipePath = "/tmp/.ziti/ziti-edge-tunnel-event.sock"
+const CommandPipePath = `\\.\pipe\ziti-edge-tunnel.sock`
+const EventPipePath = `\\.\pipe\ziti-edge-tunnel-event.sock`
 
 func CommandPipePathFor(disc string) string {
 	if disc == "" {
@@ -50,6 +54,14 @@ func EventPipePathFor(disc string) string {
 }
 
 func dialPlatform(path string, timeout time.Duration) (net.Conn, error) {
-	d := net.Dialer{Timeout: timeout}
-	return d.Dial("unix", path)
+	return winio.DialPipe(path, &timeout)
+}
+
+// relayStop kills the cluster process tree. taskkill /T walks parent+children;
+// CTRL_BREAK relaying is unreliable on Windows and randomly orphans nodes. Works
+// because the test process runs elevated.
+func relayStop(cmd *exec.Cmd) {
+	if cmd.Process != nil {
+		_ = exec.Command("taskkill", "/T", "/F", "/PID", strconv.Itoa(cmd.Process.Pid)).Run()
+	}
 }
