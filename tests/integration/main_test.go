@@ -184,11 +184,6 @@ func doSetup(state TestState) error {
 		return fmt.Errorf("wait for cluster leader: %w", err)
 	}
 
-	if state.overlay.ZitiClusterSize > 1 {
-		log.Printf("setup: waiting for all cluster members to report the data-model index")
-		state.overlay.WaitForDataModelConsensus()
-	}
-
 	log.Printf("setup: purging stale test identities")
 	if err := state.overlay.PurgeIdentities(); err != nil {
 		return fmt.Errorf("purge stale test identities: %w", err)

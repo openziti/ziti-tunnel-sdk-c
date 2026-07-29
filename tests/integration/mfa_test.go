@@ -101,7 +101,11 @@ func enrollRejectsInvalidTotp(t *testing.T) {
 
 func triggerReauthChallenge(t *testing.T, identifier, idName string) {
 	// reauth can land on any controller; the preceding MFA write must be applied everywhere first
-	state.overlay.WaitForDataModelConsensus()
+	// TODO: restore once Ziti data-model-index reflects MFA writes
+	// state.overlay.WaitForDataModelConsensus()
+	if state.overlay.ZitiClusterSize > 1 {
+		time.Sleep(200 * time.Millisecond)
+	}
 	state.zetClient.DisableEnableIdentity(t, identifier)
 	state.zetClient.WaitForMfaEvent(t, "auth_challenge", idName)
 }
