@@ -104,7 +104,7 @@ func triggerReauthChallenge(t *testing.T, identifier, idName string) {
 	// TODO: restore once Ziti data-model-index reflects MFA writes
 	// state.overlay.WaitForDataModelConsensus()
 	if state.overlay.ZitiClusterSize > 1 {
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(500 * time.Millisecond)
 	}
 	state.zetClient.DisableEnableIdentity(t, identifier)
 	state.zetClient.WaitForMfaEvent(t, "auth_challenge", idName)
