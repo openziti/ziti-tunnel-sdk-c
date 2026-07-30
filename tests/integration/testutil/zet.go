@@ -61,6 +61,8 @@ type ZET struct {
 	stderr  *syncBuffer
 	cmdDone chan struct{}
 	logFile *os.File
+	// logStarted keeps Restart() from truncating the log mid-run.
+	logStarted bool
 
 	*CommandsClient
 	*EventClient
@@ -109,11 +111,17 @@ func (z *ZET) Start() error {
 		return fmt.Errorf("create zet log dir: %w", err)
 	}
 	logPath := z.LogFile()
-	var ferr error
-	logFile, ferr := os.OpenFile(logPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
+	// Only the suite's first Start truncates, so Restart() keeps the pre-restart log.
+	mode := os.O_APPEND
+	if !z.logStarted {
+		mode = os.O_TRUNC
+		z.logStarted = true
+	}
+	logFile, ferr := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|mode, 0o644)
 	if ferr != nil {
 		return fmt.Errorf("open zet log file: %w", ferr)
 	}
+	z.logFile = logFile
 	z.cmd.Stdout = io.MultiWriter(stdout, logFile)
 	z.cmd.Stderr = io.MultiWriter(stderr, logFile)
 

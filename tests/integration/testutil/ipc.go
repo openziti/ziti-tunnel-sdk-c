@@ -44,8 +44,8 @@ func (c *IPCClient) Close() error {
 	return c.conn.Close()
 }
 
-// send encodes cmd (INPUT) to a JSON line on the wire and decodes one JSON-line
-// response into RESP. Blocks indefinitely on a stuck peer.
+// send encodes cmd (INPUT) as a JSON line and decodes one JSON-line response
+// into RESP. Blocks indefinitely on a stuck peer.
 func send[INPUT, RESP any](c *IPCClient, cmd INPUT) (*RESP, error) {
 	if err := json.NewEncoder(c.conn).Encode(cmd); err != nil {
 		return nil, fmt.Errorf("send: %w", err)
@@ -222,10 +222,10 @@ func (c *EventClient) WaitForIdentityEvent(t *testing.T, action, fingerprint str
 }
 
 // WaitForController waits for an Op:"controller" event matching action/fingerprint.
-func (c *EventClient) WaitForControllerEvent(t *testing.T, action, fingerprint string) ControllerEvent {
+func (c *EventClient) WaitForControllerEvent(t *testing.T, action, fingerprint string) ActionEvent {
 	raw := c.waitForEvent(t, "controller", action, fingerprint)
-	var ev ControllerEvent
-	require.NoError(t, json.Unmarshal(raw, &ev), "parse ControllerEvent: %s", raw)
+	var ev ActionEvent
+	require.NoError(t, json.Unmarshal(raw, &ev), "parse controller ActionEvent: %s", raw)
 	return ev
 }
 
@@ -385,13 +385,13 @@ func (c *CommandsClient) RemoveMFA(t *testing.T, identifier, code string) *Servi
 	return resp
 }
 
-func (c *CommandsClient) GenerateMFACodes(t *testing.T, identifier, code string) *ServiceResponse {
+func (c *CommandsClient) GenerateMFACodes(t *testing.T, identifier, code string) *MFARecoveryCodesResponse {
 	f := MFAFunction{
 		ServiceFunction: NewServiceFunction("GenerateMFACodes"),
 		Data:            NewMFAData(identifier, code),
 	}
 	t.Logf("sending GenerateMFACodes for %q", identifier)
-	resp, err := send[MFAFunction, ServiceResponse](&c.IPCClient, f)
+	resp, err := send[MFAFunction, MFARecoveryCodesResponse](&c.IPCClient, f)
 	require.NoError(t, err, "failed to send GenerateMFACodes\n%s", c.LogPath)
 	resp.t = t
 	return resp
@@ -459,12 +459,13 @@ func (c *CommandsClient) AddIdentity(t *testing.T, data AddIdentityData) *AddIde
 
 // AssertSuccess asserts the daemon accepted the command.
 func (r *ServiceResponse) AssertSuccess() {
-	require.True(r.t, r.Success(), "IPC command failed: error=%q code=%d", r.Error, r.Code)
+	require.True(r.t, r.Success, "IPC command failed: error=%q code=%d", r.Error, r.Code)
 }
 
 // AssertFail asserts the daemon rejected the command with code and an Error
 // containing message. Pass an empty message when the error text is not asserted.
 func (r *ServiceResponse) AssertFail(code int, message string) {
+	require.False(r.t, r.Success)
 	require.Equal(r.t, code, r.Code)
 	require.Contains(r.t, r.Error, message)
 }

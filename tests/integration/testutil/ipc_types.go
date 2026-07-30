@@ -18,9 +18,8 @@ package testutil
 
 import "testing"
 
-// All IPC wire types live here. Mirrors the wire JSON emitted/accepted by
-// ziti-edge-tunnel's IPC handlers (defined in lib/ziti-tunnel-cbs/include/ziti/ziti_tunnel_cbs.h).
-// JSON tags match the C TUNNEL_* macros exactly; do not rename them without
+// All IPC types live here. They model the JSON emitted/accepted by
+// ziti-edge-tunnel's IPC handlers. Do not rename a JSON name without
 // changing the handlers first.
 //
 //   ServiceFunction (base command) / IdentifierFunction, AddIdentityFunction, ... (typed commands)
@@ -44,12 +43,12 @@ type SetLogLevelData struct {
 }
 
 type ZitiDumpData struct {
-	Identifier string `json:"Identifier"`
-	DumpPath   string `json:"DumpPath"`
+	Identifier string `json:"Identifier,omitempty"`
+	DumpPath   string `json:"DumpPath,omitempty"`
 }
 
 type IpDumpData struct {
-	DumpPath string `json:"DumpPath"`
+	DumpPath string `json:"DumpPath,omitempty"`
 }
 
 // MFAData is used by SubmitMFA, VerifyMFA, RemoveMFA, GenerateMFACodes, GetMFACodes.
@@ -77,11 +76,6 @@ type InterfaceConfigData struct {
 type ExternalAuthData struct {
 	Identifier string `json:"Identifier"`
 	Provider   string `json:"Provider"`
-}
-
-type StatusChangeData struct {
-	Woke     bool `json:"Woke"`
-	Unlocked bool `json:"Unlocked"`
 }
 
 type EnrollMode string
@@ -238,22 +232,19 @@ type AddIdentityFunction struct {
 // ---------------------------------------------------------------------------
 
 type ServiceResponse struct {
-	Code    int    `json:"Code,omitempty"`
-	Message string `json:"Message,omitempty"`
-	Error   string `json:"Error,omitempty"`
+	Success bool   `json:"Success"`
+	Error   string `json:"Error"`
+	Code    int    `json:"Code"`
 
 	t *testing.T
 }
-
-// Success returns true when the daemon reports a non-error code.
-func (r *ServiceResponse) Success() bool { return r.Code == 0 }
 
 // AddIdentityResponse is returned by AddIdentity. Data carries the ext-auth URL
 // only in enroll-to-cert/token mode; for enroll-to-none it is empty (the URL
 // is delivered later via the ExternalAuthResponse to a separate command).
 type AddIdentityResponse struct {
 	ServiceResponse
-	Data ExtAuth `json:"Data,omitempty"`
+	Data ExtAuth `json:"Data"`
 }
 
 // ExternalAuthResponse is returned by ExternalAuth. Data carries the ext-auth URL.
@@ -274,7 +265,7 @@ type MFAEnrollmentResponse struct {
 	Data MFAEnrollment `json:"Data"`
 }
 
-// MFARecoveryCodesResponse is returned by GetMFACodes. Data carries the current recovery codes.
+// MFARecoveryCodesResponse is returned by GetMFACodes and GenerateMFACodes.
 type MFARecoveryCodesResponse struct {
 	ServiceResponse
 	Data MFARecoveryCodes `json:"Data"`
@@ -286,7 +277,7 @@ type IpDumpResponse struct {
 	Data IpStats `json:"Data"`
 }
 
-// ZitiDumpResponse is returned by ZitiDump. Data maps identity name to its text dump.
+// ZitiDumpResponse is returned by ZitiDump. Data maps identifier to its text dump.
 type ZitiDumpResponse struct {
 	ServiceResponse
 	Data map[string]string `json:"Data"`
@@ -321,17 +312,6 @@ type IpStats struct {
 	Connections []IpConn    `json:"Connections"`
 }
 
-type IdentityInfo struct {
-	Name    string `json:"Name"`
-	Config  string `json:"Config"`
-	Network string `json:"Network"`
-	Id      string `json:"Id"`
-}
-
-type IdentityListData struct {
-	Identities []IdentityInfo `json:"Identities"`
-}
-
 type IpInfo struct {
 	Ip     string `json:"Ip"`
 	Subnet string `json:"Subnet"`
@@ -346,17 +326,16 @@ type ServiceVersion struct {
 
 type TapInfo struct{}
 
-// Identity mirrors ZDEW's Identity class, used both inside Event payloads
-// and inside TunnelStatus.Identities.
 type Identity struct {
-	Name             string   `json:"Name"`
-	Identifier       string   `json:"Identifier"`
-	Active           bool     `json:"Active"`
-	FingerPrint      string   `json:"FingerPrint"`
-	MfaEnabled       bool     `json:"MfaEnabled"`
-	MfaNeeded        bool     `json:"MfaNeeded"`
-	NeedsExtAuth     bool     `json:"NeedsExtAuth"`
-	ExtAuthProviders []string `json:"ExtAuthProviders"`
+	Name             string    `json:"Name"`
+	Identifier       string    `json:"Identifier"`
+	FingerPrint      string    `json:"FingerPrint"`
+	Active           bool      `json:"Active"`
+	NeedsExtAuth     bool      `json:"NeedsExtAuth"`
+	ExtAuthProviders []string  `json:"ExtAuthProviders"`
+	MfaEnabled       bool      `json:"MfaEnabled"`
+	MfaNeeded        bool      `json:"MfaNeeded"`
+	Services         []Service `json:"Services"`
 }
 
 type TunnelStatus struct {
@@ -373,6 +352,7 @@ type TunnelStatus struct {
 	ApiPageSize    int            `json:"ApiPageSize"`
 	TunName        string         `json:"TunName"`
 	L2Enabled      bool           `json:"L2Enabled"`
+	PcapInterface  string         `json:"PcapInterface"`
 	TapInfo        TapInfo        `json:"TapInfo"`
 	ConfigDir      string         `json:"ConfigDir"`
 }
@@ -401,25 +381,26 @@ type ExtAuth struct {
 // Event pipe types
 //
 //   StatusEvent { Op }
-//     ActionEvent : StatusEvent { Action }
-//       IdentityEvent       { Id }
-//       ControllerEvent     { Identifier }
-//       MfaEvent            { Identifier, Successful, ProvisioningUrl, RecoveryCodes }
-//       AuthenticationEvent { Identifier }
-//       LogLevelEvent       { LogLevel }
+//     ActionEvent : StatusEvent { Action, Identifier, Fingerprint }
+//       IdentityEvent    { Id }
+//       MfaEvent         { Successful, Error, ProvisioningUrl, RecoveryCodes }
+//       BulkServiceEvent { AddedServices, RemovedServices }
 //     TunnelStatusEvent : StatusEvent { Status }
-//     MetricsEvent      : StatusEvent { Identities[] }
 // ---------------------------------------------------------------------------
 
-// StatusEvent is the base wire shape for daemon events.
+// StatusEvent is the base shape for daemon events.
 type StatusEvent struct {
 	Op string `json:"Op"`
 }
 
-// ActionEvent adds Action to StatusEvent; most event subclasses extend it.
+// ActionEvent adds Action, Identifier and Fingerprint to StatusEvent; most event
+// subclasses extend it. Fingerprint is the identity name, and Op:"controller"
+// (connected, disconnected) arrives as a bare ActionEvent.
 type ActionEvent struct {
 	StatusEvent
-	Action string `json:"Action"`
+	Action      string `json:"Action"`
+	Identifier  string `json:"Identifier"`
+	Fingerprint string `json:"Fingerprint"`
 }
 
 // IdentityEvent fires on Op:"identity" (needs_ext_login, added, updated, removed).
@@ -430,60 +411,38 @@ type IdentityEvent struct {
 	t *testing.T
 }
 
-// ControllerEvent fires on Op:"controller" (connected, disconnected).
-type ControllerEvent struct {
-	ActionEvent
-	Identifier string `json:"Identifier"`
-}
-
 // MfaEvent fires on Op:"mfa" (enrollment_required, enrollment_challenge,
 // enrollment_verification, mfa_auth_status, auth_challenge, enrollment_remove).
 type MfaEvent struct {
 	ActionEvent
-	Identifier      string   `json:"Identifier"`
 	Successful      bool     `json:"Successful"`
-	ProvisioningUrl string   `json:"ProvisioningUrl,omitempty"`
-	RecoveryCodes   []string `json:"RecoveryCodes,omitempty"`
+	Error           string   `json:"Error"`
+	ProvisioningUrl string   `json:"ProvisioningUrl"`
+	RecoveryCodes   []string `json:"RecoveryCodes"`
 
 	t *testing.T
 }
 
-// AuthenticationEvent fires on authentication transitions.
-type AuthenticationEvent struct {
-	ActionEvent
-	Identifier string `json:"Identifier"`
-}
-
-// LogLevelEvent fires when the daemon reports a log-level change.
-type LogLevelEvent struct {
-	ActionEvent
-	LogLevel string `json:"LogLevel"`
-}
-
 // TunnelStatusEvent carries the full tunnel status (no Action; extends StatusEvent directly).
+// Op is "status" on connect and "shutdown" on the way down.
 type TunnelStatusEvent struct {
 	StatusEvent
 	Status TunnelStatus `json:"Status"`
 }
 
-// MetricsEvent carries per-identity metric snapshots.
-type MetricsEvent struct {
-	StatusEvent
-	Identities []Identity `json:"Identities"`
-}
-
 type Service struct {
-	Name             string         `json:"Name"`
-	Protocols        []string       `json:"Protocols"`
-	Addresses        []Address      `json:"Addresses"`
-	Ports            []PortRange    `json:"Ports"`
-	OwnsIntercept    bool           `json:"OwnsIntercept"`
-	AssignedIP       string         `json:"AssignedIP"`
-	PostureChecks    []PostureCheck `json:"PostureChecks"`
-	IsAccessible     bool           `json:"IsAccessible"`
-	Timeout          int            `json:"Timeout"`
-	TimeoutRemaining int            `json:"TimeoutRemaining"`
-	Permissions      Permissions    `json:"Permissions"`
+	Id                     string         `json:"Id"`
+	Name                   string         `json:"Name"`
+	Protocols              []string       `json:"Protocols"`
+	Addresses              []Address      `json:"Addresses"`
+	AllowedSourceAddresses []Address      `json:"AllowedSourceAddresses"`
+	Ports                  []PortRange    `json:"Ports"`
+	OwnsIntercept          bool           `json:"OwnsIntercept"`
+	PostureChecks          []PostureCheck `json:"PostureChecks"`
+	IsAccessible           bool           `json:"IsAccessible"`
+	Timeout                int            `json:"Timeout"`
+	TimeoutRemaining       int            `json:"TimeoutRemaining"`
+	Permissions            Permissions    `json:"Permissions"`
 }
 
 type Permissions struct {
@@ -493,7 +452,7 @@ type Permissions struct {
 
 type Address struct {
 	IsHost   bool   `json:"IsHost"`
-	Hostname string `json:"Hostname"`
+	HostName string `json:"HostName"`
 	IP       string `json:"IP"`
 	Prefix   int    `json:"Prefix"`
 }
@@ -504,16 +463,17 @@ type PortRange struct {
 }
 
 type PostureCheck struct {
-	IsPassing bool   `json:"IsPassing"`
-	QueryType string `json:"QueryType"`
-	Id        string `json:"Id"`
+	IsPassing        bool   `json:"IsPassing"`
+	QueryType        string `json:"QueryType"`
+	Id               string `json:"Id"`
+	Timeout          int    `json:"Timeout"`
+	TimeoutRemaining int    `json:"TimeoutRemaining"`
 }
 
 // BulkServiceEvent fires on Op:"bulkservice" when an identity's authorized service
 // set changes; AddedServices/RemovedServices carry the delta.
 type BulkServiceEvent struct {
 	ActionEvent
-	Identifier      string    `json:"Identifier"`
 	AddedServices   []Service `json:"AddedServices"`
 	RemovedServices []Service `json:"RemovedServices"`
 }

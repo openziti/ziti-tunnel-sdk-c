@@ -212,13 +212,13 @@ func setupT2TService(
 		IdentityFilename: names.interceptIdentity,
 		JwtContent:       &interceptJWT,
 	})
-	require.True(t, resp.Success(), "AddIdentity to intercept ZET failed: %s\n%s", resp.Error, interceptZET.LogFile())
+	require.True(t, resp.Success, "AddIdentity to intercept ZET failed: %s\n%s", resp.Error, interceptZET.LogFile())
 
 	resp = hostClient.AddIdentity(t, testutil.AddIdentityData{
 		IdentityFilename: names.hostIdentity,
 		JwtContent:       &hostJWT,
 	})
-	require.True(t, resp.Success(), "AddIdentity to host ZET failed: %s\n%s", resp.Error, hostZET.LogFile())
+	require.True(t, resp.Success, "AddIdentity to host ZET failed: %s\n%s", resp.Error, hostZET.LogFile())
 
 	// Create controller-side resources.
 	require.NoError(t, overlay.CreateHostConfigV1(names.hostConfig, protocol, forwardAddr, forwardPort),
