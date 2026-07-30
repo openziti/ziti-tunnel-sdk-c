@@ -216,6 +216,12 @@
       "enrollment": { "ott": true }
     },
     {
+      "name": "test_mfa_posture_client",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
       "name": "test_remove_id",
       "isAdmin": false,
       "authPolicy": "@Default",
@@ -342,6 +348,22 @@
         "addresses": ["attr-admin.ziti"],
         "portRanges": [{ "low": 80, "high": 80 }]
       }
+    },
+    {
+      "name": "test_mfa_posture_intercept",
+      "configType": "@intercept.v1",
+      "data": {
+        "protocols": ["tcp"],
+        "addresses": ["mfa-posture.ziti"],
+        "portRanges": [{ "low": 8080, "high": 8080 }]
+      }
+    }
+  ],
+  "postureChecks": [
+    {
+      "name": "test_mfa_posture_check",
+      "typeId": "MFA",
+      "roleAttributes": ["test-mfa-posture"]
     }
   ],
   "services": [
@@ -354,6 +376,11 @@
       "name": "test_ext_auth_attr_admin_svc",
       "encryptionRequired": true,
       "configs": ["@test_ext_auth_attr_admin_intercept"]
+    },
+    {
+      "name": "test_mfa_posture_svc",
+      "encryptionRequired": true,
+      "configs": ["@test_mfa_posture_intercept"]
     }
   ],
   "servicePolicies": [
@@ -370,6 +397,14 @@
       "semantic": "AnyOf",
       "identityRoles": ["#ziti-admin"],
       "serviceRoles": ["@test_ext_auth_attr_admin_svc"]
+    },
+    {
+      "name": "test_mfa_posture_dial",
+      "type": "Dial",
+      "semantic": "AnyOf",
+      "identityRoles": ["@test_mfa_posture_client"],
+      "serviceRoles": ["@test_mfa_posture_svc"],
+      "postureCheckRoles": ["#test-mfa-posture"]
     }
   ]
 }
