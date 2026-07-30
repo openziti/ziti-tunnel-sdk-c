@@ -22,12 +22,19 @@ import (
 	"github.com/openziti/ziti-tunnel-sdk-c/tests/integration/testutil"
 )
 
+var logLevels = []string{"NONE", "ERROR", "WARN", "INFO", "DEBUG", "VERBOSE", "TRACE"}
+
 func TestSetLogLevel(t *testing.T) {
 	t.Run("succeeds", succeeds)
 }
 
 func succeeds(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
+		t.Cleanup(func() {
+			restoreResp := state.zetClient.SetLogLevel(t, logLevels[state.zetClient.Verbosity])
+			restoreResp.AssertSuccess()
+		})
+
 		setLogLevelResp := state.zetClient.SetLogLevel(t, "trace")
 		setLogLevelResp.AssertSuccess()
 	})
