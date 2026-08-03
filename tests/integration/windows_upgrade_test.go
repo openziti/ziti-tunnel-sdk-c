@@ -19,6 +19,7 @@ limitations under the License.
 package integration_test
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -36,6 +37,8 @@ func configSurvivesWindowsUpgrade(t *testing.T) {
 	testutil.RunWithTimeoutOf(t, time.Second*30, func(t *testing.T) {
 		fakeDrive := filepath.Join(t.TempDir(), "fakedrive")
 		idName := "test_backup_recovery"
+		tunIp := "100.200.0.1"
+		logLevel := "debug"
 
 		zet := &testutil.ZET{
 			BinPath:       state.zetClient.BinPath,
@@ -48,42 +51,66 @@ func configSurvivesWindowsUpgrade(t *testing.T) {
 		require.NoError(t, zet.Start())
 		t.Cleanup(zet.Stop)
 
-		// First run writes a config: enrolled identity + range and log level changed
+		// First ZET start writes a config: enrolled identity + range and log level changed
 		testutil.FetchAndEnrollJwt(t, state.overlay, zet, idName)
 		zet.WaitForControllerEvent(t, "connected", idName)
 		interfaceData := testutil.InterfaceConfigData{
-			L3: testutil.TunIPv4Data{TunIPv4: "100.200.0.1", TunPrefixLength: 24, AddDns: true},
+			L3: testutil.TunIPv4Data{TunIPv4: tunIp, TunPrefixLength: 24, AddDns: true},
 		}
 
 		updateConfigResponse := zet.UpdateInterfaceConfig(t, interfaceData)
 		updateConfigResponse.AssertSuccess()
 
-		logLevelResp := zet.SetLogLevel(t, "debug")
+		logLevelResp := zet.SetLogLevel(t, logLevel)
 		logLevelResp.AssertSuccess()
 
-		// Ensure config changes are saved before Stop()
-		zet.ReconnectEvents(t)
-		beforeUpgrade := zet.WaitForStatusEvent(t)
-		require.Equal(t, "100.200.0.1", beforeUpgrade.Status.TunIpv4)
-		require.Len(t, beforeUpgrade.Status.Identities, 1)
+		// A command response can arrive before its config save finishes writing, so wait for the settled file
+		var beforeRecovery testutil.TunnelStatus
+		configFile := filepath.Join(configDir, "config.json")
+		deadline := time.Now().Add(5 * time.Second)
+		for {
+			configJSON, err := os.ReadFile(configFile)
+			parsed := err == nil && json.Unmarshal(configJSON, &beforeRecovery) == nil
+			if parsed && beforeRecovery.LogLevel == logLevel {
+				break
+			}
+			require.False(t, time.Now().After(deadline), "config.json never settled")
+			time.Sleep(100 * time.Millisecond)
+		}
 		zet.Stop()
 
-		identityFile := beforeUpgrade.Status.Identities[0].Identifier
+		require.Equal(t, tunIp, beforeRecovery.TunIpv4)
+		require.Equal(t, 24, beforeRecovery.TunIpv4Mask)
+		require.True(t, beforeRecovery.AddDns)
+		require.Equal(t, 25, beforeRecovery.ApiPageSize)
+		require.False(t, beforeRecovery.L2Enabled)
+		require.Empty(t, beforeRecovery.PcapInterface)
+		require.NotEmpty(t, beforeRecovery.ServiceVersion.Version)
+		require.Len(t, beforeRecovery.Identities, 1)
+
+		identityFile := beforeRecovery.Identities[0].Identifier
 		enrolledIdentity, err := os.ReadFile(identityFile)
 		require.NoError(t, err)
 
-		// The upgrade: the whole dir moves to Windows.old.
+		// The "upgrade": the whole dir moves to Windows.old.
 		backupDir := filepath.Join(fakeDrive, `Windows.old\Windows\System32\config\systemprofile\AppData\Roaming\NetFoundry`)
 		require.NoError(t, os.MkdirAll(filepath.Dir(backupDir), 0o755))
 		require.NoError(t, os.Rename(configDir, backupDir))
 
-		// Second run must restore the backup before the config load.
+		// Second ZET start must restore the backup before the config load.
 		require.NoError(t, zet.Start())
-		afterUpgrade := zet.WaitForStatusEvent(t)
-		require.Equal(t, beforeUpgrade.Status.TunIpv4, afterUpgrade.Status.TunIpv4)
-		require.Equal(t, beforeUpgrade.Status.TunIpv4Mask, afterUpgrade.Status.TunIpv4Mask)
-		require.Equal(t, beforeUpgrade.Status.LogLevel, afterUpgrade.Status.LogLevel)
-		restored := findIdentityInStatus(t, afterUpgrade, identityFile)
+		afterRecovery := zet.WaitForStatusEvent(t)
+		require.Equal(t, beforeRecovery.TunIpv4, afterRecovery.Status.TunIpv4)
+		require.Equal(t, afterRecovery.Status.TunIpv4, afterRecovery.Status.IpInfo.Ip)
+		require.Equal(t, beforeRecovery.TunIpv4Mask, afterRecovery.Status.TunIpv4Mask)
+		require.Equal(t, beforeRecovery.LogLevel, afterRecovery.Status.LogLevel)
+		require.Equal(t, beforeRecovery.AddDns, afterRecovery.Status.AddDns)
+		require.Equal(t, beforeRecovery.ApiPageSize, afterRecovery.Status.ApiPageSize)
+		require.Equal(t, beforeRecovery.L2Enabled, afterRecovery.Status.L2Enabled)
+		require.Equal(t, beforeRecovery.PcapInterface, afterRecovery.Status.PcapInterface)
+		require.Equal(t, beforeRecovery.ServiceVersion, afterRecovery.Status.ServiceVersion)
+
+		restored := findIdentityInStatus(t, afterRecovery, identityFile)
 		assertValidJwtIdState(t, restored)
 		zet.WaitForControllerEvent(t, "connected", idName)
 
@@ -91,8 +118,8 @@ func configSurvivesWindowsUpgrade(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, enrolledIdentity, restoredIdentity, "restored identity file differs from the enrolled one")
 		_, statErr := os.Stat(filepath.Join(backupDir, "config.json"))
-		require.True(t, os.IsNotExist(statErr), "backup config.json was not consumed")
+		require.True(t, os.IsNotExist(statErr), "backup config was not removed")
 		_, statErr = os.Stat(filepath.Join(backupDir, idName+".json"))
-		require.True(t, os.IsNotExist(statErr), "backup identity file was not consumed")
+		require.True(t, os.IsNotExist(statErr), "backup identity was not removed")
 	})
 }
