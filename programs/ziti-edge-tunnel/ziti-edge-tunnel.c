@@ -1794,7 +1794,10 @@ static void run(int argc, char *argv[]) {
         }
     }
     ziti_tunnel_set_log_level(ziti_log_level(NULL, NULL));
-    set_log_level(ziti_log_level_label());
+    // don't override the saved LogLevel with -v
+    if (get_log_level_label() == NULL) {
+        set_log_level(ziti_log_level_label());
+    }
     ziti_tunnel_set_logger(ziti_logger);
 
     // prioritize command line flags, but respect config file values.
