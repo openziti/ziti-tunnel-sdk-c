@@ -19,10 +19,8 @@ limitations under the License.
 package integration_test
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -38,7 +36,6 @@ func configSurvivesWindowsUpgrade(t *testing.T) {
 	testutil.RunWithTimeoutOf(t, time.Second*30, func(t *testing.T) {
 		fakeDrive := filepath.Join(t.TempDir(), "fakedrive")
 		idName := "test_backup_recovery"
-		tunIp := "100.200.0.1"
 
 		zet := &testutil.ZET{
 			BinPath:       state.zetClient.BinPath,
@@ -55,7 +52,7 @@ func configSurvivesWindowsUpgrade(t *testing.T) {
 		testutil.FetchAndEnrollJwt(t, state.overlay, zet, idName)
 		zet.WaitForControllerEvent(t, "connected", idName)
 		interfaceData := testutil.InterfaceConfigData{
-			L3: testutil.TunIPv4Data{TunIPv4: tunIp, TunPrefixLength: 24, AddDns: true},
+			L3: testutil.TunIPv4Data{TunIPv4: "100.200.0.1", TunPrefixLength: 24, AddDns: true},
 		}
 
 		updateConfigResponse := zet.UpdateInterfaceConfig(t, interfaceData)
@@ -64,13 +61,14 @@ func configSurvivesWindowsUpgrade(t *testing.T) {
 		logLevelResp := zet.SetLogLevel(t, "debug")
 		logLevelResp.AssertSuccess()
 
-		// A single read can catch a stale or torn file.
-		// Poll until the settled config is on disk, then it is safe to kill.
-		configFile := filepath.Join(configDir, "config.json")
-		baseline := waitForSavedConfig(t, configFile, tunIp, "debug")
+		// Ensure config changes are saved before Stop()
+		zet.ReconnectEvents(t)
+		beforeUpgrade := zet.WaitForStatusEvent(t)
+		require.Equal(t, "100.200.0.1", beforeUpgrade.Status.TunIpv4)
+		require.Len(t, beforeUpgrade.Status.Identities, 1)
 		zet.Stop()
 
-		identityFile := baseline.Identities[0].Identifier
+		identityFile := beforeUpgrade.Status.Identities[0].Identifier
 		enrolledIdentity, err := os.ReadFile(identityFile)
 		require.NoError(t, err)
 
@@ -81,11 +79,11 @@ func configSurvivesWindowsUpgrade(t *testing.T) {
 
 		// Second run must restore the backup before the config load.
 		require.NoError(t, zet.Start())
-		status := zet.WaitForStatusEvent(t)
-		require.Equal(t, baseline.TunIpv4, status.Status.TunIpv4)
-		require.Equal(t, baseline.TunIpv4Mask, status.Status.TunIpv4Mask)
-		require.Equal(t, baseline.LogLevel, status.Status.LogLevel)
-		restored := findIdentityInStatus(t, status, identityFile)
+		afterUpgrade := zet.WaitForStatusEvent(t)
+		require.Equal(t, beforeUpgrade.Status.TunIpv4, afterUpgrade.Status.TunIpv4)
+		require.Equal(t, beforeUpgrade.Status.TunIpv4Mask, afterUpgrade.Status.TunIpv4Mask)
+		require.Equal(t, beforeUpgrade.Status.LogLevel, afterUpgrade.Status.LogLevel)
+		restored := findIdentityInStatus(t, afterUpgrade, identityFile)
 		assertValidJwtIdState(t, restored)
 		zet.WaitForControllerEvent(t, "connected", idName)
 
@@ -97,23 +95,4 @@ func configSurvivesWindowsUpgrade(t *testing.T) {
 		_, statErr = os.Stat(filepath.Join(backupDir, idName+".json"))
 		require.True(t, os.IsNotExist(statErr), "backup identity file was not consumed")
 	})
-}
-
-func waitForSavedConfig(t *testing.T, configFile string, tunIp string, logLevel string) testutil.TunnelStatus {
-	deadline := time.Now().Add(10 * time.Second)
-	var tunnelStatus testutil.TunnelStatus
-	for {
-		configJSON, readErr := os.ReadFile(configFile)
-		if readErr == nil && json.Unmarshal(configJSON, &tunnelStatus) == nil {
-			settled := tunnelStatus.TunIpv4 == tunIp &&
-				strings.EqualFold(tunnelStatus.LogLevel, logLevel) && len(tunnelStatus.Identities) == 1
-			if settled {
-				return tunnelStatus
-			}
-		}
-		if time.Now().After(deadline) {
-			require.FailNow(t, "config.json never contained the configured range, log level and identity", "file=%s status=%+v", configFile, tunnelStatus)
-		}
-		time.Sleep(250 * time.Millisecond)
-	}
 }
