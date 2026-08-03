@@ -35,15 +35,16 @@ func TestWindowsUpgrade(t *testing.T) {
 
 func configSurvivesWindowsUpgrade(t *testing.T) {
 	testutil.RunWithTimeoutOf(t, time.Second*30, func(t *testing.T) {
-		fakeDrive := filepath.Join(t.TempDir(), "fakedrive")
+		upgradeDir := filepath.Join(state.zetClient.RootDir, "upgrade")
+		require.NoError(t, os.RemoveAll(upgradeDir))
+		fakeDrive := filepath.Join(upgradeDir, "fakedrive")
 		idName := "test_backup_recovery"
 		tunIp := "100.200.0.1"
-		logLevel := "debug"
 
 		zet := &testutil.ZET{
 			BinPath:       state.zetClient.BinPath,
 			Discriminator: "zetUpgrade",
-			RootDir:       filepath.Join(t.TempDir(), "zet"),
+			RootDir:       filepath.Join(upgradeDir, "zet"),
 			Verbosity:     state.zetClient.Verbosity,
 			Env:           []string{"SystemDrive=" + fakeDrive},
 		}
@@ -58,20 +59,22 @@ func configSurvivesWindowsUpgrade(t *testing.T) {
 			L3: testutil.TunIPv4Data{TunIPv4: tunIp, TunPrefixLength: 24, AddDns: true},
 		}
 
+		logLevelResp := zet.SetLogLevel(t, "trace")
+		logLevelResp.AssertSuccess()
+
 		updateConfigResponse := zet.UpdateInterfaceConfig(t, interfaceData)
 		updateConfigResponse.AssertSuccess()
-
-		logLevelResp := zet.SetLogLevel(t, logLevel)
-		logLevelResp.AssertSuccess()
 
 		// A command response can arrive before its config save finishes writing, so wait for the settled file
 		var beforeRecovery testutil.TunnelStatus
 		configFile := filepath.Join(configDir, "config.json")
-		deadline := time.Now().Add(5 * time.Second)
+		deadline := time.Now().Add(2 * time.Second)
 		for {
+			var tunnelStatus testutil.TunnelStatus
 			configJSON, err := os.ReadFile(configFile)
-			parsed := err == nil && json.Unmarshal(configJSON, &beforeRecovery) == nil
-			if parsed && beforeRecovery.LogLevel == logLevel {
+			parsed := err == nil && json.Unmarshal(configJSON, &tunnelStatus) == nil
+			if parsed && tunnelStatus.TunIpv4 == tunIp {
+				beforeRecovery = tunnelStatus
 				break
 			}
 			require.False(t, time.Now().After(deadline), "config.json never settled")
@@ -81,6 +84,7 @@ func configSurvivesWindowsUpgrade(t *testing.T) {
 
 		require.Equal(t, tunIp, beforeRecovery.TunIpv4)
 		require.Equal(t, 24, beforeRecovery.TunIpv4Mask)
+		require.Equal(t, "trace", beforeRecovery.LogLevel)
 		require.True(t, beforeRecovery.AddDns)
 		require.Equal(t, 25, beforeRecovery.ApiPageSize)
 		require.False(t, beforeRecovery.L2Enabled)
