@@ -52,6 +52,8 @@ type ZET struct {
 	// TlsuvDebug, if > 0, sets the TLSUV_DEBUG env var (0=off..6=trace) for
 	// debugging TLS handshake / cert chain issues.
 	TlsuvDebug int
+	// Env entries (KEY=VALUE) appended to the parent environment for the ZET process.
+	Env []string
 	// Major and Minor are this binary's version, set by ProbeVersion.
 	Major int
 	Minor int
@@ -101,8 +103,12 @@ func (z *ZET) Start() error {
 	}
 
 	z.cmd = exec.Command(z.BinPath, args...)
-	if z.TlsuvDebug > 0 {
-		z.cmd.Env = append(os.Environ(), "TLSUV_DEBUG="+strconv.Itoa(z.TlsuvDebug))
+	if len(z.Env) > 0 || z.TlsuvDebug > 0 {
+		env := append(os.Environ(), z.Env...)
+		if z.TlsuvDebug > 0 {
+			env = append(env, "TLSUV_DEBUG="+strconv.Itoa(z.TlsuvDebug))
+		}
+		z.cmd.Env = env
 	}
 	stdout := newSyncBuffer()
 	stderr := newSyncBuffer()
