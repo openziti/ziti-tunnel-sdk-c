@@ -3519,11 +3519,6 @@ static void move_config_from_previous_windows_backup(uv_loop_t *loop) {
         NULL
     };
 
-    if (config_dir == NULL) {
-        ZITI_LOG(WARN, "config dir is not set, skipping windows backup recovery");
-        return;
-    }
-
     char* system_drive = getenv("SystemDrive");
 
     for (int i =0; backup_folders[i]; i++) {
