@@ -30,18 +30,18 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const windowsOldNetFoundry = `Windows.old\Windows\System32\config\systemprofile\AppData\Roaming\NetFoundry`
-
 type upgradeContext struct {
 	zet       *testutil.ZET
+	idName    string
 	configDir string
 	backupDir string
+	tunIp     string
 }
 
 // newUpgradeContext creates a ZET instance that uses a folder inside dirName
 // as its Windows system drive. dirName survives the run for inspection and is
 // deleted at the start of the next one.
-func newUpgradeContext(t *testing.T, dirName string) *upgradeContext {
+func newUpgradeContext(t *testing.T, dirName, idName string) *upgradeContext {
 	upgradeDir := filepath.Join(state.zetClient.RootDir, dirName)
 	require.NoError(t, os.RemoveAll(upgradeDir))
 	fakeDrive := filepath.Join(upgradeDir, "fakedrive")
@@ -55,8 +55,10 @@ func newUpgradeContext(t *testing.T, dirName string) *upgradeContext {
 	}
 	return &upgradeContext{
 		zet:       zet,
+		idName:    idName,
 		configDir: filepath.Join(zet.RootDir, "identities"),
-		backupDir: filepath.Join(fakeDrive, windowsOldNetFoundry),
+		backupDir: filepath.Join(fakeDrive, `Windows.old\Windows\System32\config\systemprofile\AppData\Roaming\NetFoundry`),
+		tunIp:     "100.200.0.1",
 	}
 }
 
@@ -67,12 +69,10 @@ func TestWindowsUpgrade(t *testing.T) {
 
 func configSurvivesWindowsUpgrade(t *testing.T) {
 	testutil.RunWithTimeoutOf(t, time.Second*30, func(t *testing.T) {
-		idName := "test_backup_recovery"
-		tunIp := "100.200.0.1"
-		c := newUpgradeContext(t, "upgrade")
-		beforeRecovery := c.runZetBeforeUpgrade(t, idName, tunIp, "trace")
+		c := newUpgradeContext(t, "upgrade", "test_backup_recovery")
+		beforeRecovery := c.runZetBeforeUpgrade(t)
 
-		require.Equal(t, tunIp, beforeRecovery.TunIpv4)
+		require.Equal(t, c.tunIp, beforeRecovery.TunIpv4)
 		require.Equal(t, 24, beforeRecovery.TunIpv4Mask)
 		require.Equal(t, "trace", beforeRecovery.LogLevel)
 		require.True(t, beforeRecovery.AddDns)
@@ -104,27 +104,25 @@ func configSurvivesWindowsUpgrade(t *testing.T) {
 
 		restored := findIdentityInStatus(t, afterRecovery, identityFile)
 		assertValidJwtIdState(t, restored)
-		c.zet.WaitForControllerEvent(t, "connected", idName)
+		c.zet.WaitForControllerEvent(t, "connected", c.idName)
 
 		restoredIdentity, err := os.ReadFile(identityFile)
 		require.NoError(t, err)
 		require.True(t, bytes.Equal(enrolledIdentity, restoredIdentity), "restored identity file differs from the enrolled one")
-		c.assertBackupRemoved(t, idName)
+		c.assertBackupRemoved(t)
 	})
 }
 
 func existingConfigWinsOverBackup(t *testing.T) {
 	testutil.RunWithTimeoutOf(t, time.Second*30, func(t *testing.T) {
-		idName := "test_existing_config_wins_over_backup"
-		tunIp := "100.202.0.1"
-		c := newUpgradeContext(t, "upgrade-existing-wins")
-		existingConfig := c.runZetBeforeUpgrade(t, idName, tunIp, "trace")
+		c := newUpgradeContext(t, "upgrade-existing-wins", "test_existing_config_wins_over_backup")
+		existingConfig := c.runZetBeforeUpgrade(t)
 
 		identityFile := existingConfig.Identities[0].Identifier
 		existingIdentity, err := os.ReadFile(identityFile)
 		require.NoError(t, err)
 
-		// A backup left behind (a failed delete on an earlier boot): its config
+		// A backup left behind like a failed delete on an earlier boot: its config
 		// differs from the existing one and its files are newer on disk.
 		require.NoError(t, os.MkdirAll(c.backupDir, 0o755))
 		backupConfig := existingConfig
@@ -133,37 +131,37 @@ func existingConfigWinsOverBackup(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, os.WriteFile(filepath.Join(c.backupDir, "config.json"), backupConfigJSON, 0o644))
 		backupIdentity := []byte(`{"marker":"dummy identity"}`)
-		require.NoError(t, os.WriteFile(filepath.Join(c.backupDir, idName+".json"), backupIdentity, 0o600))
+		require.NoError(t, os.WriteFile(filepath.Join(c.backupDir, c.idName+".json"), backupIdentity, 0o600))
 
 		// The existing files must win over the newer backup, and the backup is removed.
 		require.NoError(t, c.zet.Start())
 		afterRecovery := c.zet.WaitForStatusEvent(t)
-		require.Equal(t, tunIp, afterRecovery.Status.TunIpv4)
+		require.Equal(t, c.tunIp, afterRecovery.Status.TunIpv4)
 
 		identityAfterRecovery, err := os.ReadFile(identityFile)
 		require.NoError(t, err)
 		require.True(t, bytes.Equal(existingIdentity, identityAfterRecovery), "existing identity was overwritten by the backup")
-		c.zet.WaitForControllerEvent(t, "connected", idName)
+		c.zet.WaitForControllerEvent(t, "connected", c.idName)
 
-		c.assertBackupRemoved(t, idName)
+		c.assertBackupRemoved(t)
 	})
 }
 
-// runZetBeforeUpgrade starts ZET, enrolls idName, updates tunIp and logLevel,
-// waits for the config to write to disk, then stops ZET. It returns the saved
-// config as a TunnelStatus struct.
-func (c *upgradeContext) runZetBeforeUpgrade(t *testing.T, idName, tunIp, logLevel string) testutil.TunnelStatus {
+// runZetBeforeUpgrade starts ZET, enrolls the context's identity, updates the
+// tun IP and log level, waits for the config to write to disk, then stops ZET.
+// It returns the saved config as a TunnelStatus struct.
+func (c *upgradeContext) runZetBeforeUpgrade(t *testing.T) testutil.TunnelStatus {
 	require.NoError(t, c.zet.Start())
 	t.Cleanup(c.zet.Stop)
 
-	testutil.FetchAndEnrollJwt(t, state.overlay, c.zet, idName)
-	c.zet.WaitForControllerEvent(t, "connected", idName)
+	testutil.FetchAndEnrollJwt(t, state.overlay, c.zet, c.idName)
+	c.zet.WaitForControllerEvent(t, "connected", c.idName)
 
-	logLevelResp := c.zet.SetLogLevel(t, logLevel)
+	logLevelResp := c.zet.SetLogLevel(t, "trace")
 	logLevelResp.AssertSuccess()
 
 	interfaceData := testutil.InterfaceConfigData{
-		L3: testutil.TunIPv4Data{TunIPv4: tunIp, TunPrefixLength: 24, AddDns: true},
+		L3: testutil.TunIPv4Data{TunIPv4: c.tunIp, TunPrefixLength: 24, AddDns: true},
 	}
 	updateConfigResponse := c.zet.UpdateInterfaceConfig(t, interfaceData)
 	updateConfigResponse.AssertSuccess()
@@ -176,7 +174,7 @@ func (c *upgradeContext) runZetBeforeUpgrade(t *testing.T, idName, tunIp, logLev
 		var tunnelStatus testutil.TunnelStatus
 		configJSON, err := os.ReadFile(configFile)
 		parsed := err == nil && json.Unmarshal(configJSON, &tunnelStatus) == nil
-		if parsed && tunnelStatus.TunIpv4 == tunIp {
+		if parsed && tunnelStatus.TunIpv4 == c.tunIp {
 			savedConfig = tunnelStatus
 			break
 		}
@@ -189,9 +187,9 @@ func (c *upgradeContext) runZetBeforeUpgrade(t *testing.T, idName, tunIp, logLev
 	return savedConfig
 }
 
-func (c *upgradeContext) assertBackupRemoved(t *testing.T, idName string) {
+func (c *upgradeContext) assertBackupRemoved(t *testing.T) {
 	_, statErr := os.Stat(filepath.Join(c.backupDir, "config.json"))
 	require.True(t, os.IsNotExist(statErr), "backup config was not removed")
-	_, statErr = os.Stat(filepath.Join(c.backupDir, idName+".json"))
+	_, statErr = os.Stat(filepath.Join(c.backupDir, c.idName+".json"))
 	require.True(t, os.IsNotExist(statErr), "backup identity was not removed")
 }
