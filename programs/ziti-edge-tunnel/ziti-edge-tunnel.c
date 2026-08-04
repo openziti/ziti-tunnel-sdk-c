@@ -3564,7 +3564,7 @@ static void move_config_from_previous_windows_backup(uv_loop_t *loop) {
                 if (rc == 0 || rc == UV_EEXIST) {
                     // consume the backup either way so it cannot re-copy on a later start
                     if (remove(old_file) != 0) {
-                        ZITI_LOG(ERROR, "failed to remove backup file[%s]: %d/%s", old_file, errno, strerror(errno));
+                        ZITI_LOG(WARN, "failed to remove backup file[%s]: %d/%s", old_file, errno, strerror(errno));
                     }
                 }
                 uv_fs_req_cleanup(&fs_cpy);
