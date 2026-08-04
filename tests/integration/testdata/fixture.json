@@ -193,6 +193,12 @@
       "enrollment": { "ott": true }
     },
     {
+      "name": "test_existing_config_wins_over_backup",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
       "name": "test_ext_auth_none_happy",
       "isAdmin": false,
       "authPolicy": "@Default",
