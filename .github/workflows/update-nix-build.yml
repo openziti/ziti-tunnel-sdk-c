@@ -24,13 +24,20 @@ jobs:
       - name: Update Nix Build
         run: ./nix/update.sh
 
+      - name: Install Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: 'stable'
+
+      - name: Install Ziti CI
+        uses: openziti/ziti-ci@v1
+
       - name: Create Pull Request
         run: |
           BRANCH="update-nix-build"
           gh auth status
 
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          $(go env GOPATH)/bin/ziti-ci configure-git
 
           git checkout -b "$BRANCH"
           git add --all
@@ -44,3 +51,6 @@ jobs:
             --head "$BRANCH"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          gh_ci_key: ${{ secrets.GH_CI_KEY }}
+          ziti_ci_gpg_key: ${{ secrets.ZITI_CI_GPG_KEY }}
+          ziti_ci_gpg_key_id: ${{ secrets.ZITI_CI_GPG_KEY_ID }}
