@@ -3517,8 +3517,8 @@ void scm_service_stop() {
 
 static void move_config_from_previous_windows_backup(uv_loop_t *loop) {
     char *backup_folders[] = {
-        "Windows.~BT\\Windows\\System32\\config\\systemprofile\\AppData\\Roaming\\NetFoundry",
         "Windows.old\\Windows\\System32\\config\\systemprofile\\AppData\\Roaming\\NetFoundry",
+        "$Windows.~BT\\Windows\\System32\\config\\systemprofile\\AppData\\Roaming\\NetFoundry",
         NULL
     };
 
