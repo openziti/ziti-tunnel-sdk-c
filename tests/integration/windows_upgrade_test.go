@@ -65,6 +65,7 @@ func newUpgradeContext(t *testing.T, dirName, idName string) *upgradeContext {
 func TestWindowsUpgrade(t *testing.T) {
 	t.Run("configSurvivesWindowsUpgrade", configSurvivesWindowsUpgrade)
 	t.Run("existingConfigWinsOverBackup", existingConfigWinsOverBackup)
+	t.Run("restoreOnlyCopiesMissingFiles", restoreOnlyCopiesMissingFiles)
 }
 
 func configSurvivesWindowsUpgrade(t *testing.T) {
@@ -147,6 +148,42 @@ func existingConfigWinsOverBackup(t *testing.T) {
 		_, statErr := os.Stat(filepath.Join(c.backupDir, "config.json"))
 		require.NoError(t, statErr)
 		_, statErr = os.Stat(filepath.Join(c.backupDir, c.idName+".json"))
+		require.NoError(t, statErr)
+	})
+}
+
+func restoreOnlyCopiesMissingFiles(t *testing.T) {
+	testutil.RunWithTimeoutOf(t, time.Second*30, func(t *testing.T) {
+		c := newUpgradeContext(t, "upgrade-partial-restore", "test_restore_only_copies_missing_files")
+		preUpgradeConfig := c.runZetBeforeUpgrade(t)
+
+		identityFile := preUpgradeConfig.Identities[0].Identifier
+		enrolledIdentity, err := os.ReadFile(identityFile)
+		require.NoError(t, err)
+
+		// An earlier boot restored config.json but failed to delete it from the backup, and the identity copy failed.
+		require.NoError(t, os.MkdirAll(c.backupDir, 0o755))
+		require.NoError(t, os.Rename(identityFile, filepath.Join(c.backupDir, c.idName+".json")))
+		configJSON, err := os.ReadFile(filepath.Join(c.configDir, "config.json"))
+		require.NoError(t, err)
+		require.NoError(t, os.WriteFile(filepath.Join(c.backupDir, "config.json"), configJSON, 0o644))
+
+		require.NoError(t, c.zet.Start())
+		afterRecovery := c.zet.WaitForStatusEvent(t)
+		require.Equal(t, c.tunIp, afterRecovery.Status.TunIpv4)
+
+		restored := findIdentityInStatus(t, afterRecovery, identityFile)
+		assertValidJwtIdState(t, restored)
+		c.zet.WaitForControllerEvent(t, "connected", c.idName)
+
+		restoredIdentity, err := os.ReadFile(identityFile)
+		require.NoError(t, err)
+		require.True(t, bytes.Equal(enrolledIdentity, restoredIdentity), "restored identity file differs from the enrolled one")
+
+		// The missing identity was restored and deleted from the backup, the existing config should still be in the backup folder.
+		_, statErr := os.Stat(filepath.Join(c.backupDir, c.idName+".json"))
+		require.True(t, os.IsNotExist(statErr))
+		_, statErr = os.Stat(filepath.Join(c.backupDir, "config.json"))
 		require.NoError(t, statErr)
 	})
 }

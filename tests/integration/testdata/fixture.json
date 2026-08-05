@@ -199,6 +199,12 @@
       "enrollment": { "ott": true }
     },
     {
+      "name": "test_restore_only_copies_missing_files",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
       "name": "test_ext_auth_none_happy",
       "isAdmin": false,
       "authPolicy": "@Default",
