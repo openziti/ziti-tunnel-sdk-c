@@ -19,7 +19,6 @@ limitations under the License.
 package integration_test
 
 import (
-	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -83,8 +82,7 @@ func configSurvivesWindowsUpgrade(t *testing.T) {
 		require.NotEmpty(t, beforeRecovery.ServiceVersion.Version)
 
 		identityFile := beforeRecovery.Identities[0].Identifier
-		enrolledIdentity, err := os.ReadFile(identityFile)
-		require.NoError(t, err)
+		enrolledIdentity := testutil.ReadIdentityFile(t, identityFile)
 
 		// The "upgrade": the whole dir moves to Windows.old.
 		require.NoError(t, os.MkdirAll(filepath.Dir(c.backupDir), 0o755))
@@ -123,8 +121,7 @@ func existingConfigWinsOverBackup(t *testing.T) {
 		beforeRecovery := c.runZetBeforeUpgrade(t)
 
 		identityFile := beforeRecovery.Identities[0].Identifier
-		enrolledIdentity, err := os.ReadFile(identityFile)
-		require.NoError(t, err)
+		enrolledIdentity := testutil.ReadIdentityFile(t, identityFile)
 
 		// A backup left behind like a failed delete on an earlier boot: its config
 		// differs from the existing one and its files are newer on disk.
@@ -159,8 +156,7 @@ func restoreOnlyCopiesMissingFiles(t *testing.T) {
 		beforeRecovery := c.runZetBeforeUpgrade(t)
 
 		identityFile := beforeRecovery.Identities[0].Identifier
-		enrolledIdentity, err := os.ReadFile(identityFile)
-		require.NoError(t, err)
+		enrolledIdentity := testutil.ReadIdentityFile(t, identityFile)
 
 		// An earlier boot restored config.json but failed to delete it from the backup, and the identity copy failed.
 		require.NoError(t, os.MkdirAll(c.backupDir, 0o755))
@@ -187,10 +183,9 @@ func restoreOnlyCopiesMissingFiles(t *testing.T) {
 	})
 }
 
-func assertIdentityUnchanged(t *testing.T, identityFile string, enrolledIdentity []byte) {
-	identityAfterRecovery, err := os.ReadFile(identityFile)
-	require.NoError(t, err)
-	require.True(t, bytes.Equal(enrolledIdentity, identityAfterRecovery), "existing identity was overwritten by the backup")
+func assertIdentityUnchanged(t *testing.T, identityFile string, enrolledIdentity testutil.IdentityFileContent) {
+	identityAfterRecovery := testutil.ReadIdentityFile(t, identityFile)
+	require.True(t, enrolledIdentity.ID == identityAfterRecovery.ID, "existing identity was overwritten by the backup")
 }
 
 // runZetBeforeUpgrade starts ZET, enrolls the context's identity, updates the
