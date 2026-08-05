@@ -1794,8 +1794,8 @@ static void run(int argc, char *argv[]) {
         }
     }
     ziti_tunnel_set_log_level(ziti_log_level(NULL, NULL));
-    // don't override the saved LogLevel with -v
-    if (get_log_level_label() == NULL) {
+    // don't override the saved LogLevel, and don't seed a fresh config with the ephemeral -v level
+    if (get_log_level_label() == NULL && configured_log_level == NULL) {
         set_log_level(ziti_log_level_label());
     }
     ziti_tunnel_set_logger(ziti_logger);
