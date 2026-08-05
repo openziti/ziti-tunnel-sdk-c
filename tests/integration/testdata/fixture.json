@@ -187,7 +187,7 @@
       "enrollment": { "ott": true }
     },
     {
-      "name": "test_backup_recovery",
+      "name": "test_config_survives_windows_upgrade",
       "isAdmin": false,
       "authPolicy": "@Default",
       "enrollment": { "ott": true }

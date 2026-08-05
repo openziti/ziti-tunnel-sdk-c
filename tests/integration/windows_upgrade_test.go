@@ -19,7 +19,6 @@ limitations under the License.
 package integration_test
 
 import (
-	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -70,7 +69,7 @@ func TestWindowsUpgrade(t *testing.T) {
 
 func configSurvivesWindowsUpgrade(t *testing.T) {
 	testutil.RunWithTimeoutOf(t, time.Second*30, func(t *testing.T) {
-		c := newUpgradeContext(t, "upgrade", "test_backup_recovery")
+		c := newUpgradeContext(t, "upgrade", "test_config_survives_windows_upgrade")
 		beforeRecovery := c.runZetBeforeUpgrade(t)
 
 		require.Equal(t, c.tunIp, beforeRecovery.TunIpv4)
@@ -109,24 +108,29 @@ func configSurvivesWindowsUpgrade(t *testing.T) {
 
 		restoredIdentity, err := os.ReadFile(identityFile)
 		require.NoError(t, err)
-		require.True(t, bytes.Equal(enrolledIdentity, restoredIdentity), "restored identity file differs from the enrolled one")
-		c.assertBackupRemoved(t)
+		require.Equal(t, enrolledIdentity, restoredIdentity)
+
+		// Ensure backup files were deleted
+		_, statErr := os.Stat(filepath.Join(c.backupDir, "config.json"))
+		require.True(t, os.IsNotExist(statErr), "backup config was not removed")
+		_, statErr = os.Stat(filepath.Join(c.backupDir, c.idName+".json"))
+		require.True(t, os.IsNotExist(statErr), "backup identity was not removed")
 	})
 }
 
 func existingConfigWinsOverBackup(t *testing.T) {
 	testutil.RunWithTimeoutOf(t, time.Second*30, func(t *testing.T) {
 		c := newUpgradeContext(t, "upgrade-existing-wins", "test_existing_config_wins_over_backup")
-		existingConfig := c.runZetBeforeUpgrade(t)
+		beforeRecovery := c.runZetBeforeUpgrade(t)
 
-		identityFile := existingConfig.Identities[0].Identifier
+		identityFile := beforeRecovery.Identities[0].Identifier
 		existingIdentity, err := os.ReadFile(identityFile)
 		require.NoError(t, err)
 
 		// A backup left behind like a failed delete on an earlier boot: its config
 		// differs from the existing one and its files are newer on disk.
 		require.NoError(t, os.MkdirAll(c.backupDir, 0o755))
-		backupConfig := existingConfig
+		backupConfig := beforeRecovery
 		backupConfig.TunIpv4 = "100.203.0.1"
 		backupConfigJSON, err := json.Marshal(backupConfig)
 		require.NoError(t, err)
@@ -141,7 +145,7 @@ func existingConfigWinsOverBackup(t *testing.T) {
 
 		identityAfterRecovery, err := os.ReadFile(identityFile)
 		require.NoError(t, err)
-		require.True(t, bytes.Equal(existingIdentity, identityAfterRecovery), "existing identity was overwritten by the backup")
+		require.Equal(t, existingIdentity, identityAfterRecovery)
 		c.zet.WaitForControllerEvent(t, "connected", c.idName)
 
 		// Ensure backup files were not deleted
@@ -155,9 +159,9 @@ func existingConfigWinsOverBackup(t *testing.T) {
 func restoreOnlyCopiesMissingFiles(t *testing.T) {
 	testutil.RunWithTimeoutOf(t, time.Second*30, func(t *testing.T) {
 		c := newUpgradeContext(t, "upgrade-partial-restore", "test_restore_only_copies_missing_files")
-		preUpgradeConfig := c.runZetBeforeUpgrade(t)
+		beforeRecovery := c.runZetBeforeUpgrade(t)
 
-		identityFile := preUpgradeConfig.Identities[0].Identifier
+		identityFile := beforeRecovery.Identities[0].Identifier
 		enrolledIdentity, err := os.ReadFile(identityFile)
 		require.NoError(t, err)
 
@@ -178,7 +182,7 @@ func restoreOnlyCopiesMissingFiles(t *testing.T) {
 
 		restoredIdentity, err := os.ReadFile(identityFile)
 		require.NoError(t, err)
-		require.True(t, bytes.Equal(enrolledIdentity, restoredIdentity), "restored identity file differs from the enrolled one")
+		require.Equal(t, enrolledIdentity, restoredIdentity)
 
 		// The missing identity was restored and deleted from the backup, the existing config should still be in the backup folder.
 		_, statErr := os.Stat(filepath.Join(c.backupDir, c.idName+".json"))
@@ -228,9 +232,3 @@ func (c *upgradeContext) runZetBeforeUpgrade(t *testing.T) testutil.TunnelStatus
 	return savedConfig
 }
 
-func (c *upgradeContext) assertBackupRemoved(t *testing.T) {
-	_, statErr := os.Stat(filepath.Join(c.backupDir, "config.json"))
-	require.True(t, os.IsNotExist(statErr), "backup config was not removed")
-	_, statErr = os.Stat(filepath.Join(c.backupDir, c.idName+".json"))
-	require.True(t, os.IsNotExist(statErr), "backup identity was not removed")
-}
