@@ -19,6 +19,7 @@ limitations under the License.
 package integration_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -106,9 +107,7 @@ func configSurvivesWindowsUpgrade(t *testing.T) {
 		assertValidJwtIdState(t, restored)
 		c.zet.WaitForControllerEvent(t, "connected", c.idName)
 
-		restoredIdentity, err := os.ReadFile(identityFile)
-		require.NoError(t, err)
-		require.Equal(t, enrolledIdentity, restoredIdentity)
+		assertIdentityUnchanged(t, identityFile, enrolledIdentity)
 
 		// Ensure backup files were deleted
 		_, statErr := os.Stat(filepath.Join(c.backupDir, "config.json"))
@@ -124,7 +123,7 @@ func existingConfigWinsOverBackup(t *testing.T) {
 		beforeRecovery := c.runZetBeforeUpgrade(t)
 
 		identityFile := beforeRecovery.Identities[0].Identifier
-		existingIdentity, err := os.ReadFile(identityFile)
+		enrolledIdentity, err := os.ReadFile(identityFile)
 		require.NoError(t, err)
 
 		// A backup left behind like a failed delete on an earlier boot: its config
@@ -143,9 +142,7 @@ func existingConfigWinsOverBackup(t *testing.T) {
 		afterRecovery := c.zet.WaitForStatusEvent(t)
 		require.Equal(t, c.tunIp, afterRecovery.Status.TunIpv4)
 
-		identityAfterRecovery, err := os.ReadFile(identityFile)
-		require.NoError(t, err)
-		require.Equal(t, existingIdentity, identityAfterRecovery)
+		assertIdentityUnchanged(t, identityFile, enrolledIdentity)
 		c.zet.WaitForControllerEvent(t, "connected", c.idName)
 
 		// Ensure backup files were not deleted
@@ -180,9 +177,7 @@ func restoreOnlyCopiesMissingFiles(t *testing.T) {
 		assertValidJwtIdState(t, restored)
 		c.zet.WaitForControllerEvent(t, "connected", c.idName)
 
-		restoredIdentity, err := os.ReadFile(identityFile)
-		require.NoError(t, err)
-		require.Equal(t, enrolledIdentity, restoredIdentity)
+		assertIdentityUnchanged(t, identityFile, enrolledIdentity)
 
 		// The missing identity was restored and deleted from the backup, the existing config should still be in the backup folder.
 		_, statErr := os.Stat(filepath.Join(c.backupDir, c.idName+".json"))
@@ -190,6 +185,12 @@ func restoreOnlyCopiesMissingFiles(t *testing.T) {
 		_, statErr = os.Stat(filepath.Join(c.backupDir, "config.json"))
 		require.NoError(t, statErr)
 	})
+}
+
+func assertIdentityUnchanged(t *testing.T, identityFile string, enrolledIdentity []byte) {
+	identityAfterRecovery, err := os.ReadFile(identityFile)
+	require.NoError(t, err)
+	require.True(t, bytes.Equal(enrolledIdentity, identityAfterRecovery), "existing identity was overwritten by the backup")
 }
 
 // runZetBeforeUpgrade starts ZET, enrolls the context's identity, updates the
