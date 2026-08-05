@@ -3552,20 +3552,18 @@ static void move_config_from_previous_windows_backup(uv_loop_t *loop) {
                 char new_file[PATH_MAX];
                 snprintf(new_file, PATH_MAX, "%s\\%s", config_dir, file.name);
                 uv_fs_t fs_cpy;
-                // EXCL: an existing live file is always newer than what the upgrade left behind
+                // EXCL: the upgrade empties the live dir, so an existing file was written after the upgrade and wins
                 rc = uv_fs_copyfile(loop, &fs_cpy, old_file, new_file, UV_FS_COPYFILE_EXCL, NULL);
                 if (rc == 0) {
                     ZITI_LOG(INFO, "Restored old identity from the backup path - %s to new path - %s", old_file, new_file);
-                } else if (rc == UV_EEXIST) {
-                    ZITI_LOG(INFO, "keeping existing file %s, discarding backup %s", new_file, old_file);
-                } else {
-                    ZITI_LOG(ERROR, "failed to copy backup identity file[%s]: %d/%s", old_file, rc, uv_strerror(rc));
-                }
-                if (rc == 0 || rc == UV_EEXIST) {
-                    // consume the backup either way so it cannot re-copy on a later start
                     if (remove(old_file) != 0) {
                         ZITI_LOG(WARN, "failed to remove backup file[%s]: %d/%s", old_file, errno, strerror(errno));
                     }
+                } else if (rc == UV_EEXIST) {
+                    // never delete a backup that was not restored, Windows prunes Windows.old on its own
+                    ZITI_LOG(WARN, "keeping existing file %s, backup file left at %s", new_file, old_file);
+                } else {
+                    ZITI_LOG(ERROR, "failed to copy backup identity file[%s]: %d/%s", old_file, rc, uv_strerror(rc));
                 }
                 uv_fs_req_cleanup(&fs_cpy);
             }

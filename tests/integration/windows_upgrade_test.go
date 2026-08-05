@@ -133,7 +133,7 @@ func existingConfigWinsOverBackup(t *testing.T) {
 		backupIdentity := []byte(`{"marker":"dummy identity"}`)
 		require.NoError(t, os.WriteFile(filepath.Join(c.backupDir, c.idName+".json"), backupIdentity, 0o600))
 
-		// The existing files must win over the newer backup, and the backup is removed.
+		// The existing files must win over the newer backup, and the backup is left in place.
 		require.NoError(t, c.zet.Start())
 		afterRecovery := c.zet.WaitForStatusEvent(t)
 		require.Equal(t, c.tunIp, afterRecovery.Status.TunIpv4)
@@ -143,7 +143,11 @@ func existingConfigWinsOverBackup(t *testing.T) {
 		require.True(t, bytes.Equal(existingIdentity, identityAfterRecovery), "existing identity was overwritten by the backup")
 		c.zet.WaitForControllerEvent(t, "connected", c.idName)
 
-		c.assertBackupRemoved(t)
+		// Ensure backup files were not deleted
+		_, statErr := os.Stat(filepath.Join(c.backupDir, "config.json"))
+		require.NoError(t, statErr)
+		_, statErr = os.Stat(filepath.Join(c.backupDir, c.idName+".json"))
+		require.NoError(t, statErr)
 	})
 }
 
