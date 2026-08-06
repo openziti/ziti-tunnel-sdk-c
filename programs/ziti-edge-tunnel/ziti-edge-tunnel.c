@@ -1660,6 +1660,10 @@ static void run(int argc, char *argv[]) {
         snprintf(config_file, PATH_MAX - 1, "%s%c%s", config_dir, PATH_SEP, "config.json");
         normalize_identifier(config_file);
 
+#if _WIN32
+        // must run before the config load or the recovered config is never read
+        move_config_from_previous_windows_backup(global_loop_ref);
+#endif
         load_tunnel_status_from_file(config_file);
         if (config_dir) {
             set_config_dir(config_dir);
@@ -1773,7 +1777,6 @@ static void run(int argc, char *argv[]) {
         ZITI_LOG(INFO, "	- openssl config   : configured using %s found by %s", openssl_conf_resolved, openssl_conf_found_by);
     }
     ZITI_LOG(INFO,"============================================================================");
-    move_config_from_previous_windows_backup(global_loop_ref);
 
     ZITI_LOG(DEBUG, "granting se_debug privilege to current process to allow access to privileged processes during posture checks");
     //ensure this process has the necessary access token to get the full path of privileged processes
@@ -1791,7 +1794,10 @@ static void run(int argc, char *argv[]) {
         }
     }
     ziti_tunnel_set_log_level(ziti_log_level(NULL, NULL));
-    set_log_level(ziti_log_level_label());
+    // seed a fresh config with the default level, never the ephemeral -v/ZITI_LOG level
+    if (get_log_level_label() == NULL) {
+        set_log_level("info");
+    }
     ziti_tunnel_set_logger(ziti_logger);
 
     // prioritize command line flags, but respect config file values.
@@ -3511,8 +3517,8 @@ void scm_service_stop() {
 
 static void move_config_from_previous_windows_backup(uv_loop_t *loop) {
     char *backup_folders[] = {
-        "Windows.~BT\\Windows\\System32\\config\\systemprofile\\AppData\\Roaming\\NetFoundry",
         "Windows.old\\Windows\\System32\\config\\systemprofile\\AppData\\Roaming\\NetFoundry",
+        "$Windows.~BT\\Windows\\System32\\config\\systemprofile\\AppData\\Roaming\\NetFoundry",
         NULL
     };
 
@@ -3546,11 +3552,16 @@ static void move_config_from_previous_windows_backup(uv_loop_t *loop) {
                 char new_file[PATH_MAX];
                 snprintf(new_file, PATH_MAX, "%s\\%s", config_dir, file.name);
                 uv_fs_t fs_cpy;
-                rc = uv_fs_copyfile(loop, &fs_cpy, old_file, new_file, 0, NULL);
+                // EXCL: the upgrade empties the live dir, so an existing file was written after the upgrade and wins
+                rc = uv_fs_copyfile(loop, &fs_cpy, old_file, new_file, UV_FS_COPYFILE_EXCL, NULL);
                 if (rc == 0) {
-                    ZITI_LOG(INFO, "Restored old identity from the backup path - %s to new path - %s", old_file , new_file);
-                    ZITI_LOG(INFO, "Removing old identity from the backup path - %s", old_file);
-                    remove(old_file);
+                    ZITI_LOG(INFO, "Restored old identity from the backup path - %s to new path - %s", old_file, new_file);
+                    if (remove(old_file) != 0) {
+                        ZITI_LOG(WARN, "failed to remove backup file[%s]: %d/%s", old_file, errno, strerror(errno));
+                    }
+                } else if (rc == UV_EEXIST) {
+                    // never delete a backup that was not restored, Windows prunes Windows.old on its own
+                    ZITI_LOG(WARN, "keeping existing file %s, backup file left at %s", new_file, old_file);
                 } else {
                     ZITI_LOG(ERROR, "failed to copy backup identity file[%s]: %d/%s", old_file, rc, uv_strerror(rc));
                 }
