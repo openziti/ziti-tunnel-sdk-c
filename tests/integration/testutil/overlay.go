@@ -565,18 +565,18 @@ func (o *Overlay) CreateIdentityWithExternalId(t *testing.T, name, externalID, a
 	t.Logf("controller identity %q created", name)
 }
 
-// CAResult identifies a registered 3rd-party CA.
+// CAResult identifies a registered third-party CA.
 type CAResult struct {
 	ID   string
 	Name string
 }
 
-// caPkiPath is the on-disk PKI directory for a CA created by Create3rdPartyCA.
+// caPkiPath is the on-disk PKI directory for a CA created by CreateLocalPkiCA.
 func (o *Overlay) caPkiPath(name string) string {
 	return filepath.Join(o.Home, "third-party-pki", name)
 }
 
-// CreateLocalPkiCA mints a root CA on disk without registering it on the
+// CreateLocalPkiCA creates a root CA on disk without registering it on the
 // controller.
 func (o *Overlay) CreateLocalPkiCA(t *testing.T, name string) {
 	// ziti pki refuses to overwrite PKI left by a previous run
@@ -585,11 +585,11 @@ func (o *Overlay) CreateLocalPkiCA(t *testing.T, name string) {
 	require.NoError(t, err, "pki create ca %s", name)
 }
 
-// Create3rdPartyCA mints a root CA, registers it on the controller for
-// auth+ottca+autoca enrollment, and verifies it. Auto-provisioned identities
-// are named with the controller default format, [caName]-[commonName].
-func (o *Overlay) Create3rdPartyCA(t *testing.T, name string) CAResult {
-	t.Logf("creating 3rd-party CA %q", name)
+// CreateThirdPartyCA creates a root CA, registers it on the controller for
+// auth+ottca+autoca enrollment, and verifies it. Identities created by autoca
+// enrollment are named with the controller default format, [caName]-[commonName].
+func (o *Overlay) CreateThirdPartyCA(t *testing.T, name string) CAResult {
+	t.Logf("creating third-party CA %q", name)
 	o.CreateLocalPkiCA(t, name)
 
 	caCert := filepath.Join(o.caPkiPath(name), "certs", name+".cert")
@@ -600,7 +600,7 @@ func (o *Overlay) Create3rdPartyCA(t *testing.T, name string) CAResult {
 	// --cacert/--cakey makes the CLI fetch the verificationToken and mint the CN=token cert itself
 	_, err = o.execZiti("edge", "verify", "ca", name, "--cacert", caCert, "--cakey", filepath.Join(o.caPkiPath(name), "keys", name+".key"))
 	require.NoError(t, err, "verify ca %s", name)
-	t.Logf("3rd-party CA %q registered and verified with id=%s", name, id)
+	t.Logf("third-party CA %q registered and verified with id=%s", name, id)
 	return CAResult{ID: id, Name: name}
 }
 

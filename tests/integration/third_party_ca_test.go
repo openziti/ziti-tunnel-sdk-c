@@ -24,14 +24,14 @@ import (
 )
 
 func TestThirdPartyCa(t *testing.T) {
-	t.Run("enrollWithCaSignedCert", enrollWithCaSignedCert)
-	t.Run("enrollOttcaWithPreCreatedIdentity", enrollOttcaWithPreCreatedIdentity)
+	t.Run("autocaEnrollCreatesIdentity", autocaEnrollCreatesIdentity)
+	t.Run("ottcaEnrollsPreCreatedIdentity", ottcaEnrollsPreCreatedIdentity)
 	t.Run("rejectsCertFromUnregisteredCa", rejectsCertFromUnregisteredCa)
 }
 
-func enrollWithCaSignedCert(t *testing.T) {
+func autocaEnrollCreatesIdentity(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
-		ca := state.overlay.Create3rdPartyCA(t, "test_tpca")
+		ca := state.overlay.CreateThirdPartyCA(t, "test_tpca")
 		commonName := "test_tpca_user1"
 		cert, key := state.overlay.CreateClientCert(t, ca.Name, commonName)
 		caJwt := state.overlay.GetCaJwt(t, ca.ID)
@@ -53,9 +53,9 @@ func enrollWithCaSignedCert(t *testing.T) {
 	})
 }
 
-func enrollOttcaWithPreCreatedIdentity(t *testing.T) {
+func ottcaEnrollsPreCreatedIdentity(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
-		ca := state.overlay.Create3rdPartyCA(t, "test_tpca_ottca")
+		ca := state.overlay.CreateThirdPartyCA(t, "test_tpca_ottca")
 		idName := "test_tpca_ottca_user1"
 		ottcaJwt := state.overlay.CreateOttCaEnrollment(t, idName, ca.Name)
 		cert, key := state.overlay.CreateClientCert(t, ca.Name, idName)
@@ -72,7 +72,7 @@ func enrollOttcaWithPreCreatedIdentity(t *testing.T) {
 
 func rejectsCertFromUnregisteredCa(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
-		ca := state.overlay.Create3rdPartyCA(t, "test_tpca_neg")
+		ca := state.overlay.CreateThirdPartyCA(t, "test_tpca_neg")
 		caJwt := state.overlay.GetCaJwt(t, ca.ID)
 		state.overlay.CreateLocalPkiCA(t, "test_tpca_unregistered")
 		cert, key := state.overlay.CreateClientCert(t, "test_tpca_unregistered", "test_tpca_unregistered_user1")
