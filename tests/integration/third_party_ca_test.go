@@ -26,6 +26,7 @@ import (
 
 func TestThirdPartyCa(t *testing.T) {
 	t.Run("enrollWithCaSignedCert", enrollWithCaSignedCert)
+	t.Run("rejectsCertFromUnregisteredCa", rejectsCertFromUnregisteredCa)
 }
 
 func enrollWithCaSignedCert(t *testing.T) {
@@ -49,5 +50,18 @@ func enrollWithCaSignedCert(t *testing.T) {
 		idFile := testutil.ReadIdentityFile(t, added.Id.Identifier)
 		require.Equal(t, cert, idFile.ID.Cert)
 		require.Equal(t, key, idFile.ID.Key)
+	})
+}
+
+func rejectsCertFromUnregisteredCa(t *testing.T) {
+	testutil.RunWithTimeoutOf(t, 15*time.Second, func(t *testing.T) {
+		ca := state.overlay.Create3rdPartyCA(t, "test_tpca_neg")
+		caJwt := state.overlay.GetCaJwt(t, ca.ID)
+		state.overlay.CreateLocalPkiCA(t, "test_tpca_unregistered")
+		cert, key := state.overlay.CreateClientCert(t, "test_tpca_unregistered", "test_tpca_unregistered_user1")
+
+		identityData := testutil.NewCaIdentityData("test_tpca_unregistered_user1", caJwt, cert, key)
+		addResp := state.zetClient.AddIdentity(t, identityData)
+		addResp.AssertFail(500, "")
 	})
 }

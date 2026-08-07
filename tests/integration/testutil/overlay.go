@@ -576,15 +576,21 @@ func (o *Overlay) caPkiPath(name string) string {
 	return filepath.Join(o.Home, "third-party-pki", name)
 }
 
+// CreateLocalPkiCA mints a root CA on disk without registering it on the
+// controller.
+func (o *Overlay) CreateLocalPkiCA(t *testing.T, name string) {
+	// ziti pki refuses to overwrite PKI left by a previous run
+	require.NoError(t, os.RemoveAll(o.caPkiPath(name)), "clear stale pki for %s", name)
+	_, err := o.execZiti("pki", "create", "ca", "--pki-root", filepath.Join(o.Home, "third-party-pki"), "--ca-file", name, "--ca-name", name)
+	require.NoError(t, err, "pki create ca %s", name)
+}
+
 // Create3rdPartyCA mints a root CA, registers it on the controller for
 // auth+ottca+autoca enrollment, and verifies it. Auto-provisioned identities
 // are named with the controller default format, [caName]-[commonName].
 func (o *Overlay) Create3rdPartyCA(t *testing.T, name string) CAResult {
 	t.Logf("creating 3rd-party CA %q", name)
-	// ziti pki refuses to overwrite PKI left by a previous run
-	require.NoError(t, os.RemoveAll(o.caPkiPath(name)), "clear stale pki for %s", name)
-	_, err := o.execZiti("pki", "create", "ca", "--pki-root", filepath.Join(o.Home, "third-party-pki"), "--ca-file", name, "--ca-name", name)
-	require.NoError(t, err, "pki create ca %s", name)
+	o.CreateLocalPkiCA(t, name)
 
 	caCert := filepath.Join(o.caPkiPath(name), "certs", name+".cert")
 	out, err := o.execZiti("edge", "create", "ca", name, caCert, "--auth", "--ottca", "--autoca")
