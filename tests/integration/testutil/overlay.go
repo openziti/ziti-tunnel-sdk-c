@@ -604,6 +604,25 @@ func (o *Overlay) Create3rdPartyCA(t *testing.T, name string) CAResult {
 	return CAResult{ID: id, Name: name}
 }
 
+// CreateOttCaEnrollment adds an ottca enrollment binding the identity to the
+// CA and returns the enrollment JWT.
+func (o *Overlay) CreateOttCaEnrollment(t *testing.T, identityName, caName string) string {
+	out, err := o.execZiti("edge", "create", "enrollment", "ottca", identityName, caName)
+	require.NoError(t, err, "create ottca enrollment for %s", identityName)
+	enrollmentID := string(bytes.TrimSpace(out))
+	listOut, err := o.execZiti("edge", "list", "enrollments", fmt.Sprintf("id=%q", enrollmentID), "-j")
+	require.NoError(t, err, "list enrollment %s", enrollmentID)
+	var resp struct {
+		Data []struct {
+			JWT string `json:"jwt"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(listOut, &resp), "parse enrollment %s", enrollmentID)
+	require.Len(t, resp.Data, 1, "expected exactly one enrollment %s", enrollmentID)
+	require.NotEmpty(t, resp.Data[0].JWT, "enrollment %s has no jwt", enrollmentID)
+	return resp.Data[0].JWT
+}
+
 // CreateClientCert signs a client cert with the given common name by the named
 // CA and returns the cert and key PEM contents (the AddIdentity command carries
 // content, not file paths).

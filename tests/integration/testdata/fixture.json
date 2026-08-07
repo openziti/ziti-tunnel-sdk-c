@@ -13,6 +13,12 @@
   ],
   "identities": [
     {
+      "name": "test_tpca_ottca_user1",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
       "name": "test_restart_jwt",
       "isAdmin": false,
       "authPolicy": "@Default",

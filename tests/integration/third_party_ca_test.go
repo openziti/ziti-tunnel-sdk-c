@@ -18,7 +18,6 @@ package integration_test
 
 import (
 	"testing"
-	"time"
 
 	"github.com/openziti/ziti-tunnel-sdk-c/tests/integration/testutil"
 	"github.com/stretchr/testify/require"
@@ -26,11 +25,12 @@ import (
 
 func TestThirdPartyCa(t *testing.T) {
 	t.Run("enrollWithCaSignedCert", enrollWithCaSignedCert)
+	t.Run("enrollOttcaWithPreCreatedIdentity", enrollOttcaWithPreCreatedIdentity)
 	t.Run("rejectsCertFromUnregisteredCa", rejectsCertFromUnregisteredCa)
 }
 
 func enrollWithCaSignedCert(t *testing.T) {
-	testutil.RunWithTimeoutOf(t, 15*time.Second, func(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
 		ca := state.overlay.Create3rdPartyCA(t, "test_tpca")
 		commonName := "test_tpca_user1"
 		cert, key := state.overlay.CreateClientCert(t, ca.Name, commonName)
@@ -53,8 +53,25 @@ func enrollWithCaSignedCert(t *testing.T) {
 	})
 }
 
+func enrollOttcaWithPreCreatedIdentity(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
+		ca := state.overlay.Create3rdPartyCA(t, "test_tpca_ottca")
+		idName := "test_tpca_ottca_user1"
+		ottcaJwt := state.overlay.CreateOttCaEnrollment(t, idName, ca.Name)
+		cert, key := state.overlay.CreateClientCert(t, ca.Name, idName)
+
+		identityData := testutil.NewCaIdentityData(idName, ottcaJwt, cert, key)
+		addResp := state.zetClient.AddIdentity(t, identityData)
+		addResp.AssertSuccess()
+
+		added := state.zetClient.WaitForIdentityEvent(t, "added", idName)
+		require.True(t, added.Id.Active)
+		state.zetClient.WaitForControllerEvent(t, "connected", idName)
+	})
+}
+
 func rejectsCertFromUnregisteredCa(t *testing.T) {
-	testutil.RunWithTimeoutOf(t, 15*time.Second, func(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
 		ca := state.overlay.Create3rdPartyCA(t, "test_tpca_neg")
 		caJwt := state.overlay.GetCaJwt(t, ca.ID)
 		state.overlay.CreateLocalPkiCA(t, "test_tpca_unregistered")
