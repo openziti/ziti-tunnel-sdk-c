@@ -18,6 +18,7 @@ package testutil
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -564,6 +565,90 @@ func (o *Overlay) CreateIdentityWithExternalId(t *testing.T, name, externalID, a
 	t.Logf("controller identity %q created", name)
 }
 
+// CAResult identifies a registered 3rd-party CA.
+type CAResult struct {
+	ID   string
+	Name string
+}
+
+// caPkiPath is the on-disk PKI directory for a CA created by Create3rdPartyCA.
+func (o *Overlay) caPkiPath(name string) string {
+	return filepath.Join(o.Home, "third-party-pki", name)
+}
+
+// Create3rdPartyCA mints a root CA, registers it on the controller for
+// auth+ottca+autoca enrollment, and verifies it. Auto-provisioned identities
+// are named with the controller default format, [caName]-[commonName].
+func (o *Overlay) Create3rdPartyCA(t *testing.T, name string) CAResult {
+	t.Logf("creating 3rd-party CA %q", name)
+	// ziti pki refuses to overwrite PKI left by a previous run
+	require.NoError(t, os.RemoveAll(o.caPkiPath(name)), "clear stale pki for %s", name)
+	_, err := o.execZiti("pki", "create", "ca", "--pki-root", filepath.Join(o.Home, "third-party-pki"), "--ca-file", name, "--ca-name", name)
+	require.NoError(t, err, "pki create ca %s", name)
+
+	caCert := filepath.Join(o.caPkiPath(name), "certs", name+".cert")
+	out, err := o.execZiti("edge", "create", "ca", name, caCert, "--auth", "--ottca", "--autoca")
+	require.NoError(t, err, "create ca %s", name)
+	id := string(bytes.TrimSpace(out))
+
+	// --cacert/--cakey makes the CLI fetch the verificationToken and mint the CN=token cert itself
+	_, err = o.execZiti("edge", "verify", "ca", name, "--cacert", caCert, "--cakey", filepath.Join(o.caPkiPath(name), "keys", name+".key"))
+	require.NoError(t, err, "verify ca %s", name)
+	t.Logf("3rd-party CA %q registered and verified with id=%s", name, id)
+	return CAResult{ID: id, Name: name}
+}
+
+// CreateClientCert signs a client cert with the given common name by the named
+// CA and returns the cert and key PEM contents (the AddIdentity command carries
+// content, not file paths).
+func (o *Overlay) CreateClientCert(t *testing.T, caName, commonName string) (certPEM, keyPEM string) {
+	_, err := o.execZiti("pki", "create", "client", "--pki-root", filepath.Join(o.Home, "third-party-pki"), "--ca-name", caName, "--client-name", commonName, "--client-file", commonName)
+	require.NoError(t, err, "pki create client %s for ca %s", commonName, caName)
+	cert, err := os.ReadFile(filepath.Join(o.caPkiPath(caName), "certs", commonName+".cert"))
+	require.NoError(t, err, "read client cert for %s", commonName)
+	key, err := os.ReadFile(filepath.Join(o.caPkiPath(caName), "keys", commonName+".key"))
+	require.NoError(t, err, "read client key for %s", commonName)
+	return string(cert), string(key)
+}
+
+// GetCaJwt fetches the CA enrollment JWT from the management API, authenticated
+// with the session the CLI cached at login. No ziti CLI verb exposes it.
+func (o *Overlay) GetCaJwt(t *testing.T, caID string) string {
+	cliConfig, err := os.ReadFile(filepath.Join(o.Home, "cli-config", "ziti-cli.json"))
+	require.NoError(t, err, "read cached cli session")
+	var cfg struct {
+		EdgeIdentities map[string]struct {
+			Token      string `json:"token"`
+			ApiSession struct {
+				OidcAccessToken string `json:"oidcAccessToken"`
+			} `json:"apiSession"`
+		} `json:"edgeIdentities"`
+		Default string `json:"default"`
+	}
+	require.NoError(t, json.Unmarshal(cliConfig, &cfg), "parse cached cli session")
+	session := cfg.EdgeIdentities[cfg.Default]
+
+	req, err := http.NewRequest(http.MethodGet, o.ControllerHostPort()+"/edge/management/v1/cas/"+caID+"/jwt", nil)
+	require.NoError(t, err, "build CA jwt request")
+	if session.ApiSession.OidcAccessToken != "" {
+		req.Header.Set("Authorization", "Bearer "+session.ApiSession.OidcAccessToken)
+	} else {
+		req.Header.Set("zt-session", session.Token)
+	}
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+		// the quickstart CA is not OS-trusted
+		Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}},
+	}
+	resp, err := client.Do(req)
+	require.NoError(t, err, "GET %s", req.URL)
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err, "read CA jwt response")
+	require.Equal(t, http.StatusOK, resp.StatusCode, "GET %s: %s", req.URL, body)
+	return strings.TrimSpace(string(body))
+}
+
 // DeleteExtJwtSigner removes an ext-jwt-signer by name.
 func (o *Overlay) DeleteExtJwtSigner(name string) error {
 	if _, err := o.execZiti("edge", "delete", "ext-jwt-signer", name); err != nil {
@@ -767,6 +852,11 @@ func (o *Overlay) PurgeIdentitiesByExternalId(fragment string) error {
 		return fmt.Errorf("delete identities where %s: %w", filter, err)
 	}
 	return nil
+}
+
+// PurgeCAs deletes every certificate authority carrying a test name.
+func (o *Overlay) PurgeCAs() error {
+	return o.deleteWhere("cas")
 }
 
 // PurgeAuthPolicies deletes every auth policy carrying a test name.

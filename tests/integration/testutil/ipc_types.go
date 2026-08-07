@@ -133,6 +133,15 @@ func NewUrlIdentityData(name, url string, mode EnrollMode, provider ...string) A
 	return data
 }
 
+func NewCaIdentityData(name, caJwt, cert, key string) AddIdentityData {
+	return AddIdentityData{
+		IdentityFilename: name,
+		JwtContent:       &caJwt,
+		Certificate:      &cert,
+		Key:              &key,
+	}
+}
+
 func NewIdentityOnOffData(identifier string, onOff bool) IdentityOnOffData {
 	return IdentityOnOffData{
 		Identifier: identifier,
