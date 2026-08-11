@@ -79,6 +79,6 @@ func rejectsCertFromUnregisteredCa(t *testing.T) {
 
 		identityData := testutil.NewCaIdentityData("test_tpca_unregistered_user1", caJwt, cert, key)
 		addResp := state.zetClient.AddIdentity(t, identityData)
-		addResp.AssertFail(500, "")
+		addResp.AssertFail(500, "key/cert are invalid")
 	})
 }
