@@ -65,6 +65,7 @@ static void tunnel_enroll_cb(const ziti_config *cfg, int status, const char *err
         }
         ZITI_LOG(ERROR, "enrollment failed: %s(%d)", err, status);
 
+        result.error = (char *) err;
         if (status == ZITI_KEY_GENERATION_FAILED) {
             result.error = "ZITI_KEY_GENERATION_FAILED";
         }

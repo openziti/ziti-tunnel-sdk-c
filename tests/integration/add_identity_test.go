@@ -61,7 +61,7 @@ func withInvalidJwtFails(t *testing.T) {
 		badJwt := "this.is.not-a-real-jwt"
 		identityData := testutil.NewJwtIdentityData("test_add_id_invalid_jwt", badJwt)
 		addResp := state.zetClient.AddIdentity(t, identityData)
-		addResp.AssertFail(500, "")
+		addResp.AssertFail(500, "enrollment failed")
 	})
 }
 
@@ -70,7 +70,7 @@ func withEmptyJwtFails(t *testing.T) {
 		emptyJwt := ""
 		identityData := testutil.NewJwtIdentityData("test_add_id_empty_jwt", emptyJwt)
 		addResp := state.zetClient.AddIdentity(t, identityData)
-		addResp.AssertFail(500, "")
+		addResp.AssertFail(500, "enrollment failed")
 	})
 }
 
@@ -84,7 +84,7 @@ func withDeletedIdentityFails(t *testing.T) {
 
 		identityData := testutil.NewJwtIdentityData(idName, jwt)
 		addResp := state.zetClient.AddIdentity(t, identityData)
-		addResp.AssertFail(500, "")
+		addResp.AssertFail(500, "JWT not accepted by controller")
 	})
 }
 
@@ -156,7 +156,7 @@ func withNonZitiEndpointFails(t *testing.T) {
 		identityData := testutil.NewUrlIdentityData("test_url_enroll_non_ziti", nonZitiURL, testutil.EnrollModeNone)
 
 		addResp := state.zetClient.AddIdentity(t, identityData)
-		addResp.AssertFail(500, "")
+		addResp.AssertFail(500, "received non-JSON response")
 	})
 }
 
@@ -166,6 +166,6 @@ func withMalformedUrlFails(t *testing.T) {
 		identityData := testutil.NewUrlIdentityData("test_url_enroll_malformed_url", badURL, testutil.EnrollModeNone)
 
 		addResp := state.zetClient.AddIdentity(t, identityData)
-		addResp.AssertFail(500, "")
+		addResp.AssertFail(500, "enrollment failed")
 	})
 }
