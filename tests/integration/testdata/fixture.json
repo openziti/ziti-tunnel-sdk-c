@@ -15,8 +15,7 @@
     {
       "name": "test_tpca_ottca_user1",
       "isAdmin": false,
-      "authPolicy": "@Default",
-      "enrollment": { "ott": true }
+      "authPolicy": "@Default"
     },
     {
       "name": "test_restart_jwt",

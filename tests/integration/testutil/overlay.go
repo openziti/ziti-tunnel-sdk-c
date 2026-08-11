@@ -571,17 +571,18 @@ type CAResult struct {
 	Name string
 }
 
-// caPkiPath is the on-disk PKI directory for a CA created by CreateLocalPkiCA.
-func (o *Overlay) caPkiPath(name string) string {
-	return filepath.Join(o.Home, "third-party-pki", name)
+// pkiRoot is the on-disk root under which all test CAs are created; the ziti
+// pki CLI lays out each CA at <root>/<ca-name>.
+func (o *Overlay) pkiRoot() string {
+	return filepath.Join(o.Home, "third-party-pki")
 }
 
 // CreateLocalPkiCA creates a root CA on disk without registering it on the
 // controller.
 func (o *Overlay) CreateLocalPkiCA(t *testing.T, name string) {
 	// ziti pki refuses to overwrite PKI left by a previous run
-	require.NoError(t, os.RemoveAll(o.caPkiPath(name)), "clear stale pki for %s", name)
-	_, err := o.execZiti("pki", "create", "ca", "--pki-root", filepath.Join(o.Home, "third-party-pki"), "--ca-file", name, "--ca-name", name)
+	require.NoError(t, os.RemoveAll(filepath.Join(o.pkiRoot(), name)), "clear stale pki for %s", name)
+	_, err := o.execZiti("pki", "create", "ca", "--pki-root", o.pkiRoot(), "--ca-file", name, "--ca-name", name)
 	require.NoError(t, err, "pki create ca %s", name)
 }
 
@@ -592,13 +593,13 @@ func (o *Overlay) CreateThirdPartyCA(t *testing.T, name string) CAResult {
 	t.Logf("creating third-party CA %q", name)
 	o.CreateLocalPkiCA(t, name)
 
-	caCert := filepath.Join(o.caPkiPath(name), "certs", name+".cert")
+	caCert := filepath.Join(o.pkiRoot(), name, "certs", name+".cert")
 	out, err := o.execZiti("edge", "create", "ca", name, caCert, "--auth", "--ottca", "--autoca")
 	require.NoError(t, err, "create ca %s", name)
 	id := string(bytes.TrimSpace(out))
 
 	// --cacert/--cakey makes the CLI fetch the verificationToken and mint the CN=token cert itself
-	_, err = o.execZiti("edge", "verify", "ca", name, "--cacert", caCert, "--cakey", filepath.Join(o.caPkiPath(name), "keys", name+".key"))
+	_, err = o.execZiti("edge", "verify", "ca", name, "--cacert", caCert, "--cakey", filepath.Join(o.pkiRoot(), name, "keys", name+".key"))
 	require.NoError(t, err, "verify ca %s", name)
 	t.Logf("third-party CA %q registered and verified with id=%s", name, id)
 	return CAResult{ID: id, Name: name}
@@ -627,11 +628,11 @@ func (o *Overlay) CreateOttCaEnrollment(t *testing.T, identityName, caName strin
 // CA and returns the cert and key PEM contents (the AddIdentity command carries
 // content, not file paths).
 func (o *Overlay) CreateClientCert(t *testing.T, caName, commonName string) (certPEM, keyPEM string) {
-	_, err := o.execZiti("pki", "create", "client", "--pki-root", filepath.Join(o.Home, "third-party-pki"), "--ca-name", caName, "--client-name", commonName, "--client-file", commonName)
+	_, err := o.execZiti("pki", "create", "client", "--pki-root", o.pkiRoot(), "--ca-name", caName, "--client-name", commonName, "--client-file", commonName)
 	require.NoError(t, err, "pki create client %s for ca %s", commonName, caName)
-	cert, err := os.ReadFile(filepath.Join(o.caPkiPath(caName), "certs", commonName+".cert"))
+	cert, err := os.ReadFile(filepath.Join(o.pkiRoot(), caName, "certs", commonName+".cert"))
 	require.NoError(t, err, "read client cert for %s", commonName)
-	key, err := os.ReadFile(filepath.Join(o.caPkiPath(caName), "keys", commonName+".key"))
+	key, err := os.ReadFile(filepath.Join(o.pkiRoot(), caName, "keys", commonName+".key"))
 	require.NoError(t, err, "read client key for %s", commonName)
 	return string(cert), string(key)
 }

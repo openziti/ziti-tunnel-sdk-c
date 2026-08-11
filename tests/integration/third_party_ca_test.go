@@ -67,6 +67,8 @@ func ottcaEnrollsPreCreatedIdentity(t *testing.T) {
 		added := state.zetClient.WaitForIdentityEvent(t, "added", idName)
 		require.True(t, added.Id.Active)
 		state.zetClient.WaitForControllerEvent(t, "connected", idName)
+
+		testutil.AssertValidJwtEnrolledIdentityFile(t, added.Id.Identifier)
 	})
 }
 
