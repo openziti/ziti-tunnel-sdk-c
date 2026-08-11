@@ -222,6 +222,18 @@
       "enrollment": { "ott": true }
     },
     {
+      "name": "test_proc_posture_client",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
+      "name": "test_proc_posture_host",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
       "name": "test_remove_id",
       "isAdmin": false,
       "authPolicy": "@Default",
