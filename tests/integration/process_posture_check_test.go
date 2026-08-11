@@ -127,11 +127,18 @@ func copyPostureProcessBinary(t *testing.T) string {
 	return dst
 }
 
-// postureOSType maps runtime.GOOS to the posture check OS type.
+// postureOSType returns the posture check OS type the C SDK will report.
+// Server product types report windowsserver, not windows (posture.c), which
+// is what CI runners are.
 func postureOSType(t *testing.T) string {
 	switch runtime.GOOS {
 	case "windows":
-		return "windows"
+		out, err := exec.Command("powershell", "-NoProfile", "-Command", "(Get-CimInstance Win32_OperatingSystem).ProductType").Output()
+		require.NoError(t, err, "read windows product type")
+		if strings.TrimSpace(string(out)) == "1" {
+			return "windows"
+		}
+		return "windowsserver"
 	case "linux":
 		return "linux"
 	case "darwin":
@@ -143,26 +150,33 @@ func postureOSType(t *testing.T) string {
 }
 
 // runnerOSVersion returns the version string the C SDK reports in posture
-// data (posture.c): windows sends major.minor.build from RtlGetVersion,
-// everything else sends the uname release.
+// data: windows sends major.minor.build (posture.c RtlGetVersion), macOS
+// sends the product version (sdk_info.c kern.osproductversion), linux sends
+// the uname release.
 func runnerOSVersion(t *testing.T) string {
-	if runtime.GOOS != "windows" {
+	switch runtime.GOOS {
+	case "windows":
+		out, err := exec.Command("cmd", "/c", "ver").Output()
+		require.NoError(t, err, "cmd /c ver")
+		// "Microsoft Windows [Version 10.0.26200.5074]" -> "10.0.26200"
+		verText := string(out)
+		start := strings.Index(verText, "[Version ")
+		require.NotEqual(t, -1, start, "unexpected ver output %q", verText)
+		verText = verText[start+len("[Version "):]
+		end := strings.Index(verText, "]")
+		require.NotEqual(t, -1, end, "unexpected ver output %q", verText)
+		parts := strings.Split(verText[:end], ".")
+		require.GreaterOrEqual(t, len(parts), 3, "unexpected version %q", verText[:end])
+		return strings.Join(parts[:3], ".")
+	case "darwin":
+		out, err := exec.Command("sw_vers", "-productVersion").Output()
+		require.NoError(t, err, "sw_vers -productVersion")
+		return strings.TrimSpace(string(out))
+	default:
 		out, err := exec.Command("uname", "-r").Output()
 		require.NoError(t, err, "uname -r")
 		return strings.TrimSpace(string(out))
 	}
-	out, err := exec.Command("cmd", "/c", "ver").Output()
-	require.NoError(t, err, "cmd /c ver")
-	// "Microsoft Windows [Version 10.0.26200.5074]" -> "10.0.26200"
-	verText := string(out)
-	start := strings.Index(verText, "[Version ")
-	require.NotEqual(t, -1, start, "unexpected ver output %q", verText)
-	verText = verText[start+len("[Version "):]
-	end := strings.Index(verText, "]")
-	require.NotEqual(t, -1, end, "unexpected ver output %q", verText)
-	parts := strings.Split(verText[:end], ".")
-	require.GreaterOrEqual(t, len(parts), 3, "unexpected version %q", verText[:end])
-	return strings.Join(parts[:3], ".")
 }
 
 // startPostureProcess launches the copied binary and registers cleanup to kill
