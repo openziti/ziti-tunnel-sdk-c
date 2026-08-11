@@ -565,12 +565,6 @@ func (o *Overlay) CreateIdentityWithExternalId(t *testing.T, name, externalID, a
 	t.Logf("controller identity %q created", name)
 }
 
-// CAResult identifies a registered third-party CA.
-type CAResult struct {
-	ID   string
-	Name string
-}
-
 // pkiRoot is the on-disk root under which all test CAs are created; the ziti
 // pki CLI lays out each CA at <root>/<ca-name>.
 func (o *Overlay) pkiRoot() string {
@@ -587,9 +581,10 @@ func (o *Overlay) CreateLocalPkiCA(t *testing.T, name string) {
 }
 
 // CreateThirdPartyCA creates a root CA, registers it on the controller for
-// auth+ottca+autoca enrollment, and verifies it. Identities created by autoca
-// enrollment are named with the controller default format, [caName]-[commonName].
-func (o *Overlay) CreateThirdPartyCA(t *testing.T, name string) CAResult {
+// auth+ottca+autoca enrollment, verifies it, and returns its assigned ID.
+// Identities created by autoca enrollment are named with the controller
+// default format, [caName]-[commonName].
+func (o *Overlay) CreateThirdPartyCA(t *testing.T, name string) string {
 	t.Logf("creating third-party CA %q", name)
 	o.CreateLocalPkiCA(t, name)
 
@@ -602,7 +597,7 @@ func (o *Overlay) CreateThirdPartyCA(t *testing.T, name string) CAResult {
 	_, err = o.execZiti("edge", "verify", "ca", name, "--cacert", caCert, "--cakey", filepath.Join(o.pkiRoot(), name, "keys", name+".key"))
 	require.NoError(t, err, "verify ca %s", name)
 	t.Logf("third-party CA %q registered and verified with id=%s", name, id)
-	return CAResult{ID: id, Name: name}
+	return id
 }
 
 // CreateOttCaEnrollment adds an ottca enrollment binding the identity to the
