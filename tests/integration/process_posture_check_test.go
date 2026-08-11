@@ -43,7 +43,7 @@ func TestProcessPostureCheck(t *testing.T) {
 // until the checked process starts and revoked after it is killed.
 func serviceAccessibleWhileProcessRuns(t *testing.T) {
 	requireMultiTunnel(t)
-	testutil.RunWithTimeoutOf(t, 3*time.Minute, func(t *testing.T) {
+	testutil.RunWithTimeoutOf(t, time.Second*30, func(t *testing.T) {
 		procPath := copyPostureProcessBinary(t)
 		osType := postureOSType(t)
 		osVersion := runnerOSVersion(t)
