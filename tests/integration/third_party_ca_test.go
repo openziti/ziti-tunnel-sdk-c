@@ -18,10 +18,14 @@ package integration_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/openziti/ziti-tunnel-sdk-c/tests/integration/testutil"
 	"github.com/stretchr/testify/require"
 )
+
+// each subtest creates, registers, and verifies its own CA, which can fail the default timeout on slower systems
+const thirdPartyCaTestTimeout = 10 * time.Second
 
 func TestThirdPartyCa(t *testing.T) {
 	t.Run("autocaEnrollCreatesIdentity", autocaEnrollCreatesIdentity)
@@ -32,7 +36,7 @@ func TestThirdPartyCa(t *testing.T) {
 }
 
 func autocaEnrollCreatesIdentity(t *testing.T) {
-	testutil.RunWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeoutOf(t, thirdPartyCaTestTimeout, func(t *testing.T) {
 		caName := "test_tpca"
 		caID := state.overlay.CreateThirdPartyCA(t, caName)
 		commonName := "test_tpca_user1"
@@ -57,7 +61,7 @@ func autocaEnrollCreatesIdentity(t *testing.T) {
 }
 
 func ottcaEnrollsPreCreatedIdentity(t *testing.T) {
-	testutil.RunWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeoutOf(t, thirdPartyCaTestTimeout, func(t *testing.T) {
 		caName := "test_tpca_ottca"
 		state.overlay.CreateThirdPartyCA(t, caName)
 		idName := "test_tpca_ottca_user1"
@@ -77,7 +81,7 @@ func ottcaEnrollsPreCreatedIdentity(t *testing.T) {
 }
 
 func rejectsAddingSameIdentityTwice(t *testing.T) {
-	testutil.RunWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeoutOf(t, thirdPartyCaTestTimeout, func(t *testing.T) {
 		caName := "test_tpca_dup"
 		caID := state.overlay.CreateThirdPartyCA(t, caName)
 		commonName := "test_tpca_dup_user1"
@@ -97,7 +101,7 @@ func rejectsAddingSameIdentityTwice(t *testing.T) {
 }
 
 func rejectsReenrollingSameCert(t *testing.T) {
-	testutil.RunWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeoutOf(t, thirdPartyCaTestTimeout, func(t *testing.T) {
 		caName := "test_tpca_reuse"
 		caID := state.overlay.CreateThirdPartyCA(t, caName)
 		commonName := "test_tpca_reuse_user1"
@@ -118,7 +122,7 @@ func rejectsReenrollingSameCert(t *testing.T) {
 }
 
 func rejectsCertFromUnregisteredCa(t *testing.T) {
-	testutil.RunWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeoutOf(t, thirdPartyCaTestTimeout, func(t *testing.T) {
 		caID := state.overlay.CreateThirdPartyCA(t, "test_tpca_neg")
 		caJwt := state.overlay.GetCaJwt(t, caID)
 		state.overlay.CreateLocalPkiCA(t, "test_tpca_unregistered")
