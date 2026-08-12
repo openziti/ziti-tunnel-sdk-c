@@ -584,11 +584,18 @@ func (o *Overlay) pkiRoot() string {
 	return filepath.Join(o.Home, "third-party-pki")
 }
 
+// PurgeLocalPki removes the on-disk test PKI. Runs once in doSetup because
+// ziti pki refuses to overwrite PKI left by a previous run.
+func (o *Overlay) PurgeLocalPki() error {
+	if err := os.RemoveAll(o.pkiRoot()); err != nil {
+		return fmt.Errorf("remove test pki root %s: %w", o.pkiRoot(), err)
+	}
+	return nil
+}
+
 // CreateLocalPkiCA creates a root CA on disk without registering it on the
 // controller.
 func (o *Overlay) CreateLocalPkiCA(t *testing.T, name string) {
-	// ziti pki refuses to overwrite PKI left by a previous run
-	require.NoError(t, os.RemoveAll(filepath.Join(o.pkiRoot(), name)), "clear stale pki for %s", name)
 	_, err := o.execZiti("pki create ca --pki-root %s --ca-file %s --ca-name %s", o.pkiRoot(), name, name)
 	require.NoError(t, err, "pki create ca %s", name)
 }

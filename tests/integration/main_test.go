@@ -250,6 +250,10 @@ func doSetup(state TestState) error {
 	if err := state.zetClient.RemoveJSONIdentities(); err != nil {
 		return fmt.Errorf("wipe shared identity dir: %w", err)
 	}
+	log.Printf("setup: wiping stale on-disk test pki")
+	if err := state.overlay.PurgeLocalPki(); err != nil {
+		return fmt.Errorf("wipe stale on-disk test pki: %w", err)
+	}
 
 	// Multi-tunnel works on every OS when ZET >= 1.17.0
 	// Tests against an older ZET start only zetA and skip t2t tests.
