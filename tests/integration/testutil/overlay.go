@@ -843,15 +843,33 @@ func (o *Overlay) CreateDialServicePolicy(name, identityName, serviceName string
 // CreateProcessMultiPostureCheck registers a process-multi posture check that
 // requires the binary at path to be running. process-multi is the supported
 // check type; plain process is deprecated.
+<<<<<<< HEAD
 func (o *Overlay) CreateProcessMultiPostureCheck(t *testing.T, name, osType, path string) {
 	_, err := o.execZiti("edge create posture-check process-multi %s AllOf %s %s", name, osType, path)
+=======
+func (o *Overlay) CreateProcessMultiPostureCheck(t *testing.T, name, osType, path string, attributes ...string) {
+	args := []string{"edge", "create", "posture-check", "process-multi", name, "AllOf", osType, path}
+	if len(attributes) > 0 {
+		args = append(args, "-a", strings.Join(attributes, ","))
+	}
+	_, err := o.execZiti(args...)
+>>>>>>> 8e3982c8 (Add OS posture check test, move all importable setup (ids/configs/etc) to fixture.json, and share posture helpers in testutil)
 	require.NoError(t, err, "create process-multi posture check %s", name)
 }
 
 // CreateOSPostureCheck registers an os posture check pinned to osSpec, e.g.
 // "windows:10.0.26200". The pin is mandatory
+<<<<<<< HEAD
 func (o *Overlay) CreateOSPostureCheck(t *testing.T, name, osSpec string) {
 	_, err := o.execZiti("edge create posture-check os %s -o %s", name, osSpec)
+=======
+func (o *Overlay) CreateOSPostureCheck(t *testing.T, name, osSpec string, attributes ...string) {
+	args := []string{"edge", "create", "posture-check", "os", name, "-o", osSpec}
+	if len(attributes) > 0 {
+		args = append(args, "-a", strings.Join(attributes, ","))
+	}
+	_, err := o.execZiti(args...)
+>>>>>>> 8e3982c8 (Add OS posture check test, move all importable setup (ids/configs/etc) to fixture.json, and share posture helpers in testutil)
 	require.NoError(t, err, "create os posture check %s", name)
 }
 
