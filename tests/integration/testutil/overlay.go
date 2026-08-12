@@ -613,9 +613,24 @@ func (o *Overlay) CreateThirdPartyCA(t *testing.T, name string) string {
 	require.NoError(t, err, "create ca %s", name)
 	id := string(bytes.TrimSpace(out))
 
-	// --cacert/--cakey makes the CLI fetch the verificationToken and mint the CN=token cert itself
-	caKey := filepath.Join(o.pkiRoot(), name, "keys", name+".key")
-	_, err = o.execZiti("edge verify ca %s --cacert %s --cakey %s", name, caCert, caKey)
+	// verify by minting a client cert whose CN is the CA's verificationToken
+	filter := fmt.Sprintf("name=%q", name)
+	listOut, err := o.execZiti("edge list cas %s -j", filter)
+	require.NoError(t, err, "list ca %s", name)
+	var resp struct {
+		Data []struct {
+			VerificationToken string `json:"verificationToken"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(listOut, &resp), "parse ca %s", name)
+	require.Len(t, resp.Data, 1, "expected exactly one ca named %s", name)
+	token := resp.Data[0].VerificationToken
+	require.NotEmpty(t, token, "ca %s has no verificationToken", name)
+
+	_, err = o.execZiti("pki create client --pki-root %s --ca-name %s --client-name %s --client-file verification", o.pkiRoot(), name, token)
+	require.NoError(t, err, "mint verification cert for ca %s", name)
+	verifyCert := filepath.Join(o.pkiRoot(), name, "certs", "verification.cert")
+	_, err = o.execZiti("edge verify ca %s --cert %s", name, verifyCert)
 	require.NoError(t, err, "verify ca %s", name)
 	t.Logf("third-party CA %q registered and verified with id=%s", name, id)
 	return id
