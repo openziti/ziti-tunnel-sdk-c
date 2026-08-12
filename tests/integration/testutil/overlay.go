@@ -857,6 +857,17 @@ func (o *Overlay) CreateProcessMultiPostureCheck(t *testing.T, name, osType, pat
 	require.NoError(t, err, "create process-multi posture check %s", name)
 }
 
+// CreateMacPostureCheck registers a mac posture check matching any of the
+// given MAC addresses.
+func (o *Overlay) CreateMacPostureCheck(t *testing.T, name string, macs []string, attributes ...string) {
+	args := []string{"edge", "create", "posture-check", "mac", name, "-m", strings.Join(macs, ",")}
+	if len(attributes) > 0 {
+		args = append(args, "-a", strings.Join(attributes, ","))
+	}
+	_, err := o.execZiti(args...)
+	require.NoError(t, err, "create mac posture check %s", name)
+}
+
 // CreateOSPostureCheck registers an os posture check pinned to osSpec, e.g.
 // "windows:10.0.26200". The pin is mandatory
 <<<<<<< HEAD
