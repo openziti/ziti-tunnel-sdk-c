@@ -36,6 +36,10 @@ func TestOSPostureCheck(t *testing.T) {
 	t.Run("serviceAccessibleWithPassingOSCheck", serviceAccessibleWithPassingOSCheck)
 }
 
+func TestMACPostureCheck(t *testing.T) {
+	t.Run("serviceAccessibleWithPassingMacCheck", serviceAccessibleWithPassingMacCheck)
+}
+
 // serviceAccessibleWhileProcessRuns gates a dialed service behind a
 // process-multi check and a version-pinned OS check (clients only send process
 // posture data when an OS check is on the same policy at the moment).
@@ -45,7 +49,7 @@ func serviceAccessibleWhileProcessRuns(t *testing.T) {
 	requireMultiTunnel(t)
 	testutil.RunWithTimeoutOf(t, time.Second*30, func(t *testing.T) {
 		procPath := copyPostureProcessBinary(t)
-		osSpec := testutil.PostureOSType(t) + ":" + testutil.RunnerOSVersion(t)
+		osSpec := testutil.PostureOSType(t) + ":" + testutil.LocalOSVersion(t)
 
 		clientID := "test_proc_posture_client"
 		hostID := "test_proc_posture_host"
@@ -94,7 +98,7 @@ func serviceAccessibleWhileProcessRuns(t *testing.T) {
 func serviceAccessibleWithPassingOSCheck(t *testing.T) {
 	requireMultiTunnel(t)
 	testutil.RunWithTimeoutOf(t, time.Second*30, func(t *testing.T) {
-		osSpec := testutil.PostureOSType(t) + ":" + testutil.RunnerOSVersion(t)
+		osSpec := testutil.PostureOSType(t) + ":" + testutil.LocalOSVersion(t)
 
 		clientID := "test_os_posture_client"
 		hostID := "test_os_posture_host"
@@ -116,6 +120,39 @@ func serviceAccessibleWithPassingOSCheck(t *testing.T) {
 		require.Equal(t, "OS", bulk.AddedServices[0].PostureChecks[0].QueryType)
 
 		t.Logf("dialing test_os_posture_svc at %s until allowed (os check %s)", interceptAddr, osSpec)
+		testutil.WaitForServiceAllowed(t, state.zetClient, interceptAddr, 25*time.Second)
+	})
+}
+
+// serviceAccessibleWithPassingMacCheck gates a dialed service behind a MAC
+// posture check listing the MAC addresses of the system running the tests and
+// proves the dial succeeds. The service, configs, and policies come from fixture.json
+func serviceAccessibleWithPassingMacCheck(t *testing.T) {
+	requireMultiTunnel(t)
+	testutil.RunWithTimeoutOf(t, time.Second*30, func(t *testing.T) {
+		macs := testutil.LocalMACAddresses(t)
+
+		clientID := "test_mac_posture_client"
+		hostID := "test_mac_posture_host"
+		interceptAddr := "100.64.0.22:23002"
+
+		// the fixture's test_mac_posture_host_cfg forwards tunneled connections
+		// to 127.0.0.1:23182; this echo server answers them
+		testutil.StartTCPEcho(t, "127.0.0.1:23182")
+		state.overlay.CreateMacPostureCheck(t, "test_mac_posture_mac", macs, "test-mac-posture")
+
+		testutil.FetchAndEnrollJwt(t, state.overlay, state.zetClient, clientID)
+		testutil.FetchAndEnrollJwt(t, state.overlay, state.zetHost, hostID)
+		state.zetClient.WaitForControllerEvent(t, "connected", clientID)
+		state.zetHost.WaitForControllerEvent(t, "connected", hostID)
+
+		bulk := state.zetClient.WaitForBulkServiceEvent(t, "updated", clientID)
+		require.Len(t, bulk.AddedServices, 1, "services added for %s", clientID)
+		require.Len(t, bulk.AddedServices[0].PostureChecks, 1)
+		require.Equal(t, "MAC", bulk.AddedServices[0].PostureChecks[0].QueryType)
+
+		// don't print the addresses themselves, CI logs are public
+		t.Logf("dialing test_mac_posture_svc at %s until allowed (%d local macs on the check)", interceptAddr, len(macs))
 		testutil.WaitForServiceAllowed(t, state.zetClient, interceptAddr, 25*time.Second)
 	})
 }

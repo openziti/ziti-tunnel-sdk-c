@@ -30,9 +30,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// PostureOSType returns the posture check OS type the C SDK will report.
-// Server product types report windowsserver, not windows (posture.c), which
-// is what CI runners are.
+// PostureOSType returns the posture check OS type of the system running the
+// tests. Windows server SKUs report windowsserver, not windows.
 func PostureOSType(t *testing.T) string {
 	switch runtime.GOOS {
 	case "windows":
@@ -52,11 +51,10 @@ func PostureOSType(t *testing.T) string {
 	}
 }
 
-// RunnerOSVersion returns the version string the C SDK reports in posture
-// data: windows sends major.minor.build (posture.c RtlGetVersion), macOS
-// sends the product version (sdk_info.c kern.osproductversion), linux sends
-// the uname release.
-func RunnerOSVersion(t *testing.T) string {
+// LocalOSVersion returns the OS version of the system running the tests as
+// ZET reports it: major.minor.build on windows, the product version on macOS,
+// the uname release on linux.
+func LocalOSVersion(t *testing.T) string {
 	switch runtime.GOOS {
 	case "windows":
 		out, err := exec.Command("cmd", "/c", "ver").Output()
@@ -80,6 +78,31 @@ func RunnerOSVersion(t *testing.T) string {
 		require.NoError(t, err, "uname -r")
 		return strings.TrimSpace(string(out))
 	}
+}
+
+// LocalMACAddresses returns the MAC addresses of the non-internal interfaces
+// on the system running the tests, in lowercase hex with no separators.
+func LocalMACAddresses(t *testing.T) []string {
+	ifaces, err := net.Interfaces()
+	require.NoError(t, err, "list network interfaces")
+	seen := map[string]struct{}{}
+	var macs []string
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagLoopback != 0 || len(iface.HardwareAddr) == 0 {
+			continue
+		}
+		mac := strings.ToLower(strings.ReplaceAll(iface.HardwareAddr.String(), ":", ""))
+		if strings.Trim(mac, "0") == "" {
+			continue
+		}
+		if _, ok := seen[mac]; ok {
+			continue
+		}
+		seen[mac] = struct{}{}
+		macs = append(macs, mac)
+	}
+	require.NotEmpty(t, macs, "no usable MAC addresses on this host")
+	return macs
 }
 
 // TryEcho round-trips one payload through the intercepted service.
