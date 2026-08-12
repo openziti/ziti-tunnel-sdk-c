@@ -27,6 +27,7 @@ func TestThirdPartyCa(t *testing.T) {
 	t.Run("autocaEnrollCreatesIdentity", autocaEnrollCreatesIdentity)
 	t.Run("ottcaEnrollsPreCreatedIdentity", ottcaEnrollsPreCreatedIdentity)
 	t.Run("rejectsCertFromUnregisteredCa", rejectsCertFromUnregisteredCa)
+	t.Run("rejectsAddingSameIdentityTwice", rejectsAddingSameIdentityTwice)
 }
 
 func autocaEnrollCreatesIdentity(t *testing.T) {
@@ -71,6 +72,26 @@ func ottcaEnrollsPreCreatedIdentity(t *testing.T) {
 		state.zetClient.WaitForControllerEvent(t, "connected", idName)
 
 		testutil.AssertValidJwtEnrolledIdentityFile(t, added.Id.Identifier)
+	})
+}
+
+func rejectsAddingSameIdentityTwice(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
+		caName := "test_tpca_dup"
+		caID := state.overlay.CreateThirdPartyCA(t, caName)
+		commonName := "test_tpca_dup_user1"
+		cert, key := state.overlay.CreateClientCert(t, caName, commonName)
+		caJwt := state.overlay.GetCaJwt(t, caID)
+
+		idName := caName + "-" + commonName
+		identityData := testutil.NewCaIdentityData(idName, caJwt, cert, key)
+		addResp := state.zetClient.AddIdentity(t, identityData)
+		addResp.AssertSuccess()
+		state.zetClient.WaitForIdentityEvent(t, "added", idName)
+		state.zetClient.WaitForControllerEvent(t, "connected", idName)
+
+		dupResp := state.zetClient.AddIdentity(t, identityData)
+		dupResp.AssertFail(500, "identity exists with the same name")
 	})
 }
 
