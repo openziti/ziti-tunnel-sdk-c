@@ -34,6 +34,7 @@ func TestThirdPartyCa(t *testing.T) {
 	t.Run("rejectsAddingSameIdentityTwice", rejectsAddingSameIdentityTwice)
 	t.Run("rejectsReenrollingSameCert", rejectsReenrollingSameCert)
 	t.Run("rejectsCertMissingExternalId", rejectsCertMissingExternalId)
+	t.Run("rejectsExpiredCert", rejectsExpiredCert)
 }
 
 func autocaEnrollCreatesIdentity(t *testing.T) {
@@ -97,6 +98,7 @@ func rejectsReenrollingSameCert(t *testing.T) {
 		renamedData := testutil.NewCaIdentityData(idName+"_renamed", caJwt, cert, key)
 		dupResp := state.zetClient.AddIdentity(t, renamedData)
 		dupResp.AssertFail(500, "certificate already in use")
+		testutil.AssertNoIdentityFile(t, state.zetClient, idName+"_renamed")
 	})
 }
 
@@ -112,6 +114,22 @@ func rejectsCertMissingExternalId(t *testing.T) {
 		identityData := testutil.NewCaIdentityData(commonName, caJwt, cert, key)
 		addResp := state.zetClient.AddIdentity(t, identityData)
 		addResp.AssertFail(500, "expected to contain an externalId")
+		testutil.AssertNoIdentityFile(t, state.zetClient, commonName)
+	})
+}
+
+func rejectsExpiredCert(t *testing.T) {
+	testutil.RunWithTimeoutOf(t, thirdPartyCaTestTimeout, func(t *testing.T) {
+		caName := "test_tpca_expired"
+		caID := state.overlay.CreateThirdPartyCA(t, caName)
+		commonName := "test_tpca_expired_user1"
+		cert, key := state.overlay.CreateClientCert(t, caName, commonName, "--expire-limit=-1")
+		caJwt := state.overlay.GetCaJwt(t, caID)
+
+		identityData := testutil.NewCaIdentityData(commonName, caJwt, cert, key)
+		addResp := state.zetClient.AddIdentity(t, identityData)
+		addResp.AssertFail(500, "key/cert are invalid")
+		testutil.AssertNoIdentityFile(t, state.zetClient, commonName)
 	})
 }
 
@@ -125,5 +143,6 @@ func rejectsCertFromUnregisteredCa(t *testing.T) {
 		identityData := testutil.NewCaIdentityData("test_tpca_unregistered_user1", caJwt, cert, key)
 		addResp := state.zetClient.AddIdentity(t, identityData)
 		addResp.AssertFail(500, "key/cert are invalid")
+		testutil.AssertNoIdentityFile(t, state.zetClient, "test_tpca_unregistered_user1")
 	})
 }

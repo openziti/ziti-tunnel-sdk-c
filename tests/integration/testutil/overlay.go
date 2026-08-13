@@ -660,9 +660,12 @@ func (o *Overlay) CreateOttCaEnrollment(t *testing.T, identityName, caName strin
 
 // CreateClientCert signs a client cert with the given common name by the named
 // CA and returns the cert and key PEM contents (the AddIdentity command carries
-// content, not file paths).
-func (o *Overlay) CreateClientCert(t *testing.T, caName, commonName string) (certPEM, keyPEM string) {
-	_, err := o.execZiti("pki create client --pki-root %s --ca-name %s --client-name %s --client-file %s", o.pkiRoot(), caName, commonName, commonName)
+// content, not file paths). createClientFlags are appended to the
+// `pki create client` command.
+func (o *Overlay) CreateClientCert(t *testing.T, caName, commonName string, createClientFlags ...string) (certPEM, keyPEM string) {
+	cmd := "pki create client --pki-root %s --ca-name %s --client-name %s --client-file %s" + strings.Repeat(" %s", len(createClientFlags))
+	args := append([]string{o.pkiRoot(), caName, commonName, commonName}, createClientFlags...)
+	_, err := o.execZiti(cmd, args...)
 	require.NoError(t, err, "pki create client %s for ca %s", commonName, caName)
 	cert, err := os.ReadFile(filepath.Join(o.pkiRoot(), caName, "certs", commonName+".cert"))
 	require.NoError(t, err, "read client cert for %s", commonName)
