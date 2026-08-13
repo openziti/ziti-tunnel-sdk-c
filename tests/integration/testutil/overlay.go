@@ -18,6 +18,7 @@ package testutil
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -341,7 +342,7 @@ func (o *Overlay) Logs() string {
 // CreateIdentityJWT provisions a new (non-admin) identity and returns its enrollment JWT content.
 func (o *Overlay) CreateIdentityJWT(name string) (string, error) {
 	jwtPath := filepath.Join(o.Home, name+".jwt")
-	if _, err := o.execZiti("edge", "create", "identity", name, "-o", jwtPath); err != nil {
+	if _, err := o.execZiti("edge create identity %s -o %s", name, jwtPath); err != nil {
 		return "", fmt.Errorf("create identity %s: %w", name, err)
 	}
 	content, err := os.ReadFile(jwtPath)
@@ -355,7 +356,7 @@ func (o *Overlay) CreateIdentityJWT(name string) (string, error) {
 // at path via `ziti ops import`. The importer skips entities that already exist,
 // so callers should purge stale fixtures first.
 func (o *Overlay) ImportFixture(path string) error {
-	if _, err := o.execZiti("ops", "import", path, "-u", o.ControllerUser, "-p", o.ControllerPassword, "--yes"); err != nil {
+	if _, err := o.execZiti("ops import %s -u %s -p %s --yes", path, o.ControllerUser, o.ControllerPassword); err != nil {
 		return fmt.Errorf("import fixture %s: %w", path, err)
 	}
 	return nil
@@ -365,7 +366,8 @@ func (o *Overlay) ImportFixture(path string) error {
 // with the given name. The identity must have been created with an OTT enrollment
 // (e.g. via ImportFixture) and not yet enrolled.
 func (o *Overlay) GetJwtFromController(t *testing.T, name string) string {
-	out, err := o.execZiti("edge", "list", "identities", fmt.Sprintf("name=%q", name), "-j")
+	filter := fmt.Sprintf("name=%q", name)
+	out, err := o.execZiti("edge list identities %s -j", filter)
 	require.NoError(t, err, "list identities name=%s", name)
 	var resp struct {
 		Data []struct {
@@ -384,7 +386,7 @@ func (o *Overlay) GetJwtFromController(t *testing.T, name string) string {
 }
 
 func (o *Overlay) DeleteIdentity(name string) error {
-	if _, err := o.execZiti("edge", "delete", "identity", name); err != nil {
+	if _, err := o.execZiti("edge delete identity %s", name); err != nil {
 		return fmt.Errorf("delete identity %s: %w", name, err)
 	}
 	return nil
@@ -392,7 +394,8 @@ func (o *Overlay) DeleteIdentity(name string) error {
 
 // Mirrors the controller's "Reset Enrollment" action so the identity can enroll again.
 func (o *Overlay) ResetEnrollment(t *testing.T, name string) {
-	out, err := o.execZiti("edge", "list", "identities", fmt.Sprintf("name=%q", name), "-j")
+	filter := fmt.Sprintf("name=%q", name)
+	out, err := o.execZiti("edge list identities %s -j", filter)
 	require.NoError(t, err, "list identity %s", name)
 	var resp struct {
 		Data []struct {
@@ -406,7 +409,7 @@ func (o *Overlay) ResetEnrollment(t *testing.T, name string) {
 	require.NoError(t, json.Unmarshal(out, &resp), "parse identity %s", name)
 	authID := resp.Data[0].Authenticators.Cert.ID
 
-	_, err = o.execZiti("edge", "update", "authenticator", "cert", authID, "--re-enroll")
+	_, err = o.execZiti("edge update authenticator cert %s --re-enroll", authID)
 	require.NoError(t, err, "re-enroll cert authenticator for %s", name)
 }
 
@@ -434,35 +437,35 @@ type ExtJwtSignerSpec struct {
 // its assigned ID.
 func (o *Overlay) CreateExtJwtSigner(t *testing.T, spec ExtJwtSignerSpec) string {
 	t.Logf("creating ext-jwt-signer %q (issuer=%s audience=%s clientID=%s enrollToCert=%t enrollToToken=%t)", spec.Name, spec.Issuer, spec.Audience, spec.ClientID, spec.EnrollToCert, spec.EnrollToToken)
-	args := []string{
-		"edge", "create", "ext-jwt-signer", spec.Name, spec.Issuer,
-		"--jwks-endpoint", spec.JWKS,
-		"--audience", spec.Audience,
-		"--client-id", spec.ClientID,
-		"--external-auth-url", spec.Issuer,
-	}
+	cmd := "edge create ext-jwt-signer %s %s --jwks-endpoint %s --audience %s --client-id %s --external-auth-url %s"
+	args := []string{spec.Name, spec.Issuer, spec.JWKS, spec.Audience, spec.ClientID, spec.Issuer}
 	if spec.Claim != "" {
-		args = append(args, "--claims-property", spec.Claim)
+		cmd += " --claims-property %s"
+		args = append(args, spec.Claim)
 	}
 	for _, s := range spec.Scopes {
-		args = append(args, "--scopes", s)
+		cmd += " --scopes %s"
+		args = append(args, s)
 	}
 	if spec.EnrollToCert {
-		args = append(args, "--enroll-to-cert")
+		cmd += " --enroll-to-cert"
 	}
 	if spec.EnrollToToken {
-		args = append(args, "--enroll-to-token")
+		cmd += " --enroll-to-token"
 	}
 	if spec.EnrollNameSelector != "" {
-		args = append(args, "--enroll-name-claims-selector", spec.EnrollNameSelector)
+		cmd += " --enroll-name-claims-selector %s"
+		args = append(args, spec.EnrollNameSelector)
 	}
 	if spec.EnrollAttrSelector != "" {
-		args = append(args, "--enroll-attr-claims-selector", spec.EnrollAttrSelector)
+		cmd += " --enroll-attr-claims-selector %s"
+		args = append(args, spec.EnrollAttrSelector)
 	}
 	if spec.EnrollAuthPolicy != "" {
-		args = append(args, "--enroll-auth-policy", spec.EnrollAuthPolicy)
+		cmd += " --enroll-auth-policy %s"
+		args = append(args, spec.EnrollAuthPolicy)
 	}
-	out, err := o.execZiti(args...)
+	out, err := o.execZiti(cmd, args...)
 	require.NoError(t, err, "create ext-jwt-signer %s", spec.Name)
 	id := string(bytes.TrimSpace(out))
 	t.Logf("ext-jwt-signer %q created with id=%s", spec.Name, id)
@@ -472,7 +475,8 @@ func (o *Overlay) CreateExtJwtSigner(t *testing.T, spec ExtJwtSignerSpec) string
 // FindExtJwtSignerId returns the id of the ext-jwt-signer with the given name
 // and whether it exists.
 func (o *Overlay) FindExtJwtSignerId(t *testing.T, name string) (string, bool) {
-	out, err := o.execZiti("edge", "list", "ext-jwt-signers", fmt.Sprintf("name=%q", name), "-j")
+	filter := fmt.Sprintf("name=%q", name)
+	out, err := o.execZiti("edge list ext-jwt-signers %s -j", filter)
 	require.NoError(t, err, "list ext-jwt-signers name=%s", name)
 	var resp struct {
 		Data []struct {
@@ -492,42 +496,48 @@ func (o *Overlay) FindExtJwtSignerId(t *testing.T, name string) (string, bool) {
 // EnrollNameSelector or EnrollAuthPolicy falls back to /sub and default.
 func (o *Overlay) UpdateExtJwtSigner(t *testing.T, name string, spec ExtJwtSignerSpec) {
 	t.Logf("updating ext-jwt-signer %q (enrollToCert=%t enrollToToken=%t)", name, spec.EnrollToCert, spec.EnrollToToken)
-	args := []string{"edge", "update", "ext-jwt-signer", name}
+	cmd := "edge update ext-jwt-signer %s"
+	args := []string{name}
 	if spec.Name != "" {
-		args = append(args, "--name", spec.Name)
+		cmd += " --name %s"
+		args = append(args, spec.Name)
 	}
 	if spec.Issuer != "" {
-		args = append(args, "--issuer", spec.Issuer, "--external-auth-url", spec.Issuer)
+		cmd += " --issuer %s --external-auth-url %s"
+		args = append(args, spec.Issuer, spec.Issuer)
 	}
 	if spec.JWKS != "" {
-		args = append(args, "--jwks-endpoint", spec.JWKS)
+		cmd += " --jwks-endpoint %s"
+		args = append(args, spec.JWKS)
 	}
 	if spec.Audience != "" {
-		args = append(args, "--audience", spec.Audience)
+		cmd += " --audience %s"
+		args = append(args, spec.Audience)
 	}
 	if spec.ClientID != "" {
-		args = append(args, "--client-id", spec.ClientID)
+		cmd += " --client-id %s"
+		args = append(args, spec.ClientID)
 	}
 	if spec.Claim != "" {
-		args = append(args, "--claims-property", spec.Claim)
+		cmd += " --claims-property %s"
+		args = append(args, spec.Claim)
 	}
 	for _, s := range spec.Scopes {
-		args = append(args, "--scopes", s)
+		cmd += " --scopes %s"
+		args = append(args, s)
 	}
 	nameSelector := spec.EnrollNameSelector
 	if nameSelector == "" {
 		nameSelector = "/sub"
 	}
-	args = append(args, "--enroll-name-claims-selector", nameSelector)
-	args = append(args, "--enroll-attr-claims-selector", spec.EnrollAttrSelector)
 	authPolicy := spec.EnrollAuthPolicy
 	if authPolicy == "" {
 		authPolicy = "default"
 	}
-	args = append(args, "--enroll-auth-policy", authPolicy)
-	args = append(args, fmt.Sprintf("--enroll-to-cert=%t", spec.EnrollToCert))
-	args = append(args, fmt.Sprintf("--enroll-to-token=%t", spec.EnrollToToken))
-	_, err := o.execZiti(args...)
+	cmd += " --enroll-name-claims-selector %s --enroll-attr-claims-selector %s --enroll-auth-policy %s"
+	args = append(args, nameSelector, spec.EnrollAttrSelector, authPolicy)
+	cmd += fmt.Sprintf(" --enroll-to-cert=%t --enroll-to-token=%t", spec.EnrollToCert, spec.EnrollToToken)
+	_, err := o.execZiti(cmd, args...)
 	require.NoError(t, err, "update ext-jwt-signer %s", name)
 	t.Logf("ext-jwt-signer %q updated", name)
 }
@@ -536,11 +546,13 @@ func (o *Overlay) UpdateExtJwtSigner(t *testing.T, name string, spec ExtJwtSigne
 // is the ext-jwt-signer set with the given IDs. Pass one or more signer IDs.
 func (o *Overlay) CreateAuthPolicyForExtJwt(t *testing.T, name string, signerIDs ...string) {
 	t.Logf("creating auth policy %q with %d ext-jwt-signer(s)", name, len(signerIDs))
-	args := []string{"edge", "create", "auth-policy", name, "--primary-ext-jwt-allowed"}
+	cmd := "edge create auth-policy %s --primary-ext-jwt-allowed"
+	args := []string{name}
 	for _, id := range signerIDs {
-		args = append(args, "--primary-ext-jwt-allowed-signers", id)
+		cmd += " --primary-ext-jwt-allowed-signers %s"
+		args = append(args, id)
 	}
-	_, err := o.execZiti(args...)
+	_, err := o.execZiti(cmd, args...)
 	require.NoError(t, err, "create auth policy %s", name)
 	t.Logf("auth policy %q created", name)
 }
@@ -555,18 +567,154 @@ func (o *Overlay) CreateIdentityWithExternalId(t *testing.T, name, externalID, a
 		policyDesc = "default"
 	}
 	t.Logf("creating controller identity %q with externalId=%q bound to auth policy %q", name, externalID, policyDesc)
-	args := []string{"edge", "create", "identity", name, "--external-id", externalID}
+	cmd := "edge create identity %s --external-id %s"
+	args := []string{name, externalID}
 	if authPolicy != "" {
-		args = append(args, "-P", authPolicy)
+		cmd += " -P %s"
+		args = append(args, authPolicy)
 	}
-	_, err := o.execZiti(args...)
+	_, err := o.execZiti(cmd, args...)
 	require.NoError(t, err, "create identity %s with externalId %s", name, externalID)
 	t.Logf("controller identity %q created", name)
 }
 
+// pkiRoot is the on-disk root under which all test CAs are created; the ziti
+// pki CLI lays out each CA at <root>/<ca-name>.
+func (o *Overlay) pkiRoot() string {
+	return filepath.Join(o.Home, "third-party-pki")
+}
+
+// PurgeLocalPki removes the on-disk test PKI. Runs once in doSetup because
+// ziti pki refuses to overwrite PKI left by a previous run.
+func (o *Overlay) PurgeLocalPki() error {
+	if err := os.RemoveAll(o.pkiRoot()); err != nil {
+		return fmt.Errorf("remove test pki root %s: %w", o.pkiRoot(), err)
+	}
+	return nil
+}
+
+// CreateLocalPkiCA creates a root CA on disk without registering it on the
+// controller.
+func (o *Overlay) CreateLocalPkiCA(t *testing.T, name string) {
+	_, err := o.execZiti("pki create ca --pki-root %s --ca-file %s --ca-name %s", o.pkiRoot(), name, name)
+	require.NoError(t, err, "pki create ca %s", name)
+}
+
+// CreateThirdPartyCA creates a root CA, registers it on the controller for
+// auth+ottca+autoca enrollment, verifies it, and returns its assigned ID.
+// Identities created by autoca enrollment are named with the controller
+// default format, [caName]-[commonName]. createCaFlags are appended to the
+// `edge create ca` command.
+func (o *Overlay) CreateThirdPartyCA(t *testing.T, name string, createCaFlags ...string) string {
+	t.Logf("creating third-party CA %q", name)
+	o.CreateLocalPkiCA(t, name)
+
+	caCert := filepath.Join(o.pkiRoot(), name, "certs", name+".cert")
+	cmd := "edge create ca %s %s --auth --ottca --autoca" + strings.Repeat(" %s", len(createCaFlags))
+	args := append([]string{name, caCert}, createCaFlags...)
+	out, err := o.execZiti(cmd, args...)
+	require.NoError(t, err, "create ca %s", name)
+	id := string(bytes.TrimSpace(out))
+
+	// verify by minting a client cert whose CN is the CA's verificationToken
+	filter := fmt.Sprintf("name=%q", name)
+	listOut, err := o.execZiti("edge list cas %s -j", filter)
+	require.NoError(t, err, "list ca %s", name)
+	var resp struct {
+		Data []struct {
+			VerificationToken string `json:"verificationToken"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(listOut, &resp), "parse ca %s", name)
+	require.Len(t, resp.Data, 1, "expected exactly one ca named %s", name)
+	token := resp.Data[0].VerificationToken
+	require.NotEmpty(t, token, "ca %s has no verificationToken", name)
+
+	o.CreateClientCert(t, name, token)
+	verifyCert := filepath.Join(o.pkiRoot(), name, "certs", token+".cert")
+	_, err = o.execZiti("edge verify ca %s --cert %s", name, verifyCert)
+	require.NoError(t, err, "verify ca %s", name)
+	t.Logf("third-party CA %q registered and verified with id=%s", name, id)
+	return id
+}
+
+// CreateOttCaEnrollment adds an ottca enrollment binding the identity to the
+// CA and returns the enrollment JWT.
+func (o *Overlay) CreateOttCaEnrollment(t *testing.T, identityName, caName string) string {
+	out, err := o.execZiti("edge create enrollment ottca %s %s", identityName, caName)
+	require.NoError(t, err, "create ottca enrollment for %s", identityName)
+	enrollmentID := string(bytes.TrimSpace(out))
+	filter := fmt.Sprintf("id=%q", enrollmentID)
+	listOut, err := o.execZiti("edge list enrollments %s -j", filter)
+	require.NoError(t, err, "list enrollment %s", enrollmentID)
+	var resp struct {
+		Data []struct {
+			JWT string `json:"jwt"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(listOut, &resp), "parse enrollment %s", enrollmentID)
+	require.Len(t, resp.Data, 1, "expected exactly one enrollment %s", enrollmentID)
+	require.NotEmpty(t, resp.Data[0].JWT, "enrollment %s has no jwt", enrollmentID)
+	return resp.Data[0].JWT
+}
+
+// CreateClientCert signs a client cert with the given common name by the named
+// CA and returns the cert and key PEM contents (the AddIdentity command carries
+// content, not file paths). createClientFlags are appended to the
+// `pki create client` command.
+func (o *Overlay) CreateClientCert(t *testing.T, caName, commonName string, createClientFlags ...string) (certPEM, keyPEM string) {
+	cmd := "pki create client --pki-root %s --ca-name %s --client-name %s --client-file %s" + strings.Repeat(" %s", len(createClientFlags))
+	args := append([]string{o.pkiRoot(), caName, commonName, commonName}, createClientFlags...)
+	_, err := o.execZiti(cmd, args...)
+	require.NoError(t, err, "pki create client %s for ca %s", commonName, caName)
+	cert, err := os.ReadFile(filepath.Join(o.pkiRoot(), caName, "certs", commonName+".cert"))
+	require.NoError(t, err, "read client cert for %s", commonName)
+	key, err := os.ReadFile(filepath.Join(o.pkiRoot(), caName, "keys", commonName+".key"))
+	require.NoError(t, err, "read client key for %s", commonName)
+	return string(cert), string(key)
+}
+
+// GetCaJwt fetches the CA enrollment JWT from the management API, authenticated
+// with the session the CLI cached at login. No ziti CLI verb exposes it.
+func (o *Overlay) GetCaJwt(t *testing.T, caID string) string {
+	cliConfig, err := os.ReadFile(filepath.Join(o.Home, "cli-config", "ziti-cli.json"))
+	require.NoError(t, err, "read cached cli session")
+	var cfg struct {
+		EdgeIdentities map[string]struct {
+			Token      string `json:"token"`
+			ApiSession struct {
+				OidcAccessToken string `json:"oidcAccessToken"`
+			} `json:"apiSession"`
+		} `json:"edgeIdentities"`
+		Default string `json:"default"`
+	}
+	require.NoError(t, json.Unmarshal(cliConfig, &cfg), "parse cached cli session")
+	session := cfg.EdgeIdentities[cfg.Default]
+
+	req, err := http.NewRequest(http.MethodGet, o.ControllerHostPort()+"/edge/management/v1/cas/"+caID+"/jwt", nil)
+	require.NoError(t, err, "build CA jwt request")
+	if session.ApiSession.OidcAccessToken != "" {
+		req.Header.Set("Authorization", "Bearer "+session.ApiSession.OidcAccessToken)
+	} else {
+		req.Header.Set("zt-session", session.Token)
+	}
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+		// the quickstart CA is not OS-trusted
+		Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}},
+	}
+	resp, err := client.Do(req)
+	require.NoError(t, err, "GET %s", req.URL)
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err, "read CA jwt response")
+	require.Equal(t, http.StatusOK, resp.StatusCode, "GET %s: %s", req.URL, body)
+	return strings.TrimSpace(string(body))
+}
+
 // DeleteExtJwtSigner removes an ext-jwt-signer by name.
 func (o *Overlay) DeleteExtJwtSigner(name string) error {
-	if _, err := o.execZiti("edge", "delete", "ext-jwt-signer", name); err != nil {
+	if _, err := o.execZiti("edge delete ext-jwt-signer %s", name); err != nil {
 		return fmt.Errorf("delete ext-jwt-signer %s: %w", name, err)
 	}
 	return nil
@@ -574,7 +722,7 @@ func (o *Overlay) DeleteExtJwtSigner(name string) error {
 
 // DeleteAuthPolicy removes an auth policy by name.
 func (o *Overlay) DeleteAuthPolicy(name string) error {
-	if _, err := o.execZiti("edge", "delete", "auth-policy", name); err != nil {
+	if _, err := o.execZiti("edge delete auth-policy %s", name); err != nil {
 		return fmt.Errorf("delete auth policy %s: %w", name, err)
 	}
 	return nil
@@ -590,7 +738,7 @@ func (o *Overlay) CreateHostConfigV1(name, protocol, forwardAddr string, forward
 	if err != nil {
 		return err
 	}
-	if _, err := o.execZiti("edge", "create", "config", name, "host.v1", string(body)); err != nil {
+	if _, err := o.execZiti("edge create config %s host.v1 %s", name, string(body)); err != nil {
 		return fmt.Errorf("create host config %s: %w", name, err)
 	}
 	return nil
@@ -616,7 +764,7 @@ func (o *Overlay) CreateInterceptConfigV1(name string, protocols, addresses []st
 	if err != nil {
 		return err
 	}
-	if _, err := o.execZiti("edge", "create", "config", name, "intercept.v1", string(body)); err != nil {
+	if _, err := o.execZiti("edge create config %s intercept.v1 %s", name, string(body)); err != nil {
 		return fmt.Errorf("create intercept config %s: %w", name, err)
 	}
 	return nil
@@ -624,8 +772,8 @@ func (o *Overlay) CreateInterceptConfigV1(name string, protocols, addresses []st
 
 // CreateService creates a service that references the given configs.
 func (o *Overlay) CreateService(name string, configs []string) error {
-	args := []string{"edge", "create", "service", name, "--configs", strings.Join(configs, ",")}
-	if _, err := o.execZiti(args...); err != nil {
+	configsCSV := strings.Join(configs, ",")
+	if _, err := o.execZiti("edge create service %s --configs %s", name, configsCSV); err != nil {
 		return fmt.Errorf("create service %s: %w", name, err)
 	}
 	return nil
@@ -633,11 +781,8 @@ func (o *Overlay) CreateService(name string, configs []string) error {
 
 // CreateBindServicePolicy creates a Bind service policy granting identityName access to serviceName.
 func (o *Overlay) CreateBindServicePolicy(name, identityName, serviceName string) error {
-	if _, err := o.execZiti("edge", "create", "service-policy", name, "Bind",
-		"--identity-roles", "@"+identityName,
-		"--service-roles", "@"+serviceName,
-		"--semantic", "AnyOf",
-	); err != nil {
+	if _, err := o.execZiti("edge create service-policy %s Bind --identity-roles %s --service-roles %s --semantic AnyOf",
+		name, "@"+identityName, "@"+serviceName); err != nil {
 		return fmt.Errorf("create bind policy %s: %w", name, err)
 	}
 	return nil
@@ -645,11 +790,8 @@ func (o *Overlay) CreateBindServicePolicy(name, identityName, serviceName string
 
 // CreateDialServicePolicy creates a Dial service policy granting identityName access to serviceName.
 func (o *Overlay) CreateDialServicePolicy(name, identityName, serviceName string) error {
-	if _, err := o.execZiti("edge", "create", "service-policy", name, "Dial",
-		"--identity-roles", "@"+identityName,
-		"--service-roles", "@"+serviceName,
-		"--semantic", "AnyOf",
-	); err != nil {
+	if _, err := o.execZiti("edge create service-policy %s Dial --identity-roles %s --service-roles %s --semantic AnyOf",
+		name, "@"+identityName, "@"+serviceName); err != nil {
 		return fmt.Errorf("create dial policy %s: %w", name, err)
 	}
 	return nil
@@ -657,7 +799,7 @@ func (o *Overlay) CreateDialServicePolicy(name, identityName, serviceName string
 
 // DeleteServicePolicy deletes a service policy by name.
 func (o *Overlay) DeleteServicePolicy(name string) error {
-	if _, err := o.execZiti("edge", "delete", "service-policy", name); err != nil {
+	if _, err := o.execZiti("edge delete service-policy %s", name); err != nil {
 		return fmt.Errorf("delete service policy %s: %w", name, err)
 	}
 	return nil
@@ -665,7 +807,7 @@ func (o *Overlay) DeleteServicePolicy(name string) error {
 
 // DeleteService deletes a service by name.
 func (o *Overlay) DeleteService(name string) error {
-	if _, err := o.execZiti("edge", "delete", "service", name); err != nil {
+	if _, err := o.execZiti("edge delete service %s", name); err != nil {
 		return fmt.Errorf("delete service %s: %w", name, err)
 	}
 	return nil
@@ -673,7 +815,7 @@ func (o *Overlay) DeleteService(name string) error {
 
 // DeleteConfig deletes a config by name.
 func (o *Overlay) DeleteConfig(name string) error {
-	if _, err := o.execZiti("edge", "delete", "config", name); err != nil {
+	if _, err := o.execZiti("edge delete config %s", name); err != nil {
 		return fmt.Errorf("delete config %s: %w", name, err)
 	}
 	return nil
@@ -699,8 +841,8 @@ func (o *Overlay) waitUntilReady() error {
 	attempts := 0
 	for {
 		attempts++
-		if _, err := o.execZiti("edge", "login", o.ControllerHostPort(),
-			"-u", o.ControllerUser, "-p", o.ControllerPassword, "--yes"); err == nil {
+		if _, err := o.execZiti("edge login %s -u %s -p %s --yes",
+			o.ControllerHostPort(), o.ControllerUser, o.ControllerPassword); err == nil {
 			log.Printf("overlay: admin login OK after %d attempt(s)", attempts)
 			return nil
 		} else {
@@ -732,20 +874,40 @@ func (o *Overlay) waitForControllerPort() error {
 	}
 }
 
-func (o *Overlay) execZiti(args ...string) ([]byte, error) {
-	cmd := exec.Command(o.ZitiBin, args...)
-	cmd.Env = append(os.Environ(),
-		"ZITI_CONFIG_DIR="+filepath.Join(o.Home, "cli-config"),
-	)
-	var stdout, stderr syncBuffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if o.ShowZitiCliCommands {
-		fmt.Println("COMMAND: " + cmd.String())
+// execZiti runs the ziti CLI with the command written as one readable line.
+// The line is tokenized on spaces before values are substituted: each literal
+// "%s" token becomes exactly one argument, so a value keeps its spaces and
+// quotes intact.
+func (o *Overlay) execZiti(cmd string, args ...string) ([]byte, error) {
+	tokens := strings.Fields(cmd)
+	argv := make([]string, 0, len(tokens))
+	i := 0
+	for _, tok := range tokens {
+		if tok != "%s" {
+			argv = append(argv, tok)
+			continue
+		}
+		if i >= len(args) {
+			return nil, fmt.Errorf("execZiti: %d args for more placeholders in %q", len(args), cmd)
+		}
+		argv = append(argv, args[i])
+		i++
 	}
-	if err := cmd.Run(); err != nil {
+	if i != len(args) {
+		return nil, fmt.Errorf("execZiti: %d args for %d placeholders in %q", len(args), i, cmd)
+	}
+
+	ziti := exec.Command(o.ZitiBin, argv...)
+	ziti.Env = append(os.Environ(), "ZITI_CONFIG_DIR="+filepath.Join(o.Home, "cli-config"))
+	var stdout, stderr syncBuffer
+	ziti.Stdout = &stdout
+	ziti.Stderr = &stderr
+	if o.ShowZitiCliCommands {
+		fmt.Println("COMMAND: " + ziti.String())
+	}
+	if err := ziti.Run(); err != nil {
 		return nil, fmt.Errorf("%s %v: %w\nstdout: %s\nstderr: %s",
-			o.ZitiBin, args, err, stdout.String(), stderr.String())
+			o.ZitiBin, argv, err, stdout.String(), stderr.String())
 	}
 	if o.ShowZitiCliCommands {
 		fmt.Println("COMMAND RESULT: \n" + stdout.String())
@@ -763,10 +925,15 @@ func (o *Overlay) PurgeIdentities() error {
 // named from the token's sub claim (not test_*)
 func (o *Overlay) PurgeIdentitiesByExternalId(fragment string) error {
 	filter := fmt.Sprintf(`externalId contains "%s" limit none`, fragment)
-	if _, err := o.execZiti("edge", "delete", "identities", "where", filter); err != nil {
+	if _, err := o.execZiti("edge delete identities where %s", filter); err != nil {
 		return fmt.Errorf("delete identities where %s: %w", filter, err)
 	}
 	return nil
+}
+
+// PurgeCAs deletes every certificate authority carrying a test name.
+func (o *Overlay) PurgeCAs() error {
+	return o.deleteWhere("cas")
 }
 
 // PurgeAuthPolicies deletes every auth policy carrying a test name.
@@ -799,7 +966,7 @@ func (o *Overlay) PurgeConfigs() error {
 // Test* names from t.Name().
 func (o *Overlay) deleteWhere(entity string) error {
 	filter := `name contains "test_" or name contains "Test" limit none`
-	if _, err := o.execZiti("edge", "delete", entity, "where", filter); err != nil {
+	if _, err := o.execZiti("edge delete %s where %s", entity, filter); err != nil {
 		return fmt.Errorf("delete %s where %s: %w", entity, filter, err)
 	}
 	return nil
@@ -817,7 +984,7 @@ func (o *Overlay) WaitForClusterLeader() error {
 	attempts := 0
 	for {
 		attempts++
-		out, err := o.execZiti("ops", "cluster", "list", "-j")
+		out, err := o.execZiti("ops cluster list -j")
 		if err == nil {
 			var resp struct {
 				Data []struct {
@@ -848,7 +1015,7 @@ func (o *Overlay) WaitForDataModelConsensus() {
 			time.Sleep(100 * time.Millisecond)
 		}
 
-		out, err := o.execZiti("fabric", "inspect", "data-model-index")
+		out, err := o.execZiti("fabric inspect data-model-index")
 		if err != nil {
 			log.Printf("overlay: inspect data-model-index failed, retrying: %v", err)
 			continue
