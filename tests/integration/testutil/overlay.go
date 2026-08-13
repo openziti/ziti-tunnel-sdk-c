@@ -44,17 +44,16 @@ const (
 )
 
 type Overlay struct {
-	ZitiBin             string
-	Home                string
-	ControllerURL       string
-	ControllerUser      string
-	ControllerPassword  string
-	AutoTrustCA         bool
-	ZitiClusterSize     int
+	ZitiBin            string
+	Home               string
+	ControllerURL      string
+	ControllerUser     string
+	ControllerPassword string
+	AutoTrustCA        bool
+	ZitiClusterSize    int
 	// Auth is the authentication path clients must take, "OIDC" or "Legacy". Required.
-	// Setup enforces it by calling ApplyAuthMode once the controller is populated.
-	Auth        AuthMode
-	authApplied bool
+	Auth                AuthMode
+	authApplied         bool
 	ZitiMajor           int
 	ZitiMinor           int
 	ShowZitiCliCommands bool
@@ -119,8 +118,8 @@ func (o *Overlay) Start() error {
 }
 
 // runQuickstart launches `ziti edge quickstart` against o.Home and returns once the
-// controller answers. Called twice in legacy mode: once to generate the config, once
-// after OIDC has been removed from it.
+// controller answers. Legacy mode calls it twice: once to generate the config, once after
+// OIDC has been removed from it.
 func (o *Overlay) runQuickstart() error {
 	quickstart := []string{"edge", "quickstart"}
 	if o.ZitiClusterSize > 1 {
@@ -333,17 +332,13 @@ func (o *Overlay) Stop() {
 	if o.ZitiClusterSize > 1 {
 		relayStop(o.cmd)
 	} else if err := o.cmd.Process.Kill(); err != nil {
-		// Kill can fail on Windows while the process is still running and holding the
-		// controller port, which only shows up when something restarts the overlay
-		// rather than stopping it at teardown. relayStop kills the tree instead.
+		// Kill can fail on Windows with the process still running and holding the
+		// controller port. relayStop kills the tree instead.
 		log.Printf("overlay pid %d kill: %v; falling back to process tree kill", pid, err)
 		relayStop(o.cmd)
 	}
-	// Wait for the process to actually be gone. cmd.Wait() is running in a goroutine
-	// feeding o.Done, and that completing is the only portable proof of exit - probing
-	// with Signal(0) reports "gone" immediately on Windows, where signals are not
-	// supported, so a caller that restarts the overlay would race the dying controller
-	// for the port and the database lock.
+	// o.Done carries the result of cmd.Wait(), so it closing is the only portable proof of
+	// exit. Signal(0) reports "gone" immediately on Windows, which has no signals.
 	select {
 	case <-o.Done:
 		return
@@ -830,9 +825,8 @@ func (o *Overlay) deleteWhere(entity string) error {
 // Retries forever; rely on the overall test timeout if the cluster wedges.
 func (o *Overlay) WaitForClusterLeader() error {
 	// Major 0 means the version could not be parsed, which is what a locally built
-	// ziti reports. Treat unknown as current rather than ancient: skipping the wait on a
-	// dev build lets the first model write race leader election and fail with
-	// CLUSTER_NO_LEADER.
+	// ziti reports. Skipping the wait on a dev build lets the first model write race leader
+	// election and fail with CLUSTER_NO_LEADER, so treat unknown as current.
 	if (o.ZitiMajor > 0 && o.ZitiMajor < 2) || o.ControllerURL != "" {
 		return nil
 	}
