@@ -17,8 +17,7 @@ limitations under the License.
 */
 
 // Every test here restarts the tunneler, and several wait out a silence window, so the set
-// costs minutes rather than seconds. That is too slow for a per-PR run and the behavior it
-// covers changes rarely, so it sits behind the slowtests tag and runs nightly.
+// costs minutes. It sits behind the slowtests tag and runs nightly.
 //
 //	go test . -tags slowtests -config config.json
 
@@ -82,9 +81,8 @@ func restartOffersCodePromptForEnrolledIdentity(t *testing.T) {
 // Same as the restart case, but re-authentication is triggered by toggling the identity off
 // and on. The prompt must be a code prompt, and the state on disk must survive the toggle.
 //
-// A toggle differs from a restart in that it never reloads config.json, so whatever the
-// running process holds in memory is what it uses. The event action is wrong without the fix
-// either way, even in the cases where the UI happens to render a usable prompt anyway.
+// A toggle never reloads config.json, so whatever the running process holds in memory is
+// what it uses.
 func disableEnableOffersCodePromptForEnrolledIdentity(t *testing.T) {
 	testutil.RunWithTimeoutOf(t, 60*time.Second, func(t *testing.T) {
 		idName := "test_legacy_mfa_toggle_prompt"
@@ -122,8 +120,6 @@ func restartKeepsPersistedMfaEnabled(t *testing.T) {
 
 		state.zetClient.WaitForMfaEvent(t, "auth_challenge", idName)
 
-		// status is only pushed when something changes, so ask for a fresh snapshot
-		// rather than waiting for an event that may never come
 		state.zetClient.ReconnectEvents(t)
 		after := state.zetClient.WaitForStatusEvent(t)
 		identity := findIdentityInStatus(t, after, enrollment.Identifier)
@@ -138,10 +134,9 @@ func restartKeepsPersistedMfaEnabled(t *testing.T) {
 // Stage the state older clients left behind: enroll MFA, stop the tunneler, rewrite
 // config.json to say the identity is not enrolled, start again.
 //
-// Now the client has nothing trustworthy to prefer, so the enrollment request legitimately
-// stands and the test asserts it. Then it clicks the button the UI would offer, expects that
-// to fail because the session is only partially authenticated, and requires a code prompt to
-// follow - which is the only thing that gets such a client unstuck.
+// The client has nothing trustworthy to prefer, so the enrollment request legitimately
+// stands and the test asserts it. It then clicks the button the UI would offer, expects that
+// to fail on the partially authenticated session, and requires a code prompt to follow.
 func recoversWhenPersistedMfaEnabledIsWrong(t *testing.T) {
 	// asserts enrollment_required actually arrives, which needs a controller that withholds
 	// the enrollment state
@@ -174,8 +169,7 @@ func recoversWhenPersistedMfaEnabledIsWrong(t *testing.T) {
 // Restart twice, answering the prompt each time.
 //
 // One restart proves the client reads its state correctly; two prove it also wrote it back
-// correctly. If the first pass persists the wrong value, the second restart loads that and
-// the identity is stuck - which is how a client that looked fine yesterday is bricked today.
+// correctly. If the first pass persists the wrong value, the second restart loads it.
 func repeatedRestartsKeepOfferingCodePrompt(t *testing.T) {
 	testutil.RunWithTimeoutOf(t, 90*time.Second, func(t *testing.T) {
 		idName := "test_legacy_mfa_repeat_restart"
@@ -228,10 +222,9 @@ func restartAcceptsRecoveryCode(t *testing.T) {
 
 // Answer the prompt, then watch for a while and expect silence.
 //
-// The complaint that started all of this was not a missing prompt but an endless run of
-// them, one every ten seconds, each raising a toast. That happens when the client keeps
-// tearing its session down and re-authenticating, so every cycle asks again. Once a code is
-// accepted the client should settle and stay quiet.
+// The reported symptom was not a missing prompt but an endless run of them, one every ten
+// seconds. That happens when the client keeps tearing its session down and
+// re-authenticating, so every cycle asks again.
 func acceptedCodeEndsThePrompting(t *testing.T) {
 	testutil.RunWithTimeoutOf(t, 90*time.Second, func(t *testing.T) {
 		idName := "test_legacy_mfa_quiet_after_code"
@@ -278,8 +271,6 @@ func twoIdentitiesKeepSeparateMfaState(t *testing.T) {
 		state.zetClient.SubmitMFA(t, enrollment.Identifier, code).AssertSuccess()
 		state.zetClient.WaitForIdentityEvent(t, "updated", mfaName).AssertMfaAuthenticated()
 
-		// status is only pushed when something changes, so ask for a fresh snapshot
-		// rather than waiting for an event that may never come
 		state.zetClient.ReconnectEvents(t)
 		after := state.zetClient.WaitForStatusEvent(t)
 		require.True(t, findIdentityInStatus(t, after, enrollment.Identifier).MfaEnabled, "status says MfaEnabled=false for enrolled identity %q", mfaName)
@@ -290,8 +281,7 @@ func twoIdentitiesKeepSeparateMfaState(t *testing.T) {
 // Remove MFA from the client, then restart.
 //
 // The existing coverage checks that removal is accepted; this checks that it stuck. After a
-// restart the identity must come up with nothing pending and no prompt, because a client
-// that keeps asking for a code it no longer needs is as stuck as one that cannot ask at all.
+// restart the identity must come up with nothing pending and no prompt.
 func removeMfaThenRestartStopsPrompting(t *testing.T) {
 	testutil.RunWithTimeoutOf(t, 60*time.Second, func(t *testing.T) {
 		idName := "test_legacy_mfa_removed_then_restart"
@@ -315,10 +305,8 @@ func removeMfaThenRestartStopsPrompting(t *testing.T) {
 // An administrator clears the identity's MFA enrollment on the controller while the client
 // still believes it is enrolled, then the client restarts.
 //
-// This is the escape hatch support uses on a stuck client, so it has to work: the identity
-// must come back with no prompt at all. It is also the one case where the client's stored
-// state is deliberately ahead of the controller, so a fix that trusts that state without
-// limit would keep demanding a code no one can satisfy.
+// The identity must come back with no prompt at all. This is the one case where the
+// client's stored state is deliberately ahead of the controller's.
 func adminRemovedMfaStopsPromptingAfterRestart(t *testing.T) {
 	testutil.RunWithTimeoutOf(t, 60*time.Second, func(t *testing.T) {
 		idName := "test_legacy_mfa_admin_removed"
@@ -334,8 +322,6 @@ func adminRemovedMfaStopsPromptingAfterRestart(t *testing.T) {
 		state.zetClient.AssertNoMfaEvent(t, "auth_challenge", idName, 2*time.Second)
 		state.zetClient.AssertNoMfaEvent(t, "enrollment_required", idName, time.Second)
 
-		// status is only pushed when something changes, so ask for a fresh snapshot
-		// rather than waiting for an event that may never come
 		state.zetClient.ReconnectEvents(t)
 		after := state.zetClient.WaitForStatusEvent(t)
 		identity := findIdentityInStatus(t, after, enrollment.Identifier)

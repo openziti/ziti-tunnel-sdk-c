@@ -232,7 +232,8 @@ func (z *ZET) DialIPC() (*CommandsClient, error) {
 }
 
 // ReconnectEvents closes the event pipe and re-subscribes to the same running
-// daemon, replacing z.EventClient. The daemon resends its status snapshot on connect.
+// daemon, replacing z.EventClient. The daemon resends its status snapshot on connect;
+// status is otherwise only pushed when something changes.
 func (z *ZET) ReconnectEvents(t *testing.T) {
 	path := EventPipePathFor(z.Discriminator)
 	log.Printf("ipc: reconnecting event pipe %s", path)
