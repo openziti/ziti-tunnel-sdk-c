@@ -33,6 +33,7 @@ func TestThirdPartyCa(t *testing.T) {
 	t.Run("rejectsCertFromUnregisteredCa", rejectsCertFromUnregisteredCa)
 	t.Run("rejectsAddingSameIdentityTwice", rejectsAddingSameIdentityTwice)
 	t.Run("rejectsReenrollingSameCert", rejectsReenrollingSameCert)
+	t.Run("rejectsCertMissingExternalId", rejectsCertMissingExternalId)
 }
 
 func autocaEnrollCreatesIdentity(t *testing.T) {
@@ -96,6 +97,21 @@ func rejectsReenrollingSameCert(t *testing.T) {
 		renamedData := testutil.NewCaIdentityData(idName+"_renamed", caJwt, cert, key)
 		dupResp := state.zetClient.AddIdentity(t, renamedData)
 		dupResp.AssertFail(500, "certificate already in use")
+	})
+}
+
+func rejectsCertMissingExternalId(t *testing.T) {
+	testutil.RunWithTimeoutOf(t, thirdPartyCaTestTimeout, func(t *testing.T) {
+		caName := "test_tpca_extid"
+		// the claim location is a SAN URI, which CreateClientCert certs never carry
+		caID := state.overlay.CreateThirdPartyCA(t, caName, "--location", "SAN_URI", "--matcher", "ALL", "--parser", "NONE")
+		commonName := "test_tpca_extid_user1"
+		cert, key := state.overlay.CreateClientCert(t, caName, commonName)
+		caJwt := state.overlay.GetCaJwt(t, caID)
+
+		identityData := testutil.NewCaIdentityData(commonName, caJwt, cert, key)
+		addResp := state.zetClient.AddIdentity(t, identityData)
+		addResp.AssertFail(500, "expected to contain an externalId")
 	})
 }
 

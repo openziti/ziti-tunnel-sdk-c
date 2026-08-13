@@ -603,13 +603,16 @@ func (o *Overlay) CreateLocalPkiCA(t *testing.T, name string) {
 // CreateThirdPartyCA creates a root CA, registers it on the controller for
 // auth+ottca+autoca enrollment, verifies it, and returns its assigned ID.
 // Identities created by autoca enrollment are named with the controller
-// default format, [caName]-[commonName].
-func (o *Overlay) CreateThirdPartyCA(t *testing.T, name string) string {
+// default format, [caName]-[commonName]. createCaFlags are appended to the
+// `edge create ca` command.
+func (o *Overlay) CreateThirdPartyCA(t *testing.T, name string, createCaFlags ...string) string {
 	t.Logf("creating third-party CA %q", name)
 	o.CreateLocalPkiCA(t, name)
 
 	caCert := filepath.Join(o.pkiRoot(), name, "certs", name+".cert")
-	out, err := o.execZiti("edge create ca %s %s --auth --ottca --autoca", name, caCert)
+	cmd := "edge create ca %s %s --auth --ottca --autoca" + strings.Repeat(" %s", len(createCaFlags))
+	args := append([]string{name, caCert}, createCaFlags...)
+	out, err := o.execZiti(cmd, args...)
 	require.NoError(t, err, "create ca %s", name)
 	id := string(bytes.TrimSpace(out))
 
