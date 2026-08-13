@@ -84,7 +84,7 @@ func (z *ZET) Start() error {
 	if err := os.MkdirAll(z.RootDir, 0o755); err != nil {
 		return fmt.Errorf("mkdir zet root dir: %w", err)
 	}
-	identityDir := filepath.Join(z.RootDir, "identities")
+	identityDir := z.IdentityDir()
 	if err := os.MkdirAll(identityDir, 0o700); err != nil {
 		return fmt.Errorf("mkdir identity dir: %w", err)
 	}
@@ -244,7 +244,7 @@ func (z *ZET) ReconnectEvents(t *testing.T) {
 
 // RemoveJSONIdentities deletes every *.json file in the identity dir.
 func (z *ZET) RemoveJSONIdentities() error {
-	identityDir := filepath.Join(z.RootDir, "identities")
+	identityDir := z.IdentityDir()
 	matches, err := filepath.Glob(filepath.Join(identityDir, "*.json"))
 	if err != nil {
 		return fmt.Errorf("glob identity dir: %w", err)

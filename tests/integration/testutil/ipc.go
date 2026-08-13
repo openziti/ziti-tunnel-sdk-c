@@ -173,13 +173,15 @@ func (c *EventClient) readLoop() {
 // waitForEvent blocks until the next event matching op/action/fingerprint
 // arrives, advances past it, and returns its raw JSON. Blocks indefinitely;
 // rely on the per-test timeout if the event never comes.
-func (c *EventClient) waitForEvent(t *testing.T, op, action, fingerprint string) json.RawMessage {
+// subscribe registers for read-loop wakeups and returns the channel, the cursor to scan
+// from, and the deregistration func the caller must defer.
+func (c *EventClient) subscribe() (chan struct{}, int, func()) {
 	notify := make(chan struct{}, 1)
 	c.mu.Lock()
 	c.notify = append(c.notify, notify)
 	cursor := c.cursor
 	c.mu.Unlock()
-	defer func() {
+	return notify, cursor, func() {
 		c.mu.Lock()
 		for i, n := range c.notify {
 			if n == notify {
@@ -188,7 +190,12 @@ func (c *EventClient) waitForEvent(t *testing.T, op, action, fingerprint string)
 			}
 		}
 		c.mu.Unlock()
-	}()
+	}
+}
+
+func (c *EventClient) waitForEvent(t *testing.T, op, action, fingerprint string) json.RawMessage {
+	notify, cursor, unsubscribe := c.subscribe()
+	defer unsubscribe()
 
 	for {
 		c.mu.Lock()
@@ -236,6 +243,37 @@ func (c *EventClient) WaitForMfaEvent(t *testing.T, action, fingerprint string) 
 	require.NoError(t, json.Unmarshal(raw, &ev), "parse MfaEvent: %s", raw)
 	ev.t = t
 	return ev
+}
+
+// AssertNoMfaEvent fails if an Op:"mfa" event matching action/fingerprint arrives within
+// the window. The WaitFor helpers assert an event arrived; this asserts none did.
+//
+// Events already seen before this call are ignored, and matching ones are not consumed.
+func (c *EventClient) AssertNoMfaEvent(t *testing.T, action, fingerprint string, within time.Duration) {
+	notify, cursor, unsubscribe := c.subscribe()
+	defer unsubscribe()
+
+	deadline := time.After(within)
+	for {
+		c.mu.Lock()
+		events := c.events
+		readErr := c.readErr
+		c.mu.Unlock()
+		for ; cursor < len(events); cursor++ {
+			e := events[cursor]
+			if e.op == "mfa" && e.action == action && e.fingerprint == fingerprint {
+				require.FailNowf(t, "unexpected mfa event",
+					"got mfa:%s for %q within %s", action, fingerprint, within)
+			}
+		}
+		require.NoError(t, readErr, "event reader exited waiting out mfa:%s/%s", action, fingerprint)
+
+		select {
+		case <-deadline:
+			return
+		case <-notify:
+		}
+	}
 }
 
 // WaitForBulkServiceEvent waits for an Op:"bulkservice" event matching action/fingerprint.

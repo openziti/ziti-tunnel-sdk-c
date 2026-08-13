@@ -54,7 +54,7 @@ func (o *Overlay) RemoveIdentityMFA(t *testing.T, name string) {
 	require.NoError(t, err, "build delete mfa request")
 	req.Header.Set("zt-session", token)
 
-	resp, err := managementClient().Do(req)
+	resp, err := insecureClient(10 * time.Second).Do(req)
 	require.NoError(t, err, "delete mfa for %s", name)
 	defer resp.Body.Close()
 	require.Equal(t, http.StatusOK, resp.StatusCode, "delete mfa for %s returned %d", name, resp.StatusCode)
@@ -80,7 +80,7 @@ func (o *Overlay) managementToken(t *testing.T) string {
 	body, err := json.Marshal(map[string]string{"username": o.ControllerUser, "password": o.ControllerPassword})
 	require.NoError(t, err, "encode admin credentials")
 
-	resp, err := managementClient().Post(
+	resp, err := insecureClient(10*time.Second).Post(
 		o.ControllerHostPort()+"/edge/management/v1/authenticate?method=password",
 		"application/json", bytes.NewReader(body))
 	require.NoError(t, err, "admin authenticate")
@@ -97,11 +97,11 @@ func (o *Overlay) managementToken(t *testing.T) string {
 	return authResp.Data.Token
 }
 
-// managementClient skips TLS verification so these calls work whether or not the
-// overlay's CA is in the OS trust store.
-func managementClient() *http.Client {
+// insecureClient skips TLS verification so calls work whether or not the overlay's CA is
+// in the OS trust store.
+func insecureClient(timeout time.Duration) *http.Client {
 	return &http.Client{
-		Timeout:   10 * time.Second,
+		Timeout:   timeout,
 		Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}},
 	}
 }

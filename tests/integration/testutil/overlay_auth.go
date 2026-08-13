@@ -17,7 +17,6 @@ limitations under the License.
 package testutil
 
 import (
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -250,10 +249,7 @@ func disableOidcInConfig(path string) error {
 // API version endpoint. Verification skips TLS checks so it works before the CA is
 // trusted.
 func (o *Overlay) controllerCapabilities() ([]string, error) {
-	client := &http.Client{
-		Timeout:   5 * time.Second,
-		Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}},
-	}
+	client := insecureClient(5 * time.Second)
 	url := o.ControllerHostPort() + "/edge/client/v1/version"
 	resp, err := client.Get(url)
 	if err != nil {
