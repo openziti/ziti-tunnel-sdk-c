@@ -45,15 +45,8 @@ func autocaEnrollCreatesIdentity(t *testing.T) {
 
 		// the controller names the auto-provisioned identity [caName]-[commonName]
 		idName := caName + "-" + commonName
-		identityData := testutil.NewCaIdentityData(idName, caJwt, cert, key)
-		addResp := state.zetClient.AddIdentity(t, identityData)
-		addResp.AssertSuccess()
+		added := testutil.EnrollCaJwt(t, state.zetClient, idName, caJwt, cert, key)
 
-		added := state.zetClient.WaitForIdentityEvent(t, "added", idName)
-		require.True(t, added.Id.Active)
-		state.zetClient.WaitForControllerEvent(t, "connected", idName)
-
-		testutil.AssertValidJwtEnrolledIdentityFile(t, added.Id.Identifier)
 		idFile := testutil.ReadIdentityFile(t, added.Id.Identifier)
 		require.Equal(t, cert, idFile.ID.Cert)
 		require.Equal(t, key, idFile.ID.Key)
@@ -68,15 +61,7 @@ func ottcaEnrollsPreCreatedIdentity(t *testing.T) {
 		ottcaJwt := state.overlay.CreateOttCaEnrollment(t, idName, caName)
 		cert, key := state.overlay.CreateClientCert(t, caName, idName)
 
-		identityData := testutil.NewCaIdentityData(idName, ottcaJwt, cert, key)
-		addResp := state.zetClient.AddIdentity(t, identityData)
-		addResp.AssertSuccess()
-
-		added := state.zetClient.WaitForIdentityEvent(t, "added", idName)
-		require.True(t, added.Id.Active)
-		state.zetClient.WaitForControllerEvent(t, "connected", idName)
-
-		testutil.AssertValidJwtEnrolledIdentityFile(t, added.Id.Identifier)
+		testutil.EnrollCaJwt(t, state.zetClient, idName, ottcaJwt, cert, key)
 	})
 }
 
@@ -89,12 +74,9 @@ func rejectsAddingSameIdentityTwice(t *testing.T) {
 		caJwt := state.overlay.GetCaJwt(t, caID)
 
 		idName := caName + "-" + commonName
-		identityData := testutil.NewCaIdentityData(idName, caJwt, cert, key)
-		addResp := state.zetClient.AddIdentity(t, identityData)
-		addResp.AssertSuccess()
-		state.zetClient.WaitForIdentityEvent(t, "added", idName)
-		state.zetClient.WaitForControllerEvent(t, "connected", idName)
+		testutil.EnrollCaJwt(t, state.zetClient, idName, caJwt, cert, key)
 
+		identityData := testutil.NewCaIdentityData(idName, caJwt, cert, key)
 		dupResp := state.zetClient.AddIdentity(t, identityData)
 		dupResp.AssertFail(500, "identity exists with the same name")
 	})
@@ -109,11 +91,7 @@ func rejectsReenrollingSameCert(t *testing.T) {
 		caJwt := state.overlay.GetCaJwt(t, caID)
 
 		idName := caName + "-" + commonName
-		identityData := testutil.NewCaIdentityData(idName, caJwt, cert, key)
-		addResp := state.zetClient.AddIdentity(t, identityData)
-		addResp.AssertSuccess()
-		state.zetClient.WaitForIdentityEvent(t, "added", idName)
-		state.zetClient.WaitForControllerEvent(t, "connected", idName)
+		testutil.EnrollCaJwt(t, state.zetClient, idName, caJwt, cert, key)
 
 		renamedData := testutil.NewCaIdentityData(idName+"_renamed", caJwt, cert, key)
 		dupResp := state.zetClient.AddIdentity(t, renamedData)
