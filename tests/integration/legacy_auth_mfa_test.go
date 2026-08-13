@@ -32,18 +32,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// MFA on the legacy api-session auth path.
+// MFA state across tunneler restarts, on either auth path.
 //
-// A controller on that path never tells the client whether an identity has TOTP enrolled -
-// the auth query it sends is byte-identical for an enrolled identity and one that has never
-// enrolled. The sdk reads the missing field as "not enrolled" and asks the client to enroll,
-// so after a restart an enrolled user is offered an enrollment button instead of a code box.
-// Enrollment then fails on a session that is only partially authenticated, and the user has
-// no way forward.
+// A legacy controller never tells the client whether an identity has TOTP enrolled: the auth
+// query is byte-identical for an enrolled identity and one that has never enrolled. The sdk
+// reads the missing field as "not enrolled" and asks the client to enroll, so an enrolled
+// user gets an enrollment button instead of a code box, and enrollment fails on a partially
+// authenticated session.
 //
-// These tests pin the behavior the tunneler has to produce anyway: prefer what it already
-// knows about the identity, and if it knows nothing, recover once the enrollment attempt
-// fails. They skip unless the overlay is running on the legacy path.
+// An enrolled identity must be asked for a code after a restart whichever path the overlay
+// runs on, so most of these run on both. The two that require legacy say so.
 func TestLegacyAuthMFA(t *testing.T) {
 	t.Run("restartOffersCodePromptForEnrolledIdentity", restartOffersCodePromptForEnrolledIdentity)
 	t.Run("disableEnableOffersCodePromptForEnrolledIdentity", disableEnableOffersCodePromptForEnrolledIdentity)
@@ -55,6 +53,7 @@ func TestLegacyAuthMFA(t *testing.T) {
 	t.Run("twoIdentitiesKeepSeparateMfaState", twoIdentitiesKeepSeparateMfaState)
 	t.Run("removeMfaThenRestartStopsPrompting", removeMfaThenRestartStopsPrompting)
 	t.Run("adminRemovedMfaStopsPromptingAfterRestart", adminRemovedMfaStopsPromptingAfterRestart)
+	t.Run("migratingToOidcKeepsTheIdentityEnrolled", migratingToOidcKeepsTheIdentityEnrolled)
 }
 
 // Enroll MFA, verify it, restart the tunneler, and expect a code prompt. Submit a real code
@@ -63,8 +62,6 @@ func TestLegacyAuthMFA(t *testing.T) {
 // Without the fix the tunneler passes the sdk's enrollment request straight through, so
 // auth_challenge never arrives and this fails waiting for it.
 func restartOffersCodePromptForEnrolledIdentity(t *testing.T) {
-	state.overlay.RequireLegacyAuth(t)
-
 	testutil.RunWithTimeoutOf(t, 60*time.Second, func(t *testing.T) {
 		idName := "test_legacy_mfa_restart_prompt"
 		enrollment, secret := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, idName)
@@ -89,8 +86,6 @@ func restartOffersCodePromptForEnrolledIdentity(t *testing.T) {
 // running process holds in memory is what it uses. The event action is wrong without the fix
 // either way, even in the cases where the UI happens to render a usable prompt anyway.
 func disableEnableOffersCodePromptForEnrolledIdentity(t *testing.T) {
-	state.overlay.RequireLegacyAuth(t)
-
 	testutil.RunWithTimeoutOf(t, 60*time.Second, func(t *testing.T) {
 		idName := "test_legacy_mfa_toggle_prompt"
 		enrollment, secret := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, idName)
@@ -119,8 +114,6 @@ func disableEnableOffersCodePromptForEnrolledIdentity(t *testing.T) {
 // told the identity is not enrolled, and the next routine save writes that to the file - so
 // the file stops agreeing with the controller.
 func restartKeepsPersistedMfaEnabled(t *testing.T) {
-	state.overlay.RequireLegacyAuth(t)
-
 	testutil.RunWithTimeoutOf(t, 60*time.Second, func(t *testing.T) {
 		idName := "test_legacy_mfa_restart_state"
 		enrollment, _ := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, idName)
@@ -150,6 +143,8 @@ func restartKeepsPersistedMfaEnabled(t *testing.T) {
 // to fail because the session is only partially authenticated, and requires a code prompt to
 // follow - which is the only thing that gets such a client unstuck.
 func recoversWhenPersistedMfaEnabledIsWrong(t *testing.T) {
+	// asserts enrollment_required actually arrives, which needs a controller that withholds
+	// the enrollment state
 	state.overlay.RequireLegacyAuth(t)
 
 	testutil.RunWithTimeoutOf(t, 90*time.Second, func(t *testing.T) {
@@ -182,8 +177,6 @@ func recoversWhenPersistedMfaEnabledIsWrong(t *testing.T) {
 // correctly. If the first pass persists the wrong value, the second restart loads that and
 // the identity is stuck - which is how a client that looked fine yesterday is bricked today.
 func repeatedRestartsKeepOfferingCodePrompt(t *testing.T) {
-	state.overlay.RequireLegacyAuth(t)
-
 	testutil.RunWithTimeoutOf(t, 90*time.Second, func(t *testing.T) {
 		idName := "test_legacy_mfa_repeat_restart"
 		enrollment, secret := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, idName)
@@ -217,8 +210,6 @@ func repeatedRestartsKeepOfferingCodePrompt(t *testing.T) {
 // codes after a toggle; this one does it after a restart, where the client has just reloaded
 // its state from disk.
 func restartAcceptsRecoveryCode(t *testing.T) {
-	state.overlay.RequireLegacyAuth(t)
-
 	testutil.RunWithTimeoutOf(t, 60*time.Second, func(t *testing.T) {
 		idName := "test_legacy_mfa_restart_recovery"
 		enrollment, _ := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, idName)
@@ -242,8 +233,6 @@ func restartAcceptsRecoveryCode(t *testing.T) {
 // tearing its session down and re-authenticating, so every cycle asks again. Once a code is
 // accepted the client should settle and stay quiet.
 func acceptedCodeEndsThePrompting(t *testing.T) {
-	state.overlay.RequireLegacyAuth(t)
-
 	testutil.RunWithTimeoutOf(t, 90*time.Second, func(t *testing.T) {
 		idName := "test_legacy_mfa_quiet_after_code"
 		enrollment, secret := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, idName)
@@ -271,8 +260,6 @@ func acceptedCodeEndsThePrompting(t *testing.T) {
 // catches a fix that reads or writes MFA state for the wrong identity, which a single
 // identity test cannot see.
 func twoIdentitiesKeepSeparateMfaState(t *testing.T) {
-	state.overlay.RequireLegacyAuth(t)
-
 	testutil.RunWithTimeoutOf(t, 90*time.Second, func(t *testing.T) {
 		mfaName := "test_legacy_mfa_pair_enrolled"
 		plainName := "test_legacy_mfa_pair_plain"
@@ -306,8 +293,6 @@ func twoIdentitiesKeepSeparateMfaState(t *testing.T) {
 // restart the identity must come up with nothing pending and no prompt, because a client
 // that keeps asking for a code it no longer needs is as stuck as one that cannot ask at all.
 func removeMfaThenRestartStopsPrompting(t *testing.T) {
-	state.overlay.RequireLegacyAuth(t)
-
 	testutil.RunWithTimeoutOf(t, 60*time.Second, func(t *testing.T) {
 		idName := "test_legacy_mfa_removed_then_restart"
 		enrollment, secret := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, idName)
@@ -335,8 +320,6 @@ func removeMfaThenRestartStopsPrompting(t *testing.T) {
 // state is deliberately ahead of the controller, so a fix that trusts that state without
 // limit would keep demanding a code no one can satisfy.
 func adminRemovedMfaStopsPromptingAfterRestart(t *testing.T) {
-	state.overlay.RequireLegacyAuth(t)
-
 	testutil.RunWithTimeoutOf(t, 60*time.Second, func(t *testing.T) {
 		idName := "test_legacy_mfa_admin_removed"
 		enrollment, _ := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, idName)
@@ -357,5 +340,39 @@ func adminRemovedMfaStopsPromptingAfterRestart(t *testing.T) {
 		after := state.zetClient.WaitForStatusEvent(t)
 		identity := findIdentityInStatus(t, after, enrollment.Identifier)
 		require.False(t, identity.MfaNeeded, "status says MfaNeeded=true for %q after an admin removed MFA", idName)
+	})
+}
+
+// Enroll on a legacy controller, then have an administrator put OIDC back and restart it.
+//
+// This is the migration support recommends, so the client has to survive it: the identity is
+// still enrolled afterwards and is still asked for a code, now because the controller says
+// so rather than because the client remembered. Restores legacy auth on the way out.
+func migratingToOidcKeepsTheIdentityEnrolled(t *testing.T) {
+	state.overlay.RequireLegacyAuth(t)
+
+	testutil.RunWithTimeoutOf(t, 180*time.Second, func(t *testing.T) {
+		idName := "test_legacy_mfa_oidc_migration"
+		enrollment, secret := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, idName)
+
+		require.NoError(t, state.zetClient.Restart(), "restart %s\n%s", state.zetClient.Discriminator, state.zetClient.LogPath())
+		state.zetClient.WaitForMfaEvent(t, "auth_challenge", idName)
+
+		t.Cleanup(func() { state.overlay.RestoreLegacyAuth(t) })
+		state.overlay.EnableOidc(t)
+
+		require.NoError(t, state.zetClient.Restart(), "restart %s after the OIDC migration\n%s", state.zetClient.Discriminator, state.zetClient.LogPath())
+		state.zetClient.WaitForMfaEvent(t, "auth_challenge", idName)
+
+		code := testutil.GenerateTOTP(t, secret, time.Now())
+		submitResp := state.zetClient.SubmitMFA(t, enrollment.Identifier, code)
+		submitResp.AssertSuccess()
+
+		updatedEvent := state.zetClient.WaitForIdentityEvent(t, "updated", idName)
+		updatedEvent.AssertMfaAuthenticated()
+
+		require.True(t, state.overlay.IdentityMfaEnabled(t, idName), "controller says %q is not enrolled after the OIDC migration", idName)
+		persisted := state.zetClient.PersistedIdentity(t, enrollment.Identifier)
+		require.Equal(t, true, persisted["MfaEnabled"], "config.json says MfaEnabled=%v after the OIDC migration", persisted["MfaEnabled"])
 	})
 }

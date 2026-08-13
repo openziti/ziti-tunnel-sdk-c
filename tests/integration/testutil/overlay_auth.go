@@ -123,6 +123,87 @@ func (o *Overlay) restartWithoutOidc() error {
 	return nil
 }
 
+// EnableOidc reverses disableOidcInConfig, restarts the controller, and flips o.Auth.
+// Models an administrator putting OIDC back, the remediation for clients stuck on the
+// legacy path.
+//
+// Callers own the restore: defer RestoreLegacyAuth so later tests see the path the run was
+// configured for.
+func (o *Overlay) EnableOidc(t *testing.T) {
+	require.Equal(t, AuthLegacy, o.Auth, "EnableOidc from auth mode %s", o.Auth)
+
+	log.Printf("overlay: restoring OIDC on the controller")
+	o.Stop()
+
+	paths, err := o.controllerConfigPaths()
+	require.NoError(t, err, "find controller configs")
+	for _, path := range paths {
+		require.NoError(t, enableOidcInConfig(path), "restore OIDC in %s", path)
+	}
+
+	require.NoError(t, o.runQuickstart(), "restart controller with OIDC")
+	o.Auth = AuthOIDC
+	require.NoError(t, o.verifyAuthMode(), "controller did not come back advertising OIDC")
+}
+
+// RestoreLegacyAuth strips OIDC again after EnableOidc.
+func (o *Overlay) RestoreLegacyAuth(t *testing.T) {
+	if o.Auth == AuthLegacy {
+		return
+	}
+	o.Auth = AuthLegacy
+	require.NoError(t, o.restartWithoutOidc(), "restore legacy auth")
+	require.NoError(t, o.verifyAuthMode(), "controller did not come back on the legacy path")
+}
+
+// enableOidcInConfig undoes disableOidcInConfig: uncomments the edge-oidc binding and its
+// options line, and sets disableOidcAutoBinding back to false. Reversing the edit rather
+// than restoring a saved copy keeps this correct on a reused test home, where the config
+// was already stripped before the run started.
+func enableOidcInConfig(path string) error {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read controller config %s: %w", path, err)
+	}
+
+	var out []string
+	restored := false
+	uncommentNext := false
+
+	for _, line := range strings.Split(string(raw), "\n") {
+		trimmed := strings.TrimSpace(line)
+		bare := strings.TrimSpace(strings.TrimPrefix(trimmed, "#"))
+
+		if strings.HasPrefix(trimmed, "#") && bare == "- binding: edge-oidc" {
+			out = append(out, strings.Replace(line, "#", "", 1))
+			restored = true
+			uncommentNext = true
+			continue
+		}
+		if uncommentNext {
+			uncommentNext = false
+			if strings.HasPrefix(trimmed, "#") && strings.HasPrefix(bare, "options:") {
+				out = append(out, strings.Replace(line, "#", "", 1))
+				continue
+			}
+		}
+		if trimmed == "disableOidcAutoBinding: true" {
+			out = append(out, strings.Replace(line, "true", "false", 1))
+			restored = true
+			continue
+		}
+		out = append(out, line)
+	}
+
+	if !restored {
+		return fmt.Errorf("no commented edge-oidc binding or disableOidcAutoBinding found in %s", path)
+	}
+	if err := os.WriteFile(path, []byte(strings.Join(out, "\n")), 0o600); err != nil {
+		return fmt.Errorf("write controller config %s: %w", path, err)
+	}
+	return nil
+}
+
 // waitForRouterOnline waits until the quickstart router has enrolled and connected. An
 // admin login succeeds before that point. Enrollment writes the router's key and cert,
 // which the generated router config points at, so a restart before it fails on the
@@ -191,8 +272,9 @@ func disableOidcInConfig(path string) error {
 	}
 
 	lines := strings.Split(string(raw), "\n")
-	// already applied; nothing to do and nothing to duplicate
-	alreadySet := strings.Contains(string(raw), "disableOidcAutoBinding:")
+	// the key is present either way once this has run; only "true" means it is applied
+	alreadySet := strings.Contains(string(raw), "disableOidcAutoBinding: true")
+	keyPresent := strings.Contains(string(raw), "disableOidcAutoBinding:")
 
 	var out []string
 	inEdge := false
@@ -206,6 +288,13 @@ func disableOidcInConfig(path string) error {
 			continue
 		}
 		trimmed := strings.TrimSpace(line)
+
+		// EnableOidc leaves the key behind set to false
+		if trimmed == "disableOidcAutoBinding: false" {
+			out = append(out, strings.Replace(line, "false", "true", 1))
+			setAutoBinding = true
+			continue
+		}
 
 		// comment the binding, and the options line that belongs to it
 		if trimmed == "- binding: edge-oidc" {
@@ -228,7 +317,7 @@ func disableOidcInConfig(path string) error {
 		}
 		if inEdge && trimmed == "api:" {
 			inEdge = false
-			if !alreadySet {
+			if !keyPresent {
 				out = append(out, "    disableOidcAutoBinding: true")
 				setAutoBinding = true
 			}

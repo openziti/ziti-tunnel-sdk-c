@@ -103,6 +103,12 @@
       "enrollment": { "ott": true }
     },
     {
+      "name": "test_legacy_mfa_oidc_migration",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
       "name": "test_legacy_mfa_restart_state",
       "isAdmin": false,
       "authPolicy": "@Default",
