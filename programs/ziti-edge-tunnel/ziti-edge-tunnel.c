@@ -711,13 +711,28 @@ static void on_event(const base_event *ev) {
                 break;
             }
             mfa_status s = mfa_statuss.value_of(mfa_ev->operation);
-            set_mfa_status(ev->identifier, (s != mfa_status_enrollment_required), true);
+            const char *action = mfa_ev->operation;
+
+            // An enrollment request is not evidence that the identity is unenrolled. Controllers on the
+            // legacy api-session path never report totp enrollment, so the sdk asks to enroll either way,
+            // and this event can arrive before the identity's stored state has been read back. This path
+            // records only that a code is needed: it never clears MfaEnabled and never persists.
+            // Enrollment state is written by verification, successful authentication, and removal.
+            bool mfa_enabled = id->MfaEnabled || (s != mfa_status_enrollment_required);
+
+            if (s == mfa_status_enrollment_required && id->MfaEnabled) {
+                ZITI_LOG(WARN, "ztx[%s] enrollment requested for an identity already enrolled in MFA;"
+                               " requesting a code instead", ev->identifier);
+                action = mfa_statuss.name(mfa_status_auth_challenge);
+            }
+
+            set_mfa_status(ev->identifier, mfa_enabled, true);
             // reaching an MFA prompt/enrollment request means any previously-required external auth has already succeeded
             id->NeedsExtAuth = false;
             send_tunnel_status("status");
             mfa_status_event mfa_sts_event = {
                     .Op = "mfa",
-                    .Action = mfa_ev->operation,
+                    .Action = (char *) action,
                     .Identifier = mfa_ev->identifier,
                     .Fingerprint = id->FingerPrint,
                     .Successful = false
@@ -783,6 +798,28 @@ static void on_event(const base_event *ev) {
             }
 
             send_events_message(&mfa_sts_event, (to_json_fn) mfa_status_event_to_json, true);
+
+            // an enrollment attempt that fails to authenticate means the identity is already enrolled and the
+            // session is only waiting for a code. offer the code prompt so the user is not left with an
+            // enrollment button that can never succeed.
+            // note: operation_type is only populated on success, so match on the operation name
+            if (mfa_ev->code == ZITI_AUTHENTICATION_FAILED &&
+                mfa_statuss.value_of(mfa_ev->operation) == mfa_status_enrollment_challenge) {
+                ZITI_LOG(WARN, "ztx[%s] MFA enrollment could not authenticate; treating identity as enrolled and"
+                               " requesting a code", ev->identifier);
+                set_mfa_status(ev->identifier, true, true);
+                save_tunnel_status_to_file();
+                send_tunnel_status("status");
+
+                mfa_status_event mfa_auth_event = {
+                        .Op = "mfa",
+                        .Action = (char *) mfa_statuss.name(mfa_status_auth_challenge),
+                        .Identifier = mfa_ev->identifier,
+                        .Fingerprint = id->FingerPrint,
+                        .Successful = false
+                };
+                send_events_message(&mfa_auth_event, (to_json_fn) mfa_status_event_to_json, true);
+            }
 
             mfa_sts_event.RecoveryCodes = NULL;
             free_mfa_status_event(&mfa_sts_event);
