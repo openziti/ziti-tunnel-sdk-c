@@ -49,6 +49,25 @@ echo "TEST_HOME=$TEST_HOME"
 CLUSTER_SIZE="${CLUSTER_SIZE:-1}"
 echo "CLUSTER_SIZE=$CLUSTER_SIZE"
 
+# ZITI_AUTH picks the auth path clients must take: OIDC, or Legacy, which strips OIDC from
+# the generated controller config. Required, no default.
+: "${ZITI_AUTH:?ZITI_AUTH must be OIDC or Legacy}"
+case "$ZITI_AUTH" in
+  OIDC|Legacy) ;;
+  *) echo "ZITI_AUTH must be OIDC or Legacy, got: $ZITI_AUTH" >&2; exit 1 ;;
+esac
+echo "ZITI_AUTH=$ZITI_AUTH"
+
+# SLOW_TESTS=true adds the slowtests build tag and doubles the timeout. Those suites restart
+# the tunneler repeatedly and wait out silence windows, so they run nightly, not per PR.
+GO_TEST_TAGS=""
+GO_TEST_TIMEOUT="20m"
+if [ "${SLOW_TESTS:-false}" = "true" ]; then
+  GO_TEST_TAGS="-tags slowtests"
+  GO_TEST_TIMEOUT="40m"
+fi
+echo "SLOW_TESTS=${SLOW_TESTS:-false}"
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 
 # ---- ziti CLI ----------------------------------------------------------------
@@ -137,9 +156,10 @@ jq -n \
   --arg idpBin   "$IDP_BIN" \
   --argjson autoTrustCa "$AUTO_TRUST_CA" \
   --argjson clusterSize "$CLUSTER_SIZE" \
+  --arg auth "$ZITI_AUTH" \
   '{
     testHome: $testHome,
-    ziti: { binary: $zitiBin, url: "", user: "admin", password: "admin", autoTrustCa: $autoTrustCa, clusterSize: $clusterSize },
+    ziti: { binary: $zitiBin, url: "", user: "admin", password: "admin", autoTrustCa: $autoTrustCa, clusterSize: $clusterSize, auth: $auth },
     zetA: { binary: $zetBin,  verbosity: 4, tlsuvDebug: 0 },
     zetB: { binary: $zetBinB, verbosity: 4, tlsuvDebug: 0 },
     idp: {
@@ -158,4 +178,4 @@ cat config.json
 # ---- Run tests ---------------------------------------------------------------
 # sudo resets PAM resource limits, so ulimit must be set in the privileged shell.
 sudo env "PATH=$PATH" sh -c \
-  'ulimit -c unlimited && exec go test ./... -v -timeout 20m -config config.json'
+  "ulimit -c unlimited && exec go test ./... -v $GO_TEST_TAGS -timeout $GO_TEST_TIMEOUT -config config.json"
