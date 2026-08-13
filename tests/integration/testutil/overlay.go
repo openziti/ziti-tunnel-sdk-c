@@ -627,9 +627,8 @@ func (o *Overlay) CreateThirdPartyCA(t *testing.T, name string) string {
 	token := resp.Data[0].VerificationToken
 	require.NotEmpty(t, token, "ca %s has no verificationToken", name)
 
-	_, err = o.execZiti("pki create client --pki-root %s --ca-name %s --client-name %s --client-file verification", o.pkiRoot(), name, token)
-	require.NoError(t, err, "mint verification cert for ca %s", name)
-	verifyCert := filepath.Join(o.pkiRoot(), name, "certs", "verification.cert")
+	o.CreateClientCert(t, name, token)
+	verifyCert := filepath.Join(o.pkiRoot(), name, "certs", token+".cert")
 	_, err = o.execZiti("edge verify ca %s --cert %s", name, verifyCert)
 	require.NoError(t, err, "verify ca %s", name)
 	t.Logf("third-party CA %q registered and verified with id=%s", name, id)
