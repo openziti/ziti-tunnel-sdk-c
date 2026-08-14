@@ -87,6 +87,7 @@ func configSurvivesWindowsUpgrade(t *testing.T) {
 		// The "upgrade": the whole dir moves to Windows.old.
 		require.NoError(t, os.MkdirAll(filepath.Dir(c.backupDir), 0o755))
 		require.NoError(t, os.Rename(c.configDir, c.backupDir))
+		require.NoDirExists(t, c.configDir)
 
 		// Second ZET start must restore the backup before the config load.
 		require.NoError(t, c.zet.Start())
