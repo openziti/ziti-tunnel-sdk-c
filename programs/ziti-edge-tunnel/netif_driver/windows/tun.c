@@ -511,7 +511,7 @@ static int tun_exclude_rt(netif_handle dev, uv_loop_t *loop, const char *dest) {
     MIB_IPFORWARD_ROW2 *route = calloc(1, sizeof(MIB_IPFORWARD_ROW2));
     route->DestinationPrefix.Prefix.si_family = AF_INET;
     parse_route(&route->DestinationPrefix, dest);
-    int rc = GetIpForwardEntry2(route);
+    DWORD rc = GetIpForwardEntry2(route);
     if (rc == NO_ERROR) {
         ZITI_LOG(DEBUG, "route to %s found", dest);
         DeleteIpForwardEntry2(route);
@@ -527,10 +527,14 @@ static int tun_exclude_rt(netif_handle dev, uv_loop_t *loop, const char *dest) {
     rc = CreateIpForwardEntry2(route);
     if (rc != NO_ERROR) {
         char err[256];
-        FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM, NULL, GetLastError(),
-                      MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-                      err, sizeof(err), NULL);
-        ZITI_LOG(WARN, "failed to create exclusion route: %d(%s)", rc, err);
+        DWORD len = FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM, NULL, rc,
+                                  MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+                                  err, sizeof(err), NULL);
+        if (len > 0) {
+            ZITI_LOG(WARN, "failed to create exclusion route: %lu(%s)", (unsigned long)rc, err);
+        } else {
+            ZITI_LOG(WARN, "failed to create exclusion route: %lu", (unsigned long)rc);
+        }
     }
     model_map_set(&dev->excluded_routes, dest, route);
     return 0;
@@ -543,13 +547,16 @@ void refresh_routes(uv_timer_t *timer) {
     MIB_IPFORWARD_ROW2 *route;
     MODEL_MAP_FOREACH(dest, route, &tun->excluded_routes) {
         ZITI_LOG(DEBUG, "refreshing route to %s", dest);
-        int rc = SetIpForwardEntry2(route);
+        DWORD rc = SetIpForwardEntry2(route);
         if (rc != NO_ERROR) {
         char err[256];
-        FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM, NULL, GetLastError(),
-                      MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-                      err, sizeof(err), NULL);
-            ZITI_LOG(WARN, "failed to create exclusion route[%s]: %d(%s)", dest, rc, err);
+        DWORD len = FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM, NULL, rc,
+                                  MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+                                  err, sizeof(err), NULL);
+        if (len > 0) {
+            ZITI_LOG(WARN, "failed to create exclusion route[%s]: %lu(%s)", dest, (unsigned long)rc, err);
+        } else {
+            ZITI_LOG(WARN, "failed to create exclusion route[%s]: %lu", dest, (unsigned long)rc);
         }
     }
 }
