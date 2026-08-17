@@ -84,10 +84,8 @@ func (z *ZET) Start() error {
 	if err := os.MkdirAll(z.RootDir, 0o755); err != nil {
 		return fmt.Errorf("mkdir zet root dir: %w", err)
 	}
+	// ZET creates its own -I dir, so a test can hand it a missing one like a Windows upgrade does
 	identityDir := filepath.Join(z.RootDir, "identities")
-	if err := os.MkdirAll(identityDir, 0o700); err != nil {
-		return fmt.Errorf("mkdir identity dir: %w", err)
-	}
 	if runtime.GOOS != "windows" {
 		// Remove stale unix sockets so ZET can bind. ensureNothingOnPipe above
 		// already confirmed nothing is listening, so these removes are safe.
