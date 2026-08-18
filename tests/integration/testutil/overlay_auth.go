@@ -210,10 +210,12 @@ func enableOidcInConfig(path string) error {
 // missing identity.
 func (o *Overlay) waitForRouterOnline() error {
 	log.Printf("overlay: waiting for the quickstart router to come online")
-	deadline := time.Now().Add(90 * time.Second)
+	// under doSetup's own 45s guard, so keep this shorter than that: a longer deadline can
+	// never elapse and the caller reports "setup did not complete" instead of naming the router
+	deadline := time.Now().Add(30 * time.Second)
 
 	for time.Now().Before(deadline) {
-		out, err := o.execZiti("edge", "list", "edge-routers", "-j")
+		out, err := o.execZiti("edge list edge-routers -j")
 		if err == nil {
 			var resp struct {
 				Data []struct {

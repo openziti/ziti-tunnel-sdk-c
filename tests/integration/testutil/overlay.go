@@ -699,13 +699,16 @@ func (o *Overlay) CreateClientCert(t *testing.T, caName, commonName string, crea
 // GetCaJwt fetches the CA enrollment JWT from the management API, authenticated
 // with the session the CLI cached at login. No ziti CLI verb exposes it.
 func (o *Overlay) GetCaJwt(t *testing.T, caID string) string {
-	cliConfig, err := os.ReadFile(filepath.Join(o.Home, "cli-config", "ziti-cli.json"))
+	cliConfigPath := filepath.Join(o.Home, "cli-config", "ziti-cli.json")
+	cliConfig, err := os.ReadFile(cliConfigPath)
 	require.NoError(t, err, "read cached cli session")
 	var cfg struct {
 		EdgeIdentities map[string]struct {
 			Token      string `json:"token"`
 			ApiSession struct {
 				OidcAccessToken string `json:"oidcAccessToken"`
+				// the legacy api-session path caches the token here and leaves Token empty
+				ZtSessionToken string `json:"ztSessionToken"`
 			} `json:"apiSession"`
 		} `json:"edgeIdentities"`
 		Default string `json:"default"`
@@ -715,10 +718,15 @@ func (o *Overlay) GetCaJwt(t *testing.T, caID string) string {
 
 	req, err := http.NewRequest(http.MethodGet, o.ControllerHostPort()+"/edge/management/v1/cas/"+caID+"/jwt", nil)
 	require.NoError(t, err, "build CA jwt request")
+	ztSession := session.ApiSession.ZtSessionToken
+	if ztSession == "" {
+		ztSession = session.Token
+	}
 	if session.ApiSession.OidcAccessToken != "" {
 		req.Header.Set("Authorization", "Bearer "+session.ApiSession.OidcAccessToken)
 	} else {
-		req.Header.Set("zt-session", session.Token)
+		require.NotEmpty(t, ztSession, "no session token cached in %s", cliConfigPath)
+		req.Header.Set("zt-session", ztSession)
 	}
 	client := &http.Client{
 		Timeout: 10 * time.Second,
@@ -966,6 +974,23 @@ func (o *Overlay) PurgeAuthPolicies() error {
 // PurgeExtJwtSigners deletes every ext-jwt-signer carrying a test name.
 func (o *Overlay) PurgeExtJwtSigners() error {
 	return o.deleteWhere("ext-jwt-signers")
+}
+
+// PurgeAuthPoliciesAndExtJwtSigners deletes both, in an order that survives the reference
+// cycle between them: an auth policy names signers in primary.extJwt.allowedSigners, and a
+// signer names an auth policy in enrollAuthPolicyId. The controller refuses to delete an
+// entity another one references, so neither type can go first on its own.
+//
+// The first two passes are allowed to fail. Pass one clears the policies no signer points at,
+// which frees the signers; pass two then clears the signers, which frees the rest of the
+// policies; pass three has to succeed.
+func (o *Overlay) PurgeAuthPoliciesAndExtJwtSigners() error {
+	_ = o.PurgeAuthPolicies()
+	_ = o.PurgeExtJwtSigners()
+	if err := o.PurgeAuthPolicies(); err != nil {
+		return err
+	}
+	return o.PurgeExtJwtSigners()
 }
 
 // PurgeServicePolicies deletes every service policy carrying a test name.

@@ -30,7 +30,7 @@ import (
 
 // IdentityID returns the controller's id for the identity with this name.
 func (o *Overlay) IdentityID(t *testing.T, name string) string {
-	out, err := o.execZiti("edge", "list", "identities", fmt.Sprintf("name=%q", name), "-j")
+	out, err := o.execZiti("edge list identities %s -j", fmt.Sprintf("name=%q", name))
 	require.NoError(t, err, "list identities name=%s", name)
 
 	var resp struct {
@@ -47,7 +47,7 @@ func (o *Overlay) IdentityID(t *testing.T, name string) string {
 // administrator tightening or relaxing a requirement would.
 func (o *Overlay) SetIdentityAuthPolicy(t *testing.T, name, authPolicy string) {
 	t.Logf("moving identity %q onto auth policy %q", name, authPolicy)
-	_, err := o.execZiti("edge", "update", "identity", name, "-P", authPolicy)
+	_, err := o.execZiti("edge update identity %s -P %s", name, authPolicy)
 	require.NoError(t, err, "update identity %s to auth policy %s", name, authPolicy)
 }
 
@@ -70,7 +70,7 @@ func (o *Overlay) RemoveIdentityMFA(t *testing.T, name string) {
 
 // IdentityMfaEnabled reports whether the controller considers this identity enrolled.
 func (o *Overlay) IdentityMfaEnabled(t *testing.T, name string) bool {
-	out, err := o.execZiti("edge", "list", "identities", fmt.Sprintf("name=%q", name), "-j")
+	out, err := o.execZiti("edge list identities %s -j", fmt.Sprintf("name=%q", name))
 	require.NoError(t, err, "list identities name=%s", name)
 
 	var resp struct {
