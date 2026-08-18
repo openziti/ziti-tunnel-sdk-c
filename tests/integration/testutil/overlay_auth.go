@@ -335,8 +335,7 @@ func disableOidcInConfig(path string) error {
 }
 
 // controllerCapabilities reads the capabilities the controller advertises on its client
-// API version endpoint. Verification skips TLS checks so it works before the CA is
-// trusted.
+// API version endpoint.
 func (o *Overlay) controllerCapabilities() ([]string, error) {
 	client := insecureClient(5 * time.Second)
 	url := o.ControllerHostPort() + "/edge/client/v1/version"
@@ -358,13 +357,6 @@ func (o *Overlay) controllerCapabilities() ([]string, error) {
 		return nil, fmt.Errorf("decode %s: %w", url, err)
 	}
 	return body.Data.Capabilities, nil
-}
-
-// ControllerCapabilities is controllerCapabilities for use inside a test.
-func (o *Overlay) ControllerCapabilities(t *testing.T) []string {
-	caps, err := o.controllerCapabilities()
-	require.NoError(t, err, "read controller capabilities")
-	return caps
 }
 
 // RequireLegacyAuth skips the test unless this overlay is running on the legacy auth path.

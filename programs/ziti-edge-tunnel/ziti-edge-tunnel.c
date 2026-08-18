@@ -713,20 +713,15 @@ static void on_event(const base_event *ev) {
             mfa_status s = mfa_statuss.value_of(mfa_ev->operation);
             const char *action = mfa_ev->operation;
 
-            // An enrollment request is not evidence that the identity is unenrolled. Controllers on the
-            // legacy api-session path never report totp enrollment, so the sdk asks to enroll either way,
-            // and this event can arrive before the identity's stored state has been read back. This path
-            // records only that a code is needed: it never clears MfaEnabled and never persists.
-            // Enrollment state is written by verification, successful authentication, and removal.
-            bool mfa_enabled = id->MfaEnabled || (s != mfa_status_enrollment_required);
-
+            // don't overwrite the locally stored MfaEnabled based on the controller; the client owns it
+            // entirely. only MfaNeeded is in question here.
             if (s == mfa_status_enrollment_required && id->MfaEnabled) {
                 ZITI_LOG(WARN, "ztx[%s] enrollment requested for an identity already enrolled in MFA;"
                                " requesting a code instead", ev->identifier);
                 action = mfa_statuss.name(mfa_status_auth_challenge);
             }
 
-            set_mfa_status(ev->identifier, mfa_enabled, true);
+            set_mfa_status(ev->identifier, id->MfaEnabled, true);
             // reaching an MFA prompt/enrollment request means any previously-required external auth has already succeeded
             id->NeedsExtAuth = false;
             send_tunnel_status("status");

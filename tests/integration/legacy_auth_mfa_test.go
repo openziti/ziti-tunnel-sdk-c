@@ -58,8 +58,8 @@ func TestLegacyAuthMFA(t *testing.T) {
 // Enroll MFA, verify it, restart the tunneler, and expect a code prompt. Submit a real code
 // and the identity is authenticated again.
 //
-// Without the fix the tunneler passes the sdk's enrollment request straight through, so
-// auth_challenge never arrives and this fails waiting for it.
+// On legacy auth without the fix, the tunneler passes the sdk's enrollment request straight
+// through, so auth_challenge never arrives and this fails waiting for it.
 func restartOffersCodePromptForEnrolledIdentity(t *testing.T) {
 	testutil.RunWithTimeoutOf(t, 60*time.Second, func(t *testing.T) {
 		idName := "test_legacy_mfa_restart_prompt"
@@ -108,9 +108,9 @@ func disableEnableOffersCodePromptForEnrolledIdentity(t *testing.T) {
 // pushes to clients, and config.json on disk. Both must still say the identity is enrolled
 // and now needs a code.
 //
-// Without the fix the enrollment request overwrites the value loaded from disk, the UI is
-// told the identity is not enrolled, and the next routine save writes that to the file - so
-// the file stops agreeing with the controller.
+// On legacy auth without the fix, the enrollment request overwrites the value loaded from
+// disk, the UI is told the identity is not enrolled, and the next routine save writes that
+// to the file, so the file stops agreeing with the controller.
 func restartKeepsPersistedMfaEnabled(t *testing.T) {
 	testutil.RunWithTimeoutOf(t, 60*time.Second, func(t *testing.T) {
 		idName := "test_legacy_mfa_restart_state"

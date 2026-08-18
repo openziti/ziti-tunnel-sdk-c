@@ -170,9 +170,6 @@ func (c *EventClient) readLoop() {
 	}
 }
 
-// waitForEvent blocks until the next event matching op/action/fingerprint
-// arrives, advances past it, and returns its raw JSON. Blocks indefinitely;
-// rely on the per-test timeout if the event never comes.
 // subscribe registers for read-loop wakeups and returns the channel, the cursor to scan
 // from, and the deregistration func the caller must defer.
 func (c *EventClient) subscribe() (chan struct{}, int, func()) {
@@ -193,6 +190,9 @@ func (c *EventClient) subscribe() (chan struct{}, int, func()) {
 	}
 }
 
+// waitForEvent blocks until the next event matching op/action/fingerprint
+// arrives, advances past it, and returns its raw JSON. Blocks indefinitely;
+// rely on the per-test timeout if the event never comes.
 func (c *EventClient) waitForEvent(t *testing.T, op, action, fingerprint string) json.RawMessage {
 	notify, cursor, unsubscribe := c.subscribe()
 	defer unsubscribe()
