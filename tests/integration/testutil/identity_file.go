@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -52,6 +53,13 @@ func ReadIdentityFile(t *testing.T, path string) IdentityFileContent {
 	dec.DisallowUnknownFields()
 	require.NoError(t, dec.Decode(&content), "identity file at %s has unknown fields or invalid shape: %s", path, raw)
 	return content
+}
+
+// AssertNoIdentityFile asserts a failed enrollment left no identity file in
+// zet's identity dir.
+func AssertNoIdentityFile(t *testing.T, zet *ZET, name string) {
+	idPath := filepath.Join(zet.RootDir, "identities", name+".json")
+	require.NoFileExists(t, idPath)
 }
 
 func AssertValidJwtEnrolledIdentityFile(t *testing.T, path string) {

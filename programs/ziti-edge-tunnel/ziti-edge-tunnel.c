@@ -173,6 +173,14 @@ static char *eventsockfile;
 extern int start_cmd_socket(uv_loop_t *l, const char *sockfile);
 extern int start_event_socket(uv_loop_t *l, const char *eventsockfile);
 
+// creates dir when it is missing, returns 0 when the dir exists afterward
+static int ensure_dir(const char *dir) {
+    uv_fs_t req;
+    int rc = uv_fs_mkdir(NULL, &req, dir, 0700, NULL);
+    uv_fs_req_cleanup(&req);
+    return rc == UV_EEXIST ? 0 : rc;
+}
+
 void send_tunnel_status(char* status) {
     tunnel_status_event tnl_sts_evt = {0};
     tnl_sts_evt.Op = strdup(status);
@@ -1409,9 +1417,15 @@ static int run_opts(int argc, char *argv[]) {
                 identity_provided = true;
                 break;
             }
-            case 'I':
+            case 'I': {
                 if (config_dir) {
                     fprintf(stderr, "Only one config dir allowed, multiple specified\n");
+                    errors++;
+                    break;
+                }
+                int rc = ensure_dir(optarg);
+                if (rc != 0) {
+                    fprintf(stderr, "Could not create config dir %s: %s\n", optarg, uv_strerror(rc));
                     errors++;
                     break;
                 }
@@ -1419,6 +1433,7 @@ static int run_opts(int argc, char *argv[]) {
                 identity_provided = true;
                 uses_config_dir = true;
                 break;
+            }
             case 'v':
                 configured_log_level = optarg;
                 break;
@@ -1481,9 +1496,15 @@ static int run_host_opts(int argc, char *argv[]) {
                 identity_provided = true;
                 break;
             }
-            case 'I':
+            case 'I': {
                 if (config_dir) {
                     fprintf(stderr, "Only one config dir allowed, multiple specified\n");
+                    errors++;
+                    break;
+                }
+                int rc = ensure_dir(optarg);
+                if (rc != 0) {
+                    fprintf(stderr, "Could not create config dir %s: %s\n", optarg, uv_strerror(rc));
                     errors++;
                     break;
                 }
@@ -1491,6 +1512,7 @@ static int run_host_opts(int argc, char *argv[]) {
                 identity_provided = true;
                 uses_config_dir = true;
                 break;
+            }
             case 'v':
                 configured_log_level = optarg;
                 break;
@@ -3556,6 +3578,13 @@ static void move_config_from_previous_windows_backup(uv_loop_t *loop) {
 
     char* system_drive = getenv("SystemDrive");
 
+    // the service never sees -I, and a windows upgrade can take the live folder to Windows.old with everything else
+    int rc_dir = ensure_dir(config_dir);
+    if (rc_dir != 0) {
+        ZITI_LOG(ERROR, "failed to create config dir[%s]: %d/%s", config_dir, rc_dir, uv_strerror(rc_dir));
+        return;
+    }
+
     for (int i =0; backup_folders[i]; i++) {
         char* config_dir_bkp = calloc(PATH_MAX, sizeof(char));
         sprintf(config_dir_bkp, "%s\\%s", system_drive, backup_folders[i]);
@@ -3584,7 +3613,7 @@ static void move_config_from_previous_windows_backup(uv_loop_t *loop) {
                 char new_file[PATH_MAX];
                 snprintf(new_file, PATH_MAX, "%s\\%s", config_dir, file.name);
                 uv_fs_t fs_cpy;
-                // EXCL: the upgrade empties the live dir, so an existing file was written after the upgrade and wins
+                // EXCL: the upgrade replaces the live dir, so any file already there was written after it and wins
                 rc = uv_fs_copyfile(loop, &fs_cpy, old_file, new_file, UV_FS_COPYFILE_EXCL, NULL);
                 if (rc == 0) {
                     ZITI_LOG(INFO, "Restored old identity from the backup path - %s to new path - %s", old_file, new_file);

@@ -1,0 +1,148 @@
+/*
+Copyright NetFoundry Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+https://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package integration_test
+
+import (
+	"testing"
+	"time"
+
+	"github.com/openziti/ziti-tunnel-sdk-c/tests/integration/testutil"
+	"github.com/stretchr/testify/require"
+)
+
+// each subtest creates, registers, and verifies its own CA, which can fail the default timeout on slower systems
+const thirdPartyCaTestTimeout = 10 * time.Second
+
+func TestThirdPartyCa(t *testing.T) {
+	t.Run("autocaEnrollCreatesIdentity", autocaEnrollCreatesIdentity)
+	t.Run("ottcaEnrollsPreCreatedIdentity", ottcaEnrollsPreCreatedIdentity)
+	t.Run("rejectsCertFromUnregisteredCa", rejectsCertFromUnregisteredCa)
+	t.Run("rejectsAddingSameIdentityTwice", rejectsAddingSameIdentityTwice)
+	t.Run("rejectsReenrollingSameCert", rejectsReenrollingSameCert)
+	t.Run("rejectsCertMissingExternalId", rejectsCertMissingExternalId)
+	t.Run("rejectsExpiredCert", rejectsExpiredCert)
+}
+
+func autocaEnrollCreatesIdentity(t *testing.T) {
+	testutil.RunWithTimeoutOf(t, thirdPartyCaTestTimeout, func(t *testing.T) {
+		caName := "test_tpca"
+		caID := state.overlay.CreateThirdPartyCA(t, caName)
+		commonName := "test_tpca_user1"
+		cert, key := state.overlay.CreateClientCert(t, caName, commonName)
+		caJwt := state.overlay.GetCaJwt(t, caID)
+
+		// the controller names the auto-provisioned identity [caName]-[commonName]
+		idName := caName + "-" + commonName
+		added := testutil.EnrollCaJwt(t, state.zetClient, idName, caJwt, cert, key)
+
+		idFile := testutil.ReadIdentityFile(t, added.Id.Identifier)
+		require.Equal(t, cert, idFile.ID.Cert)
+		require.Equal(t, key, idFile.ID.Key)
+	})
+}
+
+func ottcaEnrollsPreCreatedIdentity(t *testing.T) {
+	testutil.RunWithTimeoutOf(t, thirdPartyCaTestTimeout, func(t *testing.T) {
+		caName := "test_tpca_ottca"
+		state.overlay.CreateThirdPartyCA(t, caName)
+		idName := "test_tpca_ottca_user1"
+		ottcaJwt := state.overlay.CreateOttCaEnrollment(t, idName, caName)
+		cert, key := state.overlay.CreateClientCert(t, caName, idName)
+
+		testutil.EnrollCaJwt(t, state.zetClient, idName, ottcaJwt, cert, key)
+	})
+}
+
+func rejectsAddingSameIdentityTwice(t *testing.T) {
+	testutil.RunWithTimeoutOf(t, thirdPartyCaTestTimeout, func(t *testing.T) {
+		caName := "test_tpca_dup"
+		caID := state.overlay.CreateThirdPartyCA(t, caName)
+		commonName := "test_tpca_dup_user1"
+		cert, key := state.overlay.CreateClientCert(t, caName, commonName)
+		caJwt := state.overlay.GetCaJwt(t, caID)
+
+		idName := caName + "-" + commonName
+		testutil.EnrollCaJwt(t, state.zetClient, idName, caJwt, cert, key)
+
+		identityData := testutil.NewCaIdentityData(idName, caJwt, cert, key)
+		dupResp := state.zetClient.AddIdentity(t, identityData)
+		dupResp.AssertFail(500, "identity exists with the same name")
+	})
+}
+
+func rejectsReenrollingSameCert(t *testing.T) {
+	testutil.RunWithTimeoutOf(t, thirdPartyCaTestTimeout, func(t *testing.T) {
+		caName := "test_tpca_reuse"
+		caID := state.overlay.CreateThirdPartyCA(t, caName)
+		commonName := "test_tpca_reuse_user1"
+		cert, key := state.overlay.CreateClientCert(t, caName, commonName)
+		caJwt := state.overlay.GetCaJwt(t, caID)
+
+		idName := caName + "-" + commonName
+		testutil.EnrollCaJwt(t, state.zetClient, idName, caJwt, cert, key)
+
+		renamedData := testutil.NewCaIdentityData(idName+"_renamed", caJwt, cert, key)
+		dupResp := state.zetClient.AddIdentity(t, renamedData)
+		dupResp.AssertFail(500, "certificate already in use")
+		testutil.AssertNoIdentityFile(t, state.zetClient, idName+"_renamed")
+	})
+}
+
+func rejectsCertMissingExternalId(t *testing.T) {
+	testutil.RunWithTimeoutOf(t, thirdPartyCaTestTimeout, func(t *testing.T) {
+		caName := "test_tpca_extid"
+		// the claim location is a SAN URI, which CreateClientCert certs never carry
+		caID := state.overlay.CreateThirdPartyCA(t, caName, "--location", "SAN_URI", "--matcher", "ALL", "--parser", "NONE")
+		commonName := "test_tpca_extid_user1"
+		cert, key := state.overlay.CreateClientCert(t, caName, commonName)
+		caJwt := state.overlay.GetCaJwt(t, caID)
+
+		identityData := testutil.NewCaIdentityData(commonName, caJwt, cert, key)
+		addResp := state.zetClient.AddIdentity(t, identityData)
+		addResp.AssertFail(500, "expected to contain an externalId")
+		testutil.AssertNoIdentityFile(t, state.zetClient, commonName)
+	})
+}
+
+func rejectsExpiredCert(t *testing.T) {
+	testutil.RunWithTimeoutOf(t, thirdPartyCaTestTimeout, func(t *testing.T) {
+		caName := "test_tpca_expired"
+		caID := state.overlay.CreateThirdPartyCA(t, caName)
+		commonName := "test_tpca_expired_user1"
+		cert, key := state.overlay.CreateClientCert(t, caName, commonName, "--expire-limit=-1")
+		caJwt := state.overlay.GetCaJwt(t, caID)
+
+		identityData := testutil.NewCaIdentityData(commonName, caJwt, cert, key)
+		addResp := state.zetClient.AddIdentity(t, identityData)
+		addResp.AssertFail(500, "key/cert are invalid")
+		testutil.AssertNoIdentityFile(t, state.zetClient, commonName)
+	})
+}
+
+func rejectsCertFromUnregisteredCa(t *testing.T) {
+	testutil.RunWithTimeoutOf(t, thirdPartyCaTestTimeout, func(t *testing.T) {
+		caID := state.overlay.CreateThirdPartyCA(t, "test_tpca_neg")
+		caJwt := state.overlay.GetCaJwt(t, caID)
+		state.overlay.CreateLocalPkiCA(t, "test_tpca_unregistered")
+		cert, key := state.overlay.CreateClientCert(t, "test_tpca_unregistered", "test_tpca_unregistered_user1")
+
+		identityData := testutil.NewCaIdentityData("test_tpca_unregistered_user1", caJwt, cert, key)
+		addResp := state.zetClient.AddIdentity(t, identityData)
+		addResp.AssertFail(500, "key/cert are invalid")
+		testutil.AssertNoIdentityFile(t, state.zetClient, "test_tpca_unregistered_user1")
+	})
+}

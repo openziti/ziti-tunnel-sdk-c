@@ -59,6 +59,23 @@ func FetchAndEnrollJwt(t *testing.T, overlay *Overlay, zet *ZET, name string) Id
 	return identityEvent
 }
 
+// EnrollCaJwt enrolls a third-party-CA-issued cert/key pair on zet with the
+// given autoca or ottca enrollment JWT, waits for the identity:added and
+// controller:connected events, asserts the on-disk identity file, and returns
+// the added event.
+func EnrollCaJwt(t *testing.T, zet *ZET, name, jwt, cert, key string) IdentityEvent {
+	identityData := NewCaIdentityData(name, jwt, cert, key)
+	addResp := zet.AddIdentity(t, identityData)
+	addResp.AssertSuccess()
+
+	added := zet.WaitForIdentityEvent(t, "added", name)
+	require.NotEmpty(t, added.Id.Identifier, "identity:added Identifier empty")
+	require.True(t, added.Id.Active, "identity:added Active=%t", added.Id.Active)
+	zet.WaitForControllerEvent(t, "connected", name)
+	AssertValidJwtEnrolledIdentityFile(t, added.Id.Identifier)
+	return added
+}
+
 // ParseTOTPSecret extracts the base32 TOTP secret from an otpauth provisioning URL.
 func ParseTOTPSecret(t *testing.T, provisioningURL string) string {
 	parsed, err := url.Parse(provisioningURL)

@@ -193,6 +193,10 @@ func doSetup(state TestState) error {
 	if err := state.overlay.PurgeIdentitiesByExternalId("@test.com"); err != nil {
 		return fmt.Errorf("purge stale IdP test user identities: %w", err)
 	}
+	log.Printf("setup: purging stale test certificate authorities")
+	if err := state.overlay.PurgeCAs(); err != nil {
+		return fmt.Errorf("purge stale test certificate authorities: %w", err)
+	}
 	// ext-jwt-signers before auth-policies: a signer's enrollAuthPolicyId references a policy,
 	// and the controller refuses to delete a referenced policy.
 	log.Printf("setup: purging stale test ext-jwt-signers")
@@ -256,6 +260,10 @@ func doSetup(state TestState) error {
 	log.Printf("setup: wiping identity dirs before starting ZET(s)")
 	if err := state.zetClient.RemoveJSONIdentities(); err != nil {
 		return fmt.Errorf("wipe shared identity dir: %w", err)
+	}
+	log.Printf("setup: wiping stale on-disk test pki")
+	if err := state.overlay.PurgeLocalPki(); err != nil {
+		return fmt.Errorf("wipe stale on-disk test pki: %w", err)
 	}
 
 	// Multi-tunnel works on every OS when ZET >= 1.17.0
