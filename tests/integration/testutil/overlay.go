@@ -101,18 +101,19 @@ func (o *Overlay) Start() error {
 		return fmt.Errorf("mkdir home: %w", err)
 	}
 
-	if err := o.runQuickstart(); err != nil {
-		return err
-	}
-
+	// Probe before starting: runQuickstart waits for a cluster leader, and that wait is
+	// version-gated, so the version has to be known first. Probing only runs `ziti --version`.
 	log.Printf("overlay: probing ziti version")
 	major, minor, err := probeZitiVersion(o.ZitiBin)
 	if err != nil {
-		o.Stop()
 		return fmt.Errorf("probe ziti version: %w", err)
 	}
 	o.ZitiMajor = major
 	o.ZitiMinor = minor
+
+	if err := o.runQuickstart(); err != nil {
+		return err
+	}
 	log.Printf("overlay: ready (ziti v%d.%d)", major, minor)
 
 	return nil
@@ -1005,6 +1006,7 @@ func (o *Overlay) WaitForClusterLeader() error {
 		return nil
 	}
 	log.Printf("overlay: waiting for cluster leader (ziti v%d.%d)", o.ZitiMajor, o.ZitiMinor)
+	deadline := time.Now().Add(30 * time.Second)
 	attempts := 0
 	for {
 		attempts++
@@ -1023,6 +1025,11 @@ func (o *Overlay) WaitForClusterLeader() error {
 					}
 				}
 			}
+		}
+		// bounded: a controller that never reports a leader should say so, not hang until the
+		// caller's own timeout fires with no explanation
+		if time.Now().After(deadline) {
+			return fmt.Errorf("no cluster leader after %d attempt(s) in 30s", attempts)
 		}
 		time.Sleep(1 * time.Second)
 	}
