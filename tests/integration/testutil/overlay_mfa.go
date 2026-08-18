@@ -43,6 +43,14 @@ func (o *Overlay) IdentityID(t *testing.T, name string) string {
 	return resp.Data[0].ID
 }
 
+// SetIdentityAuthPolicy moves an existing identity onto another auth policy, the way an
+// administrator tightening or relaxing a requirement would.
+func (o *Overlay) SetIdentityAuthPolicy(t *testing.T, name, authPolicy string) {
+	t.Logf("moving identity %q onto auth policy %q", name, authPolicy)
+	_, err := o.execZiti("edge", "update", "identity", name, "-P", authPolicy)
+	require.NoError(t, err, "update identity %s to auth policy %s", name, authPolicy)
+}
+
 // RemoveIdentityMFA removes an identity's TOTP enrollment as an administrator would.
 // There is no `ziti edge delete mfa`, so this goes at the management API.
 func (o *Overlay) RemoveIdentityMFA(t *testing.T, name string) {

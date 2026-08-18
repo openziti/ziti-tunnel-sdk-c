@@ -327,15 +327,22 @@ func (c *extAuthContext) enrollToTokenUsesMultipleAttrClaims(t *testing.T) {
 // Enrolls to cert under a TOTP-required auth policy.
 func (c *extAuthContext) enrollToCertUsesEnrollAuthPolicy(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
+		// the identity lands on a TOTP-required policy unenrolled, so the controller has to
+		// serve an enrollment request from a partially authenticated session. Only the OIDC
+		// path does that (openziti/ziti#3496); the legacy path refuses it.
+		c.overlay.RequireOidcAuth(t)
+
 		c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToCert: true, EnrollAuthPolicy: "test_mfa_totp_policy"})
 		idName := "test_ext_auth_enroll_auth_policy"
 		// A partial auth emits no identity:added, so drive browser flow without waiting for one.
 		c.driveEnrollToCert(t, idName)
 
 		// No needs_ext_login event to carry the identifier for cert, so take it from the mfa event.
-		statusEvent := c.zet.WaitForStatusEvent(t)
+		// Wait for that event before reading status: any status still queued from before this
+		// identity existed would not list it. Reconnecting then asks for a fresh one.
 		mfaEvent := c.zet.WaitForMfaEvent(t, "enrollment_required", idName)
-		provisionedId := findIdentityInStatus(t, statusEvent, mfaEvent.Identifier)
+		c.zet.ReconnectEvents(t)
+		provisionedId := findIdentityInStatus(t, c.zet.WaitForStatusEvent(t), mfaEvent.Identifier)
 		require.False(t, provisionedId.NeedsExtAuth)
 		require.True(t, provisionedId.MfaNeeded)
 		require.False(t, provisionedId.MfaEnabled)
@@ -346,17 +353,22 @@ func (c *extAuthContext) enrollToCertUsesEnrollAuthPolicy(t *testing.T) {
 // Enrolls to token under a TOTP-required auth policy.
 func (c *extAuthContext) enrollToTokenUsesEnrollAuthPolicy(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
+		// see enrollToCertUsesEnrollAuthPolicy: enrolling TOTP from a partial auth is OIDC-only.
+		c.overlay.RequireOidcAuth(t)
+
 		c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToToken: true, EnrollAuthPolicy: "test_mfa_totp_policy"})
 		idName := "test_ext_auth_token_enroll_auth_policy"
 		// A partial auth emits no identity:added, so drive browser flow without waiting for one.
 		idEvent := c.driveEnrollToToken(t, idName)
 
-		statusEvent := c.zet.WaitForStatusEvent(t)
-		provisionedId := findIdentityInStatus(t, statusEvent, idEvent.Id.Identifier)
+		// MfaNeeded is only true once the enrollment request has been raised, so wait for that
+		// event before reading status, and reconnect to be handed the current one.
+		c.zet.WaitForMfaEvent(t, "enrollment_required", idName)
+		c.zet.ReconnectEvents(t)
+		provisionedId := findIdentityInStatus(t, c.zet.WaitForStatusEvent(t), idEvent.Id.Identifier)
 		require.False(t, provisionedId.NeedsExtAuth)
 		require.True(t, provisionedId.MfaNeeded)
 		require.False(t, provisionedId.MfaEnabled)
-		c.zet.WaitForMfaEvent(t, "enrollment_required", idName)
 		testutil.AssertValidUrlEnrolledIdentityFile(t, idEvent.Id.Identifier, testutil.EnrollModeToken)
 	})
 }

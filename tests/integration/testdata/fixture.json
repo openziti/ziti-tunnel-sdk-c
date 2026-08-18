@@ -43,6 +43,24 @@
       "enrollment": { "ott": true }
     },
     {
+      "name": "test_mfa_policy_required_enrolled",
+      "isAdmin": false,
+      "authPolicy": "@test_mfa_totp_policy",
+      "enrollment": { "ott": true }
+    },
+    {
+      "name": "test_mfa_policy_added_enrolled",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
+      "name": "test_mfa_policy_added_unenrolled",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
       "name": "test_mfa_verify_invalid_totp",
       "isAdmin": false,
       "authPolicy": "@Default",
