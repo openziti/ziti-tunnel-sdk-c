@@ -144,7 +144,7 @@ func (o *Overlay) runQuickstart() error {
 	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
 		return fmt.Errorf("mkdir quickstart log dir: %w", err)
 	}
-	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
 		return fmt.Errorf("open quickstart log file: %w", err)
 	}
@@ -164,6 +164,13 @@ func (o *Overlay) runQuickstart() error {
 	if err := o.waitUntilReady(); err != nil {
 		o.Stop()
 		return fmt.Errorf("overlay not ready: %w\n%s", err, o.Logs())
+	}
+	// an open port and a working admin login are not enough: until raft elects a leader the
+	// controller rejects every model update with CLUSTER_NO_LEADER, which the sdk reports as
+	// ZITI_WTF. tests that restart the controller then fail their next enrollment.
+	if err := o.WaitForClusterLeader(); err != nil {
+		o.Stop()
+		return fmt.Errorf("overlay has no cluster leader: %w\n%s", err, o.Logs())
 	}
 	return nil
 }
