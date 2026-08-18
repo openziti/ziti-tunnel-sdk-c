@@ -30,19 +30,21 @@ import (
 
 const totpRequiredPolicy = "test_mfa_totp_policy"
 
+// Enrolling TOTP and then waiting for the controller to act on a change takes tens of
+// seconds, and longer on a cluster.
+const testTimeout = 60 * time.Second
+
 func TestMFAAuthPolicy(t *testing.T) {
 	t.Run("reauthUnderTotpRequiredPolicyAsksForCode", reauthUnderTotpRequiredPolicyAsksForCode)
 	t.Run("policyAddedForEnrolledIdentityKeepsWorking", policyAddedForEnrolledIdentityKeepsWorking)
 	t.Run("policyAddedForUnenrolledIdentityAsksToEnroll", policyAddedForUnenrolledIdentityAsksToEnroll)
 }
 
-// An identity whose auth policy requires TOTP, already enrolled, authenticating again.
-//
-// The existing enrollment coverage stops at verification, so nothing re-authenticates an
-// identity under this policy. A code is what it must be asked for - the policy requiring TOTP
-// must not produce an enrollment request for an identity that has already enrolled.
+// An identity whose auth policy requires TOTP, already enrolled, authenticating again. It must
+// be asked for a code: a policy requiring TOTP does not turn into an enrollment request for an
+// identity that has already enrolled.
 func reauthUnderTotpRequiredPolicyAsksForCode(t *testing.T) {
-	testutil.RunWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeoutOf(t, testTimeout, func(t *testing.T) {
 		// getting this identity enrolled at all needs openziti/ziti#3496, which landed in ziti
 		// 2.0 for the OIDC path only. The legacy api-session path still refuses to enroll TOTP
 		// from a partially authenticated session, whatever the controller version, so the
@@ -70,7 +72,7 @@ func reauthUnderTotpRequiredPolicyAsksForCode(t *testing.T) {
 // An authenticated, enrolled identity that an administrator moves onto a policy requiring
 // TOTP. Its session already satisfies the new requirement, so nothing should change.
 func policyAddedForEnrolledIdentityKeepsWorking(t *testing.T) {
-	testutil.RunWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeoutOf(t, testTimeout, func(t *testing.T) {
 		idName := "test_mfa_policy_added_enrolled"
 		enrollment, _ := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, idName)
 
@@ -91,7 +93,7 @@ func policyAddedForEnrolledIdentityKeepsWorking(t *testing.T) {
 // requiring TOTP. It can no longer satisfy the policy, so the client has to say so: MfaNeeded
 // goes true and the user is asked to enroll.
 func policyAddedForUnenrolledIdentityAsksToEnroll(t *testing.T) {
-	testutil.RunWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeoutOf(t, testTimeout, func(t *testing.T) {
 		idName := "test_mfa_policy_added_unenrolled"
 		added := testutil.FetchAndEnrollJwt(t, state.overlay, state.zetClient, idName)
 		state.zetClient.WaitForControllerEvent(t, "connected", idName)
@@ -112,9 +114,9 @@ func policyAddedForUnenrolledIdentityAsksToEnroll(t *testing.T) {
 // enrollUnderTotpRequiredPolicy adds a pre-imported identity whose auth policy requires TOTP
 // and completes its enrollment, returning the tunneler's identifier for it and its secret.
 //
-// EnrollAndVerifyMFA does not work here: it waits for the controller "connected" event, which
-// never arrives while TOTP is required and unenrolled. The identity stays partially
-// authenticated and the first thing it hears is an enrollment request.
+// EnrollAndVerifyMFA cannot be used: it waits for the controller "connected" event, and an
+// identity that owes TOTP stays partially authenticated, so that event never comes. The first
+// thing such an identity hears is an enrollment request.
 func enrollUnderTotpRequiredPolicy(t *testing.T, idName string) (string, string) {
 	jwt := state.overlay.GetJwtFromController(t, idName)
 	state.zetClient.AddIdentity(t, testutil.NewJwtIdentityData(idName, jwt)).AssertSuccess()

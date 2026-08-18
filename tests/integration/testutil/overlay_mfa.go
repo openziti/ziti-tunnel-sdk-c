@@ -49,6 +49,13 @@ func (o *Overlay) SetIdentityAuthPolicy(t *testing.T, name, authPolicy string) {
 	t.Logf("moving identity %q onto auth policy %q", name, authPolicy)
 	_, err := o.execZiti("edge update identity %s -P %s", name, authPolicy)
 	require.NoError(t, err, "update identity %s to auth policy %s", name, authPolicy)
+
+	// On a cluster the client can re-authenticate against any controller, so the write has to
+	// have propagated first.
+	// TODO: use WaitForDataModelConsensus once the data-model index reflects these writes.
+	if o.ZitiClusterSize > 1 {
+		time.Sleep(500 * time.Millisecond)
+	}
 }
 
 // RemoveIdentityMFA removes an identity's TOTP enrollment as an administrator would.
