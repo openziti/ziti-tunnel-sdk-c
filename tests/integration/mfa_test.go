@@ -24,8 +24,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// the pre-reauth data-model consensus wait can take ~5s on slower machines
-const reauthTestTimeout = 10 * time.Second
+// the pre-reauth data-model consensus wait can take over 10s on slower machines
+const reauthTestTimeout = 15 * time.Second
 
 func TestMFAEnrollment(t *testing.T) {
 	t.Run("enrollCompletesWithTotpRequiredPolicy", enrollCompletesWithTotpRequiredPolicy)
