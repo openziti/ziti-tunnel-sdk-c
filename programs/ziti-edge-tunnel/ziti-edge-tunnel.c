@@ -1189,6 +1189,14 @@ static void on_crash(int sig, siginfo_t * siginfo, void *context) {
     exit(1);
 }
 
+// install_crash_handlers arms the backtrace handler for every subcommand, not just `run`. A
+// crash in `enroll` otherwise reports nothing beyond the shell's "Segmentation fault".
+static void install_crash_handlers(void) {
+    struct sigaction crash = { .sa_sigaction = on_crash };
+    sigaction(SIGABRT, &crash, NULL);
+    sigaction(SIGSEGV, &crash, NULL);
+}
+
 #endif
 
 static void run_tunneler_loop(uv_loop_t* ziti_loop) {
@@ -1207,8 +1215,7 @@ static void run_tunneler_loop(uv_loop_t* ziti_loop) {
     handle_sig(SIGTERM, on_exit_signal);
     handle_sig(SIGQUIT, on_exit_signal);
 
-    handle_sig(SIGABRT, on_crash);
-    handle_sig(SIGSEGV, on_crash);
+    // SIGABRT and SIGSEGV are armed in main() for every subcommand
 
 #undef handle_sig
 
@@ -3644,6 +3651,9 @@ int main(int argc, char *argv[]) {
 #if _WIN32
     //register a crash handler for Windows
     SetUnhandledExceptionFilter(CrashFilter);
+#endif
+#if __linux__ || __APPLE__
+    install_crash_handlers();
 #endif
 
     const char *name = strrchr(argv[0], '/');

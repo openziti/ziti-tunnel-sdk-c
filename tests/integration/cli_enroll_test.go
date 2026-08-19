@@ -17,11 +17,13 @@ limitations under the License.
 package integration_test
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -38,6 +40,36 @@ import (
 func TestCliEnroll(t *testing.T) {
 	t.Run("enrollsWithValidJwt", cliEnrollsWithValidJwt)
 	t.Run("rejectsMalformedJwtWithoutCrashing", cliEnrollRejectsMalformedJwt)
+	t.Run("reportsABacktraceWhenItCrashes", cliEnrollReportsBacktraceOnCrash)
+}
+
+// Sends SIGSEGV to a running enroll and requires the signal name and a backtrace in its output.
+func cliEnrollReportsBacktraceOnCrash(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("posix signal handling; Windows uses SetUnhandledExceptionFilter")
+	}
+	testutil.RunWithTimeoutOf(t, 60*time.Second, func(t *testing.T) {
+		dir := t.TempDir()
+		jwtPath := filepath.Join(dir, "unreachable.jwt")
+		require.NoError(t, os.WriteFile(jwtPath, []byte(malformedJwt), 0o600), "write jwt")
+
+		bin := state.zetClient.BinPath
+		require.FileExists(t, bin, "ziti-edge-tunnel binary")
+		cmd := exec.Command(bin, "enroll", "--jwt", jwtPath, "--identity", filepath.Join(dir, "out.json"))
+		var out bytes.Buffer
+		cmd.Stdout = &out
+		cmd.Stderr = &out
+		require.NoError(t, cmd.Start(), "start enroll")
+
+		// enroll spends a couple of seconds reaching for the controller named in the token,
+		// which is ample room to signal it mid-flight
+		time.Sleep(300 * time.Millisecond)
+		require.NoError(t, cmd.Process.Signal(syscall.SIGSEGV), "signal enroll")
+		_ = cmd.Wait()
+
+		require.Contains(t, out.String(), "received signal",
+			"enroll died without reporting the signal, so a crash carries no diagnostic")
+	})
 }
 
 // The happy path the container entrypoint runs: a real one-time token against a live
