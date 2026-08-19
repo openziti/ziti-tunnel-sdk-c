@@ -57,6 +57,7 @@ static int update_file(const char *path, char *content, size_t content_len) {
     }} while(0)
 
     int rc = 0;
+    uv_file f = -1;
     uv_fs_t fs_req = {0};
 
     // copy the old config aside instead of moving it, and stage the new one, so `path` always resolves
@@ -70,19 +71,26 @@ static int update_file(const char *path, char *content, size_t content_len) {
     uint64_t mode = fs_req.statbuf.st_mode;
     CHECK_UV("create backup", uv_fs_copyfile(NULL, &fs_req, path, backup, 0, NULL));
 
-    uv_file f;
     CHECK_UV("open new config", f = uv_fs_open(NULL, &fs_req, staged,
                                                UV_FS_O_WRONLY | UV_FS_O_CREAT | UV_FS_O_TRUNC, (int) mode, NULL));
     uv_buf_t buf = uv_buf_init(content, content_len);
     CHECK_UV("write new config", uv_fs_write(NULL, &fs_req, f, &buf, 1, 0, NULL));
-    CHECK_UV("close new config", uv_fs_close(NULL, &fs_req, f, NULL));
+
+    uv_file staged_f = f;
+    f = -1;
+    CHECK_UV("close new config", uv_fs_close(NULL, &fs_req, staged_f, NULL));
     CHECK_UV("replace config", uv_fs_rename(NULL, &fs_req, staged, path, NULL));
 
     DONE:
+    if (f >= 0) {
+        uv_fs_t close_req = {0};
+        uv_fs_close(NULL, &close_req, f, NULL);
+        uv_fs_req_cleanup(&close_req);
+    }
     if (rc < 0) {
-        uv_fs_t cleanup_req = {0};
-        uv_fs_unlink(NULL, &cleanup_req, staged, NULL);
-        uv_fs_req_cleanup(&cleanup_req);
+        uv_fs_t unlink_req = {0};
+        uv_fs_unlink(NULL, &unlink_req, staged, NULL);
+        uv_fs_req_cleanup(&unlink_req);
     }
     uv_fs_req_cleanup(&fs_req);
     return rc;
