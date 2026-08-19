@@ -1099,7 +1099,7 @@ func (o *Overlay) WaitForDataModelConsensus() {
 		// a partial response (node not answering) must not pass as consensus
 		if len(indexes) != o.ZitiClusterSize || slices.Min(indexes) != slices.Max(indexes) {
 			if attempts%10 == 0 {
-				log.Printf("overlay: data-model consensus stalled after %d attempt(s), indexes: %s", attempts, strings.Join(rows, " "))
+				log.Printf("overlay: data-model consensus stalled after %d attempt(s), indexes: %s, raw inspect output:\n%s", attempts, strings.Join(rows, " "), out)
 			}
 			continue
 		}
