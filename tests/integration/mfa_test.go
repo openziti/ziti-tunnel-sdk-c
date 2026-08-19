@@ -24,6 +24,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// the pre-reauth data-model consensus wait can take ~5s on slower machines
+const reauthTestTimeout = 10 * time.Second
+
 func TestMFAEnrollment(t *testing.T) {
 	t.Run("enrollCompletesWithTotpRequiredPolicy", enrollCompletesWithTotpRequiredPolicy)
 	t.Run("enrollRejectsInvalidTotp", enrollRejectsInvalidTotp)
@@ -112,7 +115,7 @@ func triggerReauthChallenge(t *testing.T, identifier, idName string) {
 }
 
 func reauthAcceptsValidTotp(t *testing.T) {
-	testutil.RunWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeoutOf(t, reauthTestTimeout, func(t *testing.T) {
 		idName := "test_mfa_reauth_valid_totp"
 		enrollment, secret := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, idName)
 
@@ -132,9 +135,7 @@ func reauthAcceptsValidTotp(t *testing.T) {
 }
 
 func reauthAcceptsRecoveryCode(t *testing.T) {
-	// enrolls, verifies, toggles the identity and submits a recovery code. A cluster does not get
-	// through that in the 5s default, and has run past 30s on macOS.
-	testutil.RunWithTimeoutOf(t, 60*time.Second, func(t *testing.T) {
+	testutil.RunWithTimeoutOf(t, reauthTestTimeout, func(t *testing.T) {
 		idName := "test_mfa_reauth_recovery_code"
 		enrollment, _ := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, idName)
 
@@ -152,7 +153,7 @@ func reauthAcceptsRecoveryCode(t *testing.T) {
 }
 
 func reauthRejectsRecoveryCodeReuse(t *testing.T) {
-	testutil.RunWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeoutOf(t, reauthTestTimeout, func(t *testing.T) {
 		idName := "test_mfa_reauth_reused_recovery_code"
 		enrollment, _ := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, idName)
 		recoveryCode := enrollment.RecoveryCodes[0]
@@ -173,7 +174,7 @@ func reauthRejectsRecoveryCodeReuse(t *testing.T) {
 }
 
 func reauthRejectsInvalidTotp(t *testing.T) {
-	testutil.RunWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeoutOf(t, reauthTestTimeout, func(t *testing.T) {
 		idName := "test_mfa_reauth_invalid_totp"
 		enrollment, _ := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, idName)
 
