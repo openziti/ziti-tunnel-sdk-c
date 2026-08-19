@@ -4,14 +4,6 @@ name: Callable CMake Build
 on:
   workflow_dispatch:
   workflow_call:
-    inputs:
-      subset:
-        description: >
-          which presets to build: 'tested' for the three the integration suite downloads, 'release' for
-          the rest, 'all' (default) for every one. Callers that gate tests on this workflow use 'tested'
-          so the suite starts without waiting on presets it never downloads.
-        type: string
-        default: all
 
 # no concurrency constraints for callable workflows, set in caller instead
 
@@ -19,11 +11,6 @@ jobs:
   build:
     runs-on: ${{ matrix.os }}
     name: build ${{ matrix.preset }}
-    # a matrix entry outside the requested subset is skipped, which completes in seconds
-    if: >
-      inputs.subset == 'all' || inputs.subset == ''
-      || (inputs.subset == 'tested' && matrix.tested)
-      || (inputs.subset == 'release' && !matrix.tested)
     env:
       VCPKG_BINARY_SOURCES: "clear;files,${{ github.workspace }}/vcpkg_cache,readwrite"
 
@@ -38,12 +25,10 @@ jobs:
           - os: macos-15
             name: macOS arm64
             preset: macOS-arm64
-            tested: true
 
           - os: windows-2022
             name: Windows x86_64
             preset: windows-x64-mingw
-            tested: true
 
           - os: windows-2022
             name: Windows x86_64(win32crypto)
@@ -56,7 +41,6 @@ jobs:
           - os: ubuntu-22.04
             name: Linux x86_64
             preset: linux-x64
-            tested: true
 
           - os: ubuntu-22.04
             name: Linux arm

@@ -33,20 +33,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Split so the test jobs wait only on the presets they download. The rest still have to pass before
-  # the run is green, they just do not hold the tests up: the slowest of them, linux-arm, takes about as
-  # long as the whole test phase.
   call-cmake-build:
     name: Call CMake Build
     uses: ./.github/workflows/cmake.yml
-    with:
-      subset: tested
-
-  call-cmake-build-release:
-    name: Call CMake Build (release-only presets)
-    uses: ./.github/workflows/cmake.yml
-    with:
-      subset: release
 
   docker-deployments:
     needs: [ call-cmake-build ]
