@@ -1081,17 +1081,26 @@ func (o *Overlay) WaitForDataModelConsensus() {
 		}
 
 		var indexes []int
+		var rows []string
+		member := "?"
 		for _, line := range strings.Split(string(out), "\n") {
 			fields := strings.Fields(line)
+			if len(fields) == 1 && strings.HasSuffix(fields[0], ".data-model-index") {
+				member = strings.TrimSuffix(fields[0], ".data-model-index")
+			}
 			if len(fields) == 2 && fields[0] == "index:" {
 				if idx, err := strconv.Atoi(fields[1]); err == nil {
 					indexes = append(indexes, idx)
+					rows = append(rows, fmt.Sprintf("%s=%d", member, idx))
 				}
 			}
 		}
 
 		// a partial response (node not answering) must not pass as consensus
 		if len(indexes) != o.ZitiClusterSize || slices.Min(indexes) != slices.Max(indexes) {
+			if attempts%10 == 0 {
+				log.Printf("overlay: data-model consensus stalled after %d attempt(s), indexes: %s", attempts, strings.Join(rows, " "))
+			}
 			continue
 		}
 
