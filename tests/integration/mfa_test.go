@@ -136,9 +136,9 @@ func reauthAcceptsValidTotp(t *testing.T) {
 }
 
 func reauthAcceptsRecoveryCode(t *testing.T) {
-	// enrolls, verifies, toggles the identity and submits a recovery code, which a cluster
-	// does not get through in the 5s default
-	testutil.RunWithTimeoutOf(t, 30*time.Second, func(t *testing.T) {
+	// enrolls, verifies, toggles the identity and submits a recovery code. A cluster does not get
+	// through that in the 5s default, and has run past 30s on macOS.
+	testutil.RunWithTimeoutOf(t, 60*time.Second, func(t *testing.T) {
 		idName := "test_mfa_reauth_recovery_code"
 		enrollment, _ := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, idName)
 
