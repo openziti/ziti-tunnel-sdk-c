@@ -33,7 +33,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
@@ -46,13 +45,16 @@ const (
 )
 
 type Overlay struct {
-	ZitiBin             string
-	Home                string
-	ControllerURL       string
-	ControllerUser      string
-	ControllerPassword  string
-	AutoTrustCA         bool
-	ZitiClusterSize     int
+	ZitiBin            string
+	Home               string
+	ControllerURL      string
+	ControllerUser     string
+	ControllerPassword string
+	AutoTrustCA        bool
+	ZitiClusterSize    int
+	// Auth is the authentication path clients must take, "OIDC" or "Legacy". Required.
+	Auth                AuthMode
+	authApplied         bool
 	ZitiMajor           int
 	ZitiMinor           int
 	ShowZitiCliCommands bool
@@ -99,6 +101,28 @@ func (o *Overlay) Start() error {
 		return fmt.Errorf("mkdir home: %w", err)
 	}
 
+	// Probe before starting: runQuickstart waits for a cluster leader, and that wait is
+	// version-gated, so the version has to be known first. Probing only runs `ziti --version`.
+	log.Printf("overlay: probing ziti version")
+	major, minor, err := probeZitiVersion(o.ZitiBin)
+	if err != nil {
+		return fmt.Errorf("probe ziti version: %w", err)
+	}
+	o.ZitiMajor = major
+	o.ZitiMinor = minor
+
+	if err := o.runQuickstart(); err != nil {
+		return err
+	}
+	log.Printf("overlay: ready (ziti v%d.%d)", major, minor)
+
+	return nil
+}
+
+// runQuickstart launches `ziti edge quickstart` against o.Home and returns once the
+// controller answers. Legacy mode calls it twice: once to generate the config, once after
+// OIDC has been removed from it.
+func (o *Overlay) runQuickstart() error {
 	quickstart := []string{"edge", "quickstart"}
 	if o.ZitiClusterSize > 1 {
 		// `quickstart cluster` spawns o.ZitiClusterSize raft nodes; node 0 keeps the base ctrl/router ports.
@@ -122,7 +146,7 @@ func (o *Overlay) Start() error {
 	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
 		return fmt.Errorf("mkdir quickstart log dir: %w", err)
 	}
-	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
 		return fmt.Errorf("open quickstart log file: %w", err)
 	}
@@ -143,16 +167,13 @@ func (o *Overlay) Start() error {
 		o.Stop()
 		return fmt.Errorf("overlay not ready: %w\n%s", err, o.Logs())
 	}
-
-	log.Printf("overlay: probing ziti version")
-	major, minor, err := probeZitiVersion(o.ZitiBin)
-	if err != nil {
+	// an open port and a working admin login are not enough: until raft elects a leader the
+	// controller rejects every model update with CLUSTER_NO_LEADER, which the sdk reports as
+	// ZITI_WTF. tests that restart the controller then fail their next enrollment.
+	if err := o.WaitForClusterLeader(); err != nil {
 		o.Stop()
-		return fmt.Errorf("probe ziti version: %w", err)
+		return fmt.Errorf("overlay has no cluster leader: %w\n%s", err, o.Logs())
 	}
-	o.ZitiMajor = major
-	o.ZitiMinor = minor
-	log.Printf("overlay: ready (ziti v%d.%d)", major, minor)
 	return nil
 }
 
@@ -320,16 +341,17 @@ func (o *Overlay) Stop() {
 	if o.ZitiClusterSize > 1 {
 		relayStop(o.cmd)
 	} else if err := o.cmd.Process.Kill(); err != nil {
-		log.Printf("overlay pid %d kill: %v", pid, err)
+		// Kill can fail on Windows with the process still running and holding the
+		// controller port. relayStop kills the tree instead.
+		log.Printf("overlay pid %d kill: %v; falling back to process tree kill", pid, err)
+		relayStop(o.cmd)
 	}
-	for i := 0; i < 120; i++ {
-		time.Sleep(500 * time.Millisecond)
-		if proc, err := os.FindProcess(pid); err != nil || proc == nil {
-			return
-		}
-		if err := o.cmd.Process.Signal(syscall.Signal(0)); err != nil {
-			return
-		}
+	// o.Done carries the result of cmd.Wait(), so it closing is the only portable proof of
+	// exit. Signal(0) reports "gone" immediately on Windows, which has no signals.
+	select {
+	case <-o.Done:
+		return
+	case <-time.After(60 * time.Second):
 	}
 	log.Fatalf("overlay pid %d did not exit within 60s of Kill; orphan likely, aborting test run", pid)
 }
@@ -409,7 +431,10 @@ func (o *Overlay) ResetEnrollment(t *testing.T, name string) {
 	require.NoError(t, json.Unmarshal(out, &resp), "parse identity %s", name)
 	authID := resp.Data[0].Authenticators.Cert.ID
 
-	_, err = o.execZiti("edge update authenticator cert %s --re-enroll", authID)
+	// Controller ids come from a base64url alphabet, so roughly one in sixty starts with a dash, which
+	// the CLI reads as flags. There is no shell here to quote it away, so "--" ends flag parsing, and
+	// that means the flag has to come first.
+	_, err = o.execZiti("edge update authenticator cert --re-enroll -- %s", authID)
 	require.NoError(t, err, "re-enroll cert authenticator for %s", name)
 }
 
@@ -677,13 +702,16 @@ func (o *Overlay) CreateClientCert(t *testing.T, caName, commonName string, crea
 // GetCaJwt fetches the CA enrollment JWT from the management API, authenticated
 // with the session the CLI cached at login. No ziti CLI verb exposes it.
 func (o *Overlay) GetCaJwt(t *testing.T, caID string) string {
-	cliConfig, err := os.ReadFile(filepath.Join(o.Home, "cli-config", "ziti-cli.json"))
+	cliConfigPath := filepath.Join(o.Home, "cli-config", "ziti-cli.json")
+	cliConfig, err := os.ReadFile(cliConfigPath)
 	require.NoError(t, err, "read cached cli session")
 	var cfg struct {
 		EdgeIdentities map[string]struct {
 			Token      string `json:"token"`
 			ApiSession struct {
 				OidcAccessToken string `json:"oidcAccessToken"`
+				// the legacy api-session path caches the token here and leaves Token empty
+				ZtSessionToken string `json:"ztSessionToken"`
 			} `json:"apiSession"`
 		} `json:"edgeIdentities"`
 		Default string `json:"default"`
@@ -693,10 +721,15 @@ func (o *Overlay) GetCaJwt(t *testing.T, caID string) string {
 
 	req, err := http.NewRequest(http.MethodGet, o.ControllerHostPort()+"/edge/management/v1/cas/"+caID+"/jwt", nil)
 	require.NoError(t, err, "build CA jwt request")
+	ztSession := session.ApiSession.ZtSessionToken
+	if ztSession == "" {
+		ztSession = session.Token
+	}
 	if session.ApiSession.OidcAccessToken != "" {
 		req.Header.Set("Authorization", "Bearer "+session.ApiSession.OidcAccessToken)
 	} else {
-		req.Header.Set("zt-session", session.Token)
+		require.NotEmpty(t, ztSession, "no session token cached in %s", cliConfigPath)
+		req.Header.Set("zt-session", ztSession)
 	}
 	client := &http.Client{
 		Timeout: 10 * time.Second,
@@ -946,6 +979,23 @@ func (o *Overlay) PurgeExtJwtSigners() error {
 	return o.deleteWhere("ext-jwt-signers")
 }
 
+// PurgeAuthPoliciesAndExtJwtSigners deletes both, in an order that survives the reference
+// cycle between them: an auth policy names signers in primary.extJwt.allowedSigners, and a
+// signer names an auth policy in enrollAuthPolicyId. The controller refuses to delete an
+// entity another one references, so neither type can go first on its own.
+//
+// The first two passes are allowed to fail. Pass one clears the policies no signer points at,
+// which frees the signers; pass two then clears the signers, which frees the rest of the
+// policies; pass three has to succeed.
+func (o *Overlay) PurgeAuthPoliciesAndExtJwtSigners() error {
+	_ = o.PurgeAuthPolicies()
+	_ = o.PurgeExtJwtSigners()
+	if err := o.PurgeAuthPolicies(); err != nil {
+		return err
+	}
+	return o.PurgeExtJwtSigners()
+}
+
 // PurgeServicePolicies deletes every service policy carrying a test name.
 func (o *Overlay) PurgeServicePolicies() error {
 	return o.deleteWhere("service-policies")
@@ -977,10 +1027,14 @@ func (o *Overlay) deleteWhere(entity string) error {
 // or external controllers
 // Retries forever; rely on the overall test timeout if the cluster wedges.
 func (o *Overlay) WaitForClusterLeader() error {
-	if o.ZitiMajor < 2 || o.ControllerURL != "" {
+	// Major 0 means the version could not be parsed, which is what a locally built
+	// ziti reports. Skipping the wait on a dev build lets the first model write race leader
+	// election and fail with CLUSTER_NO_LEADER, so treat unknown as current.
+	if (o.ZitiMajor > 0 && o.ZitiMajor < 2) || o.ControllerURL != "" {
 		return nil
 	}
 	log.Printf("overlay: waiting for cluster leader (ziti v%d.%d)", o.ZitiMajor, o.ZitiMinor)
+	deadline := time.Now().Add(30 * time.Second)
 	attempts := 0
 	for {
 		attempts++
@@ -999,6 +1053,11 @@ func (o *Overlay) WaitForClusterLeader() error {
 					}
 				}
 			}
+		}
+		// bounded: a controller that never reports a leader should say so, not hang until the
+		// caller's own timeout fires with no explanation
+		if time.Now().After(deadline) {
+			return fmt.Errorf("no cluster leader after %d attempt(s) in 30s", attempts)
 		}
 		time.Sleep(1 * time.Second)
 	}

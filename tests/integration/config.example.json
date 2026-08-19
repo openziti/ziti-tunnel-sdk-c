@@ -5,7 +5,8 @@
     "url": "",
     "user": "admin",
     "password": "admin",
-    "autoTrustCa": false
+    "autoTrustCa": false,
+    "auth": "OIDC"
   },
   "zetA": {
     "binary": "",

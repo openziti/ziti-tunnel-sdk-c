@@ -57,6 +57,21 @@ Write-Host "TEST_HOME=$testHome"
 $clusterSize = if ($env:CLUSTER_SIZE) { [int]$env:CLUSTER_SIZE } else { 1 }
 Write-Host "CLUSTER_SIZE=$clusterSize"
 
+# ZITI_AUTH picks the auth path clients must take: OIDC, or Legacy, which strips OIDC from
+# the generated controller config. Required, no default.
+$zitiAuth = $env:ZITI_AUTH
+if ($zitiAuth -notin @("OIDC", "Legacy")) {
+    throw "ZITI_AUTH must be OIDC or Legacy, got: '$zitiAuth'"
+}
+Write-Host "ZITI_AUTH=$zitiAuth"
+
+# SLOW_TESTS=true adds the slowtests build tag and doubles the timeout. Those suites restart
+# the tunneler repeatedly and wait out silence windows, so they run nightly, not per PR.
+$slowTests = if ($env:SLOW_TESTS) { [System.Convert]::ToBoolean($env:SLOW_TESTS) } else { $false }
+$goTestTags = if ($slowTests) { @("-tags", "slowtests") } else { @() }
+$goTestTimeout = if ($slowTests) { "40m" } else { "20m" }
+Write-Host "SLOW_TESTS=$slowTests"
+
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..\..")).Path
 
 # ---- ziti CLI ---------------------------------------------------------------
@@ -136,7 +151,7 @@ try {
     Push-Location (Join-Path $repoRoot "tests\integration")
     $cfg = [ordered]@{
         testHome = $testHome
-        ziti = [ordered]@{ binary = $zitiBin; url = ""; user = "admin"; password = "admin"; autoTrustCa = [bool]$InstallCert; clusterSize = $clusterSize }
+        ziti = [ordered]@{ binary = $zitiBin; url = ""; user = "admin"; password = "admin"; autoTrustCa = [bool]$InstallCert; clusterSize = $clusterSize; auth = $zitiAuth }
         zetA = [ordered]@{ binary = $zetBin;  verbosity = 4; tlsuvDebug = 0 }
         zetB = [ordered]@{ binary = $zetBinB; verbosity = 4; tlsuvDebug = 0 }
         idp  = [ordered]@{
@@ -154,7 +169,7 @@ try {
     Get-Content config.json
 
     # ---- Run tests ------------------------------------------------------------
-    go test ./... -v -timeout 20m -config config.json
+    go test ./... -v @goTestTags -timeout $goTestTimeout -config config.json
     $exitCode = $LASTEXITCODE
 }
 finally {

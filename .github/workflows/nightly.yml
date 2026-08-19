@@ -15,6 +15,7 @@ jobs:
     name: Call CMake Build
     uses: ./.github/workflows/cmake.yml
 
+  # Nightly carries the slow suites (slowtests build tag) and the legacy-auth topology.
   integration-tests:
     name: Integration Tests (${{ matrix.topology.label }})
     needs: [ call-cmake-build ]
@@ -22,13 +23,16 @@ jobs:
       fail-fast: false
       matrix:
         topology:
-          - { label: main, cluster-size: "" }
-          - { label: main-ha, cluster-size: "3" }
+          - { label: main, cluster-size: "", auth: OIDC }
+          - { label: main-ha, cluster-size: "3", auth: OIDC }
+          - { label: main-legacy-auth, cluster-size: "", auth: Legacy }
     uses: ./.github/workflows/integration-tests.yml
     with:
       ziti-ref: main
       label: ${{ matrix.topology.label }}
       cluster-size: ${{ matrix.topology.cluster-size }}
+      auth: ${{ matrix.topology.auth }}
+      slow-tests: true
     secrets: inherit
 
   alert-mattermost:

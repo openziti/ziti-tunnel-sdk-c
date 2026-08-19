@@ -31,12 +31,13 @@ type Config struct {
 }
 
 type ZitiConfig struct {
-	Binary      string `json:"binary"`
-	URL         string `json:"url"`
-	User        string `json:"user"`
-	Password    string `json:"password"`
-	AutoTrustCA bool   `json:"autoTrustCa"`
-	ClusterSize int    `json:"clusterSize"`
+	Binary      string   `json:"binary"`
+	URL         string   `json:"url"`
+	User        string   `json:"user"`
+	Password    string   `json:"password"`
+	AutoTrustCA bool     `json:"autoTrustCa"`
+	ClusterSize int      `json:"clusterSize"`
+	Auth        AuthMode `json:"auth"` // the authentication mechanism used by the overlay. "OIDC" or "Legacy". Required
 }
 
 type ZetConfig struct {
@@ -68,6 +69,11 @@ func LoadConfig(path string) (*Config, error) {
 	}
 	if c.ZetB.Binary == "" {
 		c.ZetB.Binary = c.ZetA.Binary
+	}
+	switch c.Ziti.Auth {
+	case AuthOIDC, AuthLegacy:
+	default:
+		return nil, fmt.Errorf("config %s: ziti.auth must be %q or %q, got %q", path, AuthOIDC, AuthLegacy, c.Ziti.Auth)
 	}
 	return &c, nil
 }

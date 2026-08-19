@@ -54,6 +54,14 @@ on:
         description: "controller count: empty or 1 = single node, 3-9 = 'ziti edge quickstart cluster'"
         type: string
         default: ""
+      auth:
+        description: "auth path clients must take: 'OIDC', or 'Legacy' to strip OIDC from the generated controller config. Empty = OIDC"
+        type: string
+        default: ""
+      slow-tests:
+        description: "also run suites behind the slowtests build tag; they restart the tunneler repeatedly and take minutes"
+        type: boolean
+        default: false
 
 jobs:
   integration-tests:
@@ -188,6 +196,8 @@ jobs:
           TEST_HOME: ${{ runner.temp }}
           IDP_VERSION: ${{ inputs.idp-version }}
           CLUSTER_SIZE: ${{ inputs.cluster-size }}
+          ZITI_AUTH: ${{ inputs.auth == '' && 'OIDC' || inputs.auth }}
+          SLOW_TESTS: ${{ inputs.slow-tests }}
         run: ./tests/integration/scripts/run-ci.sh --install-cert
 
       - name: Run integration tests (Windows)
@@ -197,6 +207,8 @@ jobs:
           TEST_HOME: ${{ runner.temp }}
           IDP_VERSION: ${{ inputs.idp-version }}
           CLUSTER_SIZE: ${{ inputs.cluster-size }}
+          ZITI_AUTH: ${{ inputs.auth == '' && 'OIDC' || inputs.auth }}
+          SLOW_TESTS: ${{ inputs.slow-tests }}
         run: .\tests\integration\scripts\run-ci.ps1 -InstallCert
 
       - name: Log core file backtraces

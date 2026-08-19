@@ -85,7 +85,7 @@ func (z *ZET) Start() error {
 		return fmt.Errorf("mkdir zet root dir: %w", err)
 	}
 	// ZET creates its own -I dir, so a test can hand it a missing one like a Windows upgrade does
-	identityDir := filepath.Join(z.RootDir, "identities")
+	identityDir := z.IdentityDir()
 	if runtime.GOOS != "windows" {
 		// Remove stale unix sockets so ZET can bind. ensureNothingOnPipe above
 		// already confirmed nothing is listening, so these removes are safe.
@@ -230,7 +230,8 @@ func (z *ZET) DialIPC() (*CommandsClient, error) {
 }
 
 // ReconnectEvents closes the event pipe and re-subscribes to the same running
-// daemon, replacing z.EventClient. The daemon resends its status snapshot on connect.
+// daemon, replacing z.EventClient. The daemon resends its status snapshot on connect;
+// status is otherwise only pushed when something changes.
 func (z *ZET) ReconnectEvents(t *testing.T) {
 	path := EventPipePathFor(z.Discriminator)
 	log.Printf("ipc: reconnecting event pipe %s", path)
@@ -242,7 +243,7 @@ func (z *ZET) ReconnectEvents(t *testing.T) {
 
 // RemoveJSONIdentities deletes every *.json file in the identity dir.
 func (z *ZET) RemoveJSONIdentities() error {
-	identityDir := filepath.Join(z.RootDir, "identities")
+	identityDir := z.IdentityDir()
 	matches, err := filepath.Glob(filepath.Join(identityDir, "*.json"))
 	if err != nil {
 		return fmt.Errorf("glob identity dir: %w", err)

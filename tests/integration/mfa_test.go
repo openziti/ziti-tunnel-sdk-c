@@ -51,9 +51,14 @@ func TestMFARecoveryCodes(t *testing.T) {
 
 func enrollCompletesWithTotpRequiredPolicy(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
+		// openziti/ziti#3496: enrolling TOTP from a partially authenticated session works on
+		// ziti 2.0+, and only on the OIDC path. The legacy api-session path still rejects it,
+		// on 2.0 as much as on 1.6, so the version alone does not decide this.
 		if state.overlay.ZitiMajor < 2 {
 			t.Skipf("MFA TOTP enrollment with TOTP-required auth policy requires ziti 2.0+; controller is v%d.%d (openziti/ziti#3496)", state.overlay.ZitiMajor, state.overlay.ZitiMinor)
 		}
+		state.overlay.RequireOidcAuth(t)
+
 		name := "test_mfa_enable_totp_policy"
 		jwt := state.overlay.GetJwtFromController(t, name)
 		identityData := testutil.NewJwtIdentityData(name, jwt)
@@ -131,7 +136,9 @@ func reauthAcceptsValidTotp(t *testing.T) {
 }
 
 func reauthAcceptsRecoveryCode(t *testing.T) {
-	testutil.RunWithTimeout(t, func(t *testing.T) {
+	// enrolls, verifies, toggles the identity and submits a recovery code. A cluster does not get
+	// through that in the 5s default, and has run past 30s on macOS.
+	testutil.RunWithTimeoutOf(t, 60*time.Second, func(t *testing.T) {
 		idName := "test_mfa_reauth_recovery_code"
 		enrollment, _ := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, idName)
 

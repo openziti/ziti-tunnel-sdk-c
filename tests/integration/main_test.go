@@ -82,6 +82,7 @@ func TestMain(m *testing.M) {
 			ControllerPassword: cfg.Ziti.Password,
 			AutoTrustCA:        cfg.Ziti.AutoTrustCA,
 			ZitiClusterSize:    cfg.Ziti.ClusterSize,
+			Auth:               cfg.Ziti.Auth,
 			Done:               make(chan error, 1),
 		},
 		zetClient: &testutil.ZET{
@@ -196,13 +197,9 @@ func doSetup(state TestState) error {
 	if err := state.overlay.PurgeCAs(); err != nil {
 		return fmt.Errorf("purge stale test certificate authorities: %w", err)
 	}
-	log.Printf("setup: purging stale test auth-policies")
-	if err := state.overlay.PurgeAuthPolicies(); err != nil {
-		return fmt.Errorf("purge stale test auth policies: %w", err)
-	}
-	log.Printf("setup: purging stale test ext-jwt-signers")
-	if err := state.overlay.PurgeExtJwtSigners(); err != nil {
-		return fmt.Errorf("purge stale test ext-jwt-signers: %w", err)
+	log.Printf("setup: purging stale test auth-policies and ext-jwt-signers")
+	if err := state.overlay.PurgeAuthPoliciesAndExtJwtSigners(); err != nil {
+		return fmt.Errorf("purge stale test auth policies and ext-jwt-signers: %w", err)
 	}
 	log.Printf("setup: purging stale test service-policies")
 	if err := state.overlay.PurgeServicePolicies(); err != nil {
@@ -237,6 +234,14 @@ func doSetup(state TestState) error {
 	log.Printf("setup: importing fixture %s", fixturePath)
 	if err := state.overlay.ImportFixture(fixturePath); err != nil {
 		return fmt.Errorf("import fixture: %w", err)
+	}
+
+	// Enforce the requested auth path now that the controller is populated. This comes
+	// after the fixture import because the importer needs the OIDC endpoints, and before
+	// the tunnelers start so they authenticate over the path under test.
+	log.Printf("setup: applying auth mode %s", state.overlay.Auth)
+	if err := state.overlay.ApplyAuthMode(); err != nil {
+		return fmt.Errorf("apply auth mode: %w", err)
 	}
 
 	if state.overlay.AutoTrustCA {

@@ -38,7 +38,8 @@ The smallest run. The harness stands up a controller and runs everything except 
     "binary": "/path/to/ziti",
     "url": "",
     "user": "admin",
-    "password": "admin"
+    "password": "admin",
+    "auth": "OIDC"
   },
   "zetA": {
     "binary": "/path/to/ziti-edge-tunnel",
@@ -64,7 +65,8 @@ Runs the external-auth tests too. Needs a `dex` binary and the overlay CA truste
     "binary": "/path/to/ziti",
     "url": "",
     "user": "admin",
-    "password": "admin"
+    "password": "admin",
+    "auth": "OIDC"
   },
   "zetA": {
     "binary": "/path/to/ziti-edge-tunnel",
@@ -99,7 +101,8 @@ Targets a controller you already run and an IdP you already have. The harness do
     "binary": "/path/to/ziti",
     "url": "https://ctrl.example.com:8441",
     "user": "admin",
-    "password": "REDACTED"
+    "password": "REDACTED",
+    "auth": "OIDC"
   },
   "zetA": {
     "binary": "/path/to/ziti-edge-tunnel",
@@ -142,6 +145,20 @@ To use your own controller but skip external-auth entirely, use this shape with 
 
 To run a single "set" of tests, add `-run`, e.g. `-run TestExternalAuthSingleSigner`.
 
+### Slow suites
+
+A few suites prove that something does **not** happen, and the only way to prove it is to wait out a window
+long enough to be convincing. That waiting cannot be shortened, so these suites cost minutes and sit behind the
+`slowtests` build tag. A plain run skips them without saying so. To include them:
+
+```bash
+sudo go test -v -tags slowtests -config config.json
+```
+
+`legacy_auth_mfa_test.go` is one of these. Most of its cases run on either auth path, and two need a controller
+that withholds TOTP enrollment state, so those skip unless `ziti.auth` is `Legacy`. CI covers the whole set
+nightly in the `main-legacy-auth` topology (see `.github/workflows/nightly.yml`).
+
 ## Config reference
 
 The suite hard-requires only **`ziti.binary`** and **`zetA.binary`**; everything else depends on the mode.
@@ -154,6 +171,7 @@ The suite hard-requires only **`ziti.binary`** and **`zetA.binary`**; everything
 | `ziti.user` / `ziti.password` | Admin credentials (quickstart default is `admin` / `admin`). |
 | `ziti.autoTrustCa` | Quickstart mode only: the harness installs the overlay CA into OS trust during setup and removes it at teardown. The install deliberately happens **after** the fixture import - ziti 1.6's `ops import` fails when the controller CA is already OS-trusted. |
 | `ziti.clusterSize` | Quickstart mode only: controller count. Empty or `1` = single node; `3`-`9` = `ziti edge quickstart cluster --size=N`. |
+| `ziti.auth` | The auth path the controller must serve: `OIDC` or `Legacy`. **Required.** Quickstart mode makes the controller match, then checks it; an external controller is only checked, and the run fails if it does not already serve what you asked for. `Legacy` is the api-session path, where the controller never reports whether an identity has TOTP enrolled. |
 | `zetA` / `zetB` | The two tunnelers (client and host). `zetA.binary` is **required**; `zetB.binary` empty reuses it. `verbosity` and `tlsuvDebug` raise log detail (higher is noisier; `4` / `0` are fine defaults). |
 | `idp.useTestHarnessIdP` | `true` = harness runs a local IdP from `idp.binary`. `false` = external IdP, or none. |
 | `idp.binary` | Path to the local IdP binary (dex). Required when `useTestHarnessIdP` is `true`. |

@@ -719,13 +719,23 @@ static void on_event(const base_event *ev) {
                 break;
             }
             mfa_status s = mfa_statuss.value_of(mfa_ev->operation);
-            set_mfa_status(ev->identifier, (s != mfa_status_enrollment_required), true);
+            const char *action = mfa_ev->operation;
+
+            // don't overwrite the locally stored MfaEnabled based on the controller; the client owns it
+            // entirely. only MfaNeeded is in question here.
+            if (s == mfa_status_enrollment_required && id->MfaEnabled) {
+                ZITI_LOG(WARN, "ztx[%s] enrollment requested for an identity already enrolled in MFA;"
+                               " requesting a code instead", ev->identifier);
+                action = mfa_statuss.name(mfa_status_auth_challenge);
+            }
+
+            set_mfa_status(ev->identifier, id->MfaEnabled, true);
             // reaching an MFA prompt/enrollment request means any previously-required external auth has already succeeded
             id->NeedsExtAuth = false;
             send_tunnel_status("status");
             mfa_status_event mfa_sts_event = {
                     .Op = "mfa",
-                    .Action = mfa_ev->operation,
+                    .Action = (char *) action,
                     .Identifier = mfa_ev->identifier,
                     .Fingerprint = id->FingerPrint,
                     .Successful = false
@@ -791,6 +801,28 @@ static void on_event(const base_event *ev) {
             }
 
             send_events_message(&mfa_sts_event, (to_json_fn) mfa_status_event_to_json, true);
+
+            // an enrollment attempt that fails to authenticate means the identity is already enrolled and the
+            // session is only waiting for a code. offer the code prompt so the user is not left with an
+            // enrollment button that can never succeed.
+            // note: operation_type is only populated on success, so match on the operation name
+            if (mfa_ev->code == ZITI_AUTHENTICATION_FAILED &&
+                mfa_statuss.value_of(mfa_ev->operation) == mfa_status_enrollment_challenge) {
+                ZITI_LOG(WARN, "ztx[%s] MFA enrollment could not authenticate; treating identity as enrolled and"
+                               " requesting a code", ev->identifier);
+                set_mfa_status(ev->identifier, true, true);
+                save_tunnel_status_to_file();
+                send_tunnel_status("status");
+
+                mfa_status_event mfa_auth_event = {
+                        .Op = "mfa",
+                        .Action = (char *) mfa_statuss.name(mfa_status_auth_challenge),
+                        .Identifier = mfa_ev->identifier,
+                        .Fingerprint = id->FingerPrint,
+                        .Successful = false
+                };
+                send_events_message(&mfa_auth_event, (to_json_fn) mfa_status_event_to_json, true);
+            }
 
             mfa_sts_event.RecoveryCodes = NULL;
             free_mfa_status_event(&mfa_sts_event);
@@ -1157,6 +1189,14 @@ static void on_crash(int sig, siginfo_t * siginfo, void *context) {
     exit(1);
 }
 
+// install_crash_handlers arms the backtrace handler for every subcommand, not just `run`. A
+// crash in `enroll` otherwise reports nothing beyond the shell's "Segmentation fault".
+static void install_crash_handlers(void) {
+    struct sigaction crash = { .sa_sigaction = on_crash };
+    sigaction(SIGABRT, &crash, NULL);
+    sigaction(SIGSEGV, &crash, NULL);
+}
+
 #endif
 
 static void run_tunneler_loop(uv_loop_t* ziti_loop) {
@@ -1175,8 +1215,7 @@ static void run_tunneler_loop(uv_loop_t* ziti_loop) {
     handle_sig(SIGTERM, on_exit_signal);
     handle_sig(SIGQUIT, on_exit_signal);
 
-    handle_sig(SIGABRT, on_crash);
-    handle_sig(SIGSEGV, on_crash);
+    // SIGABRT and SIGSEGV are armed in main() for every subcommand
 
 #undef handle_sig
 
@@ -3612,6 +3651,9 @@ int main(int argc, char *argv[]) {
 #if _WIN32
     //register a crash handler for Windows
     SetUnhandledExceptionFilter(CrashFilter);
+#endif
+#if __linux__ || __APPLE__
+    install_crash_handlers();
 #endif
 
     const char *name = strrchr(argv[0], '/');
