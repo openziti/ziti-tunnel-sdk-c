@@ -23,6 +23,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -51,24 +52,29 @@ func cliEnrollReportsBacktraceOnCrash(t *testing.T) {
 	testutil.RunWithTimeoutOf(t, 60*time.Second, func(t *testing.T) {
 		dir := t.TempDir()
 		jwtPath := filepath.Join(dir, "unreachable.jwt")
-		require.NoError(t, os.WriteFile(jwtPath, []byte(malformedJwt), 0o600), "write jwt")
+		require.NoError(t, os.WriteFile(jwtPath, []byte(blackholeJwt), 0o600), "write jwt")
 
 		bin := state.zetClient.BinPath
 		require.FileExists(t, bin, "ziti-edge-tunnel binary")
 		cmd := exec.Command(bin, "enroll", "--jwt", jwtPath, "--identity", filepath.Join(dir, "out.json"))
-		var out bytes.Buffer
-		cmd.Stdout = &out
-		cmd.Stderr = &out
+		out := &syncBuffer{}
+		cmd.Stdout = out
+		cmd.Stderr = out
 		require.NoError(t, cmd.Start(), "start enroll")
 
-		// enroll spends a couple of seconds reaching for the controller named in the token,
-		// which is ample room to signal it mid-flight
-		time.Sleep(300 * time.Millisecond)
+		// signal it once it is blocked reaching for the controller, which its own log announces
+		deadline := time.Now().Add(15 * time.Second)
+		for !strings.Contains(out.String(), "controller initialized") && time.Now().Before(deadline) {
+			time.Sleep(50 * time.Millisecond)
+		}
+		require.Contains(t, out.String(), "controller initialized",
+			"enroll never reached the controller, so there was nothing to signal\n%s", out.String())
+
 		require.NoError(t, cmd.Process.Signal(syscall.SIGSEGV), "signal enroll")
 		_ = cmd.Wait()
 
 		require.Contains(t, out.String(), "received signal",
-			"enroll died without reporting the signal, so a crash carries no diagnostic")
+			"enroll died without reporting the signal, so a crash carries no diagnostic\n%s", out.String())
 	})
 }
 
@@ -135,6 +141,30 @@ func requireNotSignalled(t *testing.T, err error, out string) {
 		require.NotEqual(t, 0xC0000005, uint32(exitErr.ExitCode()),
 			"enroll crashed with an access violation\n%s", out)
 	}
+}
+
+// Names a controller at a blackhole address, so enroll parses the token and then blocks in
+// connect rather than exiting before it can be signalled.
+const blackholeJwt = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9." +
+	"eyJpc3MiOiJodHRwczovLzEwLjI1NS4yNTUuMToxMjgwIiwiZW0iOiJvdHQiLCJqdGkiOiJkZWFkYmVlZiIsInN1YiI6InRlc3RlciJ9." +
+	"AAAA"
+
+// Collects the child's stdout and stderr while the test polls it.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
 }
 
 // A syntactically well-formed JWT (header.payload.signature, all base64url) that is not a
