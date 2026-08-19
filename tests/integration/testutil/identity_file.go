@@ -23,6 +23,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -60,6 +61,23 @@ func ReadIdentityFile(t *testing.T, path string) IdentityFileContent {
 func AssertNoIdentityFile(t *testing.T, zet *ZET, name string) {
 	idPath := filepath.Join(zet.RootDir, "identities", name+".json")
 	require.NoFileExists(t, idPath)
+}
+
+// WaitForFileExist waits for path to appear, polling every 10ms up to the deadline. It reports whether
+// the file showed up rather than failing, so a caller can treat "never appeared" as an acceptable
+// outcome and carry on.
+func WaitForFileExist(t *testing.T, path string, deadline time.Duration) bool {
+	t.Helper()
+	start := time.Now()
+	for time.Since(start) < deadline {
+		if _, err := os.Stat(path); err == nil {
+			t.Logf("%s appeared after %s", path, time.Since(start).Round(time.Millisecond))
+			return true
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Logf("%s did not appear within %s; continuing", path, deadline)
+	return false
 }
 
 func AssertValidJwtEnrolledIdentityFile(t *testing.T, path string) {

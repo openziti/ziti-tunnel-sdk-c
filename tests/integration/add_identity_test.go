@@ -19,6 +19,7 @@ package integration_test
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/openziti/ziti-tunnel-sdk-c/tests/integration/testutil"
 	"github.com/stretchr/testify/require"
@@ -45,10 +46,17 @@ func TestAddIdentityByUrl(t *testing.T) {
 }
 
 func sameJwtTwiceSecondFails(t *testing.T) {
-	testutil.RunWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeoutOf(t, 30*time.Second, func(t *testing.T) {
 		idName := "test_add_id_dup_name"
 		jwt := state.overlay.GetJwtFromController(t, idName)
-		testutil.EnrollJwt(t, state.zetClient, idName, jwt)
+		added := testutil.EnrollJwt(t, state.zetClient, idName, jwt)
+
+		// The duplicate check stats the identity file, and the tunneler rewrites that file once the
+		// controller reports its API list - renaming it to .bak and creating it again, so the path is
+		// briefly absent. identity:added arrives at almost the same instant, so a second AddIdentity
+		// sent immediately can slip through the gap, enroll again, and be rejected for the spent JWT
+		// instead of for the duplicate name. The .bak appearing means that rewrite is done.
+		testutil.WaitForFileExist(t, added.Id.Identifier+".bak", 5*time.Second)
 
 		identityData := testutil.NewJwtIdentityData(idName, jwt)
 		addResp := state.zetClient.AddIdentity(t, identityData)
