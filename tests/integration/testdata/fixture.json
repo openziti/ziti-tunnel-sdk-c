@@ -216,6 +216,48 @@
       "enrollment": { "ott": true }
     },
     {
+      "name": "test_mfa_posture_client",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
+      "name": "test_proc_posture_client",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
+      "name": "test_proc_posture_host",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
+      "name": "test_os_posture_client",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
+      "name": "test_os_posture_host",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
+      "name": "test_mac_posture_client",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
+      "name": "test_mac_posture_host",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
       "name": "test_remove_id",
       "isAdmin": false,
       "authPolicy": "@Default",
@@ -342,6 +384,76 @@
         "addresses": ["attr-admin.ziti"],
         "portRanges": [{ "low": 80, "high": 80 }]
       }
+    },
+    {
+      "name": "test_mfa_posture_intercept",
+      "configType": "@intercept.v1",
+      "data": {
+        "protocols": ["tcp"],
+        "addresses": ["mfa-posture.ziti"],
+        "portRanges": [{ "low": 8080, "high": 8080 }]
+      }
+    },
+    {
+      "name": "test_proc_posture_host_cfg",
+      "configType": "@host.v1",
+      "data": {
+        "protocol": "tcp",
+        "address": "127.0.0.1",
+        "port": 23180
+      }
+    },
+    {
+      "name": "test_proc_posture_intercept",
+      "configType": "@intercept.v1",
+      "data": {
+        "protocols": ["tcp"],
+        "addresses": ["100.64.0.20/32"],
+        "portRanges": [{ "low": 23000, "high": 23000 }]
+      }
+    },
+    {
+      "name": "test_os_posture_host_cfg",
+      "configType": "@host.v1",
+      "data": {
+        "protocol": "tcp",
+        "address": "127.0.0.1",
+        "port": 23181
+      }
+    },
+    {
+      "name": "test_os_posture_intercept",
+      "configType": "@intercept.v1",
+      "data": {
+        "protocols": ["tcp"],
+        "addresses": ["100.64.0.21/32"],
+        "portRanges": [{ "low": 23001, "high": 23001 }]
+      }
+    },
+    {
+      "name": "test_mac_posture_host_cfg",
+      "configType": "@host.v1",
+      "data": {
+        "protocol": "tcp",
+        "address": "127.0.0.1",
+        "port": 23182
+      }
+    },
+    {
+      "name": "test_mac_posture_intercept",
+      "configType": "@intercept.v1",
+      "data": {
+        "protocols": ["tcp"],
+        "addresses": ["100.64.0.22/32"],
+        "portRanges": [{ "low": 23002, "high": 23002 }]
+      }
+    }
+  ],
+  "postureChecks": [
+    {
+      "name": "test_mfa_posture_check",
+      "typeId": "MFA",
+      "roleAttributes": ["test-mfa-posture"]
     }
   ],
   "services": [
@@ -354,6 +466,26 @@
       "name": "test_ext_auth_attr_admin_svc",
       "encryptionRequired": true,
       "configs": ["@test_ext_auth_attr_admin_intercept"]
+    },
+    {
+      "name": "test_mfa_posture_svc",
+      "encryptionRequired": true,
+      "configs": ["@test_mfa_posture_intercept"]
+    },
+    {
+      "name": "test_proc_posture_svc",
+      "encryptionRequired": true,
+      "configs": ["@test_proc_posture_host_cfg", "@test_proc_posture_intercept"]
+    },
+    {
+      "name": "test_os_posture_svc",
+      "encryptionRequired": true,
+      "configs": ["@test_os_posture_host_cfg", "@test_os_posture_intercept"]
+    },
+    {
+      "name": "test_mac_posture_svc",
+      "encryptionRequired": true,
+      "configs": ["@test_mac_posture_host_cfg", "@test_mac_posture_intercept"]
     }
   ],
   "servicePolicies": [
@@ -370,6 +502,59 @@
       "semantic": "AnyOf",
       "identityRoles": ["#ziti-admin"],
       "serviceRoles": ["@test_ext_auth_attr_admin_svc"]
+    },
+    {
+      "name": "test_mfa_posture_dial",
+      "type": "Dial",
+      "semantic": "AnyOf",
+      "identityRoles": ["@test_mfa_posture_client"],
+      "serviceRoles": ["@test_mfa_posture_svc"],
+      "postureCheckRoles": ["#test-mfa-posture"]
+    },
+    {
+      "name": "test_proc_posture_bind",
+      "type": "Bind",
+      "semantic": "AnyOf",
+      "identityRoles": ["@test_proc_posture_host"],
+      "serviceRoles": ["@test_proc_posture_svc"]
+    },
+    {
+      "name": "test_proc_posture_dial",
+      "type": "Dial",
+      "semantic": "AnyOf",
+      "identityRoles": ["@test_proc_posture_client"],
+      "serviceRoles": ["@test_proc_posture_svc"],
+      "postureCheckRoles": ["#test-proc-posture"]
+    },
+    {
+      "name": "test_os_posture_bind",
+      "type": "Bind",
+      "semantic": "AnyOf",
+      "identityRoles": ["@test_os_posture_host"],
+      "serviceRoles": ["@test_os_posture_svc"]
+    },
+    {
+      "name": "test_os_posture_dial",
+      "type": "Dial",
+      "semantic": "AnyOf",
+      "identityRoles": ["@test_os_posture_client"],
+      "serviceRoles": ["@test_os_posture_svc"],
+      "postureCheckRoles": ["#test-os-posture"]
+    },
+    {
+      "name": "test_mac_posture_bind",
+      "type": "Bind",
+      "semantic": "AnyOf",
+      "identityRoles": ["@test_mac_posture_host"],
+      "serviceRoles": ["@test_mac_posture_svc"]
+    },
+    {
+      "name": "test_mac_posture_dial",
+      "type": "Dial",
+      "semantic": "AnyOf",
+      "identityRoles": ["@test_mac_posture_client"],
+      "serviceRoles": ["@test_mac_posture_svc"],
+      "postureCheckRoles": ["#test-mac-posture"]
     }
   ]
 }
