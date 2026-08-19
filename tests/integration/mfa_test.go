@@ -24,6 +24,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// the pre-reauth data-model consensus wait can take over 10s on slower machines
+const reauthTestTimeout = 15 * time.Second
+
 func TestMFAEnrollment(t *testing.T) {
 	t.Run("enrollCompletesWithTotpRequiredPolicy", enrollCompletesWithTotpRequiredPolicy)
 	t.Run("enrollRejectsInvalidTotp", enrollRejectsInvalidTotp)
@@ -106,17 +109,13 @@ func enrollRejectsInvalidTotp(t *testing.T) {
 
 func triggerReauthChallenge(t *testing.T, identifier, idName string) {
 	// reauth can land on any controller; the preceding MFA write must be applied everywhere first
-	// TODO: restore once Ziti data-model-index reflects MFA writes
-	// state.overlay.WaitForDataModelConsensus()
-	if state.overlay.ZitiClusterSize > 1 {
-		time.Sleep(500 * time.Millisecond)
-	}
+	state.overlay.WaitForDataModelConsensus()
 	state.zetClient.DisableEnableIdentity(t, identifier)
 	state.zetClient.WaitForMfaEvent(t, "auth_challenge", idName)
 }
 
 func reauthAcceptsValidTotp(t *testing.T) {
-	testutil.RunWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeoutOf(t, reauthTestTimeout, func(t *testing.T) {
 		idName := "test_mfa_reauth_valid_totp"
 		enrollment, secret := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, idName)
 
@@ -136,9 +135,7 @@ func reauthAcceptsValidTotp(t *testing.T) {
 }
 
 func reauthAcceptsRecoveryCode(t *testing.T) {
-	// enrolls, verifies, toggles the identity and submits a recovery code. A cluster does not get
-	// through that in the 5s default, and has run past 30s on macOS.
-	testutil.RunWithTimeoutOf(t, 60*time.Second, func(t *testing.T) {
+	testutil.RunWithTimeoutOf(t, reauthTestTimeout, func(t *testing.T) {
 		idName := "test_mfa_reauth_recovery_code"
 		enrollment, _ := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, idName)
 
@@ -156,7 +153,7 @@ func reauthAcceptsRecoveryCode(t *testing.T) {
 }
 
 func reauthRejectsRecoveryCodeReuse(t *testing.T) {
-	testutil.RunWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeoutOf(t, reauthTestTimeout, func(t *testing.T) {
 		idName := "test_mfa_reauth_reused_recovery_code"
 		enrollment, _ := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, idName)
 		recoveryCode := enrollment.RecoveryCodes[0]
@@ -177,7 +174,7 @@ func reauthRejectsRecoveryCodeReuse(t *testing.T) {
 }
 
 func reauthRejectsInvalidTotp(t *testing.T) {
-	testutil.RunWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeoutOf(t, reauthTestTimeout, func(t *testing.T) {
 		idName := "test_mfa_reauth_invalid_totp"
 		enrollment, _ := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, idName)
 
