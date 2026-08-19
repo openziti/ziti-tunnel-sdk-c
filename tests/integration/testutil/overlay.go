@@ -431,7 +431,10 @@ func (o *Overlay) ResetEnrollment(t *testing.T, name string) {
 	require.NoError(t, json.Unmarshal(out, &resp), "parse identity %s", name)
 	authID := resp.Data[0].Authenticators.Cert.ID
 
-	_, err = o.execZiti("edge update authenticator cert %s --re-enroll", authID)
+	// Controller ids come from a base64url alphabet, so roughly one in sixty starts with a dash, which
+	// the CLI reads as flags. There is no shell here to quote it away, so "--" ends flag parsing, and
+	// that means the flag has to come first.
+	_, err = o.execZiti("edge update authenticator cert --re-enroll -- %s", authID)
 	require.NoError(t, err, "re-enroll cert authenticator for %s", name)
 }
 
