@@ -84,6 +84,16 @@ done
 : "${ZITI_TEST_INTERCEPT:=httpbin.docker-test.ziti.internal}"
 # : "${ZIGGY_UID:=$(id -u)}"
 
+# The C SDK crashes selecting a controller endpoint while the monotonic clock is under 60s
+# (openziti/ziti-sdk-c, regression from #1116), and a freshly provisioned runner enrolls inside that
+# window. Remove this once the SDK fix is pinned. Containers share the host's monotonic clock, so the
+# host's uptime is what counts.
+UPTIME_SECONDS=$(cut -d. -f1 /proc/uptime)
+if (( UPTIME_SECONDS < 61 )); then
+    echo "INFO: host uptime is ${UPTIME_SECONDS}s; waiting $(( 61 - UPTIME_SECONDS ))s for the monotonic clock to pass 60s"
+    sleep $(( 61 - UPTIME_SECONDS ))
+fi
+
 if [[ -n "${ZITI_EDGE_TUNNEL_BIN:-}" && -s "${ZITI_EDGE_TUNNEL_BIN}" ]]; then
     if ! [[ "$(realpath "${ZITI_EDGE_TUNNEL_BIN}")" == "$(realpath "./build/amd64/linux/ziti-edge-tunnel")" ]]; then
         mkdir -p ./build/amd64/linux
