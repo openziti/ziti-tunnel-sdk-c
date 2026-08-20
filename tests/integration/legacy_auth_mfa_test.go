@@ -65,6 +65,9 @@ func restartOffersCodePromptForEnrolledIdentity(t *testing.T) {
 		idName := "test_legacy_mfa_restart_prompt"
 		enrollment, secret := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, idName)
 
+		// every re-auth here can land on any cluster member, so the preceding MFA write must
+		// have been applied everywhere first; same guard as triggerReauthChallenge
+		state.overlay.WaitForDataModelConsensus()
 		require.NoError(t, state.zetClient.Restart(), "restart %s\n%s", state.zetClient.Discriminator, state.zetClient.LogPath())
 
 		state.zetClient.WaitForMfaEvent(t, "auth_challenge", idName)
@@ -88,6 +91,7 @@ func disableEnableOffersCodePromptForEnrolledIdentity(t *testing.T) {
 		idName := "test_legacy_mfa_toggle_prompt"
 		enrollment, secret := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, idName)
 
+		state.overlay.WaitForDataModelConsensus()
 		state.zetClient.DisableEnableIdentity(t, enrollment.Identifier)
 
 		state.zetClient.WaitForMfaEvent(t, "auth_challenge", idName)
@@ -116,6 +120,7 @@ func restartKeepsPersistedMfaEnabled(t *testing.T) {
 		idName := "test_legacy_mfa_restart_state"
 		enrollment, _ := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, idName)
 
+		state.overlay.WaitForDataModelConsensus()
 		require.NoError(t, state.zetClient.Restart(), "restart %s\n%s", state.zetClient.Discriminator, state.zetClient.LogPath())
 
 		state.zetClient.WaitForMfaEvent(t, "auth_challenge", idName)
@@ -148,6 +153,7 @@ func recoversWhenPersistedMfaEnabledIsWrong(t *testing.T) {
 
 		state.zetClient.Stop()
 		state.zetClient.SetPersistedMfaEnabled(t, enrollment.Identifier, false)
+		state.overlay.WaitForDataModelConsensus()
 		require.NoError(t, state.zetClient.Start(), "start %s\n%s", state.zetClient.Discriminator, state.zetClient.LogPath())
 
 		state.zetClient.WaitForMfaEvent(t, "enrollment_required", idName)
@@ -181,6 +187,7 @@ func repeatedRestartsKeepOfferingCodePrompt(t *testing.T) {
 		answers := []string{testutil.GenerateTOTP(t, secret, time.Now()), enrollment.RecoveryCodes[0]}
 
 		for pass, answer := range answers {
+			state.overlay.WaitForDataModelConsensus()
 			require.NoError(t, state.zetClient.Restart(), "restart %d of %s\n%s", pass+1, state.zetClient.Discriminator, state.zetClient.LogPath())
 
 			state.zetClient.WaitForMfaEvent(t, "auth_challenge", idName)
@@ -208,6 +215,7 @@ func restartAcceptsRecoveryCode(t *testing.T) {
 		idName := "test_legacy_mfa_restart_recovery"
 		enrollment, _ := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, idName)
 
+		state.overlay.WaitForDataModelConsensus()
 		require.NoError(t, state.zetClient.Restart(), "restart %s\n%s", state.zetClient.Discriminator, state.zetClient.LogPath())
 
 		state.zetClient.WaitForMfaEvent(t, "auth_challenge", idName)
@@ -230,6 +238,7 @@ func acceptedCodeEndsThePrompting(t *testing.T) {
 		idName := "test_legacy_mfa_quiet_after_code"
 		enrollment, secret := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, idName)
 
+		state.overlay.WaitForDataModelConsensus()
 		require.NoError(t, state.zetClient.Restart(), "restart %s\n%s", state.zetClient.Discriminator, state.zetClient.LogPath())
 
 		state.zetClient.WaitForMfaEvent(t, "auth_challenge", idName)
@@ -261,6 +270,7 @@ func twoIdentitiesKeepSeparateMfaState(t *testing.T) {
 		plain := testutil.FetchAndEnrollJwt(t, state.overlay, state.zetClient, plainName)
 		state.zetClient.WaitForControllerEvent(t, "connected", plainName)
 
+		state.overlay.WaitForDataModelConsensus()
 		require.NoError(t, state.zetClient.Restart(), "restart %s\n%s", state.zetClient.Discriminator, state.zetClient.LogPath())
 
 		state.zetClient.WaitForMfaEvent(t, "auth_challenge", mfaName)
@@ -291,6 +301,7 @@ func removeMfaThenRestartStopsPrompting(t *testing.T) {
 		state.zetClient.RemoveMFA(t, enrollment.Identifier, code).AssertSuccess()
 		state.zetClient.WaitForMfaEvent(t, "enrollment_remove", idName).AssertSuccess()
 
+		state.overlay.WaitForDataModelConsensus()
 		require.NoError(t, state.zetClient.Restart(), "restart %s\n%s", state.zetClient.Discriminator, state.zetClient.LogPath())
 		state.zetClient.WaitForControllerEvent(t, "connected", idName)
 
@@ -316,6 +327,7 @@ func adminRemovedMfaStopsPromptingAfterRestart(t *testing.T) {
 		state.overlay.RemoveIdentityMFA(t, idName)
 		require.False(t, state.overlay.IdentityMfaEnabled(t, idName), "controller still says %q is enrolled after an admin removed MFA", idName)
 
+		state.overlay.WaitForDataModelConsensus()
 		require.NoError(t, state.zetClient.Restart(), "restart %s\n%s", state.zetClient.Discriminator, state.zetClient.LogPath())
 		state.zetClient.WaitForControllerEvent(t, "connected", idName)
 
@@ -341,12 +353,14 @@ func migratingToOidcKeepsTheIdentityEnrolled(t *testing.T) {
 		idName := "test_legacy_mfa_oidc_migration"
 		enrollment, secret := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, idName)
 
+		state.overlay.WaitForDataModelConsensus()
 		require.NoError(t, state.zetClient.Restart(), "restart %s\n%s", state.zetClient.Discriminator, state.zetClient.LogPath())
 		state.zetClient.WaitForMfaEvent(t, "auth_challenge", idName)
 
 		t.Cleanup(func() { state.overlay.RestoreLegacyAuth(t) })
 		state.overlay.EnableOidc(t)
 
+		state.overlay.WaitForDataModelConsensus()
 		require.NoError(t, state.zetClient.Restart(), "restart %s after the OIDC migration\n%s", state.zetClient.Discriminator, state.zetClient.LogPath())
 		state.zetClient.WaitForMfaEvent(t, "auth_challenge", idName)
 
