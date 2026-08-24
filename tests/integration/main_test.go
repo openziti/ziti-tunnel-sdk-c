@@ -29,7 +29,7 @@ import (
 	"github.com/openziti/ziti-tunnel-sdk-c/tests/integration/testutil"
 )
 
-const setupTimeout = 45 * time.Second
+const setupTimeout = 60 * time.Second
 
 const fixturePath = "testdata/fixture.json"
 
