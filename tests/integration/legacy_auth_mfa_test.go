@@ -65,8 +65,6 @@ func restartOffersCodePromptForEnrolledIdentity(t *testing.T) {
 		idName := "test_legacy_mfa_restart_prompt"
 		enrollment, secret := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, idName)
 
-		// every re-auth here can land on any cluster member, so the preceding MFA write must
-		// have been applied everywhere first; same guard as triggerReauthChallenge
 		state.overlay.WaitForDataModelConsensus()
 		require.NoError(t, state.zetClient.Restart(), "restart %s\n%s", state.zetClient.Discriminator, state.zetClient.LogPath())
 
