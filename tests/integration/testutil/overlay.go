@@ -582,6 +582,12 @@ func (o *Overlay) CreateAuthPolicyForExtJwt(t *testing.T, name string, signerIDs
 	t.Logf("auth policy %q created", name)
 }
 
+func (o *Overlay) SetAuthPolicySecondaryExtJwtSigner(t *testing.T, name, signerID string) {
+	t.Logf("requiring secondary ext-jwt-signer %s on auth policy %q", signerID, name)
+	_, err := o.execZiti("edge update auth-policy %s --secondary-req-ext-jwt-signer %s", name, signerID)
+	require.NoError(t, err, "update auth policy %s secondary signer %s", name, signerID)
+}
+
 // CreateIdentityWithExternalId provisions a non-admin identity stamped with
 // externalId so the controller can match it against the "sub" claim of an
 // ext-jwt-signer-issued JWT. If authPolicy is non-empty the identity is bound

@@ -9,6 +9,16 @@
       },
       "secondary": { "requireTotp": true },
       "tags": {}
+    },
+    {
+      "name": "test_ext_auth_secondary_policy",
+      "primary": {
+        "cert": { "allowExpiredCerts": false, "allowed": true },
+        "extJwt": { "allowed": false, "allowedSigners": [] },
+        "updb": { "allowed": false, "lockoutDurationMinutes": 0, "maxAttempts": 5, "minPasswordLength": 5, "requireMixedCase": false, "requireNumberChar": false, "requireSpecialChar": false }
+      },
+      "secondary": { "requireTotp": false },
+      "tags": {}
     }
   ],
   "identities": [
@@ -322,6 +332,14 @@
       "isAdmin": false,
       "authPolicy": "@Default",
       "externalId": "test_ext_auth_multi_default@test.com"
+    },
+    {
+      "name": "test_ext_auth_secondary_happy",
+      "isAdmin": false,
+      "authPolicy": "@test_ext_auth_secondary_policy",
+      "externalId": "test_ext_auth_secondary_happy@test.com",
+      "roleAttributes": ["ziti-user"],
+      "enrollment": { "ott": true }
     }
   ],
   "configs": [
