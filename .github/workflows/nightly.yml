@@ -48,6 +48,7 @@ jobs:
         with:
           zitiId: ${{ secrets.ZITI_MATTERMOST_IDENTITY }}
           webhookUrl: ${{ secrets.ZHOOK_URL_DEV_NOTIFICATIONS }}
+          eventName: workflow_failure
           eventJson: |
             {
               "action": "[ZET nightly integration tests against ziti main failed](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})",
