@@ -43,15 +43,14 @@ jobs:
     env:
       ZHOOK_URL: ${{ secrets.ZHOOK_URL_DEV_NOTIFICATIONS }}
     steps:
-      - uses: openziti/ziti-mattermost-action-py@v1
+      - uses: openziti/ziti-mattermost-action-py@main
         if: env.ZHOOK_URL
         with:
           zitiId: ${{ secrets.ZITI_MATTERMOST_IDENTITY }}
           webhookUrl: ${{ secrets.ZHOOK_URL_DEV_NOTIFICATIONS }}
-          eventName: workflow_failure
+          githubToken: ${{ github.token }}
           eventJson: |
             {
-              "action": "[ZET nightly integration tests against ziti main failed](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})",
               "repository": {
                 "full_name": "${{ github.repository }}",
                 "html_url": "${{ github.server_url }}/${{ github.repository }}"
