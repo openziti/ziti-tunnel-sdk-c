@@ -87,11 +87,11 @@ const (
 	// -timeout to `go test` itself (its own default is 10m and would kill the
 	// process with a less useful goroutine dump before this fires).
 	outageTestTimeout = 25 * time.Minute
-	// The bug this test guards against needs many repeated failed
-	// reconnect/refresh attempts to manifest (field reports show hundreds
-	// over hours) - ZET's default 10s controller-refresh interval would only
-	// produce a couple dozen attempts in outageSeverDuration, so force it down
-	// to 1s via the -r flag to get closer to that order of magnitude.
+	// Forces a service-refresh (and so a fresh reconnect attempt) about once a
+	// second instead of ZET's default 10s, so outageRecoveryTimeout only has
+	// to be long enough for real timeouts to elapse a handful of times, not
+	// long enough to also cover a slow retry cadence on top of that. See the
+	// doc comment above for why cycle count itself turned out not to matter.
 	outageRefreshIntervalArg = "1"
 )
 
@@ -109,37 +109,48 @@ const (
 // This is a regression guard for
 // https://openziti.discourse.group/t/zet-does-not-recover-after-prolonged-controller-network-outage-once-api-session-expires/5993
 // - ziti-edge-tunnel getting permanently stuck in an unauthenticated retry
-// loop after a prolonged outage, only recovering on a manual restart. That
-// discourse report is a whole family of "never recovers" bugs, not one -
-// this test has already turned up two distinct ones, and the shape of the
-// outage (how long ZET ran normally before the partition hit) seems to be
-// what selects which one you get:
-//   - A short-lived pre-outage window (connect, then sever within ~1s -
-//     what this test originally did) reproduces a bug that's still open as
-//     of ziti-sdk-c 1.18.7: when a full OIDC re-auth attempt itself fails
-//     (not just a token refresh), oidc_auth_token_cb's OIDC_TOKEN_FAILED case
-//     (library/oidc.c) reports ZitiAuthStateUnauthenticated, and
-//     ztx_set_unauthenticated() (library/ziti.c) tears down session state
-//     but arms no retry/reschedule at all - permanently stuck. The sibling
-//     status ZitiAuthImpossibleToAuthenticate does have a retry
-//     (ztx_set_impossible_to_authenticate() calls ziti_re_auth() for
-//     UV_ECONNREFUSED/UV_EAI_NONAME), just not wired to this path. Confirmed
-//     via a real captured log: refresh_time_cb retries and reschedules
-//     correctly for ~168s, one of those retries falls back to a full
-//     oidc_client_start() that fails, and neither ever fires again for the
-//     rest of the capture (well past the actual network restore).
-//   - The field reports behind https://github.com/openziti/tlsuv/pull/367
-//     (tlsuv's OpenSSL/BoringSSL set_own_cert misuse on the SSL_CTX, shipped
-//     in tlsuv v0.42.4 / ziti-sdk-c 1.18.6+) accumulated hundreds of refresh
-//     cycles over hours before failing, which a short pre-outage window
-//     (outagePreSeverSettleDuration) never exercises. An earlier version of
-//     this test used a long (10m) settle window to try to reproduce that
-//     shape - since abandoned: outageSeverDuration always outlasts
-//     outageExpiryWindow regardless of the settle length, so restore forces
-//     a full re-auth either way, and the still-open bug above fires on any
-//     failed full re-auth - meaning settle length likely never was what
-//     selected between the two bugs. Still being verified as of this
-//     writing.
+// loop after a prolonged outage, only recovering on a manual restart. The
+// confirmed root cause is https://github.com/openziti/tlsuv/pull/367 (tlsuv's
+// OpenSSL/BoringSSL set_own_cert misuse on the SSL_CTX), fixed in tlsuv
+// v0.42.4 / ziti-sdk-c 1.18.6+.
+//
+// Getting this test to actually reproduce the bug took several wrong turns,
+// worth recording so they don't get re-tried:
+//   - Cycle count/exposure time is NOT what selects it. An earlier version of
+//     this test used a 10-minute pre-sever settle window on the theory that
+//     the bug needed many accumulated refresh cycles to manifest (real field
+//     reports took hours). That theory was wrong: outagePreSeverSettleDuration
+//     is now a minimal 60s (just enough to confirm the initial connect is
+//     stable) and the bug still reproduces reliably.
+//   - What actually matters is how OutageProxy models the outage. It
+//     originally simulated Sever by actively resetting every connection
+//     (SO_LINGER=0 + Close) - fast, clean, deterministic feedback to the
+//     client. That turned out to be the problem: a client that gets an
+//     immediate RST recovers too cleanly to ever hit the bug. Confirmed by a
+//     side-by-side comparison against a podman container with its network
+//     interface disabled (a genuine black hole, no RST) - 1.18.5 (pre-fix)
+//     reliably failed to recover against the container, but passed against
+//     this proxy's old RST-based Sever every time. OutageProxy now
+//     black-holes instead (see its own doc comment) - bytes just stop moving,
+//     no RST/FIN, so the client only finds out via its own read/write
+//     timeouts, same as a real partition. With that change, 1.18.5 reliably
+//     times out in outageRecoveryTimeout and 1.18.7 reliably recovers
+//     (slower than the old RST-based proxy - tens of seconds to over a
+//     minute, since real timeouts have to elapse - but well within budget).
+//   - A separate, still-open bug exists too: when a full OIDC re-auth attempt
+//     itself fails (not just a token refresh), oidc_auth_token_cb's
+//     OIDC_TOKEN_FAILED case (library/oidc.c) reports
+//     ZitiAuthStateUnauthenticated, and ztx_set_unauthenticated()
+//     (library/ziti.c) tears down session state but arms no retry/reschedule
+//     on that specific path - confirmed live against a real, permanently-
+//     stuck field specimen. This test does not appear to hit it: the -r 1
+//     flag (see outageRefreshIntervalArg) forces a service-refresh cycle
+//     every second, and that cycle independently re-triggers a fresh full
+//     OIDC attempt each time regardless of what ztx_set_unauthenticated did
+//     or didn't arm, which is likely why 1.18.5's failures here are
+//     "retries forever, never succeeds" rather than "stops retrying
+//     entirely." If a future run ever shows retry activity actually stopping
+//     before outageRecoveryTimeout elapses, that's this bug, not tlsuv#367.
 //
 // Uses its own controller rather than the shared state.overlay, and needs
 // edge.api.address itself redirected to the proxy (testutil.Overlay.BindCtrlPort),
