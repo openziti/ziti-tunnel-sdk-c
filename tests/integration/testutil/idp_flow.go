@@ -31,9 +31,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// DriveIdPFlow acts as the browser in the IdP's OIDC password flow, logging in
-// as email and following redirects from authURL through the login form back to
-// ZET's loopback callback at localhost:20314.
+// DriveIdPFlow does what the browser would: follow authUrl to the IdP's login
+// page, submit the login form with email and p.Password, and follow the
+// redirects back to ZET's loopback callback. ZET gets the auth code and does
+// the PKCE token exchange itself, the harness never sees a token.
 func (p *IdP) DriveIdPFlow(t *testing.T, authUrl, email string) {
 	t.Logf("driving IdP login flow (issuer=%s email=%s)", p.IssuerURL, email)
 
@@ -133,11 +134,12 @@ var (
 	attrRe  = regexp.MustCompile(`(?is)([a-zA-Z_:][-a-zA-Z0-9_:.]*)\s*=\s*(?:"([^"]*)"|'([^']*)')`)
 )
 
-// parseLoginForm finds the IdP login form (the <form> that holds a password
-// input), carries forward every input it declares, and fills the detected
-// username and password fields. Reading the form instead of hardcoding field
-// names keeps the flow IdP-agnostic: dex uses login/password, keycloak and
-// auth0 use username/password plus hidden state/CSRF fields, all handled here.
+// parseLoginForm reads the login form off the page: the first <form> with a
+// password input. It keeps every input the form declares and fills in the
+// password field and the first text/email field. There are no per-IdP
+// branches. Dex, keycloak, and Auth0 all render this shape, and the
+// per-request values (keycloak's session_code in the action, Auth0's hidden
+// _csrf) come along without being named.
 func parseLoginForm(body, email, password string) (string, url.Values, error) {
 	for _, f := range formRe.FindAllStringSubmatch(body, -1) {
 		formAttrs, inner := parseTagAttributes(f[1]), f[2]
