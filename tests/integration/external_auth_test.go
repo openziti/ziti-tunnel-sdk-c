@@ -118,6 +118,7 @@ func TestExternalAuthSecondary(t *testing.T) {
 	c.overlay.SetAuthPolicySecondaryExtJwtSigner(t, "test_ext_auth_secondary_policy", c.workingSigner.id)
 
 	t.Run("secondaryExtJwtCompletes", c.secondaryExtJwtCompletes)
+	t.Run("secondaryExtJwtReauthAsksForLogin", c.secondaryExtJwtReauthAsksForLogin)
 }
 
 func (c *extAuthContext) secondaryExtJwtCompletes(t *testing.T) {
@@ -140,6 +141,29 @@ func (c *extAuthContext) secondaryExtJwtCompletes(t *testing.T) {
 		c.zet.WaitForControllerEvent(t, "connected", idName)
 		testutil.AssertValidJwtEnrolledIdentityFile(t, idEvent.Id.Identifier)
 		c.assertGrantedServices(t, idName, "test_ext_auth_attr_user_svc")
+	})
+}
+
+func (c *extAuthContext) secondaryExtJwtReauthAsksForLogin(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
+		idName := "test_ext_auth_secondary_reauth"
+		jwt := c.overlay.GetJwtFromController(t, idName)
+		identityData := testutil.NewJwtIdentityData(idName, jwt)
+		addResp := c.zet.AddIdentity(t, identityData)
+		addResp.AssertSuccess()
+
+		idEvent := c.zet.WaitForIdentityEvent(t, "needs_ext_login", idName)
+		authURL := c.zet.GetExternalAuthURL(t, idEvent.Id.Identifier, c.workingSigner.name)
+		c.idp.DriveIdPFlow(t, authURL, idName+"@test.com")
+		c.zet.WaitForControllerEvent(t, "connected", idName)
+
+		c.zet.DisableEnableIdentity(t, idEvent.Id.Identifier)
+
+		reauthEvent := c.zet.WaitForIdentityEvent(t, "needs_ext_login", idName)
+		require.True(t, reauthEvent.Id.NeedsExtAuth)
+		authURL = c.zet.GetExternalAuthURL(t, idEvent.Id.Identifier, c.workingSigner.name)
+		c.idp.DriveIdPFlow(t, authURL, idName+"@test.com")
+		c.zet.WaitForControllerEvent(t, "connected", idName)
 	})
 }
 
