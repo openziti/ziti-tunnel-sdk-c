@@ -11,17 +11,17 @@ message(STATUS "libpcap headers: ${PCAP_FOUND} (${PCAP_INCLUDE_DIR})")
 
 if(CMAKE_SYSTEM_NAME STREQUAL Linux)
     set(NETIF_DRIVER_SOURCE netif_driver/linux/tun.c   netif_driver/linux/resolvers.c netif_driver/linux/utils.c)
+    if(PCAP_FOUND)
+        list(APPEND NETIF_DRIVER_SOURCE
+                            netif_driver/pcap_common.c netif_driver/pcap_common.h
+                            netif_driver/linux/pcap.c  netif_driver/linux/pcap.h)
+    endif()
 
 elseif(CMAKE_SYSTEM_NAME STREQUAL Android)
     set(NETIF_DRIVER_SOURCE
         netif_driver/linux/tun.c
         netif_driver/linux/utils.c
     )
-    if(PCAP_FOUND)
-        list(APPEND NETIF_DRIVER_SOURCE
-                            netif_driver/pcap_common.c netif_driver/pcap_common.h
-                            netif_driver/linux/pcap.c  netif_driver/linux/pcap.h)
-    endif()
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL Windows)
