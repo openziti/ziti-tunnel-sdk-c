@@ -23,6 +23,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 // OutageProxy is a TCP relay that stands in for a target address (typically
@@ -30,13 +31,24 @@ import (
 // demand. It is pure Go so it works the same way on every OS this suite
 // targets, unlike an external chaos-proxy tool or container-network tricks.
 //
-// Sever immediately drops every connection currently relayed and refuses
-// every new one for as long as it's severed - a client that reuses a
-// persistent connection and just queues requests on it while the network is
-// down would never actually notice the outage or attempt to reconnect, and
-// the whole point is to force real reconnect attempts (repeatedly, against
-// an unreachable endpoint) the way a real outage does. Restore resumes
-// accepting and relaying normally.
+// Sever black-holes traffic rather than resetting it: bytes already in
+// flight on a connection open at the moment of Sever just stop moving (the
+// socket is never closed), and a new inbound TCP connection is accepted -
+// completing the handshake, since a pure-Go listener can't silently drop a
+// SYN the way a real severed link does - but then held open and never dialed
+// upstream, so it never receives a byte either. Either way, the peer gets no
+// RST, no FIN, no data - it only ever finds out via its own read/write
+// timeouts, same as a real partition (packets simply stop arriving). Restore
+// dials upstream for every held connection and resumes relaying on both.
+//
+// This used to actively RST everything on Sever (SO_LINGER=0 + Close, see
+// git history) for fast, deterministic reconnect attempts - but that gives a
+// client immediate, clean feedback that a real outage never does, and a real
+// bug (openziti/tlsuv#367) turned out to depend on that difference: it
+// reproduces against a genuinely black-holed connection (confirmed against a
+// podman container with its network interface disabled) but not against this
+// proxy's old RST-based Sever, which apparently let clients recover too
+// cleanly to hit whatever stale state the bug needs.
 type OutageProxy struct {
 	Addr string
 
@@ -46,6 +58,9 @@ type OutageProxy struct {
 
 	mu    sync.Mutex
 	conns map[net.Conn]struct{}
+	// held is the set of inbound connections accepted while severed - kept
+	// open but never dialed upstream until Restore.
+	held map[net.Conn]struct{}
 }
 
 // StartOutageProxy starts relaying listenAddr -> target and returns once
@@ -70,35 +85,42 @@ func StartOutageProxy(t *testing.T, listenAddr, target string) *OutageProxy {
 	}
 	addr := fmt.Sprintf("localhost:%d", ln.Addr().(*net.TCPAddr).Port)
 
-	p := &OutageProxy{Addr: addr, target: target, ln: ln, conns: make(map[net.Conn]struct{})}
+	p := &OutageProxy{Addr: addr, target: target, conns: make(map[net.Conn]struct{}), held: make(map[net.Conn]struct{}), ln: ln}
 	go p.acceptLoop()
 	t.Cleanup(func() { _ = ln.Close() })
 	return p
 }
 
-// Sever begins simulating an outage: every connection currently relayed is
-// closed (RST, not a graceful FIN - see resetClose) and every new inbound
-// connection is refused the same way until Restore.
+// Sever begins simulating an outage: nothing is closed. Bytes on connections
+// already open just stop moving (see relay), and any new inbound connection
+// gets accepted but held, unrelayed, until Restore - see the type doc for why
+// this, not an active RST, is what's needed to reproduce openziti/tlsuv#367.
 func (p *OutageProxy) Sever() {
 	p.severed.Store(true)
-
 	p.mu.Lock()
-	conns := make([]net.Conn, 0, len(p.conns))
-	for c := range p.conns {
-		conns = append(conns, c)
-	}
+	n := len(p.conns)
 	p.mu.Unlock()
-	for _, c := range conns {
-		resetClose(c)
-	}
-	log.Printf("outageproxy: severed %s -> %s (dropped %d connection(s))", p.Addr, p.target, len(conns))
+	log.Printf("outageproxy: severed %s -> %s (black-holing %d already-open connection(s), holding new ones unrelayed)", p.Addr, p.target, n)
 }
 
-// Restore ends the simulated outage: new connections are accepted and
-// relayed again.
+// Restore ends the simulated outage: relaying resumes on connections that
+// were open throughout, and every held connection is dialed upstream and
+// relayed for the first time.
 func (p *OutageProxy) Restore() {
 	p.severed.Store(false)
-	log.Printf("outageproxy: restored %s -> %s", p.Addr, p.target)
+
+	p.mu.Lock()
+	held := make([]net.Conn, 0, len(p.held))
+	for c := range p.held {
+		held = append(held, c)
+	}
+	p.held = make(map[net.Conn]struct{})
+	p.mu.Unlock()
+
+	for _, conn := range held {
+		p.dialAndRelay(conn)
+	}
+	log.Printf("outageproxy: restored %s -> %s (%d held connection(s) now relaying)", p.Addr, p.target, len(held))
 }
 
 func (p *OutageProxy) acceptLoop() {
@@ -108,26 +130,41 @@ func (p *OutageProxy) acceptLoop() {
 			return
 		}
 		if p.severed.Load() {
-			// a real outage also means fresh connection attempts don't land.
-			resetClose(conn)
+			// Hold silently: no dial, no data, no close - the peer only
+			// learns something's wrong from its own timeouts, same as a real
+			// black hole. Restore dials and relays it.
+			p.mu.Lock()
+			p.held[conn] = struct{}{}
+			p.mu.Unlock()
 			continue
 		}
-		upstream, err := net.Dial("tcp", p.target)
-		if err != nil {
-			resetClose(conn)
-			continue
-		}
-		p.mu.Lock()
-		p.conns[conn] = struct{}{}
-		p.conns[upstream] = struct{}{}
-		p.mu.Unlock()
-		go p.relay(conn, upstream)
-		go p.relay(upstream, conn)
+		p.dialAndRelay(conn)
 	}
 }
 
+// dialAndRelay dials upstream for conn and starts relaying both directions.
+// conn is closed (not held or tracked) if the dial itself fails - a dial
+// failure means the upstream controller is unreachable, not a simulated
+// outage, and every caller already only reaches this while not severed.
+func (p *OutageProxy) dialAndRelay(conn net.Conn) {
+	upstream, err := net.Dial("tcp", p.target)
+	if err != nil {
+		_ = conn.Close()
+		return
+	}
+	p.mu.Lock()
+	p.conns[conn] = struct{}{}
+	p.conns[upstream] = struct{}{}
+	p.mu.Unlock()
+	go p.relay(conn, upstream)
+	go p.relay(upstream, conn)
+}
+
 // relay copies src -> dst until either side closes or errors, then closes
-// and untracks both.
+// and untracks both. Polls p.severed between reads so a Sever call pauses
+// forwarding mid-flight without touching either socket - data already read
+// but not yet forwarded when Sever lands may still cross (a real partition
+// has no such edge case), but nothing at all moves while severed.
 func (p *OutageProxy) relay(dst, src net.Conn) {
 	defer func() {
 		_ = dst.Close()
@@ -139,6 +176,10 @@ func (p *OutageProxy) relay(dst, src net.Conn) {
 	}()
 	buf := make([]byte, 32*1024)
 	for {
+		for p.severed.Load() {
+			time.Sleep(50 * time.Millisecond)
+		}
+		_ = src.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
 		n, err := src.Read(buf)
 		if n > 0 {
 			if _, werr := dst.Write(buf[:n]); werr != nil {
@@ -146,18 +187,10 @@ func (p *OutageProxy) relay(dst, src net.Conn) {
 			}
 		}
 		if err != nil {
+			if ne, ok := err.(net.Error); ok && ne.Timeout() {
+				continue
+			}
 			return
 		}
 	}
-}
-
-// resetClose closes conn with SO_LINGER=0, forcing an RST instead of a
-// graceful FIN so the peer's TLS handshake or read fails immediately
-// (ECONNRESET) rather than sitting on a timeout waiting for a peer that
-// closed cleanly. Mirrors DeadController's technique.
-func resetClose(conn net.Conn) {
-	if tc, ok := conn.(*net.TCPConn); ok {
-		_ = tc.SetLinger(0)
-	}
-	_ = conn.Close()
 }
