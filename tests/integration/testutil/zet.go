@@ -54,6 +54,15 @@ type ZET struct {
 	TlsuvDebug int
 	// Env entries (KEY=VALUE) appended to the parent environment for the ZET process.
 	Env []string
+	// ExtraArgs are appended to the "run" command line after the standard flags
+	// (e.g. []string{"-r", "1"} to shorten the controller-refresh interval).
+	ExtraArgs []string
+	// DetachSession, if true, starts the process in its own session/process
+	// group (see detachSession) so it survives a signal sent to this test
+	// process's group - e.g. a Ctrl-C, or the parent's shell/terminal tearing
+	// down when the test binary exits. Debugging aid: leave false normally,
+	// so Stop() (or an interrupted test run) still reliably takes it down.
+	DetachSession bool
 	// Major and Minor are this binary's version, set by ProbeVersion.
 	Major int
 	Minor int
@@ -99,8 +108,12 @@ func (z *ZET) Start() error {
 	if z.DNSRange != "" {
 		args = append(args, "-d", z.DNSRange)
 	}
+	args = append(args, z.ExtraArgs...)
 
 	z.cmd = exec.Command(z.BinPath, args...)
+	if z.DetachSession {
+		detachSession(z.cmd)
+	}
 	if len(z.Env) > 0 || z.TlsuvDebug > 0 {
 		env := append(os.Environ(), z.Env...)
 		if z.TlsuvDebug > 0 {

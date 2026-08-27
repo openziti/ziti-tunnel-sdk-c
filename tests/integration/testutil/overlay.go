@@ -40,8 +40,8 @@ import (
 )
 
 const (
-	overlayCtrlPort = 1280
-	overlayRtrPort  = 3022
+	defaultOverlayCtrlPort = 1280
+	defaultOverlayRtrPort  = 3022
 )
 
 type Overlay struct {
@@ -53,7 +53,24 @@ type Overlay struct {
 	AutoTrustCA        bool
 	ZitiClusterSize    int
 	// Auth is the authentication path clients must take, "OIDC" or "Legacy". Required.
-	Auth                AuthMode
+	Auth AuthMode
+	// CtrlPort/RtrPort override quickstart's default 1280/3022. Zero means the
+	// default; set both to run a second, independent overlay instance
+	// alongside one already using the default ports (e.g. a test that needs
+	// its own dedicated quickstart rather than the shared one).
+	CtrlPort int
+	RtrPort  int
+	// BindCtrlPort, if set, is the port quickstart actually binds; CtrlPort
+	// stays the port everything else (ControllerHostPort, this harness's own
+	// ziti CLI calls, and whatever address ends up embedded in enrollment
+	// JWTs/HA-endpoint-list responses) uses. Only needed to put a relay in
+	// between: the controller validates incoming requests' Host header
+	// against its own configured address, so anything dialing the real bind
+	// port directly - once that address has been pointed elsewhere - gets
+	// rejected; the relay must be the thing everyone (including this
+	// harness's admin CLI calls) actually dials. Zero means bind and dial the
+	// same port, i.e. no relay in between.
+	BindCtrlPort        int
 	authApplied         bool
 	ZitiMajor           int
 	ZitiMinor           int
@@ -64,6 +81,28 @@ type Overlay struct {
 	stderr  *syncBuffer
 	logFile *os.File
 	Done    chan error
+}
+
+func (o *Overlay) ctrlPort() int {
+	if o.CtrlPort != 0 {
+		return o.CtrlPort
+	}
+	return defaultOverlayCtrlPort
+}
+
+// bindCtrlPort is the port quickstart actually binds - see BindCtrlPort.
+func (o *Overlay) bindCtrlPort() int {
+	if o.BindCtrlPort != 0 {
+		return o.BindCtrlPort
+	}
+	return o.ctrlPort()
+}
+
+func (o *Overlay) rtrPort() int {
+	if o.RtrPort != 0 {
+		return o.RtrPort
+	}
+	return defaultOverlayRtrPort
 }
 
 // Start launches `ziti edge quickstart` against o.Home and waits until the
@@ -93,8 +132,8 @@ func (o *Overlay) Start() error {
 		return fmt.Errorf("clusterSize must be 1 (single node) or 3-9 (cluster), got %d", o.ZitiClusterSize)
 	}
 
-	warnIfPortBound(overlayCtrlPort)
-	warnIfPortBound(overlayRtrPort)
+	warnIfPortBound(uint16(o.bindCtrlPort()))
+	warnIfPortBound(uint16(o.rtrPort()))
 
 	log.Printf("overlay: mkdir home %s", o.Home)
 	if err := os.MkdirAll(o.Home, 0o755); err != nil {
@@ -131,9 +170,9 @@ func (o *Overlay) runQuickstart() error {
 	args := append(quickstart,
 		"--home="+o.Home,
 		"--ctrl-address=localhost",
-		fmt.Sprintf("--ctrl-port=%d", overlayCtrlPort),
+		fmt.Sprintf("--ctrl-port=%d", o.bindCtrlPort()),
 		"--router-address=localhost",
-		fmt.Sprintf("--router-port=%d", overlayRtrPort),
+		fmt.Sprintf("--router-port=%d", o.rtrPort()),
 	)
 	log.Printf("overlay: starting %s %s", o.ZitiBin, strings.Join(args, " "))
 	o.cmd = exec.Command(o.ZitiBin, args...)
@@ -201,15 +240,15 @@ func (o *Overlay) ControllerHostPort() string {
 	if o.ControllerURL != "" {
 		return strings.TrimRight(o.ControllerURL, "/")
 	}
-	return fmt.Sprintf("https://localhost:%d", overlayCtrlPort)
+	return fmt.Sprintf("https://localhost:%d", o.ctrlPort())
 }
 
 // controllerAddr returns the host:port string for TCP dials against the
-// controller. Defaults to localhost:1280 in quickstart mode; parses ControllerURL
-// in external mode.
+// controller. Defaults to localhost:1280 (or o.CtrlPort) in quickstart mode;
+// parses ControllerURL in external mode.
 func (o *Overlay) controllerAddr() (string, error) {
 	if o.ControllerURL == "" {
-		return fmt.Sprintf("localhost:%d", overlayCtrlPort), nil
+		return fmt.Sprintf("localhost:%d", o.ctrlPort()), nil
 	}
 	u, err := url.Parse(o.ControllerURL)
 	if err != nil || u.Host == "" {
@@ -890,7 +929,7 @@ func (o *Overlay) waitUntilReady() error {
 }
 
 func (o *Overlay) waitForControllerPort() error {
-	addr := fmt.Sprintf("localhost:%d", overlayCtrlPort)
+	addr := fmt.Sprintf("localhost:%d", o.ctrlPort())
 	log.Printf("overlay: waiting for controller TCP port %s", addr)
 	for {
 		conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
@@ -901,7 +940,7 @@ func (o *Overlay) waitForControllerPort() error {
 		}
 		select {
 		case exitErr := <-o.Done:
-			return fmt.Errorf("quickstart exited before port %d opened: %v", overlayCtrlPort, exitErr)
+			return fmt.Errorf("quickstart exited before port %d opened: %v", o.ctrlPort(), exitErr)
 		case <-time.After(250 * time.Millisecond):
 		}
 	}
