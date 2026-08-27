@@ -126,6 +126,10 @@ staticPasswords:
     hash: *password
     username: test_ext_auth_secondary_policy_added
     userID: test_ext_auth_secondary_policy_added
+  - email: test_ext_auth_secondary_policy_removed@test.com
+    hash: *password
+    username: test_ext_auth_secondary_policy_removed
+    userID: test_ext_auth_secondary_policy_removed
   - email: test_restart_ext@test.com
     hash: *password
     username: test_restart_ext
