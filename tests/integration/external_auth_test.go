@@ -128,7 +128,8 @@ func (c *extAuthContext) secondaryExtJwtCompletes(t *testing.T) {
 		idName := "test_ext_auth_secondary_happy"
 		jwt := c.overlay.GetJwtFromController(t, idName)
 		identityData := testutil.NewJwtIdentityData(idName, jwt)
-		c.zet.AddIdentity(t, identityData).AssertSuccess()
+		addResp := c.zet.AddIdentity(t, identityData)
+		addResp.AssertSuccess()
 
 		idEvent := c.zet.WaitForIdentityEvent(t, "needs_ext_login", idName)
 		require.True(t, idEvent.Id.NeedsExtAuth)
