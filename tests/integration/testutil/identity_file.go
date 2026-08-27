@@ -19,8 +19,6 @@ package testutil
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -48,11 +46,10 @@ type IdentityFileContent struct {
 }
 
 func ReadIdentityFile(t *testing.T, path string) IdentityFileContent {
-	// ZET rewrites the identity file (rename to .bak, recreate) on the config
-	// event that follows each connect, so a read right after an identity event
-	// can land in the window where the file does not exist
+	// ZET rewrites the identity file right after each connect, so a read can
+	// land mid-rewrite and fail transiently
 	raw, err := os.ReadFile(path)
-	for attempts := 0; errors.Is(err, fs.ErrNotExist) && attempts < 100; attempts++ {
+	for attempts := 0; err != nil && attempts < 100; attempts++ {
 		time.Sleep(10 * time.Millisecond)
 		raw, err = os.ReadFile(path)
 	}
