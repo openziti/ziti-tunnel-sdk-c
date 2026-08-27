@@ -64,7 +64,10 @@ type OutageProxy struct {
 }
 
 // StartOutageProxy starts relaying listenAddr -> target and returns once
-// listening. Registers cleanup with t.
+// listening. Registers cleanup with t, unless keepAlive is true - a
+// debugging aid so the proxy (and so the connections routed through it)
+// survives past the end of the test for live inspection; pass false for a
+// real test run, so an interrupted run doesn't leak the listener.
 //
 // listenAddr is a "host:port" or "host:0" (OS-assigned port) to bind - pass
 // a fixed port when something else (e.g. Overlay.CtrlPort, matched with
@@ -77,7 +80,7 @@ type OutageProxy struct {
 // against it, and "127.0.0.1" and "localhost" are different strings for
 // that exact-match purpose even though they resolve to the same loopback
 // address - discovered the hard way as a broken admin login.
-func StartOutageProxy(t *testing.T, listenAddr, target string) *OutageProxy {
+func StartOutageProxy(t *testing.T, listenAddr, target string, keepAlive bool) *OutageProxy {
 	t.Helper()
 	ln, err := net.Listen("tcp", listenAddr)
 	if err != nil {
@@ -87,7 +90,9 @@ func StartOutageProxy(t *testing.T, listenAddr, target string) *OutageProxy {
 
 	p := &OutageProxy{Addr: addr, target: target, conns: make(map[net.Conn]struct{}), held: make(map[net.Conn]struct{}), ln: ln}
 	go p.acceptLoop()
-	t.Cleanup(func() { _ = ln.Close() })
+	if !keepAlive {
+		t.Cleanup(func() { _ = ln.Close() })
+	}
 	return p
 }
 

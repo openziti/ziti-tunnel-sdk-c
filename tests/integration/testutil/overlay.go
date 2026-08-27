@@ -75,10 +75,14 @@ type Overlay struct {
 	ZitiMajor           int
 	ZitiMinor           int
 	ShowZitiCliCommands bool
+	// DetachSession, if true, starts the quickstart process in its own
+	// session/process group (see detachSession in the platform_* files) so it
+	// survives a signal sent to this test process's group. Debugging aid:
+	// leave false normally, so Stop() (or an interrupted test run) still
+	// reliably takes it down.
+	DetachSession bool
 
 	cmd     *exec.Cmd
-	stdout  *syncBuffer
-	stderr  *syncBuffer
 	logFile *os.File
 	Done    chan error
 }
@@ -176,6 +180,9 @@ func (o *Overlay) runQuickstart() error {
 	)
 	log.Printf("overlay: starting %s %s", o.ZitiBin, strings.Join(args, " "))
 	o.cmd = exec.Command(o.ZitiBin, args...)
+	if o.DetachSession {
+		detachSession(o.cmd)
+	}
 	o.cmd.Env = append(os.Environ(),
 		"ZITI_CONFIG_DIR="+filepath.Join(o.Home, "cli-config"),
 		// PFXLOG_NO_JSON makes ziti's stderr human-readable for test log output.
@@ -190,10 +197,19 @@ func (o *Overlay) runQuickstart() error {
 		return fmt.Errorf("open quickstart log file: %w", err)
 	}
 	log.Printf("overlay: quickstart log %s", logPath)
-	o.stdout = newSyncBuffer()
-	o.stderr = newSyncBuffer()
-	o.cmd.Stdout = io.MultiWriter(o.stdout, logFile)
-	o.cmd.Stderr = io.MultiWriter(o.stderr, logFile)
+	// Straight to the file, not through an io.MultiWriter(buffer, logFile):
+	// a non-*os.File Writer forces os/exec to create an internal pipe and a
+	// goroutine (in this process) to copy from it - and that goroutine dies
+	// with this process, so a quickstart left running past this test
+	// process's own exit (see DetachSession) gets SIGPIPE on its very next
+	// write, no matter what session/process-group tricks the child itself
+	// is started with. logFile is an *os.File, so Stdout/Stderr here become
+	// a plain dup2 straight into the child - no pipe, no dependency on this
+	// process staying alive. Logs() reads this same file back for the
+	// stdout/stderr this used to buffer in memory.
+	o.logFile = logFile
+	o.cmd.Stdout = logFile
+	o.cmd.Stderr = logFile
 
 	if err := o.cmd.Start(); err != nil {
 		_ = logFile.Close()
@@ -395,9 +411,15 @@ func (o *Overlay) Stop() {
 	log.Fatalf("overlay pid %d did not exit within 60s of Kill; orphan likely, aborting test run", pid)
 }
 
+// Logs returns the quickstart process's combined stdout/stderr, read back
+// from its log file (stdout and stderr are no longer captured separately -
+// see runQuickstart for why they're both written straight to this one file).
 func (o *Overlay) Logs() string {
-	return fmt.Sprintf("--- ziti stdout ---\n%s\n--- ziti stderr ---\n%s",
-		o.stdout.String(), o.stderr.String())
+	data, err := os.ReadFile(filepath.Join(o.Home, "quickstart-logs", "quickstart.log"))
+	if err != nil {
+		return fmt.Sprintf("(could not read quickstart log: %v)", err)
+	}
+	return string(data)
 }
 
 // CreateIdentityJWT provisions a new (non-admin) identity and returns its enrollment JWT content.

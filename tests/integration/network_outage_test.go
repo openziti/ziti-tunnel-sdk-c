@@ -200,17 +200,32 @@ const (
 // everything. Debugging aid only - unset for a real test run.
 var keepArtifacts = os.Getenv("ZITI_OUTAGE_KEEP_ARTIFACTS") != ""
 
-// outageArtifactDir is t.TempDir(), or a fixed, freshly-emptied directory
-// under keepArtifacts so it survives this process exiting.
+// outageArtifactDir is a fixed, freshly-emptied directory under
+// keepArtifacts so it (and its process) survives this test process exiting;
+// otherwise a temp directory that's removed unless the test fails, so a CI
+// run - which can't attach a debugger the way ZITI_OUTAGE_KEEP_ARTIFACTS is
+// for - still has the zet/controller logs to inspect afterward. Not
+// t.TempDir(): its cleanup is unconditional, with no way to skip it on
+// failure.
 func outageArtifactDir(t *testing.T, name string) string {
 	t.Helper()
-	if !keepArtifacts {
-		return t.TempDir()
+	if keepArtifacts {
+		dir := filepath.Join(os.TempDir(), "ziti-outage-debug", name)
+		require.NoError(t, os.RemoveAll(dir), "clear stale debug artifact dir %s", dir)
+		require.NoError(t, os.MkdirAll(dir, 0o755), "create debug artifact dir %s", dir)
+		log.Printf("outage test: ZITI_OUTAGE_KEEP_ARTIFACTS set - %s will survive this run, and its process will not be stopped", dir)
+		return dir
 	}
-	dir := filepath.Join(os.TempDir(), "ziti-outage-debug", name)
-	require.NoError(t, os.RemoveAll(dir), "clear stale debug artifact dir %s", dir)
-	require.NoError(t, os.MkdirAll(dir, 0o755), "create debug artifact dir %s", dir)
-	log.Printf("outage test: ZITI_OUTAGE_KEEP_ARTIFACTS set - %s will survive this run, and its process will not be stopped", dir)
+
+	dir, err := os.MkdirTemp("", "ziti-outage-"+name+"-")
+	require.NoError(t, err, "create temp dir for %s", name)
+	t.Cleanup(func() {
+		if t.Failed() {
+			log.Printf("outage test: %s failed - preserving %s for inspection", t.Name(), dir)
+			return
+		}
+		_ = os.RemoveAll(dir)
+	})
 	return dir
 }
 
@@ -226,6 +241,7 @@ func TestOutageRecoveryAfterSessionExpiry(t *testing.T) {
 			BindCtrlPort:       outageOverlayBindCtrlPort,
 			RtrPort:            outageOverlayRtrPort,
 			Done:               make(chan error, 1),
+			DetachSession:      keepArtifacts,
 		}
 		if !keepArtifacts {
 			t.Cleanup(overlay.Stop) // safe no-op if Start never succeeds
@@ -245,7 +261,8 @@ func TestOutageRecoveryAfterSessionExpiry(t *testing.T) {
 
 		proxy := testutil.StartOutageProxy(t,
 			fmt.Sprintf("127.0.0.1:%d", outageOverlayCtrlPort),
-			fmt.Sprintf("localhost:%d", outageOverlayBindCtrlPort))
+			fmt.Sprintf("localhost:%d", outageOverlayBindCtrlPort),
+			keepArtifacts)
 		overlay.PreconfigureEdgeApiAddress(t, proxy.Addr)
 
 		require.NoError(t, overlay.Start(), "start outage overlay")
