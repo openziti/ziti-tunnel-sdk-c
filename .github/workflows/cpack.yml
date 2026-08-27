@@ -61,7 +61,10 @@ jobs:
       VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/vcpkg_cache,readwrite
     steps:
       - name: Print Environment Variables and Event JSON
-        uses: hmarr/debug-action@v3
+        shell: bash
+        run: |
+          env | sort
+          cat "$GITHUB_EVENT_PATH"
 
       - name: Install contemporary Git in runner container if Ubuntu
         if: ${{ matrix.distro.name == 'ubuntu' }}
