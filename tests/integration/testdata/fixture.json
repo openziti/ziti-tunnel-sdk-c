@@ -356,6 +356,14 @@
       "externalId": "test_ext_auth_secondary_policy_added@test.com",
       "roleAttributes": ["ziti-user"],
       "enrollment": { "ott": true }
+    },
+    {
+      "name": "test_ext_auth_secondary_policy_removed",
+      "isAdmin": false,
+      "authPolicy": "@test_ext_auth_secondary_policy",
+      "externalId": "test_ext_auth_secondary_policy_removed@test.com",
+      "roleAttributes": ["ziti-user"],
+      "enrollment": { "ott": true }
     }
   ],
   "configs": [
