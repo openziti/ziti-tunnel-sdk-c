@@ -205,7 +205,7 @@ func (c *extAuthContext) secondaryExtJwtPolicyRemovedConnectsWithoutLogin(t *tes
 		c.overlay.SetIdentityAuthPolicy(t, idName, "Default")
 		c.zet.DisableEnableIdentity(t, idEvent.Id.Identifier)
 
-		c.zet.WaitForIdentityEvent(t, "added", idName)
+		c.zet.WaitForControllerEvent(t, "disconnected", idName)
 		c.zet.WaitForControllerEvent(t, "connected", idName)
 		c.assertGrantedServices(t, idName, "test_ext_auth_attr_user_svc")
 	})

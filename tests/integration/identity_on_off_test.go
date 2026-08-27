@@ -35,13 +35,13 @@ func togglesActiveState(t *testing.T) {
 		offResp := state.zetClient.IdentityOnOff(t, added.Id.Identifier, false)
 		offResp.AssertSuccess()
 
-		off := state.zetClient.WaitForIdentityEvent(t, "added", idName)
-		require.False(t, off.Id.Active, "identity:added Active=%t after IdentityOnOff(false)", off.Id.Active)
+		state.zetClient.WaitForControllerEvent(t, "disconnected", idName)
 
 		onResp := state.zetClient.IdentityOnOff(t, added.Id.Identifier, true)
 		onResp.AssertSuccess()
 
 		on := state.zetClient.WaitForIdentityEvent(t, "added", idName)
 		require.True(t, on.Id.Active, "identity:added Active=%t after IdentityOnOff(true)", on.Id.Active)
+		state.zetClient.WaitForControllerEvent(t, "connected", idName)
 	})
 }
