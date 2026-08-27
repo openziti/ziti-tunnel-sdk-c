@@ -114,10 +114,10 @@ func TestExternalAuthSingleSigner(t *testing.T) {
 }
 
 func TestExternalAuthSecondary(t *testing.T) {
-	c := newExtAuthContext(t)
-	if c.overlay.Auth == testutil.AuthLegacy {
+	if state.overlay.Auth == testutil.AuthLegacy {
 		t.Skip("secondary ext-jwt auth never completes on legacy auth, remove when https://github.com/openziti/ziti-tunnel-sdk-c/issues/1415 is closed")
 	}
+	c := newExtAuthContext(t)
 	c.overlay.SetAuthPolicySecondaryExtJwtSigner(t, "test_ext_auth_secondary_policy", c.workingSigner.id)
 
 	t.Run("secondaryExtJwtCompletes", c.secondaryExtJwtCompletes)
@@ -167,7 +167,7 @@ func (c *extAuthContext) secondaryExtJwtReauthAsksForLogin(t *testing.T) {
 
 		reauthEvent := c.zet.WaitForIdentityEvent(t, "needs_ext_login", idName)
 		require.True(t, reauthEvent.Id.NeedsExtAuth)
-		authURL = c.zet.GetExternalAuthURL(t, idEvent.Id.Identifier, c.workingSigner.name)
+		authURL = c.zet.GetExternalAuthURL(t, reauthEvent.Id.Identifier, c.workingSigner.name)
 		c.idp.DriveIdPFlow(t, authURL, idName+"@test.com")
 		c.zet.WaitForControllerEvent(t, "connected", idName)
 		c.assertGrantedServices(t, idName, "test_ext_auth_attr_user_svc")
