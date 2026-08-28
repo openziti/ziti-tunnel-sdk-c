@@ -24,12 +24,6 @@ jobs:
       ZITI_EDGE_TUNNEL_IMAGE: ${{ vars.ZITI_EDGE_TUNNEL_IMAGE || 'docker.io/openziti/ziti-edge-tunnel' }}
       ZITI_HOST_IMAGE: ${{ vars.ZITI_HOST_IMAGE || 'docker.io/openziti/ziti-host' }}
     steps:
-      - name: Debug action
-        shell: bash
-        run: |
-          env | sort
-          cat "$GITHUB_EVENT_PATH"
-
       - name: Checkout Workspace
         uses: actions/checkout@v7
 

@@ -51,12 +51,6 @@ jobs:
             preset: linux-arm64
 
     steps:
-      - name: Debug action
-        shell: bash
-        run: |
-          env | sort
-          cat "$GITHUB_EVENT_PATH"
-
       - name: checkout workspace
         uses: actions/checkout@v7
         with:

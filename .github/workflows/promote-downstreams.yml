@@ -15,12 +15,6 @@ jobs:
     name: Wait for Release Builds to Succeed
     runs-on: ubuntu-latest
     steps:
-      - name: Debug action
-        shell: bash
-        run: |
-          env | sort
-          cat "$GITHUB_EVENT_PATH"
-
       - name: Wait for all checks on this ref
         uses: lewagon/wait-on-check-action@v1.9.0
         with:
