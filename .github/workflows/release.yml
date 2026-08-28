@@ -15,7 +15,10 @@ jobs:
       ZITI_VERSION: ${{ steps.get_version.outputs.ZITI_VERSION }}
     steps:
       - name: Debug action
-        uses: hmarr/debug-action@v3
+        shell: bash
+        run: |
+          env | sort
+          cat "$GITHUB_EVENT_PATH"
 
       - name: download
         uses: actions/download-artifact@v8

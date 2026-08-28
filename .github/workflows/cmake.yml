@@ -52,7 +52,10 @@ jobs:
 
     steps:
       - name: Debug action
-        uses: hmarr/debug-action@v3
+        shell: bash
+        run: |
+          env | sort
+          cat "$GITHUB_EVENT_PATH"
 
       - name: checkout workspace
         uses: actions/checkout@v7
