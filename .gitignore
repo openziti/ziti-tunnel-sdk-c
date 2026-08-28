@@ -36,3 +36,5 @@ tools/dcp/build/
 # Local integration-test configs; the checked-in template is the exception
 tests/integration/config*.json
 !tests/integration/config.example.json
+
+github_deploy_key
