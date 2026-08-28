@@ -252,6 +252,10 @@ func doSetup(state TestState) error {
 	}
 
 	log.Printf("setup: wiping identity dirs before starting ZET(s)")
+	// ZET < 1.18.7 exits when the -I dir is missing, so the suite's shared dir is created here
+	if err := os.MkdirAll(state.zetClient.IdentityDir(), 0o755); err != nil {
+		return fmt.Errorf("create shared identity dir: %w", err)
+	}
 	if err := state.zetClient.RemoveJSONIdentities(); err != nil {
 		return fmt.Errorf("wipe shared identity dir: %w", err)
 	}
