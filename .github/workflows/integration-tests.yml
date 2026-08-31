@@ -256,6 +256,7 @@ jobs:
         with:
           name: integration-logs-${{ matrix.os.name }}-ziti-${{ inputs.label }}
           path: |
+            ${{ runner.temp }}/gotest.log
             ${{ runner.temp }}/zets/logs/*.log
             ${{ runner.temp }}/zets/upgrade*/zet/logs/*.log
             ${{ runner.temp }}/overlay/quickstart-logs/*.log

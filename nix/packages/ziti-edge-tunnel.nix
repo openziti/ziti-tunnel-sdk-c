@@ -43,7 +43,7 @@ let
     owner = "openziti";
     repo = "tlsuv";
     tag = "v0.42.4";
-    hash = "sha256-VpMAV3/8ena/Fn4PnO7eKOFhBYyqwF9oiUOgQy0KJ/g=";
+    hash = "sha256-qhljuAeOdYgeOO0cloghfrgFu2H4G2mY4OZSKfmp4yA=";
   };
   ziti_sdk_src = fetchFromGitHub {
     owner = "openziti";
