@@ -176,6 +176,11 @@ jq -n \
 cat config.json
 
 # ---- Run tests ---------------------------------------------------------------
+# Keep the go test output on the console and in a log file that CI uploads with
+# the tunneler/controller logs, so a failed run can be read after the fact.
+GO_TEST_LOG="$TEST_HOME/gotest.log"
+echo "GO_TEST_LOG=$GO_TEST_LOG"
 # sudo resets PAM resource limits, so ulimit must be set in the privileged shell.
 sudo env "PATH=$PATH" sh -c \
-  "ulimit -c unlimited && exec go test ./... -v $GO_TEST_TAGS -timeout $GO_TEST_TIMEOUT -config config.json"
+  "ulimit -c unlimited && exec go test ./... -v $GO_TEST_TAGS -timeout $GO_TEST_TIMEOUT -config config.json" \
+  2>&1 | tee "$GO_TEST_LOG"

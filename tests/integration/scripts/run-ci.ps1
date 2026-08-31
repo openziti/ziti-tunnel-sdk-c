@@ -169,7 +169,12 @@ try {
     Get-Content config.json
 
     # ---- Run tests ------------------------------------------------------------
-    go test ./... -v @goTestTags -timeout $goTestTimeout -config config.json
+    # Keep the go test output on the console and in a log file that CI uploads
+    # with the tunneler/controller logs, so a failed run can be read after the fact.
+    $goTestLog = Join-Path $testHome "gotest.log"
+    Write-Host "GO_TEST_LOG=$goTestLog"
+    go test ./... -v @goTestTags -timeout $goTestTimeout -config config.json 2>&1 |
+        Tee-Object -FilePath $goTestLog
     $exitCode = $LASTEXITCODE
 }
 finally {
