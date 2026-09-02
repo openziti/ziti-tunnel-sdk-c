@@ -407,6 +407,32 @@ func (o *Overlay) GetJwtFromController(t *testing.T, name string) string {
 	return jwt
 }
 
+// SdkInfo is what the controller recorded from an identity's last authentication.
+type SdkInfo struct {
+	AppId      string `json:"appId"`
+	AppVersion string `json:"appVersion"`
+	Type       string `json:"type"`
+	Version    string `json:"version"`
+	Branch     string `json:"branch"`
+	Revision   string `json:"revision"`
+}
+
+// GetSdkInfo reads back what the tunneler reported for an identity. Only authentication writes
+// these values, so an identity that has never authenticated returns zero values, not an error.
+func (o *Overlay) GetSdkInfo(t *testing.T, name string) SdkInfo {
+	filter := fmt.Sprintf("name=%q", name)
+	out, err := o.execZiti("edge list identities %s -j", filter)
+	require.NoError(t, err, "list identities name=%s", name)
+	var resp struct {
+		Data []struct {
+			SdkInfo SdkInfo `json:"sdkInfo"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(out, &resp), "parse identities list for %s", name)
+	require.Len(t, resp.Data, 1, "expected exactly one identity named %s", name)
+	return resp.Data[0].SdkInfo
+}
+
 func (o *Overlay) DeleteIdentity(name string) error {
 	if _, err := o.execZiti("edge delete identity %s", name); err != nil {
 		return fmt.Errorf("delete identity %s: %w", name, err)

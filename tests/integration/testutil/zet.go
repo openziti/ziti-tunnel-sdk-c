@@ -57,6 +57,9 @@ type ZET struct {
 	// Major and Minor are this binary's version, set by ProbeVersion.
 	Major int
 	Minor int
+	// Version is the version string the binary reports, set by ProbeVersion. A standalone run also
+	// sends this to the controller as sdkInfo.appVersion.
+	Version string
 
 	cmd     *exec.Cmd
 	stdout  *syncBuffer
@@ -198,6 +201,7 @@ func (z *ZET) ProbeVersion() error {
 			if err != nil {
 				return fmt.Errorf("%s version: %w", z.BinPath, err)
 			}
+			z.Version = v
 			return nil
 		}
 	}
