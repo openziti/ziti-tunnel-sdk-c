@@ -18,6 +18,12 @@
       "authPolicy": "@Default"
     },
     {
+      "name": "test_app_info",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
       "name": "test_restart_jwt",
       "isAdmin": false,
       "authPolicy": "@Default",

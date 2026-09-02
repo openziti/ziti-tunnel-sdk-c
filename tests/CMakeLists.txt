@@ -18,5 +18,9 @@ target_link_libraries(all_tests
         PUBLIC ziti-tunnel-sdk-c-integ-test-lib
 )
 
+if (WIN32)
+    target_link_libraries(all_tests PUBLIC ziti-edge-tunnel-test-lib)
+endif ()
+
 include(CTest)
 add_test(quick_tests all_tests -d yes)

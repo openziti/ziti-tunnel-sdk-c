@@ -19,6 +19,8 @@
 #define SVCDESCRIPTION TEXT("Access your Networks Secured by Ziti")
 #define APPNAME TEXT("Ziti Desktop Edge for Windows")
 
+#define APP_VERSION_UNKNOWN "unknown"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -47,6 +49,13 @@ bool stop_windows_service();
 DWORD get_process_path(LPTSTR, DWORD);
 
 bool scm_grant_se_debug();
+
+/**
+ * The installed ZDEW version from the registry key its installer writes, or APP_VERSION_UNKNOWN
+ * when there is no usable value there. Only the service path calls this. A standalone run reports
+ * the tunneler's own version and never consults the installation.
+ */
+const char *installed_app_version(void);
 
 #ifdef __cplusplus
 }
