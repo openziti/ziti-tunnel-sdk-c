@@ -45,7 +45,10 @@ jobs:
         id: get_version
         run: |
           ZITI_VERSION="${GITHUB_REF_NAME#v}"
-          if [[ "${ZITI_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-.+)?$ ]]; then
+          # publish a four-component tag as a PRERELEASE only. a full release runs
+          # promote-downstreams.yml, which builds deb/rpm named from the first three components, so
+          # 1.18.7.1 would ship packages that overwrite the real 1.18.7.
+          if [[ "${ZITI_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?(-.+)?$ ]]; then
             echo ZITI_VERSION="${ZITI_VERSION}" | tee -a $GITHUB_OUTPUT
           else
             # fail the job because we could not obtain a valid version string from the Git ref
