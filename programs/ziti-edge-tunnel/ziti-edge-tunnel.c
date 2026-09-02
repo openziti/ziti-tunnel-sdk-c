@@ -1483,7 +1483,7 @@ static int run_opts(int argc, char *argv[]) {
     CHECK_COMMAND_ERRORS(errors);
 
     fprintf(stderr, "About to run tunnel service... %s\n", main_cmd.name);
-    ziti_set_app_info(main_cmd.name, ziti_tunneler_version());
+    ziti_set_app_info("ziti-edge-tunnel", ziti_tunneler_version());
 
     return optind;
 }
@@ -1547,7 +1547,7 @@ static int run_host_opts(int argc, char *argv[]) {
     CHECK_COMMAND_ERRORS(errors);
 
     fprintf(stderr, "About to run tunnel service that hosts services... %s\n", main_cmd.name);
-    ziti_set_app_info(main_cmd.name, ziti_tunneler_version());
+    ziti_set_app_info("ziti-edge-tunnel", ziti_tunneler_version());
 
     host_only = true;
     return optind;
@@ -3527,7 +3527,7 @@ void scm_service_init(char *config_path) {
 }
 
 void scm_service_run(const char *name) {
-    ziti_set_app_info(name, ziti_tunneler_version());
+    ziti_set_app_info(name, installed_app_version());
     run(0, NULL);
 }
 

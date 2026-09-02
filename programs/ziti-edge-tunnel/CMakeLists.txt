@@ -53,6 +53,7 @@ set(ZITI_INSTANCE_COMMON
 if (WIN32)
     set(ZITI_INSTANCE_OS
             windows-service.c
+            app-info.c
             include/windows/windows-service.h
             include/windows/windows-scripts.h
             windows-scripts.c
@@ -138,6 +139,11 @@ install(TARGETS ziti-edge-tunnel
         DESTINATION ${CMAKE_INSTALL_BINDIR}
         COMPONENT ${PROJECT_NAME}
         )
+
+# app-info.c is Windows-only, so its tests are too
+if(WIN32 AND ZITI_TUNNEL_BUILD_TESTS)
+    add_subdirectory(tests)
+endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL Linux AND BUILD_DIST_PACKAGES)
         include("${CMAKE_CURRENT_SOURCE_DIR}/package/CPackPackage.cmake")
