@@ -40,8 +40,8 @@ import (
 )
 
 const (
-	overlayCtrlPort = 1280
-	overlayRtrPort  = 3022
+	defaultOverlayCtrlPort = 1280
+	defaultOverlayRtrPort  = 3022
 )
 
 type Overlay struct {
@@ -53,17 +53,60 @@ type Overlay struct {
 	AutoTrustCA        bool
 	ZitiClusterSize    int
 	// Auth is the authentication path clients must take, "OIDC" or "Legacy". Required.
-	Auth                AuthMode
+	Auth AuthMode
+	// CtrlPort/RtrPort override quickstart's default 1280/3022. Zero means the
+	// default; set both to run a second, independent overlay instance
+	// alongside one already using the default ports (e.g. a test that needs
+	// its own dedicated quickstart rather than the shared one).
+	CtrlPort int
+	RtrPort  int
+	// BindCtrlPort, if set, is the port quickstart actually binds; CtrlPort
+	// stays the port everything else (ControllerHostPort, this harness's own
+	// ziti CLI calls, and whatever address ends up embedded in enrollment
+	// JWTs/HA-endpoint-list responses) uses. Only needed to put a relay in
+	// between: the controller validates incoming requests' Host header
+	// against its own configured address, so anything dialing the real bind
+	// port directly - once that address has been pointed elsewhere - gets
+	// rejected; the relay must be the thing everyone (including this
+	// harness's admin CLI calls) actually dials. Zero means bind and dial the
+	// same port, i.e. no relay in between.
+	BindCtrlPort        int
 	authApplied         bool
 	ZitiMajor           int
 	ZitiMinor           int
 	ShowZitiCliCommands bool
+	// DetachSession, if true, starts the quickstart process in its own
+	// session/process group (see detachSession in the platform_* files) so it
+	// survives a signal sent to this test process's group. Debugging aid:
+	// leave false normally, so Stop() (or an interrupted test run) still
+	// reliably takes it down.
+	DetachSession bool
 
 	cmd     *exec.Cmd
-	stdout  *syncBuffer
-	stderr  *syncBuffer
 	logFile *os.File
 	Done    chan error
+}
+
+func (o *Overlay) ctrlPort() int {
+	if o.CtrlPort != 0 {
+		return o.CtrlPort
+	}
+	return defaultOverlayCtrlPort
+}
+
+// bindCtrlPort is the port quickstart actually binds - see BindCtrlPort.
+func (o *Overlay) bindCtrlPort() int {
+	if o.BindCtrlPort != 0 {
+		return o.BindCtrlPort
+	}
+	return o.ctrlPort()
+}
+
+func (o *Overlay) rtrPort() int {
+	if o.RtrPort != 0 {
+		return o.RtrPort
+	}
+	return defaultOverlayRtrPort
 }
 
 // Start launches `ziti edge quickstart` against o.Home and waits until the
@@ -93,8 +136,8 @@ func (o *Overlay) Start() error {
 		return fmt.Errorf("clusterSize must be 1 (single node) or 3-9 (cluster), got %d", o.ZitiClusterSize)
 	}
 
-	warnIfPortBound(overlayCtrlPort)
-	warnIfPortBound(overlayRtrPort)
+	warnIfPortBound(uint16(o.bindCtrlPort()))
+	warnIfPortBound(uint16(o.rtrPort()))
 
 	log.Printf("overlay: mkdir home %s", o.Home)
 	if err := os.MkdirAll(o.Home, 0o755); err != nil {
@@ -131,12 +174,15 @@ func (o *Overlay) runQuickstart() error {
 	args := append(quickstart,
 		"--home="+o.Home,
 		"--ctrl-address=localhost",
-		fmt.Sprintf("--ctrl-port=%d", overlayCtrlPort),
+		fmt.Sprintf("--ctrl-port=%d", o.bindCtrlPort()),
 		"--router-address=localhost",
-		fmt.Sprintf("--router-port=%d", overlayRtrPort),
+		fmt.Sprintf("--router-port=%d", o.rtrPort()),
 	)
 	log.Printf("overlay: starting %s %s", o.ZitiBin, strings.Join(args, " "))
 	o.cmd = exec.Command(o.ZitiBin, args...)
+	if o.DetachSession {
+		detachSession(o.cmd)
+	}
 	o.cmd.Env = append(os.Environ(),
 		"ZITI_CONFIG_DIR="+filepath.Join(o.Home, "cli-config"),
 		// PFXLOG_NO_JSON makes ziti's stderr human-readable for test log output.
@@ -151,10 +197,19 @@ func (o *Overlay) runQuickstart() error {
 		return fmt.Errorf("open quickstart log file: %w", err)
 	}
 	log.Printf("overlay: quickstart log %s", logPath)
-	o.stdout = newSyncBuffer()
-	o.stderr = newSyncBuffer()
-	o.cmd.Stdout = io.MultiWriter(o.stdout, logFile)
-	o.cmd.Stderr = io.MultiWriter(o.stderr, logFile)
+	// Straight to the file, not through an io.MultiWriter(buffer, logFile):
+	// a non-*os.File Writer forces os/exec to create an internal pipe and a
+	// goroutine (in this process) to copy from it - and that goroutine dies
+	// with this process, so a quickstart left running past this test
+	// process's own exit (see DetachSession) gets SIGPIPE on its very next
+	// write, no matter what session/process-group tricks the child itself
+	// is started with. logFile is an *os.File, so Stdout/Stderr here become
+	// a plain dup2 straight into the child - no pipe, no dependency on this
+	// process staying alive. Logs() reads this same file back for the
+	// stdout/stderr this used to buffer in memory.
+	o.logFile = logFile
+	o.cmd.Stdout = logFile
+	o.cmd.Stderr = logFile
 
 	if err := o.cmd.Start(); err != nil {
 		_ = logFile.Close()
@@ -201,15 +256,15 @@ func (o *Overlay) ControllerHostPort() string {
 	if o.ControllerURL != "" {
 		return strings.TrimRight(o.ControllerURL, "/")
 	}
-	return fmt.Sprintf("https://localhost:%d", overlayCtrlPort)
+	return fmt.Sprintf("https://localhost:%d", o.ctrlPort())
 }
 
 // controllerAddr returns the host:port string for TCP dials against the
-// controller. Defaults to localhost:1280 in quickstart mode; parses ControllerURL
-// in external mode.
+// controller. Defaults to localhost:1280 (or o.CtrlPort) in quickstart mode;
+// parses ControllerURL in external mode.
 func (o *Overlay) controllerAddr() (string, error) {
 	if o.ControllerURL == "" {
-		return fmt.Sprintf("localhost:%d", overlayCtrlPort), nil
+		return fmt.Sprintf("localhost:%d", o.ctrlPort()), nil
 	}
 	u, err := url.Parse(o.ControllerURL)
 	if err != nil || u.Host == "" {
@@ -356,9 +411,15 @@ func (o *Overlay) Stop() {
 	log.Fatalf("overlay pid %d did not exit within 60s of Kill; orphan likely, aborting test run", pid)
 }
 
+// Logs returns the quickstart process's combined stdout/stderr, read back
+// from its log file (stdout and stderr are no longer captured separately -
+// see runQuickstart for why they're both written straight to this one file).
 func (o *Overlay) Logs() string {
-	return fmt.Sprintf("--- ziti stdout ---\n%s\n--- ziti stderr ---\n%s",
-		o.stdout.String(), o.stderr.String())
+	data, err := os.ReadFile(filepath.Join(o.Home, "quickstart-logs", "quickstart.log"))
+	if err != nil {
+		return fmt.Sprintf("(could not read quickstart log: %v)", err)
+	}
+	return string(data)
 }
 
 // CreateIdentityJWT provisions a new (non-admin) identity and returns its enrollment JWT content.
@@ -916,7 +977,7 @@ func (o *Overlay) waitUntilReady() error {
 }
 
 func (o *Overlay) waitForControllerPort() error {
-	addr := fmt.Sprintf("localhost:%d", overlayCtrlPort)
+	addr := fmt.Sprintf("localhost:%d", o.ctrlPort())
 	log.Printf("overlay: waiting for controller TCP port %s", addr)
 	for {
 		conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
@@ -927,7 +988,7 @@ func (o *Overlay) waitForControllerPort() error {
 		}
 		select {
 		case exitErr := <-o.Done:
-			return fmt.Errorf("quickstart exited before port %d opened: %v", overlayCtrlPort, exitErr)
+			return fmt.Errorf("quickstart exited before port %d opened: %v", o.ctrlPort(), exitErr)
 		case <-time.After(250 * time.Millisecond):
 		}
 	}

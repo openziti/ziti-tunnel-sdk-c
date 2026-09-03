@@ -159,6 +159,12 @@ sudo go test -v -tags slowtests -config config.json
 that withholds TOTP enrollment state, so those skip unless `ziti.auth` is `Legacy`. CI covers the whole set
 nightly in the `main-legacy-auth` topology (see `.github/workflows/nightly.yml`).
 
+`network_outage_test.go` is another: it shortens the controller's `edge.api.sessionTimeout` (restoring it when
+done), relays ZET's controller connection through an in-process TCP proxy, severs that proxy for longer than the
+shortened timeout so the api session actually expires server-side, then restores it and asserts ZET
+re-authenticates and reconnects rather than getting stuck. The proxy is plain Go, so this runs the same way on
+Linux, macOS, and Windows - no container or OS-specific network manipulation needed.
+
 ## Config reference
 
 The suite hard-requires only **`ziti.binary`** and **`zetA.binary`**; everything else depends on the mode.
