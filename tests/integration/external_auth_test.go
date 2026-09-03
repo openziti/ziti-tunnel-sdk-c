@@ -113,6 +113,107 @@ func TestExternalAuthSingleSigner(t *testing.T) {
 	t.Run("enrollToTokenThenCertRejected", c.enrollToTokenThenCertRejected)
 }
 
+func TestExternalAuthSecondary(t *testing.T) {
+	if state.overlay.Auth == testutil.AuthLegacy {
+		t.Skip("secondary ext-jwt auth never completes on legacy auth, remove when https://github.com/openziti/ziti-tunnel-sdk-c/issues/1415 is closed")
+	}
+	c := newExtAuthContext(t)
+	c.overlay.SetAuthPolicySecondaryExtJwtSigner(t, "test_ext_auth_secondary_policy", c.workingSigner.id)
+
+	t.Run("secondaryExtJwtCompletes", c.secondaryExtJwtCompletes)
+	t.Run("secondaryExtJwtReauthAsksForLogin", c.secondaryExtJwtReauthAsksForLogin)
+	t.Run("secondaryExtJwtPolicyAddedAsksForLogin", c.secondaryExtJwtPolicyAddedAsksForLogin)
+	t.Run("secondaryExtJwtPolicyRemovedConnectsWithoutLogin", c.secondaryExtJwtPolicyRemovedConnectsWithoutLogin)
+}
+
+func (c *extAuthContext) secondaryExtJwtCompletes(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
+		idName := "test_ext_auth_secondary_happy"
+		jwt := c.overlay.GetJwtFromController(t, idName)
+		identityData := testutil.NewJwtIdentityData(idName, jwt)
+		addResp := c.zet.AddIdentity(t, identityData)
+		addResp.AssertSuccess()
+
+		idEvent := c.zet.WaitForIdentityEvent(t, "needs_ext_login", idName)
+		require.True(t, idEvent.Id.NeedsExtAuth)
+		require.Empty(t, idEvent.Id.Services)
+		authURL := c.zet.GetExternalAuthURL(t, idEvent.Id.Identifier, c.workingSigner.name)
+
+		c.idp.DriveIdPFlow(t, authURL, idName+"@test.com")
+
+		idAddedEvent := c.zet.WaitForIdentityEvent(t, "added", idName)
+		require.True(t, idAddedEvent.Id.Active)
+		require.False(t, idAddedEvent.Id.NeedsExtAuth)
+		c.zet.WaitForControllerEvent(t, "connected", idName)
+		testutil.AssertValidJwtEnrolledIdentityFile(t, idEvent.Id.Identifier)
+		c.assertGrantedServices(t, idName, "test_ext_auth_attr_user_svc")
+	})
+}
+
+func (c *extAuthContext) secondaryExtJwtReauthAsksForLogin(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
+		idName := "test_ext_auth_secondary_reauth"
+		jwt := c.overlay.GetJwtFromController(t, idName)
+		identityData := testutil.NewJwtIdentityData(idName, jwt)
+		addResp := c.zet.AddIdentity(t, identityData)
+		addResp.AssertSuccess()
+
+		idEvent := c.zet.WaitForIdentityEvent(t, "needs_ext_login", idName)
+		authURL := c.zet.GetExternalAuthURL(t, idEvent.Id.Identifier, c.workingSigner.name)
+		c.idp.DriveIdPFlow(t, authURL, idName+"@test.com")
+		c.zet.WaitForControllerEvent(t, "connected", idName)
+
+		c.zet.DisableEnableIdentity(t, idEvent.Id.Identifier)
+
+		reauthEvent := c.zet.WaitForIdentityEvent(t, "needs_ext_login", idName)
+		require.True(t, reauthEvent.Id.NeedsExtAuth)
+		authURL = c.zet.GetExternalAuthURL(t, reauthEvent.Id.Identifier, c.workingSigner.name)
+		c.idp.DriveIdPFlow(t, authURL, idName+"@test.com")
+		c.zet.WaitForControllerEvent(t, "connected", idName)
+		c.assertGrantedServices(t, idName, "test_ext_auth_attr_user_svc")
+	})
+}
+
+func (c *extAuthContext) secondaryExtJwtPolicyAddedAsksForLogin(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
+		idName := "test_ext_auth_secondary_policy_added"
+		added := testutil.FetchAndEnrollJwt(t, c.overlay, c.zet, idName)
+		c.zet.WaitForControllerEvent(t, "connected", idName)
+
+		c.overlay.SetIdentityAuthPolicy(t, idName, "test_ext_auth_secondary_policy")
+		c.zet.DisableEnableIdentity(t, added.Id.Identifier)
+
+		idEvent := c.zet.WaitForIdentityEvent(t, "needs_ext_login", idName)
+		require.True(t, idEvent.Id.NeedsExtAuth)
+		authURL := c.zet.GetExternalAuthURL(t, added.Id.Identifier, c.workingSigner.name)
+		c.idp.DriveIdPFlow(t, authURL, idName+"@test.com")
+		c.zet.WaitForControllerEvent(t, "connected", idName)
+		c.assertGrantedServices(t, idName, "test_ext_auth_attr_user_svc")
+	})
+}
+
+func (c *extAuthContext) secondaryExtJwtPolicyRemovedConnectsWithoutLogin(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
+		idName := "test_ext_auth_secondary_policy_removed"
+		jwt := c.overlay.GetJwtFromController(t, idName)
+		identityData := testutil.NewJwtIdentityData(idName, jwt)
+		addResp := c.zet.AddIdentity(t, identityData)
+		addResp.AssertSuccess()
+
+		idEvent := c.zet.WaitForIdentityEvent(t, "needs_ext_login", idName)
+		authURL := c.zet.GetExternalAuthURL(t, idEvent.Id.Identifier, c.workingSigner.name)
+		c.idp.DriveIdPFlow(t, authURL, idName+"@test.com")
+		c.zet.WaitForControllerEvent(t, "connected", idName)
+
+		c.overlay.SetIdentityAuthPolicy(t, idName, "Default")
+		c.zet.DisableEnableIdentity(t, idEvent.Id.Identifier)
+
+		c.zet.WaitForControllerEvent(t, "disconnected", idName)
+		c.zet.WaitForControllerEvent(t, "connected", idName)
+		c.assertGrantedServices(t, idName, "test_ext_auth_attr_user_svc")
+	})
+}
+
 func (c *extAuthContext) enrollToNoneCompletes(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
 		idName := "test_ext_auth_none_happy"
