@@ -42,25 +42,25 @@ let
   tlsuv_src = fetchFromGitHub {
     owner = "openziti";
     repo = "tlsuv";
-    tag = "v0.41.4";
-    hash = "sha256-6QsqW2zE4a6JWnj6A7/v6RJB5qDJCHL75v4To/6aGVg=";
+    tag = "v0.42.4";
+    hash = "sha256-qhljuAeOdYgeOO0cloghfrgFu2H4G2mY4OZSKfmp4yA=";
   };
   ziti_sdk_src = fetchFromGitHub {
     owner = "openziti";
     repo = "ziti-sdk-c";
-    tag = "1.18.1";
-    hash = "sha256-60YUCT3WWbsjxDTmSZYiTxS5dgHQh5LPX2KqKpLH7WE=";
+    tag = "1.18.7";
+    hash = "sha256-BB5tnT/8i6yq1fyNnDdItpyKQNUoloxO7xnCxG/vvFk=";
   };
 in
 stdenv.mkDerivation (finalAttrs: {
   pname = "ziti-edge-tunnel";
-  version = "1.18.1";
+  version = "1.18.7";
 
   src = fetchFromGitHub {
     owner = "openziti";
     repo = "ziti-tunnel-sdk-c";
     tag = "v${finalAttrs.version}";
-    hash = "sha256-WJ1nR3aEeqdqSUAz+6lAwXd6tnZt6daLWVk/Rw2V7SU=";
+    hash = "sha256-6zclBbmGZZyZPlLf9+rzdz2uqIz6GhHz5S54/ZQ7VSI=";
   };
 
   postPatch = lib.optionalString stdenv.isLinux ''
