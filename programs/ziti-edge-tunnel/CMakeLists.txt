@@ -16,6 +16,12 @@ if(CMAKE_SYSTEM_NAME STREQUAL Linux)
                             netif_driver/pcap_common.c netif_driver/pcap_common.h
                             netif_driver/linux/pcap.c  netif_driver/linux/pcap.h)
     endif()
+
+elseif(CMAKE_SYSTEM_NAME STREQUAL Android)
+    set(NETIF_DRIVER_SOURCE
+        netif_driver/linux/tun.c
+        netif_driver/linux/utils.c
+    )
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL Windows)

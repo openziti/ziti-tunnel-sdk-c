@@ -36,7 +36,9 @@
 
 #if __APPLE__ && __MACH__
 #include "netif_driver/darwin/utun.h"
-#elif __linux__
+#elif defined(__ANDROID__)
+#include "netif_driver/linux/tun.h"
+#elif defined(__linux__)
 #include "netif_driver/linux/tun.h"
 #include "linux/diverter.h"
 #ifdef ENABLE_PCAP
@@ -606,7 +608,7 @@ static void on_event(const base_event *ev) {
                         svc = get_tunnel_service(id, svc_ev->removed_services[svc_idx]);
                     }
                     ZITI_LOG(INFO, "=============== service event (removed) - %s:%s ===============", svc->Name, svc->Id);
-#if __linux__
+#if defined(__linux__) && !defined(__ANDROID__)
                     diverter_remove_svc(svc);
 #endif
 #if _WIN32
@@ -633,7 +635,7 @@ static void on_event(const base_event *ev) {
                     tunnel_service *svc = get_tunnel_service(id, svc_ev->added_services[svc_idx]);
                     svc_event.AddedServices[svc_idx] = svc;
                     ZITI_LOG(INFO, "=============== service event (added) - %s:%s ===============", svc->Name, svc->Id);
-#if __linux__
+#if defined(__linux__) && !defined(__ANDROID__)
                     diverter_add_svc(svc);
 #endif
 #if _WIN32
@@ -970,7 +972,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
 
 #if __APPLE__ && __MACH__
     tun = utun_open(tun_error, sizeof(tun_error), ip_range);
-#elif __linux__
+#elif defined(__linux__) && !defined(__ANDROID__)
     tun = tun_open(ziti_loop, tun_ip, dns_ip, dns_subnet, tun_error, sizeof(tun_error));
     if (tun != NULL && get_l2_enabled()) {
 #ifdef ENABLE_PCAP
@@ -1010,6 +1012,9 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
         }
 #endif
     }
+#elif defined(__ANDROID__)
+    ZITI_LOG(INFO, "opening Android TUN interface");
+    tun = tun_open(ziti_loop, tun_ip, dns_ip, dns_subnet, tun_error, sizeof(tun_error));
 #else
 #error "ziti-edge-tunnel is not supported on this system"
 #endif
@@ -1054,7 +1059,7 @@ static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, co
         tunnel_upstream_dns *a[] = { &upstream, NULL};
         ziti_dns_set_upstream(ziti_loop, a);
     }
-#if __linux__
+#if defined(__linux__) && !defined(__ANDROID__)
     diverter_init(dns_ip4_addr.u_addr.ip4.addr, dns_subnet_zaddr.addr.cidr.bits, tun->get_name(tun->handle));
 #endif
     run_tunneler_loop(ziti_loop);
@@ -1163,7 +1168,7 @@ static int make_socket_path(uv_loop_t *loop) {
 #if __linux__ || __APPLE__
 static void on_exit_signal(int sig, siginfo_t *info, void *ctx) {
     ZITI_LOG(WARN, "received signal: %s", strsignal(sig));
-#if __linux__
+#if defined(__linux__) && !defined(__ANDROID__)
     diverter_cleanup();
 #endif
     exit(1);
@@ -1182,7 +1187,7 @@ static void on_crash(int sig, siginfo_t * siginfo, void *context) {
     free(symbols);
 #endif
 
-#if __linux__
+#if defined(__linux__) && !defined(__ANDROID__)
     diverter_cleanup();
 #endif
 
@@ -1323,7 +1328,7 @@ static struct option run_options[] = {
 #ifdef ENABLE_PCAP
         { "pcap-iface", required_argument, NULL, 'N' },
 #endif
-#if __linux__
+#if defined(__linux__) && !defined(__ANDROID__)
         { "diverter", required_argument, NULL, 'D' },
         { "diverter-fw", required_argument, NULL, 'f' },
 #endif
@@ -1393,7 +1398,7 @@ static int run_opts(int argc, char *argv[]) {
     optind = 0;
     bool identity_provided = false;
 
-#if __linux__
+#if defined(__linux__) && !defined(__ANDROID__)
 #define DIVERTER_SHORT_OPTS "D:f:"
 #else
 #define DIVERTER_SHORT_OPTS ""
@@ -1406,7 +1411,7 @@ static int run_opts(int argc, char *argv[]) {
     while ((c = getopt_long(argc, argv, "i:I:v:r:d:u:x:2"PCAP_SHORT_OPTS""DIVERTER_SHORT_OPTS,
                             run_options, &option_index)) != -1) {
         switch (c) {
-#if __linux__
+#if defined(__linux__) && !defined(__ANDROID__)
             case 'D':
                 diverter = true;
                 diverter_if = optarg;
@@ -3322,7 +3327,7 @@ static CommandLine enroll_cmd = make_command(
     "\t-n|--name\tidentity name\n"
     "\t-v|--verbose N\tset log level, higher level -- more verbose (default 3)\n",
     parse_enroll_opts, enroll);
-#if __linux__
+#if defined(__linux__) && !defined(__ANDROID__)
 #define DIVERTER_OPTS_SUMMARY "[-D|--diverter <interface list>] [-f|--diverter-fw <interface list>] "
 #define DIVERTER_OPTS_DETAIL "\t-D|--diverter <interface list>\tset diverter mode to true on <interface list>\n" \
                              "\t-f|--diverter-fw <interface list>\tset diverter to true in firewall mode on <interface list>)\n"
