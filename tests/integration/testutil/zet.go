@@ -111,8 +111,8 @@ func (z *ZET) Start() error {
 		}
 		z.cmd.Env = env
 	}
-	stdout := newSyncBuffer()
-	stderr := newSyncBuffer()
+	z.stdout = newSyncBuffer()
+	z.stderr = newSyncBuffer()
 
 	if err := os.MkdirAll(z.LogPath(), 0o755); err != nil {
 		return fmt.Errorf("create zet log dir: %w", err)
@@ -129,8 +129,8 @@ func (z *ZET) Start() error {
 		return fmt.Errorf("open zet log file: %w", ferr)
 	}
 	z.logFile = logFile
-	z.cmd.Stdout = io.MultiWriter(stdout, logFile)
-	z.cmd.Stderr = io.MultiWriter(stderr, logFile)
+	z.cmd.Stdout = io.MultiWriter(z.stdout, logFile)
+	z.cmd.Stderr = io.MultiWriter(z.stderr, logFile)
 
 	log.Printf("zet[%s]: exec %s %s (cmdPipe=%s eventPipe=%s logPath=%s)",
 		z.Discriminator, z.BinPath, strings.Join(args, " "), cmdPipe, eventPipe, logPath)
@@ -150,16 +150,31 @@ func (z *ZET) Start() error {
 
 	cmds, err := z.DialIPC()
 	if err != nil {
-		return fmt.Errorf("zet[%s] command pipe: %w", z.Discriminator, err)
+		return fmt.Errorf("zet[%s] command pipe: %w%s", z.Discriminator, err, z.exitDetail())
 	}
 	z.CommandsClient = cmds
 
 	events, err := subscribeToEventPipe(EventPipePathFor(z.Discriminator), z.cmdDone)
 	if err != nil {
-		return fmt.Errorf("zet[%s] event pipe: %w", z.Discriminator, err)
+		return fmt.Errorf("zet[%s] event pipe: %w%s", z.Discriminator, err, z.exitDetail())
 	}
 	z.EventClient = events
 	return nil
+}
+
+// exitDetail is the process exit status and the tail of its output, for a Start that lost the process.
+func (z *ZET) exitDetail() string {
+	select {
+	case <-z.cmdDone:
+	default:
+		return ""
+	}
+	const tailBytes = 2000
+	output := z.stdout.String() + z.stderr.String()
+	if len(output) > tailBytes {
+		output = "..." + output[len(output)-tailBytes:]
+	}
+	return fmt.Sprintf(" (%s)\n--- zet[%s] output ---\n%s", z.cmd.ProcessState, z.Discriminator, output)
 }
 
 // A surviving ZET orphans wintun state and breaks subsequent tests, so abort rather than let an orphan hide.

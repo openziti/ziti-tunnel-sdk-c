@@ -12,6 +12,7 @@
 #         Cross-repo callers (tests-repo set) have no such job, so they must set this.
 #       - 'latest': the release GitHub marks Latest
 #       - a tag: a specified release
+#     Cross-repo callers get the test suite checked out at that release's tag.
 #   - zetB-version: ZET for the host-side tunneler, same options (empty reuses zetA)
 name: Callable Integration Tests
 
@@ -87,13 +88,30 @@ jobs:
             core-dir: ""
     runs-on: ${{ matrix.os.runner }}
     steps:
+      # A cross-repo caller naming a released ZET gets the test suite tagged with that release,
+      # so the harness and the binary under test cannot drift apart.
+      - name: Resolve test suite ref
+        id: suite
+        if: inputs.tests-repo != '' && inputs.zetA-version != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TESTS_REPO: ${{ inputs.tests-repo }}
+          ZETA_VERSION: ${{ inputs.zetA-version }}
+        run: |
+          set -euo pipefail
+          tag="$ZETA_VERSION"; [ "$tag" = "latest" ] && tag=""
+          ref=$(gh release view --repo "$TESTS_REPO" ${tag:+"$tag"} --json tagName --jq .tagName)
+          echo "ref=$ref" | tee -a "$GITHUB_OUTPUT"
+
       - name: Checkout
         uses: actions/checkout@v7
         with:
           repository: ${{ inputs.tests-repo || github.repository }}
-          # job_workflow_sha = the commit this workflow file was loaded from, so a
-          # cross-repo caller's @ref selects the workflow and the test sources together.
-          ref: ${{ inputs.tests-repo != '' && github.job_workflow_sha || '' }}
+          # Cross-repo callers get the suite at the ZET release tag when they name one, otherwise
+          # job_workflow_sha, the commit this workflow file was loaded from, so their @ref selects
+          # the workflow and the test sources together.
+          ref: ${{ steps.suite.outputs.ref || (inputs.tests-repo != '' && github.job_workflow_sha) || '' }}
 
       - name: Set up Go
         uses: actions/setup-go@v7
