@@ -261,4 +261,5 @@ jobs:
             ${{ runner.temp }}/zets/upgrade*/zet/logs/*.log
             ${{ runner.temp }}/overlay/quickstart-logs/*.log
             ${{ runner.temp }}/idp/logs/*.log
+            ${{ runner.temp }}/outage-debug/**/*.log
           if-no-files-found: ignore

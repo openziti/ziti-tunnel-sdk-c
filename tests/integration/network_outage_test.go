@@ -238,17 +238,28 @@ var keepArtifacts = os.Getenv("ZITI_OUTAGE_KEEP_ARTIFACTS") != ""
 // for - still has the zet/controller logs to inspect afterward. Not
 // t.TempDir(): its cleanup is unconditional, with no way to skip it on
 // failure.
+//
+// Rooted under state.testHome (== TEST_HOME/runner.temp in CI), not the bare
+// OS temp dir: the integration-tests workflow's "Upload integration test
+// logs" step only globs paths under runner.temp, so anything created outside
+// it - the bare os.TempDir()/os.MkdirTemp("", ...) this used before - is
+// invisible to that upload no matter how badly a run fails. Confirmed live:
+// a Windows CI failure's preserved dir sat under C:\Users\...\AppData\Local\Temp,
+// while runner.temp is a different D:\a\_temp path, so its controller/router
+// logs never made it into the job's uploaded artifacts.
 func outageArtifactDir(t *testing.T, name string) string {
 	t.Helper()
+	base := filepath.Join(state.testHome, "outage-debug")
 	if keepArtifacts {
-		dir := filepath.Join(os.TempDir(), "ziti-outage-debug", name)
+		dir := filepath.Join(base, name)
 		require.NoError(t, os.RemoveAll(dir), "clear stale debug artifact dir %s", dir)
 		require.NoError(t, os.MkdirAll(dir, 0o755), "create debug artifact dir %s", dir)
 		log.Printf("outage test: ZITI_OUTAGE_KEEP_ARTIFACTS set - %s will survive this run, and its process will not be stopped", dir)
 		return dir
 	}
 
-	dir, err := os.MkdirTemp("", "ziti-outage-"+name+"-")
+	require.NoError(t, os.MkdirAll(base, 0o755), "create outage debug base dir %s", base)
+	dir, err := os.MkdirTemp(base, name+"-")
 	require.NoError(t, err, "create temp dir for %s", name)
 	t.Cleanup(func() {
 		if t.Failed() {

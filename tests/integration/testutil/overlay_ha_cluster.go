@@ -502,7 +502,8 @@ func (c *HACluster) waitForAgentSocket(node *haNode) error {
 		case <-time.After(200 * time.Millisecond):
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("timed out waiting for agent socket %s", node.agentSock)
+			return fmt.Errorf("timed out waiting for agent socket %s (controller still running, pid %d)\n%s",
+				node.agentSock, node.cmd.Process.Pid, c.readLogTail(node.logFile))
 		}
 	}
 }
