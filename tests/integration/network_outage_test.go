@@ -53,9 +53,17 @@ const (
 	// testutil.HACluster and newOutageController below. Comfortably clear of
 	// outageOverlay*Port above (both can run in the same process, though in
 	// practice only one topology runs per test invocation) and of each
-	// other across up to 9 nodes.
+	// other across up to 9 nodes. Both kept below 32768 deliberately - that's
+	// Linux's default ephemeral-port floor (net.ipv4.ip_local_port_range,
+	// commonly 32768-60999), and macOS/Windows dynamic client ports start at
+	// 49152; a fixed listener port inside either range can lose a bind() race
+	// to an unrelated outbound connection that happens to get assigned the
+	// same ephemeral source port. outageHAClusterProxyPortBase used to be
+	// 41280, which sits inside the Linux ephemeral range and was observed
+	// losing exactly that race in CI once the shared cluster overlay's own
+	// raft/CLI traffic was churning enough ephemeral connections.
 	outageHAClusterBindPortBase  = 31280
-	outageHAClusterProxyPortBase = 41280
+	outageHAClusterProxyPortBase = 22280
 	outageHAClusterRouterPort    = 13023
 
 	// The credential that must expire differs by auth path:
