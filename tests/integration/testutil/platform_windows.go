@@ -65,3 +65,9 @@ func relayStop(cmd *exec.Cmd) {
 		_ = exec.Command("taskkill", "/T", "/F", "/PID", strconv.Itoa(cmd.Process.Pid)).Run()
 	}
 }
+
+// detachSession starts cmd in its own process group, so a CTRL_BREAK_EVENT
+// sent to this process's console process group doesn't reach it.
+func detachSession(cmd *exec.Cmd) {
+	cmd.SysProcAttr = &windows.SysProcAttr{CreationFlags: windows.CREATE_NEW_PROCESS_GROUP}
+}

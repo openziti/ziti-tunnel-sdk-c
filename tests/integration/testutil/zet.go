@@ -19,7 +19,6 @@ package testutil
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -54,6 +53,15 @@ type ZET struct {
 	TlsuvDebug int
 	// Env entries (KEY=VALUE) appended to the parent environment for the ZET process.
 	Env []string
+	// ExtraArgs are appended to the "run" command line after the standard flags
+	// (e.g. []string{"-r", "1"} to shorten the controller-refresh interval).
+	ExtraArgs []string
+	// DetachSession, if true, starts the process in its own session/process
+	// group (see detachSession) so it survives a signal sent to this test
+	// process's group - e.g. a Ctrl-C, or the parent's shell/terminal tearing
+	// down when the test binary exits. Debugging aid: leave false normally,
+	// so Stop() (or an interrupted test run) still reliably takes it down.
+	DetachSession bool
 	// Major and Minor are this binary's version, set by ProbeVersion.
 	Major int
 	Minor int
@@ -62,8 +70,6 @@ type ZET struct {
 	Version string
 
 	cmd     *exec.Cmd
-	stdout  *syncBuffer
-	stderr  *syncBuffer
 	cmdDone chan struct{}
 	logFile *os.File
 	// logStarted keeps Restart() from truncating the log mid-run.
@@ -102,8 +108,12 @@ func (z *ZET) Start() error {
 	if z.DNSRange != "" {
 		args = append(args, "-d", z.DNSRange)
 	}
+	args = append(args, z.ExtraArgs...)
 
 	z.cmd = exec.Command(z.BinPath, args...)
+	if z.DetachSession {
+		detachSession(z.cmd)
+	}
 	if len(z.Env) > 0 || z.TlsuvDebug > 0 {
 		env := append(os.Environ(), z.Env...)
 		if z.TlsuvDebug > 0 {
@@ -111,9 +121,6 @@ func (z *ZET) Start() error {
 		}
 		z.cmd.Env = env
 	}
-	stdout := newSyncBuffer()
-	stderr := newSyncBuffer()
-
 	if err := os.MkdirAll(z.LogPath(), 0o755); err != nil {
 		return fmt.Errorf("create zet log dir: %w", err)
 	}
@@ -129,8 +136,17 @@ func (z *ZET) Start() error {
 		return fmt.Errorf("open zet log file: %w", ferr)
 	}
 	z.logFile = logFile
-	z.cmd.Stdout = io.MultiWriter(stdout, logFile)
-	z.cmd.Stderr = io.MultiWriter(stderr, logFile)
+	// Straight to the file, not through an io.MultiWriter(buffer, logFile):
+	// a non-*os.File Writer forces os/exec to create an internal pipe and a
+	// goroutine (in this process) to copy from it - and that goroutine dies
+	// with this process, so a ZET left running past this test process's own
+	// exit (see DetachSession) gets SIGPIPE on its very next write, no
+	// matter what session/process-group tricks the child itself is started
+	// with. logFile is an *os.File, so Stdout/Stderr here become a plain
+	// dup2 straight into the child - no pipe, no dependency on this process
+	// staying alive.
+	z.cmd.Stdout = logFile
+	z.cmd.Stderr = logFile
 
 	log.Printf("zet[%s]: exec %s %s (cmdPipe=%s eventPipe=%s logPath=%s)",
 		z.Discriminator, z.BinPath, strings.Join(args, " "), cmdPipe, eventPipe, logPath)
@@ -291,8 +307,6 @@ type syncBuffer struct {
 	mu  sync.Mutex
 	buf bytes.Buffer
 }
-
-func newSyncBuffer() *syncBuffer { return &syncBuffer{} }
 
 func (s *syncBuffer) Write(p []byte) (int, error) {
 	s.mu.Lock()

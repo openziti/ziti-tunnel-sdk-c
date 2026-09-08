@@ -190,6 +190,23 @@ func (c *EventClient) subscribe() (chan struct{}, int, func()) {
 	}
 }
 
+// SkipToNow advances this client's cursor past every event buffered so far,
+// so a subsequent WaitForXEvent(Within) call can only match a genuinely new
+// event, never one already sitting in the buffer from earlier in the run.
+// Needed because the cursor is shared across every op/action combination:
+// waiting for one (op, action, fingerprint) never consumes a *different*
+// (op, action, fingerprint) that happened to arrive in the same window, so it
+// stays in the buffer, "ahead" of the cursor, indefinitely - discovered the
+// hard way when a post-restore wait for a router "connected" event matched
+// instantly, on the router's *initial* connect event from minutes earlier,
+// because nothing had ever waited for (and thus consumed) a router event
+// before that point.
+func (c *EventClient) SkipToNow() {
+	c.mu.Lock()
+	c.cursor = len(c.events)
+	c.mu.Unlock()
+}
+
 // waitForEvent blocks until the next event matching op/action/fingerprint
 // arrives, advances past it, and returns its raw JSON. Blocks indefinitely;
 // rely on the per-test timeout if the event never comes.
@@ -219,6 +236,50 @@ func (c *EventClient) waitForEvent(t *testing.T, op, action, fingerprint string)
 	}
 }
 
+// waitForEventWithin is waitForEvent bounded by within: returns ok=false on
+// timeout instead of blocking indefinitely. Runs entirely on the calling
+// goroutine (via a select against notify and a deadline timer), unlike a
+// goroutine+channel-based bounded wait would - that shape was tried and
+// dropped because the spawned goroutine can call require/t.Fatal-triggering
+// code (the readErr branch below), and testing.T does not support that from
+// any goroutine but the one running the test: FailNow only unwinds the
+// calling goroutine via runtime.Goexit(), and a goroutine that outlives its
+// caller's timeout (still blocked here, now abandoned) hitting a real
+// readErr later - e.g. when the process/connection it was waiting on finally
+// goes away - can panic the whole test binary if that fires after the test
+// has otherwise concluded.
+func (c *EventClient) waitForEventWithin(t *testing.T, op, action, fingerprint string, within time.Duration) (json.RawMessage, bool) {
+	t.Helper()
+	notify, cursor, unsubscribe := c.subscribe()
+	defer unsubscribe()
+
+	deadline := time.After(within)
+	for {
+		c.mu.Lock()
+		events := c.events
+		readErr := c.readErr
+		c.mu.Unlock()
+		for ; cursor < len(events); cursor++ {
+			e := events[cursor]
+			if e.op == op && e.action == action && e.fingerprint == fingerprint {
+				c.mu.Lock()
+				c.cursor = cursor + 1
+				c.mu.Unlock()
+				return e.raw, true
+			}
+		}
+		if readErr != nil {
+			require.NoError(t, readErr, "event reader exited waiting for %s:%s/%s after %d events", op, action, fingerprint, cursor)
+			return nil, false
+		}
+		select {
+		case <-notify:
+		case <-deadline:
+			return nil, false
+		}
+	}
+}
+
 // WaitForIdentity waits for an Op:"identity" event matching action/fingerprint.
 func (c *EventClient) WaitForIdentityEvent(t *testing.T, action, fingerprint string) IdentityEvent {
 	raw := c.waitForEvent(t, "identity", action, fingerprint)
@@ -229,11 +290,58 @@ func (c *EventClient) WaitForIdentityEvent(t *testing.T, action, fingerprint str
 }
 
 // WaitForController waits for an Op:"controller" event matching action/fingerprint.
+//
+// This only reflects ztx->ctrl_status (ziti.c update_ctrl_status), which flips to
+// "connected" the moment any single controller HTTP call succeeds (e.g. a service-list
+// refresh) - it says nothing about the edge router control channel, which is gated
+// behind its own full re-auth check (channel.c reconnect_cb) and is what actually
+// carries traffic. Use WaitForRouterEvent for a signal that the tunnel is usable.
 func (c *EventClient) WaitForControllerEvent(t *testing.T, action, fingerprint string) ActionEvent {
 	raw := c.waitForEvent(t, "controller", action, fingerprint)
 	var ev ActionEvent
 	require.NoError(t, json.Unmarshal(raw, &ev), "parse controller ActionEvent: %s", raw)
 	return ev
+}
+
+// WaitForRouterEvent waits for an Op:"router" event matching action/fingerprint - the
+// edge router control channel's own connect/disconnect. Unlike WaitForControllerEvent,
+// this is gated behind a full ztx re-auth (channel.c reconnect_cb bails with "is not
+// fully authenticated" while auth_state isn't ZitiAuthStateFullyAuthenticated), so it
+// reflects whether the tunnel can actually carry traffic, not just whether one
+// controller HTTP call happened to succeed.
+func (c *EventClient) WaitForRouterEvent(t *testing.T, action, fingerprint string) ActionEvent {
+	raw := c.waitForEvent(t, "router", action, fingerprint)
+	var ev ActionEvent
+	require.NoError(t, json.Unmarshal(raw, &ev), "parse router ActionEvent: %s", raw)
+	return ev
+}
+
+// WaitForControllerEventWithin is WaitForControllerEvent bounded by within;
+// see waitForEventWithin for why this, not a goroutine+timeout wrapper around
+// WaitForControllerEvent, is the safe way to bound an event wait. Returns
+// ok=false on timeout rather than failing t.
+func (c *EventClient) WaitForControllerEventWithin(t *testing.T, action, fingerprint string, within time.Duration) (ActionEvent, bool) {
+	t.Helper()
+	raw, ok := c.waitForEventWithin(t, "controller", action, fingerprint, within)
+	if !ok {
+		return ActionEvent{}, false
+	}
+	var ev ActionEvent
+	require.NoError(t, json.Unmarshal(raw, &ev), "parse controller ActionEvent: %s", raw)
+	return ev, true
+}
+
+// WaitForRouterEventWithin is WaitForRouterEvent bounded by within - see
+// waitForEventWithin and WaitForControllerEventWithin.
+func (c *EventClient) WaitForRouterEventWithin(t *testing.T, action, fingerprint string, within time.Duration) (ActionEvent, bool) {
+	t.Helper()
+	raw, ok := c.waitForEventWithin(t, "router", action, fingerprint, within)
+	if !ok {
+		return ActionEvent{}, false
+	}
+	var ev ActionEvent
+	require.NoError(t, json.Unmarshal(raw, &ev), "parse router ActionEvent: %s", raw)
+	return ev, true
 }
 
 // WaitForMfa waits for an Op:"mfa" event matching action/fingerprint.

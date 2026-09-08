@@ -63,3 +63,11 @@ func relayStop(cmd *exec.Cmd) {
 		_ = cmd.Process.Signal(syscall.SIGINT)
 	}
 }
+
+// detachSession starts cmd in a new session, so it isn't a member of this
+// process's process group and won't receive a signal (e.g. SIGINT/SIGHUP)
+// sent to that group - by a Ctrl-C, or a terminal/shell tearing down when the
+// parent test process exits.
+func detachSession(cmd *exec.Cmd) {
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+}
