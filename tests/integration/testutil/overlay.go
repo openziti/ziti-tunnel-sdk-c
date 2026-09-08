@@ -1121,11 +1121,30 @@ func (o *Overlay) WaitForClusterLeader() error {
 		return nil
 	}
 	log.Printf("overlay: waiting for cluster leader (ziti v%d.%d)", o.ZitiMajor, o.ZitiMinor)
+	return waitForClusterLeader(o.execZiti, "overlay")
+}
+
+// WaitForDataModelConsensus blocks until every controller reports the same data-model
+// index. No-op for single-node or external controllers.
+func (o *Overlay) WaitForDataModelConsensus() {
+	if o.ZitiClusterSize <= 1 || o.ControllerURL != "" {
+		return
+	}
+	waitForDataModelConsensus(o.execZiti, "overlay", o.ZitiClusterSize)
+}
+
+// waitForClusterLeader is the shared polling loop behind
+// Overlay.WaitForClusterLeader and HACluster.WaitForClusterLeader: poll
+// `ops cluster list -j` until some member reports itself leader. logPrefix
+// matches each caller's own log line convention ("overlay"/"hacluster").
+// Retries forever within its own 30s deadline; rely on the caller's overall
+// test timeout if the cluster wedges.
+func waitForClusterLeader(execZiti func(cmd string, args ...string) ([]byte, error), logPrefix string) error {
 	deadline := time.Now().Add(30 * time.Second)
 	attempts := 0
 	for {
 		attempts++
-		out, err := o.execZiti("ops cluster list -j")
+		out, err := execZiti("ops cluster list -j")
 		if err == nil {
 			var resp struct {
 				Data []struct {
@@ -1135,7 +1154,7 @@ func (o *Overlay) WaitForClusterLeader() error {
 			if json.Unmarshal(out, &resp) == nil {
 				for _, m := range resp.Data {
 					if m.Leader != nil && *m.Leader {
-						log.Printf("overlay: cluster leader elected after %d attempt(s)", attempts)
+						log.Printf("%s: cluster leader elected after %d attempt(s)", logPrefix, attempts)
 						return nil
 					}
 				}
@@ -1150,20 +1169,19 @@ func (o *Overlay) WaitForClusterLeader() error {
 	}
 }
 
-// WaitForDataModelConsensus blocks until every controller reports the same data-model
-// index. No-op for single-node or external controllers.
-func (o *Overlay) WaitForDataModelConsensus() {
-	if o.ZitiClusterSize <= 1 || o.ControllerURL != "" {
-		return
-	}
+// waitForDataModelConsensus is the shared polling loop behind
+// Overlay.WaitForDataModelConsensus and HACluster.WaitForDataModelConsensus:
+// poll `fabric inspect data-model-index` until every one of nodeCount
+// controllers reports the same index.
+func waitForDataModelConsensus(execZiti func(cmd string, args ...string) ([]byte, error), logPrefix string, nodeCount int) {
 	for attempts := 1; ; attempts++ {
 		if attempts > 1 {
 			time.Sleep(100 * time.Millisecond)
 		}
 
-		out, err := o.execZiti("fabric inspect data-model-index")
+		out, err := execZiti("fabric inspect data-model-index")
 		if err != nil {
-			log.Printf("overlay: inspect data-model-index failed, retrying: %v", err)
+			log.Printf("%s: inspect data-model-index failed, retrying: %v", logPrefix, err)
 			continue
 		}
 
@@ -1178,12 +1196,12 @@ func (o *Overlay) WaitForDataModelConsensus() {
 		}
 
 		// a partial response (node not answering) must not pass as consensus
-		if len(indexes) != o.ZitiClusterSize || slices.Min(indexes) != slices.Max(indexes) {
+		if len(indexes) != nodeCount || slices.Min(indexes) != slices.Max(indexes) {
 			continue
 		}
 
 		if attempts > 1 {
-			log.Printf("overlay: data-model consensus at index %d after %d attempt(s)", indexes[0], attempts)
+			log.Printf("%s: data-model consensus at index %d after %d attempt(s)", logPrefix, indexes[0], attempts)
 		}
 		return
 	}
