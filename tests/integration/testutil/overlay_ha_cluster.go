@@ -379,56 +379,65 @@ var (
 // run's directory name and its instance-id, so a single blanket replace of
 // "/template/" corrupted the pki paths too).
 //
-// The two prefixes also don't share a separator convention on Windows:
-// dataDir's value comes from --home verbatim (create_config.go's
-// data.ZitiHome), so templateInstHome - built the same way here via
-// filepath.Join - matches it natively (backslash-joined). The PKI cert/key
-// fields, though, are run through ziti's helpers.NormalizePath first
-// (create_config_controller.go), which unconditionally replaces "\" with
-// "/" specifically because these values sit inside double-quoted YAML
-// scalars, where a raw backslash starts an escape sequence - so the
-// template's actual PKI path text is forward-slash-only even on Windows,
-// never matching a filepath.Join-built search string there. Confirmed live:
-// this is exactly what left a real node's config still pointing at the
-// already-deleted template-capture PKI dir on Windows CI, since only the
-// backslash-native replace was attempted. Matching (and replacing with) the
-// slash-normalized form too fixes this without touching non-Windows
-// behavior, where ToSlash is a no-op.
-// Both prefix substitutions below are verified, not blind: a silent no-op
-// match failure is exactly how the PKI-path bug got past review the first
-// time (see the fix above), and it's cheap to confirm the prefix is actually
-// there before betting the rest of the config on it. On a miss, this dumps
-// the whole captured template so the actual (as opposed to assumed)
-// separator/normalization convention is visible directly in the failure,
-// rather than surfacing 30+ seconds later as an unrelated agent-socket
-// timeout with no clue why the node's on-disk paths are wrong.
+// Both prefixes also come back forward-slash-only in the captured template
+// on Windows, never matching a filepath.Join-built (backslash-native) search
+// string there - not just the PKI cert/key fields (which are explicitly run
+// through ziti's helpers.NormalizePath in create_config_controller.go,
+// because those values sit inside double-quoted YAML scalars where a raw
+// backslash would start an escape sequence), but dataDir too: its value
+// comes from cmdHelper.GetZitiHome(), which unconditionally ends with
+// `return NormalizePath(retVal)` (env_helpers.go) - easy to miss since nothing
+// in the *callers* of GetZitiHome hints at it. Confirmed live on Windows CI
+// twice: first the PKI paths, then dataDir, each time leaving a real node's
+// config pointing at the already-deleted template-capture directory because
+// only the backslash-native replace was attempted. Matching (and replacing
+// with) the slash-normalized form for both prefixes fixes this without
+// touching non-Windows behavior, where ToSlash is a no-op.
+//
+// Both substitutions are verified, not blind: a silent no-op match failure
+// is exactly how both of the above got past review, and it's cheap to
+// confirm the prefix is actually there before betting the rest of the
+// config on it. On a miss, this dumps the whole captured template so the
+// actual (as opposed to assumed) separator/normalization convention is
+// visible directly in the failure, rather than surfacing much later as an
+// unrelated timeout with no clue why the node's on-disk paths are wrong.
 func (c *HACluster) renderNodeConfig(template, instanceID string, bindPort, proxyPort int, intermediateName string) (string, error) {
 	templateHome := c.templateHomePath()
 	templateInstHome := templateHome + "/" + haClusterTemplateInstanceID
 	templatePkiDir := templateHome + "/pki"
 
 	cfg := template
-	if !strings.Contains(cfg, templateInstHome) {
-		return "", fmt.Errorf("renderNodeConfig: dataDir prefix %q not found in captured template (%d bytes):\n%s",
-			templateInstHome, len(cfg), cfg)
+	var err error
+	if cfg, err = replacePathPrefix(cfg, templateInstHome, c.Home+"/"+instanceID, "dataDir"); err != nil {
+		return "", err
 	}
-	cfg = strings.ReplaceAll(cfg, templateInstHome, c.Home+"/"+instanceID)
-
-	pkiFromSlash := filepath.ToSlash(templatePkiDir)
-	switch {
-	case strings.Contains(cfg, pkiFromSlash):
-		cfg = strings.ReplaceAll(cfg, pkiFromSlash, filepath.ToSlash(c.Home)+"/pki")
-	case strings.Contains(cfg, templatePkiDir):
-		cfg = strings.ReplaceAll(cfg, templatePkiDir, c.Home+"/pki")
-	default:
-		return "", fmt.Errorf("renderNodeConfig: pki dir prefix %q (native) / %q (slash-normalized) not found in captured template (%d bytes):\n%s",
-			templatePkiDir, pkiFromSlash, len(cfg), cfg)
+	if cfg, err = replacePathPrefix(cfg, templatePkiDir, c.Home+"/pki", "pki dir"); err != nil {
+		return "", err
 	}
 
 	cfg = strings.ReplaceAll(cfg, "intermediate-ca-"+haClusterTemplateInstanceID, intermediateName)
 	cfg = haClusterBindAddrRE.ReplaceAllString(cfg, fmt.Sprintf("${1}%d", bindPort))
 	cfg = haClusterAdvertiseAddrRE.ReplaceAllString(cfg, fmt.Sprintf("${1}localhost:%d", proxyPort))
 	return cfg, nil
+}
+
+// replacePathPrefix replaces every occurrence of the "from" path prefix in
+// cfg with "to", trying both from's native (filepath.Join) form and its
+// forward-slash-normalized form - see renderNodeConfig's doc comment for why
+// a captured ziti config can contain either, depending on the field. Errors
+// out with the full (unmodified) cfg if neither form matches, instead of
+// silently leaving the original prefix in place.
+func replacePathPrefix(cfg, from, to, label string) (string, error) {
+	fromSlash := filepath.ToSlash(from)
+	switch {
+	case strings.Contains(cfg, fromSlash):
+		return strings.ReplaceAll(cfg, fromSlash, filepath.ToSlash(to)), nil
+	case strings.Contains(cfg, from):
+		return strings.ReplaceAll(cfg, from, to), nil
+	default:
+		return "", fmt.Errorf("renderNodeConfig: %s prefix %q (native) / %q (slash-normalized) not found in captured template (%d bytes):\n%s",
+			label, from, fromSlash, len(cfg), cfg)
+	}
 }
 
 // templateHomePath is the --home directory captureConfigTemplate's
