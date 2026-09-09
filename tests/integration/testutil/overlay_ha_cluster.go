@@ -394,19 +394,41 @@ var (
 // backslash-native replace was attempted. Matching (and replacing with) the
 // slash-normalized form too fixes this without touching non-Windows
 // behavior, where ToSlash is a no-op.
-func (c *HACluster) renderNodeConfig(template, instanceID string, bindPort, proxyPort int, intermediateName string) string {
+// Both prefix substitutions below are verified, not blind: a silent no-op
+// match failure is exactly how the PKI-path bug got past review the first
+// time (see the fix above), and it's cheap to confirm the prefix is actually
+// there before betting the rest of the config on it. On a miss, this dumps
+// the whole captured template so the actual (as opposed to assumed)
+// separator/normalization convention is visible directly in the failure,
+// rather than surfacing 30+ seconds later as an unrelated agent-socket
+// timeout with no clue why the node's on-disk paths are wrong.
+func (c *HACluster) renderNodeConfig(template, instanceID string, bindPort, proxyPort int, intermediateName string) (string, error) {
 	templateHome := c.templateHomePath()
 	templateInstHome := templateHome + "/" + haClusterTemplateInstanceID
 	templatePkiDir := templateHome + "/pki"
 
 	cfg := template
+	if !strings.Contains(cfg, templateInstHome) {
+		return "", fmt.Errorf("renderNodeConfig: dataDir prefix %q not found in captured template (%d bytes):\n%s",
+			templateInstHome, len(cfg), cfg)
+	}
 	cfg = strings.ReplaceAll(cfg, templateInstHome, c.Home+"/"+instanceID)
-	cfg = strings.ReplaceAll(cfg, filepath.ToSlash(templatePkiDir), filepath.ToSlash(c.Home)+"/pki")
-	cfg = strings.ReplaceAll(cfg, templatePkiDir, c.Home+"/pki")
+
+	pkiFromSlash := filepath.ToSlash(templatePkiDir)
+	switch {
+	case strings.Contains(cfg, pkiFromSlash):
+		cfg = strings.ReplaceAll(cfg, pkiFromSlash, filepath.ToSlash(c.Home)+"/pki")
+	case strings.Contains(cfg, templatePkiDir):
+		cfg = strings.ReplaceAll(cfg, templatePkiDir, c.Home+"/pki")
+	default:
+		return "", fmt.Errorf("renderNodeConfig: pki dir prefix %q (native) / %q (slash-normalized) not found in captured template (%d bytes):\n%s",
+			templatePkiDir, pkiFromSlash, len(cfg), cfg)
+	}
+
 	cfg = strings.ReplaceAll(cfg, "intermediate-ca-"+haClusterTemplateInstanceID, intermediateName)
 	cfg = haClusterBindAddrRE.ReplaceAllString(cfg, fmt.Sprintf("${1}%d", bindPort))
 	cfg = haClusterAdvertiseAddrRE.ReplaceAllString(cfg, fmt.Sprintf("${1}localhost:%d", proxyPort))
-	return cfg
+	return cfg, nil
 }
 
 // templateHomePath is the --home directory captureConfigTemplate's
@@ -436,7 +458,10 @@ func (c *HACluster) startNode(t *testing.T, idx int, template, pkiDir string) (*
 		return nil, fmt.Errorf("mkdir instance home: %w", err)
 	}
 	configPath := filepath.Join(instHome, "ctrl.yaml")
-	cfg := c.renderNodeConfig(template, instanceID, bindPort, proxyPort, intermediateName)
+	cfg, err := c.renderNodeConfig(template, instanceID, bindPort, proxyPort, intermediateName)
+	if err != nil {
+		return nil, err
+	}
 	if err := os.WriteFile(configPath, []byte(cfg), 0o600); err != nil {
 		return nil, fmt.Errorf("write config: %w", err)
 	}
