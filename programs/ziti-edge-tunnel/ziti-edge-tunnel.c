@@ -37,7 +37,7 @@
 #if __APPLE__ && __MACH__
 #include "netif_driver/darwin/utun.h"
 #elif defined(__ANDROID__)
-#include "netif_driver/linux/tun.h"
+#include "netif_driver/android/tun.h"
 #elif defined(__linux__)
 #include "netif_driver/linux/tun.h"
 #include "linux/diverter.h"

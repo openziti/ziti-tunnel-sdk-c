@@ -19,7 +19,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL Linux)
 
 elseif(CMAKE_SYSTEM_NAME STREQUAL Android)
     set(NETIF_DRIVER_SOURCE
-        netif_driver/linux/tun.c
+        netif_driver/android/tun.c
+        netif_driver/android/tun.h
         netif_driver/linux/utils.c
     )
 endif()

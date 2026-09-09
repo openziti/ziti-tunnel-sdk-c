@@ -35,11 +35,7 @@
 #include "utils.h"
 
 #ifndef DEVTUN
-#if defined(__ANDROID__)
-#define DEVTUN "/dev/tun"
-#else
 #define DEVTUN "/dev/net/tun"
-#endif
 #endif
 
 /*
@@ -77,13 +73,6 @@ static int tun_close(struct netif_handle_s *tun) {
     if (tun == NULL) {
         return 0;
     }
-
-#if defined(__ANDROID__)
-    if (tun->name[0] != '\0') {
-        while (run_command("iptables -D OUTPUT -o %s -j ACCEPT >/dev/null 2>&1", tun->name) == 0) {}
-        while (run_command("iptables -D INPUT -i %s -j ACCEPT >/dev/null 2>&1", tun->name) == 0) {}
-    }
-#endif
 
     if (tun->fd > 0) {
         r = close(tun->fd);
@@ -141,47 +130,6 @@ static void route_updates_done(uv_work_t *wr, int status) {
 
 static void process_routes_updates(uv_work_t *wr) {
     struct rt_process_cmd *cmd = wr->data;
-
-#if defined(__ANDROID__)
-    const char *prefix;
-    const void *value;
-
-    MODEL_MAP_FOREACH(prefix, value, cmd->updates) {
-        unsigned action = (uintptr_t)value;
-
-        if (action) {
-            ZITI_LOG(INFO, "Android adding route %s via %s",
-                     prefix, cmd->tun->name);
-
-            run_command("ip route add %s dev %s",
-                        prefix,
-                        cmd->tun->name);
-
-            /*
-             * Android uses policy routing tables before the main table.
-             * Add a high priority rule forcing Ziti intercept destinations
-             * to consult the main table where the ziti0 route exists.
-             */
-            run_command("ip rule add pref 12000 to %s lookup main",
-                        prefix);
-
-        } else {
-
-            ZITI_LOG(INFO, "Android deleting route %s via %s",
-                     prefix,
-                     cmd->tun->name);
-
-            run_command("ip route delete %s dev %s",
-                        prefix,
-                        cmd->tun->name);
-
-            run_command("ip rule del pref 12000 to %s lookup main",
-                        prefix);
-        }
-    }
-
-    return;
-#endif    
 
     uv_fs_t tmp_req = {0};
     uv_file routes_file = uv_fs_mkstemp(wr->loop, &tmp_req, "/tmp/ziti-tunnel-routes.XXXXXX", NULL);
@@ -405,12 +353,6 @@ static void init_dns_maintainer(uv_loop_t *loop, const char *tun_name, uint32_t 
 }
 
 static int tun_exclude_rt(netif_handle dev, uv_loop_t *l, const char *addr) {
-#if defined(__ANDROID__)
-    (void)dev;
-    (void)l;
-    (void)addr;
-    return 0;
-#else
     char cmd[1024];
     char route[128];
     FILE *cmdpipe = NULL;
@@ -455,7 +397,6 @@ static int tun_exclude_rt(netif_handle dev, uv_loop_t *l, const char *addr) {
     ZITI_LOG(DEBUG, "route is %s %s", addr, route);
 
     return run_command("ip route replace %s %s", addr, route);
-#endif
 }
 
 static void cleanup_sock(const int *fd) {
@@ -553,24 +494,9 @@ netif_driver tun_open(uv_loop_t *loop, uint32_t tun_ip, uint32_t dns_ip, const c
         return NULL;
     }
 
-#if defined(__ANDROID__)
-    /*
-     * FireOS defaults OUTPUT/INPUT to DROP and only explicitly permits
-     * wlan0/lo. Remove any stale rules first so tunnel restarts remain
-     * idempotent.
-     */
-    run_command("iptables -D OUTPUT -o %s -j ACCEPT >/dev/null 2>&1", tun->name);
-    run_command("iptables -D INPUT -i %s -j ACCEPT >/dev/null 2>&1", tun->name);
-
-    run_command("iptables -I OUTPUT 1 -o %s -j ACCEPT", tun->name);
-    run_command("iptables -I INPUT 1 -i %s -j ACCEPT", tun->name);
-#endif
-
-#if !defined(__ANDROID__)
     if (dns_ip) {
         init_dns_maintainer(loop, tun->name, dns_ip);
     }
-#endif
 
     if (dns_block) {
         run_command("ip route add %s dev %s", dns_block, tun->name);
