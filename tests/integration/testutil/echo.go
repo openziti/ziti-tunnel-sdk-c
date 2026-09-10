@@ -28,10 +28,10 @@ type Echo struct {
 	Addr string
 }
 
-// StartTCPEcho starts a TCP echo server on 127.0.0.1:0 and registers cleanup with t.
+// StartTCPEcho starts a TCP echo server on addr and registers cleanup with t.
 // Each connection is echoed in its own goroutine.
-func StartTCPEcho(t *testing.T) *Echo {
-	l, err := net.Listen("tcp", "127.0.0.1:0")
+func StartTCPEcho(t *testing.T, addr string) *Echo {
+	l, err := net.Listen("tcp", addr)
 	if err != nil {
 		t.Fatalf("listen tcp for echo: %v", err)
 	}

@@ -87,28 +87,26 @@ func ParseTOTPSecret(t *testing.T, provisioningURL string) string {
 
 // EnrollAndVerifyMFA enrolls the pre-imported identity on zet, enables MFA, and
 // completes enrollment with a valid TOTP, asserting the VerifyMFA response and
-// the mfa:enrollment_verification event report success. Returns the enrollment
-// and its TOTP secret.
-func EnrollAndVerifyMFA(t *testing.T, overlay *Overlay, zet *ZET, name string) (MFAEnrollment, string) {
+// the mfa:enrollment_verification event report success. Returns the
+// enrollment_challenge event (its ProvisioningUrl/RecoveryCodes/Identifier) and
+// the TOTP secret.
+func EnrollAndVerifyMFA(t *testing.T, overlay *Overlay, zet *ZET, name string) (MfaEvent, string) {
 	added := FetchAndEnrollJwt(t, overlay, zet, name)
 	require.False(t, added.Id.MfaEnabled, "identity:added MfaEnabled=%t before EnableMFA", added.Id.MfaEnabled)
 	zet.WaitForControllerEvent(t, "connected", name)
 
 	enableResp := zet.EnableMFA(t, added.Id.Identifier)
 	enableResp.AssertSuccess()
-	require.NotEmpty(t, enableResp.Data.ProvisioningUrl, "EnableMFA Data.ProvisioningUrl should be non-empty")
-	require.NotEmpty(t, enableResp.Data.RecoveryCodes, "EnableMFA Data.RecoveryCodes should be non-empty")
-	require.False(t, enableResp.Data.IsVerified, "EnableMFA Data.IsVerified should be false before verify_mfa")
-	enrollment := enableResp.Data
-	enrollment.Identifier = added.Id.Identifier
 
 	challengeEvent := zet.WaitForMfaEvent(t, "enrollment_challenge", name)
 	challengeEvent.AssertSuccess()
+	require.NotEmpty(t, challengeEvent.ProvisioningUrl, "enrollment_challenge ProvisioningUrl should be non-empty")
+	require.NotEmpty(t, challengeEvent.RecoveryCodes, "enrollment_challenge RecoveryCodes should be non-empty")
 
-	secret := ParseTOTPSecret(t, enrollment.ProvisioningUrl)
+	secret := ParseTOTPSecret(t, challengeEvent.ProvisioningUrl)
 	code := GenerateTOTP(t, secret, time.Now())
 
-	verifyResp := zet.VerifyMFA(t, enrollment.Identifier, code)
+	verifyResp := zet.VerifyMFA(t, challengeEvent.Identifier, code)
 	verifyResp.AssertSuccess()
 
 	updatedEvent := zet.WaitForIdentityEvent(t, "updated", name)
@@ -117,7 +115,7 @@ func EnrollAndVerifyMFA(t *testing.T, overlay *Overlay, zet *ZET, name string) (
 	verificationEvent := zet.WaitForMfaEvent(t, "enrollment_verification", name)
 	verificationEvent.AssertSuccess()
 
-	return enrollment, secret
+	return challengeEvent, secret
 }
 
 // GenerateTOTP derives the current TOTP for the base32-encoded secret.
