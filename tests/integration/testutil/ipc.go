@@ -98,7 +98,6 @@ func openCommandPipe(path string, done <-chan struct{}) (*CommandsClient, error)
 		}
 		select {
 		case <-done:
-			log.Printf("ipc: dial connected %s", path)
 			return nil, fmt.Errorf("process exited before %s became dialable: %v", path, err)
 		case <-time.After(dialRetryInterval):
 		}
@@ -120,7 +119,6 @@ func subscribeToEventPipe(path string, done <-chan struct{}) (*EventClient, erro
 		}
 		select {
 		case <-done:
-			log.Printf("ipc: dial event pipe connected %s", path)
 			return nil, fmt.Errorf("process exited before event pipe %s became dialable: %v", path, err)
 		case <-time.After(dialRetryInterval):
 		}

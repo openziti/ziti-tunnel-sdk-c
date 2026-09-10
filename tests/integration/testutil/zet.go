@@ -166,16 +166,36 @@ func (z *ZET) Start() error {
 
 	cmds, err := z.DialIPC()
 	if err != nil {
-		return fmt.Errorf("zet[%s] command pipe: %w", z.Discriminator, err)
+		return fmt.Errorf("zet[%s] command pipe: %w%s", z.Discriminator, err, z.exitDetail())
 	}
 	z.CommandsClient = cmds
 
 	events, err := subscribeToEventPipe(EventPipePathFor(z.Discriminator), z.cmdDone)
 	if err != nil {
-		return fmt.Errorf("zet[%s] event pipe: %w", z.Discriminator, err)
+		return fmt.Errorf("zet[%s] event pipe: %w%s", z.Discriminator, err, z.exitDetail())
 	}
 	z.EventClient = events
 	return nil
+}
+
+// exitDetail is the process exit status and the tail of its log, for a Start that lost the process.
+// ZET's stdout and stderr go straight to the log file (see Start), so the tail is read back from disk.
+func (z *ZET) exitDetail() string {
+	select {
+	case <-z.cmdDone:
+	default:
+		return ""
+	}
+	const tailBytes = 2000
+	raw, err := os.ReadFile(z.LogFile())
+	if err != nil {
+		return fmt.Sprintf(" (%s)\n--- zet[%s] log unreadable: %v", z.cmd.ProcessState, z.Discriminator, err)
+	}
+	output := string(raw)
+	if len(output) > tailBytes {
+		output = "..." + output[len(output)-tailBytes:]
+	}
+	return fmt.Sprintf(" (%s)\n--- zet[%s] log tail ---\n%s", z.cmd.ProcessState, z.Discriminator, output)
 }
 
 // A surviving ZET orphans wintun state and breaks subsequent tests, so abort rather than let an orphan hide.
