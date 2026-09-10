@@ -40,6 +40,7 @@
 #include <linux/if_tun.h>
 
 #include <ziti/ziti_log.h>
+#include <ziti/ziti_tunnel.h>
 
 #include "tun.h"
 #include "../linux/utils.h"
