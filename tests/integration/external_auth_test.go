@@ -117,6 +117,9 @@ func TestExternalAuthSecondary(t *testing.T) {
 	if state.overlay.Auth == testutil.AuthLegacy {
 		t.Skip("secondary ext-jwt auth never completes on legacy auth, remove when https://github.com/openziti/ziti-tunnel-sdk-c/issues/1415 is closed")
 	}
+	if state.overlay.ZitiMajor < 2 {
+		t.Skipf("secondary ext-jwt on the OIDC path needs ziti 2.0+ (openziti/ziti#3561); controller is v%d.%d", state.overlay.ZitiMajor, state.overlay.ZitiMinor)
+	}
 	c := newExtAuthContext(t)
 	c.overlay.SetAuthPolicySecondaryExtJwtSigner(t, "test_ext_auth_secondary_policy", c.workingSigner.id)
 
