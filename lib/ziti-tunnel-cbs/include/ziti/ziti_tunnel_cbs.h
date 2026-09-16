@@ -269,7 +269,8 @@ XX(MFAEvent, __VA_ARGS__)      \
 XX(MFAStatusEvent, __VA_ARGS__) \
 XX(ConfigEvent, __VA_ARGS__)      \
 XX(RouterEvent, __VA_ARGS__) \
-XX(ExtJWTEvent, __VA_ARGS__)
+XX(ExtJWTEvent, __VA_ARGS__) \
+XX(PostureStatusEvent, __VA_ARGS__)
 
 DECLARE_ENUM(TunnelEvent, TUNNEL_EVENTS)
 
@@ -344,12 +345,23 @@ XX(status, rt_status, none, status, __VA_ARGS__) \
 XX(address, model_string, none, address, __VA_ARGS__) \
 XX(version, model_string, none, version, __VA_ARGS__)
 
+/* only PC_Process/PC_Process_Multi populate paths/missing_paths today; future posture
+ * check types are expected to add their own fields here, keyed off query_type, the same
+ * way ziti-sdk-c's ziti_posture_status_event grows its union */
+#define POSTURE_STATUS_EVENT_MODEL(XX, ...)                    \
+BASE_EVENT_MODEL(XX, __VA_ARGS__)                             \
+XX(query_type, ziti_posture_query_type, none, query_type, __VA_ARGS__) \
+XX(services, ziti_service, array, services, __VA_ARGS__)      \
+XX(paths, model_string, array, paths, __VA_ARGS__)            \
+XX(missing_paths, model_string, array, missing_paths, __VA_ARGS__)
+
 DECLARE_MODEL(base_event, BASE_EVENT_MODEL)
 DECLARE_MODEL(ziti_ctx_event, ZTX_EVENT_MODEL)
 DECLARE_MODEL(mfa_event, MFA_EVENT_MODEL)
 DECLARE_MODEL(service_event, ZTX_SVC_EVENT_MODEL)
 DECLARE_MODEL(config_event, CONFIG_EVENT_MODEL)
 DECLARE_MODEL(router_event, ROUTER_EVENT_MODEL)
+DECLARE_MODEL(posture_status_event, POSTURE_STATUS_EVENT_MODEL)
 
 DECLARE_MODEL(jwt_provider, EXT_JWT_PROVIDER)
 DECLARE_MODEL(ext_signer_event, EXT_SIGNER_EVENT_MODEL)

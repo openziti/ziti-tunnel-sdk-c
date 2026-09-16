@@ -63,6 +63,15 @@ XX(Name, model_string, none, Name, __VA_ARGS__) \
 XX(Address, model_string, none, Address, __VA_ARGS__) \
 XX(Version, model_string, none, Version, __VA_ARGS__)
 
+/* only PROCESS/PROCESS_MULTI populate Paths/MissingPaths today; future posture check
+ * types are expected to add their own fields here, keyed off QueryType */
+#define TUNNEL_POSTURE_STATUS_EVENT(XX, ...) \
+ACTION_EVENT(XX, __VA_ARGS__) \
+XX(QueryType, model_string, none, QueryType, __VA_ARGS__) \
+XX(Services, tunnel_service, array, Services, __VA_ARGS__) \
+XX(Paths, model_string, array, Paths, __VA_ARGS__) \
+XX(MissingPaths, model_string, array, MissingPaths, __VA_ARGS__)
+
 #define TUNNEL_NOTIFICATION_MESSAGE(XX, ...) \
 XX(IdentityName, model_string, none, IdentityName, __VA_ARGS__) \
 XX(Identifier, model_string, none, Identifier, __VA_ARGS__) \
@@ -104,6 +113,7 @@ DECLARE_MODEL(services_event, SERVICES_EVENT)
 DECLARE_MODEL(mfa_status_event, MFA_STATUS_EVENT)
 DECLARE_MODEL(tunnel_metrics_event, TUNNEL_METRICS_EVENT)
 DECLARE_MODEL(tunnel_router_event, TUNNEL_ROUTER_EVENT)
+DECLARE_MODEL(tunnel_posture_status_event, TUNNEL_POSTURE_STATUS_EVENT)
 DECLARE_MODEL(notification_message, TUNNEL_NOTIFICATION_MESSAGE)
 DECLARE_MODEL(notification_event, TUNNEL_NOTIFICATION_EVENT)
 
