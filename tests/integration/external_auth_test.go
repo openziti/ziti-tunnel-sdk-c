@@ -122,6 +122,7 @@ func TestExternalAuthSecondary(t *testing.T) {
 	}
 	c := newExtAuthContext(t)
 	c.overlay.SetAuthPolicySecondaryExtJwtSigner(t, "test_ext_auth_secondary_policy", c.workingSigner.id)
+	c.overlay.WaitForDataModelConsensus()
 
 	t.Run("secondaryExtJwtCompletes", c.secondaryExtJwtCompletes)
 	t.Run("secondaryExtJwtReauthAsksForLogin", c.secondaryExtJwtReauthAsksForLogin)
