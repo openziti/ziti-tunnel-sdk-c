@@ -1233,6 +1233,23 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
             break;
         }
 
+        case ZitiPostureStatusEvent: {
+            const struct ziti_posture_status_event *pe = &event->posture_status;
+            posture_status_event ev = {
+                    .event_type = TunnelEvents.PostureStatusEvent,
+                    .identifier = instance->identifier,
+                    .query_type = pe->query_type,
+                    .services = pe->services,
+            };
+            if (pe->query_type == ziti_posture_query_type_PC_Process ||
+                pe->query_type == ziti_posture_query_type_PC_Process_Multi) {
+                ev.paths = (model_string_array) pe->process.paths;
+                ev.missing_paths = (model_string_array) pe->process.missing_paths;
+            }
+            CMD_CTX.on_event((const base_event *) &ev);
+            break;
+        }
+
         default:
             ZITI_LOG(WARN, "unhandled event type[%d]", event->type);
 
@@ -1618,6 +1635,7 @@ IMPL_MODEL(mfa_event, MFA_EVENT_MODEL)
 IMPL_MODEL(service_event, ZTX_SVC_EVENT_MODEL)
 IMPL_MODEL(config_event, CONFIG_EVENT_MODEL)
 IMPL_MODEL(router_event, ROUTER_EVENT_MODEL)
+IMPL_MODEL(posture_status_event, POSTURE_STATUS_EVENT_MODEL)
 IMPL_MODEL(tunnel_command_inline, TUNNEL_CMD_INLINE)
 
 IMPL_MODEL(jwt_provider, EXT_JWT_PROVIDER)

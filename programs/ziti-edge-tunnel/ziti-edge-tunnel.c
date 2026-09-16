@@ -927,6 +927,41 @@ static void on_event(const base_event *ev) {
             }
             break;
         }
+        case TunnelEvent_PostureStatusEvent: {
+            if (id != NULL) {
+                const posture_status_event *pse = (const posture_status_event *) ev;
+                ZITI_LOG(INFO, "ztx[%s] posture status: %s", id->Identifier,
+                         ziti_posture_query_types.name(pse->query_type));
+                tunnel_posture_status_event tpse = {
+                        .Op = "posturestatus",
+                        .Action = (char *) event_name(event_updated),
+                        .Identifier = ev->identifier,
+                        .QueryType = (char *) ziti_posture_query_types.name(pse->query_type),
+                        .Paths = pse->paths,
+                        .MissingPaths = pse->missing_paths,
+                };
+                if (id->FingerPrint) {
+                    tpse.Fingerprint = id->FingerPrint;
+                }
+                if (pse->services != NULL) {
+                    int svc_count = 0;
+                    for (ziti_service **zs = pse->services; *zs != NULL; zs++) svc_count++;
+                    tpse.Services = calloc(svc_count + 1, sizeof(tunnel_service *));
+                    for (int svc_idx = 0; pse->services[svc_idx]; svc_idx++) {
+                        tpse.Services[svc_idx] = get_tunnel_service(id, pse->services[svc_idx]);
+                    }
+                }
+                send_events_message(&tpse, (to_json_fn) tunnel_posture_status_event_to_json, true);
+                if (tpse.Services != NULL) {
+                    for (int svc_idx = 0; tpse.Services[svc_idx] != NULL; svc_idx++) {
+                        free_tunnel_service(tpse.Services[svc_idx]);
+                        free(tpse.Services[svc_idx]);
+                    }
+                    free(tpse.Services);
+                }
+            }
+            break;
+        }
         case TunnelEvent_Unknown:
         default:
             ZITI_LOG(WARN, "unhandled event received: %d", ev->event_type);
