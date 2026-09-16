@@ -154,7 +154,7 @@ func (c *extAuthContext) secondaryExtJwtCompletes(t *testing.T) {
 }
 
 func (c *extAuthContext) secondaryExtJwtReauthAsksForLogin(t *testing.T) {
-	testutil.RunWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeoutOf(t, reauthTestTimeout, func(t *testing.T) {
 		idName := "test_ext_auth_secondary_reauth"
 		jwt := c.overlay.GetJwtFromController(t, idName)
 		identityData := testutil.NewJwtIdentityData(idName, jwt)
@@ -178,7 +178,7 @@ func (c *extAuthContext) secondaryExtJwtReauthAsksForLogin(t *testing.T) {
 }
 
 func (c *extAuthContext) secondaryExtJwtPolicyAddedAsksForLogin(t *testing.T) {
-	testutil.RunWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeoutOf(t, reauthTestTimeout, func(t *testing.T) {
 		idName := "test_ext_auth_secondary_policy_added"
 		added := testutil.FetchAndEnrollJwt(t, c.overlay, c.zet, idName)
 		c.zet.WaitForControllerEvent(t, "connected", idName)
@@ -196,7 +196,7 @@ func (c *extAuthContext) secondaryExtJwtPolicyAddedAsksForLogin(t *testing.T) {
 }
 
 func (c *extAuthContext) secondaryExtJwtPolicyRemovedConnectsWithoutLogin(t *testing.T) {
-	testutil.RunWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeoutOf(t, reauthTestTimeout, func(t *testing.T) {
 		idName := "test_ext_auth_secondary_policy_removed"
 		jwt := c.overlay.GetJwtFromController(t, idName)
 		identityData := testutil.NewJwtIdentityData(idName, jwt)
