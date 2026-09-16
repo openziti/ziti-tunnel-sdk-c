@@ -879,7 +879,7 @@ static void listen_opts_from_host_cfg_v1(ziti_listen_opts *opts, const ziti_list
         opts->connect_timeout_seconds = cfg_to > 0 ? cfg_to : DEFAULT_LISTEN_OPTS.connect_timeout_seconds;
         opts->terminator_cost = config_listen_options->cost;
 
-        const char *prec = config_listen_options->precendence;
+        const char *prec = config_listen_options->precedence;
         if (prec) {
             if (strcmp(prec, "default") == 0) {
                 opts->terminator_precedence = PRECEDENCE.DEFAULT;
