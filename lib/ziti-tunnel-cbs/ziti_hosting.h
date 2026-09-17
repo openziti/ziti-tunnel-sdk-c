@@ -34,6 +34,11 @@ struct allowed_hostname_s {
 
 typedef LIST_HEAD(allowed_addr_list, allowed_hostname_s) allowed_hostnames_t;
 
+// opaque; defined in health_checks.c. Kept as a forward declaration here (rather than
+// including health_checks.h) so this header doesn't need to know about the health check
+// engine's internals -- health_checks.h includes this header, not the other way around.
+struct health_checks_ctx_s;
+
 struct hosted_service_ctx_s {
     char *       service_name;
     const void * ziti_ctx;
@@ -64,6 +69,16 @@ struct hosted_service_ctx_s {
     const char *proxy_addr;
     tlsuv_connector_t *proxy_connector;
     tlsuv_connector_t *connector;
+
+    // set by hosted_listen_cb() once the bind succeeds; used by the health check engine
+    // to push cost/precedence updates and health events for this hosted service.
+    ziti_connection serv;
+    // the cost/precedence in effect before any health check has run (from listenOptions,
+    // defaulted otherwise) -- the health check engine treats this as the floor/reset
+    // value for "decrease cost"/"mark healthy" actions.
+    uint16_t health_baseline_cost;
+    uint8_t  health_baseline_precedence;
+    struct health_checks_ctx_s *health_checks;
 };
 
 struct tunneled_service_s {

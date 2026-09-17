@@ -28,6 +28,7 @@
 #include <memory.h>
 #include <ziti/ziti_tunnel_cbs.h>
 #include "ziti_hosting.h"
+#include "health_checks.h"
 #include "tlsuv/tlsuv.h"
 #include "../ziti-tunnel/tunnel_l2.h"
 
@@ -93,6 +94,16 @@ static void free_hosted_service_ctx(struct hosted_service_ctx_s *hosted_ctx) {
     if (hosted_ctx == NULL) {
         return;
     }
+
+    // must run before the config is freed below: a health check still in flight holds
+    // pointers borrowed from hosted_ctx->cfg (e.g. a ziti_check_action's
+    // consecutive_events/duration), and health check teardown is asynchronous.
+    // host_health_checks_stop() marks every check "stopping" synchronously, so none of
+    // those borrowed pointers are read again after this call returns -- even though the
+    // uv handles/http clients they own may take a little longer to actually close.
+    host_health_checks_stop(hosted_ctx->health_checks);
+    hosted_ctx->health_checks = NULL;
+
     safe_free(hosted_ctx->service_name);
     switch (hosted_ctx->cfg_type) {
         case HOST_CFG_V1:
@@ -857,6 +868,8 @@ static void hosted_listen_cb(ziti_connection serv, int status) {
     }
 
     ziti_host_set_conn((ziti_context) host_ctx->ziti_ctx, host_ctx->service_name, serv);
+    host_ctx->serv = serv;
+    host_ctx->health_checks = host_health_checks_start(host_ctx);
 }
 
 #define DEFAULT_LISTEN_OPTS (ziti_listen_opts){ \
@@ -924,6 +937,11 @@ host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, tunneler_context tnlr, const char *s
             const ziti_host_cfg_v1 *host_v1_cfg = cfg;
             listen_opts_from_host_cfg_v1(&listen_opts, host_v1_cfg->listen_options);
             listen_opts_p = &listen_opts;
+            // remember the pre-health-check cost/precedence: the health check engine
+            // (started once the bind succeeds, in hosted_listen_cb) treats these as the
+            // baseline/reset values for "decrease cost"/"mark healthy" actions.
+            host_ctx->health_baseline_cost = listen_opts.terminator_cost;
+            host_ctx->health_baseline_precedence = listen_opts.terminator_precedence;
             int i;
 
             host_ctx->forward_protocol = host_v1_cfg->forward_protocol;
