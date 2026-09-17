@@ -553,6 +553,18 @@ func (c *CommandsClient) GetMFACodes(t *testing.T, identifier, code string) *MFA
 	return resp
 }
 
+func (c *CommandsClient) UpdateTunIPv4(t *testing.T, data TunIPv4Data) *ServiceResponse {
+	f := UpdateTunIPv4Function{
+		ServiceFunction: NewServiceFunction("UpdateTunIpv4"),
+		Data:            data,
+	}
+	t.Logf("sending UpdateTunIpv4")
+	resp, err := send[UpdateTunIPv4Function, ServiceResponse](&c.IPCClient, f)
+	require.NoError(t, err, "failed to send UpdateTunIpv4\n%s", c.LogPath)
+	resp.t = t
+	return resp
+}
+
 func (c *CommandsClient) UpdateInterfaceConfig(t *testing.T, data InterfaceConfigData) *ServiceResponse {
 	f := InterfaceConfigFunction{
 		ServiceFunction: NewServiceFunction("UpdateInterfaceConfig"),
