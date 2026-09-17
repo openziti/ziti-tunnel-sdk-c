@@ -1078,33 +1078,9 @@ static int run_tunnel_host_mode(uv_loop_t *ziti_loop) {
 static int make_socket_path(uv_loop_t *loop) {
 
 #if defined(SOCKET_PATH) && !_WIN32
+#define ZITI_GRNAME "ziti"
     uv_fs_t req;
     int rc;
-
-#if defined(__ANDROID__)
-    // The "ziti" group below exists so a tunnel running as root doesn't force
-    // every CLI/UI that talks to it to also run as root - on desktop Linux/
-    // macOS that's a real, actionable choice: create the group, add your
-    // user, and the daemon and the CLI can stay at different privilege
-    // levels. Android has no equivalent to opt into. There is no /etc/group,
-    // no groupadd - getgrnam() can never succeed here, so refusing to create
-    // the socket over it doesn't nudge anyone toward the safer setup this
-    // guards elsewhere, it just breaks the socket unconditionally. And every
-    // real deployment already collapses the distinction this group protects:
-    // a rooted device runs the tunnel and any CLI as root regardless (the
-    // outcome the group exists to keep optional on other platforms), and an
-    // app embedding the tunnel has no separate non-root caller for a Unix
-    // group to admit in the first place - Android's own per-app sandboxing
-    // already stands in for it. So just create the socket directory.
-    rc = uv_fs_mkdir(loop, &req, SOCKET_PATH, S_IRWXU, NULL);
-    uv_fs_req_cleanup(&req);
-    if (rc == 0 || rc == UV_EEXIST) {
-        return 0;
-    }
-    ZITI_LOG(WARN, "Cannot create socket directory '%s': %s (%d)", SOCKET_PATH, uv_strerror(rc), rc);
-    return -1;
-#else
-#define ZITI_GRNAME "ziti"
 
     // set effective group to "ziti"
     struct group *ziti_grp = getgrnam(ZITI_GRNAME);
@@ -1184,8 +1160,7 @@ static int make_socket_path(uv_loop_t *loop) {
     uv_fs_req_cleanup(&req);
     return perms_ok ? 0 : -1;
 
-#endif // defined(__ANDROID__)
-#endif // defined(SOCKET_PATH) && !_WIN32
+#endif
 
     return 0;
 }
