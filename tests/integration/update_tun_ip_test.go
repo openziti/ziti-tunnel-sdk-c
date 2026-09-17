@@ -22,15 +22,43 @@ import (
 	"github.com/openziti/ziti-tunnel-sdk-c/tests/integration/testutil"
 )
 
+// These cover the rejection paths only. A successful update is exercised by
+// TestWindowsUpgrade's UpdateInterfaceConfig, which drives the same command with
+// a valid IP on a dedicated instance and asserts the persisted config.
 func TestUpdateTunIP(t *testing.T) {
 	t.Run("withPrefixAndNoIpRejected", withPrefixAndNoIpRejected)
+	t.Run("withPrefixTooSmallRejected", withPrefixTooSmallRejected)
+	t.Run("withPrefixTooLargeRejected", withPrefixTooLargeRejected)
+	t.Run("withMalformedIpRejected", withMalformedIpRejected)
 }
 
-// A prefix with no tun IP used to crash the daemon (strdup(NULL) before the null
-// check). It must now be rejected with the daemon still up.
 func withPrefixAndNoIpRejected(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
 		resp := state.zetClient.UpdateTunIPv4(t, testutil.TunIPv4Data{TunPrefixLength: 16})
 		resp.AssertFail(500, "Tun IP is null")
+	})
+}
+
+func withPrefixTooSmallRejected(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
+		ip := "100.64.0.1"
+		resp := state.zetClient.UpdateTunIPv4(t, testutil.TunIPv4Data{TunIPv4: &ip, TunPrefixLength: 9})
+		resp.AssertFail(500, "prefix length should be between 10 and 18")
+	})
+}
+
+func withPrefixTooLargeRejected(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
+		ip := "100.64.0.1"
+		resp := state.zetClient.UpdateTunIPv4(t, testutil.TunIPv4Data{TunIPv4: &ip, TunPrefixLength: 25})
+		resp.AssertFail(500, "prefix length should be between 10 and 18")
+	})
+}
+
+func withMalformedIpRejected(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
+		ip := "not-an-ip"
+		resp := state.zetClient.UpdateTunIPv4(t, testutil.TunIPv4Data{TunIPv4: &ip, TunPrefixLength: 16})
+		resp.AssertFail(500, "Invalid IP address")
 	})
 }
