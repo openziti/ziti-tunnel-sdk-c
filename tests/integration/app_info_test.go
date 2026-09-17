@@ -38,7 +38,12 @@ func TestAppInfo(t *testing.T) {
 
 		testutil.FetchAndEnrollJwt(t, state.overlay, zet, idName)
 
-		sdkInfo := state.overlay.GetSdkInfo(t, idName)
+		// the controller may patch sdkInfo from a background task after the login response, so a read can beat the write
+		var sdkInfo testutil.SdkInfo
+		require.Eventually(t, func() bool {
+			sdkInfo = state.overlay.GetSdkInfo(t, idName)
+			return sdkInfo.AppId != ""
+		}, 10*time.Second, 200*time.Millisecond, "controller never recorded sdkInfo for %s", idName)
 		require.Equal(t, "ziti-edge-tunnel", sdkInfo.AppId,
 			"standalone appId must be the fixed string, not argv[0]")
 		require.Equal(t, zet.Version, sdkInfo.AppVersion,

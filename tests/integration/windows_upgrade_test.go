@@ -186,7 +186,9 @@ func restoreOnlyCopiesMissingFiles(t *testing.T) {
 
 func assertIdentityUnchanged(t *testing.T, identityFile string, enrolledIdentity testutil.IdentityFileContent) {
 	identityAfterRecovery := testutil.ReadIdentityFile(t, identityFile)
-	require.True(t, enrolledIdentity.ID == identityAfterRecovery.ID, "existing identity was overwritten by the backup")
+	require.Equal(t, enrolledIdentity.ID.Cert, identityAfterRecovery.ID.Cert)
+	require.Equal(t, enrolledIdentity.ID.Key, identityAfterRecovery.ID.Key)
+	require.Equal(t, enrolledIdentity.ID.CA, identityAfterRecovery.ID.CA)
 }
 
 // runZetBeforeUpgrade starts ZET, enrolls the context's identity, updates the
