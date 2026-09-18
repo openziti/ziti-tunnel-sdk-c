@@ -88,4 +88,14 @@ struct tunneled_service_s {
 
 void accept_resolver_conn(ziti_connection conn, allowed_hostnames_t *allowed);
 
+/**
+ * Tears down a hosted_service_ctx_s: stops its health check engine (if any) and frees
+ * its members. Normally reached via ziti_close(serv, ziti_hosted_serv_conn_close_cb) --
+ * but ziti_tunnel_cbs.c's stop_hosting() calls this directly instead when the underlying
+ * ziti_connection is already gone (ziti-sdk-c closed and released it itself before
+ * reporting ZITI_SERVICE_UNAVAILABLE or the loss of ZITI_CAN_BIND), since there is then
+ * no live connection left to hang a close callback off of. Safe to call with NULL.
+ */
+void free_hosted_service_ctx(struct hosted_service_ctx_s *hosted_ctx);
+
 #endif //ZITI_TUNNEL_SDK_C_ZITI_HOSTING_H

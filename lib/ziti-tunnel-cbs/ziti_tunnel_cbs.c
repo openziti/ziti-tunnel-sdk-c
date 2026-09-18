@@ -606,6 +606,15 @@ static void stop_hosting(struct ziti_instance_s *inst, ziti_host_t *zh) {
     model_map_remove(&inst->hosts, zh->service_name);
     if (zh->serv) {
         ziti_close(zh->serv, ziti_hosted_serv_conn_close_cb);
+    } else if (zh->host_ctx) {
+        // zh->serv is only ever pre-nulled by callers who already know ziti-sdk-c has
+        // closed and released that connection itself (ZITI_SERVICE_UNAVAILABLE, or the
+        // loss of ZITI_CAN_BIND) -- there is no live connection left to hang
+        // ziti_hosted_serv_conn_close_cb off of. Free the hosting context directly
+        // instead: skipping this used to just leak host_ctx harmlessly, but its health
+        // check engine (if any) keeps its timers running otherwise, referencing zh->cfg,
+        // which free_ziti_host() below is about to free out from under them.
+        free_hosted_service_ctx(zh->host_ctx);
     }
     free_ziti_host(zh);
 }
