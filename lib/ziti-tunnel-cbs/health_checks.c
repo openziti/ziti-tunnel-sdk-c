@@ -35,6 +35,11 @@
 #include "health_checks_internal.h"
 #include "health_checks.h"
 
+#if _WIN32
+#define strcasecmp _stricmp
+#define strncasecmp _strnicmp
+#endif
+
 #define TIME_CLAMP_MS 100UL
 #define MIN_CHECK_INTERVAL_MS 1000UL
 #define MIN_CHECK_TIMEOUT_MS 250UL
