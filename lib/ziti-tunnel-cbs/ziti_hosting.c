@@ -90,7 +90,7 @@ static void ziti_conn_close_cb(ziti_connection zc) {
     } \
 } while(0)
 
-static void free_hosted_service_ctx(struct hosted_service_ctx_s *hosted_ctx) {
+void free_hosted_service_ctx(struct hosted_service_ctx_s *hosted_ctx) {
     if (hosted_ctx == NULL) {
         return;
     }
