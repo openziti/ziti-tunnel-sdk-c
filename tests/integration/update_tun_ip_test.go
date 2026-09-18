@@ -28,6 +28,7 @@ import (
 func TestUpdateTunIP(t *testing.T) {
 	t.Run("withPrefixAndNoIpRejected", withPrefixAndNoIpRejected)
 	t.Run("withEmptyIpRejected", withEmptyIpRejected)
+	t.Run("withWhitespaceIpRejected", withWhitespaceIpRejected)
 	t.Run("withPrefixTooSmallRejected", withPrefixTooSmallRejected)
 	t.Run("withPrefixTooLargeRejected", withPrefixTooLargeRejected)
 	t.Run("withMalformedIpRejected", withMalformedIpRejected)
@@ -43,6 +44,14 @@ func withPrefixAndNoIpRejected(t *testing.T) {
 func withEmptyIpRejected(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
 		ip := ""
+		resp := state.zetClient.UpdateTunIPv4(t, testutil.TunIPv4Data{TunIPv4: &ip, TunPrefixLength: 16})
+		resp.AssertFail(500, "Invalid IP address")
+	})
+}
+
+func withWhitespaceIpRejected(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
+		ip := "   "
 		resp := state.zetClient.UpdateTunIPv4(t, testutil.TunIPv4Data{TunIPv4: &ip, TunPrefixLength: 16})
 		resp.AssertFail(500, "Invalid IP address")
 	})
