@@ -126,44 +126,46 @@ func anyTerminator(testutil.Terminator) bool { return true }
 // its own backend. Taking the backend down should mark the terminator's precedence
 // "failed"; bringing it back should return it to "default".
 func TestHealthCheckPortCheckFailAndRecover(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
+	testutil.RunWithTimeoutOf(t, 70*time.Second, func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
 
-	backend := testutil.StartTCPBackend(t)
-	port := splitPort(t, backend.Addr())
+		backend := testutil.StartTCPBackend(t)
+		port := splitPort(t, backend.Addr())
 
-	names := newHealthCheckNames(t)
-	setupHealthCheckService(t, state.zetClient, names, "tcp", "127.0.0.1", port,
-		0, "",
-		[]testutil.PortCheckSpec{{
-			Address:  backend.Addr(),
-			Interval: "250ms",
-			Timeout:  "250ms",
-			Actions: []testutil.HealthCheckAction{
-				{Trigger: "fail", Action: "mark unhealthy"},
-				{Trigger: "pass", Action: "mark healthy"},
-			},
-		}},
-		nil,
-	)
+		names := newHealthCheckNames(t)
+		setupHealthCheckService(t, state.zetClient, names, "tcp", "127.0.0.1", port,
+			0, "",
+			[]testutil.PortCheckSpec{{
+				Address:  backend.Addr(),
+				Interval: "250ms",
+				Timeout:  "250ms",
+				Actions: []testutil.HealthCheckAction{
+					{Trigger: "fail", Action: "mark unhealthy"},
+					{Trigger: "pass", Action: "mark healthy"},
+				},
+			}},
+			nil,
+		)
 
-	bindCtx, bindCancel := context.WithTimeout(ctx, 30*time.Second)
-	defer bindCancel()
-	term := state.overlay.WaitForTerminator(t, bindCtx, names.service, anyTerminator)
-	require.Equal(t, "default", term.Precedence, "terminator should start at default precedence")
+		bindCtx, bindCancel := context.WithTimeout(ctx, 30*time.Second)
+		defer bindCancel()
+		term := state.overlay.WaitForTerminator(t, bindCtx, names.service, anyTerminator)
+		require.Equal(t, "default", term.Precedence, "terminator should start at default precedence")
 
-	backend.Stop()
-	failCtx, failCancel := context.WithTimeout(ctx, 30*time.Second)
-	defer failCancel()
-	state.overlay.WaitForTerminator(t, failCtx, names.service, func(term testutil.Terminator) bool {
-		return term.Precedence == "failed"
-	})
+		backend.Stop()
+		failCtx, failCancel := context.WithTimeout(ctx, 30*time.Second)
+		defer failCancel()
+		state.overlay.WaitForTerminator(t, failCtx, names.service, func(term testutil.Terminator) bool {
+			return term.Precedence == "failed"
+		})
 
-	backend.Start()
-	recoverCtx, recoverCancel := context.WithTimeout(ctx, 30*time.Second)
-	defer recoverCancel()
-	state.overlay.WaitForTerminator(t, recoverCtx, names.service, func(term testutil.Terminator) bool {
-		return term.Precedence == "default"
+		backend.Start()
+		recoverCtx, recoverCancel := context.WithTimeout(ctx, 30*time.Second)
+		defer recoverCancel()
+		state.overlay.WaitForTerminator(t, recoverCtx, names.service, func(term testutil.Terminator) bool {
+			return term.Precedence == "default"
+		})
 	})
 }
 
@@ -173,47 +175,49 @@ func TestHealthCheckPortCheckFailAndRecover(t *testing.T) {
 // accumulation, not a one-shot bump); recovery should walk it back down to exactly the
 // baseline, never below.
 func TestHealthCheckPortCheckCostRatchet(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
-	defer cancel()
+	testutil.RunWithTimeoutOf(t, 100*time.Second, func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+		defer cancel()
 
-	backend := testutil.StartTCPBackend(t)
-	port := splitPort(t, backend.Addr())
+		backend := testutil.StartTCPBackend(t)
+		port := splitPort(t, backend.Addr())
 
-	const baselineCost = 10
-	const step = 20
+		const baselineCost = 10
+		const step = 20
 
-	names := newHealthCheckNames(t)
-	setupHealthCheckService(t, state.zetClient, names, "tcp", "127.0.0.1", port,
-		baselineCost, "default",
-		[]testutil.PortCheckSpec{{
-			Address:  backend.Addr(),
-			Interval: "250ms",
-			Timeout:  "250ms",
-			Actions: []testutil.HealthCheckAction{
-				{Trigger: "fail", Action: fmt.Sprintf("increase cost %d", step)},
-				{Trigger: "pass", Action: fmt.Sprintf("decrease cost %d", step)},
-			},
-		}},
-		nil,
-	)
+		names := newHealthCheckNames(t)
+		setupHealthCheckService(t, state.zetClient, names, "tcp", "127.0.0.1", port,
+			baselineCost, "default",
+			[]testutil.PortCheckSpec{{
+				Address:  backend.Addr(),
+				Interval: "250ms",
+				Timeout:  "250ms",
+				Actions: []testutil.HealthCheckAction{
+					{Trigger: "fail", Action: fmt.Sprintf("increase cost %d", step)},
+					{Trigger: "pass", Action: fmt.Sprintf("decrease cost %d", step)},
+				},
+			}},
+			nil,
+		)
 
-	bindCtx, bindCancel := context.WithTimeout(ctx, 30*time.Second)
-	defer bindCancel()
-	term := state.overlay.WaitForTerminator(t, bindCtx, names.service, anyTerminator)
-	require.Equal(t, baselineCost, term.Cost, "terminator should start at baseline cost")
+		bindCtx, bindCancel := context.WithTimeout(ctx, 30*time.Second)
+		defer bindCancel()
+		term := state.overlay.WaitForTerminator(t, bindCtx, names.service, anyTerminator)
+		require.Equal(t, baselineCost, term.Cost, "terminator should start at baseline cost")
 
-	backend.Stop()
-	riseCtx, riseCancel := context.WithTimeout(ctx, 30*time.Second)
-	defer riseCancel()
-	state.overlay.WaitForTerminator(t, riseCtx, names.service, func(term testutil.Terminator) bool {
-		return term.Cost >= baselineCost+2*step
-	})
+		backend.Stop()
+		riseCtx, riseCancel := context.WithTimeout(ctx, 30*time.Second)
+		defer riseCancel()
+		state.overlay.WaitForTerminator(t, riseCtx, names.service, func(term testutil.Terminator) bool {
+			return term.Cost >= baselineCost+2*step
+		})
 
-	backend.Start()
-	recoverCtx, recoverCancel := context.WithTimeout(ctx, 30*time.Second)
-	defer recoverCancel()
-	state.overlay.WaitForTerminator(t, recoverCtx, names.service, func(term testutil.Terminator) bool {
-		return term.Cost == baselineCost
+		backend.Start()
+		recoverCtx, recoverCancel := context.WithTimeout(ctx, 30*time.Second)
+		defer recoverCancel()
+		state.overlay.WaitForTerminator(t, recoverCtx, names.service, func(term testutil.Terminator) bool {
+			return term.Cost == baselineCost
+		})
 	})
 }
 
@@ -222,57 +226,59 @@ func TestHealthCheckPortCheckCostRatchet(t *testing.T) {
 // expectStatus/expectInBody gate whether it passes; flipping the backend's response
 // should fail it and recover it the same way the portCheck tests do for a TCP dial.
 func TestHealthCheckHTTPCheckStatusAndBody(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
+	testutil.RunWithTimeoutOf(t, 70*time.Second, func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
 
-	backend := testutil.StartHTTPBackend(t)
-	backend.SetResponse(200, "healthy")
-	port := splitPort(t, backend.Addr())
+		backend := testutil.StartHTTPBackend(t)
+		backend.SetResponse(200, "healthy")
+		port := splitPort(t, backend.Addr())
 
-	names := newHealthCheckNames(t)
-	setupHealthCheckService(t, state.zetClient, names, "tcp", "127.0.0.1", port,
-		0, "",
-		nil,
-		[]testutil.HttpCheckSpec{{
-			URL:          "http://" + backend.Addr() + "/healthz",
-			Interval:     "250ms",
-			Timeout:      "250ms",
-			ExpectStatus: 200,
-			ExpectInBody: "healthy",
-			Actions: []testutil.HealthCheckAction{
-				{Trigger: "fail", Action: "mark unhealthy"},
-				{Trigger: "pass", Action: "mark healthy"},
-			},
-		}},
-	)
+		names := newHealthCheckNames(t)
+		setupHealthCheckService(t, state.zetClient, names, "tcp", "127.0.0.1", port,
+			0, "",
+			nil,
+			[]testutil.HttpCheckSpec{{
+				URL:          "http://" + backend.Addr() + "/healthz",
+				Interval:     "250ms",
+				Timeout:      "250ms",
+				ExpectStatus: 200,
+				ExpectInBody: "healthy",
+				Actions: []testutil.HealthCheckAction{
+					{Trigger: "fail", Action: "mark unhealthy"},
+					{Trigger: "pass", Action: "mark healthy"},
+				},
+			}},
+		)
 
-	bindCtx, bindCancel := context.WithTimeout(ctx, 30*time.Second)
-	defer bindCancel()
-	state.overlay.WaitForTerminator(t, bindCtx, names.service, func(term testutil.Terminator) bool {
-		return term.Precedence == "default"
-	})
+		bindCtx, bindCancel := context.WithTimeout(ctx, 30*time.Second)
+		defer bindCancel()
+		state.overlay.WaitForTerminator(t, bindCtx, names.service, func(term testutil.Terminator) bool {
+			return term.Precedence == "default"
+		})
 
-	// wrong status and body: the check should fail on both grounds
-	backend.SetResponse(500, "down")
-	failCtx, failCancel := context.WithTimeout(ctx, 30*time.Second)
-	defer failCancel()
-	state.overlay.WaitForTerminator(t, failCtx, names.service, func(term testutil.Terminator) bool {
-		return term.Precedence == "failed"
-	})
+		// wrong status and body: the check should fail on both grounds
+		backend.SetResponse(500, "down")
+		failCtx, failCancel := context.WithTimeout(ctx, 30*time.Second)
+		defer failCancel()
+		state.overlay.WaitForTerminator(t, failCtx, names.service, func(term testutil.Terminator) bool {
+			return term.Precedence == "failed"
+		})
 
-	// status matches again but body doesn't: still failing
-	backend.SetResponse(200, "not what you expected")
-	stillFailCtx, stillFailCancel := context.WithTimeout(ctx, 15*time.Second)
-	defer stillFailCancel()
-	state.overlay.WaitForTerminator(t, stillFailCtx, names.service, func(term testutil.Terminator) bool {
-		return term.Precedence == "failed"
-	})
+		// status matches again but body doesn't: still failing
+		backend.SetResponse(200, "not what you expected")
+		stillFailCtx, stillFailCancel := context.WithTimeout(ctx, 15*time.Second)
+		defer stillFailCancel()
+		state.overlay.WaitForTerminator(t, stillFailCtx, names.service, func(term testutil.Terminator) bool {
+			return term.Precedence == "failed"
+		})
 
-	// both match again: recovers
-	backend.SetResponse(200, "healthy")
-	recoverCtx, recoverCancel := context.WithTimeout(ctx, 30*time.Second)
-	defer recoverCancel()
-	state.overlay.WaitForTerminator(t, recoverCtx, names.service, func(term testutil.Terminator) bool {
-		return term.Precedence == "default"
+		// both match again: recovers
+		backend.SetResponse(200, "healthy")
+		recoverCtx, recoverCancel := context.WithTimeout(ctx, 30*time.Second)
+		defer recoverCancel()
+		state.overlay.WaitForTerminator(t, recoverCtx, names.service, func(term testutil.Terminator) bool {
+			return term.Precedence == "default"
+		})
 	})
 }
