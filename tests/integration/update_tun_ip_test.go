@@ -27,6 +27,7 @@ import (
 // a valid IP on a dedicated instance and asserts the persisted config.
 func TestUpdateTunIP(t *testing.T) {
 	t.Run("withPrefixAndNoIpRejected", withPrefixAndNoIpRejected)
+	t.Run("withEmptyIpRejected", withEmptyIpRejected)
 	t.Run("withPrefixTooSmallRejected", withPrefixTooSmallRejected)
 	t.Run("withPrefixTooLargeRejected", withPrefixTooLargeRejected)
 	t.Run("withMalformedIpRejected", withMalformedIpRejected)
@@ -35,7 +36,15 @@ func TestUpdateTunIP(t *testing.T) {
 func withPrefixAndNoIpRejected(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
 		resp := state.zetClient.UpdateTunIPv4(t, testutil.TunIPv4Data{TunPrefixLength: 16})
-		resp.AssertFail(500, "Tun IP is null")
+		resp.AssertFail(500, "Tun IP is required")
+	})
+}
+
+func withEmptyIpRejected(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
+		ip := ""
+		resp := state.zetClient.UpdateTunIPv4(t, testutil.TunIPv4Data{TunIPv4: &ip, TunPrefixLength: 16})
+		resp.AssertFail(500, "Invalid IP address")
 	})
 }
 

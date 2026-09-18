@@ -450,7 +450,7 @@ static void process_update_tun_ipv4_cmd(const char *cmd_json, tunnel_result *res
         return;
     }
     if (tunnel_tun_ip_v4_cmd.tunIP == NULL) {
-        result->error = "Tun IP is null";
+        result->error = "Tun IP is required";
         result->success = false;
         free_tunnel_tun_ip_v4(&tunnel_tun_ip_v4_cmd);
         return;
@@ -462,6 +462,8 @@ static void process_update_tun_ipv4_cmd(const char *cmd_json, tunnel_result *res
     if (ip_ptr == NULL) {
         result->error = "Invalid IP address";
         result->success = false;
+        free(tun_ip_cpy);
+        free_tunnel_tun_ip_v4(&tunnel_tun_ip_v4_cmd);
         return;
     }
     int dots = 0;
