@@ -26,6 +26,7 @@ var logLevels = []string{"NONE", "ERROR", "WARN", "INFO", "DEBUG", "VERBOSE", "T
 
 func TestSetLogLevel(t *testing.T) {
 	t.Run("succeeds", succeeds)
+	t.Run("rejectsUnknownLevel", rejectsUnknownLevel)
 }
 
 func succeeds(t *testing.T) {
@@ -37,5 +38,12 @@ func succeeds(t *testing.T) {
 
 		setLogLevelResp := state.zetClient.SetLogLevel(t, "trace")
 		setLogLevelResp.AssertSuccess()
+	})
+}
+
+func rejectsUnknownLevel(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
+		setLogLevelResp := state.zetClient.SetLogLevel(t, "bogus")
+		setLogLevelResp.AssertFail(500, "unknown log level")
 	})
 }
