@@ -55,6 +55,13 @@ struct port_check_attempt_s {
     bool passed;
     char err_buf[128];
     int pending_handle_closes;
+    // true from the moment uv_getaddrinfo() successfully queues resolve_req until its
+    // callback fires. uv_getaddrinfo_t is a request, not a handle -- unlike sock/
+    // timeout_timer, it cannot be cancelled via uv_close() (libuv has no cancel mechanism
+    // for a queued getaddrinfo request), so its callback WILL still fire later even after
+    // complete_port_check() has already run via another path (e.g. the timeout). See
+    // complete_port_check()/on_port_check_resolved().
+    bool resolve_pending;
 };
 
 struct http_check_attempt_s {
@@ -455,8 +462,11 @@ static bool split_host_port(const char *address, char *host, size_t host_len, ch
     return true;
 }
 
-static void on_attempt_handle_closed(uv_handle_t *h) {
-    struct port_check_attempt_s *attempt = h->data;
+// Decrements attempt's outstanding-async-completion count and, once it reaches 0, frees
+// attempt and reports the result. Called both from on_attempt_handle_closed() (a uv_close
+// callback) and directly from on_port_check_resolved() when a resolution completes after
+// the attempt was already finished by another path -- see complete_port_check().
+static void attempt_progress(struct port_check_attempt_s *attempt) {
     attempt->pending_handle_closes--;
     if (attempt->pending_handle_closes > 0) return;
 
@@ -466,6 +476,10 @@ static void on_attempt_handle_closed(uv_handle_t *h) {
     memcpy(err, attempt->err_buf, sizeof(err));
     free(attempt);
     on_check_attempt_complete(check, passed, err[0] ? err : NULL);
+}
+
+static void on_attempt_handle_closed(uv_handle_t *h) {
+    attempt_progress((struct port_check_attempt_s *) h->data);
 }
 
 static void complete_port_check(struct port_check_attempt_s *attempt, bool passed, const char *err) {
@@ -478,7 +492,12 @@ static void complete_port_check(struct port_check_attempt_s *attempt, bool passe
     if (!uv_is_closing((uv_handle_t *) &attempt->timeout_timer)) {
         uv_timer_stop(&attempt->timeout_timer);
     }
-    attempt->pending_handle_closes = 2;
+    // sock/timeout_timer are handles: uv_close() properly settles any request pending on
+    // them (e.g. a pending connect) before its callback fires. resolve_req is not a
+    // handle and cannot be cancelled this way -- if it's still outstanding (e.g. this
+    // completion came from the timeout, before resolution finished), its callback will
+    // still fire later and must get its own slot, or attempt gets freed out from under it.
+    attempt->pending_handle_closes = attempt->resolve_pending ? 3 : 2;
     uv_close((uv_handle_t *) &attempt->timeout_timer, on_attempt_handle_closed);
     uv_close((uv_handle_t *) &attempt->sock, on_attempt_handle_closed);
 }
@@ -491,10 +510,21 @@ static void on_port_check_connect(uv_connect_t *req, int status) {
 
 static void on_port_check_resolved(uv_getaddrinfo_t *req, int status, struct addrinfo *res) {
     struct port_check_attempt_s *attempt = req->data;
+
     if (attempt->completed) {
+        // finished via another path (the timeout) while this resolution was still
+        // outstanding. complete_port_check() already reserved a slot for this callback
+        // (see resolve_pending) since a queued getaddrinfo request cannot be cancelled;
+        // release it now.
         if (res) uv_freeaddrinfo(res);
+        attempt_progress(attempt);
         return;
     }
+
+    // mark resolution settled before any call that might lead into complete_port_check(),
+    // so its pending_handle_closes accounting (attempt->resolve_pending) is accurate.
+    attempt->resolve_pending = false;
+
     if (status != 0) {
         complete_port_check(attempt, false, uv_strerror(status));
         return;
@@ -540,8 +570,12 @@ static void start_port_check(struct health_check_s *check) {
     hints.ai_socktype = SOCK_STREAM;
 
     attempt->resolve_req.data = attempt;
+    attempt->resolve_pending = true;
     int rc = uv_getaddrinfo(loop, &attempt->resolve_req, on_port_check_resolved, host, port, &hints);
     if (rc != 0) {
+        // queuing failed synchronously -- per libuv, the callback will never fire for
+        // this request, so there is nothing to wait for.
+        attempt->resolve_pending = false;
         complete_port_check(attempt, false, uv_strerror(rc));
     }
 }
