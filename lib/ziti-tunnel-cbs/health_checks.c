@@ -632,6 +632,17 @@ static void on_http_check_body(tlsuv_http_req_t *req, char *body, ssize_t len) {
     struct http_check_attempt_s *attempt = req->data;
     if (attempt->finished) return;
 
+    // check->cfg is borrowed from host_ctx->cfg, which free_hosted_service_ctx() frees
+    // right after host_health_checks_stop() returns. That call only marks the check
+    // "stopping" and closes its timer -- it does not reach into an in-flight attempt, so
+    // this tlsuv callback can still fire (with more body data, or EOF) after the config
+    // is gone. Bail out before touching cfg; on_check_attempt_complete() ignores
+    // passed/err once stopping, so the values here don't matter.
+    if (attempt->check->stopping) {
+        finish_http_check(attempt, false, NULL);
+        return;
+    }
+
     if (len < 0) {
         const ziti_http_check *cfg = attempt->check->cfg;
         bool status_ok = (len == UV_EOF) && attempt->status_code == attempt->check->resolved_expect_status;
