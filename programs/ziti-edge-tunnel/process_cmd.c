@@ -547,18 +547,29 @@ bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void 
                 break;
             }
 
-            if (strcasecmp(ziti_log_level_label(), tunnel_set_log_level_cmd.loglevel) != 0) {
-                ziti_log_set_level_by_label(tunnel_set_log_level_cmd.loglevel);
-                ziti_tunnel_set_log_level(get_log_level(tunnel_set_log_level_cmd.loglevel));
-                const char *level = ziti_log_level_label();
-                set_log_level(level);
-                ZITI_LOG(INFO, "Log level is set to %s", level);
-            } else {
-                ZITI_LOG(INFO, "Log level is already set to %s", tunnel_set_log_level_cmd.loglevel);
+            const char *requested = tunnel_set_log_level_cmd.loglevel;
+            const char *current = ziti_log_level_label();
+            if (current != NULL && strcasecmp(current, requested) == 0) {
+                ZITI_LOG(INFO, "Log level is already set to %s", requested);
+                result.success = true;
+                result.code = IPC_SUCCESS;
+                break;
             }
+
+            // the SDK ignores an unknown label, so the label reading back unchanged is the rejection
+            ziti_log_set_level_by_label(requested);
+            const char *level = ziti_log_level_label();
+            if (level == NULL || strcasecmp(level, requested) != 0) {
+                ZITI_LOG(WARN, "unknown log level %s", requested);
+                result.error = "unknown log level";
+                result.success = false;
+                break;
+            }
+            ziti_tunnel_set_log_level(get_log_level(level));
+            set_log_level(level);
+            ZITI_LOG(INFO, "Log level is set to %s", level);
             result.success = true;
             result.code = IPC_SUCCESS;
-
             break;
         }
         case TunnelCommand_UpdateTunIpv4: {
