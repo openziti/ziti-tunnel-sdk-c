@@ -18,8 +18,10 @@ package integration_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/openziti/ziti-tunnel-sdk-c/tests/integration/testutil"
+	"github.com/stretchr/testify/require"
 )
 
 var logLevels = []string{"NONE", "ERROR", "WARN", "INFO", "DEBUG", "VERBOSE", "TRACE"}
@@ -27,6 +29,8 @@ var logLevels = []string{"NONE", "ERROR", "WARN", "INFO", "DEBUG", "VERBOSE", "T
 func TestSetLogLevel(t *testing.T) {
 	t.Run("succeeds", succeeds)
 	t.Run("rejectsUnknownLevel", rejectsUnknownLevel)
+	t.Run("rejectsEmptyLevel", rejectsEmptyLevel)
+	t.Run("rejectsWhitespaceLevel", rejectsWhitespaceLevel)
 }
 
 func succeeds(t *testing.T) {
@@ -38,12 +42,31 @@ func succeeds(t *testing.T) {
 
 		setLogLevelResp := state.zetClient.SetLogLevel(t, "trace")
 		setLogLevelResp.AssertSuccess()
+
+		// the response goes out before the config save, so the file can still hold the old label for a moment
+		require.Eventually(t, func() bool {
+			return state.zetClient.ReadTunnelConfig(t)["LogLevel"] == "trace"
+		}, 2*time.Second, 100*time.Millisecond)
 	})
 }
 
 func rejectsUnknownLevel(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
 		setLogLevelResp := state.zetClient.SetLogLevel(t, "bogus")
+		setLogLevelResp.AssertFail(500, "unknown log level")
+	})
+}
+
+func rejectsEmptyLevel(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
+		setLogLevelResp := state.zetClient.SetLogLevel(t, "")
+		setLogLevelResp.AssertFail(500, "unknown log level")
+	})
+}
+
+func rejectsWhitespaceLevel(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
+		setLogLevelResp := state.zetClient.SetLogLevel(t, " ")
 		setLogLevelResp.AssertFail(500, "unknown log level")
 	})
 }
