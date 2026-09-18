@@ -41,12 +41,17 @@ func succeeds(t *testing.T) {
 			restoreResp.AssertSuccess()
 		})
 
-		setLogLevelResp := state.zetClient.SetLogLevel(t, "trace")
+		// a request matching the -v level takes the "already set" branch and persists nothing
+		target := "trace"
+		if logLevels[state.zetClient.Verbosity] == "TRACE" {
+			target = "debug"
+		}
+		setLogLevelResp := state.zetClient.SetLogLevel(t, target)
 		setLogLevelResp.AssertSuccess()
 
 		// the response goes out before the config save, so the file can still hold the old label for a moment
 		require.Eventually(t, func() bool {
-			return state.zetClient.ReadTunnelConfig(t)["LogLevel"] == "trace"
+			return state.zetClient.ReadTunnelConfig(t)["LogLevel"] == target
 		}, 2*time.Second, 100*time.Millisecond)
 	})
 }
