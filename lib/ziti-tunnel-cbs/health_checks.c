@@ -60,6 +60,7 @@ struct port_check_attempt_s {
 struct http_check_attempt_s {
     struct health_check_s *check;
     tlsuv_http_t client;
+    uv_idle_t defer; // see finish_http_check()
     bool finished;
     bool passed;
     char err_buf[128];
@@ -559,13 +560,38 @@ static void on_http_check_client_closed(tlsuv_http_t *clt) {
     on_check_attempt_complete(check, passed, err[0] ? err : NULL);
 }
 
+static void on_http_check_defer_closed(uv_handle_t *h) {
+    struct http_check_attempt_s *attempt = h->data;
+    tlsuv_http_close(&attempt->client, on_http_check_client_closed);
+}
+
+static void on_http_check_defer_fired(uv_idle_t *idle) {
+    uv_idle_stop(idle);
+    uv_close((uv_handle_t *) idle, on_http_check_defer_closed);
+}
+
+// finish_http_check() is always called from inside a tlsuv response/body callback
+// (on_http_check_resp/on_http_check_body). tlsuv_http_close() is not a simple handle
+// close: it synchronously tears down the client's request/connection state
+// (fail_all_requests(), close_connection()), and tlsuv's own caller further up the
+// current call stack (inside its read/parse handling) may still touch that state after
+// this callback returns. Calling it here directly is reentrant and unsafe -- observed in
+// practice as an intermittent crash. A one-shot uv_idle_t defers the real close to the
+// next loop iteration -- the same "run this on the next tick" mechanism tlsuv itself uses
+// internally (its client->proc idle handle; see safe_continue()/process_requests in
+// http.c), so this matches how the library we're calling into already expects to be
+// driven, rather than leaning on an incidental libuv guarantee.
 static void finish_http_check(struct http_check_attempt_s *attempt, bool passed, const char *err) {
     if (attempt->finished) return;
     attempt->finished = true;
     attempt->passed = passed;
     attempt->err_buf[0] = 0;
     if (err) snprintf(attempt->err_buf, sizeof(attempt->err_buf), "%s", err);
-    tlsuv_http_close(&attempt->client, on_http_check_client_closed);
+
+    uv_loop_t *loop = attempt->check->hc->host_ctx->tnlr_ctx->loop;
+    uv_idle_init(loop, &attempt->defer);
+    attempt->defer.data = attempt;
+    uv_idle_start(&attempt->defer, on_http_check_defer_fired);
 }
 
 static void on_http_check_body(tlsuv_http_req_t *req, char *body, ssize_t len) {
