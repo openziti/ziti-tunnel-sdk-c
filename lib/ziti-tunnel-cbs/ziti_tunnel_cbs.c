@@ -605,7 +605,18 @@ static void stop_intercept(struct tunneler_ctx_s *tnlr, struct ziti_instance_s *
 static void stop_hosting(struct ziti_instance_s *inst, ziti_host_t *zh) {
     model_map_remove(&inst->hosts, zh->service_name);
     if (zh->serv) {
+        // the normal path: ziti_close()'s callback (ziti_hosted_serv_conn_close_cb) is
+        // where free_hosted_service_ctx() actually runs, once ziti-sdk-c has finished
+        // tearing this connection down. Safe even if the connection is already in some
+        // failed/rebinding state -- ziti_close() itself handles "already closing".
         ziti_close(zh->serv, ziti_hosted_serv_conn_close_cb);
+    } else if (zh->host_ctx) {
+        // bind never completed (zh->serv was never set), so there's no connection to
+        // hang a close callback off of. Free the hosting context directly instead:
+        // skipping this used to just leak host_ctx harmlessly, but its health check
+        // engine (if any) keeps its timers running otherwise, referencing zh->cfg, which
+        // free_ziti_host() below is about to free out from under them.
+        free_hosted_service_ctx(zh->host_ctx);
     }
     free_ziti_host(zh);
 }
@@ -653,7 +664,6 @@ tunneled_service_t *ziti_sdk_c_on_service(ziti_context ziti_ctx, ziti_service *s
         if ((service->perm_flags & ZITI_CAN_BIND) == 0) {
             ZITI_LOG(DEBUG, "stopping host: can no longer bind service[%s]", service->name);
             if (curr_h) {
-                curr_h->serv = NULL; // ziti-sdk-c has already closed and released the connection
                 stop_hosting(ziti_instance, curr_h);
             }
         } else {
@@ -683,7 +693,6 @@ tunneled_service_t *ziti_sdk_c_on_service(ziti_context ziti_ctx, ziti_service *s
         }
         ziti_host_t *zh = model_map_remove(&ziti_instance->hosts, service->name);
         if (zh) {
-            zh->serv = NULL;
             stop_hosting(ziti_instance, zh);
         }
     }
