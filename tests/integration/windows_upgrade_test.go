@@ -205,7 +205,7 @@ func (c *upgradeContext) runZetBeforeUpgrade(t *testing.T) testutil.TunnelStatus
 	logLevelResp.AssertSuccess()
 
 	interfaceData := testutil.InterfaceConfigData{
-		L3: testutil.TunIPv4Data{TunIPv4: c.tunIp, TunPrefixLength: 24, AddDns: true},
+		L3: testutil.TunIPv4Data{TunIPv4: &c.tunIp, TunPrefixLength: 24, AddDns: true},
 	}
 	updateConfigResponse := c.zet.UpdateInterfaceConfig(t, interfaceData)
 	updateConfigResponse.AssertSuccess()

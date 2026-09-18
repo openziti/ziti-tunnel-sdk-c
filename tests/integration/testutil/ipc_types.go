@@ -58,9 +58,9 @@ type MFAData struct {
 }
 
 type TunIPv4Data struct {
-	TunIPv4         string `json:"TunIPv4"`
-	TunPrefixLength int    `json:"TunPrefixLength"`
-	AddDns          bool   `json:"AddDns"`
+	TunIPv4         *string `json:"TunIPv4,omitempty"`
+	TunPrefixLength int     `json:"TunPrefixLength"`
+	AddDns          bool    `json:"AddDns"`
 }
 
 type L2OptionsData struct {
@@ -219,6 +219,11 @@ type IpDumpFunction struct {
 type MFAFunction struct {
 	ServiceFunction
 	Data MFAData `json:"Data"`
+}
+
+type UpdateTunIPv4Function struct {
+	ServiceFunction
+	Data TunIPv4Data `json:"Data"`
 }
 
 type InterfaceConfigFunction struct {
