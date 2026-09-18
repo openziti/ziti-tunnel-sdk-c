@@ -31,6 +31,7 @@ func TestSetLogLevel(t *testing.T) {
 	t.Run("rejectsUnknownLevel", rejectsUnknownLevel)
 	t.Run("rejectsEmptyLevel", rejectsEmptyLevel)
 	t.Run("rejectsWhitespaceLevel", rejectsWhitespaceLevel)
+	t.Run("rejectsNumericLevel", rejectsNumericLevel)
 }
 
 func succeeds(t *testing.T) {
@@ -67,6 +68,14 @@ func rejectsEmptyLevel(t *testing.T) {
 func rejectsWhitespaceLevel(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
 		setLogLevelResp := state.zetClient.SetLogLevel(t, " ")
+		setLogLevelResp.AssertFail(500, "unknown log level")
+	})
+}
+
+// labels only: the -v flag takes a number, the command does not
+func rejectsNumericLevel(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
+		setLogLevelResp := state.zetClient.SetLogLevel(t, "4")
 		setLogLevelResp.AssertFail(500, "unknown log level")
 	})
 }
