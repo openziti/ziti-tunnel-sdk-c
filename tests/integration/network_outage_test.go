@@ -24,12 +24,11 @@ limitations under the License.
 package integration_test
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
-	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -48,6 +47,24 @@ const (
 	outageOverlayCtrlPort     = 11280
 	outageOverlayBindCtrlPort = 21280
 	outageOverlayRtrPort      = 13022
+
+	// Only used when state.overlay.ZitiClusterSize > 1 (the nightly main-ha
+	// leg): base ports for a dedicated, hand-built HA cluster - see
+	// testutil.HACluster and newOutageController below. Comfortably clear of
+	// outageOverlay*Port above (both can run in the same process, though in
+	// practice only one topology runs per test invocation) and of each
+	// other across up to 9 nodes. Both kept below 32768 deliberately - that's
+	// Linux's default ephemeral-port floor (net.ipv4.ip_local_port_range,
+	// commonly 32768-60999), and macOS/Windows dynamic client ports start at
+	// 49152; a fixed listener port inside either range can lose a bind() race
+	// to an unrelated outbound connection that happens to get assigned the
+	// same ephemeral source port. outageHAClusterProxyPortBase used to be
+	// 41280, which sits inside the Linux ephemeral range and was observed
+	// losing exactly that race in CI once the shared cluster overlay's own
+	// raft/CLI traffic was churning enough ephemeral connections.
+	outageHAClusterBindPortBase  = 31280
+	outageHAClusterProxyPortBase = 22280
+	outageHAClusterRouterPort    = 13023
 
 	// The credential that must expire differs by auth path:
 	//   - OIDC: edge.api.sessionTimeout does NOT apply - an OIDC identity's
@@ -180,6 +197,20 @@ const (
 //     via a throwaway `--configure-and-exit` run first, then start for real
 //     exactly once.
 //
+// When state.overlay.ZitiClusterSize > 1 (the nightly main-ha leg), this test
+// builds a dedicated, same-sized HA cluster instead of a single dedicated
+// overlay - via testutil.HACluster, not testutil.Overlay - so it actually
+// exercises the topology the matrix says it's running under, rather than
+// silently always testing single-node regardless of which leg invoked it.
+// HACluster bypasses `ziti edge quickstart cluster` entirely: see its own
+// doc comment for why (raft persists a member's advertised address at the
+// moment it first joins, with no supported way to fix it after the fact, so
+// every node's config must already carry its final, proxied address from
+// birth). It cannot reuse state.overlay itself for the same reason - that
+// overlay's real, unproxied addresses were already permanently recorded by
+// TestMain's initial `quickstart cluster` bring-up, long before this test
+// ever runs.
+//
 // Deliberately does not wait for a "disconnected" controller event after
 // severing: that event is tied to ziti-sdk-c's own auth-context transitions
 // (TunnelEvent_ContextEvent), not to generic connectivity loss, and isn't
@@ -207,17 +238,28 @@ var keepArtifacts = os.Getenv("ZITI_OUTAGE_KEEP_ARTIFACTS") != ""
 // for - still has the zet/controller logs to inspect afterward. Not
 // t.TempDir(): its cleanup is unconditional, with no way to skip it on
 // failure.
+//
+// Rooted under state.testHome (== TEST_HOME/runner.temp in CI), not the bare
+// OS temp dir: the integration-tests workflow's "Upload integration test
+// logs" step only globs paths under runner.temp, so anything created outside
+// it - the bare os.TempDir()/os.MkdirTemp("", ...) this used before - is
+// invisible to that upload no matter how badly a run fails. Confirmed live:
+// a Windows CI failure's preserved dir sat under C:\Users\...\AppData\Local\Temp,
+// while runner.temp is a different D:\a\_temp path, so its controller/router
+// logs never made it into the job's uploaded artifacts.
 func outageArtifactDir(t *testing.T, name string) string {
 	t.Helper()
+	base := filepath.Join(state.testHome, "outage-debug")
 	if keepArtifacts {
-		dir := filepath.Join(os.TempDir(), "ziti-outage-debug", name)
+		dir := filepath.Join(base, name)
 		require.NoError(t, os.RemoveAll(dir), "clear stale debug artifact dir %s", dir)
 		require.NoError(t, os.MkdirAll(dir, 0o755), "create debug artifact dir %s", dir)
 		log.Printf("outage test: ZITI_OUTAGE_KEEP_ARTIFACTS set - %s will survive this run, and its process will not be stopped", dir)
 		return dir
 	}
 
-	dir, err := os.MkdirTemp("", "ziti-outage-"+name+"-")
+	require.NoError(t, os.MkdirAll(base, 0o755), "create outage debug base dir %s", base)
+	dir, err := os.MkdirTemp(base, name+"-")
 	require.NoError(t, err, "create temp dir for %s", name)
 	t.Cleanup(func() {
 		if t.Failed() {
@@ -229,43 +271,109 @@ func outageArtifactDir(t *testing.T, name string) string {
 	return dir
 }
 
-func TestOutageRecoveryAfterSessionExpiry(t *testing.T) {
-	testutil.RunWithTimeoutOf(t, outageTestTimeout, func(t *testing.T) {
-		overlay := &testutil.Overlay{
-			ZitiBin:            state.overlay.ZitiBin,
-			Home:               filepath.Join(outageArtifactDir(t, "overlay"), "overlay"),
-			ControllerUser:     state.overlay.ControllerUser,
-			ControllerPassword: state.overlay.ControllerPassword,
-			Auth:               state.overlay.Auth,
-			CtrlPort:           outageOverlayCtrlPort,
-			BindCtrlPort:       outageOverlayBindCtrlPort,
-			RtrPort:            outageOverlayRtrPort,
-			Done:               make(chan error, 1),
-			DetachSession:      keepArtifacts,
+// outageController abstracts the two ways this test stands up a controller
+// (a single dedicated overlay, or a dedicated HA cluster matching the
+// nightly matrix's cluster size) behind the handful of operations the test
+// body actually needs, so the scenario itself doesn't have to branch on
+// topology beyond the one setup call.
+type outageController interface {
+	CreateIdentityJWT(name string) (string, error)
+	ControllerHostPort() string
+	Sever()
+	Restore()
+	Stop()
+}
+
+// outageSingleNode adapts a dedicated testutil.Overlay plus the
+// testutil.OutageProxy in front of it to outageController.
+type outageSingleNode struct {
+	overlay *testutil.Overlay
+	proxy   *testutil.OutageProxy
+}
+
+func (o *outageSingleNode) CreateIdentityJWT(name string) (string, error) {
+	return o.overlay.CreateIdentityJWT(name)
+}
+func (o *outageSingleNode) ControllerHostPort() string { return o.overlay.ControllerHostPort() }
+func (o *outageSingleNode) Sever()                     { o.proxy.Sever() }
+func (o *outageSingleNode) Restore()                   { o.proxy.Restore() }
+func (o *outageSingleNode) Stop()                      { o.overlay.Stop() }
+
+// newOutageController builds and starts either a dedicated single-node
+// overlay or a dedicated HA cluster, sized to match state.overlay's own
+// topology (state.overlay.ZitiClusterSize), so this test exercises whichever
+// topology the current nightly leg actually declares instead of always
+// silently testing single-node - see the type doc comments on
+// testutil.HACluster and this test function for why neither path can reuse
+// state.overlay itself.
+func newOutageController(t *testing.T) outageController {
+	t.Helper()
+	if state.overlay.ZitiClusterSize > 1 {
+		require.Equal(t, testutil.AuthOIDC, state.overlay.Auth,
+			"HA outage coverage assumes OIDC (nightly's main-ha leg is OIDC-only); got auth=%s with clusterSize=%d",
+			state.overlay.Auth, state.overlay.ZitiClusterSize)
+
+		cluster := &testutil.HACluster{
+			ZitiBin:                  state.overlay.ZitiBin,
+			Home:                     filepath.Join(outageArtifactDir(t, "hacluster"), "hacluster"),
+			Username:                 state.overlay.ControllerUser,
+			Password:                 state.overlay.ControllerPassword,
+			Size:                     state.overlay.ZitiClusterSize,
+			BindPortBase:             outageHAClusterBindPortBase,
+			ProxyPortBase:            outageHAClusterProxyPortBase,
+			RouterPort:               outageHAClusterRouterPort,
+			OidcAccessTokenDuration:  outageAccessTokenDuration,
+			OidcRefreshTokenDuration: outageExpiryWindow,
+			DetachSession:            keepArtifacts,
 		}
 		if !keepArtifacts {
-			t.Cleanup(overlay.Stop) // safe no-op if Start never succeeds
+			t.Cleanup(cluster.Stop) // safe no-op if Start never succeeds
 		}
+		require.NoError(t, cluster.Start(t), "start outage HA cluster")
+		return cluster
+	}
 
-		require.NoError(t, overlay.GenerateConfig(), "generate outage overlay config")
+	overlay := &testutil.Overlay{
+		ZitiBin:            state.overlay.ZitiBin,
+		Home:               filepath.Join(outageArtifactDir(t, "overlay"), "overlay"),
+		ControllerUser:     state.overlay.ControllerUser,
+		ControllerPassword: state.overlay.ControllerPassword,
+		Auth:               state.overlay.Auth,
+		CtrlPort:           outageOverlayCtrlPort,
+		BindCtrlPort:       outageOverlayBindCtrlPort,
+		RtrPort:            outageOverlayRtrPort,
+		Done:               make(chan error, 1),
+		DetachSession:      keepArtifacts,
+	}
+	if !keepArtifacts {
+		t.Cleanup(overlay.Stop) // safe no-op if Start never succeeds
+	}
 
-		switch overlay.Auth {
-		case testutil.AuthOIDC:
-			overlay.PreconfigureOidcTokenDurations(t, outageAccessTokenDuration, outageExpiryWindow)
-		case testutil.AuthLegacy:
-			overlay.PreconfigureDisableOidc(t)
-			overlay.PreconfigureSessionTimeout(t, outageExpiryWindow)
-		default:
-			t.Fatalf("unknown ziti.auth %q", overlay.Auth)
-		}
+	require.NoError(t, overlay.GenerateConfig(), "generate outage overlay config")
 
-		proxy := testutil.StartOutageProxy(t,
-			fmt.Sprintf("127.0.0.1:%d", outageOverlayCtrlPort),
-			fmt.Sprintf("localhost:%d", outageOverlayBindCtrlPort),
-			keepArtifacts)
-		overlay.PreconfigureEdgeApiAddress(t, proxy.Addr)
+	switch overlay.Auth {
+	case testutil.AuthOIDC:
+		overlay.PreconfigureOidcTokenDurations(t, outageAccessTokenDuration, outageExpiryWindow)
+	case testutil.AuthLegacy:
+		overlay.PreconfigureDisableOidc(t)
+		overlay.PreconfigureSessionTimeout(t, outageExpiryWindow)
+	default:
+		t.Fatalf("unknown ziti.auth %q", overlay.Auth)
+	}
 
-		require.NoError(t, overlay.Start(), "start outage overlay")
+	proxy := testutil.StartOutageProxy(t,
+		fmt.Sprintf("127.0.0.1:%d", outageOverlayCtrlPort),
+		fmt.Sprintf("localhost:%d", outageOverlayBindCtrlPort),
+		keepArtifacts)
+	overlay.PreconfigureEdgeApiAddress(t, proxy.Addr)
+
+	require.NoError(t, overlay.Start(), "start outage overlay")
+	return &outageSingleNode{overlay: overlay, proxy: proxy}
+}
+
+func TestOutageRecoveryAfterSessionExpiry(t *testing.T) {
+	testutil.RunWithTimeoutOf(t, outageTestTimeout, func(t *testing.T) {
+		ctrl := newOutageController(t)
 
 		zet := &testutil.ZET{
 			BinPath:       state.zetClient.BinPath,
@@ -286,22 +394,38 @@ func TestOutageRecoveryAfterSessionExpiry(t *testing.T) {
 		}
 
 		const idName = "test_outage_recovery"
-		jwt, err := overlay.CreateIdentityJWT(idName)
+		jwt, err := ctrl.CreateIdentityJWT(idName)
 		require.NoError(t, err, "create identity %s", idName)
+		if cluster, ok := ctrl.(*testutil.HACluster); ok {
+			// Guards against this test's own initial connect racing the
+			// still-open, unrelated enrollment-replication-lag bug
+			// (openziti/ziti-sdk-c#1134) rather than exercising what this
+			// test actually targets.
+			cluster.WaitForDataModelConsensus()
+		}
 		added := testutil.EnrollJwt(t, zet, idName, jwt)
 		zet.WaitForControllerEvent(t, "connected", idName)
 		log.Printf("outage test: initial connect confirmed for %s", idName)
 
-		// Belt-and-suspenders: redirect the identity's own on-disk ztAPI too, in
-		// case enrollment ever embeds a different address than the configured
-		// edge.api.address. Stop first: ZET rewrites its own identity file
-		// around connect events, so doctoring it while the process is still
-		// running races that.
-		zet.Stop()
-		redirectIdentityThroughOutageProxy(t, added.Id.Identifier, proxy.Addr)
-		require.NoError(t, zet.Start(), "restart zet after redirect\n%s", zet.LogFile())
-		zet.WaitForControllerEvent(t, "connected", idName)
-		log.Printf("outage test: connect-through-proxy confirmed for %s", idName)
+		if _, isHA := ctrl.(*testutil.HACluster); !isHA {
+			// Belt-and-suspenders: redirect the identity's own on-disk ztAPI too,
+			// in case enrollment ever embeds a different address than the
+			// configured edge.api.address. Stop first: ZET rewrites its own
+			// identity file around connect events, so doctoring it while the
+			// process is still running races that.
+			//
+			// Single-node only: HACluster's ztAPIs already holds each node's own
+			// proxy address from birth (see its type doc), so rewriting every
+			// entry to one address here would collapse that back down to a
+			// single controller - defeating the reason this test builds a real
+			// cluster in the first place.
+			zet.Stop()
+			proxyAddr := strings.TrimPrefix(ctrl.ControllerHostPort(), "https://")
+			testutil.RedirectIdentityFile(t, added.Id.Identifier, proxyAddr)
+			require.NoError(t, zet.Start(), "restart zet after redirect\n%s", zet.LogFile())
+			zet.WaitForControllerEvent(t, "connected", idName)
+			log.Printf("outage test: connect-through-proxy confirmed for %s", idName)
+		}
 
 		log.Printf("outage test: staying connected for %s before severing, so several real access-token "+
 			"refresh cycles (~1/%s) elapse first", outagePreSeverSettleDuration, outageAccessTokenDuration)
@@ -315,14 +439,14 @@ func TestOutageRecoveryAfterSessionExpiry(t *testing.T) {
 			log.Printf("outage test: settling, %s remaining before sever", remaining)
 		}
 
-		log.Printf("outage test: severing network to the controller for %s (auth=%s, expiry window %s)", outageSeverDuration, overlay.Auth, outageExpiryWindow)
-		proxy.Sever()
+		log.Printf("outage test: severing network to the controller for %s (auth=%s, expiry window %s)", outageSeverDuration, state.overlay.Auth, outageExpiryWindow)
+		ctrl.Sever()
 
 		log.Printf("outage test: sleeping %s so the session/token actually expires server-side", outageSeverDuration)
 		time.Sleep(outageSeverDuration)
 
 		log.Printf("outage test: restoring network to the controller; waiting up to %s for reconnect", outageRecoveryTimeout)
-		proxy.Restore()
+		ctrl.Restore()
 
 		// SkipToNow is required, not just tidy: nothing before this point ever
 		// waits for a router event (only the pre-sever controller "connected"
@@ -353,29 +477,4 @@ func TestOutageRecoveryAfterSessionExpiry(t *testing.T) {
 		require.False(t, flapped, "edge router disconnected again within %s of reconnecting - the reconnect was not stable", outageSettleWindow)
 		log.Printf("outage test: reconnect held stable for %s", outageSettleWindow)
 	})
-}
-
-// redirectIdentityThroughOutageProxy rewrites ztAPI/ztAPIs in the identity file
-// at path so they point at addr instead of the real controller, preserving
-// each URL's original scheme and path. Mirrors
-// controller_retry_storm_test.go's redirectToDeadController.
-func redirectIdentityThroughOutageProxy(t *testing.T, path, addr string) {
-	t.Helper()
-	content := testutil.ReadIdentityFile(t, path)
-
-	redirect := func(raw string) string {
-		u, err := url.Parse(raw)
-		require.NoError(t, err, "parse identity file URL %q", raw)
-		u.Host = addr
-		return u.String()
-	}
-
-	content.ZtAPI = redirect(content.ZtAPI)
-	for i, api := range content.ZtAPIs {
-		content.ZtAPIs[i] = redirect(api)
-	}
-
-	raw, err := json.Marshal(content)
-	require.NoError(t, err, "marshal doctored identity file")
-	require.NoError(t, os.WriteFile(path, raw, 0o600), "write doctored identity file %s", path)
 }
