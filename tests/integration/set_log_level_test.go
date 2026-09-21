@@ -36,22 +36,23 @@ func TestSetLogLevel(t *testing.T) {
 
 func succeeds(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
+		runningLevel := logLevels[state.zetClient.Verbosity]
 		t.Cleanup(func() {
-			restoreResp := state.zetClient.SetLogLevel(t, logLevels[state.zetClient.Verbosity])
+			restoreResp := state.zetClient.SetLogLevel(t, runningLevel)
 			restoreResp.AssertSuccess()
 		})
 
 		// a request matching the -v level takes the "already set" branch and persists nothing
-		target := "trace"
-		if logLevels[state.zetClient.Verbosity] == "TRACE" {
-			target = "debug"
+		newLevel := "trace"
+		if runningLevel == "TRACE" {
+			newLevel = "debug"
 		}
-		setLogLevelResp := state.zetClient.SetLogLevel(t, target)
+		setLogLevelResp := state.zetClient.SetLogLevel(t, newLevel)
 		setLogLevelResp.AssertSuccess()
 
 		// the response goes out before the config save, so the file can still hold the old label for a moment
 		require.Eventually(t, func() bool {
-			return state.zetClient.ReadTunnelConfig(t)["LogLevel"] == target
+			return state.zetClient.ReadTunnelConfig(t)["LogLevel"] == newLevel
 		}, 2*time.Second, 100*time.Millisecond)
 	})
 }

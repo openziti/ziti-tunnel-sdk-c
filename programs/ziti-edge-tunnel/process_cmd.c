@@ -561,7 +561,9 @@ bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void 
             const char *level = ziti_log_level_label();
             if (level == NULL || strcasecmp(level, requested) != 0) {
                 ZITI_LOG(WARN, "unknown log level %s", requested);
-                result.error = "unknown log level";
+                snprintf(dynamic_err, sizeof(dynamic_err),
+                         "unknown log level '%s', expected one of NONE, ERROR, WARN, INFO, DEBUG, VERBOSE, TRACE", requested);
+                result.error = dynamic_err;
                 result.success = false;
                 break;
             }
