@@ -45,6 +45,25 @@ static bool is_buffer_available(size_t buf_len, size_t max_size, char* script) {
     return true;
 }
 
+// DNS (NRPT) rule management shells out to powershell.exe. If it isn't on the PATH
+// (e.g. a stripped-down Windows image, or a PATH misconfiguration), every NRPT command
+// below would otherwise fail with a generic spawn/system error that gives the user no
+// actionable indication of what's actually wrong. Check once, cache the result, and log
+// a clear diagnostic instead.
+static bool is_powershell_available() {
+    static int available = -1;
+    if (available == -1) {
+        char path_buf[MAX_PATH];
+        DWORD len = SearchPathA(NULL, "powershell.exe", NULL, MAX_PATH, path_buf, NULL);
+        available = (len > 0 && len < MAX_PATH) ? 1 : 0;
+        if (!available) {
+            ZITI_LOG(ERROR, "'powershell.exe' was not found on the system PATH. DNS (NRPT) rules cannot be managed without it "
+                            "- please ensure PowerShell is installed and its location is included in the PATH environment variable.");
+        }
+    }
+    return available == 1;
+}
+
 static bool exec_process(uv_loop_t *ziti_loop, const char* program, char* args[]) {
     uv_process_t* process = calloc(1, sizeof(uv_process_t));
     uv_process_options_t options = {0};
@@ -181,6 +200,9 @@ void chunked_add_nrpt_rules(uv_loop_t *ziti_loop, hostname_list_t *hostnames, co
 void add_nrpt_rules(uv_loop_t *nrpt_loop, model_map *hostnames, const char* dns_ip, const char* zet_id) {
     ZITI_LOG(VERBOSE, "Add nrpt rules");
 
+    if (!is_powershell_available()) {
+        return;
+    }
     if (hostnames == NULL || model_map_size(hostnames) == 0) {
         ZITI_LOG(DEBUG, "No domains specified to add_nrpt_rules, exiting early");
         return;
@@ -272,6 +294,9 @@ void chunked_remove_nrpt_rules(uv_loop_t *ziti_loop, hostname_list_t *hostnames,
 void remove_nrpt_rules(uv_loop_t *nrpt_loop, model_map *hostnames, const char* zet_id) {
     ZITI_LOG(VERBOSE, "Remove nrpt rules");
 
+    if (!is_powershell_available()) {
+        return;
+    }
     if (hostnames == NULL || model_map_size(hostnames) == 0) {
         ZITI_LOG(DEBUG, "No domains specified to remove_nrpt_rules, exiting early");
         return;
@@ -329,6 +354,9 @@ void remove_orphaned_nrpt_rules(const char **running_ids, size_t count) {
     // The regex below matches both: an optional "<disc>." followed by the executable name
     // at end-of-string. This also ensures a pre-multi-tun build's "StartsWith('Added by
     // ziti-edge-tunnel')" nuke won't catch discriminated rules.
+    if (!is_powershell_available()) {
+        return;
+    }
     char cmd[MAX_POWERSHELL_COMMAND_LEN] = { 0 };
     size_t copied = snprintf(cmd, MAX_POWERSHELL_COMMAND_LEN,
                              "powershell -Command \"$r=@(");
@@ -349,6 +377,9 @@ void remove_orphaned_nrpt_rules(const char **running_ids, size_t count) {
 }
 
 void remove_all_nrpt_rules(const char* zet_id, bool exact) {
+    if (!is_powershell_available()) {
+        return;
+    }
     char remove_cmd[MAX_POWERSHELL_COMMAND_LEN];
 
     char* nrpt_filter = get_nrpt_comment(zet_id, exact);
@@ -444,6 +475,9 @@ void chunked_remove_and_add_nrpt_rules(uv_loop_t *ziti_loop, hostname_list_t *ho
 void remove_and_add_nrpt_rules(uv_loop_t *nrpt_loop, model_map *hostnames, const char* dns_ip, const char* zet_id) {
     ZITI_LOG(VERBOSE, "Remove and add nrpt rules");
 
+    if (!is_powershell_available()) {
+        return;
+    }
     if (hostnames == NULL || model_map_size(hostnames) == 0) {
         ZITI_LOG(DEBUG, "No domains specified to remove_and_add_nrpt_rules, exiting early");
         return;
@@ -488,6 +522,9 @@ void remove_single_nrpt_rule(char* nrpt_rule) {
 }
 
 bool is_nrpt_policies_effective(const char* tns_ip, char* zet_id) {
+    if (!is_powershell_available()) {
+        return false;
+    }
     char add_cmd[MAX_POWERSHELL_COMMAND_LEN];
     size_t buf_len = sprintf(add_cmd, "powershell -Command \"Add-DnsClientNrptRule -Namespace '.ziti.test' -NameServers '%s' -Comment 'Added by %s' -DisplayName '%s:.ziti.test'\"",tns_ip, zet_id, zet_id);
     ZITI_LOG(TRACE, "add test nrpt rule. total script size: %zd", buf_len);
