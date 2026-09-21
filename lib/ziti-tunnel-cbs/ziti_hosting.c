@@ -95,27 +95,17 @@ void free_hosted_service_ctx(struct hosted_service_ctx_s *hosted_ctx) {
         return;
     }
 
-    // must run before the config is freed below: a health check still in flight holds
-    // pointers borrowed from hosted_ctx->cfg (e.g. a ziti_check_action's
-    // consecutive_events/duration), and health check teardown is asynchronous.
-    // host_health_checks_stop() marks every check "stopping" synchronously, so none of
-    // those borrowed pointers are read again after this call returns -- even though the
-    // uv handles/http clients they own may take a little longer to actually close.
+    // stop_hosting() already stops the health check engine, synchronously, before this
+    // can be reached by any path -- see the comment there. Calling it again here is a
+    // safe no-op (host_health_checks_stop() tolerates NULL/already-stopping) and keeps
+    // this function correct for any caller that doesn't go through stop_hosting().
     host_health_checks_stop(hosted_ctx->health_checks);
     hosted_ctx->health_checks = NULL;
 
+    // cfg is borrowed: it's a pointer into the ziti_host_t that ziti_sdk_c_host() was
+    // given (see hosted_ctx->cfg's assignment there), and that ziti_host_t -- not this
+    // ctx -- owns and frees it (free_ziti_host() in ziti_tunnel_cbs.c).
     safe_free(hosted_ctx->service_name);
-    switch (hosted_ctx->cfg_type) {
-        case HOST_CFG_V1:
-            free_ziti_host_cfg_v1((ziti_host_cfg_v1 *)hosted_ctx->cfg);
-            break;
-        case SERVER_CFG_V1:
-            free_ziti_server_cfg_v1((ziti_server_cfg_v1 *)hosted_ctx->cfg);
-            break;
-        default:
-            ZITI_LOG(DEBUG, "unexpected cfg_type %d", hosted_ctx->cfg_type);
-            break;
-    }
 
     if (hosted_ctx->forward_protocol) {
         STAILQ_CLEAR(&hosted_ctx->proto_u.allowed_protocols, safe_free);
@@ -143,10 +133,19 @@ void free_hosted_service_ctx(struct hosted_service_ctx_s *hosted_ctx) {
         hosted_ctx->proxy_connector = NULL;
         hosted_ctx->connector = NULL;
     }
+
+    free(hosted_ctx);
 }
 
 void ziti_hosted_serv_conn_close_cb(ziti_connection serv) {
     struct hosted_service_ctx_s *hosted_ctx = ziti_conn_data(serv);
+    if (hosted_ctx == NULL) {
+        return;
+    }
+    // the SDK frees serv after this returns, so the ziti_host_t must forget it (and this
+    // ctx) now: otherwise a later stop_hosting() for this service could act on a stale
+    // zh->serv/zh->host_ctx and close an already-closed connection or free this ctx again.
+    ziti_host_release_conn((ziti_context) hosted_ctx->ziti_ctx, hosted_ctx->service_name, hosted_ctx);
     free_hosted_service_ctx(hosted_ctx);
 }
 
@@ -1027,6 +1026,7 @@ host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, tunneler_context tnlr, const char *s
                     ZITI_LOG(ERROR, "hosted_service[%s] specifies 'forwardPort' with zero-length 'allowedPortRanges'",
                              host_ctx->service_name);
                     free_hosted_service_ctx(host_ctx);
+                    return NULL;
                 }
             } else {
                 host_ctx->port_u.port = host_v1_cfg->port;

@@ -492,6 +492,8 @@ int set_tnlr_options(struct ziti_instance_s *inst);
 void set_ziti_instance(const char *identifier, struct ziti_instance_s *inst);
 void remove_ziti_instance(const char *identifier);
 void ziti_host_set_conn(ziti_context ztx, const char *service_name, ziti_connection serv);
+/** forget a hosted service's server connection and host ctx once the connection's close callback has run */
+void ziti_host_release_conn(ziti_context ztx, const char *service_name, const host_ctx_t *host_ctx);
 
 #ifdef __cplusplus
 }

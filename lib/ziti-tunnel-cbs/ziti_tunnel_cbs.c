@@ -29,6 +29,7 @@
 #include <ziti/ziti_dns.h>
 #include "ziti/ziti_tunnel_cbs.h"
 #include "ziti_hosting.h"
+#include "health_checks.h"
 #include "ziti_instance.h"
 #include "../ziti-tunnel/tunnel_l2.h"
 #include "lwip/err.h"
@@ -108,7 +109,18 @@ static void free_ziti_intercept(ziti_intercept_t *zi) {
 static void free_ziti_host(ziti_host_t *zh) {
     if (zh == NULL) return;
     free(zh->service_name);
-    if (zh->cfg_desc) {
+    // zh->cfg is an embedded union, and ziti_sdk_c_host() hands hosted_service_ctx_s a
+    // *borrowed* pointer directly into it (host_ctx->cfg -- see ziti_hosting.c), which
+    // free_hosted_service_ctx() frees. Once host_ctx exists, ownership of cfg belongs to
+    // it (freed there, synchronously or via ziti_hosted_serv_conn_close_cb) -- freeing it
+    // here too used to be a harmless double-free-of-already-nulled-fields (model_free()
+    // nulls pointer/array fields as it frees them, so a same-address repeat is a no-op)
+    // ONLY because both frees ran back-to-back synchronously before zh's block was ever
+    // deallocated. Routing hosting teardown through ziti_close()'s async callback broke
+    // that accident: this call could now free (and deallocate the block backing) cfg
+    // before free_hosted_service_ctx() gets its turn, making its later free a genuine
+    // use-after-free. Only free it here when no host_ctx was ever created to claim it.
+    if (zh->host_ctx == NULL && zh->cfg_desc) {
         zh->cfg_desc->free(&zh->cfg);
     }
     free(zh);
@@ -507,6 +519,25 @@ void ziti_host_set_conn(ziti_context ztx, const char *service_name, ziti_connect
     zh->serv = serv;
 }
 
+/** called by ziti_hosted_serv_conn_close_cb once the SDK has finished tearing a hosted
+ * connection down, so zh forgets it instead of stop_hosting() later acting on a stale
+ * serv/host_ctx if this service's teardown is reached again some other way (e.g. a bind
+ * failure closing serv before it was ever recorded via ziti_host_set_conn()). */
+void ziti_host_release_conn(ziti_context ztx, const char *service_name, const host_ctx_t *host_ctx) {
+    struct ziti_instance_s *ziti_instance = ziti_app_ctx(ztx);
+    ziti_host_t *zh = model_map_get(&ziti_instance->hosts, service_name);
+    // NULL: stop_hosting already removed it and is the one that closed the connection.
+    // Mismatch: a config change replaced the host under this name, host_ctx belongs to the old one.
+    // Matched on host_ctx rather than serv because a failed listen closes before serv is ever recorded.
+    if (zh == NULL || zh->host_ctx != host_ctx) {
+        return;
+    }
+
+    ZITI_LOG(DEBUG, "hosted_service[%s] connection closed, releasing handle", service_name);
+    zh->serv = NULL;
+    zh->host_ctx = NULL;
+}
+
 // only do matching on based on wildcard domain here
 static const ziti_address *intercept_match_addr(ip_addr_t *addr, void *ctx) {
     ziti_intercept_t *zi_ctx = ctx;
@@ -604,6 +635,16 @@ static void stop_intercept(struct tunneler_ctx_s *tnlr, struct ziti_instance_s *
 
 static void stop_hosting(struct ziti_instance_s *inst, ziti_host_t *zh) {
     model_map_remove(&inst->hosts, zh->service_name);
+    if (zh->host_ctx) {
+        // must happen here, synchronously, not deferred to free_hosted_service_ctx()'s
+        // own call: free_ziti_host() below frees zh->cfg the moment ziti_close() (async)
+        // or this whole function (sync fallback) is done, but a still-running check's
+        // timer reads zh->cfg (via host_ctx->cfg, which is a borrowed alias into it) on
+        // every interval. Stopping the checks first guarantees no check ever reads it
+        // again, regardless of how much later the connection actually finishes closing.
+        host_health_checks_stop(zh->host_ctx->health_checks);
+        zh->host_ctx->health_checks = NULL;
+    }
     if (zh->serv) {
         // the normal path: ziti_close()'s callback (ziti_hosted_serv_conn_close_cb) is
         // where free_hosted_service_ctx() actually runs, once ziti-sdk-c has finished
@@ -611,11 +652,9 @@ static void stop_hosting(struct ziti_instance_s *inst, ziti_host_t *zh) {
         // failed/rebinding state -- ziti_close() itself handles "already closing".
         ziti_close(zh->serv, ziti_hosted_serv_conn_close_cb);
     } else if (zh->host_ctx) {
-        // bind never completed (zh->serv was never set), so there's no connection to
-        // hang a close callback off of. Free the hosting context directly instead:
-        // skipping this used to just leak host_ctx harmlessly, but its health check
-        // engine (if any) keeps its timers running otherwise, referencing zh->cfg, which
-        // free_ziti_host() below is about to free out from under them.
+        // no connection to hang a close callback off of: either the bind never
+        // completed (zh->serv was never set), or the connection already closed on its
+        // own and ziti_host_release_conn() didn't run for it (e.g. an older SDK).
         free_hosted_service_ctx(zh->host_ctx);
     }
     free_ziti_host(zh);
