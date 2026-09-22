@@ -18,24 +18,70 @@ package integration_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/openziti/ziti-tunnel-sdk-c/tests/integration/testutil"
+	"github.com/stretchr/testify/require"
 )
 
 var logLevels = []string{"NONE", "ERROR", "WARN", "INFO", "DEBUG", "VERBOSE", "TRACE"}
 
 func TestSetLogLevel(t *testing.T) {
 	t.Run("succeeds", succeeds)
+	t.Run("rejectsUnknownLevel", rejectsUnknownLevel)
+	t.Run("rejectsEmptyLevel", rejectsEmptyLevel)
+	t.Run("rejectsWhitespaceLevel", rejectsWhitespaceLevel)
+	t.Run("rejectsNumericLevel", rejectsNumericLevel)
 }
 
 func succeeds(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
+		runningLevel := logLevels[state.zetClient.Verbosity]
 		t.Cleanup(func() {
-			restoreResp := state.zetClient.SetLogLevel(t, logLevels[state.zetClient.Verbosity])
+			restoreResp := state.zetClient.SetLogLevel(t, runningLevel)
 			restoreResp.AssertSuccess()
 		})
 
-		setLogLevelResp := state.zetClient.SetLogLevel(t, "trace")
+		// a request matching the -v level takes the "already set" branch and persists nothing
+		newLevel := "trace"
+		if runningLevel == "TRACE" {
+			newLevel = "debug"
+		}
+		setLogLevelResp := state.zetClient.SetLogLevel(t, newLevel)
 		setLogLevelResp.AssertSuccess()
+
+		// the response goes out before the config save, so the file can still hold the old label for a moment
+		require.Eventually(t, func() bool {
+			return state.zetClient.ReadTunnelConfig(t)["LogLevel"] == newLevel
+		}, 2*time.Second, 100*time.Millisecond)
+	})
+}
+
+func rejectsUnknownLevel(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
+		setLogLevelResp := state.zetClient.SetLogLevel(t, "bogus")
+		setLogLevelResp.AssertFail(500, "unknown log level")
+	})
+}
+
+func rejectsEmptyLevel(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
+		setLogLevelResp := state.zetClient.SetLogLevel(t, "")
+		setLogLevelResp.AssertFail(500, "unknown log level")
+	})
+}
+
+func rejectsWhitespaceLevel(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
+		setLogLevelResp := state.zetClient.SetLogLevel(t, " ")
+		setLogLevelResp.AssertFail(500, "unknown log level")
+	})
+}
+
+// labels only: the -v flag takes a number, the command does not
+func rejectsNumericLevel(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
+		setLogLevelResp := state.zetClient.SetLogLevel(t, "4")
+		setLogLevelResp.AssertFail(500, "unknown log level")
 	})
 }
