@@ -109,18 +109,7 @@ static void free_ziti_intercept(ziti_intercept_t *zi) {
 static void free_ziti_host(ziti_host_t *zh) {
     if (zh == NULL) return;
     free(zh->service_name);
-    // zh->cfg is an embedded union, and ziti_sdk_c_host() hands hosted_service_ctx_s a
-    // *borrowed* pointer directly into it (host_ctx->cfg -- see ziti_hosting.c), which
-    // free_hosted_service_ctx() frees. Once host_ctx exists, ownership of cfg belongs to
-    // it (freed there, synchronously or via ziti_hosted_serv_conn_close_cb) -- freeing it
-    // here too used to be a harmless double-free-of-already-nulled-fields (model_free()
-    // nulls pointer/array fields as it frees them, so a same-address repeat is a no-op)
-    // ONLY because both frees ran back-to-back synchronously before zh's block was ever
-    // deallocated. Routing hosting teardown through ziti_close()'s async callback broke
-    // that accident: this call could now free (and deallocate the block backing) cfg
-    // before free_hosted_service_ctx() gets its turn, making its later free a genuine
-    // use-after-free. Only free it here when no host_ctx was ever created to claim it.
-    if (zh->host_ctx == NULL && zh->cfg_desc) {
+    if (zh->cfg_desc) {
         zh->cfg_desc->free(&zh->cfg);
     }
     free(zh);
