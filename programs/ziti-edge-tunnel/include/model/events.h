@@ -72,6 +72,16 @@ XX(Services, tunnel_service, array, Services, __VA_ARGS__) \
 XX(Paths, model_string, array, Paths, __VA_ARGS__) \
 XX(MissingPaths, model_string, array, MissingPaths, __VA_ARGS__)
 
+// mirrors lib/ziti-tunnel-cbs's health_status_event -- emitted when a hosted service's
+// portCheck/httpCheck state transitions, or moves the terminator's effective cost/
+// precedence.
+#define TUNNEL_HEALTH_STATUS_EVENT(XX, ...) \
+ACTION_EVENT(XX, __VA_ARGS__) \
+XX(ServiceName, model_string, none, ServiceName, __VA_ARGS__) \
+XX(Checks, tunnel_health_check, array, Checks, __VA_ARGS__) \
+XX(EffectiveCost, model_number, none, EffectiveCost, __VA_ARGS__) \
+XX(EffectivePrecedence, model_string, none, EffectivePrecedence, __VA_ARGS__)
+
 #define TUNNEL_NOTIFICATION_MESSAGE(XX, ...) \
 XX(IdentityName, model_string, none, IdentityName, __VA_ARGS__) \
 XX(Identifier, model_string, none, Identifier, __VA_ARGS__) \
@@ -114,6 +124,7 @@ DECLARE_MODEL(mfa_status_event, MFA_STATUS_EVENT)
 DECLARE_MODEL(tunnel_metrics_event, TUNNEL_METRICS_EVENT)
 DECLARE_MODEL(tunnel_router_event, TUNNEL_ROUTER_EVENT)
 DECLARE_MODEL(tunnel_posture_status_event, TUNNEL_POSTURE_STATUS_EVENT)
+DECLARE_MODEL(tunnel_health_status_event, TUNNEL_HEALTH_STATUS_EVENT)
 DECLARE_MODEL(notification_message, TUNNEL_NOTIFICATION_MESSAGE)
 DECLARE_MODEL(notification_event, TUNNEL_NOTIFICATION_EVENT)
 
