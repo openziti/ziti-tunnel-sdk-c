@@ -692,6 +692,7 @@ tunneled_service_t *ziti_sdk_c_on_service(ziti_context ziti_ctx, ziti_service *s
         if ((service->perm_flags & ZITI_CAN_BIND) == 0) {
             ZITI_LOG(DEBUG, "stopping host: can no longer bind service[%s]", service->name);
             if (curr_h) {
+                curr_h->serv = NULL; // ziti-sdk-c has already closed and released the connection
                 stop_hosting(ziti_instance, curr_h);
             }
         } else {
@@ -721,6 +722,7 @@ tunneled_service_t *ziti_sdk_c_on_service(ziti_context ziti_ctx, ziti_service *s
         }
         ziti_host_t *zh = model_map_remove(&ziti_instance->hosts, service->name);
         if (zh) {
+            zh->serv = NULL;
             stop_hosting(ziti_instance, zh);
         }
     }
