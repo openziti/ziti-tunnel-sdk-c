@@ -622,7 +622,7 @@ static void finish_http_check(struct http_check_attempt_s *attempt, bool passed,
     attempt->err_buf[0] = 0;
     if (err) snprintf(attempt->err_buf, sizeof(attempt->err_buf), "%s", err);
 
-    uv_loop_t *loop = attempt->check->hc->host_ctx->tnlr_ctx->loop;
+    uv_loop_t *loop = attempt->check->hc->loop;
     uv_idle_init(loop, &attempt->defer);
     attempt->defer.data = attempt;
     uv_idle_start(&attempt->defer, on_http_check_defer_fired);
@@ -780,6 +780,7 @@ health_checks_ctx_t *host_health_checks_start(struct hosted_service_ctx_s *host_
 
     struct health_checks_ctx_s *hc = calloc(1, sizeof(*hc));
     hc->host_ctx = host_ctx;
+    hc->loop = host_ctx->tnlr_ctx->loop;
     hc->baseline_cost = host_ctx->health_baseline_cost;
     hc->baseline_precedence = host_ctx->health_baseline_precedence;
     hc->current_cost = hc->next_cost = hc->baseline_cost;

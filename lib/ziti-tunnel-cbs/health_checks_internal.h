@@ -101,6 +101,10 @@ struct health_check_s {
 struct health_checks_ctx_s {
     struct hosted_service_ctx_s *host_ctx;
 
+    // cached from host_ctx->tnlr_ctx->loop at start -- hc (and any in-flight http check
+    // attempt referencing it) can outlive host_ctx during teardown; see finish_http_check().
+    uv_loop_t *loop;
+
     uint16_t baseline_cost;
     uint8_t  baseline_precedence;
     uint16_t current_cost;
