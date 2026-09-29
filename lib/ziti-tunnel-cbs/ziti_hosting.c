@@ -24,6 +24,7 @@
 
 
 #include <stdio.h>
+#include <ctype.h>
 #include <ziti/ziti_log.h>
 #include <memory.h>
 #include <ziti/ziti_tunnel_cbs.h>
@@ -894,6 +895,32 @@ static void listen_opts_from_host_cfg_v1(ziti_listen_opts *opts, const ziti_list
     }
 }
 
+static void str_tolower(char *s) {
+    for (; s != NULL && *s != '\0'; s++) {
+        *s = (char) tolower((unsigned char) *s);
+    }
+}
+
+char *resolve_listen_identity(char *buf, size_t bufsz, const char *identity_template, const char *tunneler_id_name) {
+    if (identity_template == NULL || identity_template[0] == '\0') {
+        return NULL;
+    }
+
+    strncpy(buf, identity_template, bufsz - 1);
+    buf[bufsz - 1] = '\0';
+
+    char normalized_id_name[128] = {0};
+    if (tunneler_id_name != NULL) {
+        strncpy(normalized_id_name, tunneler_id_name, sizeof(normalized_id_name) - 1);
+        str_tolower(normalized_id_name);
+    }
+
+    if (string_replace(buf, bufsz, "$tunneler_id.name", normalized_id_name) != NULL) {
+        return buf;
+    }
+    return NULL;
+}
+
 static int ziti_address_translation_cmp(const void *a, const void *b) {
     const ziti_address_translation * const *xa = a;
     const ziti_address_translation * const *xb = b;
@@ -1093,9 +1120,10 @@ host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, tunneler_context tnlr, const char *s
     if (listen_opts_p != NULL) {
         if (listen_opts_p->identity != NULL && listen_opts_p->identity[0] != '\0') {
             const ziti_identity *zid = ziti_get_identity(ziti_ctx);
-            strncpy(listen_identity, listen_opts_p->identity, sizeof(listen_identity));
-            if (string_replace(listen_identity, sizeof(listen_identity), "$tunneler_id.name", zid->name) != NULL) {
-                listen_opts_p->identity = listen_identity;
+            char *resolved = resolve_listen_identity(listen_identity, sizeof(listen_identity),
+                                                      listen_opts_p->identity, zid != NULL ? zid->name : NULL);
+            if (resolved != NULL) {
+                listen_opts_p->identity = resolved;
             }
         }
     }

@@ -23,6 +23,11 @@
 #include <ziti/ziti_tunnel.h>
 #include "ziti/ziti_tunnel_cbs.h"
 #include "tlsuv/http.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 // allowed address is one of:
 // - ip subnet address
 // - DNS name or wildcard
@@ -72,5 +77,17 @@ struct tunneled_service_s {
 };
 
 void accept_resolver_conn(ziti_connection conn, allowed_hostnames_t *allowed);
+
+/**
+ * resolves listen_options.identity by substituting "$tunneler_id.name" with a lower-cased
+ * copy of tunneler_id_name. writes the resolved identity into buf and returns buf, or returns
+ * NULL if identity_template is empty or does not contain the placeholder (buf is left unmodified
+ * in that case, and the caller should keep using the original, unresolved identity_template).
+ */
+char *resolve_listen_identity(char *buf, size_t bufsz, const char *identity_template, const char *tunneler_id_name);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif //ZITI_TUNNEL_SDK_C_ZITI_HOSTING_H
