@@ -541,7 +541,9 @@ static int do_bind(hosted_io_context io, const char *addr, int socktype) {
 
     switch (hints.ai_protocol) {
         case IPPROTO_TCP:
-            uv_err = uv_tcp_bind(&io->server.tcp, ai_req.addrinfo->ai_addr, 0);
+            // the source address was validated above; the actual bind happens on the socket the
+            // tlsuv connector opens for the outbound connection (see on_hosted_client_connect).
+            uv_err = 0;
             break;
         case IPPROTO_UDP:
             uv_err = uv_udp_bind(&io->server.udp, ai_req.addrinfo->ai_addr, 0);
@@ -754,11 +756,23 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
     ziti_conn_set_data(clt, io);
 
     if (protocol_number == IPPROTO_TCP) {
-        ZITI_LOG(DEBUG, "hosted_service[%s] client[%s] dst_addr[%s:%s:%s] connecting%s",
+        const char *source_addr = (app_data != NULL && app_data->source_addr != NULL && app_data->source_addr[0] != '\0')
+                ? app_data->source_addr : NULL;
+
+        char proxy_desc[128] = "";
+        if (service_ctx->proxy_connector != NULL) {
+            snprintf(proxy_desc, sizeof(proxy_desc), " through proxy[%s]", service_ctx->proxy_addr);
+        }
+        char source_desc[96] = "";
+        if (source_addr != NULL) {
+            snprintf(source_desc, sizeof(source_desc), " with source address[%s]", source_addr);
+        }
+        ZITI_LOG(DEBUG, "hosted_service[%s] client[%s] dst_addr[%s:%s:%s] connecting%s%s",
                  service_ctx->service_name, io->client_identity, protocol, ip_or_hn, port,
-                 service_ctx->proxy_connector != NULL ? " through proxy" : "");
+                 proxy_desc, source_desc);
+
         io->connector_req = service_ctx->connector->connect(service_ctx->tnlr_ctx->loop, service_ctx->connector,
-                                                            ip_or_hn, port, on_hosted_tcp_connector_connect, io);
+                                                            ip_or_hn, port, source_addr, on_hosted_tcp_connector_connect, io);
         return;
     }
 
