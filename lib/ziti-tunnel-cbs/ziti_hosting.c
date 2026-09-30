@@ -52,6 +52,9 @@ struct hosted_io_ctx_s {
     const char *computed_dst_port;
     char resolved_dst[80];
     tlsuv_connector_req connector_req;
+    // valid (ss_family != AF_UNSPEC) when the client requested a TCP source address; the actual
+    // bind happens on the socket the tlsuv connector opens (see on_hosted_client_connect)
+    struct sockaddr_storage bound_source_addr;
     union {
         uv_tcp_t tcp;
         uv_udp_t udp;
@@ -502,14 +505,40 @@ static const char *compute_dst_port(const host_ctx_t *service, const tunneler_ap
     return port_from_config;
 }
 
-static int do_bind(hosted_io_context io, const char *addr, int socktype) {
-    // split out the ip and port if port was specified
-    char *src_ip = strdup(addr);
-    char *port = strchr(src_ip, ':');
-    if (port != NULL) {
-        *port = '\0';
-        port++;
+/**
+ * splits a `host[:port]` string in place. recognizes `[addr]:port` / `[addr]` (required for an
+ * IPv6 literal with a port, since the address itself contains colons) and plain `addr:port` /
+ * `addr` for everything else. a bare, unbracketed address with more than one colon is assumed to
+ * be an IPv6 literal with no port -- splitting on any of its colons would silently corrupt it.
+ */
+static char *split_host_port(char *buf, char **port_out) {
+    *port_out = NULL;
+
+    if (buf[0] == '[') {
+        char *end = strchr(buf, ']');
+        if (end != NULL) {
+            *end = '\0';
+            if (end[1] == ':') {
+                *port_out = end + 2;
+            }
+            return buf + 1;
+        }
+        // malformed: unterminated '[' -- fall through and treat the whole thing as the host
     }
+
+    char *first_colon = strchr(buf, ':');
+    if (first_colon != NULL && strchr(first_colon + 1, ':') == NULL) {
+        *first_colon = '\0';
+        *port_out = first_colon + 1;
+    }
+    return buf;
+}
+
+static int do_bind(hosted_io_context io, const char *addr, int socktype) {
+    // split out the ip and port if one was specified; see split_host_port() for the [addr]:port convention
+    char *buf = strdup(addr);
+    char *port;
+    char *src_ip = split_host_port(buf, &port);
 
     uv_getaddrinfo_t ai_req = {0};
     struct addrinfo hints = {0};
@@ -518,7 +547,7 @@ static int do_bind(hosted_io_context io, const char *addr, int socktype) {
     hints.ai_socktype = socktype;
 
     int uv_err = uv_getaddrinfo(io->service->tnlr_ctx->loop, &ai_req, NULL, src_ip, port, &hints);
-    free(src_ip);
+    free(buf);
 
     if (uv_err != 0) {
         ZITI_LOG(ERROR, "hosted_service[%s], client[%s]: getaddrinfo(%s) failed: %s",
@@ -541,8 +570,9 @@ static int do_bind(hosted_io_context io, const char *addr, int socktype) {
 
     switch (hints.ai_protocol) {
         case IPPROTO_TCP:
-            // the source address was validated above; the actual bind happens on the socket the
-            // tlsuv connector opens for the outbound connection (see on_hosted_client_connect).
+            // the source address was validated above; stash it so on_hosted_client_connect can
+            // pass it to the connector, which does the actual bind on the socket it opens.
+            memcpy(&io->bound_source_addr, ai_req.addrinfo->ai_addr, ai_req.addrinfo->ai_addrlen);
             uv_err = 0;
             break;
         case IPPROTO_UDP:
@@ -756,23 +786,23 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
     ziti_conn_set_data(clt, io);
 
     if (protocol_number == IPPROTO_TCP) {
-        const char *source_addr = (app_data != NULL && app_data->source_addr != NULL && app_data->source_addr[0] != '\0')
-                ? app_data->source_addr : NULL;
+        const struct sockaddr *bound_source_addr = io->bound_source_addr.ss_family != AF_UNSPEC
+                ? (struct sockaddr *) &io->bound_source_addr : NULL;
 
         char proxy_desc[128] = "";
         if (service_ctx->proxy_connector != NULL) {
             snprintf(proxy_desc, sizeof(proxy_desc), " through proxy[%s]", service_ctx->proxy_addr);
         }
         char source_desc[96] = "";
-        if (source_addr != NULL) {
-            snprintf(source_desc, sizeof(source_desc), " with source address[%s]", source_addr);
+        if (bound_source_addr != NULL) {
+            snprintf(source_desc, sizeof(source_desc), " with source address[%s]", app_data->source_addr);
         }
         ZITI_LOG(DEBUG, "hosted_service[%s] client[%s] dst_addr[%s:%s:%s] connecting%s%s",
                  service_ctx->service_name, io->client_identity, protocol, ip_or_hn, port,
                  proxy_desc, source_desc);
 
         io->connector_req = service_ctx->connector->connect(service_ctx->tnlr_ctx->loop, service_ctx->connector,
-                                                            ip_or_hn, port, source_addr, on_hosted_tcp_connector_connect, io);
+                                                            ip_or_hn, port, bound_source_addr, on_hosted_tcp_connector_connect, io);
         return;
     }
 
