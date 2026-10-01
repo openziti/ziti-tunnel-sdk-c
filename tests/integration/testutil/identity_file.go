@@ -19,6 +19,7 @@ package testutil
 import (
 	"bytes"
 	"encoding/json"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -60,6 +61,32 @@ func ReadIdentityFile(t *testing.T, path string) IdentityFileContent {
 	dec.DisallowUnknownFields()
 	require.NoError(t, dec.Decode(&content), "identity file at %s has unknown fields or invalid shape: %s", path, raw)
 	return content
+}
+
+// RedirectIdentityFile rewrites ZtAPI/ZtAPIs in the identity file at path so
+// every entry points at addr instead of the real controller, preserving each
+// URL's original scheme and path. Shared by tests that need a running ZET to
+// dial a controllable stand-in (a dead controller, an outage proxy) instead
+// of the real address it enrolled against.
+func RedirectIdentityFile(t *testing.T, path, addr string) {
+	t.Helper()
+	content := ReadIdentityFile(t, path)
+
+	redirect := func(raw string) string {
+		u, err := url.Parse(raw)
+		require.NoError(t, err, "parse identity file URL %q", raw)
+		u.Host = addr
+		return u.String()
+	}
+
+	content.ZtAPI = redirect(content.ZtAPI)
+	for i, api := range content.ZtAPIs {
+		content.ZtAPIs[i] = redirect(api)
+	}
+
+	raw, err := json.Marshal(content)
+	require.NoError(t, err, "marshal doctored identity file")
+	require.NoError(t, os.WriteFile(path, raw, 0o600), "write doctored identity file %s", path)
 }
 
 // AssertNoIdentityFile asserts a failed enrollment left no identity file in
