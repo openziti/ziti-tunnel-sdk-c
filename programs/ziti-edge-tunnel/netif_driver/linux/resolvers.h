@@ -50,6 +50,6 @@ bool try_libsystemd_resolver(const char *tun_name);
 #endif
 bool is_systemd_resolved_primary_resolver(void);
 bool is_resolvconf_systemd_resolved(void);
-void dns_update_systemd_resolved(const char* tun, unsigned int ifindex, const char* addr);
-void dns_update_resolvconf(const char* tun, unsigned int ifindex, const char* addr);
-void dns_update_etc_resolv(const char* tun, unsigned int ifindex, const char* addr);
+void dns_update_systemd_resolved(const char* tun, unsigned int ifindex, const char* addr, const char *const *domains);
+void dns_update_resolvconf(const char* tun, unsigned int ifindex, const char* addr, const char *const *domains);
+void dns_update_etc_resolv(const char* tun, unsigned int ifindex, const char* addr, const char *const *domains);

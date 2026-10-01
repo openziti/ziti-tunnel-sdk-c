@@ -45,6 +45,14 @@ const char *ziti_dns_reverse_lookup(const char *ip_addr);
 
 void ziti_dns_deregister_intercept(void *intercept);
 
+typedef void (*ziti_dns_name_cb)(const char *name, void *ctx);
+
+/**
+ * Calls cb once for every name an active intercept resolves: each hostname, and each wildcard
+ * domain without its "*." prefix. Names are lower case and may carry a trailing dot.
+ */
+void ziti_dns_foreach_intercepted_name(ziti_dns_name_cb cb, void *ctx);
+
 #ifdef __cplusplus
 };
 #endif

@@ -20,6 +20,9 @@
 #include "ziti/ziti_dns.h"
 #include "ziti/model_collections.h"
 
+#include <set>
+#include <string>
+
 static int mock_add_route(netif_handle tun, const char *dest) {
     return 0;
 }
@@ -85,4 +88,48 @@ TEST_CASE("recycle ip", "[dns]") {
     // last ip is not broadcast ip
     ip = static_cast<const ip_addr_t *>(model_map_getl(ips, pool_size-1));
     CHECK_THAT(ipaddr_ntoa(ip), Catch::Equals("100.64.0.254"));
+}
+static std::set<std::string> intercepted_names() {
+    std::set<std::string> names;
+    ziti_dns_foreach_intercepted_name([](const char *name, void *ctx) {
+        static_cast<std::set<std::string> *>(ctx)->insert(name);
+    }, &names);
+    return names;
+}
+
+TEST_CASE("intercepted names", "[dns]") {
+    netif_driver_t mock_netif = {};
+    mock_netif.add_route = mock_add_route;
+    tunneler_sdk_options tnlr_opts = {
+            .l3_netif_driver = &mock_netif,
+            .ziti_dial = ziti_sdk_c_dial,
+            .ziti_close = ziti_sdk_c_close,
+            .ziti_close_write = ziti_sdk_c_close_write,
+            .ziti_write = ziti_sdk_c_write,
+            .ziti_host = ziti_sdk_c_host
+    };
+    tunneler_context tnlr = ziti_tunneler_init(&tnlr_opts, uv_default_loop());
+    // a range of its own: "recycle ip" leaves its pool full
+    ziti_dns_setup(tnlr, "100.65.0.2", "100.65.0.1/16");
+
+    auto *host_svc = new ziti_service;
+    auto *wild_svc = new ziti_service;
+    ziti_address za;
+    ziti_address_from_string(&za, "Storage.Example.NET");
+    REQUIRE(ziti_dns_register_hostname(&za, host_svc) != nullptr);
+    ziti_address_from_string(&za, "*.wild.example.org");
+    CHECK(ziti_dns_register_hostname(&za, wild_svc) == nullptr);
+
+    auto names = intercepted_names();
+    CHECK(names.count("storage.example.net") == 1);
+    CHECK(names.count("wild.example.org") == 1); // the domain, not the "*." pattern
+    CHECK(names.count("*.wild.example.org") == 0);
+
+    ziti_dns_deregister_intercept(host_svc);
+    names = intercepted_names();
+    CHECK(names.count("storage.example.net") == 0);
+    CHECK(names.count("wild.example.org") == 1);
+
+    ziti_dns_deregister_intercept(wild_svc);
+    CHECK(intercepted_names().count("wild.example.org") == 0);
 }

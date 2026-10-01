@@ -445,6 +445,24 @@ void ziti_dns_deregister_intercept(void *intercept) {
     }
 }
 
+void ziti_dns_foreach_intercepted_name(ziti_dns_name_cb cb, void *ctx) {
+    const char *key;
+    dns_entry_t *entry;
+    MODEL_MAP_FOREACH(key, entry, &ziti_dns.hostnames) {
+        // entries created by a wildcard lookup have no intercepts of their own: the domain covers them
+        if (model_map_size(&entry->intercepts) > 0) {
+            cb(entry->name, ctx);
+        }
+    }
+
+    dns_domain_t *domain;
+    MODEL_MAP_FOREACH(key, domain, &ziti_dns.domains) {
+        if (model_map_size(&domain->intercepts) > 0) {
+            cb(key, ctx); // keyed without the "*." prefix
+        }
+    }
+}
+
 const ip_addr_t *ziti_dns_register_hostname(const ziti_address *addr, void *intercept) {
     // IP or CIDR block
     if (addr->type == ziti_address_cidr) {

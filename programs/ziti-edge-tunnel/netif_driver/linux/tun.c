@@ -53,10 +53,10 @@
 
 extern void dns_set_miss_status(int code);
 
-static void dns_update_resolvectl(const char* tun, unsigned int ifindex, const char* addr);
-static void dns_update_systemd_resolve(const char* tun, unsigned int ifindex, const char* addr);
+static void dns_update_resolvectl(const char* tun, unsigned int ifindex, const char* addr, const char *const *domains);
+static void dns_update_systemd_resolve(const char* tun, unsigned int ifindex, const char* addr, const char *const *domains);
 
-static void (*dns_updater)(const char* tun, unsigned int ifindex, const char* addr);
+static void (*dns_updater)(const char* tun, unsigned int ifindex, const char* addr, const char *const *domains);
 static uv_once_t dns_updater_init;
 
 static struct {
@@ -65,7 +65,26 @@ static struct {
 
     uv_udp_t nl_udp;
     uv_timer_t update_timer;
+
+    // intercepted names, NULL-terminated. Written on the loop, read by set_dns on a worker.
+    uv_mutex_t domains_lock;
+    char **domains;
 } dns_maintainer;
+
+static void do_dns_update(uv_loop_t *loop, int delay);
+
+static void free_strv(char **v) {
+    for (char **p = v; p && *p; p++) free(*p);
+    free(v);
+}
+
+static char **copy_strv(char *const *v) {
+    size_t n = 0;
+    while (v && v[n]) n++;
+    char **c = calloc(n + 1, sizeof(char *));
+    for (size_t i = 0; i < n; i++) c[i] = strdup(v[i]);
+    return c;
+}
 
 static int tun_close(struct netif_handle_s *tun) {
     int r = 0;
@@ -189,7 +208,43 @@ close_file: ; /* declaration is not a statement */
     uv_fs_req_cleanup(&close_req);
 }
 
+static void collect_name(const char *name, void *ctx) {
+    char domain[256];
+    snprintf(domain, sizeof(domain), "%s", name);
+    size_t len = strlen(domain);
+    if (len > 1 && domain[len - 1] == '.') domain[len - 1] = '\0';
+    model_map_set(ctx, domain, (void *) 1); // a hostname and a wildcard over it are one domain
+}
+
+// The routing domains follow the active intercepts, re-read on every commit of service changes.
+static void refresh_dns_domains(uv_loop_t *loop) {
+    if (dns_maintainer.tun_name[0] == '\0') {
+        return; // this tun has no ziti resolver
+    }
+
+    model_map names = {0};
+    ziti_dns_foreach_intercepted_name(collect_name, &names);
+    char **domains = calloc(model_map_size(&names) + 1, sizeof(char *));
+    size_t i = 0;
+    const char *name;
+    const void *v;
+    MODEL_MAP_FOREACH(name, v, &names) {
+        domains[i++] = strdup(name);
+    }
+    model_map_clear(&names, NULL);
+
+    uv_mutex_lock(&dns_maintainer.domains_lock);
+    char **old = dns_maintainer.domains;
+    dns_maintainer.domains = domains;
+    uv_mutex_unlock(&dns_maintainer.domains_lock);
+    free_strv(old);
+
+    do_dns_update(loop, 0);
+}
+
 int tun_commit_routes(netif_handle tun, uv_loop_t *l) {
+    refresh_dns_domains(l);
+
     uv_work_t *wr = calloc(1, sizeof(uv_work_t));
     struct rt_process_cmd *cmd = calloc(1, sizeof(struct rt_process_cmd));
     if (tun->route_updates && model_map_size(tun->route_updates) > 0) {
@@ -203,7 +258,7 @@ int tun_commit_routes(netif_handle tun, uv_loop_t *l) {
     return 0;
 }
 
-static void dns_update_resolvectl(const char* tun, unsigned int ifindex, const char* addr) {
+static void dns_update_resolvectl(const char* tun, unsigned int ifindex, const char* addr, const char *const *domains) {
 
     run_command(RESOLVECTL " dns %s %s", tun, addr);
     int s = run_command_ex(false, RESOLVECTL " domain | grep -F -v '%s' | grep -F -q '~.'",
@@ -224,7 +279,7 @@ static void dns_update_resolvectl(const char* tun, unsigned int ifindex, const c
     run_command(RESOLVECTL " flush-caches");
 }
 
-static void dns_update_systemd_resolve(const char* tun, unsigned int ifindex, const char* addr) {
+static void dns_update_systemd_resolve(const char* tun, unsigned int ifindex, const char* addr, const char *const *domains) {
     run_command(SYSTEMD_RESOLVE " -i %s --set-dns=%s", tun, addr);
     int s = run_command_ex(false, SYSTEMD_RESOLVE " --status | grep -F 'DNS Domain' | grep -F -q '~.'");
     // set wildcard domain if any other resolvers set it.
@@ -285,11 +340,18 @@ static void find_dns_updater() {
 
 static void set_dns(uv_work_t *wr) {
     uv_once(&dns_updater_init, find_dns_updater);
+
+    uv_mutex_lock(&dns_maintainer.domains_lock);
+    char **domains = copy_strv(dns_maintainer.domains);
+    uv_mutex_unlock(&dns_maintainer.domains_lock);
+
     dns_updater(
             dns_maintainer.tun_name,
             if_nametoindex(dns_maintainer.tun_name),
-            inet_ntoa(*(struct in_addr*)&dns_maintainer.dns_ip)
+            inet_ntoa(*(struct in_addr*)&dns_maintainer.dns_ip),
+            (const char *const *) domains
     );
+    free_strv(domains);
 }
 
 static void after_set_dns(uv_work_t *wr, int status) {
@@ -321,6 +383,7 @@ void on_nl_message(uv_udp_t *nl, ssize_t len, const uv_buf_t *buf, const struct 
 static void init_dns_maintainer(uv_loop_t *loop, const char *tun_name, uint32_t dns_ip) {
     strncpy(dns_maintainer.tun_name, tun_name, sizeof(dns_maintainer.tun_name));
     dns_maintainer.dns_ip = dns_ip;
+    uv_mutex_init(&dns_maintainer.domains_lock);
 
     ZITI_LOG(DEBUG, "setting up NETLINK listener");
     struct sockaddr_nl local = {0};
