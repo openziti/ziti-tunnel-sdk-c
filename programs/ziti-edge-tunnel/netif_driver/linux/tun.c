@@ -223,7 +223,11 @@ static void refresh_dns_domains(uv_loop_t *loop) {
     }
 
     model_map names = {0};
-    ziti_dns_foreach_intercepted_name(collect_name, &names);
+    // A routing domain also claims the subdomains of an intercepted hostname. Without an upstream
+    // ziti refuses the ones it does not intercept, so they would stop resolving: no domains then.
+    if (ziti_dns_has_upstream()) {
+        ziti_dns_foreach_intercepted_name(collect_name, &names);
+    }
     char **domains = calloc(model_map_size(&names) + 1, sizeof(char *));
     size_t i = 0;
     const char *name;

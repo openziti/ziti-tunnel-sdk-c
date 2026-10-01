@@ -53,6 +53,9 @@ typedef void (*ziti_dns_name_cb)(const char *name, void *ctx);
  */
 void ziti_dns_foreach_intercepted_name(ziti_dns_name_cb cb, void *ctx);
 
+/** true when queries ziti does not intercept are forwarded upstream rather than refused */
+bool ziti_dns_has_upstream(void);
+
 #ifdef __cplusplus
 };
 #endif

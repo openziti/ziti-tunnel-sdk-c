@@ -133,3 +133,13 @@ TEST_CASE("intercepted names", "[dns]") {
     ziti_dns_deregister_intercept(wild_svc);
     CHECK(intercepted_names().count("wild.example.org") == 0);
 }
+
+TEST_CASE("upstream presence", "[dns]") {
+    CHECK_FALSE(ziti_dns_has_upstream());
+
+    tunnel_upstream_dns upstream = {};
+    upstream.host = (char *) "127.0.0.1";
+    tunnel_upstream_dns *upstreams[] = { &upstream, nullptr };
+    REQUIRE(ziti_dns_set_upstream(uv_default_loop(), upstreams) == 0);
+    CHECK(ziti_dns_has_upstream());
+}

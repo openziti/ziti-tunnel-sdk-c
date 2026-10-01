@@ -463,6 +463,10 @@ void ziti_dns_foreach_intercepted_name(ziti_dns_name_cb cb, void *ctx) {
     }
 }
 
+bool ziti_dns_has_upstream(void) {
+    return ziti_dns.num_dns_up > 0;
+}
+
 const ip_addr_t *ziti_dns_register_hostname(const ziti_address *addr, void *intercept) {
     // IP or CIDR block
     if (addr->type == ziti_address_cidr) {
