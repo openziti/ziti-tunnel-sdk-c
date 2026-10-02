@@ -901,24 +901,30 @@ static void str_tolower(char *s) {
     }
 }
 
-char *resolve_listen_identity(char *buf, size_t bufsz, const char *identity_template, const char *tunneler_id_name) {
-    if (identity_template == NULL || identity_template[0] == '\0') {
+char *resolve_listen_identity(char *buf, size_t bufsz, const ziti_listen_options *config_listen_options,
+                              const char *tunneler_id_name) {
+    if (config_listen_options == NULL) {
+        return NULL;
+    }
+    if (tunneler_id_name == NULL) {
+        tunneler_id_name = "";
+    }
+
+    if (config_listen_options->bind_with_identity) {
+        snprintf(buf, bufsz, "%s", tunneler_id_name);
+    } else if (config_listen_options->identity != NULL && config_listen_options->identity[0] != '\0') {
+        snprintf(buf, bufsz, "%s", config_listen_options->identity);
+        string_replace(buf, bufsz, "$tunneler_id.name", tunneler_id_name);
+    } else {
         return NULL;
     }
 
-    strncpy(buf, identity_template, bufsz - 1);
-    buf[bufsz - 1] = '\0';
-
-    char normalized_id_name[128] = {0};
-    if (tunneler_id_name != NULL) {
-        strncpy(normalized_id_name, tunneler_id_name, sizeof(normalized_id_name) - 1);
-        str_tolower(normalized_id_name);
+    if (config_listen_options->listen_identity_type == ziti_listen_identity_type_dns) {
+        // dialing tunnelers typically get the identity from a dns query, which may not preserve case
+        str_tolower(buf);
     }
 
-    if (string_replace(buf, bufsz, "$tunneler_id.name", normalized_id_name) != NULL) {
-        return buf;
-    }
-    return NULL;
+    return buf;
 }
 
 static int ziti_address_translation_cmp(const void *a, const void *b) {
@@ -946,10 +952,12 @@ host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, tunneler_context tnlr, const char *s
     char display_port[12] = { '?', '\0' };
     ziti_listen_opts listen_opts;
     ziti_listen_opts *listen_opts_p = NULL;
+    const ziti_listen_options *config_listen_options = NULL;
     switch (cfg_type) {
         case HOST_CFG_V1: {
             const ziti_host_cfg_v1 *host_v1_cfg = cfg;
-            listen_opts_from_host_cfg_v1(&listen_opts, host_v1_cfg->listen_options);
+            config_listen_options = host_v1_cfg->listen_options;
+            listen_opts_from_host_cfg_v1(&listen_opts, config_listen_options);
             listen_opts_p = &listen_opts;
             int i;
 
@@ -1084,7 +1092,8 @@ host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, tunneler_context tnlr, const char *s
             break;
         case L2_HOST_CFG_V1: {
             const ziti_l2_host_cfg_v1 *l2_host_v1_cfg = cfg;
-            listen_opts_from_host_cfg_v1(&listen_opts, l2_host_v1_cfg->listen_options);
+            config_listen_options = l2_host_v1_cfg->listen_options;
+            listen_opts_from_host_cfg_v1(&listen_opts, config_listen_options);
             listen_opts_p = &listen_opts;
             break;
         }
@@ -1118,13 +1127,12 @@ host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, tunneler_context tnlr, const char *s
 
     char listen_identity[128];
     if (listen_opts_p != NULL) {
-        if (listen_opts_p->identity != NULL && listen_opts_p->identity[0] != '\0') {
-            const ziti_identity *zid = ziti_get_identity(ziti_ctx);
-            char *resolved = resolve_listen_identity(listen_identity, sizeof(listen_identity),
-                                                      listen_opts_p->identity, zid != NULL ? zid->name : NULL);
-            if (resolved != NULL) {
-                listen_opts_p->identity = resolved;
-            }
+        const ziti_identity *zid = ziti_get_identity(ziti_ctx);
+        char *resolved = resolve_listen_identity(listen_identity, sizeof(listen_identity),
+                                                  config_listen_options, zid != NULL ? zid->name : NULL);
+        if (resolved != NULL) {
+            listen_opts_p->identity = resolved;
+            listen_opts_p->bind_using_edge_identity = false;
         }
     }
     ziti_listen_with_options(serv, service_name, listen_opts_p, hosted_listen_cb, on_hosted_client_connect);

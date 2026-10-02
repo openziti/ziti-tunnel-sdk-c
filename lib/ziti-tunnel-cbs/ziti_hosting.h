@@ -79,12 +79,13 @@ struct tunneled_service_s {
 void accept_resolver_conn(ziti_connection conn, allowed_hostnames_t *allowed);
 
 /**
- * resolves listen_options.identity by substituting "$tunneler_id.name" with a lower-cased
- * copy of tunneler_id_name. writes the resolved identity into buf and returns buf, or returns
- * NULL if identity_template is empty or does not contain the placeholder (buf is left unmodified
- * in that case, and the caller should keep using the original, unresolved identity_template).
+ * resolves the effective listen identity from host.v1 listenOptions. the identity is tunneler_id_name
+ * when bindUsingEdgeIdentity is set, otherwise listenOptions.identity with "$tunneler_id.name" substituted.
+ * when listenIdentityType is "dns" the resolved identity is lower-cased.
+ * writes the resolved identity into buf and returns buf, or returns NULL if no listen identity is configured.
  */
-char *resolve_listen_identity(char *buf, size_t bufsz, const char *identity_template, const char *tunneler_id_name);
+char *resolve_listen_identity(char *buf, size_t bufsz, const ziti_listen_options *config_listen_options,
+                              const char *tunneler_id_name);
 
 #ifdef __cplusplus
 }
