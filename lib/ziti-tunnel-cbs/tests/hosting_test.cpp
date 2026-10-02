@@ -17,49 +17,82 @@
 #include "catch2/catch.hpp"
 #include "../ziti_hosting.h"
 
-TEST_CASE("resolve_listen_identity normalizes tunneler_id.name to lower-case", "[hosting]") {
+static ziti_listen_options make_listen_opts(const char *identity, ziti_listen_identity_type identity_type,
+                                            bool bind_with_identity = false) {
+    ziti_listen_options opts{};
+    opts.identity = const_cast<char *>(identity);
+    opts.listen_identity_type = identity_type;
+    opts.bind_with_identity = bind_with_identity;
+    return opts;
+}
+
+TEST_CASE("resolve_listen_identity preserves case without listenIdentityType", "[hosting]") {
     char buf[128];
 
     SECTION("bare placeholder") {
-        char *resolved = resolve_listen_identity(buf, sizeof(buf), "$tunneler_id.name", "MyRouter-01");
-        REQUIRE(resolved != nullptr);
-        CHECK_THAT(resolved, Catch::Equals("myrouter-01"));
+        auto opts = make_listen_opts("$tunneler_id.name", ziti_listen_identity_type_Unknown);
+        CHECK_THAT(resolve_listen_identity(buf, sizeof(buf), &opts, "MyRouter-01"), Catch::Equals("MyRouter-01"));
     }
 
     SECTION("placeholder embedded in a larger template") {
-        char *resolved = resolve_listen_identity(buf, sizeof(buf), "svc-$tunneler_id.name", "MyRouter-01");
-        REQUIRE(resolved != nullptr);
-        CHECK_THAT(resolved, Catch::Equals("svc-myrouter-01"));
+        auto opts = make_listen_opts("svc-$tunneler_id.name", ziti_listen_identity_type_Unknown);
+        CHECK_THAT(resolve_listen_identity(buf, sizeof(buf), &opts, "MyRouter-01"), Catch::Equals("svc-MyRouter-01"));
     }
 
-    SECTION("already lower-case identity name is unaffected") {
-        char *resolved = resolve_listen_identity(buf, sizeof(buf), "$tunneler_id.name", "myrouter-01");
-        REQUIRE(resolved != nullptr);
-        CHECK_THAT(resolved, Catch::Equals("myrouter-01"));
+    SECTION("literal identity") {
+        auto opts = make_listen_opts("MyLiteralIdentity", ziti_listen_identity_type_Unknown);
+        CHECK_THAT(resolve_listen_identity(buf, sizeof(buf), &opts, "MyRouter-01"), Catch::Equals("MyLiteralIdentity"));
+    }
+
+    SECTION("bindUsingEdgeIdentity") {
+        auto opts = make_listen_opts(nullptr, ziti_listen_identity_type_Unknown, true);
+        CHECK_THAT(resolve_listen_identity(buf, sizeof(buf), &opts, "MyRouter-01"), Catch::Equals("MyRouter-01"));
     }
 }
 
-TEST_CASE("resolve_listen_identity leaves literal (non-templated) identity untouched", "[hosting]") {
+TEST_CASE("resolve_listen_identity lower-cases with listenIdentityType=dns", "[hosting]") {
     char buf[128];
 
-    char *resolved = resolve_listen_identity(buf, sizeof(buf), "MyLiteralIdentity", "MyRouter-01");
-    CHECK(resolved == nullptr);
+    SECTION("bare placeholder") {
+        auto opts = make_listen_opts("$tunneler_id.name", ziti_listen_identity_type_dns);
+        CHECK_THAT(resolve_listen_identity(buf, sizeof(buf), &opts, "MyRouter-01"), Catch::Equals("myrouter-01"));
+    }
+
+    SECTION("placeholder embedded in a larger template") {
+        auto opts = make_listen_opts("Svc-$tunneler_id.name", ziti_listen_identity_type_dns);
+        CHECK_THAT(resolve_listen_identity(buf, sizeof(buf), &opts, "MyRouter-01"), Catch::Equals("svc-myrouter-01"));
+    }
+
+    SECTION("literal identity") {
+        auto opts = make_listen_opts("MyLiteralIdentity", ziti_listen_identity_type_dns);
+        CHECK_THAT(resolve_listen_identity(buf, sizeof(buf), &opts, "MyRouter-01"), Catch::Equals("myliteralidentity"));
+    }
+
+    SECTION("bindUsingEdgeIdentity") {
+        auto opts = make_listen_opts(nullptr, ziti_listen_identity_type_dns, true);
+        CHECK_THAT(resolve_listen_identity(buf, sizeof(buf), &opts, "MyRouter-01"), Catch::Equals("myrouter-01"));
+    }
 }
 
 TEST_CASE("resolve_listen_identity handles empty/null inputs", "[hosting]") {
     char buf[128];
 
-    SECTION("null identity_template") {
+    SECTION("null listen options") {
         CHECK(resolve_listen_identity(buf, sizeof(buf), nullptr, "MyRouter-01") == nullptr);
     }
 
-    SECTION("empty identity_template") {
-        CHECK(resolve_listen_identity(buf, sizeof(buf), "", "MyRouter-01") == nullptr);
+    SECTION("no identity configured") {
+        auto opts = make_listen_opts(nullptr, ziti_listen_identity_type_dns);
+        CHECK(resolve_listen_identity(buf, sizeof(buf), &opts, "MyRouter-01") == nullptr);
+    }
+
+    SECTION("empty identity") {
+        auto opts = make_listen_opts("", ziti_listen_identity_type_dns);
+        CHECK(resolve_listen_identity(buf, sizeof(buf), &opts, "MyRouter-01") == nullptr);
     }
 
     SECTION("null tunneler_id_name substitutes empty string") {
-        char *resolved = resolve_listen_identity(buf, sizeof(buf), "svc-$tunneler_id.name", nullptr);
-        REQUIRE(resolved != nullptr);
-        CHECK_THAT(resolved, Catch::Equals("svc-"));
+        auto opts = make_listen_opts("svc-$tunneler_id.name", ziti_listen_identity_type_Unknown);
+        CHECK_THAT(resolve_listen_identity(buf, sizeof(buf), &opts, nullptr), Catch::Equals("svc-"));
     }
 }
