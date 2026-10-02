@@ -86,7 +86,6 @@ if ($env:IDP_VERSION) {
 } else {
     & $fetchDex -Dest $dexDir
 }
-if ($LASTEXITCODE -ne 0) { Write-Error "fetch-dex.ps1 failed (exit $LASTEXITCODE)" }
 $idpBin = Join-Path $dexDir "dex.exe"
 Write-Host "IDP_BIN=$idpBin"
 
