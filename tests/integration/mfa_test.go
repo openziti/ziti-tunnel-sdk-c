@@ -340,7 +340,8 @@ func submitMfaAfterEnrollSatisfiesPosture(t *testing.T) {
 		name := "test_mfa_posture_submit_client"
 		enrollment, secret := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, name)
 
-		code := testutil.GenerateTOTP(t, secret, time.Now())
+		// the next window's code, so the controller cannot reject it as the one VerifyMFA spent
+		code := testutil.GenerateTOTP(t, secret, time.Now().Add(30*time.Second))
 		submitResp := state.zetClient.SubmitMFA(t, enrollment.Identifier, code)
 
 		// Inverted to pass until openziti/ziti-sdk-c#1087 is fixed, then replace with
@@ -351,20 +352,32 @@ func submitMfaAfterEnrollSatisfiesPosture(t *testing.T) {
 
 // Restarting after enrollment forces a full login, which prompts for a code. Once that code
 // is accepted, the session is MFA authenticated and the posture check should pass. The
-// discourse 6171 reporter says the check still fails here.
+// discourse 6171 reporter says the check still fails here. The service is dialed as well as
+// checked in Status, because the router denies the dial on its own (openziti/ziti#4375) even
+// when the token carries totp.
 func restartWithTotpSatisfiesPosture(t *testing.T) {
-	testutil.RunWithTimeoutOf(t, 60*time.Second, func(t *testing.T) {
+	requireMultiTunnel(t)
+	testutil.RunWithTimeoutOf(t, 90*time.Second, func(t *testing.T) {
 		name := "test_mfa_posture_restart_client"
+		interceptAddr := "100.64.0.23:23003"
+
+		// test_mfa_posture_restart_host_cfg forwards tunneled connections to 127.0.0.1:23183
+		testutil.StartTCPEcho(t, "127.0.0.1:23183")
+		testutil.FetchAndEnrollJwt(t, state.overlay, state.zetHost, "test_mfa_posture_restart_host")
+		state.zetHost.WaitForControllerEvent(t, "connected", "test_mfa_posture_restart_host")
+
 		enrollment, secret := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, name)
 
 		state.overlay.WaitForDataModelConsensus()
 		require.NoError(t, state.zetClient.Restart(), "restart %s\n%s", state.zetClient.Discriminator, state.zetClient.LogPath())
 
 		state.zetClient.WaitForMfaEvent(t, "auth_challenge", name)
-		code := testutil.GenerateTOTP(t, secret, time.Now())
+		code := testutil.GenerateTOTP(t, secret, time.Now().Add(30*time.Second))
 		state.zetClient.SubmitMFA(t, enrollment.Identifier, code).AssertSuccess()
 		state.zetClient.WaitForIdentityEvent(t, "updated", name).AssertMfaAuthenticated()
 
+		t.Logf("dialing test_mfa_posture_restart_svc at %s until allowed", interceptAddr)
+		testutil.WaitForServiceAllowed(t, state.zetClient, interceptAddr, 30*time.Second)
 		waitForMfaPostureService(t, name, true)
 	})
 }
