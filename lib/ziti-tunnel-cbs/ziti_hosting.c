@@ -24,6 +24,7 @@
 
 
 #include <stdio.h>
+#include <ctype.h>
 #include <ziti/ziti_log.h>
 #include <memory.h>
 #include <ziti/ziti_tunnel_cbs.h>
@@ -894,6 +895,38 @@ static void listen_opts_from_host_cfg_v1(ziti_listen_opts *opts, const ziti_list
     }
 }
 
+static void str_tolower(char *s) {
+    for (; s != NULL && *s != '\0'; s++) {
+        *s = (char) tolower((unsigned char) *s);
+    }
+}
+
+char *resolve_listen_identity(char *buf, size_t bufsz, const ziti_listen_options *config_listen_options,
+                              const char *tunneler_id_name) {
+    if (config_listen_options == NULL) {
+        return NULL;
+    }
+    if (tunneler_id_name == NULL) {
+        tunneler_id_name = "";
+    }
+
+    if (config_listen_options->bind_with_identity) {
+        snprintf(buf, bufsz, "%s", tunneler_id_name);
+    } else if (config_listen_options->identity != NULL && config_listen_options->identity[0] != '\0') {
+        snprintf(buf, bufsz, "%s", config_listen_options->identity);
+        string_replace(buf, bufsz, "$tunneler_id.name", tunneler_id_name);
+    } else {
+        return NULL;
+    }
+
+    if (config_listen_options->listen_identity_type == ziti_listen_identity_type_dns) {
+        // dialing tunnelers typically get the identity from a dns query, which may not preserve case
+        str_tolower(buf);
+    }
+
+    return buf;
+}
+
 static int ziti_address_translation_cmp(const void *a, const void *b) {
     const ziti_address_translation * const *xa = a;
     const ziti_address_translation * const *xb = b;
@@ -919,10 +952,12 @@ host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, tunneler_context tnlr, const char *s
     char display_port[12] = { '?', '\0' };
     ziti_listen_opts listen_opts;
     ziti_listen_opts *listen_opts_p = NULL;
+    const ziti_listen_options *config_listen_options = NULL;
     switch (cfg_type) {
         case HOST_CFG_V1: {
             const ziti_host_cfg_v1 *host_v1_cfg = cfg;
-            listen_opts_from_host_cfg_v1(&listen_opts, host_v1_cfg->listen_options);
+            config_listen_options = host_v1_cfg->listen_options;
+            listen_opts_from_host_cfg_v1(&listen_opts, config_listen_options);
             listen_opts_p = &listen_opts;
             int i;
 
@@ -1057,7 +1092,8 @@ host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, tunneler_context tnlr, const char *s
             break;
         case L2_HOST_CFG_V1: {
             const ziti_l2_host_cfg_v1 *l2_host_v1_cfg = cfg;
-            listen_opts_from_host_cfg_v1(&listen_opts, l2_host_v1_cfg->listen_options);
+            config_listen_options = l2_host_v1_cfg->listen_options;
+            listen_opts_from_host_cfg_v1(&listen_opts, config_listen_options);
             listen_opts_p = &listen_opts;
             break;
         }
@@ -1091,12 +1127,12 @@ host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, tunneler_context tnlr, const char *s
 
     char listen_identity[128];
     if (listen_opts_p != NULL) {
-        if (listen_opts_p->identity != NULL && listen_opts_p->identity[0] != '\0') {
-            const ziti_identity *zid = ziti_get_identity(ziti_ctx);
-            strncpy(listen_identity, listen_opts_p->identity, sizeof(listen_identity));
-            if (string_replace(listen_identity, sizeof(listen_identity), "$tunneler_id.name", zid->name) != NULL) {
-                listen_opts_p->identity = listen_identity;
-            }
+        const ziti_identity *zid = ziti_get_identity(ziti_ctx);
+        char *resolved = resolve_listen_identity(listen_identity, sizeof(listen_identity),
+                                                  config_listen_options, zid != NULL ? zid->name : NULL);
+        if (resolved != NULL) {
+            listen_opts_p->identity = resolved;
+            listen_opts_p->bind_using_edge_identity = false;
         }
     }
     ziti_listen_with_options(serv, service_name, listen_opts_p, hosted_listen_cb, on_hosted_client_connect);
