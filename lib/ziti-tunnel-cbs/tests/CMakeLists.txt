@@ -3,6 +3,7 @@ enable_testing()
 # package tests into a library so they can be referenced in all_tests
 add_library(ziti-tunnel-cbs-c-test-lib OBJECT
         dns_test.cpp
+        health_checks_test.cpp
 )
 
 target_include_directories(ziti-tunnel-cbs-c-test-lib

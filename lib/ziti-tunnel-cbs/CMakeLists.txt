@@ -8,6 +8,10 @@ target_compile_definitions(ziti-tunnel-sdk-c
 add_library(ziti-tunnel-cbs-c STATIC
         ziti_tunnel_cbs.c
         ziti_hosting.c
+        ziti_hosting.h
+        health_checks.c
+        health_checks.h
+        health_checks_internal.h
         ziti_tunnel_ctrl.c
         ziti_instance.h
         ziti_dns.c

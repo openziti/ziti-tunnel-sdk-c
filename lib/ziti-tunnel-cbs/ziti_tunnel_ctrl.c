@@ -1636,7 +1636,15 @@ IMPL_MODEL(service_event, ZTX_SVC_EVENT_MODEL)
 IMPL_MODEL(config_event, CONFIG_EVENT_MODEL)
 IMPL_MODEL(router_event, ROUTER_EVENT_MODEL)
 IMPL_MODEL(posture_status_event, POSTURE_STATUS_EVENT_MODEL)
+IMPL_MODEL(health_check_result, HEALTH_CHECK_RESULT_MODEL)
+IMPL_MODEL(health_status_event, HEALTH_STATUS_EVENT_MODEL)
 IMPL_MODEL(tunnel_command_inline, TUNNEL_CMD_INLINE)
+
+void ziti_tunnel_send_event(const base_event *ev) {
+    if (CMD_CTX.on_event) {
+        CMD_CTX.on_event(ev);
+    }
+}
 
 IMPL_MODEL(jwt_provider, EXT_JWT_PROVIDER)
 IMPL_MODEL(ext_signer_event, EXT_SIGNER_EVENT_MODEL)

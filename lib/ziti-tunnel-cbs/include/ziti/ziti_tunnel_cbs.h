@@ -270,7 +270,8 @@ XX(MFAStatusEvent, __VA_ARGS__) \
 XX(ConfigEvent, __VA_ARGS__)      \
 XX(RouterEvent, __VA_ARGS__) \
 XX(ExtJWTEvent, __VA_ARGS__) \
-XX(PostureStatusEvent, __VA_ARGS__)
+XX(PostureStatusEvent, __VA_ARGS__) \
+XX(HealthStatusEvent, __VA_ARGS__)
 
 DECLARE_ENUM(TunnelEvent, TUNNEL_EVENTS)
 
@@ -355,6 +356,24 @@ XX(services, ziti_service, array, services, __VA_ARGS__)      \
 XX(paths, model_string, array, paths, __VA_ARGS__)            \
 XX(missing_paths, model_string, array, missing_paths, __VA_ARGS__)
 
+// one portCheck/httpCheck's current state, as reported in a health_status_event
+#define HEALTH_CHECK_RESULT_MODEL(XX, ...) \
+XX(id, model_string, none, id, __VA_ARGS__) \
+XX(check_type, model_string, none, check_type, __VA_ARGS__) \
+XX(is_passing, model_bool, none, is_passing, __VA_ARGS__) \
+XX(consecutive_failures, model_number, none, consecutive_failures, __VA_ARGS__) \
+XX(error, model_string, none, error, __VA_ARGS__)
+
+// emitted by the health check engine (lib/ziti-tunnel-cbs/health_checks.c) whenever a
+// check's own pass/fail state transitions, or a check's actions change the terminator's
+// effective cost/precedence -- not on every probe interval.
+#define HEALTH_STATUS_EVENT_MODEL(XX, ...) \
+BASE_EVENT_MODEL(XX, __VA_ARGS__) \
+XX(service_name, model_string, none, service_name, __VA_ARGS__) \
+XX(checks, health_check_result, array, checks, __VA_ARGS__) \
+XX(effective_cost, model_number, none, effective_cost, __VA_ARGS__) \
+XX(effective_precedence, model_string, none, effective_precedence, __VA_ARGS__)
+
 DECLARE_MODEL(base_event, BASE_EVENT_MODEL)
 DECLARE_MODEL(ziti_ctx_event, ZTX_EVENT_MODEL)
 DECLARE_MODEL(mfa_event, MFA_EVENT_MODEL)
@@ -362,9 +381,19 @@ DECLARE_MODEL(service_event, ZTX_SVC_EVENT_MODEL)
 DECLARE_MODEL(config_event, CONFIG_EVENT_MODEL)
 DECLARE_MODEL(router_event, ROUTER_EVENT_MODEL)
 DECLARE_MODEL(posture_status_event, POSTURE_STATUS_EVENT_MODEL)
+DECLARE_MODEL(health_check_result, HEALTH_CHECK_RESULT_MODEL)
+DECLARE_MODEL(health_status_event, HEALTH_STATUS_EVENT_MODEL)
 
 DECLARE_MODEL(jwt_provider, EXT_JWT_PROVIDER)
 DECLARE_MODEL(ext_signer_event, EXT_SIGNER_EVENT_MODEL)
+
+/**
+ * Deliver a tunnel event to whatever event_cb was registered via ziti_tunnel_init_cmd().
+ * Lets modules other than ziti_tunnel_ctrl.c (e.g. the health check engine) reach the
+ * registered callback without depending on ziti_tunnel_ctrl.c's internal CMD_CTX. Safe to
+ * call with no event_cb registered (a no-op).
+ */
+void ziti_tunnel_send_event(const base_event *ev);
 
 typedef struct tunneled_service_s tunneled_service_t;
 
@@ -463,6 +492,8 @@ int set_tnlr_options(struct ziti_instance_s *inst);
 void set_ziti_instance(const char *identifier, struct ziti_instance_s *inst);
 void remove_ziti_instance(const char *identifier);
 void ziti_host_set_conn(ziti_context ztx, const char *service_name, ziti_connection serv);
+/** forget a hosted service's server connection and host ctx once the connection's close callback has run */
+void ziti_host_release_conn(ziti_context ztx, const char *service_name, const host_ctx_t *host_ctx);
 
 #ifdef __cplusplus
 }

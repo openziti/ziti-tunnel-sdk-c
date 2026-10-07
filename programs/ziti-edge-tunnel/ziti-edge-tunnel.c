@@ -962,6 +962,48 @@ static void on_event(const base_event *ev) {
             }
             break;
         }
+        case TunnelEvent_HealthStatusEvent: {
+            if (id != NULL) {
+                const health_status_event *hse = (const health_status_event *) ev;
+                ZITI_LOG(INFO, "ztx[%s] health status: service[%s] cost[%lld] precedence[%s]",
+                         id->Identifier, hse->service_name, (long long) hse->effective_cost, hse->effective_precedence);
+                tunnel_health_status_event thse = {
+                        .Op = "healthstatus",
+                        .Action = (char *) event_name(event_updated),
+                        .Identifier = ev->identifier,
+                        .ServiceName = hse->service_name,
+                        .EffectiveCost = hse->effective_cost,
+                        .EffectivePrecedence = hse->effective_precedence,
+                };
+                if (id->FingerPrint) {
+                    thse.Fingerprint = id->FingerPrint;
+                }
+                if (hse->checks != NULL) {
+                    int check_count = 0;
+                    for (health_check_result **c = hse->checks; *c != NULL; c++) check_count++;
+                    thse.Checks = calloc(check_count + 1, sizeof(tunnel_health_check *));
+                    for (int chk_idx = 0; hse->checks[chk_idx]; chk_idx++) {
+                        health_check_result *r = hse->checks[chk_idx];
+                        tunnel_health_check *thc = calloc(1, sizeof(tunnel_health_check));
+                        thc->Id = r->id ? strdup(r->id) : NULL;
+                        thc->Type = r->check_type ? strdup(r->check_type) : NULL;
+                        thc->IsPassing = r->is_passing;
+                        thc->ConsecutiveFailures = r->consecutive_failures;
+                        thc->Error = r->error ? strdup(r->error) : NULL;
+                        thse.Checks[chk_idx] = thc;
+                    }
+                }
+                send_events_message(&thse, (to_json_fn) tunnel_health_status_event_to_json, true);
+                if (thse.Checks != NULL) {
+                    for (int chk_idx = 0; thse.Checks[chk_idx] != NULL; chk_idx++) {
+                        free_tunnel_health_check(thse.Checks[chk_idx]);
+                        free(thse.Checks[chk_idx]);
+                    }
+                    free(thse.Checks);
+                }
+            }
+            break;
+        }
         case TunnelEvent_Unknown:
         default:
             ZITI_LOG(WARN, "unhandled event received: %d", ev->event_type);

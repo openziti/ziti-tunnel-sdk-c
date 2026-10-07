@@ -18,6 +18,7 @@ package testutil
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
@@ -945,6 +946,190 @@ func (o *Overlay) DeleteConfig(name string) error {
 		return fmt.Errorf("delete config %s: %w", name, err)
 	}
 	return nil
+}
+
+// HealthCheckAction is one host.v1 portCheck/httpCheck action: on the named trigger
+// ("fail", "pass", "change"), take the named action ("mark healthy", "mark unhealthy",
+// "increase cost N", "decrease cost N", "send event"). ConsecutiveEvents and Duration
+// are both optional gates; a zero value for either omits it from the JSON.
+type HealthCheckAction struct {
+	Trigger           string
+	Action            string
+	ConsecutiveEvents int    // 0 = omit
+	Duration          string // e.g. "1s", "500ms"; "" = omit
+}
+
+func (a HealthCheckAction) marshal() map[string]any {
+	m := map[string]any{"trigger": a.Trigger, "action": a.Action}
+	if a.ConsecutiveEvents > 0 {
+		m["consecutiveEvents"] = a.ConsecutiveEvents
+	}
+	if a.Duration != "" {
+		m["duration"] = a.Duration
+	}
+	return m
+}
+
+// PortCheckSpec is one host.v1 portChecks[] entry.
+type PortCheckSpec struct {
+	Address  string // host:port to dial
+	Interval string // e.g. "250ms"
+	Timeout  string // e.g. "250ms"
+	Actions  []HealthCheckAction
+}
+
+// HttpCheckSpec is one host.v1 httpChecks[] entry.
+type HttpCheckSpec struct {
+	URL          string
+	Method       string // "" = omit, ziti-sdk-c defaults to GET
+	Body         string // "" = omit
+	ExpectStatus int    // 0 = omit, ziti-sdk-c defaults to 200
+	ExpectInBody string // "" = omit
+	Interval     string
+	Timeout      string
+	Actions      []HealthCheckAction
+}
+
+// CreateHostConfigV1WithChecks creates a host.v1 config that forwards to
+// forwardAddr:forwardPort, with listenOptions.cost/precedence and any portChecks/
+// httpChecks. Pass cost 0 and precedence "" to omit listenOptions entirely.
+func (o *Overlay) CreateHostConfigV1WithChecks(
+	name, protocol, forwardAddr string, forwardPort int,
+	cost int, precedence string,
+	portChecks []PortCheckSpec, httpChecks []HttpCheckSpec,
+) error {
+	cfg := map[string]any{
+		"protocol": protocol,
+		"address":  forwardAddr,
+		"port":     forwardPort,
+	}
+
+	if cost > 0 || precedence != "" {
+		listenOptions := map[string]any{}
+		if cost > 0 {
+			listenOptions["cost"] = cost
+		}
+		if precedence != "" {
+			listenOptions["precedence"] = precedence
+		}
+		cfg["listenOptions"] = listenOptions
+	}
+
+	if len(portChecks) > 0 {
+		var checks []map[string]any
+		for _, pc := range portChecks {
+			m := map[string]any{"address": pc.Address, "interval": pc.Interval, "timeout": pc.Timeout}
+			if len(pc.Actions) > 0 {
+				var actions []map[string]any
+				for _, a := range pc.Actions {
+					actions = append(actions, a.marshal())
+				}
+				m["actions"] = actions
+			}
+			checks = append(checks, m)
+		}
+		cfg["portChecks"] = checks
+	}
+
+	if len(httpChecks) > 0 {
+		var checks []map[string]any
+		for _, hc := range httpChecks {
+			m := map[string]any{"url": hc.URL, "interval": hc.Interval, "timeout": hc.Timeout}
+			if hc.Method != "" {
+				m["method"] = hc.Method
+			}
+			if hc.Body != "" {
+				m["body"] = hc.Body
+			}
+			if hc.ExpectStatus > 0 {
+				m["expectStatus"] = hc.ExpectStatus
+			}
+			if hc.ExpectInBody != "" {
+				m["expectInBody"] = hc.ExpectInBody
+			}
+			if len(hc.Actions) > 0 {
+				var actions []map[string]any
+				for _, a := range hc.Actions {
+					actions = append(actions, a.marshal())
+				}
+				m["actions"] = actions
+			}
+			checks = append(checks, m)
+		}
+		cfg["httpChecks"] = checks
+	}
+
+	body, err := json.Marshal(cfg)
+	if err != nil {
+		return err
+	}
+	if _, err := o.execZiti("edge create config %s host.v1 %s", name, string(body)); err != nil {
+		return fmt.Errorf("create host config %s: %w", name, err)
+	}
+	return nil
+}
+
+// TerminatorRef is the {id, name} shape the controller returns for a terminator's
+// service/router references.
+type TerminatorRef struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// Terminator is the subset of `ziti edge list terminators -j` fields these tests need.
+// Cost/Precedence here are the persisted, static values a health check's
+// ziti_update_terminator() call moves -- distinct from the controller's separate,
+// in-memory-only "dynamicCost" (see controller/network/network.go, xt.GlobalCosts()),
+// which health checks never touch.
+type Terminator struct {
+	ID         string        `json:"id"`
+	Service    TerminatorRef `json:"service"`
+	Router     TerminatorRef `json:"router"`
+	Binding    string        `json:"binding"`
+	Address    string        `json:"address"`
+	Identity   string        `json:"identity"`
+	Cost       int           `json:"cost"`
+	Precedence string        `json:"precedence"`
+}
+
+// ListTerminatorsForService returns every terminator currently bound for serviceName.
+// Filters client-side rather than trusting a server-side filter expression, since this
+// suite has no prior use of `edge list terminators` to model the filter syntax on.
+func (o *Overlay) ListTerminatorsForService(t *testing.T, serviceName string) []Terminator {
+	t.Helper()
+	out, err := o.execZiti("edge list terminators -j")
+	require.NoError(t, err, "list terminators")
+	var resp struct {
+		Data []Terminator `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(out, &resp), "parse terminators list")
+	var matched []Terminator
+	for _, term := range resp.Data {
+		if term.Service.Name == serviceName {
+			matched = append(matched, term)
+		}
+	}
+	return matched
+}
+
+// WaitForTerminator polls ListTerminatorsForService until match returns true for some
+// terminator of serviceName, or ctx expires.
+func (o *Overlay) WaitForTerminator(t *testing.T, ctx context.Context, serviceName string, match func(Terminator) bool) Terminator {
+	t.Helper()
+	for {
+		terminators := o.ListTerminatorsForService(t, serviceName)
+		for _, term := range terminators {
+			if match(term) {
+				return term
+			}
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatalf("service[%s] never reached the expected terminator state (%v); last seen: %+v",
+				serviceName, ctx.Err(), terminators)
+		case <-time.After(250 * time.Millisecond):
+		}
+	}
 }
 
 func (o *Overlay) waitUntilReady() error {

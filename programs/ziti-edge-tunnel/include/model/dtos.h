@@ -76,6 +76,16 @@ XX(Id, model_string, none, Id, __VA_ARGS__) \
 XX(Timeout, model_number, none, Timeout, __VA_ARGS__)  \
 XX(TimeoutRemaining, model_number, none, TimeoutRemaining, __VA_ARGS__)
 
+// one host.v1 portCheck/httpCheck's current state, as reported on a HealthStatusEvent.
+// not yet surfaced on TUNNEL_SERVICE's on-demand status snapshot -- see health_checks.c
+// for the live source of this data.
+#define TUNNEL_HEALTH_CHECK(XX, ...) \
+XX(Id, model_string, none, Id, __VA_ARGS__) \
+XX(Type, model_string, none, Type, __VA_ARGS__) \
+XX(IsPassing, model_bool, none, IsPassing, __VA_ARGS__) \
+XX(ConsecutiveFailures, model_number, none, ConsecutiveFailures, __VA_ARGS__) \
+XX(Error, model_string, none, Error, __VA_ARGS__)
+
 #define TUNNEL_SERVICE_PERMISSIONS(XX,...) \
 XX(Bind, model_bool, none, Bind, __VA_ARGS__) \
 XX(Dial, model_bool, none, Dial, __VA_ARGS__)
@@ -132,6 +142,7 @@ DECLARE_MODEL(tunnel_metrics, TUNNEL_METRICS)
 DECLARE_MODEL(tunnel_address, TUNNEL_ADDRESS)
 DECLARE_MODEL(tunnel_port_range, TUNNEL_PORT_RANGE)
 DECLARE_MODEL(tunnel_posture_check, TUNNEL_POSTURE_CHECK)
+DECLARE_MODEL(tunnel_health_check, TUNNEL_HEALTH_CHECK)
 DECLARE_MODEL(tunnel_service_permissions, TUNNEL_SERVICE_PERMISSIONS)
 DECLARE_MODEL(tunnel_service, TUNNEL_SERVICE)
 DECLARE_MODEL(tunnel_identity, TUNNEL_IDENTITY)
