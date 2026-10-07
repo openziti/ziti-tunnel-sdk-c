@@ -54,6 +54,8 @@ func TestMFARecoveryCodes(t *testing.T) {
 
 func TestMFAPostureCheck(t *testing.T) {
 	t.Run("serviceAccessibleAfterMfa", serviceAccessibleAfterMfa)
+	t.Run("submitMfaAfterEnrollSatisfiesPosture", submitMfaAfterEnrollSatisfiesPosture)
+	t.Run("restartWithTotpSatisfiesPosture", restartWithTotpSatisfiesPosture)
 }
 
 func enrollCompletesWithTotpRequiredPolicy(t *testing.T) {
@@ -326,4 +328,69 @@ func serviceAccessibleAfterMfa(t *testing.T) {
 		require.False(t, svc.IsAccessible, "service %s should be accessible once MFA posture checks are fixed (openziti/ziti-sdk-c#1087)", svc.Name)
 		require.False(t, svc.PostureChecks[0].IsPassing, "MFA posture check on %s should pass once openziti/ziti-sdk-c#1087 is fixed", svc.Name)
 	})
+}
+
+// After enrolling, the posture check still fails (see serviceAccessibleAfterMfa), so the UI
+// offers "Authorize". Submitting a valid code there should re-authenticate with MFA and pass
+// the check. With OIDC auth the sdk has no login waiting for a code, so oidc_auth_mfa rejects
+// the submit as ZITI_MFA_EXISTS, "an MFA enrollment already exists", and the code is never
+// checked (openziti/ziti-sdk-c#1087, discourse 6171).
+func submitMfaAfterEnrollSatisfiesPosture(t *testing.T) {
+	testutil.RunWithTimeoutOf(t, 60*time.Second, func(t *testing.T) {
+		name := "test_mfa_posture_submit_client"
+		enrollment, secret := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, name)
+
+		code := testutil.GenerateTOTP(t, secret, time.Now())
+		submitResp := state.zetClient.SubmitMFA(t, enrollment.Identifier, code)
+
+		// Inverted to pass until openziti/ziti-sdk-c#1087 is fixed, then replace with
+		// submitResp.AssertSuccess() and waitForMfaPostureService(t, name, true).
+		submitResp.AssertFail(500, "an MFA enrollment already exists")
+	})
+}
+
+// Restarting after enrollment forces a full login, which prompts for a code. Once that code
+// is accepted, the session is MFA authenticated and the posture check should pass. The
+// discourse 6171 reporter says the check still fails here.
+func restartWithTotpSatisfiesPosture(t *testing.T) {
+	testutil.RunWithTimeoutOf(t, 60*time.Second, func(t *testing.T) {
+		name := "test_mfa_posture_restart_client"
+		enrollment, secret := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, name)
+
+		state.overlay.WaitForDataModelConsensus()
+		require.NoError(t, state.zetClient.Restart(), "restart %s\n%s", state.zetClient.Discriminator, state.zetClient.LogPath())
+
+		state.zetClient.WaitForMfaEvent(t, "auth_challenge", name)
+		code := testutil.GenerateTOTP(t, secret, time.Now())
+		state.zetClient.SubmitMFA(t, enrollment.Identifier, code).AssertSuccess()
+		state.zetClient.WaitForIdentityEvent(t, "updated", name).AssertMfaAuthenticated()
+
+		waitForMfaPostureService(t, name, true)
+	})
+}
+
+// waitForMfaPostureService polls Status until the identity's one service reports
+// IsAccessible == accessible, and returns it.
+func waitForMfaPostureService(t *testing.T, name string, accessible bool) testutil.Service {
+	t.Helper()
+	var last testutil.Service
+	deadline := time.Now().Add(20 * time.Second)
+	for time.Now().Before(deadline) {
+		status := state.zetClient.Status(t)
+		status.AssertSuccess()
+		for _, id := range status.Data.Identities {
+			if id.Name != name || len(id.Services) != 1 {
+				continue
+			}
+			last = id.Services[0]
+			if last.IsAccessible == accessible {
+				require.Len(t, last.PostureChecks, 1)
+				require.Equal(t, accessible, last.PostureChecks[0].IsPassing, "MFA posture check on %s", last.Name)
+				return last
+			}
+		}
+		time.Sleep(time.Second)
+	}
+	t.Fatalf("service for %s never became IsAccessible=%t, last: %+v\n%s", name, accessible, last, state.zetClient.LogPath())
+	return last
 }
