@@ -330,11 +330,6 @@ func serviceAccessibleAfterMfa(t *testing.T) {
 	})
 }
 
-// After enrolling, the posture check still fails (see serviceAccessibleAfterMfa), so the UI
-// offers "Authorize". Submitting a valid code there should re-authenticate with MFA and pass
-// the check. With OIDC auth the sdk has no login waiting for a code, so oidc_auth_mfa rejects
-// the submit as ZITI_MFA_EXISTS, "an MFA enrollment already exists", and the code is never
-// checked (openziti/ziti-sdk-c#1087, discourse 6171).
 func submitMfaAfterEnrollSatisfiesPosture(t *testing.T) {
 	testutil.RunWithTimeoutOf(t, 60*time.Second, func(t *testing.T) {
 		name := "test_mfa_posture_submit_client"
@@ -344,17 +339,11 @@ func submitMfaAfterEnrollSatisfiesPosture(t *testing.T) {
 		code := testutil.GenerateTOTP(t, secret, time.Now().Add(30*time.Second))
 		submitResp := state.zetClient.SubmitMFA(t, enrollment.Identifier, code)
 
-		// Inverted to pass until openziti/ziti-sdk-c#1087 is fixed, then replace with
-		// submitResp.AssertSuccess() and waitForMfaPostureService(t, name, true).
+		// Inverted until openziti/ziti-sdk-c#1087 is fixed, then AssertSuccess() and waitForMfaPostureService(t, name, true).
 		submitResp.AssertFail(500, "an MFA enrollment already exists")
 	})
 }
 
-// Restarting after enrollment forces a full login, which prompts for a code. Once that code
-// is accepted, the session is MFA authenticated and the posture check should pass. The
-// discourse 6171 reporter says the check still fails here. The service is dialed as well as
-// checked in Status, because the router denies the dial on its own (openziti/ziti#4375) even
-// when the token carries totp.
 func restartWithTotpSatisfiesPosture(t *testing.T) {
 	requireMultiTunnel(t)
 	testutil.RunWithTimeoutOf(t, 90*time.Second, func(t *testing.T) {
@@ -376,14 +365,13 @@ func restartWithTotpSatisfiesPosture(t *testing.T) {
 		state.zetClient.SubmitMFA(t, enrollment.Identifier, code).AssertSuccess()
 		state.zetClient.WaitForIdentityEvent(t, "updated", name).AssertMfaAuthenticated()
 
+		// dial too: the router can deny it even when Status passes (openziti/ziti#4375)
 		t.Logf("dialing test_mfa_posture_restart_svc at %s until allowed", interceptAddr)
 		testutil.WaitForServiceAllowed(t, state.zetClient, interceptAddr, 30*time.Second)
 		waitForMfaPostureService(t, name, true)
 	})
 }
 
-// waitForMfaPostureService polls Status until the identity's one service reports
-// IsAccessible == accessible, and returns it.
 func waitForMfaPostureService(t *testing.T, name string, accessible bool) testutil.Service {
 	t.Helper()
 	var last testutil.Service
