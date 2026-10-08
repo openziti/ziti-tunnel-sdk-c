@@ -1948,7 +1948,7 @@ static int version_opts(int argc, char *argv[]) {
 
 static void version() {
     if (verbose_version) {
-        tls_context *tls = default_tls_context("", 0);
+        tls_context *tls = default_tls_context();
         printf("ziti-tunneler: %s\n"
                "ziti-sdk:      %s\n"
                "tlsuv:         %s[%s]\n",
