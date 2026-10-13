@@ -67,7 +67,6 @@ struct ziti_intercept_s {
 struct ziti_host_s {
     char *service_name;
     ziti_context ztx;
-    ziti_connection serv;
     host_ctx_t *host_ctx;
     struct cfgtype_desc_s *cfg_desc;
     union {
@@ -494,17 +493,20 @@ ziti_host_t *new_ziti_host(ziti_context ztx, ziti_service *service, ziti_host_t 
     return zh;
 }
 
-/** called by listen_cb with server connection when ziti_listen succeeds */
-void ziti_host_set_conn(ziti_context ztx, const char *service_name, ziti_connection serv) {
-    struct ziti_instance_s *ziti_instance = ziti_app_ctx(ztx);
-    ziti_host_t *zh = model_map_get(&ziti_instance->hosts, service_name);
-    if (zh == NULL) {
-        ZITI_LOG(WARN, "service[%s] not found in ziti_instance->hosts", service_name);
-        return;
+/** called by ziti_hosted_serv_conn_close_cb once a hosted service's server connection has closed
+ * and its host_ctx has been freed. removes zh from ziti_instance->hosts only if it's still the
+ * current entry (a config change may already have replaced it), then frees it. */
+void ziti_host_release_conn(void *owner) {
+    ziti_host_t *zh = owner;
+    if (zh == NULL) return;
+
+    struct ziti_instance_s *ziti_instance = ziti_app_ctx(zh->ztx);
+    if (model_map_get(&ziti_instance->hosts, zh->service_name) == zh) {
+        model_map_remove(&ziti_instance->hosts, zh->service_name);
     }
 
-    ZITI_LOG(DEBUG, "hosted_service[%s] saving connection handle", service_name);
-    zh->serv = serv;
+    ZITI_LOG(DEBUG, "hosted_service[%s] connection closed, releasing host", zh->service_name);
+    free_ziti_host(zh);
 }
 
 // only do matching on based on wildcard domain here
@@ -604,8 +606,12 @@ static void stop_intercept(struct tunneler_ctx_s *tnlr, struct ziti_instance_s *
 
 static void stop_hosting(struct ziti_instance_s *inst, ziti_host_t *zh) {
     model_map_remove(&inst->hosts, zh->service_name);
-    if (zh->serv) {
-        ziti_close(zh->serv, ziti_hosted_serv_conn_close_cb);
+    if (zh->host_ctx) {
+        // the server connection exists from the moment host_ctx is created, whether or not the
+        // bind has completed. closing it suppresses any pending listen callback, and
+        // ziti_hosted_serv_conn_close_cb frees host_ctx and then zh -- so zh must stay alive.
+        ziti_close(zh->host_ctx->serv, ziti_hosted_serv_conn_close_cb);
+        return;
     }
     free_ziti_host(zh);
 }
@@ -653,7 +659,6 @@ tunneled_service_t *ziti_sdk_c_on_service(ziti_context ziti_ctx, ziti_service *s
         if ((service->perm_flags & ZITI_CAN_BIND) == 0) {
             ZITI_LOG(DEBUG, "stopping host: can no longer bind service[%s]", service->name);
             if (curr_h) {
-                curr_h->serv = NULL; // ziti-sdk-c has already closed and released the connection
                 stop_hosting(ziti_instance, curr_h);
             }
         } else {
@@ -666,6 +671,9 @@ tunneled_service_t *ziti_sdk_c_on_service(ziti_context ziti_ctx, ziti_service *s
                 model_map_set(&ziti_instance->hosts, service->name, zh);
                 current_tunneled_service.host = ziti_tunneler_host(tnlr_ctx, ziti_ctx, service->name, zh->cfg_desc->cfgtype, &zh->cfg);
                 zh->host_ctx = current_tunneled_service.host;
+                if (zh->host_ctx) {
+                    zh->host_ctx->owner = zh;
+                }
             } else {
                 if (curr_h) {
                     current_tunneled_service.host = curr_h->host_ctx;
@@ -683,7 +691,6 @@ tunneled_service_t *ziti_sdk_c_on_service(ziti_context ziti_ctx, ziti_service *s
         }
         ziti_host_t *zh = model_map_remove(&ziti_instance->hosts, service->name);
         if (zh) {
-            zh->serv = NULL;
             stop_hosting(ziti_instance, zh);
         }
     }

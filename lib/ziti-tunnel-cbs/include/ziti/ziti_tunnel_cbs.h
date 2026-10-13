@@ -462,7 +462,6 @@ int init_ziti_instance(struct ziti_instance_s *inst, const ziti_config *cfg, con
 int set_tnlr_options(struct ziti_instance_s *inst);
 void set_ziti_instance(const char *identifier, struct ziti_instance_s *inst);
 void remove_ziti_instance(const char *identifier);
-void ziti_host_set_conn(ziti_context ztx, const char *service_name, ziti_connection serv);
 
 #ifdef __cplusplus
 }
