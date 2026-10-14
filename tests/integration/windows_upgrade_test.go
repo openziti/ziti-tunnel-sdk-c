@@ -188,7 +188,10 @@ func assertIdentityUnchanged(t *testing.T, identityFile string, enrolledIdentity
 	identityAfterRecovery := testutil.ReadIdentityFile(t, identityFile)
 	require.Equal(t, enrolledIdentity.ID.Cert, identityAfterRecovery.ID.Cert)
 	require.Equal(t, enrolledIdentity.ID.Key, identityAfterRecovery.ID.Key)
-	require.Equal(t, enrolledIdentity.ID.CA, identityAfterRecovery.ID.CA)
+	// a cluster login rewrites id.ca with the CA bundle of whichever member answered
+	if state.overlay.ZitiClusterSize <= 1 {
+		require.Equal(t, enrolledIdentity.ID.CA, identityAfterRecovery.ID.CA)
+	}
 }
 
 // runZetBeforeUpgrade starts ZET, enrolls the context's identity, updates the
