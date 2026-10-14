@@ -668,11 +668,18 @@ tunneled_service_t *ziti_sdk_c_on_service(ziti_context ziti_ctx, ziti_service *s
                     ZITI_LOG(DEBUG, "replacing host configuration for service[%s]", service->name);
                     stop_hosting(ziti_instance, curr_h);
                 }
-                model_map_set(&ziti_instance->hosts, service->name, zh);
                 current_tunneled_service.host = ziti_tunneler_host(tnlr_ctx, ziti_ctx, service->name, zh->cfg_desc->cfgtype, &zh->cfg);
-                zh->host_ctx = current_tunneled_service.host;
-                if (zh->host_ctx) {
-                    zh->host_ctx->owner = zh;
+                if (current_tunneled_service.host) {
+                    // setting owner after ziti_tunneler_host() returns is safe even if the listen
+                    // callback already ran and closed the server connection: ziti-sdk-c never runs a
+                    // close callback from within ziti_close(), only later from the event loop.
+                    current_tunneled_service.host->owner = zh;
+                    zh->host_ctx = current_tunneled_service.host;
+                    model_map_set(&ziti_instance->hosts, service->name, zh);
+                } else {
+                    // don't keep a host that isn't hosting, or the next service event would see an
+                    // unchanged config and never try again
+                    free_ziti_host(zh);
                 }
             } else {
                 if (curr_h) {

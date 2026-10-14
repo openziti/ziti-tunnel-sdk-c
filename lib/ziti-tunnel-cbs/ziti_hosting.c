@@ -109,6 +109,12 @@ static void free_hosted_service_ctx(struct hosted_service_ctx_s *hosted_ctx) {
             safe_free(dns_entry->domain_name);
             safe_free(dns_entry);
         }
+
+        ziti_address_translation_array zats = hosted_ctx->addr_u.translations;
+        for (int i = 0; zats != NULL && zats[i] != NULL; i++) {
+            free(zats[i]);
+        }
+        safe_free(hosted_ctx->addr_u.translations);
     }
 
     if (hosted_ctx->forward_port) {
@@ -638,11 +644,15 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
     }
 
     if (status != ZITI_OK) {
-        // ZITI_SERVICE_UNAVAILABLE here means the service was removed or can no longer be bound.
-        // don't close serv: ziti_sdk_c_on_service() reacts to the matching service event and is
-        // the only place that decides to stop hosting (see stop_hosting()).
         ZITI_LOG(ERROR, "hosted_service[%s] incoming connection failed: %s", service_ctx->service_name, ziti_errorstr(status));
         ziti_close(clt, NULL);
+        // ZITI_SERVICE_UNAVAILABLE here means the sdk gave up on the binding, and there may not be a
+        // matching service event (e.g. a bind session could not be re-created). close serv so
+        // ziti_hosted_serv_conn_close_cb drops the host from ziti_instance->hosts; the next service
+        // event can then host it again. if stop_hosting() also closes serv, ziti_close() is a no-op.
+        if (status == ZITI_SERVICE_UNAVAILABLE) {
+            ziti_close(serv, ziti_hosted_serv_conn_close_cb);
+        }
         return;
     }
 
@@ -975,13 +985,18 @@ host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, tunneler_context tnlr, const char *s
                     return NULL;
                 }
 
-                // sort address translations for easy lookups
-                ziti_address_translation_array zats = host_v1_cfg->forward_address_translations;
-                for (i = 0; zats != NULL && zats[i] != NULL; i++) {
-                    zats[i]->from.addr.cidr.bits = zats[i]->prefix_length;
-                    zats[i]->to.addr.cidr.bits = zats[i]->prefix_length;
-                }
-                if (zats != NULL && i > 0) {
+                // sort address translations for easy lookups. work on a copy: cfg is borrowed from
+                // the owning ziti_host_t, and mutating it would make the next config comparison fail.
+                ziti_address_translation_array cfg_zats = host_v1_cfg->forward_address_translations;
+                for (i = 0; cfg_zats != NULL && cfg_zats[i] != NULL; i++);
+                if (i > 0) {
+                    ziti_address_translation_array zats = calloc(i + 1, sizeof(ziti_address_translation *));
+                    for (i = 0; cfg_zats[i] != NULL; i++) {
+                        zats[i] = malloc(sizeof(ziti_address_translation));
+                        memcpy(zats[i], cfg_zats[i], sizeof(ziti_address_translation));
+                        zats[i]->from.addr.cidr.bits = zats[i]->prefix_length;
+                        zats[i]->to.addr.cidr.bits = zats[i]->prefix_length;
+                    }
                     qsort(zats, i, sizeof(ziti_address_translation *), ziti_address_translation_cmp);
                     for (i = 0; zats[i] != NULL; i++) {
                         char from[64], to[64];
@@ -1100,7 +1115,15 @@ host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, tunneler_context tnlr, const char *s
             }
         }
     }
-    ziti_listen_with_options(serv, service_name, listen_opts_p, hosted_listen_cb, on_hosted_client_connect);
+    int rc = ziti_listen_with_options(serv, service_name, listen_opts_p, hosted_listen_cb, on_hosted_client_connect);
+    if (rc != ZITI_OK) {
+        ZITI_LOG(ERROR, "hosted_service[%s] failed to bind: %s", host_ctx->service_name, ziti_errorstr(rc));
+        // serv was never bound, so it has no disposer and must not be passed to ziti_close().
+        // detach it so nothing can reach the freed host_ctx through it.
+        ziti_conn_set_data(serv, NULL);
+        free_hosted_service_ctx(host_ctx);
+        return NULL;
+    }
 
     return host_ctx;
 }
