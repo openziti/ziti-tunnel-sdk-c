@@ -646,11 +646,13 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
     if (status != ZITI_OK) {
         ZITI_LOG(ERROR, "hosted_service[%s] incoming connection failed: %s", service_ctx->service_name, ziti_errorstr(status));
         ziti_close(clt, NULL);
-        // ZITI_SERVICE_UNAVAILABLE here means the sdk gave up on the binding, and there may not be a
-        // matching service event (e.g. a bind session could not be re-created). close serv so
-        // ziti_hosted_serv_conn_close_cb drops the host from ziti_instance->hosts; the next service
-        // event can then host it again. if stop_hosting() also closes serv, ziti_close() is a no-op.
+        // ZITI_SERVICE_UNAVAILABLE here means the sdk gave up on the binding. drop the host from
+        // ziti_instance->hosts now rather than in ziti_hosted_serv_conn_close_cb, which waits for
+        // serv's children to drain: until then a service event with an unchanged config would reuse
+        // this dead host instead of hosting the service again.
+        // if stop_hosting() also closes serv, ziti_close() is a no-op.
         if (status == ZITI_SERVICE_UNAVAILABLE) {
+            ziti_host_unmap(service_ctx->owner);
             ziti_close(serv, ziti_hosted_serv_conn_close_cb);
         }
         return;

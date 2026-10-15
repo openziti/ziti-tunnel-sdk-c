@@ -80,6 +80,10 @@ struct tunneled_service_s {
 
 void accept_resolver_conn(ziti_connection conn, allowed_hostnames_t *allowed);
 
+/** drop a hosted service's ziti_host_t (host_ctx->owner) from ziti_instance->hosts without freeing
+ * it, so a service event can host the service again while the closed server connection drains. */
+void ziti_host_unmap(void *owner);
+
 /** finish tearing down a hosted service's ziti_host_t (host_ctx->owner) once its server
  * connection has closed and its host_ctx has been freed. */
 void ziti_host_release_conn(void *owner);
