@@ -269,7 +269,7 @@ func recoveryFailsAfterAllCodesExhausted(t *testing.T) {
 }
 
 func generateMfaCodesReplacesOldSet(t *testing.T) {
-	testutil.RunWithTimeout(t, func(t *testing.T) {
+	testutil.RunWithTimeoutOf(t, reauthTestTimeout, func(t *testing.T) {
 		idName := "test_mfa_regenerate_codes"
 		enrollment, secret := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, idName)
 		oldCode := enrollment.RecoveryCodes[0]
