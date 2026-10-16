@@ -93,18 +93,8 @@ static void free_hosted_service_ctx(struct hosted_service_ctx_s *hosted_ctx) {
     if (hosted_ctx == NULL) {
         return;
     }
+    // cfg is borrowed from the owning ziti_host_t, which frees it (free_ziti_host())
     safe_free(hosted_ctx->service_name);
-    switch (hosted_ctx->cfg_type) {
-        case HOST_CFG_V1:
-            free_ziti_host_cfg_v1((ziti_host_cfg_v1 *)hosted_ctx->cfg);
-            break;
-        case SERVER_CFG_V1:
-            free_ziti_server_cfg_v1((ziti_server_cfg_v1 *)hosted_ctx->cfg);
-            break;
-        default:
-            ZITI_LOG(DEBUG, "unexpected cfg_type %d", hosted_ctx->cfg_type);
-            break;
-    }
 
     if (hosted_ctx->forward_protocol) {
         STAILQ_CLEAR(&hosted_ctx->proto_u.allowed_protocols, safe_free);
@@ -119,6 +109,12 @@ static void free_hosted_service_ctx(struct hosted_service_ctx_s *hosted_ctx) {
             safe_free(dns_entry->domain_name);
             safe_free(dns_entry);
         }
+
+        ziti_address_translation_array zats = hosted_ctx->addr_u.translations;
+        for (int i = 0; zats != NULL && zats[i] != NULL; i++) {
+            free(zats[i]);
+        }
+        safe_free(hosted_ctx->addr_u.translations);
     }
 
     if (hosted_ctx->forward_port) {
@@ -132,11 +128,20 @@ static void free_hosted_service_ctx(struct hosted_service_ctx_s *hosted_ctx) {
         hosted_ctx->proxy_connector = NULL;
         hosted_ctx->connector = NULL;
     }
+
+    free(hosted_ctx);
 }
 
+/** the single place a hosted service is torn down, whatever caused its server connection to
+ * close. owner (the ziti_host_t) is kept alive by stop_hosting() until we get here. */
 void ziti_hosted_serv_conn_close_cb(ziti_connection serv) {
     struct hosted_service_ctx_s *hosted_ctx = ziti_conn_data(serv);
+    if (hosted_ctx == NULL) {
+        return;
+    }
+    void *owner = hosted_ctx->owner;
     free_hosted_service_ctx(hosted_ctx);
+    ziti_host_release_conn(owner);
 }
 
 static void hosted_server_close_cb(uv_handle_t *handle) {
@@ -641,7 +646,13 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
     if (status != ZITI_OK) {
         ZITI_LOG(ERROR, "hosted_service[%s] incoming connection failed: %s", service_ctx->service_name, ziti_errorstr(status));
         ziti_close(clt, NULL);
+        // ZITI_SERVICE_UNAVAILABLE here means the sdk gave up on the binding. drop the host from
+        // ziti_instance->hosts now rather than in ziti_hosted_serv_conn_close_cb, which waits for
+        // serv's children to drain: until then a service event with an unchanged config would reuse
+        // this dead host instead of hosting the service again.
+        // if stop_hosting() also closes serv, ziti_close() is a no-op.
         if (status == ZITI_SERVICE_UNAVAILABLE) {
+            ziti_host_unmap(service_ctx->owner);
             ziti_close(serv, ziti_hosted_serv_conn_close_cb);
         }
         return;
@@ -856,7 +867,7 @@ static void hosted_listen_cb(ziti_connection serv, int status) {
         return;
     }
 
-    ziti_host_set_conn((ziti_context) host_ctx->ziti_ctx, host_ctx->service_name, serv);
+    ZITI_LOG(DEBUG, "hosted_service[%s] listening", host_ctx->service_name);
 }
 
 #define DEFAULT_LISTEN_OPTS (ziti_listen_opts){ \
@@ -976,13 +987,18 @@ host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, tunneler_context tnlr, const char *s
                     return NULL;
                 }
 
-                // sort address translations for easy lookups
-                ziti_address_translation_array zats = host_v1_cfg->forward_address_translations;
-                for (i = 0; zats != NULL && zats[i] != NULL; i++) {
-                    zats[i]->from.addr.cidr.bits = zats[i]->prefix_length;
-                    zats[i]->to.addr.cidr.bits = zats[i]->prefix_length;
-                }
-                if (zats != NULL && i > 0) {
+                // sort address translations for easy lookups. work on a copy: cfg is borrowed from
+                // the owning ziti_host_t, and mutating it would make the next config comparison fail.
+                ziti_address_translation_array cfg_zats = host_v1_cfg->forward_address_translations;
+                for (i = 0; cfg_zats != NULL && cfg_zats[i] != NULL; i++);
+                if (i > 0) {
+                    ziti_address_translation_array zats = calloc(i + 1, sizeof(ziti_address_translation *));
+                    for (i = 0; cfg_zats[i] != NULL; i++) {
+                        zats[i] = malloc(sizeof(ziti_address_translation));
+                        memcpy(zats[i], cfg_zats[i], sizeof(ziti_address_translation));
+                        zats[i]->from.addr.cidr.bits = zats[i]->prefix_length;
+                        zats[i]->to.addr.cidr.bits = zats[i]->prefix_length;
+                    }
                     qsort(zats, i, sizeof(ziti_address_translation *), ziti_address_translation_cmp);
                     for (i = 0; zats[i] != NULL; i++) {
                         char from[64], to[64];
@@ -1009,6 +1025,7 @@ host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, tunneler_context tnlr, const char *s
                     ZITI_LOG(ERROR, "hosted_service[%s] specifies 'forwardPort' with zero-length 'allowedPortRanges'",
                              host_ctx->service_name);
                     free_hosted_service_ctx(host_ctx);
+                    return NULL;
                 }
             } else {
                 host_ctx->port_u.port = host_v1_cfg->port;
@@ -1088,6 +1105,7 @@ host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, tunneler_context tnlr, const char *s
     snprintf(host_ctx->display_address, sizeof(host_ctx->display_address), "%s:%s:%s", display_proto, display_addr, display_port);
     ziti_connection serv;
     ziti_conn_init(ziti_ctx, &serv, host_ctx);
+    host_ctx->serv = serv;
 
     char listen_identity[128];
     if (listen_opts_p != NULL) {
@@ -1099,7 +1117,15 @@ host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, tunneler_context tnlr, const char *s
             }
         }
     }
-    ziti_listen_with_options(serv, service_name, listen_opts_p, hosted_listen_cb, on_hosted_client_connect);
+    int rc = ziti_listen_with_options(serv, service_name, listen_opts_p, hosted_listen_cb, on_hosted_client_connect);
+    if (rc != ZITI_OK) {
+        ZITI_LOG(ERROR, "hosted_service[%s] failed to bind: %s", host_ctx->service_name, ziti_errorstr(rc));
+        // serv was never bound, so it has no disposer and must not be passed to ziti_close().
+        // detach it so nothing can reach the freed host_ctx through it.
+        ziti_conn_set_data(serv, NULL);
+        free_hosted_service_ctx(host_ctx);
+        return NULL;
+    }
 
     return host_ctx;
 }
