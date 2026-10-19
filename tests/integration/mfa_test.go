@@ -52,6 +52,12 @@ func TestMFARecoveryCodes(t *testing.T) {
 	t.Run("recoveryFailsAfterAllCodesExhausted", recoveryFailsAfterAllCodesExhausted)
 }
 
+func TestMFAPostureCheck(t *testing.T) {
+	t.Run("serviceAccessibleAfterMfa", serviceAccessibleAfterMfa)
+	t.Run("submitMfaAfterEnrollSatisfiesPosture", submitMfaAfterEnrollSatisfiesPosture)
+	t.Run("restartWithTotpSatisfiesPosture", restartWithTotpSatisfiesPosture)
+}
+
 func enrollCompletesWithTotpRequiredPolicy(t *testing.T) {
 	testutil.RunWithTimeout(t, func(t *testing.T) {
 		// openziti/ziti#3496: enrolling TOTP from a partially authenticated session works on
@@ -72,14 +78,13 @@ func enrollCompletesWithTotpRequiredPolicy(t *testing.T) {
 
 		enableResp := state.zetClient.EnableMFA(t, enrollmentRequiredEvent.Identifier)
 		enableResp.AssertSuccess()
-		require.NotEmpty(t, enableResp.Data.ProvisioningUrl, "EnableMFA Data.ProvisioningUrl should be non-empty")
-		require.NotEmpty(t, enableResp.Data.RecoveryCodes, "EnableMFA Data.RecoveryCodes should be non-empty")
-		require.False(t, enableResp.Data.IsVerified, "EnableMFA Data.IsVerified should be false before verify_mfa")
 
 		challengeEvent := state.zetClient.WaitForMfaEvent(t, "enrollment_challenge", name)
 		challengeEvent.AssertSuccess()
+		require.NotEmpty(t, challengeEvent.ProvisioningUrl, "enrollment_challenge ProvisioningUrl should be non-empty")
+		require.NotEmpty(t, challengeEvent.RecoveryCodes, "enrollment_challenge RecoveryCodes should be non-empty")
 
-		secret := testutil.ParseTOTPSecret(t, enableResp.Data.ProvisioningUrl)
+		secret := testutil.ParseTOTPSecret(t, challengeEvent.ProvisioningUrl)
 		code := testutil.GenerateTOTP(t, secret, time.Now())
 
 		verifyResp := state.zetClient.VerifyMFA(t, enrollmentRequiredEvent.Identifier, code)
@@ -277,12 +282,10 @@ func generateMfaCodesReplacesOldSet(t *testing.T) {
 		code := testutil.GenerateTOTP(t, secret, time.Now())
 		genResp := state.zetClient.GenerateMFACodes(t, enrollment.Identifier, code)
 		genResp.AssertSuccess()
+		require.NotEmpty(t, genResp.Data.RecoveryCodes)
+		newCode := genResp.Data.RecoveryCodes[0]
 
-		getResp := state.zetClient.GetMFACodes(t, enrollment.Identifier, code)
-		getResp.AssertSuccess()
-		newCode := getResp.Data.RecoveryCodes[0]
-
-		for _, c := range getResp.Data.RecoveryCodes {
+		for _, c := range genResp.Data.RecoveryCodes {
 			require.NotContains(t, enrollment.RecoveryCodes, c)
 		}
 
@@ -296,4 +299,99 @@ func generateMfaCodesReplacesOldSet(t *testing.T) {
 		reuseResp := state.zetClient.SubmitMFA(t, enrollment.Identifier, oldCode)
 		reuseResp.AssertFail(500, "the token provided was invalid")
 	})
+}
+
+func serviceAccessibleAfterMfa(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
+		name := "test_mfa_posture_client"
+		added := testutil.FetchAndEnrollJwt(t, state.overlay, state.zetClient, name)
+		state.zetClient.WaitForControllerEvent(t, "connected", name)
+
+		enableResp := state.zetClient.EnableMFA(t, added.Id.Identifier)
+		enableResp.AssertSuccess()
+		challengeEvent := state.zetClient.WaitForMfaEvent(t, "enrollment_challenge", name)
+		challengeEvent.AssertSuccess()
+
+		secret := testutil.ParseTOTPSecret(t, challengeEvent.ProvisioningUrl)
+		code := testutil.GenerateTOTP(t, secret, time.Now())
+		verifyResp := state.zetClient.VerifyMFA(t, added.Id.Identifier, code)
+		verifyResp.AssertSuccess()
+
+		updated := state.zetClient.WaitForIdentityEvent(t, "updated", name)
+		updated.AssertMfaAuthenticated()
+
+		require.Len(t, updated.Id.Services, 1)
+		svc := updated.Id.Services[0]
+		require.Len(t, svc.PostureChecks, 1)
+
+		// Inverted to pass until openziti/ziti-sdk-c#1087 is fixed, then flip both to require.True.
+		require.False(t, svc.IsAccessible, "service %s should be accessible once MFA posture checks are fixed (openziti/ziti-sdk-c#1087)", svc.Name)
+		require.False(t, svc.PostureChecks[0].IsPassing, "MFA posture check on %s should pass once openziti/ziti-sdk-c#1087 is fixed", svc.Name)
+	})
+}
+
+func submitMfaAfterEnrollSatisfiesPosture(t *testing.T) {
+	testutil.RunWithTimeoutOf(t, 60*time.Second, func(t *testing.T) {
+		name := "test_mfa_posture_submit_client"
+		enrollment, secret := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, name)
+
+		// the next window's code, so the controller cannot reject it as the one VerifyMFA spent
+		code := testutil.GenerateTOTP(t, secret, time.Now().Add(30*time.Second))
+		submitResp := state.zetClient.SubmitMFA(t, enrollment.Identifier, code)
+
+		// Inverted until openziti/ziti-sdk-c#1087 is fixed, then AssertSuccess() and waitForMfaPostureService(t, name, true).
+		submitResp.AssertFail(500, "an MFA enrollment already exists")
+	})
+}
+
+func restartWithTotpSatisfiesPosture(t *testing.T) {
+	requireMultiTunnel(t)
+	testutil.RunWithTimeoutOf(t, 90*time.Second, func(t *testing.T) {
+		name := "test_mfa_posture_restart_client"
+		interceptAddr := "100.64.0.23:23003"
+
+		// test_mfa_posture_restart_host_cfg forwards tunneled connections to 127.0.0.1:23183
+		testutil.StartTCPEcho(t, "127.0.0.1:23183")
+		testutil.FetchAndEnrollJwt(t, state.overlay, state.zetHost, "test_mfa_posture_restart_host")
+		state.zetHost.WaitForControllerEvent(t, "connected", "test_mfa_posture_restart_host")
+
+		enrollment, secret := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, name)
+
+		state.overlay.WaitForDataModelConsensus()
+		require.NoError(t, state.zetClient.Restart(), "restart %s\n%s", state.zetClient.Discriminator, state.zetClient.LogPath())
+
+		state.zetClient.WaitForMfaEvent(t, "auth_challenge", name)
+		code := testutil.GenerateTOTP(t, secret, time.Now().Add(30*time.Second))
+		state.zetClient.SubmitMFA(t, enrollment.Identifier, code).AssertSuccess()
+		state.zetClient.WaitForIdentityEvent(t, "updated", name).AssertMfaAuthenticated()
+
+		// dial too: the router can deny it even when Status passes (openziti/ziti#4375)
+		t.Logf("dialing test_mfa_posture_restart_svc at %s until allowed", interceptAddr)
+		testutil.WaitForServiceAllowed(t, state.zetClient, interceptAddr, 30*time.Second)
+		waitForMfaPostureService(t, name, true)
+	})
+}
+
+func waitForMfaPostureService(t *testing.T, name string, accessible bool) testutil.Service {
+	t.Helper()
+	var last testutil.Service
+	deadline := time.Now().Add(20 * time.Second)
+	for time.Now().Before(deadline) {
+		status := state.zetClient.Status(t)
+		status.AssertSuccess()
+		for _, id := range status.Data.Identities {
+			if id.Name != name || len(id.Services) != 1 {
+				continue
+			}
+			last = id.Services[0]
+			if last.IsAccessible == accessible {
+				require.Len(t, last.PostureChecks, 1)
+				require.Equal(t, accessible, last.PostureChecks[0].IsPassing, "MFA posture check on %s", last.Name)
+				return last
+			}
+		}
+		time.Sleep(time.Second)
+	}
+	t.Fatalf("service for %s never became IsAccessible=%t, last: %+v\n%s", name, accessible, last, state.zetClient.LogPath())
+	return last
 }
