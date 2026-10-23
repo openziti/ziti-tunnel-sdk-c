@@ -343,6 +343,7 @@ void * ziti_sdk_c_dial(const void *intercept_ctx, struct io_ctx_s *io) {
     if (ziti_conn_init(ziti_ctx, &ziti_io_ctx->ziti_conn, io) != ZITI_OK) {
         ZITI_LOG(ERROR, "ziti_conn_init failed");
         free(ziti_io_ctx);
+        io->ziti_io = NULL;
         return NULL;
     }
 
