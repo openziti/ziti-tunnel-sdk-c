@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"fmt"
 	"log"
+	"net/netip"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -300,6 +301,20 @@ func (z *ZET) RemoveJSONIdentities() error {
 		}
 	}
 	return nil
+}
+
+// DNSServer returns the address of this ZET's DNS server. ziti-edge-tunnel takes the
+// first address of the -d range for the TUN interface and the next one for DNS.
+func (z *ZET) DNSServer() (string, error) {
+	dnsRange := z.DNSRange
+	if dnsRange == "" {
+		dnsRange = "100.64.0.1/10"
+	}
+	prefix, err := netip.ParsePrefix(dnsRange)
+	if err != nil {
+		return "", fmt.Errorf("parse DNS range %q: %w", dnsRange, err)
+	}
+	return prefix.Addr().Next().String(), nil
 }
 
 func (z *ZET) LogPath() string {
