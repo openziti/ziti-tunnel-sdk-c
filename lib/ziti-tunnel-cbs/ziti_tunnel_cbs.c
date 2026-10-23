@@ -409,7 +409,7 @@ void * ziti_sdk_c_dial(const void *intercept_ctx, struct io_ctx_s *io) {
     dial_opts.app_data_sz = json_len;
     dial_opts.app_data = app_data_json;
 
-    ZITI_LOG(DEBUG, "service[%s] app_data_json[%zu]='%.*s'", zi_ctx->service_name, dial_opts.app_data_sz, (int)dial_opts.app_data_sz, (char *) dial_opts.app_data);
+    ZITI_LOG(DEBUG, "service[%s] app_data_json[%zd]='%.*s'", zi_ctx->service_name, dial_opts.app_data_sz, (int)dial_opts.app_data_sz, (char *) dial_opts.app_data);
     int rc = ziti_dial_with_options(ziti_io_ctx->ziti_conn, zi_ctx->service_name, &dial_opts, on_ziti_connect, on_ziti_data);
     free(resolved_dial_identity); // ziti_dial_with_options copies it
     free(app_data_json);
