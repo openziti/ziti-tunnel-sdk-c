@@ -956,30 +956,50 @@ static void str_tolower(char *s) {
     }
 }
 
-char *resolve_listen_identity(char *buf, size_t bufsz, const ziti_listen_options *config_listen_options,
-                              const char *tunneler_id_name) {
+#define TUNNELER_ID_NAME_VAR "$tunneler_id.name"
+
+int resolve_listen_identity(const ziti_listen_options *config_listen_options, const char *tunneler_id_name,
+                            char **resolved) {
+    *resolved = NULL;
     if (config_listen_options == NULL) {
-        return NULL;
-    }
-    if (tunneler_id_name == NULL) {
-        tunneler_id_name = "";
+        return 0;
     }
 
+    // dialing tunnelers typically get the identity from a dns query, which may not preserve case
+    bool lower = config_listen_options->listen_identity_type == ziti_listen_identity_type_dns;
+    const char *template;
     if (config_listen_options->bind_with_identity) {
-        snprintf(buf, bufsz, "%s", tunneler_id_name);
+        if (!lower) {
+            return 0; // the sdk binds with the edge identity name
+        }
+        template = TUNNELER_ID_NAME_VAR;
     } else if (config_listen_options->identity != NULL && config_listen_options->identity[0] != '\0') {
-        snprintf(buf, bufsz, "%s", config_listen_options->identity);
-        string_replace(buf, bufsz, "$tunneler_id.name", tunneler_id_name);
+        template = config_listen_options->identity;
     } else {
-        return NULL;
+        return 0;
     }
 
-    if (config_listen_options->listen_identity_type == ziti_listen_identity_type_dns) {
-        // dialing tunnelers typically get the identity from a dns query, which may not preserve case
+    bool substitute = strstr(template, TUNNELER_ID_NAME_VAR) != NULL;
+    if (!substitute && !lower) {
+        return 0; // literal identity can be used as-is
+    }
+    if (substitute && (tunneler_id_name == NULL || tunneler_id_name[0] == '\0')) {
+        return -1;
+    }
+
+    size_t sz = strlen(template) + (substitute ? strlen(tunneler_id_name) : 0) + 1;
+    char *buf = malloc(sz);
+    snprintf(buf, sz, "%s", template);
+    if (substitute && string_replace(buf, sz, TUNNELER_ID_NAME_VAR, tunneler_id_name) == NULL) {
+        free(buf);
+        return -1;
+    }
+    if (lower) {
         str_tolower(buf);
     }
 
-    return buf;
+    *resolved = buf;
+    return 0;
 }
 
 static int ziti_address_translation_cmp(const void *a, const void *b) {
@@ -1183,21 +1203,27 @@ host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, tunneler_context tnlr, const char *s
     }
 
     snprintf(host_ctx->display_address, sizeof(host_ctx->display_address), "%s:%s:%s", display_proto, display_addr, display_port);
-    ziti_connection serv;
-    ziti_conn_init(ziti_ctx, &serv, host_ctx);
-    host_ctx->serv = serv;
 
-    char listen_identity[128];
+    char *listen_identity = NULL;
     if (listen_opts_p != NULL) {
         const ziti_identity *zid = ziti_get_identity(ziti_ctx);
-        char *resolved = resolve_listen_identity(listen_identity, sizeof(listen_identity),
-                                                  config_listen_options, zid != NULL ? zid->name : NULL);
-        if (resolved != NULL) {
-            listen_opts_p->identity = resolved;
+        if (resolve_listen_identity(config_listen_options, zid != NULL ? zid->name : NULL, &listen_identity) != 0) {
+            ZITI_LOG(ERROR, "hosted_service[%s] failed to resolve listen identity '%s'", host_ctx->service_name,
+                     config_listen_options->bind_with_identity ? TUNNELER_ID_NAME_VAR : config_listen_options->identity);
+            free_hosted_service_ctx(host_ctx);
+            return NULL;
+        }
+        if (listen_identity != NULL) {
+            listen_opts_p->identity = listen_identity;
             listen_opts_p->bind_using_edge_identity = false;
         }
     }
+
+    ziti_connection serv;
+    ziti_conn_init(ziti_ctx, &serv, host_ctx);
+    host_ctx->serv = serv;
     int rc = ziti_listen_with_options(serv, service_name, listen_opts_p, hosted_listen_cb, on_hosted_client_connect);
+    free(listen_identity); // ziti_listen_with_options copies it
     if (rc != ZITI_OK) {
         ZITI_LOG(ERROR, "hosted_service[%s] failed to bind: %s", host_ctx->service_name, ziti_errorstr(rc));
         // serv was never bound, so it has no disposer and must not be passed to ziti_close().

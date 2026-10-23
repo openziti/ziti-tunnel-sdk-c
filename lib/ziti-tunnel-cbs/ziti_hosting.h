@@ -89,10 +89,12 @@ void accept_resolver_conn(ziti_connection conn, allowed_hostnames_t *allowed);
  * resolves the effective listen identity from host.v1 listenOptions. the identity is tunneler_id_name
  * when bindUsingEdgeIdentity is set, otherwise listenOptions.identity with "$tunneler_id.name" substituted.
  * when listenIdentityType is "dns" the resolved identity is lower-cased.
- * writes the resolved identity into buf and returns buf, or returns NULL if no listen identity is configured.
+ * returns 0 and sets *resolved to NULL when the configured listen options can be used as-is, or to a newly
+ * allocated identity that the caller must free. returns -1 if "$tunneler_id.name" is needed but tunneler_id_name
+ * is unknown.
  */
-char *resolve_listen_identity(char *buf, size_t bufsz, const ziti_listen_options *config_listen_options,
-                              const char *tunneler_id_name);
+int resolve_listen_identity(const ziti_listen_options *config_listen_options, const char *tunneler_id_name,
+                            char **resolved);
 
 #ifdef __cplusplus
 }
