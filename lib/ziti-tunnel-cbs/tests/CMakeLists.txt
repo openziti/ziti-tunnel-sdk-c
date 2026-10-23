@@ -4,6 +4,7 @@ enable_testing()
 add_library(ziti-tunnel-cbs-c-test-lib OBJECT
         dns_test.cpp
         hosting_test.cpp
+        string_replace_test.cpp
 )
 
 target_include_directories(ziti-tunnel-cbs-c-test-lib

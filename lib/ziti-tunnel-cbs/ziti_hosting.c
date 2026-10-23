@@ -987,13 +987,7 @@ int resolve_listen_identity(const ziti_listen_options *config_listen_options, co
         return -1;
     }
 
-    size_t sz = strlen(template) + (substitute ? strlen(tunneler_id_name) : 0) + 1;
-    char *buf = malloc(sz);
-    snprintf(buf, sz, "%s", template);
-    if (substitute && string_replace(buf, sz, TUNNELER_ID_NAME_VAR, tunneler_id_name) == NULL) {
-        free(buf);
-        return -1;
-    }
+    char *buf = substitute ? string_replace_all(template, TUNNELER_ID_NAME_VAR, tunneler_id_name) : strdup(template);
     if (lower) {
         str_tolower(buf);
     }

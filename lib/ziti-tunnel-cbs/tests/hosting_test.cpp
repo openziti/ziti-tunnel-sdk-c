@@ -47,6 +47,11 @@ TEST_CASE("resolve_listen_identity preserves case without listenIdentityType", "
         CHECK(resolve(&opts, "MyRouter-01") == "svc-MyRouter-01");
     }
 
+    SECTION("placeholder used more than once") {
+        auto opts = make_listen_opts("$tunneler_id.name-$tunneler_id.name", ziti_listen_identity_type_Unknown);
+        CHECK(resolve(&opts, "MyRouter-01") == "MyRouter-01-MyRouter-01");
+    }
+
     SECTION("literal identity is used as-is") {
         auto opts = make_listen_opts("MyLiteralIdentity", ziti_listen_identity_type_Unknown);
         CHECK(resolve(&opts, "MyRouter-01") == "<as-is>");
