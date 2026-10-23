@@ -191,31 +191,31 @@ int ziti_sdk_c_close_write(void *io_ctx) {
     return 0;
 }
 
-char *string_replace(char *source, size_t sourceSize, const char *substring, const char *with) {
-    /* look for first occurrence */
-    char *substring_source = strstr(source, substring);
-    if (substring_source == NULL) {
-        return NULL;
+char *string_replace_all(const char *source, const char *substring, const char *with) {
+    size_t substring_len = strlen(substring);
+    if (substring_len == 0) {
+        return strdup(source);
+    }
+    size_t with_len = strlen(with);
+
+    size_t count = 0;
+    for (const char *p = source; (p = strstr(p, substring)) != NULL; p += substring_len) {
+        count++;
     }
 
-    /* verify the replacement fits in _source_ */
-    if (sourceSize < strlen(source) + (strlen(with) - strlen(substring)) + 1) {
-        ZITI_LOG(DEBUG, "replacing %s with %s in %s - not enough space", substring, with, source);
-        return NULL;
+    char *result = malloc(strlen(source) - count * substring_len + count * with_len + 1);
+    char *out = result;
+    const char *p = source;
+    const char *match;
+    while ((match = strstr(p, substring)) != NULL) {
+        memcpy(out, p, match - p);
+        out += match - p;
+        memcpy(out, with, with_len);
+        out += with_len;
+        p = match + substring_len;
     }
-
-    /* shift the portion of _source_ that will be to the right of the replacement into position.
-     * memmove allows overlapping dest/src addresses
-     */
-    memmove(
-            substring_source + strlen(with),
-            substring_source + strlen(substring),
-            strlen(substring_source) - strlen(substring) + 1
-    );
-
-    /* copy the replacement into place */
-    memcpy(substring_source, with, strlen(with));
-    return substring_source + strlen(with);
+    strcpy(out, p);
+    return result;
 }
 
 /** parse "proto:ip:port" */
@@ -264,15 +264,21 @@ static ssize_t get_app_data(char *buf, size_t bufsz, tunneler_io_context io, zit
     }
     if (source_ip != NULL && *source_ip != 0) {
         const ziti_identity *zid = ziti_get_identity(ziti_ctx);
-        size_t source_addr_maxlen = 64;
-        size_t source_addr_sz = source_addr_maxlen * sizeof(char);
-        char *srcAddr = calloc(source_addr_maxlen, sizeof(char));
-        strncpy(srcAddr, source_ip, source_addr_sz);
-        string_replace(srcAddr, source_addr_sz, "$tunneler_id.name", zid->name);
-        string_replace(srcAddr, source_addr_sz, "$dst_ip", app_data->dst_ip);
-        string_replace(srcAddr, source_addr_sz, "$dst_port", app_data->dst_port);
-        string_replace(srcAddr, source_addr_sz, "$src_ip", app_data->src_ip);
-        string_replace(srcAddr, source_addr_sz, "$src_port", app_data->src_port);
+        const char *vars[][2] = {
+                { "$tunneler_id.name", zid != NULL ? zid->name : NULL },
+                { "$dst_ip", app_data->dst_ip },
+                { "$dst_port", app_data->dst_port },
+                { "$src_ip", app_data->src_ip },
+                { "$src_port", app_data->src_port },
+        };
+        char *srcAddr = strdup(source_ip);
+        for (size_t i = 0; i < sizeof(vars) / sizeof(vars[0]); i++) {
+            if (vars[i][1] != NULL) {
+                char *s = string_replace_all(srcAddr, vars[i][0], vars[i][1]);
+                free(srcAddr);
+                srcAddr = s;
+            }
+        }
         app_data->source_addr = srcAddr;
     }
     ssize_t json_len = tunneler_app_data_to_json_r(app_data, MODEL_JSON_COMPACT, buf, bufsz);
@@ -334,6 +340,7 @@ void * ziti_sdk_c_dial(const void *intercept_ctx, struct io_ctx_s *io) {
     }
 
     ziti_dial_opts dial_opts = {0};
+    char *resolved_dial_identity = NULL;
     char app_data_json[256];
     ssize_t json_len = 0;
 
@@ -348,20 +355,20 @@ void * ziti_sdk_c_dial(const void *intercept_ctx, struct io_ctx_s *io) {
             json_len = get_app_data(app_data_json, sizeof(app_data_json), io->tnlr_io, ziti_ctx, dial_opts.group, &app_data);
             if (json_len < 0) break;
             dial_opts.stream = app_data.dst_protocol && strcmp(app_data.dst_protocol, "tcp") == 0;
-            char resolved_dial_identity[128];
             if (dial_opts.identity != NULL && dial_opts.identity[0] != '\0') {
-                strncpy(resolved_dial_identity, dial_opts.identity, sizeof(resolved_dial_identity));
-                if (app_data.dst_protocol != NULL) {
-                    string_replace(resolved_dial_identity, sizeof(resolved_dial_identity), "$dst_protocol", app_data.dst_protocol);
-                }
-                if (app_data.dst_ip != NULL) {
-                    string_replace(resolved_dial_identity, sizeof(resolved_dial_identity), "$dst_ip", app_data.dst_ip);
-                }
-                if (app_data.dst_port != NULL) {
-                    string_replace(resolved_dial_identity, sizeof(resolved_dial_identity), "$dst_port", app_data.dst_port);
-                }
-                if (app_data.dst_hostname != NULL) {
-                    string_replace(resolved_dial_identity, sizeof(resolved_dial_identity), "$dst_hostname", app_data.dst_hostname);
+                const char *vars[][2] = {
+                        { "$dst_protocol", app_data.dst_protocol },
+                        { "$dst_ip", app_data.dst_ip },
+                        { "$dst_port", app_data.dst_port },
+                        { "$dst_hostname", app_data.dst_hostname },
+                };
+                resolved_dial_identity = strdup(dial_opts.identity);
+                for (size_t i = 0; i < sizeof(vars) / sizeof(vars[0]); i++) {
+                    if (vars[i][1] != NULL) {
+                        char *s = string_replace_all(resolved_dial_identity, vars[i][0], vars[i][1]);
+                        free(resolved_dial_identity);
+                        resolved_dial_identity = s;
+                    }
                 }
                 dial_opts.identity = resolved_dial_identity;
             }
@@ -389,7 +396,9 @@ void * ziti_sdk_c_dial(const void *intercept_ctx, struct io_ctx_s *io) {
     dial_opts.app_data = app_data_json;
 
     ZITI_LOG(DEBUG, "service[%s] app_data_json[%zd]='%.*s'", zi_ctx->service_name, dial_opts.app_data_sz, (int)dial_opts.app_data_sz, (char *) dial_opts.app_data);
-    if (ziti_dial_with_options(ziti_io_ctx->ziti_conn, zi_ctx->service_name, &dial_opts, on_ziti_connect, on_ziti_data) != ZITI_OK) {
+    int rc = ziti_dial_with_options(ziti_io_ctx->ziti_conn, zi_ctx->service_name, &dial_opts, on_ziti_connect, on_ziti_data);
+    free(resolved_dial_identity); // ziti_dial_with_options copies it
+    if (rc != ZITI_OK) {
         ZITI_LOG(ERROR, "ziti_dial failed");
         free(ziti_io_ctx);
         return NULL;
