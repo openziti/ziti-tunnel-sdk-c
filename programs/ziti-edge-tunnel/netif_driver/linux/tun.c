@@ -99,6 +99,7 @@ int tun_add_route(netif_handle tun, const char *dest) {
         tun->route_updates = calloc(1, sizeof(*tun->route_updates));
     }
     model_map_set(tun->route_updates, dest, (void*)(uintptr_t)true);
+    return 0;
 }
 
 int tun_delete_route(netif_handle tun, const char *dest) {
@@ -106,6 +107,7 @@ int tun_delete_route(netif_handle tun, const char *dest) {
         tun->route_updates = calloc(1, sizeof(*tun->route_updates));
     }
     model_map_set(tun->route_updates, dest, (void*)(uintptr_t)false);
+    return 0;
 }
 
 struct rt_process_cmd {
