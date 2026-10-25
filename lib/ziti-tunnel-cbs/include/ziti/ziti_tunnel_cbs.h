@@ -375,6 +375,7 @@ typedef struct ziti_io_ctx_s {
     ziti_connection      ziti_conn;
     bool ziti_eof;
     bool tnlr_eof;
+    bool paused; // ziti data delivery paused until the client acks (backpressure)
     uint64_t pending_wbytes;
 } ziti_io_context;
 
@@ -407,6 +408,7 @@ ssize_t ziti_sdk_c_write(const void *ziti_io_ctx, void *write_ctx, const void *d
  * return 0 if TX should still be open, 1 if both sides are closed */
 int ziti_sdk_c_close(void *io_ctx);
 int ziti_sdk_c_close_write(void *io_ctx);
+int ziti_sdk_c_resume(void *io_ctx);
 
 host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, tunneler_context tnlr_ctx, const char *service_name, cfg_type_e cfgtype, const void *cfg);
 void ziti_hosted_serv_conn_close_cb(ziti_connection serv);

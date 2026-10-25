@@ -144,6 +144,11 @@ ssize_t on_ziti_data(ziti_connection conn, const uint8_t *data, ssize_t len) {
         if (accepted < 0) {
             ZITI_LOG(ERROR, "failed to write to client");
             ziti_sdk_c_close(io->ziti_io);
+        } else if (accepted < len && ziti_tunneler_write_will_resume(io->tnlr_io)) {
+            // the client is behind: stop the SDK from polling us, ziti_sdk_c_resume() restarts delivery on the next ACK
+            if (ziti_conn_set_data_cb(conn, NULL) == ZITI_OK) {
+                ziti_io_ctx->paused = true;
+            }
         }
         return accepted;
     } else if (len == ZITI_EOF) {
@@ -162,6 +167,16 @@ ssize_t on_ziti_data(ziti_connection conn, const uint8_t *data, ssize_t len) {
         ziti_close(conn, ziti_conn_close_cb);
     }
     return len;
+}
+
+/** called by tunneler SDK when the client acked data: resume delivery that was paused for backpressure */
+int ziti_sdk_c_resume(void *io_ctx) {
+    ziti_io_context *ziti_io_ctx = io_ctx;
+    if (ziti_io_ctx != NULL && ziti_io_ctx->paused) {
+        ziti_io_ctx->paused = false;
+        ziti_conn_set_data_cb(ziti_io_ctx->ziti_conn, on_ziti_data);
+    }
+    return 0;
 }
 
 /** called by tunneler SDK after a client connection is closed. also called from ziti_tunneler_stop_intercepting */

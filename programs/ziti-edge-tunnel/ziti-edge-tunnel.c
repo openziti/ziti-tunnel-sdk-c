@@ -1304,6 +1304,7 @@ static tunneler_context initialize_tunneler(netif_driver tun, netif_driver tap, 
             .ziti_close = ziti_sdk_c_close,
             .ziti_close_write = ziti_sdk_c_close_write,
             .ziti_write = ziti_sdk_c_write,
+            .ziti_resume = ziti_sdk_c_resume,
             .ziti_host = ziti_sdk_c_host
     };
 
