@@ -124,6 +124,7 @@ struct io_ctx_s {
     ziti_sdk_write_cb     write_fn;
     ziti_sdk_close_cb     close_write_fn;
     ziti_sdk_close_cb     close_fn;
+    ziti_sdk_close_cb     resume_fn; // optional: called when the client has acked data and writes may be retried
 };
 
 struct io_ctx_list_entry_s {
@@ -143,6 +144,7 @@ typedef struct tunneler_sdk_options_s {
     ziti_sdk_close_cb   ziti_close_write;
     ziti_sdk_write_cb   ziti_write;
     ziti_sdk_host_cb    ziti_host;
+    ziti_sdk_close_cb   ziti_resume; // optional: see io_ctx_s.resume_fn
 } tunneler_sdk_options;
 
 struct tunneler_ctx_s {
@@ -223,6 +225,12 @@ extern void ziti_tunneler_set_idle_timeout(struct io_ctx_s *io_context, unsigned
 extern void ziti_tunneler_dial_completed(struct io_ctx_s *io_context, bool ok);
 
 extern ssize_t ziti_tunneler_write(tunneler_io_context tnlr_io_ctx, const void *data, size_t len);
+
+/**
+ * true if a write that was not (fully) accepted will be followed by a resume_fn call:
+ * the client still has unacknowledged data, so an ACK is guaranteed to arrive.
+ */
+extern bool ziti_tunneler_write_will_resume(tunneler_io_context tnlr_io_ctx);
 
 struct write_ctx_s;
 extern void ziti_tunneler_ack(struct write_ctx_s *write_ctx);

@@ -550,6 +550,11 @@ ssize_t ziti_tunneler_write(tunneler_io_context tnlr_io_ctx, const void *data, s
     return r;
 }
 
+bool ziti_tunneler_write_will_resume(tunneler_io_context tnlr_io_ctx) {
+    if (tnlr_io_ctx == NULL || tnlr_io_ctx->proto != tun_tcp || tnlr_io_ctx->tcp == NULL) return false;
+    return tnlr_io_ctx->tcp->unsent != NULL || tnlr_io_ctx->tcp->unacked != NULL;
+}
+
 /** called by tunneler application when a ziti connection closes */
 int ziti_tunneler_close(tunneler_io_context tnlr_io_ctx) {
     if (tnlr_io_ctx == NULL) {
