@@ -584,6 +584,15 @@ int ziti_tunneler_close(tunneler_io_context tnlr_io_ctx) {
     return 0;
 }
 
+/** called when the ziti connection ends abnormally; resets the intercepted client */
+void ziti_tunneler_abort(tunneler_io_context tnlr_io_ctx) {
+    if (tnlr_io_ctx == NULL) return;
+    if (tnlr_io_ctx->proto == tun_tcp && tnlr_io_ctx->tcp) {
+        tunneler_tcp_abort(tnlr_io_ctx->tcp);
+        tnlr_io_ctx->tcp = NULL;
+    }
+}
+
 /** called by tunneler application when an EOF is received from ziti */
 int ziti_tunneler_close_write(tunneler_io_context tnlr_io_ctx) {
     if (tnlr_io_ctx == NULL) {
