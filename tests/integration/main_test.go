@@ -213,6 +213,10 @@ func doSetup(state TestState) error {
 	if err := state.overlay.PurgeConfigs(); err != nil {
 		return fmt.Errorf("purge stale test configs: %w", err)
 	}
+	log.Printf("setup: purging stale test posture checks")
+	if err := state.overlay.PurgePostureChecks(); err != nil {
+		return fmt.Errorf("purge stale test posture checks: %w", err)
+	}
 
 	// Import runs before the CA is installed; trust left over from a crashed run is removed first.
 	if state.overlay.AutoTrustCA && state.overlay.CATrusted() {
