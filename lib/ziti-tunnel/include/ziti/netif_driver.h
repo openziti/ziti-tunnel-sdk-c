@@ -35,6 +35,10 @@ typedef int (*add_route_cb)(netif_handle dev, const char *dest);
 typedef int (*delete_route_cb)(netif_handle dev, const char *dest);
 typedef int (*exclude_route_fn)(netif_handle dev, uv_loop_t *loop, const char *dest);
 typedef int (*commit_routes_fn)(netif_handle dev, uv_loop_t *loop);
+/** called on the loop thread whenever the set of intercepted DNS names may have changed */
+typedef void (*dns_domains_changed_fn)(netif_handle dev, uv_loop_t *loop);
+/** called on the loop thread when the fallback DNS servers given to ziti_dns_set_fallback_upstream() may be stale */
+typedef void (*dns_refresh_fallback_fn)(netif_handle dev, uv_loop_t *loop);
 
 typedef const char *(*name_fn)(netif_handle dev);
 
@@ -55,6 +59,9 @@ typedef struct netif_driver_s {
     uint16_t mtu;
     uint8_t hwaddr[6];
     uint8_t hwaddr_len;
+    // optional; drivers built with this header leave unsupported hooks NULL
+    dns_domains_changed_fn dns_domains_changed;
+    dns_refresh_fallback_fn dns_refresh_fallback;
 } netif_driver_t;
 typedef netif_driver_t *netif_driver;
 
