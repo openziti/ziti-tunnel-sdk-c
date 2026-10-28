@@ -182,16 +182,33 @@ u8_t recv_udp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
 }
 
 ssize_t tunneler_udp_write(struct udp_pcb *pcb, const void *data, size_t len) {
+    static bool log_mem_errors = true;
     struct io_ctx_s *io = pcb->recv_arg;
     struct pbuf *p = pbuf_alloc(PBUF_TRANSPORT, len, PBUF_RAM);
+    if (p == NULL) {
+        // lwip heap is exhausted (shared by all connections). drop the datagram rather than tear down the flow
+        if (log_mem_errors) {
+            TNL_LOG(ERR, "pbuf_alloc failed. dropping udp datagrams until lwip memory becomes available");
+            log_mem_errors = false;
+        }
+        return len;
+    }
     memcpy(p->payload, data, len);
     /* use udp_sendto_if_src even though local and remote addresses are in pcb, because
      * udp_send verifies that the dest IP matches the netif's IP, and fails with ERR_RTE.
      */
     err_t err = udp_sendto_if_src(pcb, p, &pcb->remote_ip, pcb->remote_port, &io->tnlr_io->tnlr_ctx->l3_netif, &pcb->local_ip);
     pbuf_free(p);
-    if (err != ERR_OK) {
+    if (err == ERR_MEM) {
+        if (log_mem_errors) {
+            TNL_LOG(ERR, "udp_sendto failed with ERR_MEM. dropping udp datagrams until lwip memory becomes available");
+            log_mem_errors = false;
+        }
+    } else if (err != ERR_OK) {
         return -1;
+    } else if (!log_mem_errors) {
+        TNL_LOG(INFO, "lwip memory is now available. udp datagrams will no longer be dropped");
+        log_mem_errors = true;
     }
     if (io->tnlr_io->idle_timeout > 0) {
         uv_timer_start(io->tnlr_io->conn_timer, datagram_timeout_cb, io->tnlr_io->idle_timeout, 0);

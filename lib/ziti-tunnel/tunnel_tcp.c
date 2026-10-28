@@ -194,6 +194,7 @@ static void on_tcp_client_err(void *io_ctx, err_t err) {
 }
 
 ssize_t tunneler_tcp_write(struct tcp_pcb *pcb, const void *data, size_t len) {
+    static bool log_mem_errors = true;
     if (pcb == NULL) {
         TNL_LOG(WARN, "null pcb");
         return -1;
@@ -209,14 +210,30 @@ ssize_t tunneler_tcp_write(struct tcp_pcb *pcb, const void *data, size_t len) {
     if (sendlen > 0) {
         err_t w_err = tcp_write(pcb, data, (u16_t) sendlen,
                                 TCP_WRITE_FLAG_COPY); // TODO hold data until client acks... via on_client_ack maybe? then we wouldn't need to copy here.
+        if (w_err == ERR_MEM) {
+            // lwip heap or segment pool is exhausted (shared by all connections). this is transient, so
+            // push out what is already queued and accept nothing. the ziti sdk keeps the data and retries.
+            // retries are frequent until memory is freed, so only log the first one.
+            if (log_mem_errors) {
+                TNL_LOG(WARN, "tcp_write failed with ERR_MEM. applying backpressure until lwip memory becomes available");
+                log_mem_errors = false;
+            }
+            tcp_output(pcb);
+            return 0;
+        }
         if (w_err != ERR_OK) {
             TNL_LOG(ERR, "failed to tcp_write %d (%ld, %zd)", w_err, sendlen, len);
             return -1;
         }
+        if (!log_mem_errors) {
+            TNL_LOG(INFO, "lwip memory is now available. tcp backpressure is no longer applied");
+            log_mem_errors = true;
+        }
 
-        if (tcp_output(pcb) != ERR_OK) {
-            TNL_LOG(ERR, "failed to tcp_output");
-            return -1;
+        // the data is queued now, so a failure here is not fatal. lwip will retry output from its timers.
+        err_t o_err = tcp_output(pcb);
+        if (o_err != ERR_OK) {
+            LOG_STATE(TRACE, "tcp_output failed: err=%d", pcb, o_err);
         }
     }
     return sendlen;
