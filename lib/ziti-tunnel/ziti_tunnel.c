@@ -603,6 +603,27 @@ int ziti_tunneler_close_write(tunneler_io_context tnlr_io_ctx) {
     return 0;
 }
 
+/** called by tunneler application when a ziti connection ends abnormally (i.e. without EOF) */
+int ziti_tunneler_abort(tunneler_io_context tnlr_io_ctx) {
+    if (tnlr_io_ctx == NULL) {
+        TNL_LOG(DEBUG, "null tnlr_io_ctx");
+        return 0;
+    }
+    TNL_LOG(DEBUG, "aborting connection: client[%s] service[%s]",
+            tnlr_io_ctx->client, tnlr_io_ctx->service_name);
+    switch (tnlr_io_ctx->proto) {
+        case tun_tcp:
+            tunneler_tcp_abort(tnlr_io_ctx->tcp);
+            // the pcb is detached now. null it so ziti_tunneler_close doesn't close it again
+            tnlr_io_ctx->tcp = NULL;
+            break;
+        default:
+            TNL_LOG(DEBUG, "not resetting %d connection", tnlr_io_ctx->proto);
+            break;
+    }
+    return 0;
+}
+
 static void on_tun_data(uv_poll_t * req, int status, int events) {
     if (status != 0) {
         TNL_LOG(WARN, "not sure why status is %d", status);

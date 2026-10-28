@@ -231,6 +231,9 @@ extern int ziti_tunneler_close(tunneler_io_context tnlr_io_ctx);
 
 extern int ziti_tunneler_close_write(tunneler_io_context tnlr_io_ctx);
 
+/** reset the client connection when the ziti connection ends abnormally. ziti_tunneler_close must still be called. */
+extern int ziti_tunneler_abort(tunneler_io_context tnlr_io_ctx);
+
 extern const char* ziti_tunneler_version();
 
 extern const char* ziti_tunneler_build_date();

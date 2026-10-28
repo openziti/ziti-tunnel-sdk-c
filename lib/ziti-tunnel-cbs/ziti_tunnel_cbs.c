@@ -143,6 +143,8 @@ ssize_t on_ziti_data(ziti_connection conn, const uint8_t *data, ssize_t len) {
         ssize_t accepted = ziti_tunneler_write(io->tnlr_io, data, len);
         if (accepted < 0) {
             ZITI_LOG(ERROR, "failed to write to client");
+            // data was lost, so don't let the client mistake this for a normal end of the stream
+            ziti_tunneler_abort(io->tnlr_io);
             ziti_sdk_c_close(io->ziti_io);
         }
         return accepted;
@@ -159,6 +161,12 @@ ssize_t on_ziti_data(ziti_connection conn, const uint8_t *data, ssize_t len) {
         }
     } else if (len < 0) {
         ZITI_LOG(DEBUG, "ziti connection is closed due to [%zd](%s)", len, ziti_errorstr(len));
+        // ZITI_CONN_CLOSED means the peer closed. sdks close without sending EOF first, so that is
+        // indistinguishable from an abort and gets a FIN. any other error is a local failure (e.g. lost
+        // edge router connection), so reset the client to keep it from seeing a truncated stream as complete.
+        if (len != ZITI_CONN_CLOSED && !ziti_io_ctx->ziti_eof) {
+            ziti_tunneler_abort(io->tnlr_io);
+        }
         ziti_close(conn, ziti_conn_close_cb);
     }
     return len;

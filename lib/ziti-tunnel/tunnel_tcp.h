@@ -35,6 +35,8 @@ extern int tunneler_tcp_close(struct tcp_pcb *pcb);
 
 extern int tunneler_tcp_close_write(struct tcp_pcb *pcb);
 
+extern int tunneler_tcp_abort(struct tcp_pcb *pcb);
+
 /** return list of io contexts for active connections to the given service. caller must free the returned pointer */
 extern struct io_ctx_list_s *tunneler_tcp_active(const void *zi_ctx);
 

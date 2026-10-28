@@ -223,6 +223,10 @@ ssize_t tunneler_tcp_write(struct tcp_pcb *pcb, const void *data, size_t len) {
 }
 
 void tunneler_tcp_ack(struct write_ctx_s *wr_ctx) {
+    // the pcb is detached (arg cleared) when it is closed or aborted, and may already be freed
+    if (wr_ctx->tcp->callback_arg == NULL) {
+        return;
+    }
     tcp_recved(wr_ctx->tcp, wr_ctx->pbuf->len);
 }
 
@@ -265,6 +269,55 @@ int tunneler_tcp_close(struct tcp_pcb *pcb) {
         return -1;
     }
     LOG_STATE(DEBUG, "closed", pcb);
+    return 0;
+}
+
+/** called by lwip when the client acks data on a connection that is waiting to be reset */
+static err_t on_reset_pending_sent(void *arg, struct tcp_pcb *pcb, u16_t len) {
+    if (pcb->unsent == NULL && pcb->unacked == NULL) {
+        LOG_STATE(DEBUG, "queued data delivered, sending RST to client", pcb);
+        tcp_abort(pcb);
+        return ERR_ABRT;
+    }
+    return ERR_OK;
+}
+
+/** called by lwip when the client sends data on a connection that is waiting to be reset.
+ * there is nowhere to send it, so it is dropped. */
+static err_t on_reset_pending_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *p, err_t err) {
+    if (p != NULL) {
+        tcp_recved(pcb, p->tot_len);
+        pbuf_free(p);
+    }
+    return ERR_OK;
+}
+
+/**
+ * reset (RST) the client connection, so the client can tell an abnormal end of the stream from a normal one.
+ * data that is already queued in lwip is delivered first.
+ */
+int tunneler_tcp_abort(struct tcp_pcb *pcb) {
+    if (pcb == NULL) {
+        TNL_LOG(DEBUG, "null pcb");
+        return 0;
+    }
+    if (pcb->state != ESTABLISHED && pcb->state != CLOSE_WAIT) {
+        // handshake isn't complete (tcp_close sends RST), or FIN was already sent
+        return tunneler_tcp_close(pcb);
+    }
+    LOG_STATE(DEBUG, "aborting", pcb);
+    tcp_arg(pcb, NULL);
+    tcp_err(pcb, NULL);
+    if (pcb->unsent == NULL && pcb->unacked == NULL) {
+        LOG_STATE(DEBUG, "sending RST to client", pcb);
+        tcp_abort(pcb);
+        return 0;
+    }
+    // lwip retransmit, persist and keepalive limits still apply, so this cannot linger forever
+    LOG_STATE(DEBUG, "sending RST to client after %d queued segments are acked", pcb, tcp_sndqueuelen(pcb));
+    tcp_recv(pcb, on_reset_pending_recv);
+    tcp_sent(pcb, on_reset_pending_sent);
+    tcp_output(pcb);
     return 0;
 }
 
