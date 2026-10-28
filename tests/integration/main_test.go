@@ -36,6 +36,7 @@ const fixturePath = "testdata/fixture.json"
 var state TestState
 
 type TestState struct {
+	testHome  string
 	overlay   *testutil.Overlay
 	zetClient *testutil.ZET
 	zetHost   *testutil.ZET
@@ -74,6 +75,7 @@ func TestMain(m *testing.M) {
 		extraB = cfg.IdP.ExtraClientIDs[1]
 	}
 	state = TestState{
+		testHome: cfg.TestHome,
 		overlay: &testutil.Overlay{
 			ZitiBin:            cfg.Ziti.Binary,
 			Home:               filepath.Join(cfg.TestHome, "overlay"),
