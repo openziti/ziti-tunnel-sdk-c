@@ -81,7 +81,7 @@ static void tunnel_enroll_cb(const ziti_config *cfg, int status, const char *err
                 add_id_req->cmd_cb(&result, add_id_req->cmd_ctx);
             }
         }
-        free(add_id_req);
+        free_add_id_req(add_id_req);
         return;
     }
 
@@ -90,9 +90,12 @@ static void tunnel_enroll_cb(const ziti_config *cfg, int status, const char *err
 
     if (fwrite(cfg_json, 1, len, f) != len) {
         ZITI_LOG(ERROR, "failed to write config file");
+        free(cfg_json);
         fclose(f);
         result.error = "failed to write config file";
-        add_id_req->cmd_cb(&result,  add_id_req->cmd_ctx);
+        if (add_id_req->cmd_cb != NULL) {
+            add_id_req->cmd_cb(&result,  add_id_req->cmd_ctx);
+        }
         free_add_id_req(add_id_req);
         return;
     }
