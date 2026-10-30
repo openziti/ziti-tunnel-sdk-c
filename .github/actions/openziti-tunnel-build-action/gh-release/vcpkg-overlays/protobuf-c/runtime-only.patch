@@ -1,0 +1,32 @@
+diff --git a/build-cmake/CMakeLists.txt b/build-cmake/CMakeLists.txt
+index 98e424d..06e765f 100644
+--- a/build-cmake/CMakeLists.txt
++++ b/build-cmake/CMakeLists.txt
+@@ -11,11 +11,15 @@ cmake_policy(SET CMP0112 NEW)
+ 
+ project(protobuf-c C CXX)
+ 
++option(BUILD_PROTOC "Build protoc-gen-c" ON)
++
++# protobuf and abseil are only needed by protoc-gen-c, not by the runtime library
++if(BUILD_PROTOC)
+ if(MSVC AND NOT BUILD_SHARED_LIBS)
+   set(Protobuf_USE_STATIC_LIBS ON)
+ endif()
+ 
+-find_package(Protobuf CONFIG)
++find_package(Protobuf CONFIG REQUIRED)
+ if(Protobuf_FOUND)
+   # Keep compatibility with FindProtobuf CMake module
+   set(PROTOBUF_PROTOC_EXECUTABLE $<TARGET_FILE:protobuf::protoc>)
+@@ -43,9 +47,9 @@ if(Protobuf_USE_STATIC_LIBS)
+ elseif(WIN32)
+   set(protobuf_ABSL_USED_TARGETS $<TARGET_NAME_IF_EXISTS:absl::abseil_dll>)
+ endif()
++endif(BUILD_PROTOC)
+ 
+ # options
+-option(BUILD_PROTOC "Build protoc-gen-c" ON)
+ if(CMAKE_BUILD_TYPE MATCHES Debug)
+   option(BUILD_TESTS "Build tests" ON)
+ else()
