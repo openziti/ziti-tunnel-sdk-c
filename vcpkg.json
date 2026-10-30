@@ -38,12 +38,5 @@
       ]
     }
   },
-  "builtin-baseline": "9eec002df1cd109f8f104cd966a763daf9751489",
-  "overrides": [
-    {
-      "name": "abseil",
-      "version": "20250814.1",
-      "$comment": "20260107.1 breaks on compilers that don't support c++-17 so we're sticking with 20250814.1 until a buildable version is available in vcpkg, or we can update compilers in older (ubuntu bionic) builder images"
-    }
-  ]
+  "builtin-baseline": "9eec002df1cd109f8f104cd966a763daf9751489"
 }
