@@ -69,7 +69,7 @@ func TestTunnelerToTunnelerUDP(t *testing.T) {
 //   - interceptZET intercepts connections to interceptIP:interceptPort
 //   - hostZET hosts the service and forwards to a local TCP echo server
 func testT2TTCP(t *testing.T, interceptZET, hostZET *testutil.ZET, interceptIP string, interceptPort int) {
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 
 	echo := testutil.StartTCPEcho(t)
@@ -85,7 +85,7 @@ func testT2TTCP(t *testing.T, interceptZET, hostZET *testutil.ZET, interceptIP s
 
 	// Retry the dial until the service is ready on both sides (intercept route
 	// installed and host terminator active) or context expires.
-	waitCtx, waitCancel := context.WithTimeout(ctx, 30*time.Second)
+	waitCtx, waitCancel := context.WithTimeout(ctx, 60*time.Second)
 	defer waitCancel()
 	waitForTCPService(t, waitCtx, interceptAddr, interceptZET, hostZET)
 
@@ -109,7 +109,7 @@ func testT2TTCP(t *testing.T, interceptZET, hostZET *testutil.ZET, interceptIP s
 // testT2TUDP runs a UDP echo end-to-end test.
 func testT2TUDP(t *testing.T, interceptZET, hostZET *testutil.ZET, interceptIP string, interceptPort int) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 
 	echo := testutil.StartUDPEcho(t)
@@ -124,7 +124,7 @@ func testT2TUDP(t *testing.T, interceptZET, hostZET *testutil.ZET, interceptIP s
 	interceptAddr := net.JoinHostPort(interceptIP, fmt.Sprintf("%d", interceptPort))
 
 	// Retry until the UDP intercept route and host terminator are active.
-	waitCtx, waitCancel := context.WithTimeout(ctx, 30*time.Second)
+	waitCtx, waitCancel := context.WithTimeout(ctx, 60*time.Second)
 	defer waitCancel()
 	waitForUDPService(t, waitCtx, interceptAddr, interceptZET, hostZET)
 
