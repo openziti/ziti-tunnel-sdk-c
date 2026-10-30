@@ -159,6 +159,10 @@ ssize_t on_ziti_data(ziti_connection conn, const uint8_t *data, ssize_t len) {
         }
     } else if (len < 0) {
         ZITI_LOG(DEBUG, "ziti connection is closed due to [%zd](%s)", len, ziti_errorstr(len));
+        // a close with no EOF first means the remote side reset: send RST to the client, not a graceful FIN.
+        // After EOF the FIN is already queued behind the data and this is only the teardown:
+        // tcp_abort would drop the still-unacked tail of the response.
+        if (!ziti_io_ctx->ziti_eof) ziti_tunneler_abort(io->tnlr_io);
         ziti_close(conn, ziti_conn_close_cb);
     }
     return len;

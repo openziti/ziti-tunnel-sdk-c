@@ -242,6 +242,16 @@ int tunneler_tcp_close_write(struct tcp_pcb *pcb) {
     return 0;
 }
 
+/** the ziti side died abnormally (not EOF): tell the client with a RST instead of a graceful FIN */
+void tunneler_tcp_abort(struct tcp_pcb *pcb) {
+    if (pcb == NULL) return;
+    LOG_STATE(DEBUG, "aborting (RST)", pcb);
+    tcp_arg(pcb, NULL);
+    tcp_recv(pcb, NULL);
+    tcp_err(pcb, NULL);
+    tcp_abort(pcb);
+}
+
 int tunneler_tcp_close(struct tcp_pcb *pcb) {
     if (pcb == NULL) {
         TNL_LOG(DEBUG, "null pcb");
