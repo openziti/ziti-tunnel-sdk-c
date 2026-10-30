@@ -1,5 +1,5 @@
 # use ziti-builder:v1 (Ubuntu Bionic 18.04 LTS) for older glibc (2.27)
-FROM openziti/ziti-builder:v1
+FROM openziti/ziti-builder:v1.python3.12-dev
 
 # these should be added to ziti-builder
 RUN apt-get update && apt-get -y install bison flex
