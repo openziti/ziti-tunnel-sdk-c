@@ -113,6 +113,26 @@ void ziti_tunnel_commit_routes(tunneler_context tnlr_ctx) {
     }
 }
 
+void ziti_tunneler_dns_domains_changed(tunneler_context tnlr_ctx) {
+    if (tnlr_ctx->opts.l3_netif_driver == NULL) {
+        return;
+    }
+
+    if (tnlr_ctx->opts.l3_netif_driver->dns_domains_changed != NULL) {
+        tnlr_ctx->opts.l3_netif_driver->dns_domains_changed(tnlr_ctx->opts.l3_netif_driver->handle, tnlr_ctx->loop);
+    }
+}
+
+void ziti_tunneler_dns_refresh_fallback(tunneler_context tnlr_ctx) {
+    if (tnlr_ctx->opts.l3_netif_driver == NULL) {
+        return;
+    }
+
+    if (tnlr_ctx->opts.l3_netif_driver->dns_refresh_fallback != NULL) {
+        tnlr_ctx->opts.l3_netif_driver->dns_refresh_fallback(tnlr_ctx->opts.l3_netif_driver->handle, tnlr_ctx->loop);
+    }
+}
+
 void ziti_tunneler_exclude_route(tunneler_context tnlr_ctx, const char *dst) {
     if (tnlr_ctx->opts.l3_netif_driver == NULL) {
         TNL_LOG(DEBUG, "No netif_driver found tun is running in host only mode and intercepts are disabled");

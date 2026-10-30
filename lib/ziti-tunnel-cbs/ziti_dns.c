@@ -68,6 +68,7 @@ static void dns_upstream_alloc(uv_handle_t *h, size_t reqlen, uv_buf_t *b);
 static void on_upstream_packet(uv_udp_t *h, ssize_t rc, const uv_buf_t *buf, const struct sockaddr* addr, unsigned int flags);
 static void complete_dns_req(struct dns_req *req);
 static void free_dns_req(struct dns_req *req);
+static void notify_domains_changed(void);
 
 typedef struct dns_domain_s {
     char name[MAX_DNS_NAME];
@@ -115,6 +116,13 @@ struct ziti_dns_s {
     bool is_ipv4;
     int num_dns_up;
     struct sockaddr_in6 upstream_addr[MAX_UPSTREAMS];
+
+    // used for queries that do not match an intercepted name when no upstream is configured.
+    // the netif driver provides these, e.g. the system's other DNS servers
+    int num_dns_fallback;
+    struct sockaddr_in6 fallback_addr[MAX_UPSTREAMS];
+    uint64_t fallback_updated; // uv_now() of the last ziti_dns_set_fallback_upstream(), or of the last refresh request
+    uint64_t fallback_max_age; // refresh the fallback when it is used after this many ms, 0 to never refresh
 } ziti_dns;
 
 static uint32_t next_ipv4() {
@@ -207,7 +215,7 @@ ZITI_LOG(ERROR, "failed [" #op "]: %d(%s)", rc, uv_strerror(rc)); \
 return rc;} \
 }while(0)
 
-int ziti_dns_set_upstream(uv_loop_t *l, tunnel_upstream_dns_array upstreams) {
+static int init_upstream_socket(uv_loop_t *l) {
     if (!uv_is_active((const uv_handle_t *) &ziti_dns.upstream)) {
         CHECK_UV(uv_udp_init(l, &ziti_dns.upstream));
         int r = uv_udp_bind(&ziti_dns.upstream,
@@ -230,6 +238,14 @@ int ziti_dns_set_upstream(uv_loop_t *l, tunnel_upstream_dns_array upstreams) {
         }
         CHECK_UV(uv_udp_recv_start(&ziti_dns.upstream, dns_upstream_alloc, on_upstream_packet));
         uv_unref((uv_handle_t *) &ziti_dns.upstream);
+    }
+    return 0;
+}
+
+int ziti_dns_set_upstream(uv_loop_t *l, tunnel_upstream_dns_array upstreams) {
+    int r = init_upstream_socket(l);
+    if (r != 0) {
+        return r;
     }
 
     union {
@@ -273,6 +289,8 @@ int ziti_dns_set_upstream(uv_loop_t *l, tunnel_upstream_dns_array upstreams) {
         ZITI_LOG(INFO, "DNS upstream[%d] is set to %s:%hu", idx, dns->host, port);
     }
     ziti_dns.num_dns_up = idx;
+    // availability of an upstream decides whether the tunneler should also be a default DNS route
+    notify_domains_changed();
     return 0;
 }
 
@@ -411,6 +429,132 @@ static dns_entry_t *ziti_dns_lookup(const char *hostname) {
 }
 
 
+static void notify_domains_changed(void) {
+    if (ziti_dns.tnlr) {
+        ziti_tunneler_dns_domains_changed(ziti_dns.tnlr);
+    }
+}
+
+static int cmp_names(const void *a, const void *b) {
+    return strcmp(*(const char **) a, *(const char **) b);
+}
+
+static bool add_name(model_map *names, const char *name) {
+    char *n = strdup(name);
+    if (n == NULL) {
+        return false;
+    }
+    size_t len = strlen(n);
+    // routing domains are absolute, so drop the trailing dot of a fully qualified name
+    if (len > 0 && n[len - 1] == '.') n[--len] = '\0';
+    if (len == 0) {
+        free(n);
+        return true;
+    }
+
+    if (model_map_get(names, n) == NULL) {
+        model_map_set(names, n, n);
+    } else {
+        free(n);
+    }
+    return true;
+}
+
+char **ziti_dns_get_domains(void) {
+    model_map names = {0};
+    const char *name;
+
+    const dns_entry_t *entry;
+    MODEL_MAP_FOREACH(name, entry, &ziti_dns.hostnames) {
+        // only hostnames that are intercepted themselves: names that were only resolved from a wildcard domain
+        // are covered by the domain. an intercepted hostname can also have a (possibly inactive) domain, if it was
+        // resolved from one before it was intercepted itself
+        if (model_map_size(&entry->intercepts) > 0) {
+            if (!add_name(&names, name)) goto out_of_memory;
+        }
+    }
+
+    const dns_domain_t *domain;
+    MODEL_MAP_FOREACH(name, domain, &ziti_dns.domains) {
+        if (model_map_size(&domain->intercepts) > 0) {
+            if (!add_name(&names, name)) goto out_of_memory;
+        }
+    }
+
+    size_t count = model_map_size(&names);
+    char **domains = calloc(count + 1, sizeof(char *));
+    if (domains == NULL) {
+        model_map_clear(&names, free);
+        return NULL;
+    }
+    size_t i = 0;
+    char *n;
+    MODEL_MAP_FOREACH(name, n, &names) {
+        domains[i++] = n;
+    }
+    model_map_clear(&names, NULL);
+
+    qsort(domains, count, sizeof(char *), cmp_names);
+    return domains;
+
+out_of_memory:
+    model_map_clear(&names, free);
+    return NULL;
+}
+
+bool ziti_dns_has_upstream(void) {
+    return ziti_dns.num_dns_up > 0;
+}
+
+int ziti_dns_set_fallback_upstream(uv_loop_t *l, const struct sockaddr_storage *addrs, size_t count,
+                                   uint64_t max_age_ms) {
+    ziti_dns.loop = l;
+    ziti_dns.fallback_updated = uv_now(l);
+    ziti_dns.fallback_max_age = max_age_ms;
+    if (count == 0) {
+        ziti_dns.num_dns_fallback = 0;
+        return 0;
+    }
+
+    int r = init_upstream_socket(l);
+    if (r != 0) {
+        return r;
+    }
+
+    int idx = 0;
+    for (size_t i = 0; i < count && idx < MAX_UPSTREAMS; i++) {
+        struct sockaddr_in6 *dst = &ziti_dns.fallback_addr[idx];
+        memset(dst, 0, sizeof(*dst));
+
+        if (addrs[i].ss_family == AF_INET) {
+            const struct sockaddr_in *sin = (const struct sockaddr_in *) &addrs[i];
+            if (ziti_dns.is_ipv4) {
+                memcpy(dst, sin, sizeof(*sin));
+            } else {
+                uint8_t *a = (uint8_t *) &sin->sin_addr;
+                dst->sin6_family = AF_INET6;
+                dst->sin6_port = sin->sin_port;
+                dst->sin6_addr = (struct in6_addr) IN6ADDR_V4MAPPED(a);
+            }
+        } else if (addrs[i].ss_family == AF_INET6 && !ziti_dns.is_ipv4) {
+            memcpy(dst, &addrs[i], sizeof(*dst));
+        } else {
+            continue;
+        }
+
+        char host[INET6_ADDRSTRLEN] = "";
+        uv_ip_name((const struct sockaddr *) &addrs[i], host, sizeof(host));
+        ZITI_LOG(DEBUG, "DNS fallback upstream[%d] is set to %s", idx, host);
+        idx++;
+    }
+
+    if (idx != ziti_dns.num_dns_fallback) {
+        ZITI_LOG(INFO, "using %d DNS fallback upstream(s) for names that are not intercepted", idx);
+    }
+    ziti_dns.num_dns_fallback = idx;
+    return 0;
+}
+
 void ziti_dns_deregister_intercept(void *intercept) {
     model_map_iter it = model_map_iterator(&ziti_dns.domains);
     while (it != NULL) {
@@ -443,6 +587,8 @@ void ziti_dns_deregister_intercept(void *intercept) {
             it = model_map_it_next(it);
         }
     }
+
+    notify_domains_changed();
 }
 
 const ip_addr_t *ziti_dns_register_hostname(const ziti_address *addr, void *intercept) {
@@ -468,6 +614,7 @@ const ip_addr_t *ziti_dns_register_hostname(const ziti_address *addr, void *inte
             model_map_set(&ziti_dns.domains, clean + 2, domain);
         }
         model_map_set_key(&domain->intercepts, &intercept, sizeof(intercept), intercept);
+        notify_domains_changed();
         return NULL;
     } else {
         dns_entry_t *entry = model_map_get(&ziti_dns.hostnames, clean);
@@ -476,6 +623,7 @@ const ip_addr_t *ziti_dns_register_hostname(const ziti_address *addr, void *inte
         }
         if (entry) {
             model_map_set_key(&entry->intercepts, &intercept, sizeof(intercept), intercept);
+            notify_domains_changed();
             return &entry->addr;
         } else {
             return NULL;
@@ -847,15 +995,33 @@ ssize_t on_dns_req(const void *ziti_io_ctx, void *write_ctx, const void *q_packe
     return (ssize_t)q_len;
 }
 
+static void refresh_stale_fallback(void) {
+    if (ziti_dns.num_dns_up > 0 || ziti_dns.fallback_max_age == 0 || ziti_dns.tnlr == NULL) {
+        return;
+    }
+    uint64_t now = uv_now(ziti_dns.loop);
+    if (now - ziti_dns.fallback_updated > ziti_dns.fallback_max_age) {
+        // queries are not held back: they use the current list while the driver reads the servers again
+        ziti_dns.fallback_updated = now;
+        ziti_tunneler_dns_refresh_fallback(ziti_dns.tnlr);
+    }
+}
+
 int query_upstream(struct dns_req *req) {
+    refresh_stale_fallback();
+
     bool avail = uv_is_active((const uv_handle_t *) &ziti_dns.upstream);
     bool success = false;
     if (avail && req->msg.recursive) {
         uv_buf_t buf = uv_buf_init((char *) req->req, req->req_len);
 
-        for (int i = 0; i < ziti_dns.num_dns_up; i++) {
+        // configured upstreams take precedence over the fallback provided by the netif driver
+        int num_addrs = ziti_dns.num_dns_up > 0 ? ziti_dns.num_dns_up : ziti_dns.num_dns_fallback;
+        struct sockaddr_in6 *addrs = ziti_dns.num_dns_up > 0 ? ziti_dns.upstream_addr : ziti_dns.fallback_addr;
+
+        for (int i = 0; i < num_addrs; i++) {
             int rc = uv_udp_try_send(&ziti_dns.upstream, &buf, 1,
-                                     (struct sockaddr *) &ziti_dns.upstream_addr[i]);
+                                     (struct sockaddr *) &addrs[i]);
             if (rc > 0) {
                 success = true;
             } else {
@@ -885,6 +1051,7 @@ static void on_upstream_packet(uv_udp_t *h, ssize_t rc, const uv_buf_t *buf, con
             } else {
                 ZITI_LOG(WARN, "unexpected DNS response: too large");
             }
+
             complete_dns_req(req);
         }
     }
