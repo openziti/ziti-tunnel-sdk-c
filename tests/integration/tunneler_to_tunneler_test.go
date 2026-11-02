@@ -65,6 +65,80 @@ func TestTunnelerToTunnelerUDP(t *testing.T) {
 	})
 }
 
+// TestTunnelerToTunnelerLongHostname dials a service intercepted by a hostname long
+// enough that the dial's app_data (which carries dst_hostname) exceeds 256 bytes.
+// See https://github.com/openziti/ziti-tunnel-sdk-c/issues/1449
+//
+// Requires root/CAP_NET_ADMIN — both ZETs open TUN devices.
+func TestTunnelerToTunnelerLongHostname(t *testing.T) {
+	requireMultiTunnel(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	interceptZET, hostZET := state.zetClient, state.zetHost
+	const interceptPort = 21002
+
+	// 3 x 60-char labels + "long.ziti" = 192 chars: well past the old buffer, under MAX_DNS_NAME.
+	label := strings.Repeat("a", 60)
+	hostname := strings.Join([]string{label, label, label, "long", "ziti"}, ".")
+
+	echo := testutil.StartTCPEcho(t)
+	_, echoPort, err := net.SplitHostPort(echo.Addr)
+	require.NoError(t, err, "parse echo addr")
+	echoPortInt := 0
+	fmt.Sscanf(echoPort, "%d", &echoPortInt)
+
+	names := t2tNames(t)
+	setupT2TService(t, ctx, interceptZET, hostZET, names, "tcp", "127.0.0.1", echoPortInt, hostname, interceptPort)
+
+	// Ask the intercepting ZET's DNS server directly, since the system resolver may
+	// be pointed at the other ZET.
+	dnsServer, err := interceptZET.DNSServer()
+	require.NoError(t, err, "get intercept ZET DNS server")
+	resolver := &net.Resolver{
+		PreferGo: true,
+		Dial: func(ctx context.Context, network, _ string) (net.Conn, error) {
+			var d net.Dialer
+			return d.DialContext(ctx, network, net.JoinHostPort(dnsServer, "53"))
+		},
+	}
+
+	// Retry resolution until the intercepting ZET has the service.
+	waitCtx, waitCancel := context.WithTimeout(ctx, 30*time.Second)
+	defer waitCancel()
+	var interceptIP string
+	for interceptIP == "" {
+		ips, err := resolver.LookupIP(waitCtx, "ip4", hostname)
+		if err == nil && len(ips) > 0 {
+			interceptIP = ips[0].String()
+			break
+		}
+		select {
+		case <-waitCtx.Done():
+			t.Fatalf("%s never resolved via %s: %v\ninterceptZET: %s", hostname, dnsServer, err, interceptZET.LogFile())
+		case <-time.After(500 * time.Millisecond):
+		}
+	}
+
+	interceptAddr := net.JoinHostPort(interceptIP, fmt.Sprintf("%d", interceptPort))
+	waitForTCPService(t, waitCtx, interceptAddr, interceptZET, hostZET)
+
+	conn, err := net.DialTimeout("tcp", interceptAddr, 10*time.Second)
+	require.NoError(t, err, "dial %s (%s)\ninterceptZET: %s\nhostZET: %s",
+		hostname, interceptAddr, interceptZET.LogFile(), hostZET.LogFile())
+	defer conn.Close()
+
+	payload := []byte("hello-long-hostname")
+	_, err = conn.Write(payload)
+	require.NoError(t, err, "write payload\ninterceptZET: %s\nhostZET: %s", interceptZET.LogFile(), hostZET.LogFile())
+
+	got := make([]byte, len(payload))
+	_ = conn.SetReadDeadline(time.Now().Add(10 * time.Second))
+	_, err = readFull(conn, got)
+	require.NoError(t, err, "read echo\ninterceptZET: %s\nhostZET: %s", interceptZET.LogFile(), hostZET.LogFile())
+	require.Equal(t, payload, got, "TCP echo mismatch\ninterceptZET: %s\nhostZET: %s", interceptZET.LogFile(), hostZET.LogFile())
+}
+
 // testT2TTCP runs a TCP echo end-to-end test:
 //   - interceptZET intercepts connections to interceptIP:interceptPort
 //   - hostZET hosts the service and forwards to a local TCP echo server
@@ -79,7 +153,7 @@ func testT2TTCP(t *testing.T, interceptZET, hostZET *testutil.ZET, interceptIP s
 	fmt.Sscanf(echoPort, "%d", &echoPortInt)
 
 	names := t2tNames(t)
-	setupT2TService(t, ctx, interceptZET, hostZET, names, "tcp", "127.0.0.1", echoPortInt, interceptIP, interceptPort)
+	setupT2TService(t, ctx, interceptZET, hostZET, names, "tcp", "127.0.0.1", echoPortInt, interceptIP+"/32", interceptPort)
 
 	interceptAddr := net.JoinHostPort(interceptIP, fmt.Sprintf("%d", interceptPort))
 
@@ -119,7 +193,7 @@ func testT2TUDP(t *testing.T, interceptZET, hostZET *testutil.ZET, interceptIP s
 	fmt.Sscanf(echoPort, "%d", &echoPortInt)
 
 	names := t2tNames(t)
-	setupT2TService(t, ctx, interceptZET, hostZET, names, "udp", "127.0.0.1", echoPortInt, interceptIP, interceptPort)
+	setupT2TService(t, ctx, interceptZET, hostZET, names, "udp", "127.0.0.1", echoPortInt, interceptIP+"/32", interceptPort)
 
 	interceptAddr := net.JoinHostPort(interceptIP, fmt.Sprintf("%d", interceptPort))
 
@@ -177,7 +251,7 @@ func setupT2TService(
 	names t2tResourceNames,
 	protocol, forwardAddr string,
 	forwardPort int,
-	interceptIP string,
+	interceptAddr string,
 	interceptPort int,
 ) {
 	t.Helper()
@@ -224,7 +298,7 @@ func setupT2TService(
 	require.NoError(t, overlay.CreateHostConfigV1(names.hostConfig, protocol, forwardAddr, forwardPort),
 		"create host config")
 	require.NoError(t, overlay.CreateInterceptConfigV1(names.interceptConfig,
-		[]string{protocol}, []string{interceptIP + "/32"}, interceptPort, interceptPort),
+		[]string{protocol}, []string{interceptAddr}, interceptPort, interceptPort),
 		"create intercept config")
 	require.NoError(t, overlay.CreateService(names.service,
 		[]string{names.hostConfig, names.interceptConfig}),
