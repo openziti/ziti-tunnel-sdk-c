@@ -296,7 +296,8 @@ XX(name, model_string, none, name, __VA_ARGS__) \
 XX(version, model_string, none, version, __VA_ARGS__) \
 XX(controller, model_string, none, controller, __VA_ARGS__) \
 XX(code, model_number, none, code, __VA_ARGS__) \
-XX(error_code, model_string, none, errorCode, __VA_ARGS__)
+XX(error_code, model_string, none, errorCode, __VA_ARGS__) \
+XX(mfa_enrolled, model_bool, ptr, mfaEnrolled, __VA_ARGS__)
 
 #define ZTX_SVC_EVENT_MODEL(XX, ...)  \
 BASE_EVENT_MODEL(XX, __VA_ARGS__)            \
@@ -345,15 +346,18 @@ XX(status, rt_status, none, status, __VA_ARGS__) \
 XX(address, model_string, none, address, __VA_ARGS__) \
 XX(version, model_string, none, version, __VA_ARGS__)
 
-/* only PC_Process/PC_Process_Multi populate paths/missing_paths today; future posture
- * check types are expected to add their own fields here, keyed off query_type, the same
- * way ziti-sdk-c's ziti_posture_status_event grows its union */
+/* fields are keyed off query_type, the same way ziti-sdk-c's ziti_posture_status_event union is:
+ * - PC_Process/PC_Process_Multi populate paths/missing_paths
+ * - PC_MFA populates mfa_timeout/mfa_last_code_at/mfa_expiring (see ziti_posture_status_mfa_info) */
 #define POSTURE_STATUS_EVENT_MODEL(XX, ...)                    \
 BASE_EVENT_MODEL(XX, __VA_ARGS__)                             \
 XX(query_type, ziti_posture_query_type, none, query_type, __VA_ARGS__) \
 XX(services, ziti_service, array, services, __VA_ARGS__)      \
 XX(paths, model_string, array, paths, __VA_ARGS__)            \
-XX(missing_paths, model_string, array, missing_paths, __VA_ARGS__)
+XX(missing_paths, model_string, array, missing_paths, __VA_ARGS__) \
+XX(mfa_timeout, model_number, none, mfa_timeout, __VA_ARGS__) \
+XX(mfa_last_code_at, model_number, none, mfa_last_code_at, __VA_ARGS__) \
+XX(mfa_expiring, model_bool, none, mfa_expiring, __VA_ARGS__)
 
 DECLARE_MODEL(base_event, BASE_EVENT_MODEL)
 DECLARE_MODEL(ziti_ctx_event, ZTX_EVENT_MODEL)

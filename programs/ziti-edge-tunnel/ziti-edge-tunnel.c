@@ -529,6 +529,13 @@ static void on_event(const base_event *ev) {
 
             if (zev->code == ZITI_OK) {
                 id_event.Id->NeedsExtAuth = false;
+                // the controller is authoritative for MFA enrollment once the identity data is loaded
+                if (zev->mfa_enrolled != NULL && *zev->mfa_enrolled != id_event.Id->MfaEnabled) {
+                    ZITI_LOG(INFO, "ztx[%s] controller reports MFA %s", ev->identifier,
+                             *zev->mfa_enrolled ? "enrolled" : "not enrolled");
+                    set_mfa_status(ev->identifier, *zev->mfa_enrolled, id_event.Id->MfaNeeded && *zev->mfa_enrolled);
+                    save_tunnel_status_to_file(); // persist the mfa change
+                }
                 if (zev->name) {
                     if (id_event.Id->Name != NULL && strcmp(id_event.Id->Name, zev->name) != 0) {
                         free((char*)id_event.Id->Name);
@@ -937,9 +944,16 @@ static void on_event(const base_event *ev) {
                         .Action = (char *) event_name(event_updated),
                         .Identifier = ev->identifier,
                         .QueryType = (char *) ziti_posture_query_types.name(pse->query_type),
-                        .Paths = pse->paths,
-                        .MissingPaths = pse->missing_paths,
                 };
+                if (pse->query_type == ziti_posture_query_type_PC_Process ||
+                    pse->query_type == ziti_posture_query_type_PC_Process_Multi) {
+                    tpse.Paths = pse->paths;
+                    tpse.MissingPaths = pse->missing_paths;
+                } else if (pse->query_type == ziti_posture_query_type_PC_MFA) {
+                    tpse.MfaTimeout = (model_number *) &pse->mfa_timeout;
+                    tpse.MfaLastCodeAt = (model_number *) &pse->mfa_last_code_at;
+                    tpse.MfaExpiring = (model_bool *) &pse->mfa_expiring;
+                }
                 if (id->FingerPrint) {
                     tpse.Fingerprint = id->FingerPrint;
                 }

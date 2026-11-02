@@ -897,12 +897,25 @@ static int load_identity_cfg(const char *identifier, const ziti_config *cfg, boo
 }
 
 static void get_transfer_rates(const char *identifier, command_cb cb, void *ctx) {
+    tunnel_result result = {0};
     struct ziti_instance_s *inst = model_map_get(&instances, identifier);
-    if (inst->ztx == NULL) {
+    if (inst == NULL || inst->ztx == NULL) {
+        result.success = false;
+        result.error = "ziti context is not loaded";
+        result.code = IPC_ERROR;
+        cb(&result, ctx);
         return;
     }
-    double up, down;
-    ziti_get_transfer_rates(inst->ztx, &up, &down);
+    double up = 0, down = 0;
+    int rc = ziti_get_transfer_rates(inst->ztx, &up, &down);
+    if (rc != ZITI_OK) {
+        ZITI_LOG(DEBUG, "ztx[%s] no transfer rates: %s", identifier, ziti_errorstr(rc));
+        result.success = false;
+        result.error = (char *) ziti_errorstr(rc);
+        result.code = IPC_ERROR;
+        cb(&result, ctx);
+        return;
+    }
     tunnel_identity_metrics id_metrics = {
             .identifier = strdup(identifier),
     };
@@ -918,7 +931,6 @@ static void get_transfer_rates(const char *identifier, command_cb cb, void *ctx)
         snprintf(downs, metrics_len+1, "%.2lf", down);
     }
 
-    tunnel_result result = {0};
     result.success = true;
     result.code = IPC_SUCCESS;
     size_t json_len;
@@ -1035,6 +1047,12 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
             ev.event_type = TunnelEvents.ContextEvent;
             ev.identifier = instance->identifier;
             ev.code = event->ctx.ctrl_status;
+            bool mfa_enrolled;
+            // MFA enrollment state is only known once the identity data is loaded
+            if (event->ctx.ctrl_status == ZITI_OK && ziti_get_identity(ztx) != NULL) {
+                mfa_enrolled = ziti_is_mfa_enrolled(ztx);
+                ev.mfa_enrolled = &mfa_enrolled;
+            }
             if (event->ctx.ctrl_status == ZITI_OK || event->ctx.ctrl_status == ZITI_PARTIALLY_AUTHENTICATED) {
                 ev.name = (char*)ctx_name;
                 ev.version = ziti_get_controller_version(ztx)->version;
@@ -1245,6 +1263,10 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
                 pe->query_type == ziti_posture_query_type_PC_Process_Multi) {
                 ev.paths = (model_string_array) pe->process.paths;
                 ev.missing_paths = (model_string_array) pe->process.missing_paths;
+            } else if (pe->query_type == ziti_posture_query_type_PC_MFA) {
+                ev.mfa_timeout = pe->mfa.timeout;
+                ev.mfa_last_code_at = pe->mfa.last_code_at;
+                ev.mfa_expiring = pe->mfa.expiring;
             }
             CMD_CTX.on_event((const base_event *) &ev);
             break;
