@@ -355,9 +355,9 @@ XX(query_type, ziti_posture_query_type, none, query_type, __VA_ARGS__) \
 XX(services, ziti_service, array, services, __VA_ARGS__)      \
 XX(paths, model_string, array, paths, __VA_ARGS__)            \
 XX(missing_paths, model_string, array, missing_paths, __VA_ARGS__) \
-XX(mfa_timeout, model_number, none, mfa_timeout, __VA_ARGS__) \
-XX(mfa_last_code_at, model_number, none, mfa_last_code_at, __VA_ARGS__) \
-XX(mfa_expiring, model_bool, none, mfa_expiring, __VA_ARGS__)
+XX(mfa_timeout, model_number, ptr, mfa_timeout, __VA_ARGS__) \
+XX(mfa_last_code_at, model_number, ptr, mfa_last_code_at, __VA_ARGS__) \
+XX(mfa_expiring, model_bool, ptr, mfa_expiring, __VA_ARGS__)
 
 DECLARE_MODEL(base_event, BASE_EVENT_MODEL)
 DECLARE_MODEL(ziti_ctx_event, ZTX_EVENT_MODEL)

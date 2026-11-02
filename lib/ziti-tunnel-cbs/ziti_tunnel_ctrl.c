@@ -898,14 +898,8 @@ static int load_identity_cfg(const char *identifier, const ziti_config *cfg, boo
 
 static void get_transfer_rates(const char *identifier, command_cb cb, void *ctx) {
     tunnel_result result = {0};
+    // caller has already verified the instance and its context
     struct ziti_instance_s *inst = model_map_get(&instances, identifier);
-    if (inst == NULL || inst->ztx == NULL) {
-        result.success = false;
-        result.error = "ziti context is not loaded";
-        result.code = IPC_ERROR;
-        cb(&result, ctx);
-        return;
-    }
     double up = 0, down = 0;
     int rc = ziti_get_transfer_rates(inst->ztx, &up, &down);
     if (rc != ZITI_OK) {
@@ -919,7 +913,7 @@ static void get_transfer_rates(const char *identifier, command_cb cb, void *ctx)
     tunnel_identity_metrics id_metrics = {
             .identifier = strdup(identifier),
     };
-    int metrics_len = 6;
+    int metrics_len = 32;
     if (up > 0) {
         char *ups = calloc((metrics_len + 1), sizeof(char));
         id_metrics.up = ups;
@@ -1264,9 +1258,9 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
                 ev.paths = (model_string_array) pe->process.paths;
                 ev.missing_paths = (model_string_array) pe->process.missing_paths;
             } else if (pe->query_type == ziti_posture_query_type_PC_MFA) {
-                ev.mfa_timeout = pe->mfa.timeout;
-                ev.mfa_last_code_at = pe->mfa.last_code_at;
-                ev.mfa_expiring = pe->mfa.expiring;
+                ev.mfa_timeout = (model_number *) &pe->mfa.timeout;
+                ev.mfa_last_code_at = (model_number *) &pe->mfa.last_code_at;
+                ev.mfa_expiring = (model_bool *) &pe->mfa.expiring;
             }
             CMD_CTX.on_event((const base_event *) &ev);
             break;

@@ -728,8 +728,8 @@ static void on_event(const base_event *ev) {
             mfa_status s = mfa_statuss.value_of(mfa_ev->operation);
             const char *action = mfa_ev->operation;
 
-            // don't overwrite the locally stored MfaEnabled based on the controller; the client owns it
-            // entirely. only MfaNeeded is in question here.
+            // MfaEnabled is synced from the controller on context events and from the results of this
+            // client's own MFA operations; a prompt only tells us that MfaNeeded is true.
             if (s == mfa_status_enrollment_required && id->MfaEnabled) {
                 ZITI_LOG(WARN, "ztx[%s] enrollment requested for an identity already enrolled in MFA;"
                                " requesting a code instead", ev->identifier);
@@ -944,16 +944,13 @@ static void on_event(const base_event *ev) {
                         .Action = (char *) event_name(event_updated),
                         .Identifier = ev->identifier,
                         .QueryType = (char *) ziti_posture_query_types.name(pse->query_type),
+                        // ziti-tunnel-cbs only sets the fields that belong to query_type
+                        .Paths = pse->paths,
+                        .MissingPaths = pse->missing_paths,
+                        .MfaTimeout = pse->mfa_timeout,
+                        .MfaLastCodeAt = pse->mfa_last_code_at,
+                        .MfaExpiring = pse->mfa_expiring,
                 };
-                if (pse->query_type == ziti_posture_query_type_PC_Process ||
-                    pse->query_type == ziti_posture_query_type_PC_Process_Multi) {
-                    tpse.Paths = pse->paths;
-                    tpse.MissingPaths = pse->missing_paths;
-                } else if (pse->query_type == ziti_posture_query_type_PC_MFA) {
-                    tpse.MfaTimeout = (model_number *) &pse->mfa_timeout;
-                    tpse.MfaLastCodeAt = (model_number *) &pse->mfa_last_code_at;
-                    tpse.MfaExpiring = (model_bool *) &pse->mfa_expiring;
-                }
                 if (id->FingerPrint) {
                     tpse.Fingerprint = id->FingerPrint;
                 }
