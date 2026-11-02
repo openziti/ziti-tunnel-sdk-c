@@ -1,0 +1,37 @@
+{
+  "name": "protobuf-c",
+  "version-semver": "1.5.2",
+  "description": "This is protobuf-c, a C implementation of the Google Protocol Buffers data serialization format.",
+  "homepage": "https://github.com/protobuf-c/protobuf-c",
+  "$comment": "same as the upstream vcpkg port, except protobuf is only a dependency of the 'tools' feature. the runtime library doesn't need it, and protobuf pulls in abseil, which doesn't build with older compilers",
+  "dependencies": [
+    {
+      "name": "vcpkg-cmake",
+      "host": true
+    },
+    {
+      "name": "vcpkg-cmake-config",
+      "host": true
+    }
+  ],
+  "features": {
+    "test": {
+      "description": "Build test project.",
+      "dependencies": [
+        {
+          "name": "protobuf-c",
+          "features": [
+            "tools"
+          ]
+        }
+      ]
+    },
+    "tools": {
+      "description": "Build tools (protoc-gen-c).",
+      "supports": "!uwp",
+      "dependencies": [
+        "protobuf"
+      ]
+    }
+  }
+}
