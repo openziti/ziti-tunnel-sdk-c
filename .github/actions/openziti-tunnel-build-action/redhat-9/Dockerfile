@@ -20,6 +20,7 @@ RUN dnf update --assumeyes --nobest \
         dnf-plugins-core \
         iproute \
         python3 \
+        python3.12 \
         systemd-devel \
         zlib-devel \
         systemd-rpm-macros \
@@ -40,6 +41,11 @@ RUN dnf update --assumeyes --nobest \
 RUN curl -sSfL https://cmake.org/files/v${CMAKE_VERSION%.*}/cmake-${CMAKE_VERSION}-linux-$(uname -m).sh -o cmake.sh \
     && (bash cmake.sh --skip-license --prefix=/usr/local) \
     && rm cmake.sh
+
+# meson needs python >= 3.10. put python3.12 in /usr/local/bin, which is ahead of /usr/bin in PATH, so build tools that
+# look up python3 (e.g. vcpkg for meson) find it. /usr/bin/python3 (3.9) is left alone for dnf.
+RUN ln -sfvn /usr/bin/python3.12 /usr/local/bin/python3 \
+    && /usr/local/bin/python3 --version
 
 ENV GIT_CONFIG_GLOBAL="/tmp/ziti-builder-gitconfig"
 
