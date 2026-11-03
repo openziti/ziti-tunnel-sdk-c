@@ -19,7 +19,9 @@ limitations under the License.
 package integration_test
 
 import (
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"os"
 	"path/filepath"
 	"testing"
@@ -188,10 +190,22 @@ func assertIdentityUnchanged(t *testing.T, identityFile string, enrolledIdentity
 	identityAfterRecovery := testutil.ReadIdentityFile(t, identityFile)
 	require.Equal(t, enrolledIdentity.ID.Cert, identityAfterRecovery.ID.Cert)
 	require.Equal(t, enrolledIdentity.ID.Key, identityAfterRecovery.ID.Key)
-	// a cluster login rewrites id.ca with the CA bundle of whichever member answered
-	if state.overlay.ZitiClusterSize <= 1 {
-		require.Equal(t, enrolledIdentity.ID.CA, identityAfterRecovery.ID.CA)
+	// a cluster login rewrites id.ca with the CA bundle of whichever member answered, only the root is shared
+	require.Equal(t, rootCA(t, enrolledIdentity.ID.CA), rootCA(t, identityAfterRecovery.ID.CA))
+}
+
+func rootCA(t *testing.T, caBundle string) string {
+	t.Helper()
+	var roots []string
+	for block, rest := pem.Decode([]byte(caBundle)); block != nil; block, rest = pem.Decode(rest) {
+		cert, err := x509.ParseCertificate(block.Bytes)
+		require.NoError(t, err)
+		if cert.CheckSignatureFrom(cert) == nil {
+			roots = append(roots, string(pem.EncodeToMemory(block)))
+		}
 	}
+	require.Len(t, roots, 1)
+	return roots[0]
 }
 
 // runZetBeforeUpgrade starts ZET, enrolls the context's identity, updates the
