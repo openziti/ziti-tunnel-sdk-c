@@ -580,11 +580,16 @@ int ziti_tunneler_close(tunneler_io_context tnlr_io_ctx) {
         tnlr_io_ctx->conn_timer = NULL;
     }
 
+    if (tnlr_io_ctx->pending_writes > 0) {
+        // the acks of the writes still pending in ziti find it: the last one frees it
+        tnlr_io_ctx->closed = true;
+        return 0;
+    }
     free_tunneler_io_context(&tnlr_io_ctx);
     return 0;
 }
 
-/** called when the ziti connection ends abnormally; resets the intercepted client */
+/** called when the ziti connection was aborted by the peer: resets the intercepted client */
 void ziti_tunneler_abort(tunneler_io_context tnlr_io_ctx) {
     if (tnlr_io_ctx == NULL) return;
     if (tnlr_io_ctx->proto == tun_tcp && tnlr_io_ctx->tcp) {

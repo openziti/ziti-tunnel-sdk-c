@@ -157,12 +157,14 @@ ssize_t on_ziti_data(ziti_connection conn, const uint8_t *data, ssize_t len) {
             // eventually the client will send FIN and the tsdk will call ziti_sdk_c_close_write.
             ziti_tunneler_close_write(io->tnlr_io);
         }
+    } else if (len == ZITI_CONN_ABORTED) {
+        // the peer ended the connection abortively (the target it bridges to was reset). A close without
+        // EOF is not enough to say that: ziti_close() sends no FIN, and that is how most connections end.
+        ZITI_LOG(DEBUG, "ziti connection was aborted by the peer (ziti_eof=%d, tnlr_eof=%d)", ziti_io_ctx->ziti_eof, ziti_io_ctx->tnlr_eof);
+        ziti_tunneler_abort(io->tnlr_io);
+        ziti_close(conn, ziti_conn_close_cb);
     } else if (len < 0) {
         ZITI_LOG(DEBUG, "ziti connection is closed due to [%zd](%s)", len, ziti_errorstr(len));
-        // a close with no EOF first means the remote side reset: send RST to the client, not a graceful FIN.
-        // After EOF the FIN is already queued behind the data and this is only the teardown:
-        // tcp_abort would drop the still-unacked tail of the response.
-        if (!ziti_io_ctx->ziti_eof) ziti_tunneler_abort(io->tnlr_io);
         ziti_close(conn, ziti_conn_close_cb);
     }
     return len;
