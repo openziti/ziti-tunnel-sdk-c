@@ -19,6 +19,7 @@
 #include <ziti/ziti.h>
 #include <tlsuv/keychain.h>
 #include <time.h>
+#include <inttypes.h>
 #include "lwip/ip_addr.h"
 #include "ziti/ziti_tunnel.h"
 #include "identity-utils.h"
@@ -93,6 +94,21 @@ tunnel_identity *create_or_get_tunnel_identity(const char* identifier, const cha
     }
 }
 
+// seconds left on the last MFA code for a check with the given timeout: -1 when there is no timeout,
+// 0 when no code was given since login or the code has run out
+static int64_t mfa_timeout_remaining(int64_t timeout, const tunnel_identity *tnl_id) {
+    if (timeout < 0) {
+        return -1;
+    }
+    if (tnl_id->MfaLastUpdatedTime == NULL) {
+        return 0;
+    }
+    uv_timeval64_t now;
+    uv_gettimeofday(&now);
+    int64_t remaining = tnl_id->MfaLastUpdatedTime->tv_sec + timeout - now.tv_sec;
+    return remaining > 0 ? remaining : 0;
+}
+
 void set_mfa_timeout(tunnel_identity *tnl_id) {
     if (tnl_id->Services != NULL) {
         int mfa_min_timeout = -1;
@@ -103,6 +119,7 @@ void set_mfa_timeout(tunnel_identity *tnl_id) {
         bool no_timeout_svc_rem = false;
         for (int svc_idx = 0; tnl_id->Services[svc_idx] != 0; svc_idx++) {
             tunnel_service *tnl_svc = tnl_id->Services[svc_idx];
+            tnl_svc->TimeoutRemaining = mfa_timeout_remaining(tnl_svc->Timeout, tnl_id);
 
             if (tnl_svc->Timeout > -1) {
                 if (mfa_min_timeout == -1 || mfa_min_timeout > tnl_svc->Timeout) {
@@ -212,7 +229,6 @@ static tunnel_posture_check *getTunnelPostureCheck(ziti_posture_query *pq){
 }
 
 static void setTunnelPostureDataTimeout(tunnel_service *tnl_svc, ziti_service *service) {
-    int minTimeoutRemaining = -1;
     int minTimeout = -1;
     bool hasAccess = false;
     model_map postureCheckMap = {0};
@@ -239,14 +255,12 @@ static void setTunnelPostureDataTimeout(tunnel_service *tnl_svc, ziti_service *s
                 model_map_set(&postureCheckMap, pq->id, pq);
             }
 
-            int timeoutRemaining = (int)*pqs->posture_queries[posture_query_idx]->timeoutRemaining;
-            if ((minTimeoutRemaining == -1) || (timeoutRemaining < minTimeoutRemaining)) {
-                minTimeoutRemaining = timeoutRemaining;
+            // only MFA checks time out; a timeout of -1 means none
+            if (pq->query_type != ziti_posture_query_type_PC_MFA || pq->timeout < 0) {
+                continue;
             }
-
-            int timeout = (int)pqs->posture_queries[posture_query_idx]->timeout;
-            if ((minTimeout == -1) || (timeout < minTimeout)) {
-                minTimeout = timeout;
+            if ((minTimeout == -1) || (pq->timeout < minTimeout)) {
+                minTimeout = (int)pq->timeout;
             }
         }
     }
@@ -266,8 +280,7 @@ static void setTunnelPostureDataTimeout(tunnel_service *tnl_svc, ziti_service *s
 
     tnl_svc->IsAccessible = hasAccess;
     tnl_svc->Timeout = minTimeout;
-    tnl_svc->TimeoutRemaining = minTimeoutRemaining;
-    ZITI_LOG(DEBUG, "service[%s] timeout=%d timeoutRemaining=%d", service->name, minTimeout, minTimeoutRemaining);
+    ZITI_LOG(DEBUG, "service[%s] mfa timeout=%d", service->name, minTimeout);
 }
 
 static tunnel_address *to_address(const ziti_address *za) {
@@ -429,6 +442,7 @@ tunnel_service *get_tunnel_service(tunnel_identity* id, ziti_service* zs) {
     svc->Permissions.Bind = ziti_service_has_permission(zs, ziti_session_type_Bind);
     svc->Permissions.Dial = ziti_service_has_permission(zs, ziti_session_type_Dial);
     setTunnelPostureDataTimeout(svc, zs);
+    svc->TimeoutRemaining = mfa_timeout_remaining(svc->Timeout, id);
     setTunnelServiceAddress(svc, zs);
     setTunnelAllowedSourceAddress(svc, zs);
     return svc;
@@ -470,73 +484,6 @@ tunnel_identity_array get_tunnel_identities_for_metrics() {
     free(arr);
 
     return tnl_id_arr;
-
-}
-
-int get_remaining_timeout(int timeout, int timeout_rem, tunnel_identity *tnl_id) {
-
-    if (timeout <= 0 || timeout_rem <= 0 || tnl_id->MfaLastUpdatedTime == NULL || tnl_id->ServiceUpdatedTime == NULL) {
-        return timeout_rem;
-    }
-
-    int timeout_remaining = 0;
-    uv_timeval64_t now;
-    uv_gettimeofday(&now);
-
-    // calculate effective timeout remaining from last mfa or service update time
-    if (tnl_id->MfaLastUpdatedTime->tv_sec > tnl_id->ServiceUpdatedTime->tv_sec) {
-        //calculate svc remaining timeout
-        int elapsed_time = now.tv_sec - tnl_id->MfaLastUpdatedTime->tv_sec;
-        if ((timeout - elapsed_time) < 0) {
-            timeout_remaining = 0;
-        } else {
-            timeout_remaining = timeout - elapsed_time;
-        }
-    } else {
-        //calculate svc remaining timeout
-        int elapsed_time = now.tv_sec - tnl_id->ServiceUpdatedTime->tv_sec;
-        if ((timeout_rem - elapsed_time) < 0) {
-            timeout_remaining = 0;
-        } else {
-            timeout_remaining = timeout_rem - elapsed_time;
-        }
-    }
-    return timeout_remaining;
-}
-
-void set_mfa_timeout_rem(tunnel_identity *tnl_id) {
-
-    if ((tnl_id->MfaMinTimeoutRem > -1 || tnl_id->MfaMaxTimeoutRem > -1) && tnl_id->Services != NULL ) {
-        for (int svc_idx = 0 ; tnl_id->Services[svc_idx]; svc_idx++ ) {
-            tunnel_service *tnl_svc = tnl_id->Services[svc_idx];
-            int svc_timeout = -1;
-            int svc_timeout_rem = -1;
-            if (tnl_svc->TimeoutRemaining > -1 && tnl_svc->PostureChecks != NULL ) {
-                // fetch service timeout and timeout remaining from the posture checks
-                for (int pc_idx = 0; tnl_svc->PostureChecks[pc_idx]; pc_idx++) {
-                    tunnel_posture_check *pc = tnl_svc->PostureChecks[pc_idx];
-                    if (svc_timeout == -1 || svc_timeout > pc->Timeout) {
-                        svc_timeout = pc->Timeout;
-                    }
-                    if (svc_timeout_rem == -1 || svc_timeout_rem > pc->TimeoutRemaining) {
-                        svc_timeout_rem = pc->TimeoutRemaining;
-                    }
-                }
-
-                tnl_svc->TimeoutRemaining = get_remaining_timeout(svc_timeout, svc_timeout_rem, tnl_id);
-            }
-        }
-
-        if (tnl_id->MfaMinTimeoutRem > -1) {
-            tnl_id->MfaMinTimeoutRem = get_remaining_timeout(tnl_id->MfaMinTimeout, tnl_id->MinTimeoutRemInSvcEvent, tnl_id);
-        }
-        if (tnl_id->MfaMaxTimeoutRem > -1) {
-            tnl_id->MfaMaxTimeoutRem = get_remaining_timeout(tnl_id->MfaMaxTimeout, tnl_id->MaxTimeoutRemInSvcEvent, tnl_id);
-        }
-        if (tnl_id->MfaMaxTimeoutRem == 0 && tnl_id->MfaEnabled ) {
-            tnl_id->MfaNeeded = true;
-        }
-    }
 
 }
 
@@ -669,7 +616,7 @@ tunnel_status *get_tunnel_status() {
 
     if (tnl_status.Identities != NULL) {
         for (int id_idx = 0; tnl_status.Identities[id_idx] != 0; id_idx++) {
-            set_mfa_timeout_rem(tnl_status.Identities[id_idx]);
+            set_mfa_timeout(tnl_status.Identities[id_idx]);
             tnl_status.Identities[id_idx]->Notified = false;
         }
     }
@@ -746,18 +693,30 @@ void set_mfa_status(const char* identifier, bool mfa_enabled, bool mfa_needed) {
     }
 }
 
-void update_mfa_time(const char* identifier) {
-    tunnel_identity *tnl_id = find_tunnel_identity(identifier);
-    if (tnl_id != NULL) {
-        uv_timeval64_t now;
-        uv_gettimeofday(&now);
+bool set_mfa_code_status(tunnel_identity *tnl_id, int64_t last_code_at, bool expiring) {
+    int64_t prev_code_at = tnl_id->MfaLastUpdatedTime ? tnl_id->MfaLastUpdatedTime->tv_sec : 0;
+    bool prev_needed = tnl_id->MfaNeeded;
 
+    if (last_code_at == 0) {
+        free(tnl_id->MfaLastUpdatedTime);
+        tnl_id->MfaLastUpdatedTime = NULL;
+    } else {
         if (tnl_id->MfaLastUpdatedTime == NULL) {
-            tnl_id->MfaLastUpdatedTime = malloc(sizeof(timestamp));
+            tnl_id->MfaLastUpdatedTime = calloc(1, sizeof(timestamp));
         }
-        tnl_id->MfaLastUpdatedTime->tv_sec = now.tv_sec;
-        tnl_id->MfaLastUpdatedTime->tv_usec = now.tv_usec;
+        tnl_id->MfaLastUpdatedTime->tv_sec = last_code_at;
+        tnl_id->MfaLastUpdatedTime->tv_usec = 0;
     }
+    tnl_id->MfaNeeded = tnl_id->MfaEnabled && (last_code_at == 0 || expiring);
+    set_mfa_timeout(tnl_id);
+
+    if (prev_code_at != last_code_at) {
+        // a new code (or none) restarts the timeout notifications
+        tnl_id->Notified = false;
+    }
+    ZITI_LOG(DEBUG, "ztx[%s] mfa last code at: %" PRId64 ", expiring: %d, mfa needed: %d",
+             tnl_id->Identifier, last_code_at, expiring, tnl_id->MfaNeeded);
+    return prev_code_at != last_code_at || prev_needed != tnl_id->MfaNeeded;
 }
 
 void set_ip_info(uint32_t dns_ip, uint32_t tun_ip, int bits) {

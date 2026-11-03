@@ -38,7 +38,11 @@ extern tunnel_identity *create_or_get_tunnel_identity(const char* identifier, co
 
 extern void set_mfa_status(const char* identifier, bool mfa_enabled, bool mfa_needed);
 
-extern void update_mfa_time(const char* identifier);
+// recompute the MFA timeout fields of the identity and its services from the time of the last code
+extern void set_mfa_timeout(tunnel_identity *tnl_id);
+
+// apply the state of the MFA code from a PC_MFA posture status event; returns true if anything visible changed
+extern bool set_mfa_code_status(tunnel_identity *tnl_id, int64_t last_code_at, bool expiring);
 
 extern tunnel_service *get_tunnel_service(tunnel_identity* identifier, ziti_service* zs);
 
@@ -51,8 +55,6 @@ extern bool load_tunnel_status(const char* config_data);
 extern tunnel_status *get_tunnel_status();
 
 extern tunnel_identity_array get_tunnel_identities();
-
-extern int get_remaining_timeout(int timeout, int timeout_rem, tunnel_identity *tnl_id);
 
 void delete_identity_from_instance(const char* identifier);
 

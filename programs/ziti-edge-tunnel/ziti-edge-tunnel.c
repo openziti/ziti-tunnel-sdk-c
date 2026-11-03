@@ -240,15 +240,10 @@ static char* convert_seconds_to_readable_format(int input) {
 }
 
 static bool check_send_notification(tunnel_identity *tnl_id) {
-    if (!tnl_id->MfaEnabled || tnl_id->MfaMinTimeout <= 0 || tnl_id->MinTimeoutRemInSvcEvent <=0) {
+    if (!tnl_id->MfaEnabled || tnl_id->MfaMinTimeout <= 0) {
         return false;
     }
-    if (tnl_id->MfaMinTimeoutRem > 0) {
-        tnl_id->MfaMinTimeoutRem = get_remaining_timeout((int)tnl_id->MfaMinTimeout, (int)tnl_id->MinTimeoutRemInSvcEvent, tnl_id);
-    }
-    if (tnl_id->MfaMaxTimeoutRem > 0) {
-        tnl_id->MfaMaxTimeoutRem = get_remaining_timeout((int)tnl_id->MfaMaxTimeout, (int)tnl_id->MaxTimeoutRemInSvcEvent, tnl_id);
-    }
+    set_mfa_timeout(tnl_id);
 
     if (tnl_id->Notified) {
         // No need to send notification again
@@ -766,8 +761,8 @@ static void on_event(const base_event *ev) {
                 switch (mfa_ev->operation_type) {
                     case mfa_status_mfa_auth_status:
                     case mfa_status_enrollment_verification:
+                        // the time of the code comes with the MFA posture status event that follows
                         set_mfa_status(ev->identifier, true, false);
-                        update_mfa_time(ev->identifier);
 
                         identity_event id_event = {
                                 .Op = strdup("identity"),
@@ -939,6 +934,20 @@ static void on_event(const base_event *ev) {
                 const posture_status_event *pse = (const posture_status_event *) ev;
                 ZITI_LOG(INFO, "ztx[%s] posture status: %s", id->Identifier,
                          ziti_posture_query_types.name(pse->query_type));
+                if (pse->query_type == ziti_posture_query_type_PC_MFA && pse->mfa_last_code_at != NULL &&
+                    set_mfa_code_status(id, *pse->mfa_last_code_at, pse->mfa_expiring && *pse->mfa_expiring)) {
+                    identity_event id_event = {
+                            .Op = strdup("identity"),
+                            .Action = strdup(event_name(event_updated)),
+                            .Id = id,
+                    };
+                    if (id->FingerPrint) {
+                        id_event.Fingerprint = strdup(id->FingerPrint);
+                    }
+                    send_events_message(&id_event, (to_json_fn) identity_event_to_json, true);
+                    id_event.Id = NULL;
+                    free_identity_event(&id_event);
+                }
                 tunnel_posture_status_event tpse = {
                         .Op = "posturestatus",
                         .Action = (char *) event_name(event_updated),
