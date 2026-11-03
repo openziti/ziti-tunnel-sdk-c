@@ -296,8 +296,7 @@ XX(name, model_string, none, name, __VA_ARGS__) \
 XX(version, model_string, none, version, __VA_ARGS__) \
 XX(controller, model_string, none, controller, __VA_ARGS__) \
 XX(code, model_number, none, code, __VA_ARGS__) \
-XX(error_code, model_string, none, errorCode, __VA_ARGS__) \
-XX(mfa_enrolled, model_bool, ptr, mfaEnrolled, __VA_ARGS__)
+XX(error_code, model_string, none, errorCode, __VA_ARGS__)
 
 #define ZTX_SVC_EVENT_MODEL(XX, ...)  \
 BASE_EVENT_MODEL(XX, __VA_ARGS__)            \

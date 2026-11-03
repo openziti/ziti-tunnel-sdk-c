@@ -23,6 +23,9 @@
 #include "lwip/ip_addr.h"
 #include "ziti/ziti_tunnel.h"
 #include "identity-utils.h"
+#include "ziti/ziti_tunnel_cbs.h"
+
+extern const ziti_tunnel_ctrl *CMD_CTRL;
 
 #define MIN_API_PAGESIZE 10
 #define DEFAULT_API_PAGESIZE 25
@@ -616,6 +619,7 @@ tunnel_status *get_tunnel_status() {
 
     if (tnl_status.Identities != NULL) {
         for (int id_idx = 0; tnl_status.Identities[id_idx] != 0; id_idx++) {
+            sync_mfa_enrolled(tnl_status.Identities[id_idx]);
             set_mfa_timeout(tnl_status.Identities[id_idx]);
             tnl_status.Identities[id_idx]->Notified = false;
         }
@@ -691,6 +695,24 @@ void set_mfa_status(const char* identifier, bool mfa_enabled, bool mfa_needed) {
         tnl_id->Notified = false;
         ZITI_LOG(DEBUG, "ztx[%s] mfa enabled : %d, mfa needed : %d ", identifier, mfa_enabled, mfa_needed);
     }
+}
+
+bool sync_mfa_enrolled(tunnel_identity *tnl_id) {
+    ziti_context ztx = CMD_CTRL ? CMD_CTRL->get_ziti(tnl_id->Identifier) : NULL;
+    // the controller reports the enrollment with the identity data: until that is loaded, keep the stored state
+    if (ztx == NULL || ziti_get_identity(ztx) == NULL) {
+        return false;
+    }
+    bool enrolled = ziti_is_mfa_enrolled(ztx);
+    if (enrolled == tnl_id->MfaEnabled) {
+        return false;
+    }
+    ZITI_LOG(INFO, "ztx[%s] controller reports MFA %s", tnl_id->Identifier, enrolled ? "enrolled" : "not enrolled");
+    tnl_id->MfaEnabled = enrolled;
+    if (!enrolled) {
+        tnl_id->MfaNeeded = false;
+    }
+    return true;
 }
 
 bool set_mfa_code_status(tunnel_identity *tnl_id, int64_t last_code_at, bool expiring) {

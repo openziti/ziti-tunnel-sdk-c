@@ -1041,12 +1041,6 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
             ev.event_type = TunnelEvents.ContextEvent;
             ev.identifier = instance->identifier;
             ev.code = event->ctx.ctrl_status;
-            bool mfa_enrolled;
-            // MFA enrollment state is only known once the identity data is loaded
-            if (event->ctx.ctrl_status == ZITI_OK && ziti_get_identity(ztx) != NULL) {
-                mfa_enrolled = ziti_is_mfa_enrolled(ztx);
-                ev.mfa_enrolled = &mfa_enrolled;
-            }
             if (event->ctx.ctrl_status == ZITI_OK || event->ctx.ctrl_status == ZITI_PARTIALLY_AUTHENTICATED) {
                 ev.name = (char*)ctx_name;
                 ev.version = ziti_get_controller_version(ztx)->version;
