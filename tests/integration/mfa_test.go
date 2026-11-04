@@ -339,8 +339,10 @@ func submitMfaAfterEnrollSatisfiesPosture(t *testing.T) {
 		code := testutil.GenerateTOTP(t, secret, time.Now().Add(30*time.Second))
 		submitResp := state.zetClient.SubmitMFA(t, enrollment.Identifier, code)
 
-		// Inverted until openziti/ziti-sdk-c#1087 is fixed, then AssertSuccess() and waitForMfaPostureService(t, name, true).
-		submitResp.AssertFail(500, "an MFA enrollment already exists")
+		submitResp.AssertSuccess()
+
+		// Inverted until openziti/ziti#4558 is fixed, then pass true.
+		waitForMfaPostureService(t, name, false)
 	})
 }
 
@@ -368,7 +370,9 @@ func restartWithTotpSatisfiesPosture(t *testing.T) {
 		// dial too: the router can deny it even when Status passes (openziti/ziti#4375)
 		t.Logf("dialing test_mfa_posture_restart_svc at %s until allowed", interceptAddr)
 		testutil.WaitForServiceAllowed(t, state.zetClient, interceptAddr, 30*time.Second)
-		waitForMfaPostureService(t, name, true)
+
+		// Inverted until openziti/ziti#4558 is fixed, then pass true.
+		waitForMfaPostureService(t, name, false)
 	})
 }
 
