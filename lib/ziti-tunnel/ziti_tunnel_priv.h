@@ -143,7 +143,9 @@ typedef void (*ack_fn)(struct write_ctx_s *write_ctx);
 struct write_ctx_s {
     struct pbuf *pbuf;
     union {
-        struct tcp_pcb *tcp;
+        // the pcb of a tcp connection goes away when the connection is aborted, closed or fails, and the
+        // write may be acked after that: the pcb is found through the connection, which knows if it is still there
+        struct tunneler_io_ctx_s *tcp_io;
         struct udp_pcb *udp;
     };
     ack_fn ack;

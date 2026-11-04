@@ -152,12 +152,14 @@ static err_t on_tcp_client_data(void *io_ctx, struct tcp_pcb *pcb, struct pbuf *
     u16_t len = p->len;
     struct write_ctx_s *wr_ctx = calloc(1, sizeof(struct write_ctx_s));
     wr_ctx->pbuf = p;
-    wr_ctx->tcp = pcb;
+    wr_ctx->tcp_io = io->tnlr_io;
     wr_ctx->ack = tunneler_tcp_ack;
+    io->tnlr_io->pending_writes++;
     ssize_t s = io->write_fn(io->ziti_io, wr_ctx, p->payload, len);
     if (s == ERR_WOULDBLOCK) {
         // apply backpressure -- let LWIP keep the data and retry later
         TNL_LOG(VERBOSE, "ziti_write indicated backpressure: service=%s, client=%s", io->tnlr_io->service_name, io->tnlr_io->client);
+        io->tnlr_io->pending_writes--;
         free(wr_ctx);
         return ERR_WOULDBLOCK;
     } else if (s < 0) {
@@ -165,6 +167,7 @@ static err_t on_tcp_client_data(void *io_ctx, struct tcp_pcb *pcb, struct pbuf *
         // tell lwip to abort this connection immediately, and null the PCB to prevent ziti_close callback from (double) closing
         tcp_abort(io->tnlr_io->tcp);
         io->tnlr_io->tcp = NULL;
+        io->tnlr_io->pending_writes--;
         io->close_fn(io->ziti_io);
         free(wr_ctx);
         pbuf_free(p);
@@ -222,8 +225,17 @@ ssize_t tunneler_tcp_write(struct tcp_pcb *pcb, const void *data, size_t len) {
     return sendlen;
 }
 
+/** called when ziti is done with data from the client. By then the connection may be gone: aborted or closed
+ * by us, or failed (lwip freed the pcb), with the write still pending in ziti. */
 void tunneler_tcp_ack(struct write_ctx_s *wr_ctx) {
-    tcp_recved(wr_ctx->tcp, wr_ctx->pbuf->len);
+    struct tunneler_io_ctx_s *tnlr_io = wr_ctx->tcp_io;
+    if (tnlr_io->tcp != NULL) {
+        tcp_recved(tnlr_io->tcp, wr_ctx->pbuf->len);
+    }
+    // the connection was closed while this was pending: the last ack lets go of it
+    if (--tnlr_io->pending_writes == 0 && tnlr_io->closed) {
+        free_tunneler_io_context(&tnlr_io);
+    }
 }
 
 int tunneler_tcp_close_write(struct tcp_pcb *pcb) {
@@ -240,6 +252,55 @@ int tunneler_tcp_close_write(struct tcp_pcb *pcb) {
     LOG_STATE(DEBUG, "closed write", pcb);
 
     return 0;
+}
+
+/** lwip calls the poll callback of a pcb every pollinterval half seconds. A pending abort polls after 0.5 s, then after
+ * twice as long every time, and gives up at this interval, which is about 30 s in all. */
+#define ABORT_POLL_LIMIT 32
+
+/** true when lwip has nothing left to send to the client, and nothing that the client has not acked */
+static bool abort_drained(struct tcp_pcb *pcb) {
+    return pcb->unsent == NULL && pcb->unacked == NULL;
+}
+
+static err_t finish_abort(struct tcp_pcb *pcb) {
+    tcp_abort(pcb);
+    return ERR_ABRT;
+}
+
+/** the client acked data. */
+static err_t on_abort_sent(void *arg, struct tcp_pcb *pcb, u16_t len) {
+    return abort_drained(pcb) ? finish_abort(pcb) : ERR_OK;
+}
+
+/** Whatever the client acked: the ack of a FIN acks no data, and lwip does not call the sent callback for it.
+ * It is also what ends the wait of a client that never takes the data: one that answers every probe with a window of
+ * zero resets the limit that lwip has for the probes, and would keep the pcb for ever. */
+static err_t on_abort_poll(void *arg, struct tcp_pcb *pcb) {
+    if (abort_drained(pcb) || pcb->pollinterval >= ABORT_POLL_LIMIT) {
+        return finish_abort(pcb);
+    }
+    pcb->pollinterval *= 2;
+    return ERR_OK;
+}
+
+/** the ziti side ended abnormally: tell the client with a RST instead of a graceful FIN.
+ * tcp_abort() would drop what lwip has queued for the client and the client has not acked yet, the tail of a
+ * response that was complete when the target reset. So the data goes first, and the RST follows the last ack,
+ * or comes after about 30 s if the client does not ack. */
+void tunneler_tcp_abort(struct tcp_pcb *pcb) {
+    if (pcb == NULL) return;
+    LOG_STATE(DEBUG, "aborting (RST)", pcb);
+    // the connection lets go of the pcb: nothing in it is called back from here on
+    tcp_arg(pcb, NULL);
+    tcp_recv(pcb, NULL);
+    tcp_err(pcb, NULL);
+    if (abort_drained(pcb)) {
+        tcp_abort(pcb);
+        return;
+    }
+    tcp_sent(pcb, on_abort_sent);
+    tcp_poll(pcb, on_abort_poll, 1);
 }
 
 int tunneler_tcp_close(struct tcp_pcb *pcb) {
