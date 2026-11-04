@@ -31,12 +31,14 @@ import (
 const (
 	mfaCheckTimeout       = 30 * time.Second
 	mfaReauthCheckTimeout = 60 * time.Second
+	mfaLongCheckTimeout   = 120 * time.Second
 )
 
 func TestMFAPostureCheckTimeout(t *testing.T) {
 	t.Run("mfaNeededOnlyAfterCodeTimesOut", mfaNeededOnlyAfterCodeTimesOut)
 	t.Run("renewedCodeTimesOutToo", renewedCodeTimesOutToo)
 	t.Run("reauthPromptStaysUntilCode", reauthPromptStaysUntilCode)
+	t.Run("mfaNeededWhenFirstServiceTimesOut", mfaNeededWhenFirstServiceTimesOut)
 }
 
 // MfaNeeded tells the UI that the services are locked. While the code is merely about to run
@@ -112,6 +114,23 @@ func reauthPromptStaysUntilCode(t *testing.T) {
 		code := testutil.GenerateTOTP(t, p.secret, time.Now())
 		state.zetClient.SubmitMFA(t, p.identifier, code).AssertSuccess()
 		state.zetClient.WaitForIdentityEvent(t, "updated", idName).AssertMfaAuthenticated()
+	})
+}
+
+// With services behind MFA checks with different timeouts, the identity needs a code as soon as
+// the first of them runs out: that service is locked, though the others still work.
+func mfaNeededWhenFirstServiceTimesOut(t *testing.T) {
+	testutil.RunWithTimeoutOf(t, 90*time.Second, func(t *testing.T) {
+		idName := "test_mfa_posture_mixed"
+		p := setUpMfaPostureService(t, idName, mfaCheckTimeout)
+		for !hasCodeForService(statusIdentity(t, p.identifier), idName+"_long_svc", mfaLongCheckTimeout) {
+			time.Sleep(500 * time.Millisecond)
+		}
+
+		waitForMfaNeededNotBefore(t, idName, p.beforeCode.Add(mfaCheckTimeout))
+		require.True(t, time.Now().Before(p.afterCode.Add(mfaLongCheckTimeout)),
+			"MfaNeeded=true for %q only %s after its code, once the %s check ran out too",
+			idName, time.Since(p.beforeCode), mfaLongCheckTimeout)
 	})
 }
 

@@ -687,24 +687,19 @@ char *get_tunnel_config(size_t *json_len) {
     return tunnel_config_json;
 }
 
-// the last code has run out for every service whose MFA check has a timeout (and there is at least one).
-// expects set_mfa_timeout() to have been called.
+// the last code has run out for a service whose MFA check has a timeout: that service is locked until a new code
+// (which renews every check) is given. expects set_mfa_timeout() to have been called.
 static bool mfa_code_timed_out(const tunnel_identity *tnl_id) {
     if (tnl_id->MfaLastUpdatedTime == NULL || tnl_id->Services == NULL) {
         return false;
     }
-    bool timed = false;
     for (int svc_idx = 0; tnl_id->Services[svc_idx] != NULL; svc_idx++) {
         const tunnel_service *tnl_svc = tnl_id->Services[svc_idx];
-        if (tnl_svc->Timeout < 0) {
-            continue;
+        if (tnl_svc->Timeout >= 0 && tnl_svc->TimeoutRemaining == 0) {
+            return true;
         }
-        if (tnl_svc->TimeoutRemaining != 0) {
-            return false;
-        }
-        timed = true;
     }
-    return timed;
+    return false;
 }
 
 // per identity: the time of the last code that refresh_mfa_needed() must not act on (again), because it already set
@@ -799,7 +794,7 @@ bool set_mfa_code_status(tunnel_identity *tnl_id, int64_t last_code_at, bool exp
     }
     set_mfa_timeout(tnl_id);
     // `expiring` starts well before the code runs out (up to 5 minutes), while the services still work: a code is
-    // needed only when there is none, or when it has run out for all of the services that time out
+    // needed only when there is none, or when it has run out for any of the services that time out
     tnl_id->MfaNeeded = tnl_id->MfaEnabled && (last_code_at == 0 || mfa_code_timed_out(tnl_id));
 
     if (prev_code_at != last_code_at) {
