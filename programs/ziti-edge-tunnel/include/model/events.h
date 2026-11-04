@@ -63,14 +63,18 @@ XX(Name, model_string, none, Name, __VA_ARGS__) \
 XX(Address, model_string, none, Address, __VA_ARGS__) \
 XX(Version, model_string, none, Version, __VA_ARGS__)
 
-/* only PROCESS/PROCESS_MULTI populate Paths/MissingPaths today; future posture check
- * types are expected to add their own fields here, keyed off QueryType */
+/* fields are keyed off QueryType:
+ * - PROCESS/PROCESS_MULTI populate Paths/MissingPaths
+ * - MFA populates MfaTimeout/MfaLastCodeAt/MfaExpiring */
 #define TUNNEL_POSTURE_STATUS_EVENT(XX, ...) \
 ACTION_EVENT(XX, __VA_ARGS__) \
 XX(QueryType, model_string, none, QueryType, __VA_ARGS__) \
 XX(Services, tunnel_service, array, Services, __VA_ARGS__) \
 XX(Paths, model_string, array, Paths, __VA_ARGS__) \
-XX(MissingPaths, model_string, array, MissingPaths, __VA_ARGS__)
+XX(MissingPaths, model_string, array, MissingPaths, __VA_ARGS__) \
+XX(MfaTimeout, model_number, ptr, MfaTimeout, __VA_ARGS__) \
+XX(MfaLastCodeAt, model_number, ptr, MfaLastCodeAt, __VA_ARGS__) \
+XX(MfaExpiring, model_bool, ptr, MfaExpiring, __VA_ARGS__)
 
 #define TUNNEL_NOTIFICATION_MESSAGE(XX, ...) \
 XX(IdentityName, model_string, none, IdentityName, __VA_ARGS__) \
