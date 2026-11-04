@@ -107,6 +107,10 @@ func EnrollAndVerifyMFA(t *testing.T, overlay *Overlay, zet *ZET, name string) (
 	code := GenerateTOTP(t, secret, time.Now())
 
 	verifyResp := zet.VerifyMFA(t, challengeEvent.Identifier, code)
+	// the identity:updated below must be the one for the verify, not one from before it (an identity with
+	// services sends one for them when it loads)
+	zet.SkipToNow()
+	verifyResp := zet.VerifyMFA(t, challengeEvent.Identifier, code)
 	verifyResp.AssertSuccess()
 
 	updatedEvent := zet.WaitForIdentityEvent(t, "updated", name)
