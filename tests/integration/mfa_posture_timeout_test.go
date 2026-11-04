@@ -26,12 +26,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// The SDK reports the code as "expiring" for the last half of a timeout this short.
-const mfaCheckTimeout = 30 * time.Second
+// The timeouts of the MFA posture checks in testdata/fixture.json. The SDK reports the code as
+// "expiring" for the last half of a timeout this short.
+const (
+	mfaCheckTimeout       = 30 * time.Second
+	mfaReauthCheckTimeout = 60 * time.Second
+)
 
 func TestMFAPostureCheckTimeout(t *testing.T) {
 	t.Run("mfaNeededOnlyAfterCodeTimesOut", mfaNeededOnlyAfterCodeTimesOut)
 	t.Run("renewedCodeTimesOutToo", renewedCodeTimesOutToo)
+	t.Run("reauthPromptStaysUntilCode", reauthPromptStaysUntilCode)
 }
 
 // MfaNeeded tells the UI that the services are locked. While the code is merely about to run
@@ -39,7 +44,7 @@ func TestMFAPostureCheckTimeout(t *testing.T) {
 func mfaNeededOnlyAfterCodeTimesOut(t *testing.T) {
 	testutil.RunWithTimeoutOf(t, 90*time.Second, func(t *testing.T) {
 		idName := "test_mfa_posture_timeout"
-		p := setUpMfaPostureService(t, idName)
+		p := setUpMfaPostureService(t, idName, mfaCheckTimeout)
 
 		// well into the time the code is expiring, but before it runs out
 		checkAt := p.afterCode.Add(mfaCheckTimeout/2 + 3*time.Second)
@@ -64,7 +69,7 @@ func mfaNeededOnlyAfterCodeTimesOut(t *testing.T) {
 func renewedCodeTimesOutToo(t *testing.T) {
 	testutil.RunWithTimeoutOf(t, 150*time.Second, func(t *testing.T) {
 		idName := "test_mfa_posture_renewal"
-		p := setUpMfaPostureService(t, idName)
+		p := setUpMfaPostureService(t, idName, mfaCheckTimeout)
 
 		waitForMfaNeededNotBefore(t, idName, p.beforeCode.Add(mfaCheckTimeout))
 
@@ -84,6 +89,32 @@ func renewedCodeTimesOutToo(t *testing.T) {
 	})
 }
 
+// An identity asked for a code at login stays locked until it gives one, even when the code it
+// gave before its last login has not timed out yet: that code belongs to the old session.
+func reauthPromptStaysUntilCode(t *testing.T) {
+	testutil.RunWithTimeoutOf(t, 90*time.Second, func(t *testing.T) {
+		idName := "test_mfa_posture_reauth"
+		p := setUpMfaPostureService(t, idName, mfaReauthCheckTimeout)
+
+		triggerReauthChallenge(t, p.identifier, idName)
+		require.True(t, statusIdentity(t, p.identifier).MfaNeeded, "MfaNeeded=false for %q after its auth challenge", idName)
+
+		// the timeout check runs every 5s: give it a few runs while the old code still has time left
+		time.Sleep(12 * time.Second)
+		identity := statusIdentity(t, p.identifier)
+		require.True(t, time.Now().Before(p.beforeCode.Add(mfaReauthCheckTimeout)),
+			"status read %s after the old code, past its %s timeout: the old code no longer tells the cases apart",
+			time.Since(p.beforeCode), mfaReauthCheckTimeout)
+		require.True(t, identity.MfaNeeded, "MfaNeeded=false for %q while its login waits for a code", idName)
+
+		// the code unlocks it
+		state.zetClient.SkipToNow()
+		code := testutil.GenerateTOTP(t, p.secret, time.Now())
+		state.zetClient.SubmitMFA(t, p.identifier, code).AssertSuccess()
+		state.zetClient.WaitForIdentityEvent(t, "updated", idName).AssertMfaAuthenticated()
+	})
+}
+
 type mfaPostureService struct {
 	identifier string
 	secret     string
@@ -92,35 +123,18 @@ type mfaPostureService struct {
 	afterCode  time.Time
 }
 
-// setUpMfaPostureService enrolls idName with MFA and gives it a service behind an MFA posture
-// check with a timeout of mfaCheckTimeout, returning once the tunneler has the service.
-func setUpMfaPostureService(t *testing.T, idName string) mfaPostureService {
+// setUpMfaPostureService enrolls idName with MFA, returning once the tunneler has its code for
+// the service behind the MFA posture check (all from testdata/fixture.json) with the given timeout.
+func setUpMfaPostureService(t *testing.T, idName string, checkTimeout time.Duration) mfaPostureService {
 	t.Helper()
-	checkName := idName + "_check"
-	configName := idName + "_intercept"
-	serviceName := idName + "_svc"
-	policyName := idName + "_dial"
-
 	beforeCode := time.Now()
 	enrollment, secret := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, idName)
 	afterCode := time.Now()
-
-	require.NoError(t, state.overlay.CreateMfaPostureCheck(checkName, int(mfaCheckTimeout.Seconds())))
-	require.NoError(t, state.overlay.CreateInterceptConfigV1(configName,
-		[]string{"tcp"}, []string{idName + ".ziti"}, 80, 80))
-	require.NoError(t, state.overlay.CreateService(serviceName, []string{configName}))
-	require.NoError(t, state.overlay.CreateDialServicePolicyWithPostureCheck(policyName, idName, serviceName, checkName))
 	t.Cleanup(func() {
 		state.zetClient.RemoveIdentity(t, enrollment.Identifier)
-		_ = state.overlay.DeleteServicePolicy(policyName)
-		_ = state.overlay.DeleteService(serviceName)
-		_ = state.overlay.DeleteConfig(configName)
-		_ = state.overlay.DeletePostureCheck(checkName)
 	})
-	state.zetClient.RefreshIdentity(t, enrollment.Identifier).AssertSuccess()
 
-	// wait for the tunneler to see the service with its MFA timeout
-	for !hasServiceWithTimeout(statusIdentity(t, enrollment.Identifier), serviceName, mfaCheckTimeout) {
+	for !hasCodeForService(statusIdentity(t, enrollment.Identifier), idName+"_svc", checkTimeout) {
 		time.Sleep(500 * time.Millisecond)
 	}
 	return mfaPostureService{
@@ -159,9 +173,10 @@ func statusIdentity(t *testing.T, identifier string) testutil.Identity {
 	return testutil.Identity{}
 }
 
-func hasServiceWithTimeout(identity testutil.Identity, serviceName string, timeout time.Duration) bool {
+// hasCodeForService: the tunneler has the service with its MFA timeout, and a code that has time left
+func hasCodeForService(identity testutil.Identity, serviceName string, timeout time.Duration) bool {
 	for _, svc := range identity.Services {
-		if svc.Name == serviceName && svc.Timeout == int(timeout.Seconds()) {
+		if svc.Name == serviceName && svc.Timeout == int(timeout.Seconds()) && svc.TimeoutRemaining > 0 {
 			return true
 		}
 	}
