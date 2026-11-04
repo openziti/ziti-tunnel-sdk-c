@@ -1127,14 +1127,14 @@ func (o *Overlay) PurgeServices() error {
 	return o.deleteWhere("services")
 }
 
-// PurgeConfigs deletes every config carrying a test name.
-func (o *Overlay) PurgeConfigs() error {
-	return o.deleteWhere("configs")
-}
-
 // PurgePostureChecks deletes every posture check carrying a test name.
 func (o *Overlay) PurgePostureChecks() error {
 	return o.deleteWhere("posture-checks")
+}
+
+// PurgeConfigs deletes every config carrying a test name.
+func (o *Overlay) PurgeConfigs() error {
+	return o.deleteWhere("configs")
 }
 
 // deleteWhere deletes every entity matching the suite's name conventions:
