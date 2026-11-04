@@ -687,11 +687,59 @@ char *get_tunnel_config(size_t *json_len) {
     return tunnel_config_json;
 }
 
+// the last code has run out for every service whose MFA check has a timeout (and there is at least one).
+// expects set_mfa_timeout() to have been called.
+static bool mfa_code_timed_out(const tunnel_identity *tnl_id) {
+    if (tnl_id->MfaLastUpdatedTime == NULL || tnl_id->Services == NULL) {
+        return false;
+    }
+    bool timed = false;
+    for (int svc_idx = 0; tnl_id->Services[svc_idx] != NULL; svc_idx++) {
+        const tunnel_service *tnl_svc = tnl_id->Services[svc_idx];
+        if (tnl_svc->Timeout < 0) {
+            continue;
+        }
+        if (tnl_svc->TimeoutRemaining != 0) {
+            return false;
+        }
+        timed = true;
+    }
+    return timed;
+}
+
+// per identity: the time of the last code that refresh_mfa_needed() must not act on (again), because it already set
+// MfaNeeded for it, or a code was accepted after it timed out. kept out of tunnel_identity (and the IPC model).
+static model_map mfa_code_handled = {0};
+
+static int64_t mfa_code_handled_at(const tunnel_identity *tnl_id) {
+    int64_t *at = model_map_get(&mfa_code_handled, tnl_id->Identifier);
+    return at ? *at : 0;
+}
+
+static void set_mfa_code_handled(const tunnel_identity *tnl_id, int64_t code_at) {
+    int64_t *at = model_map_get(&mfa_code_handled, tnl_id->Identifier);
+    if (at == NULL) {
+        at = calloc(1, sizeof(*at));
+        model_map_set(&mfa_code_handled, tnl_id->Identifier, at);
+    }
+    *at = code_at;
+}
+
 void set_mfa_status(const char* identifier, bool mfa_enabled, bool mfa_needed) {
     tunnel_identity *tnl_id = find_tunnel_identity(identifier);
     if (tnl_id != NULL) {
         tnl_id->MfaEnabled = mfa_enabled;
         tnl_id->MfaNeeded = mfa_needed;
+        if (!mfa_needed && tnl_id->MfaLastUpdatedTime != NULL) {
+            // a code was just accepted. at a login its time comes with a later PC_MFA event, so the stored code is
+            // still the old one: refresh_mfa_needed() must not lock the identity again because that one timed out.
+            // (a code for a posture check comes with its PC_MFA event first: the stored code is then the new one,
+            // which has not timed out, and stays to be acted on when it does)
+            set_mfa_timeout(tnl_id);
+            if (mfa_code_timed_out(tnl_id)) {
+                set_mfa_code_handled(tnl_id, tnl_id->MfaLastUpdatedTime->tv_sec);
+            }
+        }
         tnl_id->Notified = false;
         ZITI_LOG(DEBUG, "ztx[%s] mfa enabled : %d, mfa needed : %d ", identifier, mfa_enabled, mfa_needed);
     }
@@ -715,38 +763,23 @@ bool sync_mfa_enrolled(tunnel_identity *tnl_id) {
     return true;
 }
 
-// the last code has run out for every service whose MFA check has a timeout (and there is at least one).
-// expects set_mfa_timeout() to have been called.
-static bool mfa_code_timed_out(const tunnel_identity *tnl_id) {
-    if (tnl_id->MfaLastUpdatedTime == NULL || tnl_id->Services == NULL) {
+bool refresh_mfa_needed(tunnel_identity *tnl_id) {
+    // this only ever sets MfaNeeded, once per code: clearing it is up to the events, which know of new codes and
+    // of logins waiting for one. without a code, MfaNeeded comes from the PC_MFA event alone
+    if (!tnl_id->MfaEnabled || tnl_id->MfaNeeded || tnl_id->MfaLastUpdatedTime == NULL) {
         return false;
     }
-    bool timed = false;
-    for (int svc_idx = 0; tnl_id->Services[svc_idx] != NULL; svc_idx++) {
-        const tunnel_service *tnl_svc = tnl_id->Services[svc_idx];
-        if (tnl_svc->Timeout < 0) {
-            continue;
-        }
-        if (tnl_svc->TimeoutRemaining != 0) {
-            return false;
-        }
-        timed = true;
-    }
-    return timed;
-}
-
-bool refresh_mfa_needed(tunnel_identity *tnl_id) {
-    // without a code, MfaNeeded comes from the PC_MFA event alone
-    if (!tnl_id->MfaEnabled || tnl_id->MfaLastUpdatedTime == NULL) {
+    int64_t code_at = tnl_id->MfaLastUpdatedTime->tv_sec;
+    if (mfa_code_handled_at(tnl_id) == code_at) {
         return false;
     }
     set_mfa_timeout(tnl_id);
-    bool needed = mfa_code_timed_out(tnl_id);
-    if (needed == tnl_id->MfaNeeded) {
+    if (!mfa_code_timed_out(tnl_id)) {
         return false;
     }
-    tnl_id->MfaNeeded = needed;
-    ZITI_LOG(INFO, "ztx[%s] mfa needed: %d", tnl_id->Identifier, needed);
+    set_mfa_code_handled(tnl_id, code_at);
+    tnl_id->MfaNeeded = true;
+    ZITI_LOG(INFO, "ztx[%s] mfa code from %" PRId64 " timed out: mfa needed", tnl_id->Identifier, code_at);
     return true;
 }
 
@@ -878,6 +911,7 @@ void delete_identity_from_instance(const char* identifier) {
         return;
     }
     model_map_remove(&tnl_identity_map, identifier);
+    free(model_map_remove(&mfa_code_handled, id->Identifier));
     ZITI_LOG(DEBUG, "ztx[%s] is removed from the tunnel identity list", identifier);
 
     // remove the identity's keychain key before deleting the file or it is orphaned
