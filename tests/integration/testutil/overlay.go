@@ -923,6 +923,33 @@ func (o *Overlay) CreateDialServicePolicy(name, identityName, serviceName string
 	return nil
 }
 
+// CreateMfaPostureCheck creates an MFA posture check whose code counts for the given number of seconds
+// (-1 for no timeout).
+func (o *Overlay) CreateMfaPostureCheck(name string, seconds int) error {
+	if _, err := o.execZiti("edge create posture-check mfa %s --seconds %s", name, strconv.Itoa(seconds)); err != nil {
+		return fmt.Errorf("create mfa posture check %s: %w", name, err)
+	}
+	return nil
+}
+
+// CreateDialServicePolicyWithPostureCheck creates a Dial service policy granting identityName access to
+// serviceName only while postureCheckName passes.
+func (o *Overlay) CreateDialServicePolicyWithPostureCheck(name, identityName, serviceName, postureCheckName string) error {
+	if _, err := o.execZiti("edge create service-policy %s Dial --identity-roles %s --service-roles %s --posture-check-roles %s --semantic AnyOf",
+		name, "@"+identityName, "@"+serviceName, "@"+postureCheckName); err != nil {
+		return fmt.Errorf("create dial policy %s: %w", name, err)
+	}
+	return nil
+}
+
+// DeletePostureCheck deletes a posture check by name.
+func (o *Overlay) DeletePostureCheck(name string) error {
+	if _, err := o.execZiti("edge delete posture-check %s", name); err != nil {
+		return fmt.Errorf("delete posture check %s: %w", name, err)
+	}
+	return nil
+}
+
 // DeleteServicePolicy deletes a service policy by name.
 func (o *Overlay) DeleteServicePolicy(name string) error {
 	if _, err := o.execZiti("edge delete service-policy %s", name); err != nil {
@@ -1097,6 +1124,11 @@ func (o *Overlay) PurgeServicePolicies() error {
 // PurgeServices deletes every service carrying a test name.
 func (o *Overlay) PurgeServices() error {
 	return o.deleteWhere("services")
+}
+
+// PurgePostureChecks deletes every posture check carrying a test name.
+func (o *Overlay) PurgePostureChecks() error {
+	return o.deleteWhere("posture-checks")
 }
 
 // PurgeConfigs deletes every config carrying a test name.

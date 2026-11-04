@@ -82,6 +82,12 @@
       "enrollment": { "ott": true }
     },
     {
+      "name": "test_mfa_posture_timeout",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
       "name": "test_mfa_policy_added_unenrolled",
       "isAdmin": false,
       "authPolicy": "@Default",

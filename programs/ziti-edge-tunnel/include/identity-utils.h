@@ -48,6 +48,10 @@ extern void set_mfa_timeout(tunnel_identity *tnl_id);
 // apply the state of the MFA code from a PC_MFA posture status event; returns true if anything visible changed
 extern bool set_mfa_code_status(tunnel_identity *tnl_id, int64_t last_code_at, bool expiring);
 
+// recompute MfaNeeded as time passes: the SDK sends no event when a code that was already expiring runs out.
+// returns true if it changed
+extern bool refresh_mfa_needed(tunnel_identity *tnl_id);
+
 extern tunnel_service *get_tunnel_service(tunnel_identity* identifier, ziti_service* zs);
 
 extern tunnel_service *find_tunnel_service(tunnel_identity* id, const char* svc_id);
