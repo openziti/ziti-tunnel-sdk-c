@@ -37,6 +37,7 @@ const testTimeout = 60 * time.Second
 func TestMFAAuthPolicy(t *testing.T) {
 	t.Run("reauthUnderTotpRequiredPolicyAsksForCode", reauthUnderTotpRequiredPolicyAsksForCode)
 	t.Run("policyAddedForEnrolledIdentityKeepsWorking", policyAddedForEnrolledIdentityKeepsWorking)
+	t.Run("policyAddedForEnrolledOidcSessionAsksForCode", policyAddedForEnrolledOidcSessionAsksForCode)
 	t.Run("policyAddedForUnenrolledIdentityAsksToEnroll", policyAddedForUnenrolledIdentityAsksToEnroll)
 }
 
@@ -72,6 +73,10 @@ func reauthUnderTotpRequiredPolicyAsksForCode(t *testing.T) {
 // An authenticated, enrolled identity that an administrator moves onto a policy requiring
 // TOTP. Its session already satisfies the new requirement, so nothing should change.
 func policyAddedForEnrolledIdentityKeepsWorking(t *testing.T) {
+	if policyHoldsOidcSessionToTotp() {
+		t.Skipf("ziti v%d.%d turns the OIDC session down: covered by policyAddedForEnrolledOidcSessionAsksForCode",
+			state.overlay.ZitiMajor, state.overlay.ZitiMinor)
+	}
 	testutil.RunWithTimeoutOf(t, testTimeout, func(t *testing.T) {
 		idName := "test_mfa_policy_added_enrolled"
 		enrollment, _ := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, idName)
@@ -86,6 +91,50 @@ func policyAddedForEnrolledIdentityKeepsWorking(t *testing.T) {
 		identity := findIdentityInStatus(t, state.zetClient.WaitForStatusEvent(t), enrollment.Identifier)
 		require.True(t, identity.MfaEnabled, "status says MfaEnabled=false for enrolled identity %q", idName)
 		require.False(t, identity.MfaNeeded, "status says MfaNeeded=true for %q, whose session already satisfies TOTP", idName)
+	})
+}
+
+// Whether the controller holds an OIDC session to a TOTP requirement that came after it. The tokens of a session in
+// which the identity verified its enrollment carry no TOTP (amr ["cert"]), and ziti 2.0+ turns them down once the
+// identity is on a policy requiring TOTP: the session has to log in again with a code. ziti 1.6 keeps it working, and
+// so does the legacy path, whose api session took the code. Major 0 is a local build: current.
+func policyHoldsOidcSessionToTotp() bool {
+	o := state.overlay
+	return o.Auth == testutil.AuthOIDC && (o.ZitiMajor >= 2 || o.ZitiMajor == 0)
+}
+
+// The same move where the controller holds the session to TOTP. The client has to ask for a code once, take it, and
+// keep working: not refresh the session it has, which the controller takes and then turns down again, round and round
+// without ever asking (openziti/ziti-sdk-c#TBD).
+func policyAddedForEnrolledOidcSessionAsksForCode(t *testing.T) {
+	if !policyHoldsOidcSessionToTotp() {
+		t.Skipf("ziti v%d.%d (%s) keeps the session working: covered by policyAddedForEnrolledIdentityKeepsWorking",
+			state.overlay.ZitiMajor, state.overlay.ZitiMinor, state.overlay.Auth)
+	}
+	testutil.RunWithTimeoutOf(t, testTimeout, func(t *testing.T) {
+		// the identity of policyAddedForEnrolledIdentityKeepsWorking, which skips where this runs
+		idName := "test_mfa_policy_added_enrolled"
+		enrollment, secret := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, idName)
+
+		state.overlay.SetIdentityAuthPolicy(t, idName, totpRequiredPolicy)
+		// only a nudge, for the next request of the session to be turned down: the refresh itself can be turned down
+		// ("invalid state") when a request of the tunneler got there first and the login for the code has begun
+		state.zetClient.RefreshIdentity(t, enrollment.Identifier)
+
+		state.zetClient.WaitForMfaEvent(t, "auth_challenge", idName)
+		state.zetClient.ReconnectEvents(t)
+		identity := findIdentityInStatus(t, state.zetClient.WaitForStatusEvent(t), enrollment.Identifier)
+		require.True(t, identity.MfaEnabled, "status says MfaEnabled=false for enrolled identity %q", idName)
+		require.True(t, identity.MfaNeeded, "status says MfaNeeded=false for %q, whose session owes a TOTP code", idName)
+
+		state.zetClient.SkipToNow()
+		code := testutil.GenerateTOTP(t, secret, time.Now())
+		state.zetClient.SubmitMFA(t, enrollment.Identifier, code).AssertSuccess()
+		state.zetClient.WaitForIdentityEvent(t, "updated", idName).AssertMfaAuthenticated()
+
+		// and it stays that way: no more requests for a code, and the session works
+		state.zetClient.AssertNoMfaEvent(t, "auth_challenge", idName, 3*time.Second)
+		state.zetClient.RefreshIdentity(t, enrollment.Identifier).AssertSuccess()
 	})
 }
 
