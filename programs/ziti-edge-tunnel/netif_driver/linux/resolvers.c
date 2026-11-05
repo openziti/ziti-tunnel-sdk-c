@@ -27,6 +27,7 @@
 #include <systemd/sd-bus.h>
 #endif
 
+#include <ziti/ziti_dns.h>
 #include <ziti/ziti_log.h>
 #include <uv.h>
 
@@ -485,21 +486,30 @@ void dns_update_systemd_resolved(const char *tun, unsigned int ifindex, const ch
         ZITI_LOG(ERROR, "Error detecting systemd-resolved domain configuration: %s", strerror(-r));
         return;
     }
-    bool wildcard = (r == 0);
     size_t n = 0;
     while (domains != NULL && domains[n] != NULL) n++;
+
+    // Other names reach ziti only as a default route, and it answers them only through a configured
+    // upstream. A fallback upstream serves just the names below the routing domains.
+    bool default_route = n == 0 || ziti_dns_has_upstream();
+    bool wildcard = (r == 0) && default_route;
 
     // Intercepted names as routing domains, so resolved asks only ziti for them. Otherwise it asks
     // every DefaultRoute link and keeps the first positive answer: a name that also exists in public
     // DNS resolves to its public address, e.g. through the CNAME an upstream returns for an AAAA
     // query that ziti answers empty.
     ZITI_LOG(INFO, "Setting %zu routing only domains%s on interface: %s", n, wildcard ? " and the wildcard" : "", tun);
-    RET_ON_FAIL(set_systemd_resolved_link_domains(bus, tun, ifindex, domains, wildcard));
-
-    // routing-only domains take the default route away from a link; keep it, as before
-    if (!wildcard && n > 0) {
-        RET_ON_FAIL(set_systemd_resolved_link_setting(bus, tun, "SetLinkDefaultRoute", "ib", ifindex, true));
+    if (!set_systemd_resolved_link_domains(bus, tun, ifindex, domains, wildcard)) {
+        if (n == 0) return;
+        // e.g. more names than resolved takes per link
+        ZITI_LOG(WARN, "Using the ziti resolver as a default route without routing domains on interface: %s", tun);
+        default_route = true;
+        wildcard = (r == 0);
+        RET_ON_FAIL(set_systemd_resolved_link_domains(bus, tun, ifindex, NULL, wildcard));
     }
+
+    // routing-only domains take the default route away from a link unless it is set
+    RET_ON_FAIL(set_systemd_resolved_link_setting(bus, tun, "SetLinkDefaultRoute", "ib", ifindex, default_route));
 
     sd_bus_run_command(bus, RESOLVED_DBUS_NAME, RESOLVED_DBUS_PATH, RESOLVED_DBUS_MANAGER_INTERFACE, "FlushCaches");
     sd_bus_run_command(bus, RESOLVED_DBUS_NAME, RESOLVED_DBUS_PATH, RESOLVED_DBUS_MANAGER_INTERFACE, "ResetServerFeatures");

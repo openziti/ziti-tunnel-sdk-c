@@ -137,9 +137,19 @@ TEST_CASE("intercepted names", "[dns]") {
 TEST_CASE("upstream presence", "[dns]") {
     CHECK_FALSE(ziti_dns_has_upstream());
 
+    tunnel_upstream_dns fallback = {};
+    fallback.host = (char *) "127.0.0.2";
+    tunnel_upstream_dns *fallbacks[] = { &fallback, nullptr };
+    REQUIRE(ziti_dns_set_fallback_upstream(uv_default_loop(), fallbacks) == 0);
+    CHECK_FALSE(ziti_dns_has_upstream()); // found by the driver, not configured
+
     tunnel_upstream_dns upstream = {};
     upstream.host = (char *) "127.0.0.1";
     tunnel_upstream_dns *upstreams[] = { &upstream, nullptr };
     REQUIRE(ziti_dns_set_upstream(uv_default_loop(), upstreams) == 0);
     CHECK(ziti_dns_has_upstream());
+
+    tunnel_upstream_dns *none[] = { nullptr };
+    REQUIRE(ziti_dns_set_fallback_upstream(uv_default_loop(), none) == 0);
+    CHECK(ziti_dns_has_upstream()); // a fallback never replaces it
 }
