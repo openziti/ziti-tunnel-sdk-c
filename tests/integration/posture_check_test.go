@@ -40,9 +40,13 @@ func TestMACPostureCheck(t *testing.T) {
 	t.Run("serviceAccessibleWithPassingMacCheck", serviceAccessibleWithPassingMacCheck)
 }
 
+func TestPostureCheckAddedWhileRunning(t *testing.T) {
+	t.Run("mfaCheckDeniesUntilMfaEnrolled", mfaCheckDeniesUntilMfaEnrolled)
+}
+
 // serviceAccessibleWhileProcessRuns gates a dialed service behind a
-// process-multi check and a version-pinned OS check (clients only send process
-// posture data when an OS check is on the same policy at the moment).
+// process-multi check and a version-pinned OS check (the router matches the
+// process check's OS type against OS data, which clients only send for an OS check).
 // The service is denied until the checked process starts and revoked after it is killed.
 // The service, configs, and policies come from fixture.json
 func serviceAccessibleWhileProcessRuns(t *testing.T) {
@@ -154,6 +158,53 @@ func serviceAccessibleWithPassingMacCheck(t *testing.T) {
 		// don't print the addresses themselves, CI logs are public
 		t.Logf("dialing test_mac_posture_svc at %s until allowed (%d local macs on the check)", interceptAddr, len(macs))
 		testutil.WaitForServiceAllowed(t, state.zetClient, interceptAddr, 25*time.Second)
+	})
+}
+
+func mfaCheckDeniesUntilMfaEnrolled(t *testing.T) {
+	requireMultiTunnel(t)
+	testutil.RunWithTimeoutOf(t, 90*time.Second, func(t *testing.T) {
+		clientID := "test_posture_added_mfa_client"
+		hostID := "test_posture_added_mfa_host"
+		interceptAddr := "100.64.0.25:23005"
+
+		// test_posture_added_mfa_host_cfg forwards tunneled connections to 127.0.0.1:23185
+		testutil.StartTCPEcho(t, "127.0.0.1:23185")
+		added := testutil.FetchAndEnrollJwt(t, state.overlay, state.zetClient, clientID)
+		testutil.FetchAndEnrollJwt(t, state.overlay, state.zetHost, hostID)
+		state.zetClient.WaitForControllerEvent(t, "connected", clientID)
+		state.zetHost.WaitForControllerEvent(t, "connected", hostID)
+
+		bulk := state.zetClient.WaitForBulkServiceEvent(t, "updated", clientID)
+		require.Len(t, bulk.AddedServices, 1, "services added for %s", clientID)
+		require.Empty(t, bulk.AddedServices[0].PostureChecks)
+		testutil.WaitForServiceAllowed(t, state.zetClient, interceptAddr, 25*time.Second)
+
+		// the router enforces the new check at once, ZET only reports it after its next service poll
+		state.zetClient.SkipToNow()
+		state.overlay.CreateMfaPostureCheck(t, "test_posture_added_mfa_check", "test-posture-added-mfa")
+		testutil.WaitForServiceDenied(t, state.zetClient, interceptAddr, 25*time.Second)
+		bulk = state.zetClient.WaitForBulkServiceEvent(t, "updated", clientID)
+		require.Len(t, bulk.AddedServices, 1, "services changed for %s", clientID)
+		require.False(t, bulk.AddedServices[0].IsAccessible)
+		require.Len(t, bulk.AddedServices[0].PostureChecks, 1)
+		require.Equal(t, "MFA", bulk.AddedServices[0].PostureChecks[0].QueryType)
+		require.False(t, bulk.AddedServices[0].PostureChecks[0].IsPassing)
+
+		state.zetClient.EnableMFA(t, added.Id.Identifier).AssertSuccess()
+		challenge := state.zetClient.WaitForMfaEvent(t, "enrollment_challenge", clientID)
+		challenge.AssertSuccess()
+		secret := testutil.ParseTOTPSecret(t, challenge.ProvisioningUrl)
+		state.zetClient.VerifyMFA(t, added.Id.Identifier, testutil.GenerateTOTP(t, secret, time.Now())).AssertSuccess()
+		state.zetClient.WaitForIdentityEvent(t, "updated", clientID).AssertMfaAuthenticated()
+
+		// the next window's code, so the controller cannot reject it as the one VerifyMFA spent
+		code := testutil.GenerateTOTP(t, secret, time.Now().Add(30*time.Second))
+		state.zetClient.SubmitMFA(t, added.Id.Identifier, code).AssertSuccess()
+		testutil.WaitForServiceAllowed(t, state.zetClient, interceptAddr, 30*time.Second)
+
+		// Inverted until openziti/ziti#4558 is fixed, then pass true.
+		waitForMfaPostureService(t, clientID, false)
 	})
 }
 

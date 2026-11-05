@@ -973,6 +973,18 @@ func (o *Overlay) CreateOSPostureCheck(t *testing.T, name, osSpec string, attrib
 	require.NoError(t, err, "create os posture check %s", name)
 }
 
+// CreateMfaPostureCheck registers an mfa posture check with no timeout.
+func (o *Overlay) CreateMfaPostureCheck(t *testing.T, name string, attributes ...string) {
+	cmd := "edge create posture-check mfa %s"
+	args := []string{name}
+	if len(attributes) > 0 {
+		cmd += " -a %s"
+		args = append(args, strings.Join(attributes, ","))
+	}
+	_, err := o.execZiti(cmd, args...)
+	require.NoError(t, err, "create mfa posture check %s", name)
+}
+
 // DeleteServicePolicy deletes a service policy by name.
 func (o *Overlay) DeleteServicePolicy(name string) error {
 	if _, err := o.execZiti("edge delete service-policy %s", name); err != nil {
