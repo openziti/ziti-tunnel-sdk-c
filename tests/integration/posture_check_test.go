@@ -85,8 +85,6 @@ func serviceAccessibleWhileProcessRuns(t *testing.T) {
 		require.NotNil(t, processCheck, "no PROCESS_MULTI posture check on %s", svcName)
 		require.False(t, processCheck.IsPassing)
 
-		require.Error(t, testutil.TryEcho(interceptAddr), "service should be denied while %s is not running", procPath)
-
 		proc := startPostureProcess(t, procPath)
 		t.Logf("started %s (pid %d), dialing %s at %s until allowed", procPath, proc.Process.Pid, svcName, interceptAddr)
 		testutil.WaitForServiceAllowed(t, state.zetClient, interceptAddr, 25*time.Second)

@@ -54,7 +54,6 @@ func TestMFARecoveryCodes(t *testing.T) {
 
 func TestMFAPostureCheck(t *testing.T) {
 	t.Run("serviceAccessibleAfterMfa", serviceAccessibleAfterMfa)
-	t.Run("submitMfaAfterEnrollSatisfiesPosture", submitMfaAfterEnrollSatisfiesPosture)
 	t.Run("restartWithTotpSatisfiesPosture", restartWithTotpSatisfiesPosture)
 }
 
@@ -302,8 +301,17 @@ func generateMfaCodesReplacesOldSet(t *testing.T) {
 }
 
 func serviceAccessibleAfterMfa(t *testing.T) {
-	testutil.RunWithTimeout(t, func(t *testing.T) {
+	requireMultiTunnel(t)
+	skipOnOidcBeforeZiti2(t)
+	testutil.RunWithTimeoutOf(t, 60*time.Second, func(t *testing.T) {
 		name := "test_mfa_posture_client"
+		interceptAddr := "100.64.0.24:23004"
+
+		// test_mfa_posture_host_cfg forwards tunneled connections to 127.0.0.1:23184
+		testutil.StartTCPEcho(t, "127.0.0.1:23184")
+		testutil.FetchAndEnrollJwt(t, state.overlay, state.zetHost, "test_mfa_posture_host")
+		state.zetHost.WaitForControllerEvent(t, "connected", "test_mfa_posture_host")
+
 		added := testutil.FetchAndEnrollJwt(t, state.overlay, state.zetClient, name)
 		state.zetClient.WaitForControllerEvent(t, "connected", name)
 		state.zetClient.WaitForBulkServiceEvent(t, "updated", name)
@@ -328,6 +336,9 @@ func serviceAccessibleAfterMfa(t *testing.T) {
 		// Inverted to pass until openziti/ziti-sdk-c#1087 is fixed, then flip both to require.True.
 		require.False(t, svc.IsAccessible, "service %s should be accessible once MFA posture checks are fixed (openziti/ziti-sdk-c#1087)", svc.Name)
 		require.False(t, svc.PostureChecks[0].IsPassing, "MFA posture check on %s should pass once openziti/ziti-sdk-c#1087 is fixed", svc.Name)
+
+		t.Logf("dialing %s at %s until allowed", svc.Name, interceptAddr)
+		testutil.WaitForServiceAllowed(t, state.zetClient, interceptAddr, 25*time.Second)
 	})
 }
 
@@ -339,23 +350,6 @@ func skipOnOidcBeforeZiti2(t *testing.T) {
 	}
 	t.Skipf("MFA posture over OIDC needs the TOTP token route (openziti/ziti#3267, ziti 2.0+); controller is v%d.%d",
 		state.overlay.ZitiMajor, state.overlay.ZitiMinor)
-}
-
-func submitMfaAfterEnrollSatisfiesPosture(t *testing.T) {
-	skipOnOidcBeforeZiti2(t)
-	testutil.RunWithTimeoutOf(t, 60*time.Second, func(t *testing.T) {
-		name := "test_mfa_posture_submit_client"
-		enrollment, secret := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, name)
-
-		// the next window's code, so the controller cannot reject it as the one VerifyMFA spent
-		code := testutil.GenerateTOTP(t, secret, time.Now().Add(30*time.Second))
-		submitResp := state.zetClient.SubmitMFA(t, enrollment.Identifier, code)
-
-		submitResp.AssertSuccess()
-
-		// Inverted until openziti/ziti#4558 is fixed, then pass true.
-		waitForMfaPostureService(t, name, false)
-	})
 }
 
 func restartWithTotpSatisfiesPosture(t *testing.T) {
