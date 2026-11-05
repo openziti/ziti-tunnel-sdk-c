@@ -69,6 +69,14 @@ func mfaNeededOnlyAfterCodeTimesOut(t *testing.T) {
 // runs out in turn. The SDK reports the new code (PC_MFA event) before the result of the
 // submit, so the result must not be taken for the stale code of a login.
 func renewedCodeTimesOutToo(t *testing.T) {
+	// on the OIDC path a code for a posture check goes to the controller for a TOTP token, which
+	// controllers before v1.7.0 do not offer (the SDK reports "Operation is not supported"). Major 0
+	// is a local build that could not report its version: take it as current.
+	o := state.overlay
+	if o.Auth == testutil.AuthOIDC && o.ZitiMajor != 0 && (o.ZitiMajor < 1 || (o.ZitiMajor == 1 && o.ZitiMinor < 7)) {
+		t.Skipf("renewing an MFA posture code over OIDC needs a controller with TOTP tokens (ziti 1.7+); controller is v%d.%d",
+			o.ZitiMajor, o.ZitiMinor)
+	}
 	testutil.RunWithTimeoutOf(t, 150*time.Second, func(t *testing.T) {
 		idName := "test_mfa_posture_renewal"
 		p := setUpMfaPostureService(t, idName, mfaCheckTimeout)
