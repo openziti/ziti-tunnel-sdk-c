@@ -51,8 +51,6 @@
 
 #define CHECK_UV(op) do{ int rc = op; if (rc < 0) ZITI_LOG(ERROR, "uv_err: %d/%s", rc, uv_strerror(rc)); } while(0)
 
-// lists the servers systemd-resolved forwards to (systemd-resolved(8))
-#define RESOLVED_UPSTREAM_CONF "/run/systemd/resolve/resolv.conf"
 #define MAX_FALLBACK_DNS 5 // as many as ziti_dns forwards to
 
 extern void dns_set_miss_status(int code);
@@ -379,30 +377,6 @@ static void find_dns_updater() {
     }
 }
 
-#ifndef EXCLUDE_LIBSYSTEMD_RESOLVER
-// The servers resolved would ask for names below an intercepted one, which the routing domains send to ziti.
-static void read_resolved_servers(struct dns_servers *servers) {
-    FILE *f = fopen(RESOLVED_UPSTREAM_CONF, "r");
-    if (f == NULL) {
-        ZITI_LOG(WARN, "Could not read %s: %s", RESOLVED_UPSTREAM_CONF, strerror(errno));
-        return;
-    }
-    char line[256];
-    char addr[INET6_ADDRSTRLEN];
-    struct in_addr ip4;
-    while (servers->count < MAX_FALLBACK_DNS && fgets(line, sizeof(line), f) != NULL) {
-        if (sscanf(line, " nameserver %45s", addr) != 1) continue;
-        // ziti itself; resolved's stub, which would route the name back to ziti; and a scoped
-        // (link-local) address, which ziti_dns cannot take
-        if (inet_pton(AF_INET, addr, &ip4) == 1 && ip4.s_addr == dns_maintainer.dns_ip) continue;
-        if (strcmp(addr, "127.0.0.53") == 0 || strcmp(addr, "127.0.0.54") == 0) continue;
-        if (strchr(addr, '%') != NULL) continue;
-        snprintf(servers->addr[servers->count++], INET6_ADDRSTRLEN, "%s", addr);
-    }
-    fclose(f);
-}
-#endif
-
 static void set_dns(uv_work_t *wr) {
     uv_once(&dns_updater_init, find_dns_updater);
 
@@ -419,11 +393,13 @@ static void set_dns(uv_work_t *wr) {
     free_strv(domains);
 
 #ifndef EXCLUDE_LIBSYSTEMD_RESOLVER
-    // only the systemd-resolved updater sets routing domains
+    // only the systemd-resolved updater sets routing domains. The names below them reach only ziti,
+    // which forwards them to the servers resolved would have asked
     struct dns_update *update = wr->data;
     if (dns_updater == dns_update_systemd_resolved && !ziti_dns_has_upstream()) {
-        update->read_servers = true;
-        read_resolved_servers(&update->servers);
+        int n = systemd_resolved_dns_servers(update->servers.addr, MAX_FALLBACK_DNS);
+        update->read_servers = n >= 0;
+        update->servers.count = n > 0 ? n : 0;
     }
 #endif
 }

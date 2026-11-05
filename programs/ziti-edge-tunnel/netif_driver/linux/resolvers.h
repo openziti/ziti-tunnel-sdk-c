@@ -15,6 +15,7 @@
  */
 
 #include <stdbool.h>
+#include <netinet/in.h>
 
 #ifndef BUSCTL
 #define BUSCTL "/usr/bin/busctl"
@@ -47,6 +48,7 @@
 
 #ifndef EXCLUDE_LIBSYSTEMD_RESOLVER
 bool try_libsystemd_resolver(const char *tun_name);
+int systemd_resolved_dns_servers(char servers[][INET6_ADDRSTRLEN], int max);
 #endif
 bool is_systemd_resolved_primary_resolver(void);
 bool is_resolvconf_systemd_resolved(void);

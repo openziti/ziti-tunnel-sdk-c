@@ -20,8 +20,10 @@
 #include <stdlib.h>
 #include <string.h>
 #ifndef EXCLUDE_LIBSYSTEMD_RESOLVER
+#include <arpa/inet.h>
 #include <net/if.h>
 #include <stdarg.h>
+#include <unistd.h>
 #include <systemd/sd-bus-protocol.h>
 #include <systemd/sd-daemon.h>
 #include <systemd/sd-bus.h>
@@ -63,6 +65,7 @@ static int (*sd_bus_message_exit_container_f)(sd_bus_message *m);
 static int (*sd_bus_message_open_container_f)(sd_bus_message *m, char type, const char *contents);
 static int (*sd_bus_message_new_method_call_f)(sd_bus *bus, sd_bus_message **m, const char* destination, const char *path, const char *interface, const char *member);
 static int (*sd_bus_message_read_f)(sd_bus_message *m, const char *types, ...);
+static int (*sd_bus_message_read_array_f)(sd_bus_message *m, char type, const void **ptr, size_t *size);
 static int (*sd_bus_message_read_strv_f)(sd_bus_message *m, char ***l);
 static sd_bus_message *(*sd_bus_message_unref_f)(sd_bus_message *m);
 static int (*sd_bus_open_system_f)(sd_bus **bus);
@@ -86,6 +89,7 @@ static void init_libsystemd() {
     TRY_DL(uv_dlsym(&libsystemd_h, "sd_bus_message_open_container", (void **) &sd_bus_message_open_container_f));
     TRY_DL(uv_dlsym(&libsystemd_h, "sd_bus_message_new_method_call", (void **) &sd_bus_message_new_method_call_f));
     TRY_DL(uv_dlsym(&libsystemd_h, "sd_bus_message_read", (void **) &sd_bus_message_read_f));
+    TRY_DL(uv_dlsym(&libsystemd_h, "sd_bus_message_read_array", (void **) &sd_bus_message_read_array_f));
     TRY_DL(uv_dlsym(&libsystemd_h, "sd_bus_message_read_strv", (void **) &sd_bus_message_read_strv_f));
     TRY_DL(uv_dlsym(&libsystemd_h, "sd_bus_message_unref", (void **) &sd_bus_message_unref_f));
     TRY_DL(uv_dlsym(&libsystemd_h, "sd_bus_open_system", (void **) &sd_bus_open_system_f));
@@ -411,6 +415,48 @@ bool try_libsystemd_resolver(const char *tun_name) {
     }
 
     return false;
+}
+
+static bool is_tun_link(int32_t ifindex) {
+    char name[IF_NAMESIZE];
+    char path[64];
+    if (ifindex == 0 || if_indextoname(ifindex, name) == NULL) return false;
+    snprintf(path, sizeof(path), "/sys/class/net/%s/tun_flags", name);
+    return access(path, F_OK) == 0;
+}
+
+// The servers resolved asks for names without a routing domain, leaving out those of TUN links: another
+// ziti tunnel would forward the names back. Returns their number, or a negative error.
+int systemd_resolved_dns_servers(char servers[][INET6_ADDRSTRLEN], int max) {
+    _cleanup_(sd_bus_flush_close_unrefp_f) sd_bus *bus = NULL;
+    _cleanup_(sd_bus_message_unrefp_f) sd_bus_message *reply = NULL;
+    _cleanup_(sd_bus_error_free_wrapper) sd_bus_error error = SD_BUS_ERROR_NULL;
+
+    int n = 0;
+    int r = sd_bus_open_system_f(&bus);
+    if (r >= 0) r = sd_bus_get_property_f(bus, RESOLVED_DBUS_NAME, RESOLVED_DBUS_PATH, RESOLVED_DBUS_MANAGER_INTERFACE,
+                                          "DNS", &error, &reply, "a(iiay)");
+    if (r >= 0) r = sd_bus_message_enter_container_f(reply, SD_BUS_TYPE_ARRAY, "(iiay)");
+    while (r >= 0 && (r = sd_bus_message_enter_container_f(reply, SD_BUS_TYPE_STRUCT, "iiay")) > 0) {
+        int32_t ifindex, family;
+        const void *addr = NULL;
+        size_t len = 0;
+        r = sd_bus_message_read_f(reply, "ii", &ifindex, &family);
+        if (r >= 0) r = sd_bus_message_read_array_f(reply, 'y', &addr, &len);
+        if (r >= 0) r = sd_bus_message_exit_container_f(reply);
+        if (r < 0 || n == max || is_tun_link(ifindex)) continue;
+        // a link-local address needs a scope that ziti_dns cannot take
+        if ((family == AF_INET && len == 4) ||
+            (family == AF_INET6 && len == 16 && !IN6_IS_ADDR_LINKLOCAL((const struct in6_addr *) addr))) {
+            inet_ntop(family, addr, servers[n++], INET6_ADDRSTRLEN);
+        }
+    }
+    if (r >= 0) r = sd_bus_message_exit_container_f(reply);
+    if (r < 0) {
+        ZITI_LOG(WARN, "Could not read the systemd-resolved DNS servers: %s", strerror(-r));
+        return r;
+    }
+    return n;
 }
 
 static int sd_bus_message_append_va(sd_bus_message *m, const char *types, ...) {
