@@ -307,14 +307,7 @@ func serviceAccessibleAfterMfa(t *testing.T) {
 		name := "test_mfa_posture_client"
 		interceptAddr := "100.64.0.24:23004"
 
-		// test_mfa_posture_host_cfg forwards tunneled connections to 127.0.0.1:23184
-		testutil.StartTCPEcho(t, "127.0.0.1:23184")
-		testutil.FetchAndEnrollJwt(t, state.overlay, state.zetHost, "test_mfa_posture_host")
-		state.zetHost.WaitForControllerEvent(t, "connected", "test_mfa_posture_host")
-
-		added := testutil.FetchAndEnrollJwt(t, state.overlay, state.zetClient, name)
-		state.zetClient.WaitForControllerEvent(t, "connected", name)
-		state.zetClient.WaitForBulkServiceEvent(t, "updated", name)
+		added, _ := enrollAndStartEcho(t, name, "test_mfa_posture_host", "127.0.0.1:23184")
 
 		enableResp := state.zetClient.EnableMFA(t, added.Id.Identifier)
 		enableResp.AssertSuccess()
@@ -333,12 +326,9 @@ func serviceAccessibleAfterMfa(t *testing.T) {
 		svc := updated.Id.Services[0]
 		require.Len(t, svc.PostureChecks, 1)
 
-		// Inverted to pass until openziti/ziti-sdk-c#1087 is fixed, then flip both to require.True.
-		require.False(t, svc.IsAccessible, "service %s should be accessible once MFA posture checks are fixed (openziti/ziti-sdk-c#1087)", svc.Name)
-		require.False(t, svc.PostureChecks[0].IsPassing, "MFA posture check on %s should pass once openziti/ziti-sdk-c#1087 is fixed", svc.Name)
-
 		t.Logf("dialing %s at %s until allowed", svc.Name, interceptAddr)
-		testutil.WaitForServiceAllowed(t, state.zetClient, interceptAddr, 25*time.Second)
+		testutil.WaitForServiceAllowed(interceptAddr)
+		waitForMfaPostureService(t, name)
 	})
 }
 
@@ -359,50 +349,72 @@ func restartWithTotpSatisfiesPosture(t *testing.T) {
 		name := "test_mfa_posture_restart_client"
 		interceptAddr := "100.64.0.23:23003"
 
-		// test_mfa_posture_restart_host_cfg forwards tunneled connections to 127.0.0.1:23183
-		testutil.StartTCPEcho(t, "127.0.0.1:23183")
-		testutil.FetchAndEnrollJwt(t, state.overlay, state.zetHost, "test_mfa_posture_restart_host")
-		state.zetHost.WaitForControllerEvent(t, "connected", "test_mfa_posture_restart_host")
+		added, _ := enrollAndStartEcho(t, name, "test_mfa_posture_restart_host", "127.0.0.1:23183")
 
-		enrollment, secret := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, name)
+		enableResp := state.zetClient.EnableMFA(t, added.Id.Identifier)
+		enableResp.AssertSuccess()
+		challengeEvent := state.zetClient.WaitForMfaEvent(t, "enrollment_challenge", name)
+		challengeEvent.AssertSuccess()
+
+		secret := testutil.ParseTOTPSecret(t, challengeEvent.ProvisioningUrl)
+		verifyResp := state.zetClient.VerifyMFA(t, added.Id.Identifier, testutil.GenerateTOTP(t, secret, time.Now()))
+		verifyResp.AssertSuccess()
+		updated := state.zetClient.WaitForIdentityEvent(t, "updated", name)
+		updated.AssertMfaAuthenticated()
+		verification := state.zetClient.WaitForMfaEvent(t, "enrollment_verification", name)
+		verification.AssertSuccess()
 
 		state.overlay.WaitForDataModelConsensus()
 		require.NoError(t, state.zetClient.Restart(), "restart %s\n%s", state.zetClient.Discriminator, state.zetClient.LogPath())
 
 		state.zetClient.WaitForMfaEvent(t, "auth_challenge", name)
 		code := testutil.GenerateTOTP(t, secret, time.Now().Add(30*time.Second))
-		state.zetClient.SubmitMFA(t, enrollment.Identifier, code).AssertSuccess()
-		state.zetClient.WaitForIdentityEvent(t, "updated", name).AssertMfaAuthenticated()
+		submitResp := state.zetClient.SubmitMFA(t, added.Id.Identifier, code)
+		submitResp.AssertSuccess()
+		reauthEvent := state.zetClient.WaitForIdentityEvent(t, "updated", name)
+		reauthEvent.AssertMfaAuthenticated()
 
 		// dial too: the router can deny it even when Status passes (openziti/ziti#4375)
 		t.Logf("dialing test_mfa_posture_restart_svc at %s until allowed", interceptAddr)
-		testutil.WaitForServiceAllowed(t, state.zetClient, interceptAddr, 30*time.Second)
-
-		// Inverted until openziti/ziti#4558 is fixed, then pass true.
-		waitForMfaPostureService(t, name, false)
+		testutil.WaitForServiceAllowed(interceptAddr)
+		waitForMfaPostureService(t, name)
 	})
 }
 
-func waitForMfaPostureService(t *testing.T, name string, accessible bool) testutil.Service {
+func waitForMfaPostureService(t *testing.T, name string) {
 	t.Helper()
-	var last testutil.Service
-	deadline := time.Now().Add(20 * time.Second)
-	for time.Now().Before(deadline) {
-		status := state.zetClient.Status(t)
-		status.AssertSuccess()
-		for _, id := range status.Data.Identities {
-			if id.Name != name || len(id.Services) != 1 {
-				continue
-			}
-			last = id.Services[0]
-			if last.IsAccessible == accessible {
-				require.Len(t, last.PostureChecks, 1)
-				require.Equal(t, accessible, last.PostureChecks[0].IsPassing, "MFA posture check on %s", last.Name)
-				return last
-			}
+	// the controller never passes the MFA check of an OIDC session (openziti/ziti#4558), so require both flags to
+	// stay false for 15s, longer than ZET's 10s service refresh
+	if state.overlay.Auth == testutil.AuthOIDC {
+		for end := time.Now().Add(15 * time.Second); time.Now().Before(end); time.Sleep(time.Second) {
+			svc := mfaPostureService(t, name)
+			require.False(t, svc.IsAccessible, "%s is accessible under OIDC: openziti/ziti#4558 is fixed, delete this branch", svc.Name)
+			require.False(t, svc.PostureChecks[0].IsPassing, "MFA posture check on %s passes under OIDC: openziti/ziti#4558 is fixed, delete this branch", svc.Name)
+		}
+		return
+	}
+	for {
+		svc := mfaPostureService(t, name)
+		if svc.IsAccessible {
+			require.True(t, svc.PostureChecks[0].IsPassing, "MFA posture check on %s", svc.Name)
+			return
 		}
 		time.Sleep(time.Second)
 	}
-	t.Fatalf("service for %s never became IsAccessible=%t, last: %+v\n%s", name, accessible, last, state.zetClient.LogPath())
-	return last
+}
+
+// mfaPostureService returns the one service of name in ZET's Status, which carries one posture check.
+func mfaPostureService(t *testing.T, name string) testutil.Service {
+	t.Helper()
+	status := state.zetClient.Status(t)
+	status.AssertSuccess()
+	for _, id := range status.Data.Identities {
+		if id.Name == name {
+			require.Len(t, id.Services, 1, "services of %s", name)
+			require.Len(t, id.Services[0].PostureChecks, 1, "posture checks on %s", id.Services[0].Name)
+			return id.Services[0]
+		}
+	}
+	t.Fatalf("%s is not in ZET's Status", name)
+	return testutil.Service{}
 }

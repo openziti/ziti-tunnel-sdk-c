@@ -914,20 +914,10 @@ func (o *Overlay) CreateBindServicePolicy(name, identityName, serviceName string
 	return nil
 }
 
-// CreateDialServicePolicy creates a Dial service policy granting identityName
-// access to serviceName, gated by the named posture checks when any are given.
-func (o *Overlay) CreateDialServicePolicy(name, identityName, serviceName string, postureCheckNames ...string) error {
-	cmd := "edge create service-policy %s Dial --identity-roles %s --service-roles %s --semantic AnyOf"
-	args := []string{name, "@" + identityName, "@" + serviceName}
-	if len(postureCheckNames) > 0 {
-		roles := make([]string, len(postureCheckNames))
-		for i, checkName := range postureCheckNames {
-			roles[i] = "@" + checkName
-		}
-		cmd += " --posture-check-roles %s"
-		args = append(args, strings.Join(roles, ","))
-	}
-	if _, err := o.execZiti(cmd, args...); err != nil {
+// CreateDialServicePolicy creates a Dial service policy granting identityName access to serviceName.
+func (o *Overlay) CreateDialServicePolicy(name, identityName, serviceName string) error {
+	if _, err := o.execZiti("edge create service-policy %s Dial --identity-roles %s --service-roles %s --semantic AnyOf",
+		name, "@"+identityName, "@"+serviceName); err != nil {
 		return fmt.Errorf("create dial policy %s: %w", name, err)
 	}
 	return nil
@@ -936,52 +926,28 @@ func (o *Overlay) CreateDialServicePolicy(name, identityName, serviceName string
 // CreateProcessMultiPostureCheck registers a process-multi posture check that
 // requires the binary at path to be running. process-multi is the supported
 // check type; plain process is deprecated.
-func (o *Overlay) CreateProcessMultiPostureCheck(t *testing.T, name, osType, path string, attributes ...string) {
-	cmd := "edge create posture-check process-multi %s AllOf %s %s"
-	args := []string{name, osType, path}
-	if len(attributes) > 0 {
-		cmd += " -a %s"
-		args = append(args, strings.Join(attributes, ","))
-	}
-	_, err := o.execZiti(cmd, args...)
+func (o *Overlay) CreateProcessMultiPostureCheck(t *testing.T, name, osType, path, attribute string) {
+	_, err := o.execZiti("edge create posture-check process-multi %s AllOf %s %s -a %s", name, osType, path, attribute)
 	require.NoError(t, err, "create process-multi posture check %s", name)
 }
 
 // CreateMacPostureCheck registers a mac posture check matching any of the
 // given MAC addresses.
-func (o *Overlay) CreateMacPostureCheck(t *testing.T, name string, macs []string, attributes ...string) {
-	cmd := "edge create posture-check mac %s -m %s"
-	args := []string{name, strings.Join(macs, ",")}
-	if len(attributes) > 0 {
-		cmd += " -a %s"
-		args = append(args, strings.Join(attributes, ","))
-	}
-	_, err := o.execZiti(cmd, args...)
+func (o *Overlay) CreateMacPostureCheck(t *testing.T, name string, macs []string, attribute string) {
+	_, err := o.execZiti("edge create posture-check mac %s -m %s -a %s", name, strings.Join(macs, ","), attribute)
 	require.NoError(t, err, "create mac posture check %s", name)
 }
 
 // CreateOSPostureCheck registers an os posture check pinned to osSpec, e.g.
-// "windows:10.0.26200". The pin is mandatory
-func (o *Overlay) CreateOSPostureCheck(t *testing.T, name, osSpec string, attributes ...string) {
-	cmd := "edge create posture-check os %s -o %s"
-	args := []string{name, osSpec}
-	if len(attributes) > 0 {
-		cmd += " -a %s"
-		args = append(args, strings.Join(attributes, ","))
-	}
-	_, err := o.execZiti(cmd, args...)
+// "windows:10.0.26200".
+func (o *Overlay) CreateOSPostureCheck(t *testing.T, name, osSpec, attribute string) {
+	_, err := o.execZiti("edge create posture-check os %s -o %s -a %s", name, osSpec, attribute)
 	require.NoError(t, err, "create os posture check %s", name)
 }
 
 // CreateMfaPostureCheck registers an mfa posture check with no timeout.
-func (o *Overlay) CreateMfaPostureCheck(t *testing.T, name string, attributes ...string) {
-	cmd := "edge create posture-check mfa %s"
-	args := []string{name}
-	if len(attributes) > 0 {
-		cmd += " -a %s"
-		args = append(args, strings.Join(attributes, ","))
-	}
-	_, err := o.execZiti(cmd, args...)
+func (o *Overlay) CreateMfaPostureCheck(t *testing.T, name, attribute string) {
+	_, err := o.execZiti("edge create posture-check mfa %s -a %s", name, attribute)
 	require.NoError(t, err, "create mfa posture check %s", name)
 }
 

@@ -105,8 +105,8 @@ func LocalMACAddresses(t *testing.T) []string {
 	return macs
 }
 
-// TryEcho round-trips one payload through the intercepted service.
-func TryEcho(addr string) error {
+// tryEcho round-trips one payload through the intercepted service.
+func tryEcho(addr string) error {
 	conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
 	if err != nil {
 		return err
@@ -129,28 +129,15 @@ func TryEcho(addr string) error {
 
 // WaitForServiceAllowed polls until an echo round trip succeeds. Every dial
 // attempt resends posture data, so polling drives the transition itself.
-func WaitForServiceAllowed(t *testing.T, zet *ZET, addr string, timeout time.Duration) {
-	t.Helper()
-	deadline := time.Now().Add(timeout)
-	var err error
-	for time.Now().Before(deadline) {
-		if err = TryEcho(addr); err == nil {
-			return
-		}
+func WaitForServiceAllowed(addr string) {
+	for tryEcho(addr) != nil {
 		time.Sleep(2 * time.Second)
 	}
-	t.Fatalf("service at %s still denied after %s: %v\nzet: %s", addr, timeout, err, zet.LogFile())
 }
 
 // WaitForServiceDenied polls until an echo round trip fails.
-func WaitForServiceDenied(t *testing.T, zet *ZET, addr string, timeout time.Duration) {
-	t.Helper()
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		if err := TryEcho(addr); err != nil {
-			return
-		}
+func WaitForServiceDenied(addr string) {
+	for tryEcho(addr) == nil {
 		time.Sleep(2 * time.Second)
 	}
-	t.Fatalf("service at %s still accessible after %s\nzet: %s", addr, timeout, zet.LogFile())
 }
