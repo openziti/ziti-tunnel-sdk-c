@@ -1099,6 +1099,11 @@ func (o *Overlay) PurgeServices() error {
 	return o.deleteWhere("services")
 }
 
+// PurgePostureChecks deletes every posture check carrying a test name.
+func (o *Overlay) PurgePostureChecks() error {
+	return o.deleteWhere("posture-checks")
+}
+
 // PurgeConfigs deletes every config carrying a test name.
 func (o *Overlay) PurgeConfigs() error {
 	return o.deleteWhere("configs")
