@@ -86,6 +86,18 @@ static char **copy_strv(char *const *v) {
     return c;
 }
 
+static int cmp_str(const void *a, const void *b) {
+    return strcmp(*(const char *const *) a, *(const char *const *) b);
+}
+
+// NULL counts as an empty list
+static bool same_strv(char *const *a, char *const *b) {
+    for (; a && *a && b && *b; a++, b++) {
+        if (strcmp(*a, *b) != 0) return false;
+    }
+    return !(a && *a) && !(b && *b);
+}
+
 static int tun_close(struct netif_handle_s *tun) {
     int r = 0;
 
@@ -216,7 +228,8 @@ static void collect_name(const char *name, void *ctx) {
     model_map_set(ctx, domain, (void *) 1); // a hostname and a wildcard over it are one domain
 }
 
-// The routing domains follow the active intercepts, re-read on every commit of service changes.
+// The routing domains follow the active intercepts, re-read on every commit of service changes and
+// applied when they differ.
 static void refresh_dns_domains(uv_loop_t *loop) {
     if (dns_maintainer.tun_name[0] == '\0') {
         return; // this tun has no ziti resolver
@@ -236,6 +249,14 @@ static void refresh_dns_domains(uv_loop_t *loop) {
         domains[i++] = strdup(name);
     }
     model_map_clear(&names, NULL);
+    qsort(domains, i, sizeof(char *), cmp_str);
+
+    // commits also follow service refreshes that change nothing; an update flushes resolved's caches.
+    // only this loop writes the list, so reading it here needs no lock
+    if (same_strv(domains, dns_maintainer.domains)) {
+        free_strv(domains);
+        return;
+    }
 
     uv_mutex_lock(&dns_maintainer.domains_lock);
     char **old = dns_maintainer.domains;
