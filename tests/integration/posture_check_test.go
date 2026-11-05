@@ -21,6 +21,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -163,6 +164,7 @@ func serviceAccessibleWithPassingMacCheck(t *testing.T) {
 
 func mfaCheckDeniesUntilMfaEnrolled(t *testing.T) {
 	requireMultiTunnel(t)
+	skipOnOidcBeforeZiti2(t)
 	testutil.RunWithTimeoutOf(t, 90*time.Second, func(t *testing.T) {
 		clientID := "test_posture_added_mfa_client"
 		hostID := "test_posture_added_mfa_host"
@@ -213,10 +215,12 @@ func mfaCheckDeniesUntilMfaEnrolled(t *testing.T) {
 // paths never match the running process.
 func copyPostureProcessBinary(t *testing.T) string {
 	src := "/bin/sleep"
-	dstName := "test_proc_posture"
+	// uutils coreutils is one binary that picks the tool from the executed file's
+	// name (AT_EXECFN, not argv[0]), so the copy must stay named sleep.
+	dstName := "sleep"
 	if runtime.GOOS == "windows" {
 		src = filepath.Join(os.Getenv("SystemRoot"), "System32", "cmd.exe")
-		dstName += ".exe"
+		dstName = "test_proc_posture.exe"
 	}
 	dir, err := filepath.EvalSymlinks(t.TempDir())
 	require.NoError(t, err, "resolve temp dir")
@@ -239,7 +243,16 @@ func startPostureProcess(t *testing.T, path string) *exec.Cmd {
 	} else {
 		proc = exec.Command(path, "300")
 	}
+	var output strings.Builder
+	proc.Stdout = &output
+	proc.Stderr = &output
 	require.NoError(t, proc.Start(), "start %s", path)
-	t.Cleanup(func() { _ = proc.Process.Kill() })
+	// "signal: killed" means it ran until cleanup, an exit status means it died on its own
+	t.Cleanup(func() {
+		_ = proc.Process.Kill()
+		if err := proc.Wait(); t.Failed() {
+			t.Logf("posture process %d ended with %v, output %q", proc.Process.Pid, err, output.String())
+		}
+	})
 	return proc
 }

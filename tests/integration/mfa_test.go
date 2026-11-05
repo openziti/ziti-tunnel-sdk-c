@@ -306,6 +306,7 @@ func serviceAccessibleAfterMfa(t *testing.T) {
 		name := "test_mfa_posture_client"
 		added := testutil.FetchAndEnrollJwt(t, state.overlay, state.zetClient, name)
 		state.zetClient.WaitForControllerEvent(t, "connected", name)
+		state.zetClient.WaitForBulkServiceEvent(t, "updated", name)
 
 		enableResp := state.zetClient.EnableMFA(t, added.Id.Identifier)
 		enableResp.AssertSuccess()
@@ -330,7 +331,18 @@ func serviceAccessibleAfterMfa(t *testing.T) {
 	})
 }
 
+// skipOnOidcBeforeZiti2 skips a test that needs an MFA code to satisfy a posture check. Major 0 is a local build that
+// could not report its version: take it as current.
+func skipOnOidcBeforeZiti2(t *testing.T) {
+	if state.overlay.Auth != testutil.AuthOIDC || state.overlay.ZitiMajor == 0 || state.overlay.ZitiMajor >= 2 {
+		return
+	}
+	t.Skipf("MFA posture over OIDC needs the TOTP token route (openziti/ziti#3267, ziti 2.0+); controller is v%d.%d",
+		state.overlay.ZitiMajor, state.overlay.ZitiMinor)
+}
+
 func submitMfaAfterEnrollSatisfiesPosture(t *testing.T) {
+	skipOnOidcBeforeZiti2(t)
 	testutil.RunWithTimeoutOf(t, 60*time.Second, func(t *testing.T) {
 		name := "test_mfa_posture_submit_client"
 		enrollment, secret := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, name)
@@ -348,6 +360,7 @@ func submitMfaAfterEnrollSatisfiesPosture(t *testing.T) {
 
 func restartWithTotpSatisfiesPosture(t *testing.T) {
 	requireMultiTunnel(t)
+	skipOnOidcBeforeZiti2(t)
 	testutil.RunWithTimeoutOf(t, 90*time.Second, func(t *testing.T) {
 		name := "test_mfa_posture_restart_client"
 		interceptAddr := "100.64.0.23:23003"
