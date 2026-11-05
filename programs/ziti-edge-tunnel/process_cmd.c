@@ -77,9 +77,11 @@ static void tunnel_enroll_cb(const ziti_config *cfg, int status, const char *err
                 ZITI_LOG(ERROR, "removing failed identity file: %s", add_id_req->identifier);
                 remove(add_id_req->identifier);
             }
-            add_id_req->cmd_cb(&result, add_id_req->cmd_ctx);
+            if (add_id_req->cmd_cb != NULL) {
+                add_id_req->cmd_cb(&result, add_id_req->cmd_ctx);
+            }
         }
-        free(add_id_req);
+        free_add_id_req(add_id_req);
         return;
     }
 
@@ -88,9 +90,12 @@ static void tunnel_enroll_cb(const ziti_config *cfg, int status, const char *err
 
     if (fwrite(cfg_json, 1, len, f) != len) {
         ZITI_LOG(ERROR, "failed to write config file");
+        free(cfg_json);
         fclose(f);
         result.error = "failed to write config file";
-        add_id_req->cmd_cb(&result,  add_id_req->cmd_ctx);
+        if (add_id_req->cmd_cb != NULL) {
+            add_id_req->cmd_cb(&result,  add_id_req->cmd_ctx);
+        }
         free_add_id_req(add_id_req);
         return;
     }
@@ -168,8 +173,8 @@ static void schedule_oidc_cleanup(struct enroll_oidc_state *state) {
 
 static void oidc_fail(struct enroll_oidc_state *state, int status, const char *err) {
     if (state->add_id_req != NULL) {
-        // tunnel_enroll_cb reports the error via cmd_cb, fcloses add_id_ctx,
-        // removes the partial identity file, and frees add_id_req.
+        // tunnel_enroll_cb reports the error via cmd_cb unless the URL reply already
+        // used it, fcloses add_id_ctx, removes the partial identity file, and frees add_id_req.
         tunnel_enroll_cb(NULL, status, err, state->add_id_req);
         state->add_id_req = NULL;
     }
@@ -195,6 +200,8 @@ static void enroll_oidc_ext_auth_cb(ziti_context ztx, const char *url, void *ctx
     };
     result.data = tunnel_ext_auth_to_json(&ev, MODEL_JSON_COMPACT, NULL);
     state->add_id_req->cmd_cb(&result, state->add_id_req->cmd_ctx);
+    // an IPC command gets exactly one reply, so a failure after the URL is only logged
+    state->add_id_req->cmd_cb = NULL;
     free(result.data);
 }
 

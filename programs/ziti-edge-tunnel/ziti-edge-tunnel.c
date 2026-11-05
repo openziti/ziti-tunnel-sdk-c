@@ -181,6 +181,18 @@ static int ensure_dir(const char *dir) {
     return rc == UV_EEXIST ? 0 : rc;
 }
 
+// tell the apps about the identity, with its MFA enrollment as the controller reports it
+static void send_identity_event(tunnel_identity *id, const char *action) {
+    sync_mfa_enrolled(id);
+    identity_event id_event = {
+            .Op = "identity",
+            .Action = (char *) action,
+            .Id = id,
+            .Fingerprint = id->FingerPrint,
+    };
+    send_events_message(&id_event, (to_json_fn) identity_event_to_json, true);
+}
+
 void send_tunnel_status(char* status) {
     tunnel_status_event tnl_sts_evt = {0};
     tnl_sts_evt.Op = strdup(status);
@@ -240,15 +252,10 @@ static char* convert_seconds_to_readable_format(int input) {
 }
 
 static bool check_send_notification(tunnel_identity *tnl_id) {
-    if (!tnl_id->MfaEnabled || tnl_id->MfaMinTimeout <= 0 || tnl_id->MinTimeoutRemInSvcEvent <=0) {
+    if (!tnl_id->MfaEnabled || tnl_id->MfaMinTimeout <= 0) {
         return false;
     }
-    if (tnl_id->MfaMinTimeoutRem > 0) {
-        tnl_id->MfaMinTimeoutRem = get_remaining_timeout((int)tnl_id->MfaMinTimeout, (int)tnl_id->MinTimeoutRemInSvcEvent, tnl_id);
-    }
-    if (tnl_id->MfaMaxTimeoutRem > 0) {
-        tnl_id->MfaMaxTimeoutRem = get_remaining_timeout((int)tnl_id->MfaMaxTimeout, (int)tnl_id->MaxTimeoutRemInSvcEvent, tnl_id);
-    }
+    set_mfa_timeout(tnl_id);
 
     if (tnl_id->Notified) {
         // No need to send notification again
@@ -511,49 +518,46 @@ static void on_event(const base_event *ev) {
                 break;
             }
 
-            identity_event id_event = {0};
-            id_event.Op = strdup("identity");
-            id_event.Action = strdup(event_name(event_added));
-            id_event.Id = id;
-            if (id_event.Id->FingerPrint) {
-                id_event.Fingerprint = strdup(id_event.Id->FingerPrint);
-            }
-            id_event.Id->Loaded = true;
+            id->Loaded = true;
 
             action_event controller_event = {0};
             controller_event.Op = strdup("controller");
             controller_event.Identifier = strdup(ev->identifier);
-            if (id_event.Id->FingerPrint) {
-                controller_event.Fingerprint = strdup(id_event.Id->FingerPrint);
+            if (id->FingerPrint) {
+                controller_event.Fingerprint = strdup(id->FingerPrint);
             }
 
             if (zev->code == ZITI_OK) {
-                id_event.Id->NeedsExtAuth = false;
+                id->NeedsExtAuth = false;
+                // the identity is loaded: keep the controller's view of the MFA enrollment for the next start
+                if (sync_mfa_enrolled(id)) {
+                    save_tunnel_status_to_file();
+                }
                 if (zev->name) {
-                    if (id_event.Id->Name != NULL && strcmp(id_event.Id->Name, zev->name) != 0) {
-                        free((char*)id_event.Id->Name);
-                        id_event.Id->Name = strdup(zev->name);
-                    } else if (id_event.Id->Name == NULL) {
-                        id_event.Id->Name = strdup(zev->name);
+                    if (id->Name != NULL && strcmp(id->Name, zev->name) != 0) {
+                        free((char*)id->Name);
+                        id->Name = strdup(zev->name);
+                    } else if (id->Name == NULL) {
+                        id->Name = strdup(zev->name);
                     }
                 }
                 if (zev->version) {
-                    if (id_event.Id->ControllerVersion != NULL && strcmp(id_event.Id->ControllerVersion, zev->version) != 0) {
-                        free((char*)id_event.Id->ControllerVersion);
-                        id_event.Id->ControllerVersion = strdup(zev->version);
-                    } else if (id_event.Id->ControllerVersion == NULL) {
-                        id_event.Id->ControllerVersion = strdup(zev->version);
+                    if (id->ControllerVersion != NULL && strcmp(id->ControllerVersion, zev->version) != 0) {
+                        free((char*)id->ControllerVersion);
+                        id->ControllerVersion = strdup(zev->version);
+                    } else if (id->ControllerVersion == NULL) {
+                        id->ControllerVersion = strdup(zev->version);
                     }
                 }
                 if (zev->controller) {
-                    if (id_event.Id->Config != NULL && id_event.Id->Config->ZtAPI != NULL && strcmp(id_event.Id->Config->ZtAPI, zev->controller) != 0) {
-                        free((char*)id_event.Id->Config->ZtAPI);
-                        id_event.Id->Config->ZtAPI = strdup(zev->controller);
-                    } else if (id_event.Id->Config == NULL) {
-                        id_event.Id->Config = calloc(1, sizeof(tunnel_config));
-                        id_event.Id->Config->ZtAPI = strdup(zev->controller);
-                    } else if (id_event.Id->Config->ZtAPI == NULL) {
-                        id_event.Id->Config->ZtAPI = strdup(zev->controller);
+                    if (id->Config != NULL && id->Config->ZtAPI != NULL && strcmp(id->Config->ZtAPI, zev->controller) != 0) {
+                        free((char*)id->Config->ZtAPI);
+                        id->Config->ZtAPI = strdup(zev->controller);
+                    } else if (id->Config == NULL) {
+                        id->Config = calloc(1, sizeof(tunnel_config));
+                        id->Config->ZtAPI = strdup(zev->controller);
+                    } else if (id->Config->ZtAPI == NULL) {
+                        id->Config->ZtAPI = strdup(zev->controller);
                     }
                 }
                 controller_event.Action = strdup(event_name(event_connected));
@@ -563,9 +567,7 @@ static void on_event(const base_event *ev) {
                 ZITI_LOG(ERROR, "ztx[%s] failed to connect to controller due to %s", ev->identifier, zev->status);
             }
 
-            send_events_message(&id_event, (to_json_fn) identity_event_to_json, true);
-            id_event.Id = NULL;
-            free_identity_event(&id_event);
+            send_identity_event(id, event_name(event_added));
 
             send_events_message(&controller_event, (to_json_fn) action_event_to_json, true);
             free_action_event(&controller_event);
@@ -698,17 +700,7 @@ static void on_event(const base_event *ev) {
             }
             free_services_event(&svc_event);
 
-            identity_event id_event = {
-                    .Op = strdup("identity"),
-                    .Action = strdup(event_name(event_updated)),
-                    .Id = create_or_get_tunnel_identity(ev->identifier, NULL),
-            };
-            if (id_event.Id->FingerPrint) {
-                id_event.Fingerprint = strdup(id_event.Id->FingerPrint);
-            }
-            send_events_message(&id_event, (to_json_fn) identity_event_to_json, true);
-            id_event.Id = NULL;
-            free_identity_event(&id_event);
+            send_identity_event(create_or_get_tunnel_identity(ev->identifier, NULL), event_name(event_updated));
             break;
         }
 
@@ -721,8 +713,8 @@ static void on_event(const base_event *ev) {
             mfa_status s = mfa_statuss.value_of(mfa_ev->operation);
             const char *action = mfa_ev->operation;
 
-            // don't overwrite the locally stored MfaEnabled based on the controller; the client owns it
-            // entirely. only MfaNeeded is in question here.
+            // MfaEnabled is synced from the controller on context events and from the results of this
+            // client's own MFA operations; a prompt only tells us that MfaNeeded is true.
             if (s == mfa_status_enrollment_required && id->MfaEnabled) {
                 ZITI_LOG(WARN, "ztx[%s] enrollment requested for an identity already enrolled in MFA;"
                                " requesting a code instead", ev->identifier);
@@ -759,20 +751,11 @@ static void on_event(const base_event *ev) {
                 switch (mfa_ev->operation_type) {
                     case mfa_status_mfa_auth_status:
                     case mfa_status_enrollment_verification:
+                        // the time of the code comes with the MFA posture status event that follows
                         set_mfa_status(ev->identifier, true, false);
-                        update_mfa_time(ev->identifier);
 
-                        identity_event id_event = {
-                                .Op = strdup("identity"),
-                                .Action = strdup(event_name(event_updated)),
-                                .Id = create_or_get_tunnel_identity(ev->identifier, NULL),
-                        };
-                        if (id_event.Id->FingerPrint) {
-                            id_event.Fingerprint = strdup(id_event.Id->FingerPrint);
-                        }
-                        send_events_message(&id_event, (to_json_fn) identity_event_to_json, true);
-                        id_event.Id = NULL;
-                        free_identity_event(&id_event);
+                        send_identity_event(create_or_get_tunnel_identity(ev->identifier, NULL),
+                                            event_name(event_updated));
                         save_tunnel_status_to_file(); // persist the mfa change
                         break;
                     case mfa_status_enrollment_remove:
@@ -845,13 +828,6 @@ static void on_event(const base_event *ev) {
                 break;
             }
 
-            identity_event id_event = {0};
-            id_event.Op = strdup("identity");
-            id_event.Action = strdup(event_name(event_updated));
-            id_event.Id = id;
-            if (id->FingerPrint) {
-                id_event.Fingerprint = strdup(id->FingerPrint);
-            }
             id->Loaded = true;
 
             if (id->Config == NULL) {
@@ -877,11 +853,8 @@ static void on_event(const base_event *ev) {
                 id->Config->ZtAPIs[i++] = strdup(ctrl);
             }
 
-            if (true /* for now assume something was updated or else this event would not have arrived */) {
-                send_events_message(&id_event, (to_json_fn) identity_event_to_json, true);
-            }
-            id_event.Id = NULL;
-            free_identity_event(&id_event);
+            // for now assume something was updated or else this event would not have arrived
+            send_identity_event(id, event_name(event_updated));
             free_ziti_config(&zc);
             break;
         }
@@ -890,13 +863,6 @@ static void on_event(const base_event *ev) {
                 const ext_signer_event *ese = (const ext_signer_event *) ev;
                 id->NeedsExtAuth = true;
                 ZITI_LOG(INFO, "ztx[%s] ext auth: %s", id->Identifier, ese->status);
-                identity_event id_event = {0};
-                id_event.Op = "identity";
-                id_event.Action = (char*)event_name(event_needs_ext_login);
-                id_event.Id = id;
-                if (id_event.Id->FingerPrint) {
-                    id_event.Fingerprint = id_event.Id->FingerPrint;
-                }
                 if (model_list_size(&ese->providers) > 0) {
                     model_list_clear(&id->ExtAuthProviders, free);
                     const jwt_provider* ext_provider;
@@ -904,7 +870,7 @@ static void on_event(const base_event *ev) {
                         model_list_append(&id->ExtAuthProviders, strdup(ext_provider->name));
                     }
                 }
-                send_events_message(&id_event, (to_json_fn) identity_event_to_json, true);
+                send_identity_event(id, event_name(event_needs_ext_login));
             }
             break;
         case TunnelEvent_RouterEvent: {
@@ -932,13 +898,21 @@ static void on_event(const base_event *ev) {
                 const posture_status_event *pse = (const posture_status_event *) ev;
                 ZITI_LOG(INFO, "ztx[%s] posture status: %s", id->Identifier,
                          ziti_posture_query_types.name(pse->query_type));
+                if (pse->query_type == ziti_posture_query_type_PC_MFA && pse->mfa_last_code_at != NULL &&
+                    set_mfa_code_status(id, *pse->mfa_last_code_at, pse->mfa_expiring && *pse->mfa_expiring)) {
+                    send_identity_event(id, event_name(event_updated));
+                }
                 tunnel_posture_status_event tpse = {
                         .Op = "posturestatus",
                         .Action = (char *) event_name(event_updated),
                         .Identifier = ev->identifier,
                         .QueryType = (char *) ziti_posture_query_types.name(pse->query_type),
+                        // ziti-tunnel-cbs only sets the fields that belong to query_type
                         .Paths = pse->paths,
                         .MissingPaths = pse->missing_paths,
+                        .MfaTimeout = pse->mfa_timeout,
+                        .MfaLastCodeAt = pse->mfa_last_code_at,
+                        .MfaExpiring = pse->mfa_expiring,
                 };
                 if (id->FingerPrint) {
                     tpse.Fingerprint = id->FingerPrint;
@@ -1948,7 +1922,7 @@ static int version_opts(int argc, char *argv[]) {
 
 static void version() {
     if (verbose_version) {
-        tls_context *tls = default_tls_context("", 0);
+        tls_context *tls = default_tls_context();
         printf("ziti-tunneler: %s\n"
                "ziti-sdk:      %s\n"
                "tlsuv:         %s[%s]\n",

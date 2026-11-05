@@ -18,6 +18,7 @@ package integration_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/openziti/ziti-tunnel-sdk-c/tests/integration/testutil"
 	"github.com/stretchr/testify/require"
@@ -111,12 +112,11 @@ func TestExternalAuthSingleSigner(t *testing.T) {
 	t.Run("enrollToCertThenNoneRejected", c.enrollToCertThenNoneRejected)
 	t.Run("enrollToCertThenTokenRejected", c.enrollToCertThenTokenRejected)
 	t.Run("enrollToTokenThenCertRejected", c.enrollToTokenThenCertRejected)
+	t.Run("enrollToCertRetryAfterRejectionCompletes", c.enrollToCertRetryAfterRejectionCompletes)
+	t.Run("enrollToCertRejectsInvalidProvider", c.enrollToCertRejectsInvalidProvider)
 }
 
 func TestExternalAuthSecondary(t *testing.T) {
-	if state.overlay.Auth == testutil.AuthLegacy {
-		t.Skip("secondary ext-jwt auth never completes on legacy auth, remove when https://github.com/openziti/ziti-tunnel-sdk-c/issues/1415 is closed")
-	}
 	if state.overlay.ZitiMajor < 2 {
 		t.Skipf("secondary ext-jwt on the OIDC path needs ziti 2.0+ (openziti/ziti#3561); controller is v%d.%d", state.overlay.ZitiMajor, state.overlay.ZitiMinor)
 	}
@@ -557,5 +557,29 @@ func (c *extAuthContext) enrollToTokenThenCertRejected(t *testing.T) {
 		addResp := c.zet.AddIdentity(t, enrollToCertIdentity)
 		addResp.AssertFail(500, "identity exists with the same name")
 		testutil.AssertValidUrlEnrolledIdentityFile(t, idEvent.Id.Identifier, testutil.EnrollModeToken)
+	})
+}
+
+func (c *extAuthContext) enrollToCertRetryAfterRejectionCompletes(t *testing.T) {
+	testutil.RunWithTimeoutOf(t, 10*time.Second, func(t *testing.T) {
+		idName := "test_ext_auth_cert_rejected"
+
+		c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToCert: true, EnrollNameSelector: "/test_missing_claim"})
+		c.driveEnrollToCert(t, idName)
+		c.zet.AssertNoPendingReply(t, time.Second)
+
+		c.overlay.UpdateExtJwtSigner(t, c.workingSigner.name, testutil.ExtJwtSignerSpec{EnrollToCert: true})
+		c.completeEnrollToCert(t, idName)
+	})
+}
+
+func (c *extAuthContext) enrollToCertRejectsInvalidProvider(t *testing.T) {
+	testutil.RunWithTimeout(t, func(t *testing.T) {
+		idName := "test_ext_auth_cert_invalid_provider"
+		identityData := testutil.NewUrlIdentityData(idName, c.overlay.ControllerHostPort(), testutil.EnrollModeCert, "invalid_provider")
+		addResp := c.zet.AddIdentity(t, identityData)
+		addResp.AssertFail(500, "no compatible ext JWT signer")
+		c.zet.AssertNoPendingReply(t, time.Second)
+		testutil.AssertNoIdentityFile(t, c.zet, idName)
 	})
 }

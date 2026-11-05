@@ -24,6 +24,7 @@
 
 
 #include <stdio.h>
+#include <ctype.h>
 #include <ziti/ziti_log.h>
 #include <memory.h>
 #include <ziti/ziti_tunnel_cbs.h>
@@ -52,6 +53,9 @@ struct hosted_io_ctx_s {
     const char *computed_dst_port;
     char resolved_dst[80];
     tlsuv_connector_req connector_req;
+    // valid (ss_family != AF_UNSPEC) when the client requested a TCP source address; the actual
+    // bind happens on the socket the tlsuv connector opens (see on_hosted_client_connect)
+    struct sockaddr_storage bound_source_addr;
     union {
         uv_tcp_t tcp;
         uv_udp_t udp;
@@ -93,18 +97,8 @@ static void free_hosted_service_ctx(struct hosted_service_ctx_s *hosted_ctx) {
     if (hosted_ctx == NULL) {
         return;
     }
+    // cfg is borrowed from the owning ziti_host_t, which frees it (free_ziti_host())
     safe_free(hosted_ctx->service_name);
-    switch (hosted_ctx->cfg_type) {
-        case HOST_CFG_V1:
-            free_ziti_host_cfg_v1((ziti_host_cfg_v1 *)hosted_ctx->cfg);
-            break;
-        case SERVER_CFG_V1:
-            free_ziti_server_cfg_v1((ziti_server_cfg_v1 *)hosted_ctx->cfg);
-            break;
-        default:
-            ZITI_LOG(DEBUG, "unexpected cfg_type %d", hosted_ctx->cfg_type);
-            break;
-    }
 
     if (hosted_ctx->forward_protocol) {
         STAILQ_CLEAR(&hosted_ctx->proto_u.allowed_protocols, safe_free);
@@ -119,6 +113,12 @@ static void free_hosted_service_ctx(struct hosted_service_ctx_s *hosted_ctx) {
             safe_free(dns_entry->domain_name);
             safe_free(dns_entry);
         }
+
+        ziti_address_translation_array zats = hosted_ctx->addr_u.translations;
+        for (int i = 0; zats != NULL && zats[i] != NULL; i++) {
+            free(zats[i]);
+        }
+        safe_free(hosted_ctx->addr_u.translations);
     }
 
     if (hosted_ctx->forward_port) {
@@ -132,11 +132,20 @@ static void free_hosted_service_ctx(struct hosted_service_ctx_s *hosted_ctx) {
         hosted_ctx->proxy_connector = NULL;
         hosted_ctx->connector = NULL;
     }
+
+    free(hosted_ctx);
 }
 
+/** the single place a hosted service is torn down, whatever caused its server connection to
+ * close. owner (the ziti_host_t) is kept alive by stop_hosting() until we get here. */
 void ziti_hosted_serv_conn_close_cb(ziti_connection serv) {
     struct hosted_service_ctx_s *hosted_ctx = ziti_conn_data(serv);
+    if (hosted_ctx == NULL) {
+        return;
+    }
+    void *owner = hosted_ctx->owner;
     free_hosted_service_ctx(hosted_ctx);
+    ziti_host_release_conn(owner);
 }
 
 static void hosted_server_close_cb(uv_handle_t *handle) {
@@ -502,14 +511,40 @@ static const char *compute_dst_port(const host_ctx_t *service, const tunneler_ap
     return port_from_config;
 }
 
-static int do_bind(hosted_io_context io, const char *addr, int socktype) {
-    // split out the ip and port if port was specified
-    char *src_ip = strdup(addr);
-    char *port = strchr(src_ip, ':');
-    if (port != NULL) {
-        *port = '\0';
-        port++;
+/**
+ * splits a `host[:port]` string in place. recognizes `[addr]:port` / `[addr]` (required for an
+ * IPv6 literal with a port, since the address itself contains colons) and plain `addr:port` /
+ * `addr` for everything else. a bare, unbracketed address with more than one colon is assumed to
+ * be an IPv6 literal with no port -- splitting on any of its colons would silently corrupt it.
+ */
+static char *split_host_port(char *buf, char **port_out) {
+    *port_out = NULL;
+
+    if (buf[0] == '[') {
+        char *end = strchr(buf, ']');
+        if (end != NULL) {
+            *end = '\0';
+            if (end[1] == ':') {
+                *port_out = end + 2;
+            }
+            return buf + 1;
+        }
+        // malformed: unterminated '[' -- fall through and treat the whole thing as the host
     }
+
+    char *first_colon = strchr(buf, ':');
+    if (first_colon != NULL && strchr(first_colon + 1, ':') == NULL) {
+        *first_colon = '\0';
+        *port_out = first_colon + 1;
+    }
+    return buf;
+}
+
+static int do_bind(hosted_io_context io, const char *addr, int socktype) {
+    // split out the ip and port if one was specified; see split_host_port() for the [addr]:port convention
+    char *buf = strdup(addr);
+    char *port;
+    char *src_ip = split_host_port(buf, &port);
 
     uv_getaddrinfo_t ai_req = {0};
     struct addrinfo hints = {0};
@@ -518,7 +553,7 @@ static int do_bind(hosted_io_context io, const char *addr, int socktype) {
     hints.ai_socktype = socktype;
 
     int uv_err = uv_getaddrinfo(io->service->tnlr_ctx->loop, &ai_req, NULL, src_ip, port, &hints);
-    free(src_ip);
+    free(buf);
 
     if (uv_err != 0) {
         ZITI_LOG(ERROR, "hosted_service[%s], client[%s]: getaddrinfo(%s) failed: %s",
@@ -541,7 +576,10 @@ static int do_bind(hosted_io_context io, const char *addr, int socktype) {
 
     switch (hints.ai_protocol) {
         case IPPROTO_TCP:
-            uv_err = uv_tcp_bind(&io->server.tcp, ai_req.addrinfo->ai_addr, 0);
+            // the source address was validated above; stash it so on_hosted_client_connect can
+            // pass it to the connector, which does the actual bind on the socket it opens.
+            memcpy(&io->bound_source_addr, ai_req.addrinfo->ai_addr, ai_req.addrinfo->ai_addrlen);
+            uv_err = 0;
             break;
         case IPPROTO_UDP:
             uv_err = uv_udp_bind(&io->server.udp, ai_req.addrinfo->ai_addr, 0);
@@ -641,7 +679,13 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
     if (status != ZITI_OK) {
         ZITI_LOG(ERROR, "hosted_service[%s] incoming connection failed: %s", service_ctx->service_name, ziti_errorstr(status));
         ziti_close(clt, NULL);
+        // ZITI_SERVICE_UNAVAILABLE here means the sdk gave up on the binding. drop the host from
+        // ziti_instance->hosts now rather than in ziti_hosted_serv_conn_close_cb, which waits for
+        // serv's children to drain: until then a service event with an unchanged config would reuse
+        // this dead host instead of hosting the service again.
+        // if stop_hosting() also closes serv, ziti_close() is a no-op.
         if (status == ZITI_SERVICE_UNAVAILABLE) {
+            ziti_host_unmap(service_ctx->owner);
             ziti_close(serv, ziti_hosted_serv_conn_close_cb);
         }
         return;
@@ -754,11 +798,23 @@ static void on_hosted_client_connect(ziti_connection serv, ziti_connection clt, 
     ziti_conn_set_data(clt, io);
 
     if (protocol_number == IPPROTO_TCP) {
-        ZITI_LOG(DEBUG, "hosted_service[%s] client[%s] dst_addr[%s:%s:%s] connecting%s",
+        const struct sockaddr *bound_source_addr = io->bound_source_addr.ss_family != AF_UNSPEC
+                ? (struct sockaddr *) &io->bound_source_addr : NULL;
+
+        char proxy_desc[128] = "";
+        if (service_ctx->proxy_connector != NULL) {
+            snprintf(proxy_desc, sizeof(proxy_desc), " through proxy[%s]", service_ctx->proxy_addr);
+        }
+        char source_desc[96] = "";
+        if (bound_source_addr != NULL) {
+            snprintf(source_desc, sizeof(source_desc), " with source address[%s]", app_data->source_addr);
+        }
+        ZITI_LOG(DEBUG, "hosted_service[%s] client[%s] dst_addr[%s:%s:%s] connecting%s%s",
                  service_ctx->service_name, io->client_identity, protocol, ip_or_hn, port,
-                 service_ctx->proxy_connector != NULL ? " through proxy" : "");
+                 proxy_desc, source_desc);
+
         io->connector_req = service_ctx->connector->connect(service_ctx->tnlr_ctx->loop, service_ctx->connector,
-                                                            ip_or_hn, port, on_hosted_tcp_connector_connect, io);
+                                                            ip_or_hn, port, bound_source_addr, on_hosted_tcp_connector_connect, io);
         return;
     }
 
@@ -856,7 +912,7 @@ static void hosted_listen_cb(ziti_connection serv, int status) {
         return;
     }
 
-    ziti_host_set_conn((ziti_context) host_ctx->ziti_ctx, host_ctx->service_name, serv);
+    ZITI_LOG(DEBUG, "hosted_service[%s] listening", host_ctx->service_name);
 }
 
 #define DEFAULT_LISTEN_OPTS (ziti_listen_opts){ \
@@ -894,6 +950,52 @@ static void listen_opts_from_host_cfg_v1(ziti_listen_opts *opts, const ziti_list
     }
 }
 
+static void str_tolower(char *s) {
+    for (; s != NULL && *s != '\0'; s++) {
+        *s = (char) tolower((unsigned char) *s);
+    }
+}
+
+#define TUNNELER_ID_NAME_VAR "$tunneler_id.name"
+
+int resolve_listen_identity(const ziti_listen_options *config_listen_options, const char *tunneler_id_name,
+                            char **resolved) {
+    *resolved = NULL;
+    if (config_listen_options == NULL) {
+        return 0;
+    }
+
+    // dialing tunnelers typically get the identity from a dns query, which may not preserve case
+    bool lower = config_listen_options->listen_identity_type == ziti_listen_identity_type_dns;
+    const char *template;
+    if (config_listen_options->bind_with_identity) {
+        if (!lower) {
+            return 0; // the sdk binds with the edge identity name
+        }
+        template = TUNNELER_ID_NAME_VAR;
+    } else if (config_listen_options->identity != NULL && config_listen_options->identity[0] != '\0') {
+        template = config_listen_options->identity;
+    } else {
+        return 0;
+    }
+
+    bool substitute = strstr(template, TUNNELER_ID_NAME_VAR) != NULL;
+    if (!substitute && !lower) {
+        return 0; // literal identity can be used as-is
+    }
+    if (substitute && (tunneler_id_name == NULL || tunneler_id_name[0] == '\0')) {
+        return -1;
+    }
+
+    char *buf = substitute ? string_replace_all(template, TUNNELER_ID_NAME_VAR, tunneler_id_name) : strdup(template);
+    if (lower) {
+        str_tolower(buf);
+    }
+
+    *resolved = buf;
+    return 0;
+}
+
 static int ziti_address_translation_cmp(const void *a, const void *b) {
     const ziti_address_translation * const *xa = a;
     const ziti_address_translation * const *xb = b;
@@ -919,10 +1021,12 @@ host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, tunneler_context tnlr, const char *s
     char display_port[12] = { '?', '\0' };
     ziti_listen_opts listen_opts;
     ziti_listen_opts *listen_opts_p = NULL;
+    const ziti_listen_options *config_listen_options = NULL;
     switch (cfg_type) {
         case HOST_CFG_V1: {
             const ziti_host_cfg_v1 *host_v1_cfg = cfg;
-            listen_opts_from_host_cfg_v1(&listen_opts, host_v1_cfg->listen_options);
+            config_listen_options = host_v1_cfg->listen_options;
+            listen_opts_from_host_cfg_v1(&listen_opts, config_listen_options);
             listen_opts_p = &listen_opts;
             int i;
 
@@ -976,13 +1080,18 @@ host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, tunneler_context tnlr, const char *s
                     return NULL;
                 }
 
-                // sort address translations for easy lookups
-                ziti_address_translation_array zats = host_v1_cfg->forward_address_translations;
-                for (i = 0; zats != NULL && zats[i] != NULL; i++) {
-                    zats[i]->from.addr.cidr.bits = zats[i]->prefix_length;
-                    zats[i]->to.addr.cidr.bits = zats[i]->prefix_length;
-                }
-                if (zats != NULL && i > 0) {
+                // sort address translations for easy lookups. work on a copy: cfg is borrowed from
+                // the owning ziti_host_t, and mutating it would make the next config comparison fail.
+                ziti_address_translation_array cfg_zats = host_v1_cfg->forward_address_translations;
+                for (i = 0; cfg_zats != NULL && cfg_zats[i] != NULL; i++);
+                if (i > 0) {
+                    ziti_address_translation_array zats = calloc(i + 1, sizeof(ziti_address_translation *));
+                    for (i = 0; cfg_zats[i] != NULL; i++) {
+                        zats[i] = malloc(sizeof(ziti_address_translation));
+                        memcpy(zats[i], cfg_zats[i], sizeof(ziti_address_translation));
+                        zats[i]->from.addr.cidr.bits = zats[i]->prefix_length;
+                        zats[i]->to.addr.cidr.bits = zats[i]->prefix_length;
+                    }
                     qsort(zats, i, sizeof(ziti_address_translation *), ziti_address_translation_cmp);
                     for (i = 0; zats[i] != NULL; i++) {
                         char from[64], to[64];
@@ -1009,6 +1118,7 @@ host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, tunneler_context tnlr, const char *s
                     ZITI_LOG(ERROR, "hosted_service[%s] specifies 'forwardPort' with zero-length 'allowedPortRanges'",
                              host_ctx->service_name);
                     free_hosted_service_ctx(host_ctx);
+                    return NULL;
                 }
             } else {
                 host_ctx->port_u.port = host_v1_cfg->port;
@@ -1057,7 +1167,8 @@ host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, tunneler_context tnlr, const char *s
             break;
         case L2_HOST_CFG_V1: {
             const ziti_l2_host_cfg_v1 *l2_host_v1_cfg = cfg;
-            listen_opts_from_host_cfg_v1(&listen_opts, l2_host_v1_cfg->listen_options);
+            config_listen_options = l2_host_v1_cfg->listen_options;
+            listen_opts_from_host_cfg_v1(&listen_opts, config_listen_options);
             listen_opts_p = &listen_opts;
             break;
         }
@@ -1086,20 +1197,35 @@ host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, tunneler_context tnlr, const char *s
     }
 
     snprintf(host_ctx->display_address, sizeof(host_ctx->display_address), "%s:%s:%s", display_proto, display_addr, display_port);
-    ziti_connection serv;
-    ziti_conn_init(ziti_ctx, &serv, host_ctx);
 
-    char listen_identity[128];
+    char *listen_identity = NULL;
     if (listen_opts_p != NULL) {
-        if (listen_opts_p->identity != NULL && listen_opts_p->identity[0] != '\0') {
-            const ziti_identity *zid = ziti_get_identity(ziti_ctx);
-            strncpy(listen_identity, listen_opts_p->identity, sizeof(listen_identity));
-            if (string_replace(listen_identity, sizeof(listen_identity), "$tunneler_id.name", zid->name) != NULL) {
-                listen_opts_p->identity = listen_identity;
-            }
+        const ziti_identity *zid = ziti_get_identity(ziti_ctx);
+        if (resolve_listen_identity(config_listen_options, zid != NULL ? zid->name : NULL, &listen_identity) != 0) {
+            ZITI_LOG(ERROR, "hosted_service[%s] failed to resolve listen identity '%s'", host_ctx->service_name,
+                     config_listen_options->bind_with_identity ? TUNNELER_ID_NAME_VAR : config_listen_options->identity);
+            free_hosted_service_ctx(host_ctx);
+            return NULL;
+        }
+        if (listen_identity != NULL) {
+            listen_opts_p->identity = listen_identity;
+            listen_opts_p->bind_using_edge_identity = false;
         }
     }
-    ziti_listen_with_options(serv, service_name, listen_opts_p, hosted_listen_cb, on_hosted_client_connect);
+
+    ziti_connection serv;
+    ziti_conn_init(ziti_ctx, &serv, host_ctx);
+    host_ctx->serv = serv;
+    int rc = ziti_listen_with_options(serv, service_name, listen_opts_p, hosted_listen_cb, on_hosted_client_connect);
+    free(listen_identity); // ziti_listen_with_options copies it
+    if (rc != ZITI_OK) {
+        ZITI_LOG(ERROR, "hosted_service[%s] failed to bind: %s", host_ctx->service_name, ziti_errorstr(rc));
+        // serv was never bound, so it has no disposer and must not be passed to ziti_close().
+        // detach it so nothing can reach the freed host_ctx through it.
+        ziti_conn_set_data(serv, NULL);
+        free_hosted_service_ctx(host_ctx);
+        return NULL;
+    }
 
     return host_ctx;
 }

@@ -71,10 +71,20 @@ static int update_file(const char *path, char *content, size_t content_len) {
     uint64_t mode = fs_req.statbuf.st_mode;
     CHECK_UV("create backup", uv_fs_copyfile(NULL, &fs_req, path, backup, 0, NULL));
 
+    // flush the copied and staged data to disk before the rename. otherwise an unclean shutdown can
+    // persist the rename (metadata) but not the data, leaving `path` and the backup as correctly
+    // sized files full of NUL bytes (observed on NTFS)
+    CHECK_UV("open backup", f = uv_fs_open(NULL, &fs_req, backup, UV_FS_O_RDWR, 0, NULL));
+    CHECK_UV("sync backup", uv_fs_fsync(NULL, &fs_req, f, NULL));
+    uv_file backup_f = f;
+    f = -1;
+    CHECK_UV("close backup", uv_fs_close(NULL, &fs_req, backup_f, NULL));
+
     CHECK_UV("open new config", f = uv_fs_open(NULL, &fs_req, staged,
                                                UV_FS_O_WRONLY | UV_FS_O_CREAT | UV_FS_O_TRUNC, (int) mode, NULL));
     uv_buf_t buf = uv_buf_init(content, content_len);
     CHECK_UV("write new config", uv_fs_write(NULL, &fs_req, f, &buf, 1, 0, NULL));
+    CHECK_UV("sync new config", uv_fs_fsync(NULL, &fs_req, f, NULL));
 
     uv_file staged_f = f;
     f = -1;

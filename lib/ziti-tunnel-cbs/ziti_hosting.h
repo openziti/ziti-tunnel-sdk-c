@@ -23,6 +23,11 @@
 #include <ziti/ziti_tunnel.h>
 #include "ziti/ziti_tunnel_cbs.h"
 #include "tlsuv/http.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 // allowed address is one of:
 // - ip subnet address
 // - DNS name or wildcard
@@ -64,6 +69,13 @@ struct hosted_service_ctx_s {
     const char *proxy_addr;
     tlsuv_connector_t *proxy_connector;
     tlsuv_connector_t *connector;
+
+    // the server connection, set as soon as it's created (before the bind completes) so the
+    // hosting service can always be stopped by closing it -- see stop_hosting().
+    ziti_connection serv;
+    // opaque back-pointer to the owning ziti_host_t (private to ziti_tunnel_cbs.c), released
+    // by ziti_hosted_serv_conn_close_cb() via ziti_host_release_conn(). never dereferenced here.
+    void *owner;
 };
 
 struct tunneled_service_s {
@@ -72,5 +84,28 @@ struct tunneled_service_s {
 };
 
 void accept_resolver_conn(ziti_connection conn, allowed_hostnames_t *allowed);
+
+/**
+ * resolves the effective listen identity from host.v1 listenOptions. the identity is tunneler_id_name
+ * when bindUsingEdgeIdentity is set, otherwise listenOptions.identity with "$tunneler_id.name" substituted.
+ * when listenIdentityType is "dns" the resolved identity is lower-cased.
+ * returns 0 and sets *resolved to NULL when the configured listen options can be used as-is, or to a newly
+ * allocated identity that the caller must free. returns -1 if "$tunneler_id.name" is needed but tunneler_id_name
+ * is unknown.
+ */
+int resolve_listen_identity(const ziti_listen_options *config_listen_options, const char *tunneler_id_name,
+                            char **resolved);
+
+#ifdef __cplusplus
+}
+#endif
+
+/** drop a hosted service's ziti_host_t (host_ctx->owner) from ziti_instance->hosts without freeing
+ * it, so a service event can host the service again while the closed server connection drains. */
+void ziti_host_unmap(void *owner);
+
+/** finish tearing down a hosted service's ziti_host_t (host_ctx->owner) once its server
+ * connection has closed and its host_ctx has been freed. */
+void ziti_host_release_conn(void *owner);
 
 #endif //ZITI_TUNNEL_SDK_C_ZITI_HOSTING_H

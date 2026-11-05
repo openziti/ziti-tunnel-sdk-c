@@ -19,6 +19,7 @@ package testutil
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -50,9 +51,14 @@ func send[INPUT, RESP any](c *IPCClient, cmd INPUT) (*RESP, error) {
 	if err := json.NewEncoder(c.conn).Encode(cmd); err != nil {
 		return nil, fmt.Errorf("send: %w", err)
 	}
-	var resp RESP
-	if err := json.NewDecoder(c.reader).Decode(&resp); err != nil {
+	// Reads exactly one line: a json.Decoder buffers ahead and would swallow a second reply.
+	line, err := c.reader.ReadBytes('\n')
+	if err != nil {
 		return nil, fmt.Errorf("recv: %w", err)
+	}
+	var resp RESP
+	if err := json.Unmarshal(line, &resp); err != nil {
+		return nil, fmt.Errorf("recv %q: %w", line, err)
 	}
 	return &resp, nil
 }
@@ -607,6 +613,17 @@ func (c *CommandsClient) AddIdentity(t *testing.T, data AddIdentityData) *AddIde
 	require.NoError(t, err, "failed to send AddIdentity\n%s", c.LogPath)
 	resp.t = t
 	return resp
+}
+
+// AssertNoPendingReply fails if ZET writes anything to the command pipe within window
+// while no command is outstanding. Every command gets exactly one reply.
+func (c *CommandsClient) AssertNoPendingReply(t *testing.T, window time.Duration) {
+	require.NoError(t, c.conn.SetReadDeadline(time.Now().Add(window)), "failed to set command pipe read deadline")
+	line, err := c.reader.ReadBytes('\n')
+	require.NoError(t, c.conn.SetReadDeadline(time.Time{}), "failed to clear command pipe read deadline")
+	require.Empty(t, string(line), "unsolicited reply on the command pipe\n%s", c.LogPath)
+	var netErr net.Error
+	require.True(t, errors.As(err, &netErr) && netErr.Timeout(), "command pipe read failed: %v\n%s", err, c.LogPath)
 }
 
 // ---------------------------------------------------------------------------

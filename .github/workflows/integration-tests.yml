@@ -189,6 +189,13 @@ jobs:
             echo "ZITI_BIN=$RUNNER_TEMP/ziti-cli/bin/$bin" >> "$GITHUB_ENV"
           fi
 
+      # hashFiles busts the cache when the dex version pinned in fetch-dex.* changes
+      - name: Cache dex
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/dex/dex*
+          key: dex-${{ runner.os }}-${{ runner.arch }}-${{ inputs.idp-version }}-${{ hashFiles('tests/integration/scripts/fetch-dex.*') }}
+
       - name: Run integration tests (Linux/macOS)
         if: runner.os != 'Windows'
         shell: bash
