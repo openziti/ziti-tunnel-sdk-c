@@ -33,6 +33,8 @@
 enum ns_q_type {
     NS_T_A = 1,
     NS_T_AAAA = 28,
+    NS_T_SVCB = 64,
+    NS_T_HTTPS = 65,
     NS_T_MX = 15,
     NS_T_TXT = 16,
     NS_T_SRV = 33,
@@ -410,6 +412,27 @@ static dns_entry_t *ziti_dns_lookup(const char *hostname) {
     return entry;
 }
 
+/**
+ * True when hostname is intercepted by an active service (exact host or wildcard domain).
+ * Same test as ziti_dns_lookup(), but never allocates a DNS entry/IP for a name nobody asked an address for.
+ */
+static bool ziti_dns_is_intercepted(const char *hostname) {
+    char clean[MAX_DNS_NAME];
+    bool is_wildcard;
+    if (!check_name(hostname, clean, &is_wildcard) || is_wildcard) {
+        return false;
+    }
+
+    dns_entry_t *entry = model_map_get(&ziti_dns.hostnames, clean);
+    if (entry) {
+        return model_map_size(&entry->intercepts) > 0 ||
+               (entry->domain && model_map_size(&entry->domain->intercepts) > 0);
+    }
+
+    dns_domain_t *domain = find_domain(clean);
+    return domain && model_map_size(&domain->intercepts) > 0;
+}
+
 
 void ziti_dns_deregister_intercept(void *intercept) {
     model_map_iter it = model_map_iterator(&ziti_dns.domains);
@@ -483,6 +506,18 @@ const ip_addr_t *ziti_dns_register_hostname(const ziti_address *addr, void *inte
     }
 }
 
+// SOA for the owner name of the question (0xc00c points at it): mname and rname are the root, serial 1,
+// refresh 3600, retry 600, expire 86400, minimum 60; TTL 60. Authority section of a NODATA answer.
+static const uint8_t DNS_NODATA_SOA[] = {
+        0xc0, 0x0c, 0x00, 0x06, 0x00, 0x01, 0x00, 0x00, 0x00, 0x3c, 0x00, 0x16,
+        0x00, 0x00,
+        0x00, 0x00, 0x00, 0x01,
+        0x00, 0x00, 0x0e, 0x10,
+        0x00, 0x00, 0x02, 0x58,
+        0x00, 0x01, 0x51, 0x80,
+        0x00, 0x00, 0x00, 0x3c,
+};
+
 static const char DNS_OPT[] = { 0x0, 0x0, 0x29, 0x10, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 };
 
 #define DNS_HEADER_LEN 12
@@ -496,6 +531,7 @@ static const char DNS_OPT[] = { 0x0, 0x0, 0x29, 0x10, 0x0, 0x0, 0x0, 0x0, 0x0, 0
 #define DNS_SET_TC(p) ((p)[2] = (p)[2] | 0x2)
 #define DNS_SET_CODE(p,c) ((p)[3] = (p)[3] | ((c) & 0xf))
 #define DNS_SET_ANS(p) ((p)[2] = (p)[2] | 0x80)
+#define DNS_SET_NSS(p,n) do{ (p)[8] = (n) >> 8; (p)[9] = (n) & 0xff; } while(0)
 #define DNS_SET_ARS(p,n) do{ (p)[6] = (n) >> 8; (p)[7] = (n) & 0xff; } while(0)
 #define DNS_SET_AARS(p,n) do{ (p)[10] = (n) >> 8; (p)[11] = (n) & 0xff; } while(0)
 
@@ -637,6 +673,13 @@ static void format_resp(struct dns_req *req) {
         DNS_SET_ARS(req->resp, ans_count);
     }
 
+    if (req->msg.status == DNS_NO_ERROR && req->msg.answer == NULL && (size_t)(resp_end - rp) > sizeof(DNS_NODATA_SOA)) {
+        // NODATA: an SOA in the authority section lets the client cache the empty answer (RFC 2308)
+        memcpy(rp, DNS_NODATA_SOA, sizeof(DNS_NODATA_SOA));
+        rp += sizeof(DNS_NODATA_SOA);
+        DNS_SET_NSS(req->resp, 1);
+    }
+
     DNS_SET_AARS(req->resp, 1);
     if (resp_end - rp > 11) {
         memcpy(rp, DNS_OPT, sizeof(DNS_OPT));
@@ -735,7 +778,7 @@ static void on_proxy_write(ziti_connection conn, ssize_t len, void *ctx) {
         struct proxy_dns_req_wr_s *wr = ctx;
         if (len < 0) {
             ZITI_LOG(WARN, "proxy resolve write failed: %s/%zd", ziti_errorstr(len), len);
-            wr->req->msg.status = DNS_SERVFAIL;
+            wr->req->msg.status = DNS_NO_ERROR; // NODATA: a failure would make the client try another resolver
             format_resp(wr->req);
             complete_dns_req(wr->req);
             ziti_close(conn, proxy_domain_close_cb);
@@ -753,7 +796,7 @@ static void proxy_domain_req(struct dns_req *req, dns_domain_t *domain) {
     }
     dns_question *q = req->msg.question[0];
     if (domain->resolv_proxy == NULL) {
-        req->msg.status = DNS_SERVFAIL;
+        req->msg.status = DNS_NO_ERROR; // NODATA: the resolve proxy is not up (yet); SERVFAIL would make the client try another resolver
     } else if (q->type == NS_T_MX || q->type == NS_T_SRV || q->type == NS_T_TXT) {
         size_t jsonlen;
         struct proxy_dns_req_wr_s *wr = calloc(1, sizeof(struct proxy_dns_req_wr_s));
@@ -831,7 +874,18 @@ ssize_t on_dns_req(const void *ziti_io_ctx, void *write_ctx, const void *q_packe
         char reqname[MAX_DNS_NAME];
         check_name(q->name, reqname, NULL);
         dns_domain_t *domain = find_domain(reqname);
-        if (domain) {
+        bool proxied_type = q->type == NS_T_MX || q->type == NS_T_SRV || q->type == NS_T_TXT;
+        if (domain && proxied_type) {
+            proxy_domain_req(req, domain); // resolved by the hosting side over the overlay, never upstream
+        } else if (ziti_dns_is_intercepted(q->name)) {
+            // Any other qtype (HTTPS, SVCB, TXT, CNAME, ANY, ...) of an intercepted name: the overlay has no such record.
+            // HTTPS/SVCB in particular carry ipv4hint/ipv6hint (and ECH), so a client that gets the public record connects
+            // to those addresses and never uses the intercept address. Answer NODATA, never forward upstream and never
+            // fail it (REFUSED/NOTIMP/SERVFAIL may make a client retry another resolver).
+            req->msg.status = DNS_NO_ERROR;
+            format_resp(req);
+            complete_dns_req(req);
+        } else if (domain) {
             proxy_domain_req(req, domain);
         } else {
             int dns_status = query_upstream(req);
