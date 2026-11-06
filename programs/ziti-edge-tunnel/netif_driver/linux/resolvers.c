@@ -496,6 +496,25 @@ static bool set_systemd_resolved_link_domains(sd_bus *bus, const char *tun, int3
     return true;
 }
 
+// 1 when set, 0 when resolved predates SetLinkDefaultRoute (systemd < 240), or a negative error
+static int set_link_default_route(sd_bus *bus, const char *tun, int32_t ifindex, bool default_route) {
+    _cleanup_(sd_bus_message_unrefp_f) sd_bus_message *reply = NULL;
+    _cleanup_(sd_bus_error_free_wrapper) sd_bus_error error = SD_BUS_ERROR_NULL;
+    int r = sd_bus_call_method_f(bus, RESOLVED_DBUS_NAME, RESOLVED_DBUS_PATH, RESOLVED_DBUS_MANAGER_INTERFACE,
+                                 "SetLinkDefaultRoute", &error, &reply, "ib", ifindex, (int) default_route);
+    if (r >= 0) return 1;
+    if (sd_bus_error_has_name_f(&error, SD_BUS_ERROR_UNKNOWN_METHOD)) return 0;
+    ZITI_LOG(ERROR, "Failure calling method: SetLinkDefaultRoute for link: (%s): (%s, %s)", tun, error.name, error.message);
+    return r;
+}
+
+// set by dns_update_systemd_resolved, read on the same thread right after it
+static bool routing_domains_rejected;
+
+bool systemd_resolved_routing_domains_rejected(void) {
+    return routing_domains_rejected;
+}
+
 void dns_update_systemd_resolved(const char *tun, unsigned int ifindex, const char *addr, const char *const *domains) {
     int r;
     struct in_addr inaddr;
@@ -544,18 +563,25 @@ void dns_update_systemd_resolved(const char *tun, unsigned int ifindex, const ch
     // every DefaultRoute link and keeps the first positive answer: a name that also exists in public
     // DNS resolves to its public address, e.g. through the CNAME an upstream returns for an AAAA
     // query that ziti answers empty.
-    ZITI_LOG(INFO, "Setting %zu routing only domains%s on interface: %s", n, wildcard ? " and the wildcard" : "", tun);
-    if (!set_systemd_resolved_link_domains(bus, tun, ifindex, domains, wildcard)) {
-        if (n == 0) return;
-        // e.g. more names than resolved takes per link
-        ZITI_LOG(WARN, "Using the ziti resolver as a default route without routing domains on interface: %s", tun);
-        default_route = true;
-        wildcard = (r == 0);
-        RET_ON_FAIL(set_systemd_resolved_link_domains(bus, tun, ifindex, NULL, wildcard));
+    routing_domains_rejected = false;
+    if (n > 0) {
+        ZITI_LOG(INFO, "Setting %zu routing only domains%s on interface: %s", n, wildcard ? " and the wildcard" : "", tun);
+        // routing-only domains take the default route away from a link unless it is set, which resolved
+        // before 240 cannot do; there the link keeps it only through the wildcard
+        bool kept = set_systemd_resolved_link_domains(bus, tun, ifindex, domains, wildcard);
+        int set = kept ? set_link_default_route(bus, tun, ifindex, default_route) : -1;
+        if (set < 0 || (set == 0 && default_route && !wildcard)) {
+            // e.g. more names than resolved takes per link
+            ZITI_LOG(WARN, "Could not set routing domains, configuring interface %s without them", tun);
+            routing_domains_rejected = true;
+            n = 0;
+            wildcard = (r == 0);
+        }
     }
-
-    // routing-only domains take the default route away from a link unless it is set
-    RET_ON_FAIL(set_systemd_resolved_link_setting(bus, tun, "SetLinkDefaultRoute", "ib", ifindex, default_route));
+    if (n == 0) {
+        RET_ON_FAIL(set_systemd_resolved_link_domains(bus, tun, ifindex, NULL, wildcard));
+        set_link_default_route(bus, tun, ifindex, true); // undoes a previous update; missing before 240
+    }
 
     sd_bus_run_command(bus, RESOLVED_DBUS_NAME, RESOLVED_DBUS_PATH, RESOLVED_DBUS_MANAGER_INTERFACE, "FlushCaches");
     sd_bus_run_command(bus, RESOLVED_DBUS_NAME, RESOLVED_DBUS_PATH, RESOLVED_DBUS_MANAGER_INTERFACE, "ResetServerFeatures");
