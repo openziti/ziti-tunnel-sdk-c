@@ -64,11 +64,14 @@ func TestResolvedRoutingDomains(t *testing.T) {
 		}
 	}
 
-	// with only the system's servers to forward to, the link carries just the intercepted names
+	// with only the system's servers to forward to, the link carries just the intercepted names.
+	// "Protocols: -DefaultRoute" (systemd 251+) or "Default Route: no" / "DefaultRoute setting: no";
+	// before 240 there is no such setting, and a link with routing-only domains gets no other names
 	status := resolvectl(t, "status", tun)
-	// "Protocols: -DefaultRoute" (systemd 251+) or "Default Route: no" / "DefaultRoute setting: no"
-	require.Regexp(t, regexp.MustCompile(`(?i)-DefaultRoute\b|default ?route[^:\n]*:\s*no`), status,
-		"%s should not be a default route without --dns-upstream\n%s", tun, interceptZET.LogFile())
+	if regexp.MustCompile(`(?i)default ?route`).MatchString(status) {
+		require.Regexp(t, regexp.MustCompile(`(?i)-DefaultRoute\b|default ?route[^:\n]*:\s*no`), status,
+			"%s should not be a default route without --dns-upstream\n%s", tun, interceptZET.LogFile())
+	}
 
 	dnsServer, err := interceptZET.DNSServer()
 	require.NoError(t, err, "get intercept ZET DNS server")
