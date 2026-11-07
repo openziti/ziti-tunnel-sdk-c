@@ -334,12 +334,13 @@ static bool check_name(const char *name, char clean_name[MAX_DNS_NAME], bool *is
 }
 
 static dns_entry_t* new_ipv4_entry(const char *host) {
-    dns_entry_t *entry = calloc(1, sizeof(dns_entry_t));
-    strncpy(entry->name, host, sizeof(entry->name));
     uint32_t next = next_ipv4();
     if (next == INADDR_NONE) {
         return NULL;
     }
+
+    dns_entry_t *entry = calloc(1, sizeof(dns_entry_t));
+    strncpy(entry->name, host, sizeof(entry->name));
 
     ip_addr_set_ip4_u32(&entry->addr, next);
     ipaddr_ntoa_r(&entry->addr, entry->ip, sizeof(entry->ip));
@@ -411,6 +412,8 @@ static dns_entry_t *ziti_dns_lookup(const char *hostname) {
 }
 
 
+static void drop_domain(dns_domain_t *domain);
+
 void ziti_dns_deregister_intercept(void *intercept) {
     model_map_iter it = model_map_iterator(&ziti_dns.domains);
     while (it != NULL) {
@@ -428,6 +431,9 @@ void ziti_dns_deregister_intercept(void *intercept) {
             model_map_removel(&ziti_dns.ip_addresses, ip_2_ip4(&e->addr)->addr);
             ZITI_LOG(DEBUG, "%zu active hostnames mapped to %zu IPs", model_map_size(&ziti_dns.hostnames), model_map_size(&ziti_dns.ip_addresses));
             ZITI_LOG(INFO, "DNS mapping %s -> %s is now inactive", e->name, e->ip);
+            // no longer in either map, and callers copy what they need from an entry right away
+            // (the intercept address, the hostname), so nothing else points at it
+            free(e);
         } else {
             it = model_map_it_next(it);
         }
@@ -439,6 +445,7 @@ void ziti_dns_deregister_intercept(void *intercept) {
         if (model_map_size(&domain->intercepts) == 0) {
             it = model_map_it_remove(it);
             ZITI_LOG(INFO, "wildcard domain[*%s] is now inactive", domain->name);
+            drop_domain(domain); // may free it: do not use it after this
         } else {
             it = model_map_it_next(it);
         }
@@ -673,6 +680,7 @@ static void process_host_req(struct dns_req *req) {
     }
 }
 
+// the context of the proxy connection is its domain, or NULL once the domain has been dropped (see drop_domain)
 static void proxy_domain_close_cb(ziti_connection c) {
     dns_domain_t *domain = ziti_conn_data(c);
     if (domain) {
@@ -680,8 +688,34 @@ static void proxy_domain_close_cb(ziti_connection c) {
     }
 }
 
+// The domain is no longer in ziti_dns.domains: the service it stood for is gone. Entries made from it must not keep
+// pointing at it, and its proxy resolve connection has nothing left to talk to, so close that.
+// The callbacks of that connection get the domain as their context: take it away first, they ignore a connection
+// without one, and the domain can be freed right away.
+static void drop_domain(dns_domain_t *domain) {
+    model_map_iter it = model_map_iterator(&ziti_dns.hostnames);
+    while (it != NULL) {
+        dns_entry_t *e = model_map_it_value(it);
+        if (e->domain == domain) {
+            e->domain = NULL;
+        }
+        it = model_map_it_next(it);
+    }
+
+    if (domain->resolv_proxy != NULL) {
+        ziti_conn_set_data(domain->resolv_proxy, NULL);
+        ziti_close(domain->resolv_proxy, proxy_domain_close_cb);
+    }
+    free(domain);
+}
+
 static void on_proxy_connect(ziti_connection conn, int status) {
     dns_domain_t *domain = ziti_conn_data(conn);
+    if (domain == NULL) {
+        // the domain was dropped while the connection was being established: nobody is waiting for it
+        ziti_close(conn, proxy_domain_close_cb);
+        return;
+    }
     if (status == ZITI_OK) {
         ZITI_LOG(INFO, "proxy resolve connection established for domain[%s]", domain->name);
         domain->resolv_proxy = conn;
