@@ -82,7 +82,7 @@ func TestTunnelerToTunnelerLongHostname(t *testing.T) {
 	label := strings.Repeat("a", 60)
 	hostname := strings.Join([]string{label, label, label, "long", "ziti"}, ".")
 
-	echo := testutil.StartTCPEcho(t)
+	echo := testutil.StartTCPEcho(t, "127.0.0.1:0")
 	_, echoPort, err := net.SplitHostPort(echo.Addr)
 	require.NoError(t, err, "parse echo addr")
 	echoPortInt := 0
@@ -146,7 +146,7 @@ func testT2TTCP(t *testing.T, interceptZET, hostZET *testutil.ZET, interceptIP s
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 
-	echo := testutil.StartTCPEcho(t)
+	echo := testutil.StartTCPEcho(t, "127.0.0.1:0")
 	_, echoPort, err := net.SplitHostPort(echo.Addr)
 	require.NoError(t, err, "parse echo addr")
 	echoPortInt := 0
