@@ -224,3 +224,70 @@ TEST_CASE("deregistering a wildcard domain releases it", "[dns]") {
 #endif
     (void) growth;
 }
+static void ziti_address_from_host(ziti_address *za, const char *host) {
+    static char json[64];
+    snprintf(json, sizeof(json), "\"%s\"", host);
+    parse_ziti_address(za, json, strlen(json));
+}
+
+TEST_CASE("an entry with its own intercept follows the wildcard domain that covers it", "[dns]") {
+    dns_test_setup("100.68.0.2", "100.68.0.1/28");
+
+    static int host_intercept;
+    static int domain_intercept;
+    ziti_address host, wild;
+    ziti_address_from_host(&host, "foo.covered.test");
+    ziti_address_from_host(&wild, "*.covered.test");
+
+    // the hostname has an intercept of its own and exists before the wildcard domain does
+    const ip_addr_t *ip = ziti_dns_register_hostname(&host, &host_intercept);
+    REQUIRE(ip != nullptr);
+    CHECK(ziti_dns_reverse_lookup_domain(ip) == nullptr);
+
+    CHECK(ziti_dns_register_hostname(&wild, &domain_intercept) == nullptr);
+    const char *domain = ziti_dns_reverse_lookup_domain(ip);
+    REQUIRE(domain != nullptr);
+    CHECK_THAT(domain, Catch::Equals("*.covered.test"));
+
+    // the service behind the wildcard is updated: its intercept goes away and is registered again. The entry stays,
+    // because its own intercept does, and it must be covered by the new domain too.
+    ziti_dns_deregister_intercept(&domain_intercept);
+    CHECK(ziti_dns_reverse_lookup_domain(ip) == nullptr);
+    CHECK(ziti_dns_register_hostname(&wild, &domain_intercept) == nullptr);
+    domain = ziti_dns_reverse_lookup_domain(ip);
+    REQUIRE(domain != nullptr);
+    CHECK_THAT(domain, Catch::Equals("*.covered.test"));
+
+    ziti_dns_deregister_intercept(&domain_intercept);
+    ziti_dns_deregister_intercept(&host_intercept);
+}
+
+TEST_CASE("the last free ip of the pool is handed out", "[dns]") {
+    dns_test_setup("100.69.0.2", "100.69.0.1/28");
+
+    const int max_hosts = 64;
+    static int intercepts[max_hosts];
+    static int extra;
+    ziti_address za;
+
+    int registered = 0;
+    while (registered < max_hosts) {
+        ziti_address_from_name(&za, "lastip", registered);
+        if (ziti_dns_register_hostname(&za, &intercepts[registered]) == nullptr) {
+            break;
+        }
+        registered++;
+    }
+    REQUIRE(registered > 0);
+    REQUIRE(registered < max_hosts); // the pool did run out
+
+    // the address handed out last is free again: it is the only free one, and the last one the search looks at
+    ziti_dns_deregister_intercept(&intercepts[registered - 1]);
+    ziti_address_from_name(&za, "again", 0);
+    CHECK(ziti_dns_register_hostname(&za, &extra) != nullptr);
+
+    ziti_dns_deregister_intercept(&extra);
+    for (int i = 0; i < registered - 1; i++) {
+        ziti_dns_deregister_intercept(&intercepts[i]);
+    }
+}
