@@ -50,6 +50,7 @@ bool try_libsystemd_resolver(const char *tun_name);
 #endif
 bool is_systemd_resolved_primary_resolver(void);
 bool is_resolvconf_systemd_resolved(void);
-void dns_update_systemd_resolved(const char* tun, unsigned int ifindex, const char* addr);
-void dns_update_resolvconf(const char* tun, unsigned int ifindex, const char* addr);
-void dns_update_etc_resolv(const char* tun, unsigned int ifindex, const char* addr);
+// the updaters take the intercepted names and whether the ziti resolver can answer other names (has an upstream);
+// these two only configure the ziti resolver as a DNS server, see resolved_dns.h for the one that uses the names
+void dns_update_resolvconf(const char* tun, unsigned int ifindex, const char* addr, char **domains, bool default_route);
+void dns_update_etc_resolv(const char* tun, unsigned int ifindex, const char* addr, char **domains, bool default_route);

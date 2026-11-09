@@ -206,6 +206,12 @@ extern tunneler_context ziti_tunneler_init_host_only(tunneler_sdk_options *opts,
 extern void ziti_tunneler_exclude_route(tunneler_context tnlr_ctx, const char* dst);
 extern void ziti_tunnel_commit_routes(tunneler_context tnlr_ctx);
 
+/** notify the netif driver that the set of intercepted DNS names may have changed */
+extern void ziti_tunneler_dns_domains_changed(tunneler_context tnlr_ctx);
+
+/** ask the netif driver to provide fresh fallback DNS servers via ziti_dns_set_fallback_upstream() */
+extern void ziti_tunneler_dns_refresh_fallback(tunneler_context tnlr_ctx);
+
 /** called by tunneler application when it is done with a tunneler_context.
  * calls `stop_intercepting` for each intercepted service. */
 extern void ziti_tunneler_shutdown(tunneler_context tnlr_ctx);

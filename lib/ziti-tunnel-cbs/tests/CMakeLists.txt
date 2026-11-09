@@ -3,6 +3,9 @@ enable_testing()
 # package tests into a library so they can be referenced in all_tests
 add_library(ziti-tunnel-cbs-c-test-lib OBJECT
         dns_test.cpp
+        dns_domains_test.cpp
+        dns_upstream_test.cpp
+        dns_compact_test.cpp
         hosting_test.cpp
         string_replace_test.cpp
 )
@@ -32,3 +35,5 @@ endif ()
 
 include(CTest)
 add_test(quick_tests ziti-tunnel-cbs-c-test-runner -d yes)
+# these run a full tunneler (lwIP), which can be initialized only once per process
+add_test(dns_upstream_tests ziti-tunnel-cbs-c-test-runner -d yes "[upstream]")
