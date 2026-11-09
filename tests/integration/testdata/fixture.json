@@ -646,6 +646,36 @@
       "name": "test_mfa_posture_check",
       "typeId": "MFA",
       "roleAttributes": ["test-mfa-posture"]
+    },
+    {
+      "name": "test_mfa_posture_timeout_check",
+      "typeId": "MFA",
+      "timeoutSeconds": 30,
+      "roleAttributes": ["test_mfa_posture_timeout_check"]
+    },
+    {
+      "name": "test_mfa_posture_renewal_check",
+      "typeId": "MFA",
+      "timeoutSeconds": 30,
+      "roleAttributes": ["test_mfa_posture_renewal_check"]
+    },
+    {
+      "name": "test_mfa_posture_reauth_check",
+      "typeId": "MFA",
+      "timeoutSeconds": 60,
+      "roleAttributes": ["test_mfa_posture_reauth_check"]
+    },
+    {
+      "name": "test_mfa_posture_mixed_check",
+      "typeId": "MFA",
+      "timeoutSeconds": 30,
+      "roleAttributes": ["test_mfa_posture_mixed_check"]
+    },
+    {
+      "name": "test_mfa_posture_mixed_long_check",
+      "typeId": "MFA",
+      "timeoutSeconds": 120,
+      "roleAttributes": ["test_mfa_posture_mixed_long_check"]
     }
   ],
   "services": [
@@ -859,38 +889,6 @@
       "identityRoles": ["@test_mfa_posture_mixed"],
       "serviceRoles": ["@test_mfa_posture_mixed_long_svc"],
       "postureCheckRoles": ["#test_mfa_posture_mixed_long_check"]
-    }
-  ],
-  "postureChecks": [
-    {
-      "name": "test_mfa_posture_timeout_check",
-      "typeId": "MFA",
-      "timeoutSeconds": 30,
-      "roleAttributes": ["test_mfa_posture_timeout_check"]
-    },
-    {
-      "name": "test_mfa_posture_renewal_check",
-      "typeId": "MFA",
-      "timeoutSeconds": 30,
-      "roleAttributes": ["test_mfa_posture_renewal_check"]
-    },
-    {
-      "name": "test_mfa_posture_reauth_check",
-      "typeId": "MFA",
-      "timeoutSeconds": 60,
-      "roleAttributes": ["test_mfa_posture_reauth_check"]
-    },
-    {
-      "name": "test_mfa_posture_mixed_check",
-      "typeId": "MFA",
-      "timeoutSeconds": 30,
-      "roleAttributes": ["test_mfa_posture_mixed_check"]
-    },
-    {
-      "name": "test_mfa_posture_mixed_long_check",
-      "typeId": "MFA",
-      "timeoutSeconds": 120,
-      "roleAttributes": ["test_mfa_posture_mixed_long_check"]
     }
   ]
 }
