@@ -142,7 +142,7 @@ func mfaNeededWhenFirstServiceTimesOut(t *testing.T) {
 	})
 }
 
-type mfaPostureService struct {
+type mfaPostureSetup struct {
 	identifier string
 	secret     string
 	// the code verifying the enrollment was taken between these
@@ -152,7 +152,7 @@ type mfaPostureService struct {
 
 // setUpMfaPostureService enrolls idName with MFA, returning once the tunneler has its code for
 // the service behind the MFA posture check (all from testdata/fixture.json) with the given timeout.
-func setUpMfaPostureService(t *testing.T, idName string, checkTimeout time.Duration) mfaPostureService {
+func setUpMfaPostureService(t *testing.T, idName string, checkTimeout time.Duration) mfaPostureSetup {
 	t.Helper()
 	beforeCode := time.Now()
 	enrollment, secret := testutil.EnrollAndVerifyMFA(t, state.overlay, state.zetClient, idName)
@@ -164,7 +164,7 @@ func setUpMfaPostureService(t *testing.T, idName string, checkTimeout time.Durat
 	for !hasCodeForService(statusIdentity(t, enrollment.Identifier), idName+"_svc", checkTimeout) {
 		time.Sleep(500 * time.Millisecond)
 	}
-	return mfaPostureService{
+	return mfaPostureSetup{
 		identifier: enrollment.Identifier,
 		secret:     secret,
 		beforeCode: beforeCode,
