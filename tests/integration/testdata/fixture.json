@@ -82,6 +82,30 @@
       "enrollment": { "ott": true }
     },
     {
+      "name": "test_mfa_posture_timeout",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
+      "name": "test_mfa_posture_renewal",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
+      "name": "test_mfa_posture_reauth",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
+      "name": "test_mfa_posture_mixed",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
       "name": "test_mfa_policy_added_unenrolled",
       "isAdmin": false,
       "authPolicy": "@Default",
@@ -464,6 +488,51 @@
       }
     },
     {
+      "name": "test_mfa_posture_timeout_intercept",
+      "configType": "@intercept.v1",
+      "data": {
+        "protocols": ["tcp"],
+        "addresses": ["test-mfa-posture-timeout.ziti"],
+        "portRanges": [{ "low": 80, "high": 80 }]
+      }
+    },
+    {
+      "name": "test_mfa_posture_renewal_intercept",
+      "configType": "@intercept.v1",
+      "data": {
+        "protocols": ["tcp"],
+        "addresses": ["test-mfa-posture-renewal.ziti"],
+        "portRanges": [{ "low": 80, "high": 80 }]
+      }
+    },
+    {
+      "name": "test_mfa_posture_reauth_intercept",
+      "configType": "@intercept.v1",
+      "data": {
+        "protocols": ["tcp"],
+        "addresses": ["test-mfa-posture-reauth.ziti"],
+        "portRanges": [{ "low": 80, "high": 80 }]
+      }
+    },
+    {
+      "name": "test_mfa_posture_mixed_intercept",
+      "configType": "@intercept.v1",
+      "data": {
+        "protocols": ["tcp"],
+        "addresses": ["test-mfa-posture-mixed.ziti"],
+        "portRanges": [{ "low": 80, "high": 80 }]
+      }
+    },
+    {
+      "name": "test_mfa_posture_mixed_long_intercept",
+      "configType": "@intercept.v1",
+      "data": {
+        "protocols": ["tcp"],
+        "addresses": ["test-mfa-posture-mixed-long.ziti"],
+        "portRanges": [{ "low": 80, "high": 80 }]
+      }
+    },
+    {
       "name": "test_mfa_posture_host_cfg",
       "configType": "@host.v1",
       "data": {
@@ -577,6 +646,36 @@
       "name": "test_mfa_posture_check",
       "typeId": "MFA",
       "roleAttributes": ["test-mfa-posture"]
+    },
+    {
+      "name": "test_mfa_posture_timeout_check",
+      "typeId": "MFA",
+      "timeoutSeconds": 30,
+      "roleAttributes": ["test_mfa_posture_timeout_check"]
+    },
+    {
+      "name": "test_mfa_posture_renewal_check",
+      "typeId": "MFA",
+      "timeoutSeconds": 30,
+      "roleAttributes": ["test_mfa_posture_renewal_check"]
+    },
+    {
+      "name": "test_mfa_posture_reauth_check",
+      "typeId": "MFA",
+      "timeoutSeconds": 60,
+      "roleAttributes": ["test_mfa_posture_reauth_check"]
+    },
+    {
+      "name": "test_mfa_posture_mixed_check",
+      "typeId": "MFA",
+      "timeoutSeconds": 30,
+      "roleAttributes": ["test_mfa_posture_mixed_check"]
+    },
+    {
+      "name": "test_mfa_posture_mixed_long_check",
+      "typeId": "MFA",
+      "timeoutSeconds": 120,
+      "roleAttributes": ["test_mfa_posture_mixed_long_check"]
     }
   ],
   "services": [
@@ -619,6 +718,31 @@
       "name": "test_posture_added_mfa_svc",
       "encryptionRequired": true,
       "configs": ["@test_posture_added_mfa_host_cfg", "@test_posture_added_mfa_intercept"]
+    },
+    {
+      "name": "test_mfa_posture_timeout_svc",
+      "encryptionRequired": true,
+      "configs": ["@test_mfa_posture_timeout_intercept"]
+    },
+    {
+      "name": "test_mfa_posture_renewal_svc",
+      "encryptionRequired": true,
+      "configs": ["@test_mfa_posture_renewal_intercept"]
+    },
+    {
+      "name": "test_mfa_posture_reauth_svc",
+      "encryptionRequired": true,
+      "configs": ["@test_mfa_posture_reauth_intercept"]
+    },
+    {
+      "name": "test_mfa_posture_mixed_svc",
+      "encryptionRequired": true,
+      "configs": ["@test_mfa_posture_mixed_intercept"]
+    },
+    {
+      "name": "test_mfa_posture_mixed_long_svc",
+      "encryptionRequired": true,
+      "configs": ["@test_mfa_posture_mixed_long_intercept"]
     }
   ],
   "servicePolicies": [
@@ -725,6 +849,46 @@
       "identityRoles": ["@test_posture_added_mfa_client"],
       "serviceRoles": ["@test_posture_added_mfa_svc"],
       "postureCheckRoles": ["#test-posture-added-mfa"]
+    },
+    {
+      "name": "test_mfa_posture_timeout_dial",
+      "type": "Dial",
+      "semantic": "AnyOf",
+      "identityRoles": ["@test_mfa_posture_timeout"],
+      "serviceRoles": ["@test_mfa_posture_timeout_svc"],
+      "postureCheckRoles": ["#test_mfa_posture_timeout_check"]
+    },
+    {
+      "name": "test_mfa_posture_renewal_dial",
+      "type": "Dial",
+      "semantic": "AnyOf",
+      "identityRoles": ["@test_mfa_posture_renewal"],
+      "serviceRoles": ["@test_mfa_posture_renewal_svc"],
+      "postureCheckRoles": ["#test_mfa_posture_renewal_check"]
+    },
+    {
+      "name": "test_mfa_posture_reauth_dial",
+      "type": "Dial",
+      "semantic": "AnyOf",
+      "identityRoles": ["@test_mfa_posture_reauth"],
+      "serviceRoles": ["@test_mfa_posture_reauth_svc"],
+      "postureCheckRoles": ["#test_mfa_posture_reauth_check"]
+    },
+    {
+      "name": "test_mfa_posture_mixed_dial",
+      "type": "Dial",
+      "semantic": "AnyOf",
+      "identityRoles": ["@test_mfa_posture_mixed"],
+      "serviceRoles": ["@test_mfa_posture_mixed_svc"],
+      "postureCheckRoles": ["#test_mfa_posture_mixed_check"]
+    },
+    {
+      "name": "test_mfa_posture_mixed_long_dial",
+      "type": "Dial",
+      "semantic": "AnyOf",
+      "identityRoles": ["@test_mfa_posture_mixed"],
+      "serviceRoles": ["@test_mfa_posture_mixed_long_svc"],
+      "postureCheckRoles": ["#test_mfa_posture_mixed_long_check"]
     }
   ]
 }
