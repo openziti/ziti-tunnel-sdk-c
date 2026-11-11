@@ -14,6 +14,7 @@
  limitations under the License.
  */
 
+#include <functional>
 #include "catch2/catch.hpp"
 #include "ziti/ziti_tunnel.h"
 #include "ziti/ziti_tunnel_cbs.h"
@@ -21,6 +22,10 @@
 #include "ziti/model_collections.h"
 
 static int mock_add_route(netif_handle tun, const char *dest) {
+    return 0;
+}
+
+static int mock_delete_route(netif_handle tun, const char *dest) {
     return 0;
 }
 
@@ -32,7 +37,7 @@ static void ziti_address_from_index(ziti_address *za, uint32_t i) {
 
 // lwip is initialized by ziti_tunneler_init and cannot be initialized twice in one process (the second call never
 // returns), so all test cases share one tunneler and each one only seeds the dns pool with its own address range
-static void dns_test_setup(const char *dns_ip, const char *cidr) {
+static tunneler_context dns_test_setup(const char *dns_ip, const char *cidr) {
     static netif_driver_t mock_netif = {};
     static tunneler_sdk_options tnlr_opts = {
             .l3_netif_driver = &mock_netif,
@@ -45,9 +50,11 @@ static void dns_test_setup(const char *dns_ip, const char *cidr) {
     static tunneler_context tnlr = nullptr;
     if (tnlr == nullptr) {
         mock_netif.add_route = mock_add_route;
+        mock_netif.delete_route = mock_delete_route;
         tnlr = ziti_tunneler_init(&tnlr_opts, uv_default_loop());
     }
     ziti_dns_setup(tnlr, dns_ip, cidr);
+    return tnlr;
 }
 
 TEST_CASE("recycle ip", "[dns]") {
@@ -290,4 +297,87 @@ TEST_CASE("the last free ip of the pool is handed out", "[dns]") {
     for (int i = 0; i < registered - 1; i++) {
         ziti_dns_deregister_intercept(&intercepts[i]);
     }
+}
+
+// An identity with the services it dials, as far as the intercepts and dns names go: the ziti context only carries the
+// instance, nothing connects to a controller.
+struct test_identity {
+    ziti_context ztx = nullptr;
+    struct ziti_instance_s inst = {};
+
+    test_identity() {
+        ziti_config cfg = {};
+        cfg.controller_url = const_cast<char *>("https://localhost:1");
+        REQUIRE(ziti_context_init(&ztx, &cfg) == ZITI_OK);
+        ziti_set_app_ctx(ztx, &inst);
+    }
+};
+
+static ziti_service *new_intercept_service(const char *name, const char *hostname) {
+    char cfg[256];
+    snprintf(cfg, sizeof(cfg),
+             "{\"protocols\":[\"tcp\"],\"addresses\":[\"%s\"],\"portRanges\":[{\"low\":80,\"high\":80}]}", hostname);
+    auto *svc = new ziti_service();
+    svc->name = strdup(name);
+    svc->perm_flags = ZITI_CAN_DIAL;
+    model_map_set(&svc->config, "intercept.v1", strdup(cfg));
+    return svc;
+}
+
+TEST_CASE("removing an identity unregisters the dns names of its services", "[dns]") {
+    tunneler_context tnlr = dns_test_setup("100.70.0.2", "100.70.0.1/28");
+    test_identity id;
+
+    // the first two names get the first two free addresses of the pool
+    ziti_service *unavailable = new_intercept_service("rmid-unavailable", "unavailable.rmid.test");
+    ziti_service *removed = new_intercept_service("rmid-removed", "removed.rmid.test");
+    ziti_sdk_c_on_service(id.ztx, unavailable, ZITI_OK, tnlr);
+    ziti_sdk_c_on_service(id.ztx, removed, ZITI_OK, tnlr);
+    REQUIRE(model_map_size(&id.inst.intercepts) == 2);
+    REQUIRE(ziti_dns_reverse_lookup("100.70.0.3") != nullptr);
+    REQUIRE(ziti_dns_reverse_lookup("100.70.0.4") != nullptr);
+
+    // a service that goes away takes its dns name with it
+    ziti_sdk_c_on_service(id.ztx, unavailable, ZITI_SERVICE_UNAVAILABLE, tnlr);
+    CHECK(model_map_size(&id.inst.intercepts) == 1);
+    CHECK(ziti_dns_reverse_lookup("100.70.0.3") == nullptr);
+
+    // so should removing the identity
+    remove_intercepts(id.ztx, tnlr);
+    CHECK(model_map_size(&id.inst.intercepts) == 0);
+    CHECK(ziti_dns_reverse_lookup("100.70.0.4") == nullptr);
+}
+
+TEST_CASE("removing an identity releases its intercepts", "[dns]") {
+    tunneler_context tnlr = dns_test_setup("100.71.0.2", "100.71.0.1/28");
+    test_identity id;
+    ziti_service *svc = new_intercept_service("rmid-leak", "leak.rmid.test");
+
+    // heap growth over rounds of adding the intercept and then taking it away in the way given
+    auto growth_of = [&](const std::function<void()> &take_away) {
+        auto cycle = [&]() {
+            ziti_sdk_c_on_service(id.ztx, svc, ZITI_OK, tnlr);
+            take_away();
+        };
+        cycle(); // warm up: the maps reach their working size
+
+        long long before = HEAP_IN_USE();
+        for (int round = 0; round < 20; round++) {
+            cycle();
+        }
+        return HEAP_IN_USE() - before;
+    };
+
+    // the service goes away: the way that already releases everything
+    long long unavailable = growth_of([&]() { ziti_sdk_c_on_service(id.ztx, svc, ZITI_SERVICE_UNAVAILABLE, tnlr); });
+    long long removed = growth_of([&]() { remove_intercepts(id.ztx, tnlr); });
+
+#ifdef DNS_TEST_ASAN
+    INFO("heap grew by " << unavailable << " bytes over 20 rounds of a service going away");
+    CHECK(unavailable < LEAK_TOLERANCE);
+    INFO("heap grew by " << removed << " bytes over 20 rounds of removing the identity");
+    CHECK(removed < LEAK_TOLERANCE);
+#endif
+    (void) unavailable;
+    (void) removed;
 }
