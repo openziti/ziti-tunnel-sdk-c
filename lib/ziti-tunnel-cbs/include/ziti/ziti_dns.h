@@ -45,6 +45,23 @@ const char *ziti_dns_reverse_lookup(const char *ip_addr);
 
 void ziti_dns_deregister_intercept(void *intercept);
 
+typedef void (*ziti_dns_name_cb)(const char *name, void *ctx);
+
+/**
+ * Calls cb once for every name an active intercept resolves: each hostname, and each wildcard
+ * domain without its "*." prefix. Names are lower case and may carry a trailing dot.
+ */
+void ziti_dns_foreach_intercepted_name(ziti_dns_name_cb cb, void *ctx);
+
+/** true when an upstream is configured with ziti_dns_set_upstream() */
+bool ziti_dns_has_upstream(void);
+
+/**
+ * Upstream servers the netif driver found on its own, e.g. the system's DNS servers, used for the queries
+ * ziti does not intercept while no upstream is configured. An empty list removes them.
+ */
+int ziti_dns_set_fallback_upstream(uv_loop_t *l, tunnel_upstream_dns_array upstreams);
+
 #ifdef __cplusplus
 };
 #endif

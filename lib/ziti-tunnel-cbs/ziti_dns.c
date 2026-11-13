@@ -114,6 +114,7 @@ struct ziti_dns_s {
     bool is_ipv4;
     int num_dns_up;
     struct sockaddr_in6 upstream_addr[MAX_UPSTREAMS];
+    bool upstream_configured; // by ziti_dns_set_upstream(); a fallback never replaces it
 } ziti_dns;
 
 static uint32_t next_ipv4() {
@@ -211,7 +212,7 @@ ZITI_LOG(ERROR, "failed [" #op "]: %d(%s)", rc, uv_strerror(rc)); \
 return rc;} \
 }while(0)
 
-int ziti_dns_set_upstream(uv_loop_t *l, tunnel_upstream_dns_array upstreams) {
+static int set_upstreams(uv_loop_t *l, tunnel_upstream_dns_array upstreams) {
     if (!uv_is_active((const uv_handle_t *) &ziti_dns.upstream)) {
         CHECK_UV(uv_udp_init(l, &ziti_dns.upstream));
         int r = uv_udp_bind(&ziti_dns.upstream,
@@ -278,6 +279,23 @@ int ziti_dns_set_upstream(uv_loop_t *l, tunnel_upstream_dns_array upstreams) {
     }
     ziti_dns.num_dns_up = idx;
     return 0;
+}
+
+int ziti_dns_set_upstream(uv_loop_t *l, tunnel_upstream_dns_array upstreams) {
+    int rc = set_upstreams(l, upstreams);
+    ziti_dns.upstream_configured = ziti_dns.num_dns_up > 0;
+    return rc;
+}
+
+int ziti_dns_set_fallback_upstream(uv_loop_t *l, tunnel_upstream_dns_array upstreams) {
+    if (ziti_dns.upstream_configured) {
+        return 0;
+    }
+    if (upstreams == NULL || upstreams[0] == NULL) {
+        ziti_dns.num_dns_up = 0;
+        return 0;
+    }
+    return set_upstreams(l, upstreams);
 }
 
 
@@ -458,6 +476,28 @@ void ziti_dns_deregister_intercept(void *intercept) {
             it = model_map_it_next(it);
         }
     }
+}
+
+void ziti_dns_foreach_intercepted_name(ziti_dns_name_cb cb, void *ctx) {
+    const char *key;
+    dns_entry_t *entry;
+    MODEL_MAP_FOREACH(key, entry, &ziti_dns.hostnames) {
+        // entries created by a wildcard lookup have no intercepts of their own: the domain covers them
+        if (model_map_size(&entry->intercepts) > 0) {
+            cb(entry->name, ctx);
+        }
+    }
+
+    dns_domain_t *domain;
+    MODEL_MAP_FOREACH(key, domain, &ziti_dns.domains) {
+        if (model_map_size(&domain->intercepts) > 0) {
+            cb(key, ctx); // keyed without the "*." prefix
+        }
+    }
+}
+
+bool ziti_dns_has_upstream(void) {
+    return ziti_dns.upstream_configured;
 }
 
 const ip_addr_t *ziti_dns_register_hostname(const ziti_address *addr, void *intercept) {

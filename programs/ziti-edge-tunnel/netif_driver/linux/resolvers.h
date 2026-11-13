@@ -15,6 +15,7 @@
  */
 
 #include <stdbool.h>
+#include <netinet/in.h>
 
 #ifndef BUSCTL
 #define BUSCTL "/usr/bin/busctl"
@@ -47,9 +48,12 @@
 
 #ifndef EXCLUDE_LIBSYSTEMD_RESOLVER
 bool try_libsystemd_resolver(const char *tun_name);
+int systemd_resolved_dns_servers(char servers[][INET6_ADDRSTRLEN], int max);
+// true when the last dns_update_systemd_resolved() had to leave the routing domains out
+bool systemd_resolved_routing_domains_rejected(void);
 #endif
 bool is_systemd_resolved_primary_resolver(void);
 bool is_resolvconf_systemd_resolved(void);
-void dns_update_systemd_resolved(const char* tun, unsigned int ifindex, const char* addr);
-void dns_update_resolvconf(const char* tun, unsigned int ifindex, const char* addr);
-void dns_update_etc_resolv(const char* tun, unsigned int ifindex, const char* addr);
+void dns_update_systemd_resolved(const char* tun, unsigned int ifindex, const char* addr, const char *const *domains);
+void dns_update_resolvconf(const char* tun, unsigned int ifindex, const char* addr, const char *const *domains);
+void dns_update_etc_resolv(const char* tun, unsigned int ifindex, const char* addr, const char *const *domains);

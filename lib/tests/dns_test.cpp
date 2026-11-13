@@ -21,6 +21,9 @@
 #include "ziti/ziti_dns.h"
 #include "ziti/model_collections.h"
 
+#include <set>
+#include <string>
+
 static int mock_add_route(netif_handle tun, const char *dest) {
     return 0;
 }
@@ -101,6 +104,58 @@ TEST_CASE("recycle ip", "[dns]") {
     // last ip is not broadcast ip
     ip = static_cast<const ip_addr_t *>(model_map_getl(ips, pool_size-1));
     CHECK_THAT(ipaddr_ntoa(ip), Catch::Equals("100.64.0.254"));
+}
+static std::set<std::string> intercepted_names() {
+    std::set<std::string> names;
+    ziti_dns_foreach_intercepted_name([](const char *name, void *ctx) {
+        static_cast<std::set<std::string> *>(ctx)->insert(name);
+    }, &names);
+    return names;
+}
+
+TEST_CASE("intercepted names", "[dns]") {
+    dns_test_setup("100.72.0.2", "100.72.0.1/28");
+
+    auto *host_svc = new ziti_service;
+    auto *wild_svc = new ziti_service;
+    ziti_address za;
+    ziti_address_from_string(&za, "Storage.Example.NET");
+    REQUIRE(ziti_dns_register_hostname(&za, host_svc) != nullptr);
+    ziti_address_from_string(&za, "*.wild.example.org");
+    CHECK(ziti_dns_register_hostname(&za, wild_svc) == nullptr);
+
+    auto names = intercepted_names();
+    CHECK(names.count("storage.example.net") == 1);
+    CHECK(names.count("wild.example.org") == 1); // the domain, not the "*." pattern
+    CHECK(names.count("*.wild.example.org") == 0);
+
+    ziti_dns_deregister_intercept(host_svc);
+    names = intercepted_names();
+    CHECK(names.count("storage.example.net") == 0);
+    CHECK(names.count("wild.example.org") == 1);
+
+    ziti_dns_deregister_intercept(wild_svc);
+    CHECK(intercepted_names().count("wild.example.org") == 0);
+}
+
+TEST_CASE("upstream presence", "[dns]") {
+    CHECK_FALSE(ziti_dns_has_upstream());
+
+    tunnel_upstream_dns fallback = {};
+    fallback.host = (char *) "127.0.0.2";
+    tunnel_upstream_dns *fallbacks[] = { &fallback, nullptr };
+    REQUIRE(ziti_dns_set_fallback_upstream(uv_default_loop(), fallbacks) == 0);
+    CHECK_FALSE(ziti_dns_has_upstream()); // found by the driver, not configured
+
+    tunnel_upstream_dns upstream = {};
+    upstream.host = (char *) "127.0.0.1";
+    tunnel_upstream_dns *upstreams[] = { &upstream, nullptr };
+    REQUIRE(ziti_dns_set_upstream(uv_default_loop(), upstreams) == 0);
+    CHECK(ziti_dns_has_upstream());
+
+    tunnel_upstream_dns *none[] = { nullptr };
+    REQUIRE(ziti_dns_set_fallback_upstream(uv_default_loop(), none) == 0);
+    CHECK(ziti_dns_has_upstream()); // a fallback never replaces it
 }
 
 // The leak checks below need the allocator statistics of AddressSanitizer (cmake -DZITI_TUNNEL_ASAN=ON).

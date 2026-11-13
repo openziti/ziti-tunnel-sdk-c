@@ -20,13 +20,16 @@
 #include <stdlib.h>
 #include <string.h>
 #ifndef EXCLUDE_LIBSYSTEMD_RESOLVER
+#include <arpa/inet.h>
 #include <net/if.h>
 #include <stdarg.h>
+#include <unistd.h>
 #include <systemd/sd-bus-protocol.h>
 #include <systemd/sd-daemon.h>
 #include <systemd/sd-bus.h>
 #endif
 
+#include <ziti/ziti_dns.h>
 #include <ziti/ziti_log.h>
 #include <uv.h>
 
@@ -56,10 +59,13 @@ static sd_bus *(*sd_bus_flush_close_unref_f)(sd_bus *bus);
 static int (*sd_bus_get_property_f)(sd_bus *bus, const char *destination, const char *path, const char *interface, const char *member, sd_bus_error *ret_error, sd_bus_message **reply, const char *type);
 static int (*sd_bus_is_bus_client_f)(sd_bus *bus);
 static int (*sd_bus_message_appendv_f)(sd_bus_message *m, const char *types, va_list ap);
+static int (*sd_bus_message_close_container_f)(sd_bus_message *m);
 static int (*sd_bus_message_enter_container_f)(sd_bus_message *m, char type, const char *contents);
 static int (*sd_bus_message_exit_container_f)(sd_bus_message *m);
+static int (*sd_bus_message_open_container_f)(sd_bus_message *m, char type, const char *contents);
 static int (*sd_bus_message_new_method_call_f)(sd_bus *bus, sd_bus_message **m, const char* destination, const char *path, const char *interface, const char *member);
 static int (*sd_bus_message_read_f)(sd_bus_message *m, const char *types, ...);
+static int (*sd_bus_message_read_array_f)(sd_bus_message *m, char type, const void **ptr, size_t *size);
 static int (*sd_bus_message_read_strv_f)(sd_bus_message *m, char ***l);
 static sd_bus_message *(*sd_bus_message_unref_f)(sd_bus_message *m);
 static int (*sd_bus_open_system_f)(sd_bus **bus);
@@ -77,10 +83,13 @@ static void init_libsystemd() {
     TRY_DL(uv_dlsym(&libsystemd_h, "sd_bus_get_property", (void **) &sd_bus_get_property_f));
     TRY_DL(uv_dlsym(&libsystemd_h, "sd_bus_is_bus_client", (void **) &sd_bus_is_bus_client_f));
     TRY_DL(uv_dlsym(&libsystemd_h, "sd_bus_message_appendv", (void **) &sd_bus_message_appendv_f));
+    TRY_DL(uv_dlsym(&libsystemd_h, "sd_bus_message_close_container", (void **) &sd_bus_message_close_container_f));
     TRY_DL(uv_dlsym(&libsystemd_h, "sd_bus_message_enter_container", (void **) &sd_bus_message_enter_container_f));
     TRY_DL(uv_dlsym(&libsystemd_h, "sd_bus_message_exit_container", (void **) &sd_bus_message_exit_container_f));
+    TRY_DL(uv_dlsym(&libsystemd_h, "sd_bus_message_open_container", (void **) &sd_bus_message_open_container_f));
     TRY_DL(uv_dlsym(&libsystemd_h, "sd_bus_message_new_method_call", (void **) &sd_bus_message_new_method_call_f));
     TRY_DL(uv_dlsym(&libsystemd_h, "sd_bus_message_read", (void **) &sd_bus_message_read_f));
+    TRY_DL(uv_dlsym(&libsystemd_h, "sd_bus_message_read_array", (void **) &sd_bus_message_read_array_f));
     TRY_DL(uv_dlsym(&libsystemd_h, "sd_bus_message_read_strv", (void **) &sd_bus_message_read_strv_f));
     TRY_DL(uv_dlsym(&libsystemd_h, "sd_bus_message_unref", (void **) &sd_bus_message_unref_f));
     TRY_DL(uv_dlsym(&libsystemd_h, "sd_bus_open_system", (void **) &sd_bus_open_system_f));
@@ -408,7 +417,105 @@ bool try_libsystemd_resolver(const char *tun_name) {
     return false;
 }
 
-void dns_update_systemd_resolved(const char *tun, unsigned int ifindex, const char *addr) {
+static bool is_tun_link(int32_t ifindex) {
+    char name[IF_NAMESIZE];
+    char path[64];
+    if (ifindex == 0 || if_indextoname(ifindex, name) == NULL) return false;
+    snprintf(path, sizeof(path), "/sys/class/net/%s/tun_flags", name);
+    return access(path, F_OK) == 0;
+}
+
+// The servers resolved asks for names without a routing domain, leaving out those of TUN links: another
+// ziti tunnel would forward the names back. Returns their number, or a negative error.
+int systemd_resolved_dns_servers(char servers[][INET6_ADDRSTRLEN], int max) {
+    _cleanup_(sd_bus_flush_close_unrefp_f) sd_bus *bus = NULL;
+    _cleanup_(sd_bus_message_unrefp_f) sd_bus_message *reply = NULL;
+    _cleanup_(sd_bus_error_free_wrapper) sd_bus_error error = SD_BUS_ERROR_NULL;
+
+    int n = 0;
+    int r = sd_bus_open_system_f(&bus);
+    if (r >= 0) r = sd_bus_get_property_f(bus, RESOLVED_DBUS_NAME, RESOLVED_DBUS_PATH, RESOLVED_DBUS_MANAGER_INTERFACE,
+                                          "DNS", &error, &reply, "a(iiay)");
+    if (r >= 0) r = sd_bus_message_enter_container_f(reply, SD_BUS_TYPE_ARRAY, "(iiay)");
+    while (r >= 0 && (r = sd_bus_message_enter_container_f(reply, SD_BUS_TYPE_STRUCT, "iiay")) > 0) {
+        int32_t ifindex, family;
+        const void *addr = NULL;
+        size_t len = 0;
+        r = sd_bus_message_read_f(reply, "ii", &ifindex, &family);
+        if (r >= 0) r = sd_bus_message_read_array_f(reply, 'y', &addr, &len);
+        if (r >= 0) r = sd_bus_message_exit_container_f(reply);
+        if (r < 0 || n == max || is_tun_link(ifindex)) continue;
+        // a link-local address needs a scope that ziti_dns cannot take
+        if ((family == AF_INET && len == 4) ||
+            (family == AF_INET6 && len == 16 && !IN6_IS_ADDR_LINKLOCAL((const struct in6_addr *) addr))) {
+            inet_ntop(family, addr, servers[n++], INET6_ADDRSTRLEN);
+        }
+    }
+    if (r >= 0) r = sd_bus_message_exit_container_f(reply);
+    if (r < 0) {
+        ZITI_LOG(WARN, "Could not read the systemd-resolved DNS servers: %s", strerror(-r));
+        return r;
+    }
+    return n;
+}
+
+static int sd_bus_message_append_va(sd_bus_message *m, const char *types, ...) {
+    va_list ap;
+    va_start(ap, types);
+    int r = sd_bus_message_appendv_f(m, types, ap);
+    va_end(ap);
+    return r;
+}
+
+// SetLinkDomains with a list only known at runtime, which the variadic helpers cannot build.
+// Every entry is routing-only: these are the names ziti answers, not search domains.
+static bool set_systemd_resolved_link_domains(sd_bus *bus, const char *tun, int32_t ifindex,
+                                              const char *const *domains, bool wildcard) {
+    _cleanup_(sd_bus_message_unrefp_f) sd_bus_message *m = NULL;
+    _cleanup_(sd_bus_error_free_wrapper) sd_bus_error error = SD_BUS_ERROR_NULL;
+
+    int r = sd_bus_message_new_method_call_f(bus, &m, RESOLVED_DBUS_NAME, RESOLVED_DBUS_PATH,
+                                             RESOLVED_DBUS_MANAGER_INTERFACE, "SetLinkDomains");
+    if (r >= 0) r = sd_bus_message_append_va(m, "i", ifindex);
+    if (r >= 0) r = sd_bus_message_open_container_f(m, SD_BUS_TYPE_ARRAY, "(sb)");
+    if (r >= 0 && wildcard) r = sd_bus_message_append_va(m, "(sb)", ".", 1);
+    for (size_t i = 0; r >= 0 && domains != NULL && domains[i] != NULL; i++) {
+        r = sd_bus_message_append_va(m, "(sb)", domains[i], 1);
+    }
+    if (r >= 0) r = sd_bus_message_close_container_f(m);
+    if (r < 0) {
+        ZITI_LOG(ERROR, "Failure composing SetLinkDomains for link: (%s): %s", tun, strerror(-r));
+        return false;
+    }
+
+    r = sd_bus_call_f(bus, m, 0, &error, NULL);
+    if (r < 0) {
+        ZITI_LOG(ERROR, "Failure calling method: SetLinkDomains for link: (%s): (%s, %s)", tun, error.name, error.message);
+        return false;
+    }
+    return true;
+}
+
+// 1 when set, 0 when resolved predates SetLinkDefaultRoute (systemd < 240), or a negative error
+static int set_link_default_route(sd_bus *bus, const char *tun, int32_t ifindex, bool default_route) {
+    _cleanup_(sd_bus_message_unrefp_f) sd_bus_message *reply = NULL;
+    _cleanup_(sd_bus_error_free_wrapper) sd_bus_error error = SD_BUS_ERROR_NULL;
+    int r = sd_bus_call_method_f(bus, RESOLVED_DBUS_NAME, RESOLVED_DBUS_PATH, RESOLVED_DBUS_MANAGER_INTERFACE,
+                                 "SetLinkDefaultRoute", &error, &reply, "ib", ifindex, (int) default_route);
+    if (r >= 0) return 1;
+    if (sd_bus_error_has_name_f(&error, SD_BUS_ERROR_UNKNOWN_METHOD)) return 0;
+    ZITI_LOG(ERROR, "Failure calling method: SetLinkDefaultRoute for link: (%s): (%s, %s)", tun, error.name, error.message);
+    return r;
+}
+
+// set by dns_update_systemd_resolved, read on the same thread right after it
+static bool routing_domains_rejected;
+
+bool systemd_resolved_routing_domains_rejected(void) {
+    return routing_domains_rejected;
+}
+
+void dns_update_systemd_resolved(const char *tun, unsigned int ifindex, const char *addr, const char *const *domains) {
     int r;
     struct in_addr inaddr;
 
@@ -440,18 +547,40 @@ void dns_update_systemd_resolved(const char *tun, unsigned int ifindex, const ch
 
     r = detect_systemd_resolved_routing_domain_wildcard(bus, ifindex);
 
-    switch(r) {
-        case 0:
-            ZITI_LOG(INFO, "Setting wildcard routing only domain on interface: %s", tun);
-            RET_ON_FAIL(set_systemd_resolved_link_setting(bus, tun, "SetLinkDomains", "ia(sb)", ifindex, 1, ".", true));
-            break;
-        case 1:
-            ZITI_LOG(DEBUG, "Setting empty domain on interface: %s", tun);
-            RET_ON_FAIL(set_systemd_resolved_link_setting(bus, tun, "SetLinkDomains", "ia(sb)", ifindex, 0));
-            break;
-        default:
-            ZITI_LOG(ERROR, "Error detecting systemd-resolved domain configuration: %s", strerror(-r));
-            return;
+    if (r < 0) {
+        ZITI_LOG(ERROR, "Error detecting systemd-resolved domain configuration: %s", strerror(-r));
+        return;
+    }
+    size_t n = 0;
+    while (domains != NULL && domains[n] != NULL) n++;
+
+    // Other names reach ziti only as a default route, and it answers them only through a configured
+    // upstream. A fallback upstream serves just the names below the routing domains.
+    bool default_route = n == 0 || ziti_dns_has_upstream();
+    bool wildcard = (r == 0) && default_route;
+
+    // Intercepted names as routing domains, so resolved asks only ziti for them. Otherwise it asks
+    // every DefaultRoute link and keeps the first positive answer: a name that also exists in public
+    // DNS resolves to its public address, e.g. through the CNAME an upstream returns for an AAAA
+    // query that ziti answers empty.
+    routing_domains_rejected = false;
+    if (n > 0) {
+        ZITI_LOG(INFO, "Setting %zu routing only domains%s on interface: %s", n, wildcard ? " and the wildcard" : "", tun);
+        // routing-only domains take the default route away from a link unless it is set, which resolved
+        // before 240 cannot do; there the link keeps it only through the wildcard
+        bool kept = set_systemd_resolved_link_domains(bus, tun, ifindex, domains, wildcard);
+        int set = kept ? set_link_default_route(bus, tun, ifindex, default_route) : -1;
+        if (set < 0 || (set == 0 && default_route && !wildcard)) {
+            // e.g. more names than resolved takes per link
+            ZITI_LOG(WARN, "Could not set routing domains, configuring interface %s without them", tun);
+            routing_domains_rejected = true;
+            n = 0;
+            wildcard = (r == 0);
+        }
+    }
+    if (n == 0) {
+        RET_ON_FAIL(set_systemd_resolved_link_domains(bus, tun, ifindex, NULL, wildcard));
+        set_link_default_route(bus, tun, ifindex, true); // undoes a previous update; missing before 240
     }
 
     sd_bus_run_command(bus, RESOLVED_DBUS_NAME, RESOLVED_DBUS_PATH, RESOLVED_DBUS_MANAGER_INTERFACE, "FlushCaches");
@@ -459,7 +588,7 @@ void dns_update_systemd_resolved(const char *tun, unsigned int ifindex, const ch
 }
 #endif
 
-void dns_update_resolvconf(const char *tun, unsigned int ifindex, const char *addr) {
+void dns_update_resolvconf(const char *tun, unsigned int ifindex, const char *addr, const char *const *domains) {
     run_command("echo 'nameserver %s' | %s -a %s", addr, RESOLVCONF, tun);
 }
 
@@ -502,7 +631,7 @@ static void cleanup_bufferp(char **buffer) {
     }
 }
 
-void dns_update_etc_resolv(const char *tun, unsigned int ifindex, const char *addr) {
+void dns_update_etc_resolv(const char *tun, unsigned int ifindex, const char *addr, const char *const *domains) {
       bool copy_r = make_copy(RESOLV_CONF_FILE, RESOLV_CONF_FILE ".bkp");
 
       const char *match = "nameserver ";
