@@ -83,7 +83,6 @@ typedef struct dns_entry_s {
     char name[MAX_DNS_NAME];
     char ip[MAX_IP_LENGTH];
     ip_addr_t addr;
-    dns_domain_t *domain;
 
     model_map intercepts;
 
@@ -136,7 +135,8 @@ static uint32_t next_ipv4() {
         }
     } while ((model_map_getl(&ziti_dns.ip_addresses, candidate) != NULL) && i < ziti_dns.ip_pool.capacity);
 
-    if (i == ziti_dns.ip_pool.capacity) {
+    // the search also stops on the last candidate it is allowed to look at: that one may well be free
+    if (model_map_getl(&ziti_dns.ip_addresses, candidate) != NULL) {
         ZITI_LOG(ERROR, "no IPs available after scanning entire pool");
         return INADDR_NONE;
     }
@@ -179,7 +179,11 @@ static int seed_dns(const char *dns_cidr) {
     return 0;
 }
 
+static void reset_dns_state(void);
+
 int ziti_dns_setup(tunneler_context tnlr, const char *dns_addr, const char *dns_cidr) {
+    // setup starts the dns over with the given range: nothing registered for an earlier one may stay
+    reset_dns_state();
     ziti_dns.tnlr = tnlr;
     seed_dns(dns_cidr);
 
@@ -352,12 +356,13 @@ static bool check_name(const char *name, char clean_name[MAX_DNS_NAME], bool *is
 }
 
 static dns_entry_t* new_ipv4_entry(const char *host) {
-    dns_entry_t *entry = calloc(1, sizeof(dns_entry_t));
-    strncpy(entry->name, host, sizeof(entry->name));
     uint32_t next = next_ipv4();
     if (next == INADDR_NONE) {
         return NULL;
     }
+
+    dns_entry_t *entry = calloc(1, sizeof(dns_entry_t));
+    strncpy(entry->name, host, sizeof(entry->name));
 
     ip_addr_set_ip4_u32(&entry->addr, next);
     ipaddr_ntoa_r(&entry->addr, entry->ip, sizeof(entry->ip));
@@ -369,22 +374,6 @@ static dns_entry_t* new_ipv4_entry(const char *host) {
     return entry;
 }
 
-const char *ziti_dns_reverse_lookup_domain(const ip_addr_t *addr) {
-     dns_entry_t *entry = model_map_getl(&ziti_dns.ip_addresses, ip_2_ip4(addr)->addr);
-     if (entry && entry->domain) {
-         return entry->domain->name;
-     }
-     return NULL;
-}
-
-const char *ziti_dns_reverse_lookup(const char *ip_addr) {
-    ip_addr_t addr = {0};
-    ipaddr_aton(ip_addr, &addr);
-    dns_entry_t *entry = model_map_getl(&ziti_dns.ip_addresses, ip_2_ip4(&addr)->addr);
-
-    return entry ? entry->name : NULL;
-}
-
 static dns_domain_t* find_domain(const char *hostname) {
     char *dot = strchr(hostname, '.');
     dns_domain_t *domain = model_map_get(&ziti_dns.domains, hostname);
@@ -393,6 +382,30 @@ static dns_domain_t* find_domain(const char *hostname) {
         dot = strchr(dot + 1, '.');
     }
     return domain;
+}
+
+// An entry does not remember its wildcard domain: the domain can go away and come back (the service behind it was
+// updated) while the entry stays, so it is looked up by name each time.
+static bool has_active_domain(const dns_entry_t *entry) {
+    dns_domain_t *domain = find_domain(entry->name);
+    return domain != NULL && model_map_size(&domain->intercepts) > 0;
+}
+
+const char *ziti_dns_reverse_lookup_domain(const ip_addr_t *addr) {
+    dns_entry_t *entry = model_map_getl(&ziti_dns.ip_addresses, ip_2_ip4(addr)->addr);
+    if (entry == NULL || entry->name[0] == '\0') { // not an entry, or one of the reserved addresses
+        return NULL;
+    }
+    dns_domain_t *domain = find_domain(entry->name);
+    return domain ? domain->name : NULL;
+}
+
+const char *ziti_dns_reverse_lookup(const char *ip_addr) {
+    ip_addr_t addr = {0};
+    ipaddr_aton(ip_addr, &addr);
+    dns_entry_t *entry = model_map_getl(&ziti_dns.ip_addresses, ip_2_ip4(&addr)->addr);
+
+    return entry ? entry->name : NULL;
 }
 
 static dns_entry_t *ziti_dns_lookup(const char *hostname) {
@@ -411,15 +424,11 @@ static dns_entry_t *ziti_dns_lookup(const char *hostname) {
         if (domain && model_map_size(&domain->intercepts) > 0) {
             ZITI_LOG(DEBUG, "matching domain[%s] found for %s", domain->name, hostname);
             entry = new_ipv4_entry(clean);
-            if (entry) {
-                entry->domain = domain;
-            }
         }
     }
 
     if (entry) {
-        if (model_map_size(&entry->intercepts) > 0 ||
-            (entry->domain && model_map_size(&entry->domain->intercepts) > 0)) {
+        if (model_map_size(&entry->intercepts) > 0 || has_active_domain(entry)) {
             return entry;
         } else {
             return NULL; // inactive entry
@@ -428,6 +437,8 @@ static dns_entry_t *ziti_dns_lookup(const char *hostname) {
     return entry;
 }
 
+
+static void drop_domain(dns_domain_t *domain);
 
 void ziti_dns_deregister_intercept(void *intercept) {
     model_map_iter it = model_map_iterator(&ziti_dns.domains);
@@ -441,11 +452,14 @@ void ziti_dns_deregister_intercept(void *intercept) {
     while (it != NULL) {
         dns_entry_t *e = model_map_it_value(it);
         model_map_remove_key(&e->intercepts, &intercept, sizeof(intercept));
-        if (model_map_size(&e->intercepts) == 0 && (e->domain == NULL || model_map_size(&e->domain->intercepts) == 0)) {
+        if (model_map_size(&e->intercepts) == 0 && !has_active_domain(e)) {
             it = model_map_it_remove(it);
             model_map_removel(&ziti_dns.ip_addresses, ip_2_ip4(&e->addr)->addr);
             ZITI_LOG(DEBUG, "%zu active hostnames mapped to %zu IPs", model_map_size(&ziti_dns.hostnames), model_map_size(&ziti_dns.ip_addresses));
             ZITI_LOG(INFO, "DNS mapping %s -> %s is now inactive", e->name, e->ip);
+            // no longer in either map, and callers copy what they need from an entry right away
+            // (the intercept address, the hostname), so nothing else points at it
+            free(e);
         } else {
             it = model_map_it_next(it);
         }
@@ -457,6 +471,7 @@ void ziti_dns_deregister_intercept(void *intercept) {
         if (model_map_size(&domain->intercepts) == 0) {
             it = model_map_it_remove(it);
             ZITI_LOG(INFO, "wildcard domain[*%s] is now inactive", domain->name);
+            drop_domain(domain); // may free it: do not use it after this
         } else {
             it = model_map_it_next(it);
         }
@@ -713,6 +728,7 @@ static void process_host_req(struct dns_req *req) {
     }
 }
 
+// the context of the proxy connection is its domain, or NULL once the domain has been dropped (see drop_domain)
 static void proxy_domain_close_cb(ziti_connection c) {
     dns_domain_t *domain = ziti_conn_data(c);
     if (domain) {
@@ -720,8 +736,47 @@ static void proxy_domain_close_cb(ziti_connection c) {
     }
 }
 
+// The domain is no longer in ziti_dns.domains: the service it stood for is gone, and its proxy resolve connection has
+// nothing left to talk to, so close that.
+// The callbacks of that connection get the domain as their context: take it away first, they ignore a connection
+// without one, and the domain can be freed right away.
+static void drop_domain(dns_domain_t *domain) {
+    if (domain->resolv_proxy != NULL) {
+        ziti_conn_set_data(domain->resolv_proxy, NULL);
+        ziti_close(domain->resolv_proxy, proxy_domain_close_cb);
+    }
+    free(domain);
+}
+
+static void free_dns_entry(void *p) {
+    dns_entry_t *e = p;
+    model_map_clear(&e->intercepts, NULL);
+    free(e);
+}
+
+// Empty the hostname, address and domain maps. Every entry in `hostnames` is also in `ip_addresses`, which holds the
+// reserved tun and dns addresses besides, so freeing the entries of `ip_addresses` frees them all.
+static void reset_dns_state(void) {
+    model_map_clear(&ziti_dns.hostnames, NULL);
+    model_map_clear(&ziti_dns.ip_addresses, free_dns_entry);
+
+    model_map_iter it = model_map_iterator(&ziti_dns.domains);
+    while (it != NULL) {
+        dns_domain_t *domain = model_map_it_value(it);
+        it = model_map_it_next(it);
+        model_map_clear(&domain->intercepts, NULL);
+        drop_domain(domain);
+    }
+    model_map_clear(&ziti_dns.domains, NULL);
+}
+
 static void on_proxy_connect(ziti_connection conn, int status) {
     dns_domain_t *domain = ziti_conn_data(conn);
+    if (domain == NULL) {
+        // the domain was dropped while the connection was being established: nobody is waiting for it
+        ziti_close(conn, proxy_domain_close_cb);
+        return;
+    }
     if (status == ZITI_OK) {
         ZITI_LOG(INFO, "proxy resolve connection established for domain[%s]", domain->name);
         domain->resolv_proxy = conn;

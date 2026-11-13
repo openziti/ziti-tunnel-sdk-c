@@ -331,6 +331,12 @@ static void broadcast_metrics(uv_timer_t *timer) {
                 send_tunnel_command_inline(&tnl_cmd, tnl_cmd_inline);
                 free_tunnel_command(&tnl_cmd);
 
+                // tnl_id is a copy without the MFA state: use the identity itself
+                tunnel_identity *id = find_tunnel_identity(tnl_id->Identifier);
+                if (id != NULL && refresh_mfa_needed(id)) {
+                    send_identity_event(id, event_name(event_updated));
+                }
+
                 // check timeout
                 if (check_send_notification(tnl_id)) {
                     notification_message *message = create_notification_message(tnl_id);
@@ -457,7 +463,6 @@ static void load_id_cb(const tunnel_result *res, void *ctx) {
 }
 
 static void load_identities_complete(uv_work_t * wr, int status) {
-    bool identity_loaded = false;
     while(!LIST_EMPTY(&load_list)) {
         struct cfg_instance_s *inst = LIST_FIRST(&load_list);
         LIST_REMOVE(inst, _next);
@@ -468,12 +473,10 @@ static void load_identities_complete(uv_work_t * wr, int status) {
         if(id != NULL) {
             CMD_CTRL->load_identity(NULL, inst->cfg, !id->Active, get_api_page_size(), load_id_cb, inst);
         }
-        identity_loaded = true;
     }
 
-    if (identity_loaded) {
-        start_metrics_timer(wr->loop);
-    }
+    // start even with no identities: ones added later need it too (metrics, MFA timeouts)
+    start_metrics_timer(wr->loop);
 
     if(uses_config_dir) {
         // should be the last line in this function as it calls the mutex/lock

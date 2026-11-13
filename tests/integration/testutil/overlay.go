@@ -923,6 +923,34 @@ func (o *Overlay) CreateDialServicePolicy(name, identityName, serviceName string
 	return nil
 }
 
+// CreateProcessMultiPostureCheck registers a process-multi posture check that
+// requires the binary at path to be running. process-multi is the supported
+// check type; plain process is deprecated.
+func (o *Overlay) CreateProcessMultiPostureCheck(t *testing.T, name, osType, path, attribute string) {
+	_, err := o.execZiti("edge create posture-check process-multi %s AllOf %s %s -a %s", name, osType, path, attribute)
+	require.NoError(t, err, "create process-multi posture check %s", name)
+}
+
+// CreateMacPostureCheck registers a mac posture check matching any of the
+// given MAC addresses.
+func (o *Overlay) CreateMacPostureCheck(t *testing.T, name string, macs []string, attribute string) {
+	_, err := o.execZiti("edge create posture-check mac %s -m %s -a %s", name, strings.Join(macs, ","), attribute)
+	require.NoError(t, err, "create mac posture check %s", name)
+}
+
+// CreateOSPostureCheck registers an os posture check pinned to osSpec, e.g.
+// "windows:10.0.26200".
+func (o *Overlay) CreateOSPostureCheck(t *testing.T, name, osSpec, attribute string) {
+	_, err := o.execZiti("edge create posture-check os %s -o %s -a %s", name, osSpec, attribute)
+	require.NoError(t, err, "create os posture check %s", name)
+}
+
+// CreateMfaPostureCheck registers an mfa posture check with no timeout.
+func (o *Overlay) CreateMfaPostureCheck(t *testing.T, name, attribute string) {
+	_, err := o.execZiti("edge create posture-check mfa %s -a %s", name, attribute)
+	require.NoError(t, err, "create mfa posture check %s", name)
+}
+
 // DeleteServicePolicy deletes a service policy by name.
 func (o *Overlay) DeleteServicePolicy(name string) error {
 	if _, err := o.execZiti("edge delete service-policy %s", name); err != nil {
@@ -1097,6 +1125,11 @@ func (o *Overlay) PurgeServicePolicies() error {
 // PurgeServices deletes every service carrying a test name.
 func (o *Overlay) PurgeServices() error {
 	return o.deleteWhere("services")
+}
+
+// PurgePostureChecks deletes every posture check carrying a test name.
+func (o *Overlay) PurgePostureChecks() error {
+	return o.deleteWhere("posture-checks")
 }
 
 // PurgeConfigs deletes every config carrying a test name.

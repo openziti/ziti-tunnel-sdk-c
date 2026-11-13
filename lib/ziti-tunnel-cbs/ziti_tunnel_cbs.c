@@ -628,11 +628,16 @@ intercept_ctx_t *new_intercept_ctx(tunneler_context tnlr_ctx, ziti_intercept_t *
     return i_ctx;
 }
 
-static void stop_intercept(struct tunneler_ctx_s *tnlr, struct ziti_instance_s *inst, ziti_intercept_t *zi) {
-    model_map_remove(&inst->intercepts, zi->service_name);
+/** unregister the dns names of an intercept, stop it in the tunneler and free it. It is no longer in inst->intercepts. */
+static void release_intercept(struct tunneler_ctx_s *tnlr, ziti_intercept_t *zi) {
     ziti_dns_deregister_intercept(zi);
     ziti_tunneler_stop_intercepting(tnlr, zi);
     free_ziti_intercept(zi);
+}
+
+static void stop_intercept(struct tunneler_ctx_s *tnlr, struct ziti_instance_s *inst, ziti_intercept_t *zi) {
+    model_map_remove(&inst->intercepts, zi->service_name);
+    release_intercept(tnlr, zi);
 }
 
 static void stop_hosting(ziti_host_t *zh) {
@@ -743,10 +748,10 @@ void remove_intercepts(ziti_context ziti_ctx, void *tnlr_ctx) {
     model_map_iter it = model_map_iterator(&ziti_instance->intercepts);
     while(it) {
         ziti_intercept_t *zi_ctx = model_map_it_value(it);
-        if (zi_ctx) {
-            ziti_tunneler_stop_intercepting(tnlr_ctx, zi_ctx);
-        }
         it = model_map_it_remove(it);
+        if (zi_ctx) {
+            release_intercept(tnlr_ctx, zi_ctx);
+        }
     }
 }
 
