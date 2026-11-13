@@ -178,6 +178,10 @@ struct tunneler_io_ctx_s {
     };
     uv_timer_t *conn_timer;
     uint32_t idle_timeout;
+    // tcp: writes to ziti that are not acked yet (see struct write_ctx_s) and whether the connection was
+    // closed meanwhile, in which case the last ack frees this
+    uint32_t pending_writes;
+    bool closed;
 };
 
 extern port_range_t *parse_port_range(uint16_t low, uint16_t high);
@@ -229,6 +233,7 @@ extern void ziti_tunneler_ack(struct write_ctx_s *write_ctx);
 
 extern int ziti_tunneler_close(tunneler_io_context tnlr_io_ctx);
 
+extern void ziti_tunneler_abort(tunneler_io_context tnlr_io_ctx);
 extern int ziti_tunneler_close_write(tunneler_io_context tnlr_io_ctx);
 
 extern const char* ziti_tunneler_version();
