@@ -84,7 +84,8 @@ XX(StatusChange, __VA_ARGS__)   \
 XX(AddIdentity, __VA_ARGS__)    \
 XX(Enroll, __VA_ARGS__)         \
 XX(ExternalAuth, __VA_ARGS__)   \
-XX(SetUpstreamDNS, __VA_ARGS__)
+XX(SetUpstreamDNS, __VA_ARGS__) \
+XX(SetProxy, __VA_ARGS__)
 
 DECLARE_ENUM(TunnelCommand, TUNNEL_COMMANDS)
 
@@ -191,6 +192,9 @@ XX(command, TunnelCommand, none, Command, __VA_ARGS__)
 #define TUNNEL_SET_LOG_LEVEL(XX, ...) \
 XX(loglevel, model_string, none, Level, __VA_ARGS__)
 
+#define TUNNEL_SET_PROXY(XX, ...) \
+XX(proxy, model_string, none, Proxy, __VA_ARGS__)
+
 #define TUNNEL_TUN_IP_V4(XX, ...) \
 XX(tunIP, model_string, none, TunIPv4, __VA_ARGS__) \
 XX(prefixLength, model_number, none, TunPrefixLength, __VA_ARGS__) \
@@ -258,6 +262,7 @@ DECLARE_MODEL(tunnel_get_mfa_codes, TNL_GET_MFA_CODES)
 DECLARE_MODEL(tunnel_identity_metrics, TNL_IDENTITY_METRICS)
 DECLARE_MODEL(tunnel_command_inline, TUNNEL_CMD_INLINE)
 DECLARE_MODEL(tunnel_set_log_level, TUNNEL_SET_LOG_LEVEL)
+DECLARE_MODEL(tunnel_set_proxy, TUNNEL_SET_PROXY)
 DECLARE_MODEL(tunnel_tun_ip_v4, TUNNEL_TUN_IP_V4)
 DECLARE_MODEL(tunnel_l2_options, TUNNEL_L2_OPTIONS)
 DECLARE_MODEL(tunnel_interface_config, TUNNEL_INTERFACE_CONFIG)

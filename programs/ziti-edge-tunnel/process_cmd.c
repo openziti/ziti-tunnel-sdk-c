@@ -16,6 +16,7 @@
 #include <ziti/ziti_log.h>
 #include <ziti/ziti_tunnel_cbs.h>
 
+#include "config-utils.h"
 #include "identity-utils.h"
 #include "instance-config.h"
 
@@ -581,6 +582,41 @@ bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void 
             result.code = IPC_SUCCESS;
             break;
         }
+        case TunnelCommand_SetProxy: {
+            cmd_accepted = true;
+
+            tunnel_set_proxy tunnel_set_proxy_cmd = {0};
+            if (tnl_cmd->data == NULL ||
+                parse_tunnel_set_proxy(&tunnel_set_proxy_cmd, tnl_cmd->data, strlen(tnl_cmd->data)) < 0 ||
+                tunnel_set_proxy_cmd.proxy == NULL) {
+                result.error = "invalid command";
+                result.success = false;
+                free_tunnel_set_proxy(&tunnel_set_proxy_cmd);
+                break;
+            }
+
+            const char *requested = tunnel_set_proxy_cmd.proxy;
+            if (requested[0] == '\0') {
+                set_saved_proxy(NULL);
+                ZITI_LOG(INFO, "removed the saved proxy from config.json, it applies after the next restart");
+            } else {
+                proxy_endpoint endpoint;
+                if (parse_proxy_url(requested, &endpoint, dynamic_err, sizeof(dynamic_err)) != 0) {
+                    ZITI_LOG(WARN, "rejected proxy: %s", dynamic_err);
+                    result.error = dynamic_err;
+                    result.success = false;
+                    free_tunnel_set_proxy(&tunnel_set_proxy_cmd);
+                    break;
+                }
+                set_saved_proxy(requested);
+                ZITI_LOG(INFO, "proxy set to '%s:%s', it applies after the next restart", endpoint.host, endpoint.port);
+            }
+            free_tunnel_set_proxy(&tunnel_set_proxy_cmd);
+            result.success = true;
+            result.code = IPC_SUCCESS;
+            break;
+        }
+
         case TunnelCommand_UpdateTunIpv4: {
             cmd_accepted = true;
             process_update_tun_ipv4_cmd(tnl_cmd->data, &result);

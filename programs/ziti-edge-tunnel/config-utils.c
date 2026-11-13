@@ -22,6 +22,7 @@
 #include <ziti/ziti.h>
 #include <ziti/ziti_log.h>
 #include "tlsuv/http.h"
+#include "config-utils.h"
 
 #if __linux__
 #include <pwd.h>
@@ -202,5 +203,44 @@ char* resolve_directory(const char* path) {
         }
     }
     return resolved_path;
+}
+
+int parse_proxy_url(const char *url, proxy_endpoint *endpoint, char *err, size_t err_len) {
+    memset(endpoint, 0, sizeof(*endpoint));
+    struct tlsuv_url_s proxy_url;
+    if (tlsuv_parse_url(&proxy_url, url) != 0) {
+        snprintf(err, err_len, "proxy url is not of the form http://[username[:password]@]hostname:port");
+        return -1;
+    }
+    if (proxy_url.scheme != NULL &&
+        (proxy_url.scheme_len != strlen("http") || strncmp(proxy_url.scheme, "http", proxy_url.scheme_len) != 0)) {
+        snprintf(err, err_len, "proxy type '%.*s' is not supported, 'http' is the only supported type",
+                 (int)proxy_url.scheme_len, proxy_url.scheme);
+        return -1;
+    }
+    if (proxy_url.hostname == NULL) {
+        snprintf(err, err_len, "proxy url has no hostname");
+        return -1;
+    }
+    if (proxy_url.hostname_len >= sizeof(endpoint->host)) {
+        snprintf(err, err_len, "proxy hostname is longer than %zu characters", sizeof(endpoint->host) - 1);
+        return -1;
+    }
+    if (proxy_url.port == 0) {
+        snprintf(err, err_len, "proxy url has no port");
+        return -1;
+    }
+    if (proxy_url.username != NULL) {
+        if (proxy_url.username_len >= sizeof(endpoint->user) || proxy_url.password_len >= sizeof(endpoint->passwd)) {
+            snprintf(err, err_len, "proxy username or password is longer than %zu characters", sizeof(endpoint->user) - 1);
+            return -1;
+        }
+        endpoint->has_auth = true;
+        snprintf(endpoint->user, sizeof(endpoint->user), "%.*s", (int)proxy_url.username_len, proxy_url.username);
+        snprintf(endpoint->passwd, sizeof(endpoint->passwd), "%.*s", (int)proxy_url.password_len, proxy_url.password);
+    }
+    snprintf(endpoint->host, sizeof(endpoint->host), "%.*s", (int)proxy_url.hostname_len, proxy_url.hostname);
+    snprintf(endpoint->port, sizeof(endpoint->port), "%u", (unsigned)proxy_url.port);
+    return 0;
 }
 

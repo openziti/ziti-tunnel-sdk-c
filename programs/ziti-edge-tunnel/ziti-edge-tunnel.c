@@ -1374,36 +1374,18 @@ static int init_proxy_connector(const char *url) {
         return 0;
     }
 
-    struct tlsuv_url_s proxy_url;
-    int r = tlsuv_parse_url(&proxy_url, url);
-    if (r != 0) {
-        ZITI_LOG(ERROR, "failed to parse '%s' as 'type://[username[:password]@]hostname:port'", url);
+    proxy_endpoint endpoint;
+    char proxy_err[256];
+    if (parse_proxy_url(url, &endpoint, proxy_err, sizeof(proxy_err)) != 0) {
+        ZITI_LOG(ERROR, "invalid proxy: %s", proxy_err);
         return -1;
     }
 
-    // assume http if no protocol was specified
-    if (proxy_url.scheme == NULL) {
-        proxy_url.scheme = "http";
-        proxy_url.scheme_len = strlen(proxy_url.scheme);
+    tlsuv_connector_t *proxy = tlsuv_new_proxy_connector(tlsuv_PROXY_HTTP, endpoint.host, endpoint.port);
+    if (endpoint.has_auth) {
+        proxy->set_auth(proxy, tlsuv_PROXY_BASIC, endpoint.user, endpoint.passwd);
     }
-
-    if (strncmp(proxy_url.scheme, "http", proxy_url.scheme_len) != 0) {
-        ZITI_LOG(ERROR, "proxy type '%.*s' is not supported. 'http' is currently the only supported type",
-                 (int)proxy_url.scheme_len, proxy_url.scheme);
-        return -1;
-    }
-
-    char host[128], port[6];
-    snprintf(host, sizeof(host), "%.*s", (int)proxy_url.hostname_len, proxy_url.hostname);
-    snprintf(port, sizeof(port), "%d", proxy_url.port);
-    tlsuv_connector_t *proxy = tlsuv_new_proxy_connector(tlsuv_PROXY_HTTP, host, port);
-    if (proxy_url.username) {
-        char user[128], passwd[128];
-        snprintf(user, sizeof(user), "%.*s", (int)proxy_url.username_len, proxy_url.username);
-        snprintf(passwd, sizeof(passwd), "%.*s", (int)proxy_url.password_len, proxy_url.password);
-        proxy->set_auth(proxy, tlsuv_PROXY_BASIC, user, passwd);
-    }
-    ZITI_LOG(INFO, "connecting to OpenZiti controller and edge routers through proxy '%s:%s'", host, port);
+    ZITI_LOG(INFO, "connecting to OpenZiti controller and edge routers through proxy '%s:%s'", endpoint.host, endpoint.port);
     tlsuv_set_global_connector(proxy);
 
     return 0;
@@ -1896,7 +1878,11 @@ static void run(int argc, char *argv[]) {
     }
 #endif
 
-    if (init_proxy_connector(configured_proxy) != 0) {
+    const char *proxy_url = configured_proxy;
+    if (proxy_url == NULL) {
+        proxy_url = get_saved_proxy();
+    }
+    if (init_proxy_connector(proxy_url) != 0) {
         exit(1);
     }
 
@@ -2994,6 +2980,43 @@ static int set_log_level_opts(int argc, char *argv[]) {
     return optind;
 }
 
+static int set_proxy_opts(int argc, char *argv[]) {
+    static struct option opts[] = {
+            {"proxy", required_argument, NULL, 'x'},
+    };
+    int c, option_index, errors = 0;
+    optind = 0;
+
+    tunnel_set_proxy set_proxy_options = {0};
+    while ((c = getopt_long(argc, argv, "x:",
+                            opts, &option_index)) != -1) {
+        switch (c) {
+            case 'x':
+                set_proxy_options.proxy = optarg;
+                break;
+            default: {
+                fprintf(stderr, "Unknown option '%c'\n", c);
+                errors++;
+                break;
+            }
+        }
+    }
+
+    if (set_proxy_options.proxy == NULL) {
+        fprintf(stderr, "proxy option (-x|--proxy) is not specified, an empty url clears the saved proxy\n");
+        errors++;
+    }
+
+    CHECK_COMMAND_ERRORS(errors);
+
+    cmd.command = TunnelCommand_SetProxy;
+
+    size_t json_len;
+    cmd.data = tunnel_set_proxy_to_json(&set_proxy_options, MODEL_JSON_COMPACT, &json_len);
+
+    return optind;
+}
+
 static int update_tun_ip_opts(int argc, char *argv[]) {
     static struct option opts[] = {
             {"tunip", required_argument, NULL, 't'},
@@ -3336,7 +3359,7 @@ static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required supe
                                           "\t-i|--identity <identity>\trun with provided identity file (required)\n"
                                           "\t-I|--identity-dir <dir>\tload identities from provided directory\n"
                                           "\t-x|--proxy type://[username[:password]@]hostname_or_ip:port\tproxy to use when"
-                                          " connecting to OpenZiti controller and edge routers. 'http' is currently the only supported type.\n"
+                                          " connecting to OpenZiti controller and edge routers, takes precedence over the proxy saved by set_proxy and HTTP_PROXY. 'http' is currently the only supported type.\n"
                                           "\t-2|--l2\tenable layer 2 services\n"
                                           PCAP_OPTS_DETAIL
                                           "\t-v|--verbose N\tset log level, higher level -- more verbose (default 3)\n"
@@ -3353,7 +3376,7 @@ static CommandLine run_host_cmd = make_command("run-host", "run Ziti tunnel to h
                                           "\t-i|--identity <identity>\trun with provided identity file (required)\n"
                                           "\t-I|--identity-dir <dir>\tload identities from provided directory\n"
                                           "\t-x|--proxy type://[username[:password]@]hostname_or_ip:port\tproxy to use when"
-                                          " connecting to OpenZiti controller and edge routers"
+                                          " connecting to OpenZiti controller and edge routers, takes precedence over the proxy saved by set_proxy and HTTP_PROXY\n"
                                           "\t-v|--verbose N\tset log level, higher level -- more verbose (default 3)\n"
                                           "\t-r|--refresh N\tset service polling interval in seconds (default 10)\n"
                                           "\t-P|--pipe <name>\tIPC socket discriminator suffix for running multiple ziti-edge-tunnel instances side-by-side. "
@@ -3400,6 +3423,9 @@ static CommandLine add_id_cmd = make_command(
         add_identity_opts, send_message_to_tunnel_fn);
 static CommandLine set_log_level_cmd = make_command("set_log_level", "Set log level of the tunneler", "-l <level>",
                                                     "\t-l|--loglevel\tlog level of the tunneler\n", set_log_level_opts, send_message_to_tunnel_fn);
+static CommandLine set_proxy_cmd = make_command("set_proxy", "Save or clear the proxy used to reach the OpenZiti controller and edge routers, applied at the next start", "-x <url>",
+                                                "\t-x|--proxy http://[username[:password]@]hostname_or_ip:port\tproxy to save, used when run has no -x, takes precedence over HTTP_PROXY, \"\" removes the saved proxy\n",
+                                                set_proxy_opts, send_message_to_tunnel_fn);
 static CommandLine update_tun_ip_cmd = make_command("update_tun_ip", "Update tun ip of the tunneler", "[-t <tunip>] [-p <prefixlength>] [-d <AddDNS>]",
                                                     "\t-t|--tunip\ttun ipv4 of the tunneler\n"
                                                     "\t-p|--prefixlength\ttun ipv4 prefix length of the tunneler\n"
@@ -3450,6 +3476,7 @@ static CommandLine *main_cmds[] = {
         &delete_id_cmd,
         &add_id_cmd,
         &set_log_level_cmd,
+        &set_proxy_cmd,
         &update_tun_ip_cmd,
         &update_l2_opts_cmd,
 #if _WIN32

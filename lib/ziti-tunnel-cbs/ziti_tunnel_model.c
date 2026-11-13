@@ -19,6 +19,7 @@
 // ******* TUNNEL MODEL
 IMPL_MODEL(tunnel_service_control, TUNNEL_SERVICE_CONTROL)
 IMPL_MODEL(tunnel_set_log_level, TUNNEL_SET_LOG_LEVEL)
+IMPL_MODEL(tunnel_set_proxy, TUNNEL_SET_PROXY)
 IMPL_MODEL(tunnel_tun_ip_v4, TUNNEL_TUN_IP_V4)
 IMPL_MODEL(tunnel_l2_options, TUNNEL_L2_OPTIONS)
 IMPL_MODEL(tunnel_interface_config, TUNNEL_INTERFACE_CONFIG)

@@ -42,6 +42,10 @@ type SetLogLevelData struct {
 	Level string `json:"Level"`
 }
 
+type SetProxyData struct {
+	Proxy string `json:"Proxy"`
+}
+
 type ZitiDumpData struct {
 	Identifier string `json:"Identifier,omitempty"`
 }
@@ -192,6 +196,11 @@ type IdentityOnOffFunction struct {
 type SetLogLevelFunction struct {
 	ServiceFunction
 	Data SetLogLevelData `json:"Data"`
+}
+
+type SetProxyFunction struct {
+	ServiceFunction
+	Data SetProxyData `json:"Data"`
 }
 
 type ZitiDumpFunction struct {

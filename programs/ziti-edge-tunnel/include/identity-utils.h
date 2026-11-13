@@ -102,6 +102,8 @@ bool is_valid_discriminator(const char *discriminator);
 
 void set_l2_enabled(bool enabled);
 bool get_l2_enabled();
+void set_saved_proxy(const char *proxy_url);
+const char *get_saved_proxy();
 #ifdef ENABLE_PCAP
 void set_pcap_ifname(const char* pcap_ifname);
 const char *get_pcap_ifname();

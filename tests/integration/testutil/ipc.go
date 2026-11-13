@@ -463,6 +463,18 @@ func (c *CommandsClient) SetLogLevel(t *testing.T, level string) *ServiceRespons
 	return resp
 }
 
+func (c *CommandsClient) SetProxy(t *testing.T, proxyUrl string) *ServiceResponse {
+	f := SetProxyFunction{
+		ServiceFunction: NewServiceFunction("SetProxy"),
+		Data:            SetProxyData{Proxy: proxyUrl},
+	}
+	t.Logf("sending SetProxy")
+	resp, err := send[SetProxyFunction, ServiceResponse](&c.IPCClient, f)
+	require.NoError(t, err, "failed to send SetProxy\n%s", c.LogPath)
+	resp.t = t
+	return resp
+}
+
 func (c *CommandsClient) ZitiDump(t *testing.T, identifier string) *ZitiDumpResponse {
 	f := ZitiDumpFunction{
 		ServiceFunction: NewServiceFunction("ZitiDump"),
@@ -621,6 +633,14 @@ func (c *CommandsClient) Status(t *testing.T) *StatusUpdateResponse {
 	require.NoError(t, err, "failed to send Status\n%s", c.LogPath)
 	resp.t = t
 	return resp
+}
+
+// StatusJSON is the Status reply as ZET sent it, including fields TunnelStatus does not model.
+func (c *CommandsClient) StatusJSON(t *testing.T) json.RawMessage {
+	t.Logf("sending Status")
+	resp, err := send[ServiceFunction, json.RawMessage](&c.IPCClient, NewServiceFunction("Status"))
+	require.NoError(t, err, "failed to send Status\n%s", c.LogPath)
+	return *resp
 }
 
 func (c *CommandsClient) AddIdentity(t *testing.T, data AddIdentityData) *AddIdentityResponse {
