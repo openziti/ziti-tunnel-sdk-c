@@ -72,7 +72,7 @@ static struct {
     uv_mutex_t domains_lock;
     char **domains;
 
-    // the system's DNS servers, given to ziti_dns as the fallback upstream
+    // the system's DNS servers, ziti_dns's fallback upstream while there are routing domains
     struct dns_servers {
         int count;
         char addr[MAX_FALLBACK_DNS][INET6_ADDRSTRLEN];
@@ -80,6 +80,10 @@ static struct {
 
     // resolved could not take the routing domains, so they are left out until restart
     bool domains_rejected;
+
+    // one update runs at a time, so the last list set is the last one sent; one asked for meanwhile follows it
+    bool update_running;
+    bool update_pending;
 } dns_maintainer;
 
 // one DNS update: what to read, decided on the loop, and the result of set_dns, applied on the loop
@@ -244,7 +248,26 @@ static void collect_name(const char *name, void *ctx) {
     snprintf(domain, sizeof(domain), "%s", name);
     size_t len = strlen(domain);
     if (len > 1 && domain[len - 1] == '.') domain[len - 1] = '\0';
+    if (domain[0] == '\0' || strcmp(domain, ".") == 0) {
+        return; // the root domain would claim every name
+    }
     model_map_set(ctx, domain, (void *) 1); // a hostname and a wildcard over it are one domain
+}
+
+static bool has_domains(char **domains) {
+    return domains != NULL && domains[0] != NULL;
+}
+
+// ziti forwards to the system's servers only while there are routing domains, for the names below them.
+// Without domains the tun is a default route, and ziti refuses what it does not intercept.
+static void apply_fallback_upstream(uv_loop_t *loop) {
+    tunnel_upstream_dns dns[MAX_FALLBACK_DNS] = {0};
+    tunnel_upstream_dns *list[MAX_FALLBACK_DNS + 1] = {0};
+    for (int i = 0; has_domains(dns_maintainer.domains) && i < dns_maintainer.fallback.count; i++) {
+        dns[i].host = dns_maintainer.fallback.addr[i];
+        list[i] = &dns[i];
+    }
+    ziti_dns_set_fallback_upstream(loop, list);
 }
 
 // The routing domains follow the active intercepts, re-read on every commit of service changes and
@@ -289,8 +312,12 @@ static void refresh_dns_domains(uv_loop_t *loop) {
     char **old = dns_maintainer.domains;
     dns_maintainer.domains = domains;
     uv_mutex_unlock(&dns_maintainer.domains_lock);
+    bool had_domains = has_domains(old);
     free_strv(old);
 
+    if (had_domains != has_domains(domains)) {
+        apply_fallback_upstream(loop);
+    }
     do_dns_update(loop, 0);
 }
 
@@ -426,14 +453,7 @@ static void set_fallback_dns(uv_loop_t *loop, const struct dns_servers *servers)
     }
     bool had_servers = dns_maintainer.fallback.count > 0;
     dns_maintainer.fallback = *servers;
-
-    tunnel_upstream_dns dns[MAX_FALLBACK_DNS] = {0};
-    tunnel_upstream_dns *list[MAX_FALLBACK_DNS + 1] = {0};
-    for (int i = 0; i < servers->count; i++) {
-        dns[i].host = dns_maintainer.fallback.addr[i];
-        list[i] = &dns[i];
-    }
-    ziti_dns_set_fallback_upstream(loop, list);
+    apply_fallback_upstream(loop);
 
     // the routing domains need somewhere to forward the names below them
     if (had_servers != (servers->count > 0)) {
@@ -453,18 +473,35 @@ static void after_set_dns(uv_work_t *wr, int status) {
     } else if (status == 0 && update->read_servers) {
         set_fallback_dns(wr->loop, &update->servers);
     }
+
+    uv_loop_t *loop = wr->loop;
     free(update);
     free(wr);
+    dns_maintainer.update_running = false;
+    if (dns_maintainer.update_pending) {
+        dns_maintainer.update_pending = false;
+        do_dns_update(loop, 0);
+    }
 }
 
 static void on_dns_update_time(uv_timer_t *t) {
+    if (dns_maintainer.update_running) {
+        dns_maintainer.update_pending = true; // it reads the state as it is when it starts
+        return;
+    }
     ZITI_LOG(DEBUG, "queuing DNS update");
     uv_work_t *wr = calloc(1, sizeof(uv_work_t));
     struct dns_update *update = calloc(1, sizeof(struct dns_update));
     update->want_servers = !dns_maintainer.domains_rejected && !ziti_dns_has_upstream();
     wr->data = update;
-    uv_queue_work(t->loop, wr, set_dns, after_set_dns);
-
+    int rc = uv_queue_work(t->loop, wr, set_dns, after_set_dns);
+    if (rc != 0) {
+        ZITI_LOG(WARN, "could not queue DNS update: %s", uv_strerror(rc));
+        free(update);
+        free(wr);
+        return;
+    }
+    dns_maintainer.update_running = true;
 }
 static void do_dns_update(uv_loop_t *loop, int delay) {
     uv_timer_start(&dns_maintainer.update_timer, on_dns_update_time, delay, 0);
