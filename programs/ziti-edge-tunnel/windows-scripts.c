@@ -106,6 +106,33 @@ const char *normalize_hostname(char *hostname) {
     return hostname;
 }
 
+// PowerShell reads ' and U+2018 to U+201B (UTF-8 here) as a single quote
+static const char *const single_quotes[] = { "'", "\xE2\x80\x98", "\xE2\x80\x99", "\xE2\x80\x9A", "\xE2\x80\x9B" };
+
+static char *escape_single_quotes(const char *text) {
+    char *escaped = calloc(2 * strlen(text) + 1, sizeof(char));
+    char *out = escaped;
+    const char *c = text;
+    while (*c != '\0') {
+        size_t quote_len = 0;
+        for (size_t i = 0; i < sizeof(single_quotes) / sizeof(single_quotes[0]); i++) {
+            if (strncmp(c, single_quotes[i], strlen(single_quotes[i])) == 0) {
+                quote_len = strlen(single_quotes[i]);
+                break;
+            }
+        }
+        if (quote_len > 0) {
+            memcpy(out, c, quote_len);
+            memcpy(out + quote_len, c, quote_len);
+            out += 2 * quote_len;
+            c += quote_len;
+        } else {
+            *out++ = *c++;
+        }
+    }
+    return escaped;
+}
+
 void chunked_add_nrpt_rules(uv_loop_t *ziti_loop, hostname_list_t *hostnames, const char* tun_ip, const char* zet_id) {
     char script[MAX_POWERSHELL_SCRIPT_LEN] = { 0 };
     size_t buf_len = snprintf(script, MAX_POWERSHELL_SCRIPT_LEN, "$Namespaces = @(");
@@ -199,10 +226,10 @@ void add_nrpt_rules(uv_loop_t *nrpt_loop, model_map *hostnames, const char* dns_
         }
 
         struct hostname_s *hostname_data = calloc(1, sizeof (struct hostname_s));
-        hostname_data->hostname = strdup(hostname);
+        hostname_data->hostname = escape_single_quotes(hostname);
         LIST_INSERT_HEAD(&host_names_list, hostname_data, _next);
         current_size++;
-        rule_size += strlen(hostname) + namespace_template_padding;
+        rule_size += strlen(hostname_data->hostname) + namespace_template_padding;
         it = model_map_it_remove(it);
     }
     if (current_size > 0) {
@@ -222,6 +249,9 @@ void chunked_remove_nrpt_rules(uv_loop_t *ziti_loop, hostname_list_t *hostnames,
     while(!LIST_EMPTY(hostnames)) {
         struct hostname_s *hostname = LIST_FIRST(hostnames);
         buf_len = snprintf(script + copied, (MAX_POWERSHELL_SCRIPT_LEN - copied), namespace_template, "\n", normalize_hostname(hostname->hostname));
+        if (!is_buffer_available(buf_len, (MAX_POWERSHELL_SCRIPT_LEN - copied), script)) {
+            return;
+        }
         copied += buf_len;
         domains_size++;
         LIST_REMOVE(hostname, _next);
@@ -290,10 +320,10 @@ void remove_nrpt_rules(uv_loop_t *nrpt_loop, model_map *hostnames, const char* z
         }
 
         struct hostname_s *hostname_data = calloc(1, sizeof (struct hostname_s));
-        hostname_data->hostname = strdup(hostname);
+        hostname_data->hostname = escape_single_quotes(hostname);
         LIST_INSERT_HEAD(&host_names_list, hostname_data, _next);
         current_size++;
-        rule_size += strlen(hostname) + namespace_template_padding;
+        rule_size += strlen(hostname_data->hostname) + namespace_template_padding;
         it = model_map_it_remove(it);
     }
     if (current_size > 0) {
@@ -333,14 +363,28 @@ void remove_orphaned_nrpt_rules(const char **running_ids, size_t count) {
     size_t copied = snprintf(cmd, MAX_POWERSHELL_COMMAND_LEN,
                              "powershell -Command \"$r=@(");
     for (size_t i = 0; i < count; i++) {
-        copied += snprintf(cmd + copied, MAX_POWERSHELL_COMMAND_LEN - copied,
-                           "%s'%s'", i > 0 ? "," : "", running_ids[i]);
+        const char *separator;
+        if (i > 0) {
+            separator = ",";
+        } else {
+            separator = "";
+        }
+        size_t buf_len = snprintf(cmd + copied, MAX_POWERSHELL_COMMAND_LEN - copied,
+                                  "%s'%s'", separator, running_ids[i]);
+        if (!is_buffer_available(buf_len, MAX_POWERSHELL_COMMAND_LEN - copied, cmd)) {
+            return;
+        }
+        copied += buf_len;
     }
-    copied += snprintf(cmd + copied, MAX_POWERSHELL_COMMAND_LEN - copied,
+    size_t buf_len = snprintf(cmd + copied, MAX_POWERSHELL_COMMAND_LEN - copied,
         "); Get-DnsClientNrptRule | where { $_.Comment -match '^Added by ([^ ]+\\.)?%s$'"
         " -and ($r -notcontains ($_.Comment -replace '^Added by ','')) }"
         " | Remove-DnsClientNrptRule -Force -ErrorAction SilentlyContinue\"",
         DEFAULT_EXECUTABLE_NAME);
+    if (!is_buffer_available(buf_len, MAX_POWERSHELL_COMMAND_LEN - copied, cmd)) {
+        return;
+    }
+    copied += buf_len;
     ZITI_LOG(DEBUG, "Removing orphaned NRPT rules. cmd size: %zd", copied);
     int rc = system(cmd);
     if (rc != 0) {
@@ -379,6 +423,9 @@ void chunked_remove_and_add_nrpt_rules(uv_loop_t *ziti_loop, hostname_list_t *ho
     while(!LIST_EMPTY(hostnames)) {
         struct hostname_s *hostname = LIST_FIRST(hostnames);
         buf_len = snprintf(script + copied, (MAX_POWERSHELL_SCRIPT_LEN - copied), namespace_template, "\n", normalize_hostname(hostname->hostname));
+        if (!is_buffer_available(buf_len, (MAX_POWERSHELL_SCRIPT_LEN - copied), script)) {
+            return;
+        }
         copied += buf_len;
         domains_size++;
         LIST_REMOVE(hostname, _next);
@@ -462,10 +509,10 @@ void remove_and_add_nrpt_rules(uv_loop_t *nrpt_loop, model_map *hostnames, const
         }
 
         struct hostname_s *hostname_data = calloc(1, sizeof (struct hostname_s));
-        hostname_data->hostname = strdup(hostname);
+        hostname_data->hostname = escape_single_quotes(hostname);
         LIST_INSERT_HEAD(&host_names_list, hostname_data, _next);
         current_size++;
-        rule_size += strlen(hostname) + namespace_template_padding;
+        rule_size += strlen(hostname_data->hostname) + namespace_template_padding;
         it = model_map_it_remove(it);
     }
     if (current_size > 0) {

@@ -51,6 +51,12 @@ DWORD get_process_path(LPTSTR, DWORD);
 bool scm_grant_se_debug();
 
 /**
+ * Restricts a bound IPC pipe to SYSTEM, Administrators, interactive logons, and services. Call between
+ * uv_pipe_bind and uv_listen, the Windows replacement for the uv_pipe_chmod call the other platforms use.
+ */
+bool set_pipe_dacl(HANDLE pipe);
+
+/**
  * The installed ZDEW version from the registry key its installer writes, or APP_VERSION_UNKNOWN
  * when there is no usable value there. Only the service path calls this. A standalone run reports
  * the tunneler's own version and never consults the installation.

@@ -463,10 +463,10 @@ func (c *CommandsClient) SetLogLevel(t *testing.T, level string) *ServiceRespons
 	return resp
 }
 
-func (c *CommandsClient) ZitiDump(t *testing.T, identifier, dumpPath string) *ZitiDumpResponse {
+func (c *CommandsClient) ZitiDump(t *testing.T, identifier string) *ZitiDumpResponse {
 	f := ZitiDumpFunction{
 		ServiceFunction: NewServiceFunction("ZitiDump"),
-		Data:            NewZitiDumpData(identifier, dumpPath),
+		Data:            NewZitiDumpData(identifier),
 	}
 	t.Logf("sending ZitiDump for %q", identifier)
 	resp, err := send[ZitiDumpFunction, ZitiDumpResponse](&c.IPCClient, f)
@@ -475,13 +475,33 @@ func (c *CommandsClient) ZitiDump(t *testing.T, identifier, dumpPath string) *Zi
 	return resp
 }
 
-func (c *CommandsClient) IpDump(t *testing.T, dumpPath string) *IpDumpResponse {
-	f := IpDumpFunction{
-		ServiceFunction: NewServiceFunction("IpDump"),
-		Data:            NewIpDumpData(dumpPath),
+func (c *CommandsClient) IpDump(t *testing.T) *IpDumpResponse {
+	t.Log("sending IpDump")
+	resp, err := send[ServiceFunction, IpDumpResponse](&c.IPCClient, NewServiceFunction("IpDump"))
+	require.NoError(t, err, "failed to send IpDump\n%s", c.LogPath)
+	resp.t = t
+	return resp
+}
+
+func (c *CommandsClient) ZitiDumpWithDumpPath(t *testing.T, identifier, dumpPath string) *ZitiDumpResponse {
+	f := legacyDumpPathFunction{
+		ServiceFunction: NewServiceFunction("ZitiDump"),
+		Data:            legacyDumpPathData{Identifier: identifier, DumpPath: dumpPath},
 	}
-	t.Logf("sending IpDump to %q", dumpPath)
-	resp, err := send[IpDumpFunction, IpDumpResponse](&c.IPCClient, f)
+	t.Logf("sending ZitiDump for %q with DumpPath %q", identifier, dumpPath)
+	resp, err := send[legacyDumpPathFunction, ZitiDumpResponse](&c.IPCClient, f)
+	require.NoError(t, err, "failed to send ZitiDump\n%s", c.LogPath)
+	resp.t = t
+	return resp
+}
+
+func (c *CommandsClient) IpDumpWithDumpPath(t *testing.T, dumpPath string) *IpDumpResponse {
+	f := legacyDumpPathFunction{
+		ServiceFunction: NewServiceFunction("IpDump"),
+		Data:            legacyDumpPathData{DumpPath: dumpPath},
+	}
+	t.Logf("sending IpDump with DumpPath %q", dumpPath)
+	resp, err := send[legacyDumpPathFunction, IpDumpResponse](&c.IPCClient, f)
 	require.NoError(t, err, "failed to send IpDump\n%s", c.LogPath)
 	resp.t = t
 	return resp

@@ -20,6 +20,7 @@
 #include <ziti/ziti_tunnel_cbs.h>
 #if _WIN32
 #include "windows/windows-scripts.h"
+#include "windows/windows-service.h"
 #endif
 
 #include "identity-utils.h"
@@ -315,7 +316,16 @@ int start_cmd_socket(uv_loop_t *l, const char *sockfile) {
 
     CHECK_UV(uv_pipe_init(l, &cmd_server, 0));
     CHECK_UV(uv_pipe_bind(&cmd_server, sockfile));
+#if _WIN32
+    uv_os_fd_t cmd_pipe;
+    if (uv_fileno((const uv_handle_t *) &cmd_server, &cmd_pipe) != 0 || !set_pipe_dacl(cmd_pipe)) {
+        // the bound instance still carries the default descriptor, which grants Everyone read
+        uv_close((uv_handle_t *) &cmd_server, NULL);
+        goto uv_err;
+    }
+#else
     CHECK_UV(uv_pipe_chmod(&cmd_server, UV_WRITABLE | UV_READABLE));
+#endif
 
     uv_unref((uv_handle_t *) &cmd_server);
 

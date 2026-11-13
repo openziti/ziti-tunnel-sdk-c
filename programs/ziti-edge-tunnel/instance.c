@@ -1016,6 +1016,11 @@ char* get_zet_instance_id(const char* discriminator) {
     return zet_instance_id;
 }
 
+bool is_valid_discriminator(const char *discriminator) {
+    size_t allowed_len = strspn(discriminator, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._");
+    return discriminator[allowed_len] == '\0';
+}
+
 // ************** TUNNEL BROADCAST MESSAGES
 IMPL_MODEL(tunnel_identity, TUNNEL_IDENTITY)
 IMPL_MODEL(tunnel_tap_info, TUNNEL_TAP_INFO)

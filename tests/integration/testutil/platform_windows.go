@@ -21,7 +21,9 @@ package testutil
 import (
 	"fmt"
 	"net"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -51,6 +53,20 @@ func EventPipePathFor(disc string) string {
 		return EventPipePath
 	}
 	return EventPipePath + "." + disc
+}
+
+// DumpDir is where ZET writes ZitiDump and IpDump files: its log dir beside the binary, which ZDEW's
+// feedback bundle collects.
+func (z *ZET) DumpDir() string {
+	return filepath.Join(filepath.Dir(z.BinPath), "logs", "service")
+}
+
+// removeIpDumpFiles clears the .ip_dump files every IpDump call leaves in the ZET's dump dir.
+func removeIpDumpFiles(zet *ZET) {
+	written, _ := filepath.Glob(filepath.Join(zet.DumpDir(), "*.ip_dump"))
+	for _, dumpFile := range written {
+		_ = os.Remove(dumpFile)
+	}
 }
 
 func dialPlatform(path string, timeout time.Duration) (net.Conn, error) {

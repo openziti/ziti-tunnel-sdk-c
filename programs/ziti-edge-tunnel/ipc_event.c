@@ -17,6 +17,9 @@
 #include <tlsuv/queue.h>
 #include <ziti/model_support.h>
 #include <ziti/ziti_log.h>
+#if _WIN32
+#include "windows/windows-service.h"
+#endif
 
 #include "instance-config.h"
 
@@ -166,7 +169,16 @@ int start_event_socket(uv_loop_t *l, const char *eventsockfile) {
 
     CHECK_UV(uv_pipe_init(l, &event_server, 0));
     CHECK_UV(uv_pipe_bind(&event_server, eventsockfile));
+#if _WIN32
+    uv_os_fd_t event_pipe;
+    if (uv_fileno((const uv_handle_t *) &event_server, &event_pipe) != 0 || !set_pipe_dacl(event_pipe)) {
+        // the bound instance still carries the default descriptor, which grants Everyone read
+        uv_close((uv_handle_t *) &event_server, NULL);
+        goto uv_err;
+    }
+#else
     CHECK_UV(uv_pipe_chmod(&event_server, UV_WRITABLE | UV_READABLE));
+#endif
 
     uv_unref((uv_handle_t *) &event_server);
 

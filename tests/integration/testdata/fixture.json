@@ -34,7 +34,55 @@
       "enrollment": { "ott": true }
     },
     {
+      "name": "test_nrpt_hostname",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
+      "name": "test_nrpt_update",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
+      "name": "test_nrpt_zetb",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
       "name": "test_restart_jwt",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
+      "name": "test_dump",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
+      "name": "test_dump_all_first",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
+      "name": "test_dump_all_second",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
+      "name": "test_dump_file",
+      "isAdmin": false,
+      "authPolicy": "@Default",
+      "enrollment": { "ott": true }
+    },
+    {
+      "name": "test_dump_path",
       "isAdmin": false,
       "authPolicy": "@Default",
       "enrollment": { "ott": true }
@@ -639,6 +687,44 @@
         "addresses": ["100.64.0.25/32"],
         "portRanges": [{ "low": 23005, "high": 23005 }]
       }
+    },
+    {
+      "name": "test_nrpt_hostname_intercept",
+      "configType": "@intercept.v1",
+      "data": {
+        "protocols": ["tcp"],
+        "addresses": [
+          "safe.nrpt-test.ziti",
+          "x';m=(New-Item -ItemType File -Path $env:PUBLIC -Name 'zet-injected-by-hostname');x='",
+          "x’;m=(New-Item -ItemType File -Path $env:PUBLIC -Name ’zet-injected-by-curly-quote-hostname’);x=’",
+          "x‘;m=(New-Item -ItemType File -Path $env:PUBLIC -Name ‘zet-injected-by-curly-quote-hostname‘);x=‘",
+          "x‚;m=(New-Item -ItemType File -Path $env:PUBLIC -Name ‚zet-injected-by-curly-quote-hostname‚);x=‚",
+          "x‛;m=(New-Item -ItemType File -Path $env:PUBLIC -Name ‛zet-injected-by-curly-quote-hostname‛);x=‛",
+          "münchen.nrpt-test.ziti"
+        ],
+        "portRanges": [{ "low": 80, "high": 80 }]
+      }
+    },
+    {
+      "name": "test_nrpt_update_intercept",
+      "configType": "@intercept.v1",
+      "data": {
+        "protocols": ["tcp"],
+        "addresses": [
+          "safe.nrpt-update-test.ziti",
+          "x';m=(New-Item -ItemType File -Path $env:PUBLIC -Name 'zet-injected-by-service-update');x='"
+        ],
+        "portRanges": [{ "low": 80, "high": 80 }]
+      }
+    },
+    {
+      "name": "test_nrpt_zetb_intercept",
+      "configType": "@intercept.v1",
+      "data": {
+        "protocols": ["tcp"],
+        "addresses": ["zetb.nrpt-test.ziti"],
+        "portRanges": [{ "low": 80, "high": 80 }]
+      }
     }
   ],
   "postureChecks": [
@@ -743,6 +829,21 @@
       "name": "test_mfa_posture_mixed_long_svc",
       "encryptionRequired": true,
       "configs": ["@test_mfa_posture_mixed_long_intercept"]
+    },
+    {
+      "name": "test_nrpt_hostname_svc",
+      "encryptionRequired": true,
+      "configs": ["@test_nrpt_hostname_intercept"]
+    },
+    {
+      "name": "test_nrpt_update_svc",
+      "encryptionRequired": true,
+      "configs": ["@test_nrpt_update_intercept"]
+    },
+    {
+      "name": "test_nrpt_zetb_svc",
+      "encryptionRequired": true,
+      "configs": ["@test_nrpt_zetb_intercept"]
     }
   ],
   "servicePolicies": [
@@ -889,6 +990,27 @@
       "identityRoles": ["@test_mfa_posture_mixed"],
       "serviceRoles": ["@test_mfa_posture_mixed_long_svc"],
       "postureCheckRoles": ["#test_mfa_posture_mixed_long_check"]
+    },
+    {
+      "name": "test_nrpt_hostname_dial",
+      "type": "Dial",
+      "semantic": "AnyOf",
+      "identityRoles": ["@test_nrpt_hostname"],
+      "serviceRoles": ["@test_nrpt_hostname_svc"]
+    },
+    {
+      "name": "test_nrpt_update_dial",
+      "type": "Dial",
+      "semantic": "AnyOf",
+      "identityRoles": ["@test_nrpt_update"],
+      "serviceRoles": ["@test_nrpt_update_svc"]
+    },
+    {
+      "name": "test_nrpt_zetb_dial",
+      "type": "Dial",
+      "semantic": "AnyOf",
+      "identityRoles": ["@test_nrpt_zetb"],
+      "serviceRoles": ["@test_nrpt_zetb_svc"]
     }
   ]
 }

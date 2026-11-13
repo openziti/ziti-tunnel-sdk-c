@@ -54,6 +54,7 @@
 #include "windows/windows-scripts.h"
 #include "windows/minidump.h"
 
+extern char* get_log_path();
 #endif
 
 #ifndef MAXIPCCOMMANDLEN
@@ -1235,6 +1236,14 @@ static void run_tunneler_loop(uv_loop_t* ziti_loop) {
 
     CMD_CTRL = ziti_tunnel_init_cmd(ziti_loop, tunneler, on_event);
 
+    // dump files are written only on Windows, into the log dir ZDEW's feedback bundle collects. Elsewhere logs go to
+    // journald or the console and the binary may sit in /usr/local/bin, so the dump travels in the response only.
+#if _WIN32
+    char *dump_dir = get_log_path();
+    ziti_tunnel_set_dump_dir(dump_dir, ipc_discriminator);
+    free(dump_dir);
+#endif
+
     if (uses_config_dir) {
         ZITI_LOG(INFO, "Loading identity files from %s", config_dir);
     }
@@ -1708,7 +1717,11 @@ static void run(int argc, char *argv[]) {
         MODEL_LIST_FOREACH(sock_name, ipc_list) {
             char *disc = (strlen(sock_name) > base_len && sock_name[base_len] == '.')
                          ? strdup(sock_name + base_len + 1) : NULL;
-            running_ids[n++] = get_zet_instance_id(disc);
+            if (disc != NULL && !is_valid_discriminator(disc)) {
+                ZITI_LOG(WARN, "ignoring pipe with unsupported characters: %s", sock_name);
+            } else {
+                running_ids[n++] = get_zet_instance_id(disc);
+            }
             free(disc);
         }
         if (n > 0) {
@@ -2341,7 +2354,6 @@ static tunnel_command cmd = {
 static int dump_opts(int argc, char *argv[]) {
     static struct option opts[] = {
             {"identity", required_argument, NULL, 'i'},
-            {"dump_path", required_argument, NULL, 'p'},
     };
     int c, option_index, errors = 0;
     optind = 0;
@@ -2349,14 +2361,11 @@ static int dump_opts(int argc, char *argv[]) {
     tunnel_ziti_dump *dump_options = calloc(1, sizeof(tunnel_ziti_dump));
     cmd.command = TunnelCommand_ZitiDump;
 
-    while ((c = getopt_long(argc, argv, "i:p:",
+    while ((c = getopt_long(argc, argv, "i:",
                             opts, &option_index)) != -1) {
         switch (c) {
             case 'i':
                 dump_options->identifier = strdup(optarg);
-                break;
-            case 'p':
-                dump_options->dump_path = realpath(optarg, NULL);
                 break;
             default: {
                 fprintf(stderr, "Unknown option '%c'\n", c);
@@ -2379,36 +2388,9 @@ static int dump_opts(int argc, char *argv[]) {
 }
 
 static int ip_dump_opts(int argc, char *argv[]) {
-    static struct option opts[] = {
-            {"dump_path", required_argument, NULL, 'p'},
-    };
-    int c, option_index, errors = 0;
     optind = 0;
 
-    tunnel_ip_dump *dump_options = calloc(1, sizeof(tunnel_ip_dump));
     cmd.command = TunnelCommand_IpDump;
-
-    while ((c = getopt_long(argc, argv, "p:", opts, &option_index)) != -1) {
-        switch (c) {
-            case 'p':
-                dump_options->dump_path = realpath(optarg, NULL);
-                break;
-            default: {
-                fprintf(stderr, "Unknown option '%c'\n", c);
-                errors++;
-                break;
-            }
-        }
-    }
-
-    CHECK_COMMAND_ERRORS(errors);
-
-    size_t json_len;
-    cmd.data = tunnel_ip_dump_to_json(dump_options, MODEL_JSON_COMPACT, &json_len);
-    if (dump_options != NULL) {
-        free_tunnel_ip_dump(dump_options);
-        free(dump_options);
-    }
 
     return optind;
 }
@@ -3377,11 +3359,9 @@ static CommandLine run_host_cmd = make_command("run-host", "run Ziti tunnel to h
                                           "\t-P|--pipe <name>\tIPC socket discriminator suffix for running multiple ziti-edge-tunnel instances side-by-side. "
                                           "When omitted, the PID is used automatically if other instances are detected; otherwise the default socket path is used.\n",
                                           run_host_opts, run);
-static CommandLine dump_cmd = make_command("dump", "dump the identities information", "[-i <identity>] [-p <dir>]",
-                                           "\t-i|--identity\tdump identity info\n"
-                                           "\t-p|--dump_path\tdump into path\n", dump_opts, send_message_to_tunnel_fn);
-static CommandLine ip_dump_cmd = make_command("ip_dump", "dump ip stack information", "[-p <dir>]",
-                                              "\t-p|--dump_path\tdump into path\n", ip_dump_opts, send_message_to_tunnel_fn);
+static CommandLine dump_cmd = make_command("dump", "dump the identities information, on Windows also written into the log directory", "[-i <identity>]",
+                                           "\t-i|--identity\tdump only this identity\n", dump_opts, send_message_to_tunnel_fn);
+static CommandLine ip_dump_cmd = make_command("ip_dump", "dump ip stack information", "", "", ip_dump_opts, send_message_to_tunnel_fn);
 static CommandLine on_off_id_cmd = make_command("on_off_identity", "enable/disable the identities information", "-i <identity> -o t|f",
                                            "\t-i|--identity\tidentity info that needs to be enabled/disabled\n"
                                                 "\t-o|--onoff\t't' or 'f' to enable or disable the identity\n", on_off_identity_opts, send_message_to_tunnel_fn);
@@ -3700,6 +3680,10 @@ int main(int argc, char *argv[]) {
     // without each opts function needing to handle it individually.
     for (int i = 1; i < argc - 1; i++) {
         if (strcmp(argv[i], "-P") == 0 || strcmp(argv[i], "--pipe") == 0) {
+            if (!is_valid_discriminator(argv[i + 1])) {
+                fprintf(stderr, "-P '%s' may contain only letters, digits, '-', '.' and '_'\n", argv[i + 1]);
+                return 1;
+            }
             ipc_discriminator = argv[i + 1];
             for (int j = i; j < argc - 2; j++) {
                 argv[j] = argv[j + 2];

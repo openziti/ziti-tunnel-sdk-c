@@ -26,6 +26,8 @@ static struct cmd_ctx_s {
     uv_loop_t *loop;
     ziti_enroll_key_cb enroll_key_cb;
     void *enroll_key_ctx;
+    char *dump_dir;
+    char *dump_instance;
 } CMD_CTX;
 
 struct mfa_request_s {

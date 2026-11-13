@@ -98,6 +98,7 @@ void normalize_identifier(char *str);
 
 void set_tun_name(const char *name);
 char* get_zet_instance_id(const char* discriminator);
+bool is_valid_discriminator(const char *discriminator);
 
 void set_l2_enabled(bool enabled);
 bool get_l2_enabled();

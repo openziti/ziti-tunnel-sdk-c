@@ -36,6 +36,7 @@ type IpBaseline struct {
 // CaptureIpBaseline dials the ZET's IPC and snapshots pool Used values.
 func CaptureIpBaseline(t *testing.T, zet *ZET) IpBaseline {
 	t.Helper()
+	defer removeIpDumpFiles(zet)
 	client, err := zet.DialIPC()
 	if err != nil {
 		t.Logf("CaptureIpBaseline: failed to dial IPC: %v", err)
@@ -43,9 +44,9 @@ func CaptureIpBaseline(t *testing.T, zet *ZET) IpBaseline {
 	}
 	defer func() { _ = client.Close() }()
 
-	resp := client.IpDump(t, "")
-	baseline := IpBaseline{PoolUsed: make(map[string]int, len(resp.Data.Pools))}
-	for _, pool := range resp.Data.Pools {
+	resp := client.IpDump(t)
+	baseline := IpBaseline{PoolUsed: make(map[string]int, len(resp.Data.Stats.Pools))}
+	for _, pool := range resp.Data.Stats.Pools {
 		baseline.PoolUsed[pool.Name] = pool.Used
 	}
 	return baseline
@@ -58,6 +59,7 @@ func CaptureIpBaseline(t *testing.T, zet *ZET) IpBaseline {
 // Uses t.Errorf (not Fatalf) so both ZETs are checked even when one fails.
 func AssertNoLeakedConnections(t *testing.T, zet *ZET, serviceName string, baseline IpBaseline) {
 	t.Helper()
+	defer removeIpDumpFiles(zet)
 	deadline := time.Now().Add(leakPollDeadline)
 	var lastStats IpStats
 
@@ -71,9 +73,9 @@ func AssertNoLeakedConnections(t *testing.T, zet *ZET, serviceName string, basel
 			time.Sleep(leakPollInterval)
 			continue
 		}
-		resp := client.IpDump(t, "")
+		resp := client.IpDump(t)
 		_ = client.Close()
-		lastStats = resp.Data
+		lastStats = resp.Data.Stats
 
 		if noLeaks(lastStats, serviceName, baseline) {
 			return
@@ -89,7 +91,7 @@ func AssertNoLeakedConnections(t *testing.T, zet *ZET, serviceName string, basel
 
 	client, err := zet.DialIPC()
 	if err == nil {
-		dumpResp := client.ZitiDump(t, "", "")
+		dumpResp := client.ZitiDump(t, "")
 		_ = client.Close()
 		dumpJSON, _ := json.MarshalIndent(dumpResp.Data, "", "  ")
 		t.Logf("ZitiDump at leak detection:\n%s", string(dumpJSON))

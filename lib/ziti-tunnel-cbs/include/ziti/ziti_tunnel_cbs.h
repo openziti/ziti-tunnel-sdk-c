@@ -120,11 +120,17 @@ XX(id, model_string, none, Id, __VA_ARGS__)
 XX(identities, tunnel_identity_info, array, Identities, __VA_ARGS__)
 
 #define TNL_ZITI_DUMP(XX, ...) \
-XX(identifier, model_string, none, Identifier, __VA_ARGS__) \
-XX(dump_path, model_string, none, DumpPath, __VA_ARGS__)
+XX(identifier, model_string, none, Identifier, __VA_ARGS__)
 
-#define TNL_IP_DUMP(XX, ...) \
-XX(dump_path, model_string, none, DumpPath, __VA_ARGS__)
+// on success the dump travels in the response. Files lists what the tunneler also wrote, into a directory it picks
+// (ziti_tunnel_set_dump_dir), never one the caller names
+#define TNL_ZITI_DUMP_RESULT(XX, ...) \
+XX(files, model_string, list, Files, __VA_ARGS__) \
+XX(dumps, json, none, Dumps, __VA_ARGS__)
+
+#define TNL_IP_DUMP_RESULT(XX, ...) \
+XX(files, model_string, list, Files, __VA_ARGS__) \
+XX(stats, tunnel_ip_stats, none, Stats, __VA_ARGS__)
 
 #define TNL_IDENTITY_ID(XX, ...) \
 XX(identifier, model_string, none, Identifier, __VA_ARGS__)
@@ -237,7 +243,8 @@ DECLARE_MODEL(tunnel_load_identity, TNL_LOAD_IDENTITY)
 DECLARE_MODEL(tunnel_identity_info, TNL_IDENTITY_INFO)
 DECLARE_MODEL(tunnel_identity_lst, TNL_IDENTITY_LIST)
 DECLARE_MODEL(tunnel_ziti_dump, TNL_ZITI_DUMP)
-DECLARE_MODEL(tunnel_ip_dump, TNL_IP_DUMP)
+DECLARE_MODEL(tunnel_ziti_dump_result, TNL_ZITI_DUMP_RESULT)
+DECLARE_MODEL(tunnel_ip_dump_result, TNL_IP_DUMP_RESULT)
 DECLARE_MODEL(tunnel_on_off_identity, TNL_ON_OFF_IDENTITY)
 DECLARE_MODEL(tunnel_identity_id, TNL_IDENTITY_ID)
 DECLARE_MODEL(tunnel_id_ext_auth, TNL_ID_EXT_AUTH)
@@ -425,6 +432,11 @@ const ziti_tunnel_ctrl* ziti_tunnel_init_cmd(uv_loop_t *loop, tunneler_context, 
  *  Applied to every ziti_context created by the command processor.
  *  Pass NULL to use the SDK's default software key generation. */
 void ziti_tunnel_set_enroll_key_cb(ziti_enroll_key_cb cb, void *ctx);
+
+/** Directory that ZitiDump and IpDump also write into. A trailing separator is dropped. `instance`, when not NULL,
+ *  goes into every file name so tunnelers sharing the directory do not overwrite each other. While unset, nothing is
+ *  written and Files stays empty. */
+void ziti_tunnel_set_dump_dir(const char *dir, const char *instance);
 
 struct add_identity_request_s {
     char* identifier;

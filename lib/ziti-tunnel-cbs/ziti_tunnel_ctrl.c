@@ -125,14 +125,37 @@ void ziti_tunnel_set_enroll_key_cb(ziti_enroll_key_cb cb, void *ctx) {
     CMD_CTX.enroll_key_ctx = ctx;
 }
 
-#if _WIN32
-#define realpath(rel, abs) _fullpath(abs, rel, MAX_PATH)
-#endif
-
 IMPL_ENUM(mfa_status, MFA_STATUS)
 
 void ziti_set_refresh_interval(unsigned long seconds) {
     refresh_interval = seconds;
+}
+
+void ziti_tunnel_set_dump_dir(const char *dir, const char *instance) {
+    FREE(CMD_CTX.dump_dir);
+    FREE(CMD_CTX.dump_instance);
+    if (dir == NULL) {
+        return;
+    }
+    size_t len = strlen(dir);
+    while (len > 0 && dir[len - 1] == PATH_SEP) {
+        len--;
+    }
+    CMD_CTX.dump_dir = calloc(len + 1, sizeof(char));
+    memcpy(CMD_CTX.dump_dir, dir, len);
+    if (instance != NULL) {
+        CMD_CTX.dump_instance = strdup(instance);
+    }
+}
+
+static bool dump_file_path(const char *name, const char *ext, char *out, size_t out_len) {
+    int written = snprintf(out, out_len, "%s%c%s%s%s.%s", CMD_CTX.dump_dir, PATH_SEP, name,
+                           CMD_CTX.dump_instance ? "." : "", CMD_CTX.dump_instance ? CMD_CTX.dump_instance : "", ext);
+    if (written < 0 || (size_t) written >= out_len) {
+        ZITI_LOG(ERROR, "dump file path for %s.%s under %s exceeds %zu bytes", name, ext, CMD_CTX.dump_dir, out_len);
+        return false;
+    }
+    return true;
 }
 
 static ziti_context get_ziti(const char *identifier) {
@@ -154,6 +177,26 @@ static char * dump_to_string(dumper dump, void *dump_ctx) {
     return val;
 }
 
+// the identifier's basename, not identity->name, which the controller supplies and can carry a separator or a
+// character illegal in a filename. The identifier is caller-supplied too, only its separators are stripped
+static void identity_dump_name(const char *identifier, char *out, size_t out_len) {
+    const char *base = identifier;
+    const char *fwd = strrchr(identifier, '/');
+    const char *back = strrchr(identifier, '\\');
+    if (fwd != NULL) {
+        base = fwd + 1;
+    }
+    if (back != NULL && back + 1 > base) {
+        base = back + 1;
+    }
+
+    size_t len = strlen(base);
+    if (len > 5 && strcmp(base + len - 5, ".json") == 0) {
+        len -= 5;
+    }
+    snprintf(out, out_len, "%.*s", (int) len, base);
+}
+
 static int dump_to_file_op(void* fp, const char *fmt, ...) {
     static char line[4096];
 
@@ -166,13 +209,13 @@ static int dump_to_file_op(void* fp, const char *fmt, ...) {
     return 0;
 }
 
-static void dump_to_file(dumper dump, void *dump_ctx, char* outputFile) {
+static bool dump_to_file(dumper dump, void *dump_ctx, char* outputFile) {
     FILE *fp;
     fp = fopen(outputFile, "w+");
     if(fp == NULL)
     {
         ZITI_LOG(ERROR, "Could not acquire file pointer of dump file: %s - %s", outputFile, strerror(errno));
-        return;
+        return false;
     }
     uv_timeval64_t dump_time;
     uv_gettimeofday(&dump_time);
@@ -187,6 +230,7 @@ static void dump_to_file(dumper dump, void *dump_ctx, char* outputFile) {
     dump(dump_ctx, dump_to_file_op, fp);
     fflush(fp);
     fclose(fp);
+    return true;
 }
 
 static void ip_dump(const tunnel_ip_stats *stats, dump_writer writer, void *writer_ctx) {
@@ -238,6 +282,7 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
             .data = NULL,
             .code = IPC_ERROR,
     };
+    char errorMsg[1024];
     ZITI_LOG(TRACE, "processing command[%s] with data[%s]", TunnelCommands.name(cmd->command), cmd->data);
     switch (cmd->command) {
         case TunnelCommand_LoadIdentity: {
@@ -345,10 +390,16 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
             }
             const char *key;
             struct ziti_instance_s *inst;
-            struct json_object *json = dump.dump_path == NULL ? 
-                    json_object_new_object() : NULL;
+            tunnel_ziti_dump_result res = {0};
+            struct json_object *dumps = json_object_new_object();
             bool success = true;
+            bool matched = false;
             MODEL_MAP_FOREACH(key, inst, &instances) {
+                if (dump.identifier != NULL && strcmp(dump.identifier, inst->identifier) != 0) {
+                    continue;
+                }
+                matched = true;
+                // matched before the NULL checks: a requested identity still mid-auth has no ztx or identity yet
                 if (inst->ztx == NULL) {
                     continue;
                 }
@@ -356,45 +407,42 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
                 if (identity == NULL) {
                     continue;
                 }
-                if (dump.identifier != NULL && strcmp(dump.identifier, inst->identifier) != 0) {
+                char *dumpstr = dump_to_string((dumper) ziti_dump, inst->ztx);
+                json_object_object_add(dumps, inst->identifier, json_object_new_string(dumpstr));
+                free(dumpstr);
+                if (CMD_CTX.dump_dir == NULL) {
                     continue;
                 }
-                if (dump.dump_path == NULL) {
-                    char *dumpstr = dump_to_string((dumper) ziti_dump, inst->ztx);
-                    struct json_object *s = json_object_new_string(dumpstr);
-                    json_object_object_add(json, inst->identifier, s);
-                    free(dumpstr);
+                char file_name[MAXPATHLEN];
+                char dump_file[MAXPATHLEN];
+                identity_dump_name(inst->identifier, file_name, sizeof(file_name));
+                if (dump_file_path(file_name, "ziti", dump_file, sizeof(dump_file)) &&
+                    dump_to_file((dumper) ziti_dump, inst->ztx, dump_file)) {
+                    model_list_append(&res.files, strdup(dump_file));
                 } else {
-                    char dump_file[MAXPATHLEN];
-                    char* dump_path = realpath(dump.dump_path, NULL);
-
-                    if (dump_path != NULL) {
-                        snprintf(dump_file, sizeof(dump_file), "%s/%s.ziti", dump_path, identity->name);
-                        dump_to_file((dumper) ziti_dump, inst->ztx, dump_file);
-                    } else {
-                        ZITI_LOG(WARN, "Could not generate the ziti dump file, because the path is not found");
-                        success = false;
-                    }
+                    success = false;
                 }
             }
-            if (success) {
+            if (dump.identifier != NULL && !matched) {
+                result.success = false;
+                result.code = IPC_ERROR;
+                snprintf(errorMsg, sizeof(errorMsg), "No matching identifier found for %s", dump.identifier);
+                result.error = errorMsg;
+                ZITI_LOG(WARN, "%s", result.error);
+            } else if (success) {
                 result.success = true;
                 result.code = IPC_SUCCESS;
-                if (json) {
-                    result.data = strdup(json_object_to_json_string(json));
-                    json_object_put(json);
-                }
+                res.dumps = strdup(json_object_to_json_string(dumps));
+                result.data = tunnel_ziti_dump_result_to_json(&res, MODEL_JSON_COMPACT, NULL);
             } else {
                 result.success = false;
                 result.code = IPC_ERROR;
-            }
-
-            if (!result.success) {
-                char errorMsg[1024];
-                snprintf(errorMsg, sizeof(errorMsg),"No matching identifier found for %s", dump.identifier);
+                snprintf(errorMsg, sizeof(errorMsg), "Could not write the ziti dump to %s", CMD_CTX.dump_dir);
                 result.error = errorMsg;
                 ZITI_LOG(WARN, "%s", result.error);
             }
+            json_object_put(dumps);
+            free_tunnel_ziti_dump_result(&res);
             ZITI_LOG(INFO, "ziti dump finished ");
             free_tunnel_ziti_dump(&dump);
             break;
@@ -402,48 +450,39 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
 
         case TunnelCommand_IpDump: {
             ZITI_LOG(INFO, "ip dump started");
-            tunnel_ip_dump dump = {0};
-            if (cmd->data != NULL && parse_tunnel_ip_dump(&dump, cmd->data, strlen(cmd->data)) < 0) {
-                result.success = false;
-                result.error = "invalid command";
-                free_tunnel_ip_dump(&dump);
-                break;
-            }
-            tunnel_ip_stats stats = {0};
-            ziti_tunnel_get_ip_stats(&stats);
-            result.data = tunnel_ip_stats_to_json(&stats, MODEL_JSON_COMPACT, NULL);
+            tunnel_ip_dump_result res = {0};
+            ziti_tunnel_get_ip_stats(&res.stats);
             bool success = true;
-            if (dump.dump_path != NULL) {
+            if (CMD_CTX.dump_dir != NULL) {
+                char stamp[64];
                 char dump_file[MAXPATHLEN];
-                char* dump_path = realpath(dump.dump_path, NULL);
-                if (dump_path != NULL) {
-                    uv_timeval64_t now;
-                    uv_gettimeofday(&now);
-                    struct tm *tm = gmtime((time_t *) &now.tv_sec);
-                    snprintf(dump_file, sizeof(dump_file), "%s/%04d-%02d-%02dT%02d:%02d:%02d.%03dZ.ip_dump", dump_path,
-                             1900 + tm->tm_year, tm->tm_mon + 1, tm->tm_mday,
-                             tm->tm_hour, tm->tm_min, tm->tm_sec, now.tv_usec / 1000);
-                    dump_to_file((dumper) ip_dump, &stats, dump_file);
-                    free(dump_path);
+                uv_timeval64_t now;
+                uv_gettimeofday(&now);
+                time_t sec = (time_t) now.tv_sec;
+                struct tm *tm = gmtime(&sec);
+                // the time uses dashes because a colon cannot appear in a Windows filename
+                snprintf(stamp, sizeof(stamp), "%04d-%02d-%02dT%02d-%02d-%02d.%03dZ",
+                         1900 + tm->tm_year, tm->tm_mon + 1, tm->tm_mday,
+                         tm->tm_hour, tm->tm_min, tm->tm_sec, now.tv_usec / 1000);
+                if (dump_file_path(stamp, "ip_dump", dump_file, sizeof(dump_file)) &&
+                    dump_to_file((dumper) ip_dump, &res.stats, dump_file)) {
+                    model_list_append(&res.files, strdup(dump_file));
                 } else {
-                    ZITI_LOG(WARN, "Could not generate the ip dump file, because the path is not found");
                     success = false;
                 }
             }
             if (success) {
                 result.success = true;
                 result.code = IPC_SUCCESS;
+                result.data = tunnel_ip_dump_result_to_json(&res, MODEL_JSON_COMPACT, NULL);
+                ZITI_LOG(INFO, "ip dump finished");
             } else {
                 result.success = false;
                 result.code = IPC_ERROR;
-            }
-            if (!result.success) {
                 result.error = "ip dump failed";
                 ZITI_LOG(WARN, "%s", result.error);
-            } else {
-                ZITI_LOG(INFO, "ip dump finished");
             }
-            free_tunnel_ip_stats(&stats);
+            free_tunnel_ip_dump_result(&res);
             break;
         }
 
@@ -1623,7 +1662,8 @@ IMPL_MODEL(tunnel_identity_info, TNL_IDENTITY_INFO)
 IMPL_MODEL(tunnel_identity_lst, TNL_IDENTITY_LIST)
 IMPL_MODEL(tunnel_on_off_identity, TNL_ON_OFF_IDENTITY)
 IMPL_MODEL(tunnel_ziti_dump, TNL_ZITI_DUMP)
-IMPL_MODEL(tunnel_ip_dump, TNL_IP_DUMP)
+IMPL_MODEL(tunnel_ziti_dump_result, TNL_ZITI_DUMP_RESULT)
+IMPL_MODEL(tunnel_ip_dump_result, TNL_IP_DUMP_RESULT)
 IMPL_MODEL(tunnel_identity_id, TNL_IDENTITY_ID)
 IMPL_MODEL(tunnel_mfa_enrol_res, TNL_MFA_ENROL_RES)
 IMPL_MODEL(tunnel_submit_mfa, TNL_SUBMIT_MFA)

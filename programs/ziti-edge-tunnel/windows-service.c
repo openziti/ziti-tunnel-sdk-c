@@ -20,6 +20,9 @@ limitations under the License.
 #include <winuser.h>
 #include <service-utils.h>
 #include <windows.h>
+#include <aclapi.h>
+#include <sddl.h>
+#include <ziti/ziti_log.h>
 
 #pragma comment(lib, "advapi32.lib")
 
@@ -521,4 +524,40 @@ bool scm_grant_se_debug() {
         return worked;
     }
     return false;
+}
+
+// uv_pipe_chmod can only grant Everyone, so set the DACL here instead. Verify by measuring elevated (the service or
+// an admin run), not as a standard user: only an elevated ZET propagates this DACL to every libuv-created instance.
+bool set_pipe_dacl(HANDLE pipe) {
+    // 0x12019B is FILE_GENERIC_READ|FILE_GENERIC_WRITE without FILE_APPEND_DATA, which on a pipe is
+    // FILE_CREATE_PIPE_INSTANCE: a caller granted that can add its own instance of the name and race the
+    // service for the next client. SetSecurityInfo takes the bare ACL, so PROTECTED_DACL_SECURITY_INFORMATION,
+    // not the SDDL D:P, is what marks the DACL protected.
+    PSECURITY_DESCRIPTOR sd = NULL;
+    if (!ConvertStringSecurityDescriptorToSecurityDescriptorA(
+            "D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;0x12019B;;;IU)(A;;0x12019B;;;SU)", SDDL_REVISION_1, &sd, NULL)) {
+        ZITI_LOG(ERROR, "could not build pipe security descriptor: %lu", GetLastError());
+        return false;
+    }
+
+    BOOL present = FALSE, defaulted = FALSE;
+    PACL dacl = NULL;
+    bool ok = false;
+    if (!GetSecurityDescriptorDacl(sd, &present, &dacl, &defaulted)) {
+        ZITI_LOG(ERROR, "could not read pipe DACL: %lu", GetLastError());
+    } else if (!present || dacl == NULL) {
+        // a NULL DACL here would grant everyone full access
+        ZITI_LOG(ERROR, "pipe security descriptor carried no DACL");
+    } else {
+        DWORD rc = SetSecurityInfo(pipe, SE_KERNEL_OBJECT,
+                                   DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+                                   NULL, NULL, dacl, NULL);
+        ok = rc == ERROR_SUCCESS;
+        if (!ok) {
+            ZITI_LOG(ERROR, "could not set pipe DACL: %lu", rc);
+        }
+    }
+
+    LocalFree(sd);
+    return ok;
 }

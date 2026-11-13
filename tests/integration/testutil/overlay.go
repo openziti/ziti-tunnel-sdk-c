@@ -872,6 +872,29 @@ func (o *Overlay) CreateHostConfigV1(name, protocol, forwardAddr string, forward
 
 // CreateInterceptConfigV1 creates an intercept.v1 config matching the given protocols, addresses, and port range.
 func (o *Overlay) CreateInterceptConfigV1(name string, protocols, addresses []string, portLow, portHigh int) error {
+	body, err := interceptConfigV1Data(protocols, addresses, portLow, portHigh)
+	if err != nil {
+		return err
+	}
+	if _, err := o.execZiti("edge create config %s intercept.v1 %s", name, body); err != nil {
+		return fmt.Errorf("create intercept config %s: %w", name, err)
+	}
+	return nil
+}
+
+// UpdateInterceptConfigV1 replaces the data of an existing intercept.v1 config.
+func (o *Overlay) UpdateInterceptConfigV1(name string, protocols, addresses []string, portLow, portHigh int) error {
+	body, err := interceptConfigV1Data(protocols, addresses, portLow, portHigh)
+	if err != nil {
+		return err
+	}
+	if _, err := o.execZiti("edge update config %s --data %s", name, body); err != nil {
+		return fmt.Errorf("update intercept config %s: %w", name, err)
+	}
+	return nil
+}
+
+func interceptConfigV1Data(protocols, addresses []string, portLow, portHigh int) (string, error) {
 	body, err := json.Marshal(struct {
 		Protocols  []string `json:"protocols"`
 		Addresses  []string `json:"addresses"`
@@ -888,12 +911,9 @@ func (o *Overlay) CreateInterceptConfigV1(name string, protocols, addresses []st
 		}{{Low: portLow, High: portHigh}},
 	})
 	if err != nil {
-		return err
+		return "", err
 	}
-	if _, err := o.execZiti("edge create config %s intercept.v1 %s", name, string(body)); err != nil {
-		return fmt.Errorf("create intercept config %s: %w", name, err)
-	}
-	return nil
+	return string(body), nil
 }
 
 // CreateService creates a service that references the given configs.

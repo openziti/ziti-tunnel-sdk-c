@@ -44,11 +44,6 @@ type SetLogLevelData struct {
 
 type ZitiDumpData struct {
 	Identifier string `json:"Identifier,omitempty"`
-	DumpPath   string `json:"DumpPath,omitempty"`
-}
-
-type IpDumpData struct {
-	DumpPath string `json:"DumpPath,omitempty"`
 }
 
 // MFAData is used by SubmitMFA, VerifyMFA, RemoveMFA, GenerateMFACodes, GetMFACodes.
@@ -155,16 +150,9 @@ func NewSetLogLevelData(level string) SetLogLevelData {
 	}
 }
 
-func NewZitiDumpData(identifier, dumpPath string) ZitiDumpData {
+func NewZitiDumpData(identifier string) ZitiDumpData {
 	return ZitiDumpData{
 		Identifier: identifier,
-		DumpPath:   dumpPath,
-	}
-}
-
-func NewIpDumpData(dumpPath string) IpDumpData {
-	return IpDumpData{
-		DumpPath: dumpPath,
 	}
 }
 
@@ -211,9 +199,15 @@ type ZitiDumpFunction struct {
 	Data ZitiDumpData `json:"Data"`
 }
 
-type IpDumpFunction struct {
+// ZET ignores DumpPath, this sends it to prove no file lands where the caller names
+type legacyDumpPathData struct {
+	Identifier string `json:"Identifier,omitempty"`
+	DumpPath   string `json:"DumpPath"`
+}
+
+type legacyDumpPathFunction struct {
 	ServiceFunction
-	Data IpDumpData `json:"Data"`
+	Data legacyDumpPathData `json:"Data"`
 }
 
 type MFAFunction struct {
@@ -285,16 +279,28 @@ type MFARecoveryCodesResponse struct {
 	Data MFARecoveryCodes `json:"Data"`
 }
 
-// IpDumpResponse is returned by IpDump. Data carries the full ip stack stats.
+// IpDumpResponse is returned by IpDump. Data carries the ip stack stats and the files ZET wrote.
 type IpDumpResponse struct {
 	ServiceResponse
-	Data IpStats `json:"Data"`
+	Data IpDumpResult `json:"Data"`
 }
 
-// ZitiDumpResponse is returned by ZitiDump. Data maps identifier to its text dump.
+// IpDumpResult mirrors tunnel_ip_dump_result from ziti_tunnel_cbs.h.
+type IpDumpResult struct {
+	Files []string `json:"Files"`
+	Stats IpStats  `json:"Stats"`
+}
+
+// ZitiDumpResponse is returned by ZitiDump. Data carries each identity's text dump and the files ZET wrote.
 type ZitiDumpResponse struct {
 	ServiceResponse
-	Data map[string]string `json:"Data"`
+	Data ZitiDumpResult `json:"Data"`
+}
+
+// ZitiDumpResult mirrors tunnel_ziti_dump_result from ziti_tunnel_cbs.h. Dumps maps identifier to its text dump.
+type ZitiDumpResult struct {
+	Files []string          `json:"Files"`
+	Dumps map[string]string `json:"Dumps"`
 }
 
 // ---------------------------------------------------------------------------

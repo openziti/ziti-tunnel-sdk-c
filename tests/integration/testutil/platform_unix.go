@@ -51,6 +51,10 @@ func EventPipePathFor(disc string) string {
 	return EventPipePath + "." + disc
 }
 
+// ZET writes no dump files outside Windows, so there is nothing to sweep.
+func removeIpDumpFiles(zet *ZET) {
+}
+
 func dialPlatform(path string, timeout time.Duration) (net.Conn, error) {
 	d := net.Dialer{Timeout: timeout}
 	return d.Dial("unix", path)
