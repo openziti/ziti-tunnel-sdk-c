@@ -16,9 +16,20 @@
 
 #ifndef ZITI_TUNNEL_SDK_C_CONFIG_UTILS_H
 #define ZITI_TUNNEL_SDK_C_CONFIG_UTILS_H
+#include <stdbool.h>
 #include <uv.h>
+
+typedef struct proxy_endpoint_s {
+    char host[128];
+    char port[6];
+    bool has_auth;
+    char user[128];
+    char passwd[128];
+} proxy_endpoint;
 
 void update_identity_config(uv_loop_t *l, const char *identifier, const char *cfg_json);
 char* resolve_directory(const char* path);
+
+int parse_proxy_url(const char *url, proxy_endpoint *endpoint, char *err, size_t err_len);
 
 #endif //ZITI_TUNNEL_SDK_C_CONFIG_UTILS_H

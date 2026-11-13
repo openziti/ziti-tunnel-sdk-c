@@ -113,6 +113,7 @@ XX(ApiPageSize, model_number, none, ApiPageSize, __VA_ARGS__) \
 XX(TunName, model_string, none, TunName, __VA_ARGS__) \
 XX(L2Enabled, model_bool, none, L2Enabled, __VA_ARGS__) \
 XX(PcapInterface, model_string, none, PcapInterface, __VA_ARGS__) \
+XX(Proxy, model_string, none, Proxy, __VA_ARGS__) \
 XX(TapInfo, tunnel_tap_info, none, TapInfo, __VA_ARGS__) \
 XX(ConfigDir, model_string, none, ConfigDir, __VA_ARGS__)
 

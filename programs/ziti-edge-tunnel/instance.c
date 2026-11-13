@@ -44,6 +44,8 @@ static const char* CFG_INTERCEPT_V1 = "intercept.v1";
 static const char* CFG_HOST_V1 = "host.v1";
 static const char* CFG_ZITI_TUNNELER_CLIENT_V1 = "ziti-tunneler-client.v1";
 static tunnel_status tnl_status = {0};
+// kept out of tnl_status so the password in it never reaches a Status response or status event
+static char *saved_proxy = NULL;
 extern char *config_dir;
 
 tunnel_identity *find_tunnel_identity(const char* identifier) {
@@ -596,8 +598,15 @@ bool load_tunnel_status(const char* config_data) {
             free_service_version(tnl_status.ServiceVersion);
             tnl_status.ServiceVersion = NULL;
         }
+        if (tnl_status.Proxy) {
+            free((char*)tnl_status.Proxy);
+            tnl_status.Proxy = NULL;
+        }
         return false;
     }
+    free(saved_proxy);
+    saved_proxy = (char*)tnl_status.Proxy;
+    tnl_status.Proxy = NULL;
     initialize_tunnel_status();
     set_identifier_from_identities();
     return true;
@@ -667,6 +676,7 @@ char *get_tunnel_config(size_t *json_len) {
     tnl_config.ApiPageSize = tnl_sts->ApiPageSize;
     tnl_config.L2Enabled = tnl_sts->L2Enabled;
     tnl_config.PcapInterface = tnl_sts->PcapInterface;
+    tnl_config.Proxy = saved_proxy;
 
     char* tunnel_config_json = tunnel_status_to_json(&tnl_config, 0, json_len);
 
@@ -682,6 +692,7 @@ char *get_tunnel_config(size_t *json_len) {
     tnl_config.ServiceVersion = NULL;
     tnl_config.TunIpv4 = NULL;
     tnl_config.PcapInterface = NULL;
+    tnl_config.Proxy = NULL;
     free_tunnel_status(&tnl_config);
 
     return tunnel_config_json;
@@ -982,6 +993,18 @@ void set_l2_enabled(bool enabled) {
 
 bool get_l2_enabled() {
     return tnl_status.L2Enabled;
+}
+
+void set_saved_proxy(const char *proxy_url) {
+    free(saved_proxy);
+    saved_proxy = NULL;
+    if (proxy_url != NULL && proxy_url[0] != '\0') {
+        saved_proxy = strdup(proxy_url);
+    }
+}
+
+const char *get_saved_proxy() {
+    return saved_proxy;
 }
 
 #ifdef ENABLE_PCAP
