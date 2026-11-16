@@ -120,3 +120,140 @@ TEST_CASE("dns parse MX", "[dns]") {
     free_dns_message(&req);
 
 }
+
+#if !_WIN32
+#include <vector>
+
+// builds a DNS response for "a.test" that holds only an answer section
+struct dns_resp_builder {
+    std::vector<uint8_t> buf;
+
+    dns_resp_builder(): buf({
+        0x12, 0x34, 0x81, 0x80, // id, flags: response, no error
+        0x00, 0x00, 0x00, 0x00, // qdcount, ancount
+        0x00, 0x00, 0x00, 0x00, // nscount, arcount
+    }) {}
+
+    void rr(uint16_t type, const std::vector<uint8_t> &rdata) {
+        const uint8_t fixed[] = {
+            0x01, 'a', 0x04, 't', 'e', 's', 't', 0x00,
+            (uint8_t)(type >> 8), (uint8_t)type,
+            0x00, 0x01, // class IN
+            0x00, 0x00, 0x00, 0x3c, // ttl
+            (uint8_t)(rdata.size() >> 8), (uint8_t)rdata.size(),
+        };
+        buf.insert(buf.end(), fixed, fixed + sizeof(fixed));
+        buf.insert(buf.end(), rdata.begin(), rdata.end());
+        buf[7]++; // ancount
+    }
+
+    void format(dns_message *resp) {
+        // exact size heap copy lets memory checkers see reads past the end of the message
+        std::vector<uint8_t> msg(buf);
+        msg.shrink_to_fit();
+        ns_msg handle;
+        REQUIRE(ns_initparse(msg.data(), (int)msg.size(), &handle) == 0);
+        format_dns_answers(&handle, resp);
+    }
+};
+
+static int count_answers(const dns_message *msg) {
+    int count = 0;
+    while (msg->answer != nullptr && msg->answer[count] != nullptr) count++;
+    return count;
+}
+
+TEST_CASE("format dns answers", "[dns]") {
+    dns_host_init();
+
+    dns_resp_builder b;
+    b.rr(ns_t_txt, {0x05, 'h', 'e', 'l', 'l', 'o'});
+    b.rr(ns_t_srv, {0x00, 0x0a, 0x00, 0x14, 0x03, 0xe1, 0x03, 's', 'r', 'v', 0x04, 't', 'e', 's', 't', 0x00});
+    b.rr(ns_t_mx, {0x00, 0x05, 0x02, 'm', 'x', 0x04, 't', 'e', 's', 't', 0x00});
+    b.rr(ns_t_txt, {0x00});
+
+    dns_message msg = {0};
+    b.format(&msg);
+
+    REQUIRE(count_answers(&msg) == 4);
+
+    CHECK(msg.answer[0]->type == ns_t_txt);
+    CHECK(msg.answer[0]->ttl == 60);
+    CHECK_THAT(msg.answer[0]->data, Catch::Matches("hello"));
+
+    CHECK(msg.answer[1]->type == ns_t_srv);
+    CHECK(msg.answer[1]->priority == 10);
+    CHECK(msg.answer[1]->weight == 20);
+    CHECK(msg.answer[1]->port == 993);
+    CHECK_THAT(msg.answer[1]->data, Catch::Matches("srv.test"));
+
+    CHECK(msg.answer[2]->type == ns_t_mx);
+    CHECK(msg.answer[2]->priority == 5);
+    CHECK_THAT(msg.answer[2]->data, Catch::Matches("mx.test"));
+
+    CHECK(msg.answer[3]->type == ns_t_txt);
+    CHECK_THAT(msg.answer[3]->data, Catch::Matches(""));
+
+    free_dns_message(&msg);
+}
+
+TEST_CASE("format dns answers drops TXT without data", "[dns]") {
+    dns_host_init();
+
+    dns_resp_builder b;
+    b.rr(ns_t_txt, {});
+
+    dns_message msg = {0};
+    b.format(&msg);
+
+    CHECK(count_answers(&msg) == 0);
+
+    free_dns_message(&msg);
+}
+
+TEST_CASE("format dns answers drops short SRV and MX", "[dns]") {
+    dns_host_init();
+
+    auto rdata = GENERATE(
+            std::make_pair((int)ns_t_srv, std::vector<uint8_t>{}),
+            std::make_pair((int)ns_t_srv, std::vector<uint8_t>{0x00, 0x0a}),
+            // no target
+            std::make_pair((int)ns_t_srv, std::vector<uint8_t>{0x00, 0x0a, 0x00, 0x14, 0x03, 0xe1}),
+            // target runs past the end of the message
+            std::make_pair((int)ns_t_srv, std::vector<uint8_t>{0x00, 0x0a, 0x00, 0x14, 0x03, 0xe1, 0x03, 's'}),
+            std::make_pair((int)ns_t_mx, std::vector<uint8_t>{}),
+            std::make_pair((int)ns_t_mx, std::vector<uint8_t>{0x00}),
+            // no exchange
+            std::make_pair((int)ns_t_mx, std::vector<uint8_t>{0x00, 0x05}),
+            // exchange runs past the end of the message
+            std::make_pair((int)ns_t_mx, std::vector<uint8_t>{0x00, 0x05, 0x02, 'm'})
+    );
+
+    dns_resp_builder b;
+    b.rr((uint16_t)rdata.first, rdata.second);
+
+    dns_message msg = {0};
+    b.format(&msg);
+
+    CHECK(count_answers(&msg) == 0);
+
+    free_dns_message(&msg);
+}
+
+TEST_CASE("format dns answers drops name that leaves the record data", "[dns]") {
+    dns_host_init();
+
+    dns_resp_builder b;
+    // the target claims more octets than the record holds and continues into the next record
+    b.rr(ns_t_srv, {0x00, 0x0a, 0x00, 0x14, 0x03, 0xe1, 0x08, 's'});
+    b.rr(ns_t_txt, {0x05, 'h', 'e', 'l', 'l', 'o'});
+
+    dns_message msg = {0};
+    b.format(&msg);
+
+    REQUIRE(count_answers(&msg) == 1);
+    CHECK(msg.answer[0]->type == ns_t_txt);
+
+    free_dns_message(&msg);
+}
+#endif
