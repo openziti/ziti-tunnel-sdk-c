@@ -241,6 +241,19 @@ static int fmt_txt(const ns_msg *msg, const ns_rr* rr, dns_answer *ans, size_t m
 
 #endif
 
+const dns_question *parse_resolve_req(dns_message *msg, const char *json, size_t len) {
+    // the request comes from the dialing peer and cannot be trusted to be well-formed
+    if (parse_dns_message(msg, json, len) < 0) {
+        return NULL;
+    }
+
+    if (msg->question == NULL || msg->question[0] == NULL || msg->question[0]->name == NULL) {
+        return NULL;
+    }
+
+    return msg->question[0];
+}
+
 static ssize_t on_dns_req(ziti_connection conn, const uint8_t *data, ssize_t datalen) {
     if (datalen < 0) {
         ziti_close(conn, on_close);
@@ -250,10 +263,12 @@ static ssize_t on_dns_req(ziti_connection conn, const uint8_t *data, ssize_t dat
 
     ZITI_LOG(DEBUG, "resolve_req: %.*s", (int)datalen, data);
     dns_message msg = {0};
-    parse_dns_message(&msg, (const char*) data, datalen);
-    dns_question *q = msg.question[0];
+    const dns_question *q = parse_resolve_req(&msg, (const char*) data, datalen);
 
-    if (is_allowed(q->name, dns)) {
+    if (q == NULL) {
+        ZITI_LOG(WARN, "rejecting resolve request without a valid question");
+        msg.status = ns_r_formerr;
+    } else if (is_allowed(q->name, dns)) {
         do_query(q, &msg, &dns->resolver);
     } else {
         msg.status = ns_r_refused;

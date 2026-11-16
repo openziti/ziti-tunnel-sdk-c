@@ -32,6 +32,7 @@
 #define ns_t_mx  DNS_TYPE_MX
 #define ns_t_txt DNS_TYPE_TEXT
 
+#define ns_r_formerr DNS_RCODE_FORMERR
 #define ns_r_refused DNS_RCODE_REFUSED
 
 typedef struct {
@@ -91,6 +92,14 @@ void dns_host_init();
 void do_query(const dns_question *q, dns_message *resp, resolver_t *resolver);
 
 int parse_dns_req(dns_message *msg, const unsigned char* buf, size_t buflen);
+
+/**
+ * parse a resolve request (JSON encoded dns_message) received from a dialing peer.
+ *
+ * @return the question to resolve (owned by `msg`),
+ *         or NULL if the request could not be parsed or has no question with a name
+ */
+const dns_question *parse_resolve_req(dns_message *msg, const char *json, size_t len);
 
 #ifdef __cplusplus
 }
