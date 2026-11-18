@@ -326,9 +326,12 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
             int idx = 0;
             MODEL_MAP_FOREACH(key, inst, &instances) {
                 tunnel_identity_info *info = alloc_tunnel_identity_info();
+                // the controller reports the identity's name and id once the identity has authenticated
                 const ziti_identity *identity = ziti_get_identity(inst->ztx);
-                info->name = strdup(identity->name);
-                info->id = strdup(identity->id);
+                if (identity != NULL) {
+                    info->name = strdup(identity->name);
+                    info->id = strdup(identity->id);
+                }
                 info->network = strdup(ziti_get_controller(inst->ztx));
                 info->config = strdup(key);
 
