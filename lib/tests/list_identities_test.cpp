@@ -32,36 +32,51 @@ static void on_list_result(const tunnel_result *res, void *ctx) {
     out->data = res->data ? res->data : "";
 }
 
+static void on_tunnel_event(const base_event *) {}
+
 // The controller reports an identity's name and id once the identity has authenticated, and the ziti context has
 // nothing to say about them before that. Listing read them anyway and took the whole process down.
 TEST_CASE("listing an identity that has not authenticated", "[ctrl]") {
-    const ziti_tunnel_ctrl *ctrl = ziti_tunnel_init_cmd(uv_default_loop(), nullptr, nullptr);
+    uv_loop_t *loop = uv_default_loop();
+    // the SIGUSR1 handle this sets up stays with the loop for good, which is fine because setting it up is idempotent
+    const ziti_tunnel_ctrl *ctrl = ziti_tunnel_init_cmd(loop, nullptr, on_tunnel_event);
 
-    // nothing connects to a controller here, so the context has no identity data
+    // a disabled identity never reaches the controller: it has no identity data, and its context never
+    // initializes the controller, so the context itself has no URL to report either
     ziti_config cfg = {};
     cfg.controller_url = const_cast<char *>("https://localhost:1");
-    ziti_context ztx = nullptr;
-    REQUIRE(ziti_context_init(&ztx, &cfg) == ZITI_OK);
-    REQUIRE(ziti_get_identity(ztx) == nullptr);
+    ziti_options opts = {};
+    opts.disabled = true;
 
     struct ziti_instance_s *inst = new_ziti_instance("not-yet-authenticated");
-    inst->ztx = ztx;
+    REQUIRE(init_ziti_instance(inst, &cfg, &opts) == ZITI_OK);
+    REQUIRE(ziti_context_run(inst->ztx, loop) == ZITI_OK);
     set_ziti_instance(inst->identifier, inst);
+    REQUIRE(ziti_get_identity(inst->ztx) == nullptr);
+    REQUIRE(std::string(ziti_get_controller(inst->ztx)).empty());
 
     tunnel_command cmd = {};
     cmd.command = TunnelCommand_ListIdentities;
     list_result out;
     ctrl->process(&cmd, on_list_result, &out);
 
-    remove_ziti_instance(inst->identifier);
-    free(inst->identifier);
-    free(inst);
-
     REQUIRE(out.called);
     INFO("listing: " << out.data);
     CHECK(out.success);
-    // it is listed under the name it was loaded with; what only the controller knows is left out
+    // it is listed under the name it was loaded with, and on the controller it was configured with;
+    // what only the controller knows is left out
     CHECK(out.data.find("\"Config\":\"not-yet-authenticated\"") != std::string::npos);
+    CHECK(out.data.find("\"Network\":\"https://localhost:1\"") != std::string::npos);
     CHECK(out.data.find("\"Name\"") == std::string::npos);
     CHECK(out.data.find("\"Id\"") == std::string::npos);
+
+    // the context is freed by the loop once it has shut down, and it reports on its way out to the instance
+    remove_ziti_instance(inst->identifier);
+    REQUIRE(ziti_shutdown(inst->ztx) == ZITI_OK);
+    for (int i = 0; i < 10 && uv_loop_alive(loop); i++) {
+        uv_run(loop, UV_RUN_NOWAIT);
+    }
+    free(inst->identifier);
+    free(inst->controller_url);
+    free(inst);
 }
