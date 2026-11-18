@@ -462,6 +462,10 @@ struct ziti_instance_s {
     command_cb load_cb;
     void *load_ctx;
 
+    // the controller from the identity's config. ziti_get_controller() has nothing to say until the context has
+    // initialized its controller, which a context that failed to set up TLS, or one that is disabled, never does
+    char *controller_url;
+
     ziti_context ztx;
     struct mfa_request_s *mfa_req;
     model_map intercepts;

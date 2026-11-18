@@ -91,7 +91,18 @@ typedef struct api_update_req_s {
     const char *errmsg;
 } api_update_req;
 
+#ifndef _WIN32
 static uv_signal_t sigusr1;
+static uv_once_t sigusr1_once = UV_ONCE_INIT;
+
+// the handle is static and stays registered with the loop for good: initializing it again would corrupt the loop's
+// handle queue
+static void init_sigusr1(void) {
+    uv_signal_init(CMD_CTX.loop, &sigusr1);
+    uv_signal_start(&sigusr1, on_sigdump, SIGUSR1);
+    uv_unref((uv_handle_t *) &sigusr1);
+}
+#endif
 
 const ziti_tunnel_ctrl* ziti_tunnel_init_cmd(uv_loop_t *loop, tunneler_context tunnel_ctx, event_cb on_event) {
     CMD_CTX.loop = loop;
@@ -102,9 +113,7 @@ const ziti_tunnel_ctrl* ziti_tunnel_init_cmd(uv_loop_t *loop, tunneler_context t
     CMD_CTX.ctrl.get_ziti = get_ziti;
 
 #ifndef _WIN32
-    uv_signal_init(loop, &sigusr1);
-    uv_signal_start(&sigusr1, on_sigdump, SIGUSR1);
-    uv_unref((uv_handle_t *) &sigusr1);
+    uv_once(&sigusr1_once, init_sigusr1);
 #endif
 
     return &CMD_CTX.ctrl;
@@ -259,7 +268,9 @@ static void ip_dump(const tunnel_ip_stats *stats, dump_writer writer, void *writ
 }
 
 static void disconnect_identity(ziti_context ziti_ctx, void *tnlr_ctx) {
-    ZITI_LOG(INFO, "Disconnecting Identity %s", ziti_get_identity(ziti_ctx)->name);
+    // the identity is known only once it has authenticated
+    const ziti_identity *identity = ziti_get_identity(ziti_ctx);
+    ZITI_LOG(INFO, "Disconnecting Identity %s", identity != NULL ? identity->name : "<not authenticated>");
     remove_intercepts(ziti_ctx, tnlr_ctx);
     ziti_set_enabled(ziti_ctx, false);
 }
@@ -326,10 +337,19 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
             int idx = 0;
             MODEL_MAP_FOREACH(key, inst, &instances) {
                 tunnel_identity_info *info = alloc_tunnel_identity_info();
+                // the controller reports the identity's name and id once the identity has authenticated
                 const ziti_identity *identity = ziti_get_identity(inst->ztx);
-                info->name = strdup(identity->name);
-                info->id = strdup(identity->id);
-                info->network = strdup(ziti_get_controller(inst->ztx));
+                if (identity != NULL) {
+                    info->name = strdup(identity->name);
+                    info->id = strdup(identity->id);
+                }
+                const char *controller = ziti_get_controller(inst->ztx);
+                if (controller == NULL || *controller == '\0') {
+                    controller = inst->controller_url;
+                }
+                if (controller != NULL) {
+                    info->network = strdup(controller);
+                }
                 info->config = strdup(key);
 
                 id_list.identities[idx++] = info;
@@ -993,6 +1013,11 @@ int init_ziti_instance(struct ziti_instance_s *inst, const ziti_config *cfg, con
         return rc;
     }
 
+    FREE(inst->controller_url);
+    if (cfg->controller_url != NULL) {
+        inst->controller_url = strdup(cfg->controller_url);
+    }
+
     if (CMD_CTX.enroll_key_cb) {
         ziti_set_enroll_key_cb(inst->ztx, CMD_CTX.enroll_key_cb, CMD_CTX.enroll_key_ctx);
     }
@@ -1334,6 +1359,7 @@ static void load_ziti_async(uv_loop_t *loop, struct ziti_instance_s *inst) {
     inst->load_cb = NULL;
 
     if (!result.success) {
+        free(inst->controller_url);
         free(inst);
     }
 }
