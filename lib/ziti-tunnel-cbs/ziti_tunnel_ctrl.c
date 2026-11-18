@@ -351,6 +351,10 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
                     info->network = strdup(controller);
                 }
                 info->config = strdup(key);
+                ziti_instance_sync_mfa_enrolled(inst);
+                info->authState = inst->auth_state;
+                info->authNeeds = inst->auth_needs;
+                info->mfaEnrolled = inst->mfa_enrolled;
 
                 id_list.identities[idx++] = info;
             }

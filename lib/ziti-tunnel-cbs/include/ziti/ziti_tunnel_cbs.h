@@ -140,7 +140,10 @@ DECLARE_ENUM(tnl_mfa_enrolled, TNL_MFA_ENROLLED)
 XX(name, model_string, none, Name, __VA_ARGS__) \
 XX(config, model_string, none, Config, __VA_ARGS__) \
 XX(network, model_string, none, Network, __VA_ARGS__) \
-XX(id, model_string, none, Id, __VA_ARGS__)
+XX(id, model_string, none, Id, __VA_ARGS__) \
+XX(authState, tnl_auth_state, none, AuthState, __VA_ARGS__) \
+XX(authNeeds, tnl_auth_needs, none, AuthNeeds, __VA_ARGS__) \
+XX(mfaEnrolled, tnl_mfa_enrolled, none, MfaEnrolled, __VA_ARGS__)
 
 #define TNL_IDENTITY_LIST(XX, ...) \
 XX(identities, tunnel_identity_info, array, Identities, __VA_ARGS__)
