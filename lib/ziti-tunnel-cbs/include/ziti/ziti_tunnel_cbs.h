@@ -110,6 +110,32 @@ XX(apiPageSize, model_number, none, ApiPageSize, __VA_ARGS__)
 XX(identifier, model_string, none, Identifier, __VA_ARGS__) \
 XX(onOff, model_bool, none, OnOff, __VA_ARGS__)
 
+// What the library has learned of an identity's authentication from the ziti events (see ziti_instance_state.c).
+// Zero is the <enum>_Unknown that DECLARE_ENUM reserves, which the JSON model writes as null: nothing has been seen yet.
+#define TNL_AUTH_STATE(XX, ...) \
+XX(partial, __VA_ARGS__) \
+XX(authenticated, __VA_ARGS__) \
+XX(disabled, __VA_ARGS__) \
+XX(failed, __VA_ARGS__)
+
+DECLARE_ENUM(tnl_auth_state, TNL_AUTH_STATE)
+
+// what a partial login waits for; none for every known state that is not partial
+#define TNL_AUTH_NEEDS(XX, ...) \
+XX(none, __VA_ARGS__) \
+XX(totp_enroll, __VA_ARGS__) \
+XX(totp_code, __VA_ARGS__) \
+XX(ext_jwt, __VA_ARGS__) \
+XX(key_pin, __VA_ARGS__)
+
+DECLARE_ENUM(tnl_auth_needs, TNL_AUTH_NEEDS)
+
+#define TNL_MFA_ENROLLED(XX, ...) \
+XX(enrolled, __VA_ARGS__) \
+XX(not_enrolled, __VA_ARGS__)
+
+DECLARE_ENUM(tnl_mfa_enrolled, TNL_MFA_ENROLLED)
+
 #define TNL_IDENTITY_INFO(XX, ...) \
 XX(name, model_string, none, Name, __VA_ARGS__) \
 XX(config, model_string, none, Config, __VA_ARGS__) \
@@ -470,6 +496,11 @@ struct ziti_instance_s {
     struct mfa_request_s *mfa_req;
     model_map intercepts;
     model_map hosts;
+
+    // what the library has learned of this identity from the ziti events; zero is Unknown (see ziti_instance_state.c)
+    tnl_auth_state auth_state;
+    tnl_auth_needs auth_needs;
+    tnl_mfa_enrolled mfa_enrolled;
     LIST_ENTRY(ziti_instance_s) _next;
 };
 
@@ -481,6 +512,13 @@ int init_ziti_instance(struct ziti_instance_s *inst, const ziti_config *cfg, con
 int set_tnlr_options(struct ziti_instance_s *inst);
 void set_ziti_instance(const char *identifier, struct ziti_instance_s *inst);
 void remove_ziti_instance(const char *identifier);
+
+/** update the instance's auth_state, auth_needs and mfa_enrolled from a ziti event; other events change nothing */
+void ziti_instance_apply_event(struct ziti_instance_s *inst, const ziti_event_t *event);
+/** take mfa_enrolled from the ziti context, which knows it once the identity data is loaded; before that it changes nothing */
+void ziti_instance_sync_mfa_enrolled(struct ziti_instance_s *inst);
+/** the identity was turned off or on, or was loaded disabled: off is `disabled`, on is Unknown again until the next event */
+void ziti_instance_set_enabled(struct ziti_instance_s *inst, bool enabled);
 
 #ifdef __cplusplus
 }
