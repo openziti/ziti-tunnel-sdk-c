@@ -202,6 +202,22 @@ TEST_CASE("disabling and enabling an identity", "[identity-state]") {
     check_state(s.inst, tnl_auth_state_Unknown, tnl_auth_needs_Unknown, tnl_mfa_enrolled_enrolled);
 }
 
+// the SDK sends no event for a context that starts disabled
+TEST_CASE("an identity loaded disabled starts disabled", "[identity-state]") {
+    ziti_config cfg = {};
+    cfg.controller_url = const_cast<char *>("https://localhost:1");
+    ziti_options opts = {};
+    state_instance off, on;
+
+    opts.disabled = true;
+    REQUIRE(init_ziti_instance(off.inst, &cfg, &opts) == ZITI_OK);
+    CHECK(off.inst->auth_state == tnl_auth_state_disabled);
+
+    opts.disabled = false;
+    REQUIRE(init_ziti_instance(on.inst, &cfg, &opts) == ZITI_OK);
+    CHECK(on.inst->auth_state == tnl_auth_state_Unknown);
+}
+
 // turning on an identity that is on starts nothing in the SDK, so no event follows to restore what is known
 TEST_CASE("enabling an identity that is enabled changes nothing", "[identity-state]") {
     state_instance s;

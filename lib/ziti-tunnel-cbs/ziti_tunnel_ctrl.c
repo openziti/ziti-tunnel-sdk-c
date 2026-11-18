@@ -386,6 +386,7 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
             }
 
             ziti_set_enabled(inst->ztx, on_off_id.onOff);
+            ziti_instance_set_enabled(inst, on_off_id.onOff);
             result.data = tunnel_command_to_json(cmd, MODEL_JSON_COMPACT, NULL);
             result.success = true;
             result.code = IPC_SUCCESS;
@@ -1032,6 +1033,9 @@ int init_ziti_instance(struct ziti_instance_s *inst, const ziti_config *cfg, con
     rc = set_tnlr_options(inst);
     if (rc != ZITI_OK) {
         FREE(inst->ztx);
+    } else {
+        // the SDK sends no event for a context that starts disabled
+        ziti_instance_set_enabled(inst, !opts->disabled);
     }
 
     return rc;
@@ -1095,6 +1099,9 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
     if (instance->ztx != ztx) {
         ZITI_LOG(ERROR, "something bad had happened: incorrect context");
     }
+
+    // first, so that the state is current when the event reaches the embedder
+    ziti_instance_apply_event(instance, event);
 
     const ziti_identity *identity = ziti_get_identity(ztx);
     const char *ctx_name = identity ? identity->name : instance->identifier;
@@ -1388,6 +1395,7 @@ static void on_submit_mfa(ziti_context ztx, int status, void *ctx) {
 
     if (status == ZITI_OK) {
         inst->mfa_req = NULL;
+        inst->mfa_enrolled = tnl_mfa_enrolled_enrolled;
     }
     if (req->ctx){
         free(req->ctx);
@@ -1482,6 +1490,10 @@ static void on_verify_mfa(ziti_context ztx, int status, void *ctx) {
     ev->operation_type = mfa_status_enrollment_verification;
     tunnel_status_event(TunnelEvent_MFAStatusEvent, status, ev, inst);
 
+    if (status == ZITI_OK) {
+        inst->mfa_enrolled = tnl_mfa_enrolled_enrolled;
+    }
+
     if (req->ctx) {
         free(req->ctx);
     }
@@ -1513,6 +1525,10 @@ static void on_remove_mfa(ziti_context ztx, int status, void *ctx) {
     ev->operation = strdup(mfa_status_name(mfa_status_enrollment_remove));
     ev->operation_type = mfa_status_enrollment_remove;
     tunnel_status_event(TunnelEvent_MFAStatusEvent, status, ev, inst);
+
+    if (status == ZITI_OK) {
+        inst->mfa_enrolled = tnl_mfa_enrolled_not_enrolled;
+    }
 
     if (req->ctx) {
         free(req->ctx);
