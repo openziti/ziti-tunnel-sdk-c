@@ -68,8 +68,7 @@ static struct {
     uv_udp_t nl_udp;
     uv_timer_t update_timer;
 
-    // intercepted names, NULL-terminated. Written on the loop, read by set_dns on a worker.
-    uv_mutex_t domains_lock;
+    // intercepted names, NULL-terminated. Only the loop uses it: each update takes a copy.
     char **domains;
 
     // the system's DNS servers, ziti_dns's fallback upstream while there are routing domains
@@ -88,6 +87,7 @@ static struct {
 
 // one DNS update: what to read, decided on the loop, and the result of set_dns, applied on the loop
 struct dns_update {
+    char **domains;
     bool want_servers;
     bool read_servers;
     bool domains_rejected;
@@ -301,17 +301,14 @@ static void refresh_dns_domains(uv_loop_t *loop) {
     model_map_clear(&names, NULL);
     qsort(domains, i, sizeof(char *), cmp_str);
 
-    // commits also follow service refreshes that change nothing; an update flushes resolved's caches.
-    // only this loop writes the list, so reading it here needs no lock
+    // commits also follow service refreshes that change nothing; an update flushes resolved's caches
     if (same_strv(domains, dns_maintainer.domains)) {
         free_strv(domains);
         return;
     }
 
-    uv_mutex_lock(&dns_maintainer.domains_lock);
     char **old = dns_maintainer.domains;
     dns_maintainer.domains = domains;
-    uv_mutex_unlock(&dns_maintainer.domains_lock);
     bool had_domains = has_domains(old);
     free_strv(old);
 
@@ -419,23 +416,18 @@ static void find_dns_updater() {
 
 static void set_dns(uv_work_t *wr) {
     uv_once(&dns_updater_init, find_dns_updater);
-
-    uv_mutex_lock(&dns_maintainer.domains_lock);
-    char **domains = copy_strv(dns_maintainer.domains);
-    uv_mutex_unlock(&dns_maintainer.domains_lock);
+    struct dns_update *update = wr->data;
 
     dns_updater(
             dns_maintainer.tun_name,
             if_nametoindex(dns_maintainer.tun_name),
             inet_ntoa(*(struct in_addr*)&dns_maintainer.dns_ip),
-            (const char *const *) domains
+            (const char *const *) update->domains
     );
-    free_strv(domains);
 
 #ifndef EXCLUDE_LIBSYSTEMD_RESOLVER
     // only the systemd-resolved updater sets routing domains. The names below them reach only ziti,
     // which forwards them to the system's DNS servers
-    struct dns_update *update = wr->data;
     if (dns_updater == dns_update_systemd_resolved) {
         update->domains_rejected = systemd_resolved_routing_domains_rejected();
         if (update->want_servers && !update->domains_rejected) {
@@ -475,6 +467,7 @@ static void after_set_dns(uv_work_t *wr, int status) {
     }
 
     uv_loop_t *loop = wr->loop;
+    free_strv(update->domains);
     free(update);
     free(wr);
     dns_maintainer.update_running = false;
@@ -492,11 +485,13 @@ static void on_dns_update_time(uv_timer_t *t) {
     ZITI_LOG(DEBUG, "queuing DNS update");
     uv_work_t *wr = calloc(1, sizeof(uv_work_t));
     struct dns_update *update = calloc(1, sizeof(struct dns_update));
+    update->domains = copy_strv(dns_maintainer.domains);
     update->want_servers = !dns_maintainer.domains_rejected && !ziti_dns_has_upstream();
     wr->data = update;
     int rc = uv_queue_work(t->loop, wr, set_dns, after_set_dns);
     if (rc != 0) {
         ZITI_LOG(WARN, "could not queue DNS update: %s", uv_strerror(rc));
+        free_strv(update->domains);
         free(update);
         free(wr);
         return;
@@ -521,7 +516,6 @@ void on_nl_message(uv_udp_t *nl, ssize_t len, const uv_buf_t *buf, const struct 
 static void init_dns_maintainer(uv_loop_t *loop, const char *tun_name, uint32_t dns_ip) {
     strncpy(dns_maintainer.tun_name, tun_name, sizeof(dns_maintainer.tun_name));
     dns_maintainer.dns_ip = dns_ip;
-    uv_mutex_init(&dns_maintainer.domains_lock);
 
     ZITI_LOG(DEBUG, "setting up NETLINK listener");
     struct sockaddr_nl local = {0};
