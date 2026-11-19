@@ -102,6 +102,14 @@ tunneler_context ziti_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop)
     return ctx;
 }
 
+void ziti_tunneler_set_intercept_only(tunneler_context tnlr_ctx, bool intercept_only) {
+    tnlr_ctx->intercept_only = intercept_only;
+}
+
+bool ziti_tunneler_is_intercept_only(tunneler_context tnlr_ctx) {
+    return tnlr_ctx->intercept_only;
+}
+
 void ziti_tunnel_commit_routes(tunneler_context tnlr_ctx) {
     if (tnlr_ctx->opts.l3_netif_driver == NULL) {
         TNL_LOG(DEBUG, "No netif_driver found tun is running in host only mode and intercepts are disabled");
@@ -316,6 +324,11 @@ void ziti_tunneler_dial_completed(struct io_ctx_s *io, bool ok) {
 }
 
 host_ctx_t *ziti_tunneler_host(tunneler_context tnlr_ctx, const void *ziti_ctx, const char *service_name, cfg_type_e cfg_type, void *config) {
+    // every hosting request from the tunneler comes through here, whatever opts.ziti_host is
+    if (tnlr_ctx->intercept_only) {
+        TNL_LOG(DEBUG, "not hosting service[%s]: tunneler is intercept-only", service_name);
+        return NULL;
+    }
     return tnlr_ctx->opts.ziti_host((void *) ziti_ctx, tnlr_ctx, service_name, cfg_type, config);
 }
 

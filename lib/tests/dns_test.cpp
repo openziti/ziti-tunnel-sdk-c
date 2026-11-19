@@ -20,14 +20,7 @@
 #include "ziti/ziti_tunnel_cbs.h"
 #include "ziti/ziti_dns.h"
 #include "ziti/model_collections.h"
-
-static int mock_add_route(netif_handle tun, const char *dest) {
-    return 0;
-}
-
-static int mock_delete_route(netif_handle tun, const char *dest) {
-    return 0;
-}
+#include "test_tunneler.h"
 
 static void ziti_address_from_index(ziti_address *za, uint32_t i) {
     static char json[32];
@@ -35,24 +28,9 @@ static void ziti_address_from_index(ziti_address *za, uint32_t i) {
     parse_ziti_address(za, json, strlen(json));
 }
 
-// lwip is initialized by ziti_tunneler_init and cannot be initialized twice in one process (the second call never
-// returns), so all test cases share one tunneler and each one only seeds the dns pool with its own address range
+// all test cases share one tunneler, so each one only seeds the dns pool with its own address range
 static tunneler_context dns_test_setup(const char *dns_ip, const char *cidr) {
-    static netif_driver_t mock_netif = {};
-    static tunneler_sdk_options tnlr_opts = {
-            .l3_netif_driver = &mock_netif,
-            .ziti_dial = ziti_sdk_c_dial,
-            .ziti_close = ziti_sdk_c_close,
-            .ziti_close_write = ziti_sdk_c_close_write,
-            .ziti_write = ziti_sdk_c_write,
-            .ziti_host = ziti_sdk_c_host
-    };
-    static tunneler_context tnlr = nullptr;
-    if (tnlr == nullptr) {
-        mock_netif.add_route = mock_add_route;
-        mock_netif.delete_route = mock_delete_route;
-        tnlr = ziti_tunneler_init(&tnlr_opts, uv_default_loop());
-    }
+    tunneler_context tnlr = test_tunneler();
     ziti_dns_setup(tnlr, dns_ip, cidr);
     return tnlr;
 }
@@ -298,20 +276,6 @@ TEST_CASE("the last free ip of the pool is handed out", "[dns]") {
         ziti_dns_deregister_intercept(&intercepts[i]);
     }
 }
-
-// An identity with the services it dials, as far as the intercepts and dns names go: the ziti context only carries the
-// instance, nothing connects to a controller.
-struct test_identity {
-    ziti_context ztx = nullptr;
-    struct ziti_instance_s inst = {};
-
-    test_identity() {
-        ziti_config cfg = {};
-        cfg.controller_url = const_cast<char *>("https://localhost:1");
-        REQUIRE(ziti_context_init(&ztx, &cfg) == ZITI_OK);
-        ziti_set_app_ctx(ztx, &inst);
-    }
-};
 
 static ziti_service *new_intercept_service(const char *name, const char *hostname) {
     char cfg[256];

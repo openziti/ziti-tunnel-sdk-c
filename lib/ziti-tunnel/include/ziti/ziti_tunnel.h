@@ -158,6 +158,7 @@ struct tunneler_ctx_s {
     uv_timer_t lwip_timer_req;
     LIST_HEAD(intercept_ctx_list_s, intercept_ctx_s) intercepts;
     model_map intercepts_cache; // cached intercept_ctx lookup keyed by [proto]:[ip]:[port]
+    bool intercept_only; // ziti_tunneler_host() refuses while set
 };
 
 typedef enum {
@@ -202,6 +203,10 @@ extern const port_range_t *port_match(int port, const port_range_list_t *port_ra
 
 extern tunneler_context ziti_tunneler_init(tunneler_sdk_options *opts, uv_loop_t *loop);
 extern tunneler_context ziti_tunneler_init_host_only(tunneler_sdk_options *opts, uv_loop_t *loop);
+/** sets the intercept-only mode, in which ziti_tunneler_host() refuses to host. hosts that already exist are left
+ *  to the caller to stop. */
+extern void ziti_tunneler_set_intercept_only(tunneler_context tnlr_ctx, bool intercept_only);
+extern bool ziti_tunneler_is_intercept_only(tunneler_context tnlr_ctx);
 
 extern void ziti_tunneler_exclude_route(tunneler_context tnlr_ctx, const char* dst);
 extern void ziti_tunnel_commit_routes(tunneler_context tnlr_ctx);
