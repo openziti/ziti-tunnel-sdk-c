@@ -518,8 +518,10 @@ void remove_ziti_instance(const char *identifier);
 
 /** update the instance's auth_state, auth_needs and mfa_enrolled from a ziti event; other events change nothing */
 void ziti_instance_apply_event(struct ziti_instance_s *inst, const ziti_event_t *event);
-/** take mfa_enrolled from the ziti context, which knows it once the identity data is loaded; before that it changes nothing */
+/** take mfa_enrolled from the ziti context, which knows it once the identity data is loaded and the identity is authenticated; until then it changes nothing */
 void ziti_instance_sync_mfa_enrolled(struct ziti_instance_s *inst);
+/** what the sync does with what it read from the ziti context: `identity_loaded` is whether the context has identity data, `enrolled` what it says */
+void ziti_instance_apply_mfa_status(struct ziti_instance_s *inst, bool identity_loaded, bool enrolled);
 /** the identity was turned off or on, or was loaded disabled: off is `disabled`, on is Unknown again until the next event */
 void ziti_instance_set_enabled(struct ziti_instance_s *inst, bool enabled);
 

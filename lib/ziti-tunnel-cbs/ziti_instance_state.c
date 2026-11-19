@@ -62,18 +62,28 @@ static void apply_context_event(struct ziti_instance_s *inst, const struct ziti_
         case ZITI_DISABLED:
             set_state(inst, tnl_auth_state_disabled, tnl_auth_needs_none);
             break;
+        case ZITI_CONTROLLER_UNAVAILABLE:
+            // The SDK sends this for any poll of the controller that fails, while the api session is still good: an
+            // identity that is authenticated stays so. A session that is really gone is announced as
+            // ZITI_AUTHENTICATION_FAILED.
+            if (inst->auth_state != tnl_auth_state_authenticated) {
+                set_state(inst, tnl_auth_state_failed, tnl_auth_needs_none);
+            }
+            break;
         default:
             set_state(inst, tnl_auth_state_failed, tnl_auth_needs_none);
             break;
     }
 }
 
-// Known limit: an external login that the application starts on an identity that is authenticated already
-// (ziti_use_ext_jwt_signer) sends login_external, and a failure of that login sends cannot_continue, with no event to
-// say the identity is still in; they are folded like any other, so such an identity lists partial / failed until the
-// SDK next reports a status. Ignoring them while authenticated would hide the real partial login of a session that
-// is lost between ziti_auth_success and the identity data (the SDK has no public way to tell the two apart).
+// An external login that the application starts reaches an identity that is authenticated already: the SDK sends
+// select_external or login_external, and cannot_continue when the login fails. It sends a context event only when the
+// status changes, so nothing would follow to say the identity is still in: these three change nothing while the
+// identity is authenticated. A real partial login is announced by the context event that comes first; the only one this
+// misses starts between ziti_auth_success and the loading of the identity data, when the status has not changed yet.
 static void apply_auth_event(struct ziti_instance_s *inst, const struct ziti_auth_event *ev) {
+    bool authenticated = inst->auth_state == tnl_auth_state_authenticated;
+
     switch (ev->action) {
         case ziti_auth_enroll_totp:
             set_state(inst, tnl_auth_state_partial, tnl_auth_needs_totp_enroll);
@@ -86,7 +96,9 @@ static void apply_auth_event(struct ziti_instance_s *inst, const struct ziti_aut
             break;
         case ziti_auth_select_external:
         case ziti_auth_login_external:
-            set_state(inst, tnl_auth_state_partial, tnl_auth_needs_ext_jwt);
+            if (!authenticated) {
+                set_state(inst, tnl_auth_state_partial, tnl_auth_needs_ext_jwt);
+            }
             break;
         case ziti_auth_prompt_pin:
             set_state(inst, tnl_auth_state_partial, tnl_auth_needs_key_pin);
@@ -95,7 +107,9 @@ static void apply_auth_event(struct ziti_instance_s *inst, const struct ziti_aut
             set_state(inst, tnl_auth_state_authenticated, tnl_auth_needs_none);
             break;
         case ziti_auth_cannot_continue:
-            set_state(inst, tnl_auth_state_failed, tnl_auth_needs_none);
+            if (!authenticated) {
+                set_state(inst, tnl_auth_state_failed, tnl_auth_needs_none);
+            }
             break;
         default:
             break;
@@ -119,12 +133,21 @@ void ziti_instance_apply_event(struct ziti_instance_s *inst, const ziti_event_t 
     }
 }
 
-void ziti_instance_sync_mfa_enrolled(struct ziti_instance_s *inst) {
-    // ziti_is_mfa_enrolled() is false, not "unknown", until the identity data is loaded: what a prompt said stays
-    if (inst == NULL || inst->ztx == NULL || ziti_get_identity(inst->ztx) == NULL) {
+void ziti_instance_apply_mfa_status(struct ziti_instance_s *inst, bool identity_loaded, bool enrolled) {
+    // The SDK keeps the identity data over the loss of a session and replaces it only after a full login: until the
+    // identity is authenticated again it is stale, and what a prompt said is better. ziti_is_mfa_enrolled() is also
+    // false, not "unknown", until the identity data is loaded.
+    if (inst == NULL || inst->auth_state != tnl_auth_state_authenticated || !identity_loaded) {
         return;
     }
-    inst->mfa_enrolled = ziti_is_mfa_enrolled(inst->ztx) ? tnl_mfa_enrolled_enrolled : tnl_mfa_enrolled_not_enrolled;
+    inst->mfa_enrolled = enrolled ? tnl_mfa_enrolled_enrolled : tnl_mfa_enrolled_not_enrolled;
+}
+
+void ziti_instance_sync_mfa_enrolled(struct ziti_instance_s *inst) {
+    if (inst == NULL || inst->ztx == NULL) {
+        return;
+    }
+    ziti_instance_apply_mfa_status(inst, ziti_get_identity(inst->ztx) != NULL, ziti_is_mfa_enrolled(inst->ztx));
 }
 
 void ziti_instance_set_enabled(struct ziti_instance_s *inst, bool enabled) {

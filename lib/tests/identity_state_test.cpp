@@ -86,6 +86,20 @@ TEST_CASE("context events set the state", "[identity-state]") {
     }
 }
 
+// The SDK sends ZITI_CONTROLLER_UNAVAILABLE for any poll of the controller that fails, while the api session is still
+// good. A session that is really gone is announced as ZITI_AUTHENTICATION_FAILED.
+TEST_CASE("a controller outage does not fail an authenticated identity", "[identity-state]") {
+    state_instance s;
+    feed(s.inst, context_event(ZITI_OK));
+    feed(s.inst, context_event(ZITI_CONTROLLER_UNAVAILABLE));
+    check_state(s.inst, tnl_auth_state_authenticated, tnl_auth_needs_none, tnl_mfa_enrolled_Unknown);
+
+    SECTION("a lost session still does") {
+        feed(s.inst, context_event(ZITI_AUTHENTICATION_FAILED));
+        check_state(s.inst, tnl_auth_state_failed, tnl_auth_needs_none, tnl_mfa_enrolled_Unknown);
+    }
+}
+
 TEST_CASE("auth events say what the login waits for", "[identity-state]") {
     state_instance s;
     SECTION("enroll totp") {
@@ -116,6 +130,23 @@ TEST_CASE("auth events say what the login waits for", "[identity-state]") {
         feed(s.inst, auth_event(ziti_auth_cannot_continue));
         check_state(s.inst, tnl_auth_state_failed, tnl_auth_needs_none, tnl_mfa_enrolled_Unknown);
     }
+}
+
+// The SDK sends these to an identity that is authenticated when the application starts an external login, and sends a
+// context event only when the status changes, so none follows to put right what they would leave.
+TEST_CASE("an external login that the app starts does not unauthenticate an identity", "[identity-state]") {
+    state_instance s;
+    feed(s.inst, context_event(ZITI_OK));
+    SECTION("select external") {
+        feed(s.inst, auth_event(ziti_auth_select_external));
+    }
+    SECTION("login external") {
+        feed(s.inst, auth_event(ziti_auth_login_external));
+    }
+    SECTION("cannot continue") {
+        feed(s.inst, auth_event(ziti_auth_cannot_continue));
+    }
+    check_state(s.inst, tnl_auth_state_authenticated, tnl_auth_needs_none, tnl_mfa_enrolled_Unknown);
 }
 
 // the ContextEvent for a partial login comes first, the auth event that explains it right after, and a context that
@@ -177,6 +208,7 @@ TEST_CASE("sync keeps what it cannot improve", "[identity-state]") {
 
     state_instance s;
     s.inst->ztx = ztx;
+    feed(s.inst, context_event(ZITI_OK)); // only an authenticated identity takes MFA from the context
     ziti_instance_sync_mfa_enrolled(s.inst);
     CHECK(s.inst->mfa_enrolled == tnl_mfa_enrolled_Unknown);
 
@@ -187,6 +219,62 @@ TEST_CASE("sync keeps what it cannot improve", "[identity-state]") {
     s.inst->mfa_enrolled = tnl_mfa_enrolled_not_enrolled;
     ziti_instance_sync_mfa_enrolled(s.inst);
     CHECK(s.inst->mfa_enrolled == tnl_mfa_enrolled_not_enrolled);
+}
+
+// The SDK keeps the identity data over the loss of a session and replaces it only after a full login, so what the
+// context says of MFA is stale until the identity is authenticated again, and a prompt knows better.
+TEST_CASE("what the context says of MFA counts only while authenticated", "[identity-state]") {
+    state_instance s;
+    SECTION("waiting to enroll") {
+        feed(s.inst, context_event(ZITI_PARTIALLY_AUTHENTICATED));
+        feed(s.inst, auth_event(ziti_auth_enroll_totp));
+        ziti_instance_apply_mfa_status(s.inst, true, true); // the old identity data still says enrolled
+        check_state(s.inst, tnl_auth_state_partial, tnl_auth_needs_totp_enroll, tnl_mfa_enrolled_not_enrolled);
+    }
+    SECTION("waiting for a code") {
+        feed(s.inst, context_event(ZITI_PARTIALLY_AUTHENTICATED));
+        feed(s.inst, auth_event(ziti_auth_prompt_totp));
+        ziti_instance_apply_mfa_status(s.inst, true, false); // the old identity data says not enrolled
+        check_state(s.inst, tnl_auth_state_partial, tnl_auth_needs_totp_code, tnl_mfa_enrolled_enrolled);
+    }
+    SECTION("failed") {
+        s.inst->mfa_enrolled = tnl_mfa_enrolled_enrolled;
+        feed(s.inst, context_event(ZITI_AUTHENTICATION_FAILED));
+        ziti_instance_apply_mfa_status(s.inst, true, false);
+        check_state(s.inst, tnl_auth_state_failed, tnl_auth_needs_none, tnl_mfa_enrolled_enrolled);
+    }
+    SECTION("disabled") {
+        s.inst->mfa_enrolled = tnl_mfa_enrolled_enrolled;
+        ziti_instance_set_enabled(s.inst, false);
+        ziti_instance_apply_mfa_status(s.inst, true, false);
+        check_state(s.inst, tnl_auth_state_disabled, tnl_auth_needs_none, tnl_mfa_enrolled_enrolled);
+    }
+    SECTION("before anything") {
+        ziti_instance_apply_mfa_status(s.inst, true, true);
+        check_state(s.inst, tnl_auth_state_Unknown, tnl_auth_needs_Unknown, tnl_mfa_enrolled_Unknown);
+    }
+}
+
+TEST_CASE("an authenticated identity takes MFA from the context", "[identity-state]") {
+    state_instance s;
+    feed(s.inst, context_event(ZITI_OK));
+    SECTION("enrolled") {
+        ziti_instance_apply_mfa_status(s.inst, true, true);
+        CHECK(s.inst->mfa_enrolled == tnl_mfa_enrolled_enrolled);
+    }
+    SECTION("not enrolled") {
+        s.inst->mfa_enrolled = tnl_mfa_enrolled_enrolled;
+        ziti_instance_apply_mfa_status(s.inst, true, false);
+        CHECK(s.inst->mfa_enrolled == tnl_mfa_enrolled_not_enrolled);
+    }
+    SECTION("identity data not loaded yet") {
+        s.inst->mfa_enrolled = tnl_mfa_enrolled_enrolled;
+        ziti_instance_apply_mfa_status(s.inst, false, false);
+        CHECK(s.inst->mfa_enrolled == tnl_mfa_enrolled_enrolled);
+    }
+    SECTION("null instance") {
+        ziti_instance_apply_mfa_status(nullptr, true, true);
+    }
 }
 
 TEST_CASE("disabling and enabling an identity", "[identity-state]") {
