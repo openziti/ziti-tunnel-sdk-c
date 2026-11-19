@@ -290,7 +290,7 @@ TEST_CASE("disabling and enabling an identity", "[identity-state]") {
     check_state(s.inst, tnl_auth_state_Unknown, tnl_auth_needs_Unknown, tnl_mfa_enrolled_enrolled);
 }
 
-// the SDK sends no event for a context that starts disabled
+// a disabled context reports ZITI_DISABLED only once it runs: it is listed as disabled from the start
 TEST_CASE("an identity loaded disabled starts disabled", "[identity-state]") {
     ziti_config cfg = {};
     cfg.controller_url = const_cast<char *>("https://localhost:1");
@@ -304,6 +304,33 @@ TEST_CASE("an identity loaded disabled starts disabled", "[identity-state]") {
     opts.disabled = false;
     REQUIRE(init_ziti_instance(on.inst, &cfg, &opts) == ZITI_OK);
     CHECK(on.inst->auth_state == tnl_auth_state_Unknown);
+}
+
+// init_ziti_instance replaces the context: what the old one reported does not carry over to the new one
+TEST_CASE("initializing an instance again forgets what the old context reported", "[identity-state]") {
+    ziti_config cfg = {};
+    cfg.controller_url = const_cast<char *>("https://localhost:1");
+    ziti_options opts = {};
+    state_instance s;
+    REQUIRE(init_ziti_instance(s.inst, &cfg, &opts) == ZITI_OK);
+
+    SECTION("authenticated") {
+        feed(s.inst, context_event(ZITI_OK));
+        REQUIRE(s.inst->auth_state == tnl_auth_state_authenticated);
+    }
+    SECTION("waiting at the TOTP prompt") {
+        feed(s.inst, context_event(ZITI_PARTIALLY_AUTHENTICATED));
+        feed(s.inst, auth_event(ziti_auth_prompt_totp));
+        REQUIRE(s.inst->mfa_enrolled == tnl_mfa_enrolled_enrolled);
+    }
+
+    REQUIRE(init_ziti_instance(s.inst, &cfg, &opts) == ZITI_OK);
+    check_state(s.inst, tnl_auth_state_Unknown, tnl_auth_needs_Unknown, tnl_mfa_enrolled_Unknown);
+
+    // and it starts disabled, with nothing known of MFA, when it is initialized disabled
+    opts.disabled = true;
+    REQUIRE(init_ziti_instance(s.inst, &cfg, &opts) == ZITI_OK);
+    check_state(s.inst, tnl_auth_state_disabled, tnl_auth_needs_none, tnl_mfa_enrolled_Unknown);
 }
 
 // turning on an identity that is on starts nothing in the SDK, so no event follows to restore what is known
