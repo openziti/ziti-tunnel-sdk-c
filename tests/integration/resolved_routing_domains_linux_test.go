@@ -90,6 +90,10 @@ func TestResolvedRoutingDomains(t *testing.T) {
 	require.True(t, errors.As(err, &dnsErr) && dnsErr.IsNotFound,
 		"below.%s should be forwarded and not found, got: %v\n%s", hostname, err, interceptZET.LogFile())
 
+	// other types of the intercepted name are not forwarded: the system's servers would answer NXDOMAIN
+	out, _ := exec.Command("resolvectl", "query", "-t", "TXT", hostname).CombinedOutput()
+	require.NotContains(t, string(out), "not found", "TXT of %s was forwarded\n%s", hostname, interceptZET.LogFile())
+
 	// and the intercepted name itself resolves to the ZET through systemd-resolved
 	ips, err := net.DefaultResolver.LookupIP(ctx, "ip4", hostname)
 	require.NoError(t, err, "resolve %s through systemd-resolved\n%s", hostname, interceptZET.LogFile())

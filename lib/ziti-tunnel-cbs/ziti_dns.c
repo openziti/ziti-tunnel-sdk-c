@@ -928,6 +928,8 @@ ssize_t on_dns_req(const void *ziti_io_ctx, void *write_ctx, const void *q_packe
         dns_domain_t *domain = find_domain(reqname);
         if (domain) {
             proxy_domain_req(req, domain);
+        } else if (ziti_dns_lookup(q->name)) {
+            process_host_req(req); // an intercepted hostname: no records of this type, never the upstream's answer
         } else {
             int dns_status = query_upstream(req);
             if (dns_status != DNS_NO_ERROR) {
