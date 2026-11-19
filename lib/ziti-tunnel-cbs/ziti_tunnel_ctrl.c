@@ -351,6 +351,10 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
                     info->network = strdup(controller);
                 }
                 info->config = strdup(key);
+                ziti_instance_sync_mfa_enrolled(inst);
+                info->authState = inst->auth_state;
+                info->authNeeds = inst->auth_needs;
+                info->mfaEnrolled = inst->mfa_enrolled;
 
                 id_list.identities[idx++] = info;
             }
@@ -386,6 +390,7 @@ static int process_cmd(const tunnel_command *cmd, command_cb cb, void *ctx) {
             }
 
             ziti_set_enabled(inst->ztx, on_off_id.onOff);
+            ziti_instance_set_enabled(inst, on_off_id.onOff);
             result.data = tunnel_command_to_json(cmd, MODEL_JSON_COMPACT, NULL);
             result.success = true;
             result.code = IPC_SUCCESS;
@@ -1007,6 +1012,11 @@ struct ziti_instance_s *new_ziti_instance(const char *identifier) {
 
 int init_ziti_instance(struct ziti_instance_s *inst, const ziti_config *cfg, const ziti_options *opts) {
     FREE(inst->ztx);
+    // what is known of the identity came from the context that is gone
+    inst->auth_state = tnl_auth_state_Unknown;
+    inst->auth_needs = tnl_auth_needs_Unknown;
+    inst->mfa_enrolled = tnl_mfa_enrolled_Unknown;
+
     int rc = ziti_context_init(&inst->ztx, cfg);
     if (rc != ZITI_OK) {
         ZITI_LOG(ERROR, "ziti_context_init failed: %s", ziti_errorstr(rc));
@@ -1032,6 +1042,9 @@ int init_ziti_instance(struct ziti_instance_s *inst, const ziti_config *cfg, con
     rc = set_tnlr_options(inst);
     if (rc != ZITI_OK) {
         FREE(inst->ztx);
+    } else {
+        // a disabled context reports ZITI_DISABLED only once it runs: list it as disabled from the start
+        ziti_instance_set_enabled(inst, !opts->disabled);
     }
 
     return rc;
@@ -1095,6 +1108,9 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
     if (instance->ztx != ztx) {
         ZITI_LOG(ERROR, "something bad had happened: incorrect context");
     }
+
+    // first, so that the state is current when the event reaches the embedder
+    ziti_instance_apply_event(instance, event);
 
     const ziti_identity *identity = ziti_get_identity(ztx);
     const char *ctx_name = identity ? identity->name : instance->identifier;
@@ -1376,11 +1392,16 @@ static void on_submit_mfa(ziti_context ztx, int status, void *ctx) {
         result.code = IPC_SUCCESS;
     }
 
+    // what the identity is now is in place before anyone hears of the result: they may list the identity at once
+    struct ziti_instance_s *inst = ziti_app_ctx(ztx);
+    if (status == ZITI_OK) {
+        inst->mfa_enrolled = tnl_mfa_enrolled_enrolled;
+    }
+
     if (req->cmd_cb) {
         req->cmd_cb(&result, req->cmd_ctx);
     }
 
-    struct ziti_instance_s *inst = ziti_app_ctx(ztx);
     mfa_event *ev = calloc(1, sizeof(mfa_event));
     ev->operation = strdup(mfa_status_name(mfa_status_mfa_auth_status));
     ev->operation_type = mfa_status_mfa_auth_status;
@@ -1472,11 +1493,16 @@ static void on_verify_mfa(ziti_context ztx, int status, void *ctx) {
         result.success = true;
         result.code = IPC_SUCCESS;
     }
+    // what the identity is now is in place before anyone hears of the result: they may list the identity at once
+    struct ziti_instance_s *inst = ziti_app_ctx(ztx);
+    if (status == ZITI_OK) {
+        inst->mfa_enrolled = tnl_mfa_enrolled_enrolled;
+    }
+
     if (req->cmd_cb) {
         req->cmd_cb(&result, req->cmd_ctx);
     }
 
-    struct ziti_instance_s *inst = ziti_app_ctx(ztx);
     mfa_event *ev = calloc(1, sizeof(mfa_event));
     ev->operation = strdup(mfa_status_name(mfa_status_enrollment_verification));
     ev->operation_type = mfa_status_enrollment_verification;
@@ -1504,11 +1530,16 @@ static void on_remove_mfa(ziti_context ztx, int status, void *ctx) {
         result.success = true;
         result.code = IPC_SUCCESS;
     }
+    // what the identity is now is in place before anyone hears of the result: they may list the identity at once
+    struct ziti_instance_s *inst = ziti_app_ctx(ztx);
+    if (status == ZITI_OK) {
+        inst->mfa_enrolled = tnl_mfa_enrolled_not_enrolled;
+    }
+
     if (req->cmd_cb) {
         req->cmd_cb(&result, req->cmd_ctx);
     }
 
-    struct ziti_instance_s *inst = ziti_app_ctx(ztx);
     mfa_event *ev = calloc(1, sizeof(mfa_event));
     ev->operation = strdup(mfa_status_name(mfa_status_enrollment_remove));
     ev->operation_type = mfa_status_enrollment_remove;

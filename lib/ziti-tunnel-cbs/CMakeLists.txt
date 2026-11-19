@@ -9,6 +9,7 @@ add_library(ziti-tunnel-cbs-c STATIC
         ziti_tunnel_cbs.c
         ziti_hosting.c
         ziti_tunnel_ctrl.c
+        ziti_instance_state.c
         ziti_instance.h
         ziti_dns.c
         dns_msg.c

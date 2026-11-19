@@ -80,3 +80,78 @@ TEST_CASE("listing an identity that has not authenticated", "[ctrl]") {
     free(inst->controller_url);
     free(inst);
 }
+
+static const ziti_tunnel_ctrl *ctrl() {
+    return ziti_tunnel_init_cmd(uv_default_loop(), nullptr, on_tunnel_event);
+}
+
+// an identity that is loaded and listed, with a context that has no identity data because nothing connects to a controller
+struct listed_instance {
+    struct ziti_instance_s *inst;
+
+    explicit listed_instance(const char *name) : inst(new_ziti_instance(name)) {
+        ziti_config cfg = {};
+        cfg.controller_url = const_cast<char *>("https://localhost:1");
+        REQUIRE(ziti_context_init(&inst->ztx, &cfg) == ZITI_OK);
+        set_ziti_instance(inst->identifier, inst);
+    }
+
+    ~listed_instance() {
+        remove_ziti_instance(inst->identifier);
+        free(inst->identifier);
+        free(inst);
+    }
+};
+
+// not called list(): the ziti headers define a macro that turns it into model_list
+static list_result list_identities() {
+    tunnel_command cmd = {};
+    cmd.command = TunnelCommand_ListIdentities;
+    list_result out;
+    ctrl()->process(&cmd, on_list_result, &out);
+    return out;
+}
+
+// the {...} object of the listing that holds the given Config: a row has no nested objects
+static std::string row(const std::string &data, const char *config) {
+    size_t at = data.find(std::string("\"Config\":\"") + config + "\"");
+    REQUIRE(at != std::string::npos);
+    size_t begin = data.rfind('{', at);
+    size_t end = data.find('}', at);
+    REQUIRE(begin != std::string::npos);
+    REQUIRE(end != std::string::npos);
+    return data.substr(begin, end - begin + 1);
+}
+
+TEST_CASE("each listed identity carries its own state", "[ctrl]") {
+    listed_instance a("state-first"), b("state-second");
+    ziti_event_t prompt = {};
+    prompt.type = ZitiAuthEvent;
+    prompt.auth.action = ziti_auth_prompt_totp;
+    ziti_event_t ok = {};
+    ok.type = ZitiContextEvent;
+    ok.ctx.ctrl_status = ZITI_OK;
+    ziti_instance_apply_event(a.inst, &prompt);
+    ziti_instance_apply_event(b.inst, &ok);
+
+    list_result out = list_identities();
+    REQUIRE(out.called);
+    INFO("listing: " << out.data);
+    std::string first = row(out.data, "state-first");
+    std::string second = row(out.data, "state-second");
+    CHECK(first.find("\"AuthState\":\"partial\"") != std::string::npos);
+    CHECK(first.find("\"AuthNeeds\":\"totp_code\"") != std::string::npos);
+    CHECK(first.find("\"MfaEnrolled\":\"enrolled\"") != std::string::npos);
+    CHECK(second.find("\"AuthState\":\"authenticated\"") != std::string::npos);
+    CHECK(second.find("\"AuthNeeds\":\"none\"") != std::string::npos);
+    CHECK(second.find("\"MfaEnrolled\":null") != std::string::npos);
+}
+
+TEST_CASE("a listed identity has no state before any signal", "[ctrl]") {
+    listed_instance li("state-unknown");
+    list_result out = list_identities();
+    REQUIRE(out.called);
+    CHECK(out.data.find("\"AuthState\":null") != std::string::npos);
+    CHECK(out.data.find("\"AuthNeeds\":null") != std::string::npos);
+    CHECK(out.data.find("\"MfaEnrolled\":null") != std::string::npos);
+}
