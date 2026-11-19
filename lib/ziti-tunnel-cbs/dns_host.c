@@ -79,29 +79,42 @@ static void on_write(ziti_connection conn, ssize_t status, void *ctx) {
     }
 }
 
-static bool is_allowed(const char *name, const dns_host_conn_t *dns) {
+bool is_allowed_dns_name(const char *name, const allowed_hostnames_t *domains) {
+    size_t name_len = strlen(name);
     struct allowed_hostname_s *ad;
-    LIST_FOREACH(ad, &dns->allowed_domains, _next) {
-        char *ptr = strstr(name, ad->domain_name);
-        if (ptr != NULL && strcmp(ptr, ad->domain_name) == 0) { // ends with domain_name
+    LIST_FOREACH(ad, domains, _next) {
+        size_t domain_len = strlen(ad->domain_name);
+        if (domain_len > name_len) continue;
 
-            if (ptr == name) return true;
+        // DNS names are case-insensitive (RFC 4343), and clients may send any spelling
+        const char *suffix = name + name_len - domain_len;
+        if (strcasecmp(suffix, ad->domain_name) != 0) continue;
 
-            if (*(ptr-1) == '.') // name is XXXX.$domain_name
-                return true;
-        }
+        if (suffix == name || suffix[-1] == '.') return true;
     }
     return false;
 }
 
 #if _WIN32
 
+// DnsQuery_A reports server rcodes as DNS_ERROR_RESPONSE_CODES_BASE + rcode, everything else as a Win32 error
+static int rcode_from_dns_status(const dns_question *q, DNS_STATUS rc) {
+    if (rc == ERROR_SUCCESS || rc == DNS_INFO_NO_RECORDS) {
+        return DNS_RCODE_NOERROR;
+    }
+    if (rc > DNS_ERROR_RESPONSE_CODES_BASE && rc - DNS_ERROR_RESPONSE_CODES_BASE <= 0xf) {
+        return (int)(rc - DNS_ERROR_RESPONSE_CODES_BASE);
+    }
+    ZITI_LOG(WARN, "query[%s] type[%d] failed: %ld", q->name, (int)q->type, (long)rc);
+    return DNS_RCODE_SERVFAIL;
+}
+
 void do_query(const dns_question *q, dns_message *resp, resolver_t *resolver) {
     DNS_RECORD *rrs = NULL;
     DNS_STATUS rc = DnsQuery_A(q->name, q->type, DNS_QUERY_STANDARD, NULL, &rrs, NULL);
 
-    resp->status = rc;
-    if (rc == DNS_RCODE_NOERROR) {
+    resp->status = rcode_from_dns_status(q, rc);
+    if (rc == ERROR_SUCCESS) {
         int count = 0;
         DNS_RECORD *rr = rrs;
         while(rr != NULL) {
@@ -268,7 +281,7 @@ static ssize_t on_dns_req(ziti_connection conn, const uint8_t *data, ssize_t dat
     if (q == NULL) {
         ZITI_LOG(WARN, "rejecting resolve request without a valid question");
         msg.status = ns_r_formerr;
-    } else if (is_allowed(q->name, dns)) {
+    } else if (is_allowed_dns_name(q->name, &dns->allowed_domains)) {
         do_query(q, &msg, &dns->resolver);
     } else {
         msg.status = ns_r_refused;
