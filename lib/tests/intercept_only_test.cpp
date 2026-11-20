@@ -415,3 +415,22 @@ TEST_CASE("an intercept-only tunneler still intercepts a service it may dial and
     CHECK(model_map_size(&id.inst.hosts) == 0);
     remove_intercepts(id.ztx, mode.tnlr);
 }
+
+TEST_CASE("the SetInterceptOnly command carries the mode, and reads no mode when it is missing", "[intercept-only]") {
+    tunnel_command cmd = {};
+    const char *json = R"({"Command":"SetInterceptOnly","Data":{"InterceptOnly":true}})";
+    REQUIRE(parse_tunnel_command(&cmd, json, strlen(json)) > 0);
+    CHECK(cmd.command == TunnelCommand_SetInterceptOnly);
+
+    tunnel_set_intercept_only req = {};
+    REQUIRE(parse_tunnel_set_intercept_only(&req, cmd.data, strlen(cmd.data)) > 0);
+    REQUIRE(req.intercept_only != nullptr);
+    CHECK(*req.intercept_only);
+    free_tunnel_set_intercept_only(&req);
+    free_tunnel_command(&cmd);
+
+    // a missing value must not read as false, which would turn the mode off
+    REQUIRE(parse_tunnel_set_intercept_only(&req, "{}", 2) >= 0);
+    CHECK(req.intercept_only == nullptr);
+    free_tunnel_set_intercept_only(&req);
+}

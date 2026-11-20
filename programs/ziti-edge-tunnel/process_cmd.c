@@ -581,6 +581,22 @@ bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void 
             result.code = IPC_SUCCESS;
             break;
         }
+        case TunnelCommand_SetInterceptOnly: {
+            cmd_accepted = true;
+            tunnel_set_intercept_only req = {0};
+            if (tnl_cmd->data == NULL ||
+                parse_tunnel_set_intercept_only(&req, tnl_cmd->data, strlen(tnl_cmd->data)) < 0 ||
+                req.intercept_only == NULL) {
+                result.error = "invalid command";
+            } else if (!switch_intercept_only(*req.intercept_only)) {
+                result.error = "intercept-only is not available in run-host mode";
+            } else {
+                result.success = true;
+                result.code = IPC_SUCCESS;
+            }
+            free_tunnel_set_intercept_only(&req);
+            break;
+        }
         case TunnelCommand_UpdateTunIpv4: {
             cmd_accepted = true;
             process_update_tun_ipv4_cmd(tnl_cmd->data, &result);

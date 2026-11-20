@@ -1898,6 +1898,13 @@ static void run(int argc, char *argv[]) {
     if (l2_tunnel) {
         set_l2_enabled(l2_tunnel);
     }
+    if (intercept_only) {
+        set_intercept_only(intercept_only);
+    } else if (is_host_only() && get_intercept_only()) {
+        // so the status shows the mode in effect
+        ZITI_LOG(WARN, "ignoring the saved intercept-only: run-host only hosts");
+        set_intercept_only(false);
+    }
 #ifdef ENABLE_PCAP
     if (pcap_iface) {
         set_pcap_ifname(pcap_iface);
@@ -3002,6 +3009,36 @@ static int set_log_level_opts(int argc, char *argv[]) {
     return optind;
 }
 
+static int set_intercept_only_opts(int argc, char *argv[]) {
+    static struct option opts[] = {
+            {0, 0, 0, 0},
+    };
+    int c, option_index, errors = 0;
+    optind = 0;
+
+    while ((c = getopt_long(argc, argv, "", opts, &option_index)) != -1) {
+        fprintf(stderr, "Unknown option '%c'\n", c);
+        errors++;
+    }
+
+    bool on = false;
+    if (optind < argc && strcasecmp(argv[optind], "on") == 0) {
+        on = true;
+    } else if (optind >= argc || strcasecmp(argv[optind], "off") != 0) {
+        fprintf(stderr, "expected on or off\n");
+        errors++;
+    }
+
+    CHECK_COMMAND_ERRORS(errors);
+
+    cmd.command = TunnelCommand_SetInterceptOnly;
+    tunnel_set_intercept_only req = { .intercept_only = &on };
+    size_t json_len;
+    cmd.data = tunnel_set_intercept_only_to_json(&req, MODEL_JSON_COMPACT, &json_len);
+
+    return optind;
+}
+
 static int update_tun_ip_opts(int argc, char *argv[]) {
     static struct option opts[] = {
             {"tunip", required_argument, NULL, 't'},
@@ -3409,6 +3446,10 @@ static CommandLine add_id_cmd = make_command(
         add_identity_opts, send_message_to_tunnel_fn);
 static CommandLine set_log_level_cmd = make_command("set_log_level", "Set log level of the tunneler", "-l <level>",
                                                     "\t-l|--loglevel\tlog level of the tunneler\n", set_log_level_opts, send_message_to_tunnel_fn);
+static CommandLine set_intercept_only_cmd = make_command("set_intercept_only", "Stop or resume hosting services, and keep intercepting", "on | off",
+                                                    "\ton\tintercept services, but never bind or host any\n"
+                                                    "\toff\thost the services the identities may bind again\n",
+                                                    set_intercept_only_opts, send_message_to_tunnel_fn);
 static CommandLine update_tun_ip_cmd = make_command("update_tun_ip", "Update tun ip of the tunneler", "[-t <tunip>] [-p <prefixlength>] [-d <AddDNS>]",
                                                     "\t-t|--tunip\ttun ipv4 of the tunneler\n"
                                                     "\t-p|--prefixlength\ttun ipv4 prefix length of the tunneler\n"
@@ -3459,6 +3500,7 @@ static CommandLine *main_cmds[] = {
         &delete_id_cmd,
         &add_id_cmd,
         &set_log_level_cmd,
+        &set_intercept_only_cmd,
         &update_tun_ip_cmd,
         &update_l2_opts_cmd,
 #if _WIN32
@@ -3649,7 +3691,28 @@ static bool is_host_only() {
 }
 
 static bool is_intercept_only() {
-    return intercept_only;
+    return get_intercept_only();
+}
+
+bool switch_intercept_only(bool on) {
+    if (is_host_only()) {
+        return false;
+    }
+#if __linux__
+    if (on != get_intercept_only()) {
+        // the diverter's bind routes follow the hosting the switch stops or resumes
+        tunnel_identity_array ids = get_tunnel_identities();
+        for (int i = 0; ids[i] != NULL; i++) {
+            for (int j = 0; ids[i]->Services != NULL && ids[i]->Services[j] != NULL; j++) {
+                diverter_set_hosting(ids[i]->Services[j], !on);
+            }
+        }
+        free(ids);
+    }
+#endif
+    set_intercept_only(on);
+    ziti_tunnel_set_intercept_only(on);
+    return true;
 }
 
 int main(int argc, char *argv[]) {

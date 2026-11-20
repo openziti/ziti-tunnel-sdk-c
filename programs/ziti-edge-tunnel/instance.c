@@ -666,6 +666,7 @@ char *get_tunnel_config(size_t *json_len) {
     tnl_config.AddDns = tnl_sts->AddDns;
     tnl_config.ApiPageSize = tnl_sts->ApiPageSize;
     tnl_config.L2Enabled = tnl_sts->L2Enabled;
+    tnl_config.InterceptOnly = tnl_sts->InterceptOnly;
     tnl_config.PcapInterface = tnl_sts->PcapInterface;
 
     char* tunnel_config_json = tunnel_status_to_json(&tnl_config, 0, json_len);
@@ -982,6 +983,14 @@ void set_l2_enabled(bool enabled) {
 
 bool get_l2_enabled() {
     return tnl_status.L2Enabled;
+}
+
+void set_intercept_only(bool intercept_only) {
+    tnl_status.InterceptOnly = intercept_only;
+}
+
+bool get_intercept_only() {
+    return tnl_status.InterceptOnly;
 }
 
 #ifdef ENABLE_PCAP

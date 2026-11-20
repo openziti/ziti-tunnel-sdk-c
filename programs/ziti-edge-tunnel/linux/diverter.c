@@ -195,6 +195,21 @@ void diverter_remove_svc(const tunnel_service *svc, bool hosting) {
     }
 }
 
+void diverter_set_hosting(const tunnel_service *svc, bool hosting) {
+    // as diverter_add_svc(): only a service it may bind and not dial has bind routes
+    if (svc && diverter && svc->Permissions.Bind && !svc->Permissions.Dial) {
+        for (int x = 0; svc->AllowedSourceAddresses && (svc->AllowedSourceAddresses[x] != NULL); x++) {
+            if (!svc->AllowedSourceAddresses[x]->IsHost) {
+                if (hosting) {
+                    bind_diverter_route(svc->AllowedSourceAddresses[x]->IP, svc->AllowedSourceAddresses[x]->Prefix);
+                } else {
+                    unbind_diverter_route(svc->AllowedSourceAddresses[x]->IP, svc->AllowedSourceAddresses[x]->Prefix);
+                }
+            }
+        }
+    }
+}
+
 static void diverter_binding_flush() {
     // called by exit handler, so run_command is appropriate
     run_command("%s -F -j", zfw_path);
