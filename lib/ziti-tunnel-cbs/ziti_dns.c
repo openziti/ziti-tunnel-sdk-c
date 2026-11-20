@@ -758,6 +758,13 @@ static ssize_t on_proxy_data(ziti_connection conn, const uint8_t* data, ssize_t 
         uint16_t id = msg.id;
         struct dns_req *req = model_map_get_key(&ziti_dns.requests, &id, sizeof(id));
         if (req) {
+            // the status comes from the hosting peer and must fit the 4-bit rcode of the response header
+            if (msg.status >= 0 && msg.status <= 0xf) {
+                req->msg.status = msg.status;
+            } else {
+                ZITI_LOG(WARN, "proxy resolve[%04x]: invalid status %d, answering SERVFAIL", id, (int)msg.status);
+                req->msg.status = DNS_SERVFAIL;
+            }
             req->msg.answer = msg.answer;
             msg.answer = NULL;
             format_resp(req);

@@ -120,3 +120,36 @@ TEST_CASE("dns parse MX", "[dns]") {
     free_dns_message(&req);
 
 }
+
+TEST_CASE("resolve request without question is rejected", "[dns]") {
+    const char *bad[] = {
+            "x",
+            "{}",
+            R"({"question":[]})",
+            R"({"question":[null]})",
+            R"({"question":[{}]})",
+            R"({"question":[{"type":1}]})",
+            R"({"id":1,"question":"yahoo.com"})",
+    };
+
+    for (auto json: bad) {
+        INFO("request: " << json);
+        dns_message req = {0};
+        CHECK(parse_resolve_req(&req, json, strlen(json)) == nullptr);
+        free_dns_message(&req);
+    }
+}
+
+TEST_CASE("resolve request with question is accepted", "[dns]") {
+    const char *json = R"({"id":4242,"recursive":1,"question":[{"name":"yahoo.com","type":15}]})";
+
+    dns_message req = {0};
+    const dns_question *q = parse_resolve_req(&req, json, strlen(json));
+    REQUIRE(q != nullptr);
+    CHECK(q == req.question[0]);
+    CHECK(q->type == 15);
+    CHECK_THAT(q->name, Catch::Matches("yahoo.com"));
+    CHECK(req.id == 4242);
+
+    free_dns_message(&req);
+}
