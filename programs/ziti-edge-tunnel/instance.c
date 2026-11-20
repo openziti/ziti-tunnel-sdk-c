@@ -44,6 +44,9 @@ static const char* CFG_INTERCEPT_V1 = "intercept.v1";
 static const char* CFG_HOST_V1 = "host.v1";
 static const char* CFG_ZITI_TUNNELER_CLIENT_V1 = "ziti-tunneler-client.v1";
 static tunnel_status tnl_status = {0};
+// the intercept-only choice saved in config.json. tnl_status.InterceptOnly is the mode in effect, which -O and
+// run-host override without saving
+static bool saved_intercept_only = false;
 extern char *config_dir;
 
 tunnel_identity *find_tunnel_identity(const char* identifier) {
@@ -596,8 +599,10 @@ bool load_tunnel_status(const char* config_data) {
             free_service_version(tnl_status.ServiceVersion);
             tnl_status.ServiceVersion = NULL;
         }
+        tnl_status.InterceptOnly = false; // may be partly parsed too
         return false;
     }
+    saved_intercept_only = tnl_status.InterceptOnly;
     initialize_tunnel_status();
     set_identifier_from_identities();
     return true;
@@ -666,7 +671,7 @@ char *get_tunnel_config(size_t *json_len) {
     tnl_config.AddDns = tnl_sts->AddDns;
     tnl_config.ApiPageSize = tnl_sts->ApiPageSize;
     tnl_config.L2Enabled = tnl_sts->L2Enabled;
-    tnl_config.InterceptOnly = tnl_sts->InterceptOnly;
+    tnl_config.InterceptOnly = saved_intercept_only;
     tnl_config.PcapInterface = tnl_sts->PcapInterface;
 
     char* tunnel_config_json = tunnel_status_to_json(&tnl_config, 0, json_len);
@@ -991,6 +996,14 @@ void set_intercept_only(bool intercept_only) {
 
 bool get_intercept_only() {
     return tnl_status.InterceptOnly;
+}
+
+void set_saved_intercept_only(bool intercept_only) {
+    saved_intercept_only = intercept_only;
+}
+
+bool get_saved_intercept_only() {
+    return saved_intercept_only;
 }
 
 #ifdef ENABLE_PCAP

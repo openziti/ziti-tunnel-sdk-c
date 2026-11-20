@@ -102,8 +102,12 @@ bool is_valid_discriminator(const char *discriminator);
 
 void set_l2_enabled(bool enabled);
 bool get_l2_enabled();
+// the intercept-only mode in effect, as Status reports it
 void set_intercept_only(bool intercept_only);
 bool get_intercept_only();
+// the intercept-only choice saved in config.json
+void set_saved_intercept_only(bool intercept_only);
+bool get_saved_intercept_only();
 #ifdef ENABLE_PCAP
 void set_pcap_ifname(const char* pcap_ifname);
 const char *get_pcap_ifname();
