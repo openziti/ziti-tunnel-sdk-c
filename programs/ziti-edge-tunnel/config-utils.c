@@ -14,6 +14,7 @@
  limitations under the License.
  */
 
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -205,6 +206,20 @@ char* resolve_directory(const char* path) {
     return resolved_path;
 }
 
+static void url_decode(char *credential) {
+    char *out = credential;
+    for (const char *in = credential; *in != '\0'; in++) {
+        if (in[0] == '%' && isxdigit((unsigned char) in[1]) && isxdigit((unsigned char) in[2])) {
+            char hex[3] = { in[1], in[2], '\0' };
+            *out++ = (char) strtol(hex, NULL, 16);
+            in += 2;
+        } else {
+            *out++ = *in;
+        }
+    }
+    *out = '\0';
+}
+
 int parse_proxy_url(const char *url, proxy_endpoint *endpoint, char *err, size_t err_len) {
     memset(endpoint, 0, sizeof(*endpoint));
     struct tlsuv_url_s proxy_url;
@@ -238,6 +253,8 @@ int parse_proxy_url(const char *url, proxy_endpoint *endpoint, char *err, size_t
         endpoint->has_auth = true;
         snprintf(endpoint->user, sizeof(endpoint->user), "%.*s", (int)proxy_url.username_len, proxy_url.username);
         snprintf(endpoint->passwd, sizeof(endpoint->passwd), "%.*s", (int)proxy_url.password_len, proxy_url.password);
+        url_decode(endpoint->user);
+        url_decode(endpoint->passwd);
     }
     snprintf(endpoint->host, sizeof(endpoint->host), "%.*s", (int)proxy_url.hostname_len, proxy_url.hostname);
     snprintf(endpoint->port, sizeof(endpoint->port), "%u", (unsigned)proxy_url.port);
