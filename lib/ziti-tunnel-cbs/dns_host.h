@@ -90,6 +90,12 @@ void dns_host_init();
 
 void do_query(const dns_question *q, dns_message *resp, resolver_t *resolver);
 
+#if !_WIN32
+// adds the supported records from the answer section of a parsed DNS response to resp.
+// malformed records are dropped.
+void format_dns_answers(ns_msg *ans, dns_message *resp);
+#endif
+
 int parse_dns_req(dns_message *msg, const unsigned char* buf, size_t buflen);
 
 #ifdef __cplusplus
