@@ -960,6 +960,41 @@ static char* normalize_host(char* hostname) {
     return hostname_new;
 }
 
+// ZITI_EXT_AUTH_PARAMS: extra authorize query parameters for external JWT signers, as `name=value[&name=value...]`
+static void set_ext_auth_params_from_env(void) {
+    const char *env = getenv("ZITI_EXT_AUTH_PARAMS");
+    if (env == NULL || *env == '\0') {
+        return;
+    }
+
+    char *spec = strdup(env);
+    int max = 1;
+    for (const char *p = spec; *p; p++) {
+        if (*p == '&') max++;
+    }
+    ziti_auth_query_param *params = calloc(max, sizeof(ziti_auth_query_param));
+    int count = 0;
+    for (char *pair = spec; pair != NULL;) {
+        char *amp = strchr(pair, '&');
+        if (amp) *amp = '\0';
+        char *eq = strchr(pair, '=');
+        if (eq == NULL || eq == pair) {
+            if (*pair) ZITI_LOG(WARN, "ZITI_EXT_AUTH_PARAMS: ignoring entry without name=value");
+        } else {
+            *eq = '\0';
+            params[count].name = pair;
+            params[count].value = eq + 1;
+            count++;
+        }
+        pair = amp ? amp + 1 : NULL;
+    }
+    ZITI_LOG(INFO, "ZITI_EXT_AUTH_PARAMS: %d extra authorize parameter(s)", count);
+
+    ziti_tunnel_set_ext_auth_params(params, count);
+    free(params);
+    free(spec);
+}
+
 static int run_tunnel(uv_loop_t *ziti_loop, uint32_t tun_ip, uint32_t dns_ip, const char *ip_range, const char *dns_upstream) {
     netif_driver tun, tap = NULL;
     char tun_error[64];
@@ -1235,6 +1270,7 @@ static void run_tunneler_loop(uv_loop_t* ziti_loop) {
 #endif
 
     CMD_CTRL = ziti_tunnel_init_cmd(ziti_loop, tunneler, on_event);
+    set_ext_auth_params_from_env();
 
     // dump files are written only on Windows, into the log dir ZDEW's feedback bundle collects. Elsewhere logs go to
     // journald or the console and the binary may sit in /usr/local/bin, so the dump travels in the response only.
