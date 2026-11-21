@@ -111,11 +111,40 @@ XX(apiPageSize, model_number, none, ApiPageSize, __VA_ARGS__)
 XX(identifier, model_string, none, Identifier, __VA_ARGS__) \
 XX(onOff, model_bool, none, OnOff, __VA_ARGS__)
 
+// What the library has learned of an identity's authentication from the ziti events (see ziti_instance_state.c).
+// Zero is the <enum>_Unknown that DECLARE_ENUM reserves, which the JSON model writes as null: nothing has been seen yet.
+#define TNL_AUTH_STATE(XX, ...) \
+XX(partial, __VA_ARGS__) \
+XX(authenticated, __VA_ARGS__) \
+XX(disabled, __VA_ARGS__) \
+XX(failed, __VA_ARGS__)
+
+DECLARE_ENUM(tnl_auth_state, TNL_AUTH_STATE)
+
+// what a partial login waits for; none for every known state that is not partial
+#define TNL_AUTH_NEEDS(XX, ...) \
+XX(none, __VA_ARGS__) \
+XX(totp_enroll, __VA_ARGS__) \
+XX(totp_code, __VA_ARGS__) \
+XX(ext_jwt, __VA_ARGS__) \
+XX(key_pin, __VA_ARGS__)
+
+DECLARE_ENUM(tnl_auth_needs, TNL_AUTH_NEEDS)
+
+#define TNL_MFA_ENROLLED(XX, ...) \
+XX(enrolled, __VA_ARGS__) \
+XX(not_enrolled, __VA_ARGS__)
+
+DECLARE_ENUM(tnl_mfa_enrolled, TNL_MFA_ENROLLED)
+
 #define TNL_IDENTITY_INFO(XX, ...) \
 XX(name, model_string, none, Name, __VA_ARGS__) \
 XX(config, model_string, none, Config, __VA_ARGS__) \
 XX(network, model_string, none, Network, __VA_ARGS__) \
-XX(id, model_string, none, Id, __VA_ARGS__)
+XX(id, model_string, none, Id, __VA_ARGS__) \
+XX(authState, tnl_auth_state, none, AuthState, __VA_ARGS__) \
+XX(authNeeds, tnl_auth_needs, none, AuthNeeds, __VA_ARGS__) \
+XX(mfaEnrolled, tnl_mfa_enrolled, none, MfaEnrolled, __VA_ARGS__)
 
 #define TNL_IDENTITY_LIST(XX, ...) \
 XX(identities, tunnel_identity_info, array, Identities, __VA_ARGS__)
@@ -482,6 +511,11 @@ struct ziti_instance_s {
     struct mfa_request_s *mfa_req;
     model_map intercepts;
     model_map hosts;
+
+    // what the library has learned of this identity from the ziti events; zero is Unknown (see ziti_instance_state.c)
+    tnl_auth_state auth_state;
+    tnl_auth_needs auth_needs;
+    tnl_mfa_enrolled mfa_enrolled;
     LIST_ENTRY(ziti_instance_s) _next;
     // names of the services it may bind but doesn't host, because the tunneler is intercept-only. the values are a
     // string literal: clear it with a NULL free function
@@ -496,6 +530,15 @@ int init_ziti_instance(struct ziti_instance_s *inst, const ziti_config *cfg, con
 int set_tnlr_options(struct ziti_instance_s *inst);
 void set_ziti_instance(const char *identifier, struct ziti_instance_s *inst);
 void remove_ziti_instance(const char *identifier);
+
+/** update the instance's auth_state, auth_needs and mfa_enrolled from a ziti event; other events change nothing */
+void ziti_instance_apply_event(struct ziti_instance_s *inst, const ziti_event_t *event);
+/** take mfa_enrolled from the ziti context, which knows it once the identity data is loaded and the identity is authenticated; until then it changes nothing */
+void ziti_instance_sync_mfa_enrolled(struct ziti_instance_s *inst);
+/** what the sync does with what it read from the ziti context: `identity_loaded` is whether the context has identity data, `enrolled` what it says */
+void ziti_instance_apply_mfa_status(struct ziti_instance_s *inst, bool identity_loaded, bool enrolled);
+/** the identity was turned off or on, or was loaded disabled: off is `disabled`, on is Unknown again until the next event */
+void ziti_instance_set_enabled(struct ziti_instance_s *inst, bool enabled);
 
 #ifdef __cplusplus
 }

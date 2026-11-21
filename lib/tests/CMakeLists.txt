@@ -3,6 +3,7 @@ enable_testing()
 # package tests into a library so they can be referenced in all_tests
 add_library(ziti-tunnel-sdk-c-integ-test-lib OBJECT
         dns_test.cpp
+        identity_state_test.cpp
         intercept_only_test.cpp
         list_identities_test.cpp
         test_tunneler.cpp
