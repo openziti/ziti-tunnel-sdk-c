@@ -88,6 +88,7 @@ static int dns_miss_status = DNS_REFUSE;
 typedef char * (*to_json_fn)(const void * msg, int flags, size_t *len);
 static void scm_service_stop_event(uv_loop_t *loop, void *arg);
 static bool is_host_only();
+static bool is_intercept_only();
 static void run_tunneler_loop(uv_loop_t* ziti_loop);
 static tunneler_context initialize_tunneler(netif_driver tun, netif_driver tap, uv_loop_t* ziti_loop);
 
@@ -613,7 +614,7 @@ static void on_event(const base_event *ev) {
                     }
                     ZITI_LOG(INFO, "=============== service event (removed) - %s:%s ===============", svc->Name, svc->Id);
 #if __linux__
-                    diverter_remove_svc(svc);
+                    diverter_remove_svc(svc, !is_intercept_only());
 #endif
 #if _WIN32
                     if (svc->Addresses != NULL) {
@@ -640,7 +641,7 @@ static void on_event(const base_event *ev) {
                     svc_event.AddedServices[svc_idx] = svc;
                     ZITI_LOG(INFO, "=============== service event (added) - %s:%s ===============", svc->Name, svc->Id);
 #if __linux__
-                    diverter_add_svc(svc);
+                    diverter_add_svc(svc, !is_intercept_only());
 #endif
 #if _WIN32
                     if (svc->Addresses != NULL) {
@@ -1235,6 +1236,8 @@ static void run_tunneler_loop(uv_loop_t* ziti_loop) {
 #endif
 
     CMD_CTRL = ziti_tunnel_init_cmd(ziti_loop, tunneler, on_event);
+    // before any identity loads, so no service is hosted first
+    ziti_tunnel_set_intercept_only(is_intercept_only());
 
     // dump files are written only on Windows, into the log dir ZDEW's feedback bundle collects. Elsewhere logs go to
     // journald or the console and the binary may sit in /usr/local/bin, so the dump travels in the response only.
@@ -1341,6 +1344,7 @@ static struct option run_options[] = {
         { "dns-upstream", required_argument, NULL, 'u'},
         { "proxy", required_argument, NULL, 'x' },
         { "l2", no_argument, NULL, '2' },
+        { "intercept-only", no_argument, NULL, 'O' },
 #ifdef ENABLE_PCAP
         { "pcap-iface", required_argument, NULL, 'N' },
 #endif
@@ -1363,6 +1367,8 @@ static struct option run_host_options[] = {
 #endif
 static const char* dns_upstream = NULL;
 static bool host_only = false;
+// -O: intercept-only for this run, not saved, and not switched off over IPC
+static bool intercept_only_flag = false;
 
 #include "tlsuv/http.h"
 
@@ -1424,7 +1430,7 @@ static int run_opts(int argc, char *argv[]) {
 #else
 #define PCAP_SHORT_OPTS ""
 #endif
-    while ((c = getopt_long(argc, argv, "i:I:v:r:d:u:x:2"PCAP_SHORT_OPTS""DIVERTER_SHORT_OPTS,
+    while ((c = getopt_long(argc, argv, "i:I:v:r:d:u:x:2O"PCAP_SHORT_OPTS""DIVERTER_SHORT_OPTS,
                             run_options, &option_index)) != -1) {
         switch (c) {
 #if __linux__
@@ -1481,6 +1487,9 @@ static int run_opts(int argc, char *argv[]) {
                 break;
             case '2':
                 l2_tunnel = true;
+                break;
+            case 'O':
+                intercept_only_flag = true;
                 break;
 #ifdef ENABLE_PCAP
             case 'N':
@@ -1890,6 +1899,12 @@ static void run(int argc, char *argv[]) {
     if (l2_tunnel) {
         set_l2_enabled(l2_tunnel);
     }
+    // -O holds intercept-only for this run; without it the saved choice applies. run-host only hosts, and keeps the
+    // saved choice for a run that shares its config dir
+    if (is_host_only() && get_saved_intercept_only()) {
+        ZITI_LOG(WARN, "run-host ignores the saved intercept-only");
+    }
+    set_intercept_only(!is_host_only() && (intercept_only_flag || get_saved_intercept_only()));
 #ifdef ENABLE_PCAP
     if (pcap_iface) {
         set_pcap_ifname(pcap_iface);
@@ -2994,6 +3009,36 @@ static int set_log_level_opts(int argc, char *argv[]) {
     return optind;
 }
 
+static int set_intercept_only_opts(int argc, char *argv[]) {
+    static struct option opts[] = {
+            {0, 0, 0, 0},
+    };
+    int c, option_index, errors = 0;
+    optind = 0;
+
+    while ((c = getopt_long(argc, argv, "", opts, &option_index)) != -1) {
+        fprintf(stderr, "Unknown option '%c'\n", c);
+        errors++;
+    }
+
+    bool on = false;
+    if (optind < argc && strcasecmp(argv[optind], "on") == 0) {
+        on = true;
+    } else if (optind >= argc || strcasecmp(argv[optind], "off") != 0) {
+        fprintf(stderr, "expected on or off\n");
+        errors++;
+    }
+
+    CHECK_COMMAND_ERRORS(errors);
+
+    cmd.command = TunnelCommand_SetInterceptOnly;
+    tunnel_set_intercept_only req = { .intercept_only = &on };
+    size_t json_len;
+    cmd.data = tunnel_set_intercept_only_to_json(&req, MODEL_JSON_COMPACT, &json_len);
+
+    return optind;
+}
+
 static int update_tun_ip_opts(int argc, char *argv[]) {
     static struct option opts[] = {
             {"tunip", required_argument, NULL, 't'},
@@ -3332,12 +3377,13 @@ static CommandLine enroll_cmd = make_command(
 #endif
 
 static CommandLine run_cmd = make_command("run", "run Ziti tunnel (required superuser access)",
-                                          "-i <id.file> [-r N] [-v N] [-d|--dns-ip-range N.N.N.N/N] " DIVERTER_OPTS_SUMMARY "[-u|--dns-upstream N.N.N.N] [-P|--pipe <name>]\n",
+                                          "-i <id.file> [-r N] [-v N] [-d|--dns-ip-range N.N.N.N/N] " DIVERTER_OPTS_SUMMARY "[-u|--dns-upstream N.N.N.N] [-O|--intercept-only] [-P|--pipe <name>]\n",
                                           "\t-i|--identity <identity>\trun with provided identity file (required)\n"
                                           "\t-I|--identity-dir <dir>\tload identities from provided directory\n"
                                           "\t-x|--proxy type://[username[:password]@]hostname_or_ip:port\tproxy to use when"
                                           " connecting to OpenZiti controller and edge routers. 'http' is currently the only supported type.\n"
                                           "\t-2|--l2\tenable layer 2 services\n"
+                                          "\t-O|--intercept-only\tintercept services, but host none for this run (not saved; overrides set_intercept_only)\n"
                                           PCAP_OPTS_DETAIL
                                           "\t-v|--verbose N\tset log level, higher level -- more verbose (default 3)\n"
                                           "\t-r|--refresh N\tset service polling interval in seconds (default 10)\n"
@@ -3400,6 +3446,11 @@ static CommandLine add_id_cmd = make_command(
         add_identity_opts, send_message_to_tunnel_fn);
 static CommandLine set_log_level_cmd = make_command("set_log_level", "Set log level of the tunneler", "-l <level>",
                                                     "\t-l|--loglevel\tlog level of the tunneler\n", set_log_level_opts, send_message_to_tunnel_fn);
+static CommandLine set_intercept_only_cmd = make_command("set_intercept_only", "Stop or resume hosting services, and keep intercepting", "on | off",
+                                                    "\ton\tintercept services, but host none\n"
+                                                    "\toff\thost the services the identities may bind again. refused when run with -O\n"
+                                                    "\tthe choice is saved across restarts\n",
+                                                    set_intercept_only_opts, send_message_to_tunnel_fn);
 static CommandLine update_tun_ip_cmd = make_command("update_tun_ip", "Update tun ip of the tunneler", "[-t <tunip>] [-p <prefixlength>] [-d <AddDNS>]",
                                                     "\t-t|--tunip\ttun ipv4 of the tunneler\n"
                                                     "\t-p|--prefixlength\ttun ipv4 prefix length of the tunneler\n"
@@ -3450,6 +3501,7 @@ static CommandLine *main_cmds[] = {
         &delete_id_cmd,
         &add_id_cmd,
         &set_log_level_cmd,
+        &set_intercept_only_cmd,
         &update_tun_ip_cmd,
         &update_l2_opts_cmd,
 #if _WIN32
@@ -3637,6 +3689,39 @@ static void move_config_from_previous_windows_backup(uv_loop_t *loop) {
 
 static bool is_host_only() {
     return host_only;
+}
+
+static bool is_intercept_only() {
+    return get_intercept_only();
+}
+
+const char *switch_intercept_only(bool on) {
+    if (is_host_only()) {
+        // off is already in effect. the saved choice is left for a run that shares the config dir
+        return on ? "intercept-only is not available in run-host mode" : NULL;
+    }
+    if (!on && intercept_only_flag) {
+        return "intercept-only is set by -O: restart without -O to host again";
+    }
+    set_saved_intercept_only(on);
+    if (on == is_intercept_only()) {
+        return NULL;
+    }
+    ZITI_LOG(INFO, "switching intercept-only %s", on ? "on" : "off");
+#if __linux__
+    // the diverter's bind routes follow the hosting the switch stops or resumes
+    tunnel_identity_array ids = get_tunnel_identities();
+    for (int i = 0; ids[i] != NULL; i++) {
+        for (int j = 0; ids[i]->Services != NULL && ids[i]->Services[j] != NULL; j++) {
+            diverter_set_hosting(ids[i]->Services[j], !on);
+        }
+    }
+    free(ids);
+#endif
+    set_intercept_only(on);
+    ziti_tunnel_set_intercept_only(on);
+    send_tunnel_status("status");
+    return NULL;
 }
 
 int main(int argc, char *argv[]) {

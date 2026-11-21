@@ -463,6 +463,23 @@ func (c *CommandsClient) SetLogLevel(t *testing.T, level string) *ServiceRespons
 	return resp
 }
 
+func (c *CommandsClient) SetInterceptOnly(t *testing.T, on bool) *ServiceResponse {
+	return c.SendSetInterceptOnly(t, map[string]any{"InterceptOnly": on})
+}
+
+// SendSetInterceptOnly sends data as the command's payload as is, well-formed or not
+func (c *CommandsClient) SendSetInterceptOnly(t *testing.T, data any) *ServiceResponse {
+	f := SetInterceptOnlyFunction{
+		ServiceFunction: NewServiceFunction("SetInterceptOnly"),
+		Data:            data,
+	}
+	t.Logf("sending SetInterceptOnly(%v)", data)
+	resp, err := send[SetInterceptOnlyFunction, ServiceResponse](&c.IPCClient, f)
+	require.NoError(t, err, "failed to send SetInterceptOnly\n%s", c.LogPath)
+	resp.t = t
+	return resp
+}
+
 func (c *CommandsClient) ZitiDump(t *testing.T, identifier string) *ZitiDumpResponse {
 	f := ZitiDumpFunction{
 		ServiceFunction: NewServiceFunction("ZitiDump"),

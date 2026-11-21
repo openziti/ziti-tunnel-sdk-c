@@ -144,7 +144,23 @@ static void unbind_diverter_route(const char *ip, uint8_t prefix_len) {
     queue_command("%s -J %s -m %d", zfw_path, ip, prefix_len);
 }
 
-void diverter_add_svc(const tunnel_service *svc) {
+// only a service it may bind and not dial has bind routes
+static void update_bind_routes(const tunnel_service *svc, bool bind) {
+    if (!svc->Permissions.Bind || svc->Permissions.Dial) {
+        return;
+    }
+    for (int x = 0; svc->AllowedSourceAddresses && (svc->AllowedSourceAddresses[x] != NULL); x++) {
+        if (!svc->AllowedSourceAddresses[x]->IsHost) {
+            if (bind) {
+                bind_diverter_route(svc->AllowedSourceAddresses[x]->IP, svc->AllowedSourceAddresses[x]->Prefix);
+            } else {
+                unbind_diverter_route(svc->AllowedSourceAddresses[x]->IP, svc->AllowedSourceAddresses[x]->Prefix);
+            }
+        }
+    }
+}
+
+void diverter_add_svc(const tunnel_service *svc, bool hosting) {
     if(svc && diverter){
         if(svc->Permissions.Dial){
             for(int x = 0; svc->Addresses && (svc->Addresses[x] != NULL); x++){
@@ -160,23 +176,15 @@ void diverter_add_svc(const tunnel_service *svc) {
                 }
             }
         }
-        else if(svc->Permissions.Bind){
-            for(int x = 0; svc->AllowedSourceAddresses && (svc->AllowedSourceAddresses[x] != NULL); x++){
-                if(!svc->AllowedSourceAddresses[x]->IsHost){
-                    bind_diverter_route(svc->AllowedSourceAddresses[x]->IP, svc->AllowedSourceAddresses[x]->Prefix);
-                }
-            }
+        else if(hosting){
+            update_bind_routes(svc, true);
         }
     }
 }
-void diverter_remove_svc(const tunnel_service *svc) {
+void diverter_remove_svc(const tunnel_service *svc, bool hosting) {
     if(svc && diverter){
-        if(svc->Permissions.Bind){
-            for(int x = 0; svc->AllowedSourceAddresses && (svc->AllowedSourceAddresses[x] != NULL); x++){
-                if(!svc->AllowedSourceAddresses[x]->IsHost){
-                    unbind_diverter_route(svc->AllowedSourceAddresses[x]->IP, svc->AllowedSourceAddresses[x]->Prefix);
-                }
-            }
+        if(hosting){
+            update_bind_routes(svc, false);
         }
         if(svc->Permissions.Dial){
             for(int x = 0; svc->Addresses && (svc->Addresses[x] != NULL); x++){
@@ -192,6 +200,12 @@ void diverter_remove_svc(const tunnel_service *svc) {
                 }
             }
         }
+    }
+}
+
+void diverter_set_hosting(const tunnel_service *svc, bool hosting) {
+    if (svc && diverter) {
+        update_bind_routes(svc, hosting);
     }
 }
 

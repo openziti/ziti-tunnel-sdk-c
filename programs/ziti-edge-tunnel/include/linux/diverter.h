@@ -26,7 +26,10 @@ extern bool firewall;
 void diverter_init(uint32_t dns_prefix, uint32_t dns_prefix_len, const char *tun_name);
 void diverter_quit();
 void init_diverter_interface(const char *interface, const char *direction);
-void diverter_add_svc(const tunnel_service *svc);
-void diverter_remove_svc(const tunnel_service *svc);
+// hosting is false when the tunneler never hosts, so no bind routes are added for services it may bind
+void diverter_add_svc(const tunnel_service *svc, bool hosting);
+void diverter_remove_svc(const tunnel_service *svc, bool hosting);
+// adds or removes the bind routes diverter_add_svc() adds, when the tunneler starts or stops hosting
+void diverter_set_hosting(const tunnel_service *svc, bool hosting);
 void set_diverter(uint32_t dns_prefix, unsigned char dns_prefix_len, const char *tun_name);
 void diverter_cleanup();
