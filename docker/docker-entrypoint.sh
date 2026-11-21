@@ -119,6 +119,14 @@ if [[ -n "${ZITI_IDENTITY_BASENAME:-}" ]]; then
         exit 1
     fi
     while (( ZITI_IDENTITY_WAIT > 0 || ZITI_IDENTITY_WAIT < 0)); do
+        # A zero-length identity file is the residue of an enrollment that created the
+        # file and then failed. `-s` below treats it as absent, but `enroll` opens the
+        # path with O_CREAT|O_EXCL and fails with EEXIST, so the container can never
+        # recover on a persistent volume. Clear it so enrollment can be retried.
+        if [[ -e "${IDENTITY_FILE}" && ! -s "${IDENTITY_FILE}" ]]; then
+            echo "WARN: discarding empty identity file ${IDENTITY_FILE} left by a failed enrollment" >&2
+            rm -f "${IDENTITY_FILE}"
+        fi
         # if non-empty identity file
         if [[ -s "${IDENTITY_FILE}" ]]; then
             echo "INFO: found identity file ${IDENTITY_FILE}"
@@ -141,12 +149,16 @@ if [[ -n "${ZITI_IDENTITY_BASENAME:-}" ]]; then
                 echo "INFO: enrolling ${JWT_FILE}"
                 ziti-edge-tunnel enroll --jwt "${JWT_FILE}" --identity "${IDENTITY_FILE}" || {
                     echo "ERROR: failed to enroll with token from ${JWT_FILE} ($(wc -c < "${JWT_FILE}")B)" >&2
+                    # enroll may have created the identity before failing; leaving it
+                    # behind latches every later attempt on EEXIST
+                    rm -f "${IDENTITY_FILE}"
                     exit 1
                 }
             elif [[ -n "${ZITI_ENROLL_TOKEN:-}" ]]; then
                 echo "INFO: attempting enrollment with ZITI_ENROLL_TOKEN"
                 ziti-edge-tunnel enroll --jwt - --identity "${IDENTITY_FILE}" <<< "${ZITI_ENROLL_TOKEN}" || {
                     echo "ERROR: failed to enroll with token from ZITI_ENROLL_TOKEN ($(wc -c <<<"${ZITI_ENROLL_TOKEN}")B)" >&2
+                    rm -f "${IDENTITY_FILE}"
                     exit 1
                 }
             # this works but the legacy var name was never deprecated because of doubts about the utility of this
@@ -155,6 +167,7 @@ if [[ -n "${ZITI_IDENTITY_BASENAME:-}" ]]; then
                 echo "INFO: trying to get token from stdin" >&2
                 ziti-edge-tunnel enroll --jwt - --identity "${IDENTITY_FILE}" || {
                     echo "ERROR: failed to enroll with token from stdin" >&2
+                    rm -f "${IDENTITY_FILE}"
                     exit 1
                 }
             fi
