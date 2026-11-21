@@ -134,6 +134,27 @@ void ziti_tunnel_set_enroll_key_cb(ziti_enroll_key_cb cb, void *ctx) {
     CMD_CTX.enroll_key_ctx = ctx;
 }
 
+void ziti_tunnel_set_ext_auth_params(const ziti_auth_query_param *params, int count) {
+    for (int i = 0; i < CMD_CTX.ext_auth_params_count; i++) {
+        free((void *) CMD_CTX.ext_auth_params[i].name);
+        free((void *) CMD_CTX.ext_auth_params[i].value);
+    }
+    FREE(CMD_CTX.ext_auth_params);
+    CMD_CTX.ext_auth_params_count = 0;
+
+    if (params == NULL || count <= 0) {
+        return;
+    }
+    CMD_CTX.ext_auth_params = calloc(count, sizeof(ziti_auth_query_param));
+    for (int i = 0; i < count; i++) {
+        if (params[i].name && params[i].value) {
+            int n = CMD_CTX.ext_auth_params_count++;
+            CMD_CTX.ext_auth_params[n].name = strdup(params[i].name);
+            CMD_CTX.ext_auth_params[n].value = strdup(params[i].value);
+        }
+    }
+}
+
 IMPL_ENUM(mfa_status, MFA_STATUS)
 
 void ziti_set_refresh_interval(unsigned long seconds) {
@@ -1030,6 +1051,13 @@ int init_ziti_instance(struct ziti_instance_s *inst, const ziti_config *cfg, con
 
     if (CMD_CTX.enroll_key_cb) {
         ziti_set_enroll_key_cb(inst->ztx, CMD_CTX.enroll_key_cb, CMD_CTX.enroll_key_ctx);
+    }
+
+    if (CMD_CTX.ext_auth_params_count > 0) {
+        rc = ziti_ext_auth_set_params(inst->ztx, CMD_CTX.ext_auth_params, CMD_CTX.ext_auth_params_count);
+        if (rc != ZITI_OK) {
+            ZITI_LOG(WARN, "extra authorize parameters are not applied: %s", ziti_errorstr(rc));
+        }
     }
 
     rc = ziti_context_set_options(inst->ztx, opts);
