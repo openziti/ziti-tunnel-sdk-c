@@ -692,12 +692,26 @@ tunneled_service_t *ziti_sdk_c_on_service(ziti_context ziti_ctx, ziti_service *s
         }
 
         ziti_host_t *curr_h = model_map_get(&ziti_instance->hosts, service->name);
-        if ((service->perm_flags & ZITI_CAN_BIND) == 0) {
+        if ((service->perm_flags & ZITI_CAN_BIND) != 0 && ziti_tunneler_is_intercept_only(tnlr_ctx)) {
+            // a set of names: model_map_get can't tell a NULL value from a missing key
+            if (model_map_set(&ziti_instance->unhosted, service->name, "TRUE") == NULL) {
+                ZITI_LOG(INFO, "not hosting service[%s]: tunneler is intercept-only", service->name);
+            }
+            // apply_intercept_only() stops hosts when the mode turns on; this catches any it never saw
+            if (curr_h) {
+                ZITI_LOG(INFO, "stopping host for service[%s]: tunneler is intercept-only", service->name);
+                stop_hosting(curr_h);
+            }
+        } else if ((service->perm_flags & ZITI_CAN_BIND) == 0) {
+            model_map_remove(&ziti_instance->unhosted, service->name);
             ZITI_LOG(DEBUG, "stopping host: can no longer bind service[%s]", service->name);
             if (curr_h) {
                 stop_hosting(curr_h);
             }
         } else {
+            // not held back: the mode let it through. it's still in the set only if apply_intercept_only() ran out of
+            // memory releasing it
+            model_map_remove(&ziti_instance->unhosted, service->name);
             ziti_host_t *zh = new_ziti_host(ziti_ctx, service, curr_h);
             if (zh) {
                 if (curr_h) {
@@ -736,9 +750,54 @@ tunneled_service_t *ziti_sdk_c_on_service(ziti_context ziti_ctx, ziti_service *s
         if (zh) {
             stop_hosting(zh);
         }
+        model_map_remove(&ziti_instance->unhosted, service->name);
     }
 
     return &current_tunneled_service;
+}
+
+size_t apply_intercept_only(struct ziti_instance_s *inst, tunneler_context tnlr_ctx, service_lookup_fn lookup,
+                            ziti_service_cb rehost) {
+    if (inst->ztx == NULL) {
+        return 0; // not loaded: no hosts, and its services arrive with the current mode
+    }
+    if (ziti_tunneler_is_intercept_only(tnlr_ctx)) {
+        model_map_iter it = model_map_iterator(&inst->hosts);
+        while (it) {
+            ziti_host_t *zh = model_map_it_value(it);
+            model_map_set(&inst->unhosted, model_map_it_key(it), "TRUE");
+            it = model_map_it_remove(it);
+            ZITI_LOG(INFO, "stopping host for service[%s]: tunneler is intercept-only", zh->service_name);
+            stop_hosting(zh);
+        }
+        return 0;
+    }
+
+    // the SDK only reports services that change, so ask it again for each one held back. a held back service is in
+    // the SDK's cache, so the answer comes before lookup() returns, and changes the set: empty the set first. the
+    // lookup fails only for a disabled context, and disabling it already emptied the set.
+    model_list names = {0};
+    model_map_iter it = model_map_iterator(&inst->unhosted);
+    while (it) {
+        char *name = strdup(model_map_it_key(it));
+        if (name == NULL) {
+            ZITI_LOG(WARN, "not hosting service[%s] yet: out of memory", model_map_it_key(it));
+            it = model_map_it_next(it); // still held back
+            continue;
+        }
+        model_list_append(&names, name);
+        it = model_map_it_remove(it);
+    }
+    size_t asked = model_list_size(&names);
+    const char *name;
+    MODEL_LIST_FOREACH(name, names) {
+        int rc = lookup(inst->ztx, name, rehost, tnlr_ctx);
+        if (rc != ZITI_OK) {
+            ZITI_LOG(WARN, "not hosting service[%s]: %s", name, ziti_errorstr(rc));
+        }
+    }
+    model_list_clear(&names, free);
+    return asked;
 }
 
 void remove_intercepts(ziti_context ziti_ctx, void *tnlr_ctx) {

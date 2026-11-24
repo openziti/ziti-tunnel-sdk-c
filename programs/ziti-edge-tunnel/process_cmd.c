@@ -581,6 +581,27 @@ bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void 
             result.code = IPC_SUCCESS;
             break;
         }
+        case TunnelCommand_SetInterceptOnly: {
+            cmd_accepted = true;
+            cmd_forces_save_file = false; // saved here, before the reply, so the reply can say the save failed
+            tunnel_set_intercept_only req = {0};
+            const char *refused;
+            if (tnl_cmd->data == NULL ||
+                parse_tunnel_set_intercept_only(&req, tnl_cmd->data, strlen(tnl_cmd->data)) < 0 ||
+                req.intercept_only == NULL) {
+                result.error = "invalid command";
+            } else if ((refused = switch_intercept_only(*req.intercept_only)) != NULL) {
+                ZITI_LOG(WARN, "not switching intercept-only %s: %s", *req.intercept_only ? "on" : "off", refused);
+                result.error = (char *) refused;
+            } else if (uses_config_dir && !save_tunnel_status_to_file()) {
+                result.error = "intercept-only is set, but config.json could not be saved";
+            } else {
+                result.success = true;
+                result.code = IPC_SUCCESS;
+            }
+            free_tunnel_set_intercept_only(&req);
+            break;
+        }
         case TunnelCommand_UpdateTunIpv4: {
             cmd_accepted = true;
             process_update_tun_ipv4_cmd(tnl_cmd->data, &result);

@@ -84,7 +84,8 @@ XX(StatusChange, __VA_ARGS__)   \
 XX(AddIdentity, __VA_ARGS__)    \
 XX(Enroll, __VA_ARGS__)         \
 XX(ExternalAuth, __VA_ARGS__)   \
-XX(SetUpstreamDNS, __VA_ARGS__)
+XX(SetUpstreamDNS, __VA_ARGS__) \
+XX(SetInterceptOnly, __VA_ARGS__)
 
 DECLARE_ENUM(TunnelCommand, TUNNEL_COMMANDS)
 
@@ -220,6 +221,9 @@ XX(command, TunnelCommand, none, Command, __VA_ARGS__)
 #define TUNNEL_SET_LOG_LEVEL(XX, ...) \
 XX(loglevel, model_string, none, Level, __VA_ARGS__)
 
+#define TUNNEL_SET_INTERCEPT_ONLY(XX, ...) \
+XX(intercept_only, model_bool, ptr, InterceptOnly, __VA_ARGS__)
+
 #define TUNNEL_TUN_IP_V4(XX, ...) \
 XX(tunIP, model_string, none, TunIPv4, __VA_ARGS__) \
 XX(prefixLength, model_number, none, TunPrefixLength, __VA_ARGS__) \
@@ -287,6 +291,7 @@ DECLARE_MODEL(tunnel_get_mfa_codes, TNL_GET_MFA_CODES)
 DECLARE_MODEL(tunnel_identity_metrics, TNL_IDENTITY_METRICS)
 DECLARE_MODEL(tunnel_command_inline, TUNNEL_CMD_INLINE)
 DECLARE_MODEL(tunnel_set_log_level, TUNNEL_SET_LOG_LEVEL)
+DECLARE_MODEL(tunnel_set_intercept_only, TUNNEL_SET_INTERCEPT_ONLY)
 DECLARE_MODEL(tunnel_tun_ip_v4, TUNNEL_TUN_IP_V4)
 DECLARE_MODEL(tunnel_l2_options, TUNNEL_L2_OPTIONS)
 DECLARE_MODEL(tunnel_interface_config, TUNNEL_INTERFACE_CONFIG)
@@ -447,6 +452,7 @@ ssize_t ziti_sdk_c_write(const void *ziti_io_ctx, void *write_ctx, const void *d
 int ziti_sdk_c_close(void *io_ctx);
 int ziti_sdk_c_close_write(void *io_ctx);
 
+/** set as tunneler_sdk_options.ziti_host, so hosting goes through ziti_tunneler_host() and its intercept-only check */
 host_ctx_t *ziti_sdk_c_host(void *ziti_ctx, tunneler_context tnlr_ctx, const char *service_name, cfg_type_e cfgtype, const void *cfg);
 void ziti_hosted_serv_conn_close_cb(ziti_connection serv);
 
@@ -461,6 +467,12 @@ const ziti_tunnel_ctrl* ziti_tunnel_init_cmd(uv_loop_t *loop, tunneler_context, 
  *  Applied to every ziti_context created by the command processor.
  *  Pass NULL to use the SDK's default software key generation. */
 void ziti_tunnel_set_enroll_key_cb(ziti_enroll_key_cb cb, void *ctx);
+
+/** Turns intercept-only on or off. While on, no new hosting starts, whatever the identities' bind permissions and
+ *  host configs: turning it on stops the services already hosted (connections they already accepted run until they
+ *  end), and turning it off hosts the ones held back. May be called before ziti_tunnel_init_cmd(), which applies the
+ *  mode to its tunneler before any identity loads; after that, call it on the loop thread. */
+void ziti_tunnel_set_intercept_only(bool intercept_only);
 
 /** Directory that ZitiDump and IpDump also write into. A trailing separator is dropped. `instance`, when not NULL,
  *  goes into every file name so tunnelers sharing the directory do not overwrite each other. While unset, nothing is
@@ -505,6 +517,9 @@ struct ziti_instance_s {
     tnl_auth_needs auth_needs;
     tnl_mfa_enrolled mfa_enrolled;
     LIST_ENTRY(ziti_instance_s) _next;
+    // names of the services it may bind but doesn't host, because the tunneler is intercept-only. the values are a
+    // string literal: clear it with a NULL free function
+    model_map unhosted;
 };
 
 void ziti_set_refresh_interval(unsigned long seconds);

@@ -4,12 +4,15 @@ enable_testing()
 add_library(ziti-tunnel-sdk-c-integ-test-lib OBJECT
         dns_test.cpp
         identity_state_test.cpp
+        intercept_only_test.cpp
         list_identities_test.cpp
+        test_tunneler.cpp
         )
 
 target_include_directories(ziti-tunnel-sdk-c-integ-test-lib
         PUBLIC ${ziti-tunnel-sdk-c_SOURCE_DIR}/tests
         PUBLIC ${ziti-tunnel-sdk-c_SOURCE_DIR}/lib/ziti-tunnel
+        PUBLIC ${ziti-tunnel-sdk-c_SOURCE_DIR}/lib/ziti-tunnel-cbs
         )
 
 target_link_libraries(ziti-tunnel-sdk-c-integ-test-lib

@@ -194,6 +194,12 @@ type SetLogLevelFunction struct {
 	Data SetLogLevelData `json:"Data"`
 }
 
+// SetInterceptOnlyFunction's Data is open so a test can send a malformed payload
+type SetInterceptOnlyFunction struct {
+	ServiceFunction
+	Data any `json:"Data"`
+}
+
 type ZitiDumpFunction struct {
 	ServiceFunction
 	Data ZitiDumpData `json:"Data"`
@@ -372,6 +378,7 @@ type TunnelStatus struct {
 	ApiPageSize    int            `json:"ApiPageSize"`
 	TunName        string         `json:"TunName"`
 	L2Enabled      bool           `json:"L2Enabled"`
+	InterceptOnly  bool           `json:"InterceptOnly"`
 	PcapInterface  string         `json:"PcapInterface"`
 	TapInfo        TapInfo        `json:"TapInfo"`
 	ConfigDir      string         `json:"ConfigDir"`

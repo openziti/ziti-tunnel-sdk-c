@@ -26,6 +26,8 @@ bool save_tunnel_status_to_file();
 void initialize_instance_config();
 void cleanup_instance_config();
 void stop_tunnel_and_cleanup();
+/** switches intercept-only while running, and saves the choice in tnl_status. returns NULL, or why it refused */
+const char *switch_intercept_only(bool on);
 bool process_tunnel_commands(const tunnel_command *tnl_cmd, command_cb cb, void *ctx);
 void send_tunnel_command(const tunnel_command *tnl_cmd, void *ctx);
 void send_tunnel_command_inline(const tunnel_command *tnl_cmd, void *ctx);

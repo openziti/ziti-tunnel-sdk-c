@@ -49,6 +49,8 @@
 static model_map instances;
 
 static void on_ziti_event(ziti_context ztx, const ziti_event_t *event);
+static void on_service(ziti_context ziti_ctx, ziti_service *service, int status, void *tnlr_ctx);
+static void apply_intercept_only_mode(void);
 
 static const char * cfg_types[] = { "ziti-tunneler-client.v1", "intercept.v1", "ziti-tunneler-server.v1", "host.v1", NULL };
 
@@ -116,6 +118,10 @@ const ziti_tunnel_ctrl* ziti_tunnel_init_cmd(uv_loop_t *loop, tunneler_context t
     uv_once(&sigusr1_once, init_sigusr1);
 #endif
 
+    // the mode may have been set before there was a tunneler
+    if (tunnel_ctx != NULL) {
+        apply_intercept_only_mode();
+    }
     return &CMD_CTX.ctrl;
 }
 
@@ -132,6 +138,42 @@ static ziti_enroll_mode to_sdk_enroll_mode(tnl_enroll_mode m) {
 void ziti_tunnel_set_enroll_key_cb(ziti_enroll_key_cb cb, void *ctx) {
     CMD_CTX.enroll_key_cb = cb;
     CMD_CTX.enroll_key_ctx = ctx;
+}
+
+void ziti_tunnel_set_intercept_only(bool intercept_only) {
+    if (CMD_CTX.intercept_only != intercept_only) {
+        ZITI_LOG(INFO, "intercept-only %s", intercept_only ? "on: no new hosting" : "off");
+    }
+    CMD_CTX.intercept_only = intercept_only;
+    // applied even when unchanged: the tunneler's own flag may have been set apart from this one
+    if (CMD_CTX.tunnel_ctx != NULL) {
+        apply_intercept_only_mode();
+    }
+}
+
+static void rehost_service(ziti_context ztx, const ziti_service *service, int status, void *tnlr_ctx) {
+    if (status != ZITI_OK) {
+        ZITI_LOG(WARN, "not hosting service[%s]: %s", service ? service->name : "?", ziti_errorstr(status));
+        return;
+    }
+    on_service(ztx, (ziti_service *) service, ZITI_OK, tnlr_ctx);
+}
+
+// changes nothing for an identity that is already in line with the mode
+static void apply_intercept_only_mode(void) {
+    tunneler_context tnlr = CMD_CTX.tunnel_ctx;
+    ziti_tunneler_set_intercept_only(tnlr, CMD_CTX.intercept_only);
+    size_t asked = 0;
+    const char *id;
+    struct ziti_instance_s *inst;
+    MODEL_MAP_FOREACH(id, inst, &instances) {
+        asked += apply_intercept_only(inst, tnlr, ziti_service_available, rehost_service);
+    }
+    // the answers come from the SDK's cache before ziti_service_available() returns, so commit once, as a batch of
+    // service events does
+    if (asked > 0) {
+        ziti_tunnel_commit_routes(tnlr);
+    }
 }
 
 IMPL_ENUM(mfa_status, MFA_STATUS)
