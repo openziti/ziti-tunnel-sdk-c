@@ -457,6 +457,11 @@ void remove_intercepts(ziti_context ziti_ctx, void *tnlr_ctx);
 
 const ziti_tunnel_ctrl* ziti_tunnel_init_cmd(uv_loop_t *loop, tunneler_context, event_cb);
 
+/** Set extra query parameters for the authorize request of external JWT signers, for example
+ *  `access_type=offline`. Applied to every ziti_context created by the command processor after this call.
+ *  The pairs are copied. Pass NULL or 0 to remove them. */
+void ziti_tunnel_set_ext_auth_params(const ziti_auth_query_param *params, int count);
+
 /** Set a callback to provide a private key during enrollToCert enrollment.
  *  Applied to every ziti_context created by the command processor.
  *  Pass NULL to use the SDK's default software key generation. */
