@@ -709,6 +709,9 @@ tunneled_service_t *ziti_sdk_c_on_service(ziti_context ziti_ctx, ziti_service *s
                 stop_hosting(curr_h);
             }
         } else {
+            // not held back: the mode let it through. it's still in the set only if apply_intercept_only() ran out of
+            // memory releasing it
+            model_map_remove(&ziti_instance->unhosted, service->name);
             ziti_host_t *zh = new_ziti_host(ziti_ctx, service, curr_h);
             if (zh) {
                 if (curr_h) {

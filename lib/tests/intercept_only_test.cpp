@@ -198,6 +198,17 @@ TEST_CASE("a held back service is forgotten when it goes away or can no longer b
     CHECK_FALSE(held_back(id, "io-forget"));
 }
 
+// as releasing it leaves it when out of memory
+TEST_CASE("a held back service is forgotten when it's hosted", "[intercept-only]") {
+    tunneler_mode mode(false);
+    test_identity id;
+    model_map_set(&id.inst.unhosted, "io-hosted", "TRUE");
+
+    ziti_sdk_c_on_service(id.ztx, new_service("io-hosted", ZITI_CAN_BIND, HOST_V1, nullptr), ZITI_OK, mode.tnlr);
+    CHECK(host_calls == 1);
+    CHECK_FALSE(held_back(id, "io-hosted"));
+}
+
 TEST_CASE("turning intercept-only on stops what every identity hosts", "[intercept-only]") {
     tunneler_mode mode(false, keeping_host);
     registered_identity a("io-on-a"), b("io-on-b");
