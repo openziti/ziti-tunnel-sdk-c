@@ -182,6 +182,33 @@ static uint8_t *send_and_parse_query(const dns_question *q, int class, ns_msg *a
     return resp_msg;
 }
 
+void format_dns_answers(ns_msg *ans, dns_message *resp) {
+    int rr_count = ns_msg_count(*ans, ns_s_an);
+    if (rr_count > 0) {
+        ns_rr rr;
+        rr_fmt fmt;
+        int a_idx = 0;
+        resp->answer = calloc(rr_count + 1, sizeof(dns_answer *));
+        for (int i = 0; i < rr_count; i++) {
+            if (ns_parserr(ans, ns_s_an, i, &rr) == 0 &&
+                (fmt = model_map_getl(&rr_formatters, ns_rr_type(rr))) != 0) {
+                dns_answer *a = alloc_dns_answer();
+                a->ttl = ns_rr_ttl(rr);
+                a->type = ns_rr_type(rr);
+                a->data = malloc(PACKETSZ);
+                if (fmt(ans, &rr, a, PACKETSZ) < 0) {
+                    ZITI_LOG(WARN, "dropping malformed answer record[%d] type[%d] rdlen[%d]",
+                             i, (int)ns_rr_type(rr), (int)ns_rr_rdlen(rr));
+                    free_dns_answer(a);
+                    free(a);
+                    continue;
+                }
+                resp->answer[a_idx++] = a;
+            }
+        }
+    }
+}
+
 void do_query(const dns_question *q, dns_message *resp, resolver_t *resolver) {
     ns_msg ans = {0};
     uint8_t *resp_msg = send_and_parse_query(q, ns_c_in, &ans, resolver);
@@ -190,46 +217,53 @@ void do_query(const dns_question *q, dns_message *resp, resolver_t *resolver) {
         return;
     } else {
         resp->status = ns_msg_getflag(ans, ns_f_rcode);
-        int rr_count = ns_msg_count(ans, ns_s_an);
-        if (rr_count > 0) {
-            ns_rr rr;
-            rr_fmt fmt;
-            int a_idx = 0;
-            resp->answer = calloc(rr_count + 1, sizeof(dns_answer *));
-            for (int i = 0; i < rr_count; i++) {
-                if (ns_parserr(&ans, ns_s_an, i, &rr) == 0 &&
-                    (fmt = model_map_getl(&rr_formatters, ns_rr_type(rr))) != 0) {
-                    dns_answer *a = alloc_dns_answer();
-                    a->ttl = ns_rr_ttl(rr);
-                    a->type = ns_rr_type(rr);
-                    a->data = malloc(PACKETSZ);
-                    fmt(&ans, &rr, a, PACKETSZ);
-                    resp->answer[a_idx++] = a;
-                }
-            }
-        }
+        format_dns_answers(&ans, resp);
         free(resp_msg);
     }
 }
 
-static int fmt_srv(const ns_msg* msg, const ns_rr* rr, dns_answer *ans, size_t max) {
-    uint16_t *ptr = (uint16_t *) ns_rr_rdata(*rr);
-    ans->priority = ntohs(*ptr);
-    ans->weight = ntohs(*(ptr + 1));
-    ans->port = ntohs(*(ptr + 2));
+// uncompress the domain name that makes up the rest of the record data, starting at `name`.
+// fails if the name is malformed or is not contained in the record data
+static int fmt_rdata_name(const ns_msg *msg, const ns_rr *rr, const uint8_t *name, dns_answer *ans, size_t max) {
+    const uint8_t *rdata_end = ns_rr_rdata(*rr) + ns_rr_rdlen(*rr);
+    int rc = ns_name_uncompress(ns_msg_base(*msg), ns_msg_end(*msg), name, (char*)ans->data, max);
+    if (rc < 0 || rc > rdata_end - name) {
+        return -1;
+    }
+    return rc;
+}
 
-    return ns_name_uncompress(ns_msg_base(*msg), ns_msg_end(*msg), (uint8_t *)(ptr + 3), (char*)ans->data, max);
+static int fmt_srv(const ns_msg* msg, const ns_rr* rr, dns_answer *ans, size_t max) {
+    const uint8_t *ptr = ns_rr_rdata(*rr);
+    // priority, weight, port, and at least one octet of target name
+    if (ns_rr_rdlen(*rr) < 3 * NS_INT16SZ + 1) {
+        return -1;
+    }
+    NS_GET16(ans->priority, ptr);
+    NS_GET16(ans->weight, ptr);
+    NS_GET16(ans->port, ptr);
+
+    return fmt_rdata_name(msg, rr, ptr, ans, max);
 }
 
 static int fmt_mx(const ns_msg * msg, const ns_rr* rr, dns_answer *ans, size_t max) {
-    uint16_t *ptr = (uint16_t *) ns_rr_rdata(*rr);
-    ans->priority = ntohs(*ptr);
-    return ns_name_uncompress(ns_msg_base(*msg), ns_msg_end(*msg), (uint8_t *)(ptr + 1), (char*)ans->data, max);
+    const uint8_t *ptr = ns_rr_rdata(*rr);
+    // preference, and at least one octet of exchange name
+    if (ns_rr_rdlen(*rr) < NS_INT16SZ + 1) {
+        return -1;
+    }
+    NS_GET16(ans->priority, ptr);
+
+    return fmt_rdata_name(msg, rr, ptr, ans, max);
 }
 
 static int fmt_txt(const ns_msg *msg, const ns_rr* rr, dns_answer *ans, size_t max) {
     const uint8_t *ptr = ns_rr_rdata(*rr);
     unsigned int len = ns_rr_rdlen(*rr);
+    // record data starts with the length octet of the first character-string
+    if (len < 1 || max < 1) {
+        return -1;
+    }
     if (len > max) {
         len = (unsigned int)max;
     }
