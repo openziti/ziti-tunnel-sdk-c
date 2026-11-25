@@ -86,6 +86,11 @@ struct tunneled_service_s {
 void accept_resolver_conn(ziti_connection conn, allowed_hostnames_t *allowed);
 
 /**
+ * true if name is one of the domains or a subdomain of one. the comparison is case-insensitive.
+ */
+bool is_allowed_dns_name(const char *name, const allowed_hostnames_t *domains);
+
+/**
  * resolves the effective listen identity from host.v1 listenOptions. the identity is tunneler_id_name
  * when bindUsingEdgeIdentity is set, otherwise listenOptions.identity with "$tunneler_id.name" substituted.
  * when listenIdentityType is "dns" the resolved identity is lower-cased.

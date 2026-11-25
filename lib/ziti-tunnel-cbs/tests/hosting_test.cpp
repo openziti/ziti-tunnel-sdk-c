@@ -142,3 +142,20 @@ TEST_CASE("resolve_listen_identity handles empty/null inputs", "[hosting]") {
         CHECK(resolve(&opts, nullptr) == "myliteralidentity");
     }
 }
+
+TEST_CASE("is_allowed_dns_name matches domains case-insensitively", "[hosting]") {
+    struct allowed_hostname_s domain{};
+    domain.domain_name = const_cast<char *>("Example.com");
+    allowed_hostnames_t domains;
+    LIST_INIT(&domains);
+    LIST_INSERT_HEAD(&domains, &domain, _next);
+
+    CHECK(is_allowed_dns_name("example.com", &domains));
+    CHECK(is_allowed_dns_name("_SIP._tcp.Example.com", &domains));
+    CHECK(is_allowed_dns_name("_sip._tcp.EXAMPLE.COM", &domains));
+    CHECK(is_allowed_dns_name("example.com.example.com", &domains));
+
+    CHECK_FALSE(is_allowed_dns_name("badexample.com", &domains));
+    CHECK_FALSE(is_allowed_dns_name("example.com.evil.net", &domains));
+    CHECK_FALSE(is_allowed_dns_name("com", &domains));
+}
