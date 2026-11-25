@@ -173,6 +173,15 @@ static err_t on_tcp_client_data(void *io_ctx, struct tcp_pcb *pcb, struct pbuf *
     return ERR_OK;
 }
 
+/** called by lwip when the client acked data, i.e. send buffer space was freed: let the ziti side retry stalled writes */
+static err_t on_tcp_client_sent(void *io_ctx, struct tcp_pcb *pcb, u16_t len) {
+    struct io_ctx_s *io = io_ctx;
+    if (io != NULL && io->resume_fn != NULL) {
+        io->resume_fn(io->ziti_io);
+    }
+    return ERR_OK;
+}
+
 /** called by lwip when an error has occurred on a tcp connection.
  * the corresponding pcb is not valid by the time this fn is called. */
 static void on_tcp_client_err(void *io_ctx, err_t err) {
@@ -203,12 +212,19 @@ ssize_t tunneler_tcp_write(struct tcp_pcb *pcb, const void *data, size_t len) {
     if (qlen > TCP_SND_QUEUELEN) {
         TNL_LOG(WARN, "sndqueuelen limit reached (%d > %d)", qlen, TCP_SND_QUEUELEN);
     }
-    // avoid ERR_MEM.
+    // avoid ERR_MEM, but tcp_sndbuf does not cover the lwip segment/pbuf pools
     size_t sendlen = MIN(len, tcp_sndbuf(pcb));
     LOG_STATE(TRACE, "sendlen=%zd", pcb, sendlen);
     if (sendlen > 0) {
         err_t w_err = tcp_write(pcb, data, (u16_t) sendlen,
                                 TCP_WRITE_FLAG_COPY); // TODO hold data until client acks... via on_client_ack maybe? then we wouldn't need to copy here.
+        if (w_err == ERR_MEM) {
+            // lwip pools are exhausted: transient, not a write error. report 0 bytes accepted;
+            // the caller keeps the data and retries (see tcp_sent callback)
+            TNL_LOG(DEBUG, "tcp_write ERR_MEM (%ld, %zd): applying backpressure", sendlen, len);
+            tcp_output(pcb);
+            return 0;
+        }
         if (w_err != ERR_OK) {
             TNL_LOG(ERR, "failed to tcp_write %d (%ld, %zd)", w_err, sendlen, len);
             return -1;
@@ -250,6 +266,7 @@ int tunneler_tcp_close(struct tcp_pcb *pcb) {
     LOG_STATE(DEBUG, "closing", pcb);
     tcp_arg(pcb, NULL);
     tcp_recv(pcb, NULL);
+    tcp_sent(pcb, NULL);
     tcp_err(pcb, NULL);
     if (pcb->state == CLOSED) {
         return 0;
@@ -429,8 +446,10 @@ u8_t recv_tcp(void *tnlr_ctx_arg, struct raw_pcb *pcb, struct pbuf *p, const ip_
     io->write_fn = intercept_ctx->write_fn ? intercept_ctx->write_fn : tnlr_ctx->opts.ziti_write;
     io->close_write_fn = intercept_ctx->close_write_fn ? intercept_ctx->close_write_fn : tnlr_ctx->opts.ziti_close_write;
     io->close_fn = intercept_ctx->close_fn ? intercept_ctx->close_fn : tnlr_ctx->opts.ziti_close;
+    io->resume_fn = tnlr_ctx->opts.ziti_resume;
 
     tcp_err(npcb, on_tcp_client_err);
+    tcp_sent(npcb, on_tcp_client_sent);
     tcp_arg(npcb, io);
 
     TNL_LOG(DEBUG, "intercepted address[%s] client[%s] service[%s]", io->tnlr_io->intercepted, io->tnlr_io->client,
