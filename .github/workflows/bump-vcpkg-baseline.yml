@@ -1,0 +1,34 @@
+name: Bump vcpkg baseline
+
+on:
+  schedule:
+    - cron: '29 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+concurrency:
+  group: bump-vcpkg-baseline
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+
+      - uses: ./.github/actions/bump-vcpkg-baseline
+        with:
+          # mingw is the only triplet that pulls in the Windows-only dependencies
+          triplets: x64-linux x64-mingw-static
+          features: test
+          # must match VCPKG_OVERLAY_PORTS in CMakePresets.json
+          overlay-ports: vcpkg-overlays/protobuf-c-runtime-only
+          approve-ci: true
+          # a PR pushed with github.token gets no CI; set this secret to a GitHub App token or PAT
+          token: ${{ secrets.VCPKG_BUMP_TOKEN || github.token }}
